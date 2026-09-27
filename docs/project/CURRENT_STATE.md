@@ -47,7 +47,7 @@
 | SYS-05 | 提高缓存命中率 | 未开始 | 2026-09-26 |
 | UI-00 | 前端整体重做 | 未开始 | 2026-09-26 |
 | UI-01 | 首页 | 已实现未验证（与需求有出入） | 2026-09-26 |
-| UI-02 | 更多工具：教师闲聊、学习远征 | 闲聊已实现未验证（同步已派 5-MF07）；远征仅入口 | 2026-09-27 |
+| UI-02 | 更多工具：教师闲聊、学习远征 | 闲聊已实现未验证（含同步）；远征仅入口 | 2026-09-27 |
 | VOICE-01 | 语音输入与朗读 | 未开始（旧仓库有成果） | 2026-09-26 |
 
 ## 编号前缀
@@ -122,7 +122,7 @@
 - 状态：设计待用户确认（服务器部分已派 T07）
 - 服务器一次性改动（T07）：通用记录类型 `course_record`（载荷为带版本号的 JSON，服务器只校验归属、ID、大小）、白名单/价格表只读接口、新登录挤掉旧设备。部署前须征得用户同意。
 - 客户端：每张表的变化写入本地待同步队列，按 `course_record` 上传/拉取；结构类数据按修订号后写覆盖；进度类是只追加事件，按 ID 去重合并，所以不会“打架”。上课时定期调用会话状态接口，收到“已在另一台设备登录”即停止上课并保留未同步事件（ACC-01）。原件不同步（DATA-02）。
-- 当前实现：【2026-09-27】T07 已合入未部署：course_record 通用记录（映射 learning_run）、目录接口 /api/enterprise/catalog/source-whitelist 与 /model-prices（需登录、ETag、目录由 MENTORFLOW_CATALOG_DIR 指定）、单设备登录；合并后在隔离环境跑 115 项服务器测试通过。基线已有 test_change_password_binding.py 3 项失败（非本次引入）。 【2026-09-27】客户端同步 `course/sync_course.py` 与挤下线检测 `services/session_guard.py`（第二批 MF-07，已合入）；架构师用两个真实 CourseStore 经 CourseSync 与协议一致的模拟服务器联调通过（计划与进度双向一致、各自事件不被覆盖、无多余上传）。已知缺口：服务器没有增量拉取接口，每轮拉取完整快照，资料正文和对话增多后会越来越慢。部署包 `deploy/enterprise/staging/rp05/mf-u09/` 已备好（默认只打印命令），尚未部署。既有 test_change_password_binding.py 3 项失败已查明为测试替身过时并修正（账号运行逻辑未改）。 【2026-09-27】第三批 MF-07（已合入）：服务器新增全局变化序号（迁移 0042：序列 + 按账号空间加事务锁保证编号顺序与提交顺序一致，已有数据回填，可降级）和 GET /api/enterprise/sync/v1/changes 增量接口，原快照接口不变；客户端优先增量、旧服务器回退全量；`services/course_sync_service.py` 同步调度（登录即同步、约 5 分钟一轮、改动后 3–5 秒合并触发、手动同步、退避、挤下线转交）。迁移已在隔离 PostgreSQL 17.11（真实应用角色、FORCE RLS）实测升级/降级/并发；部署包 MF-U09 已含迁移（先停 backend → 迁移检查 → 切镜像），尚未部署。 【2026-09-27 部署尝试，已回滚】按用户批准部署 MF-U09：先备份两个数据库（mf-b03-rollback/mf-u09-db，可读性已核），迁移 0042 与检查通过，但新后端启动即崩溃循环：覆盖进去的 structured_sync_api.py 引用了 refactor.server.account_object_storage，该模块从未随线上镜像部署。已按部署包回滚：数据库降回 0041（数据总数检查通过）、恢复 MF-U04 配置与镜像，backend healthy、重启 0 次，公开 /health/live、/health/ready 为 200，登录接口正常应答；中断约 5 分钟，进程重启后在线会话需重新登录。根因：部署包以仓库版本为准覆盖文件，而仓库服务器代码与线上 MF-U04 差距很大（线上 structured_sync.py 183 行，仓库版本改动约 340 行；早期写好的新同步信封格式、资料原件对象存储等从未上线）。部署包只校验了字节，没有在镜像里做启动检查。服务器当前：MF-U04、数据库 0041、MF-U09 镜像已构建但未使用、空的 catalog 目录已建。重新部署前须先按线上实际版本逐文件核对差异（修复任务见 WORKFLOW 4-MF07）。 【2026-09-27 已上线 MF-U10】MF-07 按线上实际版本逐文件审计后重做部署包（仓库服务器代码即上线版本：移除从未上线的资料原件对象存储，健康检查与注销模块还原为线上版本；镜像内源码审计 + 全应用导入检查；切换后 90 秒健康等待、失败自动降回 0041 + MF-U04）。上线前再次备份两个数据库（mf-b03-rollback/mf-u10-db）。基线与候选镜像审计均 PASS，迁移 0042 检查 PASS；backend 为 mentorflow-mf-u10-backend:MF-U10，运行 29 分钟以上 healthy、重启 0 次；公开 /health/live、/health/startup、/health/ready 为 200，/sync/v1/changes、两个目录接口、/auth/native/session 匿名返回 401（接口存在且要求登录），登录接口正常应答。目录文件已放到服务器（白名单 113 条、不含候选；价格表 33 条），容器内哈希与本机一致。带登录的目录读取、增量同步、挤下线待新客户端接入后实测。
+- 当前实现：【2026-09-27】T07 已合入未部署：course_record 通用记录（映射 learning_run）、目录接口 /api/enterprise/catalog/source-whitelist 与 /model-prices（需登录、ETag、目录由 MENTORFLOW_CATALOG_DIR 指定）、单设备登录；合并后在隔离环境跑 115 项服务器测试通过。基线已有 test_change_password_binding.py 3 项失败（非本次引入）。 【2026-09-27】客户端同步 `course/sync_course.py` 与挤下线检测 `services/session_guard.py`（第二批 MF-07，已合入）；架构师用两个真实 CourseStore 经 CourseSync 与协议一致的模拟服务器联调通过（计划与进度双向一致、各自事件不被覆盖、无多余上传）。已知缺口：服务器没有增量拉取接口，每轮拉取完整快照，资料正文和对话增多后会越来越慢。部署包 `deploy/enterprise/staging/rp05/mf-u09/` 已备好（默认只打印命令），尚未部署。既有 test_change_password_binding.py 3 项失败已查明为测试替身过时并修正（账号运行逻辑未改）。 【2026-09-27】第三批 MF-07（已合入）：服务器新增全局变化序号（迁移 0042：序列 + 按账号空间加事务锁保证编号顺序与提交顺序一致，已有数据回填，可降级）和 GET /api/enterprise/sync/v1/changes 增量接口，原快照接口不变；客户端优先增量、旧服务器回退全量；`services/course_sync_service.py` 同步调度（登录即同步、约 5 分钟一轮、改动后 3–5 秒合并触发、手动同步、退避、挤下线转交）。迁移已在隔离 PostgreSQL 17.11（真实应用角色、FORCE RLS）实测升级/降级/并发；部署包 MF-U09 已含迁移（先停 backend → 迁移检查 → 切镜像），尚未部署。 【2026-09-27 部署尝试，已回滚】按用户批准部署 MF-U09：先备份两个数据库（mf-b03-rollback/mf-u09-db，可读性已核），迁移 0042 与检查通过，但新后端启动即崩溃循环：覆盖进去的 structured_sync_api.py 引用了 refactor.server.account_object_storage，该模块从未随线上镜像部署。已按部署包回滚：数据库降回 0041（数据总数检查通过）、恢复 MF-U04 配置与镜像，backend healthy、重启 0 次，公开 /health/live、/health/ready 为 200，登录接口正常应答；中断约 5 分钟，进程重启后在线会话需重新登录。根因：部署包以仓库版本为准覆盖文件，而仓库服务器代码与线上 MF-U04 差距很大（线上 structured_sync.py 183 行，仓库版本改动约 340 行；早期写好的新同步信封格式、资料原件对象存储等从未上线）。部署包只校验了字节，没有在镜像里做启动检查。服务器当前：MF-U04、数据库 0041、MF-U09 镜像已构建但未使用、空的 catalog 目录已建。重新部署前须先按线上实际版本逐文件核对差异（修复任务见 WORKFLOW 4-MF07）。 【2026-09-27 已上线 MF-U10】MF-07 按线上实际版本逐文件审计后重做部署包（仓库服务器代码即上线版本：移除从未上线的资料原件对象存储，健康检查与注销模块还原为线上版本；镜像内源码审计 + 全应用导入检查；切换后 90 秒健康等待、失败自动降回 0041 + MF-U04）。上线前再次备份两个数据库（mf-b03-rollback/mf-u10-db）。基线与候选镜像审计均 PASS，迁移 0042 检查 PASS；backend 为 mentorflow-mf-u10-backend:MF-U10，运行 29 分钟以上 healthy、重启 0 次；公开 /health/live、/health/startup、/health/ready 为 200，/sync/v1/changes、两个目录接口、/auth/native/session 匿名返回 401（接口存在且要求登录），登录接口正常应答。目录文件已放到服务器（白名单 113 条、不含候选；价格表 33 条），容器内哈希与本机一致。带登录的目录读取、增量同步、挤下线待新客户端接入后实测。 【2026-09-27 5-MF07】新窗口接入同步：登录后立即同步一轮、约每 5 分钟一轮、本机改动后几秒内合并触发；SessionGuard 在窗口打开期间一直运行，被挤下线或登录失效时停止同步、显示提示和“重新验证”，本机未上传数据保留，重新登录后继续；页面可用 sync.status / sync.now 与 sync_status 事件（界面显示待架构师接入）。
 - 关联：[DATA-02] [ACC-01] [ARCH-03]
 - 更新：2026-09-27
 
@@ -466,7 +466,7 @@
   - 教师闲聊：没有任何限制和系统提示词，只带用户自己写的人设；系统不内置任何人设或默认提示（当前默认的“你是一位耐心、清晰的学习教师……”要去掉，默认留空），也不做任何限定；用户可以聊任何话题（只要 API 允许），不进入教学管线。它和课堂里的随时插话不同：课堂插话仍会被老师往教学上引导。闲聊暂不展示 Live2D 教师（用户 2026-09-27 决定先不做）；闲聊记录跨设备同步。
   - 学习远征：只保留入口，能点进去即可；以后可能删掉重做，现在不优化。
   - 按资料出题的“复习”删掉：它本来就属于检验（CHK-01），不该放在更多工具里。
-- 当前实现：`refactor/learning/tools/`（闲聊 free_chat、远征、复习 `tools/service.py:198`）是旧页面，闲聊带提示词。【2026-09-27】新界面教师闲聊已实现：`refactor/learning/app/chat.py`（chat.list/get/create/delete/send）+ 页面 `web/src/pages/Chat.tsx`。发给模型的只有用户自己写的人设（设置里的 chat_persona，最多 6000 字，默认空，每轮现读）和对话本身，没有任何系统提示、不开搜索、不进教学管线；回复流式显示，可随时停止（停止的这一轮不保存，输入退回输入框）；支持 Markdown/公式/表格/代码；会话列表、新对话、删除（两步确认）。历史沿用旧页面同一目录（账号/tools/chat），旧对话可见；只截掉最旧的轮次控制长度（约 6 万 token），不加摘要。用量记为“教师闲聊”。未做：跨设备同步（已派 5-MF07：闲聊改存 CourseStore 的 chat_sessions/chat_messages 并接入同步服务）。3 项新测试（假模型）通过；未用真实模型对话验证。
+- 当前实现：`refactor/learning/tools/`（闲聊 free_chat、远征、复习 `tools/service.py:198`）是旧页面，闲聊带提示词。【2026-09-27】新界面教师闲聊已实现：`refactor/learning/app/chat.py`（chat.list/get/create/delete/send）+ 页面 `web/src/pages/Chat.tsx`。发给模型的只有用户自己写的人设（设置里的 chat_persona，最多 6000 字，默认空，每轮现读）和对话本身，没有任何系统提示、不开搜索、不进教学管线；回复流式显示，可随时停止（停止的这一轮不保存，输入退回输入框）；支持 Markdown/公式/表格/代码；会话列表、新对话、删除（两步确认）。历史沿用旧页面同一目录（账号/tools/chat），旧对话可见；只截掉最旧的轮次控制长度（约 6 万 token），不加摘要。用量记为“教师闲聊”。【2026-09-27 5-MF07 已合入】闲聊改存 CourseStore 的 chat_sessions/chat_messages（一轮两条消息原子写入、顺序稳定、标题持久化；旧 JSON 首次访问时导入，编号确定，两台设备各导一次不重复，已删除的不会复活，原文件保留），随同步服务跨设备同步；远端有新闻聊时推 chat_changed 事件（页面刷新待接）。3 项新测试（假模型）通过；未用真实模型对话验证。
 - 验证：未验证
 - 关联：[CHK-01]
 - 更新：2026-09-27
@@ -488,7 +488,9 @@
 - D:\MentorFlowData\account-shell：软件运行数据（按账号的数据库、原件、配置）。
 - D:\MentorFlow-office\<工位>\repo：员工工位（主仓库的 git worktree），见 WORKFLOW.md。
 - E:\MentorFlowModels：本项目模型目录（gpt-sovits-base 为朗读用通用底模）。
-- E:\Codex\Temp\MentorFlowTests：基准测试（实验场）脚本与结果，如 search-benchmark。
+- E:\Codex\Temp\MentorFlowTests：基准测试（实验场）脚本与结果，如 search-benchmark；只放一次性实验结果，不放测试运行的临时文件。
+- D:\MentorFlow\.local\test-tmp：自动测试与界面冒烟检查的临时目录（频繁读写，git 忽略）。
+- E 盘是 USB 外接固态盘（Fanxiang PS2000，2TB）。系统日志显示自 2026-08-29 起反复出现坏块（disk 事件 7）、IO 重试（153）和 USB 重置（UASPStor 129）；2026-09-27 20:59–21:00 再次坏块后掉盘，约 22:11 重新挂载。因此频繁读写一律放 D 盘；E 盘上重要且唯一的资料需另有备份。
 - E:\Node：Node.js 与 npm。
 - E:\_KEEP\voices：用户长期保留、跨项目复用的声音包（当前：弗洛洛 phrolova-b-gpt-sovits 1.0.4）。
 - E:\MentorFlow：2026-09-07 建的空目录，当前账号无写入权限，不使用、不改权限。

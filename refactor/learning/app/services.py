@@ -67,13 +67,13 @@ class AppServices:
                 self._store = CourseStore(self.account_id, self.data_root)
             return self._store
 
-    # -- free chat sessions (same account path as the old tools page)
+    # -- free chat sessions (same CourseStore/outbox as the learning records)
     @property
     def chat(self):
         with self._lock:
             if self._chat is None and not self._closed:
-                from .chat import open_store
-                self._chat = open_store(self.account_id, self.data_root)
+                from .chat_store import CourseChatStore
+                self._chat = CourseChatStore(self.store)
             return self._chat
 
     def refresh_catalog(self):

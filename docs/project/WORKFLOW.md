@@ -23,7 +23,7 @@
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
 | MF-03（client） | D:\MentorFlow-office\client | 空闲 |
-| MF-07（server） | D:\MentorFlow-office\server | 5-MF07 进行中 |
+| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-01（library） | D:\MentorFlow-office\library | 空闲 |
@@ -54,7 +54,7 @@
 | 3-MF01 | MF-01 library | 资料入库与重新关联 + 计划导出（注销前保存） | DATA-02、ACC-02、PLAN-09 | 2014a74 | 已合入 |
 | 3-MF03 | MF-03 client | 学习报告数据 | RPT-01 | 2014a74 | 已合入 |
 | 4-MF07 | MF-07 server | 部署失败修复：按线上实际版本审计、仓库对齐、MF-U10 部署包（启动检查 + 不健康自动回滚）、本地演练 | ARCH-05、DATA-02、ACC-01 | 0d8ad81 | 已合入 9eb646b，已上线 MF-U10 |
-| 5-MF07 | MF-07 server | 闲聊改存 CourseStore（含旧记录导入）+ 新窗口接入同步服务与挤下线提示 | UI-02、ARCH-05、ACC-01、DATA-02 | 509c535 | 已派发 |
+| 5-MF07 | MF-07 server | 闲聊改存 CourseStore（含旧记录导入）+ 新窗口接入同步服务与挤下线提示 | UI-02、ARCH-05、ACC-01、DATA-02 | 509c535 | 已合入（见第五批审查记录） |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1179,3 +1179,5 @@ B. 新窗口接入同步服务
 【MF-07｜server｜第五批｜完成/部分完成/受阻】
 基线：509c535 ／ 提交：office/server 上的编号 ／ A：改动与导入方案 ／ B：接线方式、事件格式 ／ 验证：命令与结果 ／ 未完成
 ~~~
+
+第五批审查记录（2026-09-27）：office/server a9808b8 改动在范围内，按补丁应用到 main。集成时发现 1 处测试竞态：test_closing_services_does_not_wait_for_legacy_file_read 结束时后台线程仍在读旧 JSON，Windows 下临时目录删除偶发失败；已让测试等该线程读完再清理（产品行为不变）。同时 E 盘（USB 外接盘）在 20:59 因坏块掉盘，测试临时目录从 E 盘改到 D:\MentorFlow\.local\test-tmp（见 ENV-01），以后任务的测试临时文件一律放 D 盘。合并后客户端 948 通过、2 跳过（连续多次运行稳定）。

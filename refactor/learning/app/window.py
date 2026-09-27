@@ -22,6 +22,7 @@ from PySide6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 from .bridge import AppBridge
 from . import handlers
 from .services import AppServices
+from .sync import WindowSync
 
 log = logging.getLogger(__name__)
 
@@ -88,6 +89,8 @@ class LearningWindow(QWidget):
         self._api_label = api_base_url
         self._settings_bound = False
         self.services: AppServices | None = None
+        self._sync = None
+        self._sync_fallback = dict(state='reauth', at=None, message='请先登录账号。')
         self.session_notice = None
         self._bound_endpoint = None
         self.setObjectName("mentorflowLearningHome")
@@ -134,6 +137,10 @@ class LearningWindow(QWidget):
                 "settings_available": self._settings_bound}
 
     def request_account_action(self, action):
+        if action in {'switch', 'logout'}:
+            self.bridge.cancel_pending()
+            if self._sync is not None:
+                self._sync.stop()
         signal = {"switch": self.switch_requested, "logout": self.logout_requested,
                   "verify": self.verify_requested, "account_settings": self.settings_requested}[action]
         # Leave the bridge call first; the shell may dispose this window.
@@ -152,6 +159,38 @@ class LearningWindow(QWidget):
     def settings_changed(self, settings):
         self.bridge.push("settings", settings)
 
+    def sync_status(self):
+        return self._sync.status() if self._sync is not None else dict(self._sync_fallback)
+
+    def sync_now(self):
+        if self._sync is not None:
+            return self._sync.sync_now()
+        if self.services is not None and not self._disposed:
+            self._start_sync()
+        return self.sync_status()
+
+    def _start_sync(self):
+        try:
+            self._sync = WindowSync(self, self.services)
+            self._sync.start()
+        except Exception:
+            # Optional sync failure must not prevent local work or account settings.
+            log.warning('window sync could not start', exc_info=True)
+            if self._sync is not None:
+                self._sync.dispose()
+                self._sync = None
+            self._sync_fallback = dict(state='failed', at=None, message='同步暂时无法启动，本机记录已保留，请重试。')
+            self.bridge.push('sync_status', self._sync_fallback)
+
+    def _close_services(self):
+        self.bridge.cancel_pending()
+        if self._sync is not None:
+            self._sync.dispose()
+            self._sync = None
+        old, self.services = self.services, None
+        if old is not None:
+            old.close()
+
     # --------------------------------------------------- account shell API
     def bind_feature_context(self, *, session_provider, api_base_url, ca_bundle):
         if self._disposed:
@@ -168,19 +207,19 @@ class LearningWindow(QWidget):
             self.set_session_notice("账号服务地址或证书配置无效，请从账号入口重新登录。", show_verify=False)
             return False
         self._bound_endpoint = endpoint
+        self._close_services()
         guarded = self._guarded_session(session_provider)
         self.services = AppServices(account_id=self._account_id, data_root=self._data_root,
                                     session_provider=guarded, api_base_url=endpoint[0], ca_bundle=Path(ca_bundle))
         self.services.refresh_catalog()
+        self._start_sync()
         self.bridge.push("ready", {"account": self.account_info()})
         return True
 
     def rebind_feature_context(self, *, session_provider, api_base_url, ca_bundle):
         if self._disposed:
             return False
-        old, self.services = self.services, None
-        if old is not None:
-            old.close()
+        self._close_services()
         self._bound_endpoint = None
         self.bridge.push("scope_changed", None)
         return self.bind_feature_context(session_provider=session_provider, api_base_url=api_base_url,
@@ -214,6 +253,10 @@ class LearningWindow(QWidget):
 
     def session_recovered(self):
         if not self._disposed:
+            if self._sync is not None:
+                self._sync.start()
+            elif self.services is not None:
+                self._start_sync()
             self.bridge.push("session_recovered", None)
 
     def bind_account_settings(self, callback) -> None:
@@ -276,10 +319,8 @@ class LearningWindow(QWidget):
         if self._disposed:
             return
         self._disposed = True
+        self._close_services()
         self.bridge.close()
-        if self.services is not None:
-            self.services.close()
-            self.services = None
         try:
             self.view.stop()
             self.page.setUrl(QUrl("about:blank"))

@@ -77,6 +77,8 @@ def register(bridge, window):
     bridge.register("app.bootstrap", bootstrap, ui=True)
     bridge.register("app.account", account, ui=True)
     bridge.register("app.window", window_action, ui=True)
+    bridge.register("sync.status", lambda p, c: window.sync_status(), ui=True)
+    bridge.register("sync.now", lambda p, c: window.sync_now(), ui=True)
 
     # ----------------------------------------------------------- settings
     def settings_get(params, ctx):

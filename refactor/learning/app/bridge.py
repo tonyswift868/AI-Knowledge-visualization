@@ -69,6 +69,7 @@ class AppBridge(QObject):
     """Registered on the page's QWebChannel as ``mf``."""
 
     event = Signal(str)
+    request_failed = Signal(str)
     _deliver = Signal(str)
 
     def __init__(self, parent=None, *, workers: int = 4):
@@ -142,6 +143,8 @@ class AppBridge(QObject):
 
     def _run(self, request_id, handler, params, context):
         try:
+            if context.cancel.is_set():
+                raise BridgeError('CANCELLED', '已取消。')
             result = handler.function(params, context)
             response = {"type": "response", "id": request_id, "ok": True, "result": result}
         except BridgeError as exc:
@@ -150,6 +153,12 @@ class AppBridge(QObject):
         except Exception as exc:  # noqa: BLE001 - map every service failure to a visible error
             code = getattr(exc, "code", None)
             message = getattr(exc, "message", None)
+            # PlanError deliberately keeps its text in Exception.args. Preserve
+            # known auth codes even when that exception has no .message field.
+            if code == 'NATIVE_SESSION_SUPERSEDED':
+                message = '账号已在另一台设备登录'
+            elif isinstance(code, str) and code in {'REAUTH_REQUIRED', 'ENTERPRISE_SESSION_REAUTH_REQUIRED', 'SESSION_UNAVAILABLE'}:
+                message = '登录已失效，请重新验证账号。'
             if isinstance(code, str) and isinstance(message, str) and message:
                 response = {"type": "response", "id": request_id, "ok": False,
                             "error": {"code": code, "message": message}}
@@ -160,14 +169,23 @@ class AppBridge(QObject):
         finally:
             with self._lock:
                 self._pending.pop(request_id, None)
+        # A late error from a cancelled pre-login request cannot evict the new
+        # guard now attached to this retained bridge after re-verification.
+        if not self._closed and not context.cancel.is_set() and not response['ok']:
+            self.request_failed.emit(response['error']['code'])
         if context.cancel.is_set() and not response["ok"]:
             response["error"] = {"code": "CANCELLED", "message": "已取消。"}
         self._send(response)
 
-    def close(self):
-        self._closed = True
+    def cancel_pending(self):
+        """Cancel account work while retaining the bridge for re-verification."""
         with self._lock:
             for event in self._pending.values():
                 event.set()
+
+    def close(self):
+        self._closed = True
+        self.cancel_pending()
+        with self._lock:
             self._pending.clear()
         self._pool.shutdown(wait=False, cancel_futures=True)

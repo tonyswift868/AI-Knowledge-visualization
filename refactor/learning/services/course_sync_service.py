@@ -18,6 +18,7 @@ from .session_guard import SUPERSEDED_MESSAGE
 
 class CourseSyncService(QObject):
     status_changed = Signal(str)
+    state_changed = Signal(object)
     _changed = Signal()
 
     def __init__(self, record_store, transport, session_guard=None, parent=None, *,
@@ -36,6 +37,7 @@ class CourseSyncService(QObject):
         self._due = self._probe_at = float("inf")
         self._local_due = None
         self._retry_at = 0
+        self._status = dict(state='failed', at=None, message='同步尚未开始。')
         self._timer = QTimer(self)
         # Future completion must not add two one-second polling waits to the
         # three-second debounce. Store probes remain spaced about one second.
@@ -86,6 +88,15 @@ class CourseSyncService(QObject):
 
     close = dispose
 
+    def status(self):
+        """Stable UI contract; credentials and transport details never enter it."""
+        return dict(self._status)
+
+    def _publish(self, state, message, *, at=None):
+        self._status = dict(state=state, at=at or self._status['at'], message=message)
+        self.status_changed.emit(message)
+        self.state_changed.emit(self.status())
+
     def sync_now(self):
         if self._active and not self._closed:
             self._retry_at = 0
@@ -106,13 +117,13 @@ class CourseSyncService(QObject):
     def _superseded(self):
         if self._active:
             self.stop()
-            self.status_changed.emit(SUPERSEDED_MESSAGE)
+            self._publish('superseded', SUPERSEDED_MESSAGE)
 
     @Slot()
     def _reauth(self):
         if self._active:
             self.stop()
-            self.status_changed.emit("需要重新登录")
+            self._publish('reauth', "需要重新登录")
 
     def _finish(self, kind, result, error):
         now = self._clock()
@@ -132,7 +143,7 @@ class CourseSyncService(QObject):
             self._failures = min(self._failures + 1, 5)
             self._retry_at = now + min(30 * 2 ** (self._failures - 1), 300)
             self._due = self._retry_at
-            self.status_changed.emit("同步失败，可重试")
+            self._publish('failed', "同步失败，可重试")
         elif kind == "probe":
             if result:
                 self._on_change()
@@ -144,8 +155,11 @@ class CourseSyncService(QObject):
             self._probe_at = now + 1
             if result.get("pending", 0):
                 self._on_change()
-            self.status_changed.emit("已同步 " + self._wall_clock().strftime("%H:%M:%S")
-                                     if result.get("ok") else "同步中，本机新改动等待同步")
+            if result.get('ok'):
+                stamp = self._wall_clock()
+                self._publish('synced', "已同步 " + stamp.strftime("%H:%M:%S"), at=stamp.astimezone().isoformat())
+            else:
+                self._publish('syncing', "同步中，本机新改动等待同步")
 
     @Slot()
     def _tick(self):
@@ -173,7 +187,7 @@ class CourseSyncService(QObject):
         if now >= due:
             self._local_due = None
             self._due = float("inf")
-            self.status_changed.emit("同步中")
+            self._publish('syncing', "同步中")
             future = self._executor.submit(self._sync.sync, cancel=self._cancel)
             self._future = (future, "sync", self._epoch)
         elif now >= self._probe_at and self._local_due is None:

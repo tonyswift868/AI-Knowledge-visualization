@@ -25,7 +25,7 @@ connection = harness.connection  # reuse the fake server + SyncTransport fixture
 TODAY = date(2026, 9, 28)
 NOW = datetime(2026, 9, 28, 12, tzinfo=timezone.utc)
 WINDOW = PlanWindow(TODAY, TODAY + timedelta(days=6), 120)
-SCRATCH = Path('E:/Codex/Temp/MentorFlowTests/course-integration')
+SCRATCH = Path('D:/MentorFlow/.local/test-tmp/course-integration')
 
 
 @pytest.fixture(params=[False, True], ids=['snapshot-fallback', 'incremental'])
@@ -167,3 +167,86 @@ def test_upload_cursor_failure_keeps_pending_until_identity_is_durable(devices, 
     monkeypatch.setattr(a, 'set_sync_cursor', original)
     CourseSync(a, transport).sync()
     assert a.records('chat_sessions') == [] and not a.pending_records(100)
+
+
+@pytest.fixture(scope='module')
+def chat_app():
+    from PySide6.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
+def chat_bridge(store):
+    import json
+    from types import SimpleNamespace as NS
+    from refactor.learning.app.bridge import AppBridge
+    from refactor.learning.app.chat import register
+    from refactor.learning.app.chat_store import CourseChatStore
+    bridge, sent = AppBridge(), []
+    bridge.event.connect(lambda text: sent.append(json.loads(text)))
+    def complete(purpose, messages, *, system, on_text, cancel):
+        assert purpose == 'free_chat' and system is None
+        on_text('跨设备回复')
+        return NS(text='跨设备回复')
+    services = NS(chat=CourseChatStore(store), settings=NS(load=lambda: {'chat_persona': ''}),
+                  gateway=NS(complete=complete))
+    register(bridge, lambda: services)
+    return bridge, sent
+
+
+def chat_call(app, bridge, sent, method, **params):
+    import json
+    import time
+    rid = 'request-' + str(len(sent))
+    bridge.call(json.dumps(dict(id=rid, method=method, params=params)))
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        app.processEvents()
+        reply = next((m for m in sent if m.get('id') == rid and m['type'] == 'response'), None)
+        if reply:
+            assert reply['ok'], reply
+            return reply['result']
+        time.sleep(.005)
+    raise AssertionError('chat bridge did not complete')
+
+
+def test_chat_bridge_send_sync_read_and_remote_delete(devices, chat_app):
+    server, transport, a, b = devices
+    bridge_a, sent_a = chat_bridge(a)
+    bridge_b, sent_b = chat_bridge(b)
+    try:
+        first = chat_call(chat_app, bridge_a, sent_a, 'chat.create')['session']
+        sid = first['id']
+        first = chat_call(chat_app, bridge_a, sent_a, 'chat.send', session_id=sid, text='跨设备问题')['session']
+        assert CourseSync(a, transport).sync()['uploaded'] == 3
+        CourseSync(b, transport).sync()
+        listed = chat_call(chat_app, bridge_b, sent_b, 'chat.list')['sessions']
+        assert [(s['id'], s['title'], s['count']) for s in listed] == [(sid, '跨设备问题', 2)]
+        assert chat_call(chat_app, bridge_b, sent_b, 'chat.get', session_id=sid)['session'] == first
+        assert chat_call(chat_app, bridge_b, sent_b, 'chat.delete', session_id=sid)['deleted']
+        CourseSync(b, transport).sync()
+        CourseSync(a, transport).sync()
+        assert chat_call(chat_app, bridge_a, sent_a, 'chat.list')['sessions'] == []
+        assert not a.pending_records(100) and not b.pending_records(100)
+        assert all(row['deleted'] for row in server.rows.values())
+    finally:
+        bridge_a.close(); bridge_b.close()
+
+
+def test_two_devices_import_same_legacy_file_then_converge(devices):
+    from refactor.learning.app.chat_store import CourseChatStore
+    from refactor.learning.tools.service import ScopedChatStore
+    server, transport, a, b = devices
+    for store in (a, b):
+        old = ScopedChatStore(store.root / 'tools' / 'chat')
+        old.create(session_id='same-old-session', created_at=NOW)
+        old.commit_turn('same-old-session', expected_version=0, user_content='同一个文件',
+                        assistant_content='只导入一次', committed_at=NOW)
+    first, second = CourseChatStore(a), CourseChatStore(b)
+    assert first.list_sessions() == second.list_sessions()
+    assert a.pending_records(100) == b.pending_records(100)
+    assert CourseSync(a, transport).sync()['uploaded'] == 3
+    assert CourseSync(b, transport).sync()['uploaded'] == 0
+    assert len(server.rows) == 3 and len(server.requests) == 3
+    assert first.list_sessions() == second.list_sessions()
+    assert len(second.list_sessions()[0].messages) == 2
+    assert not a.pending_records(100) and not b.pending_records(100)

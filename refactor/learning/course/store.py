@@ -1,4 +1,4 @@
-"""Account-owned SQLite course data and an atomic record outbox, schema v2.
+"""Account-owned SQLite course data and an atomic record outbox, schema v3.
 
 Each business table stores a canonical, versioned JSON payload plus indexed FK
 columns and a local revision. Payload fields (also validated below):
@@ -39,6 +39,7 @@ from functools import wraps
 import base64
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -52,7 +53,7 @@ from .ledger import Ledger, PlanWindow, Credit
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
 _REPORT_PART_PREFIX = 'report-part:'
@@ -146,6 +147,8 @@ class CourseStore:
         self._lock = threading.RLock()
         self._closed = False
         self._depth = 0
+        self._changes = []
+        self._listeners = set()
         self._db = sqlite3.connect(self.path, timeout=10, isolation_level=None, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.execute('PRAGMA foreign_keys=ON')
@@ -166,16 +169,26 @@ class CourseStore:
 
     @contextmanager
     def transaction(self):
-        """Public grouped transaction; nested purpose-methods use savepoints."""
+        """Group writes; notify observers only after the outer commit/unlock."""
+        notifications = []
         with self._lock:
             if self._closed: raise StoreError('STORE_CLOSED')
             depth = self._depth
             savepoint = f'course_{depth}'
             self._db.execute('BEGIN IMMEDIATE' if depth == 0 else f'SAVEPOINT {savepoint}')
             self._depth += 1
+            changes = {'local': set(), 'remote': set()}
+            self._changes.append(changes)
             try:
                 yield self
                 self._db.execute('COMMIT' if depth == 0 else f'RELEASE {savepoint}')
+                if depth:
+                    for origin, entities in changes.items():
+                        self._changes[-2][origin].update(entities)
+                else:
+                    notifications = [(listener, origin, frozenset(entities))
+                                     for origin, entities in changes.items() if entities
+                                     for listener in tuple(self._listeners)]
             except BaseException:
                 if depth == 0:
                     if self._db.in_transaction: self._db.execute('ROLLBACK')
@@ -183,12 +196,31 @@ class CourseStore:
                     self._db.execute(f'ROLLBACK TO {savepoint}'); self._db.execute(f'RELEASE {savepoint}')
                 raise
             finally:
+                self._changes.pop()
                 self._depth -= 1
+        for listener, origin, entities in notifications:
+            try:
+                listener(origin, entities)
+            except Exception:
+                logging.getLogger(__name__).exception('course store observer failed')
+
+    def subscribe(self, listener):
+        """Observe committed entity changes on the writing thread; returns unsubscribe."""
+        with self._lock:
+            if self._closed: raise StoreError('STORE_CLOSED')
+            self._listeners.add(listener)
+        def unsubscribe():
+            with self._lock: self._listeners.discard(listener)
+        return unsubscribe
+
+    def _changed(self, origin, entity):
+        self._changes[-1][origin].add(entity)
 
     def close(self):
         with self._lock:
             if self._depth: raise StoreError('TRANSACTION_ACTIVE')
             if not self._closed:
+                self._listeners.clear()
                 self._db.close(); self._closed = True
 
     def __enter__(self): return self
@@ -231,7 +263,10 @@ class CourseStore:
             self._db.execute('CREATE INDEX IF NOT EXISTS records_pending ON _records(pending,local_revision,entity,entity_id)')
             self._db.execute('CREATE INDEX IF NOT EXISTS records_plan ON _records(plan_key,entity)')
             self._db.execute("CREATE INDEX IF NOT EXISTS messages_order ON messages(plan_key,module_id,json_extract(payload,'$.at'),id)")
-            self._db.execute('UPDATE schema_version SET version=2')
+            self._db.execute('UPDATE schema_version SET version=2'); version = 2
+        if version == 2:
+            self._db.execute("CREATE INDEX IF NOT EXISTS chat_messages_order ON chat_messages(plan_key,session_id,json_extract(payload,'$.at'),id)")
+            self._db.execute('UPDATE schema_version SET version=3')
         owner = self._db.execute("SELECT value FROM _meta WHERE key='account_id'").fetchone()
         if owner is None or owner[0] != self.account_id: raise StoreError('ACCOUNT_MISMATCH')
 
@@ -340,6 +375,7 @@ class CourseStore:
             DO UPDATE SET payload=excluded.payload,deleted=0,local_revision=excluded.local_revision,pending=1''',
                          (entity, identifier, plan, raw, 0, revision))
         self._materialize(entity, plan, payload, revision)
+        self._changed('local', entity)
         return payload
 
     def _delete(self, entity, plan, identifier):
@@ -351,6 +387,7 @@ class CourseStore:
                          (_json({'id': identifier}), self._revision(), entity, wire))
         if entity == 'plans': self._db.execute('DELETE FROM plans WHERE id=?', (identifier,))
         else: self._db.execute(f'DELETE FROM {entity} WHERE plan_key=? AND id=?', (plan, identifier))
+        self._changed('local', entity)
 
     @_atomic
     def create_plan(self, plan_id=None, *, goal='', final_goal='', level='', notes='', window=None, total_minutes=0):
@@ -808,10 +845,25 @@ class CourseStore:
             output_tokens=output_tokens, search_count=search_count))
 
     @_atomic
-    def create_chat_session(self, title='', *, session_id=None):
+    def create_chat_session(self, title='', *, session_id=None, created_at=None):
         identifier = _id(session_id or uuid.uuid4().hex)
-        self._put('chat_sessions', '', dict(id=identifier, title=title))
+        if self._db.execute("SELECT 1 FROM _records WHERE entity='chat_sessions' AND entity_id=?",
+                            (_wire_id('chat_sessions', '', identifier),)).fetchone():
+            raise StoreError('CHAT_EXISTS')
+        payload = dict(id=identifier, title=title)
+        if created_at is not None:
+            payload.update(created_at=_at(created_at), updated_at=_at(created_at))
+        self._put('chat_sessions', '', payload)
         return identifier
+
+    def get_chat_session(self, session_id):
+        with self._lock: return self._get('chat_sessions', '', session_id)
+
+    @_atomic
+    def touch_chat_session(self, session_id, *, title, updated_at):
+        payload = self._get('chat_sessions', '', session_id)
+        payload.update(title=title, updated_at=_at(updated_at))
+        self._put('chat_sessions', '', payload)
 
     @_atomic
     def rename_chat_session(self, session_id, title):
@@ -827,7 +879,36 @@ class CourseStore:
         return identifier
 
     def chat_messages(self, session_id):
-        return sorted([m for m in self.records('chat_messages') if m['session_id'] == session_id], key=lambda m: (m['at'], m['id']))
+        with self._lock:
+            return [json.loads(row[0]) for row in self._db.execute("""SELECT payload FROM chat_messages
+                WHERE plan_key='' AND session_id=? ORDER BY json_extract(payload,'$.at'),id""", (session_id,))]
+
+    def legacy_chat_imported(self, key='complete'):
+        with self._lock:
+            return self._db.execute('SELECT 1 FROM _meta WHERE key=?', ('legacy_chat_v1:' + key,)).fetchone() is not None
+
+    @_atomic
+    def mark_legacy_chat_imported(self, key='complete'):
+        self._db.execute('INSERT OR IGNORE INTO _meta VALUES(?,?)', ('legacy_chat_v1:' + key, '1'))
+
+    @_atomic
+    def import_chat_session(self, source_key, session, messages):
+        """Import one legacy file with its local marker in the same transaction.
+
+        Never overwrite an already synced ID, especially a remote tombstone.
+        Deterministic IDs are provided by the legacy reader, not allocated here.
+        """
+        if self.legacy_chat_imported(source_key): return
+        existing = self._db.execute("SELECT deleted FROM _records WHERE entity='chat_sessions' AND entity_id=?",
+                                    (_wire_id('chat_sessions', '', _id(session['id'])),)).fetchone()
+        if existing and existing['deleted']:
+            self.mark_legacy_chat_imported(source_key)
+            return
+        for entity, payload in [('chat_sessions', session), *[('chat_messages', m) for m in messages]]:
+            wire = _wire_id(entity, '', _id(payload['id']))
+            if not self._db.execute('SELECT 1 FROM _records WHERE entity=? AND entity_id=?', (entity, wire)).fetchone():
+                self._put(entity, '', payload)
+        self.mark_legacy_chat_imported(source_key)
 
     @_atomic
     def delete_chat_session(self, session_id):
@@ -946,4 +1027,6 @@ class CourseStore:
                 DO UPDATE SET payload=excluded.payload,deleted=excluded.deleted,local_revision=excluded.local_revision,
                 server_revision=excluded.server_revision,pending=0''',
                              (record.entity, record.entity_id, record.plan_key, _json(payload), int(record.deleted), self._revision(), server_revision))
+            if old is None or old['deleted'] != int(record.deleted) or old['payload'] != _json(payload):
+                self._changed('remote', record.entity)
         self._project_records()

@@ -93,8 +93,14 @@ def test_old_tools_page_sessions_are_visible(qapp, tmp_root):
     session = old.create(session_id=None, created_at=utc_now())
     old.commit_turn(session.session_id, expected_version=0, user_content="旧界面聊过", assistant_content="嗯",
                     committed_at=utc_now())
+    path = old.root / 'sessions' / (session.session_id + '.json')
+    original = path.read_bytes()
     services, bridge, sent = setup(qapp, tmp_root)
     listed = ask(qapp, bridge, sent, "o1", "chat.list")["result"]["sessions"]
     assert [s["title"] for s in listed] == ["旧界面聊过"]
+    assert services.store.records('chat_sessions')[0]['title'] == '旧界面聊过'
+    assert [m['role'] for m in services.store.chat_messages(listed[0]['id'])] == ['user', 'assistant']
+    assert all(r.plan_key == '' for r in services.store.pending_records(100))
+    assert services.store.legacy_chat_imported() and path.read_bytes() == original
     bridge.close()
     services.close()

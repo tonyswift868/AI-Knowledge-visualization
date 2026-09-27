@@ -19,7 +19,7 @@ from refactor.learning.course.sync_contract import RecordStore, SyncRecord
 TODAY = date(2026, 9, 27)
 NOW = datetime(2026, 9, 27, tzinfo=timezone.utc)
 WINDOW = PlanWindow(TODAY, TODAY + timedelta(days=4), 100)
-SCRATCH = Path('E:/Codex/Temp/MentorFlowTests/course-store')
+SCRATCH = Path('D:/MentorFlow/.local/test-tmp/course-store')
 
 
 class StoreTests(unittest.TestCase):
@@ -90,7 +90,7 @@ class StoreTests(unittest.TestCase):
         s._db.execute('DROP INDEX messages_order')
         s._db.execute('UPDATE schema_version SET version=1')
         upgraded = self.open()
-        self.assertEqual(upgraded._db.execute('SELECT version FROM schema_version').fetchone()[0], 2)
+        self.assertEqual(upgraded._db.execute('SELECT version FROM schema_version').fetchone()[0], SCHEMA_VERSION)
         self.assertEqual(upgraded.sync_cursor(), 'kept')
         self.assertEqual(upgraded.pending_records(100), pending)
         self.assertEqual(upgraded.load_ledger('p').to_dict(), ledger)

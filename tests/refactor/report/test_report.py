@@ -15,7 +15,7 @@ from refactor.learning.course.store import CourseStore, StoreError
 
 DAY = date(2026, 10, 1)
 TZ = timezone(timedelta(hours=9))
-SCRATCH = Path('E:/Codex/Temp/MentorFlowTests/course-report')
+SCRATCH = Path('D:/MentorFlow/.local/test-tmp/course-report')
 
 
 class ReportTests(unittest.TestCase):

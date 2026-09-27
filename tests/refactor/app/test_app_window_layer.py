@@ -12,7 +12,7 @@ from refactor.learning.app.bridge import AppBridge, BridgeError
 from refactor.learning.app import handlers
 from refactor.learning.app.settings import AppSettings, DEFAULTS, validate
 
-SCRATCH = Path("E:/Codex/Temp/MentorFlowTests/app-layer")
+SCRATCH = Path("D:/MentorFlow/.local/test-tmp/app-layer")
 
 
 @pytest.fixture(scope="module")
