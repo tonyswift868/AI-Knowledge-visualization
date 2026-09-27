@@ -40,7 +40,7 @@ def legacy(tmp_path, *, url='https://api.deepseek.com', key=KEY):
     return store, data
 
 
-@pytest.mark.parametrize('provider_id', providers.REGISTRY)
+@pytest.mark.parametrize('provider_id', [k for k in providers.REGISTRY if not k.startswith('relay_')])
 def test_registry_defaults_crud_and_no_implicit_probe(tmp_path, vault, provider_id):
     g = ModelGateway('account-one', tmp_path)
     assert vault.reads == 0
@@ -398,3 +398,17 @@ def test_gateway_prices_only_known_endpoint_and_actual_service_tier(tmp_path, mo
     groups = {v['key']: v for v in g.usage_log.summary(START, END)['groups']}
     assert groups['default']['amount'] is not None
     assert groups['priority']['amount'] is groups['None']['amount'] is None
+
+
+def test_relay_preset_needs_address_and_model_and_has_no_search(tmp_path, vault):
+    g = ModelGateway('account-one', tmp_path)
+    with pytest.raises(ModelError):
+        g.save_preset('relay_openai', api_key=KEY)
+    p = g.save_preset('relay_openai', base_url='https://relay.example.test/v1', model='gpt-relay', api_key=KEY)
+    assert (p['provider_id'], p['display_name'], p['model']) == ('relay_openai', '中转站 · OpenAI 格式', 'gpt-relay')
+    assert not g.search_supported()
+    with pytest.raises(ModelError) as err:
+        g.complete('research', MESSAGES, enable_search=True)
+    assert err.value.code == 'MODEL_SEARCH_UNSUPPORTED'
+    a = g.save_preset('relay_anthropic', base_url='https://relay.example.test', model='claude-relay', api_key=KEY)
+    assert a['id'] != p['id'] and g.search_supported()

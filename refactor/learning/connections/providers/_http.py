@@ -94,7 +94,7 @@ class HTTP:
         self.check()
         normalize_url(url)
         auth = ({'x-api-key': self.key, 'anthropic-version': '2023-06-01'}
-                if self.provider in {'deepseek', 'anthropic'}
+                if self.provider in {'deepseek', 'anthropic', 'relay_anthropic'}
                 else {'x-goog-api-key': self.key} if self.provider == 'gemini'
                 else {'Authorization': 'Bearer ' + self.key})
         auth.update({'Content-Type': 'application/json'})

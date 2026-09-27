@@ -13,7 +13,9 @@ from .samples import (KEY, MESSAGES, URL, anthro, call, chat, google, ordinary,
                       qwen, responses)
 
 
-@pytest.mark.parametrize('provider', REGISTRY)
+OFFICIAL = [k for k in REGISTRY if not k.startswith('relay_')]
+
+@pytest.mark.parametrize('provider', OFFICIAL)
 def test_ordinary_answers_and_usage(provider):
     result, requests = call(provider, [ordinary(provider)], system='固定系统前缀', temperature=.3)
     assert result.text == '答案'
@@ -193,7 +195,7 @@ def test_deepseek_root_alias_preserves_explicit_origin_port():
     assert str(seen[0].url) == 'https://api.deepseek.com:8443/anthropic/v1/messages'
 
 
-@pytest.mark.parametrize('provider', REGISTRY)
+@pytest.mark.parametrize('provider', OFFICIAL)
 def test_registry_detection_and_evidence_level(provider):
     spec = REGISTRY[provider]
     assert detect_provider(spec.default_base_url + '/') == provider

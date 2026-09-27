@@ -136,6 +136,8 @@ def test_actual_deepseek_fixture_quote_and_catalog_coverage():
     assert cat.cost('deepseek', result.model, value, at=AT, context=dict(GLOBAL, price_period='peak')).amount == Decimal('.05243624')
     data = json.loads(CATALOG.read_text(encoding='utf-8'))
     for provider, spec in REGISTRY.items():
+        if provider.startswith('relay_'):   # user-supplied endpoints have no official prices
+            continue
         assert any(r['provider'] == provider and spec.default_model in {r['model'], *r.get('aliases', [])} for r in data['models'])
     assert all(not r['verified'] and r['input_cache_miss_per_mtok'] is None for r in data['models'] if r['provider'] in {'kimi', 'zhipu'})
 

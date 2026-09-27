@@ -130,24 +130,59 @@ export function Skeleton({ h = 18, w = "100%" }: { h?: number; w?: number | stri
   return <div className="skeleton" style={{ height: h, width: w }} />
 }
 
+// Five notched petals around a glowing core; everything animates with transforms only.
+const PETAL = "M0 0C-10-7-13-22-6-31L0-26.5L6-31C13-22 10-7 0 0Z"
+
+function Blossom({ id, stamens = true }: { id: string; stamens?: boolean }) {
+  return (
+    <g className="bloom-spin">
+      {[0, 72, 144, 216, 288].map((a, i) => (
+        <g key={a} transform={`rotate(${a})`}>
+          <path className="bloom-petal" d={PETAL} fill={`url(#${id})`} style={{ animationDelay: `${-i * 0.7}s` }} />
+          <path d="M0-4L0-20" stroke="var(--accent-2)" strokeWidth=".8" opacity=".22" strokeLinecap="round" />
+        </g>
+      ))}
+      {stamens && Array.from({ length: 10 }, (_, i) => {
+        const a = (i * 36 + 18) * Math.PI / 180
+        const r = i % 2 ? 8 : 10.5
+        return <g key={i}><line x1="0" y1="0" x2={Math.sin(a) * r} y2={-Math.cos(a) * r} stroke="var(--stamen)" strokeWidth=".9" />
+          <circle cx={Math.sin(a) * r} cy={-Math.cos(a) * r} r="1.35" fill="var(--stamen)" /></g>
+      })}
+      <circle r="3.6" fill="var(--accent-2)" />
+    </g>
+  )
+}
+
 export function SakuraArt() {
   return (
-    <svg className="art" viewBox="0 0 150 120" aria-hidden>
+    <svg className="art bloom" viewBox="0 0 200 160" aria-hidden>
       <defs>
-        <linearGradient id="artG" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0" stopColor="var(--accent-3)" />
-          <stop offset="1" stopColor="var(--accent-2)" />
+        <linearGradient id="bloomPetal" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="var(--petal-2)" />
+          <stop offset=".55" stopColor="var(--accent-3)" />
+          <stop offset="1" stopColor="var(--accent)" />
         </linearGradient>
+        <radialGradient id="bloomHalo">
+          <stop offset="0" stopColor="var(--accent-3)" stopOpacity=".45" />
+          <stop offset="1" stopColor="var(--accent-3)" stopOpacity="0" />
+        </radialGradient>
       </defs>
-      <path d="M10 104c30-6 52-24 70-52 8-13 20-24 34-30" stroke="var(--text-3)" strokeWidth="3" fill="none" strokeLinecap="round" opacity=".55" />
-      <path d="M58 76c6-10 18-14 26-12" stroke="var(--text-3)" strokeWidth="2.4" fill="none" strokeLinecap="round" opacity=".45" />
-      {[[112, 22, 1], [84, 50, 0.8], [60, 74, 0.9], [96, 64, 0.65], [126, 40, 0.6], [36, 92, 0.7]].map(([x, y, s], i) => (
-        <g key={i} transform={`translate(${x} ${y}) scale(${s})`}>
-          {[0, 72, 144, 216, 288].map((a) => (
-            <path key={a} d="M0 0c-5-7-4-15 0-17 4 2 5 10 0 17z" fill="url(#artG)" opacity=".85" transform={`rotate(${a})`} />
-          ))}
-          <circle r="2.6" fill="var(--surface-solid)" />
+      <g transform="translate(100 80)">
+        <circle className="bloom-halo" r="66" fill="url(#bloomHalo)" />
+        <circle className="bloom-orbit" r="58" fill="none" stroke="var(--border-strong)" strokeWidth="1" strokeDasharray="2 7" />
+        <g transform="scale(1.45)"><Blossom id="bloomPetal" /></g>
+      </g>
+      <g transform="translate(40 122)"><g className="bloom-bob"><g transform="scale(.62)"><Blossom id="bloomPetal" /></g></g></g>
+      <g transform="translate(164 34)"><g className="bloom-bob b2"><g transform="scale(.46)"><Blossom id="bloomPetal" stamens={false} /></g></g></g>
+      {[[10, 20, 0], [0, 58, 1], [30, 4, 2], [-4, 96, 3], [56, -6, 4]].map(([x, y, i]) => (
+        <g key={i} transform={`translate(${x} ${y})`}>
+          <path className="bloom-fly" d={PETAL} transform="scale(.3)" fill="url(#bloomPetal)"
+                style={{ animationDuration: `${7 + i * 1.3}s`, animationDelay: `${-i * 2.1}s` }} />
         </g>
+      ))}
+      {[[150, 104], [58, 30], [178, 78]].map(([x, y], i) => (
+        <path key={i} className="bloom-spark" transform={`translate(${x} ${y})`} d="M0-5L1.2-1.2L5 0L1.2 1.2L0 5L-1.2 1.2L-5 0L-1.2-1.2Z"
+              fill="var(--accent-3)" style={{ animationDelay: `${-i * 1.1}s` }} />
       ))}
     </svg>
   )

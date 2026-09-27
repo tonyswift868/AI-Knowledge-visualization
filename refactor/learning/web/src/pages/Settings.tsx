@@ -1,7 +1,7 @@
 import * as React from "react"
 import {
   BellRing, BookOpenText, Bot, CheckCircle2, Clock3, Coins, GraduationCap, HeartHandshake, KeyRound, Laugh, LogOut, Palette, PlugZap, RefreshCw,
-  Search, ShieldCheck, Target, Trash2, UserRound, Users,
+  ShieldCheck, Target, Trash2, UserRound, Users, Waypoints,
 } from "lucide-react"
 import { call, BridgeFailure } from "../bridge"
 import { useApp, type Settings as S, type SettingsTab } from "../store"
@@ -63,6 +63,8 @@ export function Settings() {
 type Provider = { id: string; name: string; default_base_url: string; default_model: string; search_supported: boolean; search_verified: boolean }
 type Preset = { id: string; provider_id: string; display_name: string; base_url: string; model: string; temperature: number | null; timeout: number; has_api_key: boolean }
 
+const isRelay = (id: string) => id.startsWith("relay_")
+
 function Models() {
   const toast = useApp((s) => s.toast)
   const [providers, setProviders] = React.useState<Provider[] | null>(null)
@@ -98,6 +100,7 @@ function Models() {
   const active = presets.find((p) => p.id === activeId)
   const selected = providers?.find((p) => p.id === form.provider_id)
   const existing = presets.find((p) => p.id === form.preset_id)
+  const relay = isRelay(form.provider_id)
 
   async function save() {
     setSaving(true)
@@ -156,18 +159,11 @@ function Models() {
         <div className="grid auto">
           {providers.map((p) => (
             <button key={p.id} className={`provider ${form.provider_id === p.id ? "on" : ""}`} onClick={() => fill(p.id, presets, providers)}>
-              <div className="logo">{p.name.slice(0, 1)}</div>
-              <div style={{ minWidth: 0 }}>
-                <b>{p.name}</b>
-                <div className="small muted" style={{ marginTop: 3 }}>
-                  {p.search_verified ? <span className="pill ok"><Search size={11} />资料搜索已实测</span>
-                    : p.search_supported ? <span className="pill muted"><Search size={11} />支持搜索·未实测</span> : <span className="pill muted">不支持搜索</span>}
-                </div>
-              </div>
+              <div className="logo">{isRelay(p.id) ? <Waypoints size={18} /> : p.name.slice(0, 1)}</div>
+              <b style={{ minWidth: 0 }}>{p.name}</b>
             </button>
           ))}
         </div>
-        <p className="sub">找资料依赖厂商自带的联网搜索。目前只有 DeepSeek 经过实测；其他厂商已按官方文档接好，首次使用时如有问题会明确提示。</p>
       </div>
 
       <div className="card stack">
@@ -177,8 +173,12 @@ function Models() {
         </div>
         <div className="grid two">
           <Field label="名称"><input className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field>
-          <Field label="模型名称" hint={`默认 ${selected?.default_model ?? ""}`}><input className="input" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} /></Field>
-          <Field label="接口地址" hint="一般不用改，保持默认即可。"><input className="input" value={form.base_url} onChange={(e) => setForm({ ...form, base_url: e.target.value })} /></Field>
+          <Field label="模型名称" hint={relay ? "填中转站里的模型名。" : `默认 ${selected?.default_model ?? ""}`}>
+            <input className="input" value={form.model} placeholder={relay ? "例如 claude-sonnet-5" : ""} onChange={(e) => setForm({ ...form, model: e.target.value })} />
+          </Field>
+          <Field label="接口地址" hint={relay ? "填中转站给你的地址。" : "一般不用改。用中转站请选上面的“中转站”。"}>
+            <input className="input" value={form.base_url} placeholder={relay ? "https://…/v1" : ""} onChange={(e) => setForm({ ...form, base_url: e.target.value })} />
+          </Field>
           <Field label="API Key" hint={existing?.has_api_key ? "已保存在本机 Windows 凭据里。留空表示继续用原来的 Key。" : "只保存在这台电脑的 Windows 凭据里，不会上传。"}>
             <input className="input" type="password" autoComplete="off" placeholder={existing?.has_api_key ? "••••••••（已保存）" : "粘贴你的 API Key"}
                    value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} />

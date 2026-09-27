@@ -66,6 +66,15 @@ REGISTRY: dict[str, ProviderSpec] = {
                'search_requests 是报告的查询数，不是金额/计费单元。'
                '工具输入与原始 totalTokenCount 对账，raw 标记不一致；'
                'max_search_uses 无对应服务端参数；展示时需遵守 searchEntryPoint 要求。')),
+    # Relay stations: the user supplies address and model. The protocol decides the
+    # parser; nothing about prices or regions is inherited from an official provider.
+    'relay_openai': ProviderSpec(
+        'relay_openai', '中转站 · OpenAI 格式', 'openai_chat', '', '', None),
+    'relay_anthropic': ProviderSpec(
+        'relay_anthropic', '中转站 · Anthropic 格式', 'anthropic_messages', '', '',
+        search('anthropic_server_tool',
+               'https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool',
+               '未实测。是否转发搜索工具取决于中转站；不支持时如实报错。')),
 }
 
 

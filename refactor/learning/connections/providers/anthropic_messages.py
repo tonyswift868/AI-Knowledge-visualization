@@ -38,7 +38,7 @@ def parse(data, provider, requested_model, search_enabled):
     cached = raw.get('cache_read_input_tokens', 0)
     # DeepSeek's compatibility input includes cache; native Claude excludes it.
     total = raw['input_tokens']
-    if provider == 'anthropic':
+    if provider in {'anthropic', 'relay_anthropic'}:
         total += cached + raw.get('cache_creation_input_tokens', 0)
     searches = raw.get('server_tool_use', {}).get('web_search_requests')
     if searches is None:
