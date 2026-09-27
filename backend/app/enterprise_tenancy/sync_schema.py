@@ -1,4 +1,4 @@
-"""Read-only admission of sync storage through the exact 0040/0041 policies."""
+"""Read-only admission of 0042 storage, retaining exact 0040/0041 policies."""
 from sqlalchemy import inspect, text
 from .import_ledger_schema import _expression, _closure_policy_matches, _closure_access_matches
 from .schema import rls_predicate_for
@@ -13,7 +13,7 @@ def require_structured_sync_schema(connection):
                  organization_id='VARCHAR(128)', workspace_id='VARCHAR(128)')
     definitions = {
         'structured_sync_entities': (dict(scope, kind='VARCHAR(24)', entity_id='VARCHAR(160)',
-            revision='INTEGER', deleted='BOOLEAN', payload='JSON'), list(scope)+['kind', 'entity_id']),
+            revision='INTEGER', deleted='BOOLEAN', payload='JSON', change_seq='BIGINT'), list(scope)+['kind', 'entity_id']),
         'structured_sync_requests': (dict(scope, request_id='VARCHAR(128)', digest='VARCHAR(64)',
             response='JSON'), list(scope)+['request_id']),
         'rehydration_manifests': (dict(scope, scope_version='VARCHAR(64)', initialized='BOOLEAN',
@@ -28,6 +28,7 @@ def require_structured_sync_schema(connection):
         require(inspector.get_pk_constraint(table, schema='public')['constrained_columns'] == pk)
         checks = {c['name']: _expression(c['sqltext']) for c in inspector.get_check_constraints(table, schema='public')}
         require(checks == ({'ck_sync_revision': _expression('revision > 0'),
+            'ck_sync_change_seq': _expression('change_seq > 0'),
             'ck_sync_kind': _expression("kind = ANY (ARRAY['plan','progress','resource','task','calendar','review','learner_profile','learning_run','history','setting'])")}
             if table.endswith('entities') else {'ck_rehydration_generation': _expression('generation > 0')}
             if table == 'rehydration_manifests' else {}))
@@ -76,3 +77,50 @@ def require_structured_sync_schema(connection):
             pg_get_userbyid(a.grantee) NOT IN ('mentorflow_app','mentorflow_migrator','mentorflow_closure') OR
             (pg_get_userbyid(a.grantee) IN ('mentorflow_app','mentorflow_closure') AND a.is_grantable)))'''),
             {'table': 'public.'+table}).scalar_one())
+    _require_change_order(connection, inspector, require)
+
+
+def _require_change_order(connection, inspector, require):
+    """A column alone is insufficient: legacy writes need the ordered trigger."""
+    indexes = {index['name']: index for index in inspector.get_indexes(
+        'structured_sync_entities', schema='public')}
+    for name, columns, unique in (
+        ('ux_structured_sync_change_seq', ['change_seq'], True),
+        ('ix_structured_sync_changes_scope', ['issuer', 'subject_id', 'organization_id',
+                                             'workspace_id', 'kind', 'change_seq'], False),
+    ):
+        index = indexes.get(name, {})
+        require(index.get('column_names') == columns and index.get('unique') is unique
+                and not index.get('dialect_options', {}).get('postgresql_where'))
+    sequence = connection.execute(text('''SELECT sequenceowner,data_type,start_value,
+        min_value,max_value,increment_by,cycle,cache_size FROM pg_sequences
+        WHERE schemaname='public' AND sequencename='structured_sync_change_seq'
+    ''')).first()
+    require(sequence is not None and tuple(sequence) == (
+        'mentorflow_migrator', 'bigint', 1, 1, 9223372036854775807, 1, False, 1))
+    for privilege in ('USAGE', 'SELECT', 'UPDATE'):
+        allowed = connection.execute(text("SELECT has_sequence_privilege('mentorflow_app', "
+            "'public.structured_sync_change_seq', :privilege)"), {'privilege': privilege}).scalar_one()
+        require(allowed == (privilege == 'USAGE'))
+    require(not connection.execute(text('''SELECT EXISTS (
+        SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a
+        WHERE c.oid='public.structured_sync_change_seq'::regclass AND
+        (a.grantee=0 OR pg_get_userbyid(a.grantee) NOT IN ('mentorflow_app','mentorflow_migrator')
+         OR (pg_get_userbyid(a.grantee)='mentorflow_app' AND a.is_grantable)))''')).scalar_one())
+    trigger = connection.execute(text('''SELECT t.tgtype,t.tgenabled,t.tgqual,t.tgnargs,
+        n.nspname,p.proname,p.prosecdef,p.provolatile,p.proconfig,pg_get_userbyid(p.proowner),p.prosrc
+        FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+        JOIN pg_namespace n ON n.oid=p.pronamespace
+        WHERE t.tgrelid='public.structured_sync_entities'::regclass
+          AND t.tgname='structured_sync_change_stamp' AND NOT t.tgisinternal''')).first()
+    require(trigger is not None)
+    require(tuple(trigger[:10]) == (23, 'O', None, 0, 'public', 'stamp_structured_sync_change',
+                                    False, 'v', ['search_path=pg_catalog'], 'mentorflow_migrator'))
+    expected = '''BEGIN
+        PERFORM pg_advisory_xact_lock(hashtextextended(
+            'mentorflow.sync.changes.v1:' || array_to_json(ARRAY[
+                NEW.issuer, NEW.subject_id, NEW.organization_id, NEW.workspace_id])::text, 0));
+        NEW.change_seq := nextval('public.structured_sync_change_seq'::regclass);
+        RETURN NEW;
+    END'''
+    require(_expression(trigger[10]) == _expression(expected))

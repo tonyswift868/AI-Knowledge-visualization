@@ -33,14 +33,13 @@ def baseline(config):
         'edge': {'image': 'existing-edge'}}, 'networks': {'internal': {'internal': True}}}
 
 
-def test_bundle_is_exact_copy_of_six_current_sources(scripts):
+def test_archived_bundle_keeps_its_six_pinned_sources(scripts):
     config, _, _ = scripts
     config.check_bundle(PACKAGE)
     manifest = json.loads((PACKAGE / 'manifest.json').read_text(encoding='utf-8'))
     for source in config.SOURCES:
-        # The package pins LF so Linux checkout/build bytes match the manifest.
-        canonical = (ROOT / source).read_bytes().replace(b'\r\n', b'\n')
-        assert (PACKAGE / 'overlay' / source).read_bytes() == canonical
+        # MF-U09 is an incident record, not the deployable current source.
+        canonical = (PACKAGE / 'overlay' / source).read_bytes()
         assert manifest['sha256'][source] == hashlib.sha256(canonical).hexdigest()
     lines = (PACKAGE / 'Dockerfile').read_text().splitlines()
     assert lines[0] == 'FROM ' + config.BASE_IMAGE

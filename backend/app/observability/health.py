@@ -230,13 +230,7 @@ def _keycloak_probe() -> tuple[bool, str]:
 
 def _object_store_probe() -> tuple[bool, str]:
     profile = str(os.getenv("MENTORFLOW_OBJECT_STORE_PROFILE") or "").strip().upper()
-    # MENTORFLOW_OBJECT_STORAGE_ROOT is the canonical account-owned store name;
-    # retain the singular legacy variable for older deployments.
-    root = str(
-        os.getenv("MENTORFLOW_OBJECT_STORAGE_ROOT")
-        or os.getenv("MENTORFLOW_OBJECT_STORE_ROOT")
-        or ""
-    ).strip()
+    root = str(os.getenv("MENTORFLOW_OBJECT_STORE_ROOT") or "").strip()
     endpoint = str(os.getenv("MENTORFLOW_OBJECT_STORE_HEALTH_URL") or "").strip()
     if profile == "OPTIONAL_DISABLED":
         if root or endpoint:
@@ -318,15 +312,13 @@ def configure_default_health_probes(
             "document_ingestion",
             "document_parsing",
             "document_worker",
+            "object_store",
             "otel_collector",
             "teacher",
             "web_frontend",
             "worker_dependencies",
         ):
             target.register_not_required(name)
-        # Account-core owns durable account files, so a configured store is a
-        # required dependency rather than an optional/disabled decoration.
-        target.register("object_store", _object_store_probe, required=True)
         return target
     if enterprise_required is None:
         enterprise_required = str(os.getenv("MENTORFLOW_ENVIRONMENT") or "local").casefold() in {"staging", "production"}
@@ -335,7 +327,6 @@ def configure_default_health_probes(
     object_store_optional_disabled = (
         str(os.getenv("MENTORFLOW_OBJECT_STORE_PROFILE") or "").strip().upper()
         == "OPTIONAL_DISABLED"
-        and not str(os.getenv("MENTORFLOW_OBJECT_STORAGE_ROOT") or "").strip()
         and not str(os.getenv("MENTORFLOW_OBJECT_STORE_ROOT") or "").strip()
         and not str(os.getenv("MENTORFLOW_OBJECT_STORE_HEALTH_URL") or "").strip()
     )

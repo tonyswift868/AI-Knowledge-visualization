@@ -50,10 +50,6 @@ def _runtime(request):
     runtime = getattr(request.app.state, "enterprise_identity_runtime", None)
     if runtime is None or getattr(runtime, "closure_store", None) is None:
         raise ClosureError("CLOSURE_UNAVAILABLE")
-    # account-core owns the durable object store on app.state; bridge it into
-    # the identity runtime without making closure code depend on app wiring.
-    if not hasattr(runtime, "account_object_storage"):
-        runtime.account_object_storage = getattr(request.app.state, "account_object_storage", None)
     return runtime
 
 def _service(runtime, *, mutation=True):
@@ -61,8 +57,7 @@ def _service(runtime, *, mutation=True):
     if mutation and (lifecycle is None or not lifecycle.active):
         raise ClosureError("CLOSURE_UNAVAILABLE")
     provider = KeycloakClosureProvider(lifecycle.admin) if lifecycle is not None and lifecycle.active else None
-    return AccountClosure(runtime.closure_store, provider, runtime,
-                          getattr(runtime, "account_object_storage", None))
+    return AccountClosure(runtime.closure_store, provider, runtime)
 
 def _response(result):
     return JSONResponse(result.payload, status_code=result.status, headers={"Cache-Control": "no-store"})

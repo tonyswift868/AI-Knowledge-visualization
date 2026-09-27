@@ -29,14 +29,14 @@ def test_resident_bootstrap_uses_canonical_identity_after_public_hostname_change
         pass
 
     engine = SimpleNamespace(dispose=lambda: None)
-    runtime = SimpleNamespace(aclose=close)
+    runtime = SimpleNamespace(aclose=close, native_sessions=None)
     monkeypatch.setattr(module.EnterpriseIdentityConfig, 'from_env', lambda: SimpleNamespace(
         mode=TenantMode.ENTERPRISE_SERVER,
         keycloak=config(issuer_migration=None, transport_issuer=None)))
     monkeypatch.setattr(module.orm_runtime, 'configure_enterprise_orm', lambda: engine)
     monkeypatch.setattr(module.orm_runtime, 'verify_enterprise_runtime_schema', lambda: None)
     monkeypatch.setattr(module, 'build_enterprise_identity_runtime', lambda **kw: runtime)
-    monkeypatch.setattr(module, 'overview_from_env', lambda *args: None)
+    monkeypatch.setattr(module, 'overview_from_env', lambda *args, **kwargs: None)
     for name in ('EnterpriseWorkspaceService', 'StructuredSyncService',
                  'PostgresTenantTransactionManager', 'EnterpriseDocumentImportService'):
         monkeypatch.setattr(module, name, lambda *args: None)

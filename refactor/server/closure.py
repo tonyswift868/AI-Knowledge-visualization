@@ -50,11 +50,8 @@ class ClosureResult:
 
 
 class AccountClosure:
-    def __init__(self, store, provider, runtime, object_storage=None):
+    def __init__(self, store, provider, runtime):
         self.store, self.provider, self.runtime = store, provider, runtime
-        # Object cleanup is deliberately injected by the authenticated runtime;
-        # ordinary soft-delete paths never call this hook.
-        self.object_storage = object_storage
 
     async def prepare(self, principal, password):
         # Only the HTTP adapter can supply a verified native principal. No target
@@ -109,12 +106,6 @@ class AccountClosure:
                 if not record["identity_deleted"]:
                     await self.provider.ensure_deleted(subject)
                     record = await asyncio.to_thread(self.store.provider_done, operation, digest, claim)
-                if self.object_storage is not None:
-                    try:
-                        await asyncio.to_thread(self.object_storage.purge_subject,
-                                                record["issuer"], subject)
-                    except Exception as exc:
-                        raise ClosureError("CLOSURE_OBJECT_STORAGE_UNAVAILABLE") from exc
                 if not all(_revoke_local(self.runtime, subject)):
                     raise ClosureError("CLOSURE_SESSION_REVOCATION_PENDING")
                 record = await asyncio.to_thread(self.store.complete, operation, digest, claim)

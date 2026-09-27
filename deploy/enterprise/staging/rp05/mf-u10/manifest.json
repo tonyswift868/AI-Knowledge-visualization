@@ -1,0 +1,50 @@
+{
+  "baseline": "0d8ad81",
+  "base_image": "mentorflow-mf-u04-backend:MF-U04",
+  "comparison": "LF normalized",
+  "sha256": {
+    "backend/app/enterprise/identity/native.py": "9439349a2a1f04cc02b596a789233e82b2df39752ed514f437fac88267821f1a",
+    "backend/app/enterprise_tenancy/structured_sync.py": "b0c5af684849a39d72f78ddfe3e0fb7f380e954a7da7e1319210597128c0a9fc",
+    "backend/app/enterprise/catalog_api.py": "496caf05dbeb051dfa6f55dec3cddc541139862ab2e7eaabc9f901352c32e19d",
+    "backend/app/account_core_mvp.py": "bf3104597955f2c7c6c7e592cbee8ab14fc08538dc9828aa38d096a1c4f9a16d",
+    "backend/app/enterprise/structured_sync_api.py": "32f7c462ed7b105506f1b1ee070aeecb63e1707166ad049ddb61ae1d76deff62",
+    "backend/app/enterprise_tenancy/schema.py": "597b8d617f412c6572f758ffb413e78e3f314cd02bc7381417f53af71efbcbe1",
+    "backend/app/enterprise_tenancy/sync_schema.py": "d66ed636e4559bdac5fb2d2c284771cf51df4341a3482a7b04e554a17ca3f781",
+    "backend/alembic/versions/0042_structured_sync_changes.py": "e3acf233a90b4c82141e3766d10d3358a63e6388bbc083719ebff67adcd84f7e"
+  },
+  "originals": {
+    "backend/app/enterprise/identity/native.py": {
+      "source": "MF-U04 image extraction: backend/app/enterprise/identity/native.py",
+      "sha256": "0172397790360b1b1d1a866d2b9236b60b3addbd9f3a46645ef36ef2921170bf"
+    },
+    "backend/app/enterprise_tenancy/structured_sync.py": {
+      "source": "MF-U04 image extraction: backend/app/enterprise_tenancy/structured_sync.py",
+      "sha256": "0b6913d5953d9cdaddf0f9cb8321de678f2b69feb852081928a74afbf77f62dc"
+    },
+    "backend/app/enterprise/catalog_api.py": {
+      "source": "Absent from MF-U04; feature confirmed never deployed in fourth-batch dispatch",
+      "sha256": null
+    },
+    "backend/app/account_core_mvp.py": {
+      "source": "MF-U04 image extraction: backend/app/account_core_mvp.py",
+      "sha256": "65034b1301defda80b18002222af74bc34e2f76b058a56cb928d5d6c4dc509b9"
+    },
+    "backend/app/enterprise/structured_sync_api.py": {
+      "source": "MF-U04 image extraction: backend/app/enterprise/structured_sync_api.py",
+      "sha256": "5cdd7de9f166771b71b36831e26ac104424b46a8c42e805f9f40cd6bd585aeab"
+    },
+    "backend/app/enterprise_tenancy/schema.py": {
+      "source": "MF-U04 image extraction: backend/app/enterprise_tenancy/schema.py",
+      "sha256": "6487a971d92ad5d6a78ab3606b9b479cae1291955236f7e92c65124033375d4c"
+    },
+    "backend/app/enterprise_tenancy/sync_schema.py": {
+      "source": "MF-U04 image extraction: backend/app/enterprise_tenancy/sync_schema.py",
+      "sha256": "9dd0e54b49fa2cf2b414214e87be9a51481d789e309882f11c3cebe3969a9746"
+    },
+    "backend/alembic/versions/0042_structured_sync_changes.py": {
+      "source": "Absent from MF-U04; feature confirmed never deployed in fourth-batch dispatch",
+      "sha256": null
+    }
+  },
+  "audit_sha256": "0546eced6abb02ea191fb072733fa21aba612490dc6c64ab5c856efd42329f44"
+}

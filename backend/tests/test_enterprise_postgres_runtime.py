@@ -321,7 +321,7 @@ def test_current_migration_graph_and_rls_contract_are_canonical() -> None:
     assert scripts.get_heads() == [ENTERPRISE_MIGRATION_REVISION]
     revision = scripts.get_revision(ENTERPRISE_MIGRATION_REVISION)
     assert revision is not None
-    assert revision.down_revision == "0039_generic_sync_kinds"
+    assert revision.down_revision == "0041_account_closure"
     jobs = scripts.get_revision("0030_enterprise_jobs_v1")
     assert jobs is not None
     assert jobs.down_revision == "0029_enterprise_tenancy_rls"

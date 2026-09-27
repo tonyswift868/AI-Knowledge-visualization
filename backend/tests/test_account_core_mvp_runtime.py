@@ -165,24 +165,39 @@ def test_account_core_app_exposes_only_desktop_account_contracts() -> None:
         "/api/enterprise/sync/v1/entities/{kind}/{entity_id}",
         "/api/enterprise/sync/v1/entities/{kind}/{entity_id}/delete",
         "/api/enterprise/sync/v1/snapshot",
+        "/api/enterprise/sync/v1/changes",
+        "/api/enterprise/catalog/source-whitelist",
+        "/api/enterprise/catalog/model-prices",
         "/api/enterprise/account/workspaces",
         "/api/enterprise/account/workspaces/initialize",
         "/api/enterprise/account/metadata",
         "/api/enterprise/account/metadata/assets",
         "/api/enterprise/account/metadata/assets/{asset_id}/missing",
         "/api/enterprise/account/metadata/progress",
+        "/api/enterprise/account/closure/prepare",
+        "/api/enterprise/account/closure/{operation_id}",
+        "/api/enterprise/account/closure/{operation_id}/commit",
         "/api/enterprise/auth/me",
         "/api/enterprise/auth/admin/check",
         "/api/enterprise/auth/admin/overview",
         "/api/enterprise/auth/lifecycle/register",
+        "/api/enterprise/auth/lifecycle/register/check",
         "/api/enterprise/auth/lifecycle/change-password",
         "/api/enterprise/auth/lifecycle/capabilities",
         "/api/enterprise/auth/lifecycle/forgot",
+        "/api/enterprise/auth/lifecycle/reset-code/request",
+        "/api/enterprise/auth/lifecycle/reset-code/verify",
+        "/api/enterprise/auth/lifecycle/reset-code/complete",
+        "/api/enterprise/auth/lifecycle/email",
+        "/api/enterprise/auth/lifecycle/email-code/request",
+        "/api/enterprise/auth/lifecycle/email-code/verify",
+        "/api/enterprise/auth/lifecycle/revoke-sessions",
         "/api/enterprise/auth/reset/watch",
         "/api/enterprise/auth/reset/status",
         "/api/enterprise/auth/native/login",
         "/api/enterprise/auth/native/refresh",
         "/api/enterprise/auth/native/logout",
+        "/api/enterprise/auth/native/session",
         "/api/enterprise/auth/reset/watch",
         "/api/enterprise/auth/reset/status",
         "/api/enterprise/document-import/selections",
@@ -203,6 +218,7 @@ def test_account_core_app_exposes_only_desktop_account_contracts() -> None:
             "/preflight",
             "/batches",
             "/active-teaching",
+            "/objects/",
         )
     )
 
@@ -315,7 +331,7 @@ def test_account_core_schema_verify_never_invokes_worker_schema(
     assert runtime._verify_account_core() == 0
     receipt = json.loads(capsys.readouterr().out)
     assert receipt["status"] == "PASS"
-    assert receipt["repository_head"] == "0040_admin_overview_aggregate"
+    assert receipt["repository_head"] == "0042_structured_sync_changes"
     assert receipt["worker_schema"] == "NOT_REQUIRED_FOR_ACCOUNT_CORE_MVP"
     assert calls[0][-2:] == ["current", "--check-heads"]
     assert disposed == [True]

@@ -80,7 +80,7 @@ def lab(tmp_path):
             for role in ('mentorflow_app', 'mentorflow_migrator'):
                 c.execute(sql.SQL('CREATE ROLE {} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD {}')
                           .format(sql.Identifier(role), sql.Literal(password)))
-            c.execute('CREATE ROLE mentorflow_closure NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS')
+            c.execute('CREATE ROLE mentorflow_closure NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS')
             c.execute('GRANT mentorflow_closure TO mentorflow_migrator')
             c.execute('CREATE DATABASE mf07 OWNER mentorflow_migrator')
         with connect(autocommit=True) as c:
