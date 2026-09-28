@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import io
 import json
+import math
 import os
 from pathlib import Path
 from queue import Queue
@@ -138,7 +139,7 @@ def main():
     active = {"request_id": None, "cancelled": False}
     jobs = Queue(maxsize=1)
 
-    def synthesize_on_worker(text, emit=None):
+    def synthesize_on_worker(text, emit=None, speed=1.0):
         voice = config["voice"]
         started = time.perf_counter()
         sent_at = started
@@ -150,7 +151,7 @@ def main():
                     "text_split_method": "cut0", "batch_size": 1, "parallel_infer": emit is None,
                     "streaming_mode": emit is not None, "fixed_length_chunk": True,
                     "min_chunk_length": 32, "overlap_length": 4,
-                    "fragment_interval": 0.0, "speed_factor": voice["speed"], "seed": 42,
+                    "fragment_interval": 0.0, "speed_factor": voice["speed"] * speed, "seed": 42,
                     "top_k": 15, "top_p": 1.0, "temperature": 1.0, "repetition_penalty": 1.35}):
                 if active["cancelled"]:
                     raise InterruptedError("cancelled")
@@ -188,19 +189,19 @@ def main():
 
     def inference_worker():
         while True:
-            text, emit, finished, result = jobs.get()
+            text, emit, speed, finished, result = jobs.get()
             try:
-                result.append(synthesize_on_worker(text, emit))
+                result.append(synthesize_on_worker(text, emit, speed))
             except Exception as exc:
                 result.append(exc)
             finally:
                 finished.set()
 
-    def synthesize(text, emit=None):
+    def synthesize(text, emit=None, speed=1.0):
         # Warm-up and every sentence use the same CUDA thread/context. HTTP
         # request threads remain free to accept health and cancellation calls.
         finished, result = threading.Event(), []
-        jobs.put((text, emit, finished, result))
+        jobs.put((text, emit, speed, finished, result))
         finished.wait()
         if isinstance(result[0], Exception):
             raise result[0]
@@ -260,6 +261,10 @@ def main():
             text = body.get("text", "")
             if not isinstance(text, str) or not text.strip() or len(text) > 120:
                 self.send(400, {"code": "INVALID_TEXT"}); return
+            speed = body.get("speed", 1.0)
+            if (isinstance(speed, bool) or not isinstance(speed, (int, float))
+                    or not math.isfinite(speed) or not .5 <= speed <= 2):
+                self.send(400, {"code": "INVALID_SPEED"}); return
             if not lock.acquire(blocking=False):
                 self.send(409, {"code": "BUSY"}); return
             streaming = self.path == "/stream"
@@ -276,9 +281,9 @@ def main():
                     self.send_header("Content-Type", "application/x-ndjson")
                     self.send_header("Connection", "close")
                     self.end_headers()
-                    synthesize(text, emit)
+                    synthesize(text, emit, speed)
                 else:
-                    wav, elapsed, duration = synthesize(text)
+                    wav, elapsed, duration = synthesize(text, speed=speed)
                     self.send(200, wav, "audio/wav", {"X-Synthesis-Seconds": elapsed, "X-Audio-Seconds": duration})
             except InterruptedError:
                 if not streaming:

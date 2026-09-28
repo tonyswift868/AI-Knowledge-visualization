@@ -1,7 +1,8 @@
 """GenerateContent grounding. Google search URLs are returned, never fetched."""
 from urllib.parse import quote
 
-from .base import ModelResult, TextSink, WebHit, hit, integer, invalid, string, usage
+from ._accounting import read_usage
+from .base import ModelResult, TextSink, WebHit, hit, invalid, string
 
 
 def parse(data, model, search_enabled):
@@ -26,23 +27,7 @@ def parse(data, model, search_enabled):
             value = indexed[index]
             citations.append(WebHit(value.url, value.title, string((support.get('segment') or {}).get('text', ''))))
     queries = tuple(string(q) for q in grounding.get('webSearchQueries') or [])
-    raw = data['usageMetadata']
-    thoughts = integer(raw.get('thoughtsTokenCount', 0))
-    # Google reports thoughts separately from candidate tokens, unlike OpenAI.
-    output = integer(raw.get('candidatesTokenCount', 0)) + thoughts
-    prompt = integer(raw['promptTokenCount'])
-    tool_prompt = integer(raw.get('toolUsePromptTokenCount', 0))
-    # Include tool-use input, reconciling against total when the service already
-    # included it in promptTokenCount. Keep all components for billing review.
-    total_input = prompt + tool_prompt
-    if tool_prompt and raw.get('totalTokenCount') == prompt + output:
-        total_input = prompt
-    reconciled = (raw['totalTokenCount'] == total_input + output) if 'totalTokenCount' in raw else None
-    count = len(queries) if 'webSearchQueries' in grounding else (None if search_enabled else 0)
-    return ModelResult(''.join(texts), usage(
-        raw, total_input, raw.get('cachedContentTokenCount', 0), output, thoughts, count,
-        grounding_metadata=grounding, token_total_reconciled=reconciled,
-        search_count_source='reported_webSearchQueries_not_billing_units'),
+    return ModelResult(''.join(texts), read_usage('gemini_generate_content', 'gemini', data, search_enabled),
         'gemini', data.get('modelVersion', model), queries, tuple(hits), tuple(citations),
         string(candidate['finishReason']))
 

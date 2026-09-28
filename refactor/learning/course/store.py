@@ -677,6 +677,22 @@ class CourseStore:
             for event in events: book.apply(event_from_dict(event))
             return book
 
+    def today_status(self, plan_id, *, now, refresh, tz, classroom_day=None) -> dict:
+        """Read one coherent course snapshot; no clock, writes or notifications.
+
+        See course.today.build_today_status for the shared home/classroom wire
+        fields. The caller supplies account time settings and, when applicable,
+        the classroom's pinned entry study day.
+        """
+        from .today import build_today_status
+        with self.transaction():
+            plan = self._get('plans', plan_id, plan_id)
+            ledger = self._load_ledger(plan)
+            checked = self._fully_generated(plan_id) and self.load_mastery(plan_id).check_complete()
+            return build_today_status(ledger, now=now, refresh=refresh, tz=tz,
+                                      plan_state=plan['state'], check_complete=checked,
+                                      classroom_day=classroom_day)
+
     def _append_mastery(self, plan_id, event, entity, details=None):
         self._get('plans', plan_id, plan_id)
         if not isinstance(event, Judgement if entity == 'judgements' else AttemptClosed): raise StoreError('INVALID_EVENT')

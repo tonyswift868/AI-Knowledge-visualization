@@ -74,7 +74,16 @@ def test_messages_native_search(provider):
 def test_real_deepseek_evidence_preserves_all_44_entries_and_truncation():
     raw = json.loads((Path(__file__).parent / 'fixtures/with_tool.json').read_text(encoding='utf-8'))
     assert raw['status'] == 200
-    result, _ = call('deepseek', [raw['response']], enable_search=True)
+    # Inspect the evidence without treating its partial answer as a success.
+    from refactor.learning.connections.providers import anthropic_messages
+    result = anthropic_messages.parse(raw['response'], 'deepseek', REGISTRY['deepseek'].default_model, True)
+    with pytest.raises(ModelError) as exc:
+        call('deepseek', [raw['response']], enable_search=True)
+    assert exc.value.code == 'MODEL_OUTPUT_TRUNCATED'
+    assert exc.value.generated_text_length == len(result.text)
+    assert exc.value.usage.input_tokens == 84285
+    assert exc.value.usage.cached_input_tokens == 38656
+    assert exc.value.usage.search_requests == 8
     assert result.usage.search_requests == 8
     assert len(result.search_queries) == 8
     assert len(result.search_hits) == 44

@@ -30,3 +30,13 @@
 .teacher-preview-stats { color: var(--text-3); font-size: 12px; margin-top: 22px; display: flex; flex-wrap: wrap; gap: 14px; }
 .teacher-preview button:disabled { opacity: .45; cursor: not-allowed; }
 @media (max-width: 820px) { .teacher-preview-grid { grid-template-columns: 1fr; } .teacher-preview-scene { height: 520px; } }
+.teacher-voice details { margin-top: 14px; color: var(--text-2); font-size: 13px; }
+.teacher-voice summary { cursor: pointer; padding: 6px 0; }
+.teacher-voice details label { display: block; margin: 14px 0 6px; }
+.teacher-voice details p { margin: 10px 0; }
+.teacher-voice-sentence { margin-top: 14px !important; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); font-size: 14px; }
+.teacher-voice-sentence[data-reading="true"] { color: var(--accent); }
+.teacher-voice-error { margin-top: 10px !important; color: var(--text); }
+.teacher-voice-consent { display: flex !important; align-items: start; gap: 8px; }
+.teacher-voice-download { margin-top: 12px; }
+.teacher-voice-download progress { width: 100%; accent-color: var(--accent); }

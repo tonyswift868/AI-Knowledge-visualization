@@ -220,7 +220,7 @@ def test_partial_usage_on_error_is_recorded(tmp_path, monkeypatch):
     g, _ = configured(tmp_path)
     def fail(*args, **kwargs):
         error = ModelError('MODEL_TIMEOUT', '模型请求超时。')
-        error.usage = answer().usage
+        error.usage = answer(raw={'_mentorflow': {'partial_usage': True}}).usage
         raise error
     monkeypatch.setattr(providers, 'complete', fail)
     with pytest.raises(ModelError):

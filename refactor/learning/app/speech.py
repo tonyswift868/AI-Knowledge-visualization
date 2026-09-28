@@ -1,0 +1,357 @@
+"""Window-owned teacher voice bridge. Qt/audio stay on the GUI thread.
+
+Only asset inspection and explicit model installation use the small worker pool;
+TtsService owns synthesis, its two-sentence pipeline and the device clock. No
+lesson decisions, implicit downloads, remote speech or shared-service shutdown.
+"""
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
+import math
+from pathlib import Path
+import re
+import threading
+import time
+from uuid import uuid4
+
+from PySide6.QtCore import QObject, Qt, Signal, Slot
+
+from .bridge import BridgeError
+from ..voice.download import DownloadError
+from ..voice.tts.config import TtsConfig, TtsError
+from ..voice.tts.model_manager import ModelManager
+from ..voice.tts.service import TtsService
+
+_ID = re.compile(r"[A-Za-z0-9_.:-]{1,64}")
+_ENGINE_BYTES = round(12.2 * 1024 ** 3)  # Existing distribution survey, approximate.
+_VOICE_BYTES = 155284856 + 134946803 + 334242
+
+
+class SpeechResources:
+    """Cheap local readiness, including separately located development assets."""
+    def __init__(self, data_root, *, config_factory=TtsConfig.from_env, manager=None):
+        self.data_root = Path(data_root)
+        self.config_factory = config_factory
+        self.manager = manager or ModelManager(self.data_root)
+
+    def inspect(self):
+        config = self.config_factory(self.data_root)
+        engine = config.engine_python.is_file() and (config.engine_root / "GPT_SoVITS/TTS_infer_pack/TTS.py").is_file()
+        voice, voice_error = None, ""
+        try:
+            voice = config.voice()
+        except (TtsError, OSError, ValueError, KeyError, TypeError) as exc:
+            voice_error = getattr(exc, "message", "声音包描述不完整。")
+        roots = config.base_assets()
+        missing = []
+        mapping = {"chinese-roberta-wwm-ext-large": "bert_root", "chinese-hubert-base": "hubert_root", "G2PWModel": "g2pw_root"}
+        for name, (size, _) in self.manager.required.items():
+            prefix, rest = name.split("/", 1)
+            path = roots[mapping[prefix]] / rest if prefix in mapping else roots["sv_weights"]
+            try:
+                present = path.is_file() and path.stat().st_size == size
+            except OSError:
+                present = False
+            if not present:
+                missing.append({"name": name, "size_bytes": size})
+        base = not missing
+        ready = bool(engine and voice and base)
+        if ready:
+            try:
+                config.validate()  # Also checks the read-only resource/output boundary.
+            except (TtsError, ValueError, OSError) as exc:
+                return {"ready": False, "message": "朗读未启用", "reason": getattr(exc, "message", "朗读配置无效。"),
+                        "components": [], "download": None}, config
+        components = [
+            {"id": "engine", "name": "GPT-SoVITS 引擎与 Python/CUDA 运行时", "installed": engine,
+             "size_bytes": _ENGINE_BYTES, "size_estimated": True, "downloadable": False,
+             "instruction": "随安装包离线提供，或通过 MF_TTS_ENGINE_ROOT / MF_TTS_ENGINE_PYTHON 指定已安装位置。"},
+            {"id": "base", "name": "朗读通用底模", "installed": base, "size_bytes": self.manager.size_bytes,
+             "size_estimated": False, "downloadable": True, "missing_files": missing,
+             "instruction": "同意后从固定官方地址或备用镜像下载，并校验后安装。"},
+            {"id": "voice", "name": "弗洛洛 1.0.4 声音包", "installed": voice is not None,
+             "size_bytes": _VOICE_BYTES, "size_estimated": False, "downloadable": False,
+             "instruction": voice_error or "引用已安装的声音包；开发机优先使用 D 盘保留副本。"},
+        ]
+        return {"ready": ready, "message": "朗读可用" if ready else "朗读未启用", "components": components,
+                "voice": {"id": voice.pack_id, "version": voice.version} if voice else None,
+                "download": {"required": not base, "size_bytes": self.manager.size_bytes,
+                    "installed_size_bytes": sum(size for size, _ in self.manager.required.values()),
+                    "target": str(self.manager.path), "assets": [
+                        {"name": a.name, "size_bytes": a.size, "sha256": a.sha256, "urls": list(a.urls)}
+                        for a in self.manager.assets],
+                    "instruction": "只下载通用底模；引擎和声音包须另行安装。"}}, config
+
+
+def _params(params, keys):
+    if set(params) - set(keys):
+        raise BridgeError("INVALID_PARAMS", "朗读参数无效。")
+
+
+def _id(params, key, *, optional=False):
+    value = params.get(key)
+    if optional and value is None:
+        return None
+    if not isinstance(value, str) or not _ID.fullmatch(value):
+        raise BridgeError("INVALID_PARAMS", "朗读请求标识无效。")
+    return value
+
+
+def _number(value, low, high, label):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
+        raise BridgeError("INVALID_PARAMS", f"{label}必须在 {low} 到 {high} 之间。")
+    return float(value)
+
+
+class TeacherSpeech(QObject):
+    """Register once per LearningWindow, then reset on account scope changes."""
+    _result = Signal(object)
+
+    def __init__(self, bridge, data_root, parent=None, *, resources=None, service_factory=None):
+        super().__init__(parent)
+        self.bridge = bridge
+        self.resources = resources or SpeechResources(data_root)
+        self._factory = service_factory or (lambda config, parent: TtsService(config=config, parent=parent))
+        self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mf-speech-assets")
+        self._result.connect(self._receive, Qt.ConnectionType.QueuedConnection)
+        self._closed = False
+        self._generation = 0
+        self._prepare_cancel = threading.Event()
+        self.service = None
+        self._config = None
+        self._owner = self._utterance = None
+        self._state = "idle"
+        self._volume, self._speed = 1.0, 1.0
+        self._download = None
+        self._download_state = None
+        for name, fn, ui in (
+            ("status", self.status, False), ("download", self.download, True),
+            ("cancel_download", self.cancel_download, True), ("warm_up", self.warm_up, True),
+            ("speak", self.speak, True), ("stop", self.stop, True), ("settings", self.settings, True),
+        ):
+            bridge.register("speech." + name, fn, ui=ui)
+
+    def _emit_result(self, value):
+        if not self._closed:
+            try:
+                self._result.emit(value)
+            except RuntimeError:  # Parent window already destroyed.
+                pass
+
+    def _push(self, name, data):
+        if not self._closed:
+            self.bridge.push("speech." + name, data)
+
+    def _scope(self):
+        return {"owner": self._owner, "utterance_id": self._utterance}
+
+    def _state_changed(self, state):
+        self._state = state
+        self._push("state", {**self._scope(), "state": state})
+
+    def status(self, params, ctx):
+        _params(params, ())
+        if self._closed:
+            raise BridgeError("CLOSED", "朗读组件已关闭。")
+        try:
+            value, _ = self.resources.inspect()
+        except (TtsError, OSError, ValueError, TypeError, KeyError):
+            value = {"ready": False, "message": "朗读未启用", "reason": "请检查本机朗读资源配置。", "components": [], "download": None}
+        if ctx.cancel.is_set():
+            raise BridgeError("CANCELLED", "已取消。")
+        return {**value, "state": self._state, "volume": self._volume, "speed": self._speed,
+                "download_state": self._download_state}
+
+    def _halt(self):
+        self._generation += 1
+        self._prepare_cancel.set()
+        if self.service:
+            self.service.stop()  # Device reset and old sentence interruption happen before changing IDs.
+        self._push("mouth", {**self._scope(), "level": 0.0})
+
+    def _begin(self, owner, utterance, text):
+        if self._closed:
+            raise BridgeError("CLOSED", "朗读组件已关闭。")
+        self._halt()
+        self._owner, self._utterance = owner, utterance
+        generation = self._generation
+        cancel = self._prepare_cancel = threading.Event()
+        self._state_changed("checking")
+
+        def work():
+            try:
+                status, config = self.resources.inspect()
+                result = {"kind": "prepared", "generation": generation, "text": text, "status": status, "config": config}
+            except Exception:
+                result = {"kind": "prepared", "generation": generation, "text": text,
+                          "status": {"ready": False, "message": "朗读未启用", "reason": "请检查本机朗读资源配置。", "components": [], "download": None}}
+            if not cancel.is_set():
+                self._emit_result(result)
+        self._pool.submit(work)
+        return {"accepted": True, **self._scope(), "state": "checking"}
+
+    def warm_up(self, params, ctx):
+        _params(params, ("owner",))
+        owner = _id(params, "owner")
+        if self._state in {"checking", "warming", "synthesizing", "playing", "ready"}:
+            return {"accepted": False, "state": self._state}
+        return self._begin(owner, None, None)
+
+    def speak(self, params, ctx):
+        _params(params, ("owner", "utterance_id", "text"))
+        owner, utterance = _id(params, "owner"), _id(params, "utterance_id")
+        text = params.get("text")
+        if not isinstance(text, str) or not text.strip() or len(text) > 20000:
+            raise BridgeError("INVALID_TEXT", "请输入 1 到 20000 字的朗读内容。")
+        return self._begin(owner, utterance, text)
+
+    def stop(self, params, ctx):
+        _params(params, ("owner", "utterance_id"))
+        owner, utterance = _id(params, "owner"), _id(params, "utterance_id", optional=True)
+        if owner != self._owner or utterance is not None and utterance != self._utterance:
+            return {"stopped": False}
+        self._halt()
+        self._state_changed("stopped")
+        return {"stopped": True}
+
+    def settings(self, params, ctx):
+        _params(params, ("volume", "speed"))
+        volume = _number(params.get("volume", self._volume), 0, 1, "音量")
+        speed = _number(params.get("speed", self._speed), .5, 2, "语速")
+        self._volume, self._speed = volume, speed
+        if self.service:
+            self.service.set_volume(volume)
+            self.service.set_speed(speed)
+        result = {"volume": volume, "speed": speed, "speed_applies": "next_utterance"}
+        self._push("settings", result)
+        return result
+
+    def download(self, params, ctx):
+        _params(params, ("owner", "consent"))
+        owner = _id(params, "owner")
+        if params.get("consent") is not True:
+            raise BridgeError("CONSENT_REQUIRED", "请先查看下载内容与大小，确认同意后再下载。")
+        if self._closed:
+            raise BridgeError("CLOSED", "朗读组件已关闭。")
+        if self._download:
+            raise BridgeError("DOWNLOAD_BUSY", "朗读资源正在下载。")
+        job = {"id": uuid4().hex, "owner": owner, "cancel": threading.Event()}
+        self._download = job
+        self._download_event(job, "downloading", 0, self.resources.manager.size_bytes)
+
+        def work():
+            last = 0.0
+            def progress(done, total):
+                nonlocal last
+                now = time.monotonic()
+                if now - last >= .1 or done == total:
+                    last = now
+                    self._emit_result({"kind": "progress", "id": job["id"], "done": done, "total": total})
+            try:
+                self.resources.manager.download(progress=progress, cancel=job["cancel"])
+                status, _ = self.resources.inspect()
+                result = {"state": "completed", "status": status}
+            except DownloadError as exc:
+                result = {"state": "cancelled" if exc.code == "已取消" else "error", "code": exc.code, "message": exc.message}
+            except Exception:
+                result = {"state": "error", "code": "DOWNLOAD_FAILED", "message": "朗读资源下载失败，请重试。"}
+            self._emit_result({"kind": "downloaded", "id": job["id"], **result})
+        self._pool.submit(work)
+        return {"download_id": job["id"], "size_bytes": self.resources.manager.size_bytes}
+
+    def _download_event(self, job, state, done, total, **extra):
+        self._download_state = {"download_id": job["id"], "owner": job["owner"], "state": state,
+                                "received_bytes": done, "total_bytes": total, **extra}
+        self._push("download", self._download_state)
+
+    def cancel_download(self, params, ctx):
+        _params(params, ("owner", "download_id"))
+        owner, download_id = _id(params, "owner"), _id(params, "download_id", optional=True)
+        job = self._download
+        if job and job["owner"] == owner and (download_id is None or download_id == job["id"]):
+            job["cancel"].set()
+            self._download_event(job, "cancelling", self._download_state["received_bytes"], self.resources.manager.size_bytes)
+            return {"cancelled": True}
+        return {"cancelled": False}
+
+    @Slot(object)
+    def _receive(self, result):
+        if self._closed:
+            return
+        kind = result["kind"]
+        if kind == "prepared":
+            if result["generation"] != self._generation:
+                return
+            self._push("availability", result["status"])
+            if not result["status"]["ready"]:
+                self._state_changed("disabled")
+                return
+            try:
+                self._start_service(result["config"], result["text"])
+            except Exception as exc:
+                self._release_service()
+                self._state_changed("error")
+                self._error(getattr(exc, "code", "TTS_FAILED"), getattr(exc, "message", "无法启动本机朗读。"))
+        elif self._download and result["id"] == self._download["id"]:
+            job = self._download
+            if kind == "progress":
+                if not job["cancel"].is_set():
+                    self._download_event(job, "downloading", result["done"], result["total"])
+            elif kind == "downloaded":
+                total = self.resources.manager.size_bytes
+                self._download_event(job, result["state"], total if result["state"] == "completed" else self._download_state["received_bytes"], total,
+                                     code=result.get("code"), message=result.get("message"))
+                self._download = None
+                if "status" in result:
+                    self._push("availability", result["status"])
+
+    def _start_service(self, config, text):
+        if self.service is None or config != self._config:
+            self._release_service()
+            self.service = self._factory(config, self)
+            self._config = config
+            self.service.state_changed.connect(self._state_changed)
+            self.service.mouth_level.connect(self._mouth)
+            self.service.sentence_timing.connect(self._sentence)
+            self.service.error.connect(self._error)
+        self.service.set_volume(self._volume)
+        self.service.set_speed(self._speed)
+        if text is None:
+            self.service.warm_up()
+        else:
+            self.service.speak(text)
+
+    def _mouth(self, level):
+        self._push("mouth", {**self._scope(), "level": max(0.0, min(1.0, float(level))), "at": time.monotonic()})
+
+    def _sentence(self, timing):
+        self._push("sentence", {**timing, **self._scope()})
+
+    def _error(self, code, message):
+        self._push("error", {**self._scope(), "code": code, "message": message})
+
+    def _release_service(self):
+        service, self.service = self.service, None
+        if service:
+            for signal, slot in ((service.state_changed, self._state_changed), (service.mouth_level, self._mouth),
+                                 (service.sentence_timing, self._sentence), (service.error, self._error)):
+                signal.disconnect(slot)
+            service.close()
+            service.deleteLater()
+
+    def reset(self):
+        """Account exit/rebind: cancel only this window's voice and downloads."""
+        self._halt()
+        if self._download:
+            self._download["cancel"].set()
+        self._download = self._download_state = None
+        self._release_service()
+        self._state_changed("stopped")
+        self._owner = self._utterance = None
+
+    def dispose(self):
+        if self._closed:
+            return
+        self.reset()
+        self._closed = True
+        self._pool.shutdown(wait=False, cancel_futures=True)

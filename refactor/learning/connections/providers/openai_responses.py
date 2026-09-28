@@ -1,21 +1,19 @@
 """OpenAI Responses native web_search, complete sources and URL annotations."""
 from ._http import endpoint, vendor_error
-from .base import ModelResult, TextSink, hit, invalid, string, usage
+from ._accounting import read_usage
+from .base import ModelResult, TextSink, hit, invalid, string
 
 
 def parse(data, model, search_enabled):
     if data.get('status') not in {'completed', 'incomplete'}:
         raise vendor_error('openai', 200, data)
-    texts, queries, hits, citations, actions = [], [], [], [], []
-    count = 0
+    texts, queries, hits, citations = [], [], [], []
     for output in data['output']:
         if output['type'] == 'web_search_call':
             if output.get('status') != 'completed':
                 raise invalid()
             action = output['action']
-            actions.append(action)
             if action['type'] == 'search':
-                count += 1
                 if 'queries' in action:
                     queries.extend(string(q) for q in action['queries'])
                 elif 'query' in action:
@@ -32,14 +30,8 @@ def parse(data, model, search_enabled):
                     texts.append(string(part['refusal']))
         elif output['type'] == 'function_call':
             raise invalid()
-    raw = data['usage']
-    details = raw.get('input_tokens_details') or {}
     finish = (data.get('incomplete_details') or {}).get('reason', data['status'])
-    return ModelResult(''.join(texts), usage(
-        raw, raw['input_tokens'], details.get('cached_tokens'), raw['output_tokens'],
-        (raw.get('output_tokens_details') or {}).get('reasoning_tokens'), count,
-        search_actions=actions, service_tier=data.get('service_tier'),
-        search_count_source='web_search_call.action.type=search'),
+    return ModelResult(''.join(texts), read_usage('openai_responses', 'openai', data, search_enabled),
         'openai', data.get('model', model), tuple(queries), tuple(hits), tuple(citations), string(finish))
 
 

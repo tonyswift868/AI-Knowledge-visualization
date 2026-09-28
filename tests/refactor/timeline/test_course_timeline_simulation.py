@@ -75,24 +75,30 @@ class Trace:
 def write_report(traces):
     """One fixed artifact, overwritten rather than accumulating report copies."""
     lines = [
-        '# MF-03 第六批：长时间跨度模拟', '',
-        '剧本编写基线：`184b2f2`。数据均为本机隔离测试账号，无真实用户操作、模型或网络调用。', '',
-        '读取路径：真实 `handlers.register()` 注册的 `plans.list` → `_local_study_day` → '
-        '`CourseStore.load_ledger()`；仅替换 RPC 传输和时钟。刷新设置通过真实 `settings.save` 保存。', '',
+        '# MF-03 第七批：账本修复与今日状态时间加速复测', '',
+        '本轮基线：`cdc1e0b`；保留第六批原有 15 个剧本，将两处缺陷复现改为修复断言。'
+        '数据均为本机隔离测试账号，无真实用户操作、模型或网络调用。', '',
+        f'模拟源码：`{Path(__file__).resolve().as_posix()}`。'
+        '共享 report.md 可能被其他工位的旧版全量测试覆盖；本轮相同内容另保存在 batch7-report.md。', '',
+        '读取路径：真实 `handlers.register()` 注册的 `plans.list` → '
+        '`CourseStore.today_status()` → `build_today_status()`；仅替换 RPC 传输和时钟。'
+        '刷新设置通过真实 `settings.save` 保存。', '',
         '表中“正式/暂记”是目标日的 FIFO 已填分钟，不是当日挂机时长。协商列是返回的 '
         '`needs_negotiation`，不等于页面已弹提示。逾期列是 `overdue_days`。完成后 '
         '`plans.list.today=null`，对应数字以“—”表示。', '',
         '逐日读数已与剧本独立预期断言；若某节标为“断言尚未全部完成”，以该次 pytest 失败为准。', '',
-        '缺陷复现测试通过，仅表示成功复现当前问题，不表示满足产品需求；'
-        '完整验收命令与输出见同目录 `full-suite.txt`，单独模拟输出见 `timeline-tests.txt`。', '',
+        '`time_completed` 只表示正式时长已满，`completed` 还要求完整课程检验通过；接口不会更改计划生命周期。'
+        '`is_late_night` 表示本地时刻早于刷新点，`needs_rest` 还涵盖未退出课堂跨过刷新点；两者都不是已弹出的通知。', '',
+        '完整验收输出见同目录 `batch7-full-suite.txt`，针对性回归见 `batch7-targeted.txt`，'
+        '单独模拟见 `batch7-timeline-tests.txt`。`baseline-future-start.txt` 为第六批修复前失败证据，不代表当前结果。', '',
         '| 剧本 | 结论 |', '| --- | --- |',
     ]
     lines.extend(f'| {trace.title} | {trace.conclusion} |' for trace in traces)
     lines.append('')
     for trace in traces:
         lines += [f'## {trace.title}', '', f'应当显示：{trace.expected}', '',
-                  '| 本地时间 | 学习日 | 操作/观察 | 目标 | 正式 | 暂记 | 欠账 | 超前分/天 | 协商 | 逾期天 | 历史欠账 | 状态 |',
-                  '| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | ---: | ---: | --- |']
+                  '| 本地时间 | 学习日 | 操作/观察 | 目标 | 正式 | 暂记 | 欠账 | 超前分/天 | 协商 | 逾期天 | 历史欠账 | 时长/计划完成 | 深夜/休息条件 | 状态 |',
+                  '| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | ---: | ---: | --- | --- | --- |']
         for r in trace.rows:
             def show(key):
                 value = r.get(key)
@@ -100,47 +106,47 @@ def write_report(traces):
             lines.append('| ' + ' | '.join([r['local_time'], r['day'], r['note'], show('today_target'),
                 show('today_confirmed'), show('today_tentative'), show('debt_minutes'),
                 show('ahead_minutes') + '/' + show('ahead_days'), show('needs_negotiation'), show('overdue_days'),
-                show('history_debt_minutes'), r['state']]) + ' |')
+                show('history_debt_minutes'), show('time_completed') + '/' + show('completed'),
+                show('is_late_night') + '/' + show('needs_rest'), r['state']]) + ' |')
         lines += ['', f'结论：{trace.conclusion}', '']
         for note in trace.notes:
             lines += [f'- {note}']
         lines += ['']
     lines += [
-        '## 证据范围与架构师交接', '',
+        '## 新接口与证据范围', '',
+        '`course.today.build_today_status(ledger, *, now, refresh, tz, plan_state, check_complete, classroom_day=None)` '
+        '为纯函数；`CourseStore.today_status(plan_id, *, now, refresh, tz, classroom_day=None)` '
+        '在同一事务快照读取账本与掌握度，且检查课程结构是否完整。所有时间由调用方注入，无隐式取时。', '',
+        '- 分钟与进度：`today_target`、`today_confirmed`、`today_tentative`、`debt_minutes`、'
+        '`ahead_minutes`、`ahead_days`、`remaining_minutes`、`remaining_confirmed_minutes`、'
+        '`history_debt_minutes`、`overflow_minutes`。',
+        '- 判定：`needs_negotiation`、`overdue_days`、`time_completed`、`check_complete`、`completed`。',
+        '- 时间：`study_day`（当前账号学习日）、`progress_day`（本次数字对应的学习日）、'
+        '`is_late_night`、`needs_rest`。日期均为 ISO 字符串。',
+        '- 课堂可传入开课时的 `classroom_day`，退出后不再传入；当日进度仍显示开课日，逾期天数用当前账号学习日。'
+        '接口只返回休息条件，提醒去重与界面弹出仍由宿主处理。', '',
         '- 数值来自实际 Python 读取路径；未启动 WebView、未实测屏幕渲染或真实课堂。学习动作由脚本调用 '
         'CourseStore 模拟；模块检测/检验使用真实 MasteryBook 事件。',
-        '- A-01（不一致）：`Home.tsx:100–110` 显示普通欠账/逾期，但没有消费 `needs_negotiation`。'
-        '欠满两天会返回 true，尚无“是否安排太紧”的提示。',
-        '- A-02（不一致）：`Home.tsx:32–37` 仅加载时读取计划，没有刷新边界的时钟订阅；'
-        '新窗口也未接入 DailyClock。手动重新读取能得到新学习日，不代表常开页面会自动更新或提醒。',
-        '- A-03（展示要求待确认）：延期后的 `history_debt_minutes` 由账本保留，但 '
-        '`Home.tsx:107` 只显示当前 `debt_minutes`。数据保留符合 PLAN-08；'
-        '历史欠账应在首页还是历史详情展示，请架构师确认，不能与当前欠账直接相加重复计欠。',
-        '- A-04（不一致）：`handlers.py:190` 直接返回纯时长账本状态。时长预算用完、检验仍未通过时，'
-        '`completed=true` 且 `overdue_days=0`；CHK-01 要求检验未完成也继续显示逾期。需要应用层结合掌握度/计划状态，'
-        '不能把纯时长完成当作整份计划完成。',
-        '- A-05（未接入）：`Home.tsx:113` 的开课按钮仍提示“课堂正在开发中”。深夜不退出课堂的归属 '
-        '由模拟调用方锁定开课学习日验证，真实课堂生命周期尚不能验收。',
-        '- A-06（不一致）：`plan_flow.py:666` 生成模块时传入当前创建日，CourseStore 随即按该日重排。'
-        '未来才开始的计划提前分配时长（120 分被分为 5 天各 24，需求应为窗口内 2 天各 60）。'
-        'T03 的 `test_from_date_is_the_explicit_lower_bound` 明确规定 from_date 优先；本轮保留账本规则，'
-        '请架构师区分“初次建立计划窗口”与“进行中的剩余部分重排”。原需求断言失败日志：`baseline-future-start.txt`。',
-        '- Q-01（有歧义）：SYS-04 原始描述是“还没开始当天任务”，服务目前接受 `today_unfinished`；'
-        '已开始但未完成是否还提醒，需要架构师统一口径。本轮不自行选择。',
-        '- `app/`、`web/` 和总文档未修改；这些问题留给架构师处理。', '',
-        '## 问题记录（现象、原因、建议处理、验证）', '',
-        '| 编号 | 现象与原因 | 建议处理（本轮未实施） | 验证证据 |',
+        '- 第六批 A-01/A-02/A-05 的协商显示、窗口时钟接线和真实课堂仍交由架构师；'
+        '本轮不把服务层信号或接口返回当作真实界面验证。',
+        '- 本轮只改 ledger.py、store.py，新增 today.py，并改 handlers.py 的 plans.list 计算；'
+        '未改生成编排、Web 页面、课堂编排或总文档。', '',
+        '## 问题记录（现象、原因、解决、验证）', '',
+        '| 编号 | 现象与原因 | 本轮解决 | 验证证据 |',
         '| --- | --- | --- | --- |',
-        '| A-01 | 2 天欠账返回需协商，首页未消费该字段 | 由 app/web 展示协商入口，用户确认后重排 | 剧本 03 的 120/180 分欠账及静态界面读取 |',
-        '| A-02 | 设置会保存，时钟服务未接入窗口，首页只在加载时读取 | 接入日变更和提醒信号，再实测常开窗口与关闭场景 | 剧本 10/12/13 的真实服务信号；界面接线仅静态检查 |',
-        '| A-03 | 重排保留历史欠账 90，但首页只展示当前欠账 | 确认历史展示位置，保留冻结值与当前欠账的区别 | 剧本 06 的重排前后和数据库重开 |',
-        '| A-04 | 检验未过却返回逾期 0，读取层直接使用时长账本完成标记 | 读取层结合计划/检验状态计算逾期；保留纯账本语义 | 剧本 07：checking、check_complete=false、逾期实际 0/应为 1，完成门禁仍拒绝 |',
-        '| A-05 | 开课入口仍为提示，真实课堂没有跨刷新生命周期可验收 | 课堂接入后锁定开课学习日，退出重进才更新 | 剧本 12 由模拟调用方锁定日期；未测试真实课堂 |',
-        '| A-06 | 创建日早于开始日，生成编排将创建日传入明确的重排起点 | 初次分配遵守计划窗口；进行中重排仍遵守 T03 显式起点规则 | 剧本 01：实际 5×24，对照应为 2×60；原失败日志保留 |',
-        '| Q-01 | “尚未开始”和“尚未完成”的提醒条件不同 | 架构师确认后统一回调与文案，本轮不裁决 | 剧本 13：已学 30/60 仍发提醒信号 |', '',
+        '| BUG-16 / A-06 | 创建日早于开始日，生成时按创建日重排而越出窗口 | 初始分配按窗口；重排目标从 max(今天, 开始日) 分配。冻结边界保留实际当天，并同步修正反序列化校验 | 剧本 01 实际改为窗口内 2×60；另测零预算、连续提前重排、开始日后移与历史冻结 |',
+        '| BUG-16 / A-04 | 检验未过却返回逾期 0，读取层只看时长完成 | 新接口结合完整课程检验和正式时长，plans.list 统一调用；纯 Ledger.status 的时长口径不变 | 剧本 07：预算已满且检验未过仍逾期 1/2 天；全部通过才完成 |', '',
+        '## 待确认项（本轮不实施偏好选择）', '',
+        '- 提醒条件 Q-01：选项 A「当天尚未开始才提醒」；选项 B「当天尚未完成就提醒」。'
+        '建议 A，贴合 SYS-04 原文并减少已经学习后的打扰；当前 DailyClock 的 B 行为保留，仅作为现状复测。',
+        '- 历史欠账 A-03：选项 A「首页另列冻结历史欠账」；选项 B「历史明细展示，首页只列当前欠账」。'
+        '建议 B，并提供历史入口，避免把已重新分配的历史欠账误当作需再次补学的分钟数。'
+        '两种方式都保留 history_debt_minutes，不能直接并入当前 debt_minutes。由架构师转问用户后决定。', '',
     ]
     ROOT.mkdir(parents=True, exist_ok=True)
-    (ROOT / 'report.md').write_text('\n'.join(lines), encoding='utf-8')
+    document = '\n'.join(lines)
+    (ROOT / 'batch7-report.md').write_text(document, encoding='utf-8')
+    (ROOT / 'report.md').write_text(document, encoding='utf-8')
 
 
 @pytest.fixture(scope='module')
@@ -211,7 +217,8 @@ class Simulation:
         return result['plans'][0], result['study_day']
 
     def observe(self, day, *, target=60, confirmed=0, tentative=0, debt=0, ahead=0, ahead_days=0,
-                negotiate=False, overdue=0, completed=False, history=0, state='active', note='读取'):
+                negotiate=False, overdue=0, time_completed=False, completed=False, history=0,
+                is_late_night=False, state='active', note='读取'):
         item, actual_day = self.read()
         actual = item['today']
         self.trace.rows.append(dict(actual or {}, local_time=self.clock.instant.astimezone(self.clock.zone).isoformat(),
@@ -224,7 +231,9 @@ class Simulation:
             assert actual is not None, 'plans.list swallowed a ledger error'
             expected = dict(today_target=target, today_confirmed=confirmed, today_tentative=tentative,
                 debt_minutes=debt, ahead_minutes=ahead, ahead_days=ahead_days, needs_negotiation=negotiate,
-                overdue_days=overdue, completed=completed, history_debt_minutes=history)
+                overdue_days=overdue, completed=completed, time_completed=time_completed,
+                history_debt_minutes=history, study_day=day.isoformat(), progress_day=day.isoformat(),
+                is_late_night=is_late_night, needs_rest=is_late_night)
             assert {k: actual[k] for k in expected} == expected
         return actual
 
@@ -275,31 +284,25 @@ def simulation(clock, evidence):
         sim.close()
 
 
-def test_timeline_future_start_exposes_early_allocation_in_creation_path(simulation):
-    """A-06: characterize an app-owned defect, explicitly different from the spec.
-
-    Start Oct 1 should give Sep 28–30 zero, then 60 each day. The existing
-    creation call instead supplies today=Sep 28 to an explicit-from-date API.
-    This passing reproduction is NOT a claim that this behavior meets PLAN-05.
-    """
+def test_timeline_future_start_respects_window_in_creation_path(simulation):
+    """BUG-16 regression: generation cannot allocate before the chosen start."""
     sim = simulation('01 开始日前生成', '9 月 28–30 日目标为 0；10 月 1–2 日各 60 分。提前生成不能挪用开始日前的容量。')
     sim.prepare(date(2026, 10, 1), date(2026, 10, 2), 120, generated=date(2026, 9, 28))
     for offset in range(3):
         day = date(2026, 9, 28) + timedelta(days=offset)
         sim.clock.set(day)
-        sim.observe(day, target=24, debt=offset * 24, negotiate=offset == 2,
-                    note='缺陷：尚未开始却已有目标，应当为 0')
+        sim.observe(day, target=0, note='尚未开始，目标与欠账均为 0')
     for day in (date(2026, 10, 1), date(2026, 10, 2)):
         sim.clock.set(day)
         sim.credit(60)
-        sim.observe(day, target=24, confirmed=0 if day.day == 1 else 24, debt=12 if day.day == 1 else 0,
-                    completed=day.day == 2, note='学 60 分；窗口目标应当是 60，实际是 24')
+        sim.observe(day, confirmed=60, time_completed=day.day == 2,
+                    note='按窗口目标学习 60 分；最终检验未做，计划尚未完成')
     sim.finish()
     sim.observe(date(2026, 10, 2), state='completed', note='学习及检验完成')
     ledger = sim.store.load_ledger('plan')
     assert Ledger.from_dict(ledger.to_dict()).to_dict() == ledger.to_dict()
-    sim.trace.conclusion = '不一致（A-06）：已保留独立需求断言的失败证据；此测试明确断言当前缺陷以保证复现，未将其当作合格行为。'
-    sim.trace.notes.append('未修改产品实现：T03 明确允许 from_date 覆盖窗口起点；修复应由架构师协调 app/plan_flow.py 的创建调用。')
+    sim.trace.conclusion = 'BUG-16/A-06 已修：开始日前连续三天目标/欠账均 0，窗口内两天各 60，最终检验后完成。'
+    sim.trace.notes.append('无需改生成编排；Ledger.replan 将分配起点限制为 max(今天, 开始日)，数据库事件重放与序列化结果一致。')
 
 
 def test_timeline_regular_weighted_days_month_boundary_and_february_29(simulation):
@@ -316,7 +319,7 @@ def test_timeline_regular_weighted_days_month_boundary_and_february_29(simulatio
         sim.observe(day, target=target, note='开课前')
         if target:
             sim.credit(target)
-        sim.observe(day, target=target, confirmed=target, completed=offset == 11, note='当天学完' if target else '休息日不学')
+        sim.observe(day, target=target, confirmed=target, time_completed=offset == 11, note='当天学完' if target else '休息日不学')
         assert sim.store.load_ledger('plan').targets == fixed
     sim.finish()
     sim.observe(date(2024, 3, 8), state='completed', note='检验完成并关闭计划')
@@ -344,7 +347,7 @@ def test_timeline_three_missed_days_negotiation_threshold_and_fifo_repayment(sim
         day = start + timedelta(days=offset)
         sim.clock.set(day)
         sim.credit(60)
-        sim.observe(day, confirmed=60, completed=offset == 6, note='恢复每日 60 分')
+        sim.observe(day, confirmed=60, time_completed=offset == 6, note='恢复每日 60 分')
     assert sim.store.load_ledger('plan').targets == fixed
     sim.finish()
     sim.trace.conclusion = '返回数字与需求一致；界面不一致：需协商标志未用于显示“是否安排太紧”（A-01）。'
@@ -365,7 +368,7 @@ def test_timeline_ahead_days_fixed_targets_and_early_completion(simulation):
     finish = start + timedelta(days=3)
     sim.clock.set(finish)
     sim.credit(240)
-    sim.observe(finish, confirmed=60, ahead=180, ahead_days=3, completed=True, note='再学 240 分')
+    sim.observe(finish, confirmed=60, ahead=180, ahead_days=3, time_completed=True, note='再学 240 分')
     assert sim.store.load_ledger('plan').targets == fixed
     sim.finish()
     for offset in range(3, 7):
@@ -435,7 +438,7 @@ def test_timeline_extension_freezes_history_and_redistributes_only_remaining(sim
         sim.clock.set(day)
         if offset > 4:
             sim.credit(45)
-        sim.observe(day, target=45, confirmed=45, completed=offset == 8, history=90, note='按新目标继续')
+        sim.observe(day, target=45, confirmed=45, time_completed=offset == 8, history=90, note='按新目标继续')
         assert sim.store.load_ledger('plan').to_dict()['history'] == frozen
     sim.reopen()
     assert sim.store.load_ledger('plan').to_dict()['history'] == frozen
@@ -443,7 +446,7 @@ def test_timeline_extension_freezes_history_and_redistributes_only_remaining(sim
     sim.trace.conclusion = '账本与需求一致：历史逐日已填和 90 分欠账冻结；首页未展示历史欠账，展示位置待确认（A-03）。'
 
 
-def test_timeline_overdue_then_completion_and_budget_only_completion_gap(simulation):
+def test_timeline_overdue_includes_unfinished_checks_until_full_completion(simulation):
     """After a two-day deadline, debt 120/overdue 1; checks still matter."""
     start = date(2026, 9, 28)
     sim = simulation('07 逾期继续补学与检验未完', '两天计划每天 60，第三天欠 120/逾期 1 天；时长用完但检验未过，应继续显示逾期，完整检验后才完成。')
@@ -457,17 +460,28 @@ def test_timeline_overdue_then_completion_and_budget_only_completion_gap(simulat
     sim.credit(120)
     sim.detect()
     sim.store.start_checking('plan')
-    # Characterize the integration defect explicitly, not as a passing product requirement.
-    sim.observe(day, target=0, completed=True, state='checking', note='预算用完，检验尚未作答：实际逾期错误地变为 0')
+    sim.observe(day, target=0, time_completed=True, overdue=1, state='checking',
+                note='预算用完但检验未过，仍逾期 1 天且计划未完成')
     assert not sim.store.load_mastery('plan').check_complete()
     with pytest.raises(StoreError):
         sim.store.complete_plan('plan', today=day)
+    day += timedelta(days=1)
+    sim.clock.set(day)
+    sim.sequence += 1
+    sim.store.append_judgement('plan', Judgement('wrong-check', sim.sequence, sim.clock.instant, 'check',
+        'module', results=tuple((f'p{i}', i != 0) for i in range(4)), angle='recall'))
+    sim.observe(day, target=0, time_completed=True, overdue=2, state='checking', note='再过一天且检验答错，仍逾期 2 天')
     sim.sequence += 1
     sim.store.append_judgement('plan', Judgement('final-check', sim.sequence, sim.clock.instant, 'check',
-        'module', results=tuple((f'p{i}', True) for i in range(4)), angle='recall'))
+        'module', results=tuple((f'p{i}', True) for i in range(4)), angle='apply'))
+    sim.observe(day, target=0, time_completed=True, overdue=2, state='checking', note='答错点升到 2 级，尚未过关')
+    sim.sequence += 1
+    sim.store.append_judgement('plan', Judgement('passed-check', sim.sequence, sim.clock.instant, 'check',
+        'module', results=(('p0', True),), angle='contrast'))
+    sim.observe(day, target=0, time_completed=True, completed=True, state='checking', note='全部检验通过，接口完成条件满足但不改生命周期')
     sim.store.complete_plan('plan', today=day)
     sim.observe(day, state='completed', note='检验全过后完成')
-    sim.trace.conclusion = '部分不一致（A-04）：普通逾期和完成门禁正确；预算用完时，plans.list 的逾期提示未结合检验状态。'
+    sim.trace.conclusion = 'BUG-16/A-04 已修：时长完成但检验未完成时仍逾期 1/2 天；答错或只升到 2 级均不清除逾期。'
 
 
 def test_timeline_180_days_cross_year_leap_day_and_monthly_reopen(simulation):
@@ -482,7 +496,7 @@ def test_timeline_180_days_cross_year_leap_day_and_monthly_reopen(simulation):
         sim.credit(60)
         if offset in (29, 59, 89, 119, 149):
             sim.reopen()
-        sim.observe(day, confirmed=60, completed=offset == 179,
+        sim.observe(day, confirmed=60, time_completed=offset == 179,
                     note='学 60 后关闭/重开数据库' if offset in (29, 59, 89, 119, 149) else '学 60 分')
         assert sim.read()[0]['today']['remaining_confirmed_minutes'] == (179 - offset) * 60
     assert len(sim.store.records('credits', 'plan')) == 180
@@ -519,16 +533,16 @@ def test_timeline_refresh_change_uses_saved_account_setting_without_rewriting_cr
     sim = simulation('10 凌晨归属与修改刷新时间', '凌晨 02:30：刷新为 04:00 时属前一天，改为 02:00 后属今天；已写入的学习日不追改；02:00:00 边界归今天。')
     sim.prepare(date(2024, 2, 28), date(2024, 3, 3), 300)
     sim.clock.set('2024-03-01T02:30:00+08:00')
-    sim.observe(date(2024, 2, 29), debt=60, note='刷新 04:00：属于 2 月 29 日')
+    sim.observe(date(2024, 2, 29), debt=60, is_late_night=True, note='刷新 04:00：属于 2 月 29 日')
     sim.credit(30)
-    sim.observe(date(2024, 2, 29), debt=30, note='凌晨学 30，先补 2 月 28 日')
+    sim.observe(date(2024, 2, 29), debt=30, is_late_night=True, note='凌晨学 30，先补 2 月 28 日')
     sim.settings_save(refresh_time='02:00')
     sim.observe(date(2024, 3, 1), debt=90, note='改刷新为 02:00：重新读取属 3 月 1 日')
     sim.reopen()
     assert sim.settings.load()['refresh_time'] == '02:00'
     assert sim.store.records('credits', 'plan')[0]['credit']['day'] == '2024-02-29'
     sim.clock.set('2024-03-01T01:59:59+08:00')
-    sim.observe(date(2024, 2, 29), debt=30, note='边界对照 01:59:59')
+    sim.observe(date(2024, 2, 29), debt=30, is_late_night=True, note='边界对照 01:59:59')
     sim.clock.set('2024-03-01T02:00:00+08:00')
     sim.observe(date(2024, 3, 1), debt=90, note='边界对照 02:00:00')
     sim.trace.conclusion = '读取路径与需求一致：设置持久保存并立即影响下一次读取；常开页面自动刷新仍缺接线（A-02）。'
@@ -584,7 +598,7 @@ def test_timeline_open_class_keeps_entry_day_across_refresh(simulation, daily_cl
     entry = date.fromisoformat(sim.read()[1])
     assert entry == date(2024, 2, 28)
     sim.credit(30, day=entry)
-    sim.observe(entry, confirmed=30, note='开课并学习 30 分')
+    sim.observe(entry, confirmed=30, is_late_night=True, note='开课并学习 30 分')
     sim.clock.set('2024-02-29T04:00:00+08:00')
     daily.check_now()
     daily.check_now()
@@ -592,14 +606,30 @@ def test_timeline_open_class_keeps_entry_day_across_refresh(simulation, daily_cl
     sim.credit(30, day=entry)
     sim.observe(date(2024, 2, 29), note='课堂未退出；新增 30 仍补到昨天，今日为 0')
     assert [p['credit']['day'] for p in sim.store.records('credits', 'plan')] == ['2024-02-28'] * 2
+    pending = sim.store.pending_records(1000)
+    before = sim.store.load_ledger('plan').to_dict()
+    db_changes = sim.store._db.total_changes
+    classroom = sim.store.today_status('plan', now=sim.clock.now(), refresh=time(4), tz=sim.clock.zone,
+                                       classroom_day=entry)
+    assert (classroom['study_day'], classroom['progress_day']) == ('2024-02-29', '2024-02-28')
+    assert (classroom['today_target'], classroom['today_confirmed'], classroom['debt_minutes']) == (60, 60, 0)
+    assert classroom['is_late_night'] is False and classroom['needs_rest'] is True
+    assert classroom == sim.store.today_status('plan', now=sim.clock.now(), refresh=time(4), tz=sim.clock.zone,
+                                               classroom_day=entry)
+    assert sim.store._db.total_changes == db_changes
+    assert sim.store.pending_records(1000) == pending
+    assert sim.store.load_ledger('plan').to_dict() == before
     in_class[0] = False
     reentry = date.fromisoformat(sim.read()[1])
     in_class[0] = True
     sim.credit(60, day=reentry)
     sim.observe(date(2024, 2, 29), confirmed=60, note='退出后重进，记入新学习日')
+    assert not sim.store.today_status('plan', now=sim.clock.now(), refresh=time(4), tz=sim.clock.zone,
+                                     classroom_day=reentry)['needs_rest']
     assert len(signals['late']) == 1
     sim.trace.conclusion = '账本/时钟服务与需求一致；真实课堂未接入（A-05），此处开课日锁定由模拟调用方实现。'
     sim.trace.notes.append('实际服务信号：刷新日变更 1 次、深夜提醒 1 次；未验证真实界面弹窗。')
+    sim.trace.notes.append('新接口实测：04:00 当前学习日 2/29，课堂 progress_day 仍为 2/28、正式 60/60、needs_rest=true；退出重进后清除跨刷新休息条件。重复读取未改数据库、账本或待同步记录。')
 
 
 def test_timeline_reminders_once_daily_only_when_running_and_partial_day_ambiguity(simulation, daily_clock_factory):

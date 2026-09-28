@@ -342,6 +342,13 @@ class Ledger:
         )
 
     def replan(self, today: date, new_window: PlanWindow, new_total_minutes: int) -> None:
+        """Freeze days before today and redistribute within the new window.
+
+        Initial allocation (__init__) covers the whole window. A replan starts
+        allocating at max(today, window.start), while the history/credit segment
+        boundary remains the actual operation day. Moving a start into the
+        future must not freeze future targets as missed study days.
+        """
         _date(today)
         _integer(new_total_minutes)
         if new_window.end < today:
@@ -352,8 +359,9 @@ class Ledger:
         if new_total_minutes < past:
             raise LedgerError("INVALID_REPLAN", "新总时长不能少于重排当天之前已经记录的分钟数。")
         remaining = new_total_minutes - past
-        targets = (distribute(new_window, remaining, from_date=today) if remaining > 0
-                   else dict.fromkeys(_dates(today, new_window.end), 0))
+        allocation_start = max(today, new_window.start)
+        targets = (distribute(new_window, remaining, from_date=allocation_start) if remaining > 0
+                   else dict.fromkeys(_dates(allocation_start, new_window.end), 0))
         allocation = self._allocation()
         confirmed, tentative = allocation.confirmed, allocation.tentative
         frozen = {day: value for day, value in self._targets.items() if day < today}
@@ -455,8 +463,9 @@ def _restore(cls, data):
     ledger._targets = _calendar_from(data["targets"])
     ledger._relearning_minutes = _integer(data["relearning_minutes"])
     budget = sum(ledger._targets.values())
-    expected = (distribute(ledger.window, budget, from_date=ledger._active_start) if budget
-                else dict.fromkeys(_dates(ledger._active_start, ledger.window.end), 0))
+    allocation_start = max(ledger._active_start, ledger.window.start)
+    expected = (distribute(ledger.window, budget, from_date=allocation_start) if budget
+                else dict.fromkeys(_dates(allocation_start, ledger.window.end), 0))
     if ledger._active_start > ledger.window.end or expected != ledger._targets or budget > ledger.total_minutes:
         raise ValueError()
     if any(not isinstance(data[name], list) for name in ("history", "credits", "submissions")):

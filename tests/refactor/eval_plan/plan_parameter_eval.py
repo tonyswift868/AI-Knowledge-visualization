@@ -174,7 +174,7 @@ class BudgetGateway:
         with self.lock:
             if self.exhausted or self.liability(self.summary()) + upper > STOP_AT:
                 self.exhausted = True
-                raise BudgetStop("CNY 15 budget guard stopped the next request (including in-flight reservations).")
+                raise BudgetStop(f"CNY {LIMIT} budget guard stopped the next request (including in-flight reservations).")
             write_json(path, record)
             self.calls[ident] = record
         try:
@@ -420,7 +420,7 @@ class Experiment:
         services = AppServices(account_id=ACCOUNT, data_root=out / "data", session_provider=lambda: None,
                                api_base_url="https://no-server.invalid", ca_bundle=None)
         services._catalog = OfflineCatalog()
-        services._gateway = RunGateway(self.budget, "p2-" + run_id)
+        services._gateway = RunGateway(self.budget, self.manifest.get("run_prefix", "p2-") + run_id)
         flow = PlanFlow(services, lambda *args: None, lambda: date.fromisoformat(self.manifest["today"]))
         flow.repo_fetch = self.fetch
         prior = old.get("draft", {}).get("plan_id")

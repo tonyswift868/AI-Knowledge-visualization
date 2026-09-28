@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass
 import http.client
 import io
 import json
+import math
 import os
 from pathlib import Path
 import socket
@@ -97,7 +98,13 @@ class TtsRuntime:
         self._closed = threading.Event()
         self.run_dir: Path | None = None
         self.last_health = {}
+        self.speed = 1.0
         atexit.register(self.close)
+
+    def set_speed(self, value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not .5 <= value <= 2:
+            raise TtsError("INVALID_SPEED", "语速必须在 0.5 到 2 倍之间。")
+        self.speed = float(value)
 
     @property
     def pid(self):
@@ -225,7 +232,7 @@ class TtsRuntime:
                 try:
                     while True:
                         self._check(cancel)
-                        status, data, headers = self._http("POST", "/synthesize", {"text": text, "request_id": request_id},
+                        status, data, headers = self._http("POST", "/synthesize", {"text": text, "request_id": request_id, "speed": self.speed},
                                                          timeout=max(.1, deadline - time.monotonic()), track=True)
                         self._check(cancel)
                         if status == 409 and json.loads(data).get("code") == "BUSY" and time.monotonic() < deadline:
@@ -298,7 +305,7 @@ class TtsRuntime:
                         with self._active_lock:
                             self._active = (endpoint, request_id, connection)
                         try:
-                            body = json.dumps({"text": text, "request_id": request_id}, ensure_ascii=False).encode("utf-8")
+                            body = json.dumps({"text": text, "request_id": request_id, "speed": self.speed}, ensure_ascii=False).encode("utf-8")
                             connection.request("POST", "/stream", body, {"Content-Type": "application/json",
                                 "Authorization": "Bearer " + endpoint["token"]})
                             response = connection.getresponse()

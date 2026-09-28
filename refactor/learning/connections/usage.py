@@ -48,6 +48,8 @@ def _clean_usage(value, depth=0):
     cleaned = {'unreported_fields': sorted(set(meta.get('unreported_fields', [])))}
     if meta.get('partial_usage') is True:
         cleaned['partial_usage'] = True
+    if meta.get('response_received') is True:
+        cleaned['response_received'] = True
     if 'token_total_reconciled' in meta:
         if meta['token_total_reconciled'] is not None and type(meta['token_total_reconciled']) is not bool:
             raise ModelError('USAGE_INVALID', '用量对账标记无效。')
@@ -91,6 +93,17 @@ def _label(value, *, limit=200, empty=False):
             or any(ord(c) < 32 for c in value)):
         raise ModelError('USAGE_INVALID', '用量记录标识无效。')
     return value
+
+
+def _known_counters(data):
+    """A later round missing a meter must not hide earlier reported subtotals."""
+    meta = data['raw'].get('_mentorflow', {})
+    children = meta.get('call_usages')
+    if isinstance(children, list):
+        parts = [_known_counters(child) for child in children]
+        return {key: sum(part[key] for part in parts) for key in FIELDS}
+    missing = set(meta.get('unreported_fields', []))
+    return {key: data[key] if key not in missing else 0 for key in FIELDS}
 
 
 class UsageLog:
@@ -245,9 +258,9 @@ class UsageLog:
                         unknown.update(FIELDS)
                     if data['raw'].get('_mentorflow', {}).get('token_total_reconciled') is False:
                         unknown.update(set(FIELDS) - {'search_requests'})
+                    reported = _known_counters(data)
                     for key in FIELDS:
-                        if key not in missing:
-                            known[key] += data[key]
+                        known[key] += reported[key]
                 else:
                     unknown.update(FIELDS)
                 if row['cost_json']:

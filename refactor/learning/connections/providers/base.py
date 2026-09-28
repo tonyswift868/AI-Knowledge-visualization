@@ -105,19 +105,33 @@ def usage(raw, input_tokens, cached, output, reasoning=None, searches=None, **me
                  integer(searches) if searches is not None else 0, details)
 
 
+def combine_usage(values):
+    """Sum HTTP rounds, never cumulative frames within the same round."""
+    if len(values) == 1:
+        return values[0]
+    names = ('input_tokens', 'cached_input_tokens', 'uncached_input_tokens',
+             'output_tokens', 'reasoning_tokens', 'search_requests')
+    missing = sorted({field for value in values
+                      for field in value.raw['_mentorflow']['unreported_fields']})
+    totals = {name: sum(getattr(value, name) for value in values) for name in names}
+    totals['raw'] = {'calls': [value.raw for value in values],
+                     '_mentorflow': {'unreported_fields': missing,
+                                    'call_usages': [asdict(value) for value in values]}}
+    meta = totals['raw']['_mentorflow']
+    if any(v.raw['_mentorflow'].get('partial_usage') for v in values):
+        meta['partial_usage'] = True
+    if any(v.raw['_mentorflow'].get('response_received') for v in values):
+        meta['response_received'] = True
+    if any(v.raw['_mentorflow'].get('token_total_reconciled') is False for v in values):
+        meta['token_total_reconciled'] = False
+    return Usage(**totals)
+
+
 def combine(results):
     if len(results) == 1:
         return results[0]
     last = results[-1]
-    names = ('input_tokens', 'cached_input_tokens', 'uncached_input_tokens',
-             'output_tokens', 'reasoning_tokens', 'search_requests')
-    missing = sorted({field for result in results
-                      for field in result.usage.raw['_mentorflow']['unreported_fields']})
-    totals = {name: sum(getattr(result.usage, name) for result in results) for name in names}
-    totals['raw'] = {'calls': [result.usage.raw for result in results],
-                     '_mentorflow': {'unreported_fields': missing,
-                                    'call_usages': [asdict(result.usage) for result in results]}}
-    return ModelResult(''.join(r.text for r in results), Usage(**totals), last.provider_id,
+    return ModelResult(''.join(r.text for r in results), combine_usage([r.usage for r in results]), last.provider_id,
                        last.model, tuple(q for r in results for q in r.search_queries),
                        tuple(h for r in results for h in r.search_hits),
                        tuple(c for r in results for c in r.citations), last.finish_reason)

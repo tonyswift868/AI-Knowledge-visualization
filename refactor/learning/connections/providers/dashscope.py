@@ -2,7 +2,8 @@
 import re
 
 from ._http import endpoint, vendor_error
-from .base import ModelResult, TextSink, hit, invalid, string, usage
+from ._accounting import read_usage
+from .base import ModelResult, TextSink, hit, invalid, string
 
 
 def parse(data, model, search_enabled):
@@ -13,13 +14,7 @@ def parse(data, model, search_enabled):
     hits = tuple(hit(source) for source in sources)
     by_index = {str(source['index']): value for source, value in zip(sources, hits) if 'index' in source}
     citations = tuple(by_index[index] for index in re.findall(r'\[ref_(\d+)\]', text) if index in by_index)
-    raw = data['usage']
-    cached = (raw.get('prompt_tokens_details') or raw.get('input_tokens_details') or {}).get('cached_tokens')
-    return ModelResult(text, usage(
-        raw, raw['input_tokens'], cached, raw['output_tokens'],
-        (raw.get('output_tokens_details') or {}).get('reasoning_tokens'),
-        None if search_enabled else 0,
-        unreported_search_fields=['search_queries'] if search_enabled else []),
+    return ModelResult(text, read_usage('dashscope_generation', 'qwen', data, search_enabled),
         'qwen', data.get('model', model), (), hits, citations, string(choice['finish_reason']))
 
 

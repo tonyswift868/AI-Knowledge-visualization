@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import deque
 from queue import Empty, Queue
+import math
 import threading
 import time
 
@@ -35,14 +36,14 @@ class _Producer:
         self.thread = threading.Thread(target=self.run, name="mf-tts-producer", daemon=True)
         self.thread.start()
 
-    def submit(self, token, sentences):
+    def submit(self, token, sentences, speed=1.0):
         cancel, slots = threading.Event(), threading.Semaphore(2)
         with self.condition:
             if self.pending:
                 self.pending[2].set()
             if self.active_cancel:
                 self.active_cancel.set()
-            self.pending = token, sentences, cancel, slots
+            self.pending = token, sentences, cancel, slots, speed
             self.condition.notify()
         return cancel
 
@@ -67,7 +68,7 @@ class _Producer:
                 self.condition.wait_for(lambda: self.closed or self.pending is not None)
                 if self.closed:
                     return
-                token, sentences, cancel, slots = self.pending
+                token, sentences, cancel, slots, speed = self.pending
                 self.pending = None
                 self.active_cancel = cancel
             try:
@@ -76,6 +77,8 @@ class _Producer:
                     if not cancel.is_set():
                         self.events.put((token, "ready", value))
                     continue
+                if hasattr(self.runtime, "set_speed"):
+                    self.runtime.set_speed(speed)
                 for index, text in enumerate(sentences):
                     while not slots.acquire(timeout=.025):
                         if cancel.is_set():
@@ -140,6 +143,7 @@ class TtsService(QObject):
         self._meter = None
         self._mouth_value = 0.0
         self._mouth_due = 0.0
+        self._volume, self._speed = 1.0, 1.0
         self._timer = QTimer(self)
         self._timer.setInterval(5)
         self._timer.timeout.connect(self._pump)
@@ -181,8 +185,25 @@ class TtsService(QObject):
             self._state("idle")
             return
         self.last_metrics = []
-        self._producer.submit(self._token, sentences)
+        self._producer.submit(self._token, sentences, self._speed)
         self._state("synthesizing")
+
+    def set_volume(self, value):
+        """Qt-thread control; affects the current sink immediately."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 1:
+            raise TtsError("INVALID_VOLUME", "音量必须在 0 到 1 之间。")
+        self._volume = float(value)
+        if self._sink is not None:
+            self._sink.setVolume(self._volume)
+        if self._volume == 0:
+            self._mouth_value = 0.0
+            self.mouth_level.emit(0.0)
+
+    def set_speed(self, value):
+        """Relative to the selected voice's default; snapshots at next speak."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not .5 <= value <= 2:
+            raise TtsError("INVALID_SPEED", "语速必须在 0.5 到 2 倍之间。")
+        self._speed = float(value)
 
     @Slot()
     def stop(self):
@@ -223,7 +244,7 @@ class TtsService(QObject):
             # Keep a 20 Hz schedule despite Windows timer quantization, without
             # emitting a burst of catch-up frames after a blocked event loop.
             self._mouth_due = self._mouth_due + .05 if now - self._mouth_due < .05 else now + .05
-            self._mouth_value = self._meter.sample(min(played, self._scheduled_frames))
+            self._mouth_value = self._meter.sample(min(played, self._scheduled_frames)) * self._volume
             self.mouth_level.emit(self._mouth_value)
 
     def _reset_audio(self):
@@ -257,6 +278,8 @@ class TtsService(QObject):
                 raise TtsError("AUDIO_DEVICE", "没有可用的音频输出设备，或设备不支持朗读格式。")
             self._sink = QAudioSink(device, audio_format, self)
         self._sink.setBufferSize(int(rate * 2 * .08))
+        if self._volume != 1.0:  # QAudioSink already defaults to 1.0.
+            self._sink.setVolume(self._volume)
         self._rate = rate
         self._meter = PlaybackMeter(rate)
         self._mouth_due = time.monotonic() + .05

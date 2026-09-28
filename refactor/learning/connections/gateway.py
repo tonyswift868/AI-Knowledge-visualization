@@ -304,8 +304,8 @@ class ModelGateway:
         return bool(spec and spec.search is not None)
 
     @staticmethod
-    def _billable_usage(result, config):
-        raw = copy.deepcopy(result.usage.raw)
+    def _billable_usage(value, config):
+        raw = copy.deepcopy(value.raw)
         meta = raw.setdefault('_mentorflow', {})
         # Only protocol-known facts. A custom endpoint cannot inherit official
         # regional prices just because the user selected that provider's parser.
@@ -315,7 +315,7 @@ class ModelGateway:
             region = ('cn-beijing' if host == 'dashscope.aliyuncs.com' else
                       'unknown' if config['provider_id'] == 'qwen' else 'global')
         context = dict(region=region, cache_mode='implicit', finished_at=timestamp().isoformat())
-        if config['provider_id'] == 'qwen' and result.usage.reasoning_tokens > 0:
+        if config['provider_id'] == 'qwen' and value.reasoning_tokens > 0:
             context['thinking_mode'] = 'thinking'
         # Caller cannot set batch/flex/priority through this gateway. Preserve a
         # nonstandard response tier when adapters publish one in raw usage.
@@ -323,7 +323,7 @@ class ModelGateway:
         context['service_tier'] = ('standard' if tier == 'default' else tier or 'unknown'
                                    if config['provider_id'] == 'openai' else 'standard')
         meta['billing_context'] = context
-        return replace(result.usage, raw=raw)
+        return replace(value, raw=raw)
 
     def complete(self, purpose, messages, *, system=None, enable_search=False,
                  on_text=None, cancel=None, plan_id='', max_tokens=4096):
@@ -379,20 +379,24 @@ class ModelGateway:
                                             cancel=token, on_text=on_text, max_tokens=max_tokens)
                 if not isinstance(result, providers.ModelResult) or result.provider_id != config['provider_id']:
                     raise ModelError('MODEL_RESPONSE_INVALID', '模型响应厂商与当前预设不一致。')
-                observed = self._billable_usage(result, config)
+                observed = self._billable_usage(result.usage, config)
                 if token.is_set():
-                    raise ModelCancelled()
+                    exc = ModelCancelled()
+                    exc.usage, exc.response_received = result.usage, True
+                    exc.generated_text_length, exc.model = len(result.text), result.model
+                    raise exc
             except ModelError as exc:
                 error = exc
                 if observed is None and isinstance(getattr(exc, 'usage', None), providers.Usage):
-                    partial = copy.deepcopy(exc.usage.raw)
-                    partial.setdefault('_mentorflow', {})['partial_usage'] = True
-                    observed = replace(exc.usage, raw=partial)
+                    # An invalid answer can still have final, billable meters.
+                    # Only the adapter knows whether a stream's usage is partial.
+                    observed = self._billable_usage(exc.usage, config)
             except Exception:
                 error = ModelError('MODEL_RESPONSE_INVALID', '模型调用未返回可核对的完整结果。')
             try:
                 self.usage_log.finish(identifier, observed, error_code=error.code if error else '',
-                                      model=result.model if isinstance(result, providers.ModelResult) else None)
+                                      model=result.model if isinstance(result, providers.ModelResult)
+                                      else getattr(error, 'model', None))
             except ModelError as exc:
                 # Caller can keep an already received answer without a second
                 # paid request; the durable unfinished row remains visible.

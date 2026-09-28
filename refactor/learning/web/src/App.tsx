@@ -12,6 +12,7 @@ import { Chat } from "./pages/Chat"
 import { PlanDetail } from "./pages/PlanDetail"
 import { Settings } from "./pages/Settings"
 import { TeacherStagePreview } from "./teacher/TeacherStagePreview"
+import { VoiceInputPreview } from "./voice/VoiceInputPreview"
 
 type NavItem = { id: Route; label: string; icon: any; also?: Route[] }
 const NAV: { label: string; items: NavItem[] }[] = [
@@ -59,6 +60,12 @@ function AccountMenu() {
 export function App() {
   const s = useApp()
   const theme = s.settings?.theme ?? "sakura"
+  const [previewHash, setPreviewHash] = React.useState(window.location.hash)
+  React.useEffect(() => {
+    const changed = () => setPreviewHash(window.location.hash)
+    window.addEventListener("hashchange", changed)
+    return () => window.removeEventListener("hashchange", changed)
+  }, [])
 
   React.useEffect(() => {
     const load = () => call("app.bootstrap").then((r) => s.set({ account: r.account, settings: r.settings, options: r.options,
@@ -85,7 +92,7 @@ export function App() {
     root.classList.toggle("reduce-motion", !!s.settings?.reduce_motion)
   }, [theme, s.settings?.font_scale, s.settings?.reduce_motion])
 
-  const Page = window.location.hash === "#/dev/teacher" ? TeacherStagePreview : { home: Home, plans: Plans, plan: PlanDetail, "new-plan": NewPlan, tools: Tools, chat: Chat, settings: Settings }[s.route]
+  const Page = previewHash === "#/dev/voice" ? VoiceInputPreview : previewHash === "#/dev/teacher" ? TeacherStagePreview : { home: Home, plans: Plans, plan: PlanDetail, "new-plan": NewPlan, tools: Tools, chat: Chat, settings: Settings }[s.route]
 
   return (
     <>

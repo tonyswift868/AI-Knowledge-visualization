@@ -8,7 +8,8 @@ from __future__ import annotations
 import re
 
 from ._http import endpoint
-from .base import ModelError, ModelResult, TextSink, combine, hit, invalid, string, usage
+from ._accounting import read_usage
+from .base import ModelError, ModelResult, TextSink, combine, hit, invalid, string
 
 
 def parse(data, provider, model, search_enabled):
@@ -16,11 +17,6 @@ def parse(data, provider, model, search_enabled):
     message = choice['message']
     text = message.get('content') or ''
     string(text)
-    tools = message.get('tool_calls') or []
-    raw = data['usage']
-    detail = raw.get('prompt_tokens_details') or {}
-    cached = detail.get('cached_tokens', raw.get('cached_tokens'))
-    reasoning = (raw.get('completion_tokens_details') or {}).get('reasoning_tokens')
     hits, citations = [], []
     for source in data.get('web_search') or []:
         value = hit(source, url='link', snippet='content')
@@ -30,11 +26,7 @@ def parse(data, provider, model, search_enabled):
         if isinstance(marker, str) and marker and re.search(
                 r'(?<![\w])' + re.escape(marker) + r'(?![\w])', text):
             citations.append(value)
-    count = len(tools) if provider == 'kimi' else (None if search_enabled else 0)
-    return ModelResult(text, usage(raw, raw['prompt_tokens'], cached, raw['completion_tokens'],
-                       reasoning, count, unreported_search_fields=(
-                           ['search_queries', 'search_hits', 'citations'] if provider == 'kimi'
-                           and search_enabled else ['search_queries'] if search_enabled else [])),
+    return ModelResult(text, read_usage('openai_chat', provider, data, search_enabled),
                        provider, data.get('model', model), (), tuple(hits), tuple(citations),
                        string(choice['finish_reason']))
 

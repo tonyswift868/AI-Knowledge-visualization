@@ -161,5 +161,9 @@ def test_messages_tool_error_is_preserved_not_counted_as_successful_url():
 def test_responses_incomplete_reason_is_not_completed():
     data = responses()
     data.update(status='incomplete', incomplete_details={'reason': 'max_output_tokens'})
-    result, _ = call('openai', [data])
-    assert result.finish_reason == 'max_output_tokens'
+    with pytest.raises(ModelError) as exc:
+        call('openai', [data])
+    assert exc.value.code == 'MODEL_OUTPUT_TRUNCATED'
+    assert exc.value.finish_reason == 'max_output_tokens'
+    assert exc.value.generated_text_length == 2
+    assert exc.value.usage.output_tokens == 20

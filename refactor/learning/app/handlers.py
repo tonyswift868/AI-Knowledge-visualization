@@ -6,7 +6,6 @@ on the bridge worker pool.
 """
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 import time as monotonic
@@ -175,10 +174,16 @@ def register(bridge, window):
 
     # -------------------------------------------------------------- plans
     def plan_list(params, ctx):
+        from ..course.ledger import study_day
         current = services()
         store = current.store
         settings = current.settings.load()
-        today = _local_study_day(settings)
+        # One instant for the whole list, even if a refresh boundary is crossed
+        # while reading different plans. Other handlers keep their own clock.
+        now = datetime.now(timezone.utc).astimezone()
+        hour, minute = map(int, settings['refresh_time'].split(':'))
+        refresh = time(hour, minute)
+        today = study_day(now, refresh, now.tzinfo)
         items = []
         for plan in store.list_plans(include_archived=bool(params.get("include_archived"))):
             item = {"id": plan["id"], "goal": plan.get("goal", ""), "final_goal": plan.get("final_goal", ""),
@@ -187,7 +192,7 @@ def register(bridge, window):
                     "total_minutes": plan.get("total_minutes", 0), "today": None}
             if plan.get("window") and plan.get("state") in ("active", "checking"):
                 try:
-                    item["today"] = asdict(store.load_ledger(plan["id"]).status(today))
+                    item["today"] = store.today_status(plan['id'], now=now, refresh=refresh, tz=now.tzinfo)
                 except Exception:  # noqa: BLE001 - one broken plan must not hide the others
                     item["today"] = None
             items.append(item)

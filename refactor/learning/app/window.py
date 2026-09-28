@@ -24,6 +24,8 @@ from . import handlers
 from .services import AppServices
 from .sync import WindowSync
 from .teacher_assets import TeacherAssets
+from .voice_input import register as register_voice_input
+from .speech import TeacherSpeech
 
 log = logging.getLogger(__name__)
 
@@ -133,6 +135,8 @@ class LearningWindow(QWidget):
         self.bridge = AppBridge(self)
         handlers.register(self.bridge, self)
         self.teacher_assets.register(self.bridge, self)
+        self.voice_input = register_voice_input(self.bridge, self)
+        self.speech = TeacherSpeech(self.bridge, self._data_root, self)
         self.channel = QWebChannel(self.page)
         self.channel.registerObject("mf", self.bridge)
         self.page.setWebChannel(self.channel)
@@ -151,6 +155,7 @@ class LearningWindow(QWidget):
 
     def request_account_action(self, action):
         if action in {'switch', 'logout'}:
+            self.speech.reset()
             self.bridge.cancel_pending()
             if self._sync is not None:
                 self._sync.stop()
@@ -204,6 +209,7 @@ class LearningWindow(QWidget):
             self.bridge.push('sync_status', self._sync_fallback)
 
     def _close_services(self):
+        self.speech.reset()
         self.bridge.cancel_pending()
         if self._sync is not None:
             self._sync.dispose()
@@ -341,8 +347,10 @@ class LearningWindow(QWidget):
         if self._disposed:
             return
         self._disposed = True
+        self.voice_input.dispose()
         self._close_services()
         self.bridge.close()
+        self.speech.dispose()
         try:
             self.view.stop()
             self.page.setUrl(QUrl("about:blank"))

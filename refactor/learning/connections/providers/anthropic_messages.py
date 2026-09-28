@@ -5,12 +5,13 @@ import json
 from urllib.parse import urlsplit
 
 from ._http import endpoint
-from .base import ModelError, ModelResult, TextSink, combine, hit, invalid, string, usage
+from ._accounting import read_usage
+from .base import ModelError, ModelResult, TextSink, combine, hit, invalid, string
 
 
 def parse(data, provider, requested_model, search_enabled):
     queries, hits, citations, texts = [], [], [], []
-    tool_count, search_errors = 0, []
+    search_errors = []
     for block in data['content']:
         kind = block['type']
         if kind == 'text':
@@ -20,7 +21,6 @@ def parse(data, provider, requested_model, search_enabled):
                     citations.append(hit(citation, snippet='cited_text'))
         elif kind == 'server_tool_use' and block.get('name') == 'web_search':
             queries.append(string(block['input']['query']))
-            tool_count += 1
         elif kind == 'web_search_tool_result':
             content = block['content']
             if isinstance(content, dict):
@@ -34,17 +34,7 @@ def parse(data, provider, requested_model, search_enabled):
                 elif result.get('type') != 'web_search_result':
                     raise invalid()
                 hits.append(hit(result))
-    raw = data['usage']
-    cached = raw.get('cache_read_input_tokens', 0)
-    # input_tokens excludes cache reads/writes on native Claude and on DeepSeek's
-    # compatible endpoint alike (measured 2026-09-27: same prompt twice reported
-    # 2924+0, then 236+2688 cached), so the total adds them back for every provider.
-    total = raw['input_tokens'] + cached + raw.get('cache_creation_input_tokens', 0)
-    searches = raw.get('server_tool_use', {}).get('web_search_requests')
-    if searches is None:
-        searches = tool_count if search_enabled else 0
-    return ModelResult(''.join(texts), usage(raw, total, cached, raw['output_tokens'],
-                       searches=searches, search_count_source='server_tool_use_or_blocks',
+    return ModelResult(''.join(texts), read_usage('anthropic_messages', provider, data, search_enabled,
                        search_errors=search_errors),
                        provider, data.get('model', requested_model), tuple(queries), tuple(hits),
                        tuple(citations), string(data['stop_reason']))

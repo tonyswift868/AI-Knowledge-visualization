@@ -2,6 +2,7 @@
 
 MF_TTS_ENGINE_ROOT / ENGINE_PYTHON / CATALOG / PACK_ROOTS (os.pathsep separated),
 MF_TTS_VOICE_ID / VOICE_VERSION / STYLE / DATA_ROOT / DEVICE / CPU_THREADS.
+MF_TTS_VOICE_MANIFEST selects an explicit, read-only voice-pack.json.
 MF_TTS_BERT_ROOT / HUBERT_ROOT / G2PW_ROOT / SV_WEIGHTS select existing,
 read-only common assets when they were moved out of the engine directory.
 MF_TTS_BASE_ROOT overrides the shared base model directory.
@@ -24,6 +25,7 @@ DEFAULT_DATA_ROOT = Path(r"D:\MentorFlow-office\classroom\temp\tts-runtime")
 DEFAULT_VOICE = "phrolova-b-gpt-sovits"
 # User-selected teacher voice (2026-09-27 audition; also chosen on 2026-08-17).
 DEFAULT_VOICE_VERSION = "1.0.4"
+VOICE_BACKUP = Path(r"D:\_KEEP\voices\phrolova-b-gpt-sovits-1.0.4\voice-pack.json")
 
 # Metadata only: model_manager.download requires prior user consent.
 # The runtime never downloads. URLs are pinned; hashes were checked against the
@@ -155,10 +157,17 @@ class TtsConfig:
     hubert_root: Path | None = None
     g2pw_root: Path | None = None
     sv_weights: Path | None = None
+    voice_manifest: Path | None = None
 
     @classmethod
     def from_env(cls, data_root=None):
         root = Path(os.environ.get("MF_TTS_ENGINE_ROOT", str(ENGINE_ROOT)))
+        manifest = os.environ.get("MF_TTS_VOICE_MANIFEST")
+        if (not manifest and "MF_TTS_PACK_ROOTS" not in os.environ
+                and os.environ.get("MF_TTS_VOICE_ID", DEFAULT_VOICE) == DEFAULT_VOICE
+                and os.environ.get("MF_TTS_VOICE_VERSION", DEFAULT_VOICE_VERSION) == DEFAULT_VOICE_VERSION
+                and VOICE_BACKUP.is_file()):
+            manifest = str(VOICE_BACKUP)
         return cls(engine_root=root,
             engine_python=Path(os.environ.get("MF_TTS_ENGINE_PYTHON", str(root / "runtime/python.exe"))),
             catalog=Path(os.environ.get("MF_TTS_CATALOG", str(CATALOG))),
@@ -168,6 +177,7 @@ class TtsConfig:
             data_root=Path(data_root if data_root is not None else os.environ.get("MF_TTS_DATA_ROOT", str(DEFAULT_DATA_ROOT))),
             device=os.environ.get("MF_TTS_DEVICE", "cuda"), cpu_threads=int(os.environ.get("MF_TTS_CPU_THREADS", "4")),
             base_model_root=Path(os.environ["MF_TTS_BASE_ROOT"]) if "MF_TTS_BASE_ROOT" in os.environ else None,
+            voice_manifest=Path(manifest) if manifest else None,
             **{key: Path(os.environ[env]) if env in os.environ else None for key, env in (
                 ("bert_root", "MF_TTS_BERT_ROOT"), ("hubert_root", "MF_TTS_HUBERT_ROOT"),
                 ("g2pw_root", "MF_TTS_G2PW_ROOT"), ("sv_weights", "MF_TTS_SV_WEIGHTS"))})
@@ -201,8 +211,9 @@ class TtsConfig:
             if len(selected) != 1:
                 raise TtsError("VOICE_SELECTION", "此候选声音需要明确选择版本。")
             version = selected[0]["version"]
-        for root in self.pack_roots:
-            manifest = root / self.voice_id / version / "voice-pack.json"
+        manifests = ([self.voice_manifest] if self.voice_manifest else
+                     [root / self.voice_id / version / "voice-pack.json" for root in self.pack_roots])
+        for manifest in manifests:
             if manifest.is_file():
                 voice = VoicePack.load(manifest, self.style or None)
                 if (voice.pack_id, voice.version) != (self.voice_id, version):
@@ -219,6 +230,7 @@ class TtsConfig:
             raise TtsError("ENGINE_NOT_INSTALLED", "GPT-SoVITS 引擎或其自带 Python 不存在。")
         destination = self.data_root.resolve()
         protected = (self.engine_root, self.catalog.parent, *self.pack_roots,
+                     *((self.voice_manifest.parent,) if self.voice_manifest else ()),
                      Path(r"E:\AI_Tools\GPTSoVITS\Phrolova"), Path(r"E:\AI_Tools\Kristina-TTS-P0-Bakeoff"))
         if any(destination.is_relative_to(path.resolve()) or path.resolve().is_relative_to(destination) for path in protected):
             raise TtsError("TTS_DATA_ROOT", "日志、缓存不能写入引擎、声音包或其他项目目录。")
