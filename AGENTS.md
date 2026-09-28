@@ -6,6 +6,7 @@
 - 员工调度（员工、任务、基线、交付状态）只记在 [docs/project/WORKFLOW.md](docs/project/WORKFLOW.md)，由架构师维护；需求不写在那里。
 - [过时文件隔离](过时文件隔离/) 下全是旧资料，日常检索跳过，不作为当前指令。
 - 不改动 Kristina 的资源。
+- **磁盘规则（BUG-02）**：E 盘是移动固态硬盘，扛不住频繁读写，只放大型程序（如朗读引擎），只能读取运行。不要在 E 盘建目录、写文件、跑测试、构建或放临时文件，也不要从 E 盘批量复制大文件。所有并发任务、测试、构建、临时文件、日志一律在 D 盘（`D:\MentorFlow\.local	est-tmp\` 下自建子目录）。旧前端 `refactor/learning/classroom/stage`、`refactor/learning/planning/web` 的构建配置指向 E 盘，不要构建它们。
 
 ## 需求文档规则（每次都执行）
 
