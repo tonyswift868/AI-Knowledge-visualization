@@ -409,10 +409,10 @@
 ### [DATA-01] 旧计划与评估数据不兼容
 - 状态：未开始
 - 需求：以前旧壳子做出的计划、任务、评估数据不再兼容，新结构直接重新生成计划，不为旧数据写迁移或适配。
-- 当前实现：代码里仍有旧计划适配（`refactor/learning/legacy_records.py`、`plan_models.py` 的旧投影），改新结构时可以删掉。
+- 当前实现：代码里仍有旧计划适配（`refactor/learning/legacy_records.py`、`plan_models.py` 的旧投影），改新结构时可以删掉。 【2026-09-29 用户确定 + 架构师核对】展示与交付只用新代码；重构区完成后直接取代整个仓库，旧代码只作参考、之后全部删除。删除前要先把新软件仍在用的旧部分搬进新结构：①自动更新与安装校验：desktop/update_session.py、desktop/version.py、scripts/per_user_install.py、scripts/per_user_update_core.py；②重构区旧部分：tools/free_chat 与 tools/service（教师闲聊）、classroom/live2d_assets.py（老师形象资源）、planning/research.py（资料抓取）、plan_models.PlanError；③服务器：线上账号与同步服务运行的是旧 backend 目录的代码（MF-U11 镜像），重构区 refactor/server 只有少量新增，删除前需先把线上在用的服务器代码迁入新结构。
 - 验证：未验证
 - 关联：[PLAN-04]
-- 更新：2026-09-26
+- 更新：2026-09-29
 
 ### [DATA-02] 跨设备同步范围（大文件不上服务器）
 - 状态：已实现未验证（部分）
