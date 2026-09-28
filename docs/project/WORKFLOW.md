@@ -14,21 +14,21 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 基线提交 | 第八批 `755b29b`（2026-09-28，含第七批合入、新建计划意图接入、课堂编排与课堂页）；更早批次见任务行 |
-| 说明 | 第八批：检验组件（出题角度、归因画像）、新建计划对话真实复测、课堂跨天模拟、正式生成真实复测、学习提醒（SYS-04）、流式朗读、课堂数据同步性能；架构师做最终检验（CHK-01）编排、流式朗读与提醒接入界面 |
+| 基线提交 | 第九批 `de1723f`（2026-09-28，含第八批合入与架构师审查修正）；更早批次见任务行 |
+| 说明 | 每批最多 2–3 个任务（用户另有项目共用算力，并发不超过 4）。第九批 2 个：费用计价与对话补测（MF-02）、朗读流水线并接入课堂（MF-06）；架构师做最终检验（CHK-01）编排 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-03（client） | D:\MentorFlow-office\client | 8-MF03 进行中 |
-| MF-07（server） | D:\MentorFlow-office\server | 8-MF07 进行中 |
-| MF-02（runtime） | D:\MentorFlow-office\runtime | 8-MF02 进行中 |
-| MF-04（platform） | D:\MentorFlow-office\platform | 8-MF04 进行中 |
-| MF-01（library） | D:\MentorFlow-office\library | 8-MF01 进行中 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 8-MF06 进行中 |
-| MF-05（tools） | D:\MentorFlow-office\tools | 8-MF05 进行中 |
+| MF-03（client） | D:\MentorFlow-office\client | 空闲 |
+| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
+| MF-02（runtime） | D:\MentorFlow-office\runtime | 9-MF02 进行中 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
+| MF-01（library） | D:\MentorFlow-office\library | 空闲 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 9-MF06 进行中 |
+| MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
 工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
 
@@ -68,13 +68,15 @@
 | 7-MF04 | MF-04 platform | 计划提示改进（水平/补充说明起作用）+ 大模块分批生成工具 + 对照复测（BUG-15） | PLAN-01、PLAN-02、PLAN-04 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
 | 7-MF05 | MF-05 tools | 新界面语音输入组件（录音、实时出字、模型下载征得同意） | VOICE-01、UI-00 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
 | 7-MF06 | MF-06 classroom | 新界面老师朗读组件（队列、停止、嘴型驱动 Live2D、模型下载征得同意） | VOICE-01、TEACH-05 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
-| 8-MF01 | MF-01 library | 最终检验（CHK-01）用的出题角度与归因画像组件 | CHK-01、TEACH-04、ARCH-07 | 755b29b | 已派发 |
-| 8-MF02 | MF-02 runtime | 新建计划对话用例集：按新的“意图判断”接入真实复测 | ARCH-06、BUG-13、PLAN-07 | 755b29b | 已派发 |
-| 8-MF03 | MF-03 client | 课堂时长与掌握度：跨天时间加速模拟 | PLAN-05、TEACH-02、TEACH-05、TEACH-07 | 755b29b | 已派发 |
-| 8-MF04 | MF-04 platform | 正式生成真实复测：全文分批 + 截断拆半接入后（BUG-15 收尾） | BUG-15、PLAN-02、PLAN-04 | 755b29b | 已派发 |
-| 8-MF05 | MF-05 tools | 学习提醒：已有 DailyClock + 系统通知（到点还没开始就提醒） | SYS-04、TEACH-05 | 755b29b | 已派发 |
-| 8-MF06 | MF-06 classroom | 朗读边生成边读：老师流式输出时按句子朗读 | VOICE-01、TEACH-05 | 755b29b | 已派发 |
-| 8-MF07 | MF-07 server | 课堂数据变多后的同步性能 | ARCH-05、TEACH-01 | 755b29b | 已派发 |
+| 8-MF01 | MF-01 library | 最终检验（CHK-01）用的出题角度与归因画像组件 | CHK-01、TEACH-04、ARCH-07 | 755b29b | 已合入 3bfe099（2026-09-28） |
+| 8-MF02 | MF-02 runtime | 新建计划对话用例集：按新的“意图判断”接入真实复测 | ARCH-06、BUG-13、PLAN-07 | 755b29b | 已合入 3bfe099（2026-09-28） |
+| 8-MF03 | MF-03 client | 课堂时长与掌握度：跨天时间加速模拟 | PLAN-05、TEACH-02、TEACH-05、TEACH-07 | 755b29b | 已合入 3bfe099（2026-09-28） |
+| 8-MF04 | MF-04 platform | 正式生成真实复测：全文分批 + 截断拆半接入后（BUG-15 收尾） | BUG-15、PLAN-02、PLAN-04 | 755b29b | 已合入 3bfe099（2026-09-28） |
+| 8-MF05 | MF-05 tools | 学习提醒：已有 DailyClock + 系统通知（到点还没开始就提醒） | SYS-04、TEACH-05 | 755b29b | 已合入 3bfe099（2026-09-28） |
+| 8-MF06 | MF-06 classroom | 朗读边生成边读：老师流式输出时按句子朗读 | VOICE-01、TEACH-05 | 755b29b | 已合入 3bfe099（2026-09-28） |
+| 8-MF07 | MF-07 server | 课堂数据变多后的同步性能 | ARCH-05、TEACH-01 | 755b29b | 已合入 3bfe099（2026-09-28） |
+| 9-MF02 | MF-02 runtime | DeepSeek 高峰/闲时计价补全 + 花费显示 + 新建计划对话补测 | BUG-20、SYS-03、BUG-13 | de1723f | 已派发 |
+| 9-MF06 | MF-06 classroom | 朗读流水线（边播边合成）并接入课堂边生成边读 | VOICE-01、TEACH-05 | de1723f | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1852,4 +1854,59 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   2. 找出瓶颈并在客户端侧改进（sync_course.py、course_sync_service.py、store.py 的出站相关部分可以改），不改变线上协议；需要改服务器的写成建议，不要改服务器代码、不要部署。
 验收：pytest tests/refactor 全部通过；报告写到 D:\MentorFlow\.local\test-tmp\sync-load\report.md。
 回执：【MF-07｜server｜第八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 改动前后数字 ／ 服务器侧建议 ／ 问题记录
+~~~
+
+## 第九批任务详情
+
+基线 `de1723f`（2026-09-28，含第八批合入 3bfe099 与架构师审查修正）。每批最多 2–3 个任务。
+
+### [9-MF02] runtime｜DeepSeek 高峰/闲时计价补全 + 花费显示 + 新建计划对话补测
+
+~~~text
+【MentorFlow 第九批｜MF-02（工位 runtime）｜DeepSeek 高峰/闲时计价补全 + 花费显示 + 新建计划对话补测】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard de1723f
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件外不要改。
+对问题原因的判断要用真实数据验证后再写进回执（上一批有一处原因写错了，见 BUG-20）。回执里请附“问题记录”（现象、原因、排查、解决、验证）。
+先读：AGENTS.md；CURRENT_STATE.md 的 [BUG-20]、[SYS-03]、[BUG-13]、[BUG-14]；refactor/learning/connections/pricing.py（_period、_candidates、cost、estimate_cost）、usage.py（summary）、gateway.py（_price_context、estimate_context）；价格表 refactor/learning/course/data/model-prices.json 与 deploy/enterprise/staging/rp05/catalog/model-prices.example.json；你第八批的对话复测工具。
+要做
+  1. 节假日日历（BUG-20 ①）：按国务院办公厅发布的官方放假通知（gov.cn 原文，写明网址与发布日期）录入 2026 年（如 2027 年已发布也录入）的法定节假日，填进两份价格表的 periods.holiday_calendar（start/end/dates）。先查 DeepSeek 官方价格页对“高峰时段”的原话，确认调休上班的周末算不算高峰，按官方说法实现并在回执引用原话；查不到就维持“周末一律闲时”，并写明。
+  2. 日历覆盖不到的日期（例如明年的日历还没发布）：不要再返回“未定价”，改为按高峰价给出估算上限，并在结果里明确标记“估算”（Cost 与用量汇总都要能区分：已确定金额、估算金额、真的算不出）；estimate_cost 同理。已有的“不猜节假日”原则保留：只在界面标明是估算，不当成确定金额。
+  3. 用量页显示：可以改 web/src/pages/Settings.tsx 里“用量与花费”这一部分（其他部分不要动），估算金额显示为“约 ¥x（按高峰价估算）”，算不出的显示原因。
+  4. 用真实数据验证：拿管理员账号近几天的真实用量记录（只读，复制到 D 盘测试目录再算），列出修改前后每天的已定价/估算/未定价调用数和金额。
+  5. 对话补测（BUG-13 收尾）：用你的第八批工具，把上次没跑完的 H-M03 和“一句话多意图”3 条跑完，再新增 5 条多意图/易混说法（例如“把截止日推迟两周，另外只学前三章”“这份资料不要了，再找一份中文的”），真实模型跑完并按意图 vs 执行归因。花费上限 ¥3。
+  6. 价格表改动完成后，在回执写明“服务器目录文件需要更新”的具体文件与哈希，部署由架构师做。
+验收：pytest tests/refactor 全部通过；web 构建通过（不要提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\pricing\report.md，对话补测追加到 D:\MentorFlow\.local\test-tmp\plan-dialogue\report.md。
+回执：【MF-02｜runtime｜第九批｜完成/部分完成/受阻】基线 ／ 提交 ／ 官方来源与节假日数据 ／ 修改前后计价对比 ／ 对话补测结果 ／ 花费 ／ 问题记录
+~~~
+
+### [9-MF06] classroom｜朗读流水线（边播边合成）并接入课堂边生成边读
+
+~~~text
+【MentorFlow 第九批｜MF-06（工位 classroom）｜朗读流水线（边播边合成）并接入课堂边生成边读】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard de1723f
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件外不要改。
+对问题原因的判断要用真实数据验证后再写进回执（上一批有一处原因写错了，见 BUG-20）。回执里请附“问题记录”（现象、原因、排查、解决、验证）。
+先读：AGENTS.md；CURRENT_STATE.md 的 [VOICE-01]、[TEACH-05]、[TEACH-06]；你第八批的 speech.py 流式接口与 voice/tts/text_prep.py；voice/tts/service.py（speak 一次交全文时是边播边合成的）；课堂页 web/src/pages/Classroom.tsx（现在等老师整段说完才整段朗读）。
+问题：第八批的流式接口每句都等上一句播完才开始合成，句子之间会停顿（合成时间约为音频时长的三分之一，长句可能停一秒以上），所以还没接进课堂。
+要做
+  1. 在朗读服务里加“追加句子”的能力：同一段朗读进行中可以继续追加句子，合成与播放流水线进行（播第 N 句时合成第 N+1 句），不因追加而停止或重置；停止时丢弃所有未读句子。可以改 voice/tts/service.py、voice/tts/runtime.py、app/speech.py、web/src/teacher/useTeacherVoice.ts。
+  2. 目标（预热后）：第一句写完到出声 ≤ 1 秒；相邻句之间的静音 ≤ 一次交全文时的水平（给出两种方式的实测对比）；停止 ≤ 100 毫秒。
+  3. 接入课堂（这次允许你改 web/src/pages/Classroom.tsx 里与朗读相关的部分，其他部分不要动）：朗读开着时，老师流式输出的文字边到边读（用 startStream/appendStream/endStream；中途重试时页面会收到重置标记 \u0000，此时停止并重新开始这段朗读）；老师说完后不要再整段重复读；学习者发送新消息、点停止、离开课堂时停止朗读；朗读没开或不可用时行为和现在一样。
+  4. 测试：离线（假引擎：追加顺序、流水线并发、停止丢弃、重置标记、并发安全）+ 本机真实朗读：模拟老师流式输出一段约 300 字的讲解（按真实流速，每次几个字），报告首音延迟、每个句间静音、总时长，与整段朗读对比。
+验收：pytest tests/refactor 全部通过；web 构建通过（不要提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\teacher-voice\stream-report.md。
+回执：【MF-06｜classroom｜第九批｜完成/部分完成/受阻】基线 ／ 提交 ／ 接口与课堂接入说明 ／ 实测对比表 ／ 问题记录
 ~~~
