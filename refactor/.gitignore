@@ -1,5 +1,5 @@
 # The refactor tree is the product runtime area.  Keep disposable validation
-# sources and generated artifacts under D:\MentorFlow\.local	est-tmp instead (never on E:, see AGENTS.md).
+# sources and generated artifacts under D:\MentorFlow\.local\test-tmp instead (never on E:, see AGENTS.md).
 tests/
 **/tests/
 __pycache__/
