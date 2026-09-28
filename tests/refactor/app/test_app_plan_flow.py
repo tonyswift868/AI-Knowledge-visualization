@@ -38,6 +38,7 @@ class ScriptedModel:
         self.sufficiency = [{"enough": False, "questions": ["你想做到能写什么样的程序？"], "goal": "学 Python 面向对象", "focus": []},
                             {"enough": True, "questions": [], "goal": "三周学会 Python 类、异常和模块", "focus": ["类", "异常"]}]
         self.generate_failures = 2   # both the first answer and the host retry are malformed
+        self.intents = []            # queued intent answers; otherwise the obvious one for the phase
         self.lock = threading.Lock()
 
     def get_configuration(self):
@@ -74,6 +75,14 @@ class ScriptedModel:
                     self.generate_failures -= 1
             text = "不是 JSON" if fail else json.dumps({"points": [
                 {"title": f"点{i}", "summary": f"掌握第{i}件事", "chunks": [aliases[0]], "minutes": 10} for i in range(1, 4)]})
+        elif purpose == "plan_intent":
+            payload = json.loads(user.split("\n", 1)[1])
+            phase, said = payload["ctx"]["phase"], payload["text"]
+            with self.lock:
+                queued = self.intents.pop(0) if self.intents else None
+            default = {"questions": {"kind": "answer"}, "sources": {"kind": "find_sources", "instruction": said},
+                       "outline": {"kind": "revise_outline", "instruction": said}}.get(phase)
+            text = json.dumps({"intents": queued or [default], "reply": ""}, ensure_ascii=False)
         else:
             raise AssertionError(purpose)
         return SimpleNamespace(text=text, search_hits=hits, citations=())
@@ -140,8 +149,19 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root):
     assert draft["outline"]["ranges"]["total"][0] > 0
     draft = ask("plan.say", plan_id=pid, text="第一个模块换个名字")["draft"]
     assert draft["outline"]["stages"][0]["modules"][0]["title"] == "改过的模块1" and draft["outline"]["version"] == 2
-    draft = ask("plan.estimate", plan_id=pid)["draft"]
+    # The chat box changes settings through the host, never by the model's say-so (BUG-13).
+    model.intents = [[{"kind": "update_form", "daily_cap": 120, "notes_append": "多做练习"}]]
+    draft = ask("plan.say", plan_id=pid, text="每天改成两小时，多给点练习")["draft"]
+    assert draft["form"]["daily_cap"] == 120 and draft["form"]["notes"] == "多做练习"
+    assert services.store.get_plan(pid)["window"]["daily_cap_minutes"] == 120
+    assert draft["messages"][-1]["text"].startswith("已修改：每天最多学习时长改为 120 分钟")
+    model.intents = [[{"kind": "refuse", "reason": "路线要从资料里来，不能跳过资料。"}]]
+    draft = ask("plan.say", plan_id=pid, text="别管资料了直接生成")["draft"]
+    assert draft["messages"][-1]["text"] == "路线要从资料里来，不能跳过资料。" and draft["phase"] == "outline"
+    model.intents = [[{"kind": "proceed", "step": "generate"}]]
+    draft = ask("plan.say", plan_id=pid, text="开始生成吧")["draft"]     # a paid step: show the estimate, never start it
     assert draft["estimate"]["modules"] == 3 and draft["estimate"]["amount"] is None
+    assert draft["phase"] == "outline" and not any(c[0] == "generate" for c in model.calls)
 
     draft = ask("plan.generate", plan_id=pid)["draft"]
     assert draft["phase"] == "generating" and sorted(draft["generation"].values()) == ["done", "done", "failed"]
@@ -153,8 +173,14 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root):
     detail = ask("plan.detail", plan_id=pid)
     mods = [m for s in detail["stages"] for m in s["modules"]]
     assert len(mods) == 3 and all(len(m["points"]) == 3 for m in mods) and detail["plan"]["state"] == "ready"
-    assert len(detail["sources"]) == 2 and detail["daily"]["cap"] == 90
-    ask("plan.module", plan_id=pid, action="delete", module_id=mods[2]["id"])
+    assert len(detail["sources"]) == 2 and detail["daily"]["cap"] == 120
+    model.intents = [[{"kind": "edit_modules", "delete": [], "move": [{"n": 2, "to": 1}]}]]
+    draft = ask("plan.say", plan_id=pid, text="把第二个模块挪到最前面")["draft"]
+    assert "依赖" in draft["messages"][-1]["text"]                   # module 2 needs module 1
+    model.intents = [[{"kind": "edit_modules", "delete": [3], "move": []}]]
+    draft = ask("plan.say", plan_id=pid, text="第三个模块不要了")["draft"]
+    assert draft["messages"][-1]["text"] == f"已删掉《{mods[2]['title']}》。"
+    assert len(services.store.records("modules", pid)) == 2
     bridge.call(json.dumps({"id": "mv", "method": "plan.module", "params": {"plan_id": pid, "action": "move", "module_id": mods[1]["id"], "direction": -1}}))
     assert pump(qapp, bridge, sent, lambda m: m.get("id") == "mv")[0]["error"]["code"] == "ORDER_INVALID"   # module 2 needs module 1
     ask("plan.start", plan_id=pid)

@@ -253,8 +253,8 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
                     self.fail_generation = False
                     raise ModelError("AGENT_FORMAT", "标明用途的模块失败替身")
                 refs = re.findall(r"\[(c\d+)\]", text)
-                result = dict(points=[dict(title="推理", summary="解释推理", chunks=refs[:1], minutes=5),
-                                      dict(title="行动", summary="调用工具", chunks=refs[-1:], minutes=6)])
+                result = dict(points=[dict(title="推理", summary="解释推理", chunks=refs[:1], minutes=15),
+                                      dict(title="行动", summary="调用工具", chunks=refs[-1:], minutes=16)])
             else:
                 pytest.fail(purpose)
             return SimpleNamespace(text=json.dumps(result, ensure_ascii=False))
@@ -266,7 +266,7 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
     assert first["draft"]["plan_id"] == generated["draft"]["plan_id"]
     assert operations == ["sufficiency", "outline", "generate"]
     assert len(generated["metrics"]["chapter_coverage"]) == 2
-    assert generated["metrics"]["point_minutes_sum"] == 11
+    assert generated["metrics"]["point_minutes_sum"] == 31
     assert exp.run_one("base", 1, generate=True)["formal_complete"]
     assert len(operations) == 3
     exp.budget.fail_outline = True

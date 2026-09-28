@@ -84,7 +84,7 @@ def test_plan_dialogue_real_route_and_copy_isolate_form_cards_and_course(dialogu
         first = len(gateway.calls)
         h.call("plan.say", plan_id=pid, text=case["user"])
         after = h.snapshot(pid)
-        assert [c["purpose"] for c in gateway.calls[first:]] == ["sufficiency"]
+        assert [c["purpose"] for c in gateway.calls[first:]] == ["plan_intent", "sufficiency"]
         assert after["draft"]["phase"] == "sources"
         assert before["draft"]["form"] == after["draft"]["form"]
         h.call("plan.outline", plan_id=pid)
@@ -111,7 +111,7 @@ def test_plan_dialogue_url_path_import_and_source_search_are_distinct(dialogue_t
         assert all(c["passed"] for c in evaluate(case, before, after, [], []))
         assert not gateway.calls
         h.call("plan.say", plan_id=pid, text="请找有练习的入门资料")
-        assert [c["purpose"] for c in gateway.calls] == ["research"]  # duplicate URL is already adopted
+        assert [c["purpose"] for c in gateway.calls] == ["plan_intent", "research"]  # duplicate URL is already adopted
         assert all(c["mode"] == "offline_synthetic_html" for c in h.web.calls)
     finally:
         h.close()

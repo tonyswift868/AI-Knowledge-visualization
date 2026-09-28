@@ -109,8 +109,13 @@ export function NewPlan() {
   const cards = Object.fromEntries(draft.sources.map((c) => [c.card_id, c]))
   const adopted = draft.sources.filter((c) => c.status === "adopted").length
   const lastOutline = [...draft.messages].reverse().find((m) => m.kind === "outline")?.id
-  const canType = ["questions", "sources", "outline"].includes(draft.phase)
-  const placeholder = { questions: "回答上面的问题…", sources: "想要什么样的资料？比如：要中文的、要带练习题的；也可以直接贴资料网址", outline: "想怎么改路线？比如：第二阶段拆细一点、先学实战再补理论" }[draft.phase as string] ?? ""
+  const canType = ["questions", "sources", "outline", "ready"].includes(draft.phase)
+  const placeholder = {
+    questions: "回答上面的问题，也可以直接说要改的设置…",
+    sources: "想要什么样的资料？比如：要中文的、只学前四章、采用第二份；也可以直接贴资料网址",
+    outline: "想怎么改？比如：第二阶段拆细一点、截止日期推迟两周、每天改成 90 分钟",
+    ready: "还想调整？比如：删掉第 3 个模块、把实战挪到最后、结束日期推迟一周",
+  }[draft.phase as string] ?? ""
 
   return (
     <div className="page plan-page">

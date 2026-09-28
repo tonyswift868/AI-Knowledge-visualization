@@ -257,13 +257,20 @@ class ScriptedGateway:
         elif purpose == "generate":
             aliases = re.findall(r"\[(c\d+)\]", prompt)
             value = {"points": [{"title": "合成知识点" + str(i), "summary": "仅测试前置数据",
-                                  "chunks": [aliases[0]], "minutes": 10} for i in range(2)]}
+                                  "chunks": [aliases[0]], "minutes": 20} for i in range(2)]}
         elif purpose == "research":
             value = {"sources": [{"url": "https://docs.python.org/3/library/csv.html",
                                   "title": "Python CSV 教程", "why": "入门练习"}]}
         elif purpose == "source_scoring":
             value = {"scores": [{"id": item, "relevance": 5, "credibility": 5, "note": "合成评分"}
                                 for item in re.findall(r"\[(r\d+)\]", prompt)]}
+        elif purpose == "plan_intent":  # the obvious intent for the phase (the real one is judged live)
+            payload = json.loads(prompt.split("\n", 1)[1])
+            said = payload["text"]
+            value = {"intents": [{"questions": {"kind": "answer"},
+                                  "sources": {"kind": "find_sources", "instruction": said},
+                                  "outline": {"kind": "revise_outline", "instruction": said},
+                                  "ready": {"kind": "question", "answer": "合成回答"}}[payload["ctx"]["phase"]]], "reply": ""}
         else:
             raise AssertionError(purpose)
         result = SimpleNamespace(text=json.dumps(value, ensure_ascii=False), search_hits=(), citations=())

@@ -22,13 +22,13 @@
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-03（client） | D:\MentorFlow-office\client | 7-MF03 进行中 |
+| MF-03（client） | D:\MentorFlow-office\client | 7-MF03 已合入（0db14f2），空闲 |
 | MF-07（server） | D:\MentorFlow-office\server | 空闲 |
-| MF-02（runtime） | D:\MentorFlow-office\runtime | 7-MF02 进行中 |
-| MF-04（platform） | D:\MentorFlow-office\platform | 7-MF04 进行中 |
-| MF-01（library） | D:\MentorFlow-office\library | 7-MF01 进行中 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 7-MF06 进行中 |
-| MF-05（tools） | D:\MentorFlow-office\tools | 7-MF05 进行中 |
+| MF-02（runtime） | D:\MentorFlow-office\runtime | 7-MF02 已合入（0db14f2），空闲 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 7-MF04 已合入（0db14f2），空闲 |
+| MF-01（library） | D:\MentorFlow-office\library | 7-MF01 已合入（0db14f2），空闲 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 7-MF06 已合入（0db14f2），空闲 |
+| MF-05（tools） | D:\MentorFlow-office\tools | 7-MF05 已合入（0db14f2），空闲 |
 
 工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
 
@@ -62,12 +62,12 @@
 | 6-MF05 | MF-05 tools | 新建计划“意图判断”组件：提示、输出格式、严格校验与离线测试（架构师负责接入流程与界面） | ARCH-04、ARCH-06、PLAN-07 | ce512bf | 已合入（8c4c0cd） |
 | 6-MF06 | MF-06 classroom | 新界面 Live2D 老师组件（椿）：舞台、待机、嘴型、点头/摇头接口、资源加载 | TEACH-05、VOICE-01、UI-00 | 69836b6 | 已合入（152598c） |
 | 6-MF01 | MF-01 library | 课堂判定 agent 与出题 agent 组件：提示、格式、严格校验、离线测试与小额真实抽查 | TEACH-02、TEACH-04、TEACH-06、ARCH-07、CHK-01 | 69836b6 | 已合入（1862169） |
-| 7-MF01 | MF-01 library | 课堂老师 agent 与学习档案 agent 组件 + 偏好效果对照实验 | TEACH-01、TEACH-06、ARCH-07、ARCH-08 | 43d82b1 | 已派发 |
-| 7-MF02 | MF-02 runtime | 网关出错也记账；输出截断明确报错（BUG-14） | SYS-01、SYS-03 | 43d82b1 | 已派发 |
-| 7-MF03 | MF-03 client | 账本缺陷修复（BUG-16）+ 今日状态数据接口 + 时间加速复测 | PLAN-05、TEACH-05、CHK-01 | 43d82b1 | 已派发 |
-| 7-MF04 | MF-04 platform | 计划提示改进（水平/补充说明起作用）+ 大模块分批生成工具 + 对照复测（BUG-15） | PLAN-01、PLAN-02、PLAN-04 | 43d82b1 | 已派发 |
-| 7-MF05 | MF-05 tools | 新界面语音输入组件（录音、实时出字、模型下载征得同意） | VOICE-01、UI-00 | 43d82b1 | 已派发 |
-| 7-MF06 | MF-06 classroom | 新界面老师朗读组件（队列、停止、嘴型驱动 Live2D、模型下载征得同意） | VOICE-01、TEACH-05 | 43d82b1 | 已派发 |
+| 7-MF01 | MF-01 library | 课堂老师 agent 与学习档案 agent 组件 + 偏好效果对照实验 | TEACH-01、TEACH-06、ARCH-07、ARCH-08 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
+| 7-MF02 | MF-02 runtime | 网关出错也记账；输出截断明确报错（BUG-14） | SYS-01、SYS-03 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
+| 7-MF03 | MF-03 client | 账本缺陷修复（BUG-16）+ 今日状态数据接口 + 时间加速复测 | PLAN-05、TEACH-05、CHK-01 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
+| 7-MF04 | MF-04 platform | 计划提示改进（水平/补充说明起作用）+ 大模块分批生成工具 + 对照复测（BUG-15） | PLAN-01、PLAN-02、PLAN-04 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
+| 7-MF05 | MF-05 tools | 新界面语音输入组件（录音、实时出字、模型下载征得同意） | VOICE-01、UI-00 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
+| 7-MF06 | MF-06 classroom | 新界面老师朗读组件（队列、停止、嘴型驱动 Live2D、模型下载征得同意） | VOICE-01、TEACH-05 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 

@@ -268,6 +268,8 @@ def outline_request(goal: str, form: dict, window_note: str, sources, sections, 
     if previous:
         parts.append("【上一版轮廓】\n" + json.dumps(previous, ensure_ascii=False))
         parts.append(f"【学习者的修改意见】{request}\n在上一版基础上按意见修改，没提到的部分尽量保持不变。")
+    elif request:
+        parts.append(f"【学习者对路线的要求】{request}")
     return OUTLINE_SYSTEM, [{"role": "user", "content": "\n\n".join(parts)}]
 
 

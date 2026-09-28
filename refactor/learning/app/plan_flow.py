@@ -14,11 +14,13 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 import logging
+import math
 import re
 import threading
 import uuid
 
-from ..connections.errors import ModelCancelled, ModelError
+from ..connections.errors import MODEL_OUTPUT_TRUNCATED, ModelCancelled, ModelError
+from ..course import plan_intent
 from ..course import planner_agents as agents
 from ..course.ledger import LedgerError, PlanWindow, check_cap, distribute, estimate_check_minutes, full_day_minutes
 from ..course.store import StoreError
@@ -28,7 +30,7 @@ from .bridge import BridgeError, CallContext
 log = logging.getLogger(__name__)
 
 MAX_CARDS_PER_ROUND = 6
-MODULE_CHAR_BUDGET = 60000
+MAX_GENERATE_BATCHES = 15
 CHECK_MINUTES_PER_QUESTION = 1.5
 GENERATE_WORKERS = 4
 TRANSIENT = frozenset({"MODEL_RESPONSE_INVALID", "MODEL_CONNECTION_FAILED", "MODEL_TIMEOUT"})
@@ -40,6 +42,7 @@ def find_links(text):
     return list(dict.fromkeys(u.rstrip(".,;:!?") for u in _URL.findall(text or "")))[:10]
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 LEVELS = tuple(agents.LEVELS)
+LEVEL_NAMES = dict(agents.LEVELS)
 
 
 def _new_id():
@@ -429,7 +432,8 @@ class PlanFlow:
                            "excerpt": (s.summary + "\n" + " ".join(c.text for c in s.document.chunks[:3]))[:1500]}
                           for i, s in enumerate(batch)]
             scores, _ = self._ask("source_scoring", agents.scoring_request(draft["goal"], draft["form"], candidates),
-                                  lambda text: agents.parse_scoring(text, [c["id"] for c in candidates]), ctx, plan_id=plan_id)
+                                  lambda text: agents.parse_scoring(text, [c["id"] for c in candidates]), ctx, plan_id=plan_id,
+                                  max_tokens=8192)  # 4096 was cut off when the model reasons first (BUG-13)
             shown = {c.get("sha") for c in draft["sources"]} | {c["sha"] for c in cards}
             for candidate, source in zip(candidates, batch):
                 score = scores.get(candidate["id"])
@@ -457,10 +461,12 @@ class PlanFlow:
         self.save(draft)
         return len(cards)
 
-    def more_sources(self, draft, ctx, instruction=""):
+    def more_sources(self, draft, ctx, instruction="", *, echo=True):
         if draft["phase"] not in ("sources", "outline"):
             raise BridgeError("PHASE_INVALID", "现在还不能找资料。")
         draft["phase"] = "sources"
+        if instruction and not echo:  # chat() already showed the message and opened its links
+            return self._research(draft, ctx, instruction)
         if instruction:
             draft["messages"].append(_msg("user", "user_text", instruction))
             self.save(draft)
@@ -505,6 +511,7 @@ class PlanFlow:
                 if card["url"] not in draft["research"]["rejected"]:
                     draft["research"]["rejected"].append(card["url"])
         card["status"] = "adopted" if adopt else "rejected"
+        draft.pop("scope", None)  # section ids are numbered over the adopted sources
         self.save(draft)
 
     def add_file(self, plan_id, path):
@@ -550,16 +557,26 @@ class PlanFlow:
                           draft["form"]["daily_cap"], tuple(draft["form"]["weekday_weights"]),
                           {date.fromisoformat(s["date"]): s["weight"] for s in draft["form"]["special_days"]})
 
-    def make_outline(self, draft, ctx, request=""):
+    def _sections(self, draft):
+        """Sections of the adopted sources, limited to the chapters the learner chose."""
+        sources, chunks = self._adopted(draft)
+        sections = agents.build_sections(sources, chunks)
+        scope = draft.get("scope") or {}
+        if scope.get("include"):
+            sections = [s for s in sections if s.id in scope["include"]]
+        return sources, [s for s in sections if s.id not in scope.get("exclude", [])]
+
+    def make_outline(self, draft, ctx, request="", *, echo=True):
         if draft["phase"] not in ("sources", "outline"):
             raise BridgeError("PHASE_INVALID", "现在还不能生成路线轮廓。")
-        sources, chunks = self._adopted(draft)
+        sources, sections = self._sections(draft)
         if not sources:
             raise BridgeError("NO_SOURCES", "请先采用至少一份资料，路线要从资料里来。")
-        sections = agents.build_sections(sources, chunks)
+        if not sections:
+            raise BridgeError("NO_SECTIONS", "按现在的范围一章都不剩了，请重新说一下要学哪些章节。")
         window = self._window(draft)
         previous = draft["outline"]["agent"] if (request and draft.get("outline")) else None
-        if request:
+        if request and echo:
             draft["messages"].append(_msg("user", "user_text", request))
         self.status(draft["plan_id"], "正在设计路线轮廓…" if not previous else "正在按你的意见修改路线…")
         outline, _ = self._ask("outline", agents.outline_request(draft["goal"], draft["form"], window_note(window), sources,
@@ -591,9 +608,10 @@ class PlanFlow:
         modules = agents.outline_modules(draft["outline"])
         base = estimate_tokens(agents.GENERATE_SYSTEM + agents.form_brief(draft["form"])) + 60 * len(modules)
         input_tokens = 0
-        for module in modules:
-            material = "".join(c["text"] for c in self._span_chunks(module, chunks))[:MODULE_CHAR_BUDGET]
-            input_tokens += base + estimate_tokens(material)
+        for module in modules:  # every character is read, in batches that each repeat the fixed part
+            material = "".join(c["text"] for c in self._span_chunks(module, chunks))
+            batches = max(1, math.ceil(len(material) / agents.DEFAULT_BATCH_CHARS))
+            input_tokens += base * batches + estimate_tokens(material)
         low_in, high_in = int(input_tokens * 0.85), int(input_tokens * 1.4)
         out_low, out_high = 900 * len(modules), 3500 * len(modules)
         config = self.services.gateway.get_configuration() or {}
@@ -658,10 +676,7 @@ class PlanFlow:
                 draft["generation"][module["id"]] = "running"
                 self.save(draft)
             chunks = self._module_chunks(self._span_chunks(module, all_chunks), titles)
-            request = agents.generate_request(draft["form"], draft["goal"], draft["outline"], module, chunks)
-            aliases = request[2]
-            points, _ = self._ask("generate", request[:2], lambda text: agents.parse_points(text, aliases), ctx,
-                                  plan_id=plan_id, max_tokens=8192)
+            points = self._generate_module(draft, module, chunks, ctx)
             payload = [dict(p, id=f"{module['id']}-{index:02d}") for index, p in enumerate(points, 1)]
             store.save_generated_module(plan_id, module["id"], payload, today=self.study_day(),
                                         check_minutes=estimate_check_minutes(len(payload), minutes_per_question=CHECK_MINUTES_PER_QUESTION))
@@ -698,6 +713,52 @@ class PlanFlow:
             draft["messages"].append(_msg("ai", "ready", "全部生成好了。开始之前还可以删掉不想学的模块、调整顺序；确认后点“开始计划”。"))
         self.save(draft)
 
+    def _generate_module(self, draft, module, chunks, ctx):
+        """Read all of a module's material: big modules go in bounded batches, merged afterwards."""
+        limit = max(1, min(MAX_GENERATE_BATCHES, module["minutes"][0] // 2))
+        size = agents.DEFAULT_BATCH_CHARS
+        batches = agents.split_module_chunks(chunks, max_chars=size)
+        while len(batches) > limit:  # very long material: fewer, larger batches rather than dropping text
+            size = int(size * 1.4) + 1
+            batches = agents.split_module_chunks(chunks, max_chars=size)
+        if len(batches) == 1:
+            parts = self._generate_batch(draft, module, chunks, tuple(module["minutes"]), None, ctx, max_points=30)
+        else:
+            per = max(1, min(8, 30 // len(batches)))
+            ranges = agents.batch_minute_ranges(batches, module["minutes"])
+            parts = [part for index, (batch, minutes) in enumerate(zip(batches, ranges), 1)
+                     for part in self._generate_batch(draft, module, batch, minutes, (index, len(batches)), ctx, max_points=per)]
+        if len(parts) == 1:
+            return parts[0]
+        points = agents.merge_point_batches(parts, chunks)
+        try:
+            agents.validate_point_minutes(points, module["minutes"])
+        except agents.AgentFormatError as exc:  # merging near-duplicates can lower the total; keep the points
+            log.info("module %s minutes after merging: %s", module["id"], exc)
+        return points
+
+    def _generate_batch(self, draft, module, batch, minutes, position, ctx, *, max_points, split=True):
+        """Returns a list of point lists; an answer cut off at the output limit is retried as two halves."""
+        index, count = position or (None, None)
+        request = agents.generate_request(draft["form"], draft["goal"], draft["outline"], module, batch,
+                                          minutes_range=minutes, batch_index=index, batch_count=count, max_points=max_points)
+        aliases = request[2]
+        parse = lambda text: agents.parse_points(text, aliases, minutes_range=minutes, max_points=max_points,  # noqa: E731
+                                                 min_points=1 if position else min(2, max_points))
+        try:
+            return [self._ask("generate", request[:2], parse, ctx, plan_id=draft["plan_id"], max_tokens=8192)[0]]
+        except ModelError as exc:
+            if exc.code != MODEL_OUTPUT_TRUNCATED or not split or minutes[0] < 4:
+                raise
+            log.info("module %s batch %s hit the output limit; retrying in two halves", module["id"], index)
+        halves = agents.split_module_chunks(batch, max_chars=sum(len(c["text"]) for c in batch) // 2 + 1)
+        if len(halves) != 2:
+            raise ModelError(MODEL_OUTPUT_TRUNCATED, "模型输出达到上限，这个模块的资料拆小后仍然不行。")
+        ranges = agents.batch_minute_ranges(halves, minutes)
+        return [part for i, (half, r) in enumerate(zip(halves, ranges), 1)
+                for part in self._generate_batch(draft, module, half, r, (i, 2), ctx,
+                                                 max_points=max(1, max_points // 2), split=False)]
+
     @staticmethod
     def _span_chunks(module, chunks):
         picked, seen = [], set()
@@ -711,16 +772,193 @@ class PlanFlow:
 
     @staticmethod
     def _module_chunks(chunks, titles):
-        total = sum(len(c["text"]) for c in chunks)
-        if total > MODULE_CHAR_BUDGET:  # keep an even spread of the section, in order
-            keep, budget, step = [], MODULE_CHAR_BUDGET, total / MODULE_CHAR_BUDGET
-            index = 0.0
-            while int(index) < len(chunks) and budget > 0:
-                chunk = chunks[int(index)]
-                keep.append(chunk); budget -= len(chunk["text"]); index += step
-            chunks = keep
         return [{"id": c["id"], "text": c["text"], "section": c.get("section") or [],
-                 "source_title": titles.get(c["source_id"], "资料")} for c in chunks]
+                 "source_title": titles.get(c["source_id"], "资料")} for c in chunks if c["text"].strip()]
+
+    # ----------------------------------------------------------- chat box (ARCH-06 intents)
+    def _intent_context(self, draft):
+        phase = draft["phase"]
+        form = {k: v for k, v in (draft["form"] or {}).items() if k != "only_mine"}
+        recent = [{"role": m["role"], "text": m["text"][:1500]} for m in draft["messages"]
+                  if m["role"] in ("ai", "user") and m.get("text")][-6:]
+        cards = [{"n": n, "title": c["title"], "site": c.get("site") or "", "summary": (c.get("summary") or "")[:200],
+                  "status": {"new": "待定", "adopted": "已采用", "rejected": "不要"}[c["status"]]}
+                 for n, c in enumerate(draft["sources"], 1)]
+        sections, modules, facts = [], [], {}
+        if phase in ("sources", "outline"):
+            sources, chunks = self._adopted(draft)
+            sections = [{"id": s.id, "source": s.source_title, "title": s.title, "chars": s.chars}
+                        for s in agents.build_sections(sources, chunks)]
+            if draft.get("scope"):
+                facts["scope"] = draft["scope"]
+        if draft.get("outline"):
+            facts["ranges"] = draft["outline"]["ranges"]
+            facts["outline"] = [{"stage": s["title"], "modules": [m["title"] for m in s["modules"]]}
+                                for s in draft["outline"]["stages"]]
+        if draft.get("estimate"):
+            facts["estimate"] = draft["estimate"]
+        if phase == "ready":
+            store, plan_id = self.services.store, draft["plan_id"]
+            rows = store.records("modules", plan_id)
+            number = {m["id"]: n for n, m in enumerate(rows, 1)}
+            modules = [{"n": number[m["id"]], "title": m["title"], "summary": m.get("summary", ""),
+                        "prerequisites": [number[p] for p in m["prerequisites"] if p in number]} for m in rows]
+            facts["generated"] = {"modules": len(rows), "points": len(store.records("points", plan_id)),
+                                  "total_minutes": store.get_plan(plan_id).get("total_minutes")}
+        return {"phase": phase, "today": self.study_day().isoformat(), "form": form, "recent": recent,
+                "cards": cards, "sections": sections, "modules": modules, "facts": facts}
+
+    def chat(self, draft, ctx, message):
+        """The chat box: the intent agent says what the message asks for; the host does it (BUG-13)."""
+        phase = draft["phase"]
+        if phase not in ("questions", "sources", "outline", "ready"):
+            raise BridgeError("PHASE_INVALID", "请先填写上面的表单。" if phase == "form" else "正在生成，请稍等。")
+        draft["messages"].append(_msg("user", "user_text", message))
+        self.save(draft)
+        text = message
+        links = find_links(message) if phase in ("sources", "outline") else []
+        if links:  # pasted addresses are opened directly; no model is needed to understand them
+            draft["phase"] = "sources"
+            self._import_links(draft, ctx, links)
+            text = _URL.sub("", message).strip(" ，,。;；\n")
+            if len(text) < 6:
+                return
+        self.status(draft["plan_id"], "正在理解你的意思…")
+        context = self._intent_context(draft)
+        intents, _ = self._ask("plan_intent", plan_intent.intent_request(context, text),
+                               lambda answer: plan_intent.parse_intents(answer, context), ctx, plan_id=draft["plan_id"])
+        for intent in intents:
+            try:
+                self._carry_out(draft, ctx, intent, context)
+            except BridgeError as exc:  # stop at the first step that cannot be done; say why
+                self._say(draft, exc.message, "error")
+                return
+
+    def _say(self, draft, text, kind="text"):
+        draft["messages"].append(_msg("ai", kind, text))
+        self.save(draft)
+
+    def _carry_out(self, draft, ctx, intent, context):
+        kind, params, phase = intent.kind, intent.params, draft["phase"]
+        if kind == "answer":
+            return self._check_sufficiency(draft, ctx)
+        if kind in ("question", "ask_user", "refuse"):
+            return self._say(draft, params[{"question": "answer", "ask_user": "question", "refuse": "reason"}[kind]])
+        if kind == "chat":
+            return self._say(draft, "我们先把学习计划定下来吧，有需要随时告诉我。")
+        if kind == "update_form":
+            return self._update_form(draft, ctx, params)
+        if kind == "find_sources":
+            if phase not in ("sources", "outline"):
+                return self._say(draft, "等需求确认好、开始找资料时再说资料的要求。" if phase == "questions"
+                                 else "路线已经生成，不能再换资料了。")
+            return self.more_sources(draft, ctx, params["instruction"], echo=False)
+        if kind == "decide_sources":
+            titles = {True: [], False: []}
+            for adopt, key in ((True, "adopt"), (False, "reject")):
+                for n in params[key]:
+                    card = draft["sources"][n - 1]
+                    self.decide(draft, card["card_id"], adopt)
+                    titles[adopt].append(f"《{card['title']}》")
+            parts = ([f"已采用{'、'.join(titles[True])}"] if titles[True] else []) + \
+                    ([f"已不要{'、'.join(titles[False])}"] if titles[False] else [])
+            return self._say(draft, "；".join(parts) + "。")
+        if kind == "limit_scope":
+            if phase not in ("sources", "outline"):
+                return self._say(draft, "现在已经不能改学习范围了。")
+            names = {s["id"]: f"{s['source']} · {s['title']}" for s in context["sections"]}
+            draft["scope"] = {"include": params["include"], "exclude": params["exclude"]}
+            picked = params["include"] or params["exclude"]
+            summary = ("只学" if params["include"] else "不学") + "：" + "、".join(names[i] for i in picked[:6]) + \
+                      (f" 等 {len(picked)} 部分" if len(picked) > 6 else "")
+            if phase == "outline":
+                self._say(draft, f"好的，范围改为{summary}。正在按新范围调整路线…")
+                return self.make_outline(draft, ctx, "按学习者要求调整学习范围，" + summary, echo=False)
+            return self._say(draft, f"记下了，生成路线轮廓时{summary}。")
+        if kind == "revise_outline":
+            if phase == "sources":
+                return self.make_outline(draft, ctx, params["instruction"], echo=False)
+            if phase != "outline":
+                return self._say(draft, "路线已经生成，可以直接说要删掉或移动哪个模块。")
+            return self.make_outline(draft, ctx, params["instruction"], echo=False)
+        if kind == "edit_modules":
+            return self._edit_modules(draft, params)
+        if kind == "proceed":
+            step = params["step"]
+            if step == "outline":
+                if phase != "sources":
+                    return self._say(draft, "路线轮廓已经有了。" if phase == "outline" else "现在还不到生成路线的时候。")
+                return self.make_outline(draft, ctx, echo=False)
+            if step in ("estimate", "generate"):
+                if phase != "outline":
+                    return self._say(draft, "要先有路线轮廓，才能预估费用和正式生成。")
+                if step == "estimate" or not draft.get("estimate"):
+                    return self.estimate(draft)
+                return self._say(draft, "正式生成会产生费用，请确认上面的预估后点“开始生成”。")
+            if phase != "ready":
+                return self._say(draft, "计划还没生成完，暂时不能开始。")
+            return self._say(draft, "开始后就不能再删模块、调顺序了。确认没问题就点下面的“开始计划”。")
+        raise BridgeError("AGENT_FORMAT", "没能理解这句话，请换个说法。")
+
+    _FORM_LABELS = {"goal": "学习目标", "final_goal": "最终目标", "level": "当前水平", "level_note": "水平说明",
+                    "start": "开始日期", "end": "结束日期", "daily_cap": "每天最多学习时长",
+                    "weekday_weights": "每周学习安排", "special_days": "特殊日期", "notes_append": "补充说明"}
+
+    def _update_form(self, draft, ctx, params):
+        phase, old = draft["phase"], draft["form"]
+        raw = dict(old)
+        for key, value in params.items():
+            if key == "notes_append":
+                raw["notes"] = "\n".join(part for part in (old.get("notes", ""), value.strip()) if part)
+            else:
+                raw[key] = value
+        form, window = validate_form(raw, self.study_day())
+        about = ("goal", "final_goal", "level", "level_note", "notes")
+        if phase == "ready" and any(form[k] != old[k] for k in about):
+            return self._say(draft, "路线已经按原来的目标生成好了，现在只能改日期和每天的时间。想换目标需要重新新建计划。")
+        intake = {k: form[k] for k in ("goal", "final_goal", "level", "notes")} if phase != "ready" else {}
+        self.services.store.save_intake(draft["plan_id"], window=window, today=self.study_day(),
+                                        reason="新建计划时在对话中修改", **intake)
+        draft["form"] = dict(form, only_mine=old.get("only_mine", False))
+        if draft.get("outline"):
+            modules = agents.outline_modules(draft["outline"])
+            draft["outline"]["ranges"] = minute_ranges(window, sum(m["minutes"][0] for m in modules),
+                                                       sum(m["minutes"][1] for m in modules))
+        shown = []
+        for key in params:
+            value = {"level": LEVEL_NAMES.get(form["level"]), "daily_cap": f"{form['daily_cap']} 分钟",
+                     "start": form["start"], "end": form["end"]}.get(key)
+            shown.append(f"{self._FORM_LABELS[key]}改为 {value}" if value else f"更新了{self._FORM_LABELS[key]}")
+        self._say(draft, "已修改：" + "，".join(shown) + "。")
+        if phase == "questions" and any(form[k] != old[k] for k in about):
+            self._check_sufficiency(draft, ctx)
+
+    def _edit_modules(self, draft, params):
+        if draft["phase"] != "ready":
+            return self._say(draft, "模块要等正式生成完才能删改。")
+        store, plan_id, today = self.services.store, draft["plan_id"], self.study_day()
+        rows = store.records("modules", plan_id)
+        by_n = dict(enumerate(rows, 1))
+        deleted = [by_n[n]["id"] for n in params["delete"]]
+        if len(deleted) >= len(rows):
+            return self._say(draft, "至少要保留一个模块。")
+        order = [m["id"] for m in rows if m["id"] not in deleted]
+        for move in params["move"]:  # positions count in the list after deletion, applied in turn
+            key = by_n[move["n"]]["id"]
+            order.remove(key)
+            order.insert(move["to"] - 1, key)
+        position = {key: i for i, key in enumerate(order)}
+        prerequisites = {m["id"]: m["prerequisites"] for m in rows}
+        if any(position[p] > position[m] for m in order for p in prerequisites[m] if p in position):
+            return self._say(draft, "这样调整会让模块排在它依赖的内容前面，所以没有改动。")
+        for key in deleted:
+            store.delete_module(plan_id, key, today=today)
+        if params["move"]:
+            store.reorder_modules(plan_id, order, today=today)
+        titles = {m["id"]: f"《{m['title']}》" for m in rows}
+        parts = ([f"删掉{'、'.join(titles[k] for k in deleted)}"] if deleted else []) + \
+                ([f"调整了{'、'.join(titles[by_n[m['n']]['id']] for m in params['move'])}的位置"] if params["move"] else [])
+        self._say(draft, "已" + "，".join(parts) + "。")
 
     # ----------------------------------------------------------- 5 review + start
     def detail(self, plan_id):
@@ -833,26 +1071,13 @@ def register(bridge, services, window, study_day, *, fetcher=None):
                 raise BridgeError("PLAN_WINDOW", str(exc) or "日期设置无效。") from None
         return run
 
-    def say(draft, ctx, message):
-        phase = draft["phase"]
-        f = flow()
-        if phase == "questions":
-            draft["messages"].append(_msg("user", "user_text", message))
-            f.save(draft)
-            return f._check_sufficiency(draft, ctx)
-        if phase == "sources":
-            return f.more_sources(draft, ctx, message)
-        if phase == "outline":
-            return f.make_outline(draft, ctx, message)
-        raise BridgeError("PHASE_INVALID", "现在不需要在这里输入，请用上面的按钮操作。" if phase != "form" else "请先填写上面的表单。")
-
     handlers = {
         "plan.current": lambda p, c: {"draft": flow().public(flow().current())},
         "plan.get": lambda p, c: {"draft": flow().public(flow().load(plan_id(p)))},
         "plan.drafts": lambda p, c: {"drafts": flow().drafts()},
         "plan.discard": lambda p, c: flow().discard(plan_id(p)),
         "plan.submit": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().submit_form(d, x, p.get("form")), c),
-        "plan.say": lambda p, c: flow().run(plan_id(p), lambda d, x: say(d, x, text(p)), c),
+        "plan.say": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().chat(d, x, text(p)), c),
         "plan.more": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().more_sources(d, x), c),
         "plan.decide": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().decide(d, text(p, "card_id", 40), p.get("adopt") is True), c),
         "plan.outline": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().make_outline(d, x), c),
