@@ -616,3 +616,8 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 @media (max-width: 1080px) { .class-page { grid-template-columns: minmax(0, 1fr); } .class-side { display: none; } }
 .class-check-bar { flex: 1; min-width: 120px; height: 8px; border-radius: 999px; background: var(--track); overflow: hidden; }
 .class-check-bar i { display: block; height: 100%; background: var(--gradient); border-radius: 999px; transition: width 0.4s ease; }
+.mastery-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--text-3); }
+.point-list li.mastery-ok .mastery-dot { background: var(--ok); }
+.point-list li.mastery-warn .mastery-dot { background: var(--warn); }
+.point-list li.mastery-bad .mastery-dot { background: var(--danger); }
+.point-list li.mastery-bad b { color: var(--danger); }

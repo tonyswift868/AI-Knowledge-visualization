@@ -218,6 +218,17 @@ def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
     assert all(m["module_id"] is None for m in store.messages(PLAN, None)[-1:])
     act(classroom, "leave")
 
+    # The plan is complete: the detail shows mastery, the report is built and can be saved as Markdown.
+    from refactor.learning.app.plan_flow import PlanFlow, report_markdown
+    flow = PlanFlow(classroom.services, lambda *a: None, lambda: DAY)
+    assert store.get_plan(PLAN)["state"] == "completed"
+    detail = flow.detail(PLAN)
+    assert detail["has_report"] and {p["state"] for s in detail["stages"] for m in s["modules"] for p in m["points"]} == {"green"}
+    data = flow.report(PLAN)
+    assert [m["state"] for m in data["report"]["modules"]] == ["passed", "skipped"]
+    text = report_markdown(data["report"], data["titles"])
+    assert text.startswith("# 学习报告：学会队列") and "队列操作（出错" in text
+
 
 def test_claiming_to_know_gets_one_quick_question(room):
     classroom, agents, store = room
@@ -259,3 +270,19 @@ def test_position_survives_a_restart(room):
     fresh = Classroom(classroom.services, lambda: DAY)
     view = fresh.run(PLAN, lambda *a: None, ctx())
     assert view["points"][0]["current"] and view["step"] == "teach"       # unanswered point is taught again
+
+
+def test_a_started_plan_changes_its_end_date_and_daily_cap(room):
+    from refactor.learning.app.bridge import BridgeError
+    from refactor.learning.app.plan_flow import PlanFlow
+    classroom, agents, store = room
+    flow = PlanFlow(classroom.services, lambda *a: None, lambda: DAY)
+    detail = flow.change_window(PLAN, {"end": (DAY + timedelta(days=6)).isoformat(), "daily_cap": 90,
+                                       "weekday_weights": [1, 1, 1, 1, 1, 0.5, 0]})
+    window = store.get_plan(PLAN)["window"]
+    assert window["end"] == (DAY + timedelta(days=6)).isoformat() and window["daily_cap_minutes"] == 90
+    assert detail["plan"]["window"]["end"] == window["end"]
+    with pytest.raises(BridgeError):
+        flow.change_window(PLAN, {"end": (DAY - timedelta(days=1)).isoformat()})
+    with pytest.raises(BridgeError):
+        flow.change_window(PLAN, {"weekday_weights": [0] * 7})

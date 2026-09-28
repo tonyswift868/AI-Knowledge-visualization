@@ -973,14 +973,24 @@ class PlanFlow:
         stages = store.records("stages", plan_id)
         modules = store.records("modules", plan_id)
         points = store.records("points", plan_id)
+        started = plan.get("state") in ("active", "checking", "completed")
+        book = store.load_mastery(plan_id) if started else None
+        mastery = {}
+        if book is not None:  # MAP-01: what the learner has shown so far, point by point
+            for point in points:
+                state = book.point(point["id"])
+                mastery[point["id"]] = {"state": state.state, "level": state.level,
+                                        "errors": state.casual_errors + state.module_errors}
         by_module: dict[str, list] = {}
         for point in points:
             by_module.setdefault(point["module_id"], []).append(
-                {"id": point["id"], "title": point.get("title", ""), "summary": point["summary"], "minutes": point["minutes"]})
+                {"id": point["id"], "title": point.get("title", ""), "summary": point["summary"], "minutes": point["minutes"],
+                 **mastery.get(point["id"], {})})
         result = {"plan": {k: plan.get(k) for k in ("id", "goal", "final_goal", "state", "window", "total_minutes", "module_count")},
                   "stages": [{"id": s["id"], "title": s.get("title", ""), "modules": [
                       {"id": m["id"], "title": m["title"], "summary": m.get("summary", ""), "learning_minutes": m["learning_minutes"],
-                       "check_minutes": m["check_minutes"], "points": by_module.get(m["id"], [])}
+                       "check_minutes": m["check_minutes"], "points": by_module.get(m["id"], []),
+                       "state": book.module(m["id"]).state if book else None}
                       for m in modules if m["stage_id"] == s["id"]]} for s in stages],
                   "sources": [{"id": s["id"], "title": s.get("title") or s.get("url") or s.get("filename"), "url": s.get("url"),
                                "kind": s["kind"]} for s in store.records("sources", plan_id) if s.get("adopted")]}
@@ -991,7 +1001,54 @@ class PlanFlow:
             cap = check_cap(window, plan["total_minutes"])
             result["daily"] = {"full_day": cap.full_day_minutes, "cap": cap.cap, "ok": cap.ok,
                                "suggested_end": cap.suggested_end.isoformat() if cap.suggested_end else None}
+        if started and plan.get("window"):
+            status = store.load_ledger(plan_id).status(self.study_day())
+            result["progress"] = {"remaining": status.remaining_minutes, "overdue_days": getattr(status, "overdue_days", 0)}
+        result["has_report"] = plan.get("state") == "completed"
         return result
+
+    def change_window(self, plan_id, raw):
+        """PLAN-08: a started plan may change its end date, daily cap and study days; only unlearnt time moves."""
+        store, today = self.services.store, self.study_day()
+        plan = store.get_plan(plan_id)
+        if plan.get("state") not in ("active", "checking") or not plan.get("window"):
+            raise BridgeError("PHASE_INVALID", "只有进行中的计划可以在这里改日期和时长。")
+        from ..course.store import _window
+        old = _window(plan["window"])
+        end = _day(raw.get("end", old.end.isoformat()), "结束日期")
+        cap = raw.get("daily_cap", old.daily_cap_minutes)
+        weights = raw.get("weekday_weights", list(old.weekday_weights))
+        if end < max(today, old.start):
+            raise BridgeError("FORM_INVALID", "结束日期不能早于今天。")
+        if (end - old.start).days > 3 * 366:
+            raise BridgeError("FORM_INVALID", "计划最长三年。")
+        if type(cap) is not int or not 10 <= cap <= 720:
+            raise BridgeError("FORM_INVALID", "每天最多学多久请填 10–720 分钟。")
+        if (not isinstance(weights, list) or len(weights) != 7
+                or any(w not in (0, 0.5, 1) or type(w) is bool for w in weights)):
+            raise BridgeError("FORM_INVALID", "每周可学的日子格式不对。")
+        special = {day: weight for day, weight in old.date_weights.items() if old.start <= day <= end}
+        window = PlanWindow(old.start, end, cap, tuple(float(w) for w in weights), special)
+        try:
+            if not distribute(window, 1):
+                raise LedgerError("NO_DAYS", "")
+        except LedgerError:
+            raise BridgeError("FORM_INVALID", "这样设置后没有可以学习的日子，请调整。") from None
+        store.save_intake(plan_id, window=window, today=today, reason="在计划详情里修改日期与每天时长")
+        return self.detail(plan_id)
+
+    def report(self, plan_id):
+        """RPT-01: the saved learning report, built once the plan and its final check are complete."""
+        from ..course.report import build_report
+        store = self.services.store
+        try:
+            report = store.load_report(plan_id)
+        except StoreError:
+            report = None
+        if not report:
+            report = build_report(store, plan_id, today=self.study_day())
+        titles = {p["id"]: p.get("title") or p["summary"][:30] for p in store.records("points", plan_id)}
+        return {"report": report, "titles": titles}
 
     def edit_module(self, draft, action, module_id, direction=0):
         if draft["phase"] != "ready":
@@ -1094,6 +1151,8 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.extend": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().extend_end(d, p.get("end")), c),
         "plan.start": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().start(d), c),
         "plan.detail": lambda p, c: flow().detail(plan_id(p)),
+        "plan.window": lambda p, c: flow().change_window(plan_id(p), p),
+        "plan.report": lambda p, c: flow().report(plan_id(p)),
     }
     for name, fn in handlers.items():
         bridge.register(name, wrap(fn))
@@ -1124,3 +1183,43 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         return {"files": min(len(paths), 10)}
 
     bridge.register("plan.upload", upload, ui=True)
+
+    def export_report(params, ctx):
+        """Save the report as a Markdown file the learner keeps (RPT-01); no sharing features."""
+        from pathlib import Path
+        from PySide6.QtWidgets import QFileDialog
+        pid = plan_id(params)
+        data = flow().report(pid)
+        name = (data["report"]["plan"]["goal"] or "学习报告").strip()[:40]
+        path, _ = QFileDialog.getSaveFileName(window, "保存学习报告", str(Path.home() / f"{name}-学习报告.md"), "Markdown (*.md)")
+        if not path:
+            return {"saved": False}
+        Path(path).write_text(report_markdown(data["report"], data["titles"]), encoding="utf-8")
+        return {"saved": True, "path": path}
+
+    bridge.register("plan.report_export", wrap(export_report), ui=True)
+
+
+def report_markdown(report, titles):
+    plan = report["plan"]
+    lines = [f"# 学习报告：{plan['goal']}", "", f"最终目标：{plan['final_goal']}", "",
+             f"- 计划日期：{plan['start_date']} → {plan['end_date']}",
+             f"- 实际开始：{plan.get('actual_start_date') or '—'}；完成：{plan.get('actual_completion_date') or '—'}",
+             f"- 学习时长：{plan['credited_minutes']} 分钟（计划 {plan['planned_minutes']} 分钟）",
+             f"- 调整过计划 {plan['replan_count']} 次", ""]
+    if plan.get("early_days"):
+        lines.append(f"比截止日提前 {plan['early_days']} 天完成。")
+    if plan.get("overdue_days"):
+        lines.append(f"比截止日晚了 {plan['overdue_days']} 天完成。")
+    lines += ["", "## 模块", ""]
+    lines += [f"- {m['title']}：{ {'passed': '通过', 'skipped': '直接考通过', 'failed': '未通过'}.get(m['state'], m['state']) }"
+              for m in report["modules"]]
+    lines += ["", "## 最需要注意的知识点", ""]
+    lines += [f"- {titles.get(w['point_id'], w['point_id'])}（出错 {w['score']} 次）" for w in report["weakest_points"] if w["score"]] \
+        or ["- 没有明显的薄弱点。"]
+    profile = report.get("teacher_profile") or {}
+    if profile.get("check"):
+        lines += ["", "## 问题归纳", "", profile["check"]]
+    if profile.get("text"):
+        lines += ["", "## 老师的记录", "", profile["text"]]
+    return "\n".join(lines) + "\n"

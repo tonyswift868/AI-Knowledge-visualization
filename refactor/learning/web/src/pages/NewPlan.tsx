@@ -27,7 +27,8 @@ export type Draft = {
 }
 type Detail = {
   plan: { id: string; goal: string; state: string; window: { start: string; end: string } | null; total_minutes: number }
-  stages: { id: string; title: string; modules: { id: string; title: string; summary: string; learning_minutes: number; check_minutes: number; points: { id: string; title: string; summary: string; minutes: number }[] }[] }[]
+  stages: { id: string; title: string; modules: { id: string; title: string; summary: string; learning_minutes: number; check_minutes: number; state?: string | null
+    points: { id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number }[] }[] }[]
   sources: { id: string; title: string; url: string | null; kind: string }[]
   daily?: { full_day: number; cap: number; ok: boolean; suggested_end: string | null }
 }
@@ -426,6 +427,9 @@ function ProgressCard({ draft, text, busy, onRetry }: { draft: Draft; text: stri
   )
 }
 
+const MASTERY: Record<string, [string, string]> = { green: ["已掌握", "ok"], weak: ["有瑕疵", "warn"], red: ["没过", "bad"], untested: ["未检测", "none"] }
+const MODULE_STATE: Record<string, [string, string]> = { passed: ["已通过", "ok"], skipped: ["直接考通过", "ok"], failed: ["有点没过", "warn"] }
+
 export function PlanTree({ detail, editable, busy, onDelete, onMove }:
   { detail: Detail; editable?: boolean; busy?: boolean; onDelete?: (id: string) => void; onMove?: (id: string, d: number) => void }) {
   const [open, setOpen] = React.useState<string | null>(null)
@@ -446,6 +450,7 @@ export function PlanTree({ detail, editable, busy, onDelete, onMove }:
                       <b><em>{n}</em>{m.title}</b>
                     </button>
                     <div className="row" style={{ gap: 6 }}>
+                      {m.state && MODULE_STATE[m.state] && <span className={`pill ${MODULE_STATE[m.state][1]}`}>{MODULE_STATE[m.state][0]}</span>}
                       <span className="pill muted">{m.points.length} 个点 · {m.learning_minutes + m.check_minutes} 分钟</span>
                       {editable && <>
                         <button className="icon-btn sm" disabled={busy} title="上移" onClick={() => onMove?.(m.id, -1)}><ArrowUp /></button>
@@ -458,7 +463,9 @@ export function PlanTree({ detail, editable, busy, onDelete, onMove }:
                   <p>{m.summary}</p>
                   {open === m.id && (
                     <ol className="point-list fade-in">
-                      {m.points.map((p) => <li key={p.id}><b>{p.title}</b><span>{p.summary}</span><em>{p.minutes} 分钟</em></li>)}
+                      {m.points.map((p) => <li key={p.id} className={p.state ? `mastery-${MASTERY[p.state]?.[1] ?? "none"}` : ""}>
+                        <b>{p.state && <i className="mastery-dot" title={MASTERY[p.state]?.[0]} />}{p.title}</b><span>{p.summary}</span>
+                        <em>{p.minutes} 分钟{p.state && MASTERY[p.state] ? ` · ${MASTERY[p.state][0]}` : ""}{p.errors ? ` · 错过 ${p.errors} 次` : ""}</em></li>)}
                     </ol>
                   )}
                 </div>
