@@ -110,6 +110,7 @@ class ReminderService(QObject):
         self._disposed = False
         self._candidate_plans = []
         self._candidate_day = None
+        self._entered: set = set()  # (plan_id, study day) whose classroom was entered while the app ran
         self._notifier = notifier or _SystemNotifier(self, window)
         if settings is None:
             settings = AppSettings(account_id, self.data_root).load()
@@ -161,8 +162,11 @@ class ReminderService(QObject):
                 except Exception:  # noqa: BLE001 - one malformed plan must not suppress other plans
                     log.warning("could not read today's status for plan %s", plan.get("id"), exc_info=True)
                     continue
-                if (status.get("today_target", 0) > 0 and status.get("today_confirmed", 0) == 0
-                        and status.get("today_tentative", 0) == 0
+                # User decisions (SYS-04, 2026-09-28): an overdue plan is reminded even with no new target
+                # today (a rest day is not); entering the classroom counts as having started today.
+                due = status.get("today_target", 0) > 0 or (status.get("overdue_days", 0) > 0 and not status.get("completed"))
+                if (due and status.get("today_confirmed", 0) == 0 and status.get("today_tentative", 0) == 0
+                        and (plan["id"], self.clock.current_study_day) not in self._entered
                         and not store.has_study_activity(plan["id"], day=self.clock.current_study_day,
                                                          refresh=refresh, tz=local.tzinfo)):
                     label = (plan.get("goal") or plan.get("final_goal") or "未命名计划").strip()
@@ -241,7 +245,9 @@ class ReminderService(QObject):
 
     apply_settings = settings_changed
 
-    def class_started(self) -> None:
+    def class_started(self, plan_id: str | None = None) -> None:
+        if plan_id is not None and not self._disposed:
+            self._entered.add((plan_id, self.clock.current_study_day))
         if not self._disposed:
             if QThread.currentThread() != self.thread():
                 self._class_requested.emit(True)

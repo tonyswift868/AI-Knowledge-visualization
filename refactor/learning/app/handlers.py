@@ -216,8 +216,8 @@ def register(bridge, window):
     plan_flow.register(bridge, services, window, _local_study_day, fetcher=getattr(window, "research_fetcher", None))
 
     from . import classroom
-    def presence(active):
+    def presence(active, plan_id=None):
         reminder = getattr(window, "reminder", None)  # no reminder is due while in class (SYS-04)
         if reminder is not None:
-            reminder.class_started() if active else reminder.class_ended()
+            reminder.class_started(plan_id) if active else reminder.class_ended()
     classroom.register(bridge, services, _local_study_day, presence=presence)

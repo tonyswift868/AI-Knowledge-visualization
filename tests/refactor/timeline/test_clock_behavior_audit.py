@@ -491,9 +491,8 @@ def test_audit_multi_plan_reminder_boundary_policy(env, qt_app, audit, case):
         scene = "甲休息日目标0、乙有任务，只提醒乙"
     elif case == "overdue":
         clock_at = "2026-10-08T19:59:00+08:00"
-        expected = [False, False]
-        scene = "逾期未学完但目标0，目前两计划都不提醒；是否改为提醒需产品决定"
-        finding = "待产品决定"
+        expected = [True, True]
+        scene = "逾期未学完、今天没有新安排：仍提醒（用户 2026-09-28 决定）"
     elif case == "checking":
         clock_at = "2026-10-08T19:59:00+08:00"
         for module_id, points, seq in [("m0", ("p0", "p1"), 1), ("m1", ("p2",), 3)]:
@@ -502,21 +501,20 @@ def test_audit_multi_plan_reminder_boundary_policy(env, qt_app, audit, case):
             env.store.append_attempt_closed(PLAN, AttemptClosed(f"c{seq}", seq+1, module_id, f"a{seq}", "module_test"))
         env.store.start_checking(PLAN)
         credit(env, 180)
-        expected = [False, False]
-        scene = "时长已满、最终检验未完，逾期仍为1但不提醒（产品决定）"
-        finding = "待产品决定"
+        expected = [True, True]
+        scene = "时长已满、最终检验未完、已逾期：提醒（用户 2026-09-28 决定）"
     elif case == "before-start":
         clock_at = "2026-10-04T19:59:00+08:00"
         expected = [False, False]
         scene = "开始日前目标0，不提前提醒"
     else:
-        act(env, "enter")
-        act(env, "leave")
-        expected = [True, True]
-        scene = "甲只进入退出未答题，仍被视为未开始；是否算开始需产品决定"
-        finding = "待产品决定"
+        expected = [False, True]
+        scene = "甲只进入课堂未答题：算已开始，只提醒乙（用户 2026-09-28 决定）"
     service, notices = make_reminder(env, at=clock_at)
     try:
+        if case == "enter-only":  # what the bridge does when the classroom page opens and closes
+            service.class_started(PLAN)
+            service.class_ended()
         if case in ("overdue", "checking"):
             check_status(audit, scene + "：首页逾期", dict(overdue_days=1, today_target=0, completed=False), home(env), rule="CHK-01")
         elif case in ("partial", "ahead"):

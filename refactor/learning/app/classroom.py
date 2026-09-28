@@ -844,7 +844,7 @@ def _link_citations(text, mapping):
     return "".join(out)
 
 
-def register(bridge, services, study_day, *, presence=lambda active: None):
+def register(bridge, services, study_day, *, presence=lambda active, plan_id=None: None):
     rooms: dict[int, Classroom] = {}
 
     def room():
@@ -881,7 +881,7 @@ def register(bridge, services, study_day, *, presence=lambda active: None):
 
     def entered(params, ctx):
         view = room().run(params.get("plan_id"), room().enter, ctx)
-        presence(True)
+        presence(True, params.get("plan_id"))
         return view
 
     def left(params, ctx):
