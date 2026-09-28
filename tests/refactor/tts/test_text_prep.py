@@ -1,5 +1,5 @@
 import pytest
-from refactor.learning.voice.tts.text_prep import prepare_text, split_sentences
+from refactor.learning.voice.tts.text_prep import StreamingTextPrep, prepare_text, split_sentences
 
 
 def test_markdown_code_links_math_and_acronyms():
@@ -42,3 +42,18 @@ def test_empty_unfinished_code_and_very_long_input():
 
 def test_acronym_expansion_is_split_after_normalization():
     assert all(len(s) <= 60 for s in split_sentences("CPU，GPU，HTTP，HTTPS，" * 15))
+
+
+def test_streaming_prep_keeps_code_and_formula_until_the_construct_closes():
+    prep = StreamingTextPrep()
+    assert prep.append("先讲结论。下面是 ```python\nprint('不朗读')") == ("先讲结论。",)
+    code_and_prose = prep.append("```，然后回到正文。公式 $x^2")
+    assert any("代码略" in part for part in code_and_prose)
+    assert all("公式略" not in part for part in code_and_prose)
+    assert "公式略" in prep.append("=4$。")[-1]
+
+
+def test_streaming_prep_removes_mf_source_citations_and_flushes_tail():
+    prep = StreamingTextPrep()
+    assert prep.append("依据是[〔1〕](mf-source:abc)。英文 API 继续照常读") == ("依据是。",)
+    assert prep.finish() == ("英文 接口 继续照常读",)

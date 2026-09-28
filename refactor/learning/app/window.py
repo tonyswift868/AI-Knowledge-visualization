@@ -24,6 +24,7 @@ from . import handlers
 from .services import AppServices
 from .sync import WindowSync
 from .teacher_assets import TeacherAssets
+from .reminder import register as register_reminder
 from .voice_input import register as register_voice_input
 from .speech import TeacherSpeech
 
@@ -136,6 +137,7 @@ class LearningWindow(QWidget):
         handlers.register(self.bridge, self)
         self.teacher_assets.register(self.bridge, self)
         self.voice_input = register_voice_input(self.bridge, self)
+        self.reminder = register_reminder(self)
         self.speech = TeacherSpeech(self.bridge, self._data_root, self)
         self.channel = QWebChannel(self.page)
         self.channel.registerObject("mf", self.bridge)
@@ -348,6 +350,7 @@ class LearningWindow(QWidget):
             return
         self._disposed = True
         self.voice_input.dispose()
+        self.reminder.dispose()
         self._close_services()
         self.bridge.close()
         self.speech.dispose()

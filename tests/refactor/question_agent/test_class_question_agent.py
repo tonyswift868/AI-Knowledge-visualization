@@ -6,6 +6,7 @@ import json
 import pytest
 
 from refactor.learning.course.planner_agents import AgentFormatError
+from refactor.learning.course.mastery import ANGLES
 from refactor.learning.course.question_agent import Question, parse_questions, question_request
 
 
@@ -26,6 +27,18 @@ def question(**changes):
     return row
 
 
+def check_context(**changes):
+    ctx = context(purpose="check", used_angles={"p1": [], "p2": []})
+    ctx.update(changes)
+    return ctx
+
+
+def check_question(**changes):
+    row = question(angle="contrast")
+    row.update(changes)
+    return row
+
+
 def response(*rows):
     return json.dumps({"questions": list(rows or [question()])}, ensure_ascii=False)
 
@@ -40,7 +53,7 @@ def choice(**changes):
 
 def test_multi_point_question_is_immutable_and_preserves_provenance():
     value, = parse_questions(response(), context())
-    assert isinstance(value, Question) and value.point_ids == ("p1", "p2") and value.chunk_ids == ("c1", "c2")
+    assert isinstance(value, Question) and value.point_ids == ("p1", "p2") and value.chunk_ids == ("c1", "c2") and value.angle is None
     with pytest.raises(FrozenInstanceError):
         value.answer = "其他答案"
 
@@ -126,6 +139,64 @@ def test_minimum_coverage_and_quick_check_exception():
         parse_questions(response(*rows), context(purpose="quick_check"))
 
 
+def test_check_questions_require_unused_angle_and_keep_old_purpose_shape():
+    rows = [check_question(id="q1", point_ids=["p1"], chunk_ids=["c1"]),
+            check_question(id="q2", stem="说明行动点在新场景中的作用。", point_ids=["p2"], chunk_ids=["c2"], angle="transfer")]
+    parsed = parse_questions(response(*rows), check_context())
+    assert [item.angle for item in parsed] == ["contrast", "transfer"]
+    system, messages = question_request(check_context())
+    task = json.loads(messages[0]["content"].split("【本次出题要求】\n", 1)[1])
+    assert task["used_angles"] == {"p1": [], "p2": []}
+    assert "angle" in system and "check" in messages[0]["content"]
+
+
+@pytest.mark.parametrize("changes", [
+    {"angle": None}, {"angle": "unknown"}, {"angle": "recall", "point_ids": ["p1"]},
+    {"angle": "apply", "point_ids": ["p1", "p2"]},
+])
+def test_check_angle_must_be_valid_and_unused_for_every_point(changes):
+    ctx = check_context(used_angles={"p1": ["recall"], "p2": ["apply"]})
+    with pytest.raises(AgentFormatError):
+        parse_questions(response(check_question(**changes)), ctx)
+
+
+def test_check_does_not_allow_an_exhausted_point_or_incomplete_usage_map():
+    exhausted = {"p1": list(ANGLES), "p2": []}
+    with pytest.raises(AgentFormatError):
+        question_request(check_context(used_angles=exhausted))
+    for used in ({"p1": []}, {"p1": [], "p2": ["recall"], "p3": []}, {"p1": ["recall", "recall"], "p2": []},
+                 {"p1": ["bad"], "p2": []}):
+        with pytest.raises(AgentFormatError):
+            question_request(check_context(used_angles=used))
+
+
+def test_check_coverage_and_provenance_are_still_required():
+    ctx = check_context()
+    with pytest.raises(AgentFormatError):
+        parse_questions(response(check_question(point_ids=["p1"], chunk_ids=["c1"])), ctx)
+    with pytest.raises(AgentFormatError):
+        parse_questions(response(check_question(point_ids=["p1"], chunk_ids=["c2"])), ctx)
+
+
+def test_check_rejects_reusing_an_angle_within_one_batch_for_a_point():
+    ctx = check_context()
+    rows = [check_question(id="q1", point_ids=["p1"], chunk_ids=["c1"], angle="contrast"),
+            check_question(id="q2", stem="说明行动点在另一个场景中的依据。", point_ids=["p1"], chunk_ids=["c1"], angle="contrast"),
+            check_question(id="q3", stem="说明应用点在新场景中的依据。", point_ids=["p2"], chunk_ids=["c2"], angle="contrast")]
+    with pytest.raises(AgentFormatError):
+        parse_questions(response(*rows), ctx)
+
+
+@pytest.mark.parametrize("field,value", [("used_angles", None), ("used_angles", []),
+                                          ("used_angles", {"p1": [], "p2": [], "p3": []})])
+def test_check_usage_snapshot_is_required_before_request_or_parse(field, value):
+    ctx = check_context(**{field: value})
+    with pytest.raises(AgentFormatError):
+        question_request(ctx)
+    with pytest.raises(AgentFormatError):
+        parse_questions(response(check_question()), ctx)
+
+
 def test_citations_cover_each_point_and_cannot_borrow_an_unrelated_point():
     ctx = context()
     ctx["excerpts"]["c3"] = "无关的资料。"
@@ -155,7 +226,7 @@ def test_layout_shared_prefix_is_stable_across_task_changes_and_map_order():
 
 
 @pytest.mark.parametrize("field,value", [
-    ("purpose", "check"), ("per_point", 0), ("per_point", True), ("per_point", 11),
+    ("purpose", "other"), ("per_point", 0), ("per_point", True), ("per_point", 11),
     ("points", []), ("excerpts", {}), ("excerpts", []), ("avoid", "旧题"),
 ])
 def test_invalid_context_raises_same_error_before_request_and_parse(field, value):

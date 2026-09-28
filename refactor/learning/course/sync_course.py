@@ -29,6 +29,11 @@ if TYPE_CHECKING:
 PREFIX = "refactor.v1:course_record:"
 CURSOR_SCHEMA = "mentorflow.course-sync-cursor.v1"
 ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,159}\Z")
+# The deployed changes endpoint accepts at most 500 records per page.  Keeping
+# this value here makes the client use that limit for both pulls and the local
+# outbox batch, without adding a server-side batch protocol.
+DEFAULT_BATCH_SIZE = 500
+MAX_BATCH_SIZE = 1000
 
 
 def _json(value):
@@ -175,7 +180,7 @@ class CourseSync:
         total = 0
         while True:
             try:
-                page = self.transport.read_changes(since=cursor["since"], limit=100)
+                page = self.transport.read_changes(since=cursor["since"], limit=DEFAULT_BATCH_SIZE)
             except PlanError as exc:
                 if exc.code != "SYNC_CHANGES_UNSUPPORTED":
                     raise
@@ -258,7 +263,7 @@ class CourseSync:
         self._save(next_cursor, cancel)
         return next_cursor, len(changes)
 
-    def _send(self, record, cursor, cancel, *, deleting):
+    def _send(self, record, cursor, cancel, *, deleting, persist_cursor=True, acknowledgements=None):
         values = _values(record)
         wire_id = _wire_id(values)
         expected = cursor["records"].get(wire_id, {}).get("revision", 0)
@@ -276,18 +281,49 @@ class CourseSync:
                 or result.get("deleted") is not deleting or result.get("payload") != ({} if deleting else payload)):
             raise PlanError("SYNC_RESPONSE_INVALID", "课程同步回执不匹配，未清除待同步记录。")
         cursor["records"][wire_id] = _metadata(values, result["revision"], deleting)
-        self._save(cursor, cancel)
-        # Save identity/CAS knowledge before clearing the local queue. If the
-        # cursor write fails and a second device immediately deletes this row,
-        # the still-pending record can identify the otherwise hashed tombstone.
+        if persist_cursor:
+            self._save(cursor, cancel)
+        # The batched caller persists the same cursor before its bulk
+        # acknowledgement; the single-send path has already done so above.
+        # Keeping this ordering means a cursor failure never clears the queue.
         self._fence(cancel)
         if deleting == record.deleted:
-            self.store.mark_synced(record.entity, record.entity_id, record.local_revision, result["revision"])
+            acknowledgement = (record.entity, record.entity_id, record.local_revision, result["revision"])
+            if acknowledgements is None:
+                self.store.mark_synced(*acknowledgement)
+            else:
+                acknowledgements.append(acknowledgement)
 
-    def sync(self, *, limit=100, cancel=None):
+    def _mark_synced(self, acknowledgements):
+        """Commit one round's local acknowledgements with an optional fast path.
+
+        The RecordStore contract deliberately remains the four-argument
+        ``mark_synced`` method.  CourseStore supplies an optional bulk method
+        so its SQLite outbox pays for one transaction per round; test doubles
+        and older stores continue to use the contract method.
+        """
+        if not acknowledgements:
+            return
+        bulk = getattr(self.store, "mark_synced_many", None)
+        if callable(bulk):
+            bulk(acknowledgements)
+            return
+        for acknowledgement in acknowledgements:
+            self.store.mark_synced(*acknowledgement)
+
+    def _flush_acknowledgements(self, cursor, cancel, acknowledgements):
+        """Durably save a partial round before clearing confirmed rows."""
+        if not acknowledgements:
+            return
+        self._save(cursor, cancel)
+        self._fence(cancel)
+        self._mark_synced(acknowledgements)
+        acknowledgements.clear()
+
+    def sync(self, *, limit=DEFAULT_BATCH_SIZE, cancel=None):
         """One bounded pull/upload round; errors leave the store retryable."""
-        if type(limit) is not int or not 1 <= limit <= 1000:
-            raise ValueError("limit must be between 1 and 1000")
+        if type(limit) is not int or not 1 <= limit <= MAX_BATCH_SIZE:
+            raise ValueError(f"limit must be between 1 and {MAX_BATCH_SIZE}")
         if not self._lock.acquire(blocking=False):
             raise PlanError("SYNC_IN_PROGRESS", "课程同步正在进行。")
         try:
@@ -296,22 +332,35 @@ class CourseSync:
             cursor, pulled = self._pull(self._cursor(), self.store.pending_records(limit), cancel)
             summary = dict(uploaded=0, pulled=pulled, conflicts=0)
             pending = deepcopy(self.store.pending_records(limit))
+            acknowledgements = []
             for record in pending:
                 for attempt in range(2):
-                    self._fence(cancel)
                     try:
+                        self._fence(cancel)
                         if record.deleted and _wire_id(_values(record)) not in cursor["records"]:
                             # The existing delete endpoint requires an entity. A
                             # locally created then deleted row still needs a tombstone.
-                            self._send(record, cursor, cancel, deleting=False)
-                        self._send(record, cursor, cancel, deleting=record.deleted)
+                            self._send(record, cursor, cancel, deleting=False,
+                                       persist_cursor=True, acknowledgements=acknowledgements)
+                        self._send(record, cursor, cancel, deleting=record.deleted,
+                                   persist_cursor=False, acknowledgements=acknowledgements)
                         summary["uploaded"] += 1
                         break
                     except PlanError as exc:
                         if exc.code not in {"SYNC_CONFLICT", "SYNC_TOMBSTONED"}:
+                            # A previous write in this round may already be
+                            # committed remotely. Persist its cursor before
+                            # acknowledging those exact local revisions. A
+                            # cancellation deliberately leaves all rows queued.
+                            if exc.code != "CANCELLED":
+                                self._flush_acknowledgements(cursor, cancel, acknowledgements)
                             raise
                         summary["conflicts"] += 1
-                        cursor, count = self._pull(cursor, self.store.pending_records(limit), cancel)
+                        try:
+                            cursor, count = self._pull(cursor, self.store.pending_records(limit), cancel)
+                        except BaseException:
+                            self._flush_acknowledgements(cursor, cancel, acknowledgements)
+                            raise
                         summary["pulled"] += count
                         # RecordStore alone decides whether the local edit remains
                         # pending after remote application. Never resend the stale copy.
@@ -320,8 +369,19 @@ class CourseSync:
                         if record is None:
                             break
                         if attempt or exc.code == "SYNC_TOMBSTONED":
+                            self._flush_acknowledgements(cursor, cancel, acknowledgements)
                             raise
+                    except BaseException as exc:
+                        if not (isinstance(exc, PlanError) and exc.code == "CANCELLED"):
+                            self._flush_acknowledgements(cursor, cancel, acknowledgements)
+                        raise
             self._fence(cancel)
+            # The cursor is durable before the queue is acknowledged.  If the
+            # process stops between these two calls, the deterministic request
+            # IDs and the remote change feed make the next round safe.
+            self._save(cursor, cancel)
+            self._fence(cancel)
+            self._mark_synced(acknowledgements)
             summary["pending"] = len(self.store.pending_records(limit))
             summary["ok"] = summary["pending"] == 0
             return summary

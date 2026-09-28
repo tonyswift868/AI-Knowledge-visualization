@@ -977,6 +977,30 @@ class CourseStore:
             pending=CASE WHEN local_revision=? THEN 0 ELSE pending END WHERE entity=? AND entity_id=?''',
                          (server_revision, local_revision, entity, entity_id))
 
+    @_atomic
+    def mark_synced_many(self, acknowledgements) -> None:
+        """Acknowledge one sync round in a single outbox transaction.
+
+        This is an optional CourseStore acceleration for CourseSync.  The
+        four-argument ``mark_synced`` method remains the RecordStore contract,
+        and each row still compares the submitted local revision so an edit
+        made while uploading remains pending.
+        """
+        rows = list(acknowledgements)
+        if not rows:
+            return
+        for row in rows:
+            if not isinstance(row, (tuple, list)) or len(row) != 4:
+                raise StoreError('INVALID_ACKNOWLEDGEMENT')
+            entity, entity_id, local_revision, server_revision = row
+            _number(local_revision); _number(server_revision)
+            if not isinstance(entity, str) or not isinstance(entity_id, str):
+                raise StoreError('INVALID_ACKNOWLEDGEMENT')
+        self._db.executemany('''UPDATE _records SET server_revision=MAX(server_revision,?),
+            pending=CASE WHEN local_revision=? THEN 0 ELSE pending END WHERE entity=? AND entity_id=?''',
+                         [(server_revision, local_revision, entity, entity_id)
+                          for entity, entity_id, local_revision, server_revision in rows])
+
     def sync_cursor(self) -> str:
         with self._lock: return self._db.execute("SELECT value FROM _meta WHERE key='cursor'").fetchone()[0]
 

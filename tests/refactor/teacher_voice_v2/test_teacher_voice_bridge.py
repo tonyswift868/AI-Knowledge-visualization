@@ -263,3 +263,49 @@ def test_teacher_voice_v2_scope_reset_closes_only_owned_engine_and_cancels_downl
     h.call("speak", owner="new-page", utterance_id="new", text="新的会话。")
     spin(h.app, lambda: len(h.engines) == 2 and bool(h.voice.service.last_metrics))
     assert not h.engines[-1].closed
+
+
+def test_teacher_voice_v2_stream_append_queues_complete_sentences_in_order(h):
+    h.call("warm_up", owner="stream-page")
+    spin(h.app, lambda: h.voice._state == "ready")
+    result = h.call("stream_start", owner="stream-page", utterance_id="turn-1")
+    assert result["result"]["streaming"] is True
+    assert h.call("stream_append", owner="stream-page", utterance_id="turn-1", text="第一句")["result"]["queued"] == 0
+    assert h.call("stream_append", owner="stream-page", utterance_id="turn-1", text="。第二句")["result"]["queued"] == 1
+    assert h.call("stream_append", owner="stream-page", utterance_id="turn-1", text="。第三句。尾巴")["result"]["queued"] == 2
+    spin(h.app, lambda: len(h.engines) == 1 and len(h.engines[0].calls) >= 1)
+    assert [call[0] for call in h.engines[0].calls] == ["warm", "第一句。"]
+    assert h.call("stream_end", owner="stream-page", utterance_id="turn-1")["result"]["queued"] == 1
+    # The fake device consumes PCM only when the test advances its clock. This
+    # makes the producer wait in a deterministic way while preserving order.
+    until = time.monotonic() + 2
+    while time.monotonic() < until and (len(h.engines[0].calls) < 5 or len([e for _, e in h.events("sentence") if e["state"] == "started"]) < 4):
+        for sink in h.sinks:
+            sink.played = 1000000
+        h.app.processEvents()
+        time.sleep(.003)
+    assert [call[0] for call in h.engines[0].calls] == ["warm", "第一句。", "第二句。", "第三句。", "尾巴"]
+    assert [e["index"] for _, e in h.events("sentence") if e["state"] == "started"] == [0, 1, 2, 3]
+
+
+def test_teacher_voice_v2_stream_stop_drops_partial_and_queued_text(h):
+    h.call("stream_start", owner="stream-page", utterance_id="turn-stop")
+    h.call("stream_append", owner="stream-page", utterance_id="turn-stop", text="还没有句号")
+    assert not [call for engine in h.engines for call in engine.calls if call[0] != "warm"]
+    assert h.call("stop", owner="stream-page", utterance_id="turn-stop")["result"]["stopped"]
+    assert h.call("stream_append", owner="stream-page", utterance_id="turn-stop", text="。不应朗读")["result"]["accepted"] is False
+    tick(h.app, .15)
+    assert not [call for engine in h.engines for call in engine.calls if call[0] != "warm"]
+    assert not [e for _, e in h.events("sentence") if e["utterance_id"] == "turn-stop"]
+
+
+def test_teacher_voice_v2_stream_calls_and_audio_events_stay_thread_safe(h):
+    h.call("warm_up", owner="stream-page")
+    spin(h.app, lambda: h.voice._state == "ready")
+    h.call("stream_start", owner="stream-page", utterance_id="turn-thread")
+    h.call("stream_append", owner="stream-page", utterance_id="turn-thread", text="线程边界。")
+    h.call("stream_end", owner="stream-page", utterance_id="turn-thread")
+    spin(h.app, lambda: bool(h.engines))
+    assert all(thread == threading.main_thread().ident for thread in h.event_threads)
+    assert all(thread != threading.main_thread().ident for thread in h.resources.threads)
+    assert all(call[2] != threading.main_thread().ident for call in h.engines[0].calls)

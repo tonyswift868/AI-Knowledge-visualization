@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import re
+import threading
 import unicodedata
 
 DIGITS = "零一二三四五六七八九"
@@ -59,9 +60,13 @@ def prepare_text(text: str) -> str:
     if len(text) > 100000:
         raise ValueError("朗读文本超过十万字，请分段提交。")
     text = unicodedata.normalize("NFKC", html.unescape(text)).replace("\r\n", "\n")
-    text = re.sub(r"```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)", "。这里有一段代码。", text)
-    text = re.sub(r"\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]+\$", "这里有一个公式。", text)
+    text = re.sub(r"```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)", "。（代码略）这里有一段代码。", text)
+    text = re.sub(r"\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]+\$", "（公式略）这里有一个公式。", text)
     text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"图片：\1", text)
+    # Classroom citations are navigation metadata, not something the teacher
+    # should read aloud. Apply this before the generic Markdown-link rule so
+    # the visible marker (〔1〕) is removed as well.
+    text = re.sub(r"\[〔\d+〕\]\(mf-source:[^)]*\)", "", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]*\)|\[([^\]]+)\]\[[^\]]*\]", lambda m: m[1] or m[2], text)
     text = re.sub(r"(?m)^\s*\[[^\]]+\]:\s*\S+.*$", "", text)
     text = re.sub(r"(?:https?://|www\.)[^\s<>，。！？；）\]]+", "", text)
@@ -89,10 +94,8 @@ def prepare_text(text: str) -> str:
     return text.strip()
 
 
-def split_sentences(text: str, max_chars: int = 60) -> tuple[str, ...]:
-    if not 10 <= max_chars <= 60:
-        raise ValueError("max_chars must be between 10 and 60")
-    text = prepare_text(text)
+def _split_prepared(text: str, max_chars: int) -> tuple[str, ...]:
+    """Split text already normalized by :func:`prepare_text`."""
     result = []
     for sentence in re.findall(r"[^。！？!?；;]+[。！？!?；;]*", text):
         sentence = sentence.strip()
@@ -106,3 +109,134 @@ def split_sentences(text: str, max_chars: int = 60) -> tuple[str, ...]:
         if any(c.isalnum() for c in sentence):
             result.append(sentence)
     return tuple(result)
+
+
+def split_sentences(text: str, max_chars: int = 60) -> tuple[str, ...]:
+    if not 10 <= max_chars <= 60:
+        raise ValueError("max_chars must be between 10 and 60")
+    text = prepare_text(text)
+    return _split_prepared(text, max_chars)
+
+
+class StreamingTextPrep:
+    """Incremental Markdown-aware sentence extraction.
+
+    Chunks can split a fenced code block, formula or source link. The buffer
+    therefore only releases punctuation outside those constructs; the final
+    call flushes the remaining prose. Returned strings have already gone
+    through the same Python-only normalization as ``split_sentences``.
+    """
+
+    def __init__(self, max_chars: int = 60):
+        if not 10 <= max_chars <= 60:
+            raise ValueError("max_chars must be between 10 and 60")
+        self.max_chars = max_chars
+        self._buffer = ""
+        self._total = 0
+        self._lock = threading.RLock()
+
+    @property
+    def buffered_text(self) -> str:
+        with self._lock:
+            return self._buffer
+
+    def append(self, text: str) -> tuple[str, ...]:
+        with self._lock:
+            if not isinstance(text, str):
+                raise TypeError("text must be str")
+            self._total += len(text)
+            if self._total > 100000:
+                raise ValueError("朗读文本超过十万字，请分段提交。")
+            self._buffer += text
+            return self._drain(final=False)
+
+    def finish(self) -> tuple[str, ...]:
+        with self._lock:
+            return self._drain(final=True)
+
+    def _drain(self, *, final: bool) -> tuple[str, ...]:
+        output = []
+        while self._buffer:
+            boundary = _stream_boundary(self._buffer, self.max_chars, final=final)
+            if boundary is None:
+                break
+            piece, self._buffer = self._buffer[:boundary], self._buffer[boundary:]
+            cleaned = prepare_text(piece)
+            output.extend(_split_prepared(cleaned, self.max_chars))
+            # A final drain consumes everything in one pass. A non-final drain
+            # keeps scanning until no complete sentence remains.
+            if final and not self._buffer:
+                break
+        return tuple(output)
+
+
+def _stream_boundary(text: str, max_chars: int, *, final: bool) -> int | None:
+    """Return a safe raw-text cutoff, excluding code/math/link contents."""
+    if final:
+        return len(text)
+    fence = None
+    math_mode = False
+    bracket_math = None
+    link_paren = 0
+    last_sentence = None
+    last_clause = None
+    i = 0
+    while i < len(text):
+        if fence:
+            if text.startswith(fence, i):
+                i += len(fence)
+                fence = None
+                continue
+            i += 1
+            continue
+        if text.startswith("```", i) or text.startswith("~~~", i):
+            fence = text[i:i + 3]
+            i += 3
+            continue
+        if bracket_math:
+            close = "\\]" if bracket_math == "\\[" else "\\)"
+            if text.startswith(close, i):
+                i += 2
+                bracket_math = None
+                continue
+            i += 1
+            continue
+        if text.startswith("\\[", i) or text.startswith("\\(", i):
+            bracket_math = text[i:i + 2]
+            i += 2
+            continue
+        if text.startswith("$$", i):
+            math_mode = not math_mode
+            i += 2
+            continue
+        if text[i] == "$" and (i == 0 or text[i - 1] != "\\"):
+            math_mode = not math_mode
+            i += 1
+            continue
+        if math_mode:
+            i += 1
+            continue
+        # Skip URL punctuation inside Markdown links such as mf-source:….
+        if link_paren:
+            if text[i] == "(":
+                link_paren += 1
+            elif text[i] == ")":
+                link_paren -= 1
+            i += 1
+            continue
+        if text[i] == "]" and i + 1 < len(text) and text[i + 1] == "(":
+            link_paren = 1
+            i += 2
+            continue
+        if text[i] in "。！？!?；;\n":
+            last_sentence = i + 1
+        elif text[i] in "，,：:、":
+            last_clause = i + 1
+        i += 1
+    if last_sentence is not None:
+        return last_sentence
+    if len(text) >= max_chars and last_clause is not None:
+        return last_clause
+    if len(text) >= max_chars and not (fence or math_mode or bracket_math or link_paren):
+        return max_chars
+    return None

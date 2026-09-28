@@ -20,6 +20,7 @@ const disabled: VoiceAvailability = { ready: false, message: "朗读未启用", 
 export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | null>, { autoWarm = true } = {}) {
   const [owner] = React.useState(identifier)
   const current = React.useRef<string | null>(null)
+  const streamCurrent = React.useRef<string | null>(null)
   const downloadId = React.useRef<string | null>(null)
   const alive = React.useRef(false)
   const revision = React.useRef(0)
@@ -59,6 +60,7 @@ export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | nu
   const stop = React.useCallback(async () => {
     const utterance_id = current.current
     current.current = null
+    streamCurrent.current = null
     mouth(0)
     if (alive.current) { setState("stopped"); setSentence(null) }
     try { await call("speech.stop", { owner, ...(utterance_id ? { utterance_id } : {}) }) }
@@ -69,6 +71,7 @@ export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | nu
     if (!availability?.ready) { if (alive.current) setError(""); return false }
     const utterance_id = identifier()
     current.current = utterance_id
+    streamCurrent.current = null
     mouth(0); setSentence(null); setError(""); setState("checking")
     try {
       await call("speech.speak", { owner, utterance_id, text })
@@ -78,6 +81,50 @@ export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | nu
       return false
     }
   }, [availability?.ready, owner, mouth])
+
+  /** Start a streamed utterance; appendStream may be called for each model chunk. */
+  const startStream = React.useCallback(async () => {
+    if (!availability?.ready) { if (alive.current) setError(""); return null }
+    const utterance_id = identifier()
+    current.current = utterance_id
+    streamCurrent.current = utterance_id
+    mouth(0); setSentence(null); setError(""); setState("checking")
+    try {
+      await call("speech.stream_start", { owner, utterance_id })
+      return current.current === utterance_id ? utterance_id : null
+    } catch (e: any) {
+      if (alive.current && current.current === utterance_id) {
+        setState("error"); setError(e.message || "朗读暂时不可用。"); mouth(0)
+        current.current = null; streamCurrent.current = null
+      }
+      return null
+    }
+  }, [availability?.ready, owner, mouth])
+
+  const appendStream = React.useCallback(async (text: string) => {
+    const utterance_id = streamCurrent.current
+    if (!utterance_id || current.current !== utterance_id) return false
+    try {
+      await call("speech.stream_append", { owner, utterance_id, text })
+      return streamCurrent.current === utterance_id
+    } catch (e: any) {
+      if (alive.current && current.current === utterance_id) setError(e.message || "朗读暂时不可用。")
+      return false
+    }
+  }, [owner])
+
+  const endStream = React.useCallback(async () => {
+    const utterance_id = streamCurrent.current
+    if (!utterance_id || current.current !== utterance_id) return false
+    try {
+      await call("speech.stream_end", { owner, utterance_id })
+      streamCurrent.current = null
+      return true
+    } catch (e: any) {
+      if (alive.current && current.current === utterance_id) setError(e.message || "朗读暂时不可用。")
+      return false
+    }
+  }, [owner])
 
   const download = React.useCallback(async (consent: boolean) => {
     setError("")
@@ -135,5 +182,5 @@ export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | nu
   const message = !availability?.ready ? "朗读未启用" : ({ checking: "正在检查朗读资源", warming: "正在预热老师声音",
     synthesizing: "正在准备声音", playing: "老师正在朗读", error: "朗读暂时不可用" } as Record<string, string>)[state] || "朗读已就绪"
   return { availability, state, busy, message, mouthLevel, sentence, error, volume, speed, downloadState,
-    speak, stop, warmUp, refresh, download, cancelDownload, configure }
+    speak, startStream, appendStream, endStream, stop, warmUp, refresh, download, cancelDownload, configure }
 }
