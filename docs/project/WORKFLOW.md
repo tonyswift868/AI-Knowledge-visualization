@@ -24,10 +24,10 @@
 | --- | --- | --- |
 | MF-03（client） | D:\MentorFlow-office\client | 空闲 |
 | MF-07（server） | D:\MentorFlow-office\server | 空闲 |
-| MF-02（runtime） | D:\MentorFlow-office\runtime | 9-MF02 进行中 |
+| MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-01（library） | D:\MentorFlow-office\library | 空闲 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 9-MF06 进行中 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
 工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
@@ -75,8 +75,8 @@
 | 8-MF05 | MF-05 tools | 学习提醒：已有 DailyClock + 系统通知（到点还没开始就提醒） | SYS-04、TEACH-05 | 755b29b | 已合入 3bfe099（2026-09-28） |
 | 8-MF06 | MF-06 classroom | 朗读边生成边读：老师流式输出时按句子朗读 | VOICE-01、TEACH-05 | 755b29b | 已合入 3bfe099（2026-09-28） |
 | 8-MF07 | MF-07 server | 课堂数据变多后的同步性能 | ARCH-05、TEACH-01 | 755b29b | 已合入 3bfe099（2026-09-28） |
-| 9-MF02 | MF-02 runtime | DeepSeek 高峰/闲时计价补全 + 花费显示 + 新建计划对话补测 | BUG-20、SYS-03、BUG-13 | de1723f | 已派发 |
-| 9-MF06 | MF-06 classroom | 朗读流水线（边播边合成）并接入课堂边生成边读 | VOICE-01、TEACH-05 | de1723f | 已派发 |
+| 9-MF02 | MF-02 runtime | DeepSeek 高峰/闲时计价补全 + 花费显示 + 新建计划对话补测 | BUG-20、SYS-03、BUG-13 | de1723f | 已合入 2e41f0e（2026-09-28） |
+| 9-MF06 | MF-06 classroom | 朗读流水线（边播边合成）并接入课堂边生成边读 | VOICE-01、TEACH-05 | de1723f | 已合入 2e41f0e（2026-09-28） |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
