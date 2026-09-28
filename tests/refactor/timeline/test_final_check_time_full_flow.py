@@ -238,7 +238,7 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
             check_both(audit, e, f'最终检验第{errors+corrects}题，' + ('答错不记' if wrong else '答对记2'),
                        (0, 0, 0, remaining, 0, 2, remaining), view=view)
     assert (errors, corrects) == (2, 8)
-    audit('最后一题即时返回的计划状态', 'completed', view['plan']['state'], rule='CHK-01', observed='checking')
+    audit('最后一题即时返回的计划状态', 'completed', view['plan']['state'], rule='CHK-01')  # fixed: the reply re-reads the plan
     assert e.store.get_plan(PLAN)['state'] == 'completed'
     assert snapshot(e)['plan']['state'] == 'completed'
     audit('完成后首页状态与课堂剩余', ('completed', 0, 0),

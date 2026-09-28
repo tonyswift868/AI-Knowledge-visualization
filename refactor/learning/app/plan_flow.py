@@ -145,6 +145,8 @@ class PlanFlow:
         self._status: dict[str, str] = {}
         self._pools: dict[str, object] = {}
         self._verified: dict[str, dict] = {}
+        self._additions: dict[str, dict] = {}   # PLAN-10 sessions: the host holds state, the page only picks
+        self._picked: dict[str, list] = {}      # files chosen in the dialog, by token
 
     # ----------------------------------------------------------- drafts
     def _file(self, plan_id):
@@ -1043,6 +1045,111 @@ class PlanFlow:
         store.save_intake(plan_id, window=window, today=today, reason="在计划详情里修改日期与每天时长")
         return self.detail(plan_id)
 
+    # ----------------------------------------------------------- PLAN-10: add materials to a started plan
+    def _exclusive(self, plan_id, work):
+        lock = self._lock(plan_id)
+        if not lock.acquire(blocking=False):
+            raise BridgeError("PLAN_BUSY", "上一步还在进行，请稍等。")
+        try:
+            return work()
+        except ModelCancelled:
+            raise BridgeError("CANCELLED", "已停止。") from None
+        except ModelError as exc:
+            raise BridgeError(exc.code, f"{exc.message} 可以稍后重试。") from None
+        finally:
+            self.status(plan_id, "")
+            lock.release()
+
+    def _addition(self, addition_id):
+        session = self._additions.get(addition_id) if isinstance(addition_id, str) else None
+        if session is None:
+            raise BridgeError("ADDITION_EXPIRED", "这次加资料的分析已失效（软件重启过或已应用），请重新选择资料。")
+        return session
+
+    def additions_analyze(self, plan_id, token, ctx):
+        from ..course import plan_additions as pa
+        from ..course.materials import import_file
+        paths = self._picked.pop(token, None) if isinstance(token, str) else None
+        if not paths:
+            raise BridgeError("PARAM_INVALID", "请先选择资料文件。")
+
+        def work():
+            store = self.services.store
+            plan = store.get_plan(plan_id)
+            if plan.get("state") != "active" or plan.get("archived"):
+                raise BridgeError("PHASE_INVALID", "只有进行中的计划可以中途加资料。")
+            source_ids = []
+            for path in paths:
+                self.status(plan_id, f"正在读取 {path.name}…")
+                source_ids.append(import_file(store, plan_id, path, cancel=ctx.cancel)["id"])
+            self.status(plan_id, "正在分析新资料和现有路线的关系（通常半分钟左右）…")
+            state = pa.snapshot(store, plan_id, source_ids)
+            proposal, _ = self._ask("plan_additions", pa.analysis_request(state),
+                                    lambda text: _as_format_error(pa.parse_analysis, text, state), ctx,
+                                    plan_id=plan_id, max_tokens=16384)
+            addition_id = _new_id()
+            self._additions[addition_id] = {"plan_id": plan_id, "state": state, "proposal": proposal}
+            return {"addition_id": addition_id, "preview": pa.preview(state, proposal, today=self.study_day())}
+        return self._exclusive(plan_id, work)
+
+    def additions_preview(self, addition_id, selected, new_end):
+        from ..course import plan_additions as pa
+        session = self._addition(addition_id)
+        return pa.preview(session["state"], session["proposal"], today=self.study_day(), selected=selected,
+                          new_end=_day(new_end, "结束日期") if new_end else None)
+
+    def additions_generate(self, addition_id, selected, new_end, ctx):
+        """Points only for the chosen new modules, then the exact preview the learner confirms."""
+        from ..course import plan_additions as pa
+        session = self._addition(addition_id)
+        state, proposal, plan_id = session["state"], session["proposal"], session["plan_id"]
+
+        def one(job):
+            for attempt in range(2):
+                try:
+                    return self.services.gateway.complete("plan_additions_generate", job["messages"], system=job["system"],
+                                                          cancel=ctx.cancel, plan_id=plan_id, max_tokens=8192).text
+                except ModelError as exc:
+                    if attempt or exc.code not in TRANSIENT | {MODEL_OUTPUT_TRUNCATED} or ctx.cancel.is_set():
+                        raise
+
+        def work():
+            last = None
+            for attempt in range(2):   # one retry when a generated batch fails validation
+                jobs = pa.generation_jobs(state, proposal, selected=selected, cancel=ctx.cancel)
+                self.status(plan_id, f"正在为新增的内容生成知识点（{len(jobs)} 批）…")
+                with ThreadPoolExecutor(max_workers=GENERATE_WORKERS, thread_name_prefix="plan-addition") as pool:
+                    responses = dict(zip([j["id"] for j in jobs], pool.map(one, jobs)))
+                try:
+                    generated = pa.finish_generation(state, proposal, responses, selected=selected, cancel=ctx.cancel)
+                    break
+                except (pa.AdditionError, agents.AgentFormatError) as exc:
+                    if getattr(exc, "code", "") == "CANCELLED":
+                        raise ModelCancelled() from None
+                    last = exc
+                    log.info("addition generation rejected (%s), attempt %s", exc, attempt + 1)
+            else:
+                raise ModelError("AGENT_FORMAT", "新增内容的生成结果格式不对，已重试一次仍不行。") from last
+            exact = pa.preview(state, proposal, today=self.study_day(), selected=selected,
+                               new_end=_day(new_end, "结束日期") if new_end else None, generated=generated)
+            session.update(generated=generated, exact=exact)
+            return exact
+        return self._exclusive(plan_id, work)
+
+    def additions_apply(self, addition_id, confirmation_id):
+        from ..course import plan_additions as pa
+        session = self._addition(addition_id)
+        exact = session.get("exact")
+        if not exact or exact.get("confirmation_id") != confirmation_id:
+            raise BridgeError("PREVIEW_CHANGED", "预览已经变化，请重新生成后再确认。")
+
+        def work():
+            result = pa.apply_additions(self.services.store, session["state"], session["proposal"], session["generated"],
+                                        exact, confirmed=True, today=self.study_day())
+            self._additions.pop(addition_id, None)
+            return result
+        return self._exclusive(session["plan_id"], work)
+
     def report(self, plan_id):
         """RPT-01: the saved learning report, built once the plan and its final check are complete."""
         from ..course.report import build_report
@@ -1124,6 +1231,14 @@ def register(bridge, services, window, study_day, *, fetcher=None):
             raise BridgeError("PARAM_INVALID", "计划编号无效。")
         return value
 
+    def _keys(params):
+        value = params.get("selected")
+        if value is None:
+            return None
+        if not isinstance(value, list) or len(value) > 50 or any(not isinstance(v, str) or len(v) > 40 for v in value):
+            raise BridgeError("PARAM_INVALID", "选择的模块无效。")
+        return value
+
     def text(params, key="text", limit=2000):
         value = params.get(key)
         if not isinstance(value, str) or not value.strip() or len(value) > limit:
@@ -1138,6 +1253,11 @@ def register(bridge, services, window, study_day, *, fetcher=None):
                 raise BridgeError("PLAN_STORE", exc.message) from None
             except LedgerError as exc:
                 raise BridgeError("PLAN_WINDOW", str(exc) or "日期设置无效。") from None
+            except ValueError as exc:
+                from ..course.plan_additions import AdditionError
+                if isinstance(exc, AdditionError):
+                    raise BridgeError(exc.code, str(exc)) from None
+                raise
         return run
 
     handlers = {
@@ -1162,6 +1282,10 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.archive": lambda p, c: (services().store.archive_plan(plan_id(p)) if p.get("archived") is True
                                       else services().store.restore_plan(plan_id(p))) or {"ok": True},
         "plan.report": lambda p, c: flow().report(plan_id(p)),
+        "plan.add_analyze": lambda p, c: flow().additions_analyze(plan_id(p), p.get("token"), c),
+        "plan.add_preview": lambda p, c: flow().additions_preview(p.get("addition_id"), _keys(p), p.get("new_end")),
+        "plan.add_generate": lambda p, c: flow().additions_generate(p.get("addition_id"), _keys(p), p.get("new_end"), c),
+        "plan.add_apply": lambda p, c: flow().additions_apply(p.get("addition_id"), p.get("confirmation_id")),
     }
     for name, fn in handlers.items():
         bridge.register(name, wrap(fn))
@@ -1193,6 +1317,20 @@ def register(bridge, services, window, study_day, *, fetcher=None):
 
     bridge.register("plan.upload", upload, ui=True)
 
+    def pick_additions(params, ctx):
+        from pathlib import Path
+        from PySide6.QtWidgets import QFileDialog
+        plan_id(params)
+        paths, _ = QFileDialog.getOpenFileNames(window, "选择要加入的学习资料", str(Path.home()),
+                                                "学习资料 (*.pdf *.docx *.pptx *.epub *.xlsx *.md *.txt *.html *.htm);;所有文件 (*)")
+        if not paths:
+            return {"token": None, "names": []}
+        token = _new_id()
+        flow()._picked[token] = [Path(p) for p in paths[:10]]
+        return {"token": token, "names": [Path(p).name for p in paths[:10]]}
+
+    bridge.register("plan.add_pick", pick_additions, ui=True)
+
     def export_report(params, ctx):
         """Save the report as a Markdown file the learner keeps (RPT-01); no sharing features."""
         from pathlib import Path
@@ -1207,6 +1345,15 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         return {"saved": True, "path": path}
 
     bridge.register("plan.report_export", wrap(export_report), ui=True)
+
+
+def _as_format_error(parse, text, state):
+    """The component's own validation errors count as a malformed answer, so the host retries once."""
+    from ..course.plan_additions import AdditionError
+    try:
+        return parse(text, state)
+    except AdditionError as exc:
+        raise agents.AgentFormatError(str(exc)) from None
 
 
 def report_markdown(report, titles):

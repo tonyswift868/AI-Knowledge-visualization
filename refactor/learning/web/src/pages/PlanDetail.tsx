@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ArrowLeft, BookOpen, CalendarClock, ExternalLink, FileText, PlayCircle } from "lucide-react"
+import { ArrowLeft, BookOpen, CalendarClock, ExternalLink, FilePlus2, FileText, Loader2, PlayCircle } from "lucide-react"
 import { call } from "../bridge"
 import { useApp } from "../store"
 import { Button, Skeleton, TASK_TIME_TIP, Tip } from "../ui"
@@ -47,6 +47,8 @@ export function PlanDetail() {
       </div>
       {(detail.plan.state === "active" || detail.plan.state === "checking") && detail.plan.window &&
         <WindowCard planId={detail.plan.id} window={detail.plan.window as unknown as Window} onSaved={setDetail} />}
+      {detail.plan.state === "active" && <AddMaterialCard detail={detail} onApplied={() =>
+        call<Detail>("plan.detail", { plan_id: detail.plan.id }).then(setDetail)} />}
       <div className="section-title"><h2>路线</h2><span>点模块名展开知识点；绿色已掌握、黄色有瑕疵、红色没过</span></div>
       <div className="card"><PlanTree detail={detail} /></div>
       <div className="section-title"><h2>资料</h2><span>{detail.sources.length} 份</span></div>
@@ -104,6 +106,114 @@ function WindowCard({ planId, window, onSaved }: { planId: string; window: Windo
         <Button small kind="ghost" onClick={() => setOpen(false)}>取消</Button>
         <Button small kind="primary" busy={busy} onClick={save}>保存</Button>
       </div>
+    </div>
+  )
+}
+
+
+type AddModule = { key: string; title: string; summary: string; minutes: [number, number]; kind: string; insert_after: string | null }
+type Timing = { extra_daily_minutes: number; exceeds_cap: boolean; suggested_end: string | null; daily_minutes: number }
+type AddPreview = {
+  modules: AddModule[]; supplements: { point_id: string; reason: string }[]; overlaps: unknown[]; ignored: unknown[]
+  selected: string[]; new_end: string; added_minutes: [number, number]; timing_low: Timing; timing_high: Timing
+  daily_cap_minutes: number; exact: boolean; confirmation_id?: string
+}
+
+/** PLAN-10: add material to a started plan; only the new part is analysed, generated and scheduled. */
+function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () => void }) {
+  const toast = useApp((s) => s.toast)
+  const [names, setNames] = React.useState<string[]>([])
+  const [token, setToken] = React.useState<string | null>(null)
+  const [addition, setAddition] = React.useState<string | null>(null)
+  const [first, setFirst] = React.useState<AddPreview | null>(null)
+  const [view, setView] = React.useState<AddPreview | null>(null)
+  const [selected, setSelected] = React.useState<string[]>([])
+  const [end, setEnd] = React.useState("")
+  const [busy, setBusy] = React.useState<string | null>(null)
+  const titles: Record<string, string> = {}
+  detail.stages.forEach((s) => s.modules.forEach((m) => { titles[m.id] = m.title }))
+  first?.modules.forEach((m) => { titles[m.key] = m.title })
+
+  function reset() { setNames([]); setToken(null); setAddition(null); setFirst(null); setView(null); setSelected([]); setEnd("") }
+  async function step<T>(label: string, fn: () => Promise<T>) {
+    setBusy(label)
+    try { return await fn() } catch (e) { toast("error", (e as Error).message); return null } finally { setBusy(null) }
+  }
+  async function pick() {
+    const r = await step("", () => call<{ token: string | null; names: string[] }>("plan.add_pick", { plan_id: detail.plan.id }))
+    if (r?.token) { reset(); setToken(r.token); setNames(r.names) }
+  }
+  async function analyze() {
+    const r = await step("正在读取资料并分析和现有路线的关系（通常半分钟左右）…",
+      () => call<{ addition_id: string; preview: AddPreview }>("plan.add_analyze", { plan_id: detail.plan.id, token }))
+    if (!r) return
+    setToken(null); setAddition(r.addition_id); setFirst(r.preview); setView(r.preview)
+    setSelected(r.preview.selected ?? r.preview.modules.map((m) => m.key)); setEnd(r.preview.new_end)
+  }
+  async function repreview(keys: string[], newEnd: string) {
+    setSelected(keys); setEnd(newEnd)
+    const r = await step("", () => call<AddPreview>("plan.add_preview", { addition_id: addition, selected: keys, new_end: newEnd }))
+    if (r) setView(r)
+  }
+  async function generate() {
+    const r = await step("正在为新增的内容生成知识点…",
+      () => call<AddPreview>("plan.add_generate", { addition_id: addition, selected, new_end: end }))
+    if (r) setView(r)
+  }
+  async function apply() {
+    const r = await step("正在加入计划…", () => call("plan.add_apply", { addition_id: addition, confirmation_id: view?.confirmation_id }))
+    if (r) { toast("ok", "已加入计划。已学的内容和记录都没变，只重新安排了还没学的部分。"); reset(); onApplied() }
+  }
+
+  if (!names.length && !first) return (
+    <div className="card row between" style={{ marginTop: 12 }}>
+      <span className="row"><FilePlus2 size={16} />想补充资料？只分析新增的部分，已学的内容不动。</span>
+      <Button small onClick={pick}>加资料</Button>
+    </div>
+  )
+  const t = view?.timing_high
+  return (
+    <div className="card stack" style={{ marginTop: 12 }}>
+      <b>加资料：{names.join("、") || "已选资料"}</b>
+      {busy && <div className="plan-status"><Loader2 className="spin" size={16} />{busy}</div>}
+      {!first && !busy && <div className="plan-actions">
+        <Button small kind="ghost" onClick={reset}>取消</Button>
+        <Button small kind="primary" onClick={analyze}>开始分析</Button>
+      </div>}
+      {view && <>
+        {view.supplements.length > 0 && <span className="muted small">有 {view.supplements.length} 处是对已有知识点的补充，会直接挂上，不加时间。</span>}
+        {(view.overlaps.length > 0 || view.ignored.length > 0) && <span className="muted small">
+          {view.overlaps.length + view.ignored.length} 处和已学内容重合或与目标无关，不加入。</span>}
+        {first && first.modules.length > 0 ? <>
+          <span className="small">建议新增的模块（可以取消勾选）：</span>
+          {first.modules.map((m) => (
+            <label key={m.key} className="row" style={{ alignItems: "flex-start", gap: 10 }}>
+              <input type="checkbox" checked={selected.includes(m.key)} disabled={!!busy || view.exact}
+                     onChange={(e) => repreview(e.target.checked ? [...selected, m.key] : selected.filter((k) => k !== m.key), end)} />
+              <span className="stack" style={{ gap: 2 }}>
+                <b>{m.title}{m.kind === "supplementary" && <span className="pill warn" style={{ marginLeft: 6 }}>补充前置</span>}</b>
+                <span className="muted small">{m.summary}</span>
+                <span className="muted small">插在《{m.insert_after ? titles[m.insert_after] ?? "当前进度" : "未学部分最前面"}》之后 · 约 {m.minutes[0]}–{m.minutes[1]} 分钟</span>
+              </span>
+            </label>
+          ))}
+        </> : <span className="muted small">没有需要新增的模块。</span>}
+        {selected.length > 0 && t && <div className="stack" style={{ gap: 6 }}>
+          <span className="small">预计多学 {view.added_minutes[0] === view.added_minutes[1] ? view.added_minutes[0] : `${view.added_minutes[0]}–${view.added_minutes[1]}`} 分钟；
+            截止日为 {end} 时每天多约 {t.extra_daily_minutes} 分钟{t.exceeds_cap ? `，会超过每天上限 ${view.daily_cap_minutes} 分钟` : ""}。</span>
+          {t.exceeds_cap && t.suggested_end && <Button small disabled={!!busy || view.exact} onClick={() => repreview(selected, t.suggested_end!)}>
+            把截止日推迟到 {t.suggested_end}</Button>}
+          <label className="field small">截止日期<input className="input" type="date" value={end} disabled={!!busy || view.exact}
+            onChange={(e) => e.target.value && repreview(selected, e.target.value)} /></label>
+        </div>}
+        <div className="plan-actions">
+          <Button small kind="ghost" onClick={reset} disabled={!!busy}>取消</Button>
+          {!view.exact
+            ? <Button small kind="primary" disabled={!!busy} onClick={generate}>{selected.length ? "生成新增内容" : "确认补充"}</Button>
+            : <Button small kind="primary" disabled={!!busy} onClick={apply}>确认加入计划</Button>}
+        </div>
+        {view.exact && <span className="muted small">新增内容已生成，时间按实际知识点算好了。确认后才会写入计划。</span>}
+      </>}
     </div>
   )
 }

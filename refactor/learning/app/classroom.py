@@ -533,6 +533,7 @@ class Classroom:
         state.update(step="completed", pending=None, check=None)
         try:
             course.store.complete_plan(course.plan_id, today=self._day(state))
+            course.plan = course.store.get_plan(course.plan_id)  # this reply already shows the plan as completed
             self._say(course, state, "最终检验全部通过，这份计划完成了！可以在「我的计划」里查看学习报告。")
         except StoreError:  # every point passed, but the planned study time is not all done yet
             self._say(course, state, "最终检验全部通过！计划的学习时长还没全部完成，时长学满后计划会标记为完成。")

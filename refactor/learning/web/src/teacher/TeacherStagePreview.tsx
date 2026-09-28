@@ -74,7 +74,7 @@ export function TeacherStagePreview() {
             {voice.availability.download?.required && <>
               <p>将下载 {size(voice.availability.download.size_bytes)}，安装后占用 {size(voice.availability.download.installed_size_bytes)}。{voice.availability.download.instruction}</p>
               <label className="teacher-voice-consent"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />我同意下载上述朗读底模</label>
-              <button data-voice="download" disabled={!consent || ["downloading", "cancelling"].includes(voice.downloadState?.state || "")} onClick={() => void voice.download(consent)}>同意并下载</button>
+              <button data-voice="download" disabled={!consent || ["downloading", "cancelling"].includes(voice.downloadState?.state || "")} onClick={() => void voice.download()}>同意并下载</button>
             </>}
             <button onClick={() => void voice.refresh()}>重新检查</button>
           </details>}

@@ -208,7 +208,7 @@ def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
     while view["step"] == "checking" and rounds < 20:
         view = act(classroom, "reply", "按原文解释")
         rounds += 1
-    assert view["step"] == "completed" and view["check"]["passed"] == 3
+    assert view["step"] == "completed" and view["check"]["passed"] == 3 and view["plan"]["state"] == "completed"
     checks = [j["event"] for j in store.records("judgements", PLAN) if j["event"]["context"] == "check"]
     by_point = {}
     for event in checks:
