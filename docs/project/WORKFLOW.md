@@ -26,7 +26,7 @@
 | MF-07（server） | D:\MentorFlow-office\server | 空闲 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 12-MF04 进行中 |
-| MF-01（library） | D:\MentorFlow-office\library | 空闲 |
+| MF-01（library） | D:\MentorFlow-office\library | 13-MF01 进行中 |
 | MF-06（classroom） | D:\MentorFlow-office\classroom | 12-MF06 进行中 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
@@ -85,6 +85,7 @@
 | 11-MF03 | MF-03 client | 检验时长分开预估、分开记 + 全流程阻塞复查 | CHK-01、PLAN-05、TEACH-02、SYS-04 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
 | 12-MF06 | MF-06 classroom | 朗读组件改为从官方下载站获取 + 正式发布构建（交架构师签名上传） | SYS-06、VOICE-01 | ed11b90 | 已派发 |
 | 12-MF04 | MF-04 platform | 加资料支持贴网址（网页与 GitHub 仓库） | PLAN-10、PLAN-06、BUG-09 | ed11b90 | 已派发 |
+| 13-MF01 | MF-01 library | 课堂提速（并行与预取）+ 长模块对话压缩 + 可重复的课堂回归评测 | ARCH-07、TEACH-01、TEACH-04、SYS-05 | 6f55a24 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -2140,4 +2141,40 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   3. 界面与桥接由架构师接：回执写清函数签名、耗时、返回结构；架构师会在“加资料”卡片里加一个网址输入框。
 验收：pytest tests/refactor 全部通过；报告写到 D:\MentorFlow\.local\test-tmp\plan-additions\links-report.md。
 回执：【MF-04｜platform｜第十二批｜完成/部分完成/受阻】基线 ／ 提交 ／ 接口 ／ 真实验证与花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+## 第十三批任务详情
+
+基线 `6f55a24`（2026-09-29）。与第十二批两个任务同时进行（共 3 个）。
+
+### [13-MF01] library｜课堂提速（并行与预取）+ 长模块对话压缩 + 可重复的课堂回归评测
+
+~~~text
+【MentorFlow 第十三批｜MF-01（工位 library）｜课堂提速（并行与预取）+ 长模块对话压缩 + 可重复的课堂回归评测】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard 6f55a24
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。先读 AGENTS.md 的磁盘规则：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删，同类只留最后一份，回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。
+这次允许你修改架构师的课堂文件 refactor/learning/app/classroom.py 和课堂页 web/src/pages/Classroom.tsx（只改与本任务有关的部分），以及 course/ 下的 agent 组件与 store.py 里对话压缩相关的部分。
+先读：AGENTS.md；CURRENT_STATE.md 的 [ARCH-07]、[TEACH-01]（三层上下文）、[TEACH-04]（判定必须独立）、[TEACH-06]、[ARCH-08]（请求排列与缓存）、[SYS-05]；app/classroom.py 全文；你第十批的课堂评测工具 tests/refactor/class_eval/。
+问题（用户确认必须修）：
+  A. 课堂每轮回应要 8–10 秒：学习者回答后，先等判定员返回，老师才开始说。
+  B. 长模块丢上下文：老师只带当前模块最近 40 条对话（≤6 万字），更早的直接丢掉；store 里已有 compress_messages 但没人用。
+要做
+  1. 先测：用真实模型（管理员 DeepSeek Flash）在你的评测计划上量出每一步的耗时：判定、老师首字、老师说完、出题（模块检测出题约 11 秒）、档案更新；列出现在的时间线。
+  2. 提速，原则：判定员必须仍然独立（TEACH-04，不能让老师自己判对错），老师必须拿到判定结果才能回应；在这个前提下尽量并行、预取、缩短：
+     - 页面：发送后立刻显示“老师在看你的回答”，老师一开始输出就边出边显示（已有流式，确认没有被别的等待挡住）。
+     - 判定：精简判定请求（只带必要的点和原文，固定部分放前面利于缓存，输出上限够用即可），量出判定耗时降到多少。
+     - 预取：模块最后一个点讲完、学习者还在回答随口问时，后台先把模块检测题出好；讲点时后台准备下一个点的原文。凡是能提前做、且不依赖学习者这次回答的，都提前做；提前做的结果若用不上要丢弃，不能影响判定与记录。
+     - 目标：学习者发送后，老师第一个字出现的时间明显下降（给出前后对比）；模块检测开始时题目基本已就绪。
+  3. 长模块上下文：对话超过阈值时，把较早的对话压缩成摘要（新增一个小的“对话摘要”组件：请求构建 + 严格解析，摘要只记讲过什么、学习者卡在哪、答过哪些题，不改任何状态），用 store.compress_messages 保存；老师请求里放“摘要 + 最近原文”。要求：摘要不丢学习者的错点和未答的问题；压缩在后台做，不让学习者等；原始消息仍保留可查。
+  4. 回归评测：把你第十批的模拟学生评测整理成一条可重复运行的命令（小样本、固定种子、默认跳过、设环境变量才跑真实模型），输出判定一致率、老师事实正确率、每轮耗时，供以后每次改提示后复跑。
+  5. 验证：离线测试覆盖并行/预取不改变判定与记录、预取结果被丢弃的情况、压缩后老师仍能接上早先内容；真实模型复测前后耗时与质量对比。花费上限 ¥6。
+验收：pytest tests/refactor 全部通过；web 构建通过（不要提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\class-speed\report.md。
+回执：【MF-01｜library｜第十三批｜完成/部分完成/受阻】基线 ／ 提交 ／ 前后时间线对比 ／ 上下文压缩做法与验证 ／ 回归评测命令 ／ 花费 ／ 本地最终占用 ／ 问题记录
 ~~~
