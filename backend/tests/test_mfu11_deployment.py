@@ -170,3 +170,10 @@ def test_mfu11_overlay_tracks_runtime_and_bundle_hashes(modules):
     for name in manifest['sha256']:
         assert (PACKAGE/'overlay'/name).read_bytes()==(root/name).read_bytes().replace(b'\r\n',b'\n')
     assert (PACKAGE/'realm-policy.json').read_bytes()==(root/'deploy/enterprise/auth-email-security/realm-policy.json').read_bytes().replace(b'\r\n',b'\n')
+
+
+def test_mfu11_compose_literal_matches_running_command(modules):
+    ops = modules[0] if isinstance(modules, tuple) else modules.package_ops
+    printed = ['KC_X="$$(cat /run/secrets/x)"; test -n "$$KC_X"']
+    assert ops.compose_literal(printed) == ['KC_X="$(cat /run/secrets/x)"; test -n "$KC_X"']
+    assert ops.compose_literal(['/bin/sh', '-ec']) == ['/bin/sh', '-ec'] and ops.compose_literal(None) is None

@@ -89,6 +89,13 @@ def override_bytes(original, service, image):
     return (json.dumps(patched,indent=2)+'\n').encode()
 
 
+def compose_literal(value):
+    """`docker compose config` prints a literal $ as $$; the running container holds the single $."""
+    if isinstance(value, list):
+        return [part.replace('$$', '$') if isinstance(part, str) else part for part in value]
+    return value.replace('$$', '$') if isinstance(value, str) else value
+
+
 def capture(env, kc_env, state, package, *, run=subprocess.run):
     bundle(package)
     def command_json(argv):return json.loads(run(argv,check=True,capture_output=True,text=True).stdout)
@@ -108,7 +115,9 @@ def capture(env, kc_env, state, package, *, run=subprocess.run):
     if container['State'].get('Health',{}).get('Status')!='healthy':raise ValueError('base Keycloak unhealthy')
     if any(m['Destination']==PROVIDERS or m['Destination'].startswith(PROVIDERS+'/') for m in container['Mounts']):
         raise ValueError('unexpected provider mount; original JAR must be in the image')
-    if container['Config']['Entrypoint']!=kc_before['services']['keycloak']['entrypoint'] or container['Config']['Cmd']!=kc_before['services']['keycloak']['command']:
+    service=kc_before['services']['keycloak']
+    if (container['Config']['Entrypoint']!=compose_literal(service.get('entrypoint'))
+            or container['Config']['Cmd']!=compose_literal(service.get('command'))):
         raise ValueError('Keycloak Compose does not reproduce its running command')
     state.mkdir(mode=0o700,parents=True,exist_ok=False)
     for label,config,path,service,image in (
