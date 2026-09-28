@@ -59,7 +59,8 @@ class Agents:
             content = messages[-1]["content"]
             points = json.loads(content.split("【知识点清单】\n", 1)[1].split("\n【资料原文（数据）】", 1)[0])
             excerpts = json.loads(content.split("【资料原文（数据）】\n", 1)[1].split("\n【本次出题要求】", 1)[0])
-            purpose_name = json.loads(content.split("【本次出题要求】\n", 1)[1])["purpose"]
+            task = json.loads(content.split("【本次出题要求】\n", 1)[1])
+            purpose_name = task["purpose"]
             rows = []
             for i, p in enumerate(points[:1] if purpose_name == "quick_check" else points):
                 chunk = next(c for c in excerpts)
@@ -68,10 +69,20 @@ class Agents:
                                  "options": ["甲说法", "乙说法", "丙说法", "丁说法"], "answer": "乙说法",
                                  "reference": "乙说法正确", "point_ids": [p["id"]], "chunk_ids": [chunk]})
                 else:
-                    rows.append({"id": f"q{i}", "type": "short", "stem": f"请解释{p['title']}的作用（{i}）",
+                    rows.append({"id": f"q{i}", "type": "short", "stem": f"请解释{p['title']}的作用（第{len(self.calls)}轮第{i}题）",
                                  "options": [], "answer": "标准答案", "reference": "要点：作用",
                                  "point_ids": [p["id"]], "chunk_ids": [chunk]})
+            if purpose_name == "check":  # a fresh angle for every point, as the real agent must
+                for row in rows:
+                    used = task["used_angles"][row["point_ids"][0]]
+                    row["angle"] = next(a for a in ("recall", "apply", "contrast", "fix_error", "transfer") if a not in used)
             text = json.dumps({"questions": rows}, ensure_ascii=False)
+        elif purpose == "check_profile":
+            points = json.loads(messages[0]["content"].split("\n", 1)[1])
+            text = json.dumps({"categories": [], "teacher_profile": "没有足够的错误证据。"}, ensure_ascii=False) if not points else \
+                json.dumps({"categories": [{"category": "概念边界混淆", "point_ids": [p["id"] for p in points],
+                                            "explanation": "几处错答都把相近概念混在一起。"}],
+                            "teacher_profile": "作答显示相近概念边界不清，检验时多用辨析题。"}, ensure_ascii=False)
         elif purpose == "profile":
             task = last_json(messages, "【本次档案更新】")
             text = json.dumps({"progress": task["progress"], "preferences": task["preferences"], "last_stop": "讲到队列。",
@@ -185,7 +196,26 @@ def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
     assert agents.calls[calls:].count("judge") == 0
     assert view["module"]["state"] == "skipped" and credits(store)["learn:p2"] == "confirmed"
     view = act(classroom, "next_module")
-    assert view["step"] == "finished"
+    assert view["step"] == "check_offer" and view["check"] == {"passed": 0, "total": 3}
+
+    # Final check (CHK-01): every point is asked from a new angle until all reach level 3.
+    agents.choice = False
+    agents.verdicts = [("answer", True, [])] * 30
+    view = act(classroom, "start_check")
+    assert view["step"] == "checking" and view["question"]["kind"] == "check"
+    assert store.get_plan(PLAN)["state"] == "checking"
+    rounds = 0
+    while view["step"] == "checking" and rounds < 20:
+        view = act(classroom, "reply", "按原文解释")
+        rounds += 1
+    assert view["step"] == "completed" and view["check"]["passed"] == 3
+    checks = [j["event"] for j in store.records("judgements", PLAN) if j["event"]["context"] == "check"]
+    by_point = {}
+    for event in checks:
+        by_point.setdefault(event["results"][0][0], []).append(event["angle"])
+    assert all(len(set(angles)) == len(angles) for angles in by_point.values())   # never the same angle twice
+    assert len(by_point["p1"]) == 2 and len(by_point["p0"]) == 1   # p1 had errors: level 1, two right answers needed
+    assert all(m["module_id"] is None for m in store.messages(PLAN, None)[-1:])
     act(classroom, "leave")
 
 

@@ -24,6 +24,7 @@ type Room = {
   plan: { id: string; goal: string; state: string }
   module: { id: string; title: string; number: number; total: number; state: string }
   points: Point[]; step: string; question: Question | null; messages: Msg[]; can_skip: boolean; red: string[]
+  more_modules: boolean; check: { passed: number; total: number } | null
   today: { today_target: number; today_confirmed: number; today_tentative: number; needs_rest?: boolean; is_late_night?: boolean } | null
 }
 type Source = { text: string; title: string; url: string | null; section: string[] }
@@ -168,13 +169,18 @@ export function Classroom() {
         <header className="class-head">
           <Button small kind="ghost" onClick={() => go("home")}><ArrowLeft />下课</Button>
           <div className="class-title">
-            <span className="eyebrow">模块 {room.module.number}/{room.module.total} · {room.plan.goal}</span>
-            <b>{room.module.title}</b>
+            <span className="eyebrow">{room.check ? "全部模块已学完" : `模块 ${room.module.number}/${room.module.total}`} · {room.plan.goal}</span>
+            <b>{room.check ? "最终检验" : room.module.title}</b>
           </div>
           {t && <span className="pill" title="今天已确认 / 今天的任务（暂记的时长通过模块检测后转正）">
             今天 {t.today_confirmed}{t.today_tentative ? `+${t.today_tentative}` : ""} / {t.today_target} 分</span>}
         </header>
-        <div className="class-points">
+        {room.check ? (
+          <div className="class-points">
+            <div className="class-check-bar"><i style={{ width: `${(room.check.passed / Math.max(1, room.check.total)) * 100}%` }} /></div>
+            <span className="muted small">已通过 {room.check.passed}/{room.check.total} 个知识点</span>
+          </div>
+        ) : <div className="class-points">
           {room.points.map((p, i) => (
             <span key={p.id} className={`class-point ${p.current && ["teach", "answer"].includes(room.step) ? "current" : ""} ${p.taught ? "taught" : ""} ${POINT_TONE[p.state] ?? ""}`}
                   title={`${p.title} · ${p.minutes} 分钟${POINT_LABEL[p.state] ? " · " + POINT_LABEL[p.state] : ""}`}>
@@ -182,7 +188,7 @@ export function Classroom() {
             </span>
           ))}
           <span className="muted small">{done}/{room.points.length} 已讲</span>
-        </div>
+        </div>}
         {t?.is_late_night && <div className="banner">已经很晚了，注意休息。今天学的内容会记在开课那天。</div>}
         <div className="class-scroll" ref={scroller}>
           {room.messages.length === 0 && !busy && (
@@ -271,9 +277,21 @@ function Actions({ room, act }: { room: Room; act: (m: string, p?: Record<string
   if (step === "test_done") return (
     <div className="plan-actions">
       {room.red.length > 0 && <Button kind="primary" onClick={() => act("classroom.test", { kind: "retest" }, "正在出题…")}><RotateCcw />重测没过的 {room.red.length} 个点</Button>}
-      <Button kind={room.red.length ? undefined : "primary"} onClick={() => act("classroom.next_module", {}, "正在准备下一个模块…")}><ChevronRight />学下一个模块</Button>
+      <Button kind={room.red.length ? undefined : "primary"} onClick={() => act("classroom.next_module", {}, "正在准备…")}>
+        <ChevronRight />{room.more_modules ? "学下一个模块" : "结束模块学习"}</Button>
     </div>
   )
-  if (step === "finished") return <div className="class-note">全部模块都学完了。最终检验马上就会开放。</div>
+  if (step === "check_offer") return (
+    <div className="plan-actions">
+      <span className="muted small">最终检验：每个点换角度问，答对升级，全部通过就完成计划。</span>
+      <Button kind="primary" onClick={() => act("classroom.check", {}, "正在出题…")}><ClipboardCheck />开始最终检验</Button>
+    </div>
+  )
+  if (step === "checking" && !room.question) return (
+    <div className="plan-actions">
+      <Button kind="primary" onClick={() => act("classroom.check", {}, "正在出题…")}><ClipboardCheck />继续检验</Button>
+    </div>
+  )
+  if (step === "completed") return <div className="class-note"><CheckCircle2 size={15} />这份计划已经完成，可以在「我的计划」里查看学习报告。</div>
   return null
 }

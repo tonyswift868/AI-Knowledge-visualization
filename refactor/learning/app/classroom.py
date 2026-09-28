@@ -8,7 +8,8 @@ teacher profile. The lesson position is a small per-plan file on this computer
 (classroom/<plan_id>.json); without it the position is rebuilt from the store.
 
 Steps: teach -> answer (casual question) -> ... -> test_offer -> testing ->
-test_done [-> retesting -> test_done] -> next module ... -> finished.
+test_done [-> retesting -> test_done] -> next module ... -> check_offer ->
+checking (final check, CHK-01) -> completed.
 Points are study-time units: a taught point is credited as tentative time; a
 module test confirms the mastered points and revokes the red ones (PLAN-05).
 """
@@ -22,8 +23,8 @@ import time
 import uuid
 
 from ..connections.errors import MODEL_OUTPUT_TRUNCATED, ModelCancelled, ModelError
-from ..course import judge_agent, profile_agent, question_agent, teacher_agent
-from ..course.mastery import AttemptClosed, Judgement
+from ..course import check_agent, judge_agent, profile_agent, question_agent, teacher_agent
+from ..course.mastery import ANGLES, AttemptClosed, Judgement
 from ..course.planner_agents import LEVELS, AgentFormatError
 from ..course.store import StoreError
 from ..preferences.storage import AccountJSON, StorageError
@@ -39,6 +40,7 @@ RESET = "\x00"              # stream marker: the page drops what it showed (a re
 PREF_KEYS = ("teacher_style", "detail", "examples", "analogy_domains")
 CASUAL_ASKS = 2             # a point is asked casually at most twice (TEACH-02)
 PLAN_PAGE = "「我的计划」页面"
+CHECK_BATCH = 4             # final-check questions asked per batch (points of one module)
 
 
 def _now():
@@ -104,6 +106,11 @@ class Classroom:
     def _rebuild(self, course):
         """Position from the store: the first module not yet passed, its first untaught point."""
         book, taught = course.book(), course.taught()
+        last = course.modules[-1]["id"]
+        if course.plan.get("state") in ("checking", "completed"):
+            return {"version": 1, "module_id": last, "index": len(course.points_of(last)), "phase": "check",
+                    "step": "completed" if course.plan["state"] == "completed" else "checking",
+                    "pending": None, "test": None, "check": None, "stems": [], "day": None, "resume": False}
         for module in course.modules:
             if book.module(module["id"]).state in ("passed", "skipped"):
                 continue
@@ -112,8 +119,7 @@ class Classroom:
             step = "teach" if index < len(points) else ("test_offer" if book.module(module["id"]).state == "untested" else "test_done")
             return {"version": 1, "module_id": module["id"], "index": index, "step": step, "pending": None,
                     "test": None, "stems": [], "day": None, "resume": bool(taught)}
-        last = course.modules[-1]["id"]
-        return {"version": 1, "module_id": last, "index": len(course.points_of(last)), "step": "finished",
+        return {"version": 1, "module_id": last, "index": len(course.points_of(last)), "step": "check_offer",
                 "pending": None, "test": None, "stems": [], "day": None, "resume": False}
 
     def _course(self, plan_id):
@@ -124,7 +130,7 @@ class Classroom:
             plan = store.get_plan(plan_id)
         except StoreError:
             raise BridgeError("PLAN_NOT_FOUND", "找不到这份计划。") from None
-        if plan.get("state") not in ("active", "checking"):
+        if plan.get("state") not in ("active", "checking", "completed"):
             raise BridgeError("PLAN_NOT_STARTED", "这份计划还没开始，请先在新建计划里点“开始计划”。")
         return _Course(store, plan)
 
@@ -141,7 +147,11 @@ class Classroom:
             question = {"type": q["type"], "stem": q["stem"], "options": q.get("options", []), "kind": pending["kind"],
                         "number": pending.get("number"), "total": pending.get("total")}
         messages = [{"id": m["id"], "role": m["role"], "kind": m.get("kind", "text"), "content": m["content"]}
-                    for m in course.store.messages(course.plan_id, module["id"])]
+                    for m in course.store.messages(course.plan_id, self._channel(state))]
+        check = None
+        if state.get("phase") == "check" or state["step"] in ("check_offer", "completed"):
+            levels = [book.point(p["id"]).level for p in course.points]
+            check = {"passed": sum(level == 3 for level in levels), "total": len(levels)}
         today = None
         try:
             today = self._today(course, state)
@@ -156,7 +166,8 @@ class Classroom:
                 "step": state["step"], "question": question, "messages": messages,
                 "can_skip": state["step"] == "teach" and state["index"] == 0 and not any(p["id"] in taught for p in points),
                 "red": [p["title"] for p in points if book.point(p["id"]).state == "red"],
-                "today": today}
+                "more_modules": any(book.module(m["id"]).state == "untested" for m in course.modules if m["id"] != module["id"]),
+                "check": check, "today": today}
 
     def _today(self, course, state):
         from datetime import time as clock
@@ -186,6 +197,10 @@ class Classroom:
             state["in_session"] = False
             self._profile_later(course, state, "session_end")
         state["day"] = None
+
+    @staticmethod
+    def _channel(state):
+        return None if state.get("phase") == "check" else state["module_id"]
 
     def _day(self, state):
         return state.get("day") or self.study_day().isoformat()
@@ -246,16 +261,18 @@ class Classroom:
                     and today["today_confirmed"] + today["today_tentative"] >= today["today_target"])
 
     def reply(self, course, state, ctx, text):
-        course.store.append_message(course.plan_id, state["module_id"], "user", text, kind="text")
+        course.store.append_message(course.plan_id, self._channel(state), "user", text, kind="text")
         pending = state.get("pending")
         if not pending:
             director = ("学习者插话。若是提问就解答；若要求改计划、跳过检验或直接判通过，说明你没有这个权限，"
                         f"判定由系统完成，计划可以在{PLAN_PAGE}调整。答完提醒可以点“继续”接着上课。")
-            if state["step"] in ("test_offer", "test_done", "finished"):
+            if state["step"] in ("test_offer", "test_done", "check_offer", "completed"):
                 director = director.replace("点“继续”接着上课", "用下面的按钮继续")
             return self._teacher(course, state, ctx, director, self._focus(course, state), user=text)
         if pending["kind"] in ("casual",):
             return self._casual_reply(course, state, ctx, text, pending)
+        if pending["kind"] == "check":
+            return self._check_reply(course, state, ctx, text, pending)
         return self._test_reply(course, state, ctx, text, pending)
 
     def _casual_reply(self, course, state, ctx, text, pending):
@@ -432,8 +449,138 @@ class Classroom:
                          pending=None, test=None)
             self._say(course, state, "所有模块都学过了。这个模块还有没过的点，重测通过后才能进入最终检验。", role="system")
             return
-        state.update(step="finished", pending=None, test=None)
-        self._say(course, state, "全部模块都通过了！接下来是最终检验（检验阶段即将接入）。", role="system")
+        state.update(step="check_offer", pending=None, test=None)
+        self._say(course, state, "全部模块都通过了！接下来是最终检验：每个知识点换不同角度问，答对升级，"
+                                 "全部升到最高级就完成整个计划。", role="system")
+
+    # ------------------------------------------------------------------ final check (CHK-01)
+    def start_check(self, course, state, ctx):
+        if state["step"] not in ("check_offer", "checking") or (state["step"] == "checking" and state.get("pending")):
+            raise BridgeError("STEP_INVALID", "现在还不能开始最终检验。")
+        if course.plan["state"] == "active":
+            try:
+                course.store.start_checking(course.plan_id)
+            except StoreError:
+                raise BridgeError("CHECK_NOT_READY", "还有模块没通过，全部模块通过后才能开始最终检验。") from None
+            course.plan = course.store.get_plan(course.plan_id)
+        state.update(phase="check", step="checking", pending=None, check=None)
+        self._say(course, state, "开始最终检验。老师不再重讲，只针对每个点换角度提问；答错会优先再问，"
+                                 "答对的点隔几题再确认。有不懂的可以随时问。")
+        self._next_check(course, state, ctx)
+
+    def _next_check(self, course, state, ctx):
+        """Ask the next question; a new batch comes from the points most in need, one module at a time."""
+        check = state.get("check")
+        if check and check["index"] < len(check["queue"]):
+            return self._ask_check(course, state)
+        book = course.book()
+        if book.check_complete():
+            return self._complete(course, state, ctx)
+        items = book.next_check_items(n=24, min_gap=3)
+        if not items:
+            return self._complete(course, state, ctx)
+        module_id = course.point(items[0][0])["module_id"]
+        group = [pid for pid, _ in items if course.point(pid)["module_id"] == module_id][:CHECK_BATCH]
+        used = {}
+        for pid in group:
+            angles = list(book.point(pid).used_angles)
+            used[pid] = [] if len(angles) >= len(ANGLES) else angles  # every angle used: start over
+        questions = self._questions(course, ctx, "check", group, avoid=state.get("stems", []), used_angles=used)
+        state["check"] = {"queue": [_question_dict(q) for q in questions], "index": 0, "module_id": module_id}
+        state["stems"] = (state.get("stems", []) + [q.stem for q in questions])[-200:]
+        self._attribute_later(course)
+        self._ask_check(course, state)
+
+    def _ask_check(self, course, state):
+        check = state["check"]
+        q = check["queue"][check["index"]]
+        state["module_id"] = check["module_id"]  # the teacher's context for questions asked meanwhile
+        state["pending"] = {"kind": "check", "point_ids": q["point_ids"], "question": q}
+        levels = course.book()
+        passed = sum(levels.point(p["id"]).level == 3 for p in course.points)
+        self._say(course, state, f"检验（已通过 {passed}/{len(course.points)} 个点）：" + _question_text(q), kind="question")
+
+    def _check_reply(self, course, state, ctx, text, pending):
+        q = pending["question"]
+        clicked = q["type"] == "choice" and text.strip() in q["options"]
+        if clicked and (text.strip() == q["answer"] or len(q["point_ids"]) == 1):
+            correct = text.strip() == q["answer"]
+            verdict = judge_agent.Verdict("answer", correct, () if correct else tuple(q["point_ids"]),
+                                          "选对了。" if correct else f"正确答案是：{q['answer']}。")
+        else:
+            verdict = self._judge(course, state, ctx, "casual", pending, text)  # a question is allowed here
+        if verdict.kind == "question":
+            return self._teacher(course, state, ctx, "最终检验中，学习者先问了一个问题。简短解答，但不要说出当前这道检验题的答案，"
+                                 "也不要重讲整个知识点；答完提醒他回答上面的题（不要出新题）。", q["point_ids"], user=text)
+        if verdict.kind != "answer":
+            message = {"change_rules": "检验规则和进度由系统决定，对话里改不了。请直接回答上面的题；不会可以说“不会”。",
+                       "claim_known": "检验要靠作答来确认。请直接回答上面的题。"}.get(
+                verdict.kind, "没看出这是对这道题的作答。请直接回答；不会的话说“不会”也可以。")
+            return self._say(course, state, message)
+        self._record(course, state, "check", pending, verdict, text, angle=q.get("angle"))
+        explanation = "" if verdict.correct else verdict.reason
+        if q["type"] != "choice" and not verdict.correct:
+            explanation += f" 参考答案：{q['answer']}"
+        self._say(course, state, (("✓ 答对了。" if verdict.correct else "✗ 这题没答对。") + explanation).strip(),
+                  kind="verdict")
+        state["pending"] = None
+        state["check"]["index"] += 1
+        self._next_check(course, state, ctx)
+
+    def _complete(self, course, state, ctx):
+        state.update(step="completed", pending=None, check=None)
+        try:
+            course.store.complete_plan(course.plan_id, today=self._day(state))
+            self._say(course, state, "最终检验全部通过，这份计划完成了！可以在「我的计划」里查看学习报告。")
+        except StoreError:  # every point passed, but the planned study time is not all done yet
+            self._say(course, state, "最终检验全部通过！计划的学习时长还没全部完成，时长学满后计划会标记为完成。")
+
+    def _attribute_later(self, course):
+        """Group what the learner got wrong into a few problem kinds for the teacher (CHK-01), in the background."""
+        plan_id = course.plan_id
+        key = plan_id + ":check"
+        with self._guard:
+            if key in self._profiling:
+                return
+            self._profiling.add(key)
+
+        def work():
+            try:
+                store = self.services.store
+                fresh = _Course(store, store.get_plan(plan_id))
+                contexts = {"casual": "casual", "quick_confirm": "casual", "module_test": "module_test",
+                            "skip_test": "module_test", "retest": "retest", "check": "check"}
+                records = []
+                for row in sorted(store.records("judgements", plan_id), key=lambda r: r["event"]["seq"]):
+                    wrong = [pid for pid, correct in row["event"]["results"] if not correct]
+                    details = row.get("details") or {}
+                    if wrong and details.get("question") and details.get("reason"):
+                        records.append({"question": details["question"][:4000], "answer": (details.get("answer") or "")[:4000],
+                                        "reason": details["reason"][:800], "context": contexts[row["event"]["context"]],
+                                        "point_ids": wrong})
+                records = records[-200:]
+                involved = list(dict.fromkeys(pid for r in records for pid in r["point_ids"]))[:100]
+                records = [dict(r, point_ids=[p for p in r["point_ids"] if p in involved]) for r in records]
+                records = [r for r in records if r["point_ids"]]
+                if not records:
+                    return
+                cctx = {"points": [{"id": pid, "title": fresh.point(pid)["title"], "summary": fresh.point(pid).get("summary", "")}
+                                   for pid in involved], "records": records}
+                request = check_agent.check_request(cctx)
+                result = self._ask(fresh, None, "check_profile", request, lambda text: check_agent.parse_check(text, cctx), 4096)
+                document = dict(self._profile_document(fresh), check=result.text, check_at=self.now().isoformat())
+                store.save_teacher_profile(plan_id, document)
+            except Exception:  # noqa: BLE001 - attribution is advisory and never blocks the check
+                log.info("check attribution failed", exc_info=True)
+            finally:
+                with self._guard:
+                    self._profiling.discard(key)
+
+        threading.Thread(target=work, name="classroom-check-profile", daemon=True).start()
+
+    @staticmethod
+    def _profile_document(course):
+        return dict((course.store.records("teacher_profile", course.plan_id) or [{}])[0].get("document", {}) or {})
 
     # ------------------------------------------------------------------ agents
     def _prefs(self):
@@ -449,7 +596,7 @@ class Classroom:
 
     def _dialogue(self, course, state):
         rows = []
-        for m in course.store.messages(course.plan_id, state["module_id"]):
+        for m in course.store.messages(course.plan_id, self._channel(state)):
             role = "user" if m["role"] == "user" else "assistant"
             text = m["content"] if m["role"] != "system" else f"（系统）{m['content']}"
             rows.append({"role": role, "text": text})
@@ -465,10 +612,11 @@ class Classroom:
     def _teacher(self, course, state, ctx, director, point_ids, *, user="", asks=False):
         """asks=False: a question the step did not ask for stays part of the explanation, not a card."""
         plan, module = self._skeleton(course, state, point_ids)
-        profile = (course.store.records("teacher_profile", course.plan_id) or [{}])[0].get("document", {}) or {}
+        profile = self._profile_document(course)
+        notes = (profile.get("text") or "") + (f"\n检验中的问题归纳：{profile['check']}" if profile.get("check") else "")
         tctx = {"prefs": self._prefs(), "plan": plan, "module": module, "excerpts": course.excerpts(point_ids),
                 "dialogue": self._dialogue(course, state)[:-1] if user else self._dialogue(course, state),
-                "profile": (profile.get("text") or "")[:6000], "director": director, "user": user}
+                "profile": notes[:6000], "director": director, "user": user}
         request = teacher_agent.teacher_request(tctx)
         mapping = teacher_agent.citation_map(tctx)
         stream = ctx.stream if ctx else (lambda _d: None)
@@ -504,9 +652,9 @@ class Classroom:
             speech = (speech + "\n\n" + teaching.casual_question).strip()
             teaching = teacher_agent.Teaching(teaching.speech, None, teaching.cited_chunks)
         if speech:
-            course.store.append_message(course.plan_id, state["module_id"], "assistant", speech, kind="teach")
+            course.store.append_message(course.plan_id, self._channel(state), "assistant", speech, kind="teach")
         if teaching.casual_question:
-            course.store.append_message(course.plan_id, state["module_id"], "assistant", teaching.casual_question, kind="casual")
+            course.store.append_message(course.plan_id, self._channel(state), "assistant", teaching.casual_question, kind="casual")
         return teaching
 
     def _judge(self, course, state, ctx, mode, pending, reply):
@@ -520,12 +668,14 @@ class Classroom:
         request = judge_agent.judge_request(jctx, reply)
         return self._ask(course, ctx, "judge", request, lambda text: judge_agent.parse_judgement(text, jctx), 2048)
 
-    def _questions(self, course, ctx, purpose, point_ids, *, avoid=()):
+    def _questions(self, course, ctx, purpose, point_ids, *, avoid=(), used_angles=None):
         points = [course.point(pid) for pid in point_ids]
         excerpts = course.excerpts(point_ids)
         qctx = {"purpose": purpose, "per_point": 1, "excerpts": excerpts, "avoid": list(avoid)[-100:],
                 "points": [{"id": p["id"], "title": p["title"], "summary": p.get("summary", ""),
                             "chunk_ids": [c for c in p["chunk_ids"] if c in excerpts] or p["chunk_ids"][:1]} for p in points]}
+        if purpose == "check":
+            qctx["used_angles"] = used_angles or {pid: [] for pid in point_ids}
         request = question_agent.question_request(qctx)
         return self._ask(course, ctx, "questions", request, lambda text: question_agent.parse_questions(text, qctx), 8192)
 
@@ -552,11 +702,12 @@ class Classroom:
         raise ModelError("AGENT_FORMAT", "AI 的回答格式不对，已重试一次仍不行。") from last
 
     # ------------------------------------------------------------------ records
-    def _record(self, course, state, context, pending, verdict, answer):
+    def _record(self, course, state, context, pending, verdict, answer, *, angle=None):
         wrong = set(verdict.wrong_points)
         results = tuple((pid, pid not in wrong) for pid in pending["point_ids"])
         attempt = (state.get("test") or {}).get("attempt") if context in ("module_test", "skip_test") else None
-        event = Judgement(uuid.uuid4().hex, course.next_seq(), self.now(), context, state["module_id"], attempt, results)
+        module_id = course.point(pending["point_ids"][0])["module_id"]
+        event = Judgement(uuid.uuid4().hex, course.next_seq(), self.now(), context, module_id, attempt, results, angle)
         q = pending["question"]
         course.store.append_judgement(course.plan_id, event, details={
             "question": q["stem"], "answer": answer[:4000], "reason": verdict.reason, "chunk_ids": q.get("chunk_ids", [])})
@@ -570,7 +721,7 @@ class Classroom:
             log.info("learning credit for %s not added", point["id"], exc_info=True)
 
     def _say(self, course, state, text, *, kind="text", role="system"):
-        course.store.append_message(course.plan_id, state["module_id"], role, text, kind=kind)
+        course.store.append_message(course.plan_id, self._channel(state), role, text, kind=kind)
 
     # ------------------------------------------------------------------ profile (background)
     def _profile_later(self, course, state, mode, point_id=None):
@@ -599,7 +750,8 @@ class Classroom:
                     pctx["current_point_id"] = point_id
                 request = profile_agent.profile_request(pctx)
                 result = self._ask(fresh, None, "profile", request, lambda text: profile_agent.parse_profile(text, pctx), 2048)
-                fresh.store.save_teacher_profile(plan_id, {"text": result.text, "at": self.now().isoformat()})
+                fresh.store.save_teacher_profile(plan_id, dict(self._profile_document(fresh), text=result.text,
+                                                               at=self.now().isoformat()))
             except Exception:  # noqa: BLE001 - notes are best effort and never block the lesson
                 log.info("teacher profile update failed", exc_info=True)
             finally:
@@ -662,7 +814,7 @@ class _Course:
 
 def _question_dict(q):
     return {"id": q.id, "type": q.type, "stem": q.stem, "options": list(q.options), "answer": q.answer,
-            "reference": q.reference, "point_ids": list(q.point_ids), "chunk_ids": list(q.chunk_ids)}
+            "reference": q.reference, "point_ids": list(q.point_ids), "chunk_ids": list(q.chunk_ids), "angle": q.angle}
 
 
 def _question_text(q):
@@ -743,6 +895,7 @@ def register(bridge, services, study_day, *, presence=lambda active: None):
         "classroom.reply": lambda p, c: room().run(p.get("plan_id"), lambda co, st, cx: room().reply(co, st, cx, text(p)), c),
         "classroom.test": lambda p, c: room().run(p.get("plan_id"), lambda co, st, cx: room().start_test(co, st, cx, kind(p)), c),
         "classroom.next_module": lambda p, c: room().run(p.get("plan_id"), room().next_module, c),
+        "classroom.check": lambda p, c: room().run(p.get("plan_id"), room().start_check, c),
         "classroom.leave": left,
         "classroom.source": source,
     }
