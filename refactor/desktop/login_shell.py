@@ -86,6 +86,9 @@ QComboBox {{ min-height: 40px; padding: 0 36px 0 14px; border: 1px solid rgba(18
   background: #fffafc; color: #35202f; font-size: 14px; }}
 QComboBox:hover {{ border-color: rgba(214, 90, 134, 0.55); }}
 QComboBox:focus {{ border: 1.5px solid #d65a86; }}
+QComboBox#loginAccountBox {{ min-height: 44px; border-radius: 13px; padding: 0 36px 0 4px; }}
+QComboBox#loginAccountBox QLineEdit {{ border: 0; background: transparent; min-height: 40px; padding: 0 10px; }}
+QComboBox#loginAccountBox QLineEdit:focus {{ border: 0; background: transparent; }}
 QComboBox::drop-down {{ border: 0; width: 32px; }}
 QComboBox::down-arrow {{ image: url({_ICONS}/chevron.svg); width: 14px; height: 14px; }}
 QComboBox QAbstractItemView {{ background: #ffffff; border: 1px solid rgba(185, 96, 136, 0.3); border-radius: 10px; padding: 4px;
@@ -224,8 +227,18 @@ class LoginGateWindow(QWidget):
         self.state_detail.setMinimumHeight(40)
         card_layout.addWidget(self.state_detail)
         account_row = QHBoxLayout()
+        self.username_field = QLineEdit()
+        self.username_field.setObjectName('nativeUsername')
+        self.username_field.setPlaceholderText('账号（点右侧箭头选择已记住的账号）')
+        self.username_field.setAccessibleName('账号')
+        self.username_field.setMaxLength(320)
         self.account_selector = QComboBox()
-        self.account_selector.setAccessibleName('本机账号列表')
+        self.account_selector.setObjectName('loginAccountBox')
+        self.account_selector.setAccessibleName('账号')
+        self.account_selector.setEditable(True)
+        self.account_selector.setLineEdit(self.username_field)   # the same box: choose from the list or type a new name
+        self.account_selector.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.account_selector.setCompleter(None)
         self.account_selector.activated.connect(lambda _: self.account_selected.emit(self.account_selector.currentData() or ''))
         self.add_account_button = QPushButton('添加')
         self.add_account_button.clicked.connect(self.cancel_requested.emit)
@@ -237,14 +250,9 @@ class LoginGateWindow(QWidget):
             button.setObjectName('loginSmallButton')
         account_row.setSpacing(8)
         account_row.addWidget(self.account_selector,1)
-        account_row.addWidget(self.add_account_button)
         account_row.addWidget(self.remove_account_button)
+        self.add_account_button.hide()   # typing another name in the box is how a new account signs in
         card_layout.addLayout(account_row)
-        self.username_field = QLineEdit()
-        self.username_field.setObjectName('nativeUsername')
-        self.username_field.setPlaceholderText('账号')
-        self.username_field.setAccessibleName('账号')
-        self.username_field.setMaxLength(320)
         self.password_field = QLineEdit()
         self.password_field.setObjectName('nativePassword')
         self.password_field.setPlaceholderText('密码')
@@ -256,8 +264,7 @@ class LoginGateWindow(QWidget):
         self.show_password.toggled.connect(lambda visible: self.password_field.setEchoMode(
             QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password))
         self.password_field.returnPressed.connect(self._activate)
-        for widget in (self.username_field, self.password_field):
-            card_layout.addWidget(widget)
+        card_layout.addWidget(self.password_field)
         # Options on one row inside the card (show password, remember password, auto login).
         options = QHBoxLayout()
         options.setSpacing(18)
@@ -381,8 +388,7 @@ class LoginGateWindow(QWidget):
     def _set_native_form_visible(self, visible: bool) -> None:
         # The lifecycle form replaces the credential form in the same card.
         # Disabled native controls must not consume the WebEngine form's space.
-        for widget in (self.account_selector, self.add_account_button,
-                       self.remove_account_button, self.username_field,
+        for widget in (self.account_selector, self.remove_account_button,
                        self.password_field, self.show_password,
                        self.remember_password_box, self.auto_box):
             widget.setVisible(visible)

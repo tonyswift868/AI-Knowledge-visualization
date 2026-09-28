@@ -236,14 +236,17 @@ class AccountShell:
             return
         selector = self.gate.account_selector
         selector.blockSignals(True)
+        typed = self.gate.username_field.text()
         selector.clear()
-        labels = [friendly_name(row) for row in snapshot["accounts"]]
+        labels = [(row.get("username") or "").strip() or friendly_name(row) for row in snapshot["accounts"]]
         for index, row in enumerate(snapshot["accounts"]):
             label = labels[index]
             if labels.count(label) > 1:   # same name on two local accounts: number them, never show ids
                 label += f"（{labels[:index + 1].count(label)}）"
             selector.addItem(label, row["account_id"])
         selector.setCurrentIndex(selector.findData(snapshot["current_account_id"]))
+        if selector.currentIndex() < 0:
+            self.gate.username_field.setText(typed)   # refreshing the list never wipes what was typed
         selector.blockSignals(False)
         self.gate.remove_account_button.setEnabled(bool(snapshot["accounts"]))
 
@@ -343,7 +346,7 @@ class AccountShell:
         self.gate.auto_box.setChecked(False)
         self.gate.remember_password_box.setChecked(False)
         self.gate.account_selector.setCurrentIndex(-1)
-        self.gate.username_field.clear()
+        self.gate.username_field.clear()   # (an editable box also clears its text with the selection)
         self.gate.clear_password()
         self._refresh_remembered_password_hint()
         try:
