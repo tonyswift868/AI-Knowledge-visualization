@@ -94,7 +94,9 @@ def capture(env, kc_env, state, package, *, run=subprocess.run):
     def command_json(argv):return json.loads(run(argv,check=True,capture_output=True,text=True).stdout)
     before=command_json(compose(env)+['config','--format','json'])
     kc_before=command_json(kc_compose(kc_env)+['config','--format','json'])
-    if before['services']['backend']['image']!=BASE or kc_before['services']['keycloak']['image']!=KC_BASE:
+    # Compose may pin Keycloak by tag or by the confirmed image ID; line 104 still requires the
+    # running container and the tag to resolve to exactly KC_ID.
+    if before['services']['backend']['image']!=BASE or kc_before['services']['keycloak']['image'] not in (KC_BASE,KC_ID):
         raise ValueError('base images differ from MF-U10 / confirmed Keycloak')
     settings=before['services']['backend'].get('environment',{})
     if any(str(settings.get(k))!='1' for k in ('WEB_CONCURRENCY','MENTORFLOW_NATIVE_AUTH_SINGLE_PROCESS')):raise ValueError('native auth requires single process')
