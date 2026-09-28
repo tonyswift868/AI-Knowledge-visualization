@@ -14,8 +14,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 基线提交 | 第十一批 `0953cfd`（2026-09-28，含第十批合入、最终检验、学习报告、提醒规则）；更早批次见任务行 |
-| 说明 | 每批最多 3 个任务。第十一批：计划中途加资料（MF-04）、安装程序与自动更新（MF-06）、检验时长分开记 + 全流程阻塞复查（MF-03）；架构师做新界面改名/归档/删除与各任务的界面接入 |
+| 基线提交 | 第十二批 `ed11b90`（2026-09-29，含第十一批合入、加资料界面、更新通道上线）；更早批次见任务行 |
+| 说明 | 每批最多 3 个任务。第十二批 2 个：朗读组件改为官方下载 + 正式发布构建（MF-06）、加资料支持贴网址（MF-04）；架构师负责签名、上传、界面接入 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
@@ -25,9 +25,9 @@
 | MF-03（client） | D:\MentorFlow-office\client | 空闲 |
 | MF-07（server） | D:\MentorFlow-office\server | 空闲 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
-| MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 12-MF04 进行中 |
 | MF-01（library） | D:\MentorFlow-office\library | 空闲 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 12-MF06 进行中 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
 工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
@@ -83,6 +83,8 @@
 | 11-MF04 | MF-04 platform | 计划中途加资料：只处理新增部分的组件 | PLAN-10、PLAN-08、PLAN-04 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
 | 11-MF06 | MF-06 classroom | 新界面的 Windows 安装程序 + 朗读引擎按需下载 + 自动更新 | SYS-06、VOICE-01、ARCH-01 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
 | 11-MF03 | MF-03 client | 检验时长分开预估、分开记 + 全流程阻塞复查 | CHK-01、PLAN-05、TEACH-02、SYS-04 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
+| 12-MF06 | MF-06 classroom | 朗读组件改为从官方下载站获取 + 正式发布构建（交架构师签名上传） | SYS-06、VOICE-01 | ed11b90 | 已派发 |
+| 12-MF04 | MF-04 platform | 加资料支持贴网址（网页与 GitHub 仓库） | PLAN-10、PLAN-06、BUG-09 | ed11b90 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -2081,4 +2083,61 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   4. 场景固化成测试（tests/refactor/timeline/，文件名不重名）。
 验收：pytest tests/refactor 全部通过；报告写到 D:\MentorFlow\.local\test-tmp\timeline\full-flow-audit.md。
 回执：【MF-03｜client｜第十一批｜完成/部分完成/受阻】基线 ／ 提交 ／ 检验时长改法与兼容 ／ 全流程结论（合理/不合理数量）／ 你修了什么 ／ 需要产品决定的 ／ 问题记录
+~~~
+
+## 第十二批任务详情
+
+基线 `ed11b90`（2026-09-29）。每批最多 3 个任务。
+
+### [12-MF06] classroom｜朗读组件改为从官方下载站获取 + 正式发布构建（交架构师签名上传）
+
+~~~text
+【MentorFlow 第十二批｜MF-06（工位 classroom）｜朗读组件改为从官方下载站获取 + 正式发布构建（交架构师签名上传）】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard ed11b90
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。先读 AGENTS.md 的磁盘规则：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删，同类只留最后一份，回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+分工：组件由员工做；编排与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的外不要改。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。可以下载构建工具或公开资料到本任务的 D 盘目录（不装进共用环境）。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。
+先读：AGENTS.md；CURRENT_STATE.md 的 [SYS-06]（含 2026-09-29 架构师记录：正式公钥、更新通道已上线、服务器只剩约 16 GB）、[VOICE-01]；你第十一批的 scripts/build_learning_installer.py、scripts/build_learning_voice_assets.py、朗读组件下载与安装代码及报告 D:\MentorFlow\.local\test-tmp\installer\report.md。
+已定事项（不用再问）：
+- 更新地址：https://89.45.45.28/mentorflow/updates/app/stable/stable.json（通道已上线，公网 HTTPS 证书受信任，可以只读 GET 检查，不能上传）。
+- 正式公钥：D:\MentorFlow\.local\release-keys\mentorflow-app-2026.public.json（只读取公钥文件；同目录的私钥文件不许读取、复制或使用）。
+- 服务器硬盘小：朗读引擎与底模不放我们服务器，由客户端直接从 GPT-SoVITS 官方下载站获取（HuggingFace 为主，国内镜像如 ModelScope 为备，两个地址都写进组件清单，一个不通自动换另一个）；我们服务器只放安装程序、更新文件和老师声音包。
+要做
+  1. 查官方发布：找到与现用引擎一致的官方 GPT-SoVITS v2pro-20250604 Windows 整合包和底模的官方下载地址、大小与哈希（写明来源页面）。如果官方只提供 7z 等格式，让我们的下载安装组件支持它（可以用 py7zr 等库，写明新增依赖与大小）；如果官方包和我们需要的文件结构不同，在安装时按清单只取需要的部分。下载只放本任务 D 盘目录做一次真实验证，验证完只保留清单和哈希，删除大包。
+  2. 老师声音包：从 D:\_KEEP\voices\ 里的弗洛洛 1.0.4 备份打包 voice.zip（约 278 MB），这是我们服务器上唯一的大文件；写进组件清单，地址用 https://89.45.45.28/mentorflow/updates/app/voice/<版本>/voice.zip。
+  3. 生成正式组件清单 component-catalog.json，然后按报告里的正式发布步骤 2–3 做正式构建：freeze（--feed 用上面地址、--public-key 用正式公钥、--app-id MentorFlow、版本 2.0.0）、release（epoch 1、minimum-version 2.0.0、notes 写中文更新说明）、installer（未签名元数据会被拒绝时，停在“等待签名”这一步，把需要架构师执行的 sign 与 installer 两条命令原样写进回执）。
+  4. 在本机模拟一次“从官方镜像下载引擎 + 从我们通道下载声音包”的完整链路：可以用本机 HTTP 源代替我们的通道，但官方镜像那部分要真实下载一次、校验哈希、安装到所选目录、能朗读。
+  5. 回执列出要上传服务器的文件清单（路径、大小、哈希、放到 /mentorflow/updates/app/ 下的哪个位置），总量尽量小；本地只保留最终一份构建产物，中间版本全部删除。
+验收：pytest tests/refactor 全部通过；报告写到 D:\MentorFlow\.local\test-tmp\release\report.md。
+回执：【MF-06｜classroom｜第十二批｜完成/部分完成/受阻】基线 ／ 提交 ／ 官方来源与哈希 ／ 上传清单与总量 ／ 等架构师执行的命令 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [12-MF04] platform｜加资料支持贴网址（网页与 GitHub 仓库）
+
+~~~text
+【MentorFlow 第十二批｜MF-04（工位 platform）｜加资料支持贴网址（网页与 GitHub 仓库）】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard ed11b90
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。先读 AGENTS.md 的磁盘规则：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删，同类只留最后一份，回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+分工：组件由员工做；编排与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的外不要改。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。可以下载构建工具或公开资料到本任务的 D 盘目录（不装进共用环境）。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。
+先读：AGENTS.md；CURRENT_STATE.md 的 [PLAN-10]（2026-09-29 架构师已接好文件方式的界面）、[PLAN-06]、[BUG-09]；course/plan_additions.py、course/github_repo.py、course/research_pipeline.py、course/materials.py；app/plan_flow.py 里新建计划打开网址的 _import_links 与已开始计划加资料的 additions_analyze（只读，看现有做法）。
+问题：已开始的计划没有“创建记录”，新建计划那套打开网址的代码会写创建记录，不能直接用；所以现在加资料只支持文件。
+要做
+  1. 在 course/ 下新建一个纯组件（不依赖创建记录和界面）：给定已开始计划与若干网址，网页按现有核实流程打开提取正文，GitHub 仓库走 github_repo 的导入规则（同样的“找正文目录、优先中文译本”），把结果作为已采用资料写入计划，返回资料编号；已在计划里的资料不重复导入；失败的网址单独说明原因，其余继续。
+  2. 离线测试用假网页和假仓库（参照现有 github_repo 与 research_pipeline 的测试方式）；真实验证：对一份已开始的计划副本，贴一个官方文档网页和一个 GitHub 仓库各一次，接着跑你第十一批的分析，确认资料内容完整进入（花费上限 ¥2）。
+  3. 界面与桥接由架构师接：回执写清函数签名、耗时、返回结构；架构师会在“加资料”卡片里加一个网址输入框。
+验收：pytest tests/refactor 全部通过；报告写到 D:\MentorFlow\.local\test-tmp\plan-additions\links-report.md。
+回执：【MF-04｜platform｜第十二批｜完成/部分完成/受阻】基线 ／ 提交 ／ 接口 ／ 真实验证与花费 ／ 本地最终占用 ／ 问题记录
 ~~~
