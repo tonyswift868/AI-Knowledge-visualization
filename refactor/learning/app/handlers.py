@@ -195,7 +195,7 @@ def register(bridge, window):
         today = study_day(now, refresh, now.tzinfo)
         items = []
         for plan in store.list_plans(include_archived=bool(params.get("include_archived"))):
-            item = {"id": plan["id"], "goal": plan.get("goal", ""), "final_goal": plan.get("final_goal", ""),
+            item = {"id": plan["id"], "title": plan.get("title") or "", "goal": plan.get("goal", ""), "final_goal": plan.get("final_goal", ""),
                     "state": plan.get("state"), "archived": plan.get("archived", False),
                     "module_count": plan.get("module_count", 0), "window": plan.get("window"),
                     "total_minutes": plan.get("total_minutes", 0), "today": None}

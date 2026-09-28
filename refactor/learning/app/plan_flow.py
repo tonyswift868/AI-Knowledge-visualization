@@ -241,6 +241,7 @@ class PlanFlow:
                 if exc.code != "NOT_FOUND":
                     raise
             self._file(plan_id).path.unlink(missing_ok=True)
+            AccountJSON(self.services.account_id, self.services.data_root, f"classroom/{plan_id}.json").path.unlink(missing_ok=True)
             self._pools.pop(plan_id, None)
             self._verified.pop(plan_id, None)
             return {"deleted": True}
@@ -986,7 +987,7 @@ class PlanFlow:
             by_module.setdefault(point["module_id"], []).append(
                 {"id": point["id"], "title": point.get("title", ""), "summary": point["summary"], "minutes": point["minutes"],
                  **mastery.get(point["id"], {})})
-        result = {"plan": {k: plan.get(k) for k in ("id", "goal", "final_goal", "state", "window", "total_minutes", "module_count")},
+        result = {"plan": {k: plan.get(k) for k in ("id", "title", "goal", "final_goal", "state", "window", "total_minutes", "module_count")},
                   "stages": [{"id": s["id"], "title": s.get("title", ""), "modules": [
                       {"id": m["id"], "title": m["title"], "summary": m.get("summary", ""), "learning_minutes": m["learning_minutes"],
                        "check_minutes": m["check_minutes"], "points": by_module.get(m["id"], []),
@@ -1152,6 +1153,9 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.start": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().start(d), c),
         "plan.detail": lambda p, c: flow().detail(plan_id(p)),
         "plan.window": lambda p, c: flow().change_window(plan_id(p), p),
+        "plan.rename": lambda p, c: services().store.rename_plan(plan_id(p), text(p, "title", 80)) or {"ok": True},
+        "plan.archive": lambda p, c: (services().store.archive_plan(plan_id(p)) if p.get("archived") is True
+                                      else services().store.restore_plan(plan_id(p))) or {"ok": True},
         "plan.report": lambda p, c: flow().report(plan_id(p)),
     }
     for name, fn in handlers.items():

@@ -634,6 +634,13 @@ class CourseStore:
         self._put('plans', plan_id, plan)
 
     @_atomic
+    def rename_plan(self, plan_id, title):
+        """A display name only; the learning goal the plan was built for stays as it was."""
+        if not isinstance(title, str) or not 1 <= len(title.strip()) <= 80: raise StoreError('INVALID_TITLE')
+        plan = self._get('plans', plan_id, plan_id); plan['title'] = title.strip()
+        self._put('plans', plan_id, plan)
+
+    @_atomic
     def restore_plan(self, plan_id):
         plan = self._get('plans', plan_id, plan_id); plan['archived'] = False
         self._put('plans', plan_id, plan)

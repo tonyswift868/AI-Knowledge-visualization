@@ -286,3 +286,18 @@ def test_a_started_plan_changes_its_end_date_and_daily_cap(room):
         flow.change_window(PLAN, {"end": (DAY - timedelta(days=1)).isoformat()})
     with pytest.raises(BridgeError):
         flow.change_window(PLAN, {"weekday_weights": [0] * 7})
+
+
+def test_a_started_plan_can_be_renamed_archived_and_deleted(room):
+    from refactor.learning.app.plan_flow import PlanFlow
+    classroom, agents, store = room
+    act(classroom, "enter")
+    store.rename_plan(PLAN, "  队列与栈  ")
+    assert store.get_plan(PLAN)["title"] == "队列与栈" and store.get_plan(PLAN)["goal"] == "学会队列"
+    store.archive_plan(PLAN)
+    assert store.get_plan(PLAN)["archived"]
+    store.restore_plan(PLAN)
+    flow = PlanFlow(classroom.services, lambda *a: None, lambda: DAY)
+    assert classroom._file(PLAN).path.exists()
+    assert flow.discard(PLAN) == {"deleted": True}
+    assert store.list_plans(include_archived=True) == [] and not classroom._file(PLAN).path.exists()

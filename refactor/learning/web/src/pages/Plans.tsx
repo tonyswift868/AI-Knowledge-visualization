@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Archive, BookOpenCheck, PencilLine, PlayCircle, Plus } from "lucide-react"
+import { Archive, ArchiveRestore, BookOpenCheck, Check, PencilLine, PlayCircle, Plus, Trash2, X } from "lucide-react"
 import { call } from "../bridge"
 import { useApp } from "../store"
 import { Button, SakuraArt, Segmented, Skeleton } from "../ui"
@@ -9,7 +9,7 @@ export type LedgerToday = {
   ahead_minutes: number; ahead_days: number; remaining_minutes: number; overdue_days: number; completed: boolean
 }
 export type PlanItem = {
-  id: string; goal: string; final_goal: string; state: string; archived: boolean; module_count: number
+  id: string; title: string; goal: string; final_goal: string; state: string; archived: boolean; module_count: number
   window: { start: string; end: string } | null; total_minutes: number; today: LedgerToday | null
 }
 
@@ -23,11 +23,11 @@ export function Plans() {
   const set = useApp((s) => s.set)
   const [filter, setFilter] = React.useState<"current" | "all" | "archived">("current")
   const [plans, setPlans] = React.useState<PlanItem[] | null>(null)
-
-  React.useEffect(() => {
-    if (!ready) return
+  const reload = React.useCallback(() => {
     call<{ plans: PlanItem[] }>("plans.list", { include_archived: true }).then((r) => setPlans(r.plans)).catch(() => setPlans([]))
-  }, [ready])
+  }, [])
+
+  React.useEffect(() => { if (ready) reload() }, [ready, reload])
 
   const shown = (plans ?? []).filter((p) =>
     filter === "archived" ? p.archived : filter === "current" ? !p.archived && p.state !== "completed" : !p.archived)
@@ -63,7 +63,7 @@ export function Plans() {
               return (
                 <div key={p.id} className="card hover stack">
                   <div className="row between">
-                    <b style={{ fontSize: "1.05rem" }}>{p.goal || "未命名计划"}</b>
+                    <b style={{ fontSize: "1.05rem" }}>{p.title || p.goal || "未命名计划"}</b>
                     <span className={`pill ${tone}`}>{p.archived ? <><Archive size={12} />已归档</> : label}</span>
                   </div>
                   {p.final_goal && <span className="muted small">最终目标：{p.final_goal}</span>}
@@ -80,6 +80,7 @@ export function Plans() {
                           <Button small kind="primary" onClick={() => { set({ planId: p.id }); go("classroom") }}><PlayCircle />开课</Button>}
                         <Button small onClick={() => { set({ planId: p.id }); go("plan") }}><BookOpenCheck />查看路线</Button>
                       </>}
+                    <PlanMenu plan={p} onChanged={reload} />
                   </div>
                 </div>
               )
@@ -87,6 +88,43 @@ export function Plans() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/** PLAN-08: rename (display name only), archive / restore, delete with a second click. */
+function PlanMenu({ plan, onChanged }: { plan: PlanItem; onChanged: () => void }) {
+  const toast = useApp((s) => s.toast)
+  const [editing, setEditing] = React.useState(false)
+  const [title, setTitle] = React.useState(plan.title || plan.goal)
+  const [confirm, setConfirm] = React.useState(false)
+  React.useEffect(() => {
+    if (!confirm) return
+    const t = setTimeout(() => setConfirm(false), 3000)
+    return () => clearTimeout(t)
+  }, [confirm])
+  async function run(method: string, params: Record<string, unknown>, done: string) {
+    try { await call(method, { plan_id: plan.id, ...params }); toast("ok", done); onChanged() }
+    catch (e) { toast("error", (e as Error).message) }
+  }
+  if (editing) return (
+    <div className="row" style={{ gap: 6, marginLeft: "auto" }}>
+      <input className="input" style={{ width: 200 }} value={title} maxLength={80} autoFocus onChange={(e) => setTitle(e.target.value)}
+             onKeyDown={(e) => { if (e.key === "Enter" && title.trim()) { setEditing(false); void run("plan.rename", { title }, "已改名。") } }} />
+      <button className="icon-btn sm" title="保存" disabled={!title.trim()}
+              onClick={() => { setEditing(false); void run("plan.rename", { title }, "已改名。") }}><Check /></button>
+      <button className="icon-btn sm" title="取消" onClick={() => setEditing(false)}><X /></button>
+    </div>
+  )
+  return (
+    <div className="row" style={{ gap: 4, marginLeft: "auto" }}>
+      <button className="icon-btn sm" title="改名" onClick={() => setEditing(true)}><PencilLine /></button>
+      {plan.archived
+        ? <button className="icon-btn sm" title="还原" onClick={() => run("plan.archive", { archived: false }, "已还原。")}><ArchiveRestore /></button>
+        : <button className="icon-btn sm" title="归档（进度保留，可随时还原）" onClick={() => run("plan.archive", { archived: true }, "已归档，进度都保留。")}><Archive /></button>}
+      <button className={`icon-btn sm ${confirm ? "danger" : ""}`} title={confirm ? "再点一次删除（计划、进度和报告都会删除）" : "删除"}
+              onClick={() => (confirm ? run("plan.discard", {}, "已删除这份计划。") : setConfirm(true))}>
+        <Trash2 />{confirm && <span className="small">确认删除</span>}</button>
     </div>
   )
 }

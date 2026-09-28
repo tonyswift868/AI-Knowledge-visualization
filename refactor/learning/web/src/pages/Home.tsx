@@ -97,7 +97,7 @@ function TodayCard({ plan }: { plan: PlanItem }) {
   return (
     <div className="card hover stack">
       <div className="row between">
-        <b style={{ fontSize: "1.02rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{plan.goal || "未命名计划"}</b>
+        <b style={{ fontSize: "1.02rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{plan.title || plan.goal || "未命名计划"}</b>
         {t.overdue_days ? <span className="pill warn">逾期 {t.overdue_days} 天</span> : plan.state === "checking" ? <span className="pill">检验中</span> : null}
       </div>
       <div className="row" style={{ gap: 18 }}>
