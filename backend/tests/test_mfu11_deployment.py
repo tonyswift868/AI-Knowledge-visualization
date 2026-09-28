@@ -177,3 +177,23 @@ def test_mfu11_compose_literal_matches_running_command(modules):
     printed = ['KC_X="$$(cat /run/secrets/x)"; test -n "$$KC_X"']
     assert ops.compose_literal(printed) == ['KC_X="$(cat /run/secrets/x)"; test -n "$KC_X"']
     assert ops.compose_literal(['/bin/sh', '-ec']) == ['/bin/sh', '-ec'] and ops.compose_literal(None) is None
+
+
+def test_mfu11_jar_audit_ignores_only_packaging_entries(modules, tmp_path):
+    import zipfile
+    ops = modules[0]
+    old, new = tmp_path / 'old.jar', tmp_path / 'new.jar'
+    with zipfile.ZipFile(old, 'w') as z:
+        for d in ('META-INF/', 'win/', 'win/clannad/', 'win/clannad/mentorflow/'):
+            z.writestr(d, b'')
+        z.writestr('META-INF/MANIFEST.MF', 'Manifest-Version: 1.0\r\nCreated-By: 21\r\n\r\n')
+        z.writestr('win/clannad/mentorflow/A.class', b'a')
+    with zipfile.ZipFile(new, 'w') as z:
+        z.writestr('win/clannad/mentorflow/A.class', b'a')
+    assert ops.packaging_only(zipfile.ZipFile(old), 'META-INF/MANIFEST.MF')
+    assert ops.packaging_only(zipfile.ZipFile(old), 'win/')
+    with zipfile.ZipFile(tmp_path / 'm.jar', 'w') as z:
+        z.writestr('META-INF/MANIFEST.MF', 'Manifest-Version: 1.0\nMain-Class: x.Y\n')
+    assert not ops.packaging_only(zipfile.ZipFile(tmp_path / 'm.jar'), 'META-INF/MANIFEST.MF')
+    assert not ops.packaging_only(zipfile.ZipFile(new), 'win/clannad/mentorflow/A.class')
+

@@ -66,12 +66,21 @@ def kc_compose(env):
     return args
 
 
+def packaging_only(jar, name):
+    if name.endswith('/'):return True
+    if name!='META-INF/MANIFEST.MF':return False
+    lines=[l for l in jar.read(name).decode('utf-8','replace').splitlines() if l.strip()]
+    return all(l.split(':',1)[0] in ('Manifest-Version','Created-By') for l in lines)
+
+
 def audit_provider(original, candidate):
     if digest(original.read_bytes())!=KC_JAR_SHA:raise ValueError('live provider differs from architect-confirmed SHA256')
     allowed=('win/clannad/mentorflow/NativeIdentityVerifier','win/clannad/mentorflow/EmailCodeReset')
     with zipfile.ZipFile(original) as old, zipfile.ZipFile(candidate) as new:
-        a=set(old.namelist());b=set(new.namelist())
-        if len(a)!=len(old.namelist()) or len(b)!=len(new.namelist()):raise ValueError('duplicate JAR entries')
+        if len(set(old.namelist()))!=len(old.namelist()) or len(set(new.namelist()))!=len(new.namelist()):raise ValueError('duplicate JAR entries')
+        # Packaging-only entries: directory records and an attribute-free default manifest
+        # (the live JAR came from the `jar` tool, the candidate from a zip writer).
+        a={n for n in old.namelist() if not packaging_only(old,n)};b={n for n in new.namelist() if not packaging_only(new,n)}
         added=b-a;removed=a-b
         print(json.dumps({'old_classes':sorted(n for n in a if n.endswith('.class')),
                           'new_classes':sorted(n for n in b if n.endswith('.class'))},indent=2))
