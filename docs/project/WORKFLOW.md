@@ -14,20 +14,20 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 基线提交 | 第十批 `a6f286e`（2026-09-28，含第九批合入与 SYS-03 需求修改）；更早批次见任务行 |
-| 说明 | 每批最多 3 个任务（用户另有项目共用算力）。第十批 3 个大任务，覆盖本阶段员工部分：只显示 token + 厂商余额（MF-02）、模拟学生真实上课评测（MF-01）、时间相关行为全面审查并直接修（MF-03）；架构师做最终检验（CHK-01）、学习报告、路线图掌握状态；排队：计划中途加资料（PLAN-10） |
+| 基线提交 | 第十一批 `0953cfd`（2026-09-28，含第十批合入、最终检验、学习报告、提醒规则）；更早批次见任务行 |
+| 说明 | 每批最多 3 个任务。第十一批：计划中途加资料（MF-04）、安装程序与自动更新（MF-06）、检验时长分开记 + 全流程阻塞复查（MF-03）；架构师做新界面改名/归档/删除与各任务的界面接入 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-03（client） | D:\MentorFlow-office\client | 空闲 |
+| MF-03（client） | D:\MentorFlow-office\client | 11-MF03 进行中 |
 | MF-07（server） | D:\MentorFlow-office\server | 空闲 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
-| MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 11-MF04 进行中 |
 | MF-01（library） | D:\MentorFlow-office\library | 空闲 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 11-MF06 进行中 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
 工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
@@ -80,6 +80,9 @@
 | 10-MF02 | MF-02 runtime | 用量只显示 token + 厂商余额显示在 API 右边 | SYS-03、BUG-20、UI-00 | a6f286e | 已合入 8776ad9（2026-09-28） |
 | 10-MF01 | MF-01 library | 模拟学生真实上课评测：判定准不准、老师讲得对不对，并修组件 | ARCH-07、TEACH-02、TEACH-04、TEACH-06、BUG-18 | a6f286e | 已合入 8776ad9（2026-09-28） |
 | 10-MF03 | MF-03 client | 所有时间相关行为的全面审查：结果合不合理，有问题直接修 | PLAN-05、PLAN-08、TEACH-05、SYS-04、CHK-01 | a6f286e | 已合入 8776ad9（2026-09-28） |
+| 11-MF04 | MF-04 platform | 计划中途加资料：只处理新增部分的组件 | PLAN-10、PLAN-08、PLAN-04 | 0953cfd | 已派发 |
+| 11-MF06 | MF-06 classroom | 新界面的 Windows 安装程序 + 朗读引擎按需下载 + 自动更新 | SYS-06、VOICE-01、ARCH-01 | 0953cfd | 已派发 |
+| 11-MF03 | MF-03 client | 检验时长分开预估、分开记 + 全流程阻塞复查 | CHK-01、PLAN-05、TEACH-02、SYS-04 | 0953cfd | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1999,4 +2002,83 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   4. 把这些场景固化成测试（放 tests/refactor/timeline/，文件名不要与已有测试重名）。
 验收：pytest tests/refactor 全部通过；报告写到 D:\MentorFlow\.local\test-tmp\timeline\clock-audit.md。
 回执：【MF-03｜client｜第十批｜完成/部分完成/受阻】基线 ／ 提交 ／ 场景结论汇总（合理/不合理数量）／ 你修了什么 ／ 需要产品决定的 ／ 问题记录
+~~~
+
+## 第十一批任务详情
+
+基线 `0953cfd`（2026-09-28）。每批最多 3 个任务。
+
+### [11-MF04] platform｜计划中途加资料：只处理新增部分的组件
+
+~~~text
+【MentorFlow 第十一批｜MF-04（工位 platform）｜计划中途加资料：只处理新增部分的组件】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard 0953cfd
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件或函数外不要改。
+这是一个大任务包，按顺序做完所有项再交；某项受阻就写清原因继续做后面的。对原因的判断要用真实数据验证后再写（BUG-20 教训）；不要加没人用的别名或兼容层；不要用读页面文字之类的取巧写法。回执附“问题记录”（现象、原因、排查、解决、验证）。
+先读：AGENTS.md；CURRENT_STATE.md 的 [PLAN-10]（已定方案四条，照做）、[PLAN-08]、[PLAN-04]、[PLAN-05]；course/planner_agents.py（轮廓、分批生成、合并工具）、course/materials.py（资料导入）、course/store.py（已开始计划能追加内容的接口与限制，见 tests/refactor/store/test_store.py 里 started plan 相关测试）；app/plan_flow.py（只读，看新建计划怎么串这些组件）。
+要做
+  1. 新建 refactor/learning/course/plan_additions.py（纯组件，不调模型、不写存储之外的东西）：
+     a. 分析请求与严格解析：输入“已有路线（阶段/模块/知识点标题与摘要、哪些已学）+ 新资料的目录与片段”，模型判断新资料里哪些只是补充已有知识点（给出要挂到哪个点）、哪些是真正新的内容（建议成新模块，写清插在哪个模块后面、前置是谁、分钟区间）、哪些和已学内容重合不用加。已学模块不能被改写；新内容若是已学模块的前置，标为“补充模块”，排到未学部分最前面。
+     b. 变更预览数据：新模块插入位置、预计多花的分钟、截止日不变时每天多几分钟（是否超过每天上限）或建议推迟到哪天（用 ledger 现有函数算）。
+     c. 应用：用户确认（可勾掉某些新模块）后，只为新增模块生成知识点（复用分批生成工具），把补充片段挂到已有知识点，按前置关系插入未学部分，只重排剩余日子的时长（规则同 PLAN-08）；已完成和欠的记录保留。需要改 course/store.py 才能做到的可以改（加接口，不放宽已有限制），写清楚。
+  2. 离线测试：只补充不加模块、加新模块插到中间、新内容是已学模块的前置、勾掉部分新模块、截止日不变每天超上限时给出建议推迟日期、已学记录不变。
+  3. 真实模型小额验证：用一份已开始的真实计划（从 Python 教程或 ai-agent-book 取资料，快照存 D 盘），加一份相关的新资料，跑完分析→预览→应用，人工核对“补充/新增/重合”的判断是否合理。花费上限 ¥3。
+  4. 界面与桥接由架构师接：回执里写清需要的桥接方法（参数、返回、耗时）和预览数据结构。
+验收：pytest tests/refactor 全部通过；报告写到 D:\MentorFlow\.local\test-tmp\plan-additions\report.md。
+回执：【MF-04｜platform｜第十一批｜完成/部分完成/受阻】基线 ／ 提交 ／ 接口与数据结构 ／ 真实验证结论与花费 ／ 问题记录
+~~~
+
+### [11-MF06] classroom｜新界面的 Windows 安装程序 + 朗读引擎按需下载 + 自动更新
+
+~~~text
+【MentorFlow 第十一批｜MF-06（工位 classroom）｜新界面的 Windows 安装程序 + 朗读引擎按需下载 + 自动更新】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard 0953cfd
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件或函数外不要改。
+这是一个大任务包，按顺序做完所有项再交；某项受阻就写清原因继续做后面的。对原因的判断要用真实数据验证后再写（BUG-20 教训）；不要加没人用的别名或兼容层；不要用读页面文字之类的取巧写法。回执附“问题记录”（现象、原因、排查、解决、验证）。
+先读：AGENTS.md；CURRENT_STATE.md 的 [SYS-06]（2026-09-28 用户确定的三条）、[VOICE-01]、[ARCH-01]；旧仓库已有成果先复用、不重复造：desktop/update_*.py、desktop/windows_update_child.py、desktop/windows_update_pipe.py、desktop/gui_update_runtime.py、desktop/packaged_update_uat.py 与其测试，scripts/build_inno_installer.py、scripts/build_distributable.ps1、scripts/build_normal_desktop_delivery.py 等；新界面入口 refactor/desktop/account_shell_main.py、refactor/learning/app/window.py；朗读下载 refactor/learning/app/speech.py 与 voice/ 下的下载器。
+要做
+  1. 安装程序：为新界面（新登录壳 + 新学习窗口 + web/dist）做一个 Windows 安装程序（沿用旧的 Inno Setup 方案），安装时可选目录；安装包里不含朗读引擎和声音包、不含语音识别模型；不含开发用的测试与旧界面运行链。构建脚本放 scripts/ 下新文件，产物放 D 盘测试目录。写明安装包大小。
+  2. 朗读按需下载：装好后朗读区域是空的（课堂里朗读开关旁显示“下载朗读组件”），用户主动点才下载；下载前说明大小并征得同意，可选存放路径（默认在安装目录旁或用户数据目录，由你按旧方案定并写明理由）；下载后无需重启即可用。语音识别模型同理。可以改 speech.py、voice/ 下的下载与配置代码，以及 web/src/teacher/useTeacherVoice.ts 和 Classroom.tsx 里朗读开关旁的这一小块（其他部分不要动）。
+  3. 自动更新：沿用旧的更新链路接到新界面：启动后在后台检查更新，有新版本时提示；用户点一下就下载并完成更新（需要重启的自动重启）；设置页“关于”里加“检查更新”按钮（这次允许改 web/src/pages/Settings.tsx 的关于/版本这一块，桥接方法加在 app/handlers.py）。更新服务器地址沿用旧配置；不要连服务器、不要上传或部署，发布到服务器由架构师做——你用本机模拟的更新源测试。
+  4. 真实验证：在本机干净目录用安装程序装一遍（非系统盘也可），能登录、能进新界面；朗读区域为空、点下载后能用（可用本机已有的引擎包作为模拟下载源，别重新从外网下 12 GB）；用本机模拟更新源从 A 版本一键更新到 B 版本。截图存 D 盘。
+验收：pytest tests/refactor 全部通过；web 构建通过（不要提交 dist 与安装包产物）；报告写到 D:\MentorFlow\.local\test-tmp\installer\report.md，写清发布到服务器需要架构师做的步骤。
+回执：【MF-06｜classroom｜第十一批｜完成/部分完成/受阻】基线 ／ 提交 ／ 安装包大小与内容 ／ 按需下载与更新的实测 ／ 发布步骤 ／ 问题记录
+~~~
+
+### [11-MF03] client｜检验时长分开预估、分开记 + 全流程阻塞复查
+
+~~~text
+【MentorFlow 第十一批｜MF-03（工位 client）｜检验时长分开预估、分开记 + 全流程阻塞复查】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard 0953cfd
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件或函数外不要改。
+这是一个大任务包，按顺序做完所有项再交；某项受阻就写清原因继续做后面的。对原因的判断要用真实数据验证后再写（BUG-20 教训）；不要加没人用的别名或兼容层；不要用读页面文字之类的取巧写法。回执附“问题记录”（现象、原因、排查、解决、验证）。
+先读：AGENTS.md；CURRENT_STATE.md 的 [CHK-01]（含 2026-09-28 写的“已知漏洞”）、[PLAN-05]、[TEACH-02]、[SYS-04]（含用户 2026-09-28 确认的三条提醒规则）、[BUG-21]；course/ledger.py（estimate_check_minutes）、course/store.py、app/plan_flow.py 生成时写 check_minutes 的地方、app/classroom.py（_finish_test 记检测时长、最终检验 _check_reply/_complete）；你第十批的时钟审查工具。
+要做
+  1. 检验时长分开：建计划时把“模块检测时长”和“最终检验时长”（CHK-01 的预估规则：90% 的点一次答对、10% 的点约答错两次）分开预估，都计入总时长；模块检测只记模块检测那份；最终检验每答对一题按每题估算时长记一次进度（CHK-01“进度”一条），全部通过时最终检验时长应基本记满。可以改 ledger.py、store.py、today.py，以及 plan_flow.py 里写 check_minutes 的那几行、classroom.py 里记检测/检验时长的几行（改了写明行号）。已有计划的数据要能继续用（缺新字段时按旧方式处理），写清怎么兼容。
+  2. 全流程阻塞复查：用假 agent + 可控时钟把一份计划从“开始计划”一路走到“最终检验全部通过、计划完成、生成报告”，中间包含随口问答错、模块检测不过与重测、直接考、今日目标已满的停顿、跨刷新、改日期（plan.window）、逾期后完成。每一步核对首页/课堂今日数字、计划状态、报告里的时长与出错统计，写成“应该 → 实际 → 是否合理”的表格。
+  3. 有问题直接修（范围同第 1 条）；需要产品决定的列出选项与建议，不自己定。
+  4. 场景固化成测试（tests/refactor/timeline/，文件名不重名）。
+验收：pytest tests/refactor 全部通过；报告写到 D:\MentorFlow\.local\test-tmp\timeline\full-flow-audit.md。
+回执：【MF-03｜client｜第十一批｜完成/部分完成/受阻】基线 ／ 提交 ／ 检验时长改法与兼容 ／ 全流程结论（合理/不合理数量）／ 你修了什么 ／ 需要产品决定的 ／ 问题记录
 ~~~
