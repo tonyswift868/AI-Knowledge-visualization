@@ -14,21 +14,21 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 基线提交 | 第七批见下方各任务（2026-09-28，含第六批全部合入）；更早批次见任务行 |
-| 说明 | 第七批：课堂组件（老师/档案 agent、语音输入、朗读）、网关与账本缺陷修复、计划提示改进；MF-07 本轮不派（MF-U11 待用户批准后由架构师部署）；架构师做新建计划意图接入与课堂编排、界面 |
+| 基线提交 | 第八批 `755b29b`（2026-09-28，含第七批合入、新建计划意图接入、课堂编排与课堂页）；更早批次见任务行 |
+| 说明 | 第八批：检验组件（出题角度、归因画像）、新建计划对话真实复测、课堂跨天模拟、正式生成真实复测、学习提醒（SYS-04）、流式朗读、课堂数据同步性能；架构师做最终检验（CHK-01）编排、流式朗读与提醒接入界面 |
 | 署名 | 2026-09-27 main 上的本地提交统一改为 tonyswift868 + GitHub 隐私邮箱后重写：`6cca892` 在 main 上对应 `d7879ac`（内容完全相同）。员工分支仍基于 `6cca892`，合并时按内容压缩合入。office/* 分支只在本地，永不推送。 |
 
 ## 员工与工位
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-03（client） | D:\MentorFlow-office\client | 7-MF03 已合入（0db14f2），空闲 |
-| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
-| MF-02（runtime） | D:\MentorFlow-office\runtime | 7-MF02 已合入（0db14f2），空闲 |
-| MF-04（platform） | D:\MentorFlow-office\platform | 7-MF04 已合入（0db14f2），空闲 |
-| MF-01（library） | D:\MentorFlow-office\library | 7-MF01 已合入（0db14f2），空闲 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 7-MF06 已合入（0db14f2），空闲 |
-| MF-05（tools） | D:\MentorFlow-office\tools | 7-MF05 已合入（0db14f2），空闲 |
+| MF-03（client） | D:\MentorFlow-office\client | 8-MF03 进行中 |
+| MF-07（server） | D:\MentorFlow-office\server | 8-MF07 进行中 |
+| MF-02（runtime） | D:\MentorFlow-office\runtime | 8-MF02 进行中 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 8-MF04 进行中 |
+| MF-01（library） | D:\MentorFlow-office\library | 8-MF01 进行中 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 8-MF06 进行中 |
+| MF-05（tools） | D:\MentorFlow-office\tools | 8-MF05 进行中 |
 
 工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
 
@@ -68,6 +68,13 @@
 | 7-MF04 | MF-04 platform | 计划提示改进（水平/补充说明起作用）+ 大模块分批生成工具 + 对照复测（BUG-15） | PLAN-01、PLAN-02、PLAN-04 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
 | 7-MF05 | MF-05 tools | 新界面语音输入组件（录音、实时出字、模型下载征得同意） | VOICE-01、UI-00 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
 | 7-MF06 | MF-06 classroom | 新界面老师朗读组件（队列、停止、嘴型驱动 Live2D、模型下载征得同意） | VOICE-01、TEACH-05 | 43d82b1 | 已合入 0db14f2（2026-09-28） |
+| 8-MF01 | MF-01 library | 最终检验（CHK-01）用的出题角度与归因画像组件 | CHK-01、TEACH-04、ARCH-07 | 755b29b | 已派发 |
+| 8-MF02 | MF-02 runtime | 新建计划对话用例集：按新的“意图判断”接入真实复测 | ARCH-06、BUG-13、PLAN-07 | 755b29b | 已派发 |
+| 8-MF03 | MF-03 client | 课堂时长与掌握度：跨天时间加速模拟 | PLAN-05、TEACH-02、TEACH-05、TEACH-07 | 755b29b | 已派发 |
+| 8-MF04 | MF-04 platform | 正式生成真实复测：全文分批 + 截断拆半接入后（BUG-15 收尾） | BUG-15、PLAN-02、PLAN-04 | 755b29b | 已派发 |
+| 8-MF05 | MF-05 tools | 学习提醒：已有 DailyClock + 系统通知（到点还没开始就提醒） | SYS-04、TEACH-05 | 755b29b | 已派发 |
+| 8-MF06 | MF-06 classroom | 朗读边生成边读：老师流式输出时按句子朗读 | VOICE-01、TEACH-05 | 755b29b | 已派发 |
+| 8-MF07 | MF-07 server | 课堂数据变多后的同步性能 | ARCH-05、TEACH-01 | 755b29b | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -1677,4 +1684,172 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   4. 测试：离线测试（假引擎，验证队列、停止、嘴型事件节奏与线程安全）；本机真实朗读一段并截图/记录首音延迟。
 验收：pytest tests/refactor 全部通过；web 构建通过（不要提交 dist）。
 回执：【MF-06｜classroom｜第七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 桥接方法与事件 ／ 首音延迟与嘴型效果 ／ window.py 改动行 ／ 问题记录
+~~~
+
+## 第八批任务详情
+
+基线 `755b29b`（2026-09-28，含第七批合入、新建计划意图接入、课堂编排与课堂页）。
+
+### [8-MF01] library｜最终检验（CHK-01）用的出题角度与归因画像组件
+
+~~~text
+【MentorFlow 第八批｜MF-01（工位 library）｜最终检验（CHK-01）用的出题角度与归因画像组件】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard 755b29b
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排（状态机、导演提示、流程）与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件外不要改。
+回执里请附“问题记录”（现象、原因、解决、验证），架构师据此写 BUG 条目。
+先读：AGENTS.md；CURRENT_STATE.md 的 [CHK-01]、[TEACH-02]、[TEACH-04]、[ARCH-07]；refactor/learning/course/question_agent.py、judge_agent.py、mastery.py（ANGLES、next_check_items）；架构师的课堂编排 app/classroom.py（只读，看组件怎么被调用）。
+要做
+  1. question_agent 增加 purpose=check：每题必须带 angle（只能取 mastery.ANGLES：recall/apply/contrast/fix_error/transfer），宿主按点给出“已用过的角度”，同一点不得重复已用角度；题型规则同 CHK-01（选择、简答、纠错，不出纯判断，不露线索，每题标出处）。保持现有三种 purpose 行为与测试不变；Question 可加 angle 字段（其他 purpose 为 None）。
+  2. 新建 course/check_agent.py：检验阶段的“归因画像”组件。输入：本计划各点的错题记录（题面、作答、判定理由、上下文 casual/module_test/retest/check），输出：少量问题类别（例如“概念边界混淆”“只会背不会用”），每类列出涉及的点 id 与一句中文说明，外加给老师的一段简短画像；严格校验（点 id 只能来自输入、类别数量有上限、不改状态、不宣称已操作）。同样是 请求构建 + 严格解析，不调用模型、不写存储。
+  3. 离线测试覆盖格式与越权；小额真实抽查：用管理员 DeepSeek Flash 各跑几次，人工核对角度是否真的不同、归因是否有依据（花费上限 ¥3，写明实际花费）。
+验收：pytest tests/refactor 全部通过。
+回执：【MF-01｜library｜第八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 接口 ／ 抽查结论与花费 ／ 问题记录
+~~~
+
+### [8-MF02] runtime｜新建计划对话用例集：按新的“意图判断”接入真实复测
+
+~~~text
+【MentorFlow 第八批｜MF-02（工位 runtime）｜新建计划对话用例集：按新的“意图判断”接入真实复测】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 755b29b
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排（状态机、导演提示、流程）与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件外不要改。
+回执里请附“问题记录”（现象、原因、解决、验证），架构师据此写 BUG 条目。
+先读：AGENTS.md；CURRENT_STATE.md 的 [BUG-13]、[ARCH-06]、[PLAN-07]；你第六批的用例集与工具（tests/refactor/plan_dialogue/）；architect 已把 plan.say 改为先调意图判断再由宿主执行（app/plan_flow.py 的 chat/_carry_out，只读）。
+要做
+  1. 用你的用例集，对当前代码的 plan.say 做真实模型复测（管理员 DeepSeek Flash，隔离数据，方法同第六批）。上次“已知未支持”的几类（改日期/每日时长/可学日/水平、只学前几章、按名字处理资料、生成后用对话删改模块、提问）现在都应支持，全部纳入。
+  2. 每个用例判定通过/失败，失败分清是“意图判断错”还是“宿主执行错”（执行错写明对应代码位置与现象）。易混的说法（问 vs 改、“行”、多意图一句话）各至少 3 条。
+  3. 不改 refactor 下的产品代码；只改 tests/refactor/plan_dialogue/ 里的用例、工具与报告。
+花费上限 ¥5（写明实际花费）。
+验收：pytest tests/refactor 全部通过；报告写到 D:\MentorFlow\.local\test-tmp\plan-dialogue\report.md（追加“第八批复测”）。
+回执：【MF-02｜runtime｜第八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 通过率（按类别）／ 失败清单（意图 vs 执行）／ 花费 ／ 问题记录
+~~~
+
+### [8-MF03] client｜课堂时长与掌握度：跨天时间加速模拟
+
+~~~text
+【MentorFlow 第八批｜MF-03（工位 client）｜课堂时长与掌握度：跨天时间加速模拟】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard 755b29b
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排（状态机、导演提示、流程）与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件外不要改。
+回执里请附“问题记录”（现象、原因、解决、验证），架构师据此写 BUG 条目。
+先读：AGENTS.md；CURRENT_STATE.md 的 [PLAN-05]、[TEACH-02]、[TEACH-05]、[TEACH-07]、[ARCH-07]；架构师的课堂编排 refactor/learning/app/classroom.py 与测试 tests/refactor/app/test_app_classroom.py（照它的方式用假 agent 驱动）；你第七批的时间加速工具与 today.py。
+要做
+  1. 用假 agent + 可控时钟驱动真实的 Classroom（不调模型），模拟多天学习：讲点记暂记、模块检测通过/不通过（确认与扣回）、重测变绿补记、直接考跳过（整模块时长记当天、超前）、上课中跨过刷新时间（仍记开课那天）、下课再进算新一天、中途换模块。
+  2. 每一步核对首页/课堂显示用的今日状态（today_status）：今日目标、已确认、暂记、欠账、超前、逾期。与需求不符的列出来。
+  3. 账本/存储/today.py 的问题你可以直接修（ledger.py、store.py、today.py）；classroom.py 是架构师的文件，发现问题只在回执写明现象、原因和建议改法，不要改。
+验收：pytest tests/refactor 全部通过；剧本放 tests/refactor/timeline/（文件名不要和已有测试重名）；报告写到 D:\MentorFlow\.local\test-tmp\timeline\classroom-report.md。
+回执：【MF-03｜client｜第八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 剧本清单与结果 ／ 你修的问题 ／ 需要架构师改的问题 ／ 问题记录
+~~~
+
+### [8-MF04] platform｜正式生成真实复测：全文分批 + 截断拆半接入后（BUG-15 收尾）
+
+~~~text
+【MentorFlow 第八批｜MF-04（工位 platform）｜正式生成真实复测：全文分批 + 截断拆半接入后（BUG-15 收尾）】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard 755b29b
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排（状态机、导演提示、流程）与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件外不要改。
+回执里请附“问题记录”（现象、原因、解决、验证），架构师据此写 BUG 条目。
+先读：AGENTS.md；CURRENT_STATE.md 的 [BUG-15]、[PLAN-02]、[PLAN-04]；架构师已把你的分批工具接进 app/plan_flow.py 的 _generate_module/_generate_batch（只读）；你第七批的实验工具与报告。
+要做
+  1. 用真实 PlanFlow（不是你自己的编排）复测：上次失败的“熟练组”那份计划、那个 44,845 字模块，再加一份资料很长的计划（例如 GitHub 上的 ai-agent-book），走完整正式生成。
+  2. 记录：每个模块是否成功、批数、是否触发“截断拆半”、分钟数是否在区间内（合并后偏少的要单列）、点数、调用次数与花费；并对比生成前“费用预估”和实际花费。
+  3. 若是提示问题，可以改 refactor/learning/course/planner_agents.py（写清原因并复测）；plan_flow.py 的问题只报告，不要改。
+花费上限 ¥8（写明实际花费）。
+验收：pytest tests/refactor 全部通过；报告追加到 D:\MentorFlow\.local\test-tmp\eval-plan\report.md（“第八批复测”）。
+回执：【MF-04｜platform｜第八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 各计划结果表 ／ 预估 vs 实际 ／ 花费 ／ 问题记录
+~~~
+
+### [8-MF05] tools｜学习提醒：已有 DailyClock + 系统通知（到点还没开始就提醒）
+
+~~~text
+【MentorFlow 第八批｜MF-05（工位 tools）｜学习提醒：已有 DailyClock + 系统通知（到点还没开始就提醒）】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\tools\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/tools
+  git reset --hard 755b29b
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker tools" -c user.email="worker-tools@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排（状态机、导演提示、流程）与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件外不要改。
+回执里请附“问题记录”（现象、原因、解决、验证），架构师据此写 BUG 条目。
+先读：AGENTS.md；CURRENT_STATE.md 的 [SYS-04]、[TEACH-05]；你第二批写的 refactor/learning/services/daily_clock.py（提醒时间、刷新时间、同日只一次、上课中延后都已在里面）；app/settings.py（reminder_enabled、reminder_time、refresh_time）；CourseStore.today_status（首页用的今日状态）；app/window.py。
+要做
+  1. 新建 refactor/learning/app/reminder.py，把 DailyClock 接成真正的提醒：窗口打开期间，到提醒时间时检查进行中的计划，今天有任务且“还没开始”（今天已确认和暂记都是 0）就用系统通知提醒一次（Windows 通知或托盘气泡，点击后把窗口带到前台并打开首页）；多个计划合成一条通知。只在软件开着时提醒，不做开机自启、不常驻后台（SYS-04）。
+  2. 设置里的开关、提醒时间、刷新时间改了立即生效（settings.save 之后通知你的对象，给出一个方法供架构师在保存设置时调用）；上课中不打扰，下课后再提醒（DailyClock 已支持，接上课堂的开始/结束：提供 class_started()/class_ended() 两个方法，架构师在课堂页进出时调用）。
+  3. window.py 只允许加接入的几行（导入、创建、释放），回执写明行号；设置页与课堂页的调用由架构师接。
+  4. 离线测试：可控时钟 + 假通知，覆盖到点提醒、只提醒一次、已开始不提醒、休息日不提醒、上课中延后、关掉、改时间、无进行中的计划；本机真实弹出一次通知并截图。
+验收：pytest tests/refactor 全部通过。
+回执：【MF-05｜tools｜第八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 接口与接入行号 ／ 实测（本机真实弹出一次通知的截图路径）／ 问题记录
+~~~
+
+### [8-MF06] classroom｜朗读边生成边读：老师流式输出时按句子朗读
+
+~~~text
+【MentorFlow 第八批｜MF-06（工位 classroom）｜朗读边生成边读：老师流式输出时按句子朗读】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard 755b29b
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排（状态机、导演提示、流程）与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件外不要改。
+回执里请附“问题记录”（现象、原因、解决、验证），架构师据此写 BUG 条目。
+先读：AGENTS.md；CURRENT_STATE.md 的 [VOICE-01]、[TEACH-05]；你第七批的 app/speech.py、web/src/teacher/useTeacherVoice.ts；架构师的课堂页 web/src/pages/Classroom.tsx（只读：现在是等老师整段说完才调 speak）。
+要做
+  1. 给朗读加“流式追加”接口：开始一段朗读 → 多次追加文字 → 结束；凑满一句就合成播放，不等整段；停止时丢弃未读部分。首音延迟目标：第一句写完后 1 秒内出声。
+  2. 朗读前的文本清洗放在 Python 端并有测试：去掉 Markdown 标记、引用链接（形如 [〔1〕](mf-source:...)）、代码块读成“（代码略）”、公式读成“（公式略）”；英文术语照常读。
+  3. useTeacherVoice 暴露对应的前端方法；课堂页的接入由架构师改，你只在回执里写清用法。
+  4. 离线测试（假引擎：分句、顺序、停止丢弃、并发安全）+ 本机真实朗读一段模拟流式输入，报告首音延迟。
+验收：pytest tests/refactor 全部通过；web 构建通过（不要提交 dist）。
+回执：【MF-06｜classroom｜第八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 接口 ／ 实测延迟 ／ 问题记录
+~~~
+
+### [8-MF07] server｜课堂数据变多后的同步性能
+
+~~~text
+【MentorFlow 第八批｜MF-07（工位 server）｜课堂数据变多后的同步性能】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 755b29b
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。所有临时文件、日志放 D 盘（D:\MentorFlow\.local\test-tmp\ 下自建子目录），不要写 E 盘（BUG-02）。含 Windows 路径的文本用原始字符串生成；含反斜杠的内容写成脚本文件再运行，不在命令行内联（BUG-10）。
+分工：组件由员工做；编排（状态机、导演提示、流程）与界面由架构师做。架构师的文件：refactor/learning/app/plan_flow.py、app/classroom.py、web/src/pages/*.tsx；除任务明确允许的文件外不要改。
+回执里请附“问题记录”（现象、原因、解决、验证），架构师据此写 BUG 条目。
+先读：AGENTS.md；CURRENT_STATE.md 的 [ARCH-05]、[TEACH-01]；refactor/learning/course/sync_course.py、store.py 的出站队列、services/course_sync_service.py；你之前的增量同步工作。课堂现在会产生大量记录：课堂消息、掌握度判定、时长记录、老师档案（都走同一个同步）。
+要做
+  1. 构造接近真实的数据量（例如 3 份计划、每份 2000 条课堂消息、600 条判定、300 条时长记录、老师档案多次更新），用与协议一致的模拟服务器测：首次同步、日常增量（上一节课新增约 50 条）、另一台设备首次拉取的耗时、请求次数、传输字节；只在本机，不连服务器。
+  2. 找出瓶颈并在客户端侧改进（sync_course.py、course_sync_service.py、store.py 的出站相关部分可以改），不改变线上协议；需要改服务器的写成建议，不要改服务器代码、不要部署。
+验收：pytest tests/refactor 全部通过；报告写到 D:\MentorFlow\.local\test-tmp\sync-load\report.md。
+回执：【MF-07｜server｜第八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 改动前后数字 ／ 服务器侧建议 ／ 问题记录
 ~~~
