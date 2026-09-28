@@ -105,8 +105,12 @@ class DailyClock(QObject):
             None if reminder is None else _wall_time(reminder, "reminder"))
         if self._disposed:
             return
+        changed = (new_refresh, new_timezone, new_reminder) != (self._refresh, self._timezone, self._reminder)
         self._refresh, self._timezone, self._reminder = new_refresh, new_timezone, new_reminder
-        self._pending_reminder = None
+        # Settings saves also include unrelated preferences. Do not lose a due
+        # reminder held by an open class when the time configuration is equal.
+        if changed:
+            self._pending_reminder = None
         self.check_now()
 
     def check_now(self) -> None:

@@ -613,29 +613,26 @@ class PlanFlow:
         chunks = store.records("source_chunks", plan_id)
         modules = agents.outline_modules(draft["outline"])
         base = estimate_tokens(agents.GENERATE_SYSTEM + agents.form_brief(draft["form"])) + 60 * len(modules)
-        input_tokens = 0
+        input_tokens, calls = 0, 0
         for module in modules:  # every character is read, in batches that each repeat the fixed part
-            material = "".join(c["text"] for c in self._span_chunks(module, chunks))
-            batches = max(1, math.ceil(len(material) / agents.DEFAULT_BATCH_CHARS))
-            input_tokens += base * batches + estimate_tokens(material)
+            selected = self._span_chunks(module, chunks)
+            material = "".join(c["text"] for c in selected)
+            limit = max(1, min(MAX_GENERATE_BATCHES, module["minutes"][0] // 2))
+            size = agents.DEFAULT_BATCH_CHARS
+            batches = agents.split_module_chunks(selected, max_chars=size)
+            while len(batches) > limit:
+                size = int(size * 1.4) + 1
+                batches = agents.split_module_chunks(selected, max_chars=size)
+            count = max(1, len(batches))
+            calls += count
+            input_tokens += base * count + estimate_tokens(material)
         low_in, high_in = int(input_tokens * 0.85), int(input_tokens * 1.4)
-        out_low, out_high = 900 * len(modules), 3500 * len(modules)
+        out_low, out_high = 900 * calls, 3500 * calls
         gateway = self.services.gateway
         config = gateway.get_configuration() or {}
-        amount = None
-        try:
-            # Price rows are chosen by region/service tier, exactly as for real calls.
-            context = gateway.estimate_context() if hasattr(gateway, "estimate_context") else {}
-            quote = gateway.price_catalog.estimate_cost(
-                config.get("provider_id", ""), config.get("model", ""), input_tokens=(low_in, high_in),
-                output_tokens=(out_low, out_high), cache_hit_rate=(0, 0.3), context=context)
-            if quote is not None:
-                amount = {"low": str(quote.low.quantize(quote.low.__class__("0.01"))),
-                          "high": str(quote.high.quantize(quote.high.__class__("0.01"))), "currency": quote.currency}
-        except Exception:  # noqa: BLE001 - an unknown model just has no price
-            amount = None
         estimate = {"modules": len(modules), "input_tokens": [low_in, high_in], "output_tokens": [out_low, out_high],
-                    "amount": amount, "model": config.get("model", "")}
+                    "calls": calls, "model": config.get("model", ""),
+                    "note": "按当前资料分批估算；失败重试或截断后拆分可能增加调用与 token。"}
         draft["estimate"] = estimate
         draft["messages"].append(_msg("ai", "estimate", "正式生成会逐个模块读资料、提炼知识点。确认后开始："))
         self.save(draft)

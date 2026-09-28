@@ -231,7 +231,7 @@ class UsageLog:
             db.execute('UPDATE calls SET model=?,state=?,error_code=?,usage_json=?,cost_json=? WHERE request_id=?',
                        (values[2], state, values[7], values[8], values[9], request_id))
 
-    def summary(self, start, end, group_by='purpose'):
+    def summary(self, start, end, group_by='purpose', *, tokens_only=False):
         if group_by not in {'purpose', 'model', 'day'}:
             raise ModelError('USAGE_INVALID', '用量汇总维度无效。')
         start, end = timestamp(start), timestamp(end)
@@ -244,6 +244,9 @@ class UsageLog:
         # when catalogue rates change; fill only absent quotes for this view.
         rows = [dict(row) for row in rows]
         for row in rows:
+            if tokens_only:
+                row['quote'], row['recalculated'], row['unpriced_reason'] = None, False, ''
+                continue
             data = json.loads(row['usage_json']) if row['usage_json'] else None
             row['quote'] = json.loads(row['cost_json']) if row['cost_json'] else None
             row['recalculated'] = False
@@ -265,6 +268,9 @@ class UsageLog:
             unknown, amounts, unpriced, errors = set(), {}, 0, {}
             estimated_amounts, reasons = {}, {}
             priced, estimated, recalculated = 0, 0, 0
+            incomplete = {}
+            def note(reason):
+                incomplete[reason] = incomplete.get(reason, 0) + 1
             states = {s: 0 for s in ('in_progress', 'succeeded', 'failed', 'cancelled')}
             for row in items:
                 states[row['state']] += 1
@@ -273,16 +279,21 @@ class UsageLog:
                 if row['usage_json']:
                     data = json.loads(row['usage_json'])
                     missing = set(data['raw'].get('_mentorflow', {}).get('unreported_fields', []))
+                    if missing:
+                        note('厂商未返回部分用量字段')
                     unknown.update(missing)
                     if data['raw'].get('_mentorflow', {}).get('partial_usage'):
+                        note('调用只返回部分用量')
                         unknown.update(FIELDS)
                     if data['raw'].get('_mentorflow', {}).get('token_total_reconciled') is False:
+                        note('厂商返回的 token 总数不一致')
                         unknown.update(set(FIELDS) - {'search_requests'})
                     reported = _known_counters(data)
                     for key in FIELDS:
                         known[key] += reported[key]
                 else:
                     unknown.update(FIELDS)
+                    note('调用尚未结束' if row['state'] == 'in_progress' else '调用未返回用量')
                 if row['quote'] is not None:
                     cost = row['quote']
                     is_estimated = cost.get('estimated', False)
@@ -298,6 +309,10 @@ class UsageLog:
             counters = {key: None if key in unknown else value for key, value in known.items()}
             ratio = (Decimal(known['cached_input_tokens']) / Decimal(known['input_tokens'])
                      if not unknown & {'input_tokens', 'cached_input_tokens'} and known['input_tokens'] else None)
+            if tokens_only:
+                return dict(calls=len(items), **states, **counters, cache_hit_rate=ratio,
+                            usage_complete=not unknown, unknown_fields=sorted(unknown),
+                            incomplete_reasons=incomplete, errors=errors)
             return dict(calls=len(items), **states, **counters, cache_hit_rate=ratio,
                         usage_complete=not unknown, unknown_fields=sorted(unknown), known_tokens=known,
                         amount=next(iter(amounts.values())) if not (unpriced or estimated) and len(amounts) == 1 else None,

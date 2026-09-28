@@ -3,7 +3,8 @@
 The clock owns wall-time policy (refresh boundary, sleep/clock changes, one
 reminder per study day and the in-class hold). This module only supplies the
 small local query used by that clock and delivers one Windows tray notification
-for all plans that have work today and no confirmed or tentative minutes yet.
+for plans that have work today, no allocated progress, and no actual learning
+activity today (including activity that only paid past debt or was revoked).
 It has no process, startup task, persistence or network dependency.
 
 The public integration seam is deliberately small:
@@ -161,7 +162,9 @@ class ReminderService(QObject):
                     log.warning("could not read today's status for plan %s", plan.get("id"), exc_info=True)
                     continue
                 if (status.get("today_target", 0) > 0 and status.get("today_confirmed", 0) == 0
-                        and status.get("today_tentative", 0) == 0):
+                        and status.get("today_tentative", 0) == 0
+                        and not store.has_study_activity(plan["id"], day=self.clock.current_study_day,
+                                                         refresh=refresh, tz=local.tzinfo)):
                     label = (plan.get("goal") or plan.get("final_goal") or "未命名计划").strip()
                     label = " ".join(label.split())
                     values.append(label[:80])

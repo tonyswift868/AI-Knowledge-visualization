@@ -160,7 +160,8 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root):
     assert draft["messages"][-1]["text"] == "路线要从资料里来，不能跳过资料。" and draft["phase"] == "outline"
     model.intents = [[{"kind": "proceed", "step": "generate"}]]
     draft = ask("plan.say", plan_id=pid, text="开始生成吧")["draft"]     # a paid step: show the estimate, never start it
-    assert draft["estimate"]["modules"] == 3 and draft["estimate"]["amount"] is None
+    assert draft["estimate"]["modules"] == 3 and "amount" not in draft["estimate"]
+    assert draft["estimate"]["calls"] >= 3
     assert draft["phase"] == "outline" and not any(c[0] == "generate" for c in model.calls)
 
     draft = ask("plan.generate", plan_id=pid)["draft"]

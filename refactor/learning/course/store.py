@@ -693,6 +693,24 @@ class CourseStore:
                                       plan_state=plan['state'], check_complete=checked,
                                       classroom_day=classroom_day)
 
+    def has_study_activity(self, plan_id, *, day, refresh, tz) -> bool:
+        """Whether learning actually started on a study day (SYS-04).
+
+        FIFO daily fills are not activity: today's work can pay yesterday's
+        debt, and a failed test can remove all its tentative minutes. Original
+        credit submissions survive revocation; judgements count even if wrong.
+        Credits retain their pinned classroom day; judgement instants use the
+        caller's current account refresh/zone. No clock or state is written.
+        """
+        from .ledger import study_day
+        day = _day(day)
+        with self.transaction():
+            self._get('plans', plan_id, plan_id)
+            if any(_day(row['credit']['day']) == day for row in self._rows('credits', plan_id)):
+                return True
+            return any(study_day(datetime.fromisoformat(row['event']['at']), refresh, tz) == day
+                       for row in self._rows('judgements', plan_id))
+
     def _append_mastery(self, plan_id, event, entity, details=None):
         self._get('plans', plan_id, plan_id)
         if not isinstance(event, Judgement if entity == 'judgements' else AttemptClosed): raise StoreError('INVALID_EVENT')

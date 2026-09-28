@@ -381,7 +381,7 @@ function OutlineCard({ outline }: { outline: Outline }) {
 
 // ------------------------------------------------------------------ estimate / progress / ready
 function EstimateCard({ draft, text, busy, active, onGo }: { draft: Draft; text: string; busy: boolean; active: boolean; onGo: () => void }) {
-  const e = draft.estimate
+  const e = draft.estimate as (NonNullable<Draft["estimate"]> & { calls?: number; note?: string }) | undefined
   if (!e) return null
   const k = (n: number) => `${Math.round(n / 1000)}k`
   return (
@@ -391,8 +391,9 @@ function EstimateCard({ draft, text, busy, active, onGo }: { draft: Draft; text:
         <div className="outline-sum">
           <div><span>要生成的模块</span><b>{e.modules} 个</b></div>
           <div><span>预计用量</span><b>输入 {k(e.input_tokens[0])}–{k(e.input_tokens[1])} · 输出 {k(e.output_tokens[0])}–{k(e.output_tokens[1])} token</b></div>
-          <div><span>预计花费</span><b>{e.amount ? `${e.amount.currency === "CNY" ? "¥" : e.amount.currency + " "}${e.amount.low} – ${e.amount.high}` : "当前模型没有价格表，无法估算金额"}</b></div>
+          <div><span>预计调用次数</span><b>{e.calls != null ? `${e.calls} 次` : "—（旧预估未记录）"}</b></div>
         </div>
+        <p className="sub">{e.note ?? "token 为估算区间；失败重试或截断后拆分可能增加用量。"}</p>
         {active && <div className="plan-actions"><Button kind="primary" disabled={busy} onClick={onGo}><Rocket />开始生成</Button></div>}
       </div>
     </div>

@@ -29,6 +29,7 @@ from .errors import ModelCancelled, ModelError
 from . import providers, transport
 from .pricing import PriceCatalog, timestamp
 from .usage import UsageLog
+from .balance import BalanceClient, supported as balance_supported
 
 _UNSET = object()
 _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
@@ -69,6 +70,8 @@ class ModelGateway:
             self._lock = self._storage.lock
             self._closed = False
             self._requests = set()
+            self._balance_client = BalanceClient()
+            self._balance_revision = 0
             # Lock ordering is always gateway then legacy.
             with self._lock, self._legacy.lock:
                 if not self._storage.path.exists():
@@ -173,6 +176,7 @@ class ModelGateway:
     def _write(self, data):
         try:
             self._storage.write(data)
+            self._balance_revision += 1
         except StorageError:
             raise _storage_error() from None
 
@@ -303,6 +307,32 @@ class ModelGateway:
         spec = providers.REGISTRY.get(config['provider_id']) if config else None
         return bool(spec and spec.search is not None)
 
+    def balance(self, preset_id, *, refresh=False, cancel=None):
+        """Optional read-only vendor lookup; never selects a preset or logs usage."""
+        token = _Cancellation(cancel)
+        secret = None
+        try:
+            with self._lock:
+                self._ensure_open()
+                config = next((p for p in self._load()['presets'] if p['id'] == preset_id), None)
+                if not config or not config['has_api_key'] or not balance_supported(config['provider_id'], config['base_url']):
+                    return None
+                self._requests.add(token)
+                revision = self._balance_revision
+                secret = self._secret(config)
+            result = self._balance_client.query(config['provider_id'], config['base_url'], secret,
+                                                refresh=refresh, cancel=token)
+            with self._lock:
+                self._ensure_open()
+                current = next((p for p in self._load()['presets'] if p['id'] == preset_id), None)
+                return result if current == config and revision == self._balance_revision and not token.is_set() else None
+        except Exception:
+            return None
+        finally:
+            secret = None
+            with self._lock:
+                self._requests.discard(token)
+
     @staticmethod
     def _price_context(config, tier=None):
         """Region and service tier used to pick price rows (calls and estimates alike)."""
@@ -426,3 +456,4 @@ class ModelGateway:
             self._closed = True
             for token in tuple(self._requests):
                 token.set()
+            self._balance_client.clear()

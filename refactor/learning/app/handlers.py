@@ -153,12 +153,21 @@ def register(bridge, window):
         return {"ok": True, "latency_ms": int((monotonic.monotonic() - started) * 1000),
                 "model": getattr(result, "model", ""), "reply": (getattr(result, "text", "") or "")[:80]}
 
+    def model_balance(params, ctx):
+        refresh = params.get("refresh", False)
+        if type(refresh) is not bool:
+            raise BridgeError("PARAM_INVALID", "刷新参数无效。")
+        value = services().gateway.balance(_text(params, "preset_id", limit=128),
+                                           refresh=refresh, cancel=ctx.cancel)
+        return {"balance": value}
+
     bridge.register("models.providers", providers)
     bridge.register("models.list", model_list)
     bridge.register("models.save", model_save)
     bridge.register("models.select", model_select)
     bridge.register("models.delete", model_delete)
     bridge.register("models.test", model_test)
+    bridge.register("models.balance", model_balance)
 
     # -------------------------------------------------------------- usage
     def usage_summary(params, ctx):
@@ -168,7 +177,7 @@ def register(bridge, window):
             raise BridgeError("PARAM_INVALID", "用量统计范围无效。")
         end = datetime.now(timezone.utc) + timedelta(minutes=1)
         start = end - timedelta(days=days)
-        return _plain(services().gateway.usage_log.summary(start, end, group_by=group_by))
+        return _plain(services().gateway.usage_log.summary(start, end, group_by=group_by, tokens_only=True))
 
     bridge.register("usage.summary", usage_summary)
 

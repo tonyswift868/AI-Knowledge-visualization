@@ -34,6 +34,9 @@ QUESTION_SYSTEM = """你是 MentorFlow 的课堂出题员，只依据给出的�
 id 为本批唯一的短字符串；type 只能是 choice、short、fix_error。中文出题和写参考要点，关键术语保留英文。
 choice：单选，options 必须恰好四个互不重复的字符串，不加 A/B/C/D 前缀或正确标记，恰好一个选项正确，另外三个必须在题目条件下明确错误；answer 必须原样等于其中一个选项（不是字母或序号），不能返回多个答案。勿使用“以上都对/都不对”等无法独立判断的选项。
 short：要求解释、举例或应用的简答题，options=[]，answer 为简明标准答案，reference 为逐点评分要点。
+reference 的必答要点只能覆盖题面明确要求的内容，不把同一知识点的其他细节、未问的赋值顺序或异常名称额外列为必答；必要的补充解释明确标作非必答。不要写“得几分”的计分表，宿主按要点判定，不由出题员另建评分规则。
+原文只说明必要条件时，可考违反条件不能成功的结果，但不能要求说出原文未提供的具体异常类型或报错文本；正确的资料外知识也不能悄悄变成本题的必答门槛。
+写完 reference 后逐条对应到 stem 的明确要求；纠错题以纠正原命题中的错误并说明原因为准，不把没问的变量具体值或原本没有说错的背景细节加作必答。若确需考这些细节，先在题面明确提出。
 fix_error：提供确实含错的说法或代码，让用户指出错误并改正或解释原因；options=[]，answer 为正确改法，reference 说明具体错处及各点评分要点。不能只让人答“对/错”。
 禁止 true_false、判断对错、是非等纯判断题；也不能把纯判断题藏在 short 或 fix_error 中。
 题面不能包含标准答案原文，不能以解释、提示、括号或语气标出答案，不给明显线索；选择题的答案只在 options 中出现。选项形式与长度尽量均衡，避免靠字面猜答案。
@@ -46,9 +49,32 @@ purpose=quick_check 时只出一道快速确认题，无论 per_point 的值；�
 
 
 def _normal(value):
-    # Ignore prose spacing/punctuation, but keep code operators: x=1 and x==1
-    # (or + and -) can be meaningfully different options.
-    return re.sub(r"[\s，,。；;：:、“”‘’]+", "", unicodedata.normalize("NFKC", value).casefold()).rstrip(".!?")
+    # Prose punctuation is cosmetic; punctuation inside code containers and
+    # quoted literals is not: ('x') and ('x',) have different Python meanings.
+    # Do not execute/repair code or collapse string contents while comparing.
+    out, stack, quote, escaped = [], [], None, False
+    for char in unicodedata.normalize("NFKC", value):
+        if quote:
+            out.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+        elif char in "\"'":
+            quote = char
+            out.append(char)
+        elif char in "([{":
+            stack.append(char)
+            out.append(char)
+        elif char in ")]}":
+            if stack and stack[-1] == {")": "(", "]": "[", "}": "{"}[char]:
+                stack.pop()
+            out.append(char)
+        elif not char.isspace() and (stack or char not in "，,。；;：:、“”‘’"):
+            out.append(char.casefold())
+    return "".join(out).rstrip(".!?")
 
 
 def _option(value):

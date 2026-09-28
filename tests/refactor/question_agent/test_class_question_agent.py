@@ -117,6 +117,26 @@ def test_code_operators_do_not_become_duplicate_options():
     assert parse_questions(response(row), context(purpose="quick_check"))[0].answer == "x == 1"
 
 
+def test_singleton_tuple_comma_is_not_normalized_away():
+    # Real classroom evaluation returned this valid difference; stripping the
+    # comma conflated a tuple with a parenthesized expression and retried it.
+    row = choice(stem="Python 中要创建只含字符串的单元素元组，哪种写法正确？",
+                 options=["'hello'", "('hello')", "('hello',)", "['hello']"], answer="('hello',)")
+    assert parse_questions(response(row), context(purpose="quick_check"))[0].answer == "('hello',)"
+
+
+def test_tuple_answer_is_not_falsely_leaked_by_a_parenthesized_distractor():
+    row = choice(stem="Python 中 ('hello') 并不是元组，下列哪种单元素写法正确？",
+                 options=["('hello',)", "['hello']", "{'hello'}", "{'hello': 1}"], answer="('hello',)")
+    assert parse_questions(response(row), context(purpose="quick_check"))
+
+
+def test_code_string_case_and_internal_space_remain_significant():
+    row = choice(stem="请按 Python 字符串的区分规则选择题目所需的精确字符串。",
+                 options=["'ab'", "'a b'", "'Ab'", "'a,b'"], answer="'a b'")
+    assert parse_questions(response(row), context(purpose="quick_check"))
+
+
 def test_retest_avoids_old_stems_and_duplicate_ids_and_stems_in_batch():
     row = question()
     for old in (row["stem"], row["stem"].replace("。", "？"), "  " + row["stem"]):

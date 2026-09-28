@@ -20,7 +20,8 @@ def build_today_status(ledger: Ledger, *, now: datetime, refresh: time, tz: tzin
 
     ``study_day`` is the current account day; ``progress_day`` is the date used
     for target/fill/debt/ahead figures. A classroom may pin the latter to its
-    entry day until exit. Overdue days still use the current account day.
+    entry day until exit, even when a clock/settings/zone change moves the
+    current day backwards. Overdue days still use the current account day.
 
     ``completed`` requires both confirmed time and complete course checks.
     ``time_completed`` preserves Ledger.status's time-only completion flag.
@@ -38,9 +39,8 @@ def build_today_status(ledger: Ledger, *, now: datetime, refresh: time, tz: tzin
         raise ValueError('check_complete must be a boolean')
     if classroom_day is not None and (
         not isinstance(classroom_day, date) or isinstance(classroom_day, datetime)
-        or classroom_day > current
     ):
-        raise LedgerError('INVALID_DATE', '开课学习日不能晚于当前学习日。')
+        raise LedgerError('INVALID_DATE', '开课学习日必须是不含时间的日期。')
     progress_day = classroom_day if classroom_day is not None else current
     result = asdict(ledger.status(progress_day))
     result['time_completed'] = result['completed']

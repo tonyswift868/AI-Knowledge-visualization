@@ -76,9 +76,9 @@ def test_rest_condition_follows_local_refresh_including_exact_boundary(instant, 
     assert result['is_late_night'] is late and result['needs_rest'] is late
 
 
-def test_today_api_rejects_ambiguous_clock_and_future_classroom_day():
+def test_today_api_rejects_ambiguous_clock_and_invalid_classroom_day():
     ledger = Ledger(PlanWindow(START, date(2024, 3, 2), 60), 240)
     with pytest.raises(LedgerError, match='时区'):
         project(ledger, now='2024-03-01T12:00:00', check_complete=False)
     with pytest.raises(LedgerError, match='开课学习日'):
-        project(ledger, check_complete=False, classroom_day=date(2024, 3, 2))
+        project(ledger, check_complete=False, classroom_day='2024-03-02')

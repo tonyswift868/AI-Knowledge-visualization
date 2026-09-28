@@ -9,7 +9,7 @@ import { Button, Field, Segmented, Skeleton, Toggle } from "../ui"
 
 const TABS: { id: SettingsTab; label: string; icon: any }[] = [
   { id: "models", label: "模型连接", icon: PlugZap },
-  { id: "usage", label: "用量与花费", icon: Coins },
+  { id: "usage", label: "模型用量", icon: Coins },
   { id: "learning", label: "学习偏好", icon: GraduationCap },
   { id: "time", label: "时间与提醒", icon: Clock3 },
   { id: "appearance", label: "外观", icon: Palette },
@@ -65,6 +65,39 @@ type Preset = { id: string; provider_id: string; display_name: string; base_url:
 
 const isRelay = (id: string) => id.startsWith("relay_")
 
+type VendorBalance = { label: string; balances: { amount: string; currency: string }[]; updated_at: string }
+
+function ApiBalance({ preset, reload }: { preset: Preset; reload: number }) {
+  const [value, setValue] = React.useState<VendorBalance | null>(null)
+  const [busy, setBusy] = React.useState(false)
+  const [revision, setRevision] = React.useState(0)
+  const [now, setNow] = React.useState(Date.now())
+  React.useEffect(() => {
+    let current = true
+    setValue(null)
+    if (!preset.has_api_key) return
+    setBusy(true)
+    call<{ balance: VendorBalance | null }>("models.balance", { preset_id: preset.id, refresh: reload > 0 || revision > 0 })
+      .then((r) => { if (current) setValue(r.balance) })
+      .catch(() => { if (current) setValue(null) })
+      .finally(() => { if (current) setBusy(false) })
+    return () => { current = false }
+  }, [preset, reload, revision])
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000)
+    return () => clearInterval(timer)
+  }, [])
+  if (!value) return null
+  const minutes = Math.max(0, Math.floor((now - Date.parse(value.updated_at)) / 60000))
+  return <div style={{ textAlign: "right" }}>
+    <div>{value.label}：{value.balances.map((b) => `${b.currency} ${b.amount}`).join(" · ")}</div>
+    <div className="row small muted" style={{ justifyContent: "flex-end" }}>
+      <span>{minutes < 1 ? "更新于刚刚" : `更新于 ${minutes} 分钟前`}</span>
+      <Button small busy={busy} onClick={() => setRevision((r) => r + 1)}><RefreshCw size={13} />刷新</Button>
+    </div>
+  </div>
+}
+
 function Models() {
   const toast = useApp((s) => s.toast)
   const [providers, setProviders] = React.useState<Provider[] | null>(null)
@@ -73,6 +106,7 @@ function Models() {
   const [form, setForm] = React.useState({ provider_id: "deepseek", preset_id: "" as string | null, display_name: "", base_url: "", model: "", api_key: "", timeout: 120 })
   const [saving, setSaving] = React.useState(false)
   const [testing, setTesting] = React.useState(false)
+  const [balanceReload, setBalanceReload] = React.useState(0)
 
   const fill = React.useCallback((providerId: string, list: Preset[], all: Provider[]) => {
     const existing = list.find((p) => p.provider_id === providerId)
@@ -194,15 +228,16 @@ function Models() {
 
       {presets.length > 0 && (
         <div className="card stack">
-          <h2>已保存的预设</h2>
+          <div className="row between"><h2>已保存的预设</h2><Button small onClick={() => setBalanceReload((n) => n + 1)}><RefreshCw />刷新余额</Button></div>
           <table className="table">
-            <thead><tr><th>名称</th><th>模型</th><th>Key</th><th /></tr></thead>
+            <thead><tr><th>名称</th><th>模型</th><th>Key</th><th>厂商余额</th><th /></tr></thead>
             <tbody>
               {presets.map((p) => (
                 <tr key={p.id}>
                   <td><b>{p.display_name}</b>{p.id === activeId && <span className="pill ok" style={{ marginLeft: 8 }}>使用中</span>}</td>
                   <td className="muted">{p.model}</td>
                   <td>{p.has_api_key ? "已保存" : <span style={{ color: "var(--warn)" }}>未保存</span>}</td>
+                  <td><ApiBalance preset={p} reload={balanceReload} /></td>
                   <td style={{ textAlign: "right" }}>
                     <div className="row" style={{ justifyContent: "flex-end" }}>
                       {p.id !== activeId && <Button small onClick={() => action("models.select", p.id)}>使用</Button>}
@@ -224,74 +259,67 @@ const PURPOSE: Record<string, string> = {
   connection_test: "连接测试", research: "找资料", source_scoring: "资料评分", sufficiency: "需求核对", outline: "生成轮廓",
   generate: "生成计划", teacher: "老师讲课", judge: "判定作答", question: "出题", profile: "学习档案", free_chat: "教师闲聊",
 }
-type Agg = { calls: number; input_tokens: number | null; cached_input_tokens: number | null; output_tokens: number | null; search_requests?: number | null;
-  cache_hit_rate: string | null; amount: string | null; currency: string | null; usage_complete?: boolean; amount_complete?: boolean;
-  known_amounts?: Record<string, string>; estimated_amounts?: Record<string, string>; unpriced_reasons?: Record<string, number>;
-  priced_calls?: number; estimated_calls?: number; unpriced_calls?: number; recalculated_calls?: number }
+type Agg = { calls: number; failed: number; cancelled: number; in_progress: number;
+  input_tokens: number | null; cached_input_tokens: number | null; uncached_input_tokens: number | null;
+  output_tokens: number | null; search_requests: number | null; cache_hit_rate: string | null;
+  usage_complete: boolean; unknown_fields: string[]; incomplete_reasons: Record<string, number> }
 
 function fmt(n: number | null | undefined) { return n == null ? "—" : n.toLocaleString("zh-CN") }
-function money(a: string | null, c: string | null) {
-  if (a == null) return "—"
-  const v = Number(a)
-  const sym = c === "CNY" ? "¥" : c === "USD" ? "$" : ""
-  return `${sym}${v < 0.01 ? v.toFixed(4) : v.toFixed(2)}`
-}
-
-function CostDisplay({ value }: { value: Agg }) {
-  const known = Object.entries(value.known_amounts ?? {})
-  const estimates = Object.entries(value.estimated_amounts ?? {})
-  const reasons = Object.entries(value.unpriced_reasons ?? {})
-  return <>
-    {known.map(([currency, amount]) => <div key={currency}>{money(amount, currency)}（已定价）</div>)}
-    {estimates.map(([currency, amount]) => <div key={`estimated-${currency}`}>约 {money(amount, currency)}（按高峰价估算）</div>)}
-    {!known.length && !estimates.length && <div>{value.calls === 0 ? "暂无花费" : "无法计价"}</div>}
-    {reasons.map(([reason, count]) => <div className="hint" key={reason}>{count} 次：{reason}</div>)}
-    {!!value.unpriced_calls && !reasons.length && <div className="hint">{value.unpriced_calls} 次缺少计价信息</div>}
-  </>
+function rate(n: string | null | undefined) { return n == null ? "—" : `${(Number(n) * 100).toFixed(1)}%` }
+const METER_NAMES: Record<string, string> = { input_tokens: "输入", cached_input_tokens: "缓存命中", uncached_input_tokens: "缓存未命中",
+  output_tokens: "输出", reasoning_tokens: "推理分项", search_requests: "搜索次数" }
+function UsageGap({ value }: { value: Agg }) {
+  const missing = new Set(value.unknown_fields ?? [])
+  for (const field of ["input_tokens", "cached_input_tokens", "uncached_input_tokens", "output_tokens", "search_requests"] as const) {
+    if (value[field] == null) missing.add(field)
+  }
+  if (value.usage_complete !== false && !missing.size) return null
+  const reasons = Object.entries(value.incomplete_reasons ?? {})
+  return <div className="sub">未完整统计：{[...missing].map((f) => METER_NAMES[f] ?? f).join("、")}。
+    {reasons.length ? reasons.map(([reason, count]) => <span key={reason}> {reason}（{count} 次）。</span>) : "返回数据未包含完整统计字段。"}
+    未知字段显示“—”，不会将缺失量当作零。原因计数可能重叠。
+  </div>
 }
 
 function Usage() {
   const toast = useApp((s) => s.toast)
   const [days, setDays] = React.useState(7)
-  const [groupBy, setGroupBy] = React.useState<"purpose" | "model">("purpose")
+  const [groupBy, setGroupBy] = React.useState<"purpose" | "model" | "day">("purpose")
   const [data, setData] = React.useState<{ total: Agg; groups: (Agg & { key: string })[] } | null>(null)
   React.useEffect(() => {
+    let current = true
     setData(null)
-    call("usage.summary", { days, group_by: groupBy }).then(setData).catch((e) => toast("error", e.message))
+    call("usage.summary", { days, group_by: groupBy }).then((r: any) => { if (current) setData(r) })
+      .catch((e) => { if (current) toast("error", e.message) })
+    return () => { current = false }
   }, [days, groupBy, toast])
   const t = data?.total
-  const rate = t?.cache_hit_rate != null ? `${(Number(t.cache_hit_rate) * 100).toFixed(1)}%` : "—"
+  const meters = [["模型调用（含失败）", t?.calls], ["输入 token", t?.input_tokens], ["缓存命中 token", t?.cached_input_tokens],
+    ["缓存未命中 token", t?.uncached_input_tokens], ["输出 token", t?.output_tokens], ["搜索次数", t?.search_requests]] as const
   return (
     <div className="stack">
       <div className="row between">
         <Segmented value={days} onChange={setDays} options={[{ value: 1, label: "今天" }, { value: 7, label: "近 7 天" }, { value: 30, label: "近 30 天" }]} />
-        <Segmented value={groupBy} onChange={setGroupBy} options={[{ value: "purpose", label: "按用途" }, { value: "model", label: "按模型" }]} />
+        <Segmented value={groupBy} onChange={setGroupBy} options={[{ value: "purpose", label: "按用途" }, { value: "model", label: "按模型" }, { value: "day", label: "按日期（UTC）" }]} />
       </div>
       <div className="grid three">
-        <div className="card stat"><div className="label"><Bot size={15} />模型调用</div><div className="value">{t ? fmt(t.calls) : "…"}</div><div className="hint">包括失败的调用</div></div>
-        <div className="card stat"><div className="label"><RefreshCw size={15} />缓存命中率</div><div className="value">{t ? rate : "…"}</div><div className="hint">越高越省钱，目标 90% 以上</div></div>
-        <div className="card stat"><div className="label"><Coins size={15} />花费</div><div className="value">{t ? <CostDisplay value={t} /> : "…"}</div>
-          <div className="hint">目录计价，非厂商实付账单。{t && `${t.priced_calls ?? 0} 次已定价 · ${t.estimated_calls ?? 0} 次估算 · ${t.unpriced_calls ?? 0} 次无法计价`}
-            {!!t?.recalculated_calls && `；${t.recalculated_calls} 次历史未定价记录按当前价格表补算，未改写记录。`}</div></div>
+        {meters.map(([label, value]) => <div className="card stat" key={label}><div className="label">{label}</div><div className="value">{t ? fmt(value) : "…"}</div></div>)}
+        <div className="card stat"><div className="label">缓存命中率</div><div className="value">{t ? rate(t.cache_hit_rate) : "…"}</div><div className="hint">缓存命中 ÷ 输入 token</div></div>
       </div>
-      <div className="card">
+      {t && <><p className="sub">失败 {fmt(t.failed)} 次 · 取消 {fmt(t.cancelled)} 次 · 尚未结束 {fmt(t.in_progress)} 次；均计入调用次数。</p><UsageGap value={t} /></>}
+      <div className="card" style={{ overflowX: "auto" }}>
         {!data ? <Skeleton h={120} /> : data.groups.length === 0 ? <p className="sub">这段时间还没有模型调用。</p> : (
           <table className="table">
-            <thead><tr><th>{groupBy === "purpose" ? "用途" : "模型"}</th><th>次数</th><th>输入 token</th><th>缓存命中</th><th>输出 token</th><th>花费</th></tr></thead>
-            <tbody>
-              {data.groups.map((g) => (
-                <tr key={String(g.key)}>
-                  <td><b>{groupBy === "purpose" ? PURPOSE[g.key] ?? g.key : String(g.key).replace("/", " · ")}</b></td>
-                  <td>{fmt(g.calls)}</td><td>{fmt(g.input_tokens)}</td>
-                  <td>{g.cache_hit_rate != null ? `${(Number(g.cache_hit_rate) * 100).toFixed(1)}%` : "—"}</td>
-                  <td>{fmt(g.output_tokens)}</td><td><CostDisplay value={g} /></td>
-                </tr>
-              ))}
-            </tbody>
+            <thead><tr><th>{groupBy === "purpose" ? "用途" : groupBy === "model" ? "模型" : "日期（UTC）"}</th><th>次数</th><th>输入 token</th><th>缓存命中</th><th>缓存未命中</th><th>输出 token</th><th>搜索次数</th><th>命中率</th></tr></thead>
+            <tbody>{data.groups.map((g) => <React.Fragment key={String(g.key)}>
+              <tr><td><b>{groupBy === "purpose" ? PURPOSE[g.key] ?? g.key : String(g.key).replace("/", " · ")}</b></td>
+                <td>{fmt(g.calls)}</td><td>{fmt(g.input_tokens)}</td><td>{fmt(g.cached_input_tokens)}</td><td>{fmt(g.uncached_input_tokens)}</td>
+                <td>{fmt(g.output_tokens)}</td><td>{fmt(g.search_requests)}</td><td>{rate(g.cache_hit_rate)}</td></tr>
+              {!g.usage_complete && <tr><td colSpan={8}><UsageGap value={g} /></td></tr>}
+            </React.Fragment>)}</tbody>
           </table>
         )}
       </div>
-      {t && t.usage_complete === false && <p className="sub">有厂商没有返回完整用量，相关数字显示为“—”，不做猜测。</p>}
     </div>
   )
 }

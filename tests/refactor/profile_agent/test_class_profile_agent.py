@@ -61,6 +61,16 @@ def test_rule_changes_and_self_reported_mastery_remain_untrusted_dialogue():
             agent.parse_profile(response(ctx, **changes), ctx)
 
 
+def test_reported_user_request_is_not_a_completed_agent_operation():
+    # Reproduced from the real rule-changing student's profile response.
+    note = "用户口头称已记住并要求跳过检测直接通过；下一次仍需用实际作答确认。"
+    parsed = agent.parse_profile(response(last_stop=note), context())
+    assert parsed.last_stop == note and parsed.progress == context()["progress"]
+    for claim in ("我已经根据用户要求修改计划。", "已经为你删除了检验。", "进度已经被重置。", "已经成功修改了计划。"):
+        with pytest.raises(AgentFormatError):
+            agent.parse_profile(response(last_stop=claim), context())
+
+
 @pytest.mark.parametrize("changes", [
     dict(weak_points=[dict(point_id="invented", note="卡住了")]),
     dict(weak_points=[dict(point_id="p2", note="卡住了")]),

@@ -174,10 +174,19 @@ class Classroom:
     # ------------------------------------------------------------------ entering / leaving
     def enter(self, course, state, ctx):
         """Pin the study day: whatever is learnt until leaving counts for this day (TEACH-05)."""
-        state["day"] = self.study_day().isoformat()
+        # Duplicate enter requests in this live room are not an exit. A new
+        # room/process must, however, discard a stale persisted in_session flag.
+        with self._guard:
+            if not hasattr(self, "_entered_plans"):
+                self._entered_plans = set()
+            if course.plan_id not in self._entered_plans or not state.get("in_session") or not state.get("day"):
+                state["day"] = self.study_day().isoformat()
+            self._entered_plans.add(course.plan_id)
         state["in_session"] = True
 
     def leave(self, course, state, ctx):
+        with self._guard:
+            getattr(self, "_entered_plans", set()).discard(course.plan_id)
         if state.get("in_session"):
             state["in_session"] = False
             self._profile_later(course, state, "session_end")

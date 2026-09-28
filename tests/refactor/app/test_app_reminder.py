@@ -34,6 +34,9 @@ class FakeStore:
     def today_status(self, plan_id, **_kwargs):
         return dict(self.rows[plan_id]["status"])
 
+    def has_study_activity(self, plan_id, **_kwargs):
+        return False
+
 
 class FakeNotifier:
     def __init__(self):
