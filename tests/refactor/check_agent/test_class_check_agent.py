@@ -49,7 +49,7 @@ def test_request_and_parse_return_frozen_plan_profile_without_mutation():
     assert "错题记录（数据）" in messages[-1]["content"]
     value = parse_check(response(), ctx)
     assert isinstance(value, CheckProfile) and isinstance(value.categories[0], Attribution)
-    assert value.categories[0].point_ids == ("p1",) and value.profile == value.teacher_profile
+    assert value.categories[0].point_ids == ("p1",) and value.teacher_profile
     assert "概念边界混淆" in value.text and ctx == before
     with pytest.raises(FrozenInstanceError):
         value.teacher_profile = "改写"

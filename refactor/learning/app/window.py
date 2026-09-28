@@ -180,6 +180,7 @@ class LearningWindow(QWidget):
         """Called from bridge worker threads: only signals, never touches widgets here."""
         self._theme_changed.emit(settings.get("theme", "sakura"))
         self.bridge.push("settings", settings)
+        self.reminder.settings_changed(settings)  # hops to the GUI thread itself
 
     def _apply_theme(self, theme):
         self.current_theme = theme if theme in THEME_BACKGROUNDS else "sakura"  # read by account dialogs

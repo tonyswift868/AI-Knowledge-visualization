@@ -182,7 +182,7 @@ def test_concurrent_success_and_cancelled_receipts_are_not_mixed(tmp_path, monke
     assert groups['cancel']['input_tokens'] == 950 and groups['cancel']['cancelled'] == 1
 
 
-def test_planflow_does_not_retry_truncation_or_parse_its_partial_answer(tmp_path, monkeypatch):
+def test_planflow_retries_truncation_once_with_more_room_and_never_parses_it(tmp_path, monkeypatch):
     from refactor.learning.app.plan_flow import PlanFlow, TRANSIENT
     g, requests = gateway(tmp_path), []
     def handle(*_):
@@ -197,7 +197,8 @@ def test_planflow_does_not_retry_truncation_or_parse_its_partial_answer(tmp_path
     with pytest.raises(ModelError) as exc:
         PlanFlow._ask(host, 'plan', (None, MESSAGES), parse, ctx, plan_id='test')
     assert exc.value.code == 'MODEL_OUTPUT_TRUNCATED' and exc.value.generated_text_length == 4
-    assert len(requests) == 1 and g.usage_log.summary(START, END)['total']['calls'] == 1
+    # One retry with a doubled output cap (BUG-15); both cut-off answers are billed, neither is parsed.
+    assert len(requests) == 2 and g.usage_log.summary(START, END)['total']['calls'] == 2
 
 
 def test_chat_propagates_truncation_without_saving_turn(tmp_path, monkeypatch):

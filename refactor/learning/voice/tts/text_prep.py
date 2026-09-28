@@ -60,13 +60,16 @@ def prepare_text(text: str) -> str:
     if len(text) > 100000:
         raise ValueError("朗读文本超过十万字，请分段提交。")
     text = unicodedata.normalize("NFKC", html.unescape(text)).replace("\r\n", "\n")
-    text = re.sub(r"```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)", "。（代码略）这里有一段代码。", text)
-    text = re.sub(r"\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]+\$", "（公式略）这里有一个公式。", text)
+    text = re.sub(r"```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)", "。这里有一段代码。", text)
+    text = re.sub(r"\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^$\n]+\$", "这里有一个公式。", text)
     text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"图片：\1", text)
     # Classroom citations are navigation metadata, not something the teacher
     # should read aloud. Apply this before the generic Markdown-link rule so
     # the visible marker (〔1〕) is removed as well.
     text = re.sub(r"\[〔\d+〕\]\(mf-source:[^)]*\)", "", text)
+    # The raw classroom stream still carries excerpt aliases ([c1]) and the
+    # casual-question markers; neither is spoken (the question itself is).
+    text = re.sub(r"\[[cC]\d+\]|【/?随口问】", "", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]*\)|\[([^\]]+)\]\[[^\]]*\]", lambda m: m[1] or m[2], text)
     text = re.sub(r"(?m)^\s*\[[^\]]+\]:\s*\S+.*$", "", text)
     text = re.sub(r"(?:https?://|www\.)[^\s<>，。！？；）\]]+", "", text)

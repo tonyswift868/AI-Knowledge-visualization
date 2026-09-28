@@ -27,7 +27,7 @@ from datetime import datetime, time, tzinfo
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal
+from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QSystemTrayIcon
 
@@ -211,12 +211,9 @@ class ReminderService(QObject):
             self._window.showNormal()
             self._window.raise_()
             self._window.activateWindow()
-            page = getattr(self._window, "page", None)
-            if page is not None and hasattr(page, "runJavaScript"):
-                # The shell's first nav item is the stable 首页 action. This is
-                # deliberately a local UI click, not a new bridge contract.
-                script = "(() => { const item = [...document.querySelectorAll('.nav-item')].find((x) => x.textContent.includes('首页')); item?.click(); })()"
-                QTimer.singleShot(0, lambda: page.runJavaScript(script))
+            bridge = getattr(self._window, "bridge", None)
+            if bridge is not None:
+                bridge.push("navigate", {"route": "home"})
         except (AttributeError, RuntimeError):
             log.debug("learning window was already closing", exc_info=True)
 

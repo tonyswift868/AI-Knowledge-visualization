@@ -22,12 +22,14 @@ class Gateway:
     def __init__(self, truncate=0):
         self.truncate = truncate
         self.requests = []
+        self.max_tokens = []
         self.lock = threading.Lock()
 
     def complete(self, purpose, messages, **kwargs):
         user = messages[-1]["content"]
         with self.lock:
             self.requests.append(user)
+            self.max_tokens.append(kwargs.get("max_tokens"))
             if self.truncate:
                 self.truncate -= 1
                 raise ModelError(MODEL_OUTPUT_TRUNCATED, "模型输出达到上限")
@@ -80,16 +82,22 @@ def test_long_module_reads_every_chunk_in_batches():
     assert 2 <= len(points) <= 30 and {c for p in points for c in p["chunk_ids"]} <= {c["id"] for c in material}
 
 
-def test_a_cut_off_answer_is_retried_as_two_halves():
+def test_a_cut_off_answer_first_gets_more_room():
     gateway = Gateway(truncate=1)
+    flow(gateway)._generate_module(draft(), MODULE, chunks(4, 2000), ctx())
+    assert len(gateway.requests) == 2 and gateway.max_tokens == [8192, 16384]
+
+
+def test_a_cut_off_answer_is_retried_as_two_halves():
+    gateway = Gateway(truncate=2)
     points = flow(gateway)._generate_module(draft(), MODULE, chunks(4, 2000), ctx())
-    assert len(gateway.requests) == 3                      # the cut-off one, then two halves
-    assert "第1/2批" in gateway.requests[1] and "第2/2批" in gateway.requests[2]
+    assert len(gateway.requests) == 4                      # cut off twice (the second with more room), then two halves
+    assert "第1/2批" in gateway.requests[2] and "第2/2批" in gateway.requests[3]
     assert len(points) >= 2
 
 
 def test_a_half_that_is_still_cut_off_fails_the_module():
-    gateway = Gateway(truncate=2)
+    gateway = Gateway(truncate=4)
     with pytest.raises(ModelError) as caught:
         flow(gateway)._generate_module(draft(), MODULE, chunks(4, 2000), ctx())
     assert caught.value.code == MODEL_OUTPUT_TRUNCATED

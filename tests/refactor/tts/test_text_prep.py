@@ -48,12 +48,18 @@ def test_streaming_prep_keeps_code_and_formula_until_the_construct_closes():
     prep = StreamingTextPrep()
     assert prep.append("先讲结论。下面是 ```python\nprint('不朗读')") == ("先讲结论。",)
     code_and_prose = prep.append("```，然后回到正文。公式 $x^2")
-    assert any("代码略" in part for part in code_and_prose)
-    assert all("公式略" not in part for part in code_and_prose)
-    assert "公式略" in prep.append("=4$。")[-1]
+    assert any("这里有一段代码" in part for part in code_and_prose)
+    assert all("这里有一个公式" not in part for part in code_and_prose)
+    assert "这里有一个公式" in prep.append("=4$。")[-1]
 
 
 def test_streaming_prep_removes_mf_source_citations_and_flushes_tail():
     prep = StreamingTextPrep()
     assert prep.append("依据是[〔1〕](mf-source:abc)。英文 API 继续照常读") == ("依据是。",)
     assert prep.finish() == ("英文 接口 继续照常读",)
+
+
+def test_classroom_stream_markers_are_not_read():
+    from refactor.learning.voice.tts.text_prep import split_sentences
+    spoken = "".join(split_sentences("队列先进先出 [c1]。\n【随口问】\n它和栈有什么不同？\n【/随口问】"))
+    assert "c1" not in spoken and "随口问" not in spoken and "它和栈有什么不同" in spoken

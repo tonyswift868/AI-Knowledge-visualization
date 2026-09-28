@@ -256,6 +256,12 @@ class PlanFlow:
                 result = self.services.gateway.complete(purpose, messages, system=system, enable_search=search,
                                                         cancel=ctx.cancel, plan_id=plan_id, max_tokens=max_tokens)
             except ModelError as exc:
+                if (exc.code == MODEL_OUTPUT_TRUNCATED and not attempt and max_tokens < 32768
+                        and not ctx.cancel.is_set()):
+                    # A long outline can outgrow its cap; the same request with room to finish.
+                    log.info("agent %s hit the output cap %s, retrying with double", purpose, max_tokens)
+                    max_tokens, last = min(32768, max_tokens * 2), exc
+                    continue
                 if attempt or exc.code not in TRANSIENT or ctx.cancel.is_set():
                     raise
                 log.info("agent %s transient error %s, retrying once", purpose, exc.code)
@@ -614,12 +620,15 @@ class PlanFlow:
             input_tokens += base * batches + estimate_tokens(material)
         low_in, high_in = int(input_tokens * 0.85), int(input_tokens * 1.4)
         out_low, out_high = 900 * len(modules), 3500 * len(modules)
-        config = self.services.gateway.get_configuration() or {}
+        gateway = self.services.gateway
+        config = gateway.get_configuration() or {}
         amount = None
         try:
-            quote = self.services.gateway.price_catalog.estimate_cost(
+            # Price rows are chosen by region/service tier, exactly as for real calls.
+            context = gateway.estimate_context() if hasattr(gateway, "estimate_context") else {}
+            quote = gateway.price_catalog.estimate_cost(
                 config.get("provider_id", ""), config.get("model", ""), input_tokens=(low_in, high_in),
-                output_tokens=(out_low, out_high), cache_hit_rate=(0, 0.3))
+                output_tokens=(out_low, out_high), cache_hit_rate=(0, 0.3), context=context)
             if quote is not None:
                 amount = {"low": str(quote.low.quantize(quote.low.__class__("0.01"))),
                           "high": str(quote.high.quantize(quote.high.__class__("0.01"))), "currency": quote.currency}

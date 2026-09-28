@@ -38,16 +38,6 @@ class CheckProfile:
     teacher_profile: str
 
     @property
-    def profile(self) -> str:
-        """Compatibility spelling for hosts that call the portrait ``profile``."""
-        return self.teacher_profile
-
-    @property
-    def issues(self) -> tuple[Attribution, ...]:
-        """Compatibility spelling for hosts that call categories ``issues``."""
-        return self.categories
-
-    @property
     def text(self) -> str:
         """Compact Chinese text suitable for a teacher prompt."""
         rows = "；".join(
@@ -84,8 +74,6 @@ def _record_rows(value, point_ids):
         else:
             raw_ids = row["point_ids"]
         ids = _ids(raw_ids, point_ids)
-        if not ids:
-            raise AgentFormatError("records.point_ids: 每条错题至少关联一个知识点")
         normalized = {
             "question": _text(row["question"], "records.question", 4000),
             "answer": _text(row["answer"], "records.answer", 4000, empty=True),
@@ -141,8 +129,6 @@ def parse_check(text: str, ctx: dict) -> CheckProfile:
             raise AgentFormatError("categories: 类别不能重复")
         names.add(key)
         ids = _ids(row["point_ids"], point_ids)
-        if not ids:
-            raise AgentFormatError("categories.point_ids: 每类至少关联一个点")
         if any(point_id not in observed for point_id in ids):
             raise AgentFormatError("categories.point_ids: 不能归因到没有错题记录的点")
         covered.update(ids)
@@ -161,11 +147,3 @@ def parse_check(text: str, ctx: dict) -> CheckProfile:
     if len(result.text) > 3200:
         raise AgentFormatError("profile: 归因画像总长度超过 3200 字")
     return result
-
-
-# Explicit aliases keep the component easy to discover while retaining one
-# parser and one validation contract for the host.
-parse_check_profile = parse_check
-parse_profile = parse_check
-AttributionProfile = CheckProfile
-IssueCategory = Attribution

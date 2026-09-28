@@ -79,6 +79,7 @@ export function App() {
       on("settings", (d) => s.set({ settings: d })),
       on("session_notice", (d) => s.set({ notice: d })),
       on("window", (d) => s.set({ fullscreen: !!d.fullscreen })),
+      on("navigate", (d) => { if (d?.route === "home") s.go("home") }),
       on("scope_changed", () => s.set({ ready: false, sync: null })),
       on("sync_status", (d) => s.set({ sync: d })),
     ]

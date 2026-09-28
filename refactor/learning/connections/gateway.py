@@ -304,9 +304,8 @@ class ModelGateway:
         return bool(spec and spec.search is not None)
 
     @staticmethod
-    def _billable_usage(value, config):
-        raw = copy.deepcopy(value.raw)
-        meta = raw.setdefault('_mentorflow', {})
+    def _price_context(config, tier=None):
+        """Region and service tier used to pick price rows (calls and estimates alike)."""
         # Only protocol-known facts. A custom endpoint cannot inherit official
         # regional prices just because the user selected that provider's parser.
         host = urlsplit(config['base_url']).hostname
@@ -314,14 +313,25 @@ class ModelGateway:
         if providers.detect_provider(config['base_url']) == config['provider_id']:
             region = ('cn-beijing' if host == 'dashscope.aliyuncs.com' else
                       'unknown' if config['provider_id'] == 'qwen' else 'global')
-        context = dict(region=region, cache_mode='implicit', finished_at=timestamp().isoformat())
-        if config['provider_id'] == 'qwen' and value.reasoning_tokens > 0:
-            context['thinking_mode'] = 'thinking'
         # Caller cannot set batch/flex/priority through this gateway. Preserve a
         # nonstandard response tier when adapters publish one in raw usage.
-        tier = meta.get('service_tier')
-        context['service_tier'] = ('standard' if tier == 'default' else tier or 'unknown'
-                                   if config['provider_id'] == 'openai' else 'standard')
+        service_tier = ('standard' if tier == 'default' else tier or 'unknown'
+                        if config['provider_id'] == 'openai' else 'standard')
+        return dict(region=region, service_tier=service_tier)
+
+    def estimate_context(self):
+        """The price context a cost estimate for the configured model should use."""
+        config = self.get_configuration()
+        return self._price_context(config, 'default') if config else {}
+
+    @staticmethod
+    def _billable_usage(value, config):
+        raw = copy.deepcopy(value.raw)
+        meta = raw.setdefault('_mentorflow', {})
+        context = dict(ModelGateway._price_context(config, meta.get('service_tier')),
+                       cache_mode='implicit', finished_at=timestamp().isoformat())
+        if config['provider_id'] == 'qwen' and value.reasoning_tokens > 0:
+            context['thinking_mode'] = 'thinking'
         meta['billing_context'] = context
         return replace(value, raw=raw)
 

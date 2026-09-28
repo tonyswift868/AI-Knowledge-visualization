@@ -663,7 +663,7 @@ def _link_citations(text, mapping):
     return "".join(out)
 
 
-def register(bridge, services, study_day):
+def register(bridge, services, study_day, *, presence=lambda active: None):
     rooms: dict[int, Classroom] = {}
 
     def room():
@@ -698,14 +698,23 @@ def register(bridge, services, study_day):
             raise BridgeError("PARAM_INVALID", "检测类型无效。")
         return value
 
+    def entered(params, ctx):
+        view = room().run(params.get("plan_id"), room().enter, ctx)
+        presence(True)
+        return view
+
+    def left(params, ctx):
+        presence(False)
+        return room().run(params.get("plan_id"), room().leave, ctx)
+
     handlers = {
-        "classroom.enter": lambda p, c: room().run(p.get("plan_id"), room().enter, c),
+        "classroom.enter": entered,
         "classroom.state": lambda p, c: room().run(p.get("plan_id"), lambda *a: None, c),
         "classroom.next": lambda p, c: room().run(p.get("plan_id"), room().next, c),
         "classroom.reply": lambda p, c: room().run(p.get("plan_id"), lambda co, st, cx: room().reply(co, st, cx, text(p)), c),
         "classroom.test": lambda p, c: room().run(p.get("plan_id"), lambda co, st, cx: room().start_test(co, st, cx, kind(p)), c),
         "classroom.next_module": lambda p, c: room().run(p.get("plan_id"), room().next_module, c),
-        "classroom.leave": lambda p, c: room().run(p.get("plan_id"), room().leave, c),
+        "classroom.leave": left,
         "classroom.source": source,
     }
     for name, fn in handlers.items():

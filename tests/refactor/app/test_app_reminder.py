@@ -48,17 +48,17 @@ class FakeNotifier:
         self.closed = True
 
 
-class FakePage:
+class FakeBridge:
     def __init__(self):
-        self.scripts = []
+        self.pushed = []
 
-    def runJavaScript(self, script):
-        self.scripts.append(script)
+    def push(self, name, data):
+        self.pushed.append((name, data))
 
 
 class FakeWindow:
     def __init__(self):
-        self.page = FakePage()
+        self.bridge = FakeBridge()
         self.actions = []
 
     def showNormal(self):
@@ -181,7 +181,7 @@ def test_notification_click_restores_window_and_opens_home(setup, qt_app):
     notifier.calls[0][2]()
     qt_app.processEvents()
     assert window.actions == ["normal", "raise", "activate"]
-    assert window.page.scripts and "首页" in window.page.scripts[0]
+    assert window.bridge.pushed == [("navigate", {"route": "home"})]
 
 
 def test_service_reads_the_shared_store_provider_on_each_day(setup):
