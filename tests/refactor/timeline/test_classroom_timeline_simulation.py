@@ -268,17 +268,17 @@ def test_classroom_cross_day_timeline_uses_real_today_status(classroom_room):
 
     # Teaching p0 and p1 creates tentative minutes on the pinned entry day.
     view = _act(classroom, "next")
-    _assert_today(clock, trace, view, "DAY1 讲完队列定义，记暂记", target=30, confirmed=0, tentative=20, debt=0, ahead=0, ahead_days=0)
+    _assert_today(clock, trace, view, "DAY1 讲完队列定义，未答随口问前不记时长", target=30, confirmed=0, tentative=0, debt=0, ahead=0, ahead_days=0)
     agent.verdicts.append(("answer", True, []))
     view = _act(classroom, "reply", "先进先出，按顺序处理")
-    _assert_today(clock, trace, view, "DAY1 随口问答对，继续讲队列操作", target=30, confirmed=0, tentative=30,
-                  debt=0, ahead=10, ahead_days=0)
+    _assert_today(clock, trace, view, "DAY1 随口问答对，队列定义记暂记，继续讲队列操作", target=30, confirmed=0, tentative=20,
+                  debt=0, ahead=0, ahead_days=0)
 
     # Two wrong casual answers are recorded, then the host moves on without a loop.
     agent.verdicts.append(("answer", False, ["p1"]))
     view = _act(classroom, "reply", "不会")
-    _assert_today(clock, trace, view, "DAY1 随口问第一次答错，仍暂记", target=30, confirmed=0, tentative=30,
-                  debt=0, ahead=10, ahead_days=0)
+    _assert_today(clock, trace, view, "DAY1 随口问第一次答错，再确认一次，暂不记这个点", target=30, confirmed=0, tentative=20,
+                  debt=0, ahead=0, ahead_days=0)
     agent.verdicts.append(("answer", False, ["p1"]))
     view = _act(classroom, "reply", "还是不会")
     assert view["step"] == "test_offer"

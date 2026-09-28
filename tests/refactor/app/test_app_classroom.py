@@ -88,7 +88,7 @@ def room():
     with tempfile.TemporaryDirectory(dir=SCRATCH) as root:
         store = CourseStore(ACCOUNT, Path(root))
         store.create_plan(PLAN, goal="学会队列", final_goal="能用队列写程序", level="beginner",
-                          window=PlanWindow(DAY, DAY + timedelta(days=9), 120))
+                          window=PlanWindow(DAY, DAY + timedelta(days=1), 120))
         store.add_sources(PLAN, [dict(id="s", kind="url", url="https://example.invalid",
                                       chunks=[dict(chunk_id="k1", text="队列是先进先出的结构。"),
                                               dict(chunk_id="k2", text="栈是后进先出的结构。")])])
@@ -141,12 +141,12 @@ def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
     assert view["step"] == "answer" and view["question"]["stem"] == "它和排队有什么不同？"
     teach = [m for m in view["messages"] if m["kind"] == "teach"][-1]["content"]
     assert "(mf-source:k1)" in teach and "【" not in teach             # citation linked, question marker removed
-    assert "".join(streamed).startswith("我们先看定义") and credits(store) == {"learn:p0": "tentative"}
+    assert "".join(streamed).startswith("我们先看定义") and credits(store) == {}   # nothing counts before the answer
 
     agents.verdicts = [("answer", True, [])]
     view = act(classroom, "reply", "先进先出，排队也是")
     assert view["step"] == "answer" and [p["current"] for p in view["points"]] == [False, True]
-    assert contexts(store) == [("casual", [("p0", True)])]
+    assert contexts(store) == [("casual", [("p0", True)])] and credits(store) == {"learn:p0": "tentative"}
 
     agents.verdicts = [("question", None, []), ("change_rules", None, [])]
     act(classroom, "reply", "那为什么叫队列？")
@@ -228,4 +228,4 @@ def test_position_survives_a_restart(room):
     classroom._file(PLAN).path.unlink()
     fresh = Classroom(classroom.services, lambda: DAY)
     view = fresh.run(PLAN, lambda *a: None, ctx())
-    assert view["points"][1]["current"] and view["step"] == "teach"       # rebuilt from the credits
+    assert view["points"][0]["current"] and view["step"] == "teach"       # unanswered point is taught again

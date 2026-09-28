@@ -294,7 +294,9 @@ def test_audit_classroom_day_survives_backwards_calendar(env, audit, change):
         env.settings.save({"refresh_time": "14:00"})
     else:
         env.clock.zone = timezone(timedelta(hours=-7))
-    view = act(env, "next")
+    act(env, "next")
+    env.agent.verdicts.append(("answer", True, []))
+    view = act(env, "reply", "先进先出")  # the point's time is recorded once its casual question is answered
     check_status(audit, f"课堂内{change}导致学习日倒退，仍显示开课日", dict(progress_day="2026-10-05",
                  study_day="2026-10-04", today_target=30, today_tentative=20), view["today"], rule="TEACH-05",
                  finding="原不合理，已修", before="today_status 拒绝开课日大于当前日，Classroom.snapshot 返回 today=None")
@@ -435,12 +437,14 @@ def test_audit_out_of_scope_teacher_timing_is_reported(env, audit):
     prepare(env, total=90, weighted=False, end=START+timedelta(days=5))  # 15/day; a point costs20
     act(env, "enter")
     view = act(env, "next")
-    audit("未作答已暂记：应随口问答上才暂记；实际先记20", "PLAN-05", 0,
-          sum(c["credit"]["minutes"] for c in env.store.records("credits", PLAN)), finding="不合理，需架构师", observed=20)
+    audit("未作答不记暂记：随口问答上才暂记", "PLAN-05", 0,
+          sum(c["credit"]["minutes"] for c in env.store.records("credits", PLAN)), finding="原不合理，已修",
+          before="讲完就先记 20 分钟")
     env.agent.verdicts.append(("answer", True, []))
     view = act(env, "reply", "先进先出")
-    audit("今日目标15已超额：应停在当前点，实际自动讲第二点", "PLAN-05", ["learn:p0"],
-          [r["id"] for r in env.store.records("credits", PLAN)], finding="不合理，需架构师", observed=["learn:p0", "learn:p1"])
+    audit("今日目标15已完成：停在这里，由学习者选择继续或下课", "PLAN-05", ["learn:p0"],
+          [r["id"] for r in env.store.records("credits", PLAN)], finding="原不合理，已修", before="自动接着讲第二点")
+    assert view["step"] == "teach" and view["points"][1]["current"]
 
 
 def test_audit_repeated_enter_must_not_repin_open_session(env, audit):
@@ -453,6 +457,8 @@ def test_audit_repeated_enter_must_not_repin_open_session(env, audit):
                  view["today"], rule="TEACH-05", finding="原不合理，已修",
                  before="enter 每次覆写 day，重复请求在04点后改为新日")
     act(env, "next")
+    env.agent.verdicts.append(("answer", True, []))
+    act(env, "reply", "先进先出")
     assert env.store.records("credits", PLAN)[0]["credit"]["day"] == "2026-10-05"
     act(env, "leave")
     assert act(env, "enter")["today"]["progress_day"] == "2026-10-06"
@@ -572,7 +578,7 @@ def test_audit_wall_clock_rollback_reorders_mastery(env, monkeypatch, audit):
     env.agent.verdicts.append(("answer", True, []))
     view = act(env, "reply", "入队在尾出队在头")
     retest = next(r["event"] for r in env.store.records("judgements", PLAN) if r["event"]["context"] == "retest")
-    assert retest["seq"] < closed and retest["results"] == [["p1", True]]
-    audit("回拨一小时后重测答对：seq排序将重测放到检测之前", "TEACH-02", "passed",
-          view["module"]["state"], finding="不合理，需架构师", observed="failed")
-    assert not any(r["id"] == "relearn:p1" for r in env.store.records("credits", PLAN))
+    assert retest["seq"] > closed and retest["results"] == [["p1", True]]  # order never goes backwards
+    audit("回拨一小时后重测答对：事件顺序仍在检测之后，模块通过", "TEACH-02", "passed",
+          view["module"]["state"], finding="原不合理，已修", before="seq 取系统时间，回拨后重测排到检测之前，模块仍不通过")
+    assert any(r["id"] == "relearn:p1" for r in env.store.records("credits", PLAN))

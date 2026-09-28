@@ -45,16 +45,13 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-def _seq():
-    return time.time_ns() // 1000
-
-
 class Classroom:
     def __init__(self, services, study_day, *, now=_now):
         self.services, self.study_day, self.now = services, study_day, now
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
         self._profiling: set[str] = set()
+        self._entered_plans: set[str] = set()  # rooms entered in this process; a repeat enter keeps the day
 
     # ------------------------------------------------------------------ state
     def _file(self, plan_id):
@@ -177,8 +174,6 @@ class Classroom:
         # Duplicate enter requests in this live room are not an exit. A new
         # room/process must, however, discard a stale persisted in_session flag.
         with self._guard:
-            if not hasattr(self, "_entered_plans"):
-                self._entered_plans = set()
             if course.plan_id not in self._entered_plans or not state.get("in_session") or not state.get("day"):
                 state["day"] = self.study_day().isoformat()
             self._entered_plans.add(course.plan_id)
@@ -186,7 +181,7 @@ class Classroom:
 
     def leave(self, course, state, ctx):
         with self._guard:
-            getattr(self, "_entered_plans", set()).discard(course.plan_id)
+            self._entered_plans.discard(course.plan_id)
         if state.get("in_session"):
             state["in_session"] = False
             self._profile_later(course, state, "session_end")
@@ -212,7 +207,6 @@ class Classroom:
                     "讲完用随口问提一道有区分度的小问题。")
         teaching = self._teacher(course, state, ctx, director, [point["id"]], asks=True)
         state["resume"] = False
-        self._credit_learning(course, state, point)
         if teaching.casual_question:
             state["pending"] = {"kind": "casual", "point_ids": [point["id"]], "asks": 1,
                                 "question": {"type": "short", "stem": teaching.casual_question, "options": [],
@@ -225,10 +219,31 @@ class Classroom:
         """The current point is finished (answered or given up): move on, update notes in the background."""
         points = course.points_of(state["module_id"])
         current = points[state["index"]]["id"]
+        self._credit_learning(course, state, points[state["index"]])  # ARCH-07: after the reply, not before
         state["pending"] = None
         state["index"] += 1
         state["step"] = "teach" if state["index"] < len(points) else "test_offer"
         self._profile_later(course, state, "point_complete", current)
+
+    def _go_on(self, course, state, ctx, lead, point_id):
+        """After a finished point: the module test, a stop once today's target is met, or the next point."""
+        if state["step"] == "test_offer":
+            return self._teacher(course, state, ctx, lead + "然后说明这个模块的知识点都讲完了，接下来可以用下面的按钮做模块检测。不要出题。",
+                                 [point_id])
+        day = self._day(state)
+        if state.get("target_notice") != day and self._target_met(course, state):
+            state["target_notice"] = day  # said once per study day; after that the lesson simply goes on
+            return self._teacher(course, state, ctx, lead + "然后告诉学习者今天的学习目标已经完成了：可以点“继续”接着学下一个知识点，"
+                                 "也可以下课休息。不要讲新内容，不要出题。", [point_id])
+        return self._teach_point(course, state, ctx, lead + "然后接着讲下一个知识点。")
+
+    def _target_met(self, course, state):
+        try:
+            today = self._today(course, state)
+        except Exception:  # noqa: BLE001 - without a status the lesson just continues
+            return False
+        return bool(today and today["today_target"] > 0
+                    and today["today_confirmed"] + today["today_tentative"] >= today["today_target"])
 
     def reply(self, course, state, ctx, text):
         course.store.append_message(course.plan_id, state["module_id"], "user", text, kind="text")
@@ -254,10 +269,7 @@ class Classroom:
                 lead = (f"学习者对随口问答对了（判定：{verdict.reason}）先用一句话肯定。" if verdict.correct else
                         f"学习者第二次仍没答对（判定：{verdict.reason}）简短说清正确理解，告诉他这个点已经记下、模块检测前可以回看，不要纠缠。")
                 self._point_done(course, state)
-                if last:
-                    return self._teacher(course, state, ctx, lead + "然后说明这个模块的知识点都讲完了，接下来可以用下面的按钮做模块检测。不要出题。",
-                                         [point["id"]])
-                return self._teach_point(course, state, ctx, lead + "然后接着讲下一个知识点。")
+                return self._go_on(course, state, ctx, lead, point["id"])
             teaching = self._teacher(course, state, ctx,
                                      f"学习者对随口问的回答有误（判定：{verdict.reason}）不要责备。换一个角度把《{point['title']}》里出错的地方再讲一遍，"
                                      "给个台阶，最后用随口问再确认一次（换一道题）。", [point["id"]], user=text, asks=True)
@@ -325,7 +337,8 @@ class Classroom:
 
     def _test_reply(self, course, state, ctx, text, pending):
         q = pending["question"]
-        if q["type"] == "choice" and text.strip() in q["options"]:
+        clicked = q["type"] == "choice" and text.strip() in q["options"]
+        if clicked and (text.strip() == q["answer"] or len(q["point_ids"]) == 1):
             correct = text.strip() == q["answer"]
             verdict = judge_agent.Verdict("answer", correct, () if correct else tuple(q["point_ids"]),
                                           "选对了。" if correct else f"正确答案是：{q['answer']}。")
@@ -344,14 +357,10 @@ class Classroom:
         self._say(course, state, (mark + explanation).strip(), kind="verdict", role="system")
         if pending["kind"] == "quick":
             point = course.point(pending["point_ids"][0])
-            last = state["index"] + 1 >= len(course.points_of(state["module_id"]))
             self._point_done(course, state)
-            if last:
-                return self._teacher(course, state, ctx, "这个模块的知识点都讲完了。用一两句话说明接下来可以用下面的按钮做模块检测。不要出题。",
-                                     [point["id"]])
             lead = ("快速确认答对了，不用再讲这个点。" if verdict.correct else
                     "快速确认没答对，这个点已经记下，交给模块检测再看，不要纠缠。")
-            return self._teach_point(course, state, ctx, lead + "直接接着讲下一个知识点。")
+            return self._go_on(course, state, ctx, lead, point["id"])
         test = state["test"]
         test["index"] += 1
         if test["index"] < len(test["queue"]):
@@ -365,7 +374,7 @@ class Classroom:
         state["pending"], state["test"] = None, None
         store = course.store
         if test["kind"] != "retest":
-            store.append_attempt_closed(course.plan_id, AttemptClosed(uuid.uuid4().hex, _seq(), module_id,
+            store.append_attempt_closed(course.plan_id, AttemptClosed(uuid.uuid4().hex, course.next_seq(), module_id,
                                                                       test["attempt"], test["kind"]))
         book = course.book()
         states = {p["id"]: book.point(p["id"]).state for p in points}
@@ -393,18 +402,20 @@ class Classroom:
                     store.add_credit(course.plan_id, f"relearn:{p['id']}", p["id"], p["minutes"], day, "confirmed")
         red = [p["title"] for p in points if states[p["id"]] == "red"]
         weak = [p["title"] for p in points if states[p["id"]] == "weak"]
+        more = any(book.module(m["id"]).state == "untested" for m in course.modules if m["id"] != module_id)
+        onward = "学下一个模块" if more else "结束模块学习、进入最终检验"
         mastered = sum(1 for p in points if states[p["id"]] == "green")
         state["step"] = "test_done"
         if module_state in ("passed", "skipped") and not red:
             outcome = (f"模块检测通过：{mastered}/{len(points)} 个点完全掌握。" if test["kind"] != "skip_test"
                        else f"直接考通过（{mastered}/{len(points)}），这个模块跳过。")
             director = outcome + (f"有小瑕疵的点：{'、'.join(weak)}，之后检验时会多问。" if weak else "") + \
-                "用两三句话告诉学习者结果，并说明可以用下面的按钮学下一个模块。不要出题。"
+                f"用两三句话告诉学习者结果，并说明可以用下面的按钮{onward}。不要出题。"
         else:
             director = (f"{'重测' if test['kind'] == 'retest' else '模块检测'}结束：{mastered}/{len(points)} 个点掌握，"
                         f"还没过的点：{'、'.join(red)}（需要掌握 90% 以上才算通过，没过的点换角度答对一次即可）。"
                         "用两三句话告诉学习者结果，针对没过的点各用一句话点出要回看的关键，"
-                        "说明可以重测这些点，也可以先学下一个模块。不要出题。")
+                        f"说明可以重测这些点，也可以先{onward}（没过的点要在最终检验前重测通过）。不要出题。")
         self._teacher(course, state, ctx, director, [p["id"] for p in points if states[p["id"]] != "green"] or [points[0]["id"]])
 
     def next_module(self, course, state, ctx):
@@ -507,7 +518,7 @@ class Classroom:
                 "reference": q.get("reference") or q.get("answer") or "按知识点要点判断",
                 "recent": self._dialogue(course, state)[-7:-1]}
         request = judge_agent.judge_request(jctx, reply)
-        return self._ask(course, ctx, "judge", request, lambda text: judge_agent.parse_judgement(text, jctx), 1024)
+        return self._ask(course, ctx, "judge", request, lambda text: judge_agent.parse_judgement(text, jctx), 2048)
 
     def _questions(self, course, ctx, purpose, point_ids, *, avoid=()):
         points = [course.point(pid) for pid in point_ids]
@@ -526,6 +537,9 @@ class Classroom:
                                                         cancel=ctx.cancel if ctx else None, plan_id=course.plan_id,
                                                         max_tokens=max_tokens)
             except ModelError as exc:
+                if exc.code == MODEL_OUTPUT_TRUNCATED and not attempt and max_tokens < 16384:
+                    max_tokens, last = max_tokens * 2, exc
+                    continue
                 if attempt or exc.code not in TRANSIENT or (ctx and ctx.cancel.is_set()):
                     raise
                 last = exc
@@ -542,7 +556,7 @@ class Classroom:
         wrong = set(verdict.wrong_points)
         results = tuple((pid, pid not in wrong) for pid in pending["point_ids"])
         attempt = (state.get("test") or {}).get("attempt") if context in ("module_test", "skip_test") else None
-        event = Judgement(uuid.uuid4().hex, _seq(), self.now(), context, state["module_id"], attempt, results)
+        event = Judgement(uuid.uuid4().hex, course.next_seq(), self.now(), context, state["module_id"], attempt, results)
         q = pending["question"]
         course.store.append_judgement(course.plan_id, event, details={
             "question": q["stem"], "answer": answer[:4000], "reason": verdict.reason, "chunk_ids": q.get("chunk_ids", [])})
@@ -621,6 +635,12 @@ class _Course:
 
     def book(self):
         return self.store.load_mastery(self.plan_id)
+
+    def next_seq(self):
+        """Replay order for mastery events: after every recorded event, even if the clock went back."""
+        seqs = [row["event"]["seq"] for entity in ("judgements", "attempt_closed")
+                for row in self.store.records(entity, self.plan_id)]
+        return max([time.time_ns() // 1000, *(seq + 1 for seq in seqs)])
 
     def taught(self):
         return {c["credit"]["unit_id"] for c in self.store.records("credits", self.plan_id)
