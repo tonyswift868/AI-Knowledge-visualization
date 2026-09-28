@@ -146,6 +146,8 @@ class AssetDownloader:
         self.last_resolved_urls: dict[str, str] = {}
         self.required: dict[str, tuple[int, str]] = {}
         names: set[str] = set()
+        file_names: set[str] = set()
+        directories: set[str] = set()
         for asset in self.assets:
             if asset.name.casefold() in names:
                 raise ValueError("资产名称重复")
@@ -154,10 +156,12 @@ class AssetDownloader:
                 (asset.install_path, asset.size, asset.sha256)]
             for name, size, digest in files:
                 folded = name.casefold()
-                if (folded == "installed.json" or any(folded == n.casefold() or
-                        folded.startswith(n.casefold() + "/") or n.casefold().startswith(folded + "/")
-                        for n in self.required)):
+                parents = [p.as_posix() for p in PurePosixPath(folded).parents if p.as_posix() != "."]
+                if (folded == "installed.json" or folded in file_names or folded in directories
+                        or any(parent in file_names for parent in parents)):
                     raise ValueError("安装路径重复或冲突")
+                file_names.add(folded)
+                directories.update(parents)
                 self.required[name] = size, digest
         if not self.required:
             raise ValueError("资产清单为空")
@@ -181,7 +185,10 @@ class AssetDownloader:
         installed = False
         try:
             receipt_path = self.path / "installed.json"
-            if self._safe_file(self.path, "installed.json") and receipt_path.stat().st_size < 1024 * 1024:
+            # Python/CUDA runtimes have tens of thousands of files. Bound the
+            # receipt by the pinned inventory, rather than the ASR-sized 1 MiB.
+            limit = min(64 * 1024 * 1024, max(1024 * 1024, len(self.required) * 1024))
+            if self._safe_file(self.path, "installed.json") and receipt_path.stat().st_size < limit:
                 receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
                 installed = receipt == self._receipt(self.path) and all(
                     self._safe_file(self.path, name) and (self.path / name).is_file()

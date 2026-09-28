@@ -88,6 +88,8 @@ def _peaks(plan, operations, through):
             method(credit['credit_id'], credit['unit_id'], credit['minutes'], _day(credit['day']))
         elif op == 'replan':
             ledger.replan(_day(raw['today']), _window(raw['window']), raw['total_minutes'])
+        elif op == 'release':
+            ledger.release_unused(raw['minutes'])
         else:
             getattr(ledger, op)(raw['unit_id'])
         sample(current)
@@ -147,8 +149,8 @@ def _time_series(ledger, judgements, through):
 def build_report(store, plan_id, *, today) -> dict:
     """Build, atomically save via CourseStore.save_report, and return JSON data.
 
-    Only a fully generated, completed plan with complete mastery AND confirmed
-    ledger progress is accepted. Equal input produces equal output and no new
+    Only a fully generated, completed plan with complete mastery is accepted.
+    Unused estimates are not fabricated credits. Equal input produces equal output and no new
     outbox revision. CourseStore.save_report splits large reports into bounded
     sync records; CourseStore.load_report reconstructs the complete document.
     """
@@ -161,7 +163,7 @@ def build_report(store, plan_id, *, today) -> dict:
                 or any(m['point_count'] <= 0 or sum(p['module_id'] == m['id'] for p in points) != m['point_count'] for m in modules)):
             raise StoreError('PLAN_NOT_COMPLETE', '整份计划和检验完成后才能生成报告。')
         mastery, ledger = store.load_mastery(plan_id), store.load_ledger(plan_id)
-        if not mastery.check_complete() or not ledger.status(today).completed:
+        if not mastery.check_complete():
             raise StoreError('PLAN_NOT_COMPLETE', '整份计划和检验完成后才能生成报告。')
         judgements = store.records('judgements', plan_id)
         credits = store.records('credits', plan_id)
@@ -185,6 +187,23 @@ def build_report(store, plan_id, *, today) -> dict:
             started = _day(timing['activity_dates'][0])
             start_basis = 'first_activity'
         live = ledger.to_dict()['credits']
+        split_modules = [m for m in modules if 'final_check_minutes' in m]
+        split_ids = {m['id'] for m in split_modules}
+        split_points = {p['id'] for p in points if p['module_id'] in split_ids}
+        final_estimate = sum(m['final_check_minutes'] for m in split_modules)
+        final_actual = sum(c['minutes'] for c in live if c['unit_id'] in {f'check:{pid}' for pid in split_points})
+        module_estimate = sum(m['check_minutes'] for m in split_modules)
+        module_actual = sum(c['minutes'] for c in live if c['unit_id'] in {f'test:{mid}' for mid in split_ids})
+        timing['check_minutes'] = dict(
+            accounting='split' if len(split_modules) == len(modules) else 'mixed' if split_modules else 'legacy_combined',
+            final_estimated=final_estimate if split_modules else None,
+            final_actual=final_actual if split_modules else None,
+            final_difference=final_estimate-final_actual if split_modules else None,
+            module_estimated=module_estimate if split_modules else None,
+            module_actual=module_actual if split_modules else None,
+            module_difference=module_estimate-module_actual if split_modules else None,
+            legacy_combined_estimated=sum(m['check_minutes'] for m in modules if m['id'] not in split_ids),
+            released_minutes=sum(r['minutes'] for r in commands if r['op'] == 'release'))
         confirmed = sum(c['minutes'] for c in live if c['state'] == 'confirmed')
         tentative = sum(c['minutes'] for c in live if c['state'] == 'tentative')
         replans = [dict(event_id=r['id'], operation_seq=r['operation_seq'], day=r['today'],

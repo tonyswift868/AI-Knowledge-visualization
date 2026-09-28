@@ -685,8 +685,13 @@ class PlanFlow:
             chunks = self._module_chunks(self._span_chunks(module, all_chunks), titles)
             points = self._generate_module(draft, module, chunks, ctx)
             payload = [dict(p, id=f"{module['id']}-{index:02d}") for index, p in enumerate(points, 1)]
+            # Ledger records whole minutes; use the same rounded estimate at
+            # generation and on every correct final-check answer.
+            question_minutes = max(1, round(CHECK_MINUTES_PER_QUESTION))
             store.save_generated_module(plan_id, module["id"], payload, today=self.study_day(),
-                                        check_minutes=estimate_check_minutes(len(payload), minutes_per_question=CHECK_MINUTES_PER_QUESTION))
+                                        check_minutes=len(payload) * question_minutes,
+                                        final_check_minutes=estimate_check_minutes(len(payload), minutes_per_question=question_minutes),
+                                        check_question_minutes=question_minutes)
             return len(payload)
 
         done_count = sum(1 for v in draft["generation"].values() if v == "done")

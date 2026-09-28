@@ -240,9 +240,15 @@ export function Classroom() {
             {reading ? <Volume2 /> : <VolumeX />}
           </button>
           <span className="small muted">{reading ? voice.message : "朗读已关闭"}</span>
-          {reading && voice.availability && !voice.availability.ready && voice.availability.download && (
-            <Button small onClick={() => voice.download(true)}>下载朗读组件</Button>
+          {voice.availability && !voice.availability.ready && voice.availability.download && (
+            <Button small disabled={voice.downloadState?.state === "downloading"} onClick={() => voice.download()}>下载朗读组件</Button>
           )}
+          {voice.downloadState?.state === "downloading" && <>
+            <span className="small muted">下载 {Math.round(100 * voice.downloadState.received_bytes / Math.max(1, voice.downloadState.total_bytes))}%</span>
+            <Button small kind="ghost" onClick={() => voice.cancelDownload()}>取消下载</Button>
+          </>}
+          {voice.error && <span className="small" role="alert">{voice.error}</span>}
+          {voice.downloadState?.state === "error" && <span className="small" role="alert">{voice.downloadState.message}</span>}
           {voice.busy && <Button small kind="ghost" onClick={stopReading}><Square />停</Button>}
         </div>
       </aside>

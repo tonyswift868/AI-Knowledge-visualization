@@ -57,7 +57,17 @@ def atomic(path, data):
     temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.pending')
     with temporary.open('xb') as stream:
         stream.write(data); stream.flush(); os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    # Inno polls the progress INI with GetIniString. On Windows that brief read
+    # can deny delete-sharing, so an otherwise valid atomic replace must retry.
+    # Never fall back to truncating a live signed-state or progress file.
+    for attempt in range(8):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            if os.name != 'nt' or attempt == 7:
+                raise
+            time.sleep(min(.01 * 2 ** attempt, .2))
 
 
 def plain(path):

@@ -172,10 +172,10 @@ export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | nu
     }
   }, [owner])
 
-  const download = React.useCallback(async (consent: boolean) => {
+  const download = React.useCallback(async () => {
     setError("")
     try {
-      const result = await call("speech.download", { owner, consent })
+      const result = await call("speech.choose_download", { owner })
       if (alive.current) downloadId.current = result.download_id
     } catch (e: any) { if (alive.current) setError(e.message || "下载没有开始。") }
   }, [owner])

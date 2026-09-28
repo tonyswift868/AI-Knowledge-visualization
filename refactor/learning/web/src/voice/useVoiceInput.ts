@@ -192,7 +192,7 @@ export function useVoiceInput({ value, onChange, terms = [], disabled = false, s
     setModel((prior) => prior ? { ...prior, state: "downloading", job_id: job,
       downloaded_bytes: 0, cancelling: false } : prior)
     try {
-      const data = await transport.call<ModelStatus>("voice.download", { consent: true, job_id: job })
+      const data = await transport.call<ModelStatus>("voice.download", { consent: true, job_id: job, choose_path: true })
       if (alive.current && downloadJob.current === job) setModel(data)
     } catch (reason) {
       if (alive.current && downloadJob.current === job) {

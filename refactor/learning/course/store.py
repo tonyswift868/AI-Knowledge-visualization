@@ -312,6 +312,10 @@ class CourseStore:
             if entity == 'modules':
                 _id(payload['stage_id']); _number(payload['learning_minutes']); _number(payload['check_minutes'])
                 _number(payload['point_count'])
+                # Optional together: old modules retain their combined estimate.
+                if 'final_check_minutes' in payload or 'check_question_minutes' in payload:
+                    _number(payload.get('final_check_minutes'))
+                    _number(payload.get('check_question_minutes'), True)
                 if not isinstance(payload['prerequisites'], list) or len(set(payload['prerequisites'])) != len(payload['prerequisites']): raise StoreError('INVALID_PREREQUISITES')
             if entity == 'points':
                 _id(payload['module_id']); _number(payload['minutes'], True)
@@ -332,6 +336,8 @@ class CourseStore:
                 if payload.get(key) is not None and not isinstance(payload[key], str): raise StoreError('INVALID_EVENT')
             if payload['op'] == 'replan':
                 _day(payload['today']); _window(payload['window']); _number(payload['total_minutes'])
+            elif payload['op'] == 'release':
+                _day(payload['today']); _number(payload['minutes'])
             elif payload['op'] in ('confirm', 'revoke'): _id(payload['unit_id'])
             else: raise StoreError('INVALID_EVENT')
         elif entity in ('messages', 'chat_messages'):
@@ -464,6 +470,105 @@ class CourseStore:
         if plan['state'] not in ('creating', 'ready'):
             raise StoreError('PLAN_STARTED', '开始后的计划不能删除模块或重新排序。')
 
+    def studied_content(self, plan_id):
+        """IDs with persisted study activity, including failed/tentative work.
+
+        Messages lock their module's placement, but are not evidence that every
+        point was learnt. Revoked credits still count as historical activity.
+        """
+        with self.transaction():
+            self.get_plan(plan_id)
+            points = {p['id']: p for p in self._rows('points', plan_id)}
+            modules, learnt = set(), set()
+            for entity in ('judgements', 'attempt_closed'):
+                for row in self._rows(entity, plan_id):
+                    event = row['event']
+                    modules.add(event['module_id'])
+                    learnt.update(pair[0] for pair in event.get('results', []))
+            modules.update(row['module_id'] for row in self._rows('messages', plan_id) if row.get('module_id'))
+            all_modules = {m['id'] for m in self._rows('modules', plan_id)}
+            for row in self._rows('credits', plan_id):
+                unit = row['credit']['unit_id']
+                if unit in points: learnt.add(unit)
+                if unit in all_modules: modules.add(unit)
+                if unit.startswith('test:') and unit[5:] in all_modules: modules.add(unit[5:])
+            modules.update(points[pid]['module_id'] for pid in learnt)
+            return {'module_ids': sorted(modules), 'point_ids': sorted(learnt)}
+
+    @_atomic
+    def append_material_additions(self, plan_id, modules, supplements, module_order, *, today, new_window=None):
+        """Atomic PLAN-10 addition, never a general started-plan edit API.
+
+        modules contain NEW IDs, points/check_minutes and optional required_by.
+        supplements only union chunk_ids onto existing points. Old wording,
+        minutes and progress are immutable; old module relative order remains.
+        A studied prefix cannot move. All writes/outbox/replan roll back together.
+        """
+        plan = self.get_plan(plan_id)
+        if plan['archived'] or plan['state'] != 'active': raise StoreError('PLAN_NOT_ACTIVE')
+        old = self.records('modules', plan_id)
+        old_ids = [m['id'] for m in old]
+        incoming = [dict(m) for m in modules]
+        new_ids = [m['id'] for m in incoming]
+        if len(set(new_ids)) != len(new_ids) or set(old_ids) & set(new_ids): raise StoreError('MODULE_CONFLICT')
+        if (len(module_order) != len(old_ids) + len(new_ids) or len(set(module_order)) != len(module_order)
+                or set(module_order) != set(old_ids + new_ids)
+                or [mid for mid in module_order if mid in old_ids] != old_ids):
+            raise StoreError('INVALID_ADDITION_ORDER')
+        studied = set(self.studied_content(plan_id)['module_ids'])
+        frontier = max((i + 1 for i, m in enumerate(old) if m['id'] in studied), default=0)
+        if module_order[:frontier] != old_ids[:frontier]: raise StoreError('STUDIED_ORDER_IMMUTABLE')
+        positions = {mid: i for i, mid in enumerate(module_order)}
+        point_ids = {p['id'] for p in self._rows('points', plan_id)}
+        if any(item['point_id'] not in point_ids for item in supplements):
+            raise StoreError('INVALID_SUPPLEMENT_TARGET')
+        dependencies = {}
+        for item in incoming:
+            points = item.pop('points')
+            required_by = item.pop('required_by', [])
+            self._get('stages', plan_id, item['stage_id'])
+            if not points: raise StoreError('EMPTY_MODULE')
+            if any(mid not in old_ids or mid in old_ids[:frontier] for mid in required_by):
+                raise StoreError('INVALID_ADDITION_DEPENDENT')
+            for mid in required_by: dependencies.setdefault(mid, []).append(item['id'])
+            payload = dict(item, learning_minutes=sum(p['minutes'] for p in points), point_count=len(points),
+                           position=positions[item['id']])
+            self._put('modules', plan_id, payload)
+            for index, point in enumerate(points):
+                if point['id'] in point_ids: raise StoreError('POINT_CONFLICT')
+                point_ids.add(point['id'])
+                for cid in point['chunk_ids']: self._get('source_chunks', plan_id, cid)
+                self._put('points', plan_id, dict(point, module_id=item['id'], position=index))
+        # Keep every record in the frozen prefix byte-for-byte identical. The
+        # suffix gets integer positions after it without changing old order.
+        base = max((m['position'] for m in old[:frontier]), default=-1) + 1
+        for i, mid in enumerate(module_order[frontier:] if incoming else []):
+            module = self._get('modules', plan_id, mid)
+            module['position'] = base + i
+            module['prerequisites'] = list(dict.fromkeys(module['prerequisites'] + dependencies.get(mid, [])))
+            self._put('modules', plan_id, module)
+        self._check_graph(plan_id)
+        for module in self._rows('modules', plan_id):
+            if module['id'] in new_ids or module['id'] in dependencies:
+                if any(positions[p] >= positions[module['id']] for p in module['prerequisites']):
+                    raise StoreError('INVALID_ADDITION_ORDER')
+        for item in supplements:
+            point = self._get('points', plan_id, item['point_id'])
+            if not item['chunk_ids']: raise StoreError('MISSING_PROVENANCE')
+            for cid in item['chunk_ids']: self._get('source_chunks', plan_id, cid)
+            point['chunk_ids'] = list(dict.fromkeys(point['chunk_ids'] + item['chunk_ids']))
+            self._put('points', plan_id, point)
+        if incoming:
+            plan['module_count'] = len(module_order)
+            added_minutes = sum(m['learning_minutes'] + m['check_minutes'] for m in self._rows('modules', plan_id)
+                                if m['id'] in new_ids)
+            self._replan(plan, _day(today), _window(new_window or plan['window']), plan['total_minutes'] + added_minutes,
+                         cause='material_added')
+            self._put('plans', plan_id, plan)
+        elif new_window is not None and _window_json(new_window) != plan['window']:
+            raise StoreError('SUPPLEMENT_TIME_IMMUTABLE')
+        return self.get_plan(plan_id)
+
     def _check_graph(self, plan_id):
         modules = self._rows('modules', plan_id)
         graph = {m['id']: m['prerequisites'] for m in modules}
@@ -500,7 +605,8 @@ class CourseStore:
             self._get('stages', plan_id, payload['stage_id'])
             if existing and plan['state'] not in ('creating', 'ready') and existing != payload: raise StoreError('PLAN_STARTED')
             if existing and any(p['module_id'] == payload['id'] for p in self._rows('points', plan_id)):
-                if any(payload[key] != existing[key] for key in ('learning_minutes', 'check_minutes', 'point_count')): raise StoreError('GENERATED_ESTIMATE_IMMUTABLE')
+                if any(payload.get(key) != existing.get(key) for key in ('learning_minutes', 'check_minutes', 'point_count',
+                        'final_check_minutes', 'check_question_minutes')): raise StoreError('GENERATED_ESTIMATE_IMMUTABLE')
             self._put('modules', plan_id, payload)
         self._check_graph(plan_id)
         if plan['state'] == 'ready':
@@ -517,7 +623,8 @@ class CourseStore:
         self._put('plans', plan_id, plan)
 
     def _total(self, plan_id):
-        return sum(m['learning_minutes'] + m['check_minutes'] for m in self._rows('modules', plan_id))
+        return sum(m['learning_minutes'] + m['check_minutes'] + m.get('final_check_minutes', 0)
+                   for m in self._rows('modules', plan_id))
 
     def _op_seq(self, plan_id):
         return max([p['operation_seq'] for table in ('credits', 'ledger_events') for p in self._rows(table, plan_id)], default=0) + 1
@@ -539,7 +646,13 @@ class CourseStore:
         self._put('plans', plan_id, plan)
 
     @_atomic
-    def save_generated_module(self, plan_id, module_id, points, *, check_minutes, today):
+    def save_generated_module(self, plan_id, module_id, points, *, check_minutes, today,
+                              final_check_minutes=None, check_question_minutes=None):
+        """Save separate module/final estimates, or retain legacy combined time.
+
+        New estimates use whole minutes, like Ledger credits. Both optional
+        fields must be supplied together. No old events or estimates are rewritten.
+        """
         plan = self._get('plans', plan_id, plan_id)
         module = self._get('modules', plan_id, module_id)
         existing = [p for p in self._rows('points', plan_id) if p['module_id'] == module_id]
@@ -559,6 +672,12 @@ class CourseStore:
             if point['id'] not in new_ids: self._delete('points', plan_id, point['id'])
         module['learning_minutes'] = sum(p['minutes'] for p in points)
         module['check_minutes'] = check_minutes
+        if final_check_minutes is not None or check_question_minutes is not None:
+            _number(final_check_minutes); _number(check_question_minutes, True)
+            module.update(final_check_minutes=final_check_minutes, check_question_minutes=check_question_minutes)
+        else:
+            module.pop('final_check_minutes', None)
+            module.pop('check_question_minutes', None)
         module['point_count'] = len(points)
         self._put('modules', plan_id, module)
         self._replan(plan, _day(today), _window(plan['window']), self._total(plan_id), cause='module_generated')
@@ -621,8 +740,13 @@ class CourseStore:
     @_atomic
     def complete_plan(self, plan_id, *, today):
         plan = self._get('plans', plan_id, plan_id)
-        if not self._fully_generated(plan_id) or not self.load_mastery(plan_id).check_complete() or not self._load_ledger(plan).status(_day(today)).completed:
+        if not self._fully_generated(plan_id) or not self.load_mastery(plan_id).check_complete():
             raise StoreError('PLAN_NOT_COMPLETE')
+        # Completion is mastery, not consumption of an estimate (CHK-01).
+        # A release is an immutable ledger operation, never a fake credit.
+        unused = max(0, self._load_ledger(plan).status(_day(today)).remaining_confirmed_minutes)
+        if unused:
+            self._release_estimate(plan_id, f'complete:{plan["module_count"]}', unused, _day(today))
         # Repeating completion must not move a previously recorded finish date.
         if plan['state'] != 'completed' or not plan.get('completed_on'):
             plan['completed_on'] = _day(today).isoformat()
@@ -668,6 +792,7 @@ class CourseStore:
             elif op == 'replan': ledger.replan(_day(payload['today']), _window(payload['window']), payload['total_minutes'])
             elif op == 'confirm': ledger.confirm(payload['unit_id'])
             elif op == 'revoke': ledger.revoke(payload['unit_id'])
+            elif op == 'release': ledger.release_unused(payload['minutes'])
         return ledger
 
     def load_ledger(self, plan_id) -> Ledger:
@@ -726,13 +851,67 @@ class CourseStore:
         self._put(entity, plan_id, payload)
 
     @_atomic
-    def append_judgement(self, plan_id, event: Judgement, *, details=None):
-        """details may hold question, answer and source chunk IDs, unchanged."""
+    def append_judgement(self, plan_id, event: Judgement, *, details=None, credit_day=None):
+        """Atomically record a judgement and earned final-check time.
+
+        Classroom supplies its pinned study day. Each still-unpassed point
+        answered correctly earns its module's per-question estimate. Wrong
+        answers, already-passed points and legacy modules earn no final time.
+        Retries of the same event cannot earn twice. Remote sync merges the
+        resulting immutable judgement and credit events without regenerating them.
+        """
+        if not isinstance(event, Judgement): raise StoreError('INVALID_EVENT')
+        existing = any(row['id'] == event.event_id for row in self._rows('judgements', plan_id))
+        earned = []
+        if credit_day is not None and event.context == 'check' and not existing:
+            credit_day = _day(credit_day)
+            prior = self.load_mastery(plan_id).to_dict()
+            prior['events'] = [row for row in prior['events']
+                               if (row['seq'], row['event_id']) < (event.seq, event.event_id)]
+            book = MasteryBook.from_dict(prior)
+            for pid, correct in event.results:
+                point = self._get('points', plan_id, pid)
+                module = self._get('modules', plan_id, point['module_id'])
+                minutes = module.get('check_question_minutes')
+                if correct and minutes and book.check_ready() and book.point(pid).level != 3:
+                    earned.append((pid, minutes))
         self._append_mastery(plan_id, event, 'judgements', details)
+        for pid, minutes in earned:
+            self.add_credit(plan_id, f'check:{event.event_id}:{pid}', f'check:{pid}', minutes, credit_day, 'confirmed')
 
     @_atomic
     def append_attempt_closed(self, plan_id, event: AttemptClosed):
         self._append_mastery(plan_id, event, 'attempt_closed')
+
+    def _release_estimate(self, plan_id, key, minutes, today):
+        identifier = f'release:{key}'
+        if any(row['id'] == identifier for row in self._rows('ledger_events', plan_id)):
+            return
+        self._put('ledger_events', plan_id, dict(id=identifier, op='release', minutes=minutes,
+            today=_day(today).isoformat(), operation_seq=self._op_seq(plan_id)))
+
+    @_atomic
+    def settle_module_test(self, plan_id, module_id, attempt_id, *, today):
+        """Settle a closed detection once; old modules keep their old estimate.
+
+        A detection question counts whether right or wrong. Final checks have
+        their separate correct-point rule. Only the first closed attempt can
+        release the module's reserve; additional attempts record actual work.
+        """
+        module = self._get('modules', plan_id, module_id)
+        closed = [row['event'] for row in self._rows('attempt_closed', plan_id)
+                  if row['event']['module_id'] == module_id and row['event']['attempt_id'] == attempt_id]
+        if not closed: raise StoreError('ATTEMPT_NOT_CLOSED')
+        question_count = sum(row['event']['module_id'] == module_id and row['event']['attempt_id'] == attempt_id
+                             and row['event']['context'] == closed[0]['kind']
+                             and row['event']['seq'] < closed[0]['seq'] for row in self._rows('judgements', plan_id))
+        _number(question_count, True)
+        minutes = (question_count * module['check_question_minutes'] if 'final_check_minutes' in module
+                   else max(1, module['check_minutes']))
+        self.add_credit(plan_id, f'test:{attempt_id}', f'test:{module_id}', minutes, today, 'confirmed')
+        if 'final_check_minutes' in module:
+            unused = max(0, module['check_minutes'] - minutes)
+            self._release_estimate(plan_id, f'test:{module_id}', unused, today)
 
     @_atomic
     def add_credit(self, plan_id, credit_id, unit_id=None, minutes=None, day=None, state='tentative'):

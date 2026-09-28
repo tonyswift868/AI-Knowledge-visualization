@@ -53,10 +53,43 @@ export function Settings() {
           {tab === "time" && <TimeAndReminders />}
           {tab === "appearance" && <Appearance />}
           {tab === "account" && <Account />}
+          <AboutUpdates />
         </div>
       </div>
     </div>
   )
+}
+
+type UpdateStatus = { available: boolean; busy: boolean; state: string; version: string; latest?: string; message?: string }
+
+function AboutUpdates() {
+  const [status, setStatus] = React.useState<UpdateStatus | null>(null)
+  const [error, setError] = React.useState("")
+  React.useEffect(() => {
+    let live = true
+    const refresh = () => call<UpdateStatus>("update.status").then((value) => { if (live) setStatus(value) })
+      .catch((e: Error) => { if (live) setError(e.message) })
+    void refresh()
+    const timer = setInterval(refresh, 1000)
+    return () => { live = false; clearInterval(timer) }
+  }, [])
+  const run = async (action: "check" | "install") => {
+    setError("")
+    try { setStatus(await call<UpdateStatus>(`update.${action}`)) }
+    catch (e) { setError((e as Error).message) }
+  }
+  const offered = status && ["AVAILABLE", "UPDATE_AVAILABLE", "OPTIONAL_UPDATE", "MANDATORY_UPDATE", "PENDING_INSTALL"].includes(status.state)
+  const message = status?.message || (status ? ({ UP_TO_DATE: "已是最新版本。", UPDATE_AVAILABLE: "有新版本可用。",
+    APPLYING: "正在安装更新，完成后将自动重启。", UPDATE_DOWNLOADED: "下载完成，正在准备安装。" } as Record<string, string>)[status.state] : "正在读取版本…")
+  return <section className="card" aria-label="关于 MentorFlow" style={{ marginTop: 20, padding: 20 }}>
+    <h3>关于 MentorFlow</h3>
+    <p>版本 {status?.version ?? "…"}</p>
+    <p className="small muted" role="status">{error || message}</p>
+    <div className="row">
+      <Button small disabled={!status?.available || status.busy} onClick={() => run("check")}><RefreshCw />检查更新</Button>
+      {offered && <Button small kind="primary" disabled={status.busy} onClick={() => run("install")}>更新并自动重启</Button>}
+    </div>
+  </section>
 }
 
 // ------------------------------------------------------------------ models

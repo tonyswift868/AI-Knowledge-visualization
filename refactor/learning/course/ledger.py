@@ -264,6 +264,7 @@ class Ledger:
         self._history: list[_History] = []
         self._relearning_minutes = 0
         self._next_seq = 1
+        self._released_minutes = self._active_released_minutes = 0
 
     @property
     def window(self) -> PlanWindow:
@@ -275,7 +276,30 @@ class Ledger:
 
     @property
     def targets(self) -> dict[date, int]:
-        return dict(self._targets)
+        return self._settled_targets()
+
+    def release_unused(self, minutes: int) -> None:
+        """Release unused estimates, never manufacture a learning credit.
+
+        Release removes unfilled targets from the end of the active schedule.
+        Historical snapshots remain frozen. Replans carry the released total
+        forward, while actual credits and the original estimate stay intact.
+        """
+        _integer(minutes)
+        self._released_minutes += minutes
+        self._active_released_minutes += minutes
+
+    def _settled_targets(self):
+        targets = dict(self._targets)
+        if self._active_released_minutes:
+            allocation = self._allocation()
+            left = self._active_released_minutes
+            for day in sorted(targets, reverse=True):
+                free = targets[day] - allocation.confirmed[day] - allocation.tentative[day]
+                removed = min(left, free)
+                targets[day] -= removed
+                left -= removed
+        return targets
 
     def _add(self, credit_id, unit_id, minutes, day, state):
         submitted = Credit(credit_id, unit_id, minutes, day, state, self._next_seq)
@@ -319,23 +343,24 @@ class Ledger:
         _date(today)
         allocation = self._allocation()
         confirmed, tentative = allocation.confirmed, allocation.tentative
-        filled = {day: confirmed[day] + tentative[day] for day in self._targets}
-        debt = sum(target - filled[day] for day, target in self._targets.items() if day < today)
+        targets = self._settled_targets()
+        filled = {day: confirmed[day] + tentative[day] for day in targets}
+        debt = sum(target - filled[day] for day, target in targets.items() if day < today)
         if today >= self._active_start:
             debt += self._relearning_minutes - allocation.relearning_confirmed - allocation.relearning_tentative
         ahead = sum(minutes for day, minutes in filled.items() if day > today)
         ahead_days = 0
-        for day in sorted(self._targets):
-            if day <= today or self._targets[day] == 0:
+        for day in sorted(targets):
+            if day <= today or targets[day] == 0:
                 continue
-            if filled[day] != self._targets[day]:
+            if filled[day] != targets[day]:
                 break
             ahead_days += 1
-        remaining = self.total_minutes - sum(c.minutes for c in self._credits.values())
-        remaining_confirmed = self.total_minutes - sum(c.minutes for c in self._credits.values() if c.state == "confirmed")
+        remaining = self.total_minutes - self._released_minutes - sum(c.minutes for c in self._credits.values())
+        remaining_confirmed = self.total_minutes - self._released_minutes - sum(c.minutes for c in self._credits.values() if c.state == "confirmed")
         return LedgerStatus(
-            self._targets.get(today, 0), confirmed.get(today, 0), tentative.get(today, 0),
-            debt, debt > 0 and debt >= 2 * full_day_minutes(self._targets, self.window), ahead, ahead_days,
+            targets.get(today, 0), confirmed.get(today, 0), tentative.get(today, 0),
+            debt, debt > 0 and debt >= 2 * full_day_minutes(targets, self.window), ahead, ahead_days,
             remaining, remaining_confirmed,
             (today - self.window.end).days if today > self.window.end and remaining_confirmed > 0 else 0,
             remaining_confirmed <= 0, sum(h.debt_minutes for h in self._history), allocation.overflow,
@@ -358,13 +383,13 @@ class Ledger:
         past = sum(c.minutes for c in self._credits.values() if c.day < today)
         if new_total_minutes < past:
             raise LedgerError("INVALID_REPLAN", "新总时长不能少于重排当天之前已经记录的分钟数。")
-        remaining = new_total_minutes - past
+        remaining = max(0, new_total_minutes - past - self._released_minutes)
         allocation_start = max(today, new_window.start)
         targets = (distribute(new_window, remaining, from_date=allocation_start) if remaining > 0
                    else dict.fromkeys(_dates(allocation_start, new_window.end), 0))
         allocation = self._allocation()
         confirmed, tentative = allocation.confirmed, allocation.tentative
-        frozen = {day: value for day, value in self._targets.items() if day < today}
+        frozen = {day: value for day, value in self._settled_targets().items() if day < today}
         relearning = (self._relearning_minutes, allocation.relearning_confirmed, allocation.relearning_tentative)
         if self._active_start > today:
             relearning = (0, 0, 0)
@@ -382,9 +407,12 @@ class Ledger:
         self._window, self._total_minutes = new_window, new_total_minutes
         self._active_start, self._targets = today, targets
         self._relearning_minutes = 0
+        self._active_released_minutes = 0
 
     def to_dict(self) -> dict:
         return {
+            **({'settlement': {'released': self._released_minutes, 'active_released': self._active_released_minutes}}
+               if self._released_minutes else {}),
             "version": 1,
             "window": _window_data(self.window),
             "total_minutes": self.total_minutes,
@@ -453,10 +481,16 @@ def _fields(data, keys):
 
 
 def _restore(cls, data):
+    data = dict(data)
+    settlement = data.pop('settlement', {'released': 0, 'active_released': 0})
+    _fields(settlement, {'released', 'active_released'})
     _fields(data, {"version", "window", "total_minutes", "active_start", "targets", "relearning_minutes", "history", "credits", "submissions", "next_seq"})
     if type(data["version"]) is not int or data["version"] != 1:
         raise ValueError()
     ledger = object.__new__(cls)
+    ledger._released_minutes = _integer(settlement['released'])
+    ledger._active_released_minutes = _integer(settlement['active_released'])
+    if ledger._active_released_minutes > ledger._released_minutes: raise ValueError()
     ledger._window = _window_from(data["window"])
     ledger._total_minutes = _integer(data["total_minutes"])
     ledger._active_start = date.fromisoformat(data["active_start"])
@@ -523,6 +557,12 @@ def _restore(cls, data):
 
 def estimate_check_minutes(point_count: int, *, minutes_per_question: float,
                            problem_ratio: float = 0.10, problem_questions: int = 4) -> int:
+    """Final-check reserve, separate from one module-test question per point.
+
+    The default budgets one correct answer for 90% of points and four for the
+    difficult 10% (two initial level gains plus two recovered errors). Actual
+    correct answers earn time; an estimate is not evidence of completed work.
+    """
     _integer(point_count)
     _integer(problem_questions, positive=True)
     ratio = _weight(problem_ratio)

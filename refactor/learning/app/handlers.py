@@ -8,12 +8,16 @@ from __future__ import annotations
 
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
+import sys
 import time as monotonic
 
 from .bridge import BridgeError, CallContext
 from .settings import AppSettings
 
 APP_VERSION = "2.0-preview"
+if getattr(sys, "frozen", False):
+    from desktop.version import load_version_manifest
+    APP_VERSION = load_version_manifest()["version"]
 
 
 def _text(params, key, *, limit, required=True, default=None):
@@ -76,6 +80,19 @@ def register(bridge, window):
     bridge.register("app.bootstrap", bootstrap, ui=True)
     bridge.register("app.account", account, ui=True)
     bridge.register("app.window", window_action, ui=True)
+    def update_action(action, params):
+        from PySide6.QtWidgets import QApplication
+        if params:
+            raise BridgeError("PARAM_INVALID", "更新操作不接受地址或文件参数。")
+        updater = getattr(QApplication.instance(), "_mentorflow_updates", None)
+        if updater is None:
+            return {"available": False, "busy": False, "state": "UNPACKAGED",
+                    "version": APP_VERSION, "message": "开发版本；请使用安装版进行自动更新。"}
+        value = updater.snapshot() if action == "status" else updater.run(action, window)
+        return {**value, "version": APP_VERSION}
+
+    for action in ("status", "check", "install"):
+        bridge.register("update." + action, lambda p, c, action=action: update_action(action, p), ui=True)
     bridge.register("sync.status", lambda p, c: window.sync_status(), ui=True)
     bridge.register("sync.now", lambda p, c: window.sync_now(), ui=True)
 

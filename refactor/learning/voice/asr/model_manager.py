@@ -9,6 +9,7 @@ import urllib.request  # Retained for existing callers/tests patching the transp
 
 from ..download import ArchiveMember, AssetDownloader, DownloadAsset as Asset, DownloadError
 from .errors import AsrError, DownloadCancelled
+from ..storage import storage_root, save_storage
 
 MODEL_NAME = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
 RELEASE_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
@@ -75,8 +76,10 @@ def verify_model_path(path: Path, cancel: threading.Event | None = None) -> None
 
 class ModelManager:
     def __init__(self, data_root: Path):
-        self.path = Path(data_root).absolute() / "models" / "asr" / MODEL_NAME
+        self.data_root = Path(data_root).absolute()
+        self.path = storage_root(self.data_root, "asr") / "asr" / MODEL_NAME
         self._staging = self.path.parent / ("." + MODEL_NAME + ".download")
+        self.download_storage = None
 
     def status(self) -> dict:
         return {"installed": _downloader(self.path).status()["installed"], "model_name": MODEL_NAME,
@@ -89,8 +92,15 @@ class ModelManager:
         if not _DOWNLOAD_LOCK.acquire(blocking=False):
             raise AsrError("ASR_DOWNLOAD_BUSY", "已有语音模型下载正在进行。")
         try:
-            _downloader(self.path).download(progress, cancel)
+            storage = self.download_storage
+            target = Path(storage) / "asr" / MODEL_NAME if storage is not None else self.path
+            _downloader(target).download(progress, cancel)
+            if storage is not None:
+                save_storage(self.data_root, "asr", storage)
+                self.path = target
+                self._staging = target.parent / ("." + MODEL_NAME + ".download")
         except DownloadError as exc:
             raise _asr_error(exc) from exc
         finally:
+            self.download_storage = None
             _DOWNLOAD_LOCK.release()

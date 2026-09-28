@@ -393,6 +393,8 @@ class Classroom:
         if test["kind"] != "retest":
             store.append_attempt_closed(course.plan_id, AttemptClosed(uuid.uuid4().hex, course.next_seq(), module_id,
                                                                       test["attempt"], test["kind"]))
+            if "final_check_minutes" in course.module(module_id):
+                store.settle_module_test(course.plan_id, module_id, test["attempt"], today=day)
         book = course.book()
         states = {p["id"]: book.point(p["id"]).state for p in points}
         module_state = book.module(module_id).state
@@ -406,8 +408,8 @@ class Classroom:
             for p in points:  # the whole module's time counts on the day of the direct test (TEACH-07)
                 store.add_credit(course.plan_id, f"learn:{p['id']}", p["id"], p["minutes"], day, "confirmed")
         if test["kind"] in ("module_test", "skip_test"):
-            store.add_credit(course.plan_id, f"test:{test['attempt']}", f"test:{module_id}",
-                             max(1, course.module(module_id).get("check_minutes") or 1), day, "confirmed")
+            if "final_check_minutes" not in course.module(module_id):
+                store.settle_module_test(course.plan_id, module_id, test["attempt"], today=day)
             for p in points:
                 if states[p["id"]] == "red":
                     store.revoke_credits(course.plan_id, p["id"], today=day)
@@ -710,7 +712,8 @@ class Classroom:
         event = Judgement(uuid.uuid4().hex, course.next_seq(), self.now(), context, module_id, attempt, results, angle)
         q = pending["question"]
         course.store.append_judgement(course.plan_id, event, details={
-            "question": q["stem"], "answer": answer[:4000], "reason": verdict.reason, "chunk_ids": q.get("chunk_ids", [])})
+            "question": q["stem"], "answer": answer[:4000], "reason": verdict.reason, "chunk_ids": q.get("chunk_ids", [])},
+            credit_day=self._day(state) if context == "check" else None)
 
     def _credit_learning(self, course, state, point):
         """A taught point counts as tentative study time until its module test (PLAN-05)."""

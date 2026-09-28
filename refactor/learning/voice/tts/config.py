@@ -16,6 +16,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import sys
 
 ENGINE_ROOT = Path(r"E:\AI_Tools\GPT-SoVITS-Kurisu\engine\GPT-SoVITS-v2pro-20250604")
 BASE_MODEL_ROOT = Path(r"E:\MentorFlowModels\gpt-sovits-base")
@@ -161,22 +162,30 @@ class TtsConfig:
 
     @classmethod
     def from_env(cls, data_root=None):
-        root = Path(os.environ.get("MF_TTS_ENGINE_ROOT", str(ENGINE_ROOT)))
+        from ..storage import storage_root
+        data = Path(data_root if data_root is not None else os.environ.get("MF_TTS_DATA_ROOT", str(DEFAULT_DATA_ROOT)))
+        components = storage_root(data, "tts") / "tts/components-v1"
+        installed = (components / "installed.json").is_file()
+        packaged = bool(getattr(sys, "frozen", False))
+        defaults = components if installed or packaged else None
+        root = Path(os.environ.get("MF_TTS_ENGINE_ROOT", str(defaults / "engine" if defaults else ENGINE_ROOT)))
         manifest = os.environ.get("MF_TTS_VOICE_MANIFEST")
-        if (not manifest and "MF_TTS_PACK_ROOTS" not in os.environ
+        if defaults and not manifest:
+            manifest = str(defaults / "voice/voice-pack.json")
+        if (not defaults and not manifest and "MF_TTS_PACK_ROOTS" not in os.environ
                 and os.environ.get("MF_TTS_VOICE_ID", DEFAULT_VOICE) == DEFAULT_VOICE
                 and os.environ.get("MF_TTS_VOICE_VERSION", DEFAULT_VOICE_VERSION) == DEFAULT_VOICE_VERSION
                 and VOICE_BACKUP.is_file()):
             manifest = str(VOICE_BACKUP)
         return cls(engine_root=root,
             engine_python=Path(os.environ.get("MF_TTS_ENGINE_PYTHON", str(root / "runtime/python.exe"))),
-            catalog=Path(os.environ.get("MF_TTS_CATALOG", str(CATALOG))),
-            pack_roots=tuple(Path(p) for p in os.environ.get("MF_TTS_PACK_ROOTS", os.pathsep.join(map(str, PACK_ROOTS))).split(os.pathsep) if p),
+            catalog=Path(os.environ.get("MF_TTS_CATALOG", str(defaults / "voice/catalog.json" if defaults else CATALOG))),
+            pack_roots=tuple(Path(p) for p in os.environ.get("MF_TTS_PACK_ROOTS", str(defaults / "voice") if defaults else os.pathsep.join(map(str, PACK_ROOTS))).split(os.pathsep) if p),
             voice_id=os.environ.get("MF_TTS_VOICE_ID", DEFAULT_VOICE),
             voice_version=os.environ.get("MF_TTS_VOICE_VERSION", DEFAULT_VOICE_VERSION), style=os.environ.get("MF_TTS_STYLE", ""),
-            data_root=Path(data_root if data_root is not None else os.environ.get("MF_TTS_DATA_ROOT", str(DEFAULT_DATA_ROOT))),
+            data_root=data,
             device=os.environ.get("MF_TTS_DEVICE", "cuda"), cpu_threads=int(os.environ.get("MF_TTS_CPU_THREADS", "4")),
-            base_model_root=Path(os.environ["MF_TTS_BASE_ROOT"]) if "MF_TTS_BASE_ROOT" in os.environ else None,
+            base_model_root=Path(os.environ["MF_TTS_BASE_ROOT"]) if "MF_TTS_BASE_ROOT" in os.environ else (defaults / "base" if defaults else None),
             voice_manifest=Path(manifest) if manifest else None,
             **{key: Path(os.environ[env]) if env in os.environ else None for key, env in (
                 ("bert_root", "MF_TTS_BERT_ROOT"), ("hubert_root", "MF_TTS_HUBERT_ROOT"),
@@ -187,7 +196,7 @@ class TtsConfig:
         if root is None:
             from .model_manager import ModelManager
             local = ModelManager(self.data_root)
-            root = local.path if local.status()["installed"] else BASE_MODEL_ROOT
+            root = local.path if local.status()["installed"] or getattr(sys, "frozen", False) else BASE_MODEL_ROOT
         return {"bert_root": self.bert_root or root / "chinese-roberta-wwm-ext-large",
                 "hubert_root": self.hubert_root or root / "chinese-hubert-base",
                 "g2pw_root": self.g2pw_root or root / "G2PWModel",
@@ -232,15 +241,18 @@ class TtsConfig:
         protected = (self.engine_root, self.catalog.parent, *self.pack_roots,
                      *((self.voice_manifest.parent,) if self.voice_manifest else ()),
                      Path(r"E:\AI_Tools\GPTSoVITS\Phrolova"), Path(r"E:\AI_Tools\Kristina-TTS-P0-Bakeoff"))
-        if any(destination.is_relative_to(path.resolve()) or path.resolve().is_relative_to(destination) for path in protected):
+        # Downloaded components live under models; runtime output is exclusively
+        # data_root/tts. Keep that output disjoint from every executable/model.
+        output = destination / "tts"
+        if any(output.is_relative_to(path.resolve()) or path.resolve().is_relative_to(output)
+               or destination.is_relative_to(path.resolve()) for path in protected):
             raise TtsError("TTS_DATA_ROOT", "日志、缓存不能写入引擎、声音包或其他项目目录。")
-        installed_root = destination / "models/tts/gpt-sovits-base"
         for path in self.base_assets().values():
             resolved = path.resolve()
-            # The installer owns only this model subtree. Runtime output lives
-            # separately in data_root/tts; external assets stay read-only.
-            if (destination.is_relative_to(resolved) or
-                    resolved.is_relative_to(destination) and not resolved.is_relative_to(installed_root)):
+            # A chosen model directory may also be inside Data. Only the actual
+            # runtime output subtree must remain disjoint from the assets.
+            if (destination.is_relative_to(resolved) or output.is_relative_to(resolved)
+                    or resolved.is_relative_to(output)):
                 raise TtsError("TTS_DATA_ROOT", "底模目录不能与日志、缓存目录重叠。")
         missing = []
         for key, path in self.base_assets().items():

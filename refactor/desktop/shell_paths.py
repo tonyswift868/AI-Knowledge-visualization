@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -79,7 +80,7 @@ def _write_if_changed(path: Path, content: bytes) -> None:
         temporary_path.unlink(missing_ok=True)
 
 
-def _build_ca_bundle() -> Path:
+def _build_ca_bundle(cache_root: Path | None = None) -> Path:
     try:
         import certifi
 
@@ -89,16 +90,19 @@ def _build_ca_bundle() -> Path:
         raise RuntimeError("MentorFlow account API trust inputs are unavailable") from exc
     if b"-----BEGIN CERTIFICATE-----" not in account_api:
         raise RuntimeError("MentorFlow account API trust input is not a PEM certificate")
-    bundle = SHARED_CACHE_ROOT / "trust" / "account-api-ca.pem"
+    bundle = (cache_root or SHARED_CACHE_ROOT) / "trust" / "account-api-ca.pem"
     _write_if_changed(bundle, roots.rstrip() + b"\n" + account_api.strip() + b"\n")
     return bundle
 
 
 def prepare_shell_runtime() -> ShellRuntime:
-    """Prepare the D-drive account-shell runtime before creating QApplication."""
-    data_root = DATA_ROOT
-    cache_root = CACHE_ROOT
-    local_root = data_root / "local"
+    """Keep installed user data outside the signed, replaceable App tree."""
+    frozen = bool(getattr(sys, "frozen", False))
+    data_root = Path(sys.executable).resolve().parent.parent / "Data" if frozen else DATA_ROOT
+    cache_root = data_root / "cache" if frozen else CACHE_ROOT
+    # The signed updater deliberately rejects staging under the installation
+    # root. Keep its LOCALAPPDATA cache beside that root, on the chosen disk.
+    local_root = data_root.parent.parent / ".MentorFlow-runtime" if frozen else data_root / "local"
     roaming_root = data_root / "roaming"
     config_root = data_root / "config"
     temp_root = data_root / "temp"
@@ -120,7 +124,7 @@ def prepare_shell_runtime() -> ShellRuntime:
     )
     tempfile.tempdir = str(temp_root)
 
-    bundle = _build_ca_bundle()
+    bundle = _build_ca_bundle(cache_root if frozen else None)
     os.environ["SSL_CERT_FILE"] = str(bundle)
     os.environ["REQUESTS_CA_BUNDLE"] = str(bundle)
     return ShellRuntime(

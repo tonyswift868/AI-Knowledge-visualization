@@ -503,7 +503,7 @@ class AccountShell:
         )
         self._session_refresh_degraded = False
         self._refresh_local_accounts()
-        from refactor.learning.main_window import LearningWindow
+        from refactor.learning.app.window import LearningWindow
 
         api_base_url = os.environ.get("MENTORFLOW_ENTERPRISE_API_BASE_URL", "")
         api_authority = urlsplit(api_base_url)
@@ -1501,10 +1501,11 @@ class AccountShell:
 
 def _show_launch_error(message: str) -> None:
     title = "MentorFlow 无法启动"
-    detail = (
+    detail = (f"{message}\n\n请使用可信的 MentorFlow 安装程序修复后重试。"
+              if getattr(sys, "frozen", False) else (
         f"{message}\n\n请确认 D:\\MentorFlow\\.venv 已由项目运行环境准备好，"
         "并从 Start-MentorFlow.cmd 重新启动。"
-    )
+    ))
     try:
         if os.name == "nt":
             import ctypes
@@ -1543,7 +1544,7 @@ def friendly_name(row) -> str:
     return display or username or "我的账号"
 
 
-def main() -> int:
+def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
     # Qt's default D3D11 composition flickers on hybrid-GPU laptops (BUG-04);
     # OpenGL composition does not. Must be set before QApplication exists.
     os.environ.setdefault("QSG_RHI_BACKEND", "opengl")
@@ -1576,6 +1577,17 @@ def main() -> int:
         app._mentorflow_instance_lock = instance_lock
         shell = AccountShell(app, shell_runtime)
         shell.show()
+        if install_root is not None:
+            from .updates import DesktopUpdates
+
+            app._mentorflow_updates = DesktopUpdates(app, install_root, shell.gate)
+            app._mentorflow_updates.start()
+            if update_attempt and update_nonce:
+                from scripts.per_user_install import notify_health
+                from PySide6.QtCore import QTimer
+
+                QTimer.singleShot(250, lambda: notify_health(
+                    install_root, shell.gate, update_attempt, update_nonce))
         return app.exec()
     except Exception as exc:
         _show_launch_error(str(exc) or "账号外壳运行环境暂不可用。")

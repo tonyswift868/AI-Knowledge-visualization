@@ -21,6 +21,8 @@ from .bridge import BridgeError
 from ..voice.download import DownloadError
 from ..voice.tts.config import TtsConfig, TtsError
 from ..voice.tts.model_manager import ModelManager
+from ..voice.tts.component_manager import CATALOG, ComponentManager
+from ..voice.storage import choose_installation, storage_root
 from ..voice.tts.service import TtsService
 from ..voice.tts.text_prep import StreamingTextPrep
 
@@ -34,7 +36,8 @@ class SpeechResources:
     def __init__(self, data_root, *, config_factory=TtsConfig.from_env, manager=None):
         self.data_root = Path(data_root)
         self.config_factory = config_factory
-        self.manager = manager or ModelManager(self.data_root)
+        self.base_manager = manager or ModelManager(self.data_root)
+        self.manager = manager or (ComponentManager(self.data_root) if CATALOG.is_file() else self.base_manager)
 
     def inspect(self):
         config = self.config_factory(self.data_root)
@@ -47,7 +50,9 @@ class SpeechResources:
         roots = config.base_assets()
         missing = []
         mapping = {"chinese-roberta-wwm-ext-large": "bert_root", "chinese-hubert-base": "hubert_root", "G2PWModel": "g2pw_root"}
-        for name, (size, _) in self.manager.required.items():
+        required = ({name.removeprefix("base/"): value for name, value in self.manager.required.items()
+                     if name.startswith("base/")} if isinstance(self.manager, ComponentManager) else self.base_manager.required)
+        for name, (size, _) in required.items():
             prefix, rest = name.split("/", 1)
             path = roots[mapping[prefix]] / rest if prefix in mapping else roots["sv_weights"]
             try:
@@ -58,6 +63,8 @@ class SpeechResources:
                 missing.append({"name": name, "size_bytes": size})
         base = not missing
         ready = bool(engine and voice and base)
+        if isinstance(self.manager, ComponentManager) and not self.manager.status()["installed"]:
+            ready = False
         if ready:
             try:
                 config.validate()  # Also checks the read-only resource/output boundary.
@@ -75,14 +82,23 @@ class SpeechResources:
              "size_bytes": _VOICE_BYTES, "size_estimated": False, "downloadable": False,
              "instruction": voice_error or "引用已安装的声音包；开发机优先使用 D 盘保留副本。"},
         ]
-        return {"ready": ready, "message": "朗读可用" if ready else "朗读未启用", "components": components,
+        if isinstance(self.manager, ComponentManager):
+            for item in components:
+                item.update(downloadable=True, size_estimated=False,
+                            instruction="同意后下载完整朗读组件，校验通过后即可使用。")
+            for item, asset in zip(components, [next(a for a in self.manager.assets if a.name == name)
+                                               for name in ("engine.zip", "base.zip", "voice.zip")]):
+                item["size_bytes"] = asset.size
+        simulation = isinstance(self.manager, ComponentManager) and self.manager.simulation
+        return {"ready": ready, "message": "模拟朗读测试音" if ready and simulation else "朗读可用" if ready else "朗读未启用", "components": components,
                 "voice": {"id": voice.pack_id, "version": voice.version} if voice else None,
-                "download": {"required": not base, "size_bytes": self.manager.size_bytes,
+                "download": {"required": not ready, "size_bytes": self.manager.size_bytes,
                     "installed_size_bytes": sum(size for size, _ in self.manager.required.values()),
                     "target": str(self.manager.path), "assets": [
                         {"name": a.name, "size_bytes": a.size, "sha256": a.sha256, "urls": list(a.urls)}
                         for a in self.manager.assets],
-                    "instruction": "只下载通用底模；引擎和声音包须另行安装。"}}, config
+                    "instruction": "引擎、通用底模和弗洛洛声音包。" if isinstance(self.manager, ComponentManager)
+                                   else "只下载通用底模；引擎和声音包须另行安装。"}}, config
 
 
 def _params(params, keys):
@@ -130,6 +146,7 @@ class TeacherSpeech(QObject):
         self._download_state = None
         for name, fn, ui in (
             ("status", self.status, False), ("download", self.download, True),
+            ("choose_download", self.choose_download, True),
             ("cancel_download", self.cancel_download, True), ("warm_up", self.warm_up, True),
             ("speak", self.speak, True), ("stream_start", self.stream_start, True),
             ("stream_append", self.stream_append, True), ("stream_end", self.stream_end, True),
@@ -310,7 +327,23 @@ class TeacherSpeech(QObject):
         self._push("settings", result)
         return result
 
-    def download(self, params, ctx):
+    def choose_download(self, params, ctx):
+        _params(params, ("owner",))
+        _id(params, "owner")
+        if self._download:
+            raise BridgeError("DOWNLOAD_BUSY", "朗读资源正在下载。")
+        if not isinstance(self.resources.manager, ComponentManager):
+            raise BridgeError("CATALOG_UNAVAILABLE", "此开发版本未配置完整朗读组件下载清单。")
+        manager = self.resources.manager
+        selected = choose_installation(self.parent(), "下载朗读组件", size_bytes=manager.size_bytes,
+                                       installed_bytes=sum(size for size, _ in manager.required.values()),
+                                       default=storage_root(self.resources.data_root, "tts"))
+        if selected is None:
+            return {"cancelled": True}
+        chosen = ComponentManager(self.resources.data_root, storage=selected)
+        return self.download({**params, "consent": True}, ctx, manager=chosen)
+
+    def download(self, params, ctx, *, manager=None):
         _params(params, ("owner", "consent"))
         owner = _id(params, "owner")
         if params.get("consent") is not True:
@@ -319,9 +352,12 @@ class TeacherSpeech(QObject):
             raise BridgeError("CLOSED", "朗读组件已关闭。")
         if self._download:
             raise BridgeError("DOWNLOAD_BUSY", "朗读资源正在下载。")
-        job = {"id": uuid4().hex, "owner": owner, "cancel": threading.Event()}
+        manager = manager or self.resources.manager
+        job = {"id": uuid4().hex, "owner": owner, "cancel": threading.Event(), "manager": manager}
         self._download = job
-        self._download_event(job, "downloading", 0, self.resources.manager.size_bytes)
+        self._halt()
+        self._release_service()
+        self._download_event(job, "downloading", 0, manager.size_bytes)
 
         def work():
             last = 0.0
@@ -332,7 +368,9 @@ class TeacherSpeech(QObject):
                     last = now
                     self._emit_result({"kind": "progress", "id": job["id"], "done": done, "total": total})
             try:
-                self.resources.manager.download(progress=progress, cancel=job["cancel"])
+                manager.download(progress=progress, cancel=job["cancel"])
+                if isinstance(manager, ComponentManager):
+                    self.resources.manager = manager
                 status, _ = self.resources.inspect()
                 result = {"state": "completed", "status": status}
             except DownloadError as exc:
@@ -341,7 +379,7 @@ class TeacherSpeech(QObject):
                 result = {"state": "error", "code": "DOWNLOAD_FAILED", "message": "朗读资源下载失败，请重试。"}
             self._emit_result({"kind": "downloaded", "id": job["id"], **result})
         self._pool.submit(work)
-        return {"download_id": job["id"], "size_bytes": self.resources.manager.size_bytes}
+        return {"download_id": job["id"], "size_bytes": manager.size_bytes}
 
     def _download_event(self, job, state, done, total, **extra):
         self._download_state = {"download_id": job["id"], "owner": job["owner"], "state": state,

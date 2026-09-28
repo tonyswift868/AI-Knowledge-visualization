@@ -119,7 +119,7 @@ begin
     Result := '请选择本机已存在的完整文件夹路径。'; Exit;
   end;
   if (Pos('"', Parent) > 0) or (Pos('*', Parent) > 0) or (Pos('?', Parent) > 0) or
-     (Pos('/', Parent) > 0) or (Pos('\..', Parent) > 0) or (Pos('\.', Parent) > 0) or
+     (Pos('/', Parent) > 0) or (Pos('\..\', Parent + '\') > 0) or (Pos('\.\', Parent + '\') > 0) or
      (Pos('.\', Parent) > 0) or (Pos(' \', Parent) > 0) or (Parent[Length(Parent)] = '.') then begin
     Result := '文件夹路径无效，请使用“浏览”选择已有文件夹。'; Exit;
   end;

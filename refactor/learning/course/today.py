@@ -23,7 +23,7 @@ def build_today_status(ledger: Ledger, *, now: datetime, refresh: time, tz: tzin
     entry day until exit, even when a clock/settings/zone change moves the
     current day backwards. Overdue days still use the current account day.
 
-    ``completed`` requires both confirmed time and complete course checks.
+    ``completed`` follows complete course checks, not consumption of estimates.
     ``time_completed`` preserves Ledger.status's time-only completion flag.
     The caller must pass check_complete=False for a partially loaded course.
 
@@ -45,7 +45,10 @@ def build_today_status(ledger: Ledger, *, now: datetime, refresh: time, tz: tzin
     result = asdict(ledger.status(progress_day))
     result['time_completed'] = result['completed']
     running = plan_state in ('active', 'checking', 'completed')
-    result['completed'] = running and result['time_completed'] and check_complete
+    result['completed'] = running and check_complete
+    if result['completed']:
+        result.update(remaining_minutes=0, remaining_confirmed_minutes=0,
+                      debt_minutes=0, needs_negotiation=False)
     result['overdue_days'] = max(0, (current - ledger.window.end).days) if running and not result['completed'] else 0
     late = now.astimezone(tz).time() < refresh
     result.update(study_day=current.isoformat(), progress_day=progress_day.isoformat(),

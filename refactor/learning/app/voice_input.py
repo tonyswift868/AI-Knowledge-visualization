@@ -25,7 +25,8 @@ from PySide6.QtCore import QObject, QTimer, Qt, Signal, Slot
 
 from ..voice.asr.engine import AsrEngine
 from ..voice.asr.glossary import correct
-from ..voice.asr.model_manager import ModelManager
+from ..voice.asr.model_manager import ModelManager, REQUIRED_FILES
+from ..voice.storage import choose_installation, storage_root
 from ..voice.asr.service import AsrService
 from .bridge import BridgeError
 
@@ -119,6 +120,14 @@ class VoiceInput(QObject):
         job_id = _token(params, "job_id")
         if self._job is not None or self._active:
             raise BridgeError("ASR_BUSY", "请先结束当前录音或等待下载结束。")
+        if params.get("choose_path") is True:
+            selected = choose_installation(self.parent(), "下载语音识别模型",
+                                           size_bytes=self.manager.status()["size_bytes"],
+                                           installed_bytes=sum(size for size, _ in REQUIRED_FILES.values()),
+                                           default=storage_root(self.manager.data_root, "asr"))
+            if selected is None:
+                return {**self.status(), "cancelled": True}
+            self.manager.download_storage = selected
         job = self._job = _Download(job_id, total=self.manager.status()["size_bytes"])
         self._lifetime["job"] = job
         self.bridge.push("voice.model", self.status())
