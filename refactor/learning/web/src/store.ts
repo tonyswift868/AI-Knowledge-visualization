@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-export type Route = "home" | "plans" | "plan" | "new-plan" | "tools" | "chat" | "settings"
+export type Route = "home" | "plans" | "plan" | "new-plan" | "classroom" | "tools" | "chat" | "settings"
 export type SettingsTab = "models" | "usage" | "learning" | "time" | "appearance" | "account"
 
 export type Settings = {

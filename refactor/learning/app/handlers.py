@@ -205,3 +205,6 @@ def register(bridge, window):
 
     from . import plan_flow
     plan_flow.register(bridge, services, window, _local_study_day, fetcher=getattr(window, "research_fetcher", None))
+
+    from . import classroom
+    classroom.register(bridge, services, _local_study_day)

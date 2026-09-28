@@ -10,6 +10,7 @@ import { NewPlan } from "./pages/NewPlan"
 import { Tools } from "./pages/Tools"
 import { Chat } from "./pages/Chat"
 import { PlanDetail } from "./pages/PlanDetail"
+import { Classroom } from "./pages/Classroom"
 import { Settings } from "./pages/Settings"
 import { TeacherStagePreview } from "./teacher/TeacherStagePreview"
 import { VoiceInputPreview } from "./voice/VoiceInputPreview"
@@ -92,7 +93,7 @@ export function App() {
     root.classList.toggle("reduce-motion", !!s.settings?.reduce_motion)
   }, [theme, s.settings?.font_scale, s.settings?.reduce_motion])
 
-  const Page = previewHash === "#/dev/voice" ? VoiceInputPreview : previewHash === "#/dev/teacher" ? TeacherStagePreview : { home: Home, plans: Plans, plan: PlanDetail, "new-plan": NewPlan, tools: Tools, chat: Chat, settings: Settings }[s.route]
+  const Page = previewHash === "#/dev/voice" ? VoiceInputPreview : previewHash === "#/dev/teacher" ? TeacherStagePreview : { home: Home, plans: Plans, plan: PlanDetail, "new-plan": NewPlan, classroom: Classroom, tools: Tools, chat: Chat, settings: Settings }[s.route]
 
   return (
     <>

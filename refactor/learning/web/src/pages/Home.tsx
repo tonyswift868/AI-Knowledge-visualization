@@ -92,7 +92,8 @@ export function Home() {
 
 function TodayCard({ plan }: { plan: PlanItem }) {
   const t = plan.today!
-  const toast = useApp((s) => s.toast)
+  const go = useApp((s) => s.go)
+  const set = useApp((s) => s.set)
   return (
     <div className="card hover stack">
       <div className="row between">
@@ -110,7 +111,7 @@ function TodayCard({ plan }: { plan: PlanItem }) {
           {!t.debt_minutes && !t.ahead_minutes && <span className="muted small">{t.today_target ? "按计划进行" : "今天是休息日，不用学"}</span>}
         </div>
       </div>
-      <Button kind="primary" onClick={() => toast("info", "课堂正在开发中，下一步开放。")}><PlayCircle />开课</Button>
+      <Button kind="primary" onClick={() => { set({ planId: plan.id }); go("classroom") }}><PlayCircle />开课</Button>
     </div>
   )
 }

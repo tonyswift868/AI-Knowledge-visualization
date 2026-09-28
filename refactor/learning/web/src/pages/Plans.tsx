@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Archive, BookOpenCheck, PencilLine, Plus } from "lucide-react"
+import { Archive, BookOpenCheck, PencilLine, PlayCircle, Plus } from "lucide-react"
 import { call } from "../bridge"
 import { useApp } from "../store"
 import { Button, SakuraArt, Segmented, Skeleton } from "../ui"
@@ -75,7 +75,11 @@ export function Plans() {
                   <div className="row">
                     {p.state === "creating" || p.state === "ready"
                       ? <Button small kind="primary" onClick={() => { set({ planId: p.id }); go("new-plan") }}><PencilLine />继续创建</Button>
-                      : <Button small onClick={() => { set({ planId: p.id }); go("plan") }}><BookOpenCheck />查看路线</Button>}
+                      : <>
+                        {(p.state === "active" || p.state === "checking") && !p.archived &&
+                          <Button small kind="primary" onClick={() => { set({ planId: p.id }); go("classroom") }}><PlayCircle />开课</Button>}
+                        <Button small onClick={() => { set({ planId: p.id }); go("plan") }}><BookOpenCheck />查看路线</Button>
+                      </>}
                   </div>
                 </div>
               )
