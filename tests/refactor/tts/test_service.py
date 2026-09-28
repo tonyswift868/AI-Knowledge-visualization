@@ -204,3 +204,116 @@ def test_stream_starts_before_sentence_finishes_and_emits_once(qt_app):
     finally:
         release.set()
         service.close()
+
+
+def test_append_prefetches_while_device_still_plays_and_never_reopens(qt_app):
+    runtime = FakeRuntime()
+    service = TtsService(runtime=runtime, sink_factory=FakeSink)
+    timings = []
+    service.sentence_timing.connect(timings.append)
+    try:
+        service.start_stream()
+        service.append_sentences(("第一句。",))
+        spin(qt_app, lambda: service._sink is not None)
+        sink = service._sink
+        sink.played = 2
+        spin(qt_app, lambda: bool(timings))
+        service.append_sentences(("第二句。", "第三句。"))
+        spin(qt_app, lambda: len(service.last_metrics) == 2)
+        assert [c[0] for c in runtime.calls] == ["第一句。", "第二句。"]
+        assert [t["state"] for t in timings] == ["started"]
+        assert service._sink is sink and sink.reset_count == 0
+        service.end_stream()
+        assert not service.append_sentences(("迟到的句子。",))
+        sink.played = 6402
+        spin(qt_app, lambda: len(service.last_metrics) == 3)
+        sink.played = 19200
+        spin(qt_app, lambda: service.state == "idle")
+        assert [t["index"] for t in timings if t["state"] == "finished"] == [0, 1, 2]
+        assert sink.reset_count == 1
+    finally:
+        service.close()
+
+
+def test_append_after_starvation_keeps_timeline_and_empty_end_completes(qt_app):
+    service = TtsService(runtime=FakeRuntime(), sink_factory=FakeSink)
+    timings, mouth = [], []
+    service.sentence_timing.connect(timings.append)
+    service.mouth_level.connect(mouth.append)
+    try:
+        service.start_stream()
+        service.end_stream()
+        spin(qt_app, lambda: service.state == "idle")
+        service.start_stream()
+        service.append_sentences(("先到。",))
+        spin(qt_app, lambda: bool(service._sink))
+        sink = service._sink
+        sink.played = 6400
+        spin(qt_app, lambda: not service._boundaries)
+        spin(qt_app, lambda: mouth and mouth[-1] == 0)
+        assert service.state != "idle" and sink.reset_count == 0
+        service.append_sentences(("稍后到。",))
+        service.end_stream()
+        spin(qt_app, lambda: len(service.last_metrics) == 2)
+        sink.played = 12800
+        spin(qt_app, lambda: service.state == "idle")
+        assert [t["start_seconds"] for t in timings if t["state"] == "started"] == [0, .1]
+    finally:
+        service.close()
+
+
+def test_stream_stop_discards_pending_input_and_blocked_inference(qt_app):
+    runtime = FakeRuntime()
+    runtime.block = threading.Event()
+    service = TtsService(runtime=runtime, sink_factory=FakeSink)
+    try:
+        service.start_stream()
+        service.append_sentences(("旧的第一句。", "旧的第二句。", "旧的第三句。"))
+        spin(qt_app, runtime.started.is_set)
+        service.stop()
+        assert not service.append_sentences(("停止后的追加。",))
+        service.start_stream()
+        service.append_sentences(("新句子。",))
+        service.end_stream()
+        runtime.block.set()
+        spin(qt_app, lambda: len(service.last_metrics) == 1)
+        assert [c[0] for c in runtime.calls] == ["旧的第一句。", "新句子。"]
+        assert service.last_metrics[0]["text"] == "新句子。"
+    finally:
+        runtime.block.set()
+        service.close()
+
+
+def test_producer_concurrent_append_batches_are_atomic_and_stop_wakes_waiter(qt_app):
+    # The public controls are Qt-thread-only. The producer input is shared with
+    # its synthesis thread; stress its lock separately without touching Qt.
+    from refactor.learning.voice.tts.service import _Producer
+    runtime = FakeRuntime()
+    producer = _Producer(runtime)
+    producer.submit(1, (), open_input=True)
+    barrier = threading.Barrier(5)
+    def append(i):
+        barrier.wait()
+        assert producer.append(1, (f"{i}甲。", f"{i}乙。"))
+    threads = [threading.Thread(target=append, args=(i,)) for i in range(4)]
+    try:
+        for thread in threads: thread.start()
+        barrier.wait()
+        for thread in threads: thread.join(1)
+        assert not any(t.is_alive() for t in threads)
+        producer.finish(1)
+        received = []
+        while True:
+            token, kind, value = producer.events.get(timeout=2)
+            if kind == "done": break
+            assert kind == "audio" and token == 1
+            received.append(value[1])
+            value[3].release()
+        assert len(received) == 8
+        assert {tuple(received[i:i + 2]) for i in range(0, 8, 2)} == {(f"{i}甲。", f"{i}乙。") for i in range(4)}
+        producer.submit(2, (), open_input=True)
+        producer.cancel()
+    finally:
+        producer.close()
+        producer.thread.join(2)
+        assert not producer.thread.is_alive()

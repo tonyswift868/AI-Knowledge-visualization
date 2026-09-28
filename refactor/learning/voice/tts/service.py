@@ -31,29 +31,52 @@ class _Producer:
         self.events = Queue()
         self.condition = threading.Condition()
         self.pending = None
+        self.input = None
         self.active_cancel = None
         self.closed = False
         self.thread = threading.Thread(target=self.run, name="mf-tts-producer", daemon=True)
         self.thread.start()
 
-    def submit(self, token, sentences, speed=1.0):
+    def submit(self, token, sentences, speed=1.0, *, open_input=False):
         cancel, slots = threading.Event(), threading.Semaphore(2)
         with self.condition:
             if self.pending:
-                self.pending[2].set()
+                self.pending["cancel"].set()
             if self.active_cancel:
                 self.active_cancel.set()
-            self.pending = token, sentences, cancel, slots, speed
-            self.condition.notify()
+            self.input = self.pending = {"token": token, "sentences": deque(sentences or ()),
+                "warm": sentences is None, "cancel": cancel, "slots": slots, "speed": speed,
+                "ended": not open_input}
+            self.condition.notify_all()
         return cancel
+
+    def append(self, token, sentences):
+        with self.condition:
+            job = self.input
+            if not job or job["token"] != token or job["ended"] or job["cancel"].is_set():
+                return False
+            job["sentences"].extend(sentences)
+            self.condition.notify_all()
+            return True
+
+    def finish(self, token):
+        with self.condition:
+            job = self.input
+            if not job or job["token"] != token or job["cancel"].is_set():
+                return False
+            job["ended"] = True
+            self.condition.notify_all()
+            return True
 
     def cancel(self):
         with self.condition:
             if self.pending:
-                self.pending[2].set()
+                self.pending["cancel"].set()
             self.pending = None
+            self.input = None
             if self.active_cancel:
                 self.active_cancel.set()
+            self.condition.notify_all()
         self.runtime.cancel()
 
     def close(self):
@@ -68,18 +91,27 @@ class _Producer:
                 self.condition.wait_for(lambda: self.closed or self.pending is not None)
                 if self.closed:
                     return
-                token, sentences, cancel, slots, speed = self.pending
+                job = self.pending
+                token, cancel, slots = job["token"], job["cancel"], job["slots"]
                 self.pending = None
                 self.active_cancel = cancel
             try:
-                if sentences is None:
+                if job["warm"]:
                     value = self.runtime.warm_up(cancel)
                     if not cancel.is_set():
                         self.events.put((token, "ready", value))
                     continue
                 if hasattr(self.runtime, "set_speed"):
-                    self.runtime.set_speed(speed)
-                for index, text in enumerate(sentences):
+                    self.runtime.set_speed(job["speed"])
+                index = 0
+                while True:
+                    with self.condition:
+                        self.condition.wait_for(lambda: cancel.is_set() or job["sentences"] or job["ended"])
+                        if cancel.is_set():
+                            raise TtsCancelled()
+                        if not job["sentences"]:
+                            break
+                        text = job["sentences"].popleft()
                     while not slots.acquire(timeout=.025):
                         if cancel.is_set():
                             raise TtsCancelled()
@@ -94,6 +126,7 @@ class _Producer:
                         stream(text, receive, cancel=cancel)
                     else:
                         receive(self.runtime.synthesize(text, cancel=cancel))
+                    index += 1
                 if not cancel.is_set():
                     self.events.put((token, "done", None))
             except TtsCancelled:
@@ -133,6 +166,7 @@ class TtsService(QObject):
         self._sink = self._output = None
         self._token = 0
         self._closed = False
+        self._stream_token = None
         self._pumping = False
         self.state = "idle"
         self.last_metrics = []
@@ -188,6 +222,37 @@ class TtsService(QObject):
         self._producer.submit(self._token, sentences, self._speed)
         self._state("synthesizing")
 
+    @Slot()
+    def start_stream(self):
+        """Open one utterance on the Qt thread; append already prepared sentences.
+
+        An empty input queue waits without ending the utterance or reopening the
+        device. end_stream() closes input, then all accepted sentences drain.
+        """
+        if self._closed:
+            return
+        self.stop()
+        self.last_metrics = []
+        self._stream_token = self._token
+        self._producer.submit(self._token, (), self._speed, open_input=True)
+        self._state("synthesizing")
+
+    def append_sentences(self, sentences):
+        """Append Python-prepared sentences in order, without resetting playback."""
+        if self._closed or self._stream_token != self._token:
+            return False
+        sentences = tuple(sentences)
+        if any(not isinstance(s, str) or not s.strip() or len(s) > 60 for s in sentences):
+            raise ValueError("Expected nonempty, prepared sentences of at most 60 characters")
+        return self._producer.append(self._token, sentences)
+
+    @Slot()
+    def end_stream(self):
+        if self._stream_token != self._token:
+            return False
+        self._stream_token = None
+        return self._producer.finish(self._token)
+
     def set_volume(self, value):
         """Qt-thread control; affects the current sink immediately."""
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 1:
@@ -213,6 +278,7 @@ class TtsService(QObject):
             interrupted = [self._timing(segment, "interrupted", min(played, segment["end"]))
                            for segment in self._boundaries if segment["started"]]
         self._token += 1
+        self._stream_token = None
         token = self._token
         self._producer.cancel()
         had_mouth = self._mouth_value != 0.0
@@ -349,6 +415,8 @@ class TtsService(QObject):
                     self.last_metrics[-1]["synthesis_seconds"] += audio.synthesis_seconds
                     self.last_metrics[-1]["audio_seconds"] += audio.duration_seconds
             if self._sink is None:
+                if self._done:
+                    self._state("idle")
                 return
             if self._sink.error().value not in _PLAYABLE_ERRORS:
                 raise TtsError("AUDIO_PLAYBACK", "音频设备中断，朗读已停止。")

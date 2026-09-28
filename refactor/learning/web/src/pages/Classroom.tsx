@@ -12,7 +12,7 @@ import { BridgeFailure, call } from "../bridge"
 import { useApp } from "../store"
 import { Button } from "../ui"
 import { MicButton, useVoiceInput } from "../voice"
-import { useTeacherVoice } from "../teacher/useTeacherVoice"
+import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacherVoice"
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
 
 const TeacherStage = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherStage })))
@@ -37,13 +37,6 @@ function live(text: string) {
   return text.replace(/【随口问】[\s\S]*?(【\/随口问】|$)/g, "").replace(/\[[cC]\d+\]/g, "").trim()
 }
 
-/** Plain text for reading aloud: no code, links, formulas or markdown marks. */
-function speakable(markdown: string) {
-  return markdown.replace(/```[\s\S]*?```/g, "（代码略）").replace(/\$\$[\s\S]*?\$\$/g, "（公式略）")
-    .replace(/\[〔\d+〕\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[`*_#>|~]/g, "")
-    .replace(/\n{2,}/g, "\n").trim()
-}
-
 export function Classroom() {
   const planId = useApp((s) => s.planId)
   const go = useApp((s) => s.go)
@@ -61,28 +54,51 @@ export function Classroom() {
   const abort = React.useRef<AbortController | null>(null)
   const scroller = React.useRef<HTMLDivElement>(null)
   const spoken = React.useRef<string | null>(null)
+  const streamedMessages = React.useRef(new Set<string>())
+  const voiceTurn = React.useRef<{ reader: ReturnType<typeof createTeacherVoiceStream> | null; streamed: boolean; cancelled: boolean } | null>(null)
+  const stopReading = React.useCallback(() => {
+    const turn = voiceTurn.current
+    if (turn) { turn.cancelled = true; if (turn.reader) { void turn.reader.stop(); return } }
+    void voice.stop()
+  }, [voice.stop])
 
   const act = React.useCallback(async (method: string, params: Record<string, unknown> = {}, label = "老师在想…") => {
     if (!planId) return false
+    stopReading()
+    const turn = { reader: reading && voice.availability?.ready ? createTeacherVoiceStream(voice) : null,
+      streamed: false, cancelled: false }
+    voiceTurn.current = turn
     abort.current = new AbortController()
     setBusy(label)
     setStream("")
     try {
       const r = await call<Room>(method, { plan_id: planId, ...params }, {
         signal: abort.current.signal,
-        onStream: (d) => setStream((s) => (d === RESET ? "" : (s ?? "") + d)),
+        onStream: (d) => {
+          setStream((s) => (d === RESET ? "" : (s ?? "") + d))
+          if (turn.reader && !turn.cancelled) { turn.reader.append(d); if (d !== RESET) turn.streamed = true }
+        },
       })
+      if (turn.streamed || turn.cancelled) streamedMessages.current = new Set(r.messages.map((m) => m.id))
+      if (!turn.cancelled) void turn.reader?.end()
       setRoom(r)
       return true
     } catch (e) {
+      // A failed/cancelled attempt must not finish reading its queued tail.
+      turn.cancelled = true
+      void turn.reader?.stop()
       const failure = e as BridgeFailure
       if (failure.code !== "CANCELLED") toast("error", failure.message)
-      call<Room>("classroom.state", { plan_id: planId }).then(setRoom).catch(() => undefined)
+      call<Room>("classroom.state", { plan_id: planId }).then((r) => {
+        // Refresh visible state without restarting audio from the stopped attempt.
+        streamedMessages.current = new Set(r.messages.map((m) => m.id))
+        setRoom(r)
+      }).catch(() => undefined)
       return false
     } finally {
       setBusy(null); setStream(null); abort.current = null
     }
-  }, [planId, toast])
+  }, [planId, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading])
 
   React.useEffect(() => {
     if (!planId) { go("home"); return }
@@ -90,8 +106,8 @@ export function Classroom() {
       spoken.current = r.messages.at(-1)?.id ?? null   // do not read old messages aloud on entry
       setRoom(r)
     }).catch((e) => { toast("error", e.message); go("home") })
-    return () => { void call("classroom.leave", { plan_id: planId }).catch(() => undefined) }
-  }, [planId, go, toast])
+    return () => { stopReading(); void call("classroom.leave", { plan_id: planId }).catch(() => undefined) }
+  }, [planId, go, toast, stopReading])
 
   React.useLayoutEffect(() => {
     const el = scroller.current
@@ -106,21 +122,23 @@ export function Classroom() {
     spoken.current = newest
     const verdict = fresh.find((m) => m.kind === "verdict")
     if (verdict) void (verdict.content.startsWith("✓") ? teacher.current?.nod() : teacher.current?.think())
-    const words = fresh.filter((m) => m.role === "assistant")
-    if (reading && voice.availability?.ready && words.length) void voice.speak(words.map((m) => speakable(m.content)).join("\n"))
+    const words = fresh.filter((m) => m.role === "assistant" && !streamedMessages.current.has(m.id))
+    // Non-streamed results (e.g. a fixed question) still read once. Both paths
+    // pass raw Markdown to the shared Python text preparation.
+    if (reading && voice.availability?.ready && words.length) void voice.speak(words.map((m) => m.content).join("\n"))
   }, [room, reading, voice])
 
   function toggleReading() {
     const next = !reading
     setReading(next)
     try { localStorage.setItem("mf.classroom.read", next ? "on" : "off") } catch { /* optional */ }
-    if (!next) void voice.stop()
+    if (!next) stopReading()
   }
 
   async function send(value = text) {
     const t = value.trim()
     if (!t || busy) return
-    void voice.stop()
+    stopReading()
     setText("")
     if (!(await act("classroom.reply", { text: t }, "老师在看你的回答…"))) setText(t)
   }
@@ -200,7 +218,7 @@ export function Classroom() {
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
           <MicButton voice={mic} />
           {busy
-            ? <Button onClick={() => abort.current?.abort()}><Square />停止</Button>
+            ? <Button onClick={() => { stopReading(); abort.current?.abort() }}><Square />停止</Button>
             : <Button kind="primary" onClick={() => send()} disabled={!text.trim()}><SendHorizontal />发送</Button>}
         </div>
       </section>
@@ -219,7 +237,7 @@ export function Classroom() {
           {reading && voice.availability && !voice.availability.ready && voice.availability.download && (
             <Button small onClick={() => voice.download(true)}>下载朗读组件</Button>
           )}
-          {voice.state === "playing" && <Button small kind="ghost" onClick={() => voice.stop()}><Square />停</Button>}
+          {voice.busy && <Button small kind="ghost" onClick={stopReading}><Square />停</Button>}
         </div>
       </aside>
 

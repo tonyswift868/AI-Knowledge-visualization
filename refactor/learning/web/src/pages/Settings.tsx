@@ -225,7 +225,9 @@ const PURPOSE: Record<string, string> = {
   generate: "生成计划", teacher: "老师讲课", judge: "判定作答", question: "出题", profile: "学习档案", free_chat: "教师闲聊",
 }
 type Agg = { calls: number; input_tokens: number | null; cached_input_tokens: number | null; output_tokens: number | null; search_requests?: number | null;
-  cache_hit_rate: string | null; amount: string | null; currency: string | null; usage_complete?: boolean; amount_complete?: boolean }
+  cache_hit_rate: string | null; amount: string | null; currency: string | null; usage_complete?: boolean; amount_complete?: boolean;
+  known_amounts?: Record<string, string>; estimated_amounts?: Record<string, string>; unpriced_reasons?: Record<string, number>;
+  priced_calls?: number; estimated_calls?: number; unpriced_calls?: number; recalculated_calls?: number }
 
 function fmt(n: number | null | undefined) { return n == null ? "—" : n.toLocaleString("zh-CN") }
 function money(a: string | null, c: string | null) {
@@ -233,6 +235,19 @@ function money(a: string | null, c: string | null) {
   const v = Number(a)
   const sym = c === "CNY" ? "¥" : c === "USD" ? "$" : ""
   return `${sym}${v < 0.01 ? v.toFixed(4) : v.toFixed(2)}`
+}
+
+function CostDisplay({ value }: { value: Agg }) {
+  const known = Object.entries(value.known_amounts ?? {})
+  const estimates = Object.entries(value.estimated_amounts ?? {})
+  const reasons = Object.entries(value.unpriced_reasons ?? {})
+  return <>
+    {known.map(([currency, amount]) => <div key={currency}>{money(amount, currency)}（已定价）</div>)}
+    {estimates.map(([currency, amount]) => <div key={`estimated-${currency}`}>约 {money(amount, currency)}（按高峰价估算）</div>)}
+    {!known.length && !estimates.length && <div>{value.calls === 0 ? "暂无花费" : "无法计价"}</div>}
+    {reasons.map(([reason, count]) => <div className="hint" key={reason}>{count} 次：{reason}</div>)}
+    {!!value.unpriced_calls && !reasons.length && <div className="hint">{value.unpriced_calls} 次缺少计价信息</div>}
+  </>
 }
 
 function Usage() {
@@ -255,8 +270,9 @@ function Usage() {
       <div className="grid three">
         <div className="card stat"><div className="label"><Bot size={15} />模型调用</div><div className="value">{t ? fmt(t.calls) : "…"}</div><div className="hint">包括失败的调用</div></div>
         <div className="card stat"><div className="label"><RefreshCw size={15} />缓存命中率</div><div className="value">{t ? rate : "…"}</div><div className="hint">越高越省钱，目标 90% 以上</div></div>
-        <div className="card stat"><div className="label"><Coins size={15} />花费</div><div className="value">{t ? money(t.amount, t.currency) : "…"}</div>
-          <div className="hint">{t && t.amount_complete === false ? "部分调用缺少价格，未计入" : "按服务器价格表估算"}</div></div>
+        <div className="card stat"><div className="label"><Coins size={15} />花费</div><div className="value">{t ? <CostDisplay value={t} /> : "…"}</div>
+          <div className="hint">目录计价，非厂商实付账单。{t && `${t.priced_calls ?? 0} 次已定价 · ${t.estimated_calls ?? 0} 次估算 · ${t.unpriced_calls ?? 0} 次无法计价`}
+            {!!t?.recalculated_calls && `；${t.recalculated_calls} 次历史未定价记录按当前价格表补算，未改写记录。`}</div></div>
       </div>
       <div className="card">
         {!data ? <Skeleton h={120} /> : data.groups.length === 0 ? <p className="sub">这段时间还没有模型调用。</p> : (
@@ -268,7 +284,7 @@ function Usage() {
                   <td><b>{groupBy === "purpose" ? PURPOSE[g.key] ?? g.key : String(g.key).replace("/", " · ")}</b></td>
                   <td>{fmt(g.calls)}</td><td>{fmt(g.input_tokens)}</td>
                   <td>{g.cache_hit_rate != null ? `${(Number(g.cache_hit_rate) * 100).toFixed(1)}%` : "—"}</td>
-                  <td>{fmt(g.output_tokens)}</td><td>{money(g.amount, g.currency)}</td>
+                  <td>{fmt(g.output_tokens)}</td><td><CostDisplay value={g} /></td>
                 </tr>
               ))}
             </tbody>

@@ -273,8 +273,8 @@ def test_teacher_voice_v2_stream_append_queues_complete_sentences_in_order(h):
     assert h.call("stream_append", owner="stream-page", utterance_id="turn-1", text="第一句")["result"]["queued"] == 0
     assert h.call("stream_append", owner="stream-page", utterance_id="turn-1", text="。第二句")["result"]["queued"] == 1
     assert h.call("stream_append", owner="stream-page", utterance_id="turn-1", text="。第三句。尾巴")["result"]["queued"] == 2
-    spin(h.app, lambda: len(h.engines) == 1 and len(h.engines[0].calls) >= 1)
-    assert [call[0] for call in h.engines[0].calls] == ["warm", "第一句。"]
+    spin(h.app, lambda: len(h.engines) == 1 and len(h.engines[0].calls) == 3)
+    assert [call[0] for call in h.engines[0].calls] == ["warm", "第一句。", "第二句。"]
     assert h.call("stream_end", owner="stream-page", utterance_id="turn-1")["result"]["queued"] == 1
     # The fake device consumes PCM only when the test advances its clock. This
     # makes the producer wait in a deterministic way while preserving order.
@@ -286,6 +286,7 @@ def test_teacher_voice_v2_stream_append_queues_complete_sentences_in_order(h):
         time.sleep(.003)
     assert [call[0] for call in h.engines[0].calls] == ["warm", "第一句。", "第二句。", "第三句。", "尾巴"]
     assert [e["index"] for _, e in h.events("sentence") if e["state"] == "started"] == [0, 1, 2, 3]
+    assert len(h.sinks) == 1  # All streamed sentences share the device timeline.
 
 
 def test_teacher_voice_v2_stream_stop_drops_partial_and_queued_text(h):
@@ -309,3 +310,44 @@ def test_teacher_voice_v2_stream_calls_and_audio_events_stay_thread_safe(h):
     assert all(thread == threading.main_thread().ident for thread in h.event_threads)
     assert all(thread != threading.main_thread().ident for thread in h.resources.threads)
     assert all(call[2] != threading.main_thread().ident for call in h.engines[0].calls)
+
+
+def test_teacher_voice_v2_stream_waits_for_own_resource_check_and_flushes_early_end(h):
+    h.call("warm_up", owner="page")
+    spin(h.app, lambda: h.voice._state == "ready")
+    h.resources.gate = threading.Event()
+    h.call("stream_start", owner="page", utterance_id="pending")
+    h.call("stream_append", owner="page", utterance_id="pending", text="第一句。第二句。末尾")
+    h.call("stream_end", owner="page", utterance_id="pending")
+    tick(h.app, .05)
+    assert [c[0] for c in h.engines[0].calls] == ["warm"]
+    h.resources.gate.set()
+    spin(h.app, lambda: len(h.engines[0].calls) == 3)
+    assert [c[0] for c in h.engines[0].calls] == ["warm", "第一句。", "第二句。"]
+    spin(h.app, lambda: bool(h.sinks))
+    h.sinks[-1].played = 32002
+    spin(h.app, lambda: len(h.engines[0].calls) == 4)
+    assert h.engines[0].calls[-1][0] == "末尾"
+
+
+def test_teacher_voice_v2_reset_rejects_old_append_end_stop_and_keeps_new_timing(h):
+    h.call("stream_start", owner="page", utterance_id="old")
+    h.call("stream_append", owner="page", utterance_id="old", text="旧句。旧队列。未完")
+    spin(h.app, lambda: bool(h.sinks))
+    old_sink = h.sinks[-1]
+    old_sink.played = 2
+    spin(h.app, lambda: bool(h.events("sentence")))
+    h.call("stop", owner="page", utterance_id="old")
+    h.call("stream_start", owner="page", utterance_id="retry")
+    assert not h.call("stream_append", owner="page", utterance_id="old", text="迟到。")['result']['accepted']
+    assert not h.call("stream_end", owner="page", utterance_id="old")['result']['accepted']
+    assert not h.call("stop", owner="page", utterance_id="old")['result']['stopped']
+    h.call("stream_append", owner="page", utterance_id="retry", text="重试第一句。重试第二句。")
+    h.call("stream_end", owner="page", utterance_id="retry")
+    spin(h.app, lambda: len(h.sinks) == 2 and len(h.voice.service.last_metrics) == 2)
+    assert old_sink.resets == 1
+    h.sinks[-1].played = 64000
+    spin(h.app, lambda: any(e['utterance_id'] == 'retry' and e['state'] == 'finished' and e['index'] == 1
+                          for _, e in h.events('sentence')))
+    assert [(e['text'], e['index']) for _, e in h.events('sentence') if e['state'] == 'started'] == [
+        ('旧句。', 0), ('重试第一句。', 0), ('重试第二句。', 1)]

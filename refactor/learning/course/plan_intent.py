@@ -38,7 +38,7 @@ intents 必须有 1～3 个，按用户提及的先后顺序；同一种 kind �
 种类和唯一允许的参数（? 表示可选，其他字段必须给出）：
 - answer {}：仅 questions 阶段，用户正在回答最近 AI 的追问，宿主会把用户原话交给需求核对，不要复制原话到参数。
 - update_form {goal?,final_goal?,level?,level_note?,start?,end?,daily_cap?,weekday_weights?,special_days?,notes_append?}：明确修改表单；只给明确要改的字段，至少一个。
-  goal/final_goal 各 1～300 字；level 只能 zero/beginner/intermediate/advanced；level_note 最多 300 字，可空；notes_append 为追加的说明，追加后 notes 不超过 1000 字。
+  goal/final_goal 各 1～300 字；level 只能 zero（零基础）/beginner（入门）/intermediate（有一定基础）/advanced（比较熟练），按这四个中文名对应，例如“比较熟练、挺熟了”是 advanced；level_note 最多 300 字，可空；notes_append 为追加的说明，追加后 notes 不超过 1000 字。
   日期用具体 YYYY-MM-DD，依据 ctx.today 和 form 计算，不能输出“明天/下个月”等相对文字。单说“截止日期推迟两周”是 form.end 加 14 天；明确整体推迟才同时改 start/end。“12 月底”是 today 所在年的 12-31，若已过去则下一年；缺少能确定的基准先问。新的起止日期均不早于 today，end >= start，跨度不超过三年。
   daily_cap 为 10～720 的整数分钟；weekday_weights 为周一到周日 7 个 0/0.5/1；special_days 为 [{"date":"YYYY-MM-DD","weight":0或0.5}]，最多 120 项，日期唯一且在合并后的计划起止范围内。列表字段给修改后的完整列表，保留用户未要求改变的项；不要凭空清掉其他特殊日。改日期会使既有特殊日越界且用户没说明如何处理时先 ask_user。
 - find_sources {instruction}：找/换资料、再找一批，保留用户指定的语言/难度/类型等约束。instruction 非空，最多 1000 字。

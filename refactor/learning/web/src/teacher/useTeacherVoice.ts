@@ -16,6 +16,52 @@ let serial = 0
 const identifier = () => `voice-${Date.now().toString(36)}-${(++serial).toString(36)}`
 const disabled: VoiceAvailability = { ready: false, message: "朗读未启用", components: [], download: null }
 
+type StreamVoice = {
+  startStream(): Promise<string | null>
+  appendStream(text: string, utteranceId?: string | null): Promise<boolean>
+  endStream(utteranceId?: string | null): Promise<boolean>
+  stop(): Promise<void>
+}
+
+/** One model response, including retries. Stop/reset invalidates queued chunks
+ * immediately; slow bridge replies cannot append into the replacement turn. */
+export function createTeacherVoiceStream(voice: StreamVoice) {
+  let active = true, ended = false, generation = 0
+  let id = voice.startStream()
+  let pending: Promise<unknown> = Promise.resolve()
+  const stop = () => {
+    if (!active) return Promise.resolve()
+    active = false; generation++
+    return voice.stop()
+  }
+  return {
+    append(delta: string) {
+      if (!active || ended) return
+      if (delta === "\u0000") {
+        generation++
+        void voice.stop()
+        id = voice.startStream()
+        pending = Promise.resolve()
+        return
+      }
+      const version = generation, target = id
+      pending = pending.then(async () => {
+        const utterance = await target
+        if (active && version === generation && utterance) await voice.appendStream(delta, utterance)
+      })
+    },
+    end() {
+      ended = true
+      const version = generation, target = id
+      return pending.then(async () => {
+        const utterance = await target
+        if (active && version === generation && utterance) await voice.endStream(utterance)
+      })
+    },
+    stop,
+  }
+}
+
 /** Owns one consumer scope. Unmount/stop cannot cancel a newer page's speech. */
 export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | null>, { autoWarm = true } = {}) {
   const [owner] = React.useState(identifier)
@@ -101,25 +147,25 @@ export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | nu
     }
   }, [availability?.ready, owner, mouth])
 
-  const appendStream = React.useCallback(async (text: string) => {
-    const utterance_id = streamCurrent.current
-    if (!utterance_id || current.current !== utterance_id) return false
+  const appendStream = React.useCallback(async (text: string, utteranceId?: string | null) => {
+    const utterance_id = utteranceId === undefined ? streamCurrent.current : utteranceId
+    if (!utterance_id || streamCurrent.current !== utterance_id || current.current !== utterance_id) return false
     try {
-      await call("speech.stream_append", { owner, utterance_id, text })
-      return streamCurrent.current === utterance_id
+      const result = await call("speech.stream_append", { owner, utterance_id, text })
+      return result.accepted && streamCurrent.current === utterance_id
     } catch (e: any) {
       if (alive.current && current.current === utterance_id) setError(e.message || "朗读暂时不可用。")
       return false
     }
   }, [owner])
 
-  const endStream = React.useCallback(async () => {
-    const utterance_id = streamCurrent.current
-    if (!utterance_id || current.current !== utterance_id) return false
+  const endStream = React.useCallback(async (utteranceId?: string | null) => {
+    const utterance_id = utteranceId === undefined ? streamCurrent.current : utteranceId
+    if (!utterance_id || streamCurrent.current !== utterance_id || current.current !== utterance_id) return false
+    streamCurrent.current = null
     try {
-      await call("speech.stream_end", { owner, utterance_id })
-      streamCurrent.current = null
-      return true
+      const result = await call("speech.stream_end", { owner, utterance_id })
+      return result.accepted && current.current === utterance_id
     } catch (e: any) {
       if (alive.current && current.current === utterance_id) setError(e.message || "朗读暂时不可用。")
       return false

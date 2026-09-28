@@ -15,7 +15,7 @@ uses UTF-8 bytes as a conservative bound. No tokenizer package or network reques
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import json
@@ -83,6 +83,8 @@ class Cost:
     components: dict[str, Decimal]
     catalog_version: str
     source_urls: tuple[str, ...]
+    estimated: bool = False
+    estimation_reason: str = ''
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,7 @@ class CostEstimate:
     input_tokens_low: int
     input_tokens_high: int
     assumptions: tuple[str, ...]
+    peak_price_estimate: bool = False
 
 
 def _counts(text):
@@ -243,6 +246,13 @@ class PriceCatalog:
             return None
         return 'off_peak' if local.date().isoformat() in calendar['dates'] else 'peak'
 
+    def _peak_fallback(self, provider, at, context):
+        # Unknown holidays are not guessed. Only DeepSeek's documented peak
+        # tariff is used as an explicitly labelled upper-bound estimate.
+        return (provider == 'deepseek' and not context.get('price_period')
+                and self._period(at) is None
+                and self.periods.get('timezone') == 'Asia/Shanghai')
+
     def _candidates(self, provider, model, at, context, *, estimate=False):
         for row in self._rows:
             if row['provider'] != provider or model not in {row['model'], *row.get('aliases', [])} or not row['verified']:
@@ -254,6 +264,8 @@ class PriceCatalog:
                 continue
             period = row.get('price_period', 'all')
             chosen = context.get('price_period') or self._period(at)
+            if self._peak_fallback(provider, at, context):
+                chosen = 'peak'
             if period != 'all' and period != chosen and not (estimate and chosen is None):
                 continue
             yield row
@@ -323,9 +335,13 @@ class PriceCatalog:
         validate_usage(usage)
         at = timestamp(at)
         context = dict(usage.raw.get('_mentorflow', {}).get('billing_context') or {}, **(context or {}))
+        fallback = self._peak_fallback(provider, at, context)
         if 'finished_at' in context:
             end = timestamp(context['finished_at'])
-            if self._period(at) != self._period(end) and provider == 'deepseek':
+            fallback = fallback or self._peak_fallback(provider, end, context)
+            if fallback:
+                context['price_period'] = 'peak'
+            elif self._period(at) != self._period(end) and provider == 'deepseek':
                 return None
         if 'calls' in usage.raw:
             calls = usage.raw.get('_mentorflow', {}).get('call_usages')
@@ -344,12 +360,38 @@ class PriceCatalog:
                 return None
             return Cost(sum(c.amount for c in costs), costs[0].currency,
                         {k: sum(c.components[k] for c in costs) for k in costs[0].components}, self.version,
-                        tuple(sorted({url for c in costs for url in c.source_urls})))
+                        tuple(sorted({url for c in costs for url in c.source_urls})),
+                        fallback or any(c.estimated for c in costs),
+                        '节假日日历未覆盖，按高峰价估算上限' if fallback else
+                        next((c.estimation_reason for c in costs if c.estimated), ''))
         rows = [r for r in self._candidates(provider, model, at, context)
                 if r.get('input_tokens_min', -1) < usage.input_tokens <= r.get('input_tokens_max', 10**15)]
         if len(rows) == 1 and usage.search_requests and at.date().isoformat() > rows[0].get('search_valid_through', '9999-12-31'):
             return None
-        return self._quote(rows[0], usage, context) if len(rows) == 1 else None
+        quote = self._quote(rows[0], usage, context) if len(rows) == 1 else None
+        return (replace(quote, estimated=True, estimation_reason='节假日日历未覆盖，按高峰价估算上限')
+                if quote is not None and fallback else quote)
+
+    def unpriced_reason(self, provider, model, usage, *, at=None):
+        """Safe display explanation for an unavailable quote; no raw vendor text."""
+        if usage is None:
+            return '调用没有返回用量，无法计价'
+        missing = validate_usage(usage)
+        meta = usage.raw.get('_mentorflow', {})
+        if missing & {'input_tokens', 'cached_input_tokens', 'uncached_input_tokens', 'output_tokens', 'search_requests'}:
+            return '厂商未返回完整计费用量'
+        if meta.get('partial_usage') or meta.get('token_total_reconciled') is False:
+            return '用量不完整或 token 总数未对账'
+        context = meta.get('billing_context') or {}
+        when = timestamp(at)
+        if (provider == 'deepseek' and 'finished_at' in context
+                and self._period(when) != self._period(timestamp(context['finished_at']))
+                and not self._peak_fallback(provider, when, context)
+                and not self._peak_fallback(provider, timestamp(context['finished_at']), context)):
+            return '调用跨越计价时段，缺少分时用量'
+        if not list(self._candidates(provider, model, when, context)):
+            return '无匹配的已核实价格（型号、日期或地区/服务档位不匹配）'
+        return '缺少适用的上下文档位、缓存写入或搜索计费明细/单价'
 
     def estimate_cost(self, provider, model, text='', *, input_tokens=None, output_tokens=(0, 4096),
                       search_requests=(0, 0), cache_hit_rate=(0, 0), at=None, context=None):
@@ -408,10 +450,12 @@ class PriceCatalog:
             covered = max(covered, upper)
         if not quotes or len({q[2] for q in quotes}) != 1 or covered < hi:
             return None
+        fallback = self._peak_fallback(provider, when, context or {})
         return CostEstimate(min(q[0] for q in quotes), max(q[1] for q in quotes), quotes[0][2], lo, hi,
                             ('目录标价区间；不含税费或充值赠金抵扣。',
                              '包含所给输出预算与搜索次数；输入预算须覆盖全部往返及工具内容。',
-                             '文字估算不是 tokenizer 实测；缓存写入按可用档位给出上下界。'))
+                             '文字估算不是 tokenizer 实测；缓存写入按可用档位给出上下界。') +
+                            (('节假日日历未覆盖，按高峰价估算上限。',) if fallback else ()), fallback)
 
 
 def estimate_cost(catalog, provider, model, text='', **kwargs):

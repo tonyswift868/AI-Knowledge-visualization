@@ -1,11 +1,56 @@
 {
-  "version": "2026-09-27.2",
+  "version": "2026-09-28.1",
   "unit": "per_million_tokens",
   "periods": {
     "timezone": "Asia/Shanghai",
     "peak": "Monday through Friday, excluding Chinese public holidays: 09:00-12:00 and 14:00-18:00",
     "off_peak": "All other hours, including weekends and Chinese public holidays",
-    "holiday_calendar": null
+    "holiday_calendar": {
+      "start": "2026-01-01",
+      "end": "2026-12-31",
+      "dates": [
+        "2026-01-01",
+        "2026-01-02",
+        "2026-01-03",
+        "2026-02-15",
+        "2026-02-16",
+        "2026-02-17",
+        "2026-02-18",
+        "2026-02-19",
+        "2026-02-20",
+        "2026-02-21",
+        "2026-02-22",
+        "2026-02-23",
+        "2026-04-04",
+        "2026-04-05",
+        "2026-04-06",
+        "2026-05-01",
+        "2026-05-02",
+        "2026-05-03",
+        "2026-05-04",
+        "2026-05-05",
+        "2026-06-19",
+        "2026-06-20",
+        "2026-06-21",
+        "2026-09-25",
+        "2026-09-26",
+        "2026-09-27",
+        "2026-10-01",
+        "2026-10-02",
+        "2026-10-03",
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06",
+        "2026-10-07"
+      ],
+      "source_url": "https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm",
+      "published_on": "2025-11-04",
+      "checked_on": "2026-09-28",
+      "notice": "国办发明电〔2025〕7号"
+    },
+    "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "checked_on": "2026-09-28",
+    "weekend_rule": "周末全天闲时，包括调休上班周末；日历未覆盖的工作日高峰窗口只给高峰价估算上限。"
   },
   "notes": "目录标价，不是厂商账单。不换汇，不推断赠金或税费。verified 仅表示已读到该页 token 单价；空值仍不可计费。地域、推理模式、服务等级、TTL、上下文档位必须匹配；未核实字段保留空值。",
   "models": [
@@ -19,7 +64,7 @@
       "output_per_mtok": 8,
       "search_per_request": 0,
       "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
-      "checked_on": "2026-09-27",
+      "checked_on": "2026-09-28",
       "verified": true,
       "valid_from": "2026-09-10",
       "aliases": [
@@ -31,7 +76,7 @@
         "service_tier": "standard"
       },
       "search_source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code/",
-      "notes": "人民币目录价；搜索不另收固定调用费，搜索文本 tokens 已在 usage 中。工作日高峰须有节假日日历或显式 price_period；跨计价时段不估作实付账单。"
+      "notes": "人民币目录价；搜索不另收固定调用费，搜索文本 tokens 已在 usage 中。日历未覆盖的高峰窗口标记为高峰价估算上限；已知跨计价时段缺少分时用量时仍不计价。"
     },
     {
       "provider": "deepseek",
@@ -43,7 +88,7 @@
       "output_per_mtok": 4,
       "search_per_request": 0,
       "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
-      "checked_on": "2026-09-27",
+      "checked_on": "2026-09-28",
       "verified": true,
       "valid_from": "2026-09-10",
       "aliases": [
@@ -55,7 +100,7 @@
         "service_tier": "standard"
       },
       "search_source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code/",
-      "notes": "人民币目录价；搜索不另收固定调用费，搜索文本 tokens 已在 usage 中。工作日高峰须有节假日日历或显式 price_period；跨计价时段不估作实付账单。"
+      "notes": "人民币目录价；搜索不另收固定调用费，搜索文本 tokens 已在 usage 中。日历未覆盖的高峰窗口标记为高峰价估算上限；已知跨计价时段缺少分时用量时仍不计价。"
     },
     {
       "provider": "deepseek",
@@ -67,7 +112,7 @@
       "output_per_mtok": 27,
       "search_per_request": 0,
       "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
-      "checked_on": "2026-09-27",
+      "checked_on": "2026-09-28",
       "verified": true,
       "valid_from": "2026-09-10",
       "aliases": [],
@@ -76,7 +121,7 @@
         "service_tier": "standard"
       },
       "search_source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code/",
-      "notes": "人民币目录价；搜索不另收固定调用费，搜索文本 tokens 已在 usage 中。工作日高峰须有节假日日历或显式 price_period；跨计价时段不估作实付账单。"
+      "notes": "人民币目录价；搜索不另收固定调用费，搜索文本 tokens 已在 usage 中。日历未覆盖的高峰窗口标记为高峰价估算上限；已知跨计价时段缺少分时用量时仍不计价。"
     },
     {
       "provider": "deepseek",
@@ -88,7 +133,7 @@
       "output_per_mtok": 13.5,
       "search_per_request": 0,
       "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
-      "checked_on": "2026-09-27",
+      "checked_on": "2026-09-28",
       "verified": true,
       "valid_from": "2026-09-10",
       "aliases": [],
@@ -97,7 +142,7 @@
         "service_tier": "standard"
       },
       "search_source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code/",
-      "notes": "人民币目录价；搜索不另收固定调用费，搜索文本 tokens 已在 usage 中。工作日高峰须有节假日日历或显式 price_period；跨计价时段不估作实付账单。"
+      "notes": "人民币目录价；搜索不另收固定调用费，搜索文本 tokens 已在 usage 中。日历未覆盖的高峰窗口标记为高峰价估算上限；已知跨计价时段缺少分时用量时仍不计价。"
     },
     {
       "provider": "qwen",

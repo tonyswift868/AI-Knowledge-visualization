@@ -15,7 +15,7 @@ import threading
 import time
 from uuid import uuid4
 
-from PySide6.QtCore import QObject, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QObject, Qt, Signal, Slot
 
 from .bridge import BridgeError
 from ..voice.download import DownloadError
@@ -154,8 +154,6 @@ class TeacherSpeech(QObject):
     def _state_changed(self, state):
         self._state = state
         self._push("state", {**self._scope(), "state": state})
-        if state in {"ready", "idle"} and self._stream is not None:
-            QTimer.singleShot(0, self._drain_stream)
 
     def status(self, params, ctx):
         _params(params, ())
@@ -224,8 +222,8 @@ class TeacherSpeech(QObject):
             accepted = self._begin(owner, utterance, None, mode="stream")
             self._stream = {"owner": owner, "utterance": utterance,
                             "prep": StreamingTextPrep(), "queue": deque(),
-                            "active": None, "ended": False, "next_index": 0,
-                            "elapsed": 0.0, "generation": self._generation}
+                            "prepared": False, "ended": False, "input_closed": False,
+                            "generation": self._generation}
         return {**accepted, "streaming": True}
 
     def _stream_matches(self, owner, utterance):
@@ -237,9 +235,7 @@ class TeacherSpeech(QObject):
         stream = self._stream
         if stream is None:
             return 0
-        for sentence in sentences:
-            stream["queue"].append({"index": stream["next_index"], "text": sentence})
-            stream["next_index"] += 1
+        stream["queue"].extend(sentences)
         return len(sentences)
 
     def stream_append(self, params, ctx):
@@ -277,8 +273,6 @@ class TeacherSpeech(QObject):
             except (TypeError, ValueError):
                 raise BridgeError("INVALID_TEXT", "朗读片段无效或超过长度限制。")
             self._drain_stream()
-            if not stream["queue"] and stream["active"] is None and self.service is None:
-                self._state_changed("idle")
             return {"accepted": True, "queued": queued,
                     "buffered": len(stream["prep"].buffered_text)}
 
@@ -286,13 +280,14 @@ class TeacherSpeech(QObject):
         with self._stream_lock:
             stream = self._stream
             if (stream is None or stream["generation"] != self._generation
-                    or stream["active"] is not None or not stream["queue"] or self.service is None):
+                    or not stream["prepared"] or stream["input_closed"] or self.service is None):
                 return
-            if self.service.state in {"warming", "synthesizing", "playing"}:
-                return
-            item = stream["queue"].popleft()
-            stream["active"] = item
-            self.service.speak(item["text"])
+            if stream["queue"]:
+                self.service.append_sentences(tuple(stream["queue"]))
+                stream["queue"].clear()
+            if stream["ended"]:
+                stream["input_closed"] = True
+                self.service.end_stream()
 
     def stop(self, params, ctx):
         _params(params, ("owner", "utterance_id"))
@@ -379,6 +374,8 @@ class TeacherSpeech(QObject):
                 self._start_service(result["config"], result["text"],
                                     warm_existing=result.get("mode") != "stream")
                 if result.get("mode") == "stream":
+                    self.service.start_stream()
+                    self._stream["prepared"] = True
                     self._drain_stream()
             except Exception as exc:
                 self._release_service()
@@ -398,12 +395,10 @@ class TeacherSpeech(QObject):
                     self._push("availability", result["status"])
 
     def _start_service(self, config, text, *, warm_existing=True):
-        created = False
         if self.service is None or config != self._config:
             self._release_service()
             self.service = self._factory(config, self)
             self._config = config
-            created = True
             self.service.state_changed.connect(self._state_changed)
             self.service.mouth_level.connect(self._mouth)
             self.service.sentence_timing.connect(self._sentence)
@@ -411,37 +406,16 @@ class TeacherSpeech(QObject):
         self.service.set_volume(self._volume)
         self.service.set_speed(self._speed)
         if text is None:
-            if created or warm_existing:
+            if warm_existing:
                 self.service.warm_up()
         else:
             self.service.speak(text)
-
-    def _stream_timing(self, timing, stream, item):
-        value = dict(timing)
-        value["index"] = item["index"]
-        value["text"] = item["text"]
-        value["start_seconds"] = stream["elapsed"] + timing["start_seconds"]
-        if timing["end_seconds"] is not None:
-            value["end_seconds"] = stream["elapsed"] + timing["end_seconds"]
-        return value
 
     def _mouth(self, level):
         self._push("mouth", {**self._scope(), "level": max(0.0, min(1.0, float(level))), "at": time.monotonic()})
 
     def _sentence(self, timing):
-        with self._stream_lock:
-            stream = self._stream
-            if stream is not None and stream["active"] is not None:
-                item = stream["active"]
-                value = self._stream_timing(timing, stream, item)
-                self._push("sentence", {**value, **self._scope()})
-                if timing["state"] in {"finished", "interrupted"}:
-                    if timing["state"] == "finished" and value["end_seconds"] is not None:
-                        stream["elapsed"] = value["end_seconds"]
-                    stream["active"] = None
-                    QTimer.singleShot(0, self._drain_stream)
-                return
-            self._push("sentence", {**timing, **self._scope()})
+        self._push("sentence", {**timing, **self._scope()})
 
     def _error(self, code, message):
         self._push("error", {**self._scope(), "code": code, "message": message})

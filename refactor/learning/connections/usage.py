@@ -3,7 +3,9 @@
 summary uses the half-open UTC interval [start, end). A missing meter makes that
 aggregate field None, never zero. known_* fields are explicitly partial subtotals.
 Amounts are Decimal, separated by currency and snapshotted at record time; changing
-the catalogue does not silently reprice history. Pending/crashed calls stay visible.
+the catalogue does not reprice determined snapshots. Previously unpriced calls
+can be calculated read-only with the current catalogue and are counted separately.
+Pending/crashed calls stay visible.
 """
 from __future__ import annotations
 
@@ -171,7 +173,8 @@ class UsageLog:
         quote = self.catalog.cost(provider_id, model, Usage(**data), at=when) if data is not None else None
         cost = (dict(amount=str(quote.amount), currency=quote.currency,
                      components={k: str(v) for k, v in quote.components.items()},
-                     catalog_version=quote.catalog_version, source_urls=quote.source_urls) if quote else None)
+                     catalog_version=quote.catalog_version, source_urls=quote.source_urls,
+                     estimated=quote.estimated, estimation_reason=quote.estimation_reason) if quote else None)
         dump = lambda obj: json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False) if obj is not None else None
         return (identifier, provider_id, model, purpose, plan_id, when.isoformat(timespec='microseconds'),
                 state, error_code or '', dump(data), dump(cost))
@@ -237,6 +240,21 @@ class UsageLog:
         with self._db() as db:
             rows = db.execute('SELECT * FROM calls WHERE at_utc>=? AND at_utc<? ORDER BY at_utc,request_id',
                               (start.isoformat(timespec='microseconds'), end.isoformat(timespec='microseconds'))).fetchall()
+        # Never UPDATE historical accounting. Preserve determined amounts even
+        # when catalogue rates change; fill only absent quotes for this view.
+        rows = [dict(row) for row in rows]
+        for row in rows:
+            data = json.loads(row['usage_json']) if row['usage_json'] else None
+            row['quote'] = json.loads(row['cost_json']) if row['cost_json'] else None
+            row['recalculated'] = False
+            if row['quote'] is None and data is not None:
+                quote = self.catalog.cost(row['provider_id'], row['model'], Usage(**data), at=row['at_utc'])
+                if quote is not None:
+                    row['quote'] = asdict(quote)
+                    row['recalculated'] = True
+            row['unpriced_reason'] = (self.catalog.unpriced_reason(row['provider_id'], row['model'],
+                                      Usage(**data) if data else None, at=row['at_utc'])
+                                      if row['quote'] is None else '')
         groups = {}
         for row in rows:
             key = ((row['provider_id'], row['model']) if group_by == 'model' else
@@ -245,6 +263,8 @@ class UsageLog:
         def aggregate(items):
             known = {key: 0 for key in FIELDS}
             unknown, amounts, unpriced, errors = set(), {}, 0, {}
+            estimated_amounts, reasons = {}, {}
+            priced, estimated, recalculated = 0, 0, 0
             states = {s: 0 for s in ('in_progress', 'succeeded', 'failed', 'cancelled')}
             for row in items:
                 states[row['state']] += 1
@@ -263,19 +283,28 @@ class UsageLog:
                         known[key] += reported[key]
                 else:
                     unknown.update(FIELDS)
-                if row['cost_json']:
-                    cost = json.loads(row['cost_json'])
-                    amounts[cost['currency']] = amounts.get(cost['currency'], Decimal(0)) + Decimal(cost['amount'])
+                if row['quote'] is not None:
+                    cost = row['quote']
+                    is_estimated = cost.get('estimated', False)
+                    target = estimated_amounts if is_estimated else amounts
+                    target[cost['currency']] = target.get(cost['currency'], Decimal(0)) + Decimal(cost['amount'])
+                    estimated += int(is_estimated)
+                    priced += int(not is_estimated)
+                    recalculated += int(row['recalculated'])
                 else:
                     unpriced += 1
+                    reason = row['unpriced_reason']
+                    reasons[reason] = reasons.get(reason, 0) + 1
             counters = {key: None if key in unknown else value for key, value in known.items()}
             ratio = (Decimal(known['cached_input_tokens']) / Decimal(known['input_tokens'])
                      if not unknown & {'input_tokens', 'cached_input_tokens'} and known['input_tokens'] else None)
             return dict(calls=len(items), **states, **counters, cache_hit_rate=ratio,
                         usage_complete=not unknown, unknown_fields=sorted(unknown), known_tokens=known,
-                        amount=next(iter(amounts.values())) if not unpriced and len(amounts) == 1 else None,
-                        currency=next(iter(amounts)) if not unpriced and len(amounts) == 1 else None,
-                        amounts=dict(amounts) if not unpriced else None, known_amounts=amounts,
-                        unpriced_calls=unpriced, amount_complete=not unpriced, errors=errors)
+                        amount=next(iter(amounts.values())) if not (unpriced or estimated) and len(amounts) == 1 else None,
+                        currency=next(iter(amounts)) if not (unpriced or estimated) and len(amounts) == 1 else None,
+                        amounts=dict(amounts) if not (unpriced or estimated) else None, known_amounts=amounts,
+                        priced_calls=priced, estimated_calls=estimated, estimated_amounts=estimated_amounts,
+                        unpriced_reasons=reasons, recalculated_calls=recalculated,
+                        unpriced_calls=unpriced, amount_complete=not (unpriced or estimated), errors=errors)
         return {'start': start.isoformat(), 'end': end.isoformat(), 'timezone': 'UTC', 'group_by': group_by,
                 'total': aggregate(rows), 'groups': [dict(key=key, **aggregate(items)) for key, items in sorted(groups.items())]}

@@ -116,8 +116,8 @@ def test_deepseek_period_unknown_holiday_and_cross_boundary():
     cat = PriceCatalog(CATALOG)
     args = ('deepseek', 'deepseek-v4-flash', units())
     assert cat.cost(*args, at=AT, context=GLOBAL)
-    # Monday 10:00 China: no authoritative holiday calendar means no exact amount.
-    assert cat.cost(*args, at='2026-09-28T02:00:00Z', context=GLOBAL) is None
+    # Monday 10:00 China is covered by the official 2026 calendar.
+    assert not cat.cost(*args, at='2026-09-28T02:00:00Z', context=GLOBAL).estimated
     peak = cat.cost(*args, at='2026-09-28T02:00:00Z', context=dict(GLOBAL, price_period='peak'))
     assert peak.amount == 2 * cat.cost(*args, at=AT, context=GLOBAL).amount
     assert cat.cost(*args, at='2026-09-28T00:59:59Z', context=dict(GLOBAL, finished_at='2026-09-28T01:01:00Z')) is None
