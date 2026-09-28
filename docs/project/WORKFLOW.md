@@ -22,12 +22,12 @@
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-03（client） | D:\MentorFlow-office\client | 11-MF03 进行中 |
+| MF-03（client） | D:\MentorFlow-office\client | 空闲 |
 | MF-07（server） | D:\MentorFlow-office\server | 空闲 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
-| MF-04（platform） | D:\MentorFlow-office\platform | 11-MF04 进行中 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-01（library） | D:\MentorFlow-office\library | 空闲 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 11-MF06 进行中 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
 工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
@@ -80,9 +80,9 @@
 | 10-MF02 | MF-02 runtime | 用量只显示 token + 厂商余额显示在 API 右边 | SYS-03、BUG-20、UI-00 | a6f286e | 已合入 8776ad9（2026-09-28） |
 | 10-MF01 | MF-01 library | 模拟学生真实上课评测：判定准不准、老师讲得对不对，并修组件 | ARCH-07、TEACH-02、TEACH-04、TEACH-06、BUG-18 | a6f286e | 已合入 8776ad9（2026-09-28） |
 | 10-MF03 | MF-03 client | 所有时间相关行为的全面审查：结果合不合理，有问题直接修 | PLAN-05、PLAN-08、TEACH-05、SYS-04、CHK-01 | a6f286e | 已合入 8776ad9（2026-09-28） |
-| 11-MF04 | MF-04 platform | 计划中途加资料：只处理新增部分的组件 | PLAN-10、PLAN-08、PLAN-04 | 0953cfd | 已派发 |
-| 11-MF06 | MF-06 classroom | 新界面的 Windows 安装程序 + 朗读引擎按需下载 + 自动更新 | SYS-06、VOICE-01、ARCH-01 | 0953cfd | 已派发 |
-| 11-MF03 | MF-03 client | 检验时长分开预估、分开记 + 全流程阻塞复查 | CHK-01、PLAN-05、TEACH-02、SYS-04 | 0953cfd | 已派发 |
+| 11-MF04 | MF-04 platform | 计划中途加资料：只处理新增部分的组件 | PLAN-10、PLAN-08、PLAN-04 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
+| 11-MF06 | MF-06 classroom | 新界面的 Windows 安装程序 + 朗读引擎按需下载 + 自动更新 | SYS-06、VOICE-01、ARCH-01 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
+| 11-MF03 | MF-03 client | 检验时长分开预估、分开记 + 全流程阻塞复查 | CHK-01、PLAN-05、TEACH-02、SYS-04 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
