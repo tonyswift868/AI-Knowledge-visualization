@@ -22,11 +22,11 @@
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-03（client） | D:\MentorFlow-office\client | 10-MF03 进行中 |
+| MF-03（client） | D:\MentorFlow-office\client | 空闲 |
 | MF-07（server） | D:\MentorFlow-office\server | 空闲 |
-| MF-02（runtime） | D:\MentorFlow-office\runtime | 10-MF02 进行中 |
+| MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
-| MF-01（library） | D:\MentorFlow-office\library | 10-MF01 进行中 |
+| MF-01（library） | D:\MentorFlow-office\library | 空闲 |
 | MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
@@ -77,9 +77,9 @@
 | 8-MF07 | MF-07 server | 课堂数据变多后的同步性能 | ARCH-05、TEACH-01 | 755b29b | 已合入 3bfe099（2026-09-28） |
 | 9-MF02 | MF-02 runtime | DeepSeek 高峰/闲时计价补全 + 花费显示 + 新建计划对话补测 | BUG-20、SYS-03、BUG-13 | de1723f | 已合入 2e41f0e（2026-09-28） |
 | 9-MF06 | MF-06 classroom | 朗读流水线（边播边合成）并接入课堂边生成边读 | VOICE-01、TEACH-05 | de1723f | 已合入 2e41f0e（2026-09-28） |
-| 10-MF02 | MF-02 runtime | 用量只显示 token + 厂商余额显示在 API 右边 | SYS-03、BUG-20、UI-00 | a6f286e | 已派发 |
-| 10-MF01 | MF-01 library | 模拟学生真实上课评测：判定准不准、老师讲得对不对，并修组件 | ARCH-07、TEACH-02、TEACH-04、TEACH-06、BUG-18 | a6f286e | 已派发 |
-| 10-MF03 | MF-03 client | 所有时间相关行为的全面审查：结果合不合理，有问题直接修 | PLAN-05、PLAN-08、TEACH-05、SYS-04、CHK-01 | a6f286e | 已派发 |
+| 10-MF02 | MF-02 runtime | 用量只显示 token + 厂商余额显示在 API 右边 | SYS-03、BUG-20、UI-00 | a6f286e | 已合入 8776ad9（2026-09-28） |
+| 10-MF01 | MF-01 library | 模拟学生真实上课评测：判定准不准、老师讲得对不对，并修组件 | ARCH-07、TEACH-02、TEACH-04、TEACH-06、BUG-18 | a6f286e | 已合入 8776ad9（2026-09-28） |
+| 10-MF03 | MF-03 client | 所有时间相关行为的全面审查：结果合不合理，有问题直接修 | PLAN-05、PLAN-08、TEACH-05、SYS-04、CHK-01 | a6f286e | 已合入 8776ad9（2026-09-28） |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
