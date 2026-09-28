@@ -56,7 +56,8 @@ export function Classroom() {
   const [reading, setReading] = React.useState(() => localStorage.getItem("mf.classroom.read") !== "off")
   const teacher = React.useRef<TeacherStageHandle>(null)
   const voice = useTeacherVoice(teacher)
-  const mic = useVoiceInput({ value: text, onChange: setText, scopeKey: planId ?? undefined, disabled: !!busy })
+  const terms = React.useMemo(() => (room?.points ?? []).map((p) => p.title).slice(0, 60), [room?.points])
+  const mic = useVoiceInput({ value: text, onChange: setText, terms, scopeKey: room ? `${planId}:${room.module.id}` : undefined, disabled: !!busy })
   const abort = React.useRef<AbortController | null>(null)
   const scroller = React.useRef<HTMLDivElement>(null)
   const spoken = React.useRef<string | null>(null)
@@ -97,16 +98,16 @@ export function Classroom() {
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
   }, [room?.messages.length, stream, busy])
 
-  // Read the teacher's newest words aloud once they are complete.
+  // React to what is new since the last look: nod or think on a verdict, read the teacher's words aloud.
   React.useEffect(() => {
-    if (!room) return
-    const fresh = room.messages.filter((m) => m.role === "assistant")
-    const last = fresh.at(-1)
-    if (!last || last.id === spoken.current) return
-    const start = room.messages.findIndex((m) => m.id === spoken.current)
-    const unread = room.messages.slice(start + 1).filter((m) => m.role === "assistant")
-    spoken.current = room.messages.at(-1)!.id
-    if (reading && voice.availability?.ready && unread.length) void voice.speak(unread.map((m) => speakable(m.content)).join("\n"))
+    const newest = room?.messages.at(-1)?.id
+    if (!room || !newest || newest === spoken.current) return
+    const fresh = room.messages.slice(room.messages.findIndex((m) => m.id === spoken.current) + 1)
+    spoken.current = newest
+    const verdict = fresh.find((m) => m.kind === "verdict")
+    if (verdict) void (verdict.content.startsWith("✓") ? teacher.current?.nod() : teacher.current?.think())
+    const words = fresh.filter((m) => m.role === "assistant")
+    if (reading && voice.availability?.ready && words.length) void voice.speak(words.map((m) => speakable(m.content)).join("\n"))
   }, [room, reading, voice])
 
   function toggleReading() {
