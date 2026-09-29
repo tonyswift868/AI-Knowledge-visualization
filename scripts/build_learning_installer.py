@@ -93,12 +93,16 @@ def freeze(args):
     work.mkdir(parents=True, exist_ok=True)
     if (work / "app/MentorFlow").exists():
         raise ValueError("existing build preserved; use a new work directory")
-    if not (ROOT / "refactor/learning/web/dist/index.html").is_file():
+    web_dist = (getattr(args, "web_dist", None) or ROOT / "refactor/learning/web/dist").resolve()
+    if not (web_dist / "index.html").is_file():
         raise ValueError("build the new web UI first")
     from refactor.learning.voice.tts.component_manager import ComponentManager
     manager = ComponentManager(work / "catalog-validation", catalog=args.voice_catalog)
     if manager.simulation and not product.uat:
         raise ValueError("simulated voice components cannot enter a production installer")
+    seven_zip = getattr(args, "seven_zip", None)
+    if any(asset.archive == "7z" for asset in manager.assets) and (not seven_zip or not seven_zip.is_file()):
+        raise ValueError("7z voice assets require --seven-zip (official standalone console)")
     authority = work / "mentorflow_delivery_authority.py"
     authority.write_text(f"APP_ID={args.app_id!r}\nPUBLIC_KEYS={ {key_id: public}!r}\n"
                          f"ONE_CLICK_TEST_FIXTURE={product.uat!r}\nRECOVERY_FEED_URL={args.feed!r}\n"
@@ -128,12 +132,14 @@ def freeze(args):
         runtime += ["--exclude-module", module]
     run(runtime + [ROOT / "scripts/per_user_install.py"], work, work / "runtime-build.log")
     data = [(resources, "refactor/desktop/resources"),
-            (ROOT / "refactor/learning/web/dist", "refactor/learning/web/dist"),
+            (web_dist, "refactor/learning/web/dist"),
             (ROOT / "frontend/public/vendor/live2d", "frontend/public/vendor/live2d"),
             (ROOT / "frontend/public/teacher2d", "frontend/public/teacher2d"),
             (ROOT / "refactor/learning/voice/tts/engine_server.py", "refactor/learning/voice/tts"),
             (work / "component-catalog.json", "refactor/learning/voice/tts"),
             (work / "mentorflow-version.json", ".")]
+    if seven_zip:
+        data.append((seven_zip.resolve(), "refactor/learning/voice"))
     spec = work / "MentorFlow.spec"
     spec.write_text("from PyInstaller.utils.hooks import collect_data_files\n"
         "from scripts.build_learning_installer import include_payload_data\n"
@@ -275,6 +281,8 @@ def main():
     p.add_argument("--version", required=True); p.add_argument("--feed", required=True)
     p.add_argument("--app-id", default="MentorFlow")
     p.add_argument("--public-runtime", type=Path); p.add_argument("--account-ca", type=Path)
+    p.add_argument("--seven-zip", type=Path, help="official 7zr.exe, bundled for allowlisted asset extraction")
+    p.add_argument("--web-dist", type=Path, help="isolated Vite output; defaults to the repository dist")
     p = sub.add_parser("release")
     for name in ("payload", "public-key", "output"):
         p.add_argument("--" + name, type=Path, required=True)

@@ -70,6 +70,18 @@ def _load_source(name, path, substitutions):
     return module
 
 
+def _use_bundled_language_model():
+    # This official package's LangSegmenter replaces the default detector and
+    # asks for its large online model. Bind the already shipped, hashed model
+    # after importing TTS, so every segmentation request remains offline.
+    import fast_langdetect.infer as detector
+    model = Path(detector.__file__).parent / "resources/lid.176.ftz"
+    if not model.is_file():
+        raise RuntimeError("Bundled language model is missing: " + str(model))
+    detector._default_detector = detector.LangDetector(detector.LangDetectConfig(
+        custom_model_path=str(model), allow_fallback=False))
+
+
 def _make_pipeline(config):
     engine = Path(config["engine_root"])
     assets = config["base_assets"]
@@ -109,6 +121,7 @@ def _make_pipeline(config):
     _load_source("TTS_infer_pack.TTS", engine / "GPT_SoVITS/TTS_infer_pack/TTS.py", [
         ("elif not is_first_chunk and not is_final:", "elif not is_first_chunk:")])
     from TTS_infer_pack.TTS import TTS, TTS_Config
+    _use_bundled_language_model()
     print("Loading resident voice weights", flush=True)
     options = {"device": config["device"], "is_half": config["device"] == "cuda", "version": "v2Pro",
         "t2s_weights_path": config["voice"]["gpt_weights"], "vits_weights_path": config["voice"]["sovits_weights"],

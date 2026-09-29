@@ -31,6 +31,15 @@ _LOCKS: dict[str, threading.Lock] = {}
 _LOCKS_GUARD = threading.Lock()
 
 
+def filesystem_path(path: Path) -> Path:
+    """Address nested Windows runtime files without changing system policy."""
+    path = Path(path).absolute()
+    value = str(path)
+    if os.name == "nt" and not value.startswith("\\\\?\\"):
+        return Path("\\\\?\\UNC\\" + value[2:] if value.startswith("\\\\") else "\\\\?\\" + value)
+    return path
+
+
 class DownloadError(RuntimeError):
     """Stable Chinese codes: 网络失败 / 校验失败 / 磁盘不足 / 已取消.
 
@@ -108,7 +117,7 @@ class DownloadAsset:
         object.__setattr__(self, "install_path", _relative(self.install_path))
         object.__setattr__(self, "members", tuple(self.members))
         _metadata(self.size, self.sha256)
-        if self.archive not in {None, "zip", "tar.bz2"} or bool(self.archive) != bool(self.members):
+        if self.archive not in {None, "zip", "tar.bz2", "7z"} or bool(self.archive) != bool(self.members):
             raise ValueError("压缩包必须提供解压后校验清单")
         if len({m.path for m in self.members}) != len(self.members):
             raise ValueError("压缩包校验清单包含重复路径")
@@ -121,7 +130,7 @@ def check_cancel(cancel: threading.Event) -> None:
 
 def file_digest(path: Path, cancel: threading.Event) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as reader:
+    with filesystem_path(path).open("rb") as reader:
         while chunk := reader.read(CHUNK_SIZE):
             check_cancel(cancel)
             digest.update(chunk)
@@ -173,10 +182,12 @@ class AssetDownloader:
         return sum(a.size for a in self.assets)
 
     def _safe_file(self, root: Path, name: str) -> bool:
+        root = filesystem_path(root)
         candidate = root / name
         return not any(_linked(p) for p in (candidate, *candidate.parents) if p == root or root in p.parents)
 
     def _receipt(self, root: Path) -> dict:
+        root = filesystem_path(root)
         return {name: {"size": size, "sha256": digest, "mtime_ns": (root / name).stat().st_mtime_ns}
                 for name, (size, digest) in self.required.items()}
 
@@ -191,8 +202,8 @@ class AssetDownloader:
             if self._safe_file(self.path, "installed.json") and receipt_path.stat().st_size < limit:
                 receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
                 installed = receipt == self._receipt(self.path) and all(
-                    self._safe_file(self.path, name) and (self.path / name).is_file()
-                    and (self.path / name).stat().st_size == size for name, (size, _) in self.required.items())
+                    self._safe_file(self.path, name) and filesystem_path(self.path / name).is_file()
+                    and filesystem_path(self.path / name).stat().st_size == size for name, (size, _) in self.required.items())
         except (OSError, ValueError, TypeError):
             pass
         return {"installed": installed, "path": str(self.path), "size_bytes": self.size_bytes,
@@ -200,7 +211,7 @@ class AssetDownloader:
                 "download_urls": [url for asset in self.assets for url in asset.urls]}
 
     def verify(self, root: Path | None = None, cancel: threading.Event | None = None) -> None:
-        root = self.path if root is None else root
+        root = filesystem_path(self.path if root is None else root)
         cancel = threading.Event() if cancel is None else cancel
         for name, (size, digest) in self.required.items():
             check_cancel(cancel)
@@ -216,7 +227,7 @@ class AssetDownloader:
     def _clear_staging(self):
         # Never follow a substituted link, and only remove our named sibling.
         if self.staging.exists() and not _linked(self.staging):
-            shutil.rmtree(self.staging)
+            shutil.rmtree(filesystem_path(self.staging))
 
     def _check_space(self):
         needed = self.size_bytes + sum(size for size, _ in self.required.values()) + 1024 * 1024
@@ -300,6 +311,7 @@ class AssetDownloader:
         raise last_error or DownloadError("网络失败", "资源下载失败。")
 
     def _copy(self, reader, target: Path, size: int, cancel):
+        target = filesystem_path(target)
         target.parent.mkdir(parents=True, exist_ok=True)
         count = 0
         with target.open("xb") as writer:
@@ -315,6 +327,10 @@ class AssetDownloader:
             raise DownloadError("校验失败", "压缩包文件大小不符，未安装。")
 
     def _unpack(self, asset: DownloadAsset, source: Path, ready: Path, cancel):
+        if asset.archive == "7z":
+            from .seven_zip import unpack
+            unpack(asset, source, ready, cancel)
+            return
         if not asset.archive:
             with source.open("rb") as reader:
                 self._copy(reader, ready / asset.install_path, asset.size, cancel)
@@ -356,7 +372,7 @@ class AssetDownloader:
                 os.replace(self.backup, self.path)
             raise
         if had_old:
-            shutil.rmtree(self.backup)
+            shutil.rmtree(filesystem_path(self.backup))
 
     def download(self, progress: Callable[[int, int], None], cancel: threading.Event) -> None:
         if not self._lock.acquire(blocking=False):
@@ -370,7 +386,7 @@ class AssetDownloader:
                 if not self.path.exists():
                     os.replace(self.backup, self.path)  # Recover an interrupted replacement.
                 else:
-                    shutil.rmtree(self.backup)
+                    shutil.rmtree(filesystem_path(self.backup))
             if self.status()["installed"]:
                 try:
                     self.verify(cancel=cancel)
@@ -386,7 +402,7 @@ class AssetDownloader:
             if _linked(ready):
                 raise DownloadError("安装失败", "解压缓存目录不能是链接。")
             if ready.exists():
-                shutil.rmtree(ready)
+                shutil.rmtree(filesystem_path(ready))
             self._check_space()
             ready.mkdir()
             sources, base = [], 0

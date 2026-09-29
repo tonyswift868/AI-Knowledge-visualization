@@ -295,3 +295,30 @@ else:
                             env=env, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "blocked" and source.read_bytes() == before
+
+
+def test_official_language_detector_uses_packaged_model_or_fails_offline(tmp_path, monkeypatch):
+    import sys
+    from types import ModuleType, SimpleNamespace
+    from refactor.learning.voice.tts.engine_server import _use_bundled_language_model
+
+    package = ModuleType("fast_langdetect")
+    detector = ModuleType("fast_langdetect.infer")
+    detector.__file__ = str(tmp_path / "infer.py")
+    detector.LangDetectConfig = SimpleNamespace
+    detector.LangDetector = lambda config: SimpleNamespace(config=config)
+    detector._default_detector = original = object()
+    package.infer = detector
+    monkeypatch.setitem(sys.modules, "fast_langdetect", package)
+    monkeypatch.setitem(sys.modules, "fast_langdetect.infer", detector)
+    with pytest.raises(RuntimeError, match="Bundled language model is missing"):
+        _use_bundled_language_model()
+    assert detector._default_detector is original
+    model = tmp_path / "resources/lid.176.ftz"
+    model.parent.mkdir()
+    model.write_bytes(b"pinned fixture")
+    _use_bundled_language_model()
+    bound = detector._default_detector.config
+    assert Path(bound.custom_model_path) == model
+    assert bound.allow_fallback is False
+    assert model.read_bytes() == b"pinned fixture"

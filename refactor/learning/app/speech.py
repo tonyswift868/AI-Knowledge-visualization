@@ -86,9 +86,8 @@ class SpeechResources:
             for item in components:
                 item.update(downloadable=True, size_estimated=False,
                             instruction="同意后下载完整朗读组件，校验通过后即可使用。")
-            for item, asset in zip(components, [next(a for a in self.manager.assets if a.name == name)
-                                               for name in ("engine.zip", "base.zip", "voice.zip")]):
-                item["size_bytes"] = asset.size
+            for item in components:
+                item["size_bytes"] = self.manager.component_sizes[item["id"]]
         simulation = isinstance(self.manager, ComponentManager) and self.manager.simulation
         return {"ready": ready, "message": "模拟朗读测试音" if ready and simulation else "朗读可用" if ready else "朗读未启用", "components": components,
                 "voice": {"id": voice.pack_id, "version": voice.version} if voice else None,

@@ -1,7 +1,7 @@
 """Installer-provisioned, hash-pinned engine + bases + teacher voice catalog.
 
-The signed client bundles metadata only. The publisher hosts the separate
-archives; opening the app never downloads them. All three install atomically.
+The signed client bundles metadata only. Official engine/base downloads and
+the publisher's voice archive install together atomically, after consent.
 """
 from __future__ import annotations
 
@@ -24,9 +24,19 @@ class ComponentManager(AssetDownloader):
         self.simulation = document.get("simulation") is True
         assets = tuple(DownloadAsset(
             name=row["name"], urls=tuple(row["urls"]), size=row["size"], sha256=row["sha256"],
-            install_path=row["name"], archive="zip",
-            members=tuple(ArchiveMember(**member) for member in row["members"])) for row in document["assets"])
-        if {a.name for a in assets} != {"engine.zip", "base.zip", "voice.zip"}:
+            install_path=row.get("install_path", row["name"]), archive=row.get("archive", "zip"),
+            members=tuple(ArchiveMember(**member) for member in row.get("members", ()))) for row in document["assets"])
+        self.component_sizes = {name: 0 for name in ("engine", "base", "voice")}
+        present = set()
+        for asset in assets:
+            paths = [m.install_path for m in asset.members] if asset.archive else [asset.install_path]
+            groups = {path.split("/", 1)[0] for path in paths}
+            if len(groups) != 1 or not groups <= self.component_sizes.keys():
+                raise ValueError("朗读组件安装目录无效")
+            group = groups.pop()
+            self.component_sizes[group] += asset.size
+            present.add(group)
+        if present != set(self.component_sizes):
             raise ValueError("朗读组件清单不完整")
         super().__init__(self.storage / "tts/components-v1", assets, keep_partial_on_network_error=True)
 

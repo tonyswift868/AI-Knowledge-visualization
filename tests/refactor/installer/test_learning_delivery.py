@@ -216,6 +216,23 @@ def test_learning_delivery_inventory_rejects_casefolded_parent_collisions(tmp_pa
             AssetDownloader(tmp_path, tuple(asset(str(i), p) for i, p in enumerate(paths)))
 
 
+def test_learning_delivery_official_catalog_supports_mixed_transports(tmp_path):
+    catalog = tmp_path / "catalog.json"
+    rows = []
+    for label, archive in (("engine", "7z"), ("base", None), ("voice", "zip")):
+        member = dict(path="upstream/file", install_path=f"{label}/file", size=3, sha256="0" * 64)
+        rows.append(dict(name=label + ".asset", urls=["https://huggingface.co/official/repo/resolve/pinned/file"],
+                         size=5, sha256="0" * 64, archive=archive, install_path=f"{label}/file",
+                         members=[member] if archive else []))
+    catalog.write_text(json.dumps(dict(schema="mentorflow.tts-components.v1", assets=rows)))
+    manager = ComponentManager(tmp_path / "Data", catalog=catalog)
+    assert manager.component_sizes == dict(engine=5, base=5, voice=5)
+    assert manager.required["base/file"] == (5, "0" * 64)
+    assert manager.assets[0].archive == "7z"
+    assert manager.assets[0].urls[1].startswith("https://hf-mirror.com/")
+    assert not manager.status()["installed"]
+
+
 def test_learning_delivery_update_feed_is_explicit_and_uat_is_isolated():
     assert not validate_feed("https://example.invalid/app/stable/stable.json", "MentorFlow").uat
     assert validate_feed("http://127.0.0.1:18791/stable/stable.json", "MentorFlow.UAT.Batch11").uat
