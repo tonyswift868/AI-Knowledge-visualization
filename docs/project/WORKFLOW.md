@@ -2188,7 +2188,7 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
 ### [14-MF07] server｜服务器瘦身：把新软件在用的约 1.1 万行迁进 refactor/server，做只挂这几组接口的新入口
 
 ~~~text
-【MentorFlow 第十四批｜MF07（工位 server）｜服务器瘦身：把新软件在用的约 1.1 万行迁进 refactor/server，做只挂这几组接口的新入口】
+【MentorFlow 第十四批｜MF-07（工位 server）｜服务器瘦身：把新软件在用的约 1.1 万行迁进 refactor/server，做只挂这几组接口的新入口】
 
 开工同步（第一步）
   cd D:\MentorFlow-office\server\repo
@@ -2217,7 +2217,7 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
 ### [14-MF03] client｜客户端旧代码迁移 + 删除仓库里不再用的旧代码和旧文档
 
 ~~~text
-【MentorFlow 第十四批｜MF03（工位 client）｜客户端旧代码迁移 + 删除仓库里不再用的旧代码和旧文档】
+【MentorFlow 第十四批｜MF-03（工位 client）｜客户端旧代码迁移 + 删除仓库里不再用的旧代码和旧文档】
 
 开工同步（第一步）
   cd D:\MentorFlow-office\client\repo
