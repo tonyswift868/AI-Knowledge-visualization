@@ -1088,9 +1088,18 @@ class Classroom:
                 "excerpts": course.excerpts(pending["point_ids"]),
                 "question": {"stem": q["stem"], "type": q["type"], "options": q.get("options", [])},
                 "reference": q.get("reference") or q.get("answer") or "按知识点要点判断",
-                "recent": dialogue_tail(self._dialogue(course, state)[:-1], max_rows=6)}
+                "reply": reply, "require_evidence": q["type"] in ("short", "fix_error")}
         request = judge_agent.judge_request(jctx, reply)
-        return self._ask(course, ctx, "judge", request, lambda text: judge_agent.parse_judgement(text, jctx), 2048)
+        parse = lambda text: judge_agent.parse_judgement(text, jctx)
+        first = self._ask(course, ctx, "judge", request, parse, 2048)
+        if q["type"] not in ("short", "fix_error") or (not first.uncertain and first.kind != "clarify"):
+            return first
+        second = self._ask(course, ctx, "judge", request, parse, 2048)
+        if (second.uncertain or first.kind != second.kind
+                or first.correct != second.correct or first.wrong_points != second.wrong_points):
+            return judge_agent.Verdict("clarify", None, (),
+                "请只针对题目要求补充说明你刚才的答案。")
+        return second
 
     def _questions(self, course, ctx, purpose, point_ids, *, avoid=(), used_angles=None, background=False):
         points = [course.point(pid) for pid in point_ids]
@@ -1137,7 +1146,8 @@ class Classroom:
         event = Judgement(uuid.uuid4().hex, course.next_seq(), self.now(), context, module_id, attempt, results, angle)
         q = pending["question"]
         course.store.append_judgement(course.plan_id, event, details={
-            "question": q["stem"], "answer": answer[:4000], "reason": verdict.reason, "chunk_ids": q.get("chunk_ids", [])},
+            "question": q["stem"], "answer": answer[:4000], "reason": verdict.reason,
+            "point_checks": list(verdict.checks), "chunk_ids": q.get("chunk_ids", [])},
             credit_day=self._day(state) if context == "check" else None)
 
     def _credit_learning(self, course, state, point):

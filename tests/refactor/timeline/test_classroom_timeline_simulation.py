@@ -97,10 +97,18 @@ class FakeAgent:
         if purpose == "judge":
             with self.lock:
                 kind, correct, wrong = self.verdicts.pop(0)
-            return SimpleNamespace(text=json.dumps({
+            task = _last_json(messages, "【本次判定】")
+            points = json.JSONDecoder().raw_decode(messages[-1]["content"].split("【知识点清单】\n", 1)[1])[0]
+            value = {
                 "kind": kind, "correct": correct, "wrong_points": wrong,
                 "reason": "回答覆盖了关键要点" if correct else "混淆了关键要点",
-            }, ensure_ascii=False), search_hits=(), citations=())
+            }
+            if task["question"]["type"] in ("short", "fix_error"):
+                value.update(uncertain=False, checks=[dict(point_id=points[min(i, len(points)-1)]["id"], requirement=req, applies=True,
+                    met=points[min(i, len(points)-1)]["id"] not in wrong,
+                    evidence=task["reply"] if points[min(i, len(points)-1)]["id"] not in wrong else "")
+                    for i, req in enumerate(task['required_points'])] if kind == "answer" else [])
+            return SimpleNamespace(text=json.dumps(value, ensure_ascii=False), search_hits=(), citations=())
         if purpose == "questions":
             content = messages[-1]["content"]
             points = json.JSONDecoder().raw_decode(content.split("【知识点清单】\n", 1)[1])[0]

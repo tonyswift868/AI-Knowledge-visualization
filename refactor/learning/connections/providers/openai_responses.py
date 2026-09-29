@@ -43,6 +43,14 @@ async def run(http, config):
         body['instructions'] = config['system']
     if config['temperature'] is not None:
         body['temperature'] = config['temperature']
+    effort = config.get('reasoning_effort')
+    # Match only model families whose supported effort values are documented.
+    # Unknown or non-reasoning models retain their provider defaults.
+    model = config['model']
+    supported = ({'none', 'low', 'high', 'max'} if model.startswith('gpt-5.6') else
+                 {'none', 'low', 'high'} if model.startswith('gpt-5.1') else set())
+    if effort in supported:
+        body['reasoning'] = {'effort': effort}
     if config['enable_search']:
         body.update(tools=[{'type': 'web_search'}], max_tool_calls=config['max_search_uses'],
                     include=['web_search_call.action.sources'])

@@ -33,7 +33,8 @@ _ADAPTERS = {'anthropic_messages': anthropic_messages, 'dashscope_generation': d
 
 def complete(provider_id, *, base_url, model, api_key, messages, system=None,
              enable_search=False, max_search_uses=8, max_tokens=4096, temperature=None,
-             timeout=120.0, cancel=None, on_text=None, http_client=None) -> ModelResult:
+             timeout=120.0, cancel=None, on_text=None, http_client=None,
+             reasoning_effort=None) -> ModelResult:
     if not isinstance(provider_id, str) or provider_id not in REGISTRY:
         raise ModelError('MODEL_CONFIG_INVALID', '请选择支持的模型厂商。')
     spec = REGISTRY[provider_id]
@@ -68,6 +69,9 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
             or (temperature is not None and (type(temperature) not in {int, float}
                 or not math.isfinite(temperature)))):
         raise ModelError('MODEL_CONFIG_INVALID', '模型调用参数无效。')
+    if reasoning_effort is not None and (not isinstance(reasoning_effort, str)
+                                         or reasoning_effort not in {'none', 'low', 'high', 'max'}):
+        raise ModelError('MODEL_CONFIG_INVALID', '思考强度无效。')
     if cancel is not None and not isinstance(cancel, threading.Event):
         raise ModelError('MODEL_CANCEL_INVALID', '取消标记必须为 threading.Event。')
     if (on_text is not None and not callable(on_text)) or (
@@ -81,7 +85,8 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
         raise ModelError('MODEL_CONFIG_INVALID', '请在界面与异步事件循环以外的工作线程调用模型。')
     config = dict(provider_id=provider_id, protocol=spec.protocol, base_url=base_url, model=model, messages=messages,
                   system=system, enable_search=enable_search, max_search_uses=max_search_uses,
-                  max_tokens=max_tokens, temperature=temperature, on_text=on_text)
+                  max_tokens=max_tokens, temperature=temperature, on_text=on_text,
+                  reasoning_effort=reasoning_effort)
     accounting = Accounting(config)
 
     def failure(error):

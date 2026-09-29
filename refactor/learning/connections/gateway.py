@@ -35,6 +35,16 @@ _UNSET = object()
 _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
            'temperature', 'timeout', 'has_api_key')
 
+# Program-owned per-purpose settings. Unknown/third-party purposes retain the
+# provider default until they are evaluated on saved inputs.
+PURPOSE_EFFORT = {
+    'judge': 'high', 'check_profile': 'high', 'lesson_review': 'high',
+    'questions': 'high', 'outline': 'high',
+    'lesson_prep': 'high', 'generate': 'low', 'plan_additions_generate': 'low',
+    'source_scoring': 'low', 'teacher': 'low',
+    'profile': 'none', 'sufficiency': 'none', 'plan_intent': 'none',
+}
+
 
 def _storage_error():
     return ModelError('MODEL_CONFIG_INVALID', '无法读取或保存当前账号的模型设置，原配置未被替换。')
@@ -355,29 +365,38 @@ class ModelGateway:
         return self._price_context(config, 'default') if config else {}
 
     @staticmethod
-    def _billable_usage(value, config):
+    def _billable_usage(value, config, effort=None):
         raw = copy.deepcopy(value.raw)
         meta = raw.setdefault('_mentorflow', {})
         context = dict(ModelGateway._price_context(config, meta.get('service_tier')),
                        cache_mode='implicit', finished_at=timestamp().isoformat())
-        if config['provider_id'] == 'qwen' and value.reasoning_tokens > 0:
-            context['thinking_mode'] = 'thinking'
+        if effort is not None:
+            context['requested_reasoning_effort'] = effort
+        if config['provider_id'] == 'qwen':
+            if value.reasoning_tokens > 0:
+                context['thinking_mode'] = 'thinking'
+            elif effort == 'none' and config['model'].startswith('qwen3.'):
+                context['thinking_mode'] = 'non_thinking'
         meta['billing_context'] = context
         return replace(value, raw=raw)
 
     def complete(self, purpose, messages, *, system=None, enable_search=False,
-                 on_text=None, cancel=None, plan_id='', max_tokens=4096):
+                 on_text=None, cancel=None, plan_id='', max_tokens=4096, reasoning_effort=None):
         if type(max_tokens) is not int or not 1 <= max_tokens <= 32768:
             raise ModelError('MODEL_CONFIG_INVALID', '模型调用参数无效。')
         return self._complete(purpose, messages, system=system, enable_search=enable_search,
-                              on_text=on_text, cancel=cancel, plan_id=plan_id, max_tokens=max_tokens)
+                              on_text=on_text, cancel=cancel, plan_id=plan_id, max_tokens=max_tokens,
+                              reasoning_effort=reasoning_effort)
 
     def test_connection(self):
         """Explicit user action only. No probe during construction/save/select."""
         return self._complete('connection_test', [{'role': 'user', 'content': 'Reply OK.'}],
-                              system=None, enable_search=False, on_text=None, cancel=None, plan_id='', max_tokens=32)
+                              system=None, enable_search=False, on_text=None, cancel=None, plan_id='', max_tokens=32,
+                              reasoning_effort=None)
 
-    def _complete(self, purpose, messages, *, system, enable_search, on_text, cancel, plan_id, max_tokens):
+    def _complete(self, purpose, messages, *, system, enable_search, on_text, cancel, plan_id, max_tokens,
+                  reasoning_effort):
+        effort = reasoning_effort if reasoning_effort is not None else PURPOSE_EFFORT.get(purpose)
         config, setup_error = None, None
         token = _Cancellation(cancel if isinstance(cancel, threading.Event) else None)
         with self._lock:
@@ -416,10 +435,11 @@ class ModelGateway:
                 result = providers.complete(config['provider_id'], base_url=config['base_url'], model=config['model'],
                                             api_key=secret, messages=messages, system=system, enable_search=enable_search,
                                             temperature=config['temperature'], timeout=config['timeout'],
-                                            cancel=token, on_text=on_text, max_tokens=max_tokens)
+                                            cancel=token, on_text=on_text, max_tokens=max_tokens,
+                                            reasoning_effort=effort)
                 if not isinstance(result, providers.ModelResult) or result.provider_id != config['provider_id']:
                     raise ModelError('MODEL_RESPONSE_INVALID', '模型响应厂商与当前预设不一致。')
-                observed = self._billable_usage(result.usage, config)
+                observed = self._billable_usage(result.usage, config, effort)
                 if token.is_set():
                     exc = ModelCancelled()
                     exc.usage, exc.response_received = result.usage, True
@@ -430,7 +450,7 @@ class ModelGateway:
                 if observed is None and isinstance(getattr(exc, 'usage', None), providers.Usage):
                     # An invalid answer can still have final, billable meters.
                     # Only the adapter knows whether a stream's usage is partial.
-                    observed = self._billable_usage(exc.usage, config)
+                    observed = self._billable_usage(exc.usage, config, effort)
             except Exception:
                 error = ModelError('MODEL_RESPONSE_INVALID', '模型调用未返回可核对的完整结果。')
             try:

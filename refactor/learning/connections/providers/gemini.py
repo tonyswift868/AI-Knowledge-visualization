@@ -39,6 +39,13 @@ async def run(http, config):
     generation = {'maxOutputTokens': config['max_tokens']}
     if config['temperature'] is not None:
         generation['temperature'] = config['temperature']
+    effort = config.get('reasoning_effort')
+    # https://ai.google.dev/gemini-api/docs/generate-content/thinking
+    if config['model'].startswith('gemini-3') and effort in {'low', 'high', 'max'}:
+        generation['thinkingConfig'] = {'thinkingLevel': 'high' if effort == 'max' else effort}
+    elif (effort == 'none' and config['model'].startswith(('gemini-3-flash', 'gemini-3.5-flash',
+           'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'))):
+        generation['thinkingConfig'] = {'thinkingLevel': 'minimal'}
     body = {'contents': [{'role': 'model' if m['role'] == 'assistant' else 'user',
                           'parts': [{'text': m['content']}]} for m in config['messages']],
             'generationConfig': generation}

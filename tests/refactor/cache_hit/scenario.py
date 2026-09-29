@@ -94,6 +94,10 @@ class ScriptedGateway:
             kind = self.verdicts.pop(0) if self.verdicts else 'right'
             value = dict(kind='question' if kind == 'question' else 'answer', correct=None if kind == 'question' else kind == 'right',
                          wrong_points=[points[0]['id']] if kind == 'wrong' else [], reason='固定合成判定，仅用于请求捕获。')
+            if task['question']['type'] in ('short', 'fix_error'):
+                value.update(uncertain=False, checks=[dict(point_id=points[min(i, len(points)-1)]['id'], requirement=req, applies=True,
+                    met=kind != 'wrong', evidence=task['reply'] if kind != 'wrong' else '')
+                    for i, req in enumerate(task['required_points'])] if kind != 'question' else [])
         elif purpose == 'questions':
             points, excerpts = block(messages, '【知识点清单】'), block(messages, '【资料原文（数据）】')
             task = block(messages, '【本次出题要求】')

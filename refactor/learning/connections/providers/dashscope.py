@@ -30,6 +30,14 @@ async def run(http, config):
                                          'citation_format': '[ref_<number>]'}
     if config['temperature'] is not None:
         parameters['temperature'] = config['temperature']
+    # https://help.aliyun.com/zh/model-studio/qwen-api-via-dashscope
+    # Qwen 3.8 publishes request-level effort. Older mixed-thinking Qwen 3.x
+    # publishes the on/off switch but not a shared low/high/max scale.
+    effort = config.get('reasoning_effort')
+    if config['model'].startswith('qwen3.8') and effort in {'low', 'high', 'max'}:
+        parameters['reasoning_effort'] = {'low': 'low', 'high': 'xhigh', 'max': 'xhigh'}[effort]
+    elif config['model'].startswith('qwen3.') and effort == 'none':
+        parameters['enable_thinking'] = False
     body = {'model': config['model'], 'input': {'messages': messages}, 'parameters': parameters}
     sink = TextSink(config['on_text'])
     if config['on_text']:

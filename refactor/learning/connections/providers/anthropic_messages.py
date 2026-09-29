@@ -102,6 +102,21 @@ async def run(http, config):
         body['system'] = config['system']
     if config['temperature'] is not None:
         body['temperature'] = config['temperature']
+    effort = config.get('reasoning_effort')
+    if config['provider_id'] == 'deepseek' and effort is not None:
+        # https://api-docs.deepseek.com/guides/thinking_mode/
+        body['reasoning'] = {'effort': effort}
+    elif config['provider_id'] == 'anthropic' and effort in {'low', 'high', 'max'}:
+        # https://platform.claude.com/docs/en/build-with-claude/effort
+        model = config['model']
+        supported = model.startswith(('claude-fable-5', 'claude-mythos-5',
+            'claude-mythos-preview', 'claude-opus-5', 'claude-sonnet-5',
+            'claude-opus-4-5', 'claude-opus-4-6', 'claude-opus-4-7',
+            'claude-opus-4-8', 'claude-sonnet-4-6'))
+        if supported and (effort != 'max' or not model.startswith('claude-opus-4-5')):
+            body['output_config'] = {'effort': effort}
+    # Claude's current models do not all permit thinking.type=disabled;
+    # leaving unsupported "none" at the model default avoids a 400.
     results, used = [], 0
     # A bounded continuation handles server pause_turn, not arbitrary client tools.
     for _ in range(config['max_search_uses'] + 2):

@@ -32,6 +32,7 @@ _DETAILS = {'input_tokens_details': {'cached_tokens', 'cache_write_tokens'},
             'cache_creation': {'ephemeral_5m_input_tokens', 'ephemeral_1h_input_tokens'},
             'server_tool_use': {'web_search_requests', 'web_fetch_requests'}}
 _CONTEXT_VALUES = {'region': {'cn-beijing', 'global', 'international', 'unknown'},
+                   'requested_reasoning_effort': {'none', 'low', 'high', 'max'},
                    'thinking_mode': {'thinking', 'non_thinking'}, 'cache_mode': {'implicit', 'explicit'},
                    'service_tier': {'standard', 'default', 'batch', 'flex', 'fast', 'priority'},
                    'search_strategy': {'turbo', 'max', 'agent', 'agent_max'},

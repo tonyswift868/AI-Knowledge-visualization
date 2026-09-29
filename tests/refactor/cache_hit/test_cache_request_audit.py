@@ -66,9 +66,9 @@ def test_judge_and_question_reorder_without_changing_any_field_or_target():
     system, messages = judge_agent.judge_request(jctx, '原样回答')
     assert system == judge_agent.JUDGE_SYSTEM and jctx == frozen
     points, excerpts, question, reference, recent = judge_agent._context(jctx)
-    assert block(messages, '【知识点清单】') == points
-    assert block(messages, '【资料原文（数据）】') == excerpts
-    assert block(messages, '【最近对话（数据）】') == recent
+    assert block(messages, '【知识点清单】') == [{'id': p['id'], 'title': p['title']} for p in points]
+    assert '【资料原文（数据）】' not in messages[0]['content']
+    assert '【最近对话（数据）】' not in messages[0]['content']
     assert block(messages, '【本次判定】') == dict(mode=jctx['mode'], question=question, reference=reference, reply='原样回答')
     changed = deepcopy(jctx)
     changed['points'] = changed['points'][1:]

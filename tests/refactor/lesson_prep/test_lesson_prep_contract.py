@@ -255,8 +255,12 @@ def test_direct_prepared_lesson_and_early_verdict_before_short_feedback(room):
     def complete(purpose, _messages, **kwargs):
         calls.append(purpose)
         if purpose == 'judge':
+            task = json.loads(_messages[-1]['content'].split('【本次判定】\n', 1)[1])
             return SimpleNamespace(text=json.dumps({'kind': 'answer', 'correct': True,
-                                                     'wrong_points': [], 'reason': '说出了先进先出'}, ensure_ascii=False))
+                                                         'wrong_points': [], 'reason': '说出了先进先出',
+                                                         'uncertain': False, 'checks': [{'point_id': 'p1',
+                                                         'requirement': task['required_points'][0], 'applies': True, 'met': True,
+                                                         'evidence': '先进入先取出'}]}, ensure_ascii=False))
         if purpose == 'teacher':
             assert streamed and streamed[0].startswith('\x01VERDICT:')
             assert kwargs['max_tokens'] == 4096  # includes the provider's hidden reasoning

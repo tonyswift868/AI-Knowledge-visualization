@@ -53,8 +53,16 @@ class Agents:
         elif purpose == "judge":
             with self.lock:
                 kind, correct, wrong = self.verdicts.pop(0)
-            text = json.dumps({"kind": kind, "correct": correct, "wrong_points": wrong,
-                               "reason": "说明了关键区别" if correct else "说法不够具体"}, ensure_ascii=False)
+            task = last_json(messages, "【本次判定】")
+            points = json.JSONDecoder().raw_decode(messages[-1]["content"].split("【知识点清单】\n", 1)[1])[0]
+            value = {"kind": kind, "correct": correct, "wrong_points": wrong,
+                     "reason": "说明了关键区别" if correct else "说法不够具体"}
+            if task["question"]["type"] in ("short", "fix_error"):
+                value.update(uncertain=False, checks=[dict(point_id=points[min(i, len(points)-1)]["id"], requirement=req, applies=True,
+                    met=points[min(i, len(points)-1)]["id"] not in wrong,
+                    evidence=task["reply"] if points[min(i, len(points)-1)]["id"] not in wrong else "")
+                    for i, req in enumerate(task['required_points'])] if kind == "answer" else [])
+            text = json.dumps(value, ensure_ascii=False)
         elif purpose == "questions":
             content = messages[-1]["content"]
             points = json.JSONDecoder().raw_decode(content.split("【知识点清单】\n", 1)[1])[0]
