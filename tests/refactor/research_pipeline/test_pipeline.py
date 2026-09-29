@@ -180,6 +180,36 @@ def test_matching_main_heading_can_override_generic_page_title():
     assert len(result.verified) == 1
 
 
+def test_real_subheading_can_verify_section_search_title():
+    url = 'https://docs.python.org/3/reference/compound_stmts.html'
+    title = 'The Python Language Reference — Function definitions'
+    body = (b'<html><head><title>8. Compound statements</title></head><body><main>'
+            b'<h1>8. Compound statements</h1><p>'
+            + b'Other Python control flow chapters. ' * 6
+            + b'</p><h2>Function definitions</h2><p>'
+            + b'Python function definitions name parameters and bind them when called. ' * 8
+            + b'</p></main></body></html>')
+    content = FetchedContent(url, url, 'text/html', body, '')
+    with ResearchPipeline(fetcher=lambda url, **kw: content) as pipeline:
+        result = pipeline.run([RawHit(url, title)])
+    assert len(result.verified) == 1
+    assert any(b.kind == 'heading' and 'Function definitions' in b.text for b in result.verified[0].document.blocks)
+
+
+def test_generic_publisher_word_cannot_verify_unrelated_section():
+    url = 'https://docs.python.org/3/tutorial/introduction.html'
+    body = (b'<html><head><title>An Informal Introduction to Python</title></head><body><main>'
+            b'<h1>An Informal Introduction to Python</h1><h2>Numbers</h2><p>'
+            + b'Basic arithmetic and lists are introduced with Python examples. ' * 8
+            + b'</p></main></body></html>')
+    content = FetchedContent(url, url, 'text/html', body, '')
+    search_title = 'Python official tutorial 4.9.5 Defining Functions'
+    with ResearchPipeline(fetcher=lambda url, **kw: content) as pipeline:
+        result = pipeline.run([RawHit(url, search_title)])
+    assert not result.verified
+    assert result.rejected[0].code == 'title_mismatch'
+
+
 def test_concurrency_four_total_two_per_hostname_including_ports():
     active, peaks, total = Counter(), Counter(), [0, 0]
     lock = Lock()

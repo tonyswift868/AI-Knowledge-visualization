@@ -26,6 +26,16 @@ def test_fixed_host_scenario_is_deterministic_and_covers_all_phases(tmp_path):
     assert report['total']['input_est'] == sum(v['input_est'] for v in report['purposes'].values())
 
 
+def test_extended_classroom_capture_includes_prep_and_tracks_free_check(tmp_path):
+    capture = run_scenario(tmp_path / 'extended', extended=True)
+    purposes = [request['purpose'] for request in capture['requests']]
+    assert 'lesson_prep' in purposes and 'lesson_review' in purposes
+    assert purposes.count('questions') >= 2 and purposes.count('judge') >= 12
+    assert isinstance(capture['practice_reply_lost_pending'], bool)
+    assert capture['practice_start'] is not None
+    assert capture['status'] == 'completed'
+
+
 def test_common_prefix_needs_two_observations_in_endpoint_model_and_rounding_is_explicit():
     requests = [dict(index=i, purpose='test', system='fixed', model='fixture', options={},
                      messages=[dict(role='user', content='Material ' * 300 + last)]) for i,last in enumerate('BCD')]
@@ -70,6 +80,7 @@ def test_judge_and_question_reorder_without_changing_any_field_or_target():
     assert '【资料原文（数据）】' not in messages[0]['content']
     assert '【最近对话（数据）】' not in messages[0]['content']
     assert block(messages, '【本次判定】') == dict(mode=jctx['mode'], question=question, reference=reference, reply='原样回答')
+    assert messages[0]['content'].index('"reference"') < messages[0]['content'].index('"reply"')
     changed = deepcopy(jctx)
     changed['points'] = changed['points'][1:]
     other = judge_agent.judge_request(changed, '变化的回答')[1][0]['content']
@@ -83,6 +94,18 @@ def test_judge_and_question_reorder_without_changing_any_field_or_target():
     assert block(messages, '【知识点清单】') == points
     assert block(messages, '【资料原文（数据）】') == excerpts
     assert block(messages, '【本次出题要求】') == dict(per_point=qctx['per_point'], purpose=qctx['purpose'], avoid=avoid)
+
+
+def test_subjective_rubric_precedes_only_the_current_reply_without_changing_fields():
+    ctx = judge_context()
+    ctx['require_evidence'] = True
+    ctx['reply'] = '本次回答'
+    _, messages = judge_agent.judge_request(ctx, ctx['reply'])
+    content = messages[0]['content']
+    task = block(messages, '【本次判定】')
+    assert task['reply'] == '本次回答'
+    assert task['required_points']
+    assert content.index('"required_points"') < content.index('"reply"')
 
 
 def test_intent_context_values_are_identical_while_date_and_state_move_back():

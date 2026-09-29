@@ -423,3 +423,21 @@ def test_a_test_closed_before_a_crash_is_finished_not_closed_twice(room):
     closed = [r for r in store.records("attempt_closed", PLAN)]
     assert len(closed) == 1 and (credits(store), store.load_ledger(PLAN).to_dict()) == finished   # same bookkeeping
     assert act(classroom, "next_module")["module"]["title"] == "栈"
+
+
+def test_free_check_on_a_completed_plan_survives_reopening(room):
+    """BUG-30: the room is 'practicing' while the plan is completed; reloading must keep the practice question."""
+    classroom, agents, store = room
+    act(classroom, "enter")
+    course = classroom._course(PLAN)
+    course.plan = dict(course.plan, state="completed")
+    state = classroom._load(course)
+    resume = dict(state, step="completed", pending=None)
+    practicing = dict(resume, step="practicing", phase="practice",
+                      pending={"kind": "practice", "point_ids": ["p0"], "question": {"stem": "问"}},
+                      practice={"resume": resume, "targets": ["p0"], "queue": [], "index": 0, "count": 1})
+    classroom._file(PLAN).write(practicing)
+    reloaded = classroom._load(course)
+    assert reloaded["step"] == "practicing" and reloaded["pending"]["kind"] == "practice"
+    classroom._file(PLAN).write(resume)
+    assert classroom._load(course)["step"] == "completed"                    # the plain completed room is kept too

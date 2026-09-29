@@ -117,7 +117,10 @@ class Classroom:
         modules = [m["id"] for m in course.modules]
         if state.get("version") != 1 or state.get("module_id") not in modules:
             state = self._rebuild(course)
-        if (state.get('step') == 'completed') != (course.plan.get('state') == 'completed'):
+        # A free-check round keeps the pre-practice room in practice.resume; compare that one,
+        # or reopening a completed plan mid-practice would discard the pending question (BUG-30).
+        room = (state.get('practice') or {}).get('resume', state)
+        if (room.get('step') == 'completed') != (course.plan.get('state') == 'completed'):
             state = self._rebuild(course)
         return state
 

@@ -9,6 +9,7 @@ from refactor.learning.app import handlers
 from refactor.learning.app.services import AppServices
 from refactor.learning.connections.providers.base import WebHit
 from refactor.learning.course.research import FetchedContent
+from refactor.learning.app.plan_flow import PlanFlow
 
 from .test_app_window_layer import make_bridge, pump, qapp, tmp_root  # noqa: F401
 
@@ -28,6 +29,38 @@ def page(title):
 
 def fetcher(url, *, cancel, timeout):
     return FetchedContent(url, url, "text/html; charset=utf-8", page(PAGES[url]), "2026-09-27T00:00:00Z")
+
+
+def test_research_shortlist_precedes_raw_hits_at_fetch_limit(monkeypatch):
+    captured = []
+
+    class Pipeline:
+        def __init__(self, **kwargs):
+            assert kwargs['max_sources'] == 30
+
+        def run(self, hits, **kwargs):
+            captured.extend(hits)
+            return SimpleNamespace(verified=[])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr('refactor.learning.course.research_pipeline.ResearchPipeline', Pipeline)
+    flow = PlanFlow(None, lambda *_: None, date.today)
+    flow.status = lambda *_: None
+    flow._lists = lambda: None
+    flow._show_batch = lambda *_args, **_kwargs: None
+    pool = SimpleNamespace(accepted_urls=set(), rejected_urls=set(), add=lambda *_: None)
+    flow._pool = lambda *_: pool
+    shortlist = 'https://docs.python.org/3/reference/compound_stmts.html#function-definitions'
+    raw = tuple(WebHit(f'https://example.org/{n}', f'Hit {n}', '') for n in range(40))
+    flow._ask = lambda *_args, **_kwargs: ([{'url': shortlist, 'title': 'Function definitions', 'why': 'Original reference'}],
+                                          SimpleNamespace(search_hits=raw, citations=()))
+    draft = {'plan_id': 'p1', 'research': {'round': 0, 'rejected': []}, 'goal': 'Python functions parameters',
+             'form': form(date.today()), 'focus': [], 'sources': []}
+    flow._research_once(draft, SimpleNamespace(cancel=threading.Event()))
+    assert captured[0].url == shortlist
+    assert len(captured) == 41
 
 
 class ScriptedModel:

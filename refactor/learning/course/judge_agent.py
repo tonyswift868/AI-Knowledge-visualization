@@ -200,14 +200,18 @@ def _required_points(reference, point_count=1):
 
 def judge_request(ctx: dict, reply: str) -> tuple[str, list[dict]]:
     points, _excerpts_data, question, reference, _recent = _context(ctx)
-    task = dict(mode=ctx["mode"], question=question, reference=reference,
-                reply=_text(reply, "reply", 20_000, empty=True))
+    task = dict(mode=ctx["mode"], question=question, reference=reference)
     if ctx.get('require_evidence'):
         task['required_points'] = list(_required_points(reference, len(points)))
+    task['reply'] = _text(reply, "reply", 20_000, empty=True)
     # A grading decision sees only the question, required points and this
     # answer. Neither chat history nor unrelated source excerpts may persuade it.
     content = "【知识点清单】\n" + _dump([{"id": p["id"], "title": p["title"]} for p in points])
-    content += "\n【本次判定】\n" + _dump(task)
+    # The same question can be attempted again. Keep its rubric ahead of the
+    # one changing answer; _dump validates content, then insertion order is
+    # deliberate solely for this request's cacheable prefix.
+    _dump(task)
+    content += "\n【本次判定】\n" + json.dumps(task, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
     _text(content, "request", 500_000)
     return JUDGE_SYSTEM + (SUBJECTIVE_RULES if ctx.get('require_evidence') else ''), [{"role": "user", "content": content}]
 

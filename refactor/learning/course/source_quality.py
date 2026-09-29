@@ -59,6 +59,13 @@ def content_identity(url):
     if host == 'learn.microsoft.com':
         path = re.sub(r'^/[a-z]{2}(?:-[a-z]{2})?(?=/training/modules/)', '', path, flags=re.I)
         return 'https://learn.microsoft.com' + path
+    if host == 'docs.python.org':
+        path = re.sub(r'^/(?:zh-cn|ja|fr|de|pt-br)/(?=3/)', '/', path, flags=re.I)
+        return 'https://docs.python.org' + path
+    if host == 'github.com':
+        source = re.fullmatch(r'/python/cpython/blob/[0-9a-f]{7,40}/Doc/(tutorial|reference)/([^/]+)\.rst', path, re.I)
+        if source:
+            return f'https://docs.python.org/3/{source[1].lower()}/{source[2]}.html'
     if host == 'modelcontextprotocol.io' and path.startswith('/specification/'):
         path = re.sub(r'^/specification/20\d\d-\d\d-\d\d', '/specification/current', path)
         path = re.sub(r'/index(?:\.md)?$', '', path)

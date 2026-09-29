@@ -37,8 +37,10 @@ def lcp(a, b):
 
 
 def compatible(a, b):
-    return (a.get('model'), bool(a.get('options', {}).get('enable_search'))) == (
-        b.get('model'), bool(b.get('options', {}).get('enable_search')))
+    return (a.get('model'), bool(a.get('options', {}).get('enable_search')),
+            a.get('options', {}).get('reasoning_effort')) == (
+        b.get('model'), bool(b.get('options', {}).get('enable_search')),
+        b.get('options', {}).get('reasoning_effort'))
 
 
 def analyze(capture, block=1):

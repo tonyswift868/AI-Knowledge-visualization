@@ -22,6 +22,7 @@ import uuid
 from refactor.learning.app import classroom as room_module, plan_flow
 from refactor.learning.app.services import AppServices
 from refactor.learning.connections.providers import WebHit
+from refactor.learning.connections.gateway import PURPOSE_EFFORT
 from refactor.learning.course.research import FetchedContent
 from refactor.learning.course import store as store_module
 
@@ -37,11 +38,18 @@ def block(messages, label):
 
 
 class ImmediateThread:
+    deferred = []
+    defer_prep = False
+
     def __init__(self, *, target, **kwargs):
         self.target = target
+        self.name = kwargs.get('name', '')
 
     def start(self):
-        self.target()
+        if self.defer_prep and self.name == 'classroom-lesson-prep':
+            self.deferred.append(self.target)
+        else:
+            self.target()
 
 
 class ScriptedGateway:
@@ -59,7 +67,8 @@ class ScriptedGateway:
     def complete(self, purpose, messages, *, system=None, on_text=None, **kwargs):
         count = self.counts[purpose] = self.counts.get(purpose, 0) + 1
         entry = dict(index=len(self.requests), purpose=purpose, system=system, messages=deepcopy(messages),
-                     options={k: v for k, v in kwargs.items() if k != 'cancel'}, model='deepseek-v4-flash')
+                     options={**{k: v for k, v in kwargs.items() if k != 'cancel'},
+                              'reasoning_effort': PURPOSE_EFFORT.get(purpose)}, model='deepseek-v4-flash')
         self.requests.append(entry)
         text = '\n'.join(m['content'] for m in messages)
         hits = ()
@@ -115,6 +124,24 @@ class ScriptedGateway:
             task = block(messages, '【本次档案更新】')
             value = dict(progress=task['progress'], preferences=task['preferences'], last_stop='列表方法。',
                          weak_points=[dict(point_id=p, note='尚需复习') for p in task['weak_point_ids']])
+        elif purpose == 'lesson_prep':
+            def lesson(point):
+                return dict(explanation=point['summary'], examples=[dict(text='按顺序处理列表元素。',
+                    everyday=True, extrapolation=False, code=None)], analogy='像排队。',
+                    analogy_boundary='类比只说明先后次序。', casual_question='这个方法有什么作用？',
+                    reference_answer=point['summary'], extrapolations=[])
+            if '【模块与本次相邻知识点】' in text:
+                points = block(messages, '【模块与本次相邻知识点】')['points']
+                value = dict(lessons=[dict(point_id=p['id'], lesson=lesson(p)) for p in points])
+            else:
+                value = lesson(block(messages, '【本次知识点】'))
+        elif purpose == 'lesson_review':
+            if '【相邻知识点与待核讲稿】' in text:
+                items = block(messages, '【相邻知识点与待核讲稿】')
+                value = dict(reviews=[dict(point_id=item['point']['id'], verdict='approve',
+                    issues=[], revised=None) for item in items])
+            else:
+                value = dict(verdict='approve', issues=[], revised=None)
         elif purpose == 'check_profile':
             points = block(messages, '【计划知识点（数据）】')
             value = dict(categories=[dict(category='方法混淆', point_ids=[p['id'] for p in points], explanation='合成错答记录。')],
@@ -128,7 +155,7 @@ class ScriptedGateway:
         return SimpleNamespace(text=response, search_hits=hits, citations=())
 
 
-def run_scenario(root):
+def run_scenario(root, *, extended=False):
     source = json.loads(SOURCE.read_text(encoding='utf-8'))
     content = ('<html><head><title>Python 列表方法</title></head><body><h1>Python 列表方法</h1><p>'
                + html.escape(source['chunks']['lists']) + '</p></body></html>').encode()
@@ -148,9 +175,12 @@ def run_scenario(root):
         patches.enter_context(patch.object(store_module, '_at', lambda value=None: original_at(
             value if value is not None else NOW + timedelta(microseconds=next(ticks)))))
         patches.enter_context(patch.object(room_module, 'threading', SimpleNamespace(Thread=ImmediateThread, Lock=threading.Lock, RLock=threading.RLock)))
-        # This fixed audit measures the original foreground request layout.
-        # Lesson preparation has its own cache-prefix contract and tests.
-        patches.enter_context(patch.object(room_module.Classroom, '_prepare_later', lambda *args: None))
+        # The original audit excludes preparation. The extended classroom audit
+        # drains preparation after each host operation releases its plan lock.
+        ImmediateThread.deferred = []
+        ImmediateThread.defer_prep = extended
+        if not extended:
+            patches.enter_context(patch.object(room_module.Classroom, '_prepare_later', lambda *args: None))
         patches.enter_context(patch.object(plan_flow, 'GENERATE_WORKERS', 1))
         services = AppServices(account_id=ACCOUNT, data_root=root, session_provider=lambda: None,
                                api_base_url='https://invalid.example', ca_bundle=Path(root) / 'unused.pem')
@@ -175,8 +205,11 @@ def run_scenario(root):
             assert draft['phase'] == 'ready'
             flow.start(draft)
             room = room_module.Classroom(services, lambda: DAY, now=lambda: NOW, rng=random.Random(17))
-            def act(name, *args):
-                return room.run(pid, lambda course, state, ctx: getattr(room, name)(course, state, ctx, *args), ctx)
+            def act(name, *args, **kwargs):
+                view = room.run(pid, lambda course, state, ctx: getattr(room, name)(course, state, ctx, *args, **kwargs), ctx)
+                while ImmediateThread.deferred:
+                    ImmediateThread.deferred.pop(0)()
+                return view
             act('enter')
             view = act('next')
             assert view['step'] == 'answer'
@@ -203,10 +236,26 @@ def run_scenario(root):
                     break
                 view = act('reply', '最终检验按原文作答。') if view['question'] else act('start_check')
             assert view['step'] == 'completed'
+            practice_start = None
+            practice_reply_lost_pending = False
+            if extended:
+                practice_start = len(model.requests)
+                view = act('start_practice', count=3)
+                assert view['step'] == 'practicing' and view['question']
+                view = act('reply', '自由检验按原文回答。')
+                practice_reply_lost_pending = view['step'] == 'completed'
+                if not practice_reply_lost_pending:
+                    for _ in range(2):
+                        view = act('reply', '自由检验按原文回答。')
+                assert view['step'] == 'completed'
             act('leave')
             assert services.store.get_plan(pid)['state'] == 'completed'
-            assert model.counts.get('profile', 0) >= 3 and model.counts.get('check_profile', 0)
+            assert model.counts.get('profile', 0) >= (2 if extended else 3) and model.counts.get('check_profile', 0), model.counts
             return dict(fixture_sha256=hashlib.sha256(SOURCE.read_bytes()).hexdigest(), seed=15,
-                        date=DAY.isoformat(), status='completed', requests=model.requests)
+                        date=DAY.isoformat(), status='completed', requests=model.requests,
+                        practice_start=practice_start,
+                        practice_reply_lost_pending=practice_reply_lost_pending)
         finally:
+            ImmediateThread.defer_prep = False
+            ImmediateThread.deferred = []
             services.close()

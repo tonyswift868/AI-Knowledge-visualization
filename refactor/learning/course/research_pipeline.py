@@ -113,12 +113,13 @@ def _raw(value):
     return RawHit(*parts)
 
 
-_STOP = frozenset('the a an of in on for with and or to from by at is as github readme md pdf main master en www com org html'.split())
+_STOP = frozenset('the a an of in on for with and or to from by at is as github readme md pdf main master en www com org html '
+                  'python tutorial documentation docs official reference'.split())
 
 
 def _title_words(title):
     title = unicodedata.normalize('NFKC', title).casefold()
-    english = set(re.findall(r'[a-z0-9]{2,}', title)) - _STOP
+    english = set(re.findall(r'[a-z][a-z0-9]+', title)) - _STOP
     chinese = set()
     for phrase in re.findall(r'[\u4e00-\u9fff]+', title):
         chinese.update(phrase[i:i+2] for i in range(len(phrase)-1))
@@ -146,7 +147,7 @@ def _title_check(search_title, titles):
             overlap = len(left & right) / min(len(left), len(right))
             if overlap >= .25:
                 return True, ''
-            if len(left) >= 2 and len(right) >= 2:
+            if left and len(right) >= 2:
                 comparisons += 1
     return (False, 'title_mismatch') if comparisons else (True, 'title_unverified')
 
@@ -252,7 +253,10 @@ class ResearchPipeline:
             if sum(char.isalnum() for char in body) < self.min_text_chars:
                 raise _Rejected('body_too_short', f'提取正文少于 {self.min_text_chars} 个有效字符，无法验证资料内容。')
             titles = [doc.title] if doc.title != fallback else []
-            titles.extend(block.text for block in doc.blocks if block.kind == 'heading' and len(block.section) <= 1)
+            # Search engines often target a real section within a chapter
+            # (for example ``#function-definitions``), while normalization
+            # strips the fragment. Compare its extracted subheadings too.
+            titles.extend(block.text for block in doc.blocks if block.kind == 'heading')
             if media in {'text/plain', 'application/pdf'} and not titles:
                 first = body.splitlines()[0].strip()
                 if 4 <= len(first) <= 180:

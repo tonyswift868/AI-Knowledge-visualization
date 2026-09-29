@@ -404,8 +404,11 @@ class PlanFlow:
                                                 instruction=instruction),
             agents.parse_research, ctx, plan_id=plan_id, search=True)
         hits, seen = [], set()
-        for url, title, snippet in ([(h.url, h.title, h.snippet) for h in result.search_hits + result.citations]
-                                    + [(s["url"], s["title"], s["why"]) for s in suggestions]):
+        # Tool output may contain dozens of raw hits. Give the model's short
+        # explicit shortlist a chance to be verified before the 30-fetch cap;
+        # every URL still goes through the same screen, fetch and quality gate.
+        for url, title, snippet in ([(s["url"], s["title"], s["why"]) for s in suggestions]
+                                    + [(h.url, h.title, h.snippet) for h in result.search_hits + result.citations]):
             if url and url not in seen:
                 seen.add(url)
                 hits.append(RawHit(url=url, title=title or "", snippet=snippet or ""))

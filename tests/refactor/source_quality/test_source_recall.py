@@ -102,6 +102,12 @@ def test_localized_course_and_spec_mirrors_share_content_identity():
         content_identity('https://modelcontextprotocol.io/specification/2025-03-26/architecture')
     assert content_identity('https://learn.microsoft.com/zh-cn/training/modules/a/other') != \
         content_identity('https://learn.microsoft.com/zh-cn/training/modules/a/lesson')
+    assert content_identity('https://docs.python.org/zh-cn/3/tutorial/controlflow.html') == \
+        content_identity('https://docs.python.org/3/tutorial/controlflow.html')
+    assert content_identity('https://github.com/python/cpython/blob/218e47b61862470477922e9aba1a23fd3dab18ae/Doc/tutorial/controlflow.rst') == \
+        content_identity('https://docs.python.org/3/tutorial/controlflow.html')
+    assert content_identity('https://docs.python.org/3/reference/compound_stmts.html') != \
+        content_identity('https://docs.python.org/3/tutorial/controlflow.html')
 
 
 def test_chinese_original_python_lesson_matches_english_goal():
