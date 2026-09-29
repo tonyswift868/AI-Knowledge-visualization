@@ -1,6 +1,6 @@
 import * as React from "react"
 import { CalendarClock, Flame, PlayCircle, Plus, Sparkles, TrendingUp } from "lucide-react"
-import { call } from "../bridge"
+import { call, on } from "../bridge"
 import { useApp } from "../store"
 import { Button, Ring, SakuraArt, Skeleton } from "../ui"
 import type { PlanItem } from "./Plans"
@@ -35,6 +35,7 @@ export function Home() {
     }).catch(() => setPlans([]))
   }, [])
   React.useEffect(() => { if (ready) load() }, [ready, load])
+  React.useEffect(() => on("study_day", () => load()), [load])   // the refresh time passed while open
 
   const running = (plans ?? []).filter((p) => p.today)
   const target = running.reduce((a, p) => a + (p.today?.today_target ?? 0), 0)

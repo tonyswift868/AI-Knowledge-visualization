@@ -138,6 +138,8 @@ class LearningWindow(QWidget):
         self.teacher_assets.register(self.bridge, self)
         self.voice_input = register_voice_input(self.bridge, self)
         self.reminder = register_reminder(self)
+        # A window left open past the refresh time moves the home page to the new study day (PLAN-05).
+        self.reminder.study_day_changed.connect(lambda day: self.bridge.push("study_day", {"day": day.isoformat()}))
         self.speech = TeacherSpeech(self.bridge, self._data_root, self)
         self.channel = QWebChannel(self.page)
         self.channel.registerObject("mf", self.bridge)
