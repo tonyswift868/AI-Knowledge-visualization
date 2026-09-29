@@ -47,7 +47,7 @@ export function Classroom() {
   const [stream, setStream] = React.useState<string | null>(null)
   const [text, setText] = React.useState("")
   const [source, setSource] = React.useState<Source | null>(null)
-  const [reading, setReading] = React.useState(() => localStorage.getItem("mf.classroom.read") !== "off")
+  const [reading, setReading] = React.useState(() => { try { return localStorage.getItem("mf.classroom.read") === "on" } catch { return false } })
   const teacher = React.useRef<TeacherStageHandle>(null)
   const voice = useTeacherVoice(teacher)
   const terms = React.useMemo(() => (room?.points ?? []).map((p) => p.title).slice(0, 60), [room?.points])
@@ -129,6 +129,12 @@ export function Classroom() {
     if (reading && voice.availability?.ready && words.length) void voice.speak(words.map((m) => m.content).join("\n"))
   }, [room, reading, voice])
 
+  // Text is the default; a single message can be read on demand (VOICE-01).
+  function listen(content: string) {
+    if (voice.availability?.ready) { void voice.stop().then(() => voice.speak(content)); return }
+    toast("info", "朗读组件还没下载。需要听的话，先点下方的“下载朗读组件”。")
+  }
+
   function toggleReading() {
     const next = !reading
     setReading(next)
@@ -204,7 +210,8 @@ export function Classroom() {
             if (m.kind === "verdict") return <div key={m.id} className={`class-verdict ${m.content.startsWith("✓") ? "ok" : "bad"}`}>{m.content}</div>
             if (m.role === "system") return <div key={m.id} className={`class-note ${m.kind === "error" ? "warn" : ""}`}>
               {m.kind === "error" && <CircleAlert size={15} />}{m.content}</div>
-            return <div key={m.id} className="bubble bot" data-selectable>{markdown(m.content)}</div>
+            return <div key={m.id} className="bubble bot" data-selectable>{markdown(m.content)}
+              <button className="icon-btn listen" title="听这段" onClick={() => listen(m.content)}><Volume2 size={15} /></button></div>
           })}
           {stream !== null && (live(stream)
             ? <div className="bubble bot streaming">{markdown(live(stream))}</div>

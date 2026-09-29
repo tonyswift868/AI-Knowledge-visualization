@@ -111,6 +111,12 @@ function TodayCard({ plan }: { plan: PlanItem }) {
           {!t.debt_minutes && !t.ahead_minutes && <span className="muted small">{t.today_target ? "按计划进行" : "今天是休息日，不用学"}</span>}
         </div>
       </div>
+      {t.needs_negotiation && (
+        <div className="negotiate small">
+          <span>已经欠了 {minutes(t.debt_minutes)}，超过两天的量了。是不是每天安排太紧？可以推迟截止日期或调整每天的时长。</span>
+          <Button small onClick={() => { set({ planId: plan.id }); go("plan") }}>调整安排</Button>
+        </div>
+      )}
       <Button kind="primary" onClick={() => { set({ planId: plan.id }); go("classroom") }}><PlayCircle />开课</Button>
     </div>
   )
