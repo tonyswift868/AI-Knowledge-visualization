@@ -26,7 +26,7 @@
 | MF-07（server） | D:\MentorFlow-office\server | 空闲 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
-| MF-01（library） | D:\MentorFlow-office\library | 空闲 |
+| MF-01（library） | D:\MentorFlow-office\library | 22-MF01 进行中 |
 | MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
@@ -104,7 +104,7 @@
 | 20-MF06 | MF-06 classroom | 修复全仓库自查找到的 7 个问题（同步冲突、重复判定、完成计划、加资料、读取失败、开始计划、旧代码） | DATA-02、TEACH-02、CHK-01、PLAN-10、UI-01、BUG-23 | 1a0d8ca | 已合入（完成） |
 | 21-MF02 | MF-02 runtime | 课堂反复调用的缓存命中率提到 95% 以上（在新的思考强度下） | SYS-05、SYS-07、ARCH-08、QA-01 | 6791655 | 已合入（部分完成） |
 | 21-MF04 | MF-04 platform | 资料权威性收尾：编程主题补到至少 3 份，并换一个编程题目验证 | PLAN-06、QA-01 | 6791655 | 已合入（部分完成） |
-| 22-MF01 | MF-01 library | 全流程验收：模拟时钟 + 真实模型，从建计划跑到报告与自由检验（只找问题，不改产品代码） | QA-01 及全部已实现条目 | ad8368e | 已起草，待用户转发 |
+| 22-MF01 | MF-01 library | 全流程验收：模拟时钟 + 真实模型，从建计划跑到报告与自由检验（只找问题，不改产品代码） | QA-01 及全部已实现条目 | ad8368e | 进行中 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -2741,7 +2741,7 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
 
 ## 第二十二批任务详情
 
-基线 `ad8368e`（2026-09-30）。全流程验收，只找问题；查出的问题下一批统一修，修完再交外部模型挑错。
+基线 `ad8368e`（2026-09-30）。全流程验收（小测试），只找问题；查出的问题下一批统一修。用户安排：小测试没问题后，再做最终测试——用 ai-agent-book 与 hello-agents 两个仓库建真实大计划，模拟时钟从建计划跑到完成与各种检验（会跑很久）；最终测试的任务等用户说了再写。全部修完再交外部模型挑错。
 
 ### [22-MF01] library｜全流程验收：模拟时钟 + 真实模型，从建计划跑到报告与自由检验（只找问题，不改产品代码）
 
