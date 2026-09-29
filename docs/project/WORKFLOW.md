@@ -25,9 +25,9 @@
 | MF-03（client） | D:\MentorFlow-office\client | 空闲 |
 | MF-07（server） | D:\MentorFlow-office\server | 空闲 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
-| MF-04（platform） | D:\MentorFlow-office\platform | 12-MF04 进行中 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-01（library） | D:\MentorFlow-office\library | 13-MF01 进行中 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 12-MF06 进行中 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
 工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
@@ -83,8 +83,8 @@
 | 11-MF04 | MF-04 platform | 计划中途加资料：只处理新增部分的组件 | PLAN-10、PLAN-08、PLAN-04 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
 | 11-MF06 | MF-06 classroom | 新界面的 Windows 安装程序 + 朗读引擎按需下载 + 自动更新 | SYS-06、VOICE-01、ARCH-01 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
 | 11-MF03 | MF-03 client | 检验时长分开预估、分开记 + 全流程阻塞复查 | CHK-01、PLAN-05、TEACH-02、SYS-04 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
-| 12-MF06 | MF-06 classroom | 朗读组件改为从官方下载站获取 + 正式发布构建（交架构师签名上传） | SYS-06、VOICE-01 | ed11b90 | 已派发 |
-| 12-MF04 | MF-04 platform | 加资料支持贴网址（网页与 GitHub 仓库） | PLAN-10、PLAN-06、BUG-09 | ed11b90 | 已派发 |
+| 12-MF06 | MF-06 classroom | 朗读组件改为从官方下载站获取 + 正式发布构建（交架构师签名上传） | SYS-06、VOICE-01 | ed11b90 | 已合入（9d71b15） |
+| 12-MF04 | MF-04 platform | 加资料支持贴网址（网页与 GitHub 仓库） | PLAN-10、PLAN-06、BUG-09 | ed11b90 | 已合入（9d71b15） |
 | 13-MF01 | MF-01 library | 课堂提速（并行与预取）+ 长模块对话压缩 + 可重复的课堂回归评测 | ARCH-07、TEACH-01、TEACH-04、SYS-05 | 6f55a24 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
