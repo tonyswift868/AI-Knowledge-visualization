@@ -85,7 +85,7 @@
 | 11-MF03 | MF-03 client | 检验时长分开预估、分开记 + 全流程阻塞复查 | CHK-01、PLAN-05、TEACH-02、SYS-04 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
 | 12-MF06 | MF-06 classroom | 朗读组件改为从官方下载站获取 + 正式发布构建（交架构师签名上传） | SYS-06、VOICE-01 | ed11b90 | 已合入（9d71b15） |
 | 12-MF04 | MF-04 platform | 加资料支持贴网址（网页与 GitHub 仓库） | PLAN-10、PLAN-06、BUG-09 | ed11b90 | 已合入（9d71b15） |
-| 13-MF01 | MF-01 library | 课堂提速（并行与预取）+ 长模块对话压缩 + 可重复的课堂回归评测 | ARCH-07、TEACH-01、TEACH-04、SYS-05 | 6f55a24 | 已派发 |
+| 13-MF01 | MF-01 library | 课堂提速（并行与预取）+ 长模块对话压缩 + 可重复的课堂回归评测 | ARCH-07、TEACH-01、TEACH-04、SYS-05 | b58dc7b | 已派发（2026-09-29 首次文本未发出，按新基线重发） |
 | 14-MF07 | MF-07 server | 服务器瘦身：把新软件在用的约 1.1 万行迁进 refactor/server，做只挂这几组接口的新入口 | DATA-01、ACC-01、ACC-02、DATA-02 | 1284f67 | 已派发 |
 | 14-MF03 | MF-03 client | 客户端旧代码迁移 + 删除仓库里不再用的旧代码和旧文档 | DATA-01、SYS-06、UI-00 | 1284f67 | 已派发 |
 
@@ -2147,7 +2147,7 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
 
 ## 第十三批任务详情
 
-基线 `6f55a24`（2026-09-29）。与第十二批两个任务同时进行（共 3 个）。
+基线 `b58dc7b`（2026-09-29 重发；第一次的文本用户没有发出）。与 14-MF07、14-MF03 同时进行（共 3 个）。
 
 ### [13-MF01] library｜课堂提速（并行与预取）+ 长模块对话压缩 + 可重复的课堂回归评测
 
@@ -2158,10 +2158,11 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   cd D:\MentorFlow-office\library\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/library
-  git reset --hard 6f55a24
+  git reset --hard b58dc7b
 测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署。先读 AGENTS.md 的磁盘规则：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删，同类只留最后一份，回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
 遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑：14-MF03 正在迁移并删除旧代码（desktop/、frontend/、tools/、refactor/learning 里的旧界面与旧计划适配等），14-MF07 在做 refactor/server。你不要改这些旧目录和 refactor/server；课堂相关文件归你。
 这次允许你修改架构师的课堂文件 refactor/learning/app/classroom.py 和课堂页 web/src/pages/Classroom.tsx（只改与本任务有关的部分），以及 course/ 下的 agent 组件与 store.py 里对话压缩相关的部分。
 先读：AGENTS.md；CURRENT_STATE.md 的 [ARCH-07]、[TEACH-01]（三层上下文）、[TEACH-04]（判定必须独立）、[TEACH-06]、[ARCH-08]（请求排列与缓存）、[SYS-05]；app/classroom.py 全文；你第十批的课堂评测工具 tests/refactor/class_eval/。
 问题（用户确认必须修）：
