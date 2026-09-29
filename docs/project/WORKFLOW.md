@@ -2207,6 +2207,8 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
      - 数据库一个表都不改：沿用线上 postgres 现有表与 alembic_version；新入口启动时只校验、不建表不迁移；把这些表需要的迁移脚本按原链保留一份（或写一个与现有 head 同 ID 的基线），报告写明你的做法和理由。
      - Keycloak 部分（realm 配置、主题、邮箱验证码 SPI 等 MF-U11 镜像实际用到的文件）一并收进 refactor/server/keycloak/，能原样复用的不重写。
      - 拿不准某段是否线上在用的：保留，并在报告列出“存疑保留”。
+     - 迁过来的代码和新入口不兼容的地方，你自己改通，不用问。
+     - 功能先行，不新增任何安全加固（镜像签名、mTLS、镜像扫描、额外校验层等）；旧代码里这类东西，只要不是在用接口正常工作所必需的就不带；登录、Token、密码、验证码本身的逻辑照旧。Dockerfile 写最简单能跑的。
   3. 契约测试：先对旧 backend 的这些接口写对照测试（同一组请求，记录状态码与 JSON 结构），再对新入口跑同一组，结果必须一致。旧 backend 里这些模块的相关测试迁到 tests/refactor/server/（文件名全局不重名）。
   4. 部署材料（不部署）：refactor/server/Dockerfile（python slim，只装新入口需要的依赖，另写 refactor/server/requirements.txt）；和 MF-U11 相同环境变量的 compose 片段；架构师在服务器上构建与切换的步骤；回滚步骤（切回 MF-U11 镜像）。本机有 Docker 就在 D 盘构建验证镜像大小；没有就写明“未构建”，交架构师在服务器构建。
   5. 不删 backend/、deploy/、根目录 Dockerfile（架构师在新服务器上线验证后再删）；不改 refactor/learning 与 refactor/desktop（若发现客户端调用了清单外接口，列出来不要改）。
