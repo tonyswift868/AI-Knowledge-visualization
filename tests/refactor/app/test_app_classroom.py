@@ -301,3 +301,29 @@ def test_a_started_plan_can_be_renamed_archived_and_deleted(room):
     assert classroom._file(PLAN).path.exists()
     assert flow.discard(PLAN) == {"deleted": True}
     assert store.list_plans(include_archived=True) == [] and not classroom._file(PLAN).path.exists()
+
+
+def test_a_test_closed_before_a_crash_is_finished_not_closed_twice(room):
+    """BUG-23: the store closed the attempt but the room state was never saved (app killed mid-reply)."""
+    classroom, agents, store = room
+    act(classroom, "enter")
+    act(classroom, "next")
+    agents.verdicts = [("answer", True, []), ("answer", True, [])]
+    act(classroom, "reply", "先进先出")
+    view = act(classroom, "reply", "入队在尾，出队在头")
+    assert view["step"] == "test_offer"
+    act(classroom, "start_test", "module_test")
+    agents.verdicts = [("answer", True, [])]
+    act(classroom, "reply", "先进先出")
+    before_last = classroom._file(PLAN).read({})                             # the state a crash would leave behind
+    agents.verdicts = [("answer", True, [])]
+    view = act(classroom, "reply", "入队在尾，出队在头")
+    assert view["step"] == "test_done" and view["module"]["state"] == "passed"
+    finished = (credits(store), store.load_ledger(PLAN).to_dict())
+    classroom._file(PLAN).write(before_last)
+    agents.verdicts = [("answer", True, [])]
+    view = act(classroom, "reply", "入队在尾，出队在头")                    # the learner answers again after restarting
+    assert view["step"] == "test_done" and view["module"]["state"] == "passed"
+    closed = [r for r in store.records("attempt_closed", PLAN)]
+    assert len(closed) == 1 and (credits(store), store.load_ledger(PLAN).to_dict()) == finished   # same bookkeeping
+    assert act(classroom, "next_module")["module"]["title"] == "栈"

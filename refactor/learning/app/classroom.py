@@ -74,7 +74,10 @@ class Classroom:
             course = self._course(plan_id)
             state = self._load(course)
             try:
-                work(course, state, ctx)
+                if ctx is not None and self._test_already_closed(course, state):
+                    self._finish_test(course, state, ctx)  # finish the interrupted close instead of the action (BUG-23)
+                else:
+                    work(course, state, ctx)
             except ModelCancelled:
                 raise BridgeError("CANCELLED", "已停止。") from None
             except ModelError as exc:
@@ -86,6 +89,12 @@ class Classroom:
             return self.snapshot(course, state)
         finally:
             lock.release()
+
+    @staticmethod
+    def _test_already_closed(course, state):
+        test = state.get("test")
+        return bool(test and test.get("kind") in ("module_test", "skip_test") and test.get("attempt")
+                    and course.book().attempt_closed(state["module_id"], test["attempt"]))
 
     def _load(self, course):
         try:
@@ -390,9 +399,12 @@ class Classroom:
         day = self._day(state)
         state["pending"], state["test"] = None, None
         store = course.store
+        # A crash after the close but before the room state was saved leaves the attempt closed in the
+        # store; finishing again must not close it twice (BUG-23). The steps below are idempotent.
         if test["kind"] != "retest":
-            store.append_attempt_closed(course.plan_id, AttemptClosed(uuid.uuid4().hex, course.next_seq(), module_id,
-                                                                      test["attempt"], test["kind"]))
+            if not course.book().attempt_closed(module_id, test["attempt"]):
+                store.append_attempt_closed(course.plan_id, AttemptClosed(uuid.uuid4().hex, course.next_seq(), module_id,
+                                                                          test["attempt"], test["kind"]))
             if "final_check_minutes" in course.module(module_id):
                 store.settle_module_test(course.plan_id, module_id, test["attempt"], today=day)
         book = course.book()

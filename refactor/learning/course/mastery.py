@@ -181,6 +181,9 @@ class MasteryBook:
         self._events[event.event_id] = event
         self._cache = None
 
+    def attempt_closed(self, module_id, attempt_id):
+        return (module_id, attempt_id) in self._closed_attempts
+
     def _project(self):
         if self._cache is not None:
             return self._cache
