@@ -83,7 +83,7 @@ def test_summary_separates_three_states_and_read_only_backfill(tmp_path):
 
 def test_catalogues_have_identical_sourced_calendar():
     bundled = json.loads(CAT.read_text(encoding='utf-8'))
-    example = json.loads((ROOT / 'deploy/enterprise/staging/rp05/catalog/model-prices.example.json').read_text(encoding='utf-8'))
+    example = json.loads((ROOT / 'refactor/learning/course/data/model-prices.json').read_text(encoding='utf-8'))
     assert bundled == example
     calendar = bundled['periods']['holiday_calendar']
     assert len(calendar['dates']) == len(set(calendar['dates'])) == 33

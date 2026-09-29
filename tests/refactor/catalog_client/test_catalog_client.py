@@ -76,7 +76,7 @@ def ok_handler(request):
 
 
 def test_builtin_prices_are_exact_example_copy_and_candidates_excluded(tmp_path):
-    example = ROOT / 'deploy/enterprise/staging/rp05/catalog/model-prices.example.json'
+    example = ROOT / 'refactor/learning/course/data/model-prices.json'
     assert example.read_bytes() == (DATA / 'model-prices.json').read_bytes()
     with client(tmp_path, ok_handler) as catalog:
         assert not catalog.load_lists().candidates

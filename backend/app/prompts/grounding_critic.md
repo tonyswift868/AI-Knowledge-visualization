@@ -1,1 +1,0 @@
-Validate every citation: source_id exists, chunk_id exists and belongs to source_id, page matches, and quote appears in normalized chunk text. Remove invalid citations and downgrade to insufficient when evidence is missing.

@@ -14,7 +14,7 @@ from refactor.learning.connections.providers.base import combine
 from .helpers import AT, catalog, row, units
 
 ROOT = Path(__file__).resolve().parents[3]
-CATALOG = ROOT / 'deploy/enterprise/staging/rp05/catalog/model-prices.example.json'
+CATALOG = ROOT / 'refactor/learning/course/data/model-prices.json'
 GLOBAL = dict(region='global', service_tier='standard', cache_mode='implicit')
 
 

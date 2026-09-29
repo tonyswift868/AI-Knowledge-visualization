@@ -1,6 +1,6 @@
 # MentorFlow — 入口
 
-- 主目录 D:\MentorFlow；所有代码都在 [refactor](refactor/)（客户端 learning、desktop，服务器 server），保持干净。旧客户端代码和旧文档已于 2026-09-29 删除（14-MF03）；backend/、deploy/、根目录 Dockerfile 只为线上旧服务暂留，新服务器 refactor/server 上线验证后删除，不要再从里面引用或复制代码。
+- 主目录 D:\MentorFlow；所有代码都在 [refactor](refactor/)（客户端 learning、desktop，服务器 server），保持干净。旧代码（客户端、旧服务器 backend/deploy、旧 CI 和脚本）与旧文档已于 2026-09-29 全部删除，需要时从 git 历史里查；线上服务器已切到 refactor/server。
 - **功能先行**：功能没做完之前不加安全加固（镜像签名、mTLS、镜像扫描、额外校验层等）；只保留现有功能正常工作必需的部分（登录、Token、密码、验证码、更新签名照旧）。
 - 测试代码放在 `tests/refactor/<模块>/`，不放进 refactor；refactor 里只有产品运行需要的文件；测试文件名在整个 tests/ 下不能重名（例如用 test_plan_export.py，不用通用的 test_export.py），否则多套测试一起运行时会互相冲突。
 - 唯一需求与状态文档：[docs/project/CURRENT_STATE.md](docs/project/CURRENT_STATE.md)。需求由用户直接给出，不从其他文档领取。

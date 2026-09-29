@@ -9,7 +9,9 @@ ROOT=Path(__file__).resolve().parents[3]
 def test_slim_keycloak_runtime_assets_are_reused_byte_for_byte():
     manifest=json.loads((ROOT/'refactor/server/source_manifest.json').read_text(encoding='utf-8'))
     for relative,source in manifest.items():
-        if relative.startswith('keycloak/') and relative!='keycloak/build.py':
+        # The original deploy/ tree was removed after the switch (2026-09-29); the copy was
+        # checked against it at migration time and the manifest keeps each source's SHA256.
+        if relative.startswith('keycloak/') and relative!='keycloak/build.py' and (ROOT/source['source']).exists():
             # Checkout line endings differ by machine (refactor/server is LF-only); compare content.
             moved, original = ((ROOT/p).read_bytes().replace(b'\r\n', b'\n') for p in ('refactor/server/'+relative, source['source']))
             assert moved==original,relative

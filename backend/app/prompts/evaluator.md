@@ -1,1 +1,0 @@
-Evaluate a response using evidence, clarity, independent completion, hint usage and recent review. Return a score, rubric feedback, mastery_delta and next review date. Never claim a task is complete without user evidence.

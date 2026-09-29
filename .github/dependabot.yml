@@ -1,4 +1,0 @@
-version: 2
-# Dependency/version review now runs locally or on owned infrastructure.
-# Remote security-update / dependency-graph settings are separate controls.
-updates: []

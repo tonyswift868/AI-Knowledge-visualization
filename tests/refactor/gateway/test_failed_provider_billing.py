@@ -245,7 +245,7 @@ def test_failed_response_does_not_inherit_standard_price_without_its_tier(tmp_pa
 def test_real_deepseek_fixture_truncation_is_billed_with_integrated_catalogue(tmp_path, monkeypatch):
     from refactor.learning.connections import gateway as gateway_module, usage as usage_module
     root = Path(__file__).resolve().parents[3]
-    catalog = PriceCatalog(root / 'deploy/enterprise/staging/rp05/catalog/model-prices.example.json')
+    catalog = PriceCatalog(root / 'refactor/learning/course/data/model-prices.json')
     data = json.loads((Path(__file__).parents[1] / 'providers/fixtures/with_tool.json').read_text(encoding='utf-8'))['response']
     actual_timestamp = usage_module.timestamp
     def timestamp(value=None):

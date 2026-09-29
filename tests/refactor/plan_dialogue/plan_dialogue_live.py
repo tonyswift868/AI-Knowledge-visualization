@@ -31,7 +31,7 @@ from .plan_dialogue_harness import (
 from .plan_dialogue_checks import evaluate
 
 REPO = HERE.parents[2]
-CATALOG = REPO / "deploy/enterprise/staging/rp05/catalog/model-prices.example.json"
+CATALOG = REPO / "refactor/learning/course/data/model-prices.json"
 
 
 class Budget:
