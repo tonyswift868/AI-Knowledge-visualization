@@ -792,11 +792,11 @@
 
 ### [BUG-23] 模块检测最后一题答完时关掉软件，重开后课堂永久卡死
 - 状态：已解决（2026-09-29）
-- 现象：2026-09-29 架构师用真实模型跑端到端模拟时，程序在模块检测最后一题判完、老师正在总结时被结束；重开后再答题一直报“掌握度事件或查询参数无效”，这门课无法继续。
+- 现象：2026-09-29 架构师用真实模型跑端到端模拟时，重开课堂后再答模块检测的最后一题，一直报“掌握度事件或查询参数无效”，这门课无法继续。（这次的直接诱因是架构师误让两个评测进程同时操作同一份数据；软件本身有防多开锁，真实使用中的触发方式是下面“原因”里的中途关闭，已用测试复现。）
 - 原因：检测结束分两处保存：先在数据库记“本次检测已结束”，老师总结完才保存课堂状态文件。两次保存之间程序被关（用户关窗口、断电、崩溃）时，状态文件仍是“检测中”，重答最后一题会再次“结束检测”，数据库拒绝（ATTEMPT_ALREADY_CLOSED），之后每次操作都失败。
-- 排查：看端到端运行的报错栈（classroom._finish_test → store.append_attempt_closed → mastery ATTEMPT_ALREADY_CLOSED），对照 Classroom.run 只在正常返回或模型错误时保存状态。
+- 排查：看端到端运行的报错栈（classroom._finish_test → store.append_attempt_closed → mastery ATTEMPT_ALREADY_CLOSED），对照 Classroom.run 只在正常返回或模型错误时保存状态；用测试构造“数据库已结束、状态文件未保存”复现（修复前失败）。
 - 解决：`course/mastery.py` 增加 attempt_closed 查询；`app/classroom.py` 收尾时已结束的检测不再重复结束，结算与记账照做（都可重复执行）；每次课堂操作前先核对“状态说检测中、数据库说已结束”，是就直接补完收尾，不再执行原操作。
-- 验证：新增 tests/refactor/app/test_app_classroom.py::test_a_test_closed_before_a_crash_is_finished_not_closed_twice（修复前失败、修复后通过，恢复后的记账与正常完成完全一致）；端到端真实数据上重开后自动补完收尾，课程继续。
+- 验证：新增 tests/refactor/app/test_app_classroom.py::test_a_test_closed_before_a_crash_is_finished_not_closed_twice（修复前失败、修复后通过，恢复后的记账与正常完成完全一致）；端到端真实数据上重开后自动补完收尾，课程继续。另确认桌面外壳有 QLockFile 防多开（account_shell_main.py），同一账号不会有两个进程同时写。
 - 经验：同一步里既写数据库又写状态文件时，要假设两次保存之间随时可能中断：重开时能从数据库推回正确状态，写入要能安全重复。
 - 关联：[TEACH-02] [ARCH-07]
 - 更新：2026-09-29
