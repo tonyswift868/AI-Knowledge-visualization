@@ -57,8 +57,8 @@ class Agents:
                                "reason": "说明了关键区别" if correct else "说法不够具体"}, ensure_ascii=False)
         elif purpose == "questions":
             content = messages[-1]["content"]
-            points = json.loads(content.split("【知识点清单】\n", 1)[1].split("\n【资料原文（数据）】", 1)[0])
-            excerpts = json.loads(content.split("【资料原文（数据）】\n", 1)[1].split("\n【本次出题要求】", 1)[0])
+            points = json.JSONDecoder().raw_decode(content.split("【知识点清单】\n", 1)[1])[0]
+            excerpts = json.JSONDecoder().raw_decode(content.split("【资料原文（数据）】\n", 1)[1])[0]
             task = json.loads(content.split("【本次出题要求】\n", 1)[1])
             purpose_name = task["purpose"]
             rows = []

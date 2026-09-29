@@ -103,8 +103,7 @@ class FakeAgent:
             }, ensure_ascii=False), search_hits=(), citations=())
         if purpose == "questions":
             content = messages[-1]["content"]
-            points = json.loads(content.split("【知识点清单】\n", 1)[1].split(
-                "\n【资料原文（数据）】", 1)[0])
+            points = json.JSONDecoder().raw_decode(content.split("【知识点清单】\n", 1)[1])[0]
             purpose_name = json.loads(content.split("【本次出题要求】\n", 1)[1])["purpose"]
             rows = []
             for index, point in enumerate(points):

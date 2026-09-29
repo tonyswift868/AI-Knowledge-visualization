@@ -103,7 +103,7 @@ def test_request_layout_cache_prefix_and_no_mutation():
     content, other = messages[0]["content"], other_messages[0]["content"]
     prefix = content.split("【本次判定】")[0]
     assert other.startswith(prefix)
-    assert content.index("【知识点清单】") < content.index("【资料原文") < content.index("【最近对话") < content.index("【本次判定】")
+    assert content.index("【资料原文") < content.index("【知识点清单】") < content.index("【最近对话") < content.index("【本次判定】")
     assert messages[0]["role"] == "user" and len(messages) == 1
     task = json.loads(content.split("【本次判定】\n")[1])
     assert task["reply"].endswith("动作也只用传感器。") and task["mode"] == "casual"

@@ -272,3 +272,12 @@ def test_a_github_repo_link_imports_its_docs(qapp, tmp_root):
     finally:
         bridge.close()
         services.close()
+
+
+def test_outline_estimate_counts_real_check_time():
+    """PLAN-05: the end-to-end plan of 2026-09-29 was 149 learning + 54 module test + 71 final check = 274."""
+    from refactor.learning.app.plan_flow import minute_ranges, with_checks
+    from refactor.learning.course.ledger import PlanWindow
+    assert abs(with_checks(149) - 274) / 274 < 0.1
+    ranges = minute_ranges(PlanWindow(date(2026, 10, 5), date(2026, 10, 11), 20), 115, 155)
+    assert ranges["daily"][1] >= 35 and ranges["over_cap"]                  # 20 min/day was never enough

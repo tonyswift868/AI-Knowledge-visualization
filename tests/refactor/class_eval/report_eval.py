@@ -116,8 +116,8 @@ def format_results(calls, phase):
                     app.judge_agent.parse_judgement(row["text"], ctx)
                 elif purpose == "questions":
                     content = row["messages"][-1]["content"]
-                    points = json.loads(content.split("【知识点清单】\n",1)[1].split("\n【资料原文（数据）】",1)[0])
-                    excerpts = json.loads(content.split("【资料原文（数据）】\n",1)[1].split("\n【本次出题要求】",1)[0])
+                    points = json.JSONDecoder().raw_decode(content.split("【知识点清单】\n",1)[1])[0]
+                    excerpts = json.JSONDecoder().raw_decode(content.split("【资料原文（数据）】\n",1)[1])[0]
                     task = json.loads(content.split("【本次出题要求】\n",1)[1])
                     app.question_agent.parse_questions(row["text"], dict(points=points,excerpts=excerpts,**task))
                 else:
@@ -153,8 +153,8 @@ def parser_replay():
         if row["purpose"] != "questions" or not row.get("text"):
             continue
         content = row["messages"][-1]["content"]
-        points = json.loads(content.split("【知识点清单】\n",1)[1].split("\n【资料原文（数据）】",1)[0])
-        excerpts = json.loads(content.split("【资料原文（数据）】\n",1)[1].split("\n【本次出题要求】",1)[0])
+        points = json.JSONDecoder().raw_decode(content.split("【知识点清单】\n",1)[1])[0]
+        excerpts = json.JSONDecoder().raw_decode(content.split("【资料原文（数据）】\n",1)[1])[0]
         task = json.loads(content.split("【本次出题要求】\n",1)[1])
         cases.append(dict(id=row["id"], text=row["text"], ctx=dict(points=points, excerpts=excerpts, **task)))
     def check():

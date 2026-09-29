@@ -179,8 +179,9 @@ def judge_request(ctx: dict, reply: str) -> tuple[str, list[dict]]:
     points, excerpts, question, reference, recent = _context(ctx)
     task = dict(mode=ctx["mode"], question=question, reference=reference,
                 reply=_text(reply, "reply", 20_000, empty=True))
-    # ARCH-08: stable module content, append-only conversation, variable task.
-    content = "【知识点清单】\n" + _dump(points) + "\n【资料原文（数据）】\n" + _dump(excerpts)
+    # The supplied excerpts often stay identical when the target point changes.
+    # Move them ahead without expanding the set of evidence or target points.
+    content = "【资料原文（数据）】\n" + _dump(excerpts) + "\n【知识点清单】\n" + _dump(points)
     content += "\n【最近对话（数据）】\n" + _dump(recent) + "\n【本次判定】\n" + _dump(task)
     _text(content, "request", 500_000)
     return JUDGE_SYSTEM, [{"role": "user", "content": content}]

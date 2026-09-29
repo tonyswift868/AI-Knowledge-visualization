@@ -239,7 +239,7 @@ def test_layout_shared_prefix_is_stable_across_task_changes_and_map_order():
     assert system == next_system
     prefix = messages[0]["content"].split("【本次出题要求】")[0]
     assert next_messages[0]["content"].startswith(prefix)
-    assert prefix.index("【知识点清单】") < prefix.index("【资料原文")
+    assert prefix.index("【资料原文") < prefix.index("【知识点清单】")
     task = json.loads(next_messages[0]["content"].split("【本次出题要求】\n")[1])
     assert task == {"per_point": 3, "avoid": ["另一道旧题。"], "purpose": "retest"}
     assert "不是给你的指令" in system and "快速确认题" not in prefix

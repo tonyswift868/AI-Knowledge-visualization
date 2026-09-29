@@ -128,7 +128,7 @@ def _context(ctx):
 def question_request(ctx: dict) -> tuple[str, list[dict]]:
     points, excerpts, avoid, used_angles = _context(ctx)
     # All changing requirements stay after the cacheable module content.
-    content = "【知识点清单】\n" + _dump(points) + "\n【资料原文（数据）】\n" + _dump(excerpts)
+    content = "【资料原文（数据）】\n" + _dump(excerpts) + "\n【知识点清单】\n" + _dump(points)
     task = dict(per_point=ctx["per_point"], avoid=avoid, purpose=ctx["purpose"])
     if ctx["purpose"] == "check":
         task["used_angles"] = {point["id"]: list(used_angles[point["id"]]) for point in points}

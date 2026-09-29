@@ -237,8 +237,8 @@ def last_json(messages, label):
 
 def judge_input(entry):
     content = entry["messages"][-1]["content"]
-    points = json.loads(content.split("【知识点清单】\n", 1)[1].split("\n【资料原文（数据）】", 1)[0])
-    excerpts = json.loads(content.split("【资料原文（数据）】\n", 1)[1].split("\n【最近对话（数据）】", 1)[0])
+    points = json.JSONDecoder().raw_decode(content.split("【知识点清单】\n", 1)[1])[0]
+    excerpts = json.JSONDecoder().raw_decode(content.split("【资料原文（数据）】\n", 1)[1])[0]
     task = last_json(entry["messages"], "【本次判定】")
     return dict(id=entry["id"], points=points, excerpts=excerpts, **task)
 

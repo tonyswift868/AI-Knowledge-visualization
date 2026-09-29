@@ -24,6 +24,7 @@ import uuid
 
 from ..connections.errors import MODEL_OUTPUT_TRUNCATED, ModelCancelled, ModelError
 from ..course import check_agent, judge_agent, profile_agent, question_agent, teacher_agent
+from ..course.request_layout import dialogue_tail
 from ..course.mastery import ANGLES, AttemptClosed, Judgement
 from ..course.planner_agents import LEVELS, AgentFormatError
 from ..course.store import StoreError
@@ -615,10 +616,7 @@ class Classroom:
             role = "user" if m["role"] == "user" else "assistant"
             text = m["content"] if m["role"] != "system" else f"（系统）{m['content']}"
             rows.append({"role": role, "text": text})
-        rows = rows[-DIALOGUE_ROWS:]
-        while rows and sum(len(r["text"]) for r in rows) > DIALOGUE_CHARS:
-            rows.pop(0)
-        return rows
+        return dialogue_tail(rows, max_rows=DIALOGUE_ROWS, max_chars=DIALOGUE_CHARS)
 
     def _focus(self, course, state):
         points = course.points_of(state["module_id"])
@@ -679,7 +677,7 @@ class Classroom:
                 "excerpts": course.excerpts(pending["point_ids"]),
                 "question": {"stem": q["stem"], "type": q["type"], "options": q.get("options", [])},
                 "reference": q.get("reference") or q.get("answer") or "按知识点要点判断",
-                "recent": self._dialogue(course, state)[-7:-1]}
+                "recent": dialogue_tail(self._dialogue(course, state)[:-1], max_rows=6)}
         request = judge_agent.judge_request(jctx, reply)
         return self._ask(course, ctx, "judge", request, lambda text: judge_agent.parse_judgement(text, jctx), 2048)
 

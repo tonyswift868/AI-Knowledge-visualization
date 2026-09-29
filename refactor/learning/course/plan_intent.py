@@ -126,8 +126,13 @@ def intent_request(ctx: dict, text: str) -> tuple[str, list[dict]]:
     _context(ctx)
     _string(text, "user text", 12000)
     try:
-        payload = json.dumps({"ctx": {key: ctx[key] for key in _CONTEXT_FIELDS}, "text": text},
-                             ensure_ascii=False, allow_nan=False, sort_keys=True)
+        # Canonicalise nested maps, then place mutable status/date/dialogue last.
+        # Keep the JSON schema and every value exactly as before.
+        ordered = json.loads(json.dumps({key: ctx[key] for key in _CONTEXT_FIELDS},
+                                        ensure_ascii=False, allow_nan=False, sort_keys=True))
+        keys = ('form', 'sections', 'modules', 'cards', 'facts', 'phase', 'recent', 'today')
+        payload = json.dumps({"ctx": {key: ordered[key] for key in keys}, "text": text},
+                             ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError, RecursionError):
         raise AgentFormatError("context is not finite JSON data") from None
     if len(payload) > 200000:

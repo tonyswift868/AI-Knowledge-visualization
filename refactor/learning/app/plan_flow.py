@@ -22,6 +22,7 @@ import uuid
 from ..connections.errors import MODEL_OUTPUT_TRUNCATED, ModelCancelled, ModelError
 from ..course import plan_intent
 from ..course import planner_agents as agents
+from ..course.request_layout import dialogue_tail
 from ..course.ledger import LedgerError, PlanWindow, check_cap, distribute, estimate_check_minutes, full_day_minutes
 from ..course.store import StoreError
 from ..preferences.storage import AccountJSON, StorageError
@@ -123,9 +124,23 @@ def window_note(window: PlanWindow) -> str:
             f"每天最多 {window.daily_cap_minutes} 分钟")
 
 
+MINUTES_PER_POINT_GUESS = 6  # the outline has no points yet; generated points average ~5.5 learning minutes
+
+
+def with_checks(learning_minutes: int) -> int:
+    """Learning plus the same module-test and final-check estimate generation uses (PLAN-05).
+
+    Checks take close to half of a plan (end-to-end 2026-09-29: 149 learning + 54 module
+    test + 71 final check); a small flat reserve made users plan far too little time.
+    """
+    points = max(1, round(learning_minutes / MINUTES_PER_POINT_GUESS))
+    question = max(1, round(CHECK_MINUTES_PER_QUESTION))
+    return learning_minutes + points * question + estimate_check_minutes(points, minutes_per_question=question)
+
+
 def minute_ranges(window: PlanWindow, low: int, high: int) -> dict:
-    """Totals include a check reserve; daily figures are for a full study day."""
-    lo_total, hi_total = round(low * 1.12), round(high * 1.12)
+    """Totals include module tests and the final check; daily figures are for a full study day."""
+    lo_total, hi_total = with_checks(low), with_checks(high)
     lo_day = full_day_minutes(distribute(window, lo_total), window)
     hi_day = full_day_minutes(distribute(window, hi_total), window)
     cap = check_cap(window, hi_total)
@@ -793,8 +808,8 @@ class PlanFlow:
     def _intent_context(self, draft):
         phase = draft["phase"]
         form = {k: v for k, v in (draft["form"] or {}).items() if k != "only_mine"}
-        recent = [{"role": m["role"], "text": m["text"][:1500]} for m in draft["messages"]
-                  if m["role"] in ("ai", "user") and m.get("text")][-6:]
+        recent = dialogue_tail([{"role": m["role"], "text": m["text"][:1500]} for m in draft["messages"]
+                                if m["role"] in ("ai", "user") and m.get("text")], max_rows=6)
         cards = [{"n": n, "title": c["title"], "site": c.get("site") or "", "summary": (c.get("summary") or "")[:200],
                   "status": {"new": "待定", "adopted": "已采用", "rejected": "不要"}[c["status"]]}
                  for n, c in enumerate(draft["sources"], 1)]
