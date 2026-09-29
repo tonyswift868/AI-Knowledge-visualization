@@ -8,9 +8,4 @@ def __getattr__(name):
     raise AttributeError(name)
 
 
-def create_page(context, parent=None):
-    from .page import ConnectionsPage
-    return ConnectionsPage(context, parent)
-
-
-__all__ = ["ModelClient", "ModelError", "ModelCancelled", "create_page"]
+__all__ = ["ModelClient", "ModelError", "ModelCancelled"]

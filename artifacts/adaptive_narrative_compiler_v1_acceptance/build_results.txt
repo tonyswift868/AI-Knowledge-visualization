@@ -1,3 +1,0 @@
-PASS - npm.cmd run build: Vite 8.1.4, TypeScript build and production bundle succeeded after Story Catalog changes.
-PASS - Workspace bundle: 438.26 kB JS and 41.59 kB CSS before gzip.
-PASS - Clean-copy build after npm ci: succeeded with 438.26 kB JS and 41.59 kB CSS before gzip.

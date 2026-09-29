@@ -1,7 +1,0 @@
-real_workspace_execution_mode=real
-plan_provider=openai_compatible
-tutor_provider=openai_compatible
-plan_fallback_used=False
-tutor_fallback_used=False
-provider_http_requests=4
-assertion=passed

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.export_source_whitelist import FIELDS, DEFAULT_SOURCE, convert, main
+from refactor.learning.course.source_catalog_export import FIELDS, DEFAULT_SOURCE, convert, main
 
 
 def test_real_lists_export_exactly_seven_fields_without_candidates():

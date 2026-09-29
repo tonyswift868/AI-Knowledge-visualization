@@ -22,7 +22,7 @@ from refactor.learning.app import plan_flow
 from refactor.learning.app.bridge import CallContext
 from refactor.learning.course import github_repo, planner_agents, source_filter
 from refactor.learning.course.store import CourseStore
-from refactor.learning.planning.research import FetchedContent
+from refactor.learning.course.research import FetchedContent
 
 HERE = Path(__file__).parent
 ACCOUNT = "plan_dialogue_synthetic"

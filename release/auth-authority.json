@@ -1,8 +1,0 @@
-{
-  "schema": "mentorflow.auth-authority-build.v1",
-  "status": "PREPARED_NOT_ACTIVE",
-  "auth_base_url": "https://auth.clannad.win",
-  "issuer": "https://auth.clannad.win/realms/mentorflow",
-  "identity_issuer": "https://localhost:18080/realms/mentorflow",
-  "migration": null
-}

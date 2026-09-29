@@ -1,8 +1,0 @@
-voice_profiles:
-  - voice_profile_id: dev_voice_none
-    provider: fake
-    voice_id: null
-    language: zh-CN
-    style_presets: [neutral]
-    pronunciation_dictionary_ref: null
-    allowed_usage: text-fallback-only

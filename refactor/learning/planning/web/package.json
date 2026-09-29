@@ -1,8 +1,0 @@
-{
-  "name": "mentorflow-planning-native-bundle",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "node \"E:/aiPlay/AI-Knowledge visualization/frontend/node_modules/vite/bin/vite.js\" build"
-  }
-}

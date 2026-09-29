@@ -1,5 +1,0 @@
-[
-  {"domain":"algorithms","scene_purpose":"turn today's repair into a verifiable action","learning_action":"apply","story_action":"diagnose_failure","required_artifact_type":"code","story_object_type":"system_patch","must_reference_prior_artifacts":[]},
-  {"domain":"law","scene_purpose":"turn today's evidence comparison into a decision path","learning_action":"compare","story_action":"compare_testimony","required_artifact_type":"argument","story_object_type":"testimony_analysis","must_reference_prior_artifacts":[]},
-  {"validator_result":{"valid":true,"validators":["story_fact","persona","forbidden_reveal","learning_fact","artifact_citation"]}}
-]

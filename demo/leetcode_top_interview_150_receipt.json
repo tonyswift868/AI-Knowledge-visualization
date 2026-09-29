@@ -1,9 +1,0 @@
-{
-  "learning_goal": "掌握 LeetCode 面试经典 150，150 道题现场能手撕、解释复杂度并处理边界条件",
-  "current_level": "intermediate",
-  "deadline": "2027-01-31",
-  "study_weekdays": [0, 1, 2, 3, 4, 5, 6],
-  "daily_task_minutes": 400,
-  "preferred_learning_style": "AI 主动讲解、手推示例、理解检查、补救教学、独立编码验收",
-  "material_ids": ["由上传 API 返回后填入"]
-}

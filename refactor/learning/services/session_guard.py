@@ -10,8 +10,9 @@ import json
 import httpx
 from PySide6.QtCore import QObject, QTimer, Signal, Slot, Qt
 
-from ..plan_models import PlanError
-from ..plan_source import AuthenticatedPlanSource, sync_auth_error
+from refactor.learning.sync_identity import PlanError
+from refactor.learning.sync_source import AuthenticatedPlanSource
+from refactor.learning.sync_source import sync_auth_error
 
 SESSION_PATH = "/api/enterprise/auth/native/session"
 SUPERSEDED_MESSAGE = "账号已在另一台设备登录"

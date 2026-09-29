@@ -177,7 +177,7 @@ def _json(fetch, url, cancel):
 
 
 def default_fetch(url, cancel):
-    from ..planning.research import ResearchService
+    from refactor.learning.course.research import ResearchService
     fetched = ResearchService(timeout=20.0, max_bytes=MAX_TOTAL).fetch_bytes(
         {"url": url, "title": ""}, cancel=cancel,
         allowed_types={"application/json", "text/plain", "text/markdown", "application/octet-stream"})

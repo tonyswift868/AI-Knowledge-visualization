@@ -13,7 +13,7 @@ def main():
     parser.add_argument("--update-attempt")
     parser.add_argument("--update-nonce")
     args = parser.parse_args()
-    from scripts import per_user_install as install
+    from refactor.desktop.delivery import per_user_install as install
 
     root = install.target(args.install_root)
     # Reuse the signed GUI closure check before importing Qt and the full file

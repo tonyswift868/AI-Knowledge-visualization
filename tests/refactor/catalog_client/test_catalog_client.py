@@ -17,7 +17,7 @@ import pytest
 from refactor.learning.course.catalog_client import (CatalogClient, CatalogFormatError,
     REFRESH_SECONDS, validate_prices)
 from refactor.learning.course.source_filter import parse_lists, SourceListsError
-from refactor.learning.plan_models import PlanError
+from refactor.learning.sync_identity import PlanError
 
 
 ROOT = Path(__file__).parents[3]

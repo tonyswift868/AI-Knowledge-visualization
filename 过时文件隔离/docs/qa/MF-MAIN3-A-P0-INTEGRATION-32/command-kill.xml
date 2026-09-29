@@ -1,2 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="1" time="16.547" timestamp="2026-09-16T05:25:52.383121+08:00" hostname="tonyswift"><testcase classname="Temp.MF-A-32.test_command_kill" name="test_real_process_kill_preserves_business_record_and_fences_replay" time="6.957" /></testsuite></testsuites>

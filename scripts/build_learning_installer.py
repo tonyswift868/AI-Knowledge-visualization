@@ -29,7 +29,7 @@ EXCLUDES = ["backend", "desktop.main", "desktop.app", "desktop.login_gate",
 
 
 def canonical(value):
-    from desktop.update_protocol import canonical as encode
+    from refactor.desktop.delivery.update_protocol import canonical as encode
     return encode(value)
 
 
@@ -53,7 +53,7 @@ def run(command, work, log):
 
 
 def validate_feed(url, app_id):
-    from scripts.install_product import Product
+    from refactor.desktop.delivery.install_product import Product
     product = Product(app_id)
     parts = urlsplit(url)
     if (parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password
@@ -120,7 +120,7 @@ def freeze(args):
         shutil.copyfile(args.account_ca, resources / "trust/account-api.pem")
     (work / "component-catalog.json").write_bytes(args.voice_catalog.read_bytes())
     from PIL import Image
-    icon_path = ROOT / "frontend/public/teacher2d/tsubaki-live2d/icon.png"
+    icon_path = ROOT / "refactor/desktop/resources/teacher2d/tsubaki-live2d/icon.png"
     with Image.open(icon_path) as icon:
         icon.save(work / "MentorFlow.ico", sizes=[(16,16), (32,32), (48,48), (256,256)])
 
@@ -130,11 +130,9 @@ def freeze(args):
     runtime = base + ["--name", "UserRuntime", "--distpath", work / "runtime", "--workpath", work / "runtime-build"]
     for module in EXCLUDES + ["PySide6", "numpy", "docling"]:
         runtime += ["--exclude-module", module]
-    run(runtime + [ROOT / "scripts/per_user_install.py"], work, work / "runtime-build.log")
+    run(runtime + [ROOT / "refactor/desktop/delivery/per_user_install.py"], work, work / "runtime-build.log")
     data = [(resources, "refactor/desktop/resources"),
             (web_dist, "refactor/learning/web/dist"),
-            (ROOT / "frontend/public/vendor/live2d", "frontend/public/vendor/live2d"),
-            (ROOT / "frontend/public/teacher2d", "frontend/public/teacher2d"),
             (ROOT / "refactor/learning/voice/tts/engine_server.py", "refactor/learning/voice/tts"),
             (work / "component-catalog.json", "refactor/learning/voice/tts"),
             (work / "mentorflow-version.json", ".")]
@@ -166,8 +164,11 @@ def audit_payload(payload):
     from PyInstaller.archive.readers import CArchiveReader
     for executable in (payload / "MentorFlow.exe", payload / "UserRuntime/UserRuntime.exe"):
         archive = CArchiveReader(str(executable)).open_embedded_archive("PYZ.pyz")
-        forbidden = [key for key in archive.toc if key == "backend" or key.startswith("backend.")
-                     or key in {"desktop.main", "desktop.desktop_api", "desktop.classroom._page", "refactor.learning.main_window"}
+        forbidden = [key for key in archive.toc if key in {"backend", "desktop", "tools", "legacy"}
+                     or key.startswith(("backend.", "desktop.", "tools.", "legacy.", "scripts.",
+                                         "refactor.learning.classroom.", "refactor.learning.planning.",
+                                         "refactor.learning.tools."))
+                     or key in {"refactor.learning.main_window", "refactor.learning.legacy_records", "refactor.learning.plan_models"}
                      or key in {"desktop.test_device_profile", "scripts.test_storage_policy", "test_storage_policy"}
                      or key.startswith(("tests.", "pytest", "_pytest"))]
         if forbidden:
@@ -179,8 +180,8 @@ def audit_payload(payload):
 
 
 def release(args):
-    from scripts.prepare_gui_bootstrap_closure import collect_closure
-    from scripts.verify_windows_package import build_manifest
+    from refactor.desktop.delivery.gui_manifest import collect_closure
+    from refactor.desktop.delivery.package_verification import build_manifest
     payload = args.payload.resolve()
     version = json.loads((payload / "mentorflow-version.json").read_bytes())
     product = validate_feed(args.feed, args.app_id)
@@ -237,10 +238,10 @@ def sign(args):
 
 def installer(args):
     from PyInstaller.archive.readers import CArchiveReader
-    from scripts.build_signed_per_user_installer import literal_authority
-    from desktop import update_protocol
-    from scripts.per_user_install import verify_tree
-    from scripts.build_inno_installer import collect_payload
+    from refactor.desktop.packaging.authority import literal_authority
+    from refactor.desktop.delivery import update_protocol
+    from refactor.desktop.delivery.per_user_install import verify_tree
+    from refactor.desktop.packaging.payload import collect_payload
     authorities = [literal_authority(CArchiveReader(str(args.payload / name)).open_embedded_archive("PYZ.pyz").extract("mentorflow_delivery_authority"))
                    for name in ("MentorFlow.exe", "UserRuntime/UserRuntime.exe")]
     if authorities[0] != authorities[1]:
@@ -256,7 +257,7 @@ def installer(args):
     if any(args.output.iterdir()):
         raise ValueError("installer output must be empty")
     from PIL import Image
-    source = ROOT / "frontend/public/teacher2d/tsubaki-live2d/icon.png"
+    source = ROOT / "refactor/desktop/resources/teacher2d/tsubaki-live2d/icon.png"
     with Image.open(source) as icon:
         icon.save(args.work / "MentorFlow.ico", sizes=[(16,16), (32,32), (48,48), (256,256)])
     shutil.copyfile(source, args.work / "MentorFlow.png")
@@ -267,7 +268,7 @@ def installer(args):
                "RequiredBytes": sum(size for _, size in files) + 256 * 1024 ** 2,
                "ProductAppId": authority["APP_ID"], "ShortcutName": "MentorFlow 预览版" if ".UAT." in authority["APP_ID"] else "MentorFlow",
                "SignedRelease": args.release.resolve()}
-    run([args.compiler, "--no-ide-signtools", *[f"/D{k}={v}" for k, v in options.items()], ROOT / "installer/inno/MentorFlow.iss"],
+    run([args.compiler, "--no-ide-signtools", *[f"/D{k}={v}" for k, v in options.items()], ROOT / "refactor/desktop/packaging/inno/MentorFlow.iss"],
         args.work.resolve(), args.work / "inno.log")
     print(json.dumps([{ "path": str(p), "size": p.stat().st_size, "sha256": digest(p)} for p in args.output.glob("*.exe")]))
 

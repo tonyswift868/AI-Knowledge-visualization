@@ -20,8 +20,8 @@ import re
 from threading import Event, Lock
 from typing import TYPE_CHECKING
 
-from ..plan_models import PlanError
-from ..plan_source import validate_snapshot
+from refactor.learning.sync_identity import PlanError
+from refactor.learning.sync_source import validate_snapshot
 
 if TYPE_CHECKING:
     from .sync_contract import RecordStore, SyncRecord

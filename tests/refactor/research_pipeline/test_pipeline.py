@@ -19,8 +19,12 @@ from refactor.learning.connections.providers.base import WebHit
 from refactor.learning.course import research_pipeline as rp
 from refactor.learning.course.research_pipeline import ResearchPipeline, ResearchPool
 from refactor.learning.course.source_filter import RawHit, load_lists, screen, normalize_url
-from refactor.learning.planning.research import (FetchedContent, ResearchService,
-    ResearchFetchError, ResearchTimeout, ResearchUnsupportedContent, ResearchCancelled)
+from refactor.learning.course.research import FetchedContent
+from refactor.learning.course.research import ResearchService
+from refactor.learning.course.research import ResearchFetchError
+from refactor.learning.course.research import ResearchTimeout
+from refactor.learning.course.research import ResearchUnsupportedContent
+from refactor.learning.course.research import ResearchCancelled
 
 
 TITLE = 'Python Functions Tutorial'

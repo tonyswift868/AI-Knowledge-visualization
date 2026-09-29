@@ -1,8 +1,0 @@
-{
-  "ready": true,
-  "catalog_id": "mentorflow_narrative_catalog_v2",
-  "version": "2.0.0",
-  "counts": {"total": 10000, "curated": 41, "candidate": 9959},
-  "checks": {"version": true, "total": true, "curated": true, "candidate": true, "unique": true, "fts": true},
-  "integrity": {"jsonl_total_count": 10000, "unique_catalog_ids": 10000, "no_duplicate_ids": true, "fts_query_passed": true}
-}

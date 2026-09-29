@@ -13,7 +13,8 @@ import time
 from . import github_repo, materials
 from .research_pipeline import ResearchPipeline
 from .source_filter import RawHit, blocked_keyword_reasons, load_lists, normalize_url, screen
-from ..planning.research import ResearchCancelled, ResearchTimeout
+from refactor.learning.course.research import ResearchCancelled
+from refactor.learning.course.research import ResearchTimeout
 
 
 class LinkImportError(ValueError):

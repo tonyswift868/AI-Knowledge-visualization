@@ -1,11 +1,11 @@
 // Build: node D:/MentorFlow/.local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs
-// Dependencies live outside the product tree (ENV-01): .local/web-deps, pinned by tools/web-build.
+// Dependencies live outside the product tree (ENV-01), pinned by this package-lock.json.
 import { fileURLToPath, pathToFileURL } from "node:url"
 import path from "node:path"
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(here, "../../..")
-const deps = path.join(repo, ".local", "web-deps")
+const deps = process.env.MENTORFLOW_WEB_DEPS || path.join(repo, ".local", "web-deps")
 const load = (p) => import(pathToFileURL(path.join(deps, "node_modules", p)).href)
 const { default: react } = await load("@vitejs/plugin-react/dist/index.js")
 

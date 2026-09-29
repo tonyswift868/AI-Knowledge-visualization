@@ -1,4 +1,0 @@
-Command: .venv\Scripts\python.exe scripts/provider_real_mode_acceptance.py
-Result: PASS
-ProviderSession, plan generation, and Tutor used the same verified openai-compatible session with fallback_used=false; API key artifact scan passed; backend/frontend/E2E/build subchecks passed.
-Detailed evidence: artifacts/provider_real_mode_acceptance/REAL_PROVIDER_IMPLEMENTATION_EVIDENCE.md

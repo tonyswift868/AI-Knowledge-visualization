@@ -1,3 +1,0 @@
-Command: npm.cmd run build
-Result: PASS
-Vite 8.1.4; TypeScript build and production bundle generated successfully.

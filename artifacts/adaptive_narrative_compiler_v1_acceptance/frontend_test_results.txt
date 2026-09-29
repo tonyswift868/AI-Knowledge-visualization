@@ -1,4 +1,0 @@
-PASS - npm.cmd run test -- --run: 46 tests passed across 4 files.
-PASS - Story Catalog frontend tests: profile summary, two sections, three cards, PACK_REQUIRED guard, curation request, and rematch verified.
-PASS - Clean dependency install in E:\CodexData\temp\mentorflow-clean-adaptive: npm ci added 204 packages.
-PASS - Clean-copy frontend tests: 44 tests passed across 3 files.

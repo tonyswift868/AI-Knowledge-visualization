@@ -1,2 +1,0 @@
-PASS: npm ci --ignore-scripts completed from package-lock.json after stopping the local Vite process that held a native binding.
-PASS: npm test and npm run build completed after clean install.

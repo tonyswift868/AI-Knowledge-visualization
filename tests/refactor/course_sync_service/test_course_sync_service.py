@@ -6,7 +6,7 @@ import time
 import pytest
 from PySide6.QtCore import QCoreApplication, QObject, Signal
 
-from refactor.learning.plan_models import PlanError
+from refactor.learning.sync_identity import PlanError
 from refactor.learning.services.course_sync_service import CourseSyncService
 
 

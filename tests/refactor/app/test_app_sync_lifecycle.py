@@ -15,7 +15,7 @@ from refactor.learning.app.sync import WindowSync
 from refactor.learning.app.chat_store import CourseChatStore
 from refactor.learning.course.store import CourseStore
 from refactor.learning.course.sync_course import CourseSync
-from refactor.learning.plan_models import PlanError
+from refactor.learning.sync_identity import PlanError
 
 from .test_app_free_chat import ask
 from .test_app_window_layer import qapp, tmp_root  # noqa: F401

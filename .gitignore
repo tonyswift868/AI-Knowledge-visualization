@@ -29,6 +29,9 @@ content/expedition_art_packs/*
 !content/expedition_art_packs/mentorflow_expedition_art_v1/1.1.0/**
 
 # Local dependencies and generated frontend output
+refactor/learning/web/node_modules/
+refactor/learning/web/dist/
+refactor/learning/web/*.tsbuildinfo
 frontend/node_modules/
 frontend/dist/
 frontend/tsconfig.tsbuildinfo

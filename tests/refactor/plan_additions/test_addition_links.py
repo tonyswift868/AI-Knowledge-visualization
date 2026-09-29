@@ -11,7 +11,8 @@ import pytest
 from refactor.learning.course import addition_links as links, github_repo, materials, plan_additions
 from refactor.learning.course.ledger import PlanWindow
 from refactor.learning.course.store import CourseStore, StoreError
-from refactor.learning.planning.research import FetchedContent, ResearchTimeout
+from refactor.learning.course.research import FetchedContent
+from refactor.learning.course.research import ResearchTimeout
 
 
 PAGE = 'https://docs.python.org/3/tutorial/controlflow.html'

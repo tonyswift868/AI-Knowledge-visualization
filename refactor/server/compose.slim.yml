@@ -1,0 +1,13 @@
+# Append after the current MF-U11 backend compose files; never use alone.
+# Existing env, secrets, certificates, catalogs, ports and networks are inherited.
+services:
+  backend:
+    image: mentorflow-slim-backend:MF-14
+    working_dir: /app
+    entrypoint: []
+    command: [python, -m, refactor.server.entrypoint]
+    environment:
+      MENTORFLOW_DEPLOYMENT_MODE: ENTERPRISE_SERVER
+      MENTORFLOW_RUNTIME_PROFILE: ACCOUNT_CORE_MVP
+      MENTORFLOW_NATIVE_AUTH_SINGLE_PROCESS: "1"
+      WEB_CONCURRENCY: "1"

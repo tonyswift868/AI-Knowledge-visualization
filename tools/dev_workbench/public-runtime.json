@@ -1,7 +1,0 @@
-{
-  "MENTORFLOW_DESKTOP_OIDC_ISSUER": "https://auth.clannad.win/realms/mentorflow",
-  "MENTORFLOW_DESKTOP_IDENTITY_ISSUER": "https://localhost:18080/realms/mentorflow",
-  "MENTORFLOW_DESKTOP_OIDC_CLIENT_ID": "mentorflow-desktop",
-  "MENTORFLOW_DESKTOP_OIDC_AUDIENCE": "mentorflow-api",
-  "MENTORFLOW_ENTERPRISE_API_BASE_URL": "https://89.45.45.28"
-}

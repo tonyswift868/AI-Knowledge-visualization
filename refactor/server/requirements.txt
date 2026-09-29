@@ -1,0 +1,8 @@
+# Runtime-only subset of backend/requirements.lock.txt at 1284f67.
+fastapi==0.139.2
+uvicorn==0.51.0
+pydantic==2.13.4
+sqlalchemy==2.0.51
+psycopg[binary]==3.3.4
+httpx==0.28.1
+cryptography==46.0.7

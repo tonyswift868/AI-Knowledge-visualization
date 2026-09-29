@@ -24,7 +24,14 @@ async function run() {
     fake.configure({ ready }); fake.log.length = 0
     localStorage.setItem("mf.classroom.read", reading ? "on" : "off")
     useApp.setState({ planId: "p", route: "classroom" })
-    root.render(<Classroom />); await wait(80)
+    root.render(<Classroom />)
+    // React's lazy boundary can take longer than 80 ms in a loaded test run.
+    // Wait for the actual action to commit before driving this real component.
+    const deadline = performance.now() + 3000
+    while (![...document.querySelectorAll("button")].some((b) => b.textContent === "开始上课")) {
+      assert(performance.now() < deadline, "classroom entry did not become ready")
+      await wait()
+    }
   }
   await mount()
   assert(calls("speak").length === 0, "entry should not replay history")

@@ -23,7 +23,9 @@ import zipfile
 
 from ..file_io import (_native_path, assert_no_reparse_ancestors, canonical_io_path,
                        open_resource_source, PlainFileCopyError)
-from ..plan_export import ExportResult, ExportStatus, ExportCancellation
+from refactor.learning.course.export_contract import ExportResult
+from refactor.learning.course.export_contract import ExportStatus
+from refactor.learning.course.export_contract import ExportCancellation
 from .extract import ExtractError, _check
 from .materials import open_original, stored_blocks, MISSING_ORIGINAL
 from .store import StoreError

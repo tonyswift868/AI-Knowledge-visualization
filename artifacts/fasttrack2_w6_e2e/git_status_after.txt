@@ -1,4 +1,0 @@
-﻿?? artifacts/fasttrack2_w6_e2e/
-?? backend/tests/test_w6_acceptance_matrix.py
-?? node_modules/
-?? scripts/w6_fasttrack2_acceptance.ps1

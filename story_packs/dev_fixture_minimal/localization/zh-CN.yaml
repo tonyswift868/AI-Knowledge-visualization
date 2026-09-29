@@ -1,5 +1,0 @@
-locale: zh-CN
-strings:
-  dev_runtime_label: DEV FIXTURE — NOT PRODUCTION STORY ASSET
-  learning_gate_blocked: 学习结果尚未通过，剧情节点保持锁定。
-  learning_gate_passed: 学习结果已由 Tutor / Evaluator 确认，节点可以推进。

@@ -1,0 +1,587 @@
+{
+  "enterprise/identity/account_lifecycle.py": {
+    "source": "backend/app/enterprise/identity/account_lifecycle.py",
+    "baseline": "1284f67",
+    "source_sha256": "334502b61b5f3ffe3062fc0ae996f9f2c5a155a1a1d3d47767164166cad72637"
+  },
+  "enterprise/identity/admin_overview.py": {
+    "source": "backend/app/enterprise/identity/admin_overview.py",
+    "baseline": "1284f67",
+    "source_sha256": "fac1c93bbd59e258cb9fe7e656d20f9fcb172b186a040ad9b9259757d824571f"
+  },
+  "enterprise/identity/application_roles.py": {
+    "source": "backend/app/enterprise/identity/application_roles.py",
+    "baseline": "1284f67",
+    "source_sha256": "6e9595fd54196c649bfe535b690e6718c389e42003b238ac9c465d45b75f1210"
+  },
+  "enterprise/identity/config.py": {
+    "source": "backend/app/enterprise/identity/config.py",
+    "baseline": "1284f67",
+    "source_sha256": "6d9f6ff5c1c6f393ed3a0bc5d6821f53e5c775524bd48c50752b660e4f18468d"
+  },
+  "enterprise/identity/context.py": {
+    "source": "backend/app/enterprise/identity/context.py",
+    "baseline": "1284f67",
+    "source_sha256": "25cc9719a105ade2f7890961f5fecadcd562c736adc54828b19b227fd25bee62"
+  },
+  "enterprise/identity/continuity.py": {
+    "source": "backend/app/enterprise/identity/continuity.py",
+    "baseline": "1284f67",
+    "source_sha256": "d17ad5d8ba9e426939ec86fea1da4380a59f9f99aa06a1aed97cbca9ac6bd523"
+  },
+  "enterprise/identity/directory.py": {
+    "source": "backend/app/enterprise/identity/directory.py",
+    "baseline": "1284f67",
+    "source_sha256": "f879966fd48e14586d1c8d666b433af756caf75fc296a07267d9c61e6aa49400"
+  },
+  "enterprise/identity/issuer_migration.py": {
+    "source": "backend/app/enterprise/identity/issuer_migration.py",
+    "baseline": "1284f67",
+    "source_sha256": "617d518d183e03c800c9cbabedc6a095a44729b63fb6f3c4dc061ce37cfea547"
+  },
+  "enterprise/identity/keycloak.py": {
+    "source": "backend/app/enterprise/identity/keycloak.py",
+    "baseline": "1284f67",
+    "source_sha256": "bb7adb6abed53cccf89b07721bcc4d13308d27cc5542556b3c702e420fb53b06"
+  },
+  "enterprise/identity/lifecycle_api.py": {
+    "source": "backend/app/enterprise/identity/lifecycle_api.py",
+    "baseline": "1284f67",
+    "source_sha256": "7f98c16138cca2477ef3ad714517c43047a4ceb044dc38dcde0c1110bf011b13"
+  },
+  "enterprise/identity/models.py": {
+    "source": "backend/app/enterprise/identity/models.py",
+    "baseline": "1284f67",
+    "source_sha256": "3dee3beb328e785a1796dc8eebe92605326566fe6ed5cd1d420f7a746c309791"
+  },
+  "enterprise/identity/native.py": {
+    "source": "backend/app/enterprise/identity/native.py",
+    "baseline": "1284f67",
+    "source_sha256": "7c3776a81cbbd97b8e0219eb19a1dde21be37e30dd4bee262f690e52bf72656f"
+  },
+  "enterprise/identity/oidc.py": {
+    "source": "backend/app/enterprise/identity/oidc.py",
+    "baseline": "1284f67",
+    "source_sha256": "0a9e36acaa33a6acf28083eaf63d908c86c4f89878832e6c17229542fbb8767e"
+  },
+  "enterprise/identity/reset_completion.py": {
+    "source": "backend/app/enterprise/identity/reset_completion.py",
+    "baseline": "1284f67",
+    "source_sha256": "85e0f33ff15eea08d723821a6f6a9f3901933875c9af78e9719f3c1786adf481"
+  },
+  "enterprise/identity/runtime.py": {
+    "source": "backend/app/enterprise/identity/runtime.py",
+    "baseline": "1284f67",
+    "source_sha256": "7fa5d656da2db31b7c0455f991baeba3613d3c4f22fc6f29f9d8c7293bba03e8"
+  },
+  "enterprise/identity/service_account.py": {
+    "source": "backend/app/enterprise/identity/service_account.py",
+    "baseline": "1284f67",
+    "source_sha256": "036b6f522f23e8f9115dcc2fccb40400460280448d7a038930000a7439072bfb"
+  },
+  "enterprise_tenancy/context.py": {
+    "source": "backend/app/enterprise_tenancy/context.py",
+    "baseline": "1284f67",
+    "source_sha256": "70fc757865a76890127db341d48be2ebac0e699178eb155d7042a4de0b13ab93"
+  },
+  "enterprise_tenancy/schema.py": {
+    "source": "backend/app/enterprise_tenancy/schema.py",
+    "baseline": "1284f67",
+    "source_sha256": "221fefbfb613402cc54b2ae00d0ff0a581c2405e61bb4fe3096b6b32d17058db"
+  },
+  "enterprise_tenancy/sync_schema.py": {
+    "source": "backend/app/enterprise_tenancy/sync_schema.py",
+    "baseline": "1284f67",
+    "source_sha256": "188b8fa222860737c4fa725e6ff7d6c81d5e23d94eb388501b5a473d38ef138d"
+  },
+  "enterprise_tenancy/import_ledger_schema.py": {
+    "source": "backend/app/enterprise_tenancy/import_ledger_schema.py",
+    "baseline": "1284f67",
+    "source_sha256": "b6665116875b32acd293e5187c781be327d8c28707896753beed320877650a3b"
+  },
+  "enterprise_tenancy/structured_sync.py": {
+    "source": "backend/app/enterprise_tenancy/structured_sync.py",
+    "baseline": "1284f67",
+    "source_sha256": "7459072116720b12a0bc356a7907b335385624fcb9f8904b66a4ede215521988"
+  },
+  "enterprise_tenancy/sync_registry.py": {
+    "source": "backend/app/enterprise_tenancy/sync_registry.py",
+    "baseline": "1284f67",
+    "source_sha256": "abe56bbbd5a7f6759e240ab3c912eb0ea7c92f7ab4de8c5e02725753f6d4c403"
+  },
+  "enterprise_tenancy/sync_snapshot.py": {
+    "source": "backend/app/enterprise_tenancy/sync_snapshot.py",
+    "baseline": "1284f67",
+    "source_sha256": "d4d01419a6db38689e8336f7563ec887e1b8bdada168bf6eb7950b9590804af7"
+  },
+  "enterprise_tenancy/workspace_bootstrap.py": {
+    "source": "backend/app/enterprise_tenancy/workspace_bootstrap.py",
+    "baseline": "1284f67",
+    "source_sha256": "8a6520f5e90469e68761d0fda90416023b5fd645e373f32b00439835b543a756"
+  },
+  "enterprise_tenancy/rehydration_manifest.py": {
+    "source": "backend/app/enterprise_tenancy/rehydration_manifest.py",
+    "baseline": "1284f67",
+    "source_sha256": "9ed554e25d05732d0b0da0c78c11772f6918093b9cf5b7152687bdd3ad20f7f2"
+  },
+  "enterprise_tenancy/models.py": {
+    "source": "backend/app/enterprise_tenancy/models.py",
+    "baseline": "1284f67",
+    "source_sha256": "d7d35626dcd0dfd8f8cb188dbc9e7f716958e9b05ac8e6f84ceff64cbd603cad"
+  },
+  "enterprise/account_workspaces.py": {
+    "source": "backend/app/enterprise/account_workspaces.py",
+    "baseline": "1284f67",
+    "source_sha256": "ca41b875c3769ac3216236e1f85a9c743b0c9fb9d42e0c04f3e28d2d0aa20c4d"
+  },
+  "enterprise/structured_sync_api.py": {
+    "source": "backend/app/enterprise/structured_sync_api.py",
+    "baseline": "1284f67",
+    "source_sha256": "32f7c462ed7b105506f1b1ee070aeecb63e1707166ad049ddb61ae1d76deff62"
+  },
+  "enterprise/catalog_api.py": {
+    "source": "backend/app/enterprise/catalog_api.py",
+    "baseline": "1284f67",
+    "source_sha256": "496caf05dbeb051dfa6f55dec3cddc541139862ab2e7eaabc9f901352c32e19d"
+  },
+  "core_errors.py": {
+    "source": "backend/app/core_errors.py",
+    "baseline": "1284f67",
+    "source_sha256": "c72af985504e2880b0df592ccfdf5980f9a257129d30c111c7d54494ba6b4a83"
+  },
+  "account_identity_contract.py": {
+    "source": "backend/app/account_identity_contract.py",
+    "baseline": "1284f67",
+    "source_sha256": "51d77b055cb958997ab0fb0ad011a8d5cbf610a76c8216b2e47592e15586353c"
+  },
+  "product_sync_contract.py": {
+    "source": "backend/app/product_sync_contract.py",
+    "baseline": "1284f67",
+    "source_sha256": "0795169e17c6f361519c855019d934f36cba1396b776db20b2a5161cc16cb38f"
+  },
+  "enterprise/contracts_v1/models.py": {
+    "source": "backend/app/enterprise/contracts_v1/models.py",
+    "baseline": "1284f67",
+    "source_sha256": "64b8ee2316563c04421ebaec0738ec8a9783da4044c3c5cfdd90eb6ac14f3b93"
+  },
+  "account/closure.py": {
+    "source": "refactor/server/closure.py",
+    "baseline": "1284f67",
+    "source_sha256": "bbc74ba0e205a0dc44063b1fc066363ab9c9dc8c50c3a5486de2a125782d440e"
+  },
+  "account/closure_api.py": {
+    "source": "refactor/server/closure_api.py",
+    "baseline": "1284f67",
+    "source_sha256": "74e7309355ce200c41637e2b2dcaa9e19f9fa1673a4da81ea6fc8228738c056c"
+  },
+  "account/closure_provider.py": {
+    "source": "refactor/server/closure_provider.py",
+    "baseline": "1284f67",
+    "source_sha256": "de3053822ae522f70df4ce43231a6023125a63df81e3825419ea4f1c0db94025"
+  },
+  "account/closure_store.py": {
+    "source": "refactor/server/closure_store.py",
+    "baseline": "1284f67",
+    "source_sha256": "62a7d4ebdcc7338318363585f939bac6261f758cf7d050e8f9593c1a868f73ab"
+  },
+  "account/password_sessions.py": {
+    "source": "refactor/server/password_sessions.py",
+    "baseline": "1284f67",
+    "source_sha256": "91bfa166cde0049e92981b7e89fddbc7ec2dc173d544b6835bbf57625b62c885"
+  },
+  "observability/health.py": {
+    "source": "backend/app/observability/health.py",
+    "baseline": "1284f67",
+    "source_sha256": "350d48d1de4ac1feb39e2dfe025eb7ff67341724f022e9e4429b95f138016df1"
+  },
+  "app.py": {
+    "source": "backend/app/account_core_mvp.py",
+    "baseline": "1284f67",
+    "source_sha256": "866352277830957695cb152f7eeb79ada09f4ed0cbda924fa4c55a279b132112"
+  },
+  "migrations/versions/0001_mentorflow_v2.py": {
+    "source": "backend/alembic/versions/0001_mentorflow_v2.py",
+    "baseline": "1284f67",
+    "source_sha256": "f868becd8047e581fa21b2af0a804ba644400b24514e400e30713a353e080c16"
+  },
+  "migrations/versions/0002_conflict_record_fields.py": {
+    "source": "backend/alembic/versions/0002_conflict_record_fields.py",
+    "baseline": "1284f67",
+    "source_sha256": "2ab910ae5a8015b4ab965127c18b649a726c9592f3d29d6f96835394768e1905"
+  },
+  "migrations/versions/0003_provider_workspace_mode.py": {
+    "source": "backend/alembic/versions/0003_provider_workspace_mode.py",
+    "baseline": "1284f67",
+    "source_sha256": "4f7f7a68dd291326e1491f80bbf49e1c4d8eff15232dc678ca995e44de3a2b38"
+  },
+  "migrations/versions/0004_archive_import.py": {
+    "source": "backend/alembic/versions/0004_archive_import.py",
+    "baseline": "1284f67",
+    "source_sha256": "106d78eaed8ce9007818e58cd99d2323fd2fb57149329eb9e93dc05096cbb49e"
+  },
+  "migrations/versions/0005_narrative_runtime_v1.py": {
+    "source": "backend/alembic/versions/0005_narrative_runtime_v1.py",
+    "baseline": "1284f67",
+    "source_sha256": "b9e6b31332adc8b44e3e6d59e67618184b75b8b875abbff3d913bdf4469b13f6"
+  },
+  "migrations/versions/0006_learning_runs_and_dialogue.py": {
+    "source": "backend/alembic/versions/0006_learning_runs_and_dialogue.py",
+    "baseline": "1284f67",
+    "source_sha256": "3547c74cd6be9a7e0548f0b7ebcb7b2e60a881202dbb70ed3b4e1202e97fbdcf"
+  },
+  "migrations/versions/0007_learning_run_idempotency.py": {
+    "source": "backend/alembic/versions/0007_learning_run_idempotency.py",
+    "baseline": "1284f67",
+    "source_sha256": "a04cf0bc6ab1e027c3ca5f8c16e22c70496530bbaca5da928732f525d4e5d230"
+  },
+  "migrations/versions/0008_adaptive_narrative_compiler.py": {
+    "source": "backend/alembic/versions/0008_adaptive_narrative_compiler.py",
+    "baseline": "1284f67",
+    "source_sha256": "59ce74a26601d4d73deae3687500be36c10c974a53ea4f94c37417d62c40e2e9"
+  },
+  "migrations/versions/0009_story_object_campaign_scope.py": {
+    "source": "backend/alembic/versions/0009_story_object_campaign_scope.py",
+    "baseline": "1284f67",
+    "source_sha256": "ecd6d953390124617c159a65318281038b77af1a0348d23b756d48837be8de4f"
+  },
+  "migrations/versions/0010_learning_expedition_v1.py": {
+    "source": "backend/alembic/versions/0010_learning_expedition_v1.py",
+    "baseline": "1284f67",
+    "source_sha256": "227538b914793659b69cb405e8884ae6932a2919bcf1ac5f37bad5d03f5f4bce"
+  },
+  "migrations/versions/0011_expedition_art_pipeline_v1.py": {
+    "source": "backend/alembic/versions/0011_expedition_art_pipeline_v1.py",
+    "baseline": "1284f67",
+    "source_sha256": "449a3e826116a125044da7f367b7f9e37c1bc19c3f6a44e738cba6d55a090356"
+  },
+  "migrations/versions/0012_knowledge_map_foundation.py": {
+    "source": "backend/alembic/versions/0012_knowledge_map_foundation.py",
+    "baseline": "1284f67",
+    "source_sha256": "b6cffb759e3b4da16df37475a54cda87d3bf24c35ec1d6398c6e5f89cde0d06a"
+  },
+  "migrations/versions/0013_knowledge_map_teacher_v1.py": {
+    "source": "backend/alembic/versions/0013_knowledge_map_teacher_v1.py",
+    "baseline": "1284f67",
+    "source_sha256": "d9dfaa766cb7f2ff8b63a97a75cd2345fd2ebf9465ebe57ec95abe7e0a654dde"
+  },
+  "migrations/versions/0014_material_disposition_revision_scope.py": {
+    "source": "backend/alembic/versions/0014_material_disposition_revision_scope.py",
+    "baseline": "1284f67",
+    "source_sha256": "fd8fb1e93ca1e31f582d1dda93063e50137656bb8b88d3d093f23262309789ed"
+  },
+  "migrations/versions/0015_mark_unverified_legacy_maps.py": {
+    "source": "backend/alembic/versions/0015_mark_unverified_legacy_maps.py",
+    "baseline": "1284f67",
+    "source_sha256": "4e7965af844f8eb732f03a68a129c857517c3b068257a9aad364180684e102bf"
+  },
+  "migrations/versions/0016_migrate_generic_knowledge_support_tables.py": {
+    "source": "backend/alembic/versions/0016_migrate_generic_knowledge_support_tables.py",
+    "baseline": "1284f67",
+    "source_sha256": "12e3a20db2095f027db5ee63e33c0af4aadea2bd418fa8e792ff5b1249b7ece2"
+  },
+  "migrations/versions/0017_canonical_plan_execution.py": {
+    "source": "backend/alembic/versions/0017_canonical_plan_execution.py",
+    "baseline": "1284f67",
+    "source_sha256": "1d72648d59262b21eb1ab7393b7a2893851829fbc33154ba6380af2d6ce60565"
+  },
+  "migrations/versions/0018_local_user_authentication.py": {
+    "source": "backend/alembic/versions/0018_local_user_authentication.py",
+    "baseline": "1284f67",
+    "source_sha256": "4e640b7131d2d7ced495445d4fd5c702563d32dc5af5ed1a239772ad73a40117"
+  },
+  "migrations/versions/0020_local_phone_recovery.py": {
+    "source": "backend/alembic/versions/0020_local_phone_recovery.py",
+    "baseline": "1284f67",
+    "source_sha256": "c889061128d4f457ef07efebbeef2f2ab04232e643fd6cf01abeb1b846d3ce77"
+  },
+  "migrations/versions/0021_local_login_throttle.py": {
+    "source": "backend/alembic/versions/0021_local_login_throttle.py",
+    "baseline": "1284f67",
+    "source_sha256": "674ae7c5058c1eacf0e29ce1b2eeb546beba15a01e0f168df9c1dba8d049fd93"
+  },
+  "migrations/versions/0022_material_disposition.py": {
+    "source": "backend/alembic/versions/0022_material_disposition.py",
+    "baseline": "1284f67",
+    "source_sha256": "e7290f7711c98943b82cedbebe8cd0a6db5a1b70a0e155d4902b7bc83344dff2"
+  },
+  "migrations/versions/0023_task_completion_time.py": {
+    "source": "backend/alembic/versions/0023_task_completion_time.py",
+    "baseline": "1284f67",
+    "source_sha256": "b7e5a74ce9d3838402e8bee1cf6a6ad1b6502e7316fc29d4732856065bdb303e"
+  },
+  "migrations/versions/0024_knowledge_map_job_progress.py": {
+    "source": "backend/alembic/versions/0024_knowledge_map_job_progress.py",
+    "baseline": "1284f67",
+    "source_sha256": "03d709a9783be654933aef6671dd8934f1b7d7d6a75ddb3b0e0bf56247409f2a"
+  },
+  "migrations/versions/0025_planning_assistant_cache.py": {
+    "source": "backend/alembic/versions/0025_planning_assistant_cache.py",
+    "baseline": "1284f67",
+    "source_sha256": "1852391272654a11eacdcdb16a1d96d63e066aa2d760efabb373db0cbc06e7de"
+  },
+  "migrations/versions/0026_planning_resource_pool.py": {
+    "source": "backend/alembic/versions/0026_planning_resource_pool.py",
+    "baseline": "1284f67",
+    "source_sha256": "6c27ce76e90833b4b5279cce0d4058760c3c0df0157bae54f410f97a08c1fc6d"
+  },
+  "migrations/versions/0027_knowledge_map_scope_anchor.py": {
+    "source": "backend/alembic/versions/0027_knowledge_map_scope_anchor.py",
+    "baseline": "1284f67",
+    "source_sha256": "fed38f59c2f008b767c92534c5a20822c7189f241819801d27706ed192fd5813"
+  },
+  "migrations/versions/0028_video_collection_v1.py": {
+    "source": "backend/alembic/versions/0028_video_collection_v1.py",
+    "baseline": "1284f67",
+    "source_sha256": "1f08e9f04594ba3c05ebdff7e22f5b909abe8a0fa9bccd67e139328719daa91b"
+  },
+  "migrations/versions/0029_enterprise_tenancy_rls.py": {
+    "source": "backend/alembic/versions/0029_enterprise_tenancy_rls.py",
+    "baseline": "1284f67",
+    "source_sha256": "85d5be576295f9b5948231cf10a47f45be892390ce2cc381efbc40c93c552600"
+  },
+  "migrations/versions/0030_enterprise_jobs_v1.py": {
+    "source": "backend/alembic/versions/0030_enterprise_jobs_v1.py",
+    "baseline": "1284f67",
+    "source_sha256": "703614e371126c1ec94cdad15518ac4517699781eeb6b166301d910076ba8af9"
+  },
+  "migrations/versions/0031_enterprise_tenancy_completion.py": {
+    "source": "backend/alembic/versions/0031_enterprise_tenancy_completion.py",
+    "baseline": "1284f67",
+    "source_sha256": "9d2ea2aa3323a8d18eae88dec9b861fa257a03b6fbb797f8d5f39ddee5c87e99"
+  },
+  "migrations/versions/0032_enterprise_provider_sessions.py": {
+    "source": "backend/alembic/versions/0032_enterprise_provider_sessions.py",
+    "baseline": "1284f67",
+    "source_sha256": "498593883e9efa93dc179e3ccb9127d205951d3bfe8058516992e6744ef4fb15"
+  },
+  "migrations/versions/0033_enterprise_workspace_persistence.py": {
+    "source": "backend/alembic/versions/0033_enterprise_workspace_persistence.py",
+    "baseline": "1284f67",
+    "source_sha256": "9df99806d64496ff1366eab32a07ef1955f8c56a7877c3a2f64ad1f43710a12d"
+  },
+  "migrations/versions/0034_enterprise_asset_manifests.py": {
+    "source": "backend/alembic/versions/0034_enterprise_asset_manifests.py",
+    "baseline": "1284f67",
+    "source_sha256": "6af518dffabcd5b5ad9101e6e77443bb1c6b08b6bee638558e57a1b77d4ddff5"
+  },
+  "migrations/versions/0035_account_workspace_bootstrap.py": {
+    "source": "backend/alembic/versions/0035_account_workspace_bootstrap.py",
+    "baseline": "1284f67",
+    "source_sha256": "e12dedc55408a19f3b262550adc099efce330e732c872f55d1734b85d19713aa"
+  },
+  "migrations/versions/0036_account_import_ledger.py": {
+    "source": "backend/alembic/versions/0036_account_import_ledger.py",
+    "baseline": "1284f67",
+    "source_sha256": "249c8354ed3281f2b40feb868602810a27f671d70f5c2b69e46bcde0edf1ca80"
+  },
+  "migrations/versions/0037_structured_sync.py": {
+    "source": "backend/alembic/versions/0037_structured_sync.py",
+    "baseline": "1284f67",
+    "source_sha256": "2d475c5b02cfb8c38851048a3602ad75fa3aa09f32447ae311d3f616878a1b3c"
+  },
+  "migrations/versions/0038_rehydration_manifest.py": {
+    "source": "backend/alembic/versions/0038_rehydration_manifest.py",
+    "baseline": "1284f67",
+    "source_sha256": "6723ad1bf044bd3d29a8e84cc99a33dc79dc7ddb98c9dc150c75efbe58027555"
+  },
+  "migrations/versions/0039_generic_sync_kinds.py": {
+    "source": "backend/alembic/versions/0039_generic_sync_kinds.py",
+    "baseline": "1284f67",
+    "source_sha256": "427b8f5588fa457723e0aa7dc681a10c2f6f40e0fbeb071e02f2788d59b33108"
+  },
+  "migrations/versions/0040_admin_overview_aggregate.py": {
+    "source": "backend/alembic/versions/0040_admin_overview_aggregate.py",
+    "baseline": "1284f67",
+    "source_sha256": "c7c38b3823091bb07620fd8bffa87afba919f0fbf724b6faa6236caf50069bb9"
+  },
+  "migrations/versions/0041_account_closure.py": {
+    "source": "backend/alembic/versions/0041_account_closure.py",
+    "baseline": "1284f67",
+    "source_sha256": "41ba14e0c22b9ca22d7af26fc6456a8b834cc35bb28bccb2946a4e976d511d96"
+  },
+  "migrations/versions/0042_structured_sync_changes.py": {
+    "source": "backend/alembic/versions/0042_structured_sync_changes.py",
+    "baseline": "1284f67",
+    "source_sha256": "e3acf233a90b4c82141e3766d10d3358a63e6388bbc083719ebff67adcd84f7e"
+  },
+  "migrations/legacy/orm.py": {
+    "source": "backend/app/orm.py",
+    "baseline": "1284f67",
+    "source_sha256": "998e7d92c60c2daf353c738fbd08298ad852c08dd28942d4e080d0e25d03582c"
+  },
+  "migrations/legacy/expedition_orm.py": {
+    "source": "backend/app/expedition_orm.py",
+    "baseline": "1284f67",
+    "source_sha256": "6d9a62ee587e44bd5641b4d8cc38eac31d445a769ca7c39f1bcdf0c71d945d8b"
+  },
+  "orm.py": {
+    "source": "backend/app/orm.py",
+    "baseline": "1284f67",
+    "source_sha256": "998e7d92c60c2daf353c738fbd08298ad852c08dd28942d4e080d0e25d03582c"
+  },
+  "keycloak/native-identity-verifier/AtomicActionTokens.java": {
+    "source": "deploy/enterprise/native-identity-verifier/AtomicActionTokens.java",
+    "baseline": "1284f67",
+    "source_sha256": "2331adb7c700a794428bdf4e988ac61fb589d563341141efa168599c46794f18"
+  },
+  "keycloak/native-identity-verifier/AtomicResetCredentialsActionTokenHandler.java": {
+    "source": "deploy/enterprise/native-identity-verifier/AtomicResetCredentialsActionTokenHandler.java",
+    "baseline": "1284f67",
+    "source_sha256": "5e28d9e4ae6e108ed0fa3aa5c224366f4063efd49e1c65fa26a0c176bbc0fe14"
+  },
+  "keycloak/native-identity-verifier/AtomicResetPassword.java": {
+    "source": "deploy/enterprise/native-identity-verifier/AtomicResetPassword.java",
+    "baseline": "1284f67",
+    "source_sha256": "5b9a0a9ea1794024d548233045e1f945734e12528b3f8128bf11781c5bbdd73d"
+  },
+  "keycloak/native-identity-verifier/AtomicVerifyEmailActionTokenHandler.java": {
+    "source": "deploy/enterprise/native-identity-verifier/AtomicVerifyEmailActionTokenHandler.java",
+    "baseline": "1284f67",
+    "source_sha256": "2bd0f874552bd0cb97a94668d5cf866388d5afd1d8c7bd012dac4e495edbfd3a"
+  },
+  "keycloak/native-identity-verifier/EmailCodeBinding.java": {
+    "source": "deploy/enterprise/native-identity-verifier/EmailCodeBinding.java",
+    "baseline": "1284f67",
+    "source_sha256": "ab29e4b224fa3e96e1d0244ac02f43a7304109ca0646e1843551e2c0c27fa162"
+  },
+  "keycloak/native-identity-verifier/EmailCodeReset.java": {
+    "source": "deploy/enterprise/native-identity-verifier/EmailCodeReset.java",
+    "baseline": "1284f67",
+    "source_sha256": "3a979ad145050ddc8796bc780c5240de6f28a657830707398ba728932d0830db"
+  },
+  "keycloak/native-identity-verifier/MailTransportHealth.java": {
+    "source": "deploy/enterprise/native-identity-verifier/MailTransportHealth.java",
+    "baseline": "1284f67",
+    "source_sha256": "f83945832ade76cff2182c87bf1e9a2cd05f9b13a096fc70a72dd7deb1a944b5"
+  },
+  "keycloak/native-identity-verifier/NativeIdentityVerifier.java": {
+    "source": "deploy/enterprise/native-identity-verifier/NativeIdentityVerifier.java",
+    "baseline": "1284f67",
+    "source_sha256": "0ec9b97711b9e9dac1e6612b9bbe576154d92fe0a41222eb23e07341787af521"
+  },
+  "keycloak/native-identity-verifier/ObservedExecuteActions.java": {
+    "source": "deploy/enterprise/native-identity-verifier/ObservedExecuteActions.java",
+    "baseline": "1284f67",
+    "source_sha256": "6cfa7e4cd62dd4c60547a1d03d7a81340ef60af29ae0d85a7fa582277b00eeeb"
+  },
+  "keycloak/native-identity-verifier/RegistrationCodes.java": {
+    "source": "deploy/enterprise/native-identity-verifier/RegistrationCodes.java",
+    "baseline": "1284f67",
+    "source_sha256": "bdcd5f8a32534f9d434cc74363129949ec2a9c68699645846645f3d48c5b9546"
+  },
+  "keycloak/native-identity-verifier/ResetCompletions.java": {
+    "source": "deploy/enterprise/native-identity-verifier/ResetCompletions.java",
+    "baseline": "1284f67",
+    "source_sha256": "507316acd26822c05f47367dc74c7e4f11ad1925f6ba1b6c8883c80f268bc431"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/LICENSE.keycloak.txt": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/LICENSE.keycloak.txt",
+    "baseline": "1284f67",
+    "source_sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/UPSTREAM.md": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/UPSTREAM.md",
+    "baseline": "1284f67",
+    "source_sha256": "6d98252c5245078ce155c410f39d2c109f7d13aecd308a3e3aafdf179edd8ed8"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/login-update-password.ftl": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/login-update-password.ftl",
+    "baseline": "1284f67",
+    "source_sha256": "5e9ae5573f8f3cdd3bb6a4e90531093ceafab2f4c2864b438876f96e72133768"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/login.ftl": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/login.ftl",
+    "baseline": "1284f67",
+    "source_sha256": "478b826795403017cf414f826ff1865903342eb0ebe0860cec261d41c81b30de"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/mentorflow-account-lifecycle.ftl": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/mentorflow-account-lifecycle.ftl",
+    "baseline": "1284f67",
+    "source_sha256": "04ec639374332c910c26e7d2b4bf48f415b0060ac14504ebade7aef48caa691e"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/mentorflow-password-pair.ftl": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/mentorflow-password-pair.ftl",
+    "baseline": "1284f67",
+    "source_sha256": "b618c23ee150e652a85aa0f4069f7e298fab1facdc63a99e752e0e61753e5710"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/theme.properties": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/theme.properties",
+    "baseline": "1284f67",
+    "source_sha256": "499038a661107e9042ceaca7e45f74a00eabd9cfacd533aee98ef41e5d4b3476"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/messages/messages_en.properties": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/messages/messages_en.properties",
+    "baseline": "1284f67",
+    "source_sha256": "a1970a59b0638d211b5aecf8bcf7b7b97dcabacf2de516f9bfb67996c92293be"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/messages/messages_zh_CN.properties": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/messages/messages_zh_CN.properties",
+    "baseline": "1284f67",
+    "source_sha256": "e04e7791cc886189d1d58582985e2fdf1882c7ed74f6a4421171d1b988699237"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/resources/css/account-lifecycle.css": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/resources/css/account-lifecycle.css",
+    "baseline": "1284f67",
+    "source_sha256": "f6f36a50590b8952e3bb67b289300108c35acd7bcc78a49a519be35ecd343d99"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/resources/css/mentorflow.css": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/resources/css/mentorflow.css",
+    "baseline": "1284f67",
+    "source_sha256": "9983088e6a8cd50da5dd233d2a1c026e4ed1996119324932ea736e5c6d490e6c"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/resources/js/account-lifecycle-native.js": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/resources/js/account-lifecycle-native.js",
+    "baseline": "1284f67",
+    "source_sha256": "b3567684e563764f5e118ec789d396777c0ac86b2875484116c8dd1ec4799bfe"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/resources/js/account-lifecycle-state.js": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/resources/js/account-lifecycle-state.js",
+    "baseline": "1284f67",
+    "source_sha256": "60085ef60b895c296925cc6094d2335e3511fbfeebde7023d8701660178c4316"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/resources/js/account-lifecycle.js": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/resources/js/account-lifecycle.js",
+    "baseline": "1284f67",
+    "source_sha256": "1c60bba9630e89beb0abb506d3c5c12b833ad33c21245bd677bc14531858e8db"
+  },
+  "keycloak/themes/mentorflow-desktop-v1/login/resources/js/password-pair.js": {
+    "source": "deploy/enterprise/themes/mentorflow-desktop-v1/login/resources/js/password-pair.js",
+    "baseline": "1284f67",
+    "source_sha256": "b963f98ac627d4a8a2d498f98f2e5bfbbf6b3b240191ae02d7328ed4da39475e"
+  },
+  "keycloak/keycloak-realm.json": {
+    "source": "deploy/enterprise/config/keycloak-realm.json",
+    "baseline": "1284f67",
+    "source_sha256": "cce0c03b1e4205073928db54bb70808d8befdc36bd673afa4d7b1dc0cf4f7252"
+  },
+  "keycloak/realm-policy.json": {
+    "source": "deploy/enterprise/staging/rp05/mf-u11/realm-policy.json",
+    "baseline": "1284f67",
+    "source_sha256": "e9944ba7e91fe036ba0751eff7222b331074adcda8987113b9368b1a6137cb74"
+  },
+  "keycloak/realm_admin.py": {
+    "source": "deploy/enterprise/staging/rp05/mf-u11/realm_admin.py",
+    "baseline": "1284f67",
+    "source_sha256": "b7ea694b2daf750aa58a796ed25eacc7e45f6582b4c3a0db976b8e59f748483b"
+  },
+  "keycloak/mentorflow-native-verifier.jar": {
+    "source": "deploy/enterprise/staging/rp05/mf-u11/mentorflow-native-verifier.jar",
+    "baseline": "1284f67",
+    "source_sha256": "2e400c6c89e1d13f21ab2a817cd1fd74c577f21ee5cb5b7e28428266bdb43124"
+  },
+  "keycloak/Dockerfile": {
+    "source": "deploy/enterprise/staging/rp05/mf-u11/Dockerfile.keycloak",
+    "baseline": "1284f67",
+    "source_sha256": "c3a553fe8e4763bceab6e4489eb3ea4a5aa2dfa52407d7a7b948f45e132d1f19"
+  },
+  "product_sync_extensions.py": {
+    "source": "backend/app/product_sync_extensions.py",
+    "baseline": "1284f67",
+    "source_sha256": "ffb42500db5074a2261979c83c0270b1639207256a7bb664e0b9698b9d88c55f"
+  },
+  "keycloak/build.py": {
+    "source": "scripts/build_native_identity_verifier.py",
+    "baseline": "1284f67",
+    "source_sha256": "e07f51dc3f3b2b77f8dfaddc30f724acef9c98f43c87a8f922550b239f3e47b0"
+  }
+}

@@ -24,8 +24,12 @@ from urllib.parse import urlsplit
 from .extract import ExtractedDocument, ExtractError, extract_bytes, extract_html
 from .source_filter import (RawHit, SourceLists, blocked_keyword_reasons,
                             load_lists, normalize_url, screen)
-from ..planning.research import (FetchedContent, ResearchService, ResearchError,
-                                ResearchCancelled, ResearchTimeout, ResearchUnsupportedContent)
+from refactor.learning.course.research import FetchedContent
+from refactor.learning.course.research import ResearchService
+from refactor.learning.course.research import ResearchError
+from refactor.learning.course.research import ResearchCancelled
+from refactor.learning.course.research import ResearchTimeout
+from refactor.learning.course.research import ResearchUnsupportedContent
 
 
 @dataclass(frozen=True)

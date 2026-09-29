@@ -7,8 +7,9 @@ import re
 
 import httpx
 
-from .plan_models import PlanError
-from .plan_source import AuthenticatedPlanSource, sync_auth_error
+from refactor.learning.sync_identity import PlanError
+from refactor.learning.sync_source import AuthenticatedPlanSource
+from refactor.learning.sync_source import sync_auth_error
 from .sync_records.contract import envelope_for
 
 

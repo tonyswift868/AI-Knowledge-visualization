@@ -13,11 +13,14 @@ import uuid
 
 from ..connections.errors import ModelCancelled
 from ..course.store import StoreError
-from ..tools.free_chat.contracts import FreeChatMessage, FreeChatSession
-from ..tools.free_chat.session import FreeChatSessionConflictError, FreeChatSessionNotFoundError
-from ..tools.free_chat.persistence import MAX_SESSION_FILE_BYTES, FreeChatStoreError
-from ..tools.service import ScopedChatStore
-from ..tools.storage import ToolError
+from refactor.learning.chat.contracts import FreeChatMessage
+from refactor.learning.chat.contracts import FreeChatSession
+from refactor.learning.chat.session import FreeChatSessionConflictError
+from refactor.learning.chat.session import FreeChatSessionNotFoundError
+from refactor.learning.chat.persistence import MAX_SESSION_FILE_BYTES
+from refactor.learning.chat.persistence import FreeChatStoreError
+from refactor.learning.chat.storage import ScopedChatStore
+from refactor.learning.chat.errors import ToolError
 
 log = logging.getLogger(__name__)
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)

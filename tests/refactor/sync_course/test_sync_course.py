@@ -13,7 +13,8 @@ import httpx
 import pytest
 
 from refactor.learning.course.sync_course import CourseSync
-from refactor.learning.plan_models import PlanError, PlanScope
+from refactor.learning.sync_identity import PlanError
+from refactor.learning.sync_identity import PlanScope
 from refactor.learning.sync_transport import SyncTransport
 
 

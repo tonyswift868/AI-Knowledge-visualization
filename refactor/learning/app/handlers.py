@@ -16,7 +16,7 @@ from .settings import AppSettings
 
 APP_VERSION = "2.0-preview"
 if getattr(sys, "frozen", False):
-    from desktop.version import load_version_manifest
+    from refactor.desktop.delivery.version import load_version_manifest
     APP_VERSION = load_version_manifest()["version"]
 
 

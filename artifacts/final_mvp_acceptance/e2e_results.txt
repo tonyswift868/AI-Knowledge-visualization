@@ -1,3 +1,0 @@
-Command: npm.cmd exec -- playwright test --config=playwright.config.ts
-Result: PASS
-9 passed (including reference Story Pack ending and postgame, forged event rejection, Provider mode, ZIP security)

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from refactor.learning.app import handlers
 from refactor.learning.app.services import AppServices
 from refactor.learning.connections.errors import ModelCancelled
-from refactor.learning.tools.free_chat.contracts import utc_now
+from refactor.learning.chat.contracts import utc_now
 
 from .test_app_window_layer import _Window, make_bridge, pump, qapp, tmp_root  # noqa: F401
 
@@ -87,9 +87,8 @@ def test_stopped_turn_is_not_saved_and_bad_input_rejected(qapp, tmp_root):
 
 
 def test_old_tools_page_sessions_are_visible(qapp, tmp_root):
-    from refactor.learning.tools.service import ScopedChatStore
-    from refactor.learning.tools.storage import ToolStore
-    old = ScopedChatStore(ToolStore(tmp_root, ACCOUNT).root / "chat")
+    from refactor.learning.chat.storage import ScopedChatStore
+    old = ScopedChatStore(tmp_root / 'learning/accounts' / ACCOUNT / 'tools/chat')
     session = old.create(session_id=None, created_at=utc_now())
     old.commit_turn(session.session_id, expected_version=0, user_content="旧界面聊过", assistant_content="嗯",
                     committed_at=utc_now())

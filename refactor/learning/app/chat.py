@@ -7,12 +7,13 @@ teaching pipeline. Sessions use CourseStore; old tool JSON is imported once.
 from __future__ import annotations
 
 from ..connections.errors import ModelCancelled
-from ..tools.free_chat.contracts import utc_now
-from ..tools.free_chat.persistence import FreeChatStoreError
-from ..tools.free_chat.prompt import FreeChatHistoryWindow
-from ..tools.free_chat.session import FreeChatSessionConflictError, FreeChatSessionNotFoundError
+from refactor.learning.chat.contracts import utc_now
+from refactor.learning.chat.persistence import FreeChatStoreError
+from refactor.learning.chat.prompt import FreeChatHistoryWindow
+from refactor.learning.chat.session import FreeChatSessionConflictError
+from refactor.learning.chat.session import FreeChatSessionNotFoundError
 from ..course.store import StoreError
-from ..tools.storage import ToolError
+from refactor.learning.chat.errors import ToolError
 from .bridge import BridgeError, CallContext
 
 MAX_MESSAGE = 20000

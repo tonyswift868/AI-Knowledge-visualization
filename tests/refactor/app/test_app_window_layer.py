@@ -157,7 +157,7 @@ def test_handlers_against_real_store(qapp, tmp_root):
 
 def test_export_hook_without_plans_reports_no_current_plan(qapp, tmp_root):
     from refactor.learning.app.window import LearningWindow
-    from refactor.learning.plan_export import ExportStatus
+    from refactor.learning.course.export_contract import ExportStatus
     win = LearningWindow("测试", "LEARNER", "api", account_id="mfa1_" + "c" * 64, data_root=tmp_root)
     assert win.bind_feature_context(session_provider=lambda: None, api_base_url="https://api.invalid",
                                     ca_bundle=tmp_root / "ca.pem")

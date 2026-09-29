@@ -1,6 +1,0 @@
-PASS: test_verified_reward_is_idempotent_and_never_negative
-- 相同 learning_run_id + phase 第二次发布返回 idempotent=true。
-- 60 分钟只产生 60 exp + 60 crystals；负分钟请求产生 0，不会扣减余额。
-- ledger 保留 workspace_id、learning_run_id、standard/released/frozen minutes。
-
-PASS: 全量后端回归中的 learning-run 测试未被破坏。

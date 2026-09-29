@@ -1,3 +1,0 @@
-PASS - Story Catalog Playwright regression: 1 passed, 0 failed; algorithm/law rematch, 3 cards, READY/PACK_REQUIRED split, and curation request verified.
-PASS - Playwright full suite: 11 passed, 0 failed. The long reference Story Pack route uses a 300-second budget for its current 33-task plan; the Story Catalog E2E uses a 120-second budget and creates/rematches two Workspace profiles.
-Covered home Demo flow, fixed Story Pack gate and postgame, server-evaluated Learning Run, forged event rejection, distinct law/algorithm adaptations, real-provider mock, provider failure visibility, normal ZIP import, and malicious ZIP traversal rejection.

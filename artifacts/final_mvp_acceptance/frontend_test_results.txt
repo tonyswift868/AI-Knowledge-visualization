@@ -1,3 +1,0 @@
-Command: npm.cmd run test -- --run
-Result: PASS
-3 test files passed; 44 tests passed

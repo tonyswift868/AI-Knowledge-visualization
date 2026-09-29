@@ -1,8 +1,0 @@
-.voice-playback-rate{display:grid;gap:8px;padding:14px;border:1px solid #2d4142;border-radius:9px;background:#101a1c;color:#c1cfcc}
-.voice-playback-rate__heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.voice-playback-rate__heading label{font-size:11px;font-weight:800}.voice-playback-rate__value{color:var(--mint,#65b997);font-size:12px;font-weight:800}
-.voice-playback-rate input[type="range"]{width:100%;accent-color:var(--mint,#65b997);cursor:pointer}
-.voice-playback-rate__presets{display:flex;flex-wrap:wrap;gap:6px}.voice-playback-rate__presets button{padding:5px 9px;border:1px solid #34534d;border-radius:999px;background:#162724;color:#a9bbb8;font-size:10px}
-.voice-playback-rate__presets button.is-active{border-color:#65b997;color:#d9fff0;background:#235242}.voice-playback-rate>small{color:#7f9391;font-size:10px;line-height:1.55}
-.voice-playback-rate.is-compact{gap:4px;padding:8px 10px;border-color:#c9e0cf;background:rgba(255,255,255,.72);color:#527062}
-.voice-playback-rate.is-compact .voice-playback-rate__heading label,.voice-playback-rate.is-compact .voice-playback-rate__value{font-size:10px}

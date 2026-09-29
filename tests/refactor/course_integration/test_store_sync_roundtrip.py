@@ -234,7 +234,7 @@ def test_chat_bridge_send_sync_read_and_remote_delete(devices, chat_app):
 
 def test_two_devices_import_same_legacy_file_then_converge(devices):
     from refactor.learning.app.chat_store import CourseChatStore
-    from refactor.learning.tools.service import ScopedChatStore
+    from refactor.learning.chat.storage import ScopedChatStore
     server, transport, a, b = devices
     for store in (a, b):
         old = ScopedChatStore(store.root / 'tools' / 'chat')

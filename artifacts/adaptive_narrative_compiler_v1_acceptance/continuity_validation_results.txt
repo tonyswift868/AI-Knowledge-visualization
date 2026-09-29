@@ -1,7 +1,0 @@
-PASS - Scene Contract validator rejects missing story problem or required artifact.
-PASS - Forbidden Story Pack reveals are checked before contract status is validated.
-PASS - Generated scene uses safe templates and only verified/revised/final Story Object facts.
-PASS - Provisional objects are excluded from adaptive world state.
-PASS - Review marks prior non-final objects as revised and increments revision.
-PASS - Story Object references are campaign-scoped after migration 0009.
-PASS - Fixed Story Pack checksum remains sha256:8d3f1123d2fa6f900fba4c6d9ca5eb87ff52415071d9d8701878254d61628d3a.

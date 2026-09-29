@@ -8,9 +8,8 @@ import pytest
 from refactor.learning.app.chat_store import CourseChatStore
 from refactor.learning.connections.errors import ModelError, ModelCancelled
 from refactor.learning.course.store import CourseStore
-from refactor.learning.tools.free_chat.session import FreeChatSessionConflictError
-from refactor.learning.tools.service import ScopedChatStore
-from refactor.learning.tools.storage import ToolStore
+from refactor.learning.chat.session import FreeChatSessionConflictError
+from refactor.learning.chat.storage import ScopedChatStore
 
 from .test_app_free_chat import ACCOUNT, setup, ask
 from .test_app_window_layer import qapp, tmp_root  # noqa: F401
@@ -19,7 +18,7 @@ NOW = datetime(2026, 9, 27, 12, tzinfo=timezone.utc)
 
 
 def legacy(root, account=ACCOUNT, sid='old-session'):
-    reader = ScopedChatStore(ToolStore(root, account).root / 'chat')
+    reader = ScopedChatStore(root / 'learning/accounts' / account / 'tools/chat')
     session = reader.create(session_id=sid, created_at=NOW)
     reader.commit_turn(sid, expected_version=session.version, user_content='以前聊过', assistant_content='旧回复', committed_at=NOW)
     return reader.root / 'sessions' / (sid + '.json')

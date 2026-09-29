@@ -4,3 +4,4 @@ scripts/enterprise/*.sh text eol=lf
 deploy/enterprise/staging/*.sh text eol=lf
 deploy/enterprise/staging/rp05/*.sh text eol=lf
 docs/handoff/WEB_SESSION_LATEST.md text eol=lf
+refactor/server/** text=auto eol=lf

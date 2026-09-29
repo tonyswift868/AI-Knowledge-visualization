@@ -1,12 +1,12 @@
 # MentorFlow — 入口
 
-- 主目录 D:\MentorFlow；所有新代码都放在重构区 [refactor](refactor/)，重构区保持干净。旧仓库（desktop/backend/frontend 等）不是废弃品，里面已有的成果先参考复用，不重复造轮子；但不把旧运行链整体搬进来。
+- 主目录 D:\MentorFlow；所有代码都在 [refactor](refactor/)（客户端 learning、desktop，服务器 server），保持干净。旧客户端代码和旧文档已于 2026-09-29 删除（14-MF03）；backend/、deploy/、根目录 Dockerfile 只为线上旧服务暂留，新服务器 refactor/server 上线验证后删除，不要再从里面引用或复制代码。
+- **功能先行**：功能没做完之前不加安全加固（镜像签名、mTLS、镜像扫描、额外校验层等）；只保留现有功能正常工作必需的部分（登录、Token、密码、验证码、更新签名照旧）。
 - 测试代码放在 `tests/refactor/<模块>/`，不放进 refactor；refactor 里只有产品运行需要的文件；测试文件名在整个 tests/ 下不能重名（例如用 test_plan_export.py，不用通用的 test_export.py），否则多套测试一起运行时会互相冲突。
 - 唯一需求与状态文档：[docs/project/CURRENT_STATE.md](docs/project/CURRENT_STATE.md)。需求由用户直接给出，不从其他文档领取。
 - 员工调度（员工、任务、基线、交付状态）只记在 [docs/project/WORKFLOW.md](docs/project/WORKFLOW.md)，由架构师维护；需求不写在那里。
-- [过时文件隔离](过时文件隔离/) 下全是旧资料，日常检索跳过，不作为当前指令。
 - 不改动 Kristina 的资源。
-- **磁盘规则（BUG-02）**：E 盘是移动固态硬盘，扛不住频繁读写，只放大型程序（如朗读引擎），只能读取运行。不要在 E 盘建目录、写文件、跑测试、构建或放临时文件，也不要从 E 盘批量复制大文件。所有并发任务、测试、构建、临时文件、日志一律在 D 盘（`D:\MentorFlow\.local\test-tmp\` 下自建子目录）。旧前端 `refactor/learning/classroom/stage`、`refactor/learning/planning/web` 的构建配置指向 E 盘，不要构建它们。
+- **磁盘规则（BUG-02）**：E 盘是移动固态硬盘，扛不住频繁读写，只放大型程序（如朗读引擎），只能读取运行。不要在 E 盘建目录、写文件、跑测试、构建或放临时文件，也不要从 E 盘批量复制大文件。所有并发任务、测试、构建、临时文件、日志一律在 D 盘（`D:\MentorFlow\.local\test-tmp\` 下自建子目录）。
 - **别让 D 盘膨胀**：反复构建、试装、跑测试的中间产物用完即删，同类只保留最后一份（例如打包只留最终那版）；交付时在回执里写明测试目录最终占用多少、留了哪些以及为什么留。单个任务留下的东西超过 2 GB 要在回执里单独说明。删除被系统拦住时列出路径交给用户，不要换工具绕过。
 
 ## 需求文档规则（每次都执行）

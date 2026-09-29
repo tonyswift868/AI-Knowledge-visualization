@@ -1,6 +1,0 @@
-PASS - Uploaded-material prompt injection is sanitized and recorded as data; profile generation_meta.prompt_injection_filtered is true.
-PASS - Generated dynamic dialogue applies HTML stripping and material sanitization.
-PASS - Generated scene metadata uses safe_template and provider_used=false on the fallback path.
-PASS - No API key is copied into Task Profiles, Artifacts, Story Objects, Scene Contracts, or generated scenes.
-PASS - Existing ZIP traversal, root restriction, and key-redaction smoke checks pass.
-PASS - Workspace and campaign lookups use scoped ids and foreign keys; cross-campaign Story Objects are independently persisted.

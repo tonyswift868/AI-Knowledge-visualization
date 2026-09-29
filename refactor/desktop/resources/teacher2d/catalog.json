@@ -1,0 +1,13 @@
+{
+  "default": "tsubaki-live2d",
+  "renderers": [
+    "live2d2d"
+  ],
+  "teachers": [
+    {
+      "id": "tsubaki-live2d",
+      "manifest": "/teacher2d/tsubaki-live2d/manifest.json",
+      "local_only": true
+    }
+  ]
+}

@@ -1,4 +1,0 @@
-PASS - Backend suite completed in 10.72s before the final two isolation assertions; adaptive narrative focused suite completed in 2.48s.
-PASS - Full Playwright suite completed in 66.1s with one worker; the adaptation comparison test completed in under 1s.
-PASS - Production Vite build completed successfully in the workspace and clean copy; the clean-copy build completed in 12.08s.
-NOTE - These are local smoke measurements, not production capacity limits. No network provider latency is included in the deterministic fallback path.

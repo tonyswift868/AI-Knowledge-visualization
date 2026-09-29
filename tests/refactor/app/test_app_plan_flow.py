@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from refactor.learning.app import handlers
 from refactor.learning.app.services import AppServices
 from refactor.learning.connections.providers.base import WebHit
-from refactor.learning.planning.research import FetchedContent
+from refactor.learning.course.research import FetchedContent
 
 from .test_app_window_layer import make_bridge, pump, qapp, tmp_root  # noqa: F401
 

@@ -1504,7 +1504,7 @@ def _show_launch_error(message: str) -> None:
     detail = (f"{message}\n\n请使用可信的 MentorFlow 安装程序修复后重试。"
               if getattr(sys, "frozen", False) else (
         f"{message}\n\n请确认 D:\\MentorFlow\\.venv 已由项目运行环境准备好，"
-        "并从 Start-MentorFlow.cmd 重新启动。"
+        "并使用 python -m refactor.desktop.account_shell_main 重新启动。"
     ))
     try:
         if os.name == "nt":
@@ -1583,7 +1583,7 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
             app._mentorflow_updates = DesktopUpdates(app, install_root, shell.gate)
             app._mentorflow_updates.start()
             if update_attempt and update_nonce:
-                from scripts.per_user_install import notify_health
+                from refactor.desktop.delivery.per_user_install import notify_health
                 from PySide6.QtCore import QTimer
 
                 QTimer.singleShot(250, lambda: notify_health(

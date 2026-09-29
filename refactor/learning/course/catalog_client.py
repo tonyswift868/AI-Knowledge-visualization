@@ -25,8 +25,8 @@ import httpx
 
 from .source_filter import SourceLists, parse_lists
 from ..file_io import assert_no_reparse_ancestors, canonical_io_path, _native_path
-from ..plan_models import PlanError
-from ..plan_source import AuthenticatedPlanSource
+from refactor.learning.sync_identity import PlanError
+from refactor.learning.sync_source import AuthenticatedPlanSource
 
 
 MAX_CATALOG_BYTES = 1024 * 1024

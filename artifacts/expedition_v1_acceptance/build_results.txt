@@ -1,2 +1,0 @@
-PASS: npm run build — TypeScript and Vite production build completed.
-PASS: Phaser is split into a dedicated production chunk; only a bundle-size advisory remains.

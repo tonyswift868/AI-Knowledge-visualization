@@ -19,13 +19,14 @@ class DesktopUpdates(QObject):
     def __init__(self, app, root, gate, *, core=None):
         super().__init__(app)
         if core is None:
-            from scripts import per_user_update_core as core
+            from refactor.desktop.delivery import per_user_update_core as core
         self.core, self.root, self.gate = core, Path(root), gate
         self.state = {"state": "IDLE", "message": "尚未检查更新。"}
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mf-app-update")
         self._busy = self._closed = False
         self._cancel = threading.Event()
-        from desktop.update_session import UpdateSession, UnavailableSession
+        from refactor.desktop.delivery.update_session import UpdateSession
+        from refactor.desktop.delivery.update_session import UnavailableSession
         try:
             self._session = UpdateSession()
         except OSError:

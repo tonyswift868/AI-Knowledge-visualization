@@ -1,6 +1,6 @@
 """Read-only, allowlisted Live2D files for the new app's private profile.
 
-Discovery/settings reuse classroom.live2d_assets. No servers, model substitution,
+Discovery/settings reuse app.live2d_assets. No servers, model substitution,
 downloads or account data are involved. The bridge worker only publishes an
 immutable resource snapshot; Qt replies and folder selection stay on the UI thread.
 """
@@ -18,11 +18,13 @@ from PySide6.QtWebEngineCore import QWebEngineUrlRequestJob, QWebEngineUrlScheme
 from PySide6.QtWidgets import QFileDialog
 
 from refactor.desktop.web_schemes import register_teacher_stage_scheme
-from ..classroom.live2d_assets import inspect_live2d_assets, saved_asset_root, save_asset_root
+from refactor.learning.app.live2d_assets import inspect_live2d_assets
+from refactor.learning.app.live2d_assets import saved_asset_root
+from refactor.learning.app.live2d_assets import save_asset_root
 from .bridge import BridgeError
 
 register_teacher_stage_scheme()
-PUBLIC_ROOT = Path(__file__).resolve().parents[3] / "frontend/public"
+PUBLIC_ROOT = Path(__file__).resolve().parents[2] / "desktop/resources"
 CORE = PUBLIC_ROOT / "vendor/live2d/live2dcubismcore.min.js"
 _MIME = {".json": "application/json", ".moc3": "application/octet-stream", ".png": "image/png",
          ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".js": "text/javascript"}

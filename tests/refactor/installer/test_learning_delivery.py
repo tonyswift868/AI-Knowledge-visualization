@@ -56,7 +56,7 @@ def test_learning_delivery_atomic_status_survives_native_reader(tmp_path):
     """A native reader without FILE_SHARE_DELETE reproduces Inno's race."""
     import ctypes
     from ctypes import wintypes
-    from scripts.per_user_install import atomic
+    from refactor.desktop.delivery.per_user_install import atomic
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)
     kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
                                   ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
@@ -286,7 +286,8 @@ def test_learning_delivery_update_worker_uses_existing_core_and_real_window(tmp_
             app.processEvents(); time.sleep(.005)
         assert adapter.state["state"] == "APPLYING"
         assert calls[-1][1]["hwnd_hex"] == f"{int(gate.winId()):016x}"
-        from desktop.update_session import UpdateSession, SessionEnding
+        from refactor.desktop.delivery.update_session import UpdateSession
+        from refactor.desktop.delivery.update_session import SessionEnding
         import os
         peer = UpdateSession(os.getpid())
         try:

@@ -301,7 +301,8 @@ class LearningWindow(QWidget):
     def request_current_plan_export(self, on_finished, *, cleanup_roots=()):
         """Before account deletion: export the current plan (ACC-02). One callback, always."""
         from ..course.export import export_plan
-        from ..plan_export import ExportResult, ExportStatus
+        from refactor.learning.course.export_contract import ExportResult
+        from refactor.learning.course.export_contract import ExportStatus
         done = {"called": False}
 
         def finish(result):
