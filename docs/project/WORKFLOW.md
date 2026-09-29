@@ -27,7 +27,7 @@
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-01（library） | D:\MentorFlow-office\library | 空闲 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 20-MF06 进行中 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
 工位名只是称呼，不限制能接的任务类型。用户按 MF-01～MF-07 转发任务；每批尽量给每人塞满不冲突的活（用户 2026-09-27 要求）。架构师在员工完成本阶段任务前只做审查与集成，之后再做前端与核心编排。
@@ -101,7 +101,7 @@
 | 18-MF03 | MF-03 client | 检测与检验这一侧：题库与挑题、综合题答错拆开问、新过关等级、自由检验、报告评语用判定原因 | CHK-01、TEACH-02、TEACH-04、RPT-01、MAP-01、QA-01 | 6d34557 | 已合入（部分完成） |
 | 19-MF02 | MF-02 runtime | 按用途设定模型思考强度（SYS-07）+ 主观题判定改造（TEACH-04） | SYS-07、TEACH-04、QA-01、SYS-03、SYS-05 | 94f9de6 | 已合入（部分完成） |
 | 19-MF06 | MF-06 classroom | 全仓库只读自查：找问题、不改代码（为之后外部模型挑错做准备） | 全部条目（以 CURRENT_STATE 为准） | 94f9de6 | 已完成（只读报告：P1 2、P2 3、P3 2） |
-| 20-MF06 | MF-06 classroom | 修复全仓库自查找到的 7 个问题（同步冲突、重复判定、完成计划、加资料、读取失败、开始计划、旧代码） | DATA-02、TEACH-02、CHK-01、PLAN-10、UI-01、BUG-23 | 1a0d8ca | 已起草，待用户转发 |
+| 20-MF06 | MF-06 classroom | 修复全仓库自查找到的 7 个问题（同步冲突、重复判定、完成计划、加资料、读取失败、开始计划、旧代码） | DATA-02、TEACH-02、CHK-01、PLAN-10、UI-01、BUG-23 | 1a0d8ca | 进行中 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
