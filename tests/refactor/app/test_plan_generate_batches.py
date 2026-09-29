@@ -1,5 +1,6 @@
 """Module generation reads all material in batches and splits a cut-off batch (MF-04 helpers, 7-MF02)."""
 import json
+import math
 import re
 import threading
 from datetime import date
@@ -35,13 +36,12 @@ class Gateway:
                 raise ModelError(MODEL_OUTPUT_TRUNCATED, "模型输出达到上限")
         aliases = re.findall(r"\[(c\d+)\]", user)
         low, high = map(int, re.search(r"分钟区间：(\d+)–(\d+)", user).groups())
-        # One point per alias (at most 2), sharing the middle of the range.
-        picked = aliases[:2]
+        # Match the current 10–20 minute point contract, reusing citations
+        # when one source chunk supports several distinct learning points.
         total = (low + high) // 2
-        minutes = [total // len(picked)] * len(picked)
-        minutes[0] += total - sum(minutes)
-        if any(not 2 <= m <= 60 for m in minutes):
-            picked, minutes = picked[:1], [min(60, max(2, total))]
+        count = max(1, math.ceil(total / 20))
+        picked = [aliases[i % len(aliases)] for i in range(count)]
+        minutes = [total // count + (i < total % count) for i in range(count)]
         points = [{"title": f"点{len(self.requests)}-{i}", "summary": f"第{len(self.requests)}批第{i}点", "chunks": [a],
                    "minutes": m} for i, (a, m) in enumerate(zip(picked, minutes))]
         return SimpleNamespace(text=json.dumps({"points": points}, ensure_ascii=False), search_hits=(), citations=())

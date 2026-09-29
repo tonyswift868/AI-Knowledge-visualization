@@ -85,10 +85,10 @@ class MasteryTests(unittest.TestCase):
         b.apply(judgement(1, [('0', False), ('1', False)]))
         close(b, 3, 0)
         b.apply(judgement(102, [(str(i), True) for i in range(3)], 'retest'))
-        self.assertEqual([b.point(str(i)).level for i in range(3)], [1, 1, 2])
+        self.assertEqual([b.point(str(i)).level for i in range(3)], [1, 1, 1])
         for seq in range(103, 107):
             b.apply(judgement(seq, [('0', False)], 'check', angle='recall'))
-        self.assertEqual(b.point('0').level, 0)
+        self.assertEqual(b.point('0').level, 1)
         for seq in range(107, 110):
             b.apply(judgement(seq, [('0', True)], 'check', angle='apply'))
         self.assertEqual(b.point('0').level, 3)
@@ -108,7 +108,7 @@ class MasteryTests(unittest.TestCase):
     def test_coverage_priority_and_query_is_read_only(self):
         b = book(); b.apply(judgement(1, [('3', False)])); close(b, 10, 9)
         original = b.to_dict()
-        self.assertEqual(b.next_check_items(3), [('3', 'recall'), ('9', 'recall'), ('0', 'recall')])
+        self.assertEqual(b.next_check_items(3), [('9', 'recall'), ('3', 'recall'), ('0', 'recall')])
         self.assertEqual(b.to_dict(), original)
         b.apply(judgement(102, [('3', False)], 'check', angle='recall'))
         self.assertEqual(b.next_check_items()[0][0], '9')

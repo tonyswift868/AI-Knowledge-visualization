@@ -107,16 +107,19 @@ class FakeAgent:
             purpose_name = json.loads(content.split("【本次出题要求】\n", 1)[1])["purpose"]
             rows = []
             for index, point in enumerate(points):
-                rows.append({
-                    "id": f"q-{purpose_name}-{index}",
-                    "type": "choice" if purpose_name == "module_test" and point["id"] == "p2" else "short",
-                    "stem": f"请说明{point['title']}的关键作用（第 {index + 1} 题）",
-                    "options": ["甲答案", "乙答案", "丙答案", "丁答案"]
-                    if purpose_name == "module_test" and point["id"] == "p2" else [],
-                    "answer": "乙答案" if purpose_name == "module_test" and point["id"] == "p2" else "标准答案",
-                    "reference": "关键要点是正确区分并说明作用。",
-                    "point_ids": [point["id"]], "chunk_ids": ["k1" if point["id"] != "p2" else "k2"],
-                })
+                for variant in range(2 if purpose_name == 'bank' else 1):
+                    choice = purpose_name in ('module_test', 'bank') and point['id'] == 'p2'
+                    row = {
+                        "id": f"q-{purpose_name}-{index}-{variant}",
+                        "type": "choice" if choice else "short",
+                        "stem": f"请说明{point['title']}的关键作用（第 {len(self.calls)} 轮第 {index + 1}-{variant} 题）",
+                        "options": ["甲答案", "乙答案", "丙答案", "丁答案"] if choice else [],
+                        "answer": "乙答案" if choice else "标准答案",
+                        "reference": "关键要点是正确区分并说明作用。",
+                        "point_ids": [point["id"]], "chunk_ids": ["k1" if point["id"] != "p2" else "k2"],
+                    }
+                    if purpose_name == 'bank': row['angle'] = ('recall', 'apply')[variant]
+                    rows.append(row)
             return SimpleNamespace(text=json.dumps({"questions": rows}, ensure_ascii=False),
                                    search_hits=(), citations=())
         if purpose == "profile":
@@ -286,9 +289,11 @@ def test_classroom_cross_day_timeline_uses_real_today_status(classroom_room):
 
     # 20 + 10 test minutes become formal; p1 is revoked and becomes red.
     _act(classroom, "start_test", "module_test")
-    agent.verdicts.extend([("answer", True, []), ("answer", False, ["p1"])])
-    _act(classroom, "reply", "先进先出")
-    view = _act(classroom, "reply", "不会")
+    queue = classroom._file(PLAN).read({})['test']['queue']
+    agent.verdicts.extend(("answer", q['point_ids'][0] != 'p1',
+                           ['p1'] if q['point_ids'][0] == 'p1' else []) for q in queue)
+    for _ in queue:
+        view = _act(classroom, "reply", "检测作答")
     assert view["module"]["state"] == "failed" and view["red"] == ["队列操作"]
     _assert_today(clock, trace, view, "DAY1 模块检测失败，p0与检测时长转正式、p1撤回", target=30,
                   confirmed=30, tentative=0, debt=0, ahead=0, ahead_days=0)

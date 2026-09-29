@@ -28,7 +28,7 @@ export type Draft = {
 type Detail = {
   plan: { id: string; goal: string; state: string; window: { start: string; end: string } | null; total_minutes: number }
   stages: { id: string; title: string; modules: { id: string; title: string; summary: string; learning_minutes: number; check_minutes: number; state?: string | null
-    points: { id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number }[] }[] }[]
+    points: { id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number; needs_review?: boolean; taught?: boolean }[] }[] }[]
   sources: { id: string; title: string; url: string | null; kind: string }[]
   daily?: { full_day: number; cap: number; ok: boolean; suggested_end: string | null }
 }
@@ -465,7 +465,7 @@ export function PlanTree({ detail, editable, busy, onDelete, onMove }:
                     <ol className="point-list fade-in">
                       {m.points.map((p) => <li key={p.id} className={p.state ? `mastery-${MASTERY[p.state]?.[1] ?? "none"}` : ""}>
                         <b>{p.state && <i className="mastery-dot" title={MASTERY[p.state]?.[0]} />}{p.title}</b><span>{p.summary}</span>
-                        <em>{p.minutes} 分钟{p.state && MASTERY[p.state] ? ` · ${MASTERY[p.state][0]}` : ""}{p.errors ? ` · 错过 ${p.errors} 次` : ""}</em></li>)}
+                        <em>{p.minutes} 分钟{p.state && MASTERY[p.state] ? ` · ${MASTERY[p.state][0]}` : ""}{p.errors ? ` · 错过 ${p.errors} 次` : ""}{p.needs_review ? " · 需要复习" : ""}</em></li>)}
                     </ol>
                   )}
                 </div>

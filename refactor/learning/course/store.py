@@ -53,11 +53,11 @@ from .ledger import Ledger, PlanWindow, Credit
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
 _REPORT_PART_PREFIX = 'report-part:'
-PROGRESS = frozenset(('judgements', 'attempt_closed', 'credits', 'ledger_events', 'usage'))
+PROGRESS = frozenset(('judgements', 'attempt_closed', 'credits', 'ledger_events', 'usage', 'practice_results'))
 # One entity maps to exactly one table. Tuple entries are FK field -> parent.
 PARENTS = {
     'plans': (), 'sources': (), 'source_chunks': (('source_id', 'sources'),),
@@ -65,6 +65,7 @@ PARENTS = {
     'judgements': (), 'attempt_closed': (), 'credits': (), 'ledger_events': (),
     'teacher_profile': (), 'messages': (('module_id', 'modules'),), 'reports': (), 'usage': (),
     'chat_sessions': (), 'chat_messages': (('session_id', 'chat_sessions'),),
+    'question_bank': (('module_id', 'modules'),), 'practice_results': (),
 }
 STATES = ('creating', 'ready', 'active', 'checking', 'completed')
 
@@ -243,7 +244,7 @@ class CourseStore:
                 PRIMARY KEY(entity,entity_id))''')
             self._db.execute('CREATE TABLE plans(id TEXT PRIMARY KEY, payload TEXT NOT NULL CHECK(json_valid(payload)), revision INTEGER NOT NULL)')
             for entity, parents in PARENTS.items():
-                if entity == 'plans': continue
+                if entity in ('plans', 'question_bank', 'practice_results'): continue
                 fields = [f'{name} TEXT' for name, _ in parents]
                 constraints = [f'FOREIGN KEY(plan_key,{name}) REFERENCES {parent}(plan_key,id) DEFERRABLE INITIALLY DEFERRED'
                                for name, parent in parents]
@@ -266,7 +267,16 @@ class CourseStore:
             self._db.execute('UPDATE schema_version SET version=2'); version = 2
         if version == 2:
             self._db.execute("CREATE INDEX IF NOT EXISTS chat_messages_order ON chat_messages(plan_key,session_id,json_extract(payload,'$.at'),id)")
-            self._db.execute('UPDATE schema_version SET version=3')
+            self._db.execute('UPDATE schema_version SET version=3'); version = 3
+        if version == 3:
+            for entity, parent in (('question_bank', 'module_id TEXT NOT NULL'), ('practice_results', '')):
+                extra = ',' + parent if parent else ''
+                fk = ',FOREIGN KEY(plan_key,module_id) REFERENCES modules(plan_key,id) DEFERRABLE INITIALLY DEFERRED' if parent else ''
+                self._db.execute(f'''CREATE TABLE IF NOT EXISTS {entity}(plan_key TEXT NOT NULL,id TEXT NOT NULL,
+                    payload TEXT NOT NULL CHECK(json_valid(payload)),revision INTEGER NOT NULL{extra},
+                    FOREIGN KEY(plan_key) REFERENCES plans(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED{fk},
+                    PRIMARY KEY(plan_key,id))''')
+            self._db.execute('UPDATE schema_version SET version=4')
         owner = self._db.execute("SELECT value FROM _meta WHERE key='account_id'").fetchone()
         if owner is None or owner[0] != self.account_id: raise StoreError('ACCOUNT_MISMATCH')
 
@@ -351,6 +361,20 @@ class CourseStore:
             if not isinstance(payload['title'], str): raise StoreError('INVALID_SESSION')
         elif entity == 'usage':
             for key in ('input_tokens', 'cache_hit_tokens', 'cache_miss_tokens', 'output_tokens', 'search_count'): _number(payload[key])
+        elif entity == 'question_bank':
+            _id(payload['module_id'])
+            if (payload['type'] not in ('choice', 'short', 'fix_error') or payload['angle'] not in
+                    ('recall', 'apply', 'contrast', 'fix_error', 'transfer') or
+                    type(payload['correct_seen']) is not bool or not isinstance(payload['stem'], str) or
+                    not isinstance(payload['answer'], str) or not isinstance(payload['reference'], str) or
+                    not isinstance(payload['options'], list) or not isinstance(payload['point_ids'], list) or
+                    not 1 <= len(set(payload['point_ids'])) <= 4 or not isinstance(payload['chunk_ids'], list)):
+                raise StoreError('INVALID_QUESTION')
+        elif entity == 'practice_results':
+            _id(payload['question_id']); _id(payload['module_id']); _at(payload['at'])
+            if type(payload['correct']) is not bool or not isinstance(payload['point_ids'], list) or not payload['point_ids']:
+                raise StoreError('INVALID_PRACTICE')
+            if payload.get('sequence') is not None: _number(payload['sequence'], True)
         _json(payload)
 
     def _materialize(self, entity, plan, payload, revision):
@@ -436,6 +460,40 @@ class CourseStore:
         if entity not in PARENTS or entity == 'plans': raise StoreError('UNKNOWN_ENTITY')
         with self._lock:
             return sorted(self._rows(entity, plan_id), key=lambda p: (p.get('position', 0), p['id']))
+
+    @_atomic
+    def add_bank_questions(self, plan_id, module_id, questions, *, fingerprint=None):
+        self._get('modules', plan_id, module_id)
+        valid_points = {p['id'] for p in self.records('points', plan_id) if p['module_id'] == module_id}
+        identifiers = []
+        for question in questions:
+            row = asdict(question) if is_dataclass(question) else dict(question)
+            row['id'] = _id(uuid.uuid4().hex)
+            row['module_id'] = module_id
+            row['correct_seen'] = False
+            if fingerprint is not None: row['fingerprint'] = fingerprint
+            if not set(row['point_ids']) <= valid_points: raise StoreError('POINT_MODULE_MISMATCH')
+            row['options'] = list(row['options']); row['point_ids'] = list(row['point_ids'])
+            row['chunk_ids'] = list(row['chunk_ids'])
+            self._put('question_bank', plan_id, row)
+            identifiers.append(row['id'])
+        return identifiers
+
+    @_atomic
+    def mark_bank_correct(self, plan_id, question_id):
+        row = self._get('question_bank', plan_id, question_id)
+        if not row['correct_seen']:
+            row['correct_seen'] = True
+            self._put('question_bank', plan_id, row)
+
+    @_atomic
+    def append_practice_result(self, plan_id, question_id, module_id, point_ids, correct, *, reason='', at=None, result_id=None):
+        self._get('plans', plan_id, plan_id)
+        identifier = _id(result_id or uuid.uuid4().hex)
+        sequence = int(self._db.execute("SELECT value FROM _meta WHERE key='revision'").fetchone()[0]) + 1
+        self._put('practice_results', plan_id, dict(id=identifier, question_id=_id(question_id), module_id=_id(module_id),
+                  point_ids=list(point_ids), correct=bool(correct), reason=str(reason)[:400], at=_at(at), sequence=sequence))
+        return identifier
 
     @_atomic
     def add_sources(self, plan_id, sources):
@@ -702,6 +760,8 @@ class CourseStore:
     def delete_module(self, plan_id, module_id, *, today):
         plan = self._get('plans', plan_id, plan_id); self._structure_editable(plan)
         self._get('modules', plan_id, module_id)
+        for question in self._rows('question_bank', plan_id):
+            if question['module_id'] == module_id: self._delete('question_bank', plan_id, question['id'])
         for point in self._rows('points', plan_id):
             if point['module_id'] == module_id: self._delete('points', plan_id, point['id'])
         for message in self._rows('messages', plan_id):
@@ -1320,12 +1380,21 @@ class CourseStore:
                     continue  # A remote echo is not an upload acknowledgement.
             elif old and server_revision <= old['server_revision']:
                 continue
+            # A correct answer is irreversible for question selection. Another
+            # device may upload an older, unanswered copy of the same question.
+            # Merge that bit monotonically and queue the repair for upload.
+            repair_answered = (record.entity == 'question_bank' and not record.deleted and old is not None
+                               and not old['deleted'] and json.loads(old['payload']).get('correct_seen')
+                               and not payload.get('correct_seen'))
+            if repair_answered:
+                payload['correct_seen'] = True
             if not record.deleted: self._validate(record.entity, record.plan_key, payload)
             if record.entity == 'plans' and payload['id'] != record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
-            self._db.execute('''INSERT INTO _records VALUES(?,?,?,?,?,?,?,0) ON CONFLICT(entity,entity_id)
+            self._db.execute('''INSERT INTO _records VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(entity,entity_id)
                 DO UPDATE SET payload=excluded.payload,deleted=excluded.deleted,local_revision=excluded.local_revision,
-                server_revision=excluded.server_revision,pending=0''',
-                             (record.entity, record.entity_id, record.plan_key, _json(payload), int(record.deleted), self._revision(), server_revision))
+                server_revision=excluded.server_revision,pending=excluded.pending''',
+                             (record.entity, record.entity_id, record.plan_key, _json(payload), int(record.deleted),
+                              self._revision(), server_revision, int(repair_answered)))
             if old is None or old['deleted'] != int(record.deleted) or old['payload'] != _json(payload):
                 self._changed('remote', record.entity)
         self._project_records()

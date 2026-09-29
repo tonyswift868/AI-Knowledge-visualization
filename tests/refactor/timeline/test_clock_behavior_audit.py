@@ -318,9 +318,11 @@ def test_audit_classroom_refresh_failure_retest_and_skip(env, audit):
                  progress_day="2026-10-05", study_day="2026-10-06", needs_rest=True), snapshot(env)["today"], rule="TEACH-05")
     check_status(audit, "跨刷新后首页显示前一天还欠20分钟", dict(today_target=60, today_tentative=0, debt_minutes=20), home(env))
     act(env, "start_test", "module_test")
-    env.agent.verdicts.extend([("answer", True, []), ("answer", False, ["p1"])])
-    act(env, "reply", "先进先出")
-    view = act(env, "reply", "不会")
+    queue = env.room._file(PLAN).read({})['test']['queue']
+    env.agent.verdicts.extend(("answer", q['point_ids'][0] != 'p1',
+                               ['p1'] if q['point_ids'][0] == 'p1' else []) for q in queue)
+    for _ in queue:
+        view = act(env, "reply", "检测作答")
     assert view["module"]["state"] == "failed"
     check_status(audit, "检测失败撤回20、检测记10：旧课堂正式30，首页欠30", dict(today_confirmed=30, today_tentative=0,
                  debt_minutes=0), view["today"])
@@ -567,9 +569,12 @@ def test_audit_wall_clock_rollback_reorders_mastery(env, monkeypatch, audit):
     act(env, "reply", "先进先出")
     act(env, "reply", "入队出队")
     act(env, "start_test", "module_test")
-    env.agent.verdicts.extend([("answer", True, []), ("answer", False, ["p1"])])
-    act(env, "reply", "先进先出")
-    assert act(env, "reply", "不会")["module"]["state"] == "failed"
+    queue = env.room._file(PLAN).read({})['test']['queue']
+    env.agent.verdicts.extend(("answer", q['point_ids'][0] != 'p1',
+                               ['p1'] if q['point_ids'][0] == 'p1' else []) for q in queue)
+    for _ in queue:
+        view = act(env, "reply", "检测作答")
+    assert view['module']['state'] == 'failed'
     closed = env.store.records("attempt_closed", PLAN)[0]["event"]["seq"]
     env.clock.set(env.clock.instant - timedelta(hours=1))
     act(env, "start_test", "retest")

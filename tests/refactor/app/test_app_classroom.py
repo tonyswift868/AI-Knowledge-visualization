@@ -62,16 +62,19 @@ class Agents:
             task = json.loads(content.split("【本次出题要求】\n", 1)[1])
             purpose_name = task["purpose"]
             rows = []
-            for i, p in enumerate(points[:1] if purpose_name == "quick_check" else points):
+            work = points[:1] if purpose_name == "quick_check" else points
+            for i, p in enumerate(work):
                 chunk = next(c for c in excerpts)
-                if self.choice:
-                    rows.append({"id": f"q{i}", "type": "choice", "stem": f"关于{p['title']}哪项正确（{i}）？",
+                for variant in range(2 if purpose_name == 'bank' else 1):
+                  if self.choice:
+                    rows.append({"id": f"q{i}-{variant}", "type": "choice", "stem": f"关于{p['title']}哪项正确（{i}-{variant}）？",
                                  "options": ["甲说法", "乙说法", "丙说法", "丁说法"], "answer": "乙说法",
                                  "reference": "乙说法正确", "point_ids": [p["id"]], "chunk_ids": [chunk]})
-                else:
-                    rows.append({"id": f"q{i}", "type": "short", "stem": f"请解释{p['title']}的作用（第{len(self.calls)}轮第{i}题）",
+                  else:
+                    rows.append({"id": f"q{i}-{variant}", "type": "short", "stem": f"请解释{p['title']}的作用（第{len(self.calls)}轮第{i}-{variant}题）",
                                  "options": [], "answer": "标准答案", "reference": "要点：作用",
                                  "point_ids": [p["id"]], "chunk_ids": [chunk]})
+                  if purpose_name == 'bank': rows[-1]['angle'] = ('recall', 'apply')[variant]
             if purpose_name == "check":  # a fresh angle for every point, as the real agent must
                 for row in rows:
                     used = task["used_angles"][row["point_ids"][0]]
@@ -173,7 +176,9 @@ def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
 
     view = act(classroom, "start_test", "module_test")
     assert view["step"] == "testing" and view["question"]["number"] == 1 and view["question"]["total"] == 2
-    agents.verdicts = [("answer", True, []), ("answer", False, ["p1"])]
+    queue = classroom._load(classroom._course(PLAN))['test']['queue']
+    agents.verdicts = [("answer", q['point_ids'][0] != 'p1',
+                        ['p1'] if q['point_ids'][0] == 'p1' else []) for q in queue]
     act(classroom, "reply", "先进先出")
     view = act(classroom, "reply", "不会")
     assert view["step"] == "test_done" and view["module"]["state"] == "failed" and view["red"] == ["队列操作"]
@@ -190,7 +195,7 @@ def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
     assert view["module"]["title"] == "栈" and view["step"] == "teach" and view["can_skip"]
     agents.choice = True
     view = act(classroom, "start_test", "skip_test")
-    assert view["question"]["options"] == ["甲说法", "乙说法", "丙说法", "丁说法"]
+    assert set(view["question"]["options"]) == {"甲说法", "乙说法", "丙说法", "丁说法"}
     calls = len(agents.calls)
     view = act(classroom, "reply", "乙说法")                               # a clicked option is checked without a model
     assert agents.calls[calls:].count("judge") == 0
@@ -206,7 +211,7 @@ def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
     assert store.get_plan(PLAN)["state"] == "checking"
     rounds = 0
     while view["step"] == "checking" and rounds < 20:
-        view = act(classroom, "reply", "按原文解释")
+        view = act(classroom, "reply", "按原文解释") if view['question'] else act(classroom, 'start_check')
         rounds += 1
     assert view["step"] == "completed" and view["check"]["passed"] == 3 and view["plan"]["state"] == "completed"
     checks = [j["event"] for j in store.records("judgements", PLAN) if j["event"]["context"] == "check"]

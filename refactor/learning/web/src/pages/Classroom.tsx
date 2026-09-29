@@ -30,6 +30,7 @@ type Room = {
 type Source = { text: string; title: string; url: string | null; section: string[] }
 
 const RESET = "\u0000"
+const VERDICT_EVENT = "\u0001VERDICT:"
 const POINT_TONE: Record<string, string> = { green: "ok", weak: "warn", red: "danger" }
 const POINT_LABEL: Record<string, string> = { green: "已掌握", weak: "有瑕疵", red: "没过" }
 
@@ -45,6 +46,7 @@ export function Classroom() {
   const [room, setRoom] = React.useState<Room | null>(null)
   const [busy, setBusy] = React.useState<string | null>(null)
   const [stream, setStream] = React.useState<string | null>(null)
+  const [verdictPreview, setVerdictPreview] = React.useState<{ text: string; correct: boolean } | null>(null)
   const [text, setText] = React.useState("")
   const [source, setSource] = React.useState<Source | null>(null)
   const [reading, setReading] = React.useState(() => { try { return localStorage.getItem("mf.classroom.read") === "on" } catch { return false } })
@@ -65,6 +67,7 @@ export function Classroom() {
 
   const act = React.useCallback(async (method: string, params: Record<string, unknown> = {}, label = "老师在想…") => {
     if (!planId) return false
+    const before = new Set(room?.messages.map((message) => message.id) ?? [])
     stopReading()
     const turn = { reader: reading && voice.availability?.ready ? createTeacherVoiceStream(voice) : null,
       streamed: false, cancelled: false }
@@ -72,15 +75,27 @@ export function Classroom() {
     abort.current = new AbortController()
     setBusy(label)
     setStream("")
+    setVerdictPreview(null)
     try {
       const r = await call<Room>(method, { plan_id: planId, ...params }, {
         signal: abort.current.signal,
         onStream: (d) => {
+          if (d.startsWith(VERDICT_EVENT)) {
+            try {
+              const result = JSON.parse(d.slice(VERDICT_EVENT.length)) as { text: string; correct: boolean }
+              setVerdictPreview(result)
+              void (result.correct ? teacher.current?.nod() : teacher.current?.think())
+            } catch { /* the final room snapshot still contains the verdict */ }
+            return
+          }
           setStream((s) => (d === RESET ? "" : (s ?? "") + d))
           if (turn.reader && !turn.cancelled) { turn.reader.append(d); if (d !== RESET) turn.streamed = true }
         },
       })
-      if (turn.streamed || turn.cancelled) streamedMessages.current = new Set(r.messages.map((m) => m.id))
+      if (turn.streamed || turn.cancelled) {
+        const streamed = r.messages.find((m) => !before.has(m.id) && m.role === "assistant")?.id
+        streamedMessages.current = new Set(r.messages.filter((m) => before.has(m.id) || turn.cancelled || m.id === streamed).map((m) => m.id))
+      }
       if (!turn.cancelled) void turn.reader?.end()
       setRoom(r)
       return true
@@ -97,9 +112,9 @@ export function Classroom() {
       }).catch(() => undefined)
       return false
     } finally {
-      setBusy(null); setStream(null); abort.current = null
+      setBusy(null); setStream(null); setVerdictPreview(null); abort.current = null
     }
-  }, [planId, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading])
+  }, [planId, room, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading])
 
   React.useEffect(() => {
     if (!planId) { go("home"); return }
@@ -213,6 +228,7 @@ export function Classroom() {
             return <div key={m.id} className="bubble bot" data-selectable>{markdown(m.content)}
               <button className="icon-btn listen" title="听这段" onClick={() => listen(m.content)}><Volume2 size={15} /></button></div>
           })}
+          {verdictPreview && <div className={`class-verdict ${verdictPreview.correct ? "ok" : "bad"}`}>{verdictPreview.text}</div>}
           {stream !== null && (live(stream)
             ? <div className="bubble bot streaming">{markdown(live(stream))}</div>
             : busy && <div className="plan-status"><Loader2 className="spin" size={16} />{busy}</div>)}

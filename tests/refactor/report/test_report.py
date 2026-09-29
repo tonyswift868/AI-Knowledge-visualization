@@ -192,7 +192,7 @@ class ReportTests(unittest.TestCase):
         weak = report['points'][-1]
         self.assertTrue(weak['ever_weak'])
         self.assertFalse(weak['ever_red'])
-        self.assertEqual((weak['module_errors'], weak['check_questions'], weak['check_accuracy']), (1, 1, 1.0))
+        self.assertEqual((weak['module_errors'], weak['check_questions'], weak['check_accuracy']), (1, 2, 1.0))
 
     def test_failed_direct_test_ten_of_twelve_keeps_first_ratio_and_errors(self):
         self.prepare((12,))

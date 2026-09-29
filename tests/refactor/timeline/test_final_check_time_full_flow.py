@@ -150,7 +150,9 @@ def act(env, name, *args):
 
 
 def answer(env, *, wrong=()):
-    env.agent.verdicts = [('answer', not wrong, list(wrong))]
+    pending = env.room._file(PLAN).read({}).get('pending')
+    actual_wrong = [pid for pid in wrong if pending and pid in pending['point_ids']]
+    env.agent.verdicts = [('answer', not actual_wrong, actual_wrong)]
     return act(env, 'reply', '测试作答')
 
 
@@ -174,7 +176,20 @@ def check_both(audit, env, scene, expected, *, class_expected=None, view=None):
 
 def check_answer(env, *, wrong=False):
     pending = env.room._file(PLAN).read({})['pending']
+    if pending is None:
+        act(env, 'start_check')
+        pending = env.room._file(PLAN).read({})['pending']
     return answer(env, wrong=pending['point_ids'] if wrong else ())
+
+
+def finish_check(env):
+    # Bank selection may cover several points with one question. Stop on
+    # mastery completion, not on a fixed number of displayed questions.
+    for _ in range(24):
+        if snapshot(env)['step'] == 'completed':
+            return
+        check_answer(env)
+    assert False, '最终检验未在有界题数内完成'
 
 
 def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
@@ -201,9 +216,10 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
     answer(e)
     check_both(audit, e, '下课再进第二天，第三点记新日', (15, 0, 15, 0, 0, 0, 58))
     act(e, 'start_test', 'module_test')
-    answer(e)
-    answer(e, wrong=['m0-02'])
-    view = answer(e)
+    while True:
+        pending = e.room._file(PLAN).read({})['pending']
+        view = answer(e, wrong=['m0-02'] if 'm0-02' in pending['point_ids'] else [])
+        if view['step'] != 'testing': break
     assert view['module']['state'] == 'failed'
     check_both(audit, e, '模块检测2/3未过，扣回错点10，仅记检测6', (15, 11, 0, 0, 0, 0, 62))
     e.registry.methods['plan.window'](dict(plan_id=PLAN, end='2026-10-12'), None)
@@ -215,8 +231,9 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
     check_both(audit, e, '重测变绿补记10，不重记模块检测', (12, 12, 0, 0, 14, 0, 52))
     act(e, 'next_module')
     act(e, 'start_test', 'skip_test')
-    for _ in range(3):
+    while True:
         view = answer(e)
+        if view['step'] != 'testing': break
     assert view['module']['state'] == 'skipped'
     check_both(audit, e, '第二模块直接考通过，记学习30和检测6，最终检验预算仍保留', (12, 12, 0, 0, 50, 0, 16))
     act(e, 'next_module')
@@ -229,6 +246,9 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
     errors = corrects = 0
     while not e.store.load_mastery(PLAN).check_complete():
         pending = e.room._file(PLAN).read({})['pending']
+        if pending is None:
+            act(e, 'start_check')
+            pending = e.room._file(PLAN).read({})['pending']
         wrong = 'm0-02' in pending['point_ids'] and errors < 2
         errors += int(wrong)
         corrects += int(not wrong)
@@ -237,7 +257,7 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
             remaining = 16 - corrects * 2
             check_both(audit, e, f'最终检验第{errors+corrects}题，' + ('答错不记' if wrong else '答对记2'),
                        (0, 0, 0, remaining, 0, 2, remaining), view=view)
-    assert (errors, corrects) == (2, 8)
+    assert (errors, corrects) == (2, 7)
     audit('最后一题即时返回的计划状态', 'completed', view['plan']['state'], rule='CHK-01')  # fixed: the reply re-reads the plan
     assert e.store.get_plan(PLAN)['state'] == 'completed'
     assert snapshot(e)['plan']['state'] == 'completed'
@@ -245,21 +265,22 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
           (home(e)['state'], snapshot(e)['today']['remaining_minutes'], snapshot(e)['today']['overdue_days']), rule='CHK-01')
     join_profiles()
     report = e.registry.methods['plan.report'](dict(plan_id=PLAN), None)['report']
-    audit('完成报告时间核对', (88, 88, 0, 2, '2026-10-14'),
+    audit('完成报告时间核对', (88, 86, 0, 2, '2026-10-14'),
           tuple(report['plan'][k] for k in ('planned_minutes', 'confirmed_minutes', 'tentative_minutes', 'overdue_days', 'actual_completion_date')), rule='CHK-01')
     point = next(p for p in report['points'] if p['point_id'] == 'm0-02')
-    audit('报告错误统计逐事件核对', (2, 1, 2, 5),
+    audit('报告错误统计逐事件核对', (2, 1, 2, 4),
           tuple(point[k] for k in ('casual_errors', 'module_errors', 'check_errors_before_pass', 'check_questions')), rule='CHK-01')
-    assert build_report(e.store, PLAN, today=e.day()) == report
     assert e.store.load_report(PLAN) == report
+    assert build_report(e.store, PLAN, today=e.day()) == {k: v for k, v in report.items() if k != 'point_comments'}
 
 
 def skip_all(env):
     act(env, 'enter')
     for _ in range(2):
         act(env, 'start_test', 'skip_test')
-        for _ in range(3):
-            answer(env)
+        while True:
+            view = answer(env)
+            if view['step'] != 'testing': break
         act(env, 'next_module')
     act(env, 'start_check')
 
@@ -268,8 +289,7 @@ def test_all_correct_finishes_below_reserve(flow_env, audit):
     e = flow_env
     prepare(e)
     skip_all(e)
-    for _ in range(6):
-        check_answer(e)
+    finish_check(e)
     assert e.store.load_mastery(PLAN).check_complete()
     audit('所有点一次通过：释放4分钟预估差额，仍应完成', ('completed', 0),
           (e.store.get_plan(PLAN)['state'], e.store.load_ledger(PLAN).status(DAY).remaining_minutes), rule='CHK-01')
@@ -364,11 +384,13 @@ class GroupedModuleAgents(FlowAgents):
         result = super().complete(purpose, messages, **kwargs)
         if purpose == 'questions':
             task = json.loads(messages[-1]['content'].split('【本次出题要求】\n', 1)[1])
-            if task['purpose'] in ('skip_test', 'module_test'):
+            if task['purpose'] == 'bank':
                 raw = json.loads(result.text)
                 questions = raw['questions']
-                grouped = dict(questions[0], point_ids=[pid for q in questions for pid in q['point_ids']])
-                result.text = json.dumps({'questions': [grouped]})
+                grouped = dict(questions[0], id='grouped', stem='请综合比较三个知识点的用途？',
+                               point_ids=list(dict.fromkeys(pid for q in questions for pid in q['point_ids'])),
+                               angle='contrast')
+                result.text = json.dumps({'questions': [*questions, grouped]})
         return result
 
 
@@ -387,8 +409,7 @@ def test_module_detection_releases_unused_estimate_and_report(flow_env, audit):
           (sum(c['minutes'] for c in ledger.to_dict()['credits']), ledger.to_dict()['settlement']['released'],
            ledger.status(DAY).remaining_minutes), rule='CHK-01')
     act(e, 'start_check')
-    for _ in range(6):
-        check_answer(e)
+    finish_check(e)
     join_profiles()
     report = e.flow.report(PLAN)['report']
     timing = report['time']['check_minutes']

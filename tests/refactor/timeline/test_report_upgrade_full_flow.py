@@ -60,25 +60,20 @@ def test_report_comment_batch_saves_once_without_changing_course_state(flow_env)
 
     class FakeGateway:
         calls = 0
-        def list_presets(self):
-            return ()
         def complete(self, purpose, messages, **kwargs):
             self.calls += 1
-            assert purpose == 'report_comment' and kwargs['max_tokens'] == 4096
-            batch = json.loads(messages[0]['content'])
-            return SimpleNamespace(text=json.dumps({'comments': [
-                {'point_id': item['point_id'], 'action': 'review'} for item in batch]}))
+            raise AssertionError('报告评语不得调用模型')
 
     fake = FakeGateway()
     e.flow.services.gateway = fake
     before = (e.store.get_plan(PLAN), e.store.records('judgements', PLAN),
               e.store.records('credits', PLAN))
     first = e.flow.report(PLAN)['report']
-    assert fake.calls == 1
+    assert fake.calls == 0
     assert e.flow.report(PLAN)['report'] == first
-    assert fake.calls == 1
+    assert fake.calls == 0
     assert e.store.load_report(PLAN) == first
     assert len(first['point_comments']) == len(first['points'])
-    assert any('最终检验通过前曾错 1 次' in text for text in first['point_comments'].values())
+    assert any('最终检验错 1 次' in text for text in first['point_comments'].values())
     assert (e.store.get_plan(PLAN), e.store.records('judgements', PLAN),
             e.store.records('credits', PLAN)) == before

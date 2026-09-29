@@ -125,7 +125,7 @@ def window_note(window: PlanWindow) -> str:
             f"每天最多 {window.daily_cap_minutes} 分钟")
 
 
-MINUTES_PER_POINT_GUESS = 6  # the outline has no points yet; generated points average ~5.5 learning minutes
+MINUTES_PER_POINT_GUESS = 15  # PLAN-04: each generated point is about 10–20 learning minutes
 
 
 def with_checks(learning_minutes: int) -> int:
@@ -695,7 +695,7 @@ class PlanFlow:
         for module in modules:  # every character is read, in batches that each repeat the fixed part
             selected = self._span_chunks(module, chunks)
             material = "".join(c["text"] for c in selected)
-            limit = max(1, min(MAX_GENERATE_BATCHES, module["minutes"][0] // 2))
+            limit = max(1, min(MAX_GENERATE_BATCHES, module["minutes"][0] // 10))
             size = agents.DEFAULT_BATCH_CHARS
             batches = agents.split_module_chunks(selected, max_chars=size)
             while len(batches) > limit:
@@ -804,16 +804,21 @@ class PlanFlow:
 
     def _generate_module(self, draft, module, chunks, ctx):
         """Read all of a module's material: big modules go in bounded batches, merged afterwards."""
-        limit = max(1, min(MAX_GENERATE_BATCHES, module["minutes"][0] // 2))
+        limit = max(1, min(MAX_GENERATE_BATCHES, module["minutes"][0] // 10))
         size = agents.DEFAULT_BATCH_CHARS
         batches = agents.split_module_chunks(chunks, max_chars=size)
+        needed = min(limit, max(1, math.ceil(module["minutes"][1] / 450)))
+        if len(batches) < needed:
+            total_chars = sum(len(chunk["text"]) for chunk in chunks)
+            size = max(1, math.ceil(total_chars / needed))
+            batches = agents.split_module_chunks(chunks, max_chars=size)
         while len(batches) > limit:  # very long material: fewer, larger batches rather than dropping text
             size = int(size * 1.4) + 1
             batches = agents.split_module_chunks(chunks, max_chars=size)
         if len(batches) == 1:
             parts = self._generate_batch(draft, module, chunks, tuple(module["minutes"]), None, ctx, max_points=30)
         else:
-            per = max(1, min(8, 30 // len(batches)))
+            per = max(1, min(30, math.ceil(module["minutes"][1] / (10 * len(batches)))))
             ranges = agents.batch_minute_ranges(batches, module["minutes"])
             parts = [part for index, (batch, minutes) in enumerate(zip(batches, ranges), 1)
                      for part in self._generate_batch(draft, module, batch, minutes, (index, len(batches)), ctx, max_points=per)]
@@ -833,7 +838,8 @@ class PlanFlow:
                                           minutes_range=minutes, batch_index=index, batch_count=count, max_points=max_points)
         aliases = request[2]
         parse = lambda text: agents.parse_points(text, aliases, minutes_range=minutes, max_points=max_points,  # noqa: E731
-                                                 min_points=1 if position else min(2, max_points))
+                                                 min_points=1 if position else min(2, max_points),
+                                                 point_minutes_range=(10, 20) if minutes[1] >= 10 else (2, 20))
         try:
             return [self._ask("generate", request[:2], parse, ctx, plan_id=draft["plan_id"], max_tokens=8192)[0]]
         except ModelError as exc:
@@ -1059,11 +1065,17 @@ class PlanFlow:
         started = plan.get("state") in ("active", "checking", "completed")
         book = store.load_mastery(plan_id) if started else None
         mastery = {}
+        taught = {row['credit']['unit_id'] for row in store.records('credits', plan_id)
+                  if row['id'].startswith(('learn:', 'relearn:'))} if started else set()
+        from ..course.question_bank import review_points
+        review = review_points(store.records('practice_results', plan_id)) if started else set()
         if book is not None:  # MAP-01: what the learner has shown so far, point by point
             for point in points:
                 state = book.point(point["id"])
                 mastery[point["id"]] = {"state": state.state, "level": state.level,
-                                        "errors": state.casual_errors + state.module_errors}
+                                        "errors": state.casual_errors + state.module_errors,
+                                        "needs_review": point['id'] in review,
+                                        "taught": point['id'] in taught}
         by_module: dict[str, list] = {}
         for point in points:
             by_module.setdefault(point["module_id"], []).append(
@@ -1248,13 +1260,12 @@ class PlanFlow:
             report = None
         if not report:
             report = build_report(store, plan_id, today=self.study_day())
-        gateway = self.services.gateway
-        if comments and 'point_comments' not in report and hasattr(gateway, 'list_presets'):
+        if comments and 'point_comments' not in report:
             from ..course.report_comments import generate_comments
             with self._lock(plan_id):
                 report = store.load_report(plan_id)
                 if 'point_comments' not in report:
-                    report = dict(report, point_comments=generate_comments(gateway, store, plan_id, report, cancel=cancel))
+                    report = dict(report, point_comments=generate_comments(None, store, plan_id, report))
                     store.save_report(plan_id, report)
         titles = {p["id"]: p.get("title") or p["summary"][:30] for p in store.records("points", plan_id)}
         from ..course.report_views import report_views

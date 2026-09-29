@@ -1,7 +1,6 @@
 """Report graphs, comment evidence and PDF use the same saved course events."""
 from __future__ import annotations
 
-import json
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -9,9 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from refactor.learning.course.report_comments import (
-    CommentFormatError, build_request, evidence_for_report, generate_comments, parse_comments,
-)
+from refactor.learning.course.report_comments import evidence_for_report, generate_comments
 from refactor.learning.course.report_views import report_views
 from refactor.learning.app.plan_flow import report_markdown
 from tests.refactor.report.test_report import DAY
@@ -66,33 +63,27 @@ def test_history_shows_overdue_daily_debt_and_late_ahead():
         fixture.tearDown()
 
 
-def test_comment_request_uses_original_excerpt_and_judgement_and_parser_rejects_extra_claim(completed):
+def test_comments_use_recorded_counts_and_reasons_without_model(completed):
     store, report, point = completed
     evidence = evidence_for_report(store, 'p', report)
     first = next(row for row in evidence if row['point_id'] == point)
-    assert first['source_excerpts'] == ['有依据的知识点。']
-    assert [(j['context'], j['correct']) for j in first['judgements'][:2]] == [('casual', False), ('module_test', False)]
-    system, messages = build_request(evidence)
-    assert '只返回 JSON' in system and '有依据的知识点。' in messages[0]['content']
-    answer = json.dumps({'comments': [{'point_id': row['point_id'], 'action': 'review'} for row in evidence]})
-    comments = parse_comments(answer, evidence)
-    assert '随口问曾错 1 次' in comments[point]
-    assert '模块检测曾错 1 次' in comments[point]
+    assert [kind for kind, _ in first['mistakes'][:2]] == ['casual', 'module_test']
+    class Forbidden:
+        def complete(self, *args, **kwargs): raise AssertionError('comments must be offline')
+    comments = generate_comments(Forbidden(), store, 'p', report)
+    assert '随口问错 1 次' in comments[point]
+    assert '模块检测错 1 次' in comments[point]
     assert '现已通过' in comments[point]
-    for bad in ('{"comments":[]}', answer.replace('"review"', '"发明错误"', 1),
-                answer.replace('"action": "review"', '"action": "review", "claim": "曾答错"', 1)):
-        with pytest.raises(CommentFormatError):
-            parse_comments(bad, evidence)
 
 
-def test_model_failure_leaves_comment_unavailable_without_changing_report(completed):
+def test_model_failure_cannot_affect_comments_or_saved_report(completed):
     store, report, _ = completed
     class Failing:
         def complete(self, *args, **kwargs):
             raise RuntimeError('offline model failure')
     before = store.load_report('p')
     comments = generate_comments(Failing(), store, 'p', report)
-    assert all(value is None for value in comments.values())
+    assert all(isinstance(value, str) for value in comments.values())
     assert store.load_report('p') == before
 
 

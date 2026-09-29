@@ -12,7 +12,7 @@ from .judge_agent import _dump, _excerpts, _fields, _identifier, _json_object, _
 from .planner_agents import AgentFormatError
 
 
-VERSION = 1
+VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -48,11 +48,70 @@ explanation 是准确的中文讲解；examples 必须有 1–2 项，其中至�
 代码须为可运行的完整 Python 片段。两个赋值请写成两行或 a, b = 1, 2，绝不能写 a = 1, b = 2 这种语法错误。没有代码例子则 code=null。
 只讲本点；不编造出处、资料外的定理和学习者进度。"""
 PREP_SYSTEM += "\n控制篇幅：explanation 不超过 900 字，每个例子的 text 不超过 200 字、code 不超过 400 字；类比和边界各不超过 150 字；引申最多三条。直接给完整 JSON，不输出思考过程。"
+PREP_SYSTEM += "\n若例子或提问涉及失败操作，说明异常发生后没有正常返回值；不要把其他成功调用返回 None 的性质套在这次失败调用上。"
 
 REVIEW_SYSTEM = """你是独立的课前事实核对员，不是写稿员。逐条比对讲解、每个例子、类比与边界、随口问和参考答案与所给原文；逐条检查代码的 Python 语义及可运行性。
 只返回 JSON 对象，恰好包含 verdict、issues、revised。verdict 只能是 approve、revise、live。approve 时 issues=[]、revised=null；revise 时 issues 为明确的问题列表，revised 为完整修正稿；有无法可靠修好的事实、代码或资料缺口时 verdict=live，issues 指明原因，revised=null。不得因为文字流畅就批准，不能把引申说成原文事实；修订不能引入原文没有的新事实。"""
 REVIEW_SYSTEM += "\n逐项核对后直接给简短完整 JSON，不输出思考过程。没有错误就用最短的 approve 结果，不复述讲稿。修稿遵守写稿篇幅，issues 最多三条、每条一句。"
 REVIEW_SYSTEM += "\n特别区分正常返回与抛出异常：若题面是一个会失败的操作，参考答案不能同时声称该操作正常返回 None。"
+REVIEW_SYSTEM += "\n逐题检查失败时的行为：异常类型、是否有正常返回值、原对象是否变化。尤其不能把某方法成功时返回 None，写成对不可比较元素排序失败时也返回 None。"
+
+BATCH_SIZE = 2
+
+
+def batch_prep_request(contexts: list[dict]) -> tuple[str, list[dict]]:
+    """One module source prefix followed by adjacent point tasks."""
+    if not 2 <= len(contexts) <= BATCH_SIZE:
+        raise AgentFormatError("prep.batch: 需要相邻的两个知识点")
+    module, _, excerpts = _context(contexts[0])
+    points = []
+    for ctx in contexts:
+        other, point, source = _context(ctx)
+        if other != module or source != excerpts:
+            raise AgentFormatError("prep.batch: 必须属于同一模块与原文")
+        points.append(point)
+    system = PREP_SYSTEM + "\n本次为同一模块的相邻两点。每点单独写完整讲稿；输出恰好一个 JSON 对象 {\"lessons\":[{\"point_id\":\"...\",\"lesson\":{...}},...]}，顺序与任务一致。"
+    return system, [{"role": "user", "content": "【当前模块原文】\n" + _dump(excerpts)},
+                    {"role": "user", "content": "【模块与本次相邻知识点】\n" + _dump({"module": module, "points": points})}]
+
+
+def parse_batch_preps(answer: str, point_ids: tuple[str, ...]) -> tuple[LessonPrep, ...]:
+    data = _fields(_json_object(answer), ("lessons",))
+    rows = data["lessons"]
+    if not isinstance(rows, list) or len(rows) != len(point_ids):
+        raise AgentFormatError("prep.batch: 点数不一致")
+    lessons = []
+    for row, point_id in zip(rows, point_ids):
+        _fields(row, ("point_id", "lesson"))
+        if row["point_id"] != point_id:
+            raise AgentFormatError("prep.batch: 知识点顺序或编号不一致")
+        lessons.append(parse_prep(json.dumps(row["lesson"], ensure_ascii=False)))
+    return tuple(lessons)
+
+
+def batch_review_request(contexts: list[dict], drafts: tuple[LessonPrep, ...]) -> tuple[str, list[dict]]:
+    if len(contexts) != len(drafts):
+        raise AgentFormatError("review.batch: 点数不一致")
+    batch_prep_request(contexts)
+    system = REVIEW_SYSTEM + "\n逐点独立核对，不因同批另一个点正确而放过本点。输出 {\"reviews\":[{\"point_id\":\"...\",\"verdict\":\"approve|revise|live\",\"issues\":[],\"revised\":null},...]}；顺序与输入一致。"
+    source = contexts[0]["excerpts"]
+    items = [{"point": ctx["point"], "draft": asdict(draft)} for ctx, draft in zip(contexts, drafts)]
+    return system, [{"role": "user", "content": "【当前模块原文】\n" + _dump(source)},
+                    {"role": "user", "content": "【相邻知识点与待核讲稿】\n" + _dump(items)}]
+
+
+def parse_batch_reviews(answer: str, point_ids: tuple[str, ...]) -> tuple[Review, ...]:
+    data = _fields(_json_object(answer), ("reviews",))
+    rows = data["reviews"]
+    if not isinstance(rows, list) or len(rows) != len(point_ids):
+        raise AgentFormatError("review.batch: 点数不一致")
+    reviews = []
+    for row, point_id in zip(rows, point_ids):
+        _fields(row, ("point_id", "verdict", "issues", "revised"))
+        if row["point_id"] != point_id:
+            raise AgentFormatError("review.batch: 知识点顺序或编号不一致")
+        reviews.append(parse_review(json.dumps({key: row[key] for key in ("verdict", "issues", "revised")}, ensure_ascii=False)))
+    return tuple(reviews)
 
 
 def fingerprint(plan: dict, module: dict, point: dict, excerpts: dict[str, str]) -> str:
@@ -214,3 +273,30 @@ def check_code(prep: LessonPrep) -> tuple[str, ...]:
             if issue:
                 problems.append(f'例{index}{issue}')
     return tuple(problems)
+
+
+def check_lesson(prep: LessonPrep) -> tuple[str, ...]:
+    """Local checks supplement, never replace, the independent source review."""
+    problems = list(check_code(prep))
+    question = prep.casual_question
+    answer = prep.reference_answer
+    if (re.search(r"(?:失败|报错|无法|不能|排不了|不可比较|越界|不存在)", question)
+            and re.search(r"返回[^。；，]{0,12}(?:`?None`?|空值)", answer)
+            and not re.search(r"(?:抛出|引发|异常|不会正常返回|没有正常返回|成功时才)", answer)):
+        problems.append("失败操作与正常返回值被混为一谈")
+    return tuple(problems)
+
+
+def render_lesson(prep: LessonPrep, *, title: str, chunk_ids: tuple[str, ...]) -> str:
+    """Present an approved script directly; every factual section links to its source."""
+    citations = " ".join(f"[〔{i}〕](mf-source:{chunk})" for i, chunk in enumerate(dict.fromkeys(chunk_ids), 1))
+    lines = [f"### {title}", "", prep.explanation, citations]
+    for index, example in enumerate(prep.examples, 1):
+        lines.extend(("", f"**例{index}：** {example.text}"))
+        if example.code:
+            lines.extend(("", "```python", example.code, "```"))
+        if example.extrapolation:
+            lines.append("（这是帮助理解的引申例子。）")
+        lines.append(citations)
+    lines.extend(("", f"**类比：** {prep.analogy}", f"**类比边界：** {prep.analogy_boundary}", citations))
+    return "\n".join(line for line in lines if line is not None).strip()

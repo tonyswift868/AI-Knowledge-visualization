@@ -51,6 +51,8 @@ export function PlanDetail() {
         call<Detail>("plan.detail", { plan_id: detail.plan.id }).then(setDetail)} />}
       <div className="section-title"><h2>路线</h2><span>点模块名展开知识点；绿色已掌握、黄色有瑕疵、红色没过</span></div>
       <div className="card"><PlanTree detail={detail} /></div>
+      {(detail.plan.state === "active" || detail.plan.state === "checking" || detail.plan.state === "completed") &&
+        <PracticeCard detail={detail} onOpen={() => go("classroom")} />}
       <div className="section-title"><h2>资料</h2><span>{detail.sources.length} 份</span></div>
       <div className="card stack">
         {detail.sources.map((s) => (
@@ -62,6 +64,40 @@ export function PlanDetail() {
       </div>
     </div>
   )
+}
+
+function PracticeCard({ detail, onOpen }: { detail: Detail; onOpen: () => void }) {
+  const toast = useApp((s) => s.toast)
+  const [moduleId, setModuleId] = React.useState("")
+  const [pointId, setPointId] = React.useState("")
+  const [count, setCount] = React.useState(5)
+  const [busy, setBusy] = React.useState(false)
+  const modules = detail.stages.flatMap((s) => s.modules).filter((m) =>
+    detail.plan.state === "completed" || m.state !== "untested" || m.points.some((p) => p.taught))
+  const points = modules.filter((m) => !moduleId || m.id === moduleId).flatMap((m) => m.points)
+  async function start() {
+    setBusy(true)
+    try {
+      await call("classroom.practice", { plan_id: detail.plan.id, module_id: moduleId || null,
+        point_id: pointId || null, count })
+      onOpen()
+    } catch (e) { toast("error", (e as Error).message) } finally { setBusy(false) }
+  }
+  if (!modules.length) return null
+  return <div className="card stack" style={{ marginTop: 12 }}>
+    <b>自由检验</b><span className="muted small">练习记录与计划、报告分开保存；答错的点会标记“需要复习”。</span>
+    <div className="row wrap" style={{ gap: 10 }}>
+      <label className="field">范围<select className="input" value={moduleId} onChange={(e) => { setModuleId(e.target.value); setPointId("") }}>
+        <option value="">全部已学模块随机</option>{modules.map((m) => <option key={m.id} value={m.id}>{m.title}</option>)}
+      </select></label>
+      <label className="field">知识点<select className="input" value={pointId} onChange={(e) => setPointId(e.target.value)}>
+        <option value="">随机挑题</option>{points.map((p) => <option key={p.id} value={p.id}>{p.title}{p.needs_review ? " · 需要复习" : ""}</option>)}
+      </select></label>
+      <label className="field">题数<input className="input" type="number" min={1} max={50} value={count}
+        onChange={(e) => setCount(Math.max(1, Math.min(50, Math.round(Number(e.target.value) || 1))))} /></label>
+      <Button kind="primary" busy={busy} onClick={start}>开始自由检验</Button>
+    </div>
+  </div>
 }
 
 /** PLAN-08: change the end date, daily cap and study days; only the unlearnt part is rescheduled. */

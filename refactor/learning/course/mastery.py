@@ -248,7 +248,7 @@ class MasteryBook:
                     level = self._level(point)
                     if level < 3 and not correct:
                         point['check_errors_before_pass'] += 1
-                    point['level'] = 3 if level == 3 else max(0, min(3, level + (1 if correct else -1)))
+                    point['level'] = 3 if level == 3 else min(3, level + 1) if correct else 1
                     if level < 3 and point['level'] == 3:
                         point['check_passed_at'] = event.at.isoformat()
                     point['check_questions'] += 1
@@ -260,7 +260,7 @@ class MasteryBook:
 
     @staticmethod
     def _level(point):
-        return point['level'] if point['level'] is not None else (1 if point['casual_errors'] and point['module_errors'] else 2)
+        return point['level'] if point['level'] is not None else (1 if point['module_errors'] else 2)
 
     def point(self, point_id) -> PointState:
         points, _, _ = self._project()

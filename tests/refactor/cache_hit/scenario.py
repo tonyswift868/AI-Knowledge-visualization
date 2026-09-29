@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 import hashlib
 import html
 import json
+import random
 from pathlib import Path
 import re
 import socket
@@ -98,11 +99,13 @@ class ScriptedGateway:
             task = block(messages, '【本次出题要求】')
             rows = []
             for i, point in enumerate(points):
-                row = dict(id=f'q{i}', type='short', stem=f"请解释{point['title']}（题组{count}）。", options=[], answer='按原文解释',
-                           reference=point['summary'], point_ids=[point['id']], chunk_ids=[next(iter(excerpts))])
-                if task['purpose'] == 'check':
-                    row['angle'] = next(a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task['used_angles'][point['id']])
-                rows.append(row)
+                for variant in range(2 if task['purpose'] == 'bank' else 1):
+                    row = dict(id=f'q{i}-{variant}', type='short', stem=f"请解释{point['title']}（题组{count}-{variant}）。", options=[], answer='按原文解释',
+                               reference=point['summary'], point_ids=[point['id']], chunk_ids=[next(iter(excerpts))])
+                    if task['purpose'] == 'check':
+                        row['angle'] = next(a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task['used_angles'][point['id']])
+                    if task['purpose'] == 'bank': row['angle'] = ('recall', 'apply')[variant]
+                    rows.append(row)
             value = dict(questions=rows)
         elif purpose == 'profile':
             task = block(messages, '【本次档案更新】')
@@ -167,7 +170,7 @@ def run_scenario(root):
             flow.generate(draft, ctx)
             assert draft['phase'] == 'ready'
             flow.start(draft)
-            room = room_module.Classroom(services, lambda: DAY, now=lambda: NOW)
+            room = room_module.Classroom(services, lambda: DAY, now=lambda: NOW, rng=random.Random(17))
             def act(name, *args):
                 return room.run(pid, lambda course, state, ctx: getattr(room, name)(course, state, ctx, *args), ctx)
             act('enter')
@@ -194,7 +197,7 @@ def run_scenario(root):
             for _ in range(20):
                 if view['step'] != 'checking':
                     break
-                view = act('reply', '最终检验按原文作答。')
+                view = act('reply', '最终检验按原文作答。') if view['question'] else act('start_check')
             assert view['step'] == 'completed'
             act('leave')
             assert services.store.get_plan(pid)['state'] == 'completed'

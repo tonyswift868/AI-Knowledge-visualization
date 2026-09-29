@@ -117,6 +117,15 @@ def test_code_operators_do_not_become_duplicate_options():
     assert parse_questions(response(row), context(purpose="quick_check"))[0].answer == "x == 1"
 
 
+def test_sequence_options_and_one_character_answer_are_not_false_rejections():
+    sequence = choice(stem="元素 a、b、c 依次放入队列后，两次取出的顺序是哪一项？",
+                      options=["a、b", "c、b", "b、c", "a、c"], answer="a、b")
+    single = choice(stem="将甲乙丙依次放入队列，第一次取出的是哪一个？",
+                    options=["甲", "乙", "丙", "无法确定"], answer="甲")
+    assert parse_questions(response(sequence), context(purpose="quick_check"))[0].answer == "a、b"
+    assert parse_questions(response(single), context(purpose="quick_check"))[0].answer == "甲"
+
+
 def test_singleton_tuple_comma_is_not_normalized_away():
     # Real classroom evaluation returned this valid difference; stripping the
     # comma conflated a tuple with a parenthesized expression and retried it.
