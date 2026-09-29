@@ -1,4 +1,4 @@
-import { ArrowRight, MessagesSquare, Swords } from "lucide-react"
+import { ArrowRight, MessagesSquare } from "lucide-react"
 import { useApp } from "../store"
 
 export function Tools() {
@@ -16,14 +16,7 @@ export function Tools() {
           </div>
           <ArrowRight className="go" />
         </button>
-        <div className="card tool-card off">
-          <div className="ico"><Swords /></div>
-          <div className="grow">
-            <b>学习远征</b>
-            <p>用闯关的方式巩固学过的内容。</p>
-          </div>
-          <span className="pill muted">即将开放</span>
-        </div>
+        {/* 学习远征暂不开发，入口先藏起来（UI-02）；后端代码保留不动 */}
       </div>
     </div>
   )
