@@ -24,9 +24,9 @@
 | --- | --- | --- |
 | MF-03（client） | D:\MentorFlow-office\client | 空闲 |
 | MF-07（server） | D:\MentorFlow-office\server | 空闲 |
-| MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
-| MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
-| MF-01（library） | D:\MentorFlow-office\library | 空闲 |
+| MF-02（runtime） | D:\MentorFlow-office\runtime | 16-MF02 进行中 |
+| MF-04（platform） | D:\MentorFlow-office\platform | 16-MF04 进行中 |
+| MF-01（library） | D:\MentorFlow-office\library | 16-MF01 进行中 |
 | MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
@@ -91,9 +91,9 @@
 | 15-MF02 | MF-02 runtime | 缓存命中率提到 95% 以上：先离线算出不命中的原因，再整理请求组装顺序 | QA-01、SYS-05、ARCH-08、SYS-03 | 460f51a | 已合入（离线 68%，未达 95%） |
 | 15-MF04 | MF-04 platform | 资料权威性：规则为主的可信度与相关性打分，只采用权威资料 | QA-01、PLAN-06、PLAN-10、BUG-08、BUG-09 | 460f51a | 未合入：召回为 0，由 16-MF04 在同一分支继续 |
 | 15-MF01 | MF-01 library | 课堂教准：判定零冤枉、讲解零错误（改为回放已有记录，预算 ¥6） | QA-01、TEACH-01、TEACH-04、BUG-18、BUG-21 | 待定 | 由 16-MF01 取代（并入提前备课） |
-| 16-MF01 | MF-01 library | 课堂教准 + 提前备课（提前一到两天，备好的内容先对照原文核对） | QA-01、TEACH-08、TEACH-01、TEACH-04、BUG-18、BUG-23 | b019f54 | 已起草，待用户转发 |
-| 16-MF04 | MF-04 platform | 资料权威性第二段：补召回（跟进讲义/PDF/字幕、识别发布日期、相关性），跑完 8 个主题 | QA-01、PLAN-06、PLAN-10 | b019f54 | 已起草，待用户转发 |
-| 16-MF02 | MF-02 runtime | 学习报告升级：图表、导出 PDF、逐点老师评语、历史欠账明细 | RPT-01、CHK-01、BUG-16、QA-01 | b019f54 | 已起草，待用户转发 |
+| 16-MF01 | MF-01 library | 课堂教准 + 提前备课（提前一到两天，备好的内容先对照原文核对） | QA-01、TEACH-08、TEACH-01、TEACH-04、BUG-18、BUG-23 | b019f54 | 进行中 |
+| 16-MF04 | MF-04 platform | 资料权威性第二段：补召回（跟进讲义/PDF/字幕、识别发布日期、相关性），跑完 8 个主题 | QA-01、PLAN-06、PLAN-10 | b019f54 | 进行中 |
+| 16-MF02 | MF-02 runtime | 学习报告升级：图表、导出 PDF、逐点老师评语、历史欠账明细 | RPT-01、CHK-01、BUG-16、QA-01 | b019f54 | 进行中 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
