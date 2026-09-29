@@ -111,7 +111,9 @@ def test_plan_dialogue_url_path_import_and_source_search_are_distinct(dialogue_t
         assert all(c["passed"] for c in evaluate(case, before, after, [], []))
         assert not gateway.calls
         h.call("plan.say", plan_id=pid, text="请找有练习的入门资料")
-        assert [c["purpose"] for c in gateway.calls] == ["plan_intent", "research"]  # duplicate URL is already adopted
+        # No qualifying new source: a second round that adds nothing stops the search (16-MF04), then shortage is reported.
+        assert [c["purpose"] for c in gateway.calls] == ["plan_intent", "research", "research"]
+        assert any("权威资料不足" in m.get("text", "") for m in h.snapshot(pid)["draft"]["messages"])
         assert all(c["mode"] == "offline_synthetic_html" for c in h.web.calls)
     finally:
         h.close()

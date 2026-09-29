@@ -218,7 +218,8 @@ def import_verified_source(store, plan_id, verified: VerifiedSource):
     payload = dict(id=f'url-{identity}', kind='url', url=verified.url, final_url=verified.final_url,
         sha256=document.sha256, content_sha256=verified.content_sha256, title=verified.title or document.title,
         site=verified.site, tier=verified.tier, category=verified.category, reasons=list(verified.reasons),
-        summary=verified.summary, retrieved_at=verified.retrieved_at)
+        summary=verified.summary, retrieved_at=verified.retrieved_at,
+        published_at=verified.published_at)
     try:
         return _save(store, plan_id, payload, document)
     except (OSError, sqlite3.Error, StoreError) as exc:

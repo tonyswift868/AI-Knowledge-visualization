@@ -22,6 +22,9 @@ import unicodedata
 from urllib.parse import urlsplit
 
 from .extract import ExtractedDocument, ExtractError, extract_bytes, extract_html
+from .source_quality import published_date
+from .source_quality import is_landing_page, body_publication_date
+from .source_follow import lesson_links, is_spec_overview_index
 from .source_filter import (RawHit, SourceLists, blocked_keyword_reasons,
                             load_lists, normalize_url, screen)
 from refactor.learning.course.research import FetchedContent
@@ -45,6 +48,7 @@ class VerifiedSource:
     summary: str
     retrieved_at: str
     content_sha256: str
+    published_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -191,7 +195,9 @@ class ResearchPipeline:
         finally:
             semaphore.release()
 
-    def _verify(self, hit, token, lists, include_low, excluded):
+    def _verify(self, hit, token, lists, include_low, excluded, *, depth=0, follow_count=None):
+        if follow_count is None:
+            follow_count = [0]
         def target(url):
             result = screen([RawHit(url)], lists=lists)
             if not result:
@@ -261,9 +267,28 @@ class ResearchPipeline:
             category = final.category if final.url != hit.url else hit.category
             reasons = tuple(dict.fromkeys((*hit.reasons, *final.reasons, *((tag,) if tag else ()))))
             title = (titles[0] if titles else hit.title) or final.url
+            if media in {'text/html', 'application/xhtml+xml'} and (is_landing_page(title, body)
+                    or is_spec_overview_index(fetched.final_url)) and depth < 2:
+                # The original page remains a rejected lesson if no complete
+                # same-site document can be verified. At most three extra
+                # fetches across both levels share this hit's cancel/deadline.
+                for link in lesson_links(fetched.body, fetched.final_url):
+                    if follow_count[0] >= 3:
+                        break
+                    token.check()
+                    follow_count[0] += 1
+                    child = screen([RawHit(link)], lists=lists)[0]
+                    if child.tier in {'blocked', 'low'} and not include_low:
+                        continue
+                    result = self._verify(child, token, lists, include_low, excluded,
+                                          depth=depth + 1, follow_count=follow_count)
+                    if isinstance(result, VerifiedSource):
+                        return result
             return VerifiedSource(hit.url, fetched.final_url, title, urlsplit(final.url).hostname,
                 tier, category, reasons, doc, ' '.join(body.split())[:400],
-                fetched.retrieved_at or datetime.now(timezone.utc).isoformat(), doc.sha256)
+                fetched.retrieved_at or datetime.now(timezone.utc).isoformat(), doc.sha256,
+                (published_date(fetched.body) or body_publication_date(body))
+                if media in {'text/html', 'application/xhtml+xml'} else None)
         except _Rejected as exc:
             return RejectedSource(hit.url, hit.title, exc.code, exc.message)
         except (ResearchCancelled, ExtractError) as exc:

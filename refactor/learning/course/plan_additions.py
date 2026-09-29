@@ -123,7 +123,10 @@ def analysis_request(state, *, max_chars=120000):
                 for c in state['chunks']]
     payload = dict(goal=state['plan']['goal'], final_goal=state['plan']['final_goal'],
                    level=state['plan']['level'], notes=state['plan']['notes'], route=route,
-                   sources=[dict(id=s['id'], title=s.get('title', '')) for s in state['sources']], material=material)
+                   sources=[dict(id=s['id'], title=s.get('title', ''),
+                                 quality={k: s.get('quality', {}).get(k) for k in
+                                          ('credibility', 'relevance', 'note', 'user_provided')})
+                            for s in state['sources']], material=material)
     content = _json(payload)
     if len(content) > max_chars:
         _fail('ANALYSIS_TOO_LARGE', '新资料目录与路线超出单次分析上限，请缩小本次资料范围。')

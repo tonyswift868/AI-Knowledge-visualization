@@ -23,6 +23,7 @@ from ..connections.errors import MODEL_OUTPUT_TRUNCATED, ModelCancelled, ModelEr
 from ..course import plan_intent
 from ..course import planner_agents as agents
 from ..course.request_layout import dialogue_tail
+from ..course import source_quality
 from ..course.ledger import LedgerError, PlanWindow, check_cap, distribute, estimate_check_minutes, full_day_minutes
 from ..course.store import StoreError
 from ..preferences.storage import AccountJSON, StorageError
@@ -350,6 +351,27 @@ class PlanFlow:
         return self._pools.setdefault(plan_id, ResearchPool())
 
     def _research(self, draft, ctx, instruction=""):
+        """Bounded replenishment; a shortage never lowers the admission bar."""
+        previous_count = -1
+        for attempt in range(source_quality.MAX_SEARCH_ROUNDS):
+            if ctx.cancel.is_set():
+                raise ModelCancelled()
+            self._research_once(draft, ctx, instruction)
+            count = sum(c.get("quality", {}).get("eligible", False) and c["status"] != "rejected"
+                        for c in draft["sources"] if not c.get("user_provided"))
+            if count >= source_quality.MIN_SOURCES:
+                return
+            if attempt > 0 and count <= previous_count:
+                # A second round that added nothing should not spend another
+                # model search on the same pool of URLs.
+                break
+            previous_count = count
+            instruction = (instruction + " 权威资料不足，请换来源继续找官方文档、原始教材、大学课程或权威机构，避免转载和社区帖。")[-1000:]
+        draft["messages"].append(_msg("ai", "text", f"权威资料不足：本次最多检索 {source_quality.MAX_SEARCH_ROUNDS} 轮，"
+            f"目前只有 {count} 份达到门槛，期望至少 {source_quality.MIN_SOURCES} 份。不会降低标准凑数；可以缩小主题或提供你自己的资料。"))
+        self.save(draft)
+
+    def _research_once(self, draft, ctx, instruction=""):
         from ..course.research_pipeline import ResearchPipeline
         from ..course.source_filter import RawHit
         plan_id = draft["plan_id"]
@@ -425,9 +447,11 @@ class PlanFlow:
             if any(c.get("source_id") == saved["id"] for c in draft["sources"]):
                 continue
             self._pool(plan_id).mark_accepted(source.url)
+            quality = source_quality.annotate(self.services.store, plan_id, [saved["id"]], lists=self._lists(), today=self.study_day())[0]
             cards.append({"card_id": _new_id()[:12], "kind": "url", "url": source.url, "title": source.title or source.url,
-                          "site": source.site, "tier": source.tier, "summary": source.summary[:300], "relevance": None,
-                          "credibility": None, "note": "你提供的链接", "status": "adopted", "source_id": saved["id"],
+                          "site": source.site, "tier": source.tier, "summary": source.summary[:300], "relevance": quality["relevance"],
+                          "credibility": quality["credibility"], "note": quality["note"], "quality": quality, "user_provided": True,
+                          "status": "adopted", "source_id": saved["id"],
                           "chars": source.document.char_count, "sha": source.document.sha256})
         draft["sources"].extend(cards)
         draft["research"]["linked"] = sorted(done | set(urls))
@@ -452,22 +476,34 @@ class PlanFlow:
             if not batch:
                 break
             self.status(plan_id, "正在评估资料的相关性和可信度…")
+            modules = [m for stage in (draft.get("outline") or {}).get("stages", []) for m in stage["modules"]]
+            qualities = [source_quality.assess(s, draft["goal"], level=draft["form"]["level"], modules=modules,
+                                               today=self.study_day(), lists=self._lists()) for s in batch]
             candidates = [{"id": f"r{i}", "title": s.title or s.url, "site": s.site,
-                           "excerpt": (s.summary + "\n" + " ".join(c.text for c in s.document.chunks[:3]))[:1500]}
-                          for i, s in enumerate(batch)]
-            scores, _ = self._ask("source_scoring", agents.scoring_request(draft["goal"], draft["form"], candidates),
-                                  lambda text: agents.parse_scoring(text, [c["id"] for c in candidates]), ctx, plan_id=plan_id,
-                                  max_tokens=8192)  # 4096 was cut off when the model reasons first (BUG-13)
+                           "excerpt": qualities[i]["evidence"]["excerpt"]}
+                          for i, s in enumerate(batch) if qualities[i]["needs_review"]]
+            scores = {}
+            if candidates:
+                scores, _ = self._ask("source_scoring", agents.scoring_request(draft["goal"], draft["form"], candidates),
+                                      lambda text: agents.parse_scoring(text, [c["id"] for c in candidates]), ctx, plan_id=plan_id,
+                                      max_tokens=8192)
             shown = {c.get("sha") for c in draft["sources"]} | {c["sha"] for c in cards}
-            for candidate, source in zip(candidates, batch):
-                score = scores.get(candidate["id"])
-                if not score or score["relevance"] < 3 or score["credibility"] < 3 or source.document.sha256 in shown:
+            shown_keys = {c.get("content_key") or source_quality.content_identity(c.get("url", ""))
+                          for c in draft["sources"]} | {c["content_key"] for c in cards}
+            for i, source in enumerate(batch):
+                score = source_quality.apply_review(qualities[i], scores.get(f"r{i}", {}))
+                draft["research"].setdefault("quality_audit", {})[source.url] = score
+                identity = source_quality.content_identity(source.final_url)
+                if not score["eligible"] or source.document.sha256 in shown or identity in shown_keys:
                     continue  # also skips a page whose text is identical to one already shown
                 shown.add(source.document.sha256)
+                shown_keys.add(identity)
                 cards.append({"card_id": _new_id()[:12], "kind": "url", "url": source.url, "title": source.title or source.url,
                               "site": source.site, "tier": source.tier, "summary": source.summary[:300],
                               "relevance": score["relevance"], "credibility": score["credibility"], "note": score["note"],
-                              "status": "new", "chars": source.document.char_count, "sha": source.document.sha256})
+                              "quality": score, "user_provided": False,
+                              "status": "new", "chars": source.document.char_count, "sha": source.document.sha256,
+                              "content_key": identity})
             if len(cards) >= 3:
                 break
         cards.sort(key=lambda c: (c["relevance"] * c["credibility"], c["tier"] == "whitelist"), reverse=True)
@@ -480,7 +516,7 @@ class PlanFlow:
         elif quiet:
             return 0
         else:
-            draft["messages"].append(_msg("ai", "text", "这一轮没有找到足够相关、可信的资料。可以点“再找找”换个思路，"
+            draft["messages"].append(_msg("ai", "text", "这一轮权威资料不足。可以点“再找找”换个思路，"
                                                         "或告诉我更具体的方向；也可以上传你手头的资料。"))
         self.save(draft)
         return len(cards)
@@ -513,6 +549,26 @@ class PlanFlow:
             raise BridgeError("PHASE_INVALID", "路线已经开始生成，不能再改资料。")
         store, plan_id = self.services.store, draft["plan_id"]
         if adopt:
+            if card.get("kind") == "url" and not card.get("user_provided"):
+                source = self._verified.get(plan_id, {}).get(card["url"])
+                stored = next((s for s in store.records("sources", plan_id) if s["id"] == card.get("source_id")), None)
+                modules = [m for stage in (draft.get("outline") or {}).get("stages", []) for m in stage["modules"]]
+                options = dict(level=draft["form"]["level"], modules=modules, today=self.study_day(), lists=self._lists())
+                if source is not None:
+                    quality = source_quality.assess(source, draft["goal"], **options)
+                elif stored is not None:
+                    chunks = [c for c in store.records("source_chunks", plan_id) if c["source_id"] == stored["id"]]
+                    quality = source_quality.assess_stored(stored, chunks, draft["goal"], **options)
+                else:
+                    raise BridgeError("SOURCE_EXPIRED", "请重新检索并核实这份资料后再采用。")
+                previous = card.get("quality", {})
+                if previous.get("context") == quality["context"]:
+                    quality = source_quality.apply_review(quality, previous)
+                if not quality["eligible"]:
+                    raise BridgeError("SOURCE_QUALITY_LOW", "这份检索资料尚未达到权威性与相关性门槛，不能采用。")
+                card["quality"] = quality
+                if stored is not None:
+                    store.add_sources(plan_id, [dict(stored, quality=quality, user_provided=False)])
             if card.get("source_id"):
                 store.set_source_adopted(plan_id, card["source_id"], True)
             else:
@@ -523,6 +579,7 @@ class PlanFlow:
                 self.status(plan_id, "正在保存资料正文…")
                 saved = import_verified_source(store, plan_id, verified)
                 card["source_id"] = saved["id"]
+                store.add_sources(plan_id, [dict(saved, quality=card["quality"], user_provided=False)])
             if card.get("url"):
                 self._pool(plan_id).mark_accepted(card["url"])
             if card.get("url") in draft["research"]["rejected"]:
@@ -555,9 +612,11 @@ class PlanFlow:
             finally:
                 self.status(plan_id, "")
             if not any(c.get("source_id") == saved["id"] for c in draft["sources"]):
+                quality = source_quality.annotate(self.services.store, plan_id, [saved["id"]], lists=self._lists(), today=self.study_day())[0]
                 draft["sources"].append({"card_id": _new_id()[:12], "kind": "file", "url": None,
                                          "title": saved.get("title") or path.name, "site": path.name, "tier": "file",
-                                         "summary": "", "relevance": None, "credibility": None, "note": "你上传的资料",
+                                         "summary": "", "relevance": quality["relevance"], "credibility": quality["credibility"],
+                                         "note": quality["note"], "quality": quality, "user_provided": True,
                                          "status": "adopted", "source_id": saved["id"], "chars": saved.get("char_count", 0)})
                 draft["messages"].append(_msg("ai", "sources", f"已读取你上传的《{saved.get('title') or path.name}》，默认采用。",
                                               cards=[draft["sources"][-1]["card_id"]]))
@@ -569,6 +628,7 @@ class PlanFlow:
         adopted_ids = [c["source_id"] for c in draft["sources"] if c["status"] == "adopted" and c.get("source_id")]
         sources = {s["id"]: s for s in store.records("sources", plan_id)}
         chosen = [sources[i] for i in adopted_ids if i in sources]
+        chosen = [dict(s, summary=(s.get("quality", {}).get("note", "") + " " + s.get("summary", "")).strip()) for s in chosen]
         chunks: dict[str, list] = {}
         for chunk in store.records("source_chunks", plan_id):
             chunks.setdefault(chunk["source_id"], []).append(chunk)
@@ -1108,6 +1168,7 @@ class PlanFlow:
                           if r["status"] in ("failed", "cancelled")]
             if not source_ids:
                 raise BridgeError("NO_NEW_MATERIAL", "没有可以加入的新资料。" + ("；".join(failed) if failed else ""))
+            quality_rows = source_quality.annotate(store, plan_id, source_ids, lists=self._lists(), today=self.study_day())
             self.status(plan_id, "正在分析新资料和现有路线的关系（通常半分钟左右）…")
             state = pa.snapshot(store, plan_id, source_ids)
             proposal, _ = self._ask("plan_additions", pa.analysis_request(state),
@@ -1116,7 +1177,7 @@ class PlanFlow:
             addition_id = _new_id()
             self._additions[addition_id] = {"plan_id": plan_id, "state": state, "proposal": proposal}
             return {"addition_id": addition_id, "preview": pa.preview(state, proposal, today=self.study_day()),
-                    "failed": failed}
+                    "failed": failed, "source_quality": quality_rows}
         return self._exclusive(plan_id, work)
 
     def additions_preview(self, addition_id, selected, new_end):
@@ -1177,7 +1238,7 @@ class PlanFlow:
             return result
         return self._exclusive(session["plan_id"], work)
 
-    def report(self, plan_id):
+    def report(self, plan_id, *, comments=True, cancel=None):
         """RPT-01: the saved learning report, built once the plan and its final check are complete."""
         from ..course.report import build_report
         store = self.services.store
@@ -1187,8 +1248,17 @@ class PlanFlow:
             report = None
         if not report:
             report = build_report(store, plan_id, today=self.study_day())
+        gateway = self.services.gateway
+        if comments and 'point_comments' not in report and hasattr(gateway, 'list_presets'):
+            from ..course.report_comments import generate_comments
+            with self._lock(plan_id):
+                report = store.load_report(plan_id)
+                if 'point_comments' not in report:
+                    report = dict(report, point_comments=generate_comments(gateway, store, plan_id, report, cancel=cancel))
+                    store.save_report(plan_id, report)
         titles = {p["id"]: p.get("title") or p["summary"][:30] for p in store.records("points", plan_id)}
-        return {"report": report, "titles": titles}
+        from ..course.report_views import report_views
+        return {"report": report, "titles": titles, "views": report_views(report)}
 
     def edit_module(self, draft, action, module_id, direction=0):
         if draft["phase"] != "ready":
@@ -1308,7 +1378,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.rename": lambda p, c: services().store.rename_plan(plan_id(p), text(p, "title", 80)) or {"ok": True},
         "plan.archive": lambda p, c: (services().store.archive_plan(plan_id(p)) if p.get("archived") is True
                                       else services().store.restore_plan(plan_id(p))) or {"ok": True},
-        "plan.report": lambda p, c: flow().report(plan_id(p)),
+        "plan.report": lambda p, c: flow().report(plan_id(p), cancel=c.cancel if c else None),
         "plan.add_analyze": lambda p, c: flow().additions_analyze(plan_id(p), p.get("token"), c, p.get("urls")),
         "plan.add_preview": lambda p, c: flow().additions_preview(p.get("addition_id"), _keys(p), p.get("new_end")),
         "plan.add_generate": lambda p, c: flow().additions_generate(p.get("addition_id"), _keys(p), p.get("new_end"), c),
@@ -1363,7 +1433,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         from pathlib import Path
         from PySide6.QtWidgets import QFileDialog
         pid = plan_id(params)
-        data = flow().report(pid)
+        data = flow().report(pid, comments=False)
         name = (data["report"]["plan"]["goal"] or "学习报告").strip()[:40]
         path, _ = QFileDialog.getSaveFileName(window, "保存学习报告", str(Path.home() / f"{name}-学习报告.md"), "Markdown (*.md)")
         if not path:
@@ -1372,6 +1442,22 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         return {"saved": True, "path": path}
 
     bridge.register("plan.report_export", wrap(export_report), ui=True)
+
+    def export_report_pdf(params, ctx):
+        from pathlib import Path
+        from PySide6.QtWidgets import QFileDialog
+        from ..course.report_pdf import render_report_pdf
+        pid = plan_id(params)
+        data = flow().report(pid, comments=False)
+        name = (data['report']['plan']['goal'] or '学习报告').strip()[:40]
+        path, _ = QFileDialog.getSaveFileName(window, '保存学习报告 PDF',
+            str(Path.home() / f'{name}-学习报告.pdf'), 'PDF (*.pdf)')
+        if not path:
+            return {'saved': False}
+        render_report_pdf(data['report'], data['titles'], data['views'], Path(path))
+        return {'saved': True, 'path': path}
+
+    bridge.register('plan.report_pdf', wrap(export_report_pdf), ui=True)
 
 
 def _as_format_error(parse, text, state):
@@ -1384,12 +1470,17 @@ def _as_format_error(parse, text, state):
 
 
 def report_markdown(report, titles):
+    from ..course.report_views import report_views
+    views = report_views(report)
     plan = report["plan"]
     lines = [f"# 学习报告：{plan['goal']}", "", f"最终目标：{plan['final_goal']}", "",
              f"- 计划日期：{plan['start_date']} → {plan['end_date']}",
              f"- 实际开始：{plan.get('actual_start_date') or '—'}；完成：{plan.get('actual_completion_date') or '—'}",
              f"- 学习时长：{plan['credited_minutes']} 分钟（计划 {plan['planned_minutes']} 分钟）",
              f"- 调整过计划 {plan['replan_count']} 次", ""]
+    checks = sum(p['check_questions'] for p in report['points'])
+    correct = sum(p['check_correct'] for p in report['points'])
+    lines.insert(-1, f"- 最终检验：{correct}/{checks} 题答对" if checks else "- 最终检验：—")
     if plan.get("early_days"):
         lines.append(f"比截止日提前 {plan['early_days']} 天完成。")
     if plan.get("overdue_days"):
@@ -1397,9 +1488,23 @@ def report_markdown(report, titles):
     lines += ["", "## 模块", ""]
     lines += [f"- {m['title']}：{ {'passed': '通过', 'skipped': '直接考通过', 'failed': '未通过'}.get(m['state'], m['state']) }"
               for m in report["modules"]]
+    lines += ["", "## 各模块掌握情况", ""]
+    lines += [f"- {m['title']}：{m['mastered']}/{m['total']} 个知识点通过最终检验"
+              for m in views['modules']]
+    lines += ["", "## 错误分布", "",
+              f"- 随口问：{views['errors']['casual']} 次；模块检测：{views['errors']['module']} 次；最终检验：{views['errors']['check']} 次"]
+    lines += ["", "## 每日目标与实际 / 历史明细", "",
+              "按原始学习日统计实际完成；欠账与超前为当天目标与当天实际的差值。", ""]
+    lines += [f"- {day['day']}：目标 {day['target_minutes']} 分，实际 {day['actual_minutes']} 分，"
+              f"欠账 {day['debt_minutes']} 分，超前 {day['ahead_minutes']} 分"
+              for day in views['history']]
     lines += ["", "## 最需要注意的知识点", ""]
     lines += [f"- {titles.get(w['point_id'], w['point_id'])}（出错 {w['score']} 次）" for w in report["weakest_points"] if w["score"]] \
         or ["- 没有明显的薄弱点。"]
+    lines += ["", "## 逐点老师评语", ""]
+    comments = report.get('point_comments') or {}
+    lines += [f"- {titles.get(p['point_id'], p['summary'])}：{comments.get(p['point_id']) or '暂无'}"
+              for p in report['points']]
     profile = report.get("teacher_profile") or {}
     if profile.get("check"):
         lines += ["", "## 问题归纳", "", profile["check"]]

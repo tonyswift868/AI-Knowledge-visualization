@@ -141,6 +141,9 @@ def run_scenario(root):
         patches.enter_context(patch.object(store_module, '_at', lambda value=None: original_at(
             value if value is not None else NOW + timedelta(microseconds=next(ticks)))))
         patches.enter_context(patch.object(room_module, 'threading', SimpleNamespace(Thread=ImmediateThread, Lock=threading.Lock, RLock=threading.RLock)))
+        # This fixed audit measures the original foreground request layout.
+        # Lesson preparation has its own cache-prefix contract and tests.
+        patches.enter_context(patch.object(room_module.Classroom, '_prepare_later', lambda *args: None))
         patches.enter_context(patch.object(plan_flow, 'GENERATE_WORKERS', 1))
         services = AppServices(account_id=ACCOUNT, data_root=root, session_provider=lambda: None,
                                api_base_url='https://invalid.example', ca_bundle=Path(root) / 'unused.pem')

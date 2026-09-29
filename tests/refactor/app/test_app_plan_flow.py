@@ -59,7 +59,7 @@ class ScriptedModel:
             text = "我搜到了这些。" + json.dumps({"sources": [{"url": "https://docs.python.org/3/tutorial/classes.html", "title": "类", "why": "官方"}]})
         elif purpose == "source_scoring":
             ids = re.findall(r"\[(r\d+)\]", user)
-            text = json.dumps({"scores": [{"id": i, "relevance": 5, "credibility": 5, "note": "官方教程"} for i in ids]})
+            text = json.dumps({"scores": [{"id": i, "relevance": 5, "credibility": 5, "note": "Python 官方教程包含目标中的类、异常和模块，可核对章节。"} for i in ids]})
         elif purpose == "outline":
             refs = re.findall(r"\[(s\d+\.\d+)\]", user)
             modules = [{"key": f"m{i}", "title": f"模块{i}", "summary": f"学第{i}块", "refs": [ref],
@@ -233,7 +233,8 @@ def test_links_from_form_and_chat_are_opened_and_adopted_without_search(qapp, tm
         pid = ask("plan.current")["draft"]["plan_id"]
         linked = dict(form(date.today()), notes="主要用这个：https://docs.python.org/3/tutorial/classes.html", only_mine=True)
         draft = ask("plan.submit", plan_id=pid, form=linked)["draft"]
-        mine = [c for c in draft["sources"] if c["note"] == "你提供的链接"]
+        mine = [c for c in draft["sources"] if c.get("user_provided")]
+        assert all("可信" in c["note"] and c["quality"]["user_provided"] for c in mine)
         assert [c["url"] for c in mine] == ["https://docs.python.org/3/tutorial/classes.html"] and mine[0]["status"] == "adopted"
         assert not any(c[0] == "research" for c in model.calls)       # only_mine + a link: no web search
         draft = ask("plan.say", plan_id=pid, text="再加上 https://docs.python.org/3/tutorial/errors.html")["draft"]

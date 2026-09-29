@@ -954,7 +954,62 @@ class CourseStore:
     @_atomic
     def save_teacher_profile(self, plan_id, document):
         self._get('plans', plan_id, plan_id)
+        # Background profile and preparation finish independently. Preserve the
+        # synced lesson cache even when a profile request began before prep saved.
+        try:
+            previous = self._get('teacher_profile', plan_id, plan_id)['document']
+        except StoreError as exc:
+            if exc.code != 'NOT_FOUND': raise
+            previous = {}
+        for key in ('lesson_preps', 'prepared_tests'):
+            if key in previous:
+                document = dict(document, **{key: previous[key]})
         self._put('teacher_profile', plan_id, dict(id=plan_id, document=document))
+
+    def load_lesson_cache(self, plan_id):
+        with self.transaction():
+            try:
+                document = self._get('teacher_profile', plan_id, plan_id)['document']
+            except StoreError as exc:
+                if exc.code != 'NOT_FOUND': raise
+                return {'lesson_preps': {}, 'prepared_tests': {}}
+            return {key: dict(document.get(key) or {}) for key in ('lesson_preps', 'prepared_tests')}
+
+    @_atomic
+    def save_lesson_cache_item(self, plan_id, kind, item_id, value, *, keep_ids=None):
+        if kind not in ('lesson_preps', 'prepared_tests'):
+            raise StoreError('INVALID_LESSON_CACHE')
+        self._get('plans', plan_id, plan_id)
+        try:
+            document = self._get('teacher_profile', plan_id, plan_id)['document']
+        except StoreError as exc:
+            if exc.code != 'NOT_FOUND': raise
+            document = {}
+        document = dict(document)
+        if keep_ids is not None:
+            document[kind] = {key: row for key, row in (document.get(kind) or {}).items() if key in keep_ids}
+        cache = dict(document.get(kind) or {})
+        cache[_id(item_id)] = value
+        document[kind] = cache
+        self._put('teacher_profile', plan_id, dict(id=plan_id, document=document))
+
+    @_atomic
+    def prune_lesson_cache(self, plan_id, *, point_ids, module_ids):
+        try:
+            document = self._get('teacher_profile', plan_id, plan_id)['document']
+        except StoreError as exc:
+            if exc.code == 'NOT_FOUND': return
+            raise
+        document = dict(document)
+        changed = False
+        for kind, keep in (('lesson_preps', set(point_ids)), ('prepared_tests', set(module_ids))):
+            old = document.get(kind) or {}
+            retained = {key: row for key, row in old.items() if key in keep}
+            if retained != old:
+                document[kind] = retained
+                changed = True
+        if changed:
+            self._put('teacher_profile', plan_id, dict(id=plan_id, document=document))
 
     @_atomic
     def append_message(self, plan_id, module_id, role, content, *, message_id=None, kind='text', at=None):

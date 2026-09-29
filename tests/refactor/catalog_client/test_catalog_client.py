@@ -23,6 +23,7 @@ from refactor.learning.sync_identity import PlanError
 ROOT = Path(__file__).parents[3]
 CA = ROOT / 'refactor/desktop/resources/trust/account-api.pem'
 DATA = ROOT / 'refactor/learning/course/data'
+BUILTIN_LISTS = json.loads((DATA / 'source_lists.json').read_text(encoding='utf-8'))
 KINDS = ('source-whitelist', 'model-prices')
 
 
@@ -80,7 +81,7 @@ def test_builtin_prices_are_exact_example_copy_and_candidates_excluded(tmp_path)
     assert example.read_bytes() == (DATA / 'model-prices.json').read_bytes()
     with client(tmp_path, ok_handler) as catalog:
         assert not catalog.load_lists().candidates
-        assert len(catalog.load_lists().whitelist) == 113
+        assert len(catalog.load_lists().whitelist) == len(BUILTIN_LISTS['whitelist'])
         assert catalog.load_prices() == json.loads(example.read_text(encoding='utf-8'))
         assert all(catalog.status(kind).origin == 'builtin' for kind in KINDS)
 
@@ -217,7 +218,7 @@ def test_auto_refresh_is_background_and_load_does_not_wait(tmp_path):
         return ok_handler(request)
     with client(tmp_path, handler, auto_refresh=True) as catalog:
         current = get_ident()
-        assert catalog.load_lists().updated == '2026-09-27'
+        assert catalog.load_lists().updated == BUILTIN_LISTS['updated']
         assert entered.wait(1)
         first = catalog.refresh_background()
         assert not first.done() and catalog.refresh_background() is first
@@ -267,7 +268,7 @@ def test_cache_account_isolation_and_owner_validation(tmp_path):
         (second.cache_dir/'source-whitelist.json').write_bytes(original)
     with client(tmp_path, ok_handler, state=second_state, clock=clock) as second:
         assert second.status('source-whitelist').code == 'CACHE_INVALID'
-        assert second.load_lists().updated == '2026-09-27'
+        assert second.load_lists().updated == BUILTIN_LISTS['updated']
 
 
 def test_cache_write_failure_never_replaces_previous_payload(tmp_path, monkeypatch):
@@ -277,7 +278,7 @@ def test_cache_write_failure_never_replaces_previous_payload(tmp_path, monkeypat
         monkeypatch.setattr(catalog, '_write', failed)
         states = catalog.refresh_background().result(timeout=3)
         assert all(state.code == 'CACHE_WRITE_FAILED' for state in states.values())
-        assert catalog.load_lists().updated == '2026-09-27'
+        assert catalog.load_lists().updated == BUILTIN_LISTS['updated']
         assert catalog.load_prices()['version'] == BUILTIN_PRICE_VERSION
 
 

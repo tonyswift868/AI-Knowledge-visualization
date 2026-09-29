@@ -16,6 +16,7 @@ module test confirms the mastered points and revokes the red ones (PLAN-05).
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from dataclasses import asdict
 import logging
 import re
 import threading
@@ -23,7 +24,7 @@ import time
 import uuid
 
 from ..connections.errors import MODEL_OUTPUT_TRUNCATED, ModelCancelled, ModelError
-from ..course import check_agent, judge_agent, profile_agent, question_agent, teacher_agent
+from ..course import check_agent, judge_agent, lesson_prep, profile_agent, question_agent, teacher_agent
 from ..course.request_layout import dialogue_tail
 from ..course.mastery import ANGLES, AttemptClosed, Judgement
 from ..course.planner_agents import LEVELS, AgentFormatError
@@ -54,6 +55,7 @@ class Classroom:
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
         self._profiling: set[str] = set()
+        self._preparing: set[str] = set()
         self._entered_plans: set[str] = set()  # rooms entered in this process; a repeat enter keeps the day
 
     # ------------------------------------------------------------------ state
@@ -199,6 +201,7 @@ class Classroom:
                 state["day"] = self.study_day().isoformat()
             self._entered_plans.add(course.plan_id)
         state["in_session"] = True
+        self._prepare_later(course, state)
 
     def leave(self, course, state, ctx):
         with self._guard:
@@ -225,17 +228,19 @@ class Classroom:
         """Explain the current point and end with a casual question."""
         points = course.points_of(state["module_id"])
         point = points[state["index"]]
+        prepared = self._prepared_point(course, point)
         resume = ""
         if state.get("resume"):
             resume = "这是这次上课的开头：先用一两句话接上学习者档案里“上次停在”的内容，再开始。"
         director = (f"{lead}{resume}讲解知识点《{point['title']}》：{point['summary']}（本模块第 {state['index'] + 1}/{len(points)} 个点）。"
                     "讲完用随口问提一道有区分度的小问题。")
-        teaching = self._teacher(course, state, ctx, director, [point["id"]], asks=True)
+        teaching = self._teacher(course, state, ctx, director, [point["id"]], asks=True, prepared=prepared)
         state["resume"] = False
         if teaching.casual_question:
             state["pending"] = {"kind": "casual", "point_ids": [point["id"]], "asks": 1,
                                 "question": {"type": "short", "stem": teaching.casual_question, "options": [],
-                                             "reference": f"知识点《{point['title']}》要点：{point['summary']}"}}
+                                             "reference": prepared.reference_answer if prepared else
+                                             f"知识点《{point['title']}》要点：{point['summary']}"}}
             state["step"] = "answer"
         else:
             self._point_done(course, state)
@@ -346,12 +351,13 @@ class Classroom:
         self._say(course, state, {"skip_test": "好，直接考这个模块。正确率达到 90% 就跳过，不到就正常学。",
                                   "module_test": "开始模块检测。一题一题来，选择题可以直接点选。",
                                   "retest": "开始重测没过的点，每个点换个角度问，答对一次就算过。"}[kind], role="system")
-        questions = self._questions(course, ctx, kind if kind == "retest" else "module_test", targets,
-                                    avoid=state.get("stems", []))
+        cached = self._prepared_test(course, module_id) if kind == "module_test" and not state.get("stems") else None
+        questions = cached or [_question_dict(q) for q in self._questions(
+            course, ctx, kind if kind == "retest" else "module_test", targets, avoid=state.get("stems", []))]
         attempt = uuid.uuid4().hex[:16]
-        state["test"] = {"kind": kind, "attempt": attempt, "queue": [_question_dict(q) for q in questions], "index": 0,
+        state["test"] = {"kind": kind, "attempt": attempt, "queue": questions, "index": 0,
                          "targets": targets}
-        state["stems"] = (state.get("stems", []) + [q.stem for q in questions])[-200:]
+        state["stems"] = (state.get("stems", []) + [q["stem"] for q in questions])[-200:]
         state["step"] = "retesting" if kind == "retest" else "testing"
         self._ask_next(course, state)
 
@@ -622,14 +628,169 @@ class Classroom:
         points = course.points_of(state["module_id"])
         return [points[min(state["index"], len(points) - 1)]["id"]]
 
-    def _teacher(self, course, state, ctx, director, point_ids, *, user="", asks=False):
+    @staticmethod
+    def _prep_context(course, point):
+        module = course.module(point["module_id"])
+        # Same module source first for every point: shared provider cache prefix.
+        excerpts = course.excerpts([p["id"] for p in course.points_of(module["id"])])
+        return {"module": {"id": module["id"], "title": module["title"]},
+                "point": {"id": point["id"], "title": point["title"], "summary": point["summary"]},
+                "excerpts": excerpts}
+
+    @staticmethod
+    def _prep_fingerprint(course, point):
+        context = Classroom._prep_context(course, point)
+        return lesson_prep.fingerprint(course.plan, course.module(point["module_id"]), point, context["excerpts"])
+
+    def _prepared_point(self, course, point):
+        row = course.store.load_lesson_cache(course.plan_id)["lesson_preps"].get(point["id"])
+        if not isinstance(row, dict) or row.get("fingerprint") != self._prep_fingerprint(course, point):
+            return None
+        if row.get("status") != "reviewed" or row.get("version") != lesson_prep.VERSION:
+            return None
+        try:
+            import json
+            return lesson_prep.parse_prep(json.dumps(row["lesson"], ensure_ascii=False))
+        except (AgentFormatError, KeyError, TypeError):
+            return None
+
+    @staticmethod
+    def _test_fingerprint(course, module_id):
+        points = course.points_of(module_id)
+        return lesson_prep.fingerprint(course.plan, course.module(module_id),
+                                       {"points": points}, course.excerpts([p["id"] for p in points]))
+
+    def _prepared_test(self, course, module_id):
+        row = course.store.load_lesson_cache(course.plan_id)["prepared_tests"].get(module_id)
+        if not isinstance(row, dict) or row.get("fingerprint") != self._test_fingerprint(course, module_id):
+            return None
+        questions = row.get("questions")
+        points = {p["id"] for p in course.points_of(module_id)}
+        if (not isinstance(questions, list) or not questions or
+                any(not isinstance(q, dict) or not set(q.get("point_ids", [])) <= points for q in questions)):
+            return None
+        return questions
+
+    def _prep_targets(self, course, state):
+        """At most today's remaining minutes plus the next calendar day's target."""
+        from datetime import date, timedelta
+        day = date.fromisoformat(state["day"])
+        targets = course.store.load_ledger(course.plan_id).targets
+        today = self._today(course, state)
+        remaining = max(0, targets.get(day, 0) - today["today_confirmed"] - today["today_tentative"])
+        budget = remaining + targets.get(day + timedelta(days=1), 0)
+        if budget <= 0:
+            return []
+        module_points = course.points_of(state["module_id"])
+        current = module_points[min(state["index"], len(module_points) - 1)]
+        start = next(i for i, point in enumerate(course.points) if point["id"] == current["id"])
+        chosen, minutes = [], 0
+        for point in course.points[start:]:
+            chosen.append(point)
+            minutes += point["minutes"]
+            if minutes >= budget:
+                break
+        return chosen
+
+    def _prepare_later(self, course, state):
+        if state.get("step") in ("completed", "checking"):
+            return
+        plan_id = course.plan_id
+        with self._guard:
+            if plan_id in self._preparing:
+                return
+            self._preparing.add(plan_id)
+        try:
+            targets = self._prep_targets(course, state)
+        except Exception:  # noqa: BLE001 - bad ledger never delays entry
+            with self._guard:
+                self._preparing.discard(plan_id)
+            log.info("lesson prep targets unavailable", exc_info=True)
+            return
+
+        def work():
+            try:
+                fresh = _Course(self.services.store, self.services.store.get_plan(plan_id))
+                keep = {p["id"] for p in targets}
+                self.services.store.prune_lesson_cache(
+                    plan_id, point_ids=keep, module_ids={p["module_id"] for p in targets})
+                # Start the module test while the learner is still working
+                # through its points; long-form lesson reviews may take longer.
+                for module_id in {p["module_id"] for p in targets}:
+                    try:
+                        points = fresh.points_of(module_id)
+                        if points[-1]["id"] not in keep or self._prepared_test(fresh, module_id):
+                            continue
+                        questions = self._questions(fresh, None, "module_test", [p["id"] for p in points], background=True)
+                        self.services.store.save_lesson_cache_item(plan_id, "prepared_tests", module_id,
+                            {"fingerprint": self._test_fingerprint(fresh, module_id),
+                             "questions": [_question_dict(q) for q in questions]})
+                    except Exception:  # noqa: BLE001 - a failed pretest must not discard lessons
+                        log.info("module question preparation failed", exc_info=True)
+                for point in targets:
+                    try:
+                        self._prepare_point(fresh, point, keep)
+                    except Exception:  # noqa: BLE001 - another point can still be prepared
+                        log.info("lesson preparation failed for %s", point["id"], exc_info=True)
+                        self.services.store.save_lesson_cache_item(plan_id, "lesson_preps", point["id"],
+                            {"version": lesson_prep.VERSION, "status": "needs_live_teaching",
+                             "fingerprint": self._prep_fingerprint(fresh, point)}, keep_ids=keep)
+            except Exception:  # noqa: BLE001 - preparation is optional
+                log.info("background lesson prep failed", exc_info=True)
+            finally:
+                with self._guard:
+                    self._preparing.discard(plan_id)
+
+        threading.Thread(target=work, name="classroom-lesson-prep", daemon=True).start()
+
+    def _prep_ask(self, course, purpose, request, parse, max_tokens):
+        # Foreground classroom operations take priority. A request already in
+        # flight cannot be interrupted, but no next prep starts while one runs.
+        while self._lock(course.plan_id).locked():
+            time.sleep(0.1)
+        return self._ask(course, None, purpose, request, parse, max_tokens)
+
+    def _prepare_point(self, course, point, keep):
+        current = course.point(point["id"])
+        if self._prepared_point(course, current):
+            return
+        context = self._prep_context(course, current)
+        request = lesson_prep.prep_request(context)
+        draft = self._prep_ask(course, "lesson_prep", request, lesson_prep.parse_prep, 8192)
+        review_request = lesson_prep.review_request(context, draft)
+        review = self._prep_ask(course, "lesson_review", review_request, lesson_prep.parse_review, 8192)
+        approved = draft if review.verdict == "approve" else review.revised
+        if review.verdict == "revise" and approved is not None:
+            second_request = lesson_prep.review_request(context, approved)
+            second = self._prep_ask(course, "lesson_review", second_request, lesson_prep.parse_review, 8192)
+            if second.verdict != "approve":
+                approved = None
+        # Re-read source before saving; a concurrent plan/material edit must
+        # never make an old draft appear current.
+        fresh = _Course(self.services.store, self.services.store.get_plan(course.plan_id))
+        if self._prep_fingerprint(fresh, fresh.point(point["id"])) != self._prep_fingerprint(course, current):
+            return
+        if approved and not lesson_prep.check_code(approved):
+            value = {"version": lesson_prep.VERSION, "status": "reviewed",
+                     "fingerprint": self._prep_fingerprint(course, current), "lesson": asdict(approved)}
+        else:
+            value = {"version": lesson_prep.VERSION, "status": "needs_live_teaching",
+                     "fingerprint": self._prep_fingerprint(course, current)}
+        self.services.store.save_lesson_cache_item(course.plan_id, "lesson_preps", point["id"], value,
+                                                   keep_ids=keep)
+
+    def _teacher(self, course, state, ctx, director, point_ids, *, user="", asks=False, prepared=None):
         """asks=False: a question the step did not ask for stays part of the explanation, not a card."""
+        if prepared is None and len(point_ids) == 1:
+            prepared = self._prepared_point(course, course.point(point_ids[0]))
         plan, module = self._skeleton(course, state, point_ids)
         profile = self._profile_document(course)
         notes = (profile.get("text") or "") + (f"\n检验中的问题归纳：{profile['check']}" if profile.get("check") else "")
         tctx = {"prefs": self._prefs(), "plan": plan, "module": module, "excerpts": course.excerpts(point_ids),
                 "dialogue": self._dialogue(course, state)[:-1] if user else self._dialogue(course, state),
                 "profile": notes[:6000], "director": director, "user": user}
+        if prepared is not None:
+            tctx["prepared_lesson"] = asdict(prepared)
         request = teacher_agent.teacher_request(tctx)
         mapping = teacher_agent.citation_map(tctx)
         stream = ctx.stream if ctx else (lambda _d: None)
@@ -652,6 +813,8 @@ class Classroom:
             raw = result.text
             try:
                 teaching = teacher_agent.parse_teaching(raw, tctx)
+                if not asks and teaching.speech.rstrip().endswith(("？", "?")):
+                    raise AgentFormatError("老师在未要求提问的步骤结尾新增了问题")
                 break
             except AgentFormatError as exc:
                 log.info("teacher answer rejected (%s), attempt %s", exc, attempt + 1)
@@ -660,6 +823,8 @@ class Classroom:
         removed = teacher_agent.citation_diagnostics(raw, tctx)
         if removed:
             log.info("teacher cited unknown excerpts %s", removed)
+        if prepared is not None and asks:
+            teaching = teacher_agent.Teaching(teaching.speech, prepared.casual_question, teaching.cited_chunks)
         speech = _link_citations(teaching.speech, mapping)
         if teaching.casual_question and not asks:
             speech = (speech + "\n\n" + teaching.casual_question).strip()
@@ -681,7 +846,7 @@ class Classroom:
         request = judge_agent.judge_request(jctx, reply)
         return self._ask(course, ctx, "judge", request, lambda text: judge_agent.parse_judgement(text, jctx), 2048)
 
-    def _questions(self, course, ctx, purpose, point_ids, *, avoid=(), used_angles=None):
+    def _questions(self, course, ctx, purpose, point_ids, *, avoid=(), used_angles=None, background=False):
         points = [course.point(pid) for pid in point_ids]
         excerpts = course.excerpts(point_ids)
         qctx = {"purpose": purpose, "per_point": 1, "excerpts": excerpts, "avoid": list(avoid)[-100:],
@@ -690,7 +855,9 @@ class Classroom:
         if purpose == "check":
             qctx["used_angles"] = used_angles or {pid: [] for pid in point_ids}
         request = question_agent.question_request(qctx)
-        return self._ask(course, ctx, "questions", request, lambda text: question_agent.parse_questions(text, qctx), 8192)
+        parse = lambda text: question_agent.parse_questions(text, qctx)
+        return (self._prep_ask(course, "questions", request, parse, 8192) if background else
+                self._ask(course, ctx, "questions", request, parse, 8192))
 
     def _ask(self, course, ctx, purpose, request, parse, max_tokens):
         last = None

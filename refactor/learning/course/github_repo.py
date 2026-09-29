@@ -242,5 +242,5 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
     folder = files[0].rsplit("/", 1)[0].split("/")[0] + "/" if "/" in files[0] else "仓库根目录"
     summary = (meta.get("description") or "") +         f"（读取了 {folder} 下 {len({b.section[0] for b in blocks})} 篇文档；要读其他部分可以贴对应子目录的地址）"
     return VerifiedSource(canonical, canonical, title[:200], "github.com", tier if tier in {"whitelist", "neutral", "low"} else "neutral",
-                          "repository", ("github_docs",), document, summary[:500],
+                          "repository", ("github_docs",) + (("possible_fork",) if meta.get("fork") else ()), document, summary[:500],
                           datetime.now(timezone.utc).isoformat(), sha)

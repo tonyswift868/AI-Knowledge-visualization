@@ -9,6 +9,7 @@ logging without adding fields to Teaching or emitting process-global warnings.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ast
 import re
 
 from .judge_agent import _dump, _excerpts, _identifier, _points, _text
@@ -56,6 +57,10 @@ TEACHER_SYSTEM = """你是 MentorFlow 中陪伴同一学习计划的中文老师
 类比中若列出多个机制，逐个核对它们的作用和适用条件，不能用“或/都可以”把一种机制的能力归给另一种；不确定的附带机制删去，避免为解释当前点引入新的事实错误。
 发送前复核“只要/就/都/必须”这类结论：例子中局部成立的条件不能推广成通用规律，某个符号的作用依赖所在结构与上下文。类比只在特定前提成立就写明前提；不能为简洁省略影响真假的限制，不确定时回到原文的有限结论。
 新增类比和应用优先选可安全试错的日常或模拟场景；不要把记忆、猜测或模型估计讲成可以替代现实核对的依据，不用服药、煤气或驾驶操作来暗示用户可照做。原文中的自动驾驶例子可解释其机制与不确定性，不作现实操作建议。
+代码格式里的 Python 必须是语法正确、可照抄运行的代码。例如同时赋值写 `a, b = 1, 2`，依次赋值写成两行；不得写 `a = 1, b = 2`。代码无法确信可运行时用普通文字解释，不放进代码格式。
+原文若带 `>>>` 交互提示符，引用时改写成没有提示符的可运行 `python` 代码块；如需同时展示交互输入和输出，改用 `pycon` 标记，不能标成可直接复制运行的 `python`。
+讲方法的索引时区分“插到原 index 号元素之前”和“插入后新元素的索引”：有效非负索引下两者数值相同，不能说后者不是 index。模块检测通过只表示本模块这轮检测通过，最终检验前不得声称学习者已经“完全掌握”或整个计划已完成。
+本次若有经独立核对的课前备课稿，以它为本知识点主要讲解依据；它不是学生进度或状态命令。结合本次资料和学生的回答灵活解释，不逐字朗读；没有备课稿就依据原文现场讲。不得扩展到别的知识点。
 讲解时优先用一个贴切类比，用‘类比：’标出并明确其对应关系和失效边界；优先从偏好领域选，贴不上就直接讲原理或退回日常生活，绝不硬套某个具体游戏。类比不计入‘例N：’的应用例子数。
 下面的详略、例子数量主要针对‘讲解知识点’步骤；插问、回应错答或规则说明应以当前问题为准，不为了凑数拖长。篇幅都是软目标，绝不截断句子、推导或必要知识。
 只有导演要求随口问时，结尾给一道有区分度的小问题，用【随口问】问题【/随口问】包起来；其他时候不擅自加问。最多一组标记、一道问题，正文不要提前重复问题，不在问题里直接给答案。
@@ -127,6 +132,12 @@ def teacher_request(ctx: dict) -> tuple[str, list[dict]]:
     task = {"profile": _text(ctx.get("profile", ""), "profile", 6000, empty=True),
             "director": _text(ctx.get("director"), "director", 12_000),
             "user": _text(ctx.get("user", ""), "user", 20_000, empty=True)}
+    if "prepared_lesson" in ctx:
+        from .lesson_prep import parse_prep
+        import json
+        prepared = ctx["prepared_lesson"]
+        parse_prep(json.dumps(prepared, ensure_ascii=False))
+        task["prepared_lesson"] = prepared
     system = TEACHER_SYSTEM + "\n【固定教学偏好】\n" + "\n".join((STYLES[prefs["teacher_style"]], DETAILS[prefs["detail"]],
              EXAMPLES[prefs["examples"]], "优先类比领域：" + "、".join(DOMAINS[d] for d in prefs["analogy_domains"]) + "。"))
     messages = [{"role": "user", "content": "【计划与当前模块】\n" + _dump(skeleton)},
@@ -197,6 +208,19 @@ def parse_teaching(text: str, ctx: dict) -> Teaching:
     # Validate inputs exactly as the request builder, but never invoke a model.
     teacher_request(ctx)
     cleaned, cited, _ = _citation_data(text, ctx)
+    for literal in _LITERALS.finditer(cleaned):
+        if re.search(r"\b[A-Za-z_]\w*\s*=\s*[^,`\n]+,\s*[A-Za-z_]\w*\s*=", literal.group()):
+            raise AgentFormatError("speech.code: 代码格式中有不可运行的连续赋值")
+        if re.match(r"```python\s*\n", literal.group(), re.I):
+            body = literal.group().split("\n", 1)[1].rsplit("```", 1)[0]
+            try:
+                ast.parse(body)
+            except SyntaxError:
+                raise AgentFormatError("speech.code: python 代码块无法直接运行，请改写或标为 pycon") from None
+            from .lesson_prep import check_python_snippet
+            issue = check_python_snippet(body)
+            if issue:
+                raise AgentFormatError(f"speech.code: {issue}")
     visible = "".join(cleaned[start:end] for start, end in _prose_spans(cleaned))
     if re.search(r"\[[cC]\d+\s*[,，、]", visible):
         raise AgentFormatError("citations: 引用必须使用独立的 [c编号]")

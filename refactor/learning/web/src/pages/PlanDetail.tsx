@@ -124,6 +124,7 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
   const toast = useApp((s) => s.toast)
   const [names, setNames] = React.useState<string[]>([])
   const [links, setLinks] = React.useState("")
+  const [sourceQuality, setSourceQuality] = React.useState<{source_id: string; title: string; credibility: number; relevance: number; note: string}[]>([])
   const [open, setOpen] = React.useState(false)
   const [token, setToken] = React.useState<string | null>(null)
   const [addition, setAddition] = React.useState<string | null>(null)
@@ -136,7 +137,7 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
   detail.stages.forEach((s) => s.modules.forEach((m) => { titles[m.id] = m.title }))
   first?.modules.forEach((m) => { titles[m.key] = m.title })
 
-  function reset() { setNames([]); setLinks(""); setToken(null); setAddition(null); setFirst(null); setView(null); setSelected([]); setEnd("") }
+  function reset() { setNames([]); setLinks(""); setSourceQuality([]); setToken(null); setAddition(null); setFirst(null); setView(null); setSelected([]); setEnd("") }
   async function step<T>(label: string, fn: () => Promise<T>) {
     setBusy(label)
     try { return await fn() } catch (e) { toast("error", (e as Error).message); return null } finally { setBusy(null) }
@@ -148,9 +149,10 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
   async function analyze() {
     const urls = links.split(/\s+/).filter((u) => /^https?:\/\//.test(u))
     const r = await step("正在读取资料并分析和现有路线的关系（通常半分钟到一分钟）…",
-      () => call<{ addition_id: string; preview: AddPreview; failed: string[] }>("plan.add_analyze", { plan_id: detail.plan.id, token, urls }))
+      () => call<{ addition_id: string; preview: AddPreview; failed: string[]; source_quality?: typeof sourceQuality }>("plan.add_analyze", { plan_id: detail.plan.id, token, urls }))
     if (!r) return
     if (r.failed?.length) toast("error", "有网址没能打开：" + r.failed.join("；"))
+    setSourceQuality(r.source_quality ?? [])
     setToken(null); setAddition(r.addition_id); setFirst(r.preview); setView(r.preview)
     setSelected(r.preview.selected ?? r.preview.modules.map((m) => m.key)); setEnd(r.preview.new_end)
   }
@@ -193,6 +195,10 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
         <Button small kind="primary" disabled={!token && !/https?:\/\//.test(links)} onClick={analyze}>开始分析</Button>
       </div>}
       {view && <>
+        {sourceQuality.map((s) => <div className="stack small" key={s.source_id} style={{gap: 4}}>
+          <b>{s.title} · 可信 {s.credibility}/5 · 相关 {s.relevance}/5</b>
+          <span className="muted">{s.note}</span>
+        </div>)}
         {view.supplements.length > 0 && <span className="muted small">有 {view.supplements.length} 处是对已有知识点的补充，会直接挂上，不加时间。</span>}
         {(view.overlaps.length > 0 || view.ignored.length > 0) && <span className="muted small">
           {view.overlaps.length + view.ignored.length} 处和已学内容重合或与目标无关，不加入。</span>}

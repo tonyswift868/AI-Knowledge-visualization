@@ -118,3 +118,7 @@ def test_pasted_links_are_imported_then_analyzed(flow, monkeypatch):
     first = plan_flow.additions_analyze(PLAN, None, ctx(), urls=["看这个 https://a.example/doc，还有", "https://b.example/x"])
     assert seen["urls"] == ["https://a.example/doc", "https://b.example/x"]
     assert first["failed"] == ["https://b.example/x：网页打不开"] and first["preview"]["modules"]
+    quality, = first["source_quality"]
+    assert quality["source_id"] == "new" and quality["user_provided"] and not quality["eligible"]
+    source = next(s for s in store.records("sources", PLAN) if s["id"] == "new")
+    assert source["adopted"] and source["quality"]["credibility"] < 4

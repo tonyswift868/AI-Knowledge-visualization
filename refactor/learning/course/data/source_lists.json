@@ -1,7 +1,25 @@
 {
   "version": 1,
-  "updated": "2026-09-27",
+  "updated": "2026-09-29",
   "whitelist": [
+    {
+      "match": "takeielts.britishcouncil.org",
+      "brand": "British Council IELTS",
+      "category": "education",
+      "reason": "英国文化教育协会自营雅思备考与教学站，发布考试样题和原始教师讲义。"
+    },
+    {
+      "match": "www.britishcouncil.in",
+      "brand": "British Council India",
+      "category": "education",
+      "reason": "英国文化教育协会印度站自有的雅思写作原始练习讲义。"
+    },
+    {
+      "match": "owl.purdue.edu",
+      "brand": "Purdue Online Writing Lab",
+      "category": "education",
+      "reason": "普渡大学写作实验室直接发布的英文写作和语法教材，原始课程正文可供核对。"
+    },
     {
       "match": "wikipedia.org",
       "brand": "Wikipedia / 维基百科",
@@ -679,6 +697,84 @@
       "brand": "cppreference",
       "category": "reference",
       "reason": "C/C++ 社区广泛使用的语言和标准库参考；并非 ISO 标准原文。"
+    },
+    {
+      "match": "who.int",
+      "brand": "World Health Organization / 世界卫生组织",
+      "category": "reference",
+      "reason": "联合国公共卫生专门机构；医学页面仍须核验发布日期和具体正文。"
+    },
+    {
+      "match": "learnenglish.britishcouncil.org",
+      "brand": "British Council LearnEnglish",
+      "category": "education",
+      "reason": "英国文化教育协会自编英语学习材料；不泛化至其他个人学习网站。"
+    },
+    {
+      "match": "ielts.org",
+      "brand": "IELTS",
+      "category": "education",
+      "reason": "IELTS 考试官方资料与评分说明；现行考试规则仍须核验版本。"
+    },
+    {
+      "match": "metmuseum.org",
+      "brand": "The Metropolitan Museum of Art",
+      "category": "reference",
+      "reason": "大都会艺术博物馆馆藏与专家署名艺术史文章，可追溯机构和作者。"
+    },
+    {
+      "match": "web.mit.edu",
+      "brand": "MIT 18.06 course",
+      "category": "education",
+      "reason": "MIT 官方 18.06 课程讲义与练习；评分规则限 /18.06/，不泛化个人页面。"
+    },
+    {
+      "match": "whc.unesco.org",
+      "brand": "UNESCO World Heritage Centre",
+      "category": "reference",
+      "reason": "联合国教科文组织世界遗产中心的原始遗产说明。"
+    },
+    {
+      "match": "webarchive.unesco.org",
+      "brand": "UNESCO own web archive",
+      "category": "reference",
+      "reason": "UNESCO 自有历史页面归档，需核查原机构署名，不泛指第三方归档。"
+    },
+    {
+      "match": "heritage.go.kr",
+      "brand": "Korea National Heritage Portal",
+      "category": "government",
+      "reason": "韩国国家遗产门户对登记遗产的官方说明。"
+    },
+    {
+      "match": "m.pep.com.cn",
+      "brand": "People's Education Press",
+      "category": "education",
+      "reason": "人民教育出版社自有历史教学设计与教材配套资料。"
+    },
+    {
+      "match": "heart.org",
+      "brand": "American Heart Association",
+      "category": "reference",
+      "reason": "美国心脏协会自有循证心血管科普与资料。"
+    },
+    {
+      "match": "acc.org",
+      "brand": "American College of Cardiology",
+      "category": "reference",
+      "reason": "美国心脏病学会发布的原始指南摘要及专业声明。"
+    },
+    {
+      "match": "med.stanford.edu",
+      "brand": "Stanford Medicine",
+      "category": "education",
+      "reason": "斯坦福医学院自有研究与医学科普页面，正文仍核作者与日期。"
+    },
+    {
+      "match": "utswmed.org",
+      "brand": "UT Southwestern Medical Center",
+      "category": "education",
+      "reason": "得克萨斯大学西南医学中心自有医生署名健康文章。"
     }
   ],
   "github_orgs": [
