@@ -22,11 +22,11 @@
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-03（client） | D:\MentorFlow-office\client | 14-MF03 进行中 |
-| MF-07（server） | D:\MentorFlow-office\server | 14-MF07 进行中 |
+| MF-03（client） | D:\MentorFlow-office\client | 空闲 |
+| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
-| MF-01（library） | D:\MentorFlow-office\library | 13-MF01 进行中 |
+| MF-01（library） | D:\MentorFlow-office\library | 空闲 |
 | MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 
@@ -85,9 +85,9 @@
 | 11-MF03 | MF-03 client | 检验时长分开预估、分开记 + 全流程阻塞复查 | CHK-01、PLAN-05、TEACH-02、SYS-04 | 0953cfd | 已合入 8d8b76e（2026-09-29） |
 | 12-MF06 | MF-06 classroom | 朗读组件改为从官方下载站获取 + 正式发布构建（交架构师签名上传） | SYS-06、VOICE-01 | ed11b90 | 已合入（9d71b15） |
 | 12-MF04 | MF-04 platform | 加资料支持贴网址（网页与 GitHub 仓库） | PLAN-10、PLAN-06、BUG-09 | ed11b90 | 已合入（9d71b15） |
-| 13-MF01 | MF-01 library | 课堂提速（并行与预取）+ 长模块对话压缩 + 可重复的课堂回归评测 | ARCH-07、TEACH-01、TEACH-04、SYS-05 | b58dc7b | 已派发（2026-09-29 首次文本未发出，按新基线重发） |
-| 14-MF07 | MF-07 server | 服务器瘦身：把新软件在用的约 1.1 万行迁进 refactor/server，做只挂这几组接口的新入口 | DATA-01、ACC-01、ACC-02、DATA-02 | 1284f67 | 已派发 |
-| 14-MF03 | MF-03 client | 客户端旧代码迁移 + 删除仓库里不再用的旧代码和旧文档 | DATA-01、SYS-06、UI-00 | 1284f67 | 已派发 |
+| 13-MF01 | MF-01 library | 课堂提速（并行与预取）+ 长模块对话压缩 + 可重复的课堂回归评测 | ARCH-07、TEACH-01、TEACH-04、SYS-05 | b58dc7b | 未发出（用户未转发，待下一批重排） |
+| 14-MF07 | MF-07 server | 服务器瘦身：把新软件在用的约 1.1 万行迁进 refactor/server，做只挂这几组接口的新入口 | DATA-01、ACC-01、ACC-02、DATA-02 | 1284f67 | 已合入（b58e0da） |
+| 14-MF03 | MF-03 client | 客户端旧代码迁移 + 删除仓库里不再用的旧代码和旧文档 | DATA-01、SYS-06、UI-00 | 1284f67 | 已合入（b58e0da） |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
