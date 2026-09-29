@@ -289,7 +289,7 @@ def main():
         p.add_argument("--" + name, type=Path, required=True)
     p.add_argument("--feed", required=True); p.add_argument("--app-id", default="MentorFlow")
     p.add_argument("--epoch", type=int, required=True); p.add_argument("--minimum-version", required=True)
-    p.add_argument("--base-versions", nargs="*", default=[]); p.add_argument("--valid-days", type=int, default=30)
+    p.add_argument("--base-versions", nargs="*", default=[]); p.add_argument("--valid-days", type=int, default=1096)  # 3 years (SYS-06, user 2026-09-29)
     p.add_argument("--notes", required=True)
     p = sub.add_parser("sign")
     for name in ("unsigned", "public-key", "private-key", "output"):

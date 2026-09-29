@@ -162,7 +162,7 @@ def verify_release(raw: bytes, public_keys: dict[str, bytes], *, current: str,
         published = datetime.fromisoformat(signed['published_at'].replace('Z', '+00:00'))
         issued = datetime.fromisoformat(signed['issued_at'].replace('Z', '+00:00'))
         expires = datetime.fromisoformat(signed['expires_at'].replace('Z', '+00:00'))
-        if published.tzinfo is None or issued.tzinfo is None or expires.tzinfo is None or issued > now + timedelta(minutes=5) or published > issued or expires <= now or expires <= issued or expires-issued > timedelta(days=31):
+        if published.tzinfo is None or issued.tzinfo is None or expires.tzinfo is None or issued > now + timedelta(minutes=5) or published > issued or expires <= now or expires <= issued or expires-issued > timedelta(days=1100):
             raise SecurityError('expired/future release')
         for name in ('source_sha', 'tree_sha'):
             if not re.fullmatch('[0-9a-f]{40}', signed[name]):
