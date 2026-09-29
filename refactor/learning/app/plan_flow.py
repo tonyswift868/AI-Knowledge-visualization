@@ -1066,22 +1066,33 @@ class PlanFlow:
             raise BridgeError("ADDITION_EXPIRED", "这次加资料的分析已失效（软件重启过或已应用），请重新选择资料。")
         return session
 
-    def additions_analyze(self, plan_id, token, ctx):
+    def additions_analyze(self, plan_id, token, ctx, urls=None):
         from ..course import plan_additions as pa
         from ..course.materials import import_file
         paths = self._picked.pop(token, None) if isinstance(token, str) else None
-        if not paths:
-            raise BridgeError("PARAM_INVALID", "请先选择资料文件。")
+        urls = find_links(" ".join(urls)) if isinstance(urls, list) and all(isinstance(u, str) for u in urls) else []
+        if not paths and not urls:
+            raise BridgeError("PARAM_INVALID", "请先选择资料文件或贴上网址。")
 
         def work():
             store = self.services.store
             plan = store.get_plan(plan_id)
             if plan.get("state") != "active" or plan.get("archived"):
                 raise BridgeError("PHASE_INVALID", "只有进行中的计划可以中途加资料。")
-            source_ids = []
-            for path in paths:
+            source_ids, failed = [], []
+            for path in paths or []:
                 self.status(plan_id, f"正在读取 {path.name}…")
                 source_ids.append(import_file(store, plan_id, path, cancel=ctx.cancel)["id"])
+            if urls:
+                from ..course.addition_links import import_links
+                self.status(plan_id, f"正在打开 {len(urls)} 个网址…")
+                linked = import_links(store, plan_id, urls, fetcher=self.fetcher, lists=self._lists(), cancel=ctx.cancel,
+                                      **({"repo_fetch": self.repo_fetch} if self.repo_fetch else {}))
+                source_ids += [i for i in linked["source_ids"] if i not in source_ids]
+                failed = [f"{r['original_url']}：{r.get('message') or '打不开'}" for r in linked["results"]
+                          if r["status"] in ("failed", "cancelled")]
+            if not source_ids:
+                raise BridgeError("NO_NEW_MATERIAL", "没有可以加入的新资料。" + ("；".join(failed) if failed else ""))
             self.status(plan_id, "正在分析新资料和现有路线的关系（通常半分钟左右）…")
             state = pa.snapshot(store, plan_id, source_ids)
             proposal, _ = self._ask("plan_additions", pa.analysis_request(state),
@@ -1089,7 +1100,8 @@ class PlanFlow:
                                     plan_id=plan_id, max_tokens=16384)
             addition_id = _new_id()
             self._additions[addition_id] = {"plan_id": plan_id, "state": state, "proposal": proposal}
-            return {"addition_id": addition_id, "preview": pa.preview(state, proposal, today=self.study_day())}
+            return {"addition_id": addition_id, "preview": pa.preview(state, proposal, today=self.study_day()),
+                    "failed": failed}
         return self._exclusive(plan_id, work)
 
     def additions_preview(self, addition_id, selected, new_end):
@@ -1282,7 +1294,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.archive": lambda p, c: (services().store.archive_plan(plan_id(p)) if p.get("archived") is True
                                       else services().store.restore_plan(plan_id(p))) or {"ok": True},
         "plan.report": lambda p, c: flow().report(plan_id(p)),
-        "plan.add_analyze": lambda p, c: flow().additions_analyze(plan_id(p), p.get("token"), c),
+        "plan.add_analyze": lambda p, c: flow().additions_analyze(plan_id(p), p.get("token"), c, p.get("urls")),
         "plan.add_preview": lambda p, c: flow().additions_preview(p.get("addition_id"), _keys(p), p.get("new_end")),
         "plan.add_generate": lambda p, c: flow().additions_generate(p.get("addition_id"), _keys(p), p.get("new_end"), c),
         "plan.add_apply": lambda p, c: flow().additions_apply(p.get("addition_id"), p.get("confirmation_id")),

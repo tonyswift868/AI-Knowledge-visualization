@@ -123,6 +123,8 @@ type AddPreview = {
 function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () => void }) {
   const toast = useApp((s) => s.toast)
   const [names, setNames] = React.useState<string[]>([])
+  const [links, setLinks] = React.useState("")
+  const [open, setOpen] = React.useState(false)
   const [token, setToken] = React.useState<string | null>(null)
   const [addition, setAddition] = React.useState<string | null>(null)
   const [first, setFirst] = React.useState<AddPreview | null>(null)
@@ -134,19 +136,21 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
   detail.stages.forEach((s) => s.modules.forEach((m) => { titles[m.id] = m.title }))
   first?.modules.forEach((m) => { titles[m.key] = m.title })
 
-  function reset() { setNames([]); setToken(null); setAddition(null); setFirst(null); setView(null); setSelected([]); setEnd("") }
+  function reset() { setNames([]); setLinks(""); setToken(null); setAddition(null); setFirst(null); setView(null); setSelected([]); setEnd("") }
   async function step<T>(label: string, fn: () => Promise<T>) {
     setBusy(label)
     try { return await fn() } catch (e) { toast("error", (e as Error).message); return null } finally { setBusy(null) }
   }
   async function pick() {
     const r = await step("", () => call<{ token: string | null; names: string[] }>("plan.add_pick", { plan_id: detail.plan.id }))
-    if (r?.token) { reset(); setToken(r.token); setNames(r.names) }
+    if (r?.token) { setToken(r.token); setNames(r.names) }   // keeps any pasted links
   }
   async function analyze() {
-    const r = await step("正在读取资料并分析和现有路线的关系（通常半分钟左右）…",
-      () => call<{ addition_id: string; preview: AddPreview }>("plan.add_analyze", { plan_id: detail.plan.id, token }))
+    const urls = links.split(/\s+/).filter((u) => /^https?:\/\//.test(u))
+    const r = await step("正在读取资料并分析和现有路线的关系（通常半分钟到一分钟）…",
+      () => call<{ addition_id: string; preview: AddPreview; failed: string[] }>("plan.add_analyze", { plan_id: detail.plan.id, token, urls }))
     if (!r) return
+    if (r.failed?.length) toast("error", "有网址没能打开：" + r.failed.join("；"))
     setToken(null); setAddition(r.addition_id); setFirst(r.preview); setView(r.preview)
     setSelected(r.preview.selected ?? r.preview.modules.map((m) => m.key)); setEnd(r.preview.new_end)
   }
@@ -162,23 +166,31 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
   }
   async function apply() {
     const r = await step("正在加入计划…", () => call("plan.add_apply", { addition_id: addition, confirmation_id: view?.confirmation_id }))
-    if (r) { toast("ok", "已加入计划。已学的内容和记录都没变，只重新安排了还没学的部分。"); reset(); onApplied() }
+    if (r) { toast("ok", "已加入计划。已学的内容和记录都没变，只重新安排了还没学的部分。"); reset(); setOpen(false); onApplied() }
   }
 
-  if (!names.length && !first) return (
+  if (!open && !first) return (
     <div className="card row between" style={{ marginTop: 12 }}>
       <span className="row"><FilePlus2 size={16} />想补充资料？只分析新增的部分，已学的内容不动。</span>
-      <Button small onClick={pick}>加资料</Button>
+      <Button small onClick={() => setOpen(true)}>加资料</Button>
     </div>
   )
   const t = view?.timing_high
   return (
     <div className="card stack" style={{ marginTop: 12 }}>
-      <b>加资料：{names.join("、") || "已选资料"}</b>
+      <b>加资料{names.length ? `：${names.join("、")}` : ""}</b>
+      {!first && !busy && <>
+        <div className="row" style={{ gap: 8 }}>
+          <Button small onClick={pick}><FilePlus2 />选择文件</Button>
+          <span className="muted small">或者贴网址（网页、GitHub 仓库都可以，一行一个）：</span>
+        </div>
+        <textarea className="input" rows={2} value={links} onChange={(e) => setLinks(e.target.value)}
+                  placeholder="https://docs.python.org/zh-cn/3/tutorial/…" />
+      </>}
       {busy && <div className="plan-status"><Loader2 className="spin" size={16} />{busy}</div>}
       {!first && !busy && <div className="plan-actions">
-        <Button small kind="ghost" onClick={reset}>取消</Button>
-        <Button small kind="primary" onClick={analyze}>开始分析</Button>
+        <Button small kind="ghost" onClick={() => { reset(); setOpen(false) }}>取消</Button>
+        <Button small kind="primary" disabled={!token && !/https?:\/\//.test(links)} onClick={analyze}>开始分析</Button>
       </div>}
       {view && <>
         {view.supplements.length > 0 && <span className="muted small">有 {view.supplements.length} 处是对已有知识点的补充，会直接挂上，不加时间。</span>}

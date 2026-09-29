@@ -101,3 +101,20 @@ def test_only_files_chosen_in_the_dialog_are_read(flow):
     with pytest.raises(BridgeError):
         plan_flow.additions_analyze(PLAN, "not-a-token", ctx())
     assert model.calls == []
+
+
+def test_pasted_links_are_imported_then_analyzed(flow, monkeypatch):
+    from refactor.learning.course import addition_links
+    plan_flow, model, store = flow
+    seen = {}
+
+    def fake_links(store_, plan_id, urls, **kwargs):
+        seen["urls"] = urls
+        materials.import_file(store_, plan_id, None)   # the fixture's stand-in adds source "new"
+        return {"source_ids": ["new"], "cancelled": False, "elapsed_seconds": 0.1,
+                "results": [{"original_url": urls[0], "status": "imported"},
+                            {"original_url": urls[1], "status": "failed", "message": "网页打不开"}]}
+    monkeypatch.setattr(addition_links, "import_links", fake_links)
+    first = plan_flow.additions_analyze(PLAN, None, ctx(), urls=["看这个 https://a.example/doc，还有", "https://b.example/x"])
+    assert seen["urls"] == ["https://a.example/doc", "https://b.example/x"]
+    assert first["failed"] == ["https://b.example/x：网页打不开"] and first["preview"]["modules"]
