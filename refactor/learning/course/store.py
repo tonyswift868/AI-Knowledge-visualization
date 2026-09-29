@@ -46,6 +46,7 @@ import re
 import sqlite3
 import tempfile
 import threading
+import time
 import uuid
 
 from ..preferences.storage import account_directory
@@ -58,6 +59,7 @@ MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
 _REPORT_PART_PREFIX = 'report-part:'
 PROGRESS = frozenset(('judgements', 'attempt_closed', 'credits', 'ledger_events', 'usage', 'practice_results'))
+_FIELD_VERSIONS = '_field_versions'
 # One entity maps to exactly one table. Tuple entries are FK field -> parent.
 PARENTS = {
     'plans': (), 'sources': (), 'source_chunks': (('source_id', 'sources'),),
@@ -378,6 +380,7 @@ class CourseStore:
         _json(payload)
 
     def _materialize(self, entity, plan, payload, revision):
+        payload = {key: value for key, value in payload.items() if key != _FIELD_VERSIONS}
         identifier = payload['id']
         if entity == 'plans':
             self._db.execute('INSERT INTO plans VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,revision=excluded.revision',
@@ -398,15 +401,39 @@ class CourseStore:
         identifier = _wire_id(entity, plan, payload['id'])
         raw = _json(payload)
         old = self._db.execute('SELECT * FROM _records WHERE entity=? AND entity_id=?', (entity, identifier)).fetchone()
-        if old and not old['deleted'] and old['payload'] == raw: return payload
+        previous = json.loads(old['payload']) if old and not old['deleted'] else {}
+        previous_data = {key: value for key, value in previous.items() if key != _FIELD_VERSIONS}
+        if old and not old['deleted'] and previous_data == payload: return payload
         if old and entity in PROGRESS: raise StoreError('EVENT_CONFLICT', '同一进度事件不能被改写。')
+        if entity not in PROGRESS and old and not old['deleted']:
+            versions = dict(previous.get(_FIELD_VERSIONS, {}))
+            stamp = [time.time_ns(), self._device_id()]
+            for field in set(previous_data) | set(payload):
+                if field != 'id' and previous_data.get(field) != payload.get(field):
+                    versions[field] = stamp
+            payload[_FIELD_VERSIONS] = versions
+            raw = _json(payload)
         revision = self._revision()
         self._db.execute('''INSERT INTO _records VALUES(?,?,?,?,?,?,0,1) ON CONFLICT(entity,entity_id)
             DO UPDATE SET payload=excluded.payload,deleted=0,local_revision=excluded.local_revision,pending=1''',
                          (entity, identifier, plan, raw, 0, revision))
         self._materialize(entity, plan, payload, revision)
         self._changed('local', entity)
-        return payload
+        return {key: value for key, value in payload.items() if key != _FIELD_VERSIONS}
+
+    def _device_id(self):
+        row = self._db.execute("SELECT value FROM _meta WHERE key='device_id'").fetchone()
+        if row: return row[0]
+        identifier = uuid.uuid4().hex
+        self._db.execute("INSERT INTO _meta(key,value) VALUES('device_id',?)", (identifier,))
+        return identifier
+
+    @_atomic
+    def take_merge_notices(self):
+        row = self._db.execute("SELECT value FROM _meta WHERE key='merge_notices'").fetchone()
+        count = int(row[0]) if row else 0
+        self._db.execute("INSERT INTO _meta(key,value) VALUES('merge_notices','0') ON CONFLICT(key) DO UPDATE SET value='0'")
+        return count
 
     def _delete(self, entity, plan, identifier):
         if entity in PROGRESS: raise StoreError('IMMUTABLE_EVENT')
@@ -1380,21 +1407,57 @@ class CourseStore:
                     continue  # A remote echo is not an upload acknowledgement.
             elif old and server_revision <= old['server_revision']:
                 continue
+            if not record.deleted:
+                # Validate the actual remote record before choosing local fields;
+                # otherwise a malformed remote edit could be silently hidden.
+                self._validate(record.entity, record.plan_key, payload)
             # A correct answer is irreversible for question selection. Another
             # device may upload an older, unanswered copy of the same question.
             # Merge that bit monotonically and queue the repair for upload.
             repair_answered = (record.entity == 'question_bank' and not record.deleted and old is not None
                                and not old['deleted'] and json.loads(old['payload']).get('correct_seen')
                                and not payload.get('correct_seen'))
+            merged = False
+            if old is not None and old['pending'] and record.entity not in PROGRESS and not record.deleted:
+                local = json.loads(old['payload'])
+                if old['deleted']:
+                    # A pending local removal cannot be undone by a remote edit.
+                    payload, deleted = local, True
+                elif old['payload'] != _json(payload):
+                    local_versions = local.get(_FIELD_VERSIONS, {})
+                    remote_versions = payload.get(_FIELD_VERSIONS, {})
+                    combined = {}
+                    absent = object()
+                    for field in (set(local) | set(payload)) - {_FIELD_VERSIONS}:
+                        local_value, remote_value = local.get(field, absent), payload.get(field, absent)
+                        if local_value == remote_value:
+                            chosen = local_value
+                        elif field == 'id' or (local_versions.get(field, [0, '']) > remote_versions.get(field, [0, ''])):
+                            chosen = local_value
+                        else:
+                            chosen = remote_value
+                        if chosen is not absent: combined[field] = chosen
+                    combined[_FIELD_VERSIONS] = {**remote_versions, **{
+                        field: max(local_versions.get(field, [0, '']), remote_versions.get(field, [0, '']))
+                        for field in set(local_versions) | set(remote_versions)}}
+                    payload = combined
+                    deleted = False
+                else:
+                    deleted = False
+                merged = True
+                if old['payload'] != _json(record.payload):
+                    self._db.execute("INSERT INTO _meta(key,value) VALUES('merge_notices','1') ON CONFLICT(key) DO UPDATE SET value=CAST(value AS INTEGER)+1")
+            else:
+                deleted = record.deleted
             if repair_answered:
                 payload['correct_seen'] = True
-            if not record.deleted: self._validate(record.entity, record.plan_key, payload)
+            if not deleted: self._validate(record.entity, record.plan_key, payload)
             if record.entity == 'plans' and payload['id'] != record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
             self._db.execute('''INSERT INTO _records VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(entity,entity_id)
                 DO UPDATE SET payload=excluded.payload,deleted=excluded.deleted,local_revision=excluded.local_revision,
                 server_revision=excluded.server_revision,pending=excluded.pending''',
-                             (record.entity, record.entity_id, record.plan_key, _json(payload), int(record.deleted),
-                              self._revision(), server_revision, int(repair_answered)))
-            if old is None or old['deleted'] != int(record.deleted) or old['payload'] != _json(payload):
+                             (record.entity, record.entity_id, record.plan_key, _json(payload), int(deleted),
+                              self._revision(), server_revision, int(repair_answered or merged)))
+            if old is None or old['deleted'] != int(deleted) or old['payload'] != _json(payload):
                 self._changed('remote', record.entity)
         self._project_records()

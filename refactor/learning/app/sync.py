@@ -89,3 +89,5 @@ class WindowSync(QObject):
             message = (SUPERSEDED_MESSAGE if status['state'] == 'superseded' else '登录已失效，请重新验证账号。')
             self.window.set_session_notice(message, show_verify=True)
         self.bridge.push('sync_status', status)
+        if status.get('merged_conflicts'):
+            self.bridge.push('sync_conflict', {'message': '另一台设备也改过，已按最新的保留。'})

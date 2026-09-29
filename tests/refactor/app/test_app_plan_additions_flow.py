@@ -14,12 +14,14 @@ from refactor.learning.course import materials
 from refactor.learning.course.ledger import PlanWindow
 from refactor.learning.course.mastery import AttemptClosed, Judgement
 from refactor.learning.course.store import CourseStore
+from refactor.learning.course.staged_materials import StagedMaterials
 
 ACCOUNT = "mfa1_" + "a" * 64
 PLAN = "c" * 32
 START = date(2026, 9, 28)
 TODAY = START + timedelta(days=2)
 ROOT = Path(r"D:\MentorFlow\.local\test-tmp\plan-additions\host")
+REAL_IMPORT_FILE = materials.import_file
 
 
 class Model:
@@ -77,10 +79,30 @@ def ctx():
     return SimpleNamespace(cancel=threading.Event())
 
 
+def test_start_retries_after_db_started_but_draft_remained(flow):
+    plan_flow, _, store = flow
+    draft = {'version': 1, 'plan_id': PLAN, 'phase': 'ready'}
+    plan_flow.save(draft)
+    plan_flow.start(draft)
+    plan_flow.start_request(PLAN)
+    assert store.get_plan(PLAN)['state'] == 'active'
+    assert not plan_flow._file(PLAN).path.exists()
+
+
+def test_discard_cannot_remove_started_plan_even_with_stale_draft(flow):
+    plan_flow, _, store = flow
+    plan_flow.save({'version': 1, 'plan_id': PLAN, 'phase': 'ready'})
+    with pytest.raises(BridgeError, match='开始'):
+        plan_flow.discard(PLAN)
+    assert store.get_plan(PLAN)['state'] == 'active'
+
+
 def test_adding_material_to_a_started_plan(flow):
     plan_flow, model, store = flow
     plan_flow._picked["t"] = [Path("新增教程.md")]
     first = plan_flow.additions_analyze(PLAN, "t", ctx())
+    assert not any(row['id'] == 'new' for row in store.records('sources', PLAN))
+    assert not any(row['id'] == 'nc' for row in store.records('source_chunks', PLAN))
     assert [m["key"] for m in first["preview"]["modules"]] == ["n1"] and len(first["preview"]["supplements"]) == 1
     assert model.calls[0] == ("plan_additions", 16384)
     exact = plan_flow.additions_generate(first["addition_id"], None, None, ctx())
@@ -120,5 +142,34 @@ def test_pasted_links_are_imported_then_analyzed(flow, monkeypatch):
     assert first["failed"] == ["https://b.example/x：网页打不开"] and first["preview"]["modules"]
     quality, = first["source_quality"]
     assert quality["source_id"] == "new" and quality["user_provided"] and not quality["eligible"]
-    source = next(s for s in store.records("sources", PLAN) if s["id"] == "new")
-    assert source["adopted"] and source["quality"]["credibility"] < 4
+    assert not any(s['id'] == 'new' for s in store.records('sources', PLAN))
+
+
+def test_cancel_and_restart_drop_staged_sources_without_store_changes(flow):
+    plan_flow, _, store = flow
+    before = (store.records('sources', PLAN), store.records('source_chunks', PLAN))
+    plan_flow._picked['cancel-token'] = [Path('新增教程.md')]
+    addition = plan_flow.additions_analyze(PLAN, 'cancel-token', ctx())['addition_id']
+    assert (store.records('sources', PLAN), store.records('source_chunks', PLAN)) == before
+    plan_flow.additions_cancel(addition)
+    with pytest.raises(BridgeError, match='失效'):
+        plan_flow.additions_preview(addition, None, None)
+    assert (store.records('sources', PLAN), store.records('source_chunks', PLAN)) == before
+    restarted = PlanFlow(plan_flow.services, lambda *a: None, lambda: TODAY)
+    with pytest.raises(BridgeError, match='失效'):
+        restarted.additions_preview(addition, None, None)
+
+
+def test_real_file_import_stays_staged_until_commit(flow, tmp_path):
+    _, _, store = flow
+    path = tmp_path / 'new.html'
+    path.write_text('<html><h1>新主题</h1><p>' + '这份资料讲解一个新概念。' * 30 + '</p></html>', encoding='utf-8')
+    staged = StagedMaterials(store, PLAN)
+    source = REAL_IMPORT_FILE(staged, PLAN, path)
+    assert any(row['id'] == source['id'] for row in staged.records('sources', PLAN))
+    assert not any(row['id'] == source['id'] for row in store.records('sources', PLAN))
+    assert store.get_original(source['sha256']) is None
+    with store.transaction():
+        staged.commit_into(store)
+    assert any(row['id'] == source['id'] for row in store.records('sources', PLAN))
+    assert store.get_original(source['sha256']) == path.read_bytes()

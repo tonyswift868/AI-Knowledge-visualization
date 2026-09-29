@@ -77,6 +77,15 @@ def states(sent):
     return [m['data'] for m in sent if m.get('type') == 'event' and m.get('name') == 'sync_status']
 
 
+def test_merged_field_conflict_pushes_one_user_notice(window, qapp):
+    win, _, _, _, _, _, _, sent = window
+    win._sync._status_changed(dict(state='synced', at=None, message='已同步', merged_conflicts=1))
+    spin(qapp, win, lambda: any(item.get('name') == 'sync_conflict' for item in sent))
+    notices = [item for item in sent if item.get('name') == 'sync_conflict']
+    assert len(notices) == 1
+    assert notices[0]['data']['message'] == '另一台设备也改过，已按最新的保留。'
+
+
 def test_bind_immediate_sync_local_debounce_manual_and_fresh_token(window, qapp):
     win, server, transport, login, clock, mode, requests, sent = window
     assert states(sent)[0] == dict(state='syncing', at=None, message='同步中')

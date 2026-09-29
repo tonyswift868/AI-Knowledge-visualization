@@ -382,6 +382,9 @@ class CourseSync:
             self._save(cursor, cancel)
             self._fence(cancel)
             self._mark_synced(acknowledgements)
+            notices = getattr(self.store, 'take_merge_notices', None)
+            merged_conflicts = notices() if callable(notices) else 0
+            if merged_conflicts: summary['merged_conflicts'] = merged_conflicts
             summary["pending"] = len(self.store.pending_records(limit))
             summary["ok"] = summary["pending"] == 0
             return summary

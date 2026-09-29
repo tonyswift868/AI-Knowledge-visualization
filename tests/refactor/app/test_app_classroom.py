@@ -11,8 +11,12 @@ import pytest
 
 from refactor.learning.app.bridge import BridgeError
 from refactor.learning.app.classroom import RESET, Classroom
+from refactor.learning.connections.errors import ModelError
 from refactor.learning.course.ledger import PlanWindow
 from refactor.learning.course.store import CourseStore
+from refactor.learning.course.store import StoreError
+from refactor.learning.course.judge_agent import Verdict
+from refactor.learning.preferences.storage import StorageError
 
 ACCOUNT = "mfa1_" + "c" * 64
 PLAN = "a" * 32
@@ -151,6 +155,85 @@ def credits(store):
 def contexts(store):
     rows = sorted(store.records("judgements", PLAN), key=lambda j: j["event"]["seq"])
     return [(j["event"]["context"], [tuple(r) for r in j["event"]["results"]]) for j in rows]
+
+
+@pytest.mark.parametrize("context", ["casual", "quick_confirm", "module_test", "retest", "check"])
+def test_answer_event_is_idempotent_after_interrupted_classroom_save(room, context):
+    classroom, _, store = room
+    course = classroom._course(PLAN)
+    state = classroom._rebuild(course)
+    if context == 'module_test': state['test'] = {'attempt': 'test-attempt'}
+    pending = {"kind": context, "point_ids": ["p0"], "question": {"stem": "问？", "chunk_ids": []},
+               "answer_id": "answer-" + context}
+    verdict = Verdict("answer", True, (), "正确。")
+    classroom._record(course, state, context, pending, verdict, "回答", angle='recall' if context == 'check' else None)
+    classroom._record(course, state, context, pending, verdict, "回答", angle='recall' if context == 'check' else None)
+    assert len([row for row in store.records("judgements", PLAN) if row["id"] == pending["answer_id"]]) == 1
+    assert classroom._prior_verdict(course, state, pending).reason == '正确。'
+
+
+def test_casual_retry_after_teacher_failure_reuses_saved_verdict(room, monkeypatch):
+    classroom, agents, store = room
+    act(classroom, 'enter')
+    act(classroom, 'next')
+    agents.verdicts = [('answer', True, [])]
+    original = classroom._teacher
+    monkeypatch.setattr(classroom, '_teacher', lambda *_a, **_k: (_ for _ in ()).throw(ModelError('MODEL_TIMEOUT', '老师超时')))
+    act(classroom, 'reply', '先进先出')
+    assert len(store.records('judgements', PLAN)) == 1
+    monkeypatch.setattr(classroom, '_teacher', original)
+    act(classroom, 'reply', '重试')
+    assert len(store.records('judgements', PLAN)) == 1
+    assert agents.verdicts == []
+
+
+def test_practice_retry_after_record_write_reuses_result(room, monkeypatch):
+    classroom, agents, store = room
+    course = classroom._course(PLAN)
+    resume = classroom._rebuild(course)
+    state = dict(resume, step='practicing', practice={'index': 0, 'count': 1, 'resume': resume})
+    pending = {'kind': 'practice', 'answer_id': 'practice-once', 'point_ids': ['p0'],
+               'question': {'id': 'q0', 'module_id': 'm0', 'point_ids': ['p0'], 'type': 'short', 'stem': '解释队列',
+                            'options': [], 'answer': '标准答案'}}
+    state['pending'] = pending
+    agents.verdicts = [('answer', False, ['p0'])]
+    monkeypatch.setattr(classroom, '_say', lambda *_a, **_k: (_ for _ in ()).throw(ModelError('MODEL_TIMEOUT', '中断')))
+    with pytest.raises(ModelError):
+        classroom._practice_reply(course, state, ctx(), '错误', pending)
+    monkeypatch.undo()
+    classroom._practice_reply(course, state, ctx(), '重试', pending)
+    assert len(store.records('practice_results', PLAN)) == 1
+    assert agents.verdicts == []
+
+
+def test_classroom_save_failure_is_reported(room, monkeypatch):
+    classroom, _, _ = room
+    monkeypatch.setattr(classroom, "_file", lambda *_: SimpleNamespace(read=lambda default: default,
+        write=lambda *_: (_ for _ in ()).throw(StorageError("WRITE_FAILED"))))
+    with pytest.raises(BridgeError, match="保存失败"):
+        act(classroom, "enter")
+
+
+def test_complete_plan_failure_does_not_advance_classroom_and_can_retry(room, monkeypatch):
+    classroom, _, store = room
+    course = classroom._course(PLAN)
+    state = classroom._rebuild(course)
+    state.update(step="checking", pending={"kind": "check"}, check={"queue": []})
+    original = store.complete_plan
+    monkeypatch.setattr(store, "complete_plan", lambda *_args, **_kwargs: (_ for _ in ()).throw(StoreError("DISK_FULL", "写入失败")))
+    with pytest.raises(StoreError):
+        classroom._complete(course, state, ctx())
+    assert state["step"] == "checking" and state["pending"] == {"kind": "check"}
+    monkeypatch.setattr(store, "complete_plan", original)
+
+
+def test_reopen_uses_database_completion_state(room):
+    classroom, _, store = room
+    course = classroom._course(PLAN)
+    stale = classroom._rebuild(course)
+    stale["step"] = "completed"
+    classroom._file(PLAN).write(stale)
+    assert classroom._load(classroom._course(PLAN))["step"] != "completed"
 
 
 def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
@@ -312,7 +395,7 @@ def test_a_started_plan_can_be_renamed_archived_and_deleted(room):
     store.restore_plan(PLAN)
     flow = PlanFlow(classroom.services, lambda *a: None, lambda: DAY)
     assert classroom._file(PLAN).path.exists()
-    assert flow.discard(PLAN) == {"deleted": True}
+    assert flow.delete_started(PLAN) == {"deleted": True}
     assert store.list_plans(include_archived=True) == [] and not classroom._file(PLAN).path.exists()
 
 

@@ -83,6 +83,7 @@ export function App() {
       on("navigate", (d) => { if (d?.route === "home") s.go("home") }),
       on("scope_changed", () => s.set({ ready: false, sync: null })),
       on("sync_status", (d) => s.set({ sync: d })),
+      on("sync_conflict", (d) => s.toast("info", d.message)),
     ]
     return () => offs.forEach((off) => off())
     // eslint-disable-next-line react-hooks/exhaustive-deps

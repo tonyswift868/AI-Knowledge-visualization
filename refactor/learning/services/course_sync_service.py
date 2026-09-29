@@ -92,8 +92,10 @@ class CourseSyncService(QObject):
         """Stable UI contract; credentials and transport details never enter it."""
         return dict(self._status)
 
-    def _publish(self, state, message, *, at=None):
+    def _publish(self, state, message, *, at=None, merged_conflicts=0):
         self._status = dict(state=state, at=at or self._status['at'], message=message)
+        if merged_conflicts:
+            self._status['merged_conflicts'] = merged_conflicts
         self.status_changed.emit(message)
         self.state_changed.emit(self.status())
 
@@ -157,9 +159,11 @@ class CourseSyncService(QObject):
                 self._on_change()
             if result.get('ok'):
                 stamp = self._wall_clock()
-                self._publish('synced', "已同步 " + stamp.strftime("%H:%M:%S"), at=stamp.astimezone().isoformat())
+                self._publish('synced', "已同步 " + stamp.strftime("%H:%M:%S"),
+                              at=stamp.astimezone().isoformat(), merged_conflicts=result.get('merged_conflicts', 0))
             else:
-                self._publish('syncing', "同步中，本机新改动等待同步")
+                self._publish('syncing', "同步中，本机新改动等待同步",
+                              merged_conflicts=result.get('merged_conflicts', 0))
 
     @Slot()
     def _tick(self):

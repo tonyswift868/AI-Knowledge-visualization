@@ -23,8 +23,11 @@ export function Plans() {
   const set = useApp((s) => s.set)
   const [filter, setFilter] = React.useState<"current" | "all" | "archived">("current")
   const [plans, setPlans] = React.useState<PlanItem[] | null>(null)
+  const [loadError, setLoadError] = React.useState(false)
   const reload = React.useCallback(() => {
-    call<{ plans: PlanItem[] }>("plans.list", { include_archived: true }).then((r) => setPlans(r.plans)).catch(() => setPlans([]))
+    call<{ plans: PlanItem[] }>("plans.list", { include_archived: true }).then((r) => {
+      setPlans(r.plans); setLoadError(false)
+    }).catch(() => setLoadError(true))
   }, [])
 
   React.useEffect(() => { if (ready) reload() }, [ready, reload])
@@ -47,7 +50,11 @@ export function Plans() {
       </div>
 
       <div style={{ marginTop: 22 }}>
-        {plans === null ? (
+        {loadError && <div className="card" role="alert">
+          读取失败。{plans !== null ? "现有列表可能不是最新。" : "请重试读取计划。"}
+          <Button small onClick={reload}>重试</Button>
+        </div>}
+        {plans === null && loadError ? null : plans === null ? (
           <div className="grid two">{[0, 1].map((i) => <div key={i} className="card stack"><Skeleton h={22} w="50%" /><Skeleton h={14} /><Skeleton h={14} w="70%" /></div>)}</div>
         ) : shown.length === 0 ? (
           <div className="card empty fade-in">
@@ -123,7 +130,7 @@ function PlanMenu({ plan, onChanged }: { plan: PlanItem; onChanged: () => void }
         ? <button className="icon-btn sm" title="还原" onClick={() => run("plan.archive", { archived: false }, "已还原。")}><ArchiveRestore /></button>
         : <button className="icon-btn sm" title="归档（进度保留，可随时还原）" onClick={() => run("plan.archive", { archived: true }, "已归档，进度都保留。")}><Archive /></button>}
       <button className={`icon-btn sm ${confirm ? "danger" : ""}`} title={confirm ? "再点一次删除（计划、进度和报告都会删除）" : "删除"}
-              onClick={() => (confirm ? run("plan.discard", {}, "已删除这份计划。") : setConfirm(true))}>
+              onClick={() => (confirm ? run(plan.state === 'creating' || plan.state === 'ready' ? "plan.discard" : "plan.delete", {}, "已删除这份计划。") : setConfirm(true))}>
         <Trash2 />{confirm && <span className="small">确认删除</span>}</button>
     </div>
   )

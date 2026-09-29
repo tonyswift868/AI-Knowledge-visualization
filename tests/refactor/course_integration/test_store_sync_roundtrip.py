@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta, timezone
 import importlib.util
 from pathlib import Path
 import tempfile
+import time
 
 import pytest
 
@@ -95,6 +96,39 @@ def test_plan_and_progress_round_trip_between_two_devices(devices):
     CourseSync(a, transport).sync()
     CourseSync(b, transport).sync()
     assert len(server.requests) == writes
+
+
+def test_concurrent_plan_fields_merge_without_losing_offline_edit(devices):
+    _, transport, a, b = devices
+    build_plan(a)
+    CourseSync(a, transport).sync()
+    CourseSync(b, transport).sync()
+    a.rename_plan('plan', 'A 的新标题')
+    b.archive_plan('plan')
+    CourseSync(a, transport).sync()
+    result = CourseSync(b, transport).sync()
+    CourseSync(a, transport).sync()
+    for store in (a, b):
+        plan = store.get_plan('plan')
+        assert plan['title'] == 'A 的新标题'
+        assert plan['archived'] is True
+        assert not store.pending_records(100)
+    assert result['merged_conflicts'] >= 1
+
+
+def test_concurrent_same_field_keeps_later_edit_and_reports_conflict(devices):
+    _, transport, a, b = devices
+    build_plan(a)
+    CourseSync(a, transport).sync()
+    CourseSync(b, transport).sync()
+    a.rename_plan('plan', '先改')
+    time.sleep(.003)
+    b.rename_plan('plan', '后改')
+    CourseSync(a, transport).sync()
+    result = CourseSync(b, transport).sync()
+    CourseSync(a, transport).sync()
+    assert a.get_plan('plan')['title'] == b.get_plan('plan')['title'] == '后改'
+    assert result['merged_conflicts'] >= 1
 
 
 def test_delete_and_reopen_with_real_store_and_old_cursor(devices):

@@ -253,18 +253,37 @@ class PlanFlow:
         if not lock.acquire(blocking=False):
             raise BridgeError("PLAN_BUSY", "这份计划正在处理，请稍后再删除。")
         try:
-            try:
-                self.services.store.delete_plan(plan_id)
-            except StoreError as exc:
-                if exc.code != "NOT_FOUND":
-                    raise
-            self._file(plan_id).path.unlink(missing_ok=True)
-            AccountJSON(self.services.account_id, self.services.data_root, f"classroom/{plan_id}.json").path.unlink(missing_ok=True)
-            self._pools.pop(plan_id, None)
-            self._verified.pop(plan_id, None)
+            with self.services.store.transaction():
+                try:
+                    plan = self.services.store.get_plan(plan_id)
+                except StoreError as exc:
+                    if exc.code != "NOT_FOUND": raise
+                else:
+                    if plan['state'] not in ('creating', 'ready'):
+                        raise BridgeError('PLAN_STARTED', '计划已经开始，不能放弃草稿或删除计划。')
+                    self.services.store.delete_plan(plan_id)
+            self._cleanup_plan_files(plan_id)
             return {"deleted": True}
         finally:
             lock.release()
+
+    def delete_started(self, plan_id):
+        """Explicit two-click deletion from My Plans; never used to discard a draft."""
+        lock = self._lock(plan_id)
+        if not lock.acquire(blocking=False):
+            raise BridgeError('PLAN_BUSY', '这份计划正在处理，请稍后再删除。')
+        try:
+            self.services.store.delete_plan(plan_id)
+            self._cleanup_plan_files(plan_id)
+            return {'deleted': True}
+        finally:
+            lock.release()
+
+    def _cleanup_plan_files(self, plan_id):
+        self._file(plan_id).path.unlink(missing_ok=True)
+        AccountJSON(self.services.account_id, self.services.data_root, f"classroom/{plan_id}.json").path.unlink(missing_ok=True)
+        self._pools.pop(plan_id, None)
+        self._verified.pop(plan_id, None)
 
     # ----------------------------------------------------------- model calls
     def _ask(self, purpose, request, parse, ctx, *, plan_id, search=False, max_tokens=4096):
@@ -1166,28 +1185,31 @@ class PlanFlow:
             plan = store.get_plan(plan_id)
             if plan.get("state") != "active" or plan.get("archived"):
                 raise BridgeError("PHASE_INVALID", "只有进行中的计划可以中途加资料。")
+            from ..course.staged_materials import StagedMaterials
+            staged = StagedMaterials(store, plan_id)
             source_ids, failed = [], []
             for path in paths or []:
                 self.status(plan_id, f"正在读取 {path.name}…")
-                source_ids.append(import_file(store, plan_id, path, cancel=ctx.cancel)["id"])
+                source_ids.append(import_file(staged, plan_id, path, cancel=ctx.cancel)["id"])
             if urls:
                 from ..course.addition_links import import_links
                 self.status(plan_id, f"正在打开 {len(urls)} 个网址…")
-                linked = import_links(store, plan_id, urls, fetcher=self.fetcher, lists=self._lists(), cancel=ctx.cancel,
+                linked = import_links(staged, plan_id, urls, fetcher=self.fetcher, lists=self._lists(), cancel=ctx.cancel,
                                       **({"repo_fetch": self.repo_fetch} if self.repo_fetch else {}))
                 source_ids += [i for i in linked["source_ids"] if i not in source_ids]
                 failed = [f"{r['original_url']}：{r.get('message') or '打不开'}" for r in linked["results"]
                           if r["status"] in ("failed", "cancelled")]
             if not source_ids:
                 raise BridgeError("NO_NEW_MATERIAL", "没有可以加入的新资料。" + ("；".join(failed) if failed else ""))
-            quality_rows = source_quality.annotate(store, plan_id, source_ids, lists=self._lists(), today=self.study_day())
+            quality_rows = source_quality.annotate(staged, plan_id, source_ids, lists=self._lists(), today=self.study_day())
             self.status(plan_id, "正在分析新资料和现有路线的关系（通常半分钟左右）…")
-            state = pa.snapshot(store, plan_id, source_ids)
+            state = pa.snapshot(staged, plan_id, source_ids)
             proposal, _ = self._ask("plan_additions", pa.analysis_request(state),
                                     lambda text: _as_format_error(pa.parse_analysis, text, state), ctx,
                                     plan_id=plan_id, max_tokens=16384)
             addition_id = _new_id()
-            self._additions[addition_id] = {"plan_id": plan_id, "state": state, "proposal": proposal}
+            self._additions[addition_id] = {"plan_id": plan_id, "state": state,
+                                            "proposal": proposal, "staged": staged}
             return {"addition_id": addition_id, "preview": pa.preview(state, proposal, today=self.study_day()),
                     "failed": failed, "source_quality": quality_rows}
         return self._exclusive(plan_id, work)
@@ -1245,10 +1267,13 @@ class PlanFlow:
 
         def work():
             result = pa.apply_additions(self.services.store, session["state"], session["proposal"], session["generated"],
-                                        exact, confirmed=True, today=self.study_day())
+                                        exact, confirmed=True, today=self.study_day(), staged=session['staged'])
             self._additions.pop(addition_id, None)
             return result
         return self._exclusive(session["plan_id"], work)
+
+    def additions_cancel(self, addition_id):
+        self._additions.pop(addition_id, None)
 
     def report(self, plan_id, *, comments=True, cancel=None):
         """RPT-01: the saved learning report, built once the plan and its final check are complete."""
@@ -1313,13 +1338,34 @@ class PlanFlow:
         self.save(draft)
 
     def start(self, draft):
-        if draft["phase"] != "ready":
-            raise BridgeError("PHASE_INVALID", "计划还没生成完。")
-        self.services.store.start_plan(draft["plan_id"], today=self.study_day())
+        with self.services.store.transaction():
+            plan = self.services.store.get_plan(draft['plan_id'])
+            if plan['state'] not in ('active', 'checking', 'completed'):
+                if draft["phase"] != "ready":
+                    raise BridgeError("PHASE_INVALID", "计划还没生成完。")
+                self.services.store.start_plan(draft["plan_id"], today=self.study_day())
         self._file(draft["plan_id"]).path.unlink(missing_ok=True)
         self._pools.pop(draft["plan_id"], None)
         self._verified.pop(draft["plan_id"], None)
         self.push("plan_started", {"plan_id": draft["plan_id"]})
+
+    def start_request(self, plan_id):
+        """Bridge entry remains idempotent even after the draft file is gone."""
+        lock = self._lock(plan_id)
+        if not lock.acquire(blocking=False):
+            raise BridgeError('PLAN_BUSY', '上一步还在进行，请稍等。')
+        try:
+            plan = self.services.store.get_plan(plan_id)
+            already_started = plan['state'] in ('active', 'checking', 'completed')
+            if already_started:
+                draft = {'plan_id': plan_id, 'phase': 'ready'}
+            else:
+                draft = self.load(plan_id)
+            self.start(draft)
+            return {'started': True} if already_started else {'draft': self.public(draft)}
+        finally:
+            self.status(plan_id, '')
+            lock.release()
 
 
 def register(bridge, services, window, study_day, *, fetcher=None):
@@ -1373,6 +1419,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.get": lambda p, c: {"draft": flow().public(flow().load(plan_id(p)))},
         "plan.drafts": lambda p, c: {"drafts": flow().drafts()},
         "plan.discard": lambda p, c: flow().discard(plan_id(p)),
+        "plan.delete": lambda p, c: flow().delete_started(plan_id(p)),
         "plan.submit": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().submit_form(d, x, p.get("form")), c),
         "plan.say": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().chat(d, x, text(p)), c),
         "plan.more": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().more_sources(d, x), c),
@@ -1383,7 +1430,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.module": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().edit_module(
             d, "delete" if p.get("action") == "delete" else "move", text(p, "module_id", 40), p.get("direction", 0)), c),
         "plan.extend": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().extend_end(d, p.get("end")), c),
-        "plan.start": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().start(d), c),
+        "plan.start": lambda p, c: flow().start_request(plan_id(p)),
         "plan.detail": lambda p, c: flow().detail(plan_id(p)),
         "plan.window": lambda p, c: flow().change_window(plan_id(p), p),
         "plan.rename": lambda p, c: services().store.rename_plan(plan_id(p), text(p, "title", 80)) or {"ok": True},
@@ -1394,6 +1441,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.add_preview": lambda p, c: flow().additions_preview(p.get("addition_id"), _keys(p), p.get("new_end")),
         "plan.add_generate": lambda p, c: flow().additions_generate(p.get("addition_id"), _keys(p), p.get("new_end"), c),
         "plan.add_apply": lambda p, c: flow().additions_apply(p.get("addition_id"), p.get("confirmation_id")),
+        "plan.add_cancel": lambda p, c: flow().additions_cancel(p.get("addition_id")),
     }
     for name, fn in handlers.items():
         bridge.register(name, wrap(fn))

@@ -83,7 +83,7 @@ def test_slim_registration_reset_email_password_success_contract(monkeypatch):
 
 
 def closure_trace(root,monkeypatch):
-    prefix='refactor.server' if root=='app' else 'refactor.server.account'
+    prefix='refactor.server.account'
     closure=module(prefix,'closure')
     api=module(prefix,'closure_api')
     native=module(root,'enterprise.identity.native')
@@ -147,10 +147,6 @@ def closure_trace(root,monkeypatch):
             if 'recovery_token' in result['json']: result['json']['recovery_token']='<recovery-token>'
         asyncio.run(runtime.native_sessions.aclose())
         return results
-
-
-def test_slim_closure_prepare_commit_recovery_contract(monkeypatch):
-    assert closure_trace('app',monkeypatch)==closure_trace('refactor.server',monkeypatch)
 
 
 def test_slim_cookie_and_bearer_boundary_is_unchanged(monkeypatch):

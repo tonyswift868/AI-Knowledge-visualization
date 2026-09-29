@@ -174,6 +174,13 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
   first?.modules.forEach((m) => { titles[m.key] = m.title })
 
   function reset() { setNames([]); setLinks(""); setSourceQuality([]); setToken(null); setAddition(null); setFirst(null); setView(null); setSelected([]); setEnd("") }
+  async function cancelAddition() {
+    if (addition) {
+      try { await call("plan.add_cancel", { addition_id: addition }) }
+      catch (e) { toast("error", (e as Error).message); return }
+    }
+    reset(); setOpen(false)
+  }
   async function step<T>(label: string, fn: () => Promise<T>) {
     setBusy(label)
     try { return await fn() } catch (e) { toast("error", (e as Error).message); return null } finally { setBusy(null) }
@@ -227,7 +234,7 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
       </>}
       {busy && <div className="plan-status"><Loader2 className="spin" size={16} />{busy}</div>}
       {!first && !busy && <div className="plan-actions">
-        <Button small kind="ghost" onClick={() => { reset(); setOpen(false) }}>取消</Button>
+        <Button small kind="ghost" onClick={cancelAddition}>取消</Button>
         <Button small kind="primary" disabled={!token && !/https?:\/\//.test(links)} onClick={analyze}>开始分析</Button>
       </div>}
       {view && <>
@@ -261,7 +268,7 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
             onChange={(e) => e.target.value && repreview(selected, e.target.value)} /></label>
         </div>}
         <div className="plan-actions">
-          <Button small kind="ghost" onClick={reset} disabled={!!busy}>取消</Button>
+          <Button small kind="ghost" onClick={cancelAddition} disabled={!!busy}>取消</Button>
           {!view.exact
             ? <Button small kind="primary" disabled={!!busy} onClick={generate}>{selected.length ? "生成新增内容" : "确认补充"}</Button>
             : <Button small kind="primary" disabled={!!busy} onClick={apply}>确认加入计划</Button>}

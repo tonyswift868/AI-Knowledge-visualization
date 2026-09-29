@@ -117,13 +117,15 @@ class Classroom:
         modules = [m["id"] for m in course.modules]
         if state.get("version") != 1 or state.get("module_id") not in modules:
             state = self._rebuild(course)
+        if (state.get('step') == 'completed') != (course.plan.get('state') == 'completed'):
+            state = self._rebuild(course)
         return state
 
     def _save(self, course, state):
         try:
             self._file(course.plan_id).write(state)
-        except StorageError:
-            log.warning("classroom position for %s could not be saved", course.plan_id)
+        except StorageError as exc:
+            raise BridgeError('CLASS_SAVE_FAILED', f'课堂位置保存失败：{exc}') from exc
 
     def _rebuild(self, course):
         """Position from the store: the first module not yet passed, its first untaught point."""
@@ -255,7 +257,8 @@ class Classroom:
             question = teaching.casual_question
         state["resume"] = False
         if question:
-            state["pending"] = {"kind": "casual", "point_ids": [point["id"]], "asks": 1,
+            state["pending"] = {"kind": "casual", "answer_id": uuid.uuid4().hex,
+                                "point_ids": [point["id"]], "asks": 1,
                                 "question": {"type": "short", "stem": question, "options": [],
                                              "reference": prepared.reference_answer if prepared else
                                              f"知识点《{point['title']}》要点：{point['summary']}"}}
@@ -313,7 +316,7 @@ class Classroom:
         return self._test_reply(course, state, ctx, text, pending)
 
     def _casual_reply(self, course, state, ctx, text, pending):
-        verdict = self._judge(course, state, ctx, "casual", pending, text)
+        verdict = self._prior_verdict(course, state, pending) or self._judge(course, state, ctx, "casual", pending, text)
         point = course.point(pending["point_ids"][0])
         if verdict.kind == "answer":
             self._record(course, state, "casual", pending, verdict, text)
@@ -332,6 +335,7 @@ class Classroom:
                                      "给个台阶，最后用随口问换一道题确认，不讲下一点。", [point["id"]], user=text, asks=True, short=True)
             if teaching.casual_question:
                 pending["asks"] += 1
+                pending["answer_id"] = uuid.uuid4().hex
                 pending["question"] = dict(pending["question"], stem=teaching.casual_question)
             else:
                 self._point_done(course, state)
@@ -346,13 +350,15 @@ class Classroom:
         }.get(verdict.kind, "没看出学习者是在回答随口问。请他直接回答上面的随口问，说“不会”也可以（不要出新题）。")
         teaching = self._teacher(course, state, ctx, director, pending["point_ids"], user=text, asks=True)
         if teaching.casual_question:  # restated (or reworded): answers are judged against what is on screen
+            pending["answer_id"] = uuid.uuid4().hex
             pending["question"] = dict(pending["question"], stem=teaching.casual_question)
 
     def _quick_check(self, course, state, ctx, pending):
         """'I know this': one quick confirmation question; wrong is recorded, never argued (TEACH-02)."""
         questions = self._questions(course, ctx, "quick_check", pending["point_ids"])
         q = questions[0]
-        state["pending"] = {"kind": "quick", "point_ids": list(q.point_ids), "question": _question_dict(q)}
+        state["pending"] = {"kind": "quick", "answer_id": uuid.uuid4().hex,
+                            "point_ids": list(q.point_ids), "question": _question_dict(q)}
         self._say(course, state, "好，那来一道快速确认题，答对就直接往下讲。")
         self._say(course, state, _question_text(q), kind="question")
 
@@ -391,14 +397,18 @@ class Classroom:
         q = test["queue"][test["index"]]
         if q['type'] == 'choice' and not q.get('shuffled'):
             self._rng.shuffle(q['options']); q['shuffled'] = True
-        state["pending"] = {"kind": test["kind"], "point_ids": q["point_ids"], "question": q,
+        state["pending"] = {"kind": test["kind"], "answer_id": uuid.uuid4().hex,
+                            "point_ids": q["point_ids"], "question": q,
                             "number": test["index"] + 1, "total": len(test["queue"])}
         self._say(course, state, f"第 {test['index'] + 1}/{len(test['queue'])} 题：" + _question_text(q), kind="question")
 
     def _test_reply(self, course, state, ctx, text, pending):
         q = pending["question"]
+        prior = self._prior_verdict(course, state, pending)
         clicked = q["type"] == "choice" and text.strip() in q["options"]
-        if clicked and (text.strip() == q["answer"] or len(q["point_ids"]) == 1):
+        if prior is not None:
+            verdict = prior
+        elif clicked and (text.strip() == q["answer"] or len(q["point_ids"]) == 1):
             correct = text.strip() == q["answer"]
             verdict = judge_agent.Verdict("answer", correct, () if correct else tuple(q["point_ids"]),
                                           "选对了。" if correct else f"正确答案是：{q['answer']}。")
@@ -625,15 +635,19 @@ class Classroom:
         if q['type'] == 'choice' and not q.get('shuffled'):
             self._rng.shuffle(q['options']); q['shuffled'] = True
         state["module_id"] = check["module_id"]  # the teacher's context for questions asked meanwhile
-        state["pending"] = {"kind": "check", "point_ids": q["point_ids"], "question": q}
+        state["pending"] = {"kind": "check", "answer_id": uuid.uuid4().hex,
+                            "point_ids": q["point_ids"], "question": q}
         levels = course.book()
         passed = sum(levels.point(p["id"]).level == 3 for p in course.points)
         self._say(course, state, f"检验（已通过 {passed}/{len(course.points)} 个点）：" + _question_text(q), kind="question")
 
     def _check_reply(self, course, state, ctx, text, pending):
         q = pending["question"]
+        prior = self._prior_verdict(course, state, pending)
         clicked = q["type"] == "choice" and text.strip() in q["options"]
-        if clicked and (text.strip() == q["answer"] or len(q["point_ids"]) == 1):
+        if prior is not None:
+            verdict = prior
+        elif clicked and (text.strip() == q["answer"] or len(q["point_ids"]) == 1):
             correct = text.strip() == q["answer"]
             verdict = judge_agent.Verdict("answer", correct, () if correct else tuple(q["point_ids"]),
                                           "选对了。" if correct else f"正确答案是：{q['answer']}。")
@@ -669,13 +683,15 @@ class Classroom:
         self._next_check(course, state, ctx)
 
     def _complete(self, course, state, ctx):
-        state.update(step="completed", pending=None, check=None)
         try:
             course.store.complete_plan(course.plan_id, today=self._day(state))
-            course.plan = course.store.get_plan(course.plan_id)  # this reply already shows the plan as completed
-            self._say(course, state, "最终检验全部通过，这份计划完成了！可以在「我的计划」里查看学习报告。")
-        except StoreError:  # every point passed, but the planned study time is not all done yet
-            self._say(course, state, "最终检验全部通过！计划的学习时长还没全部完成，时长学满后计划会标记为完成。")
+        except StoreError as exc:
+            if exc.code != 'PLAN_NOT_COMPLETE': raise
+            self._say(course, state, '还需要通过全部知识点的最终检验，才能完成计划。')
+            return
+        course.plan = course.store.get_plan(course.plan_id)
+        state.update(step="completed", pending=None, check=None)
+        self._say(course, state, "最终检验全部通过，这份计划完成了！可以在「我的计划」里查看学习报告。")
 
     def start_practice(self, course, state, ctx, *, module_id=None, point_id=None, count=5):
         """Free check writes practice events only; restore the interrupted room afterwards."""
@@ -735,13 +751,17 @@ class Classroom:
         if q['type'] == 'choice' and not q.get('shuffled'):
             self._rng.shuffle(q['options']); q['shuffled'] = True
         state['module_id'] = q['module_id']
-        state['pending'] = {'kind': 'practice', 'point_ids': q['point_ids'], 'question': q,
+        state['pending'] = {'kind': 'practice', 'answer_id': uuid.uuid4().hex,
+                            'point_ids': q['point_ids'], 'question': q,
                             'number': practice['index'] + 1, 'total': len(practice['queue'])}
         self._say(course, state, f"自由检验第 {practice['index'] + 1}/{practice['count']} 题：" + _question_text(q), kind='question')
 
     def _practice_reply(self, course, state, ctx, text, pending):
         q = pending['question']
-        if q['type'] == 'choice' and text.strip() in q['options']:
+        prior = self._prior_verdict(course, state, pending)
+        if prior is not None:
+            verdict = prior
+        elif q['type'] == 'choice' and text.strip() in q['options']:
             correct = text.strip() == q['answer']
             verdict = judge_agent.Verdict('answer', correct, () if correct else tuple(q['point_ids']),
                 '选对了。' if correct else f"正确答案是：{q['answer']}。")
@@ -752,8 +772,9 @@ class Classroom:
             return self._say(course, state, verdict.reason)
         if verdict.kind != 'answer':
             return self._say(course, state, '请回答当前这道题。')
-        course.store.append_practice_result(course.plan_id, q['id'], q['module_id'], q['point_ids'],
-            verdict.correct, reason=verdict.reason, at=self.now())
+        if prior is None:
+            course.store.append_practice_result(course.plan_id, q['id'], q['module_id'], q['point_ids'],
+                verdict.correct, reason=verdict.reason, at=self.now(), result_id=self._answer_id(course, state, pending))
         if verdict.correct:
             course.store.mark_bank_correct(course.plan_id, q['id'])
         self._say(course, state, ('✓ 答对了。' if verdict.correct else '✗ 需要复习。') +
@@ -1138,12 +1159,37 @@ class Classroom:
         raise ModelError("AGENT_FORMAT", "AI 的回答格式不对，已重试一次仍不行。") from last
 
     # ------------------------------------------------------------------ records
+    def _answer_id(self, course, state, pending):
+        if pending.get('answer_id'):
+            return pending['answer_id']
+        # Stable for classroom files created before answer IDs were introduced.
+        legacy = json.dumps([course.plan_id, state.get('module_id'), state.get('index'),
+                             (state.get('test') or {}).get('attempt'), pending], sort_keys=True, ensure_ascii=False)
+        return uuid.uuid5(uuid.NAMESPACE_URL, legacy).hex
+
+    def _prior_verdict(self, course, state, pending):
+        answer_id = self._answer_id(course, state, pending)
+        entity = 'practice_results' if pending.get('kind') == 'practice' else 'judgements'
+        row = next((item for item in course.store.records(entity, course.plan_id)
+                    if item['id'] == answer_id), None)
+        if row is None: return None
+        if entity == 'practice_results':
+            return judge_agent.Verdict('answer', row['correct'],
+                                       () if row['correct'] else tuple(row['point_ids']), row['reason'])
+        event = row['event']
+        return judge_agent.Verdict('answer', all(result[1] for result in event['results']),
+                                   tuple(result[0] for result in event['results'] if not result[1]),
+                                   row['details'].get('reason', ''), checks=tuple(row['details'].get('point_checks', ())))
+
     def _record(self, course, state, context, pending, verdict, answer, *, angle=None):
+        if self._prior_verdict(course, state, pending) is not None:
+            return
         wrong = set(verdict.wrong_points)
         results = tuple((pid, pid not in wrong) for pid in pending["point_ids"])
         attempt = (state.get("test") or {}).get("attempt") if context in ("module_test", "skip_test") else None
         module_id = course.point(pending["point_ids"][0])["module_id"]
-        event = Judgement(uuid.uuid4().hex, course.next_seq(), self.now(), context, module_id, attempt, results, angle)
+        event = Judgement(self._answer_id(course, state, pending), course.next_seq(), self.now(),
+                          context, module_id, attempt, results, angle)
         q = pending["question"]
         course.store.append_judgement(course.plan_id, event, details={
             "question": q["stem"], "answer": answer[:4000], "reason": verdict.reason,

@@ -26,13 +26,15 @@ export function Home() {
   const go = useApp((s) => s.go)
   const ready = useApp((s) => s.ready)
   const [plans, setPlans] = React.useState<PlanItem[] | null>(null)
+  const [loadError, setLoadError] = React.useState(false)
   const [studyDay, setStudyDay] = React.useState("")
 
   const load = React.useCallback(() => {
     call<{ plans: PlanItem[]; study_day: string }>("plans.list").then((r) => {
       setPlans(r.plans.filter((p) => !p.archived))
       setStudyDay(r.study_day)
-    }).catch(() => setPlans([]))
+      setLoadError(false)
+    }).catch(() => setLoadError(true))
   }, [])
   React.useEffect(() => { if (ready) load() }, [ready, load])
   React.useEffect(() => on("study_day", () => load()), [load])   // the refresh time passed while open
@@ -68,7 +70,12 @@ export function Home() {
         <span>{studyDay ? `学习日 ${studyDay}` : ""}</span>
       </div>
 
-      {plans === null ? (
+      {loadError && <div className="card" role="alert">
+        读取失败。{plans !== null ? "现有列表可能不是最新。" : "请重试读取计划。"}
+        <Button small onClick={load}>重试</Button>
+      </div>}
+
+      {plans === null && loadError ? null : plans === null ? (
         <div className="grid three">
           {[0, 1, 2].map((i) => <div key={i} className="card stack"><Skeleton h={22} w="60%" /><Skeleton h={90} /><Skeleton h={16} w="40%" /></div>)}
         </div>

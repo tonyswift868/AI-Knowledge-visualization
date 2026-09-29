@@ -386,7 +386,7 @@ def _validate_generated(state, proposal, generated, selected):
         agents.parse_points(_json({'points': wire}), {cid: cid for cid in m['chunk_ids']}, minutes_range=m['minutes'])
 
 
-def apply_additions(store, state, proposal, generated, confirmation, *, confirmed, today, cancel=None):
+def apply_additions(store, state, proposal, generated, confirmation, *, confirmed, today, cancel=None, staged=None):
     """Apply a previously shown EXACT preview in one transaction; no model call.
 
     Host passes confirmation from preview(..., generated=...). Any change to
@@ -414,6 +414,10 @@ def apply_additions(store, state, proposal, generated, confirmation, *, confirme
                                  minutes_per_question=confirmation['minutes_per_question'])))
     with store.transaction():
         _cancel(cancel)
+        if staged is not None:
+            if snapshot(staged, state['plan_id'], state['source_ids'])['fingerprint'] != state['fingerprint']:
+                _fail('STALE_PREVIEW', '计划、学习进度或资料已变化，请重新预览。')
+            staged.commit_into(store)
         current = snapshot(store, state['plan_id'], state['source_ids'])
         if current['fingerprint'] != state['fingerprint']:
             _fail('STALE_PREVIEW', '计划、学习进度或资料已变化，请重新预览。')
