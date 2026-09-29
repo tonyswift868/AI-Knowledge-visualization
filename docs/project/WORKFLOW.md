@@ -22,8 +22,8 @@
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-03（client） | D:\MentorFlow-office\client | 空闲 |
-| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
+| MF-03（client） | D:\MentorFlow-office\client | 14-MF03 进行中 |
+| MF-07（server） | D:\MentorFlow-office\server | 14-MF07 进行中 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-01（library） | D:\MentorFlow-office\library | 13-MF01 进行中 |
@@ -86,6 +86,8 @@
 | 12-MF06 | MF-06 classroom | 朗读组件改为从官方下载站获取 + 正式发布构建（交架构师签名上传） | SYS-06、VOICE-01 | ed11b90 | 已合入（9d71b15） |
 | 12-MF04 | MF-04 platform | 加资料支持贴网址（网页与 GitHub 仓库） | PLAN-10、PLAN-06、BUG-09 | ed11b90 | 已合入（9d71b15） |
 | 13-MF01 | MF-01 library | 课堂提速（并行与预取）+ 长模块对话压缩 + 可重复的课堂回归评测 | ARCH-07、TEACH-01、TEACH-04、SYS-05 | 6f55a24 | 已派发 |
+| 14-MF07 | MF-07 server | 服务器瘦身：把新软件在用的约 1.1 万行迁进 refactor/server，做只挂这几组接口的新入口 | DATA-01、ACC-01、ACC-02、DATA-02 | 1284f67 | 已派发 |
+| 14-MF03 | MF-03 client | 客户端旧代码迁移 + 删除仓库里不再用的旧代码和旧文档 | DATA-01、SYS-06、UI-00 | 1284f67 | 已派发 |
 
 任务原文见下方「任务详情」；架构师自己的工作不列在这里。
 
@@ -2177,4 +2179,62 @@ C. 偏好效果对照（用户特别关心“讲得详细”“风格”这些�
   5. 验证：离线测试覆盖并行/预取不改变判定与记录、预取结果被丢弃的情况、压缩后老师仍能接上早先内容；真实模型复测前后耗时与质量对比。花费上限 ¥6。
 验收：pytest tests/refactor 全部通过；web 构建通过（不要提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\class-speed\report.md。
 回执：【MF-01｜library｜第十三批｜完成/部分完成/受阻】基线 ／ 提交 ／ 前后时间线对比 ／ 上下文压缩做法与验证 ／ 回归评测命令 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+## 第十四批任务详情
+
+基线 `1284f67`（2026-09-29）。与 13-MF01 同时进行（共 3 个）。两个任务互不重叠：服务器目录归 14-MF07，其余旧代码归 14-MF03。
+
+### [14-MF07] server｜服务器瘦身：把新软件在用的约 1.1 万行迁进 refactor/server，做只挂这几组接口的新入口
+
+~~~text
+【MentorFlow 第十四批｜MF07（工位 server）｜服务器瘦身：把新软件在用的约 1.1 万行迁进 refactor/server，做只挂这几组接口的新入口】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 1284f67
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md 的磁盘规则：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删，同类只留最后一份，回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。本任务不花模型费用（上限 ¥0）。
+背景：线上账号与同步服务跑的是旧 backend（约 31 万行，旧 main.py 启动就加载约 13.8 万行），但新软件只用其中几组接口。架构师按 import 关系核对：连同依赖约 1.1 万行（backend/app/enterprise/identity/*、enterprise/structured_sync_api.py、enterprise_tenancy 的一部分、orm.py、expedition_orm.py、runtime_resources.py）+ refactor/server（858 行）。见 CURRENT_STATE [DATA-01] 末尾。
+先读：AGENTS.md；CURRENT_STATE 的 [DATA-01]、[ACC-01]、[ACC-02]、[DATA-02]；deploy/enterprise/staging/rp05/mf-u11/（线上 MF-U11 镜像的 Dockerfile、Dockerfile.keycloak、manifest.json、overlay、realm-policy.json）；backend/app/main.py 里这些接口的装配部分。
+要做
+  1. 先定“在用接口清单”：以客户端实际调用为准——在 refactor/（learning 与 desktop，含登录窗、注册/找回密码内嵌页、注销、挤下线检测、同步）里搜所有服务器路径，加上 MF-U11 部署实际开启的管理员概览与健康检查。清单写进报告（路径、方法、谁在调用）。
+  2. 迁移：在 refactor/server/ 下建新入口（如 refactor/server/app.py，FastAPI），只挂清单里的接口；把所需代码从 backend/ 复制进 refactor/server/ 并删掉用不到的分支（租户模式、旧教学/作业/文档导入等清单外功能不带）。原则：
+     - 接口契约一字不改：路径、请求/响应 JSON、状态码、错误码、Cookie/Token 行为与线上一致，客户端零改动。
+     - 数据库一个表都不改：沿用线上 postgres 现有表与 alembic_version；新入口启动时只校验、不建表不迁移；把这些表需要的迁移脚本按原链保留一份（或写一个与现有 head 同 ID 的基线），报告写明你的做法和理由。
+     - Keycloak 部分（realm 配置、主题、邮箱验证码 SPI 等 MF-U11 镜像实际用到的文件）一并收进 refactor/server/keycloak/，能原样复用的不重写。
+     - 拿不准某段是否线上在用的：保留，并在报告列出“存疑保留”。
+  3. 契约测试：先对旧 backend 的这些接口写对照测试（同一组请求，记录状态码与 JSON 结构），再对新入口跑同一组，结果必须一致。旧 backend 里这些模块的相关测试迁到 tests/refactor/server/（文件名全局不重名）。
+  4. 部署材料（不部署）：refactor/server/Dockerfile（python slim，只装新入口需要的依赖，另写 refactor/server/requirements.txt）；和 MF-U11 相同环境变量的 compose 片段；架构师在服务器上构建与切换的步骤；回滚步骤（切回 MF-U11 镜像）。本机有 Docker 就在 D 盘构建验证镜像大小；没有就写明“未构建”，交架构师在服务器构建。
+  5. 不删 backend/、deploy/、根目录 Dockerfile（架构师在新服务器上线验证后再删）；不改 refactor/learning 与 refactor/desktop（若发现客户端调用了清单外接口，列出来不要改）。
+验收：pytest tests/refactor 全部通过（含新增契约测试）；新入口用 uvicorn 在本机起得来（连本机测试库或 SQLite 测试夹具均可），健康检查 200；报告写到 D:\MentorFlow\.local\test-tmp\server-slim\report.md，含：在用接口清单、迁移前后行数、依赖列表、存疑保留、部署与回滚步骤。
+回执：【MF-07｜server｜第十四批｜完成/部分完成/受阻】基线 ／ 提交 ／ 在用接口清单 ／ 新入口行数与依赖 ／ 契约测试结果 ／ 镜像（大小或未构建）／ 部署与回滚步骤位置 ／ 存疑保留 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [14-MF03] client｜客户端旧代码迁移 + 删除仓库里不再用的旧代码和旧文档
+
+~~~text
+【MentorFlow 第十四批｜MF03（工位 client）｜客户端旧代码迁移 + 删除仓库里不再用的旧代码和旧文档】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard 1284f67
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md 的磁盘规则：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删，同类只留最后一份，回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。本任务不花模型费用（上限 ¥0）。
+背景：用户已定——展示与交付只用新代码，重构区完成后取代整个仓库，没用的旧东西现在就删。新软件仍依赖少量旧文件（清单见 CURRENT_STATE [DATA-01] 的①②），要先搬进新结构再删旧的。
+这次允许你改动 refactor/ 下与迁移相关的文件、scripts/、tests/、根目录文件和 docs/ 之外的旧文档。以下不要动：backend/、deploy/、contracts/、.github/、根目录 Dockerfile、refactor/server/（这些是 14-MF07 在做的服务器迁移，架构师随后处理）；refactor/learning/app/classroom.py、web/src/pages/Classroom.tsx、course/ 下课堂 agent 与 store.py（13-MF01 正在改；若删除需要改它们，列在报告里交架构师）；docs/project/CURRENT_STATE.md、WORKFLOW.md、AGENTS.md。
+先读：AGENTS.md；CURRENT_STATE 的 [DATA-01]、[SYS-06]、[UI-00]；scripts/build_learning_installer.py（它现在还从 frontend/public/teacher2d、frontend/public/vendor/live2d、installer/inno、scripts/per_user_install.py 取文件）。
+要做
+  1. 算“在用集合”：从新软件入口（refactor/desktop 的打包入口与账号外壳、refactor/learning/app、scripts/build_learning_installer.py 及其用到的脚本）出发，按 import 和代码里的文件路径引用（资源、模板、图片、Live2D 模型、Inno 脚本）求闭包。报告列出结果。
+  2. 迁移：把在用集合里不在 refactor/ 的部分搬进 refactor/（Python 放到合适的包，资源放 refactor/desktop/resources 或 refactor/learning 下合适目录），包括 DATA-01 ①②：desktop/update_session.py、desktop/version.py、scripts/per_user_install.py、scripts/per_user_update_core.py、tools/free_chat 与 tools/service、classroom/live2d_assets.py、planning/research.py、plan_models.PlanError；以及构建用到的 teacher2d、vendor/live2d、installer/inno。改完所有引用；删 refactor/learning/legacy_records.py、plan_models 的旧计划投影、旧主窗口 main_window.py 等只服务旧界面的代码（DATA-01：旧数据不兼容，不写迁移）。
+  3. 删除（git rm，历史里仍可找回）：不在在用集合里的旧目录与文件——desktop/、frontend/、tools/、legacy/、demo/、installer/（搬走在用部分后）、release/、ops/、reports/、artifacts/、enterprise_e1/、data/、content/、story_packs/、根目录旧入口（desktop_entry.py 等、MentorFlow.spec、Start-*.cmd）、scripts/ 里不用的脚本、tests/ 下非 tests/refactor 且测试已删代码的测试；旧文档：过时文件隔离/ 整个删，docs/ 下除 docs/project/ 外全删，ARCHITECTURE.md 删，README.md 改写为几行（是什么、怎么跑、需求文档在哪）。原则：在用集合里的不删；拿不准的（例如“远征”工具是否用到 content/ 里的图）先查在用集合，查不清就保留并列入报告“存疑保留”。
+  4. 验证：pytest tests/refactor 全部通过；web 构建通过（不提交 dist）；用本机测试密钥和本机模拟源跑 build_learning_installer 的 freeze → release → installer（ISCC 在 E 盘只读运行，产物全在 D），装到 D 盘临时目录，启动能到登录窗；更新相关单元测试通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\legacy-cleanup\report.md，含：在用集合、迁移清单（旧路径→新路径）、删除清单（按目录汇总文件数与行数）、仓库删除前后总行数、存疑保留、需要架构师改的地方。
+回执：【MF-03｜client｜第十四批｜完成/部分完成/受阻】基线 ／ 提交 ／ 迁移清单 ／ 删除汇总与前后行数 ／ 安装程序构建与启动验证 ／ 存疑保留 ／ 需架构师处理 ／ 本地最终占用 ／ 问题记录
 ~~~
