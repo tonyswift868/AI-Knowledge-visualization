@@ -21,6 +21,7 @@ _STOP = set('learn learning study understand explain introduction basics basic t
 _COMMUNITY = re.compile(r'(^|[./_-])(forum|forums|community|discuss|discussion|discussions|answers|questions|issues|pull|pulls|wiki|blog|blogs)(/|[._-]|$)', re.I)
 _PERSONAL = re.compile(r'(~|(^|[./])(people|users|student|students|personal|sites)\.)|/(~|users?/|students?/|personal/)', re.I)
 _REPOST = re.compile(r'转载|转自[：:]|原文链接[：:]|译自[：:]|reprinted\s+(?:from|with)|originally published (?:at|on)|mirror of', re.I)
+_SCHEDULE_DATE = re.compile(r'20\d\d\s*[-/.年]\s*\d{1,2}\s*(?:[-/.月]\s*\d{1,2}\s*日?|月)')
 _AGGREGATORS = {'arxiv.org', 'openreview.net', 'zenodo.org', 'semanticscholar.org', 'openaire.eu',
                 'pubmed.ncbi.nlm.nih.gov', 'doi.org', 'crossref.org'}
 _GENERIC_CN = {'学习', '入门', '基础', '理解', '掌握', '教程', '课程', '如何', '官方', '相关', '资料', '概念', '应用', '熟练'}
@@ -251,9 +252,12 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
 
     # Current medicine, latest technology, policies and exam editions need an
     # explicit publication date. Evergreen mathematics/history do not expire.
-    protocol_current = bool(re.search(r'model context protocol|\bMCP\b', goal, re.I))
+    # Calendar dates in the goal are the study schedule, not a content
+    # edition; only a bare year ("2025 考试大纲") asks for current material.
+    topic = _SCHEDULE_DATE.sub(' ', goal)
+    protocol_current = bool(re.search(r'model context protocol|\bMCP\b', topic, re.I))
     time_sensitive = protocol_current or bool(re.search(r'医学|医疗|高血压|治疗|用药|临床|最新|现行|今年|考试大纲|政策|'
-                                     r'hypertension|medical|treatment|clinical|latest|current|\b20[2-9]\d\b', goal, re.I))
+                                     r'hypertension|medical|treatment|clinical|latest|current|\b20[2-9]\d\b', topic, re.I))
     freshness = 'not_required'
     if time_sensitive:
         # Versioned protocol pages are maintained by a current site build.

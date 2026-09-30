@@ -50,6 +50,14 @@ def test_dates_are_publication_evidence_not_fetch_or_copyright():
     assert score(goal='current Python functions parameters', published_at='2026-01-01')['eligible']
 
 
+def test_study_schedule_dates_do_not_make_evergreen_goals_time_sensitive():
+    # 24-MF06 P2-01: the requirement check writes the study window into the goal.
+    for goal in ('Python functions parameters，在2026-10-05至2026-10-14期间学完',
+                 'Python functions parameters 2026年10月5日到2026年10月14日', 'Python functions parameters 2026年10月学完'):
+        assert score(goal=goal)['freshness'] == 'not_required'
+    assert score(goal='Python functions parameters 2026 edition')['freshness'] != 'not_required'
+
+
 def test_module_coverage_and_level():
     result = score(goal='软件开发完整学习路线', modules=[{'title': 'Python functions parameters'}])
     assert result['eligible'] and 1 in result['covered_scopes']
