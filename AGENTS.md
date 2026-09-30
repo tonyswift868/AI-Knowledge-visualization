@@ -3,7 +3,7 @@
 - 主目录 D:\MentorFlow；所有代码都在 [refactor](refactor/)（客户端 learning、desktop，服务器 server），保持干净。旧代码（客户端、旧服务器 backend/deploy、旧 CI 和脚本）与旧文档已于 2026-09-29 全部删除，需要时从 git 历史里查；线上服务器已切到 refactor/server。
 - **功能先行**：功能没做完之前不加安全加固（镜像签名、mTLS、镜像扫描、额外校验层等）；只保留现有功能正常工作必需的部分（登录、Token、密码、验证码、更新签名照旧）。
 - 测试代码放在 `tests/refactor/<模块>/`，不放进 refactor；refactor 里只有产品运行需要的文件；测试文件名在整个 tests/ 下不能重名（例如用 test_plan_export.py，不用通用的 test_export.py），否则多套测试一起运行时会互相冲突。
-- 唯一需求与状态文档：[docs/project/CURRENT_STATE.md](docs/project/CURRENT_STATE.md)。需求由用户直接给出，不从其他文档领取。
+- 唯一需求与状态文档：[docs/project/CURRENT_STATE.md](docs/project/CURRENT_STATE.md)（接手先读开头的「当前阶段」）。需求由用户直接给出，不从其他文档领取。
 - 员工调度（员工、任务、基线、交付状态）只记在 [docs/project/WORKFLOW.md](docs/project/WORKFLOW.md)，由架构师维护；需求不写在那里。
 - 不改动 Kristina 的资源。
 - **磁盘规则（BUG-02）**：E 盘是移动固态硬盘，扛不住频繁读写，只放大型程序（如朗读引擎），只能读取运行。不要在 E 盘建目录、写文件、跑测试、构建或放临时文件，也不要从 E 盘批量复制大文件。所有并发任务、测试、构建、临时文件、日志一律在 D 盘（`D:\MentorFlow\.local\test-tmp\` 下自建子目录）。

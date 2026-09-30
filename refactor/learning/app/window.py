@@ -148,8 +148,7 @@ class LearningWindow(QWidget):
         if entry.is_file():
             self.view.setUrl(QUrl.fromLocalFile(str(entry)))
         else:
-            self.view.setHtml("<body style='font-family:sans-serif;padding:40px'>新界面尚未构建（缺少 web/dist）。"
-                              "可设置环境变量 MENTORFLOW_LEGACY_UI=1 使用旧界面。</body>")
+            self.view.setHtml("<body style='font-family:sans-serif;padding:40px'>新界面尚未构建（缺少 web/dist）。</body>")
 
     # ------------------------------------------------------------ for handlers
     def account_info(self):
