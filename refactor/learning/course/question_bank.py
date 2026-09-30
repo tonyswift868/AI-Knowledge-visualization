@@ -2,6 +2,16 @@
 from __future__ import annotations
 
 import random
+import hashlib
+import json
+
+
+def material_fingerprint(points, excerpts):
+    """Only teaching content changes invalidate questions, never schedule/order."""
+    content = [{'id': p['id'], 'title': p['title'], 'summary': p.get('summary', ''),
+                'chunk_ids': p['chunk_ids']} for p in points]
+    raw = json.dumps([content, excerpts], ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
 
 
 def choose_questions(questions, targets, unstable=(), *, limit=None, rng=None, smaller_than=None,

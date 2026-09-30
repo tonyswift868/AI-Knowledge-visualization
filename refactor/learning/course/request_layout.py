@@ -1,6 +1,23 @@
 """Request assembly only: keep a dialogue prefix until a bounded page expires."""
 from __future__ import annotations
 
+import json
+
+
+def ordered_payload(content, keys):
+    """Keep labelled JSON data intact, placing stable fields before drafts.
+
+    A top-level list retains its order (batch point order is a contract). Only
+    its object fields are reordered; nested records and all values stay intact.
+    Validation remains the caller's responsibility.
+    """
+    label, separator, payload = content.partition('\n')
+    data = json.loads(payload)
+    def ordered(record):
+        return {key: record[key] for key in (*keys, *record) if key in record}
+    data = [ordered(item) for item in data] if isinstance(data, list) else ordered(data)
+    return label + separator + json.dumps(data, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+
 
 def dialogue_tail(rows, *, max_rows, max_chars=None):
     """Drop an old half-window on overflow, never slide one row on every call.

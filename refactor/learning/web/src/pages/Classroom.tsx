@@ -125,6 +125,20 @@ export function Classroom() {
     return () => { stopReading(); void call("classroom.leave", { plan_id: planId }).catch(() => undefined) }
   }, [planId, go, toast, stopReading])
 
+  React.useEffect(() => {
+    if (room?.step !== 'preparing_questions' || busy) return
+    let active = true
+    let pending = false
+    const timer = window.setInterval(() => {
+      if (pending) return
+      pending = true
+      call<Room>('classroom.state', { plan_id: planId }).then((r) => {
+        if (active) setRoom(r)
+      }).catch(() => undefined).finally(() => { pending = false })
+    }, 500)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [room?.step, planId, busy])
+
   React.useLayoutEffect(() => {
     const el = scroller.current
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
@@ -159,7 +173,7 @@ export function Classroom() {
 
   async function send(value = text) {
     const t = value.trim()
-    if (!t || busy) return
+    if (!t || busy || room?.step === 'preparing_questions') return
     stopReading()
     setText("")
     if (!(await act("classroom.reply", { text: t }, "老师在看你的回答…"))) setText(t)
@@ -241,7 +255,7 @@ export function Classroom() {
           </div>
         )}
         <div className="composer">
-          <textarea className="input" rows={1} value={text} disabled={!!busy}
+          <textarea className="input" rows={1} value={text} disabled={!!busy || room.step === 'preparing_questions'}
                     placeholder={q ? (q.type === "choice" ? "点上面的选项，或者打字作答" : "写下你的回答（说不会也可以）") : "有问题随时问老师"}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
@@ -292,6 +306,7 @@ export function Classroom() {
 
 function Actions({ room, act }: { room: Room; act: (m: string, p?: Record<string, unknown>, label?: string) => Promise<boolean> }) {
   const step = room.step
+  if (step === 'preparing_questions') return <div className="class-note"><Loader2 className="spin" size={15} />正在准备题目，备好后会自动开始。</div>
   if (step === "teach") return (
     <div className="plan-actions">
       {room.can_skip && <Button onClick={() => act("classroom.test", { kind: "skip_test" }, "正在出题…")}><SkipForward />我会这部分，直接考</Button>}

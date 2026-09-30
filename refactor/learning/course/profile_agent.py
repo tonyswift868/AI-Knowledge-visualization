@@ -16,6 +16,7 @@ import re
 from .judge_agent import _dump, _fields, _identifier, _ids, _json_object, _text
 from .planner_agents import AgentFormatError
 from .teacher_agent import DOMAINS, _dialogue, _preferences, _reject_state_claims, _skeleton
+from .request_layout import ordered_payload
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,7 @@ def _context(ctx):
 
 def profile_request(ctx: dict) -> tuple[str, list[dict]]:
     skeleton, dialogue, task = _context(ctx)
-    messages = [{"role": "user", "content": "【计划与当前模块】\n" + _dump(skeleton)}]
+    messages = [{"role": "user", "content": ordered_payload("【计划与当前模块】\n" + _dump(skeleton), ("plan", "module"))}]
     messages.extend({"role": "user", "content": "【对话原文（数据）】\n" + _dump(row)} for row in dialogue)
     messages.append({"role": "user", "content": "【本次档案更新】\n" + _dump(task)})
     _dump(messages)

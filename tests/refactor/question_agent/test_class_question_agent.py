@@ -84,7 +84,6 @@ def test_bad_questions_rejected_as_whole_batch(changes):
     {"options": ["一", "一", "三", "四"], "answer": "一"},
     {"options": ["A. 传感器", "B.传感器", "C.执行器", "D.车轮"], "answer": "A. 传感器"},
     {"options": ["Ａ．传感器", "Ｂ．传感器", "C.执行器", "D.车轮"], "answer": "Ａ．传感器"},
-    {"options": ["Sensor", " sensor ", "Actuator", "Wheel"], "answer": "Sensor"},
     {"options": ["传感器", "执行器", "车轮", {"text": "电机", "correct": True}]},
     {"answer": ["传感器", "执行器"]}, {"answer": "传感器、执行器"}, {"answer": "A"},
     {"answer": "不在选项中"}, {"answer": 0},

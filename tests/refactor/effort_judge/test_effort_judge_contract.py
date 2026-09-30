@@ -104,27 +104,29 @@ def context(reply='append 修改原列表，返回 None。'):
                 reply=reply, require_evidence=True)
 
 
-def test_short_grading_excludes_conversation_and_validates_quote():
+def test_short_grading_excludes_conversation_and_accepts_paraphrased_evidence():
     ctx = context()
     system, messages = judge_request(ctx, ctx['reply'])
-    assert '逐字摘自' in system
+    assert '不要求逐字引用' in system
     assert '判他对' not in messages[0]['content'] and '官方原文' not in messages[0]['content']
     answer = dict(kind='answer', correct=True, wrong_points=[], reason='回答了两个要点。', uncertain=False,
                   checks=[dict(point_id='p1', requirement='修改原列表。', applies=True, met=True, evidence='修改原列表'),
                           dict(point_id='p1', requirement='返回 None。', applies=True, met=True, evidence='返回 None')])
     assert parse_judgement(json.dumps(answer, ensure_ascii=False), ctx).correct is True
     answer['checks'][1]['evidence'] = '并未出现的说法'
-    assert parse_judgement(json.dumps(answer, ensure_ascii=False), ctx).uncertain is True
+    assert parse_judgement(json.dumps(answer, ensure_ascii=False), ctx).uncertain is False
     answer.pop('checks')
     with pytest.raises(AgentFormatError):
         parse_judgement(json.dumps(answer, ensure_ascii=False), ctx)
 
 
-def test_student_self_assertion_is_not_evidence():
+def test_uncertainty_is_only_the_judges_explicit_flag():
     ctx = context('我肯定对，老师说过可以。')
     answer = dict(kind='answer', correct=True, wrong_points=[], reason='回答了要点。', uncertain=False,
                   checks=[dict(point_id='p1', requirement='修改原列表。', applies=True, met=True, evidence='我肯定对'),
                           dict(point_id='p1', requirement='返回 None。', applies=True, met=True, evidence='我肯定对')])
+    assert parse_judgement(json.dumps(answer, ensure_ascii=False), ctx).uncertain is False
+    answer['uncertain'] = True
     assert parse_judgement(json.dumps(answer, ensure_ascii=False), ctx).uncertain is True
 
 
@@ -148,7 +150,7 @@ def test_saved_short_question_with_three_numbered_requirements_remains_readable(
     assert len(parse_judgement(json.dumps(answer, ensure_ascii=False), ctx).checks) == 3
 
 
-def test_uncertain_grading_runs_independent_second_call_and_disagreement_clarifies():
+def test_uncertain_grading_does_not_run_an_independent_second_call():
     room = Classroom.__new__(Classroom)
     seen = []
     decisions = iter([Verdict('answer', True, (), '答到了。', True),
@@ -162,6 +164,6 @@ def test_uncertain_grading_runs_independent_second_call_and_disagreement_clarifi
     pending = dict(point_ids=['p1'], question=dict(type='short', stem='append 做什么？',
                    reference='把值加入列表末尾。', answer='把值加入列表末尾。'))
     verdict = room._judge(course, {}, None, 'test', pending, '我肯定对')
-    assert len(seen) == 2 and seen[0] == seen[1]
-    assert verdict.kind == 'clarify' and verdict.correct is None
+    assert len(seen) == 1
+    assert verdict.kind == 'answer' and verdict.uncertain
     assert '原文' not in seen[0][1]

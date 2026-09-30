@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import tempfile
 import threading
+import time as monotonic_time
 from types import SimpleNamespace
 
 import pytest
@@ -145,8 +146,13 @@ def prepare(env):
 
 
 def act(env, name, *args):
-    return env.room.run(PLAN, lambda co, st, cx: getattr(env.room, name)(co, st, cx, *args),
+    view = env.room.run(PLAN, lambda co, st, cx: getattr(env.room, name)(co, st, cx, *args),
                         SimpleNamespace(cancel=threading.Event(), stream=lambda _: None))
+    deadline = monotonic_time.monotonic() + 3
+    while view['step'] == 'preparing_questions' and monotonic_time.monotonic() < deadline:
+        monotonic_time.sleep(.005)
+        view = snapshot(env)
+    return view
 
 
 def answer(env, *, wrong=()):
@@ -189,7 +195,7 @@ def finish_check(env):
         if snapshot(env)['step'] == 'completed':
             return
         check_answer(env)
-    assert False, '最终检验未在有界题数内完成'
+    assert False, ('最终检验未在有界题数内完成', env.room._file(PLAN).read({}), env.room._bank_jobs)
 
 
 def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
@@ -321,6 +327,9 @@ def test_final_credit_atomic_retry_wrong_multipoint_and_pinned_day(flow_env, mon
     e = flow_env
     prepare(e)
     skip_all(e)
+    # Compare only this injected transaction, after optional background
+    # preparation has finished writing question-bank synchronization rows.
+    join_profiles()
     seq = max(r['event']['seq'] for entity in ('judgements', 'attempt_closed') for r in e.store.records(entity, PLAN)) + 1
     row = event(e, 'atomic-final', seq, [('m0-01', True), ('m0-02', False)])
     original = e.store._changed
@@ -387,7 +396,7 @@ class GroupedModuleAgents(FlowAgents):
             if task['purpose'] == 'bank':
                 raw = json.loads(result.text)
                 questions = raw['questions']
-                grouped = dict(questions[0], id='grouped', stem='请综合比较三个知识点的用途？',
+                grouped = dict(questions[0], id='grouped', stem=f'请综合比较这些知识点的用途（第{len(self.calls)}轮）？',
                                point_ids=list(dict.fromkeys(pid for q in questions for pid in q['point_ids'])),
                                angle='contrast')
                 result.text = json.dumps({'questions': [*questions, grouped]})
@@ -399,6 +408,17 @@ def test_module_detection_releases_unused_estimate_and_report(flow_env, audit):
     e.room.services.gateway = e.agent = GroupedModuleAgents()
     prepare(e)
     act(e, 'enter')
+    join_profiles()
+    # This accounting oracle needs an existing three-point composite. New
+    # generation requests use at most two points, but stored valid composites
+    # can still cover up to four. Seed the exact one-question fixture.
+    course = e.room._course(PLAN)
+    for module in course.modules:
+        mids = [p['id'] for p in course.points_of(module['id'])]
+        e.store.add_bank_questions(PLAN, module['id'], [dict(id='three-point', type='short',
+            stem='请综合比较三个知识点的用途？', options=[], answer='测试作答', reference='测试作答',
+            point_ids=mids, chunk_ids=['k'], angle='contrast')],
+            fingerprint=e.room._test_fingerprint(course, module['id']))
     for index in range(2):
         act(e, 'start_test', 'skip_test')
         answer(e)

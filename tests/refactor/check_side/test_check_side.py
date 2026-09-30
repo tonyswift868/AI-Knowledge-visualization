@@ -160,7 +160,7 @@ def test_short_answer_uncertainty_returns_one_clarifying_question():
                    excerpts={'c': '概念资料'}, question={'stem': '请说明概念的作用？', 'type': 'short'},
                    reference='只要求作用')
     system, _ = judge_request(context, '可能是这样')
-    assert '先问一句澄清' in system
+    assert '再问一道更深的题' in system
     verdict = parse_judgement(json.dumps(dict(kind='clarify', correct=None, wrong_points=[],
         reason='你说的作用是指哪一步？'), ensure_ascii=False), context)
     assert verdict.kind == 'clarify' and verdict.correct is None

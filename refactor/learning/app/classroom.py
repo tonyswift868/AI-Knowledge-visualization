@@ -49,6 +49,11 @@ PLAN_PAGE = "「我的计划」页面"
 CHECK_BATCH = 4             # final-check questions asked per batch (points of one module)
 
 
+class _BankPending(Exception):
+    def __init__(self, module_id, points):
+        self.module_id, self.points = module_id, list(points)
+
+
 def _now():
     return datetime.now(timezone.utc)
 
@@ -63,6 +68,10 @@ class Classroom:
         self._profile_jobs: dict[str, list[tuple[str, str]]] = {}
         self._preparing: set[str] = set()
         self._entered_plans: set[str] = set()  # rooms entered in this process; a repeat enter keeps the day
+        self._bank_jobs = {}
+        self._bank_seen = {}
+        self._bank_plans = set()
+        self._unsubscribe_bank = self.services.store.subscribe(self._bank_material_changed)
 
     # ------------------------------------------------------------------ state
     def _file(self, plan_id):
@@ -88,6 +97,9 @@ class Classroom:
                     self._finish_test(course, state, ctx)  # finish the interrupted close instead of the action (BUG-23)
                 else:
                     work(course, state, ctx)
+                    self._resume_bank_wait(course, state, ctx)
+                    if state['step'] != 'preparing_questions':
+                        state.pop('bank_wait_attempts', None)
             except ModelCancelled:
                 raise BridgeError("CANCELLED", "已停止。") from None
             except ModelError as exc:
@@ -216,6 +228,7 @@ class Classroom:
                 state["day"] = self.study_day().isoformat()
             self._entered_plans.add(course.plan_id)
         state["in_session"] = True
+        self._prefetch_banks(course, state)
         self._prepare_later(course, state)
 
     def leave(self, course, state, ctx):
@@ -320,6 +333,8 @@ class Classroom:
 
     def _casual_reply(self, course, state, ctx, text, pending):
         verdict = self._prior_verdict(course, state, pending) or self._judge(course, state, ctx, "casual", pending, text)
+        if verdict.uncertain or verdict.kind == 'clarify':
+            return self._deepen_question(course, state, ctx, pending)
         point = course.point(pending["point_ids"][0])
         if verdict.kind == "answer":
             self._record(course, state, "casual", pending, verdict, text)
@@ -346,15 +361,14 @@ class Classroom:
         if verdict.kind == "claim_known":
             return self._quick_check(course, state, ctx, pending)
         director = {
-            "question": "学习者在回答随口问之前先提了个问题。先解答，然后提醒他上面的随口问还没回答（不要重复题目全文，不要出新题）。",
-            "chat": "学习者在闲聊。用一两句自然回应，然后把话题带回上面还没回答的随口问（不要出新题）。",
+            "question": "学习者在回答随口问之前先提了个问题。只能解释题意或回应不涉及答案的内容；如果解答会透露答案或解题提示，说明判定之后再讲。然后重述原题，先请他作答，不出新题。",
+            "chat": "学习者在闲聊。用一两句自然回应，再请他回答原题；不能透露答案或直接推导答案的提示，不重讲知识结论，不出新题。",
             "change_rules": (f"学习者要求改变规则或进度。说明你没有这个权限，对错由系统判定，计划可以在{PLAN_PAGE}调整；"
                              "然后把话题带回上面的随口问（不要出新题）。"),
         }.get(verdict.kind, "没看出学习者是在回答随口问。请他直接回答上面的随口问，说“不会”也可以（不要出新题）。")
-        teaching = self._teacher(course, state, ctx, director, pending["point_ids"], user=text, asks=True)
-        if teaching.casual_question:  # restated (or reworded): answers are judged against what is on screen
-            pending["answer_id"] = uuid.uuid4().hex
-            pending["question"] = dict(pending["question"], stem=teaching.casual_question)
+        # An unjudged interruption never replaces the question/reference or
+        # answer identity. The shared teacher boundary also covers check Q&A.
+        return self._teacher(course, state, ctx, director, pending["point_ids"], user=text)
 
     def _quick_check(self, course, state, ctx, pending):
         """'I know this': one quick confirmation question; wrong is recorded, never argued (TEACH-02)."""
@@ -382,12 +396,16 @@ class Classroom:
             targets = [p["id"] for p in points if book.point(p["id"]).state == "red"]
             if state["step"] != "test_done" or not targets:
                 raise BridgeError("STEP_INVALID", "现在没有需要重测的点。")
+        self._prefetch_banks(course, state, testing=True)
+        unstable = [pid for pid in targets if kind == 'retest' or book.point(pid).module_errors or
+                    book.point(pid).casual_errors or book.point(pid).state in ('weak', 'red')]
+        try:
+            questions = self._bank_select(course, ctx, module_id, targets, unstable, defer=True)
+        except _BankPending as pending:
+            return self._defer_bank(course, state, pending, 'start_test', [kind])
         self._say(course, state, {"skip_test": "好，直接考这个模块。正确率达到 90% 就跳过，不到就正常学。",
                                   "module_test": "开始模块检测。一题一题来，选择题可以直接点选。",
                                   "retest": "开始重测没过的点，每个点换个角度问，答对一次就算过。"}[kind], role="system")
-        unstable = [pid for pid in targets if kind == 'retest' or book.point(pid).module_errors or
-                    book.point(pid).casual_errors or book.point(pid).state in ('weak', 'red')]
-        questions = self._bank_select(course, ctx, module_id, targets, unstable)
         attempt = uuid.uuid4().hex[:16]
         state["test"] = {"kind": kind, "attempt": attempt, "queue": questions, "index": 0,
                          "targets": targets, "split_single": [], "max_questions": max(len(questions), 4 * len(targets))}
@@ -402,7 +420,8 @@ class Classroom:
             self._rng.shuffle(q['options']); q['shuffled'] = True
         state["pending"] = {"kind": test["kind"], "answer_id": uuid.uuid4().hex,
                             "point_ids": q["point_ids"], "question": q,
-                            "number": test["index"] + 1, "total": len(test["queue"])}
+                            "number": test["index"] + 1, "total": len(test["queue"]),
+                            'depth_probe': q.get('depth_probe', False)}
         self._say(course, state, f"第 {test['index'] + 1}/{len(test['queue'])} 题：" + _question_text(q), kind="question")
 
     def _test_reply(self, course, state, ctx, text, pending):
@@ -417,10 +436,8 @@ class Classroom:
                                           "选对了。" if correct else f"正确答案是：{q['answer']}。")
         else:
             verdict = self._judge(course, state, ctx, "test", pending, text)
-        if verdict.kind == 'clarify' and not pending.get('clarified'):
-            pending['clarified'] = True
-            self._say(course, state, verdict.reason, role='system')
-            return
+        if verdict.uncertain or verdict.kind == 'clarify':
+            return self._deepen_question(course, state, ctx, pending)
         if verdict.kind != "answer":
             self._say(course, state, "没看出这是对这道题的作答。请直接回答；不会的话说“不会”也可以。", role="system")
             return
@@ -451,21 +468,23 @@ class Classroom:
         self._finish_test(course, state, ctx)
 
     def _bank_select(self, course, ctx, module_id, targets, unstable=(), *, limit=None,
-                     smaller_than=None, single_once=(), asked=(), used_angles=None, background=False):
+                     smaller_than=None, single_once=(), asked=(), used_angles=None, background=False, defer=False):
         def select():
             return question_bank.choose_questions(self._bank_rows(course, module_id), targets,
                 unstable, limit=limit, rng=self._rng, smaller_than=smaller_than, single_once=single_once,
                 asked=asked, used_angles=used_angles)
         chosen, missing = select()
-        if missing:
-            self._bank_fill(course, ctx, module_id, background=background)
-            chosen, missing = select()
         if missing and used_angles is not None and (limit is None or len(chosen) < limit):
             extra, missing = question_bank.choose_questions(self._bank_rows(course, module_id), missing,
                 set(unstable) & set(missing), limit=None if limit is None else limit - len(chosen), rng=self._rng,
                 smaller_than=smaller_than, single_once=single_once,
                 asked=[*asked, *(q['id'] for q in chosen)])
             chosen.extend(extra)
+        if missing:
+            if defer:
+                raise _BankPending(module_id, missing)
+            self._bank_fill(course, ctx, module_id, point_ids=missing, force=True, background=background)
+            chosen, missing = select()
         if missing:
             raise BridgeError('QUESTION_BANK_INCOMPLETE', '题库暂时不足，稍后再试。')
         return [dict(q) for q in chosen]
@@ -475,13 +494,122 @@ class Classroom:
         return [q for q in course.store.records('question_bank', course.plan_id)
                 if q['module_id'] == module_id and q.get('fingerprint', fingerprint) == fingerprint]
 
-    def _bank_fill(self, course, ctx, module_id, *, background=False):
-        ids = [p['id'] for p in course.points_of(module_id)]
-        old = [q['stem'] for q in course.store.records('question_bank', course.plan_id)
-               if q['module_id'] == module_id]
-        batch = self._questions(course, ctx, 'bank', ids, avoid=old, background=background)
-        course.store.add_bank_questions(course.plan_id, module_id, batch,
-                                        fingerprint=self._test_fingerprint(course, module_id))
+    def _bank_fill(self, course, ctx, module_id, *, background=False, point_ids=None, force=False):
+        """Bounded small batches; keep valid batches and repair only missing points."""
+        ids = list(point_ids or [p['id'] for p in course.points_of(module_id)])
+        fingerprint = self._test_fingerprint(course, module_id)
+        def count(pid):
+            return sum(q['point_ids'] == [pid] and not q['correct_seen'] for q in self._bank_rows(course, module_id))
+        wanted = ids if force else [pid for pid in ids if count(pid) < 2]
+        errors = {}
+        def one(group):
+            old = [q['stem'] for q in course.store.records('question_bank', course.plan_id)
+                   if q['module_id'] == module_id and set(q['point_ids']) & set(group)]
+            batch = self._questions(course, ctx, 'bank', group, avoid=old, background=background)
+            fresh = _Course(course.store, course.store.get_plan(course.plan_id))
+            if self._test_fingerprint(fresh, module_id) != fingerprint:
+                raise ModelError('QUESTION_MATERIAL_CHANGED', '资料已更新，正在重新准备题目。')
+            course.store.add_bank_questions(course.plan_id, module_id, batch, fingerprint=fingerprint)
+        for offset in range(0, len(wanted), 2):
+            group = wanted[offset:offset + 2]
+            before = {pid: count(pid) for pid in group}
+            try:
+                one(group)
+            except (ModelError, AgentFormatError) as exc:
+                errors.update({pid: getattr(exc, 'message', str(exc)) for pid in group})
+            missing = [pid for pid in group if count(pid) < (before[pid] + 2 if force else 2)]
+            for pid in missing:
+                try:
+                    one([pid])
+                    if count(pid) < (before[pid] + 2 if force else 2):
+                        errors[pid] = '返回的题目缺少该点的两道单点题。'
+                    else:
+                        errors.pop(pid, None)
+                except (ModelError, AgentFormatError) as exc:
+                    errors[pid] = getattr(exc, 'message', str(exc))
+            for pid in set(group) - set(missing):
+                errors.pop(pid, None)
+        if errors:
+            titles = '、'.join(course.point(pid)['title'] for pid in errors)
+            raise ModelError('QUESTION_BANK_INCOMPLETE', f'{titles}题目准备失败：{next(iter(errors.values()))}')
+
+    def _prepare_bank_later(self, course, module_id, *, point_ids=None, force=False):
+        key = (course.plan_id, module_id)
+        fingerprint = self._test_fingerprint(course, module_id)
+        with self._guard:
+            old = self._bank_jobs.get(key)
+            if old and old['fingerprint'] == fingerprint and old['status'] == 'running':
+                return
+            job = {'fingerprint': fingerprint, 'status': 'running', 'error': ''}
+            self._bank_jobs[key] = job
+            self._bank_seen[key] = fingerprint
+        def work():
+            try:
+                fresh = _Course(self.services.store, self.services.store.get_plan(course.plan_id))
+                self._bank_fill(fresh, None, module_id, background=True, point_ids=point_ids, force=force)
+                job['status'] = 'ready'
+            except Exception as exc:  # another module or a later explicit retry can proceed
+                job['error'] = getattr(exc, 'message', '题目准备失败，请检查模型连接后重试。')
+                job['status'] = 'failed'
+                log.info('question bank preparation failed for %s', module_id, exc_info=True)
+        threading.Thread(target=work, name='classroom-question-bank', daemon=True).start()
+
+    def _prefetch_banks(self, course, state, *, testing=False):
+        self._bank_plans.add(course.plan_id)
+        for module in course.modules:
+            self._bank_seen.setdefault((course.plan_id, module['id']), self._test_fingerprint(course, module['id']))
+        ids = [m['id'] for m in course.modules]
+        current = state['module_id']
+        index = ids.index(current)
+        wanted = [current]
+        if testing and index + 1 < len(ids):
+            wanted.append(ids[index + 1])
+        if index == len(ids) - 1:  # replenish consumed earlier questions before final check
+            wanted = ids
+        for module_id in wanted:
+            self._prepare_bank_later(course, module_id)
+
+    def _bank_material_changed(self, origin, entities):
+        if not entities & {'points', 'modules', 'source_chunks'}:
+            return
+        for plan_id in tuple(self._bank_plans):
+            try:
+                course = _Course(self.services.store, self.services.store.get_plan(plan_id))
+                for module in course.modules:
+                    key = (plan_id, module['id'])
+                    fingerprint = self._test_fingerprint(course, module['id'])
+                    if self._bank_seen.get(key) != fingerprint:
+                        self._prepare_bank_later(course, module['id'])
+            except StoreError:
+                continue
+
+    def _defer_bank(self, course, state, pending, method, args=()):
+        tries = state.get('bank_wait_attempts', 0) + 1
+        if tries > 2:
+            state.pop('bank_wait_attempts', None)
+            return self._say(course, state, '题库仍缺少当前所需题目；请检查模型连接后重试。', kind='error', role='system')
+        state['bank_wait_attempts'] = tries
+        state['bank_wait'] = {'module_id': pending.module_id, 'points': pending.points,
+                              'method': method, 'args': list(args), 'step': state['step']}
+        state['step'] = 'preparing_questions'
+        self._say(course, state, '正在准备题目，备好后会自动开始。', role='system')
+        self._prepare_bank_later(course, pending.module_id, point_ids=pending.points, force=True)
+
+    def _resume_bank_wait(self, course, state, ctx):
+        wait = state.get('bank_wait')
+        if not wait:
+            return
+        job = self._bank_jobs.get((course.plan_id, wait['module_id']))
+        if not job or job['fingerprint'] != self._test_fingerprint(course, wait['module_id']):
+            self._prepare_bank_later(course, wait['module_id'], point_ids=wait['points'], force=True)
+            return
+        if job['status'] == 'running':
+            return
+        state['step'] = wait['step']
+        state.pop('bank_wait', None)
+        if job['status'] == 'failed':
+            return self._say(course, state, job['error'] + ' 可检查模型连接后重试。', kind='error', role='system')
+        getattr(self, wait['method'])(course, state, ctx, *wait['args'])
 
     def _split_test_question(self, course, state, ctx, question):
         """A composite error provides no point verdict; insert smaller probes once."""
@@ -564,6 +692,7 @@ class Classroom:
         after = [m for m in course.modules if book.module(m["id"]).state == "untested"]
         if after:
             state.update(module_id=after[0]["id"], index=0, step="teach", pending=None, test=None, stems=[])
+            self._prefetch_banks(course, state)
             return
         failed = [m for m in course.modules if book.module(m["id"]).state == "failed"]
         if failed:
@@ -619,10 +748,13 @@ class Classroom:
         if any(len(angles) >= len(ANGLES) for angles in used.values()):
             used = None
         unstable = [pid for pid in group if book.point(pid).module_errors or book.point(pid).state in ('red', 'weak')]
-        questions = self._bank_select(course, ctx, module_id, group, unstable,
-            limit=min(CHECK_BATCH - state.get('check_used', 0), len(group)),
-            smaller_than=split[0]['size'] if split else None,
-            single_once=state.get('check_single', []), asked=state.get('check_asked', []), used_angles=used)
+        try:
+            questions = self._bank_select(course, ctx, module_id, group, unstable,
+                limit=min(CHECK_BATCH - state.get('check_used', 0), len(group)),
+                smaller_than=split[0]['size'] if split else None,
+                single_once=state.get('check_single', []), asked=state.get('check_asked', []), used_angles=used, defer=True)
+        except _BankPending as pending:
+            return self._defer_bank(course, state, pending, '_next_check')
         if split:
             state['check_split'] = split[1:]
             state['check_single'] = list(set(state.get('check_single', [])) |
@@ -639,7 +771,7 @@ class Classroom:
             self._rng.shuffle(q['options']); q['shuffled'] = True
         state["module_id"] = check["module_id"]  # the teacher's context for questions asked meanwhile
         state["pending"] = {"kind": "check", "answer_id": uuid.uuid4().hex,
-                            "point_ids": q["point_ids"], "question": q}
+                            "point_ids": q["point_ids"], "question": q, 'depth_probe': q.get('depth_probe', False)}
         levels = course.book()
         passed = sum(levels.point(p["id"]).level == 3 for p in course.points)
         self._say(course, state, f"检验（已通过 {passed}/{len(course.points)} 个点）：" + _question_text(q), kind="question")
@@ -656,9 +788,8 @@ class Classroom:
                                           "选对了。" if correct else f"正确答案是：{q['answer']}。")
         else:
             verdict = self._judge(course, state, ctx, "casual", pending, text)  # a question is allowed here
-        if verdict.kind == 'clarify' and not pending.get('clarified'):
-            pending['clarified'] = True
-            return self._say(course, state, verdict.reason)
+        if verdict.uncertain or verdict.kind == 'clarify':
+            return self._deepen_question(course, state, ctx, pending)
         if verdict.kind == "question":
             return self._teacher(course, state, ctx, "最终检验中，学习者先问了一个问题。简短解答，但不要说出当前这道检验题的答案，"
                                  "也不要重讲整个知识点；答完提醒他回答上面的题（不要出新题）。", q["point_ids"], user=text)
@@ -744,10 +875,7 @@ class Classroom:
             pool = available()
             if not pool:
                 point = course.point(practice['targets'][practice['index'] % len(practice['targets'])])
-                self._bank_fill(course, ctx, point['module_id'])
-                pool = available()
-            if not pool:
-                raise BridgeError('QUESTION_BANK_INCOMPLETE', '可用练习题暂时不足。')
+                return self._defer_bank(course, state, _BankPending(point['module_id'], [point['id']]), '_ask_practice')
             ranked = [q for q in pool if q['point_ids'][0] in review] or pool
             practice['queue'].append(dict(self._rng.choice(ranked)))
         q = practice['queue'][practice['index']]
@@ -770,9 +898,8 @@ class Classroom:
                 '选对了。' if correct else f"正确答案是：{q['answer']}。")
         else:
             verdict = self._judge(course, state, ctx, 'test', pending, text)
-        if verdict.kind == 'clarify' and not pending.get('clarified'):
-            pending['clarified'] = True
-            return self._say(course, state, verdict.reason)
+        if verdict.uncertain or verdict.kind == 'clarify':
+            return self._deepen_question(course, state, ctx, pending)
         if verdict.kind != 'answer':
             return self._say(course, state, '请回答当前这道题。')
         if prior is None:
@@ -890,8 +1017,7 @@ class Classroom:
     @staticmethod
     def _test_fingerprint(course, module_id):
         points = course.points_of(module_id)
-        return lesson_prep.fingerprint(course.plan, course.module(module_id),
-                                       {"points": points}, course.excerpts([p["id"] for p in points]))
+        return question_bank.material_fingerprint(points, course.excerpts([p["id"] for p in points]))
 
     def _prep_targets(self, course, state):
         """At most today's remaining minutes plus the next calendar day's target."""
@@ -936,16 +1062,6 @@ class Classroom:
                 keep = {p["id"] for p in targets}
                 self.services.store.prune_lesson_cache(
                     plan_id, point_ids=keep, module_ids={p["module_id"] for p in targets})
-                # Start the module test while the learner is still working
-                # through its points; long-form lesson reviews may take longer.
-                for module_id in {p["module_id"] for p in targets}:
-                    try:
-                        points = fresh.points_of(module_id)
-                        if points[-1]["id"] not in keep or self._bank_rows(fresh, module_id):
-                            continue
-                        self._bank_fill(fresh, None, module_id, background=True)
-                    except Exception:  # noqa: BLE001 - a failed pretest must not discard lessons
-                        log.info("module question preparation failed", exc_info=True)
                 index = 0
                 while index < len(targets):
                     point = targets[index]
@@ -1046,6 +1162,9 @@ class Classroom:
 
     def _teacher(self, course, state, ctx, director, point_ids, *, user="", asks=False, prepared=None, short=False):
         """asks=False: a question the step did not ask for stays part of the explanation, not a card."""
+        pending = state.get("pending")
+        protected = bool(pending and self._prior_verdict(course, state, pending) is None)
+        question = pending["question"] if protected else None
         explicit_prepared = prepared is not None
         if prepared is None and len(point_ids) == 1:
             prepared = self._prepared_point(course, course.point(point_ids[0]))
@@ -1057,7 +1176,9 @@ class Classroom:
         tctx = {"prefs": self._prefs(), "plan": plan, "module": module, "excerpts": course.excerpts(point_ids),
                 "dialogue": self._dialogue(course, state)[:-1] if user else self._dialogue(course, state),
                 "profile": notes[:6000], "director": director, "user": user}
-        if prepared is not None:
+        if protected:
+            tctx["pending_question"] = {"stem": question["stem"], "options": question.get("options", [])}
+        elif prepared is not None:
             tctx["prepared_lesson"] = asdict(prepared)
         request = teacher_agent.teacher_request(tctx)
         mapping = teacher_agent.citation_map(tctx)
@@ -1066,16 +1187,23 @@ class Classroom:
         # The provider counts hidden reasoning against this cap. A 1024-token
         # cap truncated a two-sentence correction and charged for a retry.
         max_tokens = 4096
-        for attempt in range(3):
-            if attempt:
+        for attempt in range(2 if protected else 3):
+            if attempt and not protected:
                 stream(RESET)
             try:
-                result = self.services.gateway.complete("teacher", request[1], system=request[0], on_text=stream,
+                result = self.services.gateway.complete("teacher", request[1], system=request[0],
+                                                        on_text=None if protected else stream,
                                                         cancel=ctx.cancel if ctx else None, plan_id=course.plan_id,
                                                         max_tokens=max_tokens)
+            except ModelCancelled:
+                raise
             except ModelError as exc:
                 if exc.code == MODEL_OUTPUT_TRUNCATED and max_tokens < 8192:
                     max_tokens = 8192
+                    continue
+                if protected and not (ctx and ctx.cancel.is_set()):
+                    if attempt:
+                        break
                     continue
                 if attempt or exc.code not in TRANSIENT or (ctx and ctx.cancel.is_set()):
                     raise
@@ -1083,14 +1211,36 @@ class Classroom:
             raw = result.text
             try:
                 teaching = teacher_agent.parse_teaching(raw, tctx)
+                if protected:
+                    if teaching.casual_question and teaching.casual_question != question["stem"]:
+                        raise AgentFormatError("待答题尚未判定，不能替换原题")
+                    if teacher_agent.answer_leak(teaching.speech, question):
+                        raise AgentFormatError("待答题回复包含参考答案要点")
+                    # A restated original question remains prose, never a new
+                    # card or a replacement answer id.
+                    if teaching.casual_question:
+                        teaching = teacher_agent.Teaching(teaching.speech + "\n\n" + question["stem"], None,
+                                                         teaching.cited_chunks)
                 if not asks and teaching.speech.rstrip().endswith(("？", "?")):
-                    raise AgentFormatError("老师在未要求提问的步骤结尾新增了问题")
+                    if not protected:
+                        raise AgentFormatError("老师在未要求提问的步骤结尾新增了问题")
                 break
             except AgentFormatError as exc:
+                teaching = None
                 log.info("teacher answer rejected (%s), attempt %s", exc, attempt + 1)
+                if protected:
+                    tctx["director"] += " 上次回复未通过待答题边界检查。请重写：只回应题外内容或重述原题，不讲任何答案要点、提示或知识结论。"
+                    request = teacher_agent.teacher_request(tctx)
         if teaching is None:
-            raise ModelError("AGENT_FORMAT", "老师这次的回答格式不对，已重试仍不行。")
-        removed = teacher_agent.citation_diagnostics(raw, tctx)
+            if not protected:
+                raise ModelError("AGENT_FORMAT", "老师这次的回答格式不对，已重试仍不行。")
+            options = "\n".join(f"{chr(65 + i)}. {option}" for i, option in enumerate(question.get("options", [])))
+            teaching = teacher_agent.Teaching("先回答这道题，判定之后再讲解答案；不会可以说“不会”。\n\n" +
+                                             question["stem"] + ("\n" + options if options else ""), None, ())
+            raw = ""
+        if protected:
+            stream(teaching.speech)
+        removed = teacher_agent.citation_diagnostics(raw, tctx) if raw else ()
         if removed:
             log.info("teacher cited unknown excerpts %s", removed)
         if explicit_prepared and asks:
@@ -1107,6 +1257,10 @@ class Classroom:
 
     def _judge(self, course, state, ctx, mode, pending, reply):
         q = pending["question"]
+        if q['type'] == 'choice' and reply.strip() in q['options']:
+            correct = reply.strip() == q['answer']
+            return judge_agent.Verdict('answer', correct, () if correct else tuple(q['point_ids']),
+                                       '选对了。' if correct else '所选选项不符合题目条件。')
         points = [course.point(pid) for pid in pending["point_ids"]]
         jctx = {"mode": mode, "points": [{"id": p["id"], "title": p["title"], "summary": p.get("summary", "")} for p in points],
                 "excerpts": course.excerpts(pending["point_ids"]),
@@ -1115,17 +1269,50 @@ class Classroom:
                 "reply": reply, "require_evidence": q["type"] in ("short", "fix_error")}
         request = judge_agent.judge_request(jctx, reply)
         parse = lambda text: judge_agent.parse_judgement(text, jctx)
-        first = self._ask(course, ctx, "judge", request, parse, 2048)
-        if q["type"] not in ("short", "fix_error") or (not first.uncertain and first.kind != "clarify"):
-            return first
-        second = self._ask(course, ctx, "judge", request, parse, 2048)
-        if (second.uncertain or first.kind != second.kind
-                or first.correct != second.correct or first.wrong_points != second.wrong_points):
-            return judge_agent.Verdict("clarify", None, (),
-                "请只针对题目要求补充说明你刚才的答案。")
-        return second
+        return self._ask(course, ctx, "judge", request, parse, 4096)
 
-    def _questions(self, course, ctx, purpose, point_ids, *, avoid=(), used_angles=None, background=False):
+    def _deepen_question(self, course, state, ctx, pending):
+        """Do not record the uncertain answer; grade one deeper probe per point."""
+        if pending.get('depth_probe'):
+            return self._say(course, state, '这道题还无法可靠判定，请点选一个选项。', role='system')
+        probes = []
+        for pid in pending['point_ids']:
+            module_id = course.point(pid)['module_id']
+            pool = [q for q in self._bank_rows(course, module_id) if q['point_ids'] == [pid]
+                    and q['type'] == 'choice' and q['angle'] != 'recall' and not q['correct_seen']
+                    and q['stem'] != pending['question']['stem']]
+            if pool:
+                q = dict(self._rng.choice(pool))
+            else:
+                generated = self._questions(course, ctx, 'quick_check', [pid],
+                    avoid=[pending['question']['stem']], deepen=True)[0]
+                q = dict(_question_dict(generated), angle='apply')
+                q['id'] = course.store.add_bank_questions(course.plan_id, module_id, [q],
+                    fingerprint=self._test_fingerprint(course, module_id))[0]
+                q['module_id'] = module_id
+            probes.append(dict(q, depth_probe=True))
+        self._say(course, state, '这次答案还无法确定，换一道同知识点的深入应用题，以这道题的结果为准。', role='system')
+        kind = pending['kind']
+        if kind in ('module_test', 'skip_test', 'retest'):
+            test = state['test']
+            test['queue'][test['index']:test['index'] + 1] = probes
+            self._ask_next(course, state)
+        elif kind == 'check':
+            check = state['check']
+            check['queue'][check['index']:check['index'] + 1] = probes
+            self._ask_check(course, state)
+        elif kind == 'practice':
+            practice = state['practice']
+            practice['queue'][practice['index']] = probes[0]
+            self._ask_practice(course, state, ctx)
+        else:
+            q = probes[0]
+            self._rng.shuffle(q['options'])
+            state['pending'] = dict(pending, question=q, point_ids=q['point_ids'], answer_id=uuid.uuid4().hex)
+            self._say(course, state, _question_text(q), kind='question')
+        state['pending']['depth_probe'] = True
+
+    def _questions(self, course, ctx, purpose, point_ids, *, avoid=(), used_angles=None, background=False, deepen=False):
         points = [course.point(pid) for pid in point_ids]
         excerpts = course.excerpts(point_ids)
         qctx = {"purpose": purpose, "per_point": 2 if purpose == 'bank' else 1,
@@ -1134,10 +1321,26 @@ class Classroom:
                             "chunk_ids": [c for c in p["chunk_ids"] if c in excerpts] or p["chunk_ids"][:1]} for p in points]}
         if purpose == "check":
             qctx["used_angles"] = used_angles or {pid: [] for pid in point_ids}
+        if deepen:
+            qctx['deepen'] = True
         request = question_agent.question_request(qctx)
-        parse = lambda text: question_agent.parse_questions(text, qctx)
-        return (self._prep_ask(course, "questions", request, parse, 8192) if background else
-                self._ask(course, ctx, "questions", request, parse, 8192))
+        def parse(text):
+            questions = question_agent.parse_questions(text, qctx, partial_bank=purpose == 'bank')
+            if deepen and (len(questions) != 1 or questions[0].type != 'choice'):
+                raise AgentFormatError('深化题须为一道情境应用单选题。')
+            if purpose == 'bank' and len(questions) > 5:
+                raise AgentFormatError('题库小批最多五题。')
+            return questions
+        if purpose == 'bank':
+            # One response per small batch, then targeted one-point repair.
+            # Reasoning shares the output cap: 4096 truncated even two-point
+            # Flash batches in the fixed sample. Keep the five-question bound
+            # and enough headroom, without token-doubling retries.
+            result = self.services.gateway.complete('questions', request[1], system=request[0],
+                cancel=ctx.cancel if ctx else None, plan_id=course.plan_id, max_tokens=8192)
+            return parse(result.text)
+        return (self._prep_ask(course, "questions", request, parse, 4096) if background else
+                self._ask(course, ctx, "questions", request, parse, 4096))
 
     def _ask(self, course, ctx, purpose, request, parse, max_tokens):
         last = None

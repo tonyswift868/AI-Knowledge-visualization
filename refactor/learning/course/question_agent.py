@@ -33,9 +33,11 @@ QUESTION_SYSTEM = """你是 MentorFlow 的课堂出题员，只依据给出的�
 只返回一个 JSON 对象 {"questions":[...]}，不要 Markdown 或解释。module_test、retest、quick_check 每题恰好有 id、type、stem、options、answer、reference、point_ids、chunk_ids 八个字段；purpose=check 或 bank 每题再增加 angle 字段，共九个字段。其他用途不要输出 angle。
 id 为本批唯一的短字符串；type 只能是 choice、short、fix_error。中文出题和写参考要点，关键术语保留英文。
 choice：单选，options 必须恰好四个互不重复的字符串，不加 A/B/C/D 前缀或正确标记，恰好一个选项正确，另外三个必须在题目条件下明确错误；answer 必须原样等于其中一个选项（不是字母或序号），不能返回多个答案。勿使用“以上都对/都不对”等无法独立判断的选项。
+代码结果或字符串字面量的选项用引号包住值，保留大小写和内部空白；不提供仅靠选项外围空白区别的选项，界面上必须看得出区别。
 short：要求解释、举例或应用的简答题，options=[]，answer 为简明标准答案，reference 为逐点评分要点。
 每道 short 只问一至两个必答要点；reference 用 1.、2. 明确列出与题面逐一对应的必答要点，题面条件须写全，所有允许情形下答案必须唯一。不要把题面未指定的例外条件藏进评分要点。
 reference 的必答要点只能覆盖题面明确要求的内容，不把同一知识点的其他细节、未问的赋值顺序或异常名称额外列为必答；必要的补充解释明确标作非必答。不要写“得几分”的计分表，宿主按要点判定，不由出题员另建评分规则。
+题面只问概括含义时，资料里的举例清单不是必答清单；例如回答“任意空白字符”已表达类别，不要求逐个列出换行、制表等例子。必答要点写含义，不要求照抄原话。每个小批简洁输出，题面、选项和参考要点不重复堆砌。
 原文只说明必要条件时，可考违反条件不能成功的结果，但不能要求说出原文未提供的具体异常类型或报错文本；正确的资料外知识也不能悄悄变成本题的必答门槛。
 写完 reference 后逐条对应到 stem 的明确要求；纠错题以纠正原命题中的错误并说明原因为准，不把没问的变量具体值或原本没有说错的背景细节加作必答。若确需考这些细节，先在题面明确提出。
 fix_error：提供确实含错的说法或代码，让用户指出错误并改正或解释原因；options=[]，answer 为正确改法，reference 说明具体错处及各点评分要点。不能只让人答“对/错”。
@@ -46,11 +48,12 @@ purpose=module_test 或 retest 时每个输入知识点至少覆盖 per_point �
 purpose=check 是计划首轮完成后的最终检验：每题必须有 angle，且只能是 recall（复述概念）、apply（应用）、contrast（相近概念区分）、fix_error（找错改错）、transfer（换场景迁移）之一。宿主会按知识点给出已用角度；同一点不得重复其中任何角度。每个输入知识点至少覆盖 per_point 道题，题型仍只能是 choice、short、fix_error，不得出纯判断题；每题必须带本题知识点的资料出处。
 purpose=quick_check 时只出一道快速确认题，无论 per_point 的值；选一个有区分度的角度，必要时可同时考多个点，不连环追问。
 总题数不超过 200；stem 最多 4000 字，每个选项最多 1000 字，answer 最多 4000 字，reference 最多 6000 字。
-purpose=bank 时为每个知识点准备 2–3 道角度或题型不同的题；约六七成选择题，其余以简答为主，填空只考真正关键概念。另准备同一模块内的一些综合题，一题最多考 3–4 个点；题目与角度要便于后续拆开复问。每题提供 angle。涉及序列或操作顺序的题，明确元素个数、是否互异及操作前提，使正确答案在所有允许情形下唯一；不要用单元素或相同值造成例外。
+purpose=bank 是一小批题库，只为输入的 1–2 个知识点各准备恰好 2 道角度或题型不同的单点题；两点时另出至多 1 道综合题，综合题只含本批点（不得超过 4 点）。总题数至多 5。约六七成选择题，其余以简答为主，填空只考真正关键概念。每题提供 angle。涉及序列或操作顺序的题，明确元素个数、是否互异及操作前提，使正确答案在所有允许情形下唯一；不要用单元素或相同值造成例外。
+本次出题要求含 deepen=true 时，只出一道单点的情境应用单选题，四选一；比 avoid 中的原题更深入，不复述原题，也不透露原题答案。
 """
 
 
-def _normal(value):
+def _normal(value, *, preserve_case=False):
     # Prose punctuation is cosmetic; punctuation inside code containers and
     # quoted literals is not: ('x') and ('x',) have different Python meanings.
     # Do not execute/repair code or collapse string contents while comparing.
@@ -75,7 +78,7 @@ def _normal(value):
                 stack.pop()
             out.append(char)
         elif not char.isspace() and (stack or char not in "，,。；;：:、“”‘’"):
-            out.append(char.casefold())
+            out.append(char if preserve_case else char.casefold())
     return "".join(out).rstrip(".!?")
 
 
@@ -89,6 +92,21 @@ def _option(value):
     if match and match.group().strip().endswith('、') and re.fullmatch(r'[A-Za-z]', normalized[match.end():]):
         return normalized
     return normalized[match.end():] if match else normalized
+
+
+def _answer_in_stem(leak, normal):
+    """An output contained inside a longer input literal isn't a supplied answer.
+
+    For example, strip('x') on 'xxhelloxx' must not reject the answer 'hello'.
+    Full literal answers and prose answers still count as literal disclosure.
+    """
+    literals = list(re.finditer(r'''"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*' ''', normal, re.VERBOSE))
+    for match in re.finditer(re.escape(leak), normal):
+        embedded = any(l.start() <= match.start() and match.end() <= l.end()
+                       and leak not in (l.group(), l.group()[1:-1]) for l in literals)
+        if not embedded:
+            return True
+    return False
 
 
 def _context(ctx):
@@ -140,12 +158,14 @@ def question_request(ctx: dict) -> tuple[str, list[dict]]:
     task = dict(per_point=ctx["per_point"], avoid=avoid, purpose=ctx["purpose"])
     if ctx["purpose"] == "check":
         task["used_angles"] = {point["id"]: list(used_angles[point["id"]]) for point in points}
+    if ctx.get('deepen'):
+        task['deepen'] = True
     content += "\n【本次出题要求】\n" + _dump(task)
     _text(content, "request", 500_000)
     return QUESTION_SYSTEM, [{"role": "user", "content": content}]
 
 
-def parse_questions(answer: str, ctx: dict) -> list[Question]:
+def parse_questions(answer: str, ctx: dict, *, partial_bank=False) -> list[Question]:
     points, excerpts, avoid, used_angles = _context(ctx)
     data = _fields(_json_object(answer), ("questions",))
     rows = data["questions"]
@@ -187,7 +207,9 @@ def parse_questions(answer: str, ctx: dict) -> list[Question]:
             if len(options) != 4:
                 raise AgentFormatError("options: 单选题须有四个选项")
             options = tuple(_text(option, "option", 1000).strip() for option in options)
-            normalized = [_normal(_option(option)) for option in options]
+            # Case can be the value being tested (lower/upper, identifiers).
+            # Literal option equality cannot prove semantic equivalence.
+            normalized = [_normal(_option(option), preserve_case=True) for option in options]
             if not all(normalized) or len(set(normalized)) != 4 or expected not in options:
                 raise AgentFormatError("options: 选项重复或未指定唯一的选项原文答案")
             leak = _normal(_option(expected))
@@ -200,7 +222,7 @@ def parse_questions(answer: str, ctx: dict) -> list[Question]:
                 raise AgentFormatError("type: 不接受只有是非答案的判断题")
         if not leak:
             raise AgentFormatError("answer: 答案不能只含标点或空白")
-        if leak in normal and (kind != 'choice' or len(leak) >= 3):
+        if _answer_in_stem(leak, normal) and (kind != 'choice' or len(leak) >= 3):
             raise AgentFormatError("stem: 题面包含答案原文")
         point_ids = _ids(row["point_ids"], by_id)
         if ctx["purpose"] == "bank" and len(point_ids) > 4:
@@ -228,8 +250,8 @@ def parse_questions(answer: str, ctx: dict) -> list[Question]:
         if not cited <= related:
             raise AgentFormatError("provenance: 引用了与本题考点无关的片段")
         result.append(Question(identifier, kind, stem, options, expected, reference, point_ids, chunk_ids, angle))
-    if ctx["purpose"] != "quick_check" and any(count < ctx["per_point"] for count in counts.values()):
+    if ctx["purpose"] != "quick_check" and not partial_bank and any(count < ctx["per_point"] for count in counts.values()):
         raise AgentFormatError("coverage: 有知识点未达到每点最低题数")
-    if ctx["purpose"] == "bank" and any(not 2 <= count <= 3 for count in single_counts.values()):
+    if ctx["purpose"] == "bank" and not partial_bank and any(not 2 <= count <= 3 for count in single_counts.values()):
         raise AgentFormatError("coverage: 每个点须有二至三道单点题")
     return result

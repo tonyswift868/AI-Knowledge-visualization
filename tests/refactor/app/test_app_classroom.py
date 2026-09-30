@@ -3,6 +3,7 @@ import json
 import re
 import tempfile
 import threading
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,6 +38,7 @@ class Agents:
         self.calls = []
         self.verdicts = []
         self.choice = False
+        self.choice_bank_points = set()
         self.teacher_format_errors = 0
         self.lock = threading.Lock()
 
@@ -78,8 +80,8 @@ class Agents:
             for i, p in enumerate(work):
                 chunk = next(c for c in excerpts)
                 for variant in range(2 if purpose_name == 'bank' else 1):
-                  if self.choice:
-                    rows.append({"id": f"q{i}-{variant}", "type": "choice", "stem": f"关于{p['title']}哪项正确（{i}-{variant}）？",
+                  if self.choice or (purpose_name == 'bank' and p['id'] in self.choice_bank_points):
+                    rows.append({"id": f"q{i}-{variant}", "type": "choice", "stem": f"关于{p['title']}哪项正确（第{len(self.calls)}轮{i}-{variant}）？",
                                  "options": ["甲说法", "乙说法", "丙说法", "丁说法"], "answer": "乙说法",
                                  "reference": "乙说法正确", "point_ids": [p["id"]], "chunk_ids": [chunk]})
                   else:
@@ -134,7 +136,7 @@ def room():
             yield classroom, agents, store
         finally:
             for thread in threading.enumerate():
-                if thread.name == "classroom-profile":
+                if thread.name in ('classroom-profile', 'classroom-question-bank'):
                     thread.join(5)
             store.close()
 
@@ -145,7 +147,12 @@ def ctx(streamed=None):
 
 def act(classroom, name, *args, streamed=None):
     method = getattr(classroom, name)
-    return classroom.run(PLAN, lambda course, state, c: method(course, state, c, *args), ctx(streamed))
+    view = classroom.run(PLAN, lambda course, state, c: method(course, state, c, *args), ctx(streamed))
+    deadline = time.monotonic() + 3
+    while view['step'] == 'preparing_questions' and time.monotonic() < deadline:
+        time.sleep(.01)
+        view = classroom.run(PLAN, lambda *a: None, ctx(streamed))
+    return view
 
 
 def credits(store):
@@ -238,6 +245,9 @@ def test_reopen_uses_database_completion_state(room):
 
 def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
     classroom, agents, store = room
+    # Bank preparation is asynchronous: select the later module's fixture
+    # type before enter(), not after that bank may already have been cached.
+    agents.choice_bank_points = {'p2'}
     view = act(classroom, "enter")
     assert view["step"] == "teach" and view["can_skip"] and view["module"]["title"] == "队列"
 
@@ -285,6 +295,9 @@ def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
     view = act(classroom, "next_module")
     assert view["module"]["title"] == "栈" and view["step"] == "teach" and view["can_skip"]
     agents.choice = True
+    for question in store.records('question_bank', PLAN):
+        if question['module_id'] == 'm1':
+            store.mark_bank_correct(PLAN, question['id'])
     view = act(classroom, "start_test", "skip_test")
     assert set(view["question"]["options"]) == {"甲说法", "乙说法", "丙说法", "丁说法"}
     calls = len(agents.calls)

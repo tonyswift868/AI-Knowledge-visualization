@@ -10,9 +10,10 @@ import sys
 
 from .judge_agent import _dump, _excerpts, _fields, _identifier, _json_object, _text
 from .planner_agents import AgentFormatError
+from .request_layout import ordered_payload
 
 
-VERSION = 2
+VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -49,12 +50,14 @@ explanation 是准确的中文讲解；examples 必须有 1–2 项，其中至�
 只讲本点；不编造出处、资料外的定理和学习者进度。"""
 PREP_SYSTEM += "\n控制篇幅：explanation 不超过 900 字，每个例子的 text 不超过 200 字、code 不超过 400 字；类比和边界各不超过 150 字；引申最多三条。直接给完整 JSON，不输出思考过程。"
 PREP_SYSTEM += "\n若例子或提问涉及失败操作，说明异常发生后没有正常返回值；不要把其他成功调用返回 None 的性质套在这次失败调用上。"
+PREP_SYSTEM += "\n随口问不能原样重复例子里已经演示的输入、操作和结果；不能让学生照抄例子就答出。优先换输入或条件；借用同一例子时须改问尚未演示的角度，仍只考本点。"
 
 REVIEW_SYSTEM = """你是独立的课前事实核对员，不是写稿员。逐条比对讲解、每个例子、类比与边界、随口问和参考答案与所给原文；逐条检查代码的 Python 语义及可运行性。
 只返回 JSON 对象，恰好包含 verdict、issues、revised。verdict 只能是 approve、revise、live。approve 时 issues=[]、revised=null；revise 时 issues 为明确的问题列表，revised 为完整修正稿；有无法可靠修好的事实、代码或资料缺口时 verdict=live，issues 指明原因，revised=null。不得因为文字流畅就批准，不能把引申说成原文事实；修订不能引入原文没有的新事实。"""
 REVIEW_SYSTEM += "\n逐项核对后直接给简短完整 JSON，不输出思考过程。没有错误就用最短的 approve 结果，不复述讲稿。修稿遵守写稿篇幅，issues 最多三条、每条一句。"
 REVIEW_SYSTEM += "\n特别区分正常返回与抛出异常：若题面是一个会失败的操作，参考答案不能同时声称该操作正常返回 None。"
 REVIEW_SYSTEM += "\n逐题检查失败时的行为：异常类型、是否有正常返回值、原对象是否变化。尤其不能把某方法成功时返回 None，写成对不可比较元素排序失败时也返回 None。"
+REVIEW_SYSTEM += "\n核对随口问与讲解及例子的输入、操作、所问结果：原样重复已经演示的例子不能 approve；只换人物/变量名也不算新角度。须换条件或问同一例子尚未演示的角度，并同步修参考答案，改不可靠时用 live。"
 
 BATCH_SIZE = 2
 
@@ -97,7 +100,7 @@ def batch_review_request(contexts: list[dict], drafts: tuple[LessonPrep, ...]) -
     source = contexts[0]["excerpts"]
     items = [{"point": ctx["point"], "draft": asdict(draft)} for ctx, draft in zip(contexts, drafts)]
     return system, [{"role": "user", "content": "【当前模块原文】\n" + _dump(source)},
-                    {"role": "user", "content": "【相邻知识点与待核讲稿】\n" + _dump(items)}]
+                    {"role": "user", "content": ordered_payload("【相邻知识点与待核讲稿】\n" + _dump(items), ("point", "draft"))}]
 
 
 def parse_batch_reviews(answer: str, point_ids: tuple[str, ...]) -> tuple[Review, ...]:
@@ -183,7 +186,7 @@ def review_request(ctx: dict, draft: LessonPrep) -> tuple[str, list[dict]]:
     _context(ctx)
     prep_request(ctx)
     return REVIEW_SYSTEM, [{"role": "user", "content": "【当前模块原文】\n" + _dump(ctx["excerpts"])},
-                           {"role": "user", "content": "【本次知识点与待核备课稿】\n" + _dump({"point": ctx["point"], "draft": asdict(draft)})}]
+                           {"role": "user", "content": ordered_payload("【本次知识点与待核备课稿】\n" + _dump({"point": ctx["point"], "draft": asdict(draft)}), ("point", "draft"))}]
 
 
 def parse_review(answer: str) -> Review:
@@ -278,6 +281,9 @@ def check_code(prep: LessonPrep) -> tuple[str, ...]:
 def check_lesson(prep: LessonPrep) -> tuple[str, ...]:
     """Local checks supplement, never replace, the independent source review."""
     problems = list(check_code(prep))
+    if casual_repeats_example(prep.casual_question, "\n".join(e.text for e in prep.examples),
+                              [e.code for e in prep.examples if e.code]):
+        problems.append("随口问重复了例子已演示的输入、操作与结果")
     question = prep.casual_question
     answer = prep.reference_answer
     if (re.search(r"(?:失败|报错|无法|不能|排不了|不可比较|越界|不存在)", question)
@@ -285,6 +291,42 @@ def check_lesson(prep: LessonPrep) -> tuple[str, ...]:
             and not re.search(r"(?:抛出|引发|异常|不会正常返回|没有正常返回|成功时才)", answer)):
         problems.append("失败操作与正常返回值被混为一谈")
     return tuple(problems)
+
+
+def casual_repeats_example(question: str, examples: str, codes: list[str]) -> bool:
+    """Detect literal/example replay; independent review handles paraphrases.
+
+    Reusing a scenario for an unshown return value is allowed. Matching only a
+    method or the general concept is insufficient to declare a duplicate.
+    """
+    compact = lambda value: re.sub(r"[\s`*_，,。；;:：!?！？]", "", value).casefold()
+    q = compact(question)
+    if len(q) >= 8 and q in compact(examples):
+        return True
+    methods = set(re.findall(r"\b(?:append|extend|insert|remove|pop|sort|reverse|clear|count|index)\b", question))
+    literals = set(re.findall(r"['\"]([^'\"\n]+)['\"]", question))
+    # Chinese prose often says 两个 apple without quoting the literal.
+    literals.update(re.findall(r"(?:两个|多个|一个|\d+个)\s*`?([A-Za-z]+)`?", question))
+    lists = re.findall(r"\[[^\]\n]+\]", question)
+    wants_return = bool(re.search(r"返回|return|赋给|赋值给", question))
+    failure = r"没有(?:这个|该)?(?:值|元素)|不存在|找不到|空列表|越界|不在列表|没有\s*['\"]"
+    unshown_failure = bool(re.search(failure, question) and not re.search(failure, examples))
+    for code in codes:
+        if not methods.intersection(re.findall(r"\.(\w+)\(", code)):
+            continue
+        same_input = (any(literal in code and literal in examples for literal in literals)
+                      or any(compact(value) in compact(code) for value in lists))
+        if not same_input:
+            continue
+        if unshown_failure:
+            continue
+        if wants_return:
+            shown = bool(re.search(r"(?:print\([^\n]*\.\w+\(|\w+\s*=\s*\w+\.\w+\()", code)
+                         or re.search(r"返回", examples))
+            if not shown:
+                continue
+        return True
+    return False
 
 
 def render_lesson(prep: LessonPrep, *, title: str, chunk_ids: tuple[str, ...]) -> str:

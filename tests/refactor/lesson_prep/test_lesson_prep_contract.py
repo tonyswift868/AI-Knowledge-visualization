@@ -128,7 +128,7 @@ def room():
         store.close()
 
 
-def test_background_reviewed_prep_and_questions_are_reused_then_invalidated(room, monkeypatch):
+def test_background_reviewed_prep_is_reused_then_invalidated(room, monkeypatch):
     classroom, store = room
     calls = []
 
@@ -158,7 +158,9 @@ def test_background_reviewed_prep_and_questions_are_reused_then_invalidated(room
         if thread.name == 'classroom-lesson-prep': thread.join(5)
     assert calls.count('lesson_prep') == 1 and calls.count('lesson_review') == 1
     assert classroom._prepared_point(course, course.point('p1')) == draft()
-    assert len(classroom._bank_rows(course, 'm1')) == 2
+    # Bank preparation has its own immediate job; it no longer waits for
+    # teaching preparation or spends that job's daily preparation allowance.
+    assert classroom._bank_rows(course, 'm1') == []
     # Concurrent profile update must preserve already-synced preparation.
     store.save_teacher_profile(PLAN, {'text': '新档案'})
     assert classroom._prepared_point(course, course.point('p1')) == draft()
