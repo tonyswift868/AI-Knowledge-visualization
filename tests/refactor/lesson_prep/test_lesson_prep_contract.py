@@ -25,12 +25,8 @@ DAY = date(2026, 10, 5)
 
 
 def draft(code='a, b = 1, 2'):
-    return lesson_prep.LessonPrep(
-        '队列按先进先出的顺序取出元素。',
-        (lesson_prep.Example('排队买票，先到先服务。', True, True, None),
-         lesson_prep.Example('a 与 b 同时赋值。', False, True, code)),
-        '像排队。', '现实排队可能有人插队，此处只类比先后次序。',
-        '队列的取出顺序是什么？', '先进入的先取出。', ('生活中的排队只是类比。',))
+    from tests.refactor.guided_lessons.fixtures import draft as guided_draft
+    return guided_draft('c1', code=code, short=True)
 
 
 def context(point='p1'):
@@ -67,14 +63,13 @@ def test_batch_contract_and_archived_failure_path_regression():
     with pytest.raises(AgentFormatError, match='编号'):
         lesson_prep.parse_batch_preps(json.dumps(wire, ensure_ascii=False), ids)
 
-    archived = lesson_prep.LessonPrep(
-        '不可比较的元素无法排序。', draft().examples, '像排队。', '有些元素不能比较。',
-        "为什么 [None, 'hello', 10] 排不了序？sort() 又返回什么？",
-        '这个列表排不了序，因为元素不可比较。sort() 返回的是默认的 None。', ())
+    from dataclasses import replace
+    archived = replace(draft(), questions=(replace(draft().questions[0],
+        stem="为什么 [None, 'hello', 10] 排不了序？sort() 又返回什么？",
+        required_points=('这个列表排不了序，因为元素不可比较。sort() 返回的是默认的 None。',)), draft().questions[1]))
     assert '失败操作与正常返回值被混为一谈' in lesson_prep.check_lesson(archived)
-    fixed = lesson_prep.LessonPrep(
-        archived.explanation, archived.examples, archived.analogy, archived.analogy_boundary,
-        archived.casual_question, '这个列表调用 sort 会抛出 TypeError，没有正常返回值；可比较的列表排序成功时才返回 None。', ())
+    fixed = replace(archived, questions=(replace(archived.questions[0],
+        required_points=('这个列表调用 sort 会抛出 TypeError，没有正常返回值；可比较的列表排序成功时才返回 None。',)), archived.questions[1]))
     assert lesson_prep.check_lesson(fixed) == ()
 
 
@@ -99,7 +94,7 @@ def test_safe_runnable_examples_are_executed_without_full_builtins():
     good = draft("a = [1, 2]\na.append(3)\nprint(a)")
     assert lesson_prep.check_code(good) == ()
     bad = draft("a = [1, 2]\na.pop(9)")
-    assert lesson_prep.check_code(bad) == ('例2代码不能正常运行：IndexError',)
+    assert lesson_prep.check_code(bad) == ('第2步代码不能正常运行：IndexError',)
 
 
 @pytest.fixture
@@ -144,8 +139,8 @@ def test_background_reviewed_prep_is_reused_then_invalidated(room, monkeypatch):
         if purpose == 'questions':
             return [Question(f'q{i}', 'short', f'解释点 {i}', (), '先进入先取出', '按顺序', (pid,), ('c1',), 'recall')
                     for i, pid in enumerate(('p1', 'p2'))]
-        if purpose == 'lesson_prep': return (draft(), draft())
-        if purpose == 'lesson_review': return (lesson_prep.Review('approve', (), None),) * 2
+        if purpose == 'lesson_prep': return (draft(), draft()) if '相邻知识点' in request[1][-1]['content'] else draft()
+        if purpose == 'lesson_review': return lesson_prep.Review('approve', (), None)
         raise AssertionError(purpose)
 
     monkeypatch.setattr(classroom, '_ask', fake_ask)
@@ -156,7 +151,7 @@ def test_background_reviewed_prep_is_reused_then_invalidated(room, monkeypatch):
     classroom._prepare_later(course, state)
     for thread in threading.enumerate():
         if thread.name == 'classroom-lesson-prep': thread.join(5)
-    assert calls.count('lesson_prep') == 1 and calls.count('lesson_review') == 1
+    assert calls.count('lesson_prep') == 1 and calls.count('lesson_review') == 2
     assert classroom._prepared_point(course, course.point('p1')) == draft()
     # Bank preparation has its own immediate job; it no longer waits for
     # teaching preparation or spends that job's daily preparation allowance.
@@ -177,9 +172,9 @@ def test_background_reviewed_prep_is_reused_then_invalidated(room, monkeypatch):
 def test_unverified_prep_never_becomes_teacher_basis(room, monkeypatch, verdict):
     classroom, store = room
     def fake_prep(_course, purpose, _request, _parse, _max_tokens):
-        if purpose == 'lesson_prep': return (draft(), draft())
+        if purpose == 'lesson_prep': return (draft(), draft()) if '相邻知识点' in _request[1][-1]['content'] else draft()
         if purpose == 'lesson_review':
-            return (lesson_prep.Review(verdict, ('原文依据不足',), None if verdict == 'live' else draft()),) * 2
+            return lesson_prep.Review(verdict, ('原文依据不足',), None if verdict == 'live' else draft())
         raise AssertionError(purpose)
     monkeypatch.setattr(classroom, '_prep_ask', fake_prep)
     monkeypatch.setattr(classroom, '_questions', lambda *args, **kwargs: [])
@@ -200,7 +195,8 @@ def test_failed_batch_falls_back_without_retry(room, monkeypatch):
         nonlocal count
         if purpose == 'lesson_prep':
             count += 1
-            raise RuntimeError('synthetic model failure')
+            from refactor.learning.connections.errors import ModelError
+            raise ModelError('MODEL_TIMEOUT', 'synthetic model failure')
         raise AssertionError(purpose)
     monkeypatch.setattr(classroom, '_prep_ask', fake_prep)
     monkeypatch.setattr(classroom, '_questions', lambda *args, **kwargs: [])
@@ -211,7 +207,7 @@ def test_failed_batch_falls_back_without_retry(room, monkeypatch):
         if thread.name == 'classroom-lesson-prep': thread.join(5)
     assert store.load_lesson_cache(PLAN)['lesson_preps']['p1']['status'] == 'needs_live_teaching'
     assert store.load_lesson_cache(PLAN)['lesson_preps']['p2']['status'] == 'needs_live_teaching'
-    assert count == 1
+    assert count == 3
 
 
 def test_prepared_question_is_persisted_as_the_actual_question(room, monkeypatch):
@@ -229,9 +225,9 @@ def test_prepared_question_is_persisted_as_the_actual_question(room, monkeypatch
     classroom.services.gateway = SimpleNamespace(complete=complete)
     prepared = draft()
     teaching = classroom._teacher(course, state, None, '讲解队列。', ['p1'], asks=True, prepared=prepared)
-    assert teaching.casual_question == prepared.casual_question
+    assert teaching.casual_question is None
     messages = store.records('messages', PLAN)
-    assert any(row['content'] == prepared.casual_question and row['kind'] == 'casual' for row in messages)
+    assert not any(row['kind'] == 'casual' for row in messages)  # cards come from the state machine
 
     # A later step that did not ask for a question rejects an unsolicited
     # trailing quiz and retries before saving the spoken text.
@@ -273,15 +269,19 @@ def test_direct_prepared_lesson_and_early_verdict_before_short_feedback(room):
     classroom.services.gateway = SimpleNamespace(complete=complete)
     ctx = SimpleNamespace(cancel=threading.Event(), stream=streamed.append)
     classroom._teach_point(course, state, ctx, '')
-    assert calls == [] and state['pending']['question']['stem'] == draft().casual_question
+    assert calls == [] and state['step'] == 'lesson'
+    classroom.next(course, state, ctx)
+    classroom.choose(course, state, ctx, 0)
+    classroom.next(course, state, ctx)
+    classroom.next(course, state, ctx)
+    assert state['pending']['question']['stem'] == draft().casual_question
     classroom._casual_reply(course, state, ctx, '先进入先取出。', state['pending'])
-    assert calls == ['judge', 'teacher']
-    assert state['step'] == 'answer' and state['pending']['point_ids'] == ['p2']
+    assert calls == ['judge']
+    assert state['step'] == 'lesson' and state['lesson']['point_id'] == 'p2'
     messages = store.messages(PLAN, 'm1')
-    assert sum(m['kind'] == 'teach' for m in messages) == 3  # two scripts and the one-sentence feedback
-    assert any('mf-source:c1' in m['content'] for m in messages if m['kind'] == 'teach')
-    assert next(i for i, m in enumerate(messages) if m['kind'] == 'verdict') < next(
-        i for i, m in enumerate(messages) if m['content'] == '答得对，先到先服务。')
+    assert sum(m['kind'] == 'step' for m in messages) == 4
+    assert any('mf-source:c1' in m['content'] for m in messages if m['kind'] == 'step')
+    assert messages[-2]['kind'] == 'verdict' and messages[-1]['kind'] == 'step'
 
 
 def test_profile_updates_after_module_and_leave_but_not_each_point(room, monkeypatch):

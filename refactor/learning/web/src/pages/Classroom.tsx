@@ -14,6 +14,7 @@ import { Button } from "../ui"
 import { MicButton, useVoiceInput } from "../voice"
 import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacherVoice"
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
+import { LessonActions, LessonProgress, type Lesson } from "../classroom/GuidedLesson"
 
 const TeacherStage = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherStage })))
 
@@ -25,6 +26,7 @@ type Room = {
   module: { id: string; title: string; number: number; total: number; state: string }
   points: Point[]; step: string; question: Question | null; messages: Msg[]; can_skip: boolean; red: string[]
   more_modules: boolean; check: { passed: number; total: number } | null
+  lesson?: Lesson | null
   today: { today_target: number; today_confirmed: number; today_tentative: number; needs_rest?: boolean; is_late_night?: boolean } | null
 }
 type Source = { text: string; title: string; url: string | null; section: string[] }
@@ -43,18 +45,21 @@ export function Classroom() {
   const planId = useApp((s) => s.planId)
   const go = useApp((s) => s.go)
   const toast = useApp((s) => s.toast)
+  const reduceMotion = useApp((s) => s.settings?.reduce_motion ?? false)
   const [room, setRoom] = React.useState<Room | null>(null)
   const [busy, setBusy] = React.useState<string | null>(null)
   const [stream, setStream] = React.useState<string | null>(null)
   const [verdictPreview, setVerdictPreview] = React.useState<{ text: string; correct: boolean } | null>(null)
   const [text, setText] = React.useState("")
   const [source, setSource] = React.useState<Source | null>(null)
+  const [selected, setSelected] = React.useState<number | null>(null)
   const [reading, setReading] = React.useState(() => { try { return localStorage.getItem("mf.classroom.read") === "on" } catch { return false } })
   const teacher = React.useRef<TeacherStageHandle>(null)
   const voice = useTeacherVoice(teacher)
   const terms = React.useMemo(() => (room?.points ?? []).map((p) => p.title).slice(0, 60), [room?.points])
   const mic = useVoiceInput({ value: text, onChange: setText, terms, scopeKey: room ? `${planId}:${room.module.id}` : undefined, disabled: !!busy })
   const abort = React.useRef<AbortController | null>(null)
+  const acting = React.useRef(false)
   const scroller = React.useRef<HTMLDivElement>(null)
   const spoken = React.useRef<string | null>(null)
   const streamedMessages = React.useRef(new Set<string>())
@@ -66,7 +71,11 @@ export function Classroom() {
   }, [voice.stop])
 
   const act = React.useCallback(async (method: string, params: Record<string, unknown> = {}, label = "老师在想…") => {
-    if (!planId) return false
+    // A ref locks immediately, including two clicks before React has rendered.
+    if (!planId || acting.current) return false
+    acting.current = true
+    setSelected(method === "classroom.choose" ? Number(params.option) :
+      method === "classroom.reply" && room?.question?.type === "choice" ? room.question.options.indexOf(String(params.text)) : null)
     const before = new Set(room?.messages.map((message) => message.id) ?? [])
     stopReading()
     const turn = { reader: reading && voice.availability?.ready ? createTeacherVoiceStream(voice) : null,
@@ -105,14 +114,15 @@ export function Classroom() {
       void turn.reader?.stop()
       const failure = e as BridgeFailure
       if (failure.code !== "CANCELLED") toast("error", failure.message)
-      call<Room>("classroom.state", { plan_id: planId }).then((r) => {
+      await call<Room>("classroom.state", { plan_id: planId }).then((r) => {
         // Refresh visible state without restarting audio from the stopped attempt.
         streamedMessages.current = new Set(r.messages.map((m) => m.id))
         setRoom(r)
       }).catch(() => undefined)
       return false
     } finally {
-      setBusy(null); setStream(null); setVerdictPreview(null); abort.current = null
+      acting.current = false
+      setBusy(null); setStream(null); setVerdictPreview(null); setSelected(null); abort.current = null
     }
   }, [planId, room, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading])
 
@@ -141,8 +151,22 @@ export function Classroom() {
 
   React.useLayoutEffect(() => {
     const el = scroller.current
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
-  }, [room?.messages.length, stream, busy])
+    const reduced = reduceMotion || window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: reduced ? "auto" : "smooth" })
+  }, [room?.messages.length, stream, busy, reduceMotion])
+
+  React.useEffect(() => {
+    if (room?.lesson?.awaiting !== "continue") return
+    const next = (event: KeyboardEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null
+      if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey ||
+          event.isComposing || event.repeat || target?.closest("textarea, input, button, a, select, [contenteditable='true'], [role='dialog']")) return
+      event.preventDefault()
+      void act("classroom.next", {}, "正在接着讲…")
+    }
+    document.addEventListener("keydown", next)
+    return () => document.removeEventListener("keydown", next)
+  }, [room?.lesson?.awaiting, room?.question, act])
 
   // React to what is new since the last look: nod or think on a verdict, read the teacher's words aloud.
   React.useEffect(() => {
@@ -171,12 +195,14 @@ export function Classroom() {
     if (!next) stopReading()
   }
 
-  async function send(value = text) {
-    const t = value.trim()
-    if (!t || busy || room?.step === 'preparing_questions') return
+  async function send(value?: string) {
+    const t = (value ?? text).trim()
+    if (!t || acting.current || room?.step === 'preparing_questions') return
     stopReading()
-    setText("")
-    if (!(await act("classroom.reply", { text: t }, "老师在看你的回答…"))) setText(t)
+    if (value === undefined) setText("")
+    if (!(await act("classroom.reply", { text: t }, "老师在看你的回答…")) && value === undefined) {
+      setText((draft) => draft || t)
+    }
   }
 
   async function openSource(chunk: string) {
@@ -185,7 +211,9 @@ export function Classroom() {
   }
 
   if (!room) return <div className="page"><div className="card"><Loader2 className="spin" /> 正在进入课堂…</div></div>
-  const q = room.question
+  // An active lesson interaction is authoritative; a saved casual question may
+  // still be in the snapshot while an interjection waits for "回到刚才".
+  const q = room.lesson?.awaiting ? null : room.question
   const done = room.points.filter((p) => p.taught).length
   const t = room.today
   const markdown = (content: string) => (
@@ -224,6 +252,7 @@ export function Classroom() {
           ))}
           <span className="muted small">{done}/{room.points.length} 已讲</span>
         </div>}
+        {room.lesson && <LessonProgress lesson={room.lesson} />}
         {t?.is_late_night && <div className="banner">已经很晚了，注意休息。今天学的内容会记在开课那天。</div>}
         <div className="class-scroll" ref={scroller}>
           {room.messages.length === 0 && !busy && (
@@ -233,13 +262,16 @@ export function Classroom() {
             </div>
           )}
           {room.messages.map((m) => {
-            if (m.role === "user") return <div key={m.id} className="bubble user" data-selectable>{m.content}</div>
+            if (m.role === "user") return <div key={m.id} className={`bubble user ${m.kind === "choice" ? "class-choice" : ""}`} data-selectable>
+              {m.kind === "choice" && <span className="class-message-label">我的选择</span>}{m.content}</div>
             if (m.kind === "casual") return <div key={m.id} className="class-ask" data-selectable><span>随口问</span>{m.content}</div>
             if (m.kind === "question") return <div key={m.id} className="class-question" data-selectable>{markdown(m.content)}</div>
             if (m.kind === "verdict") return <div key={m.id} className={`class-verdict ${m.content.startsWith("✓") ? "ok" : "bad"}`}>{m.content}</div>
             if (m.role === "system") return <div key={m.id} className={`class-note ${m.kind === "error" ? "warn" : ""}`}>
               {m.kind === "error" && <CircleAlert size={15} />}{m.content}</div>
-            return <div key={m.id} className="bubble bot" data-selectable>{markdown(m.content)}
+            return <div key={m.id} className={`bubble bot ${m.kind === "step" ? "class-step" : m.kind === "step_reply" ? "class-step-reply" : ""}`} data-selectable>
+              {m.kind === "step" && <span className="class-message-label">老师讲解</span>}
+              {m.kind === "step_reply" && <span className="class-message-label">老师回应</span>}{markdown(m.content)}
               <button className="icon-btn listen" title="听这段" onClick={() => listen(m.content)}><Volume2 size={15} /></button></div>
           })}
           {verdictPreview && <div className={`class-verdict ${verdictPreview.correct ? "ok" : "bad"}`}>{verdictPreview.text}</div>}
@@ -248,21 +280,27 @@ export function Classroom() {
             : busy && <div className="plan-status"><Loader2 className="spin" size={16} />{busy}</div>)}
         </div>
 
-        {!busy && <Actions room={room} act={act} />}
-        {q && q.type === "choice" && !busy && (
-          <div className="class-options">
-            {q.options.map((o, i) => <button key={o} className="choice" onClick={() => send(o)}><b>{"ABCD"[i]}</b>{o}</button>)}
+        <Actions room={room} act={act} busy={!!busy} />
+        {room.lesson && !q && <LessonActions lesson={room.lesson} busy={!!busy} selected={selected} act={act} />}
+        {q && q.type === "choice" && (
+          <div className="class-options" aria-label={q.kind === "casual" ? "随口问选项" : "检测题选项"}>
+            {q.options.map((o, i) => <button key={`${i}:${o}`} className={`choice ${selected === i ? "on" : ""}`} disabled={!!busy}
+              aria-pressed={selected === i} onClick={() => send(o)}><b>{String.fromCharCode(65 + i)}</b><span>{o}</span></button>)}
           </div>
         )}
         <div className="composer">
-          <textarea className="input" rows={1} value={text} disabled={!!busy || room.step === 'preparing_questions'}
+          <textarea className="input" rows={1} value={text} aria-label="课堂输入"
                     placeholder={q ? (q.type === "choice" ? "点上面的选项，或者打字作答" : "写下你的回答（说不会也可以）") : "有问题随时问老师"}
                     onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.repeat) {
+                      e.preventDefault()
+                      if (!text.trim() && room.lesson?.awaiting === "continue" && !q) void act("classroom.next", {}, "正在接着讲…")
+                      else void send()
+                    } }} />
           <MicButton voice={mic} />
           {busy
             ? <Button onClick={() => { stopReading(); abort.current?.abort() }}><Square />停止</Button>
-            : <Button kind="primary" onClick={() => send()} disabled={!text.trim()}><SendHorizontal />发送</Button>}
+            : <Button kind="primary" onClick={() => send()} disabled={!text.trim() || room.step === 'preparing_questions'}><SendHorizontal />发送</Button>}
         </div>
       </section>
 
@@ -304,36 +342,37 @@ export function Classroom() {
   )
 }
 
-function Actions({ room, act }: { room: Room; act: (m: string, p?: Record<string, unknown>, label?: string) => Promise<boolean> }) {
+function Actions({ room, act, busy }: { room: Room; busy: boolean; act: (m: string, p?: Record<string, unknown>, label?: string) => Promise<boolean> }) {
   const step = room.step
   if (step === 'preparing_questions') return <div className="class-note"><Loader2 className="spin" size={15} />正在准备题目，备好后会自动开始。</div>
+  if (step === "teach" && room.lesson && !room.can_skip) return null
   if (step === "teach") return (
     <div className="plan-actions">
-      {room.can_skip && <Button onClick={() => act("classroom.test", { kind: "skip_test" }, "正在出题…")}><SkipForward />我会这部分，直接考</Button>}
-      <Button kind="primary" onClick={() => act("classroom.next")}><ChevronRight />{room.messages.length ? "继续" : "开始上课"}</Button>
+      {room.can_skip && <Button disabled={busy} onClick={() => act("classroom.test", { kind: "skip_test" }, "正在出题…")}><SkipForward />我会这部分，直接考</Button>}
+      {!room.lesson && <Button kind="primary" disabled={busy} onClick={() => act("classroom.next")}><ChevronRight />{room.messages.length ? "继续" : "开始上课"}</Button>}
     </div>
   )
   if (step === "test_offer") return (
     <div className="plan-actions">
-      <Button kind="primary" onClick={() => act("classroom.test", { kind: "module_test" }, "正在出题…")}><ClipboardCheck />开始模块检测</Button>
+      <Button kind="primary" disabled={busy} onClick={() => act("classroom.test", { kind: "module_test" }, "正在出题…")}><ClipboardCheck />开始模块检测</Button>
     </div>
   )
   if (step === "test_done") return (
     <div className="plan-actions">
-      {room.red.length > 0 && <Button kind="primary" onClick={() => act("classroom.test", { kind: "retest" }, "正在出题…")}><RotateCcw />重测没过的 {room.red.length} 个点</Button>}
-      <Button kind={room.red.length ? undefined : "primary"} onClick={() => act("classroom.next_module", {}, "正在准备…")}>
+      {room.red.length > 0 && <Button kind="primary" disabled={busy} onClick={() => act("classroom.test", { kind: "retest" }, "正在出题…")}><RotateCcw />重测没过的 {room.red.length} 个点</Button>}
+      <Button kind={room.red.length ? undefined : "primary"} disabled={busy} onClick={() => act("classroom.next_module", {}, "正在准备…")}>
         <ChevronRight />{room.more_modules ? "学下一个模块" : "结束模块学习"}</Button>
     </div>
   )
   if (step === "check_offer") return (
     <div className="plan-actions">
       <span className="muted small">最终检验：每个点换角度问，答对升级，全部通过就完成计划。</span>
-      <Button kind="primary" onClick={() => act("classroom.check", {}, "正在出题…")}><ClipboardCheck />开始最终检验</Button>
+      <Button kind="primary" disabled={busy} onClick={() => act("classroom.check", {}, "正在出题…")}><ClipboardCheck />开始最终检验</Button>
     </div>
   )
   if (step === "checking" && !room.question) return (
     <div className="plan-actions">
-      <Button kind="primary" onClick={() => act("classroom.check", {}, "正在出题…")}><ClipboardCheck />继续检验</Button>
+      <Button kind="primary" disabled={busy} onClick={() => act("classroom.check", {}, "正在出题…")}><ClipboardCheck />继续检验</Button>
     </div>
   )
   if (step === "completed") return <div className="class-note"><CheckCircle2 size={15} />这份计划已经完成，可以在「我的计划」里查看学习报告。</div>

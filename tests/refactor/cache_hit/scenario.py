@@ -112,12 +112,13 @@ class ScriptedGateway:
             task = block(messages, '【本次出题要求】')
             rows = []
             for i, point in enumerate(points):
-                for variant in range(2 if task['purpose'] == 'bank' else 1):
+                available = [a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task.get('used_angles', {}).get(point['id'], ())]
+                for variant in range(task.get('counts', {}).get(point['id'], 2) if task['purpose'] == 'bank' else 1):
                     row = dict(id=f'q{i}-{variant}', type='short', stem=f"请解释{point['title']}（题组{count}-{variant}）。", options=[], answer='按原文解释',
-                               reference=point['summary'], point_ids=[point['id']], chunk_ids=[next(iter(excerpts))])
+                               reference=point['summary'], point_ids=[point['id']], chunk_ids=[next(iter(excerpts))], required_points=[point['summary']])
                     if task['purpose'] == 'check':
                         row['angle'] = next(a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task['used_angles'][point['id']])
-                    if task['purpose'] == 'bank': row['angle'] = ('recall', 'apply')[variant]
+                    if task['purpose'] == 'bank': row['angle'] = available[variant]
                     rows.append(row)
             value = dict(questions=rows)
         elif purpose == 'profile':
@@ -126,10 +127,8 @@ class ScriptedGateway:
                          weak_points=[dict(point_id=p, note='尚需复习') for p in task['weak_point_ids']])
         elif purpose == 'lesson_prep':
             def lesson(point):
-                return dict(explanation=point['summary'], examples=[dict(text='按顺序处理列表元素。',
-                    everyday=True, extrapolation=False, code=None)], analogy='像排队。',
-                    analogy_boundary='类比只说明先后次序。', casual_question='这个方法有什么作用？',
-                    reference_answer=point['summary'], extrapolations=[])
+                from tests.refactor.guided_lessons.fixtures import wire
+                return wire(point['chunk_ids'][0], short=True)
             if '【模块与本次相邻知识点】' in text:
                 points = block(messages, '【模块与本次相邻知识点】')['points']
                 value = dict(lessons=[dict(point_id=p['id'], lesson=lesson(p)) for p in points])
@@ -174,7 +173,8 @@ def run_scenario(root, *, extended=False):
         # timestamps and reorder adjacent turns; use monotonic fixed timestamps.
         patches.enter_context(patch.object(store_module, '_at', lambda value=None: original_at(
             value if value is not None else NOW + timedelta(microseconds=next(ticks)))))
-        patches.enter_context(patch.object(room_module, 'threading', SimpleNamespace(Thread=ImmediateThread, Lock=threading.Lock, RLock=threading.RLock)))
+        patches.enter_context(patch.object(room_module, 'threading', SimpleNamespace(Thread=ImmediateThread, Lock=threading.Lock, RLock=threading.RLock, local=threading.local)))
+        patches.enter_context(patch.object(room_module.Classroom, '_schedule_idle_prep', lambda *a: None))
         # The original audit excludes preparation. The extended classroom audit
         # drains preparation after each host operation releases its plan lock.
         ImmediateThread.deferred = []
@@ -209,6 +209,9 @@ def run_scenario(root, *, extended=False):
                 view = room.run(pid, lambda course, state, ctx: getattr(room, name)(course, state, ctx, *args, **kwargs), ctx)
                 while ImmediateThread.deferred:
                     ImmediateThread.deferred.pop(0)()
+                if name in ('next','reply'):
+                    from tests.refactor.guided_lessons.fixtures import advance_to_question
+                    view = advance_to_question(room, pid, view, ctx)
                 return view
             act('enter')
             view = act('next')

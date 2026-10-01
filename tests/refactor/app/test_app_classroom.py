@@ -45,6 +45,17 @@ class Agents:
     def complete(self, purpose, messages, *, system=None, on_text=None, cancel=None, plan_id="", max_tokens=4096, **_):
         with self.lock:
             self.calls.append(purpose)
+        if purpose == "lesson_prep" or (purpose == "teacher" and system.startswith("现场分步")):
+            from tests.refactor.guided_lessons.fixtures import wire
+            task = json.loads(messages[-1]['content'].split('\n', 1)[1])
+            def one(point, live=False):
+                result = wire(point['chunk_ids'][0], live=live, short=True)
+                result['questions'][0]['stem'] = '它和排队有什么不同？'
+                return result
+            value = {'lessons': [{'point_id': p['id'], 'lesson': one(p)} for p in task['points']]} if 'points' in task else one(task, live=purpose == 'teacher')
+            return SimpleNamespace(text=json.dumps(value, ensure_ascii=False), search_hits=(), citations=())
+        if purpose == 'lesson_review':
+            return SimpleNamespace(text='{"verdict":"approve","issues":[],"revised":null}', search_hits=(), citations=())
         if purpose == "teacher":
             task = last_json(messages, "【本步任务】")
             if self.teacher_format_errors:
@@ -79,7 +90,8 @@ class Agents:
             work = points[:1] if purpose_name == "quick_check" else points
             for i, p in enumerate(work):
                 chunk = next(c for c in excerpts)
-                for variant in range(2 if purpose_name == 'bank' else 1):
+                available_angles = [a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task.get('used_angles', {}).get(p['id'], ())]
+                for variant in range(task.get('counts', {}).get(p['id'], 2) if purpose_name == 'bank' else 1):
                   if self.choice or (purpose_name == 'bank' and p['id'] in self.choice_bank_points):
                     rows.append({"id": f"q{i}-{variant}", "type": "choice", "stem": f"关于{p['title']}哪项正确（第{len(self.calls)}轮{i}-{variant}）？",
                                  "options": ["甲说法", "乙说法", "丙说法", "丁说法"], "answer": "乙说法",
@@ -87,8 +99,8 @@ class Agents:
                   else:
                     rows.append({"id": f"q{i}-{variant}", "type": "short", "stem": f"请解释{p['title']}的作用（第{len(self.calls)}轮第{i}-{variant}题）",
                                  "options": [], "answer": "标准答案", "reference": "要点：作用",
-                                 "point_ids": [p["id"]], "chunk_ids": [chunk]})
-                  if purpose_name == 'bank': rows[-1]['angle'] = ('recall', 'apply')[variant]
+                                 "point_ids": [p["id"]], "chunk_ids": [chunk], 'required_points': ['作用']})
+                  if purpose_name == 'bank': rows[-1]['angle'] = available_angles[variant]
             if purpose_name == "check":  # a fresh angle for every point, as the real agent must
                 for row in rows:
                     used = task["used_angles"][row["point_ids"][0]]
@@ -136,7 +148,7 @@ def room():
             yield classroom, agents, store
         finally:
             for thread in threading.enumerate():
-                if thread.name in ('classroom-profile', 'classroom-question-bank'):
+                if thread.name in ('classroom-profile', 'classroom-question-bank', 'classroom-lesson-prep'):
                     thread.join(5)
             store.close()
 
@@ -152,6 +164,9 @@ def act(classroom, name, *args, streamed=None):
     while view['step'] == 'preparing_questions' and time.monotonic() < deadline:
         time.sleep(.01)
         view = classroom.run(PLAN, lambda *a: None, ctx(streamed))
+    if name in ('next', 'reply'):
+        from tests.refactor.guided_lessons.fixtures import advance_to_question
+        view = advance_to_question(classroom, PLAN, view, ctx(streamed))
     return view
 
 
@@ -183,7 +198,7 @@ def test_casual_retry_after_teacher_failure_reuses_saved_verdict(room, monkeypat
     classroom, agents, store = room
     act(classroom, 'enter')
     act(classroom, 'next')
-    agents.verdicts = [('answer', True, [])]
+    agents.verdicts = [('answer', False, ['p0'])]
     original = classroom._teacher
     monkeypatch.setattr(classroom, '_teacher', lambda *_a, **_k: (_ for _ in ()).throw(ModelError('MODEL_TIMEOUT', '老师超时')))
     act(classroom, 'reply', '先进先出')
@@ -254,9 +269,9 @@ def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
     streamed = []
     view = act(classroom, "next", streamed=streamed)
     assert view["step"] == "answer" and view["question"]["stem"] == "它和排队有什么不同？"
-    teach = [m for m in view["messages"] if m["kind"] == "teach"][-1]["content"]
+    teach = [m for m in view["messages"] if m["kind"] == "step"][0]["content"]
     assert "(mf-source:k1)" in teach and "【" not in teach             # citation linked, question marker removed
-    assert "".join(streamed).startswith("我们先看定义") and credits(store) == {}   # nothing counts before the answer
+    assert streamed == [] and credits(store) == {}  # prepared steps are immediate snapshots, not model streams
 
     agents.verdicts = [("answer", True, [])]
     view = act(classroom, "reply", "先进先出，排队也是")
@@ -357,8 +372,8 @@ def test_a_malformed_teacher_answer_is_retried_and_the_page_is_told_to_reset(roo
     act(classroom, "enter")
     agents.teacher_format_errors = 1
     streamed = []
-    view = act(classroom, "next", streamed=streamed)
-    assert view["step"] == "answer" and RESET in streamed
+    view = classroom.run(PLAN, lambda co, st, cx: classroom._teacher(co, st, cx, '回答插话，不出题。', ['p0']), ctx(streamed))
+    assert view["step"] == "teach" and RESET in streamed
 
 
 def test_steps_are_enforced(room):

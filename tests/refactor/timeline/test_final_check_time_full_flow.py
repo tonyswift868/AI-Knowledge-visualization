@@ -142,7 +142,9 @@ def prepare(env):
     assert [(m['learning_minutes'], m['check_minutes'], m['final_check_minutes'], m['check_question_minutes'])
             for m in store.records('modules', PLAN)] == [(30, 6, 8, 2)] * 2
     assert store.get_plan(PLAN)['total_minutes'] == 88
-    env.flow.start(draft)
+    from unittest.mock import patch
+    with patch.object(Classroom, 'prepare_started_plan', lambda *a: None):
+        env.flow.start(draft)
 
 
 def act(env, name, *args):
@@ -152,6 +154,9 @@ def act(env, name, *args):
     while view['step'] == 'preparing_questions' and monotonic_time.monotonic() < deadline:
         monotonic_time.sleep(.005)
         view = snapshot(env)
+    if name in ('next', 'reply'):
+        from tests.refactor.guided_lessons.fixtures import advance_to_question
+        view = advance_to_question(env.room, PLAN, view, SimpleNamespace(cancel=threading.Event(), stream=lambda _: None))
     return view
 
 
@@ -163,7 +168,8 @@ def answer(env, *, wrong=()):
 
 
 def snapshot(env):
-    return env.room.run(PLAN, lambda *args: None)
+    return env.room.run(PLAN, lambda co, st, cx: None,
+                        SimpleNamespace(cancel=threading.Event(), stream=lambda _: None))
 
 
 def home(env):
@@ -399,6 +405,7 @@ class GroupedModuleAgents(FlowAgents):
                 grouped = dict(questions[0], id='grouped', stem=f'请综合比较这些知识点的用途（第{len(self.calls)}轮）？',
                                point_ids=list(dict.fromkeys(pid for q in questions for pid in q['point_ids'])),
                                angle='contrast')
+                grouped['required_points'] = [f'{pid}的用途' for pid in grouped['point_ids']]
                 result.text = json.dumps({'questions': [*questions, grouped]})
         return result
 

@@ -6,6 +6,41 @@ import hashlib
 import json
 
 
+def initial_deficits(questions, point_ids):
+    """Two singletons in total, including already-correct questions."""
+    return {pid: max(0, 2 - sum(q['point_ids'] == [pid] for q in questions)) for pid in point_ids}
+
+
+def final_deficits(questions, levels, *, asked=()):
+    """Only reserve what remains: one fresh question at level 2, two at 0/1."""
+    asked = set(asked)
+    return {pid: max(0, (0 if level == 3 else 1 if level == 2 else 2) - sum(
+        q['point_ids'] == [pid] and not q.get('correct_seen') and q['id'] not in asked for q in questions))
+        for pid, level in levels.items()}
+
+
+def answer_history(questions, answers, judgements=()):
+    """Asked IDs and per-point angles; saved pre-v5 judgements match by stem."""
+    asked, angles = set(), {}
+    for q in questions:
+        if q.get('asked_in'):
+            asked.add(q['id'])
+            for pid in q['point_ids']:
+                if q.get('angle'): angles.setdefault(pid, set()).add(q['angle'])
+    by_stem = {q['stem']: q for q in questions}
+    for row in answers:
+        if row.get('question_id'): asked.add(row['question_id'])
+        for pid in row['point_ids']:
+            if row.get('angle'): angles.setdefault(pid, set()).add(row['angle'])
+    for row in judgements:
+        q = by_stem.get((row.get('details') or {}).get('question'))
+        if q:
+            asked.add(q['id'])
+            for pid in q['point_ids']:
+                if q.get('angle'): angles.setdefault(pid, set()).add(q['angle'])
+    return asked, angles
+
+
 def material_fingerprint(points, excerpts):
     """Only teaching content changes invalidate questions, never schedule/order."""
     content = [{'id': p['id'], 'title': p['title'], 'summary': p.get('summary', ''),

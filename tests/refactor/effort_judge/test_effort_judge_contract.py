@@ -36,7 +36,12 @@ def test_deepseek_messages_effort_is_per_request(effort):
     http = HTTP(dict(content=[dict(type='text', text='好')], model='deepseek-flash',
                      stop_reason='end_turn', usage=dict(input_tokens=2, output_tokens=3)))
     asyncio.run(anthropic_messages.run(http, config('deepseek', 'deepseek-flash', effort)))
-    assert http.body['reasoning'] == {'effort': effort}
+    assert 'reasoning' not in http.body
+    assert http.body['thinking'] == {'type': 'disabled' if effort == 'none' else 'enabled'}
+    if effort == 'none':
+        assert 'output_config' not in http.body
+    else:
+        assert http.body['output_config'] == {'effort': effort}
 
 
 def test_claude_none_keeps_default_and_low_maps_to_output_config():
@@ -86,7 +91,7 @@ def test_qwen_native_38_effort_and_older_on_off_switch():
 def test_purpose_table_covers_confirmed_tasks():
     assert PURPOSE_EFFORT['judge'] == 'high'
     assert PURPOSE_EFFORT['lesson_review'] == 'high'
-    assert PURPOSE_EFFORT['teacher'] == 'low'
+    assert PURPOSE_EFFORT['teacher'] == 'high'
     assert PURPOSE_EFFORT['plan_intent'] == 'none'
     usage = providers.Usage(10, 0, 10, 4, 0, 0, raw={'input_tokens': 10, 'output_tokens': 4})
     result = ModelGateway._billable_usage(usage, dict(provider_id='deepseek',

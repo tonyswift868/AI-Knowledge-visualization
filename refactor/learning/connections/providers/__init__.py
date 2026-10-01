@@ -104,6 +104,7 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
             if (not isinstance(result.text, str) or not result.text.strip()
                     or not isinstance(result.model, str) or api_key in result.model):
                 raise invalid()
+            accounting.annotate(result.usage)
             return result
 
     try:

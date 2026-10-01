@@ -102,7 +102,7 @@ class HTTP:
         auth.update(headers or {})
         try:
             if self.accounting:
-                self.accounting.start()
+                self.accounting.start(body)
             async with self.client.stream(
                 'POST', url, json=body, headers=auth, follow_redirects=False,
                 timeout=httpx.Timeout(self.timeout, connect=min(5., self.timeout)),

@@ -1,4 +1,4 @@
-"""Account-owned SQLite course data and an atomic record outbox, schema v3.
+"""Account-owned SQLite course data and an atomic record outbox, schema v5.
 
 Each business table stores a canonical, versioned JSON payload plus indexed FK
 columns and a local revision. Payload fields (also validated below):
@@ -9,6 +9,10 @@ source_chunks: extract chunk_id as id, source_id, position, text, pages, section
 stages/modules/points: title/summary, position, prerequisites, minute estimates,
 and nonempty chunk_ids for every point; teacher_profile/reports: document;
 messages/chat_messages: role, content, kind, at, compressed, summary_of.
+question_bank: prompt, options, reference, optional required_points (1–2),
+correct_seen, asked_in and optional refill_for (wrong-answer idempotency key).
+question_answers: immutable answer ID, question/point IDs, context, attempt,
+angle, verdict and time; composites count for detection without mastery events.
 Module positions are global within a plan; point positions are within a module.
 Plan module_count and module point_count prevent a partially downloaded course
 from becoming runnable/complete before all its structural records arrive.
@@ -54,11 +58,11 @@ from .ledger import Ledger, PlanWindow, Credit
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
 _REPORT_PART_PREFIX = 'report-part:'
-PROGRESS = frozenset(('judgements', 'attempt_closed', 'credits', 'ledger_events', 'usage', 'practice_results'))
+PROGRESS = frozenset(('judgements', 'attempt_closed', 'credits', 'ledger_events', 'usage', 'practice_results', 'question_answers'))
 _FIELD_VERSIONS = '_field_versions'
 # One entity maps to exactly one table. Tuple entries are FK field -> parent.
 PARENTS = {
@@ -68,6 +72,7 @@ PARENTS = {
     'teacher_profile': (), 'messages': (('module_id', 'modules'),), 'reports': (), 'usage': (),
     'chat_sessions': (), 'chat_messages': (('session_id', 'chat_sessions'),),
     'question_bank': (('module_id', 'modules'),), 'practice_results': (),
+    'question_answers': (),  # immutable answered-question facts, independent of point judgements
 }
 STATES = ('creating', 'ready', 'active', 'checking', 'completed')
 
@@ -246,7 +251,7 @@ class CourseStore:
                 PRIMARY KEY(entity,entity_id))''')
             self._db.execute('CREATE TABLE plans(id TEXT PRIMARY KEY, payload TEXT NOT NULL CHECK(json_valid(payload)), revision INTEGER NOT NULL)')
             for entity, parents in PARENTS.items():
-                if entity in ('plans', 'question_bank', 'practice_results'): continue
+                if entity in ('plans', 'question_bank', 'practice_results', 'question_answers'): continue
                 fields = [f'{name} TEXT' for name, _ in parents]
                 constraints = [f'FOREIGN KEY(plan_key,{name}) REFERENCES {parent}(plan_key,id) DEFERRABLE INITIALLY DEFERRED'
                                for name, parent in parents]
@@ -278,7 +283,13 @@ class CourseStore:
                     payload TEXT NOT NULL CHECK(json_valid(payload)),revision INTEGER NOT NULL{extra},
                     FOREIGN KEY(plan_key) REFERENCES plans(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED{fk},
                     PRIMARY KEY(plan_key,id))''')
-            self._db.execute('UPDATE schema_version SET version=4')
+            self._db.execute('UPDATE schema_version SET version=4'); version = 4
+        if version == 4:
+            self._db.execute('''CREATE TABLE IF NOT EXISTS question_answers(plan_key TEXT NOT NULL,id TEXT NOT NULL,
+                payload TEXT NOT NULL CHECK(json_valid(payload)),revision INTEGER NOT NULL,
+                FOREIGN KEY(plan_key) REFERENCES plans(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+                PRIMARY KEY(plan_key,id))''')
+            self._db.execute('UPDATE schema_version SET version=5')
         owner = self._db.execute("SELECT value FROM _meta WHERE key='account_id'").fetchone()
         if owner is None or owner[0] != self.account_id: raise StoreError('ACCOUNT_MISMATCH')
 
@@ -372,6 +383,20 @@ class CourseStore:
                     not isinstance(payload['options'], list) or not isinstance(payload['point_ids'], list) or
                     not 1 <= len(set(payload['point_ids'])) <= 4 or not isinstance(payload['chunk_ids'], list)):
                 raise StoreError('INVALID_QUESTION')
+            requirements = payload.get('required_points')
+            if requirements is not None and (not isinstance(requirements, (list, tuple)) or not 1 <= len(requirements) <= 2
+                                             or any(not isinstance(r, str) or not r.strip() for r in requirements)):
+                raise StoreError('INVALID_QUESTION')
+            seen = payload.get('asked_in', [])
+            if not isinstance(seen, list) or any(context not in ('module_test', 'skip_test', 'retest', 'check', 'practice') for context in seen):
+                raise StoreError('INVALID_QUESTION')
+        elif entity == 'question_answers':
+            _id(payload['module_id']); _at(payload['at'])
+            if (payload['context'] not in ('module_test', 'skip_test', 'retest', 'check', 'practice', 'quick_confirm')
+                    or type(payload['correct']) is not bool or not isinstance(payload['point_ids'], list)
+                    or not payload['point_ids'] or not isinstance(payload['wrong_points'], list)
+                    or not set(payload['wrong_points']) <= set(payload['point_ids'])):
+                raise StoreError('INVALID_ANSWER')
         elif entity == 'practice_results':
             _id(payload['question_id']); _id(payload['module_id']); _at(payload['at'])
             if type(payload['correct']) is not bool or not isinstance(payload['point_ids'], list) or not payload['point_ids']:
@@ -489,7 +514,7 @@ class CourseStore:
             return sorted(self._rows(entity, plan_id), key=lambda p: (p.get('position', 0), p['id']))
 
     @_atomic
-    def add_bank_questions(self, plan_id, module_id, questions, *, fingerprint=None):
+    def add_bank_questions(self, plan_id, module_id, questions, *, fingerprint=None, refill_for=None):
         self._get('modules', plan_id, module_id)
         valid_points = {p['id'] for p in self.records('points', plan_id) if p['module_id'] == module_id}
         identifiers = []
@@ -499,6 +524,7 @@ class CourseStore:
             row['module_id'] = module_id
             row['correct_seen'] = False
             if fingerprint is not None: row['fingerprint'] = fingerprint
+            if refill_for is not None: row['refill_for'] = _id(refill_for)
             if not set(row['point_ids']) <= valid_points: raise StoreError('POINT_MODULE_MISMATCH')
             row['options'] = list(row['options']); row['point_ids'] = list(row['point_ids'])
             row['chunk_ids'] = list(row['chunk_ids'])
@@ -507,10 +533,43 @@ class CourseStore:
         return identifiers
 
     @_atomic
+    def append_question_answer(self, plan_id, answer_id, *, module_id, context, attempt_id,
+                               question_id, point_ids, angle, correct, wrong_points=(), reason='', checks=(), at=None):
+        """Persist a question answer once even when a composite yields no point verdict.
+
+        It is an append-only sync event, not an authoritative mastery state.
+        Existing same-ID facts survive classroom replay without changing their time.
+        """
+        row = dict(id=_id(answer_id), module_id=_id(module_id), context=context, attempt_id=attempt_id,
+                   question_id=question_id, point_ids=list(point_ids), angle=angle, correct=correct,
+                   wrong_points=list(wrong_points), reason=str(reason)[:400], checks=list(checks), at=_at(at))
+        existing = next((r for r in self._rows('question_answers', plan_id) if r['id'] == answer_id), None)
+        if existing:
+            if any(existing.get(k) != v for k, v in row.items() if k != 'at'):
+                raise StoreError('EVENT_CONFLICT')
+            return answer_id
+        if context not in ('module_test', 'skip_test', 'retest', 'check', 'practice', 'quick_confirm') or type(correct) is not bool:
+            raise StoreError('INVALID_ANSWER')
+        self._get('modules', plan_id, module_id)
+        valid = {p['id'] for p in self.records('points', plan_id) if p['module_id'] == module_id}
+        if not point_ids or not set(point_ids) <= valid or not set(wrong_points) <= set(point_ids):
+            raise StoreError('POINT_MODULE_MISMATCH')
+        self._put('question_answers', plan_id, row)
+        return answer_id
+
+    @_atomic
     def mark_bank_correct(self, plan_id, question_id):
         row = self._get('question_bank', plan_id, question_id)
         if not row['correct_seen']:
             row['correct_seen'] = True
+            self._put('question_bank', plan_id, row)
+
+    @_atomic
+    def mark_bank_asked(self, plan_id, question_id, context):
+        """Exposure is remembered even if the answer is uncertain or interrupted."""
+        row = next((q for q in self._rows('question_bank', plan_id) if q['id'] == question_id), None)
+        if row is not None and context not in row.get('asked_in', []):
+            row['asked_in'] = sorted([*row.get('asked_in', []), context])
             self._put('question_bank', plan_id, row)
 
     @_atomic
@@ -989,9 +1048,15 @@ class CourseStore:
         closed = [row['event'] for row in self._rows('attempt_closed', plan_id)
                   if row['event']['module_id'] == module_id and row['event']['attempt_id'] == attempt_id]
         if not closed: raise StoreError('ATTEMPT_NOT_CLOSED')
-        question_count = sum(row['event']['module_id'] == module_id and row['event']['attempt_id'] == attempt_id
-                             and row['event']['context'] == closed[0]['kind']
-                             and row['event']['seq'] < closed[0]['seq'] for row in self._rows('judgements', plan_id))
+        answered = {row['id'] for row in self._rows('question_answers', plan_id)
+                    if row['module_id'] == module_id and row['attempt_id'] == attempt_id
+                    and row['context'] == closed[0]['kind']}
+        # Saved plans before v5 only have judgements. Union by answer/event ID
+        # avoids double counting the new fact and its accompanying judgement.
+        answered.update(row['id'] for row in self._rows('judgements', plan_id)
+                        if row['event']['module_id'] == module_id and row['event']['attempt_id'] == attempt_id
+                        and row['event']['context'] == closed[0]['kind'] and row['event']['seq'] < closed[0]['seq'])
+        question_count = len(answered)
         _number(question_count, True)
         minutes = (question_count * module['check_question_minutes'] if 'final_check_minutes' in module
                    else max(1, module['check_minutes']))
@@ -1417,6 +1482,9 @@ class CourseStore:
             repair_answered = (record.entity == 'question_bank' and not record.deleted and old is not None
                                and not old['deleted'] and json.loads(old['payload']).get('correct_seen')
                                and not payload.get('correct_seen'))
+            seen_union = None
+            if record.entity == 'question_bank' and not record.deleted and old is not None and not old['deleted']:
+                seen_union = sorted(set(json.loads(old['payload']).get('asked_in', ())) | set(payload.get('asked_in', ())))
             merged = False
             if old is not None and old['pending'] and record.entity not in PROGRESS and not record.deleted:
                 local = json.loads(old['payload'])
@@ -1451,6 +1519,9 @@ class CourseStore:
                 deleted = record.deleted
             if repair_answered:
                 payload['correct_seen'] = True
+            if seen_union and seen_union != payload.get('asked_in'):
+                payload['asked_in'] = seen_union
+                repair_answered = True  # queue the monotonic exposure merge just like correct-seen
             if not deleted: self._validate(record.entity, record.plan_key, payload)
             if record.entity == 'plans' and payload['id'] != record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
             self._db.execute('''INSERT INTO _records VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(entity,entity_id)

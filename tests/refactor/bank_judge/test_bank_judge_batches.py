@@ -58,7 +58,9 @@ def bankroom(tmp_path):
             calls.append(tuple(ids))
             return [Question(f'{pid}-{len(calls)}-{j}', 'choice', f'{pid}第{len(calls)}批应用{j}应选哪个？',
                 ('正确选项', '干扰一', '干扰二', '干扰三'), '正确选项', '符合资料要点。',
-                (pid,), ('k',), angle) for pid in ids for j, angle in enumerate(('recall', 'apply'))]
+                (pid,), ('k',), angle) for pid in ids for j, angle in enumerate(
+                    [a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer')
+                     if a not in kw.get('used_angles', {}).get(pid, ())][:kw.get('counts', {}).get(pid, 2)])]
         room._questions = questions
         yield room, store, calls, questions
         for thread in threading.enumerate():
@@ -109,6 +111,7 @@ def test_partial_pair_keeps_covered_point_and_repairs_other_point(bankroom):
 
 def test_entry_prepares_immediately_and_pending_test_auto_starts(bankroom):
     room, store, calls, good = bankroom
+    room._peak_prep = lambda: False  # this assertion is for off-peak next-bank preparation
     entered, release = threading.Event(), threading.Event()
     def blocked(*a, **kw):
         entered.set()

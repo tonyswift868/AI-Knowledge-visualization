@@ -172,8 +172,12 @@ def check_status(audit, scene, expected, actual, rule="PLAN-05", **kwargs):
 
 def act(env, name, *args):
     method = getattr(env.room, name)
-    return env.room.run(PLAN, lambda co, st, cx: method(co, st, cx, *args),
-                        SimpleNamespace(cancel=threading.Event(), stream=lambda _: None))
+    ctx = SimpleNamespace(cancel=threading.Event(), stream=lambda _: None)
+    view = env.room.run(PLAN, lambda co, st, cx: method(co, st, cx, *args), ctx)
+    if name in ('next', 'reply'):
+        from tests.refactor.guided_lessons.fixtures import advance_to_question
+        view = advance_to_question(env.room, PLAN, view, ctx)
+    return view
 
 
 def snapshot(env):

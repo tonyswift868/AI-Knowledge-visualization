@@ -174,10 +174,10 @@ def test_bank_batch_has_two_single_questions_per_point_and_one_composite():
         for index, angle in enumerate(('recall', 'apply')):
             rows.append(dict(id=f'{pid}{index}', type='short', stem=f'请解释{pid}的第{index}种用途？',
                              options=[], answer='可以处理概念', reference='用途来自题面',
-                             point_ids=[pid], chunk_ids=['c'], angle=angle))
+                             point_ids=[pid], chunk_ids=['c'], angle=angle, required_points=['用途来自题面']))
     rows.append(dict(id='both', type='short', stem='请比较两个概念的用途？', options=[],
                      answer='两个概念用于不同处', reference='分别说明用途',
-                     point_ids=['a', 'b'], chunk_ids=['c'], angle='contrast'))
+                     point_ids=['a', 'b'], chunk_ids=['c'], angle='contrast', required_points=['a的用途', 'b的用途']))
     parsed = parse_questions(json.dumps({'questions': rows}, ensure_ascii=False), ctx)
     assert len(parsed) == 5 and len(parsed[-1].point_ids) == 2
 

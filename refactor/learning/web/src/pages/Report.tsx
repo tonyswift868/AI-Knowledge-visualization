@@ -13,6 +13,7 @@ type Report = {
   weakest_points: { point_id: string; score: number }[]
   point_comments?: Record<string, string | null>
   teacher_profile: { text?: string; check?: string } | null
+  live_points?: { point_id: string; title: string }[]
 }
 type Views = {
   modules: { module_id: string; title: string; mastered: number; total: number }[]
@@ -70,6 +71,12 @@ export function Report() {
           </div>
         </div>
       </div>
+      {!!r.live_points?.length && <section className="card stack" aria-label="现场讲知识点" style={{ marginTop: 16 }}>
+        <b>以下知识点是老师现场讲的（讲稿没通过核对）</b>
+        <ul style={{ margin: 0, paddingLeft: "1.4em", lineHeight: 1.8 }}>
+          {r.live_points.map((point) => <li key={point.point_id}>{point.title}</li>)}
+        </ul>
+      </section>}
       <div className="section-title"><h2>各模块掌握情况</h2><span>完成最终检验的知识点数</span></div>
       <div className="card stack" role="img" aria-label="各模块掌握情况柱状图">
         {views.modules.map((m) => <div key={m.module_id} style={{ display: "flex", alignItems: "center", gap: 12 }}>

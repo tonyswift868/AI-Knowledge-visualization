@@ -84,6 +84,14 @@ class FakeAgent:
     def complete(self, purpose, messages, *, on_text=None, **_kwargs):
         with self.lock:
             self.calls.append(purpose)
+        if purpose in ('lesson_prep', 'lesson_review'):
+            from tests.refactor.guided_lessons.fixtures import wire
+            task = json.loads(messages[-1]['content'].split('\n', 1)[1])
+            if purpose == 'lesson_review': value = dict(verdict='approve', issues=[], revised=None)
+            elif 'points' in task:
+                value = dict(lessons=[dict(point_id=p['id'], lesson=wire(p['chunk_ids'][0], short=True)) for p in task['points']])
+            else: value = wire(task['chunk_ids'][0], short=True)
+            return SimpleNamespace(text=json.dumps(value, ensure_ascii=False))
         if purpose == "teacher":
             task = _last_json(messages, "【本步任务】")
             if "用随口问" in task["director"]:
@@ -112,10 +120,12 @@ class FakeAgent:
         if purpose == "questions":
             content = messages[-1]["content"]
             points = json.JSONDecoder().raw_decode(content.split("【知识点清单】\n", 1)[1])[0]
-            purpose_name = json.loads(content.split("【本次出题要求】\n", 1)[1])["purpose"]
+            task = json.loads(content.split("【本次出题要求】\n", 1)[1])
+            purpose_name = task['purpose']
             rows = []
             for index, point in enumerate(points):
-                for variant in range(2 if purpose_name == 'bank' else 1):
+                available = [a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task.get('used_angles', {}).get(point['id'], ())]
+                for variant in range(task.get('counts', {}).get(point['id'], 2) if purpose_name == 'bank' else 1):
                     choice = purpose_name in ('module_test', 'bank') and point['id'] == 'p2'
                     row = {
                         "id": f"q-{purpose_name}-{index}-{variant}",
@@ -126,7 +136,8 @@ class FakeAgent:
                         "reference": "关键要点是正确区分并说明作用。",
                         "point_ids": [point["id"]], "chunk_ids": ["k1" if point["id"] != "p2" else "k2"],
                     }
-                    if purpose_name == 'bank': row['angle'] = ('recall', 'apply')[variant]
+                    if not choice: row['required_points'] = ['关键作用']
+                    if purpose_name == 'bank': row['angle'] = available[variant]
                     rows.append(row)
             return SimpleNamespace(text=json.dumps({"questions": rows}, ensure_ascii=False),
                                    search_hits=(), citations=())
@@ -244,7 +255,12 @@ def _ctx(streamed=None):
 
 def _act(classroom, name, *args, streamed=None):
     method = getattr(classroom, name)
-    return classroom.run(PLAN, lambda course, state, ctx: method(course, state, ctx, *args), _ctx(streamed))
+    ctx = _ctx(streamed)
+    view = classroom.run(PLAN, lambda course, state, cx: method(course, state, cx, *args), ctx)
+    if name in ('next','reply'):
+        from tests.refactor.guided_lessons.fixtures import advance_to_question
+        view = advance_to_question(classroom, PLAN, view, ctx)
+    return view
 
 
 def _record(clock, trace, action, view):

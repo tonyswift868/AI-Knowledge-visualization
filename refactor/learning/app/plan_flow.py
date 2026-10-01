@@ -1351,6 +1351,12 @@ class PlanFlow:
         self._pools.pop(draft["plan_id"], None)
         self._verified.pop(draft["plan_id"], None)
         self.push("plan_started", {"plan_id": draft["plan_id"]})
+        if plan['state'] not in ('checking', 'completed'):
+            from .classroom import Classroom
+            prep = getattr(self, '_classroom_prep', None)
+            if prep is None:
+                prep = self._classroom_prep = Classroom(self.services, self.study_day)
+            prep.prepare_started_plan(draft['plan_id'])
 
     def start_request(self, plan_id):
         """Bridge entry remains idempotent even after the draft file is gone."""

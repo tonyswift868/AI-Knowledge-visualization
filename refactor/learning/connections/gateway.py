@@ -35,15 +35,23 @@ _UNSET = object()
 _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
            'temperature', 'timeout', 'has_api_key')
 
-# Program-owned per-purpose settings. Unknown/third-party purposes retain the
-# provider default until they are evaluated on saved inputs.
+# Program-owned settings (SYS-07, 2026-10-01): only the three metadata purposes
+# disable thinking; all other purposes request high where the provider supports it.
+# Profile replays contained an unsupported historical claim with thinking off;
+# the task's quality fallback retains the provider default for that purpose.
 PURPOSE_EFFORT = {
     'judge': 'high', 'check_profile': 'high', 'lesson_review': 'high',
     'questions': 'high', 'outline': 'high',
-    'lesson_prep': 'high', 'generate': 'low', 'plan_additions_generate': 'low',
-    'source_scoring': 'low', 'teacher': 'low',
-    'profile': 'none', 'sufficiency': 'none', 'plan_intent': 'none',
+    'lesson_prep': 'high', 'generate': 'high', 'plan_additions_generate': 'high',
+    'source_scoring': 'high', 'teacher': 'high',
+    'profile': None, 'sufficiency': 'none', 'plan_intent': 'none',
 }
+
+PURPOSE_MIN_OUTPUT = {
+    'teacher': 8192, 'judge': 8192, 'profile': 8192, 'check_profile': 8192,
+    'questions': 16384, 'lesson_prep': 24576, 'lesson_review': 24576,
+}
+BACKGROUND_PURPOSES = frozenset({'lesson_prep', 'lesson_review', 'questions', 'profile', 'check_profile'})
 
 
 def _storage_error():
@@ -372,10 +380,13 @@ class ModelGateway:
                        cache_mode='implicit', finished_at=timestamp().isoformat())
         if effort is not None:
             context['requested_reasoning_effort'] = effort
+        sent = meta.get('sent_reasoning_parameters', {})
+        if config['provider_id'] == 'deepseek' and sent.get('thinking', {}).get('type') in {'enabled', 'disabled'}:
+            context['thinking_mode'] = 'non_thinking' if sent['thinking']['type'] == 'disabled' else 'thinking'
         if config['provider_id'] == 'qwen':
             if value.reasoning_tokens > 0:
                 context['thinking_mode'] = 'thinking'
-            elif effort == 'none' and config['model'].startswith('qwen3.'):
+            elif sent.get('enable_thinking') is False or sent.get('parameters', {}).get('enable_thinking') is False:
                 context['thinking_mode'] = 'non_thinking'
         meta['billing_context'] = context
         return replace(value, raw=raw)
@@ -384,6 +395,7 @@ class ModelGateway:
                  on_text=None, cancel=None, plan_id='', max_tokens=4096, reasoning_effort=None):
         if type(max_tokens) is not int or not 1 <= max_tokens <= 32768:
             raise ModelError('MODEL_CONFIG_INVALID', '模型调用参数无效。')
+        max_tokens = max(max_tokens, PURPOSE_MIN_OUTPUT.get(purpose, 0))
         return self._complete(purpose, messages, system=system, enable_search=enable_search,
                               on_text=on_text, cancel=cancel, plan_id=plan_id, max_tokens=max_tokens,
                               reasoning_effort=reasoning_effort)
@@ -396,7 +408,7 @@ class ModelGateway:
 
     def _complete(self, purpose, messages, *, system, enable_search, on_text, cancel, plan_id, max_tokens,
                   reasoning_effort):
-        effort = reasoning_effort if reasoning_effort is not None else PURPOSE_EFFORT.get(purpose)
+        effort = reasoning_effort if reasoning_effort is not None else PURPOSE_EFFORT.get(purpose, 'high')
         config, setup_error = None, None
         token = _Cancellation(cancel if isinstance(cancel, threading.Event) else None)
         with self._lock:
@@ -409,6 +421,7 @@ class ModelGateway:
             self._requests.add(token)
         identifier = None
         observed, result, error, secret = None, None, None, None
+        attempted = False
         try:
             # Persist BEFORE key access/network. Crash/forced exit leaves an
             # explicit unfinished call, never a falsely complete cost summary.
@@ -432,9 +445,11 @@ class ModelGateway:
                     secret = self._secret(config)
                 if not secret:
                     raise ModelError('MODEL_KEY_REQUIRED', '请为当前模型预设保存 API Key。')
+                attempted = True
+                timeout = (min(300., max(240., config['timeout'])) if purpose in BACKGROUND_PURPOSES else config['timeout'])
                 result = providers.complete(config['provider_id'], base_url=config['base_url'], model=config['model'],
                                             api_key=secret, messages=messages, system=system, enable_search=enable_search,
-                                            temperature=config['temperature'], timeout=config['timeout'],
+                                            temperature=config['temperature'], timeout=timeout,
                                             cancel=token, on_text=on_text, max_tokens=max_tokens,
                                             reasoning_effort=effort)
                 if not isinstance(result, providers.ModelResult) or result.provider_id != config['provider_id']:
@@ -451,6 +466,16 @@ class ModelGateway:
                     # An invalid answer can still have final, billable meters.
                     # Only the adapter knows whether a stream's usage is partial.
                     observed = self._billable_usage(exc.usage, config, effort)
+                if observed is None and exc.code in {'MODEL_TIMEOUT', 'MODEL_CONNECTION_FAILED', 'MODEL_CANCELLED'}:
+                    # A missing receipt is unknown, not zero. Preserve whether
+                    # the provider was attempted; a pre-send cancel cannot bill.
+                    unknown = providers.Usage(0, 0, 0, 0, 0, 0, {'_mentorflow': {
+                        'unreported_fields': ['input_tokens', 'cached_input_tokens', 'uncached_input_tokens',
+                                              'output_tokens', 'reasoning_tokens', 'search_requests'],
+                        'request_attempted': getattr(exc, 'request_attempted', attempted),
+                        'sent_reasoning_parameters': getattr(exc, 'sent_reasoning_parameters', {}),
+                    }})
+                    observed = self._billable_usage(unknown, config, effort) if config else unknown
             except Exception:
                 error = ModelError('MODEL_RESPONSE_INVALID', '模型调用未返回可核对的完整结果。')
             try:

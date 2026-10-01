@@ -104,8 +104,13 @@ async def run(http, config):
         body['temperature'] = config['temperature']
     effort = config.get('reasoning_effort')
     if config['provider_id'] == 'deepseek' and effort is not None:
-        # https://api-docs.deepseek.com/guides/thinking_mode/
-        body['reasoning'] = {'effort': effort}
+        # Anthropic compatibility docs + 2026-10-01 five-body probe:
+        # reasoning.effort=none was ignored; thinking.type=disabled produced
+        # no thinking block. Do not infer effectiveness from intent alone.
+        # https://api-docs.deepseek.com/guides/anthropic_api/
+        body['thinking'] = {'type': 'disabled' if effort == 'none' else 'enabled'}
+        if effort != 'none':
+            body['output_config'] = {'effort': effort}
     elif config['provider_id'] == 'anthropic' and effort in {'low', 'high', 'max'}:
         # https://platform.claude.com/docs/en/build-with-claude/effort
         model = config['model']

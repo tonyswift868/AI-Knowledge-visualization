@@ -128,33 +128,17 @@ def test_saved_verdict_allows_answer_explanation_and_streaming(room, monkeypatch
     assert '只会删掉一个' in ''.join(emitted)
 
 
-def remove_draft():
-    return lesson_prep.LessonPrep('remove 删除第一个匹配元素。',
-        (lesson_prep.Example("列表中两个 'apple'，remove('apple') 只删第一个。", True, True,
-                             "fruits = ['apple', 'banana', 'apple']\nfruits.remove('apple')\nprint(fruits)"),),
-        '按名字找人。', '仅用于解释按值匹配。', QUESTION['stem'], '只删第一个 apple。', ('构造的水果例子。',))
+def test_new_rule_allows_confirming_the_taught_example():
+    from tests.refactor.guided_lessons.fixtures import draft
+    assert lesson_prep.check_lesson(draft()) == ()
+    assert lesson_prep.VERSION == 4
+    assert not hasattr(lesson_prep, 'casual_repeats_example')
 
 
-def test_archived_remove_question_is_rejected_but_changed_input_or_unshown_angle_is_allowed():
-    draft = remove_draft()
-    assert '随口问重复' in ' '.join(lesson_prep.check_lesson(draft))
-    changed = replace(draft, casual_question="列表里有三个 'pear'，remove('pear') 后还剩几个 pear？")
-    assert lesson_prep.check_lesson(changed) == ()
-    different_angle = replace(draft, casual_question="同一例子中，把 remove('apple') 的返回值赋给 r，r 是什么？")
-    # No return is displayed in this example; a different angle is permitted.
-    different_angle = replace(different_angle, examples=(replace(draft.examples[0], text="水果列表演示删除 apple 后的列表。"),))
-    assert lesson_prep.check_lesson(different_angle) == ()
-    failure_angle = replace(draft, casual_question="如果列表里没有 'apple'，再 remove('apple') 会怎样？")
-    assert lesson_prep.check_lesson(failure_angle) == ()
-    assert '不能原样重复' in lesson_prep.PREP_SYSTEM and '不能 approve' in lesson_prep.REVIEW_SYSTEM
-    assert lesson_prep.VERSION == 3
-
-
-def test_live_lesson_parser_also_rejects_replaying_the_demonstrated_example():
+def test_live_teacher_can_confirm_the_taught_example_after_new_decision():
     from tests.refactor.teacher_agent.test_class_teacher_agent import context
     text = "先看这个例子。\n```python\nfruits = ['apple', 'banana', 'apple']\nfruits.remove('apple')\nprint(fruits)\n```\n【随口问】" + QUESTION['stem'] + "【/随口问】"
-    with pytest.raises(AgentFormatError, match='重复'):
-        teacher_agent.parse_teaching(text, context())
+    assert teacher_agent.parse_teaching(text, context()).casual_question == QUESTION['stem']
 
 
 def test_failed_requests_fall_back_without_reference_and_cancel_is_preserved(room, monkeypatch):

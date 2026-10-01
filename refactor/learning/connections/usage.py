@@ -21,6 +21,7 @@ import uuid
 from .errors import ModelError
 from .pricing import FIELDS, PriceCatalog, timestamp, validate_usage
 from .providers import Usage
+from .providers._accounting import sent_reasoning
 
 _RAW_NUMBERS = {'input_tokens', 'output_tokens', 'total_tokens', 'prompt_tokens', 'completion_tokens',
                 'cached_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens', 'cache_write_tokens',
@@ -53,6 +54,13 @@ def _clean_usage(value, depth=0):
         cleaned['partial_usage'] = True
     if meta.get('response_received') is True:
         cleaned['response_received'] = True
+    if type(meta.get('request_attempted')) is bool:
+        cleaned['request_attempted'] = meta['request_attempted']
+    if 'sent_reasoning_parameters' in meta:
+        cleaned['sent_reasoning_parameters'] = sent_reasoning(meta['sent_reasoning_parameters'])
+    for field in ('thinking_blocks', 'thinking_characters'):
+        if type(meta.get(field)) is int and meta[field] >= 0:
+            cleaned[field] = meta[field]
     if 'token_total_reconciled' in meta:
         if meta['token_total_reconciled'] is not None and type(meta['token_total_reconciled']) is not bool:
             raise ModelError('USAGE_INVALID', '用量对账标记无效。')
@@ -270,10 +278,19 @@ class UsageLog:
             estimated_amounts, reasons = {}, {}
             priced, estimated, recalculated = 0, 0, 0
             incomplete = {}
+            transport_unknown = cancelled_unknown = partial_calls = 0
             def note(reason):
                 incomplete[reason] = incomplete.get(reason, 0) + 1
             states = {s: 0 for s in ('in_progress', 'succeeded', 'failed', 'cancelled')}
             for row in items:
+                data = json.loads(row['usage_json']) if row['usage_json'] else None
+                meta = data['raw'].get('_mentorflow', {}) if data else {}
+                missing_meters = not data or bool(set(meta.get('unreported_fields', [])) & {'input_tokens', 'output_tokens'})
+                uncertain = missing_meters or meta.get('partial_usage') is True
+                if uncertain and meta.get('request_attempted') is not False:
+                    transport_unknown += row['error_code'] in {'MODEL_TIMEOUT', 'MODEL_CONNECTION_FAILED'}
+                    cancelled_unknown += row['error_code'] == 'MODEL_CANCELLED'
+                partial_calls += meta.get('partial_usage') is True
                 states[row['state']] += 1
                 if row['error_code']:
                     errors[row['error_code']] = errors.get(row['error_code'], 0) + 1
@@ -312,9 +329,15 @@ class UsageLog:
                      if not unknown & {'input_tokens', 'cached_input_tokens'} and known['input_tokens'] else None)
             if tokens_only:
                 return dict(calls=len(items), **states, **counters, cache_hit_rate=ratio,
+                            unknown_usage_calls=transport_unknown+cancelled_unknown,
+                            transport_unknown_calls=transport_unknown, cancelled_unknown_calls=cancelled_unknown,
+                            partial_usage_calls=partial_calls,
                             usage_complete=not unknown, unknown_fields=sorted(unknown),
                             incomplete_reasons=incomplete, errors=errors)
             return dict(calls=len(items), **states, **counters, cache_hit_rate=ratio,
+                        unknown_usage_calls=transport_unknown+cancelled_unknown,
+                        transport_unknown_calls=transport_unknown, cancelled_unknown_calls=cancelled_unknown,
+                        partial_usage_calls=partial_calls,
                         usage_complete=not unknown, unknown_fields=sorted(unknown), known_tokens=known,
                         amount=next(iter(amounts.values())) if not (unpriced or estimated) and len(amounts) == 1 else None,
                         currency=next(iter(amounts)) if not (unpriced or estimated) and len(amounts) == 1 else None,

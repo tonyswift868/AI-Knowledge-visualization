@@ -133,7 +133,7 @@ def test_unreported_second_round_does_not_erase_known_first_round_or_claim_compl
 
 
 @pytest.mark.parametrize('mode', ['no_headers', 'no_meter', 'bad_meter'])
-def test_only_no_response_has_null_usage_and_unknown_is_never_priced_zero(tmp_path, monkeypatch, mode):
+def test_missing_receipt_is_explicitly_unknown_and_never_priced_zero(tmp_path, monkeypatch, mode):
     g = gateway(tmp_path)
     def handle(*_):
         if mode == 'no_headers':
@@ -148,7 +148,11 @@ def test_only_no_response_has_null_usage_and_unknown_is_never_priced_zero(tmp_pa
     with pytest.raises(ModelError):
         g.complete('plan', MESSAGES)
     stored = ledger_row(g)[2]
-    assert (stored is None) == (mode == 'no_headers')
+    assert stored is not None
+    if mode == 'no_headers':
+        meta = json.loads(stored)['raw']['_mentorflow']
+        assert meta['request_attempted'] is True
+        assert 'input_tokens' in meta['unreported_fields']
     total = g.usage_log.summary(START, END)['total']
     assert total['calls'] == total['failed'] == 1
     assert total['amount'] is total['input_tokens'] is None

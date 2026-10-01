@@ -100,6 +100,15 @@ class ReportTests(unittest.TestCase):
     def dump(self):
         return '\n'.join(self.store._db.iterdump())
 
+    def test_live_points_only_lists_actual_live_teaching(self):
+        self.prepare()
+        first, second = self.pids()
+        self.store.save_lesson_cache_item('p', 'lesson_preps', first, dict(status='needs_live_teaching', live_used=True))
+        self.store.save_lesson_cache_item('p', 'lesson_preps', second, dict(status='needs_live_teaching', live_used=False))
+        report = self.finish()
+        self.assertEqual([p['point_id'] for p in report['live_points']], [first])
+        self.assertTrue(report['live_points'][0]['title'])
+
     def test_on_time_overview_daily_confirmed_tentative_and_exact_counts(self):
         s = self.prepare()
         s.add_credit('p', 'first', 'first-unit', 10, DAY)

@@ -24,6 +24,8 @@ def question(**changes):
                options=[], answer="用传感器感知，用执行器行动。", reference="p1 要说明感知来自传感器，p2 要说明行动依靠执行器。",
                point_ids=["p1", "p2"], chunk_ids=["c1", "c2"])
     row.update(changes)
+    if row['type'] in ('short', 'fix_error'):
+        row.setdefault('required_points', ['感知来自传感器。', '行动依靠执行器。'])
     return row
 
 

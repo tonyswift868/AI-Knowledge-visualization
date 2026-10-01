@@ -146,8 +146,36 @@ def covers(new, old):
                                           else number(new[k]) is not None)) for k, v in old.items())
 
 
+def sent_reasoning(body):
+    """Allowlisted values actually assembled on the HTTP request, no text."""
+    body = mapping(body)
+    result = {}
+    efforts = {'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'}
+    for key in ('reasoning', 'output_config'):
+        effort = mapping(body.get(key)).get('effort')
+        if isinstance(effort, str) and effort in efforts:
+            result[key] = {'effort': effort}
+    mode = mapping(body.get('thinking')).get('type')
+    if isinstance(mode, str) and mode in {'disabled', 'enabled', 'adaptive'}:
+        result['thinking'] = {'type': mode}
+    effort = body.get('reasoning_effort')
+    if isinstance(effort, str) and effort in efforts:
+        result['reasoning_effort'] = effort
+    if type(body.get('enable_thinking')) is bool:
+        result['enable_thinking'] = body['enable_thinking']
+    parameters = mapping(body.get('parameters'))
+    nested = sent_reasoning({k: parameters[k] for k in ('enable_thinking', 'reasoning_effort') if k in parameters}) if parameters else {}
+    if nested:
+        result['parameters'] = nested
+    thinking = mapping(mapping(body.get('generationConfig')).get('thinkingConfig'))
+    level = thinking.get('thinkingLevel')
+    if isinstance(level, str) and level in {'minimal', 'low', 'medium', 'high'}:
+        result['generationConfig'] = {'thinkingConfig': {'thinkingLevel': level}}
+    return result
+
+
 class _Receipt:
-    def __init__(self, config):
+    def __init__(self, config, body=None):
         self.protocol, self.provider = config['protocol'], config['provider_id']
         self.search = config['enable_search']
         self.model = config['model']
@@ -155,6 +183,8 @@ class _Receipt:
         self.final_usage = False
         self.received = False
         self.tools = {}
+        self.sent_reasoning = sent_reasoning(body or {})
+        self.thinking_blocks = self.thinking_chars = 0
 
     def model_from(self, data):
         model = data.get('modelVersion' if self.protocol == 'gemini_generate_content' else 'model')
@@ -179,6 +209,8 @@ class _Receipt:
         self.final_usage = self.remember_usage(data.get(key), key)
         if self.protocol == 'anthropic_messages':
             blocks = items(data.get('content'))
+            self.thinking_blocks = sum(b.get('type') == 'thinking' for b in blocks)
+            self.thinking_chars = sum(text_length(b.get('thinking')) for b in blocks if b.get('type') == 'thinking')
             self.length = sum(text_length(b.get('text')) for b in blocks if b.get('type') == 'text')
             self.data['content'] = [{'type': 'server_tool_use', 'name': 'web_search'} for b in blocks
                                     if b.get('type') == 'server_tool_use' and b.get('name') == 'web_search']
@@ -233,6 +265,9 @@ class _Receipt:
                 self.final_usage = False
             elif kind == 'content_block_start':
                 block = mapping(data.get('content_block'))
+                if block.get('type') == 'thinking':
+                    self.thinking_blocks += 1
+                    self.thinking_chars += text_length(block.get('thinking'))
                 if block.get('type') == 'text':
                     self.length += text_length(block.get('text'))
                 if block.get('type') == 'server_tool_use' and block.get('name') == 'web_search':
@@ -241,6 +276,8 @@ class _Receipt:
                 delta = mapping(data.get('delta'))
                 if delta.get('type') == 'text_delta':
                     self.length += text_length(delta.get('text'))
+                elif delta.get('type') == 'thinking_delta':
+                    self.thinking_chars += text_length(delta.get('thinking'))
             elif kind == 'message_delta':
                 self.reason = mapping(data.get('delta')).get('stop_reason', self.reason)
                 if self.reason and number(mapping(data.get('usage')).get('output_tokens')) is not None:
@@ -272,6 +309,9 @@ class _Receipt:
 
     def usage(self):
         value = read_usage(self.protocol, self.provider, self.data, self.search, strict=False)
+        value.raw['_mentorflow'].update(request_attempted=True, sent_reasoning_parameters=self.sent_reasoning)
+        if self.protocol == 'anthropic_messages' and self.received:
+            value.raw['_mentorflow'].update(thinking_blocks=self.thinking_blocks, thinking_characters=self.thinking_chars)
         if not self.final_usage:
             value.raw['_mentorflow']['partial_usage'] = True
         if self.received:
@@ -297,8 +337,19 @@ class Accounting:
     def __init__(self, config):
         self.config, self.receipts = config, []
 
-    def start(self):
-        self.receipts.append(_Receipt(self.config))
+    def start(self, body=None):
+        self.receipts.append(_Receipt(self.config, body))
+
+    def annotate(self, usage):
+        # Only program-defined parameter values/counts, never arbitrary body
+        # content or vendor extensions. Keep the original numeric meters.
+        meta = usage.raw.setdefault('_mentorflow', {})
+        meta['request_attempted'] = bool(self.receipts)
+        meta['sent_reasoning_parameters'] = self.receipts[-1].sent_reasoning if self.receipts else {}
+        if self.config['protocol'] == 'anthropic_messages':
+            meta['thinking_blocks'] = sum(r.thinking_blocks for r in self.receipts)
+            meta['thinking_characters'] = sum(r.thinking_chars for r in self.receipts)
+        return usage
 
     def begin(self):
         self.receipts[-1].received = True
@@ -322,4 +373,8 @@ class Accounting:
         error.generated_text_length = sum(r.length for r in self.receipts)
         error.finish_reason = truncated.reason if truncated else ''
         error.model = self.receipts[-1].model if self.receipts else self.config['model']
+        error.request_attempted = bool(self.receipts)
+        error.sent_reasoning_parameters = self.receipts[-1].sent_reasoning if self.receipts else {}
+        if error.usage is not None:
+            self.annotate(error.usage)
         return error

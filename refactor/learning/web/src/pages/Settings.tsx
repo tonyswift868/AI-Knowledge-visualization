@@ -295,7 +295,8 @@ const PURPOSE: Record<string, string> = {
 type Agg = { calls: number; failed: number; cancelled: number; in_progress: number;
   input_tokens: number | null; cached_input_tokens: number | null; uncached_input_tokens: number | null;
   output_tokens: number | null; search_requests: number | null; cache_hit_rate: string | null;
-  usage_complete: boolean; unknown_fields: string[]; incomplete_reasons: Record<string, number> }
+  usage_complete: boolean; unknown_fields: string[]; incomplete_reasons: Record<string, number>;
+  transport_unknown_calls?: number; cancelled_unknown_calls?: number; partial_usage_calls?: number }
 
 function fmt(n: number | null | undefined) { return n == null ? "—" : n.toLocaleString("zh-CN") }
 function rate(n: string | null | undefined) { return n == null ? "—" : `${(Number(n) * 100).toFixed(1)}%` }
@@ -309,6 +310,9 @@ function UsageGap({ value }: { value: Agg }) {
   if (value.usage_complete !== false && !missing.size) return null
   const reasons = Object.entries(value.incomplete_reasons ?? {})
   return <div className="sub">未完整统计：{[...missing].map((f) => METER_NAMES[f] ?? f).join("、")}。
+    {!!value.transport_unknown_calls && <span> 有 {value.transport_unknown_calls} 次调用超时或断线，用量未知（可能已计费）。</span>}
+    {!!value.cancelled_unknown_calls && <span> 有 {value.cancelled_unknown_calls} 次调用取消，用量未知（可能已计费）。</span>}
+    {!!value.partial_usage_calls && <span> {value.partial_usage_calls} 次调用已记录收到的部分用量。</span>}
     {reasons.length ? reasons.map(([reason, count]) => <span key={reason}> {reason}（{count} 次）。</span>) : "返回数据未包含完整统计字段。"}
     未知字段显示“—”，不会将缺失量当作零。原因计数可能重叠。
   </div>

@@ -68,7 +68,7 @@ TEACHER_SYSTEM = """你是 MentorFlow 中陪伴同一学习计划的中文老师
 讲解时优先用一个贴切类比，用‘类比：’标出并明确其对应关系和失效边界；优先从偏好领域选，贴不上就直接讲原理或退回日常生活，绝不硬套某个具体游戏。类比不计入‘例N：’的应用例子数。
 下面的详略、例子数量主要针对‘讲解知识点’步骤；插问、回应错答或规则说明应以当前问题为准，不为了凑数拖长。篇幅都是软目标，绝不截断句子、推导或必要知识。
 只有导演要求随口问时，结尾给一道有区分度的小问题，用【随口问】问题【/随口问】包起来；其他时候不擅自加问。最多一组标记、一道问题，正文不要提前重复问题，不在问题里直接给答案。
-随口问不得原样再问刚才例子已经演示的操作和结果；可换输入或借同一例子问尚未演示的另一个角度，仍只考当前知识点。
+随口问可以直接确认刚讲过的内容和例子；只考当前知识点。
 随口问标记是输出协议，不是提示占位符。需要提问时，正文结束后严格按以下三行输出，最后的闭合标记不可省略：
 【随口问】
 一道完整中文问题
@@ -141,7 +141,7 @@ def teacher_request(ctx: dict) -> tuple[str, list[dict]]:
         from .lesson_prep import parse_prep
         import json
         prepared = ctx["prepared_lesson"]
-        parse_prep(json.dumps(prepared, ensure_ascii=False))
+        parse_prep(json.dumps(prepared, ensure_ascii=False), live=len(prepared.get("steps", [])) == 2)
         task["prepared_lesson"] = prepared
     if ctx.get("pending_question"):
         pending = ctx["pending_question"]
@@ -333,9 +333,12 @@ def parse_teaching(text: str, ctx: dict) -> Teaching:
         raise AgentFormatError("speech: 中文问题不能代替正文的中文解释")
     if not speech and not question:
         raise AgentFormatError("speech: 正文和随口问均为空")
-    if question and not ctx.get("pending_question"):
-        from .lesson_prep import casual_repeats_example
-        codes = re.findall(r"```python\s*\n(.*?)```", speech, re.S)
-        if casual_repeats_example(question, speech, codes):
-            raise AgentFormatError("casual_question: 随口问重复了讲解中已演示的例子")
     return Teaching(speech, question, cited)
+
+
+def live_lesson_request(ctx: dict):
+    """Unreviewed fallback is explicit, structured and confined to this point."""
+    from .lesson_prep import prep_request
+    system, messages = prep_request(ctx)
+    system = system.replace("steps 有 3–5 步", "steps 有 2–3 步")
+    return "现场分步讲课：没有通过核对的备课稿，依据原文当场讲；仍须准确。\n" + system, messages

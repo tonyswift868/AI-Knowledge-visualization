@@ -226,6 +226,7 @@ def build_report(store, plan_id, *, today) -> dict:
                 weakness_score=evidence['casual_errors'] + evidence['module_errors'] + evidence['check_errors_before_pass']))
         profiles = store.records('teacher_profile', plan_id)
         profile = next((p['document'] for p in profiles if p['id'] == plan_id), None)
+        lesson_rows = store.load_lesson_cache(plan_id)['lesson_preps']
         result = dict(schema=SCHEMA, schema_version=1, plan=dict(
             plan_id=plan_id, goal=plan['goal'], final_goal=plan['final_goal'], level=plan['level'], notes=plan['notes'],
             start_date=ledger.window.start.isoformat(), end_date=ledger.window.end.isoformat(),
@@ -242,6 +243,8 @@ def build_report(store, plan_id, *, today) -> dict:
                             for p in sorted(point_rows, key=lambda p: (-p['weakness_score'], p['position']))[:WEAKEST_LIMIT]],
             weakness_rule=dict(score='casual_errors + module_errors + check_errors_before_pass',
                                tie_break='plan_order', limit=WEAKEST_LIMIT),
-            teacher_profile=profile)
+            teacher_profile=profile,
+            live_points=[dict(point_id=p['id'], title=p.get('title') or p['summary']) for p in points
+                         if lesson_rows.get(p['id'], {}).get('live_used')])
         store.save_report(plan_id, result)
         return result
