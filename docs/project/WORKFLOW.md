@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-01）：第二十六批已合入（0528289）；第二十七批等用户确认 CURRENT_STATE「当前阶段」里的计划再写。用户没空看长清单：要问的事列成带编号的短问题，每条附建议。
+- **现在在做的事**（2026-10-01）：第二十七批 5 个任务已起草（原文在“第二十七批任务原文”，基线 9cd348c），等用户转发。用户没空看长清单：要问的事列成带编号的短问题，每条附建议。
 
 ## 协作方式
 
@@ -61,13 +61,173 @@
 
 ## 待派队列
 
-第二十五批已于 2026-10-01 合入 43c033b；第二十六批（4 个任务，原文见下节）已于 2026-10-01 合入 0528289。之后：
+第二十七批（5 个任务，原文见下节）已起草，等用户转发。之后：
 
 | 建议批次 | 员工 | 内容 | 关联 |
 | --- | --- | --- | --- |
-| 第二十七批 | 合入后定人 | 实验“备课和出题合并成一次调用”（出题质量不降且花费降 20% 以上才采用）；判定、出题请求的缓存改造（本批它们在改结构，暂不动） | TEACH-08、CHK-01、SYS-05 |
-| 第二十七批 | MF-06（保持独立，不用修代码的人） | 第三次小测试：初中数学、3 个模块 8–10 个点、上限 ¥5，跑到最终检验、报告、自由检验、中断恢复，按 QA-01 花费标准核算，并跑一次 prefixcash 诊断 | QA-01 |
+| 第二十八批 | MF-06 | 用“没见过的考卷”终测 27-MF03 合入后的判定 | TEACH-04、QA-01 |
+| 第二十八批 | 合入后定人 | 实验“备课和出题合并成一次调用”（出题质量不降且花费降 20% 以上才采用）；判定、出题请求的缓存改造 | TEACH-08、CHK-01、SYS-05 |
+| 第二十八或二十九批 | MF-06（保持独立） | 第三次小测试：初中数学、3 个模块 8–10 个点、上限 ¥5，跑到最终检验、报告、自由检验、中断恢复，按 QA-01 花费标准核算，并跑 prefixcash 诊断 | QA-01 |
 | 之后 | — | 大测试（ai-agent-book + hello-agents），用户说了才写 | QA-01 |
+
+## 第二十七批任务原文（2026-10-01，基线 9cd348c）
+
+五个任务按文件分工并行；MF-05、MF-07 本批不派活。27-MF06 写的“没见过的考卷”在它的 D 盘目录里，27-MF03 不许读（防止对着考卷调）。
+
+### [27-MF01] library｜讲稿省钱（不降质量）+ 核对员检查清单
+
+~~~text
+【MentorFlow 第二十七批｜MF-01（工位 library）｜讲稿省钱（不降质量）+ 核对员检查清单】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard 9cd348c
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：回执对每条相关标准写“达标/未达标”；不让被测模型给自己打分，由你本人核对。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+花钱规则（用户定，严格执行）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥2，分两段——第一段最多 ¥0.7。能离线做的一律先离线做（假模型、规则、回放已保存的记录）。每次花钱前把“预计改善多少、为什么”写进报告；第一段没达到预期就停下交回执。花费按高峰价折算后报告。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑五个任务（按文件分工，各改各的，冲突由架构师合并）：
+  27-MF01（你）：course/lesson_prep.py；app/classroom.py 的 _prepare_batch、_prepare_point、_save_prepared 与 _prep_* ；app/settings.py 的“讲解详略”默认值。
+  27-MF03（client）：判定校准——course/judge_agent.py、course/answer_compare.py、app/classroom.py 的 _judge。
+  27-MF04（platform）：出题真实评测与修正——course/question_agent.py、course/question_review.py、app/classroom.py 的 _bank_fill。
+  27-MF02（runtime）：缓存真实对照与调用失败留证——connections/、course/request_layout.py、teacher_agent.py、profile_agent.py。
+  27-MF06（classroom）：写判定用的“没见过的考卷”并跑基线，不改产品代码。
+背景：26-MF01 真实复测（.local/test-tmp/prep-retest/report.md、human-audit.md）：核对一次通过 3/4（目标 ≥80%）；每点“写稿 + 核对”约 ¥0.16（高峰价），目标 ¥0.08，核对占 81%；通过核对的稿里仍有 1 道引导题问法歧义、1 道随口问没写清前提、2 处引申没标清。用户定：不降思考强度、不压缩学习内容，从别处省（[QA-01] 花费、[SYS-07]）；讲课默认节奏偏快、偏简洁（[TEACH-06]）。
+先读：AGENTS.md；CURRENT_STATE 的 [TEACH-06]（课堂方案）、[TEACH-08]（全部）、[QA-01] 花费标准、[SYS-07]；26-MF01 的报告与 human-audit.md；course/lesson_prep.py；app/classroom.py 的备课部分。
+要做
+  1. 省钱（不降质量，逐项量化）：①“讲解详略”默认改为简洁，简洁时默认 3 步（内容确实需要才多一步）；②相邻两点合在一次核对里（只读一遍原文），但结果逐点给，一点失败不丢另一点的稿；③能由程序检查的（格式、长度、选项个数、随口问有参考答案、引申标记与正文一致、代码能运行）都在核对前由程序查掉，核对提示只留需要判断的内容。每一项都要在报告里写清单独省了多少（用同一批输入对照）。
+  2. 核对员检查清单：在核对提示里逐条列出要查的事——事实与原文一致、题面或引导问题有没有歧义、操作类问题的前提写没写清、引申有没有标出、每个选项回应对不对、两道随口问的参考答案对不对。
+  3. 核对员能力测试：做一套“植入错误”的讲稿（至少 12 份：事实错、数值错、问法歧义、缺前提、引申没标、选项回应判错各 2 份，另加 6 份无错的），离线保存；真实核对一遍：植入的事实与数值错误必须 100% 拦下，表述类问题拦下 ≥90%，无错稿误拦 ≤1 份。26-MF01 human-audit 里那 4 个问题必须在内。
+  4. 真实复测：数学 2 点（26-MF01 已找的资料）、历史 2 点、Python 2 点，完整走写稿 → 核对；你本人逐条核对。目标：核对一次通过率 ≥80%，每点“写稿 + 核对”≤ ¥0.08（高峰价），事实与选项回应错误 0、表述问题 0。达不到时如实报告差多少、主要花在哪。
+  5. 第一段（≤ ¥0.7）先做第 3 条和 2 个点；不达标就停下，离线分析原因、改提示，再用第二段。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\prep-cost\report.md。
+回执：【MF-01｜library｜第二十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 三项省钱做法各省多少 ／ 核对清单 ／ 植入错误测试结果（按错误类型）／ 六点真实复测（一次通过率、人工核对、每点花费）／ QA-01 各项达标情况 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [27-MF03] client｜判定校准：简略写法不冤枉 + 公开数据集补完
+
+~~~text
+【MentorFlow 第二十七批｜MF-03（工位 client）｜判定校准：简略写法不冤枉 + 公开数据集补完】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard 9cd348c
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：回执对每条相关标准写“达标/未达标”；不让被测模型给自己打分，由你本人核对。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+花钱规则（用户定，严格执行）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥2，分两段——第一段最多 ¥0.7。能离线做的一律先离线做（假模型、规则、回放已保存的记录）。每次花钱前把“预计改善多少、为什么”写进报告；第一段没达到预期就停下交回执。花费按高峰价折算后报告。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑五个任务（按文件分工，各改各的，冲突由架构师合并）：
+  27-MF01（library）：讲稿省钱与核对清单——course/lesson_prep.py、classroom 备课部分、settings 默认值。
+  27-MF03（你）：course/judge_agent.py、course/answer_compare.py、app/classroom.py 的 _judge。
+  27-MF04（platform）：出题真实评测与修正——course/question_agent.py、question_review.py、classroom 的 _bank_fill。
+  27-MF02（runtime）：缓存与调用层。
+  27-MF06（classroom）：正在写判定用的“没见过的考卷”。为了不对着考卷调，你不许读 D:\MentorFlow\.local\test-tmp\judge-holdout\ 下的任何内容；架构师合入后由 27-MF06 用它来终测你的改动。
+背景：26-MF03（.local/test-tmp/judge-rules/report.md）：自建 180 个作答全对，但这套样例也用来调了提示；公开人工评分数据集判了 91/100，一致 75/91（82.4%），比人工冤枉 12、放水 4，原因一部分是参考答案转成的评分细则太细、缺图片上下文，一部分是判定员对代词指代和省略写法太严。真实学生答题常写得简略，这是冤枉风险；用户要求冤枉 0（[QA-01]），判法必须测过才算数（[TEACH-04]）。
+先读：AGENTS.md；CURRENT_STATE 的 [TEACH-04]（全部，含“依据”“检验方法”）、[QA-01]；26-MF03 的报告、public-results.json、public-sample.json；course/judge_agent.py、answer_compare.py；GradeOpt（https://arxiv.org/abs/2410.02165）根据判错样本改评分指引的做法。
+要做
+  1. 逐条分析公开集的 16 个分歧：每条写清是我们判错、人工标签可疑，还是题目缺图等上下文；补判剩下 9 条（1 条格式错要查原因）。
+  2. 校准判定（只改判定，不放水）：简略写法、代词指代、省略主语、口语化、错别字，只要放在这道题里意思清楚就算答到；参考答案转出的评分细则不能比题面要求更细。用 GradeOpt 的做法：从判错样本归纳规则，改判定提示和程序比对，不针对单条样本打补丁。
+  3. 回归：自建 180 个作答不许退步（冤枉 0、放水 0）；公开集 100 条全部重判，报告一致率、冤枉、放水的前后对比。第一段（≤ ¥0.7）先重判 16 个分歧和一半自建样例，没改善就停下分析。
+  4. 不要自己写新的“没见过的考卷”，也不要读 27-MF06 的目录。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\judge-calibrate\report.md。
+回执：【MF-03｜client｜第二十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 16 个分歧逐条结论 ／ 判定改了什么、依据哪些样本 ／ 自建样例回归 ／ 公开集 100 条前后对比 ／ QA-01 各项达标情况 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [27-MF06] classroom｜判定用的“没见过的考卷”（独立出题、人工标注、跑基线）
+
+~~~text
+【MentorFlow 第二十七批｜MF-06（工位 classroom）｜判定用的“没见过的考卷”（独立出题、人工标注、跑基线）】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard 9cd348c
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：不让被测模型给自己打分，标注由你本人完成。回执里的测试结果要和实际一致。
+花钱规则（用户定，严格执行）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥0.8，分两段——第一段最多 ¥0.3。每次花钱前把“预计看到什么”写进报告。花费按高峰价折算后报告。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑五个任务：27-MF01 讲稿省钱、27-MF03 判定校准、27-MF04 出题评测、27-MF02 缓存。你保持独立：不改任何产品代码，不和 27-MF03 交换样例；你的考卷只放在 D:\MentorFlow\.local\test-tmp\judge-holdout\，本批不提交进仓库（架构师合入 27-MF03 后再派你用它终测）。
+背景：判定员在自建样例上全对，但那套样例也用来调了提示（“对着考卷调”）；在公开数据集上一致只有 82%，对简略写法偏严（CURRENT_STATE [TEACH-04] 验证）。用户要求冤枉 0，判法必须测过才算数。需要一套判定员从没见过的考卷。
+先读：AGENTS.md；CURRENT_STATE 的 [TEACH-04]（全部，含“题型与判法”“过程题”）、[QA-01]；题目结构见 course/question_agent.py（五类题型：choice、exact、short、fix_error、essay；简答要点、论述评分细则的格式）；判定入口 app/classroom.py 的 _judge。不要读 tests/refactor/judge_rules/ 里 26-MF03 的样例（避免照着写）。
+要做
+  1. 出题：初中数学、历史、Python 三科，按题目结构契约各出 exact、short、fix_error 题至少 3 道，历史另出 2 道 essay；题目依据权威公开资料（写明出处）。
+  2. 作答：每道题 6–8 个像真实学生写的作答，必须包括：很简略但对的、用代词和省略的、口语化或有错别字但意思对的、只答对一半的、常见误解、只给结果、答非所问、带“我肯定对”“老师说过”诱导的。共不少于 150 个作答。
+  3. 标注：你本人逐条标出应判结果（对/错；简答逐条要点、论述逐项），写明理由；有争议的单独标出，不算进分母。
+  4. 基线：用当前代码（9cd348c）的判定跑一遍全部作答（第一段 ≤ ¥0.3 先跑一半），报告按题型、按作答类型的冤枉、放水、一致率，列出每一个判错的作答。
+  5. 做一个能重复运行的评测脚本（放在同一个 D 盘目录），以后换上新代码直接重跑。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\judge-holdout\report.md；考卷、标注、脚本、基线结果都在该目录；不改产品代码，本批不需要提交（如有提交只能是空提交或说明文档，不含考卷）。
+回执：【MF-06｜classroom｜第二十七批｜完成/部分完成/受阻】基线 ／ 考卷规模（按科目、题型、作答类型）／ 标注方法与争议条目 ／ 基线结果（按题型、作答类型：冤枉、放水、一致率）／ 判错清单路径 ／ 脚本用法 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [27-MF04] platform｜三科真实出题评测 + 按结果修出题与核对
+
+~~~text
+【MentorFlow 第二十七批｜MF-04（工位 platform）｜三科真实出题评测 + 按结果修出题与核对】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard 9cd348c
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：回执对每条相关标准写“达标/未达标”；不让被测模型给自己打分，由你本人核对。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+花钱规则（用户定，严格执行）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥2，分两段——第一段最多 ¥0.7。能离线做的一律先离线做（假模型、规则、回放已保存的记录）。每次花钱前把“预计改善多少、为什么”写进报告；第一段没达到预期就停下交回执。花费按高峰价折算后报告。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑五个任务（按文件分工，各改各的，冲突由架构师合并）：
+  27-MF01（library）：讲稿省钱与核对清单——course/lesson_prep.py、classroom 备课部分。
+  27-MF03（client）：判定校准——course/judge_agent.py、answer_compare.py、classroom 的 _judge。
+  27-MF04（你）：course/question_agent.py（出题提示与解析）、course/question_review.py、app/classroom.py 的 _bank_fill。
+  27-MF02（runtime）：缓存与调用层。
+  27-MF06（classroom）：判定用的考卷，不改产品代码。
+背景：你在第二十六批备好的三科评测（.local/test-tmp/bank-review/evaluate26.py、样本与人工核对表）因为要等题目结构合入没跑；现在两边都已合入主线（0528289）。目标见 [QA-01] 出题：合格 ≥98%，答案错、歧义、泄题 0。
+先读：AGENTS.md；CURRENT_STATE 的 [CHK-01]（全部）、[TEACH-04]“题型与判法”、[QA-01]；你第二十六批的报告；course/question_agent.py、question_review.py；app/classroom.py 的 _bank_fill。
+要做
+  1. 用合并后的代码跑三科真实评测：历史、Python、初中数学各 4 个点出题库并核对；你本人逐题核对。第一段（≤ ¥0.7）先跑一科。
+  2. 按结果修：出题提示、题目结构检查、核对提示都可以改（在你的文件范围内）。只针对规律性问题改，不对单道题打补丁；改完用同一批输入复测。
+  3. 报告：每科入库题数、合格率、答案错/歧义/泄题数、核对拦下几道/改了几道/丢了几道、每点题数、每点“出题 + 核对”花费（高峰价）、题型分布（不能为了合格率把简答都换成选择题）。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\bank-eval\report.md。
+回执：【MF-04｜platform｜第二十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 三科结果（合格率、三类错误、拦改丢）／ 题型分布 ／ 改了什么、依据哪些规律 ／ 复测结果 ／ 每点花费（高峰价）／ QA-01 各项达标情况 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [27-MF02] runtime｜缓存真实前后对照 + 调用失败留下原始证据
+
+~~~text
+【MentorFlow 第二十七批｜MF-02（工位 runtime）｜缓存真实前后对照 + 调用失败留下原始证据】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 9cd348c
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：回执对每条相关标准写“达标/未达标”；不让被测模型给自己打分，由你本人核对。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+花钱规则（用户定，严格执行）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥0.8，分两段——第一段最多 ¥0.3。每次花钱前把“预计看到什么、为什么”写进报告；第一段没达到预期就停下交回执。花费按高峰价折算后报告。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑五个任务（按文件分工，各改各的，冲突由架构师合并）：
+  27-MF01（library）：讲稿——course/lesson_prep.py、classroom 备课部分。
+  27-MF03（client）：判定——course/judge_agent.py、answer_compare.py、classroom 的 _judge。
+  27-MF04（platform）：出题——course/question_agent.py、question_review.py、classroom 的 _bank_fill。
+  27-MF02（你）：connections/、course/request_layout.py、teacher_agent.py、profile_agent.py。
+  27-MF06（classroom）：判定考卷，不改产品代码。
+背景：26-MF02 把老师与档案请求改成只往后追加（离线估算老师 75.7% → 88.3%），真实前后对照的第一次请求 0.5 秒返回 MODEL_RESPONSE_INVALID，没有原始证据，停了（.local/test-tmp/cache-prefix/report.md）。架构师 2026-10-01 用合入后的代码各发了一次老师流式、老师非流式、判定、需求核对的真实请求，全部正常（CURRENT_STATE [SYS-05]）。
+先读：AGENTS.md；CURRENT_STATE 的 [SYS-05]、[SYS-01]、[SYS-03]；你第二十六批的报告与脚本；connections/providers/_http.py、anthropic_messages.py、gateway.py。
+要做
+  1. 调用失败留证：MODEL_RESPONSE_INVALID、MODEL_CONNECTION_FAILED 等失败时，把 HTTP 状态码、厂商错误类型与错误信息、SSE 最后几个事件的类型记进本机日志（不含 Key、不含请求正文与学生内容），方便下次查原因；离线测试覆盖。
+  2. 重跑缓存真实前后对照：同一个固定小课堂剧本，改前（9cd348c 之前的组装方式，可用你第二十六批保存的基线代码）与改后各跑一次，比较老师、档案两类的真实命中率、输入 token 与输入花费；你本人对照原文核对老师讲解质量不下降。再遇到调用失败就按第 1 条留证、重试一次，仍失败就停下报告。
+  3. 用 prefixcash 脚本（tests/refactor/cache_prefix）对这次真实调用跑一遍诊断，附图。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\cache-ab\report.md。
+回执：【MF-02｜runtime｜第二十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 失败留证做法 ／ 真实前后对照（命中率、输入 token、输入花费）／ 老师讲解质量核对 ／ prefixcash 诊断结论 ／ QA-01 各项达标情况 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
 
 ## 第二十六批任务原文（2026-10-01，基线 a7d8db1）
 
@@ -459,6 +619,11 @@
 | 26-MF04 | MF-04 platform | 题库独立核对 + 出题质量实测 | CHK-01、TEACH-04、TEACH-08、QA-01 | a7d8db1 | 已合入 0528289（部分：真实三科评测待跑，脚本已备） |
 | 26-MF02 | MF-02 runtime | 用 prefixcash 查缓存断点 + 按 Manus 做法改老师与档案请求 | SYS-05、ARCH-08 | a7d8db1 | 已合入 0528289（部分：真实前后对照第一次请求失败后停止） |
 | 26-MF01 | MF-01 library | 讲稿写稿与核对真实复测 + 真实后端接新界面联调 | TEACH-08、TEACH-06、QA-01 | a7d8db1 | 已合入 0528289（部分：4/6 点核对，一次通过 75%，¥0.16/点超标） |
+| 27-MF01 | MF-01 library | 讲稿省钱（不降质量）+ 核对员检查清单 | TEACH-08、TEACH-06、QA-01 | 9cd348c | 已起草，待用户转发 |
+| 27-MF03 | MF-03 client | 判定校准：简略写法不冤枉 + 公开数据集补完 | TEACH-04、QA-01 | 9cd348c | 已起草，待用户转发 |
+| 27-MF06 | MF-06 classroom | 判定用的“没见过的考卷”：独立出题、人工标注、跑基线 | TEACH-04、QA-01 | 9cd348c | 已起草，待用户转发 |
+| 27-MF04 | MF-04 platform | 三科真实出题评测 + 按结果修出题与核对 | CHK-01、TEACH-04、QA-01 | 9cd348c | 已起草，待用户转发 |
+| 27-MF02 | MF-02 runtime | 缓存真实前后对照 + 调用失败留下原始证据 | SYS-05、SYS-01 | 9cd348c | 已起草，待用户转发 |
 
 ## 任务模板
 
