@@ -254,6 +254,126 @@ def build_sections(sources, chunks_by_source, *, max_per_source=40, max_chars=90
     return sections
 
 
+def note_requirements(form):
+    """Read explicit count ranges only; no quantity request means no new cap.
+
+    Preserve the entire note as the scope contract, rather than guessing scope
+    from a keyword whitelist. Chinese and English quantity phrases are supported.
+    """
+    raw = form.get('notes') or ''
+    text = raw.lower()
+    digits = {'一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6,
+              '七': 7, '八': 8, '九': 9, '十': 10}
+    def number(value):
+        if value.isdigit(): return int(value)
+        if '十' in value:
+            left, right = value.split('十')
+            return digits.get(left, 1) * 10 + digits.get(right, 0)
+        return digits.get(value, 0)
+    n = r'(\d+|[一二两三四五六七八九十]+)'
+    interval = n + r'\s*(?:[–—\-~～至到]\s*' + n + r')?'
+    patterns = {
+        'total': [r'(?:总共|总计|合计|总点数|总知识点数|总计点数)\s*[:：为]?\s*' + interval + r'\s*(?:个)?\s*(?:知识点|点)',
+                  r'(?:总点数|总知识点数)\s*[:：为]?\s*' + interval,
+                  r'(?:知识点|点)\s*(?:共|总计)\s*' + interval,
+                  r'(?:total(?:\s+of)?|in total)\s*[:：]?\s*' + interval + r'\s*(?:knowledge\s+)?points'],
+        'per_module': [r'每(?:个)?模块\s*[:：为]?\s*' + interval + r'\s*(?:个)?\s*(?:知识点|点)',
+                       interval + r'\s*(?:knowledge\s+)?points\s+per\s+module'],
+        'modules': [r'模块数\s*[:：为]?\s*' + interval, interval + r'\s*(?:个)?模块', interval + r'\s*modules'],
+    }
+    result = {'scope': raw}
+    for key, pats in patterns.items():
+        for pattern in pats:
+            match = re.search(pattern, text)
+            if match:
+                low = number(match[1]); high = number(match[2]) if match[2] else low
+                if not 1 <= low <= high:
+                    raise AgentFormatError('补充说明中的数量区间无效。')
+                result[key] = [low, high]
+                break
+    return result
+
+
+def outline_requirements(outline, form):
+    """Attach host-owned module point budgets and return visible inconsistencies."""
+    req = note_requirements(form)
+    modules = outline_modules(outline)
+    errors = scope_requirement_errors(modules, form)
+    if 'modules' in req and not req['modules'][0] <= len(modules) <= req['modules'][1]:
+        errors.append(f"要求模块数{req['modules']}，实际{len(modules)}。")
+    if 'total' not in req and 'per_module' not in req:
+        return errors
+    per = req.get('per_module')
+    lower = per[0] if per else 1
+    upper = per[1] if per else None
+    desired = [max(lower, min(upper or 10**9, round(sum(m['minutes']) / 30))) for m in modules]
+    if 'total' in req:
+        low, high = req['total']
+        feasible_low = max(low, len(modules) * lower)
+        feasible_high = min(high, len(modules) * upper) if upper else high
+        if feasible_low > feasible_high:
+            errors.append('总点数与每模块点数/模块数不相容，请修改数量要求或路线。')
+            return errors
+        total = max(feasible_low, min(feasible_high, sum(desired)))
+        # Rebalance without discarding material. Exact budgets are prompts and
+        # validation targets; the model, not the host, chooses knowledge content.
+        while sum(desired) != total:
+            direction = 1 if sum(desired) < total else -1
+            choices = [i for i, value in enumerate(desired) if
+                       (direction > 0 and (upper is None or value < upper)) or
+                       (direction < 0 and value > lower)]
+            index = min(choices, key=lambda i: desired[i]) if direction > 0 else max(choices, key=lambda i: desired[i])
+            desired[index] += direction
+    for module, count in zip(modules, desired):
+        module['point_count'] = count
+        if module['minutes'][0] > count * 20 or module['minutes'][1] < count * 10:
+            errors.append(f"{module['title']}：{count}点与分钟区间{module['minutes']}不相容，应按真实学习量调整轮廓。")
+    return errors
+
+
+def scope_requirement_errors(items, form):
+    """Check literal exclusions, not guessed topic synonyms or self-grading.
+
+    Remaining semantic scope is carried verbatim to agents and visible in the
+    outline. Negated gap explanations must not be mistaken for taught content.
+    """
+    notes = form.get('notes') or ''
+    excluded = []
+    for match in re.finditer(r'(?:不含|不包括|不学|排除)\s*([^；;。\n]+)', notes):
+        excluded.extend(word.strip() for word in re.split(r'[、,，]|以及|和', match[1]) if len(word.strip()) >= 2)
+    errors = []
+    for item in items:
+        for word in excluded:
+            for field in ('title', 'summary'):
+                text = item.get(field, '')
+                for hit in re.finditer(re.escape(word), text):
+                    prefix = text[max(0, hit.start()-12):hit.start()]
+                    if not re.search(r'(?:不含|不包括|不学|不涉及|不讲|不要求|排除|缺少|缺|未含|没有)[^，。；;]*$', prefix):
+                        errors.append(f"{item['title']}涉及用户明确排除的「{word}」。")
+    return list(dict.fromkeys(errors))
+
+
+def point_requirement_errors(points, module, form=None):
+    errors = scope_requirement_errors(points, form) if form else []
+    target = module.get('point_count')
+    if target is None:
+        return errors
+    if len(points) != target:
+        errors.append(f"{module['title']}要求{target}点，实际{len(points)}点。")
+    try:
+        validate_point_minutes(points, module['minutes'])
+    except AgentFormatError as exc:
+        errors.append(str(exc))
+    return errors
+
+
+def requirement_brief(form):
+    return ('【用户明确要求（优先于按时间自行估点）】\n' + json.dumps(note_requirements(form), ensure_ascii=False)
+            + '\n数量必须照做；只学/不含的范围与模块指定内容必须遵守。资料不支持的目标不能换成别的内容还保留原模块名；'
+              '须在message和对应模块summary明确说明缺什么资料，模块名称反映实际可学内容。每点通常10–20分钟，'
+              '有数量要求时调整分钟区间，不能多生成点来凑原时间。没有数量要求时仍按每点约15分钟划分。')
+
+
 def outline_request(goal: str, form: dict, window_note: str, sources, sections, *, previous=None,
                     request="") -> tuple[str, list[dict]]:
     toc = []
@@ -264,7 +384,7 @@ def outline_request(goal: str, form: dict, window_note: str, sources, sections, 
         for section in sections:
             if section.id.startswith(f"s{s_index}."):
                 toc.append(f"  [{section.id}] {section.title}（约 {section.chars} 字）")
-    parts = [f"【学习者】\n{form_brief(form)}", f"【核对后的目标】{goal}", f"【时间】{window_note}",
+    parts = [f"【学习者】\n{form_brief(form)}", requirement_brief(form), f"【核对后的目标】{goal}", f"【时间】{window_note}",
              "【已采用资料的目录】\n" + "\n".join(toc)]
     if previous:
         parts.append("【上一版轮廓】\n" + json.dumps(previous, ensure_ascii=False))
@@ -400,6 +520,9 @@ def generate_request(form: dict, goal: str, outline: dict, module: dict, chunks,
     # by every module, then this module's materials, then the short task at the end.
     shared = f"【学习者】\n{form_brief(form)}\n【核对后的目标】{goal}\n\n【整条路线】\n" + "\n".join(skeleton)
     constraints = [f"本次最多{max_points}个知识点。"]
+    constraints.append(requirement_brief(form))
+    if module.get('point_count') is not None:
+        constraints.append(f"本模块合并后必须恰好{module['point_count']}点；不要因原先分钟区间增加点数。")
     if minutes_range is not None:
         constraints.append(f"本次首轮学习分钟区间：{minutes_range[0]}–{minutes_range[1]}分钟；所有点minutes相加应在此区间，不含检测/复习。")
     if batched:

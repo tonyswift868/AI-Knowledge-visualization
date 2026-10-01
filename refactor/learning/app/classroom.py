@@ -234,11 +234,14 @@ class Classroom:
         """Pin the study day: whatever is learnt until leaving counts for this day (TEACH-05)."""
         # Duplicate enter requests in this live room are not an exit. A new
         # room/process must, however, discard a stale persisted in_session flag.
+        reenter = course.plan_id not in self._entered_plans or not state.get('in_session')
         with self._guard:
             if course.plan_id not in self._entered_plans or not state.get("in_session") or not state.get("day"):
                 state["day"] = self.study_day().isoformat()
             self._entered_plans.add(course.plan_id)
         state["in_session"] = True
+        if reenter:
+            self._retry_bank(course, state)
         self._prefetch_banks(course, state)
         self._prepare_later(course, state)
         self._schedule_idle_prep(course, state)
@@ -472,6 +475,8 @@ class Classroom:
 
     # ------------------------------------------------------------------ tests
     def start_test(self, course, state, ctx, kind):
+        if self._retry_bank(course, state):
+            return
         book = course.book()
         module_id = state["module_id"]
         points = course.points_of(module_id)
@@ -595,7 +600,7 @@ class Classroom:
             [r for r in course.store.records('judgements', course.plan_id) if r['event']['module_id'] == module_id])
 
     def _bank_fill(self, course, ctx, module_id, *, background=False, point_ids=None, force=False,
-                   needs=None, used_angles=None, refill_for=None, reserve=None, asked=()):
+                   needs=None, used_angles=None, refill_for=None, reserve=None, asked=(), retry_round=None):
         """Review before banking; retain drafts and durable per-point reissue limits."""
         from ..course import question_review, question_solver
         ids = list(point_ids or [p['id'] for p in course.points_of(module_id)])
@@ -608,6 +613,8 @@ class Classroom:
         journal = question_review.ReviewJournal(self.services.account_id, self.services.data_root,
                                                 course.plan_id, module_id, scopes)
         with journal.lock:
+            if retry_round:
+                journal.begin_round(ids, retry_round)
             # Foreground and background jobs recount after acquiring the same
             # module lock, including successful inserts from an earlier job.
             rows = self._bank_rows(course, module_id)
@@ -700,6 +707,8 @@ class Classroom:
                     row['status'] = 'rejected'  # two completed checks without approval
                     journal.save(token, row)
                 if row['status'] != 'approved':
+                    reason = '; '.join(row['reviews'][-1]['issues']) if row['reviews'] else '两次核对未批准。'
+                    errors.update({pid: reason or '结构或独立解题核验未通过。' for pid in q['point_ids']})
                     return composites
                 q = row['question']
                 fresh = current()  # a late result cannot enter changed material or a cancelled job
@@ -782,19 +791,21 @@ class Classroom:
                         errors.setdefault(pid, '核对后仍缺题；每点初次出题与一次重出已经用完。')
                     else:
                         errors.pop(pid, None)
+                    if remaining[pid] and pid not in deferred:
+                        errors[pid] += ' 本轮初次出题与一次重出已经用完。'
             if errors:
-                titles = '、'.join(course.point(pid)['title'] for pid in errors)
-                raise ModelError('QUESTION_BANK_INCOMPLETE', f'{titles}题目准备失败：{next(iter(errors.values()))}')
+                details = '；'.join(f"{course.point(pid)['title']}：{reason}" for pid, reason in errors.items())
+                raise ModelError('QUESTION_BANK_INCOMPLETE', '题目准备失败：' + details)
             _, shortfall = question_review.written_allocation(self._bank_rows(current(), module_id), {})
             if shortfall:
                 raise ModelError('QUESTION_BANK_TYPE_RATIO', '模块单点题中的简答/纠错不足30%，尚未准备完成。')
 
     def _prepare_bank_later(self, course, module_id, *, point_ids=None, force=False,
-                            needs=None, used_angles=None, refill_for=None, reserve=None, asked=()):
+                            needs=None, used_angles=None, refill_for=None, reserve=None, asked=(), retry_round=None):
         key = (course.plan_id, module_id)
         fingerprint = self._test_fingerprint(course, module_id)
         request = dict(point_ids=point_ids, force=force, needs=needs, used_angles=used_angles,
-                       refill_for=refill_for, reserve=reserve, asked=list(asked))
+                       refill_for=refill_for, reserve=reserve, asked=list(asked), retry_round=retry_round)
         with self._guard:
             old = self._bank_jobs.get(key)
             if old and old['fingerprint'] == fingerprint and old['status'] == 'running':
@@ -813,6 +824,8 @@ class Classroom:
                     item = job['queue'].pop(0)
                 try:
                     fresh = _Course(self.services.store, self.services.store.get_plan(course.plan_id))
+                    if item.get('retry_round'):
+                        job['error'] = ''
                     self._bank_fill(fresh, None, module_id, background=True, **item)
                 except Exception as exc:  # still drain independent queued wrong-point refills
                     job['error'] = getattr(exc, 'message', '题目准备失败，请检查模型连接后重试。')
@@ -851,8 +864,10 @@ class Classroom:
     def _defer_bank(self, course, state, pending, method, args=()):
         tries = state.get('bank_wait_attempts', 0) + 1
         if tries > 2:
-            state.pop('bank_wait_attempts', None)
-            return self._say(course, state, '题库仍缺少当前所需题目；请检查模型连接后重试。', kind='error', role='system')
+            wait = dict(module_id=pending.module_id, points=pending.points, method=method,
+                        args=list(args), step=state['step'], used_angles=pending.used_angles,
+                        needs=pending.needs, asked=pending.asked)
+            return self._bank_failed(course, state, wait, '本轮出题与核对次数已用完。')
         state['bank_wait_attempts'] = tries
         state['bank_wait'] = {'module_id': pending.module_id, 'points': pending.points,
                               'method': method, 'args': list(args), 'step': state['step'],
@@ -863,6 +878,30 @@ class Classroom:
         self._prepare_bank_later(course, pending.module_id, point_ids=pending.points,
                                  reserve=pending.needs or {pid: 1 for pid in pending.points},
                                  used_angles=pending.used_angles, asked=pending.asked)
+
+    def _bank_failed(self, course, state, wait, reason):
+        state.pop('bank_wait', None)
+        state['step'] = wait['step']
+        state['bank_retry'] = wait
+        titles = '、'.join(course.point(pid)['title'] for pid in wait['points'])
+        self._say(course, state, f'{titles}暂时出不了合格题：{reason} '
+                  '本轮已停止。可点击当前的检测/继续检验按钮重新准备一轮题目，'
+                  '或离开后重新进入；已有学习与检验记录保留。若仍失败，请补充该点资料或检查模型连接。',
+                  kind='error', role='system')
+
+    def _retry_bank(self, course, state):
+        """Existing test/check button or a fresh enter, never a snapshot poll."""
+        wait = state.pop('bank_retry', None)
+        if not wait:
+            return False
+        state['bank_wait_attempts'] = 0
+        state['bank_wait'] = wait
+        state['step'] = 'preparing_questions'
+        self._say(course, state, '按你的操作重新准备一轮题目；仍会先独立解题并核对，不降低标准。', role='system')
+        self._prepare_bank_later(course, wait['module_id'], point_ids=wait['points'],
+            reserve=wait.get('needs') or {pid: 1 for pid in wait['points']},
+            used_angles=wait.get('used_angles'), asked=wait.get('asked', ()), retry_round=uuid.uuid4().hex)
+        return True
 
     def _resume_bank_wait(self, course, state, ctx):
         wait = state.get('bank_wait')
@@ -879,7 +918,7 @@ class Classroom:
         state['step'] = wait['step']
         state.pop('bank_wait', None)
         if job['status'] == 'failed':
-            return self._say(course, state, job['error'] + ' 可检查模型连接后重试。', kind='error', role='system')
+            return self._bank_failed(course, state, wait, job['error'])
         getattr(self, wait['method'])(course, state, ctx, *wait['args'])
 
     def _split_test_question(self, course, state, ctx, question):
@@ -964,6 +1003,7 @@ class Classroom:
         if after:
             state.update(module_id=after[0]["id"], index=0, step="teach", pending=None, test=None, stems=[])
             self._prefetch_banks(course, state)
+            self._prepare_later(course, state)
             return
         failed = [m for m in course.modules if book.module(m["id"]).state == "failed"]
         if failed:
@@ -977,6 +1017,8 @@ class Classroom:
 
     # ------------------------------------------------------------------ final check (CHK-01)
     def start_check(self, course, state, ctx):
+        if self._retry_bank(course, state):
+            return
         if state["step"] not in ("check_offer", "checking") or (state["step"] == "checking" and state.get("pending")):
             raise BridgeError("STEP_INVALID", "现在还不能开始最终检验。")
         if course.plan["state"] == "active":
@@ -1342,7 +1384,11 @@ class Classroom:
         candidates = [p for p in course.points[start:] if p["id"] not in taught]
         chosen, minutes = [], 0
         for point in candidates:
-            if chosen and minutes >= budget and (peak or state.get("start_only") or len(chosen) >= 4):
+            # During class the current point plus three successors are
+            # immediately-needed work, even at peak price or past today's
+            # target. Only the more distant daily window may be deferred.
+            minimum = 1 if state.get("start_only") else 4
+            if chosen and minutes >= budget and len(chosen) >= minimum:
                 break
             chosen.append(point)
             minutes += point["minutes"]
@@ -1402,20 +1448,28 @@ class Classroom:
         frozen = copy.deepcopy(state)
         def work():
             try:
-                fresh = self._course(course.plan_id)
-                targets = self._prep_targets(fresh, frozen)
-                keep = {p["id"] for p in fresh.points}
-                index = 0
-                while index < len(targets):
-                    point = targets[index]
-                    group = [point]
-                    if index + 1 < len(targets) and targets[index + 1]["module_id"] == point["module_id"]:
-                        group.append(targets[index + 1])
-                    index += len(group)
+                attempted = set()
+                while True:
+                    fresh = self._course(course.plan_id)
+                    with self._guard:
+                        latest = copy.deepcopy(self._prep_latest.get(course.plan_id, frozen))
+                    if latest.get("step") in ("completed", "checking"):
+                        break
+                    # Replenish from the latest position between batches;
+                    # a skipped module/day change must not sit behind an
+                    # obsolete frozen queue. Retry limits remain in the rows.
+                    targets = [p for p in self._prep_targets(fresh, latest) if p["id"] not in attempted]
+                    if not targets:
+                        break
+                    keep = {p["id"] for p in fresh.points}
+                    group = targets[:1]
+                    if len(targets) > 1 and targets[1]["module_id"] == group[0]["module_id"]:
+                        group.append(targets[1])
+                    attempted.update(p["id"] for p in group)
                     if len(group) == 2:
                         self._prepare_batch(fresh, group, keep)
                     else:
-                        self._prepare_point(fresh, point, keep)
+                        self._prepare_point(fresh, group[0], keep)
             except Exception:
                 log.info("background lesson preparation failed", exc_info=True)
             finally:

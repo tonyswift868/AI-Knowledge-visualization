@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
+import json
 import logging
 import math
 import re
@@ -689,6 +690,14 @@ class PlanFlow:
                                                                 sections, previous=previous, request=request),
                                lambda text: agents.parse_outline(text, [s.id for s in sections]), ctx,
                                plan_id=draft["plan_id"], max_tokens=8192)
+        constraint_errors = agents.outline_requirements(outline, draft['form'])
+        if constraint_errors:
+            outline, _ = self._ask('outline', agents.outline_request(draft['goal'], draft['form'], window_note(window),
+                sources, sections, previous=outline,
+                request='程序核对未满足用户要求，请调整一次：' + '；'.join(constraint_errors)),
+                lambda text: agents.parse_outline(text, [s.id for s in sections]), ctx,
+                plan_id=draft['plan_id'], max_tokens=8192)
+            constraint_errors = agents.outline_requirements(outline, draft['form'])
         by_id = {s.id: s for s in sections}
         modules = agents.outline_modules(outline)
         for module in modules:
@@ -697,11 +706,14 @@ class PlanFlow:
             module["ref_titles"] = [f"{by_id[r].source_title} · {by_id[r].title}" for r in module["refs"]]
         low, high = sum(m["minutes"][0] for m in modules), sum(m["minutes"][1] for m in modules)
         draft["outline"] = {"agent": {"stages": [{"title": s["title"], "modules": [
-            {k: m[k] for k in ("key", "title", "summary", "refs", "prerequisites", "minutes")} for m in s["modules"]]}
+            {k: m[k] for k in ("key", "title", "summary", "refs", "prerequisites", "minutes", "point_count") if k in m} for m in s["modules"]]}
             for s in outline["stages"]]}, "stages": outline["stages"], "ranges": minute_ranges(window, low, high),
-            "version": (draft["outline"] or {}).get("version", 0) + 1}
+            "version": (draft["outline"] or {}).get("version", 0) + 1, 'constraint_errors': constraint_errors}
         draft["phase"] = "outline"
         draft["messages"].append(_msg("ai", "outline", outline["message"] or "这是路线的大致样子。", version=draft["outline"]["version"]))
+        if constraint_errors:
+            draft['messages'].append(_msg('ai', 'outline', '调整一次后仍不符合补充说明：' + '；'.join(constraint_errors)
+                                          + ' 请修改路线或数量要求后再生成。'))
         self.save(draft)
 
     # ----------------------------------------------------------- 4 estimate + generate
@@ -766,6 +778,13 @@ class PlanFlow:
         if draft["phase"] not in ("outline", "generating"):
             raise BridgeError("PHASE_INVALID", "现在不能生成。")
         plan_id, store = draft["plan_id"], self.services.store
+        constraint_errors = agents.outline_requirements(draft['outline'], draft['form'])
+        if constraint_errors:
+            draft['outline']['constraint_errors'] = constraint_errors
+            draft['messages'].append(_msg('ai', 'outline', '轮廓尚不符合补充说明：' + '；'.join(constraint_errors)))
+            self.save(draft)
+            return
+        draft['outline']['constraint_errors'] = []
         if draft["phase"] == "outline":
             self._save_outline(draft)
             draft["phase"] = "generating"
@@ -808,6 +827,10 @@ class PlanFlow:
                 except Exception as exc:  # noqa: BLE001 - one module failing must not stop the others
                     log.warning("module generation failed: %s", type(exc).__name__)
                     state = "failed"
+                    if isinstance(exc, agents.AgentFormatError):
+                        with lock:
+                            draft['outline'].setdefault('constraint_errors', []).append(str(exc))
+                            draft['messages'].append(_msg('ai', 'outline', '正式生成调整一次后仍不符合补充说明：' + str(exc)))
                 with lock:
                     draft["generation"][module["id"]] = state
                     done_count += state == "done"
@@ -825,8 +848,38 @@ class PlanFlow:
         self.save(draft)
 
     def _generate_module(self, draft, module, chunks, ctx):
+        points = self._generate_module_batches(draft, module, chunks, ctx)
+        errors = agents.point_requirement_errors(points, module, draft['form'])
+        if not errors:
+            return points
+        # One explicit content adjustment, preserving all original material and
+        # user scope. Never truncate the list or manufacture points in the host.
+        request = agents.generate_request(draft['form'], draft['goal'], draft['outline'], module, chunks)
+        aliases = request[2]
+        reverse = {value: key for key, value in aliases.items()}
+        previous = [dict(p, chunks=[reverse[r] for r in p['chunk_ids']]) for p in points]
+        request[1].append({'role': 'user', 'content': '【程序检查与一次调整】\n' + '；'.join(errors)
+            + '\n请合并/重构上一版，遵守模块内容范围与指定点数，不添原文没有的内容。\n【上一版】\n'
+            + json.dumps(previous, ensure_ascii=False)})
+        try:
+            points, _ = self._ask('generate', request[:2],
+                lambda text: agents.parse_points(text, aliases, min_points=1, max_points=30,
+                                                  point_minutes_range=(10, 20)), ctx,
+                plan_id=draft['plan_id'], max_tokens=8192)
+        except ModelError as exc:
+            if exc.code != 'AGENT_FORMAT':
+                raise
+            raise agents.AgentFormatError('；'.join(errors) + ' 调整回复仍无有效知识点结构。') from exc
+        errors = agents.point_requirement_errors(points, module, draft['form'])
+        if errors:
+            raise agents.AgentFormatError('；'.join(errors))
+        return points
+
+    def _generate_module_batches(self, draft, module, chunks, ctx):
         """Read all of a module's material: big modules go in bounded batches, merged afterwards."""
         limit = max(1, min(MAX_GENERATE_BATCHES, module["minutes"][0] // 10))
+        if module.get('point_count'):
+            limit = min(limit, module['point_count'])
         size = agents.DEFAULT_BATCH_CHARS
         batches = agents.split_module_chunks(chunks, max_chars=size)
         needed = min(limit, max(1, math.ceil(module["minutes"][1] / 450)))
@@ -859,8 +912,13 @@ class PlanFlow:
         request = agents.generate_request(draft["form"], draft["goal"], draft["outline"], module, batch,
                                           minutes_range=minutes, batch_index=index, batch_count=count, max_points=max_points)
         aliases = request[2]
-        parse = lambda text: agents.parse_points(text, aliases, minutes_range=minutes, max_points=max_points,  # noqa: E731
-                                                 min_points=1 if position else min(2, max_points),
+        # Count constraints are checked after ALL batches are merged. Allow an
+        # overlong first result through parsing so the dedicated adjustment can
+        # see and revise it, rather than repeating the same request unchanged.
+        constrained = module.get('point_count') is not None
+        parse = lambda text: agents.parse_points(text, aliases, minutes_range=None if constrained else minutes,
+                                                 max_points=30 if constrained else max_points,  # noqa: E731
+                                                 min_points=1 if position or constrained else min(2, max_points),
                                                  point_minutes_range=(10, 20) if minutes[1] >= 10 else (2, 20))
         try:
             return [self._ask("generate", request[:2], parse, ctx, plan_id=draft["plan_id"], max_tokens=8192)[0]]

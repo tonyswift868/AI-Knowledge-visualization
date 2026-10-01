@@ -42,16 +42,17 @@ def check(q, **kwargs):
 
 
 @pytest.mark.parametrize('connector', ['和', '以及', '并且', '、', '；', '并返回', '并沿用', '并作为'])
-def test_one_array_item_cannot_bundle_two_requirements(connector):
+def test_connector_is_review_hint_not_semantic_proof(connector):
     q = short()
     q['required_points'][0]['point'] = 'append 原地修改列表' + connector + '返回 None'
-    assert 'bundled_required_point' in check(q)
+    assert 'bundled_required_point' not in check(q)
+    assert 'possible_bundled_required_point' in qr.semantic_hints(q)
 
 
 def test_contract_fields_requirements_and_question_coverage():
     assert not check(choice()) and not check(short())
     q = short(); q['required_points'].append(dict(point='解释海上丝绸之路的贸易角色', accept=['贸易纽带'], reject=['没有贸易']))
-    assert 'requirement_not_asked' in check(q)
+    assert 'possible_requirement_not_asked' in qr.semantic_hints(q)
     q = short(required_points=['append 修改原列表'])
     assert not check(q)
     q = choice(); del q['reference']
@@ -109,8 +110,8 @@ def test_gateway_review_policy_matches_lesson_review():
 def test_legacy_requirements_use_same_rules_and_revision_retains_format():
     q = short(required_points=['append 修改原列表'])
     assert not check(q)
-    assert 'bundled_required_point' in check(short(required_points=['append 修改原列表并返回 None']))
-    assert 'requirement_not_asked' in check(short(required_points=['丝路形成时间']))
+    assert 'possible_bundled_required_point' in qr.semantic_hints(short(required_points=['append 修改原列表并返回 None']))
+    assert 'possible_requirement_not_asked' in qr.semantic_hints(short(required_points=['丝路形成时间']))
     assert 'required_points_count' in check(short(required_points=['a', 'b', 'c']))
     mixed = short(required_points=['append 修改原列表', short()['required_points'][0]])
     assert 'mixed_requirement_formats' in check(mixed)

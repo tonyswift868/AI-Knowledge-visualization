@@ -1,0 +1,267 @@
+{
+  "questions": [
+    {
+      "id": "b030c5b907294cba-02-fix-01",
+      "type": "fix_error",
+      "stem": "某同学解方程 x-11=-3 时写道：“为了消去 -11，我在等号两边都减去 11，得到 x=-14。”请指出这个解法中的错误，并写出正确的解方程过程。",
+      "options": [],
+      "answer": "错误：为了消去左边的 -11，这位同学在等号两边同时减 11，这样做并不能消去 -11（两边同时减 11 只会得到 x-22=-14），由此得出的 x=-14 也不是原方程的解（代入得 -14-11=-25≠-3）。正确过程：利用等式加减性质，在等号两边同时加 11 来“undo”左边的减 11：x-11+11=-3+11，得 x=8。检验：把 x=8 代入原方程，8-11=-3，等式成立，所以 x=8 是原方程的解。",
+      "reference": "评分点1：应利用等式加法性质，在等号两边同时加 11（x-11+11=-3+11）来消去左边的 -11；只笼统说“算错了”而未指出应两边同时加 11，该点不完整。评分点2：正确求得 x=8，并能通过代入检验确认；得到 x=-14 等，该点错误。",
+      "point_ids": [
+        "b030c5b907294cba-02"
+      ],
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004"
+      ],
+      "angle": "fix_error",
+      "required_points": [
+        {
+          "point": "应在方程两边同时加 11 以消去左边的 -11。",
+          "accept": [
+            "两边同时加 11 来消去 -11",
+            "正确做法是两边同时加 11",
+            "两边同时减 11 消不掉 -11，应改为两边同时加 11"
+          ],
+          "reject": [
+            "两边同时减 11 就能消去 -11",
+            "只在等号左边加 11，右边不变"
+          ]
+        },
+        {
+          "point": "原方程的正确解为 x=8。",
+          "accept": [
+            "x=8",
+            "原方程的解是 x=8",
+            "代入 8-11=-3，所以 x=8"
+          ],
+          "reject": [
+            "x=-14",
+            "x=-8",
+            "x=11"
+          ]
+        }
+      ],
+      "answer_kind": null,
+      "accepted": null,
+      "tolerance": null,
+      "rubric": null
+    },
+    {
+      "id": "q-b030c5b907294cba-02-bank-1",
+      "type": "short",
+      "stem": "请用天平模型解释：为什么在等式两边同时加上或减去同一个数，等式仍然成立？对于方程 x+7=12，为了把 x 单独留在一边（isolate x），应对等式两边进行什么相同运算？结果是什么？",
+      "options": [],
+      "answer": "等式两边就像平衡的天平，左右两边相等。若只改变一边，平衡会被破坏；若在两边同时加上或减去同一个数，两边做相同变化，所以天平仍平衡，等式仍成立。对于 x+7=12，为了 isolate x，应在等式两边同时减去 7：x+7−7=12−7，化简得 x=5，所以结果是 x=5。",
+      "reference": "评分点1：能借助天平模型说明，等式两边同时做同一种加减运算时天平仍保持平衡（即等式仍成立）。评分点2：针对 x+7=12，能说出两边同时减去 7，得到 x=5。",
+      "point_ids": [
+        "b030c5b907294cba-02"
+      ],
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004"
+      ],
+      "angle": "apply",
+      "required_points": [
+        {
+          "point": "天平模型表明，等式两边同时做同一种加减运算时天平仍保持平衡。",
+          "accept": [
+            "等式两边像平衡天平，两边同时加上同一个数，天平仍平衡。",
+            "等式两边像平衡天平，两边同时减去同一个数，天平仍平衡。",
+            "只要两边做相同的加或减，天平不被破坏，保持平衡。"
+          ],
+          "reject": [
+            "只对等式一边加上或减去一个数，天平仍平衡。",
+            "等式两边加上或减去不同的数，天平仍平衡。",
+            "对等式一边做加减会保持平衡。"
+          ]
+        },
+        {
+          "point": "对于 x+7=12，在等式两边同时减去 7 得到 x=5。",
+          "accept": [
+            "x+7−7=12−7，所以 x=5。",
+            "为了 isolate x，两边同减 7，结果为 x=5。",
+            "等式两边同时减去 7，得到 x=5。"
+          ],
+          "reject": [
+            "等式两边同时加上 7，得到 x=19。",
+            "只从左边减去 7，得到 x=5。",
+            "等式两边同时减去 12，得到 x=-5。"
+          ]
+        }
+      ],
+      "answer_kind": null,
+      "accepted": null,
+      "tolerance": null,
+      "rubric": null
+    },
+    {
+      "id": "b030c5b907294cba-02-q1",
+      "type": "short",
+      "stem": "根据资料中的天平模型和等式加减性质，解方程 x+3=8 时，为把 x 单独留在一边，应对等式两边同时进行什么运算？由此得到的 x 是多少？",
+      "options": [],
+      "answer": "为把 x 单独留在一边，应对等式两边同时减去 3：x+3−3=8−3，化简得 x=5。因此 x=5。",
+      "reference": "评分时逐条核对：1. 能指出应对等式两边都减去 3，从而消去左边的 +3；只说“移项”或“把3移到右边”而没有说明两边都减去 3，不算完整。2. 能正确解出并写出方程的解为 x=5。",
+      "point_ids": [
+        "b030c5b907294cba-02"
+      ],
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004"
+      ],
+      "angle": "apply",
+      "required_points": [
+        {
+          "point": "两边都减去 3",
+          "accept": [
+            "两边都减去3",
+            "x+3−3=8−3",
+            "等式两边同时减去3"
+          ],
+          "reject": [
+            "只在左边减去3",
+            "只在右边减去3",
+            "两边都加3"
+          ]
+        },
+        {
+          "point": "该方程的解是 x=5",
+          "accept": [
+            "x=5",
+            "解为5",
+            "5"
+          ],
+          "reject": [
+            "x=11",
+            "x=8",
+            "x=-3"
+          ]
+        }
+      ],
+      "answer_kind": null,
+      "accepted": null,
+      "tolerance": null,
+      "rubric": null
+    }
+  ],
+  "points": [
+    {
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004"
+      ],
+      "id": "b030c5b907294cba-02",
+      "minutes": 20,
+      "module_id": "b030c5b907294cba",
+      "position": 1,
+      "summary": "理解等式两边同时加或减同一个数仍相等，能用天平模型解释平衡；在简单等式中标出为保持平衡应对两边做的同一运算，完成填空与判断。",
+      "title": "等式加减性质与天平模型"
+    }
+  ],
+  "excerpts": {
+    "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003": "Determine whether a number is a solution to an equation.\n\nStep 1. Substitute the number for the variable in the equation.\n\nStep 2. Simplify the expressions on both sides of the equation.\n\nStep 3. Determine whether the resulting equation is true. If it is true, the number is a solution. If it is not true, the number is not a solution.\n\nDetermine whether y=34y=34 is a solution for 4y+3=8y.4y+3=8y.\n\nSolution Multiply. Add. Since y=34y=34 results in a true equation, 3434 is a solution to the equation 4y+3=8y.4y+3=8y.\n\nIs y=23y=23 a solution for 9y+2=6y?9y+2=6y?\n\nIs y=25y=25 a solution for 5y−3=10y?5y−3=10y?\n\nWe introduced the Subtraction and Addition Properties of Equality in Solving Equations Using the Subtraction and Addition Properties of Equality. In that section, we modeled how these properties work and then applied them to solving equations with whole numbers. We used these properties again each time we introduced a new system of numbers. Let’s review those properties here.\n\nSubtraction Property of Equality\n\nFor all real numbers a,b,a,b, and c,c, if a=b,a=b, then a−c=b−c.a−c=b−c.\n\nAddition Property of Equality\n\nFor all real numbers a,b,a,b, and c,c, if a=b,a=b, then a+c=b+c.a+c=b+c.",
+    "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004": "When you add or subtract the same quantity from both sides of an equation, you still have equality.\n\nWe introduced the Subtraction Property of Equality earlier by modeling equations with envelopes and counters. Figure 8.2 models the equation x+3=8.x+3=8.\n\nFigure 8.2\n\nThe goal is to isolate the variable on one side of the equation. So we ‘took away’ 33 from both sides of the equation and found the solution x=5.x=5.\n\nSome people picture a balance scale, as in Figure 8.3, when they solve equations.\n\nFigure 8.3\n\nThe quantities on both sides of the equal sign in an equation are equal, or balanced. Just as with the balance scale, whatever you do to one side of the equation you must also do to the other to keep it balanced.\n\nLet’s review how to use Subtraction and Addition Properties of Equality to solve equations. We need to isolate the variable on one side of the equation. And we check our solutions by substituting the value into the equation to make sure we have a true statement.\n\nSolve: x-11=−3.x-11=−3.\n\nSolution To isolate x,x, we undo the addition of 1111 by using the Subtraction Property of Equality. We \"undo\" the subtraction of 11 by adding 11 to each side. Simplify. Check: Substitute x=8x=8. Since x=8x=8 makes x-11=−3x-11=−3 a true statement, we know that it is a solution to the equation."
+  },
+  "recovery": {
+    "action": "超出产品两次核对上限的一次人工恢复：复用真实修订题，仍须程序检查、盲解与独立核对均通过；仅本验收账号补题，不修改产品或判定。",
+    "source_call": "call-0159",
+    "status": "stored",
+    "question": {
+      "id": "b030c5b907294cba-02-q1",
+      "type": "short",
+      "stem": "根据资料中的天平模型和等式加减性质，解方程 x+3=8 时，为把 x 单独留在一边，应对等式两边同时进行什么运算？由此得到的 x 是多少？",
+      "options": [],
+      "answer": "为把 x 单独留在一边，应对等式两边同时减去 3：x+3−3=8−3，化简得 x=5。因此 x=5。",
+      "reference": "评分时逐条核对：1. 能指出应对等式两边都减去 3，从而消去左边的 +3；只说“移项”或“把3移到右边”而没有说明两边都减去 3，不算完整。2. 能正确解出并写出方程的解为 x=5。",
+      "point_ids": [
+        "b030c5b907294cba-02"
+      ],
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004"
+      ],
+      "angle": "apply",
+      "required_points": [
+        {
+          "point": "两边都减去 3",
+          "accept": [
+            "两边都减去3",
+            "x+3−3=8−3",
+            "等式两边同时减去3"
+          ],
+          "reject": [
+            "只在左边减去3",
+            "只在右边减去3",
+            "两边都加3"
+          ]
+        },
+        {
+          "point": "该方程的解是 x=5",
+          "accept": [
+            "x=5",
+            "解为5",
+            "5"
+          ],
+          "reject": [
+            "x=11",
+            "x=8",
+            "x=-3"
+          ]
+        }
+      ],
+      "answer_kind": null,
+      "accepted": null,
+      "tolerance": null,
+      "rubric": null
+    },
+    "issues": [],
+    "verification": {
+      "solve_calls": 1,
+      "solution": {
+        "answerable": true,
+        "answer": "应对等式两边同时减去 3（或“取走”3），得到 x=5。",
+        "viable_options": [],
+        "reason": "原文以 x+3=8 为例，说明为孤立变量从等式两边都取走 3，因此得到 x=5。"
+      },
+      "judge_calls": 1,
+      "judgement": {
+        "kind": "answer",
+        "correct": true,
+        "wrong_points": [],
+        "reason": "两问均答到：指出等式两边同时减去3，并得出方程的解为x=5。",
+        "uncertain": false,
+        "checks": [
+          {
+            "point_id": "b030c5b907294cba-02",
+            "point": "两边都减去 3",
+            "applies": true,
+            "status": "hit",
+            "evidence": "应对等式两边同时减去 3（或“取走”3）"
+          },
+          {
+            "point_id": "b030c5b907294cba-02",
+            "point": "该方程的解是 x=5",
+            "applies": true,
+            "status": "hit",
+            "evidence": "得到 x=5"
+          }
+        ],
+        "review": null
+      },
+      "matched": true
+    },
+    "review": {
+      "verdict": "approve",
+      "issues": [],
+      "revised": null
+    },
+    "bank_ids": [
+      "faef457091e74a72ab19c883bba6901f"
+    ]
+  },
+  "before_counter": {
+    "generation_attempts": 2,
+    "candidates": [
+      "c451d46f098a4912bcf98a1ae51b3ca4",
+      "7d2d45a18f904bd1a01a12147fec803e"
+    ]
+  },
+  "provenance": "acceptance3 saved model outputs; no paid calls"
+}

@@ -192,7 +192,7 @@ def _word(data, cancel):
         _check(cancel)
         if element.tag == qn('w:p'):
             paragraph = Paragraph(element, document)
-            text = _newlines(paragraph.text).strip()
+            text = _newlines(_word_text(element, cancel)).strip()
             if not text:
                 continue
             style, visited, level = paragraph.style, set(), None
@@ -211,12 +211,51 @@ def _word(data, cancel):
             rows = []
             for row in Table(element, document).rows:
                 _check(cancel)
-                cells = [' '.join(cell.text.split()) for cell in row.cells]
+                cells = [' '.join('\n'.join(_word_text(p._p, cancel) for p in cell.paragraphs).split()) for cell in row.cells]
                 if any(cells):
                     rows.append(' | '.join(cells))
             if rows:
                 blocks.append(TextBlock('\n'.join(rows), 'table', None, sections.path))
     return blocks, title, []
+
+
+def _word_text(node, cancel):
+    """python-docx paragraph.text omits Office Math (including fractions)."""
+    _check(cancel)
+    tag = str(node.tag).rsplit('}', 1)[-1]
+    if tag in ('oMath', 'oMathPara'):
+        return _math_text(_word_math(node, cancel), cancel)
+    if tag in ('pPr', 'rPr', 'drawing', 'pict'):
+        return ''
+    if tag == 't':
+        return node.text or ''
+    if tag == 'tab':
+        return '\t'
+    if tag in ('br', 'cr'):
+        return '\n'
+    return ''.join(_word_text(child, cancel) for child in node)
+
+
+def _word_math(node, cancel):
+    """Convert common Office Math structures to the same linear serializer."""
+    from lxml import etree
+    _check(cancel)
+    tag = str(node.tag).rsplit('}', 1)[-1]
+    children = [c for c in node if not str(c.tag).rsplit('}', 1)[-1].endswith('Pr')]
+    mapped = dict(f='mfrac', sSup='msup', sSub='msub', sSubSup='msubsup', t='mtext', oMath='math', oMathPara='math')
+    if tag == 'rad':
+        degree = next((c for c in children if str(c.tag).endswith('}deg')), None)
+        base = next((c for c in children if str(c.tag).endswith('}e')), None)
+        has_degree = degree is not None and ''.join(degree.itertext()).strip()
+        result = etree.Element('mroot' if has_degree else 'msqrt')
+        if base is not None: result.append(_word_math(base, cancel))
+        if has_degree: result.append(_word_math(degree, cancel))
+        return result
+    result = etree.Element(mapped.get(tag, 'mrow'))
+    if tag == 't': result.text = node.text or ''
+    for child in children:
+        result.append(_word_math(child, cancel))
+    return result
 
 
 _HEADING = re.compile(r'^ {0,3}(#{1,6})[\t ]+(.+?)\s*$')
@@ -286,6 +325,85 @@ _HTML_NOISE_NAMES = frozenset('nav navbar navigation sidebar breadcrumbs breadcr
 _HTML_CONTAINER = frozenset('html body main article section div p h1 h2 h3 h4 h5 h6 ul ol li dl dt dd blockquote pre table figure figcaption hr address'.split())
 
 
+def _math_text(node, cancel):
+    """Serialize presentation MathML, never concatenate its alternate encodings."""
+    _check(cancel)
+    tag = str(node.tag).rsplit('}', 1)[-1].rsplit(':', 1)[-1].lower()
+    children = list(node)
+    if tag in ('annotation', 'annotation-xml', 'mphantom'):
+        return ''
+    if tag == 'semantics':
+        presentation = [c for c in children if str(c.tag).rsplit('}', 1)[-1] not in ('annotation', 'annotation-xml')]
+        return _math_text(presentation[0], cancel) if presentation else ''
+    values = [_math_text(c, cancel) for c in children]
+    def operand(value):
+        return value if re.fullmatch(r'[−+\-]?[\w.]+', value) else '(' + value + ')'
+    if tag == 'mfrac' and len(values) == 2:
+        return operand(values[0]) + '/' + operand(values[1])
+    if tag in ('msup', 'msub') and len(values) == 2:
+        return operand(values[0]) + ('^' if tag == 'msup' else '_') + operand(values[1])
+    if tag == 'msubsup' and len(values) == 3:
+        return operand(values[0]) + '_' + operand(values[1]) + '^' + operand(values[2])
+    if tag == 'msqrt':
+        return '√(' + ''.join(values) + ')'
+    if tag == 'mroot' and len(values) == 2:
+        return 'root(' + values[1] + ', ' + values[0] + ')'
+    if tag == 'mfenced':
+        separators = node.get('separators', ',').strip() or ','
+        joined = ''.join(v + (separators[min(i, len(separators)-1)] if i < len(values)-1 else '') for i, v in enumerate(values))
+        return node.get('open', '(') + joined + node.get('close', ')')
+    if tag in ('munder', 'mover', 'munderover') and len(values) >= 2:
+        marks = ('_', '^') if tag != 'mover' else ('^',)
+        return values[0] + ''.join(mark + operand(v) for mark, v in zip(marks, values[1:]))
+    if tag in ('mtable', 'mtr', 'mlabeledtr'):
+        return ('; ' if tag == 'mtable' else ' | ').join(values)
+    if tag == 'mspace':
+        return ' '
+    # XML indentation is not mathematical spacing. Actual mtext/mspace is.
+    parts = [node.text if node.text and node.text.strip() else '']
+    previous = None
+    previous_value = ''
+    for child, value in zip(children, values):
+        child_tag = str(child.tag).rsplit('}', 1)[-1].rsplit(':', 1)[-1].lower()
+        if child_tag == 'mfrac' and re.fullmatch(r'[−+\-]?\d+(?:\.\d+)?', previous_value):
+            parts.append(' ')  # mixed number: 1 1/2, never 11/2
+        elif child_tag == 'mi' and previous == 'mfrac':
+            parts[-1] = '(' + parts[-1] + ')'
+        parts.append(value)
+        if child.tail and child.tail.strip():
+            parts.append(child.tail)
+        previous = child_tag
+        previous_value = value
+    return ''.join(parts)
+
+
+def _normalize_html_math(root, cancel):
+    from lxml import etree
+    # MathJax/KaTeX carry a rendered tree plus hidden accessible MathML.
+    # Prefer that structured tree, before the ordinary noise/aria filter.
+    wrappers = root.xpath("//mjx-container | //span[contains(concat(' ', normalize-space(@class), ' '), ' katex ')]")
+    for node in wrappers:
+        math = node.xpath('.//math')
+        if math and node.getparent() is not None:
+            replacement = etree.Element('span')
+            replacement.text, replacement.tail = _math_text(math[0], cancel), node.tail
+            node.getparent().replace(node, replacement)
+    for node in list(root.xpath('//math[not(ancestor::math)]')):
+        _check(cancel)
+        if node.getparent() is None:
+            continue
+        replacement = etree.Element('span')
+        replacement.text, replacement.tail = _math_text(node, cancel), node.tail
+        parent = node.getparent()
+        # Some publishers also place a textual screen-reader copy alongside
+        # MathML. Remove only marked copies in this formula's own wrapper.
+        for sibling in list(parent) if parent.tag == 'span' else []:
+            names = set(sibling.get('class', '').lower().split())
+            if sibling is not node and names & {'sr-only', 'visually-hidden', 'screen-reader-only', 'mjx-assistive-mml'}:
+                sibling.drop_tree()
+        parent.replace(node, replacement)
+
+
 def _html(html, cancel):
     from lxml import html as parser
 
@@ -294,6 +412,7 @@ def _html(html, cancel):
     root = parser.document_fromstring(html, parser=parser.HTMLParser(no_network=True, remove_comments=True))
     title_nodes = root.xpath('//title')
     title = ' '.join(title_nodes[0].text_content().split()) if title_nodes else ''
+    _normalize_html_math(root, cancel)
     for node in list(root.iter()):
         _check(cancel)
         names = set((node.get('class', '') + ' ' + node.get('id', '')).lower().split())
