@@ -41,6 +41,10 @@ class FakeGateway:
     def close(self): pass
     def complete(self,purpose,messages,**kwargs):
         self.calls.append(purpose)
+        from tests.refactor.question_solver.fakes import response, grade, is_solver_judgement
+        extra = response(purpose, messages)
+        if extra is not None: return extra
+        if purpose == 'judge' and is_solver_judgement(messages): return grade(messages)
         if purpose=='lesson_prep':
             task=json.loads(messages[-1]['content'].split('\n',1)[1])
             value=wire('c')

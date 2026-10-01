@@ -597,7 +597,7 @@ class Classroom:
     def _bank_fill(self, course, ctx, module_id, *, background=False, point_ids=None, force=False,
                    needs=None, used_angles=None, refill_for=None, reserve=None, asked=()):
         """Review before banking; retain drafts and durable per-point reissue limits."""
-        from ..course import question_review
+        from ..course import question_review, question_solver
         ids = list(point_ids or [p['id'] for p in course.points_of(module_id)])
         fingerprint = self._test_fingerprint(course, module_id)
         mode = 'reserve' if reserve is not None else 'refill' if refill_for else 'explicit' if needs is not None else 'initial'
@@ -620,6 +620,9 @@ class Classroom:
             elif needs is None:
                 needs = ({pid: 1 for pid in ids} if force else question_bank.initial_deficits(rows, ids))
             remaining = {pid: min(2, int(needs.get(pid, 0))) for pid in ids}
+            written, unfillable = question_review.written_allocation(rows, remaining)
+            if unfillable:
+                raise ModelError('QUESTION_BANK_TYPE_RATIO', '模块简答/纠错不足30%，现有题已占满配额；未降低标准或无限补题。')
             pending_ids = {pid for _, row in journal.candidates(ids) if row['status'] in ('pending', 'approved')
                            for pid in row['question']['point_ids']}
             wanted = [pid for pid in ids if remaining[pid] > 0 or pid in pending_ids]
@@ -650,6 +653,9 @@ class Classroom:
                         # enter the bank; do not pay for its independent review.
                         row['status'] = 'surplus'; journal.save(token, row)
                         return composites
+                    if q['type'] not in question_review.WRITTEN_TYPES and remaining[pid] <= written[pid]:
+                        row['status'] = 'wrong_type'; journal.save(token, row)
+                        return composites
                 while row['status'] == 'pending' and row['verdicts'] < question_review.MAX_VERDICTS:
                     fresh = current()
                     q = row['question']
@@ -657,10 +663,17 @@ class Classroom:
                     excerpts = {ref: text for ref, text in fresh.excerpts(q['point_ids']).items() if ref in q['chunk_ids']}
                     issues = question_review.check_question(q, points=points, excerpts=excerpts,
                         essay_count=sum(item['type'] == 'essay' for item in self._bank_rows(fresh, module_id)))
-                    request = question_review.review_request(q, points=points, excerpts=excerpts, structure_issues=issues)
-                    row['review_calls'] += 1
-                    journal.save(token, row)  # durable before sending, never store credentials
                     try:
+                        verification = row.setdefault('verification', {})
+                        if not issues and q['type'] != 'essay':
+                            question_solver.verify(self.services.gateway, q, points=points, excerpts=excerpts,
+                                state=verification, save=lambda: journal.save(token, row),
+                                cancel=ctx.cancel if ctx else None, plan_id=course.plan_id)
+                            current()
+                        request = question_review.review_request(q, points=points, excerpts=excerpts,
+                            structure_issues=issues, verification=verification)
+                        row['review_calls'] += 1
+                        journal.save(token, row)  # durable before sending, never store credentials
                         result = self.services.gateway.complete('question_review', request[1], system=request[0],
                             cancel=ctx.cancel if ctx else None, plan_id=course.plan_id, max_tokens=24576)
                         verdict = question_review.parse_review(result.text, q)
@@ -674,11 +687,12 @@ class Classroom:
                         return composites
                     row['verdicts'] += 1
                     row['reviews'].append(dict(verdict=verdict.verdict, issues=list(verdict.issues),
-                                                structure_issues=list(issues)))
-                    if verdict.verdict == 'approve' and not issues:
+                                                structure_issues=list(issues), verification=copy.deepcopy(verification)))
+                    if verdict.verdict == 'approve' and not issues and (q['type'] == 'essay' or verification.get('matched') is True):
                         row.update(status='approved', error='')
                     elif verdict.verdict == 'revise':
                         row['question'] = verdict.revised
+                        row['verification'] = {}  # revised question must be solved afresh
                     else:
                         row['status'] = 'rejected'
                     journal.save(token, row)
@@ -701,24 +715,41 @@ class Classroom:
                     if not remaining[pid] or (q['angle'] in angles[pid] and not duplicate):
                         row['status'] = 'surplus'; journal.save(token, row)
                         return composites
+                    if q['type'] not in question_review.WRITTEN_TYPES and remaining[pid] <= written[pid]:
+                        row['status'] = 'wrong_type'; journal.save(token, row)
+                        return composites
                 elif len(group) != 2 or composites:
                     row['status'] = 'surplus'; journal.save(token, row)
                     return composites
                 fresh.store.add_bank_questions(course.plan_id, module_id, [q], fingerprint=fingerprint, refill_for=refill_for)
                 if len(q['point_ids']) == 1:
                     remaining[pid] -= 1; angles[pid].add(q['angle'])
+                    if q['type'] in question_review.WRITTEN_TYPES:
+                        written[pid] = max(0, written[pid] - 1)
                 else:
                     composites += 1
                 row['status'] = 'stored'; journal.save(token, row)
                 return composites
 
-            def generate(group, composites):
+            def generate(group, composites, *, written_only=False):
                 journal.start_generation(group)  # first generation + one reissue, survives reopening
                 current()
                 old = [q['stem'] for q in self._bank_rows(course, module_id) if set(q['point_ids']) & set(group)]
                 old += [row['question']['stem'] for _, row in journal.candidates(group)]
-                batch = self._questions(course, ctx, 'bank', group, avoid=old, background=background,
-                    counts={pid: remaining[pid] for pid in group}, used_angles={pid: sorted(angles[pid]) for pid in group})
+                if written_only:
+                    fresh = current()
+                    excerpts = fresh.excerpts(group)
+                    qctx = dict(purpose='bank', per_point=2, written_only=True, avoid=old[-100:],
+                        points=[fresh.point(pid) for pid in group], excerpts=excerpts,
+                        counts={pid: remaining[pid] for pid in group},
+                        used_angles={pid: sorted(angles[pid]) for pid in group})
+                    request = question_agent.question_request(qctx)
+                    result = self.services.gateway.complete('questions', request[1], system=request[0],
+                        cancel=ctx.cancel if ctx else None, plan_id=course.plan_id, max_tokens=16384)
+                    batch = question_agent.parse_questions(result.text, qctx, partial_bank=True)
+                else:
+                    batch = self._questions(course, ctx, 'bank', group, avoid=old, background=background,
+                        counts={pid: remaining[pid] for pid in group}, used_angles={pid: sorted(angles[pid]) for pid in group})
                 current()
                 pending = [journal.add(q) for q in batch]
                 for token, row in pending:
@@ -741,7 +772,7 @@ class Classroom:
                 for pid in group:
                     if remaining[pid] and pid not in deferred and journal.generations(pid) < question_review.MAX_GENERATIONS:
                         try:
-                            generate([pid], 0)
+                            generate([pid], 0, written_only=bool(written[pid]))
                         except ModelCancelled:
                             raise
                         except (ModelError, AgentFormatError) as exc:
@@ -754,6 +785,9 @@ class Classroom:
             if errors:
                 titles = '、'.join(course.point(pid)['title'] for pid in errors)
                 raise ModelError('QUESTION_BANK_INCOMPLETE', f'{titles}题目准备失败：{next(iter(errors.values()))}')
+            _, shortfall = question_review.written_allocation(self._bank_rows(current(), module_id), {})
+            if shortfall:
+                raise ModelError('QUESTION_BANK_TYPE_RATIO', '模块单点题中的简答/纠错不足30%，尚未准备完成。')
 
     def _prepare_bank_later(self, course, module_id, *, point_ids=None, force=False,
                             needs=None, used_angles=None, refill_for=None, reserve=None, asked=()):

@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+from tests.refactor.question_solver.fakes import bank_response
 
 from refactor.learning.app.classroom import Classroom
 from refactor.learning.course import question_bank
@@ -33,15 +34,15 @@ def lab(tmp_path):
         store.start_plan(PLAN, today=DAY)
         services = SimpleNamespace(store=store, account_id='batch25', data_root=tmp_path,
             settings=SimpleNamespace(load=lambda: dict(refresh_time='04:00')),
-            gateway=SimpleNamespace(complete=lambda purpose, *a, **kw: SimpleNamespace(
-                text='{"verdict":"approve","issues":[],"revised":null}')))
+            gateway=SimpleNamespace(complete=bank_response))
         room = Classroom(services, lambda: DAY, now=lambda: NOW, rng=random.Random(25))
         room._teacher = room._go_on = room._prepare_later = lambda *a, **k: None
         calls = []
         def questions(co, cx, purpose, ids, **kw):
             calls.append((list(ids), kw))
-            return [Question(f'{p}-{len(calls)}-{i}', 'choice', f'{p}第{len(calls)}批操作{i}怎样做？',
-                ('正确步骤', '错法一', '错法二', '错法三'), '正确步骤', '符合步骤要求。', (p,), ('c',), a)
+            return [Question(f'{p}-{len(calls)}-{i}', 'short' if i == 1 else 'choice', f'{p}第{len(calls)}批操作{i}怎样做？',
+                () if i == 1 else ('正确步骤', '错法一', '错法二', '错法三'), '正确步骤', '符合步骤要求。', (p,), ('c',), a,
+                ('操作怎样做',) if i == 1 else None)
                 for p in ids for i, a in enumerate([a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer')
                     if a not in kw.get('used_angles', {}).get(p, ())][:kw.get('counts', {}).get(p, 2)])]
         room._questions = questions
@@ -116,7 +117,7 @@ def test_invalid_three_requirements_discards_only_that_question(lab):
     from dataclasses import asdict
     rows = []
     for q in good:
-        row = {k: v for k, v in asdict(q).items() if k not in ('required_points', 'answer_kind', 'accepted', 'tolerance', 'rubric')}
+        row = {k: v for k, v in asdict(q).items() if k not in ('answer_kind', 'accepted', 'tolerance', 'rubric') and v is not None}
         row['options'] = list(row['options']); row['point_ids'] = list(row['point_ids']); row['chunk_ids'] = list(row['chunk_ids'])
         rows.append(row)
     rows[0].update(type='short', options=[], answer='标准过程', required_points=['一步', '二步', '三步'])

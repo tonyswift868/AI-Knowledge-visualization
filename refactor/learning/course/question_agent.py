@@ -47,6 +47,7 @@ essay：options=[]；rubric 3–4个对象，每个 {criterion,met:达到的标�
 过程题明确要哪一步，等价正确式子算数；可以出展示常见错法选项的选择题，但不能借此取消简答。原文只有必要条件时不能考资料未提供的异常名称。
 point_ids/chunk_ids 非空不重复且来自输入；每个被考点至少引用一个自身已提供原文块，引用不得属于无关点；综合最多4点，同模块。reference 逐点写明评分内容，只给真正错的点记错。
 每点覆盖per_point道，quick_check只能1道；bank每个输入点固定2道单点题（1–2点一批），两点时最多另1道综合；有counts时严格按各点counts，只出所缺1或2道，不维持未答对库存。不得重复avoid题面或used_angles；同批题面不重复。
+本次出题要求含written_only=true时，只出short或fix_error，严格按counts补缺；不出选择、exact、essay或综合题。此要求来自程序的模块题型比例，不得改用选择题。
 deepen=true只出1道单点情境应用单选，四选一，换题、更深入，不透露原题答案。essay不能用于deepen。
 stem/answer最多4000字、reference最多6000字、选项最多1000字；每批简洁，不重复堆砌。
 """
@@ -216,6 +217,8 @@ def question_request(ctx: dict) -> tuple[str, list[dict]]:
         task['counts'] = ctx['counts']
     if ctx['purpose'] == 'bank' and ctx.get('used_angles'):
         task['used_angles'] = ctx['used_angles']
+    if ctx.get('written_only'):
+        task['written_only'] = True
     content += "\n【本次出题要求】\n" + _dump(task)
     _text(content, "request", 500_000)
     return QUESTION_SYSTEM, [{"role": "user", "content": content}]
@@ -283,6 +286,9 @@ def _parse_questions(answer: str, ctx: dict, *, partial_bank=False) -> list[Ques
                 raise AgentFormatError('required_points: 要点不能重复')
         if kind not in ('choice', 'exact', 'short', 'fix_error', 'essay'):
             raise AgentFormatError('type: 未知题型')
+        if ctx.get('written_only') and (kind not in ('short', 'fix_error')
+                                      or not isinstance(row['point_ids'], list) or len(row['point_ids']) != 1):
+            raise AgentFormatError('type: 比例补缺只能出简答或纠错单点题')
         extras = validate_answer_structure(row)
         if kind == 'essay' and (ctx['purpose'] not in ('module_test', 'check', 'bank') or ctx.get('deepen')
                                 or ctx.get('existing_essay') or any(q.type == 'essay' for q in result)):

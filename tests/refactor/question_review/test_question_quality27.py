@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 
 import pytest
+from tests.refactor.question_solver.fakes import response as solver_response, grade as solver_grade
 
 from refactor.learning.course import question_agent as qa, question_review as qr
 from refactor.learning.app.classroom import Classroom
@@ -74,6 +75,12 @@ def test_bank_duplicate_angle_skips_review_and_reissues_only_missing_quota(tmp_p
         store.start_plan(plan, today=day)
         reviews, generations = [], []
         def complete(purpose, messages, **kwargs):
+            if purpose == 'questions':
+                task = json.loads(messages[-1]['content'].split('【本次出题要求】\n')[1])
+                generations.append(task['counts'])
+            extra = solver_response(purpose, messages)
+            if extra is not None: return extra
+            if purpose == 'judge': return solver_grade(messages)
             assert purpose == 'question_review'
             reviews.append(json.loads(messages[-1]['content'].split('\n', 1)[1])['question'])
             return SimpleNamespace(text='{"verdict":"approve","issues":[],"revised":null}')

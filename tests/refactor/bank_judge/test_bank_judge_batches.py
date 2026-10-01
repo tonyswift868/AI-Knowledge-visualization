@@ -7,6 +7,7 @@ import threading
 import time
 
 import pytest
+from tests.refactor.question_solver.fakes import bank_response
 
 from refactor.learning.app.classroom import Classroom
 from refactor.learning.connections.errors import ModelError
@@ -47,20 +48,24 @@ def bankroom(tmp_path):
             store.save_generated_module(PLAN, mid, [dict(id=f'p{i}', title=f'概念{i}', summary='定义与应用',
                 minutes=10, chunk_ids=['k']) for i in ids], check_minutes=2, today=DAY)
         store.start_plan(PLAN, today=DAY)
+        calls = []
+        def gateway(purpose, messages, **kw):
+            if purpose == 'questions':
+                points = json.JSONDecoder().raw_decode(messages[-1]['content'].split('【知识点清单】\n')[1])[0]
+                calls.append(tuple(p['id'] for p in points))
+            return bank_response(purpose, messages, **kw)
         services = SimpleNamespace(store=store, account_id='bank-judge-offline', data_root=tmp_path,
             settings=SimpleNamespace(load=lambda: dict(refresh_time='04:00')),
-            gateway=SimpleNamespace(complete=lambda purpose, *a, **kw: SimpleNamespace(
-                text='{"verdict":"approve","issues":[],"revised":null}')))
+            gateway=SimpleNamespace(complete=gateway))
         room = Classroom(services, lambda: DAY, rng=random.Random(7),
                          now=lambda: datetime(2026, 10, 1, 10, tzinfo=timezone.utc))
         room._prepare_later = lambda *a: None  # teaching belongs to the parallel task
         room._teacher = lambda *a, **k: None
-        calls = []
         def questions(course, ctx, purpose, ids, **kw):
             calls.append(tuple(ids))
-            return [Question(f'{pid}-{len(calls)}-{j}', 'choice', f'{pid}第{len(calls)}批应用{j}应选哪个？',
-                ('正确选项', '干扰一', '干扰二', '干扰三'), '正确选项', '符合资料要点。',
-                (pid,), (course.point(pid)['chunk_ids'][0],), angle) for pid in ids for j, angle in enumerate(
+            return [Question(f'{pid}-{len(calls)}-{j}', 'short' if j == 1 else 'choice', f'{pid}第{len(calls)}批应用{j}怎样说明？',
+                () if j == 1 else ('正确选项', '干扰一', '干扰二', '干扰三'), '正确选项', '符合资料要点。',
+                (pid,), (course.point(pid)['chunk_ids'][0],), angle, ('应用怎样说明',) if j == 1 else None) for pid in ids for j, angle in enumerate(
                     [a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer')
                      if a not in kw.get('used_angles', {}).get(pid, ())][:kw.get('counts', {}).get(pid, 2)])]
         room._questions = questions
@@ -89,6 +94,14 @@ def test_six_points_use_three_small_batches_and_failure_repairs_only_missing(ban
             raise ModelError('MODEL_TIMEOUT', '单批超时。')
         return good(co, cx, purpose, ids, **kw)
     room._questions = flaky
+    original_gateway = room.services.gateway.complete
+    def flaky_repair(purpose, messages, **kw):
+        if purpose == 'questions' and failed and any(p['id']=='p3' for p in json.JSONDecoder().raw_decode(
+                messages[-1]['content'].split('【知识点清单】\n')[1])[0]):
+            calls.append(('p3',))
+            raise ModelError('MODEL_TIMEOUT', '单点补题超时。')
+        return original_gateway(purpose, messages, **kw)
+    room.services.gateway.complete = flaky_repair
     course = room._course(PLAN)
     with pytest.raises(ModelError): room._bank_fill(course, None, 'm0')
     assert calls == [('p0', 'p1'), ('p2', 'p3'), ('p2',), ('p3',), ('p4', 'p5')]

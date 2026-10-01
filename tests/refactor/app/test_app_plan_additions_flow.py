@@ -72,7 +72,14 @@ def flow(monkeypatch):
             monkeypatch.setattr(materials, "import_file", fake_import)
             model = Model()
             services = SimpleNamespace(store=s, gateway=model, account_id=ACCOUNT, data_root=Path(folder))
-            yield PlanFlow(services, lambda *a: None, lambda: TODAY), model, s
+            try:
+                yield PlanFlow(services, lambda *a: None, lambda: TODAY), model, s
+            finally:
+                # A started-plan fixture can launch classroom preparation;
+                # finish its synthetic writes before the temporary account is removed.
+                for worker in threading.enumerate():
+                    if worker.name in ('classroom-question-bank', 'classroom-lesson-prep', 'classroom-profile'):
+                        worker.join(5)
 
 
 def ctx():

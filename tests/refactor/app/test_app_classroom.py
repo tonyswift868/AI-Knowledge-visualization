@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from tests.refactor.question_solver.fakes import response as solver_response, grade as solver_grade, is_solver_judgement
 
 from refactor.learning.app.bridge import BridgeError
 from refactor.learning.app.classroom import RESET, Classroom
@@ -45,6 +46,8 @@ class Agents:
     def complete(self, purpose, messages, *, system=None, on_text=None, cancel=None, plan_id="", max_tokens=4096, **_):
         with self.lock:
             self.calls.append(purpose)
+        if purpose == 'question_solve': return solver_response(purpose, messages)
+        if purpose == 'judge' and is_solver_judgement(messages): return solver_grade(messages)
         if purpose == "lesson_prep" or (purpose == "teacher" and system.startswith("现场分步")):
             from tests.refactor.guided_lessons.fixtures import wire
             task = json.loads(messages[-1]['content'].split('\n', 1)[1])
@@ -92,7 +95,7 @@ class Agents:
                 chunk = next(c for c in excerpts)
                 available_angles = [a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task.get('used_angles', {}).get(p['id'], ())]
                 for variant in range(task.get('counts', {}).get(p['id'], 2) if purpose_name == 'bank' else 1):
-                  if self.choice or (purpose_name == 'bank' and p['id'] in self.choice_bank_points):
+                  if (self.choice or (purpose_name == 'bank' and p['id'] in self.choice_bank_points)) and not task.get('written_only') and not (purpose_name == 'bank' and variant == 1):
                     rows.append({"id": f"q{i}-{variant}", "type": "choice", "stem": f"关于{p['title']}哪项正确（第{len(self.calls)}轮{i}-{variant}）？",
                                  "options": ["甲说法", "乙说法", "丙说法", "丁说法"], "answer": "乙说法",
                                  "reference": "乙说法正确", "point_ids": [p["id"]], "chunk_ids": [chunk]})
@@ -310,8 +313,14 @@ def test_a_module_from_first_point_to_retest_and_on_to_a_skipped_module(room):
     view = act(classroom, "next_module")
     assert view["module"]["title"] == "栈" and view["step"] == "teach" and view["can_skip"]
     agents.choice = True
+    # Wait for the mixed bank before marking its written fixture as seen;
+    # otherwise an unfinished background insertion changes the selected type.
+    deadline = time.monotonic() + 3
+    while any(j['status'] == 'running' for j in classroom._bank_jobs.values()) and time.monotonic() < deadline:
+        time.sleep(.005)
+    assert not any(j['status'] == 'running' for j in classroom._bank_jobs.values())
     for question in store.records('question_bank', PLAN):
-        if question['module_id'] == 'm1':
+        if question['module_id'] == 'm1' and question['type'] != 'choice':
             store.mark_bank_correct(PLAN, question['id'])
     view = act(classroom, "start_test", "skip_test")
     assert set(view["question"]["options"]) == {"甲说法", "乙说法", "丙说法", "丁说法"}

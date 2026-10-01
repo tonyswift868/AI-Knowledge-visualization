@@ -84,6 +84,9 @@ class FakeAgent:
     def complete(self, purpose, messages, *, on_text=None, **_kwargs):
         with self.lock:
             self.calls.append(purpose)
+        from tests.refactor.question_solver.fakes import response, grade, is_solver_judgement
+        if purpose == 'question_solve': return response(purpose, messages)
+        if purpose == 'judge' and is_solver_judgement(messages): return grade(messages)
         if purpose == 'question_review':
             return SimpleNamespace(text='{"verdict":"approve","issues":[],"revised":null}')
         if purpose in ('lesson_prep', 'lesson_review'):
@@ -128,7 +131,7 @@ class FakeAgent:
             for index, point in enumerate(points):
                 available = [a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task.get('used_angles', {}).get(point['id'], ())]
                 for variant in range(task.get('counts', {}).get(point['id'], 2) if purpose_name == 'bank' else 1):
-                    choice = purpose_name in ('module_test', 'bank') and point['id'] == 'p2'
+                    choice = purpose_name in ('module_test', 'bank') and point['id'] == 'p2' and not task.get('written_only') and not (purpose_name == 'bank' and variant == 1)
                     row = {
                         "id": f"q-{purpose_name}-{index}-{variant}",
                         "type": "choice" if choice else "short",
@@ -352,10 +355,12 @@ def test_classroom_cross_day_timeline_uses_real_today_status(classroom_room):
     # the same pinned day and therefore fills the remaining future target days.
     view = _act(classroom, "next_module")
     assert view["module"]["id"] == "m1" and view["step"] == "teach"
-    _act(classroom, "start_test", "skip_test")
+    view = _act(classroom, "start_test", "skip_test")
+    written = not view['question']['options']
+    if written: agent.verdicts.append(('answer', True, []))
     before_judge = len(agent.calls)
     view = _act(classroom, "reply", "乙答案")
-    assert "judge" not in agent.calls[before_judge:]
+    assert agent.calls[before_judge:].count('judge') == int(written)
     assert view["module"]["state"] == "skipped"
     _assert_today(clock, trace, view, "DAY2 课堂未退出，直接考跳过 m1，模块时长记开课日并超前", target=30,
                   confirmed=30, tentative=0, debt=0, ahead=60, ahead_days=2, progress_day=DAY1,

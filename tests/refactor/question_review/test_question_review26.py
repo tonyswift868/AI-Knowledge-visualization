@@ -7,6 +7,7 @@ import threading
 from types import SimpleNamespace
 
 import pytest
+from tests.refactor.question_solver.fakes import response as solver_response, grade as solver_grade
 
 from refactor.learning.app.classroom import Classroom
 from refactor.learning.connections.errors import ModelCancelled, ModelError
@@ -133,8 +134,19 @@ PLAN, DAY = 'e' * 32, date(2026, 10, 1)
 class Reviewer:
     def __init__(self):
         self.calls, self.actions = [], []
+        self.forced_calls, self.forced_result = [], None
 
     def complete(self, purpose, messages, **kwargs):
+        if purpose == 'questions':
+            points = json.JSONDecoder().raw_decode(messages[-1]['content'].split('【知识点清单】\n')[1])[0]
+            self.forced_calls.append([p['id'] for p in points])
+            if self.forced_result:
+                return SimpleNamespace(text=json.dumps(dict(questions=self.forced_result), ensure_ascii=False))
+        extra = solver_response(purpose, messages)
+        if extra is not None:
+            return extra
+        if purpose == 'judge':
+            return solver_grade(messages)
         assert purpose == 'question_review'
         assert kwargs['max_tokens'] == 24576
         payload = json.loads(messages[-1]['content'].split('\n', 1)[1])
@@ -163,9 +175,9 @@ def lab(tmp_path):
         calls = []
         def questions(co, ctx, purpose, ids, **kwargs):
             calls.append(list(ids))
-            return [Question(f'{p}-{len(calls)}-{i}', 'choice', f'第{len(calls)}批 {p} 题{i}：追加的行为是什么？',
-                ('追加到列表末尾', '替换首元素', '删除末元素', '创建新列表'), '追加到列表末尾', '原文支持追加。',
-                (p,), ('c',), angle)
+            return [Question(f'{p}-{len(calls)}-{i}', 'short' if i == 1 else 'choice', f'第{len(calls)}批 {p} 题{i}：追加的行为是什么？',
+                () if i == 1 else ('追加到列表末尾', '替换首元素', '删除末元素', '创建新列表'), '追加到列表末尾', '原文支持追加。',
+                (p,), ('c',), angle, ('追加到列表末尾',) if i == 1 else None)
                 for p in ids for i, angle in enumerate([a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer')
                     if a not in kwargs.get('used_angles', {}).get(p, ())][:kwargs['counts'][p]])]
         room._questions = questions
@@ -193,10 +205,10 @@ def test_rejection_only_reissues_missing_point_once_and_is_durable(lab):
     room, store, calls, reviewer, _ = lab
     reviewer.actions = [dict(verdict='reject', issues=['资料未支持该说法'], revised=None)] * 2
     fill(room)
-    assert calls == [['p0', 'p1'], ['p0']]
+    assert calls == [['p0', 'p1']] and reviewer.forced_calls == [['p0']]
     assert len(store.records('question_bank', PLAN)) == 4
     fill(room)
-    assert len(calls) == 2 and len(store.records('question_bank', PLAN)) == 4
+    assert len(calls) + len(reviewer.forced_calls) == 2 and len(store.records('question_bank', PLAN)) == 4
 
 
 def test_two_unapproved_revisions_are_dropped_no_infinite_generation_on_reopen(lab):
@@ -205,7 +217,7 @@ def test_two_unapproved_revisions_are_dropped_no_infinite_generation_on_reopen(l
         return dict(verdict='revise', issues=['还不明确'], revised=dict(payload['question'], stem=payload['question']['stem'] + '？'))
     reviewer.actions = [revise] * 20
     with pytest.raises(ModelError, match='初次出题与一次重出'): fill(room, point_ids=['p0'])
-    assert calls == [['p0'], ['p0']] and len(reviewer.calls) == 8
+    assert calls == [['p0']] and reviewer.forced_calls == [['p0']] and len(reviewer.calls) == 8
     assert not store.records('question_bank', PLAN)
     reopened = Classroom(services, lambda: DAY)
     reopened._questions = lambda *a, **k: pytest.fail('must not generate again after reopening')
@@ -277,9 +289,10 @@ def test_structural_problem_cannot_be_approved_by_model(lab):
     def invalid(*args, **kwargs):
         return [choice(id='bad', point_ids=['p0'], stem='已知会追加到列表末尾，append 会如何操作？')]
     room._questions = invalid
+    reviewer.forced_result = invalid()
     with pytest.raises(ModelError): fill(room, point_ids=['p0'])
     assert not store.records('question_bank', PLAN)
-    assert len(reviewer.calls) == 2
+    assert len(reviewer.calls) == 1  # repair parser drops the same leaked question before review
     assert all('answer_in_stem' in c['structure_issues'] for c in reviewer.calls)
 
 
@@ -287,7 +300,7 @@ def test_durable_scopes_isolate_accounts_and_targeted_reentry(lab):
     room, _, calls, reviewer, services = lab
     reviewer.actions = [dict(verdict='reject', issues=['不合格'], revised=None)] * 4
     with pytest.raises(ModelError): fill(room, point_ids=['p0'])
-    assert calls == [['p0'], ['p0']]
+    assert calls == [['p0']] and reviewer.forced_calls == [['p0']]
     fill(room, point_ids=['p1'])
     assert calls[-1] == ['p1']
     other = qr.ReviewJournal('other-account', services.data_root, PLAN, 'm', {'p0': {'scope': 'same'}})
@@ -355,6 +368,10 @@ def test_reviewed_bank_uses_existing_peak_current_module_only_schedule(lab, peak
 def test_new_contract_fields_pass_bank_wiring_without_legacy_parser_changes(lab, monkeypatch, kind):
     """Contract capture sink only: MF03's new store/parser are not merged yet."""
     room, store, _, reviewer, _ = lab
+    # Exact/essay must not occupy the module's only reserved written slot.
+    if kind in ('exact', 'essay'):
+        store.add_bank_questions(PLAN, 'm', [short(id='existing', angle='apply')],
+                                 fingerprint=room._test_fingerprint(room._course(PLAN), 'm'))
     if kind in ('short', 'fix_error'):
         q = short(type=kind)
     elif kind == 'exact':
@@ -383,3 +400,65 @@ def test_optional_composite_review_timeout_does_not_block_covered_points(lab):
     fill(room)
     assert len(store.records('question_bank', PLAN)) == 5 and len(calls) == 1
     assert reviewer.calls[-1]['question']['id'] == 'composite'
+
+
+def test_blind_disagreement_cannot_be_overruled_by_approval28(lab):
+    room, store, _, reviewer, _ = lab
+    original = reviewer.complete
+    def complete(purpose, messages, **kw):
+        if purpose == 'question_solve':
+            return SimpleNamespace(text=json.dumps(dict(answerable=False, answer='', viable_options=[],
+                                                        reason='原文不能支持此题。')))
+        return original(purpose, messages, **kw)
+    reviewer.complete = complete
+    with pytest.raises(ModelError): fill(room, point_ids=['p0'])
+    assert not store.records('question_bank', PLAN)
+    assert reviewer.calls and all(c['verification']['matched'] is False for c in reviewer.calls)
+    assert all(not c['structure_issues'] for c in reviewer.calls)
+
+
+def test_revision_runs_new_blind_solution28(lab):
+    room, store, _, reviewer, _ = lab
+    original = reviewer.complete
+    solved = []
+    def complete(purpose, messages, **kw):
+        if purpose == 'question_solve':
+            solved.append(json.loads(messages[-1]['content'].split('\n', 1)[1])['stem'])
+        return original(purpose, messages, **kw)
+    reviewer.complete = complete
+    reviewer.actions = [lambda payload: dict(verdict='revise', issues=['明确题面'],
+        revised=dict(payload['question'], stem='修订后：append 的添加位置是什么？'))]
+    fill(room, point_ids=['p0'])
+    assert len(solved) == 3 and solved[1].startswith('修订后')
+    assert len(store.records('question_bank', PLAN)) == 2
+
+
+def test_blind_timeout_resumes_without_regenerating28(lab):
+    room, store, calls, reviewer, services = lab
+    original = reviewer.complete
+    failed = False
+    def complete(purpose, messages, **kw):
+        nonlocal failed
+        if purpose == 'question_solve' and not failed:
+            failed = True
+            raise ModelError('MODEL_TIMEOUT', '盲解超时')
+        return original(purpose, messages, **kw)
+    reviewer.complete = complete
+    with pytest.raises(ModelError, match='题目已保留'): fill(room, point_ids=['p0'])
+    assert len(store.records('question_bank', PLAN)) == 1
+    reopened = Classroom(services, lambda: DAY)
+    reopened._questions = lambda *a, **k: pytest.fail('blind timeout must not regenerate')
+    fill(reopened, point_ids=['p0'])
+    assert calls == [['p0']] and len(store.records('question_bank', PLAN)) == 2
+
+
+def test_wrong_type_repair_cannot_fill_reserved_written_slot28(lab):
+    room, store, _, reviewer, _ = lab
+    room._questions = lambda *a, **kw: [choice(id='choice1'), choice(id='choice2', angle='apply')]
+    reviewer.forced_result = [choice(id='choice3', angle='contrast')]
+    with pytest.raises(ModelError): fill(room, point_ids=['p0'])
+    assert len(store.records('question_bank', PLAN)) == 1
+    assert reviewer.forced_calls == [['p0']]
+    fill_again = lambda: fill(room, point_ids=['p0'])
+    with pytest.raises(ModelError): fill_again()
+    assert reviewer.forced_calls == [['p0']]  # durable once-only repair

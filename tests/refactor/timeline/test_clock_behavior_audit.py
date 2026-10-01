@@ -342,7 +342,9 @@ def test_audit_classroom_refresh_failure_retest_and_skip(env, audit):
     view = act(env, "reply", "入队在尾出队在头")
     check_status(audit, "新一日重测补20，先还昨日欠账，仍欠10", dict(today_confirmed=0, debt_minutes=10), view["today"])
     act(env, "next_module")
-    act(env, "start_test", "skip_test")
+    view = act(env, "start_test", "skip_test")
+    if not view['question']['options']:
+        env.agent.verdicts.append(("answer", True, []))  # mixed bank may select its reserved written question
     view = act(env, "reply", "乙答案")
     check_status(audit, "直接考跳过130分钟：补欠10、填今日60、超前60", dict(today_confirmed=60, debt_minutes=0,
                  ahead_minutes=60, ahead_days=1, time_completed=True, completed=False), view["today"], rule="TEACH-07")

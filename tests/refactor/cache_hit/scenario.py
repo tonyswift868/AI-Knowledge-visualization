@@ -70,6 +70,11 @@ class ScriptedGateway:
                      options={**{k: v for k, v in kwargs.items() if k != 'cancel'},
                               'reasoning_effort': PURPOSE_EFFORT.get(purpose)}, model='deepseek-v4-flash')
         self.requests.append(entry)
+        from tests.refactor.question_solver.fakes import response, grade, is_solver_judgement
+        extra = response(purpose, messages) if purpose == 'question_solve' else grade(messages) if purpose == 'judge' and is_solver_judgement(messages) else None
+        if extra is not None:
+            entry['response'] = extra.text
+            return extra
         text = '\n'.join(m['content'] for m in messages)
         hits = ()
         if purpose == 'question_review':
