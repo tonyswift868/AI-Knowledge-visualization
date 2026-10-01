@@ -22,6 +22,15 @@ def test_learning_delivery_qt_build_intermediates_are_not_runtime_data():
     assert include_payload_data('PySide6/resources/qtwebengine_resources.pak')
 
 
+def test_learning_delivery_bundles_course_data_read_from_source_tree():
+    """CatalogClient and source_filter read course/data via Path(__file__) (BUG-40)."""
+    root = Path(__file__).resolve().parents[3]
+    script = (root / "scripts/build_learning_installer.py").read_text(encoding="utf-8")
+    assert '"refactor/learning/course/data", "refactor/learning/course/data"' in script
+    assert (root / "refactor/learning/course/data/source_lists.json").is_file()
+    assert (root / "refactor/learning/course/data/model-prices.json").is_file()
+
+
 def test_learning_delivery_voice_publisher_pins_only_inference_inputs(tmp_path):
     from scripts.build_learning_voice_assets import bundle
     source, target = tmp_path / 'source', tmp_path / 'output'

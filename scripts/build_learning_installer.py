@@ -133,6 +133,8 @@ def freeze(args):
     run(runtime + [ROOT / "refactor/desktop/delivery/per_user_install.py"], work, work / "runtime-build.log")
     data = [(resources, "refactor/desktop/resources"),
             (web_dist, "refactor/learning/web/dist"),
+            # Built-in catalogues and grading examples read via Path(__file__) (BUG-40).
+            (ROOT / "refactor/learning/course/data", "refactor/learning/course/data"),
             (ROOT / "refactor/learning/voice/tts/engine_server.py", "refactor/learning/voice/tts"),
             (work / "component-catalog.json", "refactor/learning/voice/tts"),
             (work / "mentorflow-version.json", ".")]
