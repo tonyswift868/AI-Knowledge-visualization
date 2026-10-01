@@ -115,13 +115,13 @@ def summary(items, *, measured=True):
         est = sum(i['estimated_input'] for i in warm)
         result[purpose] = dict(calls=len(group), warm=len(warm), known_warm=len(known),
             measured_warm_rate=sum(i['cached_tokens'] for i in known)/inp if inp and measured else None,
-            measured_input=inp if measured else None, estimated_input=est,
+            measured_input=inp if measured and known else None, estimated_input=est,
             lcp_estimated_warm_rate=sum(i['lcp_estimated_rate']*i['estimated_input'] for i in warm)/est if est else None,
             output_boundary_estimated_warm_rate=sum(i['output_boundary_estimated_rate']*i['estimated_input'] for i in warm)/est if est else None)
     return result
 
 
-def run(calls_dir, out):
+def run(calls_dir, out, *, observed_only=False):
     # Imported ONLY when explicitly requested in the isolated environment.
     from prefixcash import iter_calls, diagnose_log, build_heatmap
     rows = [json.loads(p.read_text(encoding='utf-8')) for p in Path(calls_dir).glob('*.json')]
@@ -139,24 +139,37 @@ def run(calls_dir, out):
     for call in calls:
         grouped[call.metrics.session_id].append(call)
     heatmaps = {key: asdict(build_heatmap(key, value)) for key, value in grouped.items()}
-    before, after = positions(rows), positions(rearrange(rows))
+    before = positions(rows)
+    # Real A/B already contains the observed assembly. Re-appending those rows
+    # would invent a second hypothetical change rather than diagnose that run.
+    after = [] if observed_only else positions(rearrange(rows))
     for item in after:
         item.update(usage_origin='not remeasured', known_usage=False,
                     input_tokens=None, cached_tokens=None)
     result = dict(requests=len(rows), known_requests=len(calls), unknown_requests=len(rows)-len(calls),
-        measured_input=sum(c.metrics.input_tokens for c in calls),
-        measured_cached=sum(c.metrics.cache_read_tokens for c in calls),
+        measured_input=sum(c.metrics.input_tokens for c in calls) if calls else None,
+        measured_cached=sum(c.metrics.cache_read_tokens for c in calls) if calls else None,
+        observed_only=observed_only,
         before=before, after=after, before_summary=summary(before), after_summary=summary(after, measured=False),
         findings=findings, heatmaps=heatmaps,
-        limitations=['word positions are not BPE tokens', 'after usage is NOT remeasured; only LCP estimate',
+        limitations=['word positions are not BPE tokens',
+                    'replay disabled for observed requests' if observed_only else 'after usage is NOT remeasured; only LCP estimate',
                     'unknown usage excluded from prefixcash usage diagnostics',
                     'saved received text may not have passed host parsing; offline replay is assembly only'])
     (out/'diagnosis.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
     # Compact inspectable figure with labels, no additional graphics dependency.
-    svg=['<svg xmlns="http://www.w3.org/2000/svg" width="1050" height="'+str(70+len(grouped)*60)+'">',
+    purposes = list(dict.fromkeys(row['purpose'] for row in rows))
+    svg=['<svg xmlns="http://www.w3.org/2000/svg" width="1050" height="'+str(70+len(purposes)*60)+'">',
          '<rect width="100%" height="100%" fill="#fff"/>',
          '<text x="20" y="25" font-family="sans-serif" fill="#111">prefixcash whitespace-word boundaries (not measured cache tokens)</text>']
-    for i,(purpose,data) in enumerate(heatmaps.items()):
+    for i,purpose in enumerate(purposes):
+        data=heatmaps.get(purpose)
+        if data is None:
+            y=60+i*60
+            svg += [f'<text x="20" y="{y+18}" fill="#111">{html.escape(purpose)}</text>',
+                    f'<rect x="150" y="{y}" width="680" height="22" fill="#d1d5db"/>',
+                    f'<text x="165" y="{y+17}" fill="#111">No usable usage: actual cache hit is unknown</text>']
+            continue
         cells=data['cells']; boundary=min(data['breaks'], default=len(cells))
         width=680*boundary/max(1,len(cells)); y=60+i*60
         svg += [f'<text x="20" y="{y+18}" fill="#111">{html.escape(purpose)}</text>',
@@ -172,11 +185,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--calls', type=Path)
     parser.add_argument('--out', type=Path)
+    parser.add_argument('--observed-only', action='store_true', help='do not rearrange already-observed A/B requests')
     args = parser.parse_args()
     if args.calls is None or args.out is None:
         print('SKIPPED: opt in with --calls and --out; offline only')
         return
-    result = run(args.calls, args.out)
+    result = run(args.calls, args.out, observed_only=args.observed_only)
     print(json.dumps({k:result[k] for k in ('requests','known_requests','unknown_requests','measured_input','measured_cached','before_summary','after_summary')}, ensure_ascii=False, indent=2))
 
 

@@ -4,7 +4,7 @@ import json
 
 def wire(chunk='k1', *, live=False, short=False, code=None, guide=True):
     steps = [dict(text='我们先看队列的顺序。', chunk_ids=[chunk], question=None, options=[]),
-             dict(text='先进入的元素先取出。生活中排队买票可作类比，插队不在类比范围内。' +
+             dict(text='先进入的元素先取出。[引申1]生活中排队买票可作类比，插队不在类比范围内。' +
                   ('\n```python\n' + code + '\n```' if code else ''), chunk_ids=[chunk],
                   question='甲先入队，乙后入队，通常谁先取出？' if guide else None,
                   options=[dict(text='甲', response='甲先进入，因此先取出。'),

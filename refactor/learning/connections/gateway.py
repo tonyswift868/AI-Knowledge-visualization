@@ -18,6 +18,9 @@ from __future__ import annotations
 import copy
 from dataclasses import replace
 import math
+import json
+import logging
+from logging.handlers import RotatingFileHandler
 import threading
 import time
 from urllib.parse import urlsplit
@@ -30,6 +33,7 @@ from . import providers, transport
 from .pricing import PriceCatalog, timestamp
 from .usage import UsageLog
 from .balance import BalanceClient, supported as balance_supported
+from .providers._failure_evidence import FailureEvidence
 
 _UNSET = object()
 _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
@@ -406,6 +410,34 @@ class ModelGateway:
                               system=None, enable_search=False, on_text=None, cancel=None, plan_id='', max_tokens=32,
                               reasoning_effort=None)
 
+    def _log_failure(self, error, config, secret, messages, system, identifier, purpose):
+        """Local account log, bounded; logging failure never replaces model error."""
+        safe = FailureEvidence(config['provider_id'] if config else '', secret or '')
+        safe.request(dict(messages=messages, system=system))
+        diagnostic = getattr(error, 'diagnostics', {})
+        diagnostic = diagnostic if isinstance(diagnostic, dict) else {}
+        safe.status = diagnostic.get('http_status') if type(diagnostic.get('http_status')) is int else error.status
+        safe.content_type = safe.clean(diagnostic.get('content_type'))
+        safe.vendor_type = safe.clean(diagnostic.get('vendor_error_type'))
+        safe.vendor_message = safe.clean(diagnostic.get('vendor_error_message'))
+        safe.stage = safe.clean(diagnostic.get('stage')) or 'gateway_failure'
+        safe.events.extend(safe.clean(v) for v in diagnostic.get('last_sse_events', [])[-8:] if isinstance(v,str))
+        record = dict(safe.snapshot(), at=timestamp().isoformat(), request_id=identifier,
+                      purpose=safe.clean(purpose), code=error.code,
+                      exception_type=safe.clean(diagnostic.get('exception_type')))
+        try:
+            with self._lock:
+                handler = RotatingFileHandler(self.usage_log.path.with_name('model-failures.log'),
+                                              maxBytes=1024*1024, backupCount=2, encoding='utf-8')
+                try:
+                    handler.emit(logging.LogRecord(__name__, logging.WARNING, '', 0,
+                                 json.dumps(record, ensure_ascii=False), (), None))
+                finally:
+                    handler.close()
+            error.diagnostic_log_written = True
+        except (OSError, ValueError, AttributeError):
+            error.diagnostic_log_written = False
+
     def _complete(self, purpose, messages, *, system, enable_search, on_text, cancel, plan_id, max_tokens,
                   reasoning_effort):
         effort = reasoning_effort if reasoning_effort is not None else PURPOSE_EFFORT.get(purpose, 'high')
@@ -489,6 +521,7 @@ class ModelGateway:
                 raise
             if error:
                 error.request_id = identifier
+                self._log_failure(error, config, secret, messages, system, identifier, purpose)
                 raise error
             return result
         finally:

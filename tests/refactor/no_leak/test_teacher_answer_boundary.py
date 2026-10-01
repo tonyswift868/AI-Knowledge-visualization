@@ -131,7 +131,7 @@ def test_saved_verdict_allows_answer_explanation_and_streaming(room, monkeypatch
 def test_new_rule_allows_confirming_the_taught_example():
     from tests.refactor.guided_lessons.fixtures import draft
     assert lesson_prep.check_lesson(draft()) == ()
-    assert lesson_prep.VERSION == 4
+    assert lesson_prep.VERSION == 5
     assert not hasattr(lesson_prep, 'casual_repeats_example')
 
 

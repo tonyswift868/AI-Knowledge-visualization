@@ -140,7 +140,8 @@ def test_background_reviewed_prep_is_reused_then_invalidated(room, monkeypatch):
             return [Question(f'q{i}', 'short', f'解释点 {i}', (), '先进入先取出', '按顺序', (pid,), ('c1',), 'recall')
                     for i, pid in enumerate(('p1', 'p2'))]
         if purpose == 'lesson_prep': return (draft(), draft()) if '相邻知识点' in request[1][-1]['content'] else draft()
-        if purpose == 'lesson_review': return lesson_prep.Review('approve', (), None)
+        if purpose == 'lesson_review':
+            return (lesson_prep.Review('approve', (), None),) * 2 if '相邻知识点' in request[1][-1]['content'] else lesson_prep.Review('approve', (), None)
         raise AssertionError(purpose)
 
     monkeypatch.setattr(classroom, '_ask', fake_ask)
@@ -151,7 +152,7 @@ def test_background_reviewed_prep_is_reused_then_invalidated(room, monkeypatch):
     classroom._prepare_later(course, state)
     for thread in threading.enumerate():
         if thread.name == 'classroom-lesson-prep': thread.join(5)
-    assert calls.count('lesson_prep') == 1 and calls.count('lesson_review') == 2
+    assert calls.count('lesson_prep') == 1 and calls.count('lesson_review') == 1
     assert classroom._prepared_point(course, course.point('p1')) == draft()
     # Bank preparation has its own immediate job; it no longer waits for
     # teaching preparation or spends that job's daily preparation allowance.
@@ -174,7 +175,8 @@ def test_unverified_prep_never_becomes_teacher_basis(room, monkeypatch, verdict)
     def fake_prep(_course, purpose, _request, _parse, _max_tokens):
         if purpose == 'lesson_prep': return (draft(), draft()) if '相邻知识点' in _request[1][-1]['content'] else draft()
         if purpose == 'lesson_review':
-            return lesson_prep.Review(verdict, ('原文依据不足',), None if verdict == 'live' else draft())
+            result = lesson_prep.Review(verdict, ('原文依据不足',), None if verdict == 'live' else draft())
+            return (result, result) if '相邻知识点' in _request[1][-1]['content'] else result
         raise AssertionError(purpose)
     monkeypatch.setattr(classroom, '_prep_ask', fake_prep)
     monkeypatch.setattr(classroom, '_questions', lambda *args, **kwargs: [])

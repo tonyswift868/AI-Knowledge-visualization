@@ -21,6 +21,7 @@ from .base import ModelResult, ProviderSpec, SearchSupport, Usage, WebHit, inval
 from .registry import REGISTRY, detect_provider
 from ._http import HTTP, guarded
 from ._accounting import Accounting
+from ._failure_evidence import FailureEvidence
 from . import anthropic_messages, dashscope, gemini, openai_chat, openai_responses
 
 __all__ = ['SearchSupport', 'ProviderSpec', 'REGISTRY', 'detect_provider', 'Usage',
@@ -88,16 +89,18 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
                   max_tokens=max_tokens, temperature=temperature, on_text=on_text,
                   reasoning_effort=reasoning_effort)
     accounting = Accounting(config)
+    evidence = FailureEvidence(provider_id, api_key)
 
-    def failure(error):
+    def failure(error, cause=None):
         error = accounting.attach(error)
+        error.diagnostics = evidence.snapshot(cause)
         # Model names are vendor-controlled too; never journal an echoed key.
         if isinstance(error.model, str) and api_key in error.model:
             error.model = ''
         return error
 
     async def call():
-        async with HTTP(provider_id, api_key, timeout, http_client, cancel, accounting) as http:
+        async with HTTP(provider_id, api_key, timeout, http_client, cancel, accounting, evidence) as http:
             result = await _ADAPTERS[spec.protocol].run(http, config)
             http.check()
             accounting.check_truncated()
@@ -111,10 +114,10 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
         return asyncio.run(guarded(call, timeout, cancel))
     except ModelError as exc:
         raise failure(exc) from None
-    except (TimeoutError, httpx.TimeoutException):
-        raise failure(ModelError('MODEL_TIMEOUT', '模型请求超时，请稍后重试。')) from None
-    except httpx.HTTPError:
-        raise failure(ModelError('MODEL_CONNECTION_FAILED', '无法连接模型服务，请检查地址和网络。')) from None
-    except Exception:
+    except (TimeoutError, httpx.TimeoutException) as exc:
+        raise failure(ModelError('MODEL_TIMEOUT', '模型请求超时，请稍后重试。'), exc) from None
+    except httpx.HTTPError as exc:
+        raise failure(ModelError('MODEL_CONNECTION_FAILED', '无法连接模型服务，请检查地址和网络。'), exc) from None
+    except Exception as exc:
         # Parse failures, callback/client exceptions may contain request secrets.
-        raise failure(invalid()) from None
+        raise failure(invalid(), exc) from None

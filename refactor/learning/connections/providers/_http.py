@@ -1,4 +1,4 @@
-"""Bounded, cancellable HTTP/SSE. No redirects, logging or automatic retries."""
+"""Bounded, cancellable HTTP/SSE with failure-only metadata; no redirects/retries."""
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +13,7 @@ from ..errors import (ModelCancelled, ModelError, MODEL_INSUFFICIENT_BALANCE,
                       INSUFFICIENT_BALANCE_MESSAGE)
 from ..transport import http_error, normalize_url
 from .base import invalid
+from ._failure_evidence import FailureEvidence
 
 
 MAX_BYTES = 8 * 1024 * 1024
@@ -66,10 +67,11 @@ def decode(raw):
 
 
 class HTTP:
-    def __init__(self, provider, key, timeout, client=None, cancel=None, accounting=None):
+    def __init__(self, provider, key, timeout, client=None, cancel=None, accounting=None, evidence=None):
         self.provider, self.key, self.timeout, self.client = provider, key, timeout, client
         self.cancel, self.deadline = cancel, time.monotonic() + timeout
         self.accounting = accounting
+        self.evidence = evidence or FailureEvidence(provider, key)
 
     def check(self):
         if self.cancel is not None and self.cancel.is_set():
@@ -101,17 +103,23 @@ class HTTP:
         auth.update({'Content-Type': 'application/json'})
         auth.update(headers or {})
         try:
+            self.evidence.request(body)
+            self.evidence.stage = 'connecting'
             if self.accounting:
                 self.accounting.start(body)
             async with self.client.stream(
                 'POST', url, json=body, headers=auth, follow_redirects=False,
                 timeout=httpx.Timeout(self.timeout, connect=min(5., self.timeout)),
             ) as response:
+                self.evidence.status = response.status_code
+                self.evidence.content_type = self.evidence.clean(response.headers.get('content-type'))
+                self.evidence.stage = 'response_received'
                 if self.accounting:
                     self.accounting.begin()
                     if response.is_stream_consumed:
                         self.observe_bytes(response.content)
                 if response.status_code != 200:
+                    self.evidence.stage = 'http_error_response'
                     # Redirects are rejected before reading the body or credentials
                     # could be sent to a second host, even on a supplied client.
                     if 300 <= response.status_code < 400:
@@ -123,6 +131,7 @@ class HTTP:
                         data = None
                     if self.accounting and isinstance(data, dict):
                         self.accounting.snapshot(data)
+                    self.evidence.error(data)
                     raise vendor_error(self.provider, response.status_code, data)
                 yield response
         finally:
@@ -156,7 +165,9 @@ class HTTP:
 
     async def json(self, url, body, headers=None):
         async with self.response(url, body, headers) as response:
+            self.evidence.stage = 'decoding_json_response'
             data = decode(await self.read(response))
+            self.evidence.error(data)
             if self.accounting:
                 self.accounting.snapshot(data)
             self.check()
@@ -170,8 +181,14 @@ class HTTP:
                 # A JSON error/fallback body can still contain billable meters.
                 # Read it within the same size/deadline limits, then reject the
                 # protocol mismatch rather than silently accepting a reply.
-                await self.read(response)
+                raw = await self.read(response)
+                try:
+                    self.evidence.error(decode(raw))
+                except ModelError:
+                    pass
+                self.evidence.stage = 'expected_event_stream'
                 raise invalid()
+            self.evidence.stage = 'reading_event_stream'
             decoder = codecs.getincrementaldecoder('utf-8')()
             buffer, event, lines, size = '', '', [], 0
             async for chunk in response.aiter_bytes():
@@ -189,7 +206,13 @@ class HTTP:
                             if value == '[DONE]':
                                 data = None
                             else:
-                                data = decode(value)
+                                self.evidence.stage = 'decoding_sse_event'
+                                try:
+                                    data = decode(value)
+                                except ModelError:
+                                    self.evidence.event(event, None)
+                                    raise
+                            self.evidence.event(event, data)
                             if self.accounting:
                                 self.accounting.event(event, data)
                             ready.append((event, data))
@@ -200,6 +223,7 @@ class HTTP:
                         lines.append(line[5:].lstrip(' '))
                 # Account every complete frame already received in this chunk
                 # before callbacks/cancellation can reject its answer.
+                self.evidence.stage = 'reading_event_stream'
                 self.check()
                 for event_name, data in ready:
                     self.check()
@@ -209,6 +233,7 @@ class HTTP:
             buffer += decoder.decode(b'', final=True)
             # An unterminated data frame is a truncated stream, not completion.
             if buffer.strip() or lines:
+                self.evidence.event(event, None)
                 if self.accounting:
                     pending = lines + [line[5:].lstrip(' ') for line in buffer.splitlines() if line.startswith('data:')]
                     try:
@@ -217,6 +242,7 @@ class HTTP:
                         pass
                     else:
                         self.accounting.event(event, data)
+                self.evidence.stage = 'unterminated_sse_frame'
                 raise invalid()
 
 

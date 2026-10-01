@@ -31,10 +31,16 @@ class Gateway:
         if purpose=='lesson_prep':
             text=json.dumps({'lessons':[{'point_id': p['id'], 'lesson': wire(p['chunk_ids'][0])} for p in task['points']]},ensure_ascii=False) if 'points' in task else json.dumps(wire(task['chunk_ids'][0]),ensure_ascii=False)
         elif purpose=='lesson_review':
-            result=self.reviews.pop(0) if self.reviews else 'approve'
-            if isinstance(result, Exception): raise result
-            revised=task['draft'] if result=='revise' else None
-            text=json.dumps(dict(verdict=result,issues=[] if result=='approve' else ['需修改'],revised=revised),ensure_ascii=False)
+            def review(item):
+                result=self.reviews.pop(0) if self.reviews else 'approve'
+                if isinstance(result, AgentFormatError) and isinstance(task,list):
+                    return dict(point_id=item['point']['id'],verdict='invalid',issues=[],revised=None)
+                if isinstance(result, Exception): raise result
+                value=dict(verdict=result,issues=[] if result=='approve' else ['需修改'],
+                           revised=item['draft'] if result=='revise' else None)
+                if isinstance(task,list):value['point_id']=item['point']['id']
+                return value
+            text=json.dumps(dict(reviews=[review(item) for item in task]) if isinstance(task,list) else review(task),ensure_ascii=False)
         elif purpose=='teacher' and kwargs['system'].startswith('现场分步'):
             text=json.dumps(wire(task['chunk_ids'][0],live=True),ensure_ascii=False)
         elif purpose=='teacher':
@@ -97,6 +103,11 @@ def test_guided_steps_choice_interrupt_return_reopen_and_fast_correct(env):
     with pytest.raises(BridgeError):act(e,'next')
     # Reopening restores the step and its continue choice rather than advancing.
     e.room=Classroom(e.services,lambda:DAY)
+    # Reopened rooms need the same scheduler isolation as the fixture room;
+    # background prefetch calls must not race the foreground no-call assertion.
+    e.room._prefetch_banks=lambda *a,**kw:None
+    e.room._prepare_later=lambda *a,**kw:None
+    e.room._schedule_idle_prep=lambda *a:None
     v=act(e,'enter');assert v['lesson']['step']==2 and v['lesson']['awaiting']=='return'
     v=act(e,'back');assert v['lesson']['awaiting']=='continue'
     v=act(e,'next');assert v['lesson']['step']==3

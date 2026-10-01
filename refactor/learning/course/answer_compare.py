@@ -17,6 +17,17 @@ def normalize(value):
     return ''.join(unicodedata.normalize('NFKC', value).split()).casefold()
 
 
+def _answer_text(reply):
+    """Remove a standalone answer label, never strip explanatory/negating text.
+
+    Free-form statements remain semantic judgements; there is no fuzzy spelling
+    distance which could silently erase a significant operator or negation.
+    """
+    value = unicodedata.normalize('NFKC', reply).strip()
+    return re.sub(r'^(?:答案(?:是|为|:)|结果(?:是|为|:)|答:|the answer is\s+)', '', value,
+                  count=1, flags=re.I).strip()
+
+
 def _poly(text):
     text = normalize(text).replace('−', '-').replace('×', '*').replace('÷', '/').replace('^', '**')
     text = re.sub(r'(?<=\d)(?=[a-z(])|(?<=\))(?=[a-z0-9(])', '*', text)
@@ -82,6 +93,7 @@ def compare_exact(question, reply):
     # Algebraic equivalence alone cannot prove the requested intermediate step
     # was supplied (x=4 is not evidence of the requested 3x=12 step).
     if re.search(r'过程|步骤|那一步|移项|推导|怎么得到', question['stem']): return None
+    reply = _answer_text(reply)
     accepted = question.get('accepted') or [question['answer']]
     kind = question.get('answer_kind')
     if any(normalize(reply) == normalize(a) for a in accepted): return True

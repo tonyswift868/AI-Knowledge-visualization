@@ -27,6 +27,16 @@ class Verdict:
 # Enabled only after the labelled OFF/ON experiment demonstrates benefit.
 REVIEW_WRONG_DEFAULT = False
 
+CALIBRATION_RULES = """
+表达与评分范围校准（不改变知识正确性或通过线）：
+先用题面确定要回答的关系/结论，再读参考和细则；参考中的举例、修饰语、位置、重复说明不能自动成为额外门槛。题面明确问到的条件、数量、方向、原因或操作步骤仍必须满足。
+把作答放回这一道题里读：简略句、省略主语、口语、无害错别字，以及指代清楚的“它/这/那个/it/they”可以表达完整答案，不要求再抄一遍题目中的对象和条件。以语义和语法共同解析指代，不能机械地取最近的名词。
+提问已给出的目标可作为省略成分，例如问哪个更大时，回答明确指标的“更多气泡那个”已经表达选谁及比较依据；不要求把提问中的目标再写一遍。只有上下文能唯一补全的省略才算答到：没有说明比较的指标、指代有多个合理解释、只是提到检测名称却没表达结果关系时，不替学生猜，拿不准用clarify。
+区分具体细节与核心意思：泛问外形/方法时，不因未复述无关位置或精细操作修饰语而记漏答；明确问该位置/操作或该细节决定结论时仍需核对。含糊的类别名称不等于给出核心关系，提到一个词也不等于解释了原因。
+错别字可按题意理解，但否定词、对象、方向、数量或操作符改变意义时不得当作笔误抹掉；同一句同时有正确与实质错误，仍不能判全对。“我肯定对”等自称不能补全内容。
+不要为了贴合参考强行补出学生没有表达的实验条件、推理步骤或事实；也不要为了判错把一句自然的省略表达解释成明显不合题意的指代。
+"""
+
 STRUCTURED_RULES = """
 本题采用结构化细则。仅按题面明确要求判定，accept是同义示例，不是必须照抄的文字；reject是实质误解。不能替学生补出没表达的意思。
 evidence摘录学生真实说的原话，不引用参考当学生证据；无可引用内容用空字符串。措辞不同不导致不确定。
@@ -39,9 +49,11 @@ reason一句简短中文，写真正满足/未满足的条件。
 """
 
 SHORT_RULES = """
-本题是short/fix_error，不是essay。逐条checks恰好{point_id,point,status,evidence}；point原样复制required_points的point。status仅hit/miss/wrong。
-正确表达是hit；没答到是miss；实质错误是wrong，即使同项有正确话也不能hit。所有条目hit才correct=true、wrong_points=[]；有miss/wrong则correct=false，只把该项point_id加入wrong_points。
+本题是short/fix_error，不是essay。逐条checks恰好{point_id,point,applies,status,evidence}；point原样复制required_points的point。status仅hit/miss/wrong，applies是布尔值。
+先核对每条是否是题面真正要求的独立要点。纯粹额外的参考细节applies=false,status=miss,evidence=""，不计错；题面要求或影响结论的核心条件applies=true。一个要点同时含核心与额外修饰时，仍applies=true，仅按题面所问的核心关系判，不因为未复述额外修饰判miss。不是只要没写就把applies设false。
+正确表达是hit；没答到是miss；实质错误是wrong，即使同项有正确话也不能hit。至少有一条适用，且所有适用条目hit才correct=true、wrong_points=[]；适用项有miss/wrong则correct=false，只把该项point_id加入wrong_points。没有任何适用要点说明细则不适合题面，用clarify而非空条件判对。
 缺少的必答项不能猜学生会了，也不强求参考的同一措辞或未问的细节。
+此处六字段协议覆盖基础示例：无论判对判错，必须带uncertain和完整checks，不能只输出基础四字段。
 """
 
 ESSAY_RULES = """
@@ -87,7 +99,7 @@ answer 且全对：correct=true、wrong_points=[]；有错或遗漏：correct=fa
 reason 必须是一句简短中文（最多 400 字，不换行），指出具体错在哪或为何属于该意图，供教师使用；不打分、不命令推进流程。全对时也说明满足了哪些要点。
 reason 只写必要的判定依据，不再追加“未掌握/仍需学习”等第二句总结；多处错误用分号串在同一句中，句号只放在结尾。不要复述整份参考答案。
 示例格式：{"kind":"answer","correct":false,"wrong_points":["输入中的某个点 id"],"reason":"混淆了两个概念的适用条件。"}
-"""
+""" + CALIBRATION_RULES
 
 SUBJECTIVE_RULES = """
 本题是主观题。你只可依据题目、必答要点、学生本次作答判定，不参考任何历史对话。
@@ -350,7 +362,10 @@ def _parse_structured_checks(checks, rubric, point_ids, correct, wrong):
         # from the question, never infer identifiers for a multi-point answer.
         if isinstance(check, dict) and 'point_id' not in check and len(point_ids) == 1:
             check['point_id'] = next(iter(point_ids))
-        _fields(check, ('point_id', name, 'status', 'evidence'))
+        fields = ('point_id', name, 'status', 'evidence')
+        if kind == 'short' and 'applies' in check:
+            fields += ('applies',)
+        _fields(check, fields)
         pid = _identifier(check['point_id'])
         if pid not in point_ids or check[name] != criterion[name]:
             raise AgentFormatError('checks: 细则或知识点不对应')
@@ -359,7 +374,12 @@ def _parse_structured_checks(checks, rubric, point_ids, correct, wrong):
         _text(check['evidence'], 'evidence', 2000, empty=True)
         # Quotes are retained for audit. Do not turn quote formatting differences
         # into semantic uncertainty (BUG-33); uncertainty is the judge's signal.
-        met = check['status'] == statuses[0]
+        applies = check.get('applies', True)
+        if type(applies) is not bool or (kind == 'essay' and not applies):
+            raise AgentFormatError('checks: 适用标记无效')
+        if not applies and (check['status'] != 'miss' or check['evidence']):
+            raise AgentFormatError('checks: 额外参考细节不能参与评分或附学生证据')
+        met = check['status'] == statuses[0] if applies else True
         outcomes.append(met); seen.add(pid)
         if not met: failed.add(pid)
     if seen != point_ids: raise AgentFormatError('checks: 有知识点未核对')
@@ -369,6 +389,8 @@ def _parse_structured_checks(checks, rubric, point_ids, correct, wrong):
         # An optional unmet criterion is not an error if the pass line is met.
         if passed: failed = set()
     else:
+        if not any(c.get('applies', True) for c in checks):
+            raise AgentFormatError('checks: 没有适用要点不能凭空判定作答')
         passed = all(outcomes)
     if passed != correct or failed != set(wrong):
         raise AgentFormatError('checks: 逐条结果与总判定/错点不一致')

@@ -82,6 +82,8 @@ async def streamed(http, url, body, sink):
         elif kind == 'message_stop':
             ended = True
     if not ended or message is None or not message.get('stop_reason'):
+        if getattr(http, 'evidence', None) is not None:
+            http.evidence.stage = 'incomplete_anthropic_message'
         raise invalid()
     for index, value in partials.items():
         blocks[index]['input'] = json.loads(value)
@@ -134,6 +136,8 @@ async def run(http, config):
         sink = TextSink(config['on_text'])
         data = (await streamed(http, url, body, sink) if config['on_text']
                 else await http.json(url, body))
+        if getattr(http, 'evidence', None) is not None:
+            http.evidence.stage = 'validating_anthropic_response'
         result = parse(data, config['provider_id'], config['model'], config['enable_search'])
         sink.finish(result.text)
         results.append(result)

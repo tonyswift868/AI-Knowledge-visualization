@@ -25,7 +25,7 @@ DEFAULTS = {
     "font_scale": 1.0,
     "reduce_motion": False,
     "teacher_style": "warm",
-    "detail": "normal",
+    "detail": "brief",
     "examples": "normal",
     "analogy_domains": ["life"],
     "refresh_time": "04:00",

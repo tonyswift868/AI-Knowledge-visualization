@@ -643,6 +643,13 @@ class Classroom:
                 q = row['question']
                 if not set(q['point_ids']) <= set(group):
                     return composites
+                if row['status'] == 'pending' and len(q['point_ids']) == 1:
+                    pid = q['point_ids'][0]
+                    if not remaining[pid] or q.get('angle') in angles[pid]:
+                        # A candidate with an already-filled quota/angle cannot
+                        # enter the bank; do not pay for its independent review.
+                        row['status'] = 'surplus'; journal.save(token, row)
+                        return composites
                 while row['status'] == 'pending' and row['verdicts'] < question_review.MAX_VERDICTS:
                     fresh = current()
                     q = row['question']
@@ -1448,10 +1455,55 @@ class Classroom:
                     raise
                 except (ModelError, AgentFormatError):
                     log.info("batch draft failed; bounded per-point rewrite remains")
-            # Reviews are per point: a timeout cannot discard the other draft
-            # or reset either point's durable counters.
+            # One source read for two reviews; durable point counters and
+            # independently validated results still survive partial failure.
+            ready = []
             for point in pending:
+                row = self._prep_row(course, point)
+                if row.get("lesson") and row["review_attempts"] < 2:
+                    draft = lesson_prep.parse_prep(json.dumps(row["lesson"], ensure_ascii=False))
+                    if not lesson_prep.check_lesson(draft, chunk_ids=point["chunk_ids"]):
+                        ready.append((point, row, draft))
+            if len(ready) == 2:
+                for point, row, _ in ready:
+                    row["review_attempts"] += 1
+                    row["total_reviews"] += 1
+                    if not self._persist_prep(course, point, row, keep): return
+                try:
+                    request = lesson_prep.batch_review_request(
+                        [self._prep_context(course, p) for p, _, _ in ready],
+                        tuple(d for _, _, d in ready))
+                    reviews = self._prep_ask(course, "lesson_review", request,
+                        lambda raw: lesson_prep.parse_batch_review_results(raw, tuple(p["id"] for p, _, _ in ready)), 16384)
+                except ModelCancelled:
+                    raise
+                except (ModelError, AgentFormatError) as exc:
+                    for point, row, _ in ready:
+                        row.update(status="review_pending", error=str(exc))
+                        self._persist_prep(course, point, row, keep)
+                    return  # Resume original drafts on re-entry, no immediate transport retry.
+                for (point, row, draft), review in zip(ready, reviews):
+                    self._prep_apply_review(course, point, row, draft, review, keep)
+            for point in pending:
+                # A malformed sibling gets its remaining retry on re-entry,
+                # just like a single-point review format failure.
+                if len(ready) == 2 and any(p["id"] == point["id"] and isinstance(r, AgentFormatError)
+                                          for (p, _, _), r in zip(ready, reviews)):
+                    continue
                 self._prepare_point_locked(course, point, keep)
+
+    def _prep_apply_review(self, course, point, row, draft, review, keep):
+        if isinstance(review, AgentFormatError):
+            row.update(status="review_pending", error=str(review))
+        elif review.verdict == "approve" and not lesson_prep.check_lesson(draft, chunk_ids=point["chunk_ids"]):
+            row.update(status="reviewed", error="")
+        else:
+            row["issues"] = list(review.issues)
+            if review.revised:
+                row["lesson"] = asdict(review.revised)
+            if review.verdict == "live":
+                row["review_attempts"] = 2
+        self._persist_prep(course, point, row, keep)
 
     def _prepare_point(self, course, point, keep):
         with self._prep_lock(course, point):
@@ -1478,7 +1530,12 @@ class Classroom:
                     row["error"] = str(exc)
                     self._persist_prep(course, point, row, keep)
                     continue
-            while row["review_attempts"] < 2:
+            draft = lesson_prep.parse_prep(json.dumps(row["lesson"], ensure_ascii=False))
+            local_issues = lesson_prep.check_lesson(draft, chunk_ids=point["chunk_ids"])
+            if local_issues:
+                row["issues"] = list(local_issues)
+                self._persist_prep(course, point, row, keep)
+            while not local_issues and row["review_attempts"] < 2:
                 row["review_attempts"] += 1
                 row["total_reviews"] += 1
                 if not self._persist_prep(course, point, row, keep): return
@@ -1502,6 +1559,10 @@ class Classroom:
                 if review.revised:
                     row["lesson"] = asdict(review.revised)
                     self._persist_prep(course, point, row, keep)
+                    local_issues = lesson_prep.check_lesson(review.revised, chunk_ids=point["chunk_ids"])
+                    if local_issues:
+                        row["issues"] = list(local_issues)
+                        self._persist_prep(course, point, row, keep)
                 if review.verdict == "live": break
             if row["generation_attempts"] >= 2: break
             # Exactly one full rewrite after the original could not be approved.
