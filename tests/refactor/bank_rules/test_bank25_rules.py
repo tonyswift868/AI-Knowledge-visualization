@@ -32,7 +32,9 @@ def lab(tmp_path):
             check_question_minutes=2, today=DAY)
         store.start_plan(PLAN, today=DAY)
         services = SimpleNamespace(store=store, account_id='batch25', data_root=tmp_path,
-            settings=SimpleNamespace(load=lambda: dict(refresh_time='04:00')), gateway=None)
+            settings=SimpleNamespace(load=lambda: dict(refresh_time='04:00')),
+            gateway=SimpleNamespace(complete=lambda purpose, *a, **kw: SimpleNamespace(
+                text='{"verdict":"approve","issues":[],"revised":null}')))
         room = Classroom(services, lambda: DAY, now=lambda: NOW, rng=random.Random(25))
         room._teacher = room._go_on = room._prepare_later = lambda *a, **k: None
         calls = []
@@ -114,7 +116,7 @@ def test_invalid_three_requirements_discards_only_that_question(lab):
     from dataclasses import asdict
     rows = []
     for q in good:
-        row = asdict(q); row.pop('required_points')
+        row = {k: v for k, v in asdict(q).items() if k not in ('required_points', 'answer_kind', 'accepted', 'tolerance', 'rubric')}
         row['options'] = list(row['options']); row['point_ids'] = list(row['point_ids']); row['chunk_ids'] = list(row['chunk_ids'])
         rows.append(row)
     rows[0].update(type='short', options=[], answer='标准过程', required_points=['一步', '二步', '三步'])

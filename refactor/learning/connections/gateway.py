@@ -40,7 +40,7 @@ _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
 # Profile replays contained an unsupported historical claim with thinking off;
 # the task's quality fallback retains the provider default for that purpose.
 PURPOSE_EFFORT = {
-    'judge': 'high', 'check_profile': 'high', 'lesson_review': 'high',
+    'judge': 'high', 'check_profile': 'high', 'lesson_review': 'high', 'question_review': 'high',
     'questions': 'high', 'outline': 'high',
     'lesson_prep': 'high', 'generate': 'high', 'plan_additions_generate': 'high',
     'source_scoring': 'high', 'teacher': 'high',
@@ -49,9 +49,9 @@ PURPOSE_EFFORT = {
 
 PURPOSE_MIN_OUTPUT = {
     'teacher': 8192, 'judge': 8192, 'profile': 8192, 'check_profile': 8192,
-    'questions': 16384, 'lesson_prep': 24576, 'lesson_review': 24576,
+    'questions': 16384, 'lesson_prep': 24576, 'lesson_review': 24576, 'question_review': 24576,
 }
-BACKGROUND_PURPOSES = frozenset({'lesson_prep', 'lesson_review', 'questions', 'profile', 'check_profile'})
+BACKGROUND_PURPOSES = frozenset({'lesson_prep', 'lesson_review', 'question_review', 'questions', 'profile', 'check_profile'})
 
 
 def _storage_error():

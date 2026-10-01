@@ -157,6 +157,7 @@ def test_saved_short_question_with_three_numbered_requirements_remains_readable(
 
 def test_uncertain_grading_does_not_run_an_independent_second_call():
     room = Classroom.__new__(Classroom)
+    room.review_wrong = False
     seen = []
     decisions = iter([Verdict('answer', True, (), '答到了。', True),
                       Verdict('answer', False, ('p1',), '缺要点。')])

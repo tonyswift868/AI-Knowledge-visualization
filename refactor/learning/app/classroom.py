@@ -27,8 +27,8 @@ import time
 import uuid
 
 from ..connections.errors import MODEL_OUTPUT_TRUNCATED, ModelCancelled, ModelError
-from ..course import check_agent, judge_agent, lesson_prep, profile_agent, question_agent, question_bank, teacher_agent
-from ..course.request_layout import dialogue_tail
+from ..course import answer_compare, check_agent, judge_agent, lesson_prep, profile_agent, question_agent, question_bank, teacher_agent
+from ..course.request_layout import AppendOnlyPage, dialogue_tail
 from ..course.mastery import ANGLES, AttemptClosed, Judgement
 from ..course.planner_agents import LEVELS, AgentFormatError
 from ..course.store import StoreError
@@ -64,8 +64,9 @@ def _now():
 class Classroom:
     _lesson_mutex = threading.Lock()
     _lesson_locks = {}
-    def __init__(self, services, study_day, *, now=_now, rng=None):
+    def __init__(self, services, study_day, *, now=_now, rng=None, review_wrong=None):
         self.services, self.study_day, self.now = services, study_day, now
+        self.review_wrong = judge_agent.REVIEW_WRONG_DEFAULT if review_wrong is None else bool(review_wrong)
         self._rng = rng or random.Random()
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
@@ -537,17 +538,19 @@ class Classroom:
             return
         context = {"quick": "quick_confirm", "skip_test": "skip_test", "module_test": "module_test",
                    "retest": "retest"}[pending["kind"]]
-        if not verdict.correct and len(q['point_ids']) > 1:
+        if not verdict.correct and len(q['point_ids']) > 1 and not judge_agent.structured_rubric({'question': q}):
             self._answer_fact(course, state, context, pending, verdict)
             self._split_test_question(course, state, ctx, q)
         else:
             self._record(course, state, context, pending, verdict, text)
             self._answer_fact(course, state, context, pending, verdict)
-            self._refill_wrong(course, state, pending, verdict)
+            for pid in verdict.wrong_points:
+                self._refill_wrong(course, state, dict(pending, point_ids=[pid]),
+                    judge_agent.Verdict('answer', False, (pid,), verdict.reason))
         if verdict.correct and q.get('id'):
             course.store.mark_bank_correct(course.plan_id, q['id'])
         mark = "✓ 答对了。" if verdict.correct else "✗ 这题没答对。"
-        explanation = ("综合题未通过，暂不归因到任何知识点；接下来拆开问。" if len(q['point_ids']) > 1
+        explanation = ("综合题未通过，暂不归因到任何知识点；接下来拆开问。" if len(q['point_ids']) > 1 and not judge_agent.structured_rubric({'question': q})
                        else verdict.reason) if not verdict.correct else ""
         if q["type"] != "choice" and not verdict.correct and len(q['point_ids']) == 1:
             explanation += f" 参考答案：{q['answer']}"
@@ -593,62 +596,157 @@ class Classroom:
 
     def _bank_fill(self, course, ctx, module_id, *, background=False, point_ids=None, force=False,
                    needs=None, used_angles=None, refill_for=None, reserve=None, asked=()):
-        """Initial total quota or explicit deficits, never a standing unused reserve."""
+        """Review before banking; retain drafts and durable per-point reissue limits."""
+        from ..course import question_review
         ids = list(point_ids or [p['id'] for p in course.points_of(module_id)])
         fingerprint = self._test_fingerprint(course, module_id)
-        rows = self._bank_rows(course, module_id)
-        if reserve is not None:
-            needs = {pid: max(0, reserve.get(pid, 0) - sum(q['point_ids'] == [pid] and not q['correct_seen']
-                and q['id'] not in asked and q['angle'] not in (used_angles or {}).get(pid, ()) for q in rows)) for pid in ids}
-        elif refill_for:
-            needs = {pid: max(0, min(2, len(ANGLES) - len((used_angles or {}).get(pid, ()))) - sum(
-                q['point_ids'] == [pid] and q.get('refill_for') == refill_for for q in rows)) for pid in ids}
-        elif needs is None:
-            needs = ({pid: 1 for pid in ids} if force else question_bank.initial_deficits(rows, ids))
-        remaining = {pid: min(2, int(needs.get(pid, 0))) for pid in ids}
-        wanted = [pid for pid in ids if remaining[pid] > 0]
-        angles = {pid: set((used_angles or {}).get(pid, ())) for pid in wanted}
-        if any(len(angles[pid]) == len(ANGLES) for pid in wanted):
-            raise ModelError('QUESTION_ANGLES_EXHAUSTED', '该点的五个角度已经问过，无法提供未用角度的重测题。')
-        errors = {}
-        def one(group):
-            old = [q['stem'] for q in course.store.records('question_bank', course.plan_id)
-                   if q['module_id'] == module_id and set(q['point_ids']) & set(group)]
-            batch = self._questions(course, ctx, 'bank', group, avoid=old, background=background,
-                counts={pid: remaining[pid] for pid in group}, used_angles={pid: sorted(angles[pid]) for pid in group})
-            fresh = _Course(course.store, course.store.get_plan(course.plan_id))
-            if self._test_fingerprint(fresh, module_id) != fingerprint:
-                raise ModelError('QUESTION_MATERIAL_CHANGED', '资料已更新，正在重新准备题目。')
-            accepted, composites = [], 0
-            for q in batch:
-                if len(q.point_ids) == 1:
-                    pid = q.point_ids[0]
-                    if not remaining[pid] or q.angle in angles[pid]: continue
-                    accepted.append(q); remaining[pid] -= 1; angles[pid].add(q.angle)
-                elif len(group) == 2 and composites == 0:
-                    accepted.append(q); composites += 1
-            course.store.add_bank_questions(course.plan_id, module_id, accepted, fingerprint=fingerprint, refill_for=refill_for)
-        for offset in range(0, len(wanted), 2):
-            group = wanted[offset:offset + 2]
-            try:
-                one(group)
-            except (ModelError, AgentFormatError) as exc:
-                errors.update({pid: getattr(exc, 'message', str(exc)) for pid in group})
-            missing = [pid for pid in group if remaining[pid]]
-            for pid in missing:
+        mode = 'reserve' if reserve is not None else 'refill' if refill_for else 'explicit' if needs is not None else 'initial'
+        scopes = {pid: dict(version=question_review.VERSION, fingerprint=fingerprint, point_id=pid,
+            mode=mode, force=force, refill_for=refill_for, reserve=(reserve or {}).get(pid),
+            quota=needs.get(pid) if mode == 'explicit' else None,
+            used_angles=sorted((used_angles or {}).get(pid, ()))) for pid in ids}
+        journal = question_review.ReviewJournal(self.services.account_id, self.services.data_root,
+                                                course.plan_id, module_id, scopes)
+        with journal.lock:
+            # Foreground and background jobs recount after acquiring the same
+            # module lock, including successful inserts from an earlier job.
+            rows = self._bank_rows(course, module_id)
+            if reserve is not None:
+                needs = {pid: max(0, reserve.get(pid, 0) - sum(q['point_ids'] == [pid] and not q['correct_seen']
+                    and q['id'] not in asked and q['angle'] not in (used_angles or {}).get(pid, ()) for q in rows)) for pid in ids}
+            elif refill_for:
+                needs = {pid: max(0, min(2, len(ANGLES) - len((used_angles or {}).get(pid, ()))) - sum(
+                    q['point_ids'] == [pid] and q.get('refill_for') == refill_for for q in rows)) for pid in ids}
+            elif needs is None:
+                needs = ({pid: 1 for pid in ids} if force else question_bank.initial_deficits(rows, ids))
+            remaining = {pid: min(2, int(needs.get(pid, 0))) for pid in ids}
+            pending_ids = {pid for _, row in journal.candidates(ids) if row['status'] in ('pending', 'approved')
+                           for pid in row['question']['point_ids']}
+            wanted = [pid for pid in ids if remaining[pid] > 0 or pid in pending_ids]
+            angles = {pid: set((used_angles or {}).get(pid, ())) for pid in ids}
+            if any(len(angles[pid]) == len(ANGLES) for pid in wanted):
+                raise ModelError('QUESTION_ANGLES_EXHAUSTED', '该点的五个角度已经问过，无法提供未用角度的重测题。')
+            errors, deferred, processed = {}, set(), set()
+
+            def current():
+                if ctx and ctx.cancel.is_set():
+                    raise ModelCancelled()
+                fresh = _Course(course.store, course.store.get_plan(course.plan_id))
+                if self._test_fingerprint(fresh, module_id) != fingerprint:
+                    raise ModelError('QUESTION_MATERIAL_CHANGED', '资料已更新，正在重新准备题目。')
+                return fresh
+
+            def review_candidate(token, row, group, composites):
+                if token in processed or row['status'] not in ('pending', 'approved'):
+                    return composites
+                processed.add(token)
+                q = row['question']
+                if not set(q['point_ids']) <= set(group):
+                    return composites
+                while row['status'] == 'pending' and row['verdicts'] < question_review.MAX_VERDICTS:
+                    fresh = current()
+                    q = row['question']
+                    points = [fresh.point(pid) for pid in q['point_ids']]
+                    excerpts = {ref: text for ref, text in fresh.excerpts(q['point_ids']).items() if ref in q['chunk_ids']}
+                    issues = question_review.check_question(q, points=points, excerpts=excerpts,
+                        essay_count=sum(item['type'] == 'essay' for item in self._bank_rows(fresh, module_id)))
+                    request = question_review.review_request(q, points=points, excerpts=excerpts, structure_issues=issues)
+                    row['review_calls'] += 1
+                    journal.save(token, row)  # durable before sending, never store credentials
+                    try:
+                        result = self.services.gateway.complete('question_review', request[1], system=request[0],
+                            cancel=ctx.cancel if ctx else None, plan_id=course.plan_id, max_tokens=24576)
+                        verdict = question_review.parse_review(result.text, q)
+                    except ModelCancelled:
+                        raise
+                    except (ModelError, AgentFormatError) as exc:
+                        row['error'] = getattr(exc, 'message', str(exc))
+                        journal.save(token, row)
+                        deferred.update(q['point_ids'])
+                        errors.update({pid: '核对中断，题目已保留；下次只重新核对。' for pid in q['point_ids']})
+                        return composites
+                    row['verdicts'] += 1
+                    row['reviews'].append(dict(verdict=verdict.verdict, issues=list(verdict.issues),
+                                                structure_issues=list(issues)))
+                    if verdict.verdict == 'approve' and not issues:
+                        row.update(status='approved', error='')
+                    elif verdict.verdict == 'revise':
+                        row['question'] = verdict.revised
+                    else:
+                        row['status'] = 'rejected'
+                    journal.save(token, row)
+                if row['status'] == 'pending':
+                    row['status'] = 'rejected'  # two completed checks without approval
+                    journal.save(token, row)
+                if row['status'] != 'approved':
+                    return composites
+                q = row['question']
+                fresh = current()  # a late result cannot enter changed material or a cancelled job
+                duplicate = any(item['stem'] == q['stem'] and item['point_ids'] == q['point_ids']
+                    and item['angle'] == q['angle'] for item in self._bank_rows(fresh, module_id))
+                if duplicate:
+                    # The bank insert may have succeeded before a journal write
+                    # failed. Its coverage was already counted under the lock.
+                    row['status'] = 'stored'; journal.save(token, row)
+                    return composites
+                if len(q['point_ids']) == 1:
+                    pid = q['point_ids'][0]
+                    if not remaining[pid] or (q['angle'] in angles[pid] and not duplicate):
+                        row['status'] = 'surplus'; journal.save(token, row)
+                        return composites
+                elif len(group) != 2 or composites:
+                    row['status'] = 'surplus'; journal.save(token, row)
+                    return composites
+                fresh.store.add_bank_questions(course.plan_id, module_id, [q], fingerprint=fingerprint, refill_for=refill_for)
+                if len(q['point_ids']) == 1:
+                    remaining[pid] -= 1; angles[pid].add(q['angle'])
+                else:
+                    composites += 1
+                row['status'] = 'stored'; journal.save(token, row)
+                return composites
+
+            def generate(group, composites):
+                journal.start_generation(group)  # first generation + one reissue, survives reopening
+                current()
+                old = [q['stem'] for q in self._bank_rows(course, module_id) if set(q['point_ids']) & set(group)]
+                old += [row['question']['stem'] for _, row in journal.candidates(group)]
+                batch = self._questions(course, ctx, 'bank', group, avoid=old, background=background,
+                    counts={pid: remaining[pid] for pid in group}, used_angles={pid: sorted(angles[pid]) for pid in group})
+                current()
+                pending = [journal.add(q) for q in batch]
+                for token, row in pending:
+                    composites = review_candidate(token, row, group, composites)
+                return composites
+
+            for offset in range(0, len(wanted), 2):
+                group, composites = wanted[offset:offset + 2], 0
                 try:
-                    one([pid])
+                    for token, row in journal.candidates(group):
+                        composites = review_candidate(token, row, group, composites)
+                    first = [pid for pid in group if remaining[pid] and pid not in deferred and not journal.generations(pid)]
+                    if first:
+                        composites = generate(first, composites)
+                except ModelCancelled:
+                    raise
+                except (ModelError, AgentFormatError) as exc:
+                    if getattr(exc, 'code', '') == 'QUESTION_MATERIAL_CHANGED': raise
+                    errors.update({pid: getattr(exc, 'message', str(exc)) for pid in group})
+                for pid in group:
+                    if remaining[pid] and pid not in deferred and journal.generations(pid) < question_review.MAX_GENERATIONS:
+                        try:
+                            generate([pid], 0)
+                        except ModelCancelled:
+                            raise
+                        except (ModelError, AgentFormatError) as exc:
+                            if getattr(exc, 'code', '') == 'QUESTION_MATERIAL_CHANGED': raise
+                            errors[pid] = getattr(exc, 'message', str(exc))
                     if remaining[pid]:
-                        errors[pid] = '返回的题目仍缺少该点所需的单点题。'
+                        errors.setdefault(pid, '核对后仍缺题；每点初次出题与一次重出已经用完。')
                     else:
                         errors.pop(pid, None)
-                except (ModelError, AgentFormatError) as exc:
-                    errors[pid] = getattr(exc, 'message', str(exc))
-            for pid in set(group) - set(missing):
-                errors.pop(pid, None)
-        if errors:
-            titles = '、'.join(course.point(pid)['title'] for pid in errors)
-            raise ModelError('QUESTION_BANK_INCOMPLETE', f'{titles}题目准备失败：{next(iter(errors.values()))}')
+            if errors:
+                titles = '、'.join(course.point(pid)['title'] for pid in errors)
+                raise ModelError('QUESTION_BANK_INCOMPLETE', f'{titles}题目准备失败：{next(iter(errors.values()))}')
 
     def _prepare_bank_later(self, course, module_id, *, point_ids=None, force=False,
                             needs=None, used_angles=None, refill_for=None, reserve=None, asked=()):
@@ -942,16 +1040,18 @@ class Classroom:
                        "claim_known": "检验要靠作答来确认。请直接回答上面的题。"}.get(
                 verdict.kind, "没看出这是对这道题的作答。请直接回答；不会的话说“不会”也可以。")
             return self._say(course, state, message)
-        if not verdict.correct and len(q['point_ids']) > 1:
+        if not verdict.correct and len(q['point_ids']) > 1 and not judge_agent.structured_rubric({'question': q}):
             state.setdefault('check_split', []).append({'point_ids': q['point_ids'], 'size': len(q['point_ids'])})
         else:
             self._record(course, state, "check", pending, verdict, text, angle=q.get("angle"))
-            self._refill_wrong(course, state, pending, verdict)
+            for pid in verdict.wrong_points:
+                self._refill_wrong(course, state, dict(pending, point_ids=[pid]),
+                    judge_agent.Verdict('answer', False, (pid,), verdict.reason))
         self._answer_fact(course, state, 'check', pending, verdict)
         if verdict.correct and q.get('id'):
             course.store.mark_bank_correct(course.plan_id, q['id'])
         explanation = "" if verdict.correct else ("综合题未通过，暂不归因到任何知识点；接下来拆开问。"
-                                                 if len(q['point_ids']) > 1 else verdict.reason)
+                                                 if len(q['point_ids']) > 1 and not judge_agent.structured_rubric({'question': q}) else verdict.reason)
         if q["type"] != "choice" and not verdict.correct and len(q['point_ids']) == 1:
             explanation += f" 参考答案：{q['answer']}"
         self._say(course, state, (("✓ 答对了。" if verdict.correct else "✗ 这题没答对。") + explanation).strip(),
@@ -1052,9 +1152,12 @@ class Classroom:
             return self._say(course, state, '请回答当前这道题。')
         if prior is None:
             course.store.append_practice_result(course.plan_id, q['id'], q['module_id'], q['point_ids'],
-                verdict.correct, reason=verdict.reason, at=self.now(), result_id=self._answer_id(course, state, pending))
+                verdict.correct, reason=verdict.reason, at=self.now(), result_id=self._answer_id(course, state, pending),
+                wrong_points=verdict.wrong_points)
         self._answer_fact(course, state, 'practice', pending, verdict)
-        self._refill_wrong(course, state, pending, verdict)
+        for pid in verdict.wrong_points:
+            self._refill_wrong(course, state, dict(pending, point_ids=[pid]),
+                judge_agent.Verdict('answer', False, (pid,), verdict.reason))
         if verdict.correct:
             course.store.mark_bank_correct(course.plan_id, q['id'])
         self._say(course, state, ('✓ 答对了。' if verdict.correct else '✗ 需要复习。') +
@@ -1427,6 +1530,10 @@ class Classroom:
         tctx = {"prefs": self._prefs(), "plan": plan, "module": module, "excerpts": course.excerpts(point_ids),
                 "dialogue": self._dialogue(course, state)[:-1] if user else self._dialogue(course, state),
                 "profile": notes[:6000], "director": director, "user": user}
+        page = getattr(self, "_teacher_request_page", None)
+        if page is None:
+            self._teacher_request_page = page = AppendOnlyPage()
+        tctx["request_page"] = page
         if protected:
             tctx["pending_question"] = {"stem": question["stem"], "options": question.get("options", [])}
         elif prepared is not None:
@@ -1494,6 +1601,7 @@ class Classroom:
         removed = teacher_agent.citation_diagnostics(raw, tctx) if raw else ()
         if removed:
             log.info("teacher cited unknown excerpts %s", removed)
+        page.accept(request[0], request[1], teacher_agent._dialogue(tctx["dialogue"]), raw)
         speech = _link_citations(teaching.speech, mapping)
         if teaching.casual_question and not asks:
             speech = (speech + "\n\n" + teaching.casual_question).strip()
@@ -1510,16 +1618,35 @@ class Classroom:
             correct = reply.strip() == q['answer']
             return judge_agent.Verdict('answer', correct, () if correct else tuple(q['point_ids']),
                                        '选对了。' if correct else '所选选项不符合题目条件。')
+        compared = answer_compare.compare_exact(q, reply)
+        if compared is False and len(q['point_ids']) > 1:
+            compared = None  # a scalar mismatch alone cannot attribute several points
+        if compared is not None:
+            return judge_agent.Verdict('answer', compared, () if compared else tuple(q['point_ids']),
+                '确定答案符合允许的等价写法。' if compared else '确定答案不符合题目给定的结果。',
+                checks=({'method': 'program', 'answer_kind': q['answer_kind'], 'correct': compared},))
         points = [course.point(pid) for pid in pending["point_ids"]]
         jctx = {"mode": mode, "points": [{"id": p["id"], "title": p["title"], "summary": p.get("summary", "")} for p in points],
                 "excerpts": course.excerpts(pending["point_ids"]),
-                "question": {"stem": q["stem"], "type": q["type"], "options": q.get("options", [])},
+                "question": q,
                 "reference": q.get("reference") or q.get("answer") or "按知识点要点判断",
                 "required_points": q.get('required_points'),
-                "reply": reply, "require_evidence": q["type"] in ("short", "fix_error")}
+                "reply": reply, "require_evidence": q["type"] in ("short", "fix_error", "essay")}
         request = judge_agent.judge_request(jctx, reply)
         parse = lambda text: judge_agent.parse_judgement(text, jctx)
-        return self._ask(course, ctx, "judge", request, parse, 4096)
+        first = self._ask(course, ctx, "judge", request, parse, 4096)
+        if q['type'] == 'exact' and first.kind == 'answer' and first.correct is False:
+            # The answer is decidable, but a free-form reply required the judge
+            # to identify it. Its text alone does not prove the student's method
+            # (e.g. replying 30 to len(...) is not evidence of summing elements).
+            from dataclasses import replace
+            return replace(first, reason=f"作答未满足本题要求的确定答案，参考答案为：{q['answer'][:160]}。")
+        if self.review_wrong and q['type'] in ('short', 'fix_error', 'essay') and first.kind == 'answer' and not first.correct and not first.uncertain:
+            # Exactly the same isolated question/rubric/reply, no first verdict
+            # or rationale in the second request. No majority/pass guessing.
+            second = self._ask(course, ctx, "judge", request, parse, 4096)
+            return judge_agent.review_verdict(first, second)
+        return first
 
     @staticmethod
     def _combined_reply(pending, reply):
@@ -1612,6 +1739,11 @@ class Classroom:
             qctx['used_angles'] = used_angles or {pid: [] for pid in point_ids}
         if deepen:
             qctx['deepen'] = True
+        if purpose in ('bank', 'check', 'module_test'):
+            # One essay per module (TEACH-04): an extra one would reject the whole batch.
+            modules = {p['module_id'] for p in points}
+            if any(q['type'] == 'essay' for m in modules for q in self._bank_rows(course, m)):
+                qctx['existing_essay'] = True
         request = question_agent.question_request(qctx)
         def parse(text):
             questions = question_agent.parse_questions(text, qctx, partial_bank=purpose == 'bank')
@@ -1673,11 +1805,12 @@ class Classroom:
         if row is None: return None
         if entity == 'practice_results':
             return judge_agent.Verdict('answer', row['correct'],
-                                       () if row['correct'] else tuple(row['point_ids']), row['reason'])
+                                       tuple(row.get('wrong_points', [] if row['correct'] else row['point_ids'])), row['reason'])
         event = row['event']
         return judge_agent.Verdict('answer', all(result[1] for result in event['results']),
                                    tuple(result[0] for result in event['results'] if not result[1]),
-                                   row['details'].get('reason', ''), checks=tuple(row['details'].get('point_checks', ())))
+                                   row['details'].get('reason', ''), checks=tuple(row['details'].get('point_checks', ())),
+                                   review=row['details'].get('judgement_review'))
 
     def _record(self, course, state, context, pending, verdict, answer, *, angle=None):
         if self._prior_verdict(course, state, pending) is not None:
@@ -1692,7 +1825,8 @@ class Classroom:
         course.store.append_judgement(course.plan_id, event, details={
             "question": q["stem"], "question_id": q.get('id'), "question_angle": q.get('angle'),
             "answer": self._combined_reply(pending, answer)[:4000], "reason": verdict.reason,
-            "point_checks": list(verdict.checks), "chunk_ids": q.get("chunk_ids", [])},
+            "point_checks": list(verdict.checks), "judgement_review": verdict.review,
+            "chunk_ids": q.get("chunk_ids", [])},
             credit_day=self._day(state) if context == "check" else None)
 
     def _credit_learning(self, course, state, point):
@@ -1737,8 +1871,16 @@ class Classroom:
                             "dialogue": self._dialogue(fresh, {"module_id": module_id}),
                             "profile": (profile.get("text") or "")[:6000], "known_point_ids": all_points,
                             "weak_point_ids": weak, "progress": f"已讲 {taught}/{len(all_points)} 个知识点，当前模块《{module['title']}》。"}
+                    page = getattr(self, "_profile_request_page", None)
+                    if page is None:
+                        self._profile_request_page = page = AppendOnlyPage()
+                    pctx["request_page"] = page
                     request = profile_agent.profile_request(pctx)
-                    result = self._ask(fresh, None, "profile", request, lambda text: profile_agent.parse_profile(text, pctx), 2048)
+                    def parse_and_keep(text):
+                        result = profile_agent.parse_profile(text, pctx)
+                        page.accept(request[0], request[1], teacher_agent._dialogue(pctx["dialogue"]), text)
+                        return result
+                    result = self._ask(fresh, None, "profile", request, parse_and_keep, 2048)
                     fresh.store.save_teacher_profile(plan_id, dict(self._profile_document(fresh), text=result.text,
                                                                    at=self.now().isoformat()))
                 except Exception:  # noqa: BLE001 - notes are best effort and never block the lesson
@@ -1799,9 +1941,14 @@ class _Course:
 
 
 def _question_dict(q):
-    return {"id": q.id, "type": q.type, "stem": q.stem, "options": list(q.options), "answer": q.answer,
+    result = {"id": q.id, "type": q.type, "stem": q.stem, "options": list(q.options), "answer": q.answer,
             "reference": q.reference, "point_ids": list(q.point_ids), "chunk_ids": list(q.chunk_ids), "angle": q.angle,
             "required_points": list(q.required_points) if q.required_points is not None else None}
+    if q.type == 'exact':
+        result.update(answer_kind=q.answer_kind, accepted=list(q.accepted))
+        if q.answer_kind == 'number': result['tolerance'] = q.tolerance
+    if q.type == 'essay': result['rubric'] = list(q.rubric)
+    return result
 
 
 def _question_text(q):

@@ -96,6 +96,8 @@ def profile_request(ctx: dict) -> tuple[str, list[dict]]:
     messages = [{"role": "user", "content": ordered_payload("【计划与当前模块】\n" + _dump(skeleton), ("plan", "module"))}]
     messages.extend({"role": "user", "content": "【对话原文（数据）】\n" + _dump(row)} for row in dialogue)
     messages.append({"role": "user", "content": "【本次档案更新】\n" + _dump(task)})
+    if ctx.get("request_page") is not None:
+        messages = ctx["request_page"].assemble(PROFILE_SYSTEM, messages, dialogue)
     _dump(messages)
     return PROFILE_SYSTEM, messages
 

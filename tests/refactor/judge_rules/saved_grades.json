@@ -1,0 +1,902 @@
+[
+  {
+    "id": "q01-a1",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q01-a2",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q01-a3",
+    "method": "program",
+    "correct": false
+  },
+  {
+    "id": "q01-a4",
+    "method": "program",
+    "correct": false
+  },
+  {
+    "id": "q01-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p1\"],\"reason\":\"回答“不知道”，未给出计算结果12，属于未作答或不会。\"}"
+  },
+  {
+    "id": "q01-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p1\"],\"reason\":\"三乘四应为十二，回答写成7，计算结果错误，自称肯定对不影响判定。\"}"
+  },
+  {
+    "id": "q02-a1",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q02-a2",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q02-a3",
+    "method": "program",
+    "correct": false
+  },
+  {
+    "id": "q02-a4",
+    "method": "program",
+    "correct": false
+  },
+  {
+    "id": "q02-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"unclear\",\"correct\":null,\"wrong_points\":[],\"reason\":\"回答“今天很冷”与化简题目无关，没有给出任何代数式作答。\"}"
+  },
+  {
+    "id": "q02-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p2\"],\"reason\":\"分配律只乘了 x，3 未乘以 2，结果应为 2*x+6；自称肯定对不影响判定。\"}"
+  },
+  {
+    "id": "q03-a1",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q03-a2",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q03-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p3\"],\"reason\":\"只答“除法”，未指出该性质通常叫“等式性质二”或“等式的第二个基本性质”。\"}"
+  },
+  {
+    "id": "q03-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p3\"],\"reason\":\"作答为“分配律”，与等式两边同除以非零数保持相等的性质（等式性质二）不符。\"}"
+  },
+  {
+    "id": "q03-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p3\"],\"reason\":\"回答“不知道”，未给出“等式性质二”这一名称，未覆盖本题要点。\"}"
+  },
+  {
+    "id": "q03-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p3\"],\"reason\":\"回答“分配律”，与等式两边同乘或同除以非零数仍相等的性质（等式性质二）不符，属于概念混淆。\"}"
+  },
+  {
+    "id": "q04-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"明确说出除数不能为0，并给出原因是除以0没有定义，两个要点均满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p4\",\"point\":\"除数不能是零\",\"status\":\"hit\",\"evidence\":\"不能为0\"},{\"point_id\":\"p4\",\"point\":\"除以零没有定义\",\"status\":\"hit\",\"evidence\":\"因为除以0没有定义\"}]}"
+  },
+  {
+    "id": "q04-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"回答指出除数须为非零，并说明零作除数无意义即没有定义，两个要点均已满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p4\",\"point\":\"除数不能是零\",\"status\":\"hit\",\"evidence\":\"要选非零的除数\"},{\"point_id\":\"p4\",\"point\":\"除以零没有定义\",\"status\":\"hit\",\"evidence\":\"零作除数是无意义的\"}]}"
+  },
+  {
+    "id": "q04-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p4\"],\"reason\":\"答出了除数不能为零这一限制，但未按要求解释原因，缺少“除以零没有定义”这一点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p4\",\"point\":\"除数不能是零\",\"status\":\"hit\",\"evidence\":\"除数不能是0。\"},{\"point_id\":\"p4\",\"point\":\"除以零没有定义\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q04-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p4\"],\"reason\":\"答案把除数限制说成可以是0，且理由只称0很特殊，未说明除以零没有定义。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p4\",\"point\":\"除数不能是零\",\"status\":\"wrong\",\"evidence\":\"除数可以是0\"},{\"point_id\":\"p4\",\"point\":\"除以零没有定义\",\"status\":\"miss\",\"evidence\":\"因为0很特殊\"}]}"
+  },
+  {
+    "id": "q04-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p4\"],\"reason\":\"回答只给出“结果是4”，未说明除数不能为零，也未解释除以零没有定义，两个必答点均未覆盖。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p4\",\"point\":\"除数不能是零\",\"status\":\"miss\",\"evidence\":\"结果是4。\"},{\"point_id\":\"p4\",\"point\":\"除以零没有定义\",\"status\":\"miss\",\"evidence\":\"结果是4。\"}]}"
+  },
+  {
+    "id": "q04-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p4\"],\"reason\":\"学生称可以除以0，直接违反除数不能为零，也未说明除以零没有定义，反而肯定除以零可行。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p4\",\"point\":\"除数不能是零\",\"status\":\"wrong\",\"evidence\":\"可以除以0，我肯定对。\"},{\"point_id\":\"p4\",\"point\":\"除以零没有定义\",\"status\":\"wrong\",\"evidence\":\"可以除以0，我肯定对。\"}]}"
+  },
+  {
+    "id": "q05-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"正确说出3分别乘4和5，并把两个积（12和15）相加，满足两项要点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p5\",\"point\":\"三分别乘四和五\",\"status\":\"hit\",\"evidence\":\"3乘4、3乘5\"},{\"point_id\":\"p5\",\"point\":\"把两个积相加\",\"status\":\"hit\",\"evidence\":\"再把12和15相加\"}]}"
+  },
+  {
+    "id": "q05-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"回答指出括号内两项各乘以3并用所得两项相加，等价于3分别乘4和5再把积相加，两个要点均满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p5\",\"point\":\"三分别乘四和五\",\"status\":\"hit\",\"evidence\":\"把括号内两项各乘以3\"},{\"point_id\":\"p5\",\"point\":\"把两个积相加\",\"status\":\"hit\",\"evidence\":\"所得两项相加\"}]}"
+  },
+  {
+    "id": "q05-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p5\"],\"reason\":\"答出3分别乘4和5，但漏答两个积应相加。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p5\",\"point\":\"三分别乘四和五\",\"status\":\"hit\",\"evidence\":\"3分别乘4和5。\"},{\"point_id\":\"p5\",\"point\":\"把两个积相加\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q05-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p5\"],\"reason\":\"只把3乘4，未把3乘5，也未把两个积相加，而是直接加5，分配律步骤不完整。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p5\",\"point\":\"三分别乘四和五\",\"status\":\"miss\",\"evidence\":\"3乘4得到12，再直接加5。\"},{\"point_id\":\"p5\",\"point\":\"把两个积相加\",\"status\":\"wrong\",\"evidence\":\"再直接加5。\"}]}"
+  },
+  {
+    "id": "q05-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p5\"],\"reason\":\"只说把3除以4，未说明3分别乘4和5，也未说明把两个积相加，与分配律步骤不符。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p5\",\"point\":\"三分别乘四和五\",\"status\":\"wrong\",\"evidence\":\"把3除以4。\"},{\"point_id\":\"p5\",\"point\":\"把两个积相加\",\"status\":\"miss\",\"evidence\":\"把3除以4。\"}]}"
+  },
+  {
+    "id": "q05-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p5\"],\"reason\":\"分配律要求3分别乘4和5，而学生只说乘4，并把5直接相加，未形成两个积相加。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p5\",\"point\":\"三分别乘四和五\",\"status\":\"wrong\",\"evidence\":\"只乘4再加5，我肯定对。\"},{\"point_id\":\"p5\",\"point\":\"把两个积相加\",\"status\":\"wrong\",\"evidence\":\"只乘4再加5，我肯定对。\"}]}"
+  },
+  {
+    "id": "q06-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"写出了移项后的等式3x=17-5，符合移项后加五变减五的要求。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p6\",\"point\":\"将加五移到右边变成减五，得到3x=17-5或3x=12\",\"status\":\"hit\",\"evidence\":\"3x=17-5\"}]}"
+  },
+  {
+    "id": "q06-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"学生写出12=3*x，即3x=12，与移项后等式等价，满足移项要求。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p6\",\"point\":\"将加五移到右边变成减五，得到3x=17-5或3x=12\",\"status\":\"hit\",\"evidence\":\"12=3*x\"}]}"
+  },
+  {
+    "id": "q06-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p6\"],\"reason\":\"只写了残缺的“3x=”，没有写出移项后的等式3x=17-5。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p6\",\"point\":\"将加五移到右边变成减五，得到3x=17-5或3x=12\",\"status\":\"miss\",\"evidence\":\"3x=\"}]}"
+  },
+  {
+    "id": "q06-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p6\"],\"reason\":\"写出了移项后的等式，但把右边的减5写成加5，移项符号错误。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p6\",\"point\":\"将加五移到右边变成减五，得到3x=17-5或3x=12\",\"status\":\"wrong\",\"evidence\":\"3x=17+5\"}]}"
+  },
+  {
+    "id": "q06-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"process_missing\",\"correct\":null,\"wrong_points\":[],\"reason\":\"题目要求写出移项后的那一步等式，学生只给出最终解x=4，看不出移项步骤。\",\"uncertain\":false,\"checks\":[]}"
+  },
+  {
+    "id": "q06-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p6\"],\"reason\":\"移项时符号和数值错误，+5移到右边应变成-5，得到3x=17-5或3x=12，而学生写成3x=22。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p6\",\"point\":\"将加五移到右边变成减五，得到3x=17-5或3x=12\",\"status\":\"wrong\",\"evidence\":\"3x=22，我肯定对。\"}]}"
+  },
+  {
+    "id": "q07-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"题面要求改正移项后的式子，学生给出 x=7-3，符合“加三移项成为减三”，等式正确。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p7\",\"point\":\"加三移项成为减三，x=7-3或x=4\",\"status\":\"hit\",\"evidence\":\"x=7-3\"}]}"
+  },
+  {
+    "id": "q07-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"学生说明两边减3，并得出x=4，正确纠正了x+3=7的移项。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p7\",\"point\":\"加三移项成为减三，x=7-3或x=4\",\"status\":\"hit\",\"evidence\":\"两边减3，得x=4。\"}]}"
+  },
+  {
+    "id": "q07-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p7\"],\"reason\":\"移项时加三应变为减三，学生把 x+3=7 错写成 x=7，既未体现移项变号也未得到 x=7-3 或 x=4。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p7\",\"point\":\"加三移项成为减三，x=7-3或x=4\",\"status\":\"wrong\",\"evidence\":\"x=7\"}]}"
+  },
+  {
+    "id": "q07-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p7\"],\"reason\":\"没有把加三移项改为减三，仍算成了x=7+3=10，移项符号错误。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p7\",\"point\":\"加三移项成为减三，x=7-3或x=4\",\"status\":\"wrong\",\"evidence\":\"x=10\"}]}"
+  },
+  {
+    "id": "q07-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p7\"],\"reason\":\"学生只表示不会，未写出移项后的正确式子，未满足“加三移项成为减三，x=7-3或x=4”。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p7\",\"point\":\"加三移项成为减三，x=7-3或x=4\",\"status\":\"miss\",\"evidence\":\"这道题我不会。\"}]}"
+  },
+  {
+    "id": "q07-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p7\"],\"reason\":\"移项应改变符号得x=7-3（即x=4），学生写成x=10，仍是错误的移项结果。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p7\",\"point\":\"加三移项成为减三，x=7-3或x=4\",\"status\":\"wrong\",\"evidence\":\"x=10，我肯定对。\"}]}"
+  },
+  {
+    "id": "q08-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"回答写出通分到同分母并相加，得到5/6，满足先通分和正确结果两个要点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p8\",\"point\":\"加不同分母的分数须先通分\",\"status\":\"hit\",\"evidence\":\"通分成3/6和2/6\"},{\"point_id\":\"p8\",\"point\":\"正确结果是5/6即六分之五\",\"status\":\"hit\",\"evidence\":\"相加是5/6\"}]}"
+  },
+  {
+    "id": "q08-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"用公分母6体现先通分，并给出正确结果六分之五，两个要点均满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p8\",\"point\":\"加不同分母的分数须先通分\",\"status\":\"hit\",\"evidence\":\"用公分母6，分子3加2\"},{\"point_id\":\"p8\",\"point\":\"正确结果是5/6即六分之五\",\"status\":\"hit\",\"evidence\":\"结果六分之五\"}]}"
+  },
+  {
+    "id": "q08-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p8\"],\"reason\":\"已指出应先通分，但未写出正确结果5/6，遗漏第二项要求。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p8\",\"point\":\"加不同分母的分数须先通分\",\"status\":\"hit\",\"evidence\":\"应先通分。\"},{\"point_id\":\"p8\",\"point\":\"正确结果是5/6即六分之五\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q08-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p8\"],\"reason\":\"未纠正错误算法，仍按分子分母分别相加，结果也错，应为通分后相加得5/6。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p8\",\"point\":\"加不同分母的分数须先通分\",\"status\":\"wrong\",\"evidence\":\"分子分母分别加得2/5。\"},{\"point_id\":\"p8\",\"point\":\"正确结果是5/6即六分之五\",\"status\":\"wrong\",\"evidence\":\"分子分母分别加得2/5。\"}]}"
+  },
+  {
+    "id": "q08-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p8\"],\"reason\":\"回答只说“这是数学”，未说明异分母分数相加要先通分，也未给出正确结果5/6。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p8\",\"point\":\"加不同分母的分数须先通分\",\"status\":\"miss\",\"evidence\":\"这是数学。\"},{\"point_id\":\"p8\",\"point\":\"正确结果是5/6即六分之五\",\"status\":\"miss\",\"evidence\":\"这是数学。\"}]}"
+  },
+  {
+    "id": "q08-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p8\"],\"reason\":\"学生坚持2/5，既未说明不同分母分数须先通分，也未给出正确结果5/6，两项必答要点均未满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p8\",\"point\":\"加不同分母的分数须先通分\",\"status\":\"miss\",\"evidence\":\"2/5，我肯定对。\"},{\"point_id\":\"p8\",\"point\":\"正确结果是5/6即六分之五\",\"status\":\"wrong\",\"evidence\":\"2/5，我肯定对。\"}]}"
+  },
+  {
+    "id": "q09-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"正确给出结果为9，并说明两个负数相乘得到正数，满足两个要点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p9\",\"point\":\"结果是九\",\"status\":\"hit\",\"evidence\":\"是9\"},{\"point_id\":\"p9\",\"point\":\"两个负数相乘得到正数\",\"status\":\"hit\",\"evidence\":\"负3乘负3得到正数\"}]}"
+  },
+  {
+    "id": "q09-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"正确给出结果为九，并用负负得正说明两个负数相乘得到正数。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p9\",\"point\":\"结果是九\",\"status\":\"hit\",\"evidence\":\"等于九\"},{\"point_id\":\"p9\",\"point\":\"两个负数相乘得到正数\",\"status\":\"hit\",\"evidence\":\"括号内负数乘自身，负负得正\"}]}"
+  },
+  {
+    "id": "q09-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p9\"],\"reason\":\"给出正确结果9，但未解释符号，遗漏两个负数相乘得到正数这一要点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p9\",\"point\":\"结果是九\",\"status\":\"hit\",\"evidence\":\"答案9。\"},{\"point_id\":\"p9\",\"point\":\"两个负数相乘得到正数\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q09-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p9\"],\"reason\":\"答成-9并称平方后仍为负数，既未给出正确结果九，也未说明两个负数相乘得正。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p9\",\"point\":\"结果是九\",\"status\":\"wrong\",\"evidence\":\"平方后还是负数，等于-9。\"},{\"point_id\":\"p9\",\"point\":\"两个负数相乘得到正数\",\"status\":\"wrong\",\"evidence\":\"平方后还是负数，等于-9。\"}]}"
+  },
+  {
+    "id": "q09-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p9\"],\"reason\":\"回答“不知道”，未给出结果九，也未解释两个负数相乘得正。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p9\",\"point\":\"结果是九\",\"status\":\"miss\",\"evidence\":\"不知道\"},{\"point_id\":\"p9\",\"point\":\"两个负数相乘得到正数\",\"status\":\"miss\",\"evidence\":\"不知道\"}]}"
+  },
+  {
+    "id": "q09-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p9\"],\"reason\":\"把 (-3)^2 仍算成 -9，正确结果应为9，且没有解释两个负数相乘得到正数。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p9\",\"point\":\"结果是九\",\"status\":\"wrong\",\"evidence\":\"-9，我肯定对。\"},{\"point_id\":\"p9\",\"point\":\"两个负数相乘得到正数\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q10-a1",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q10-a2",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q10-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p10\"],\"reason\":\"只答“古代”，未指出朝代，未答出张骞第一次出使西域发生在西汉。\"}"
+  },
+  {
+    "id": "q10-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p10\"],\"reason\":\"张骞奉汉武帝命出使西域，朝代应为西汉，作答记为唐朝，朝代判断错误。\"}"
+  },
+  {
+    "id": "q10-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p10\"],\"reason\":\"回答“不知道”，未答出张骞第一次出使西域发生在西汉。\"}"
+  },
+  {
+    "id": "q10-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p10\"],\"reason\":\"答成唐朝，张骞第一次出使西域在汉武帝时期，属西汉，朝代判断错误。\"}"
+  },
+  {
+    "id": "q11-a1",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q11-a2",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q11-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p11\"],\"reason\":\"题目问贞观之治所属朝代，应答唐朝，回答“古代”只给了宽泛时代而非朝代，未答对。\"}"
+  },
+  {
+    "id": "q11-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p11\"],\"reason\":\"贞观是唐太宗年号，贞观之治发生在唐朝，回答“明朝”朝代判断错误。\"}"
+  },
+  {
+    "id": "q11-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p11\"],\"reason\":\"回答“不知道”，未答出贞观之治发生在唐朝。\"}"
+  },
+  {
+    "id": "q11-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p11\"],\"reason\":\"贞观之治发生在唐朝，回答却说是明朝，朝代判断错误。\"}"
+  },
+  {
+    "id": "q12-a1",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q12-a2",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q12-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p12\"],\"reason\":\"只笼统答“一名使者”，未答出具体人物张骞，未满足题目对出使西域者姓名的要求。\"}"
+  },
+  {
+    "id": "q12-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p12\"],\"reason\":\"答成明代航海家郑和，与受汉武帝派遣出使西域的张骞不符，人物与时代均错。\"}"
+  },
+  {
+    "id": "q12-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p12\"],\"reason\":\"回答“不知道”，未答出奉命出使西域的张骞这一人物。\"}"
+  },
+  {
+    "id": "q12-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p12\"],\"reason\":\"答成郑和，奉汉武帝命出使西域的是张骞，人物完全错误。\"}"
+  },
+  {
+    "id": "q13-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"明确回答了丝绸之路促进文化交流，符合非商品交流类别任一即可的要求。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p13\",\"point\":\"促进文化或技术交流（任一种即可）\",\"status\":\"hit\",\"evidence\":\"促进了文化交流。\"}]}"
+  },
+  {
+    "id": "q13-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"回答提到传播知识和工艺技术，属于丝绸之路促进的非商品技术或文化交流，满足要求。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p13\",\"point\":\"促进文化或技术交流（任一种即可）\",\"status\":\"hit\",\"evidence\":\"也传播知识和工艺技术。\"}]}"
+  },
+  {
+    "id": "q13-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p13\"],\"reason\":\"只笼统说“有交流”，未指出文化或技术等具体非商品交流类别，等于未答到要求。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p13\",\"point\":\"促进文化或技术交流（任一种即可）\",\"status\":\"miss\",\"evidence\":\"有交流。\"}]}"
+  },
+  {
+    "id": "q13-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p13\"],\"reason\":\"回答称丝绸之路使各地完全隔绝，与促进文化或技术交流的事实相反，未答出任何一种非商品交流类别。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p13\",\"point\":\"促进文化或技术交流（任一种即可）\",\"status\":\"wrong\",\"evidence\":\"让各地完全隔绝。\"}]}"
+  },
+  {
+    "id": "q13-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"unclear\",\"correct\":null,\"wrong_points\":[],\"reason\":\"回答“我吃饭了”与丝绸之路交流内容无关，属题外闲聊，未对题目作任何作答。\",\"uncertain\":false,\"checks\":[]}"
+  },
+  {
+    "id": "q13-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p13\"],\"reason\":\"回答称丝绸之路只会造成隔绝，未说明促进文化或技术交流，且与题意相反。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p13\",\"point\":\"促进文化或技术交流（任一种即可）\",\"status\":\"wrong\",\"evidence\":\"只会造成隔绝，我肯定对。\"}]}"
+  },
+  {
+    "id": "q14-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"准确答出了经济条件“经济繁荣”和交通条件“陆路和海路交通比较发达”，与唐代对外交往活跃的经济、交通条件相符。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p14\",\"point\":\"经济繁荣能提供物质条件\",\"status\":\"hit\",\"evidence\":\"经济繁荣\"},{\"point_id\":\"p14\",\"point\":\"陆海交通的发展便利交往\",\"status\":\"hit\",\"evidence\":\"陆路和海路交通也比较发达\"}]}"
+  },
+  {
+    "id": "q14-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"答出物质生产兴盛支撑交易、商路航路便利往来，对应经济繁荣提供物质条件和陆海交通便利交往两个要点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p14\",\"point\":\"经济繁荣能提供物质条件\",\"status\":\"hit\",\"evidence\":\"物质生产兴盛支撑交易\"},{\"point_id\":\"p14\",\"point\":\"陆海交通的发展便利交往\",\"status\":\"hit\",\"evidence\":\"商路航路让往来方便\"}]}"
+  },
+  {
+    "id": "q14-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p14\"],\"reason\":\"答出了经济条件“经济繁荣”，但未答交通条件，缺少陆海交通发展便利交往这一要点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p14\",\"point\":\"经济繁荣能提供物质条件\",\"status\":\"hit\",\"evidence\":\"经济繁荣。\"},{\"point_id\":\"p14\",\"point\":\"陆海交通的发展便利交往\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q14-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p14\"],\"reason\":\"把两个条件都答成反例（经济完全停滞、交通全部关闭），未答出经济繁荣提供物质条件与陆海交通发展便利交往。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p14\",\"point\":\"经济繁荣能提供物质条件\",\"status\":\"wrong\",\"evidence\":\"经济完全停滞\"},{\"point_id\":\"p14\",\"point\":\"陆海交通的发展便利交往\",\"status\":\"wrong\",\"evidence\":\"交通全部关闭\"}]}"
+  },
+  {
+    "id": "q14-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p14\"],\"reason\":\"只回答“我不知道”，未说出经济繁荣提供物质条件、陆海交通发展便利交往这两个必答条件。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p14\",\"point\":\"经济繁荣能提供物质条件\",\"status\":\"miss\",\"evidence\":\"我不知道\"},{\"point_id\":\"p14\",\"point\":\"陆海交通的发展便利交往\",\"status\":\"miss\",\"evidence\":\"我不知道\"}]}"
+  },
+  {
+    "id": "q14-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p14\"],\"reason\":\"未说明唐代对外交往活跃的经济条件（经济繁荣提供物质条件）和交通条件（陆海交通发展便利交往），只作出“全部封闭才活跃”的错误断言并自称正确，两个必答点均未满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p14\",\"point\":\"经济繁荣能提供物质条件\",\"status\":\"miss\",\"evidence\":\"全部封闭才活跃，我肯定对。\"},{\"point_id\":\"p14\",\"point\":\"陆海交通的发展便利交往\",\"status\":\"miss\",\"evidence\":\"全部封闭才活跃，我肯定对。\"}]}"
+  },
+  {
+    "id": "q15-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"回答指出张骞出使让汉朝了解到西域的情况，准确对应增进汉朝对西域了解这一信息方面的作用。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p15\",\"point\":\"出使使汉朝增进对西域情况的了解\",\"status\":\"hit\",\"evidence\":\"让汉朝了解到西域的情况。\"}]}"
+  },
+  {
+    "id": "q15-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"答出张骞带回沿途信息、使汉朝更了解西域地区，符合“增进汉朝对西域情况的了解”这一要点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p15\",\"point\":\"出使使汉朝增进对西域情况的了解\",\"status\":\"hit\",\"evidence\":\"带回沿途的信息，使汉朝更认识那些地区。\"}]}"
+  },
+  {
+    "id": "q15-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p15\"],\"reason\":\"只重复“出使了”，没有说明出使使汉朝增进对西域情况的了解这一信息方面。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p15\",\"point\":\"出使使汉朝增进对西域情况的了解\",\"status\":\"miss\",\"evidence\":\"出使了。\"}]}"
+  },
+  {
+    "id": "q15-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p15\"],\"reason\":\"回答称汉朝完全不知道西域，与出使后增进对西域了解相反。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p15\",\"point\":\"出使使汉朝增进对西域情况的了解\",\"status\":\"wrong\",\"evidence\":\"让汉朝完全不知道西域。\"}]}"
+  },
+  {
+    "id": "q15-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"unclear\",\"correct\":null,\"wrong_points\":[],\"reason\":\"回复只闲聊天气，未涉及张骞出使西域或信息获取，未作答。\",\"uncertain\":false,\"checks\":[]}"
+  },
+  {
+    "id": "q15-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p15\"],\"reason\":\"回答称出使使汉朝“更不了解西域”，与增进对西域情况了解相反，属实质错误。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p15\",\"point\":\"出使使汉朝增进对西域情况的了解\",\"status\":\"wrong\",\"evidence\":\"使汉朝更不了解西域，我肯定对。\"}]}"
+  },
+  {
+    "id": "q16-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"准确将派遣者由唐太宗纠正为汉武帝，满足所问要点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p16\",\"point\":\"张骞奉汉武帝命出使西域\",\"status\":\"hit\",\"evidence\":\"应是汉武帝派遣。\"}]}"
+  },
+  {
+    "id": "q16-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"学生答出派遣张骞出使西域的是西汉武帝（即汉武帝），纠正了题面中唐太宗的错误说法，符合要求。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p16\",\"point\":\"张骞奉汉武帝命出使西域\",\"status\":\"hit\",\"evidence\":\"派他出使的是西汉的武帝。\"}]}"
+  },
+  {
+    "id": "q16-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p16\"],\"reason\":\"学生只答“一个皇帝”，未指出派遣张骞出使西域的是汉武帝，属敷衍作答，必答要点未覆盖。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p16\",\"point\":\"张骞奉汉武帝命出使西域\",\"status\":\"miss\",\"evidence\":\"一个皇帝。\"}]}"
+  },
+  {
+    "id": "q16-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p16\"],\"reason\":\"没有纠正错误，仍称张骞是唐太宗派出的，应为汉武帝。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p16\",\"point\":\"张骞奉汉武帝命出使西域\",\"status\":\"wrong\",\"evidence\":\"是唐太宗。\"}]}"
+  },
+  {
+    "id": "q16-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p16\"],\"reason\":\"学生回答“我不会”，未指出派遣张骞的是汉武帝。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p16\",\"point\":\"张骞奉汉武帝命出使西域\",\"status\":\"miss\",\"evidence\":\"我不会。\"}]}"
+  },
+  {
+    "id": "q16-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p16\"],\"reason\":\"学生未纠正错误，仍重复题面错误说法（唐太宗派张骞），正确应为汉武帝派张骞出使西域。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p16\",\"point\":\"张骞奉汉武帝命出使西域\",\"status\":\"wrong\",\"evidence\":\"唐太宗，我肯定对。\"}]}"
+  },
+  {
+    "id": "q17-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"指出丝绸之路是多条路线的网络，而非永不变化的单一线路，改正了原说法。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p17\",\"point\":\"丝绸之路是多条路线构成的网络而不是永远不变的单一路线\",\"status\":\"hit\",\"evidence\":\"这是多条路线的网络，不是永不变化的一根线路。\"}]}"
+  },
+  {
+    "id": "q17-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"学生指出商路有不同支线并随时代变化，纠正了单一路线和固定不变的说法。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p17\",\"point\":\"丝绸之路是多条路线构成的网络而不是永远不变的单一路线\",\"status\":\"hit\",\"evidence\":\"商路有不同支线，会随着时代变化。\"}]}"
+  },
+  {
+    "id": "q17-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p17\"],\"reason\":\"只说“它很长”，未指出丝绸之路是多条路线构成的交通网络、路线随时代变化，没有改正原说法。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p17\",\"point\":\"丝绸之路是多条路线构成的网络而不是永远不变的单一路线\",\"status\":\"wrong\",\"evidence\":\"它很长。\"}]}"
+  },
+  {
+    "id": "q17-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p17\"],\"reason\":\"学生复述了“只有一条永远不变的路线”这一错误说法，未改正为多路线网络且随时代变化。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p17\",\"point\":\"丝绸之路是多条路线构成的网络而不是永远不变的单一路线\",\"status\":\"wrong\",\"evidence\":\"只有一条永远不变的路线。\"}]}"
+  },
+  {
+    "id": "q17-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p17\"],\"reason\":\"回答只表示不知道，未改正原说法，未答出丝绸之路是多条路线构成的网络且随时代变化。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p17\",\"point\":\"丝绸之路是多条路线构成的网络而不是永远不变的单一路线\",\"status\":\"miss\",\"evidence\":\"不知道。\"}]}"
+  },
+  {
+    "id": "q17-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p17\"],\"reason\":\"未改正题面错误，反而坚持“只有一条”，与丝绸之路是多条路线构成、随时代变化的网络相矛盾。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p17\",\"point\":\"丝绸之路是多条路线构成的网络而不是永远不变的单一路线\",\"status\":\"wrong\",\"evidence\":\"从来只有一条，我肯定对。\"}]}"
+  },
+  {
+    "id": "q18-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"回答指出科举以考试选拔人才，与“通过考试选拔人才而非只凭家世”同义，纠正了题面。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p18\",\"point\":\"科举通过考试选拔人才而非只凭家世\",\"status\":\"hit\",\"evidence\":\"科举以考试选拔人才。\"}]}"
+  },
+  {
+    "id": "q18-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"指出选官需要参加考核、不是只看出身，纠正了科举只凭家世门第授官的错误说法。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p18\",\"point\":\"科举通过考试选拔人才而非只凭家世\",\"status\":\"hit\",\"evidence\":\"需要参加考核，不是只看出身就给官职。\"}]}"
+  },
+  {
+    "id": "q18-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p18\"],\"reason\":\"只笼统说“它是选人”，未纠正为科举通过考试选拔人才、并非只凭家世门第。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p18\",\"point\":\"科举通过考试选拔人才而非只凭家世\",\"status\":\"miss\",\"evidence\":\"它是选人。\"}]}"
+  },
+  {
+    "id": "q18-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p18\"],\"reason\":\"照搬了“只凭门第、不考试”的错误说法，未纠正为科举通过考试选拔人才。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p18\",\"point\":\"科举通过考试选拔人才而非只凭家世\",\"status\":\"wrong\",\"evidence\":\"根本不考试，只看门第。\"}]}"
+  },
+  {
+    "id": "q18-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p18\"],\"reason\":\"回答仅表示不会，未纠正题面，未说明科举通过考试选拔人才而非只凭家世门第。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p18\",\"point\":\"科举通过考试选拔人才而非只凭家世\",\"status\":\"miss\",\"evidence\":\"不会。\"}]}"
+  },
+  {
+    "id": "q18-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p18\"],\"reason\":\"未纠正错误，反而坚持科举只看家世门第，未答出通过考试选拔人才。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p18\",\"point\":\"科举通过考试选拔人才而非只凭家世\",\"status\":\"wrong\",\"evidence\":\"只看家世，我肯定对。\"}]}"
+  },
+  {
+    "id": "q19-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"提出丝路促进经济与文化交流，并以丝绸等商品交易和工艺技术传播分别说明经济与文化联系，无事实错误。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p19\",\"criterion\":\"核心观点\",\"status\":\"met\",\"evidence\":\"丝路促进经济和文化交流\"},{\"point_id\":\"p19\",\"criterion\":\"没有事实错误\",\"status\":\"met\",\"evidence\":\"丝绸等商品交易体现经济联系，工艺技术传播体现文化联系\"},{\"point_id\":\"p19\",\"criterion\":\"论据与推理\",\"status\":\"met\",\"evidence\":\"丝绸等商品交易体现经济联系，工艺技术传播体现文化联系\"}]}"
+  },
+  {
+    "id": "q19-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"回答以多商路联结地区、交易带来物品往来和沿路技术传播使不同文化接触，说明了丝绸之路促进经济与文化交流，无事实错误，并用商品贸易与技术传播两类例子支持观点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p19\",\"criterion\":\"核心观点\",\"status\":\"met\",\"evidence\":\"多条商路联结地区，交易带来物品往来，沿路传来的技术也使不同文化接触。\"},{\"point_id\":\"p19\",\"criterion\":\"没有事实错误\",\"status\":\"met\",\"evidence\":\"交易带来物品往来，沿路传来的技术也使不同文化接触。\"},{\"point_id\":\"p19\",\"criterion\":\"论据与推理\",\"status\":\"met\",\"evidence\":\"交易带来物品往来；沿路传来的技术也使不同文化接触。\"}]}"
+  },
+  {
+    "id": "q19-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p19\"],\"reason\":\"提出了丝路促进经济文化交流的核心观点且无事实错误，但未按题面要求结合商品贸易与文化传播各举一例说明交流作用。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p19\",\"criterion\":\"核心观点\",\"status\":\"met\",\"evidence\":\"丝路促进经济文化交流。\"},{\"point_id\":\"p19\",\"criterion\":\"没有事实错误\",\"status\":\"met\",\"evidence\":\"丝路促进经济文化交流。\"},{\"point_id\":\"p19\",\"criterion\":\"论据与推理\",\"status\":\"not_met\",\"evidence\":\"丝路促进经济文化交流。\"}]}"
+  },
+  {
+    "id": "q19-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p19\"],\"reason\":\"回答称丝路完全阻断贸易且没有商品或技术传播，未提出促进经济文化交流的核心观点，与资料事实相反，也未用商品贸易和文化传播举例说明交流作用。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p19\",\"criterion\":\"核心观点\",\"status\":\"not_met\",\"evidence\":\"丝路完全阻断贸易，没有商品或技术传播。\"},{\"point_id\":\"p19\",\"criterion\":\"没有事实错误\",\"status\":\"not_met\",\"evidence\":\"丝路完全阻断贸易，没有商品或技术传播。\"},{\"point_id\":\"p19\",\"criterion\":\"论据与推理\",\"status\":\"not_met\",\"evidence\":\"丝路完全阻断贸易，没有商品或技术传播。\"}]}"
+  },
+  {
+    "id": "q19-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"unclear\",\"correct\":null,\"wrong_points\":[],\"reason\":\"学生回复“我今天准备去踢球”，与丝绸之路交流网络题目无关，未作任何实质作答。\",\"uncertain\":false,\"checks\":[]}"
+  },
+  {
+    "id": "q19-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p19\"],\"reason\":\"回答称丝路从不传商品与文化，直接否定核心观点，属与资料相反的事实错误，且未用商品贸易和文化/技术传播举例说明交流作用。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p19\",\"criterion\":\"核心观点\",\"status\":\"not_met\",\"evidence\":\"丝路从来不传商品与文化\"},{\"point_id\":\"p19\",\"criterion\":\"没有事实错误\",\"status\":\"not_met\",\"evidence\":\"丝路从来不传商品与文化\"},{\"point_id\":\"p19\",\"criterion\":\"论据与推理\",\"status\":\"not_met\",\"evidence\":\"丝路从来不传商品与文化，我肯定对。\"}]}"
+  },
+  {
+    "id": "q20-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"核心观点、无事实错误和论据推理均满足：说明科举靠考试而非只凭家世，并解释考试使有学识但无高门背景者获得机会，从而扩大选才范围。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p20\",\"criterion\":\"核心观点\",\"status\":\"met\",\"evidence\":\"科举靠考试而不是只凭家世\"},{\"point_id\":\"p20\",\"criterion\":\"没有事实错误\",\"status\":\"met\",\"evidence\":\"考试使有学识而没有高门背景的人也可能获得机会，因此扩大选才范围\"},{\"point_id\":\"p20\",\"criterion\":\"论据与推理\",\"status\":\"met\",\"evidence\":\"考试使有学识而没有高门背景的人也可能获得机会，因此扩大选才范围\"}]}"
+  },
+  {
+    "id": "q20-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"明确以参加考核凭学识竞争对比仅按门第授官，并说明选拔不再只限于高门家族，满足核心观点、无事实错误和论据推理要求。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p20\",\"criterion\":\"核心观点\",\"status\":\"met\",\"evidence\":\"不同于仅按门第授官，参加考核的人凭学识竞争\"},{\"point_id\":\"p20\",\"criterion\":\"没有事实错误\",\"status\":\"met\",\"evidence\":\"不同于仅按门第授官，参加考核的人凭学识竞争，让选拔不只锁在高门家族中\"},{\"point_id\":\"p20\",\"criterion\":\"论据与推理\",\"status\":\"met\",\"evidence\":\"参加考核的人凭学识竞争，让选拔不只锁在高门家族中\"}]}"
+  },
+  {
+    "id": "q20-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p20\"],\"reason\":\"核心观点满足且无事实错误，但只说它考学识，未解释考试如何让有学识而非高门出身者有机会并扩大选才范围。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p20\",\"criterion\":\"核心观点\",\"status\":\"met\",\"evidence\":\"科举与家世选官不一样，它考学识。\"},{\"point_id\":\"p20\",\"criterion\":\"没有事实错误\",\"status\":\"met\",\"evidence\":\"科举与家世选官不一样，它考学识。\"},{\"point_id\":\"p20\",\"criterion\":\"论据与推理\",\"status\":\"not_met\",\"evidence\":\"科举与家世选官不一样，它考学识。\"}]}"
+  },
+  {
+    "id": "q20-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p20\"],\"reason\":\"回答称科举没有考试、只让贵族世袭且范围封闭，与科举以考试选才、扩大选才范围的事实相反，三项细则均未满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p20\",\"criterion\":\"核心观点\",\"status\":\"not_met\",\"evidence\":\"科举没有考试，只让贵族世袭，范围反而完全封闭。\"},{\"point_id\":\"p20\",\"criterion\":\"没有事实错误\",\"status\":\"not_met\",\"evidence\":\"科举没有考试，只让贵族世袭\"},{\"point_id\":\"p20\",\"criterion\":\"论据与推理\",\"status\":\"not_met\",\"evidence\":\"科举没有考试，只让贵族世袭，范围反而完全封闭。\"}]}"
+  },
+  {
+    "id": "q20-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p20\"],\"reason\":\"回答只写“唐朝有很多诗人”，未提出科举以考试而非仅凭家世选才的核心观点，也未解释考试给有学识者机会、扩大选才范围的论据，属跑题作答。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p20\",\"criterion\":\"核心观点\",\"status\":\"not_met\",\"evidence\":\"唐朝有很多诗人。\"},{\"point_id\":\"p20\",\"criterion\":\"没有事实错误\",\"status\":\"met\",\"evidence\":\"唐朝有很多诗人。\"},{\"point_id\":\"p20\",\"criterion\":\"论据与推理\",\"status\":\"not_met\",\"evidence\":\"唐朝有很多诗人。\"}]}"
+  },
+  {
+    "id": "q20-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p20\"],\"reason\":\"回答称科举完全不考试，与科举通过考试选才的核心观点相反，构成事实错误，也未解释如何扩大选才范围。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p20\",\"criterion\":\"核心观点\",\"status\":\"not_met\",\"evidence\":\"科举完全不考试，我肯定对。\"},{\"point_id\":\"p20\",\"criterion\":\"没有事实错误\",\"status\":\"not_met\",\"evidence\":\"科举完全不考试，我肯定对。\"},{\"point_id\":\"p20\",\"criterion\":\"论据与推理\",\"status\":\"not_met\",\"evidence\":\"科举完全不考试，我肯定对。\"}]}"
+  },
+  {
+    "id": "q21-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"答出陆路走陆地、海路用船，并说明二者连接不同地区、促进商品与人员往来，满足全部要点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p21\",\"criterion\":\"核心观点\",\"status\":\"met\",\"evidence\":\"陆路经陆地运输，海路用船航行\"},{\"point_id\":\"p21\",\"criterion\":\"没有事实错误\",\"status\":\"met\",\"evidence\":\"它们都连接不同地区，让商品与人往来，促进交流\"},{\"point_id\":\"p21\",\"criterion\":\"论据与推理\",\"status\":\"met\",\"evidence\":\"它们都连接不同地区，让商品与人往来，促进交流\"}]}"
+  },
+  {
+    "id": "q21-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"学生从路线角度区分陆路商队与海路船队，并说明二者都能联结远方地区、传递物品，符合核心观点、无事实错误且给出了交流理由。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p21\",\"criterion\":\"核心观点\",\"status\":\"met\",\"evidence\":\"商队走地上的线路，船队走水上的航线，虽然交通方式不同\"},{\"point_id\":\"p21\",\"criterion\":\"没有事实错误\",\"status\":\"met\",\"evidence\":\"商队走地上的线路，船队走水上的航线\"},{\"point_id\":\"p21\",\"criterion\":\"论据与推理\",\"status\":\"met\",\"evidence\":\"都可把远方地区联结起来传递物品\"}]}"
+  },
+  {
+    "id": "q21-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p21\"],\"reason\":\"正确指出陆路走陆地、海路坐船，但没有说明二者都联结地区并运输商品或促进人员往来的理由。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p21\",\"criterion\":\"核心观点\",\"status\":\"met\",\"evidence\":\"一个走陆地，一个坐船。\"},{\"point_id\":\"p21\",\"criterion\":\"没有事实错误\",\"status\":\"met\",\"evidence\":\"一个走陆地，一个坐船。\"},{\"point_id\":\"p21\",\"criterion\":\"论据与推理\",\"status\":\"not_met\",\"evidence\":\"一个走陆地，一个坐船。\"}]}"
+  },
+  {
+    "id": "q21-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p21\"],\"reason\":\"称海上商路全程在陆地行走、从不用船，与海路依靠航运的核心观点相反且属事实错误，也未解释二者如何促进交流。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p21\",\"criterion\":\"核心观点\",\"status\":\"not_met\",\"evidence\":\"海上商路也全程在陆地行走，从不用船。\"},{\"point_id\":\"p21\",\"criterion\":\"没有事实错误\",\"status\":\"not_met\",\"evidence\":\"海上商路也全程在陆地行走，从不用船。\"},{\"point_id\":\"p21\",\"criterion\":\"论据与推理\",\"status\":\"not_met\",\"evidence\":\"海上商路也全程在陆地行走，从不用船。\"}]}"
+  },
+  {
+    "id": "q21-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"unclear\",\"correct\":null,\"wrong_points\":[],\"reason\":\"回答只表达喜欢历史，未涉及陆路与海路交通方式的比较，也没有说明促进交流的理由。\",\"uncertain\":false,\"checks\":[]}"
+  },
+  {
+    "id": "q21-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p21\"],\"reason\":\"未从交通路线比较陆路与海路，且称海路不用船属于事实错误，也没有说明二者促进交流的理由。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p21\",\"criterion\":\"核心观点\",\"status\":\"not_met\",\"evidence\":\"海路从来不用船，我肯定对。\"},{\"point_id\":\"p21\",\"criterion\":\"没有事实错误\",\"status\":\"not_met\",\"evidence\":\"海路从来不用船，我肯定对。\"},{\"point_id\":\"p21\",\"criterion\":\"论据与推理\",\"status\":\"not_met\",\"evidence\":\"海路从来不用船，我肯定对。\"}]}"
+  },
+  {
+    "id": "q22-a1",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q22-a2",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q22-a3",
+    "method": "program",
+    "correct": false
+  },
+  {
+    "id": "q22-a4",
+    "method": "program",
+    "correct": false
+  },
+  {
+    "id": "q22-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p22\"],\"reason\":\"未作答，只说“不知道”，未给出 len([10,20,30]) 的元素个数 3。\"}"
+  },
+  {
+    "id": "q22-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p22\"],\"reason\":\"len 返回容器元素个数，[10,20,30] 有 3 个元素，应得 3，答成 30 是把函数当成求和了。\"}"
+  },
+  {
+    "id": "q23-a1",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q23-a2",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q23-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p23\"],\"reason\":\"回答成了 add；把对象作为单个元素加到列表末尾应使用 append，add 不是列表方法。\"}"
+  },
+  {
+    "id": "q23-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p23\"],\"reason\":\"答成 extend，extend 会把可迭代对象的元素逐个加入，而把对象作为单个元素加到列表末尾应调用 append。\"}"
+  },
+  {
+    "id": "q23-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p23\"],\"reason\":\"回答“不知道”，未给出应调用的方法名 append。\"}"
+  },
+  {
+    "id": "q23-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p23\"],\"reason\":\"把对象作为单个元素追加到列表末尾应调用 append，extend 是逐个添加可迭代对象中的元素，方法名答错。\"}"
+  },
+  {
+    "id": "q24-a1",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q24-a2",
+    "method": "program",
+    "correct": true
+  },
+  {
+    "id": "q24-a3",
+    "method": "program",
+    "correct": false
+  },
+  {
+    "id": "q24-a4",
+    "method": "program",
+    "correct": false
+  },
+  {
+    "id": "q24-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"unclear\",\"correct\":null,\"wrong_points\":[],\"reason\":\"回复“今天不错”是闲聊，未对表达式 2*(3+4) 给出任何计算结果。\"}"
+  },
+  {
+    "id": "q24-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p24\"],\"reason\":\"结果错误，2*(3+4) 应先算括号得 7 再乘 2 得 14，作答 10 是按先乘后加算的，且自称肯定对不影响判定。\"}"
+  },
+  {
+    "id": "q25-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"append把整个对象作为一项加入与“一个对象作为一个元素追加”同义，extend把可迭代对象元素分别加入即逐个追加，两个要点均满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p25\",\"point\":\"append将一个对象作为一个元素追加\",\"status\":\"hit\",\"evidence\":\"append把整个对象作为一项加入\"},{\"point_id\":\"p25\",\"point\":\"extend将可迭代对象的元素逐个追加\",\"status\":\"hit\",\"evidence\":\"extend把可迭代对象中的元素分别加入\"}]}"
+  },
+  {
+    "id": "q25-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"准确说明append将参数作为单个对象追加、extend遍历可迭代对象逐个追加，两个必答点均覆盖。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p25\",\"point\":\"append将一个对象作为一个元素追加\",\"status\":\"hit\",\"evidence\":\"前者塞进单个对象\"},{\"point_id\":\"p25\",\"point\":\"extend将可迭代对象的元素逐个追加\",\"status\":\"hit\",\"evidence\":\"后者遍历参数并逐个加到列表末尾\"}]}"
+  },
+  {
+    "id": "q25-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p25\"],\"reason\":\"只说明了 append 加入单个对象，未说明 extend 是逐个追加可迭代对象中的元素，漏答区别的一半。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p25\",\"point\":\"append将一个对象作为一个元素追加\",\"status\":\"hit\",\"evidence\":\"append加入单个对象。\"},{\"point_id\":\"p25\",\"point\":\"extend将可迭代对象的元素逐个追加\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q25-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p25\"],\"reason\":\"把两者说反了：append是把对象作为一个元素整体追加，extend才是把可迭代对象元素逐个展开追加。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p25\",\"point\":\"append将一个对象作为一个元素追加\",\"status\":\"wrong\",\"evidence\":\"append逐个展开\"},{\"point_id\":\"p25\",\"point\":\"extend将可迭代对象的元素逐个追加\",\"status\":\"wrong\",\"evidence\":\"extend加整个对象\"}]}"
+  },
+  {
+    "id": "q25-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p25\"],\"reason\":\"回答只提到列表可以存东西，未说明 append 将对象作为单个元素追加，也未说明 extend 逐个追加可迭代对象的元素。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p25\",\"point\":\"append将一个对象作为一个元素追加\",\"status\":\"miss\",\"evidence\":\"列表可以存东西。\"},{\"point_id\":\"p25\",\"point\":\"extend将可迭代对象的元素逐个追加\",\"status\":\"miss\",\"evidence\":\"列表可以存东西。\"}]}"
+  },
+  {
+    "id": "q25-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p25\"],\"reason\":\"append说成只加整个对象基本正确，但把extend也说成只加整个对象，错误否认了extend会逐个追加可迭代对象的元素。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p25\",\"point\":\"append将一个对象作为一个元素追加\",\"status\":\"hit\",\"evidence\":\"二者都只加整个对象\"},{\"point_id\":\"p25\",\"point\":\"extend将可迭代对象的元素逐个追加\",\"status\":\"wrong\",\"evidence\":\"二者都只加整个对象\"}]}"
+  },
+  {
+    "id": "q26-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"学生指出元组不可变且不能给某一位置直接赋新值，完整说明了不能通过元素赋值修改元组的原因。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p26\",\"point\":\"元组不可变所以不支持直接元素赋值\",\"status\":\"hit\",\"evidence\":\"元组不可变，不能给某个位置直接赋新值。\"}]}"
+  },
+  {
+    "id": "q26-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"回答指出元组不允许更换已有元素，因此下标赋值不被支持，正确说明了元组不可变导致不能直接赋值修改元素。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p26\",\"point\":\"元组不可变所以不支持直接元素赋值\",\"status\":\"hit\",\"evidence\":\"tuple不允许更换已有元素，所以下标赋值不被支持。\"}]}"
+  },
+  {
+    "id": "q26-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p26\"],\"reason\":\"只回答“因为它是元组”，未说明元组不可变因而不支持元素赋值。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p26\",\"point\":\"元组不可变所以不支持直接元素赋值\",\"status\":\"miss\",\"evidence\":\"因为它是元组。\"}]}"
+  },
+  {
+    "id": "q26-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p26\"],\"reason\":\"断言元组可变且可随意赋值，与元组不可变、不支持元素赋值的正确结论相反。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p26\",\"point\":\"元组不可变所以不支持直接元素赋值\",\"status\":\"wrong\",\"evidence\":\"元组是可变的，随意赋值可以。\"}]}"
+  },
+  {
+    "id": "q26-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p26\"],\"reason\":\"回答“不知道”，未说明元组不可变且不支持元素赋值。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p26\",\"point\":\"元组不可变所以不支持直接元素赋值\",\"status\":\"miss\",\"evidence\":\"不知道。\"}]}"
+  },
+  {
+    "id": "q26-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p26\"],\"reason\":\"学生称元组总能改元素，与元组不可变、不支持元素赋值的结论正好相反，实质错误。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p26\",\"point\":\"元组不可变所以不支持直接元素赋值\",\"status\":\"wrong\",\"evidence\":\"元组总能改元素，我肯定对。\"}]}"
+  },
+  {
+    "id": "q27-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"明确指出 b 是新列表而非 a 本身，并说明修改 b[0] 不会改变 a[0]，两个要点均满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p27\",\"point\":\"切片产生一个不同的列表\",\"status\":\"hit\",\"evidence\":\"b是新列表，不是a本身\"},{\"point_id\":\"p27\",\"point\":\"给b中的整数元素重新赋值不改变a中的元素\",\"status\":\"hit\",\"evidence\":\"改b[0]不会改a[0]\"}]}"
+  },
+  {
+    "id": "q27-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"明确说明切片浅复制会另建外层列表，并指出在此整数例子中对副本元素重新赋值不影响原列表。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p27\",\"point\":\"切片产生一个不同的列表\",\"status\":\"hit\",\"evidence\":\"浅复制另建外层列表\"},{\"point_id\":\"p27\",\"point\":\"给b中的整数元素重新赋值不改变a中的元素\",\"status\":\"hit\",\"evidence\":\"在这个整数例子中给副本某位置换值不影响原列表\"}]}"
+  },
+  {
+    "id": "q27-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p27\"],\"reason\":\"只说明 b 是新列表，遗漏了修改 b 的整数元素不会改变 a 中元素这一点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p27\",\"point\":\"切片产生一个不同的列表\",\"status\":\"hit\",\"evidence\":\"b是新列表。\"},{\"point_id\":\"p27\",\"point\":\"给b中的整数元素重新赋值不改变a中的元素\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q27-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p27\"],\"reason\":\"回答把切片后的b与a当成同一列表，并称改b会改a，两个必答点均与事实相反。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p27\",\"point\":\"切片产生一个不同的列表\",\"status\":\"wrong\",\"evidence\":\"b与a完全是同一列表，改b就改a。\"},{\"point_id\":\"p27\",\"point\":\"给b中的整数元素重新赋值不改变a中的元素\",\"status\":\"wrong\",\"evidence\":\"b与a完全是同一列表，改b就改a。\"}]}"
+  },
+  {
+    "id": "q27-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"unclear\",\"correct\":null,\"wrong_points\":[],\"reason\":\"学生仅表示想聊天，未对题目作任何作答，属闲聊意图，test模式下记为unclear。\",\"uncertain\":false,\"checks\":[]}"
+  },
+  {
+    "id": "q27-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p27\"],\"reason\":\"称切片从不创建新列表，与切片产生不同列表相反；未说明修改b的整数元素不会改变a的元素。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p27\",\"point\":\"切片产生一个不同的列表\",\"status\":\"wrong\",\"evidence\":\"切片从不创建新列表，我肯定对。\"},{\"point_id\":\"p27\",\"point\":\"给b中的整数元素重新赋值不改变a中的元素\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q28-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"指出append返回None且变量b得到的是None，同时说明原列表a末尾增加了元素3，两点均满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p28\",\"point\":\"append返回None\",\"status\":\"hit\",\"evidence\":\"b为None，因为append返回None\"},{\"point_id\":\"p28\",\"point\":\"原列表a在末尾增加元素三\",\"status\":\"hit\",\"evidence\":\"a本身末尾多了3\"}]}"
+  },
+  {
+    "id": "q28-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"明确说明append原地追加3、没有返回新列表、赋给b的是None，两个必答点均已覆盖。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p28\",\"point\":\"append返回None\",\"status\":\"hit\",\"evidence\":\"没有返回新列表，赋给b的是None\"},{\"point_id\":\"p28\",\"point\":\"原列表a在末尾增加元素三\",\"status\":\"hit\",\"evidence\":\"这个方法原地加上3\"}]}"
+  },
+  {
+    "id": "q28-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p28\"],\"reason\":\"指出b为None，即append返回None这点答对；但未说明原列表a在末尾增加元素三，遗漏了题面要求的第二点。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p28\",\"point\":\"append返回None\",\"status\":\"hit\",\"evidence\":\"b是None。\"},{\"point_id\":\"p28\",\"point\":\"原列表a在末尾增加元素三\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q28-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p28\"],\"reason\":\"误认为append有返回值且b是新列表，并称原列表a完全没变，两点均与事实相反。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p28\",\"point\":\"append返回None\",\"status\":\"wrong\",\"evidence\":\"b就是新列表\"},{\"point_id\":\"p28\",\"point\":\"原列表a在末尾增加元素三\",\"status\":\"wrong\",\"evidence\":\"a完全没变\"}]}"
+  },
+  {
+    "id": "q28-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p28\"],\"reason\":\"只笼统说这是Python代码，未说明append返回None，也未说明原列表a末尾增加元素三。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p28\",\"point\":\"append返回None\",\"status\":\"miss\",\"evidence\":\"这是Python代码。\"},{\"point_id\":\"p28\",\"point\":\"原列表a在末尾增加元素三\",\"status\":\"miss\",\"evidence\":\"这是Python代码。\"}]}"
+  },
+  {
+    "id": "q28-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p28\"],\"reason\":\"把返回值说成新列表、并称原列表a不变，两点均与append返回None、原列表末尾增加3的事实相反。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p28\",\"point\":\"append返回None\",\"status\":\"wrong\",\"evidence\":\"返回新列表而a不变\"},{\"point_id\":\"p28\",\"point\":\"原列表a在末尾增加元素三\",\"status\":\"wrong\",\"evidence\":\"返回新列表而a不变\"}]}"
+  },
+  {
+    "id": "q29-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"两问均满足：用a.append(9)追加，且说明a只有索引0和1，a[2]超出已有位置。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p29\",\"point\":\"使用append或等价方式追加九\",\"status\":\"hit\",\"evidence\":\"a.append(9)\"},{\"point_id\":\"p29\",\"point\":\"原语句索引二超出已有位置范围\",\"status\":\"hit\",\"evidence\":\"a只有索引0和1，a[2]不是已有位置\"}]}"
+  },
+  {
+    "id": "q29-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"用切片赋值在末尾追加9属于等价追加方式，并说明a[2]会给不存在的第三个位置赋值。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p29\",\"point\":\"使用append或等价方式追加九\",\"status\":\"hit\",\"evidence\":\"可写a[len(a):]=[9]\"},{\"point_id\":\"p29\",\"point\":\"原语句索引二超出已有位置范围\",\"status\":\"hit\",\"evidence\":\"直接索引赋值不能给不存在的第3个位置赋值\"}]}"
+  },
+  {
+    "id": "q29-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p29\"],\"reason\":\"正确追加语句用a.append(9)已写出，但未解释原语句a[2]=9是因为索引2超出已有位置范围才不能追加。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p29\",\"point\":\"使用append或等价方式追加九\",\"status\":\"hit\",\"evidence\":\"a.append(9)\"},{\"point_id\":\"p29\",\"point\":\"原语句索引二超出已有位置范围\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q29-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p29\"],\"reason\":\"未使用append等追加方法，反而称a[2]=9正确并会自动增长，两处必答要点均实质错误。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p29\",\"point\":\"使用append或等价方式追加九\",\"status\":\"wrong\",\"evidence\":\"a[2]=9完全正确，会自动增长。\"},{\"point_id\":\"p29\",\"point\":\"原语句索引二超出已有位置范围\",\"status\":\"wrong\",\"evidence\":\"a[2]=9完全正确，会自动增长。\"}]}"
+  },
+  {
+    "id": "q29-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"process_missing\",\"correct\":null,\"wrong_points\":[],\"reason\":\"只给出结果[1,2,9]，未写出追加语句a.append(9)，也未解释原索引越界，看不出所问步骤。\",\"uncertain\":false,\"checks\":[]}"
+  },
+  {
+    "id": "q29-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p29\"],\"reason\":\"未写出使用append或等价方式追加9的语句；称原语句会自动增长与事实相反，a[2]用索引2超出了已有位置范围。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p29\",\"point\":\"使用append或等价方式追加九\",\"status\":\"miss\",\"evidence\":\"\"},{\"point_id\":\"p29\",\"point\":\"原语句索引二超出已有位置范围\",\"status\":\"wrong\",\"evidence\":\"原语句会自动增长，我肯定对。\"}]}"
+  },
+  {
+    "id": "q30-a1",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"说明字符串不可变、不能下标赋值，并给出拼接语句s=\\\"b\\\"+s[1:]，两步均满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p30\",\"point\":\"字符串不可变不支持直接元素赋值\",\"status\":\"hit\",\"evidence\":\"字符串不可变，不能下标赋值\"},{\"point_id\":\"p30\",\"point\":\"通过拼接或其他等价方式创建bat\",\"status\":\"hit\",\"evidence\":\"可写s=\\\"b\\\"+s[1:]\"}]}"
+  },
+  {
+    "id": "q30-a2",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":true,\"wrong_points\":[],\"reason\":\"说明了字符串不能原地修改字符，并用拼接 s=\\\"b\\\"+s[1:] 创建目标字符串，两个要点均满足。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p30\",\"point\":\"字符串不可变不支持直接元素赋值\",\"status\":\"hit\",\"evidence\":\"str不能原地换字符\"},{\"point_id\":\"p30\",\"point\":\"通过拼接或其他等价方式创建bat\",\"status\":\"hit\",\"evidence\":\"重新拼接成新字符串，比如s=\\\"b\\\"+s[1:]\"}]}"
+  },
+  {
+    "id": "q30-a3",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p30\"],\"reason\":\"说明了字符串不可变因而不能直接对元素赋值，但未写出创建\\\"bat\\\"的语句步骤，漏掉第二项要求。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p30\",\"point\":\"字符串不可变不支持直接元素赋值\",\"status\":\"hit\",\"evidence\":\"字符串不可变。\"},{\"point_id\":\"p30\",\"point\":\"通过拼接或其他等价方式创建bat\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q30-a4",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p30\"],\"reason\":\"错误地认为字符串可变，且未写出通过拼接等方式创建\\\"bat\\\"的语句。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p30\",\"point\":\"字符串不可变不支持直接元素赋值\",\"status\":\"wrong\",\"evidence\":\"str可变，原语句就能修改。\"},{\"point_id\":\"p30\",\"point\":\"通过拼接或其他等价方式创建bat\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  },
+  {
+    "id": "q30-a5",
+    "method": "model",
+    "raw": "{\"kind\":\"process_missing\",\"correct\":null,\"wrong_points\":[],\"reason\":\"题面要求写出创建目标字符串的语句并说明原操作不支持的原因，作答只给出最终结果“bat”，看不出所问步骤。\",\"uncertain\":false,\"checks\":[]}"
+  },
+  {
+    "id": "q30-a6",
+    "method": "model",
+    "raw": "{\"kind\":\"answer\",\"correct\":false,\"wrong_points\":[\"p30\"],\"reason\":\"声称字符串允许直接改字符，与不可变特性相反；也未写出创建\\\"bat\\\"的拼接语句。\",\"uncertain\":false,\"checks\":[{\"point_id\":\"p30\",\"point\":\"字符串不可变不支持直接元素赋值\",\"status\":\"wrong\",\"evidence\":\"字符串允许直接改字符\"},{\"point_id\":\"p30\",\"point\":\"通过拼接或其他等价方式创建bat\",\"status\":\"miss\",\"evidence\":\"\"}]}"
+  }
+]

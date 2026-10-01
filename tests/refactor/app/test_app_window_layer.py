@@ -25,6 +25,11 @@ def tmp_root():
     SCRATCH.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=SCRATCH) as d:
         yield Path(d)
+        # Starting a plan now also persists bank-review drafts in a background
+        # worker. Finish those test workers before deleting their data root.
+        for worker in list(threading.enumerate()):
+            if worker.name in ('classroom-question-bank', 'classroom-lesson-prep', 'classroom-profile'):
+                worker.join(5)
 
 
 def pump(qapp, bridge, sent, predicate, timeout=5):

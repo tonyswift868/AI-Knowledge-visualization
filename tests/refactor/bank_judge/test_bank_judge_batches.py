@@ -48,7 +48,9 @@ def bankroom(tmp_path):
                 minutes=10, chunk_ids=['k']) for i in ids], check_minutes=2, today=DAY)
         store.start_plan(PLAN, today=DAY)
         services = SimpleNamespace(store=store, account_id='bank-judge-offline', data_root=tmp_path,
-            settings=SimpleNamespace(load=lambda: dict(refresh_time='04:00')), gateway=None)
+            settings=SimpleNamespace(load=lambda: dict(refresh_time='04:00')),
+            gateway=SimpleNamespace(complete=lambda purpose, *a, **kw: SimpleNamespace(
+                text='{"verdict":"approve","issues":[],"revised":null}')))
         room = Classroom(services, lambda: DAY, rng=random.Random(7),
                          now=lambda: datetime(2026, 10, 1, 10, tzinfo=timezone.utc))
         room._prepare_later = lambda *a: None  # teaching belongs to the parallel task
@@ -58,7 +60,7 @@ def bankroom(tmp_path):
             calls.append(tuple(ids))
             return [Question(f'{pid}-{len(calls)}-{j}', 'choice', f'{pid}第{len(calls)}批应用{j}应选哪个？',
                 ('正确选项', '干扰一', '干扰二', '干扰三'), '正确选项', '符合资料要点。',
-                (pid,), ('k',), angle) for pid in ids for j, angle in enumerate(
+                (pid,), (course.point(pid)['chunk_ids'][0],), angle) for pid in ids for j, angle in enumerate(
                     [a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer')
                      if a not in kw.get('used_angles', {}).get(pid, ())][:kw.get('counts', {}).get(pid, 2)])]
         room._questions = questions
@@ -93,9 +95,10 @@ def test_six_points_use_three_small_batches_and_failure_repairs_only_missing(ban
     assert {q['point_ids'][0] for q in store.records('question_bank', PLAN)} == {'p0', 'p1', 'p2', 'p4', 'p5'}
     failed = False
     calls.clear()
-    room._bank_fill(course, None, 'm0')
-    assert calls == [('p3',)]
-    assert len(store.records('question_bank', PLAN)) == 12
+    with pytest.raises(ModelError, match='初次出题与一次重出'):
+        room._bank_fill(course, None, 'm0')
+    assert not calls  # batch 26 persists the one-reissue limit across reopening
+    assert len(store.records('question_bank', PLAN)) == 10
 
 
 def test_partial_pair_keeps_covered_point_and_repairs_other_point(bankroom):

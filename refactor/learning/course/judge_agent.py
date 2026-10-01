@@ -21,6 +21,55 @@ class Verdict:
     reason: str
     uncertain: bool = False
     checks: tuple[dict, ...] = ()
+    review: dict | None = None
+
+
+# Enabled only after the labelled OFF/ON experiment demonstrates benefit.
+REVIEW_WRONG_DEFAULT = False
+
+STRUCTURED_RULES = """
+本题采用结构化细则。仅按题面明确要求判定，accept是同义示例，不是必须照抄的文字；reject是实质误解。不能替学生补出没表达的意思。
+evidence摘录学生真实说的原话，不引用参考当学生证据；无可引用内容用空字符串。措辞不同不导致不确定。
+输出恰好kind,correct,wrong_points,reason,uncertain,checks六字段。checks保持细则顺序且全覆盖，point_id仅对应真正评价的点；错点列表由未满足细则的点组成，正确点不连带。
+先判过程是否可见，再判细则：题面要某一步而回答只给最终结果，即使还漏了解释原因，也必须process_missing，不记错，等待同题补充。例如要求追加语句及原索引为什么无效，学生只写[1,2,9]，是process_missing，不是answer=false；写了语句但算错或未解释才按细则判错。已有原回答+补充过程时合并判断，不反复追问。
+“解释原因/说明区别”不是自动等同于“写操作或推导步骤”。例如问平方结果并解释正负号，只写9是已作答但漏掉原因，answer=false；只有明确要求写某一步式子/语句/操作，才有process_missing。
+process_missing或其他非answer：correct=null,wrong_points=[],checks=[],uncertain=false。真的拿不准用clarify；对answer含义不确定才uncertain=true。
+纯题外闲聊、明确想聊天或提问不是作答，在test用unclear；有主题内容的敷衍（如“这是Python代码”“列表可以存东西”）、不知道、跑题论证都视为answer并按未满足细则判错。自称正确不改变内容判定。
+reason一句简短中文，写真正满足/未满足的条件。
+"""
+
+SHORT_RULES = """
+本题是short/fix_error，不是essay。逐条checks恰好{point_id,point,status,evidence}；point原样复制required_points的point。status仅hit/miss/wrong。
+正确表达是hit；没答到是miss；实质错误是wrong，即使同项有正确话也不能hit。所有条目hit才correct=true、wrong_points=[]；有miss/wrong则correct=false，只把该项point_id加入wrong_points。
+缺少的必答项不能猜学生会了，也不强求参考的同一措辞或未问的细节。
+"""
+
+ESSAY_RULES = """
+本题仅按question.rubric论述细则判，不使用short的required_points或hit/miss/wrong协议。
+每项checks恰好{point_id,criterion,status,evidence}，criterion原样复制，status仅met/not_met。
+required项全部met且非required项至少一项met才correct=true；其余情况false。不因核心观点对就放过所问的论据/推理。例如核心观点met、没有事实错误met、论据与推理not_met，必须false。
+没有事实错误与遗漏论据不同：未给论据不等于说了错误事实。未达到项对应的真正错点才加入wrong_points；通过时wrong_points=[]。
+按题面规定的范围核对例子；未要求具体名称时，不额外要求某个商品或技术名字。用“物品交易”和“技术传播”两种活动说明经济与文化交流，可以满足以商品贸易和文化传播举例的要求，不必重复参考中的丝绸这个名称；若题面明确要求具体名称则必须给出。
+"""
+
+def structured_rubric(ctx):
+    q = ctx.get('question')
+    if not isinstance(q, dict): return None
+    if q.get('type') == 'essay': return ('essay', q.get('rubric') or ctx.get('rubric') or [])
+    values = ctx.get('required_points') or q.get('required_points')
+    if q.get('type') in ('short', 'fix_error') and values and all(isinstance(v, dict) for v in values):
+        return ('short', values)
+    return None
+
+
+def review_verdict(first, second):
+    """Independent review never turns a disagreement into a guessed pass."""
+    from dataclasses import asdict, replace
+    audit = {'first': asdict(first), 'second': asdict(second)}
+    if (first.kind, first.correct, first.wrong_points, first.uncertain) != (
+            second.kind, second.correct, second.wrong_points, second.uncertain):
+        return Verdict('clarify', None, (), '两次独立判定不一致，需用更深的问题确认。', review=audit)
+    return replace(first, review=audit)
 
 
 JUDGE_SYSTEM = """你是 MentorFlow 的独立课堂判定员，只分类和判定，不讲课，不修改任何状态或规则。
@@ -206,7 +255,7 @@ def _required_points(reference, point_count=1):
 def judge_request(ctx: dict, reply: str) -> tuple[str, list[dict]]:
     points, _excerpts_data, question, reference, _recent = _context(ctx)
     task = dict(mode=ctx["mode"], question=question, reference=reference)
-    if ctx.get('require_evidence'):
+    if ctx.get('require_evidence') and not (isinstance(question, dict) and question.get('type') == 'essay'):
         task['required_points'] = list(ctx.get('required_points') or _required_points(reference, len(points)))
     task['reply'] = _text(reply, "reply", 20_000, empty=True)
     # A grading decision sees only the question, required points and this
@@ -218,7 +267,9 @@ def judge_request(ctx: dict, reply: str) -> tuple[str, list[dict]]:
     _dump(task)
     content += "\n【本次判定】\n" + json.dumps(task, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
     _text(content, "request", 500_000)
-    return JUDGE_SYSTEM + (SUBJECTIVE_RULES if ctx.get('require_evidence') else ''), [{"role": "user", "content": content}]
+    rubric = structured_rubric(ctx)
+    rules = STRUCTURED_RULES + (ESSAY_RULES if rubric[0] == 'essay' else SHORT_RULES) if rubric else SUBJECTIVE_RULES
+    return JUDGE_SYSTEM + (rules if ctx.get('require_evidence') else ''), [{"role": "user", "content": content}]
 
 
 def parse_judgement(answer: str, ctx: dict) -> Verdict:
@@ -251,6 +302,10 @@ def parse_judgement(answer: str, ctx: dict) -> Verdict:
         if type(uncertain) is not bool or not isinstance(checks, list):
             raise AgentFormatError('checks: 须提供逐点依据和不确定标记')
         if kind == 'answer':
+            rubric = structured_rubric(ctx)
+            if rubric:
+                _parse_structured_checks(checks, rubric, {p['id'] for p in points}, correct, wrong)
+                return Verdict(kind, correct, wrong, reason, uncertain, tuple(dict(c) for c in checks))
             requirements = ctx.get('required_points') or _required_points(ctx['reference'], len(points))
             # New short questions ask at most two points, but old saved
             # questions may contain more numbered requirements.
@@ -280,3 +335,40 @@ def parse_judgement(answer: str, ctx: dict) -> Verdict:
             raise AgentFormatError('checks: 非作答不能附带逐点判定')
     return Verdict(kind, correct, wrong, reason, uncertain,
                    tuple(dict(check) for check in checks) if evidence_required else ())
+
+
+def _parse_structured_checks(checks, rubric, point_ids, correct, wrong):
+    kind, criteria = rubric
+    if len(checks) != len(criteria) or not checks:
+        raise AgentFormatError('checks: 必须逐条覆盖评分细则')
+    seen, failed = set(), set()
+    outcomes = []
+    name = 'criterion' if kind == 'essay' else 'point'
+    for check, criterion in zip(checks, criteria):
+        # A single-point question has exactly one possible attribution. The
+        # real grader occasionally omits this redundant identifier; fill it
+        # from the question, never infer identifiers for a multi-point answer.
+        if isinstance(check, dict) and 'point_id' not in check and len(point_ids) == 1:
+            check['point_id'] = next(iter(point_ids))
+        _fields(check, ('point_id', name, 'status', 'evidence'))
+        pid = _identifier(check['point_id'])
+        if pid not in point_ids or check[name] != criterion[name]:
+            raise AgentFormatError('checks: 细则或知识点不对应')
+        statuses = ('met', 'not_met') if kind == 'essay' else ('hit', 'miss', 'wrong')
+        if check['status'] not in statuses: raise AgentFormatError('checks: 未知逐项结论')
+        _text(check['evidence'], 'evidence', 2000, empty=True)
+        # Quotes are retained for audit. Do not turn quote formatting differences
+        # into semantic uncertainty (BUG-33); uncertainty is the judge's signal.
+        met = check['status'] == statuses[0]
+        outcomes.append(met); seen.add(pid)
+        if not met: failed.add(pid)
+    if seen != point_ids: raise AgentFormatError('checks: 有知识点未核对')
+    if kind == 'essay':
+        passed = all(m for m, c in zip(outcomes, criteria) if c['required']) and any(
+            m for m, c in zip(outcomes, criteria) if not c['required'])
+        # An optional unmet criterion is not an error if the pass line is met.
+        if passed: failed = set()
+    else:
+        passed = all(outcomes)
+    if passed != correct or failed != set(wrong):
+        raise AgentFormatError('checks: 逐条结果与总判定/错点不一致')

@@ -84,6 +84,8 @@ class FakeAgent:
     def complete(self, purpose, messages, *, on_text=None, **_kwargs):
         with self.lock:
             self.calls.append(purpose)
+        if purpose == 'question_review':
+            return SimpleNamespace(text='{"verdict":"approve","issues":[],"revised":null}')
         if purpose in ('lesson_prep', 'lesson_review'):
             from tests.refactor.guided_lessons.fixtures import wire
             task = json.loads(messages[-1]['content'].split('\n', 1)[1])
@@ -244,7 +246,7 @@ def classroom_room(evidence):
             yield classroom, clock, agent, store, trace
         finally:
             for thread in list(threading.enumerate()):
-                if thread.name == "classroom-profile":
+                if thread.name in ('classroom-profile', 'classroom-question-bank', 'classroom-lesson-prep'):
                     thread.join(5)
             store.close()
 
@@ -257,6 +259,13 @@ def _act(classroom, name, *args, streamed=None):
     method = getattr(classroom, name)
     ctx = _ctx(streamed)
     view = classroom.run(PLAN, lambda course, state, cx: method(course, state, cx, *args), ctx)
+    # Bank validation now has durable I/O and a separate review. Wait for the
+    # actual async host result, not the first preparing_questions snapshot.
+    import time as wall_time
+    deadline = wall_time.monotonic() + 3
+    while view['step'] == 'preparing_questions' and wall_time.monotonic() < deadline:
+        wall_time.sleep(.005)
+        view = classroom.run(PLAN, lambda *a: None, ctx)
     if name in ('next','reply'):
         from tests.refactor.guided_lessons.fixtures import advance_to_question
         view = advance_to_question(classroom, PLAN, view, ctx)

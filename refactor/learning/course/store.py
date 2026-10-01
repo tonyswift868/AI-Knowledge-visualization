@@ -376,7 +376,7 @@ class CourseStore:
             for key in ('input_tokens', 'cache_hit_tokens', 'cache_miss_tokens', 'output_tokens', 'search_count'): _number(payload[key])
         elif entity == 'question_bank':
             _id(payload['module_id'])
-            if (payload['type'] not in ('choice', 'short', 'fix_error') or payload['angle'] not in
+            if (payload['type'] not in ('choice', 'exact', 'short', 'fix_error', 'essay') or payload['angle'] not in
                     ('recall', 'apply', 'contrast', 'fix_error', 'transfer') or
                     type(payload['correct_seen']) is not bool or not isinstance(payload['stem'], str) or
                     not isinstance(payload['answer'], str) or not isinstance(payload['reference'], str) or
@@ -384,9 +384,16 @@ class CourseStore:
                     not 1 <= len(set(payload['point_ids'])) <= 4 or not isinstance(payload['chunk_ids'], list)):
                 raise StoreError('INVALID_QUESTION')
             requirements = payload.get('required_points')
-            if requirements is not None and (not isinstance(requirements, (list, tuple)) or not 1 <= len(requirements) <= 2
-                                             or any(not isinstance(r, str) or not r.strip() for r in requirements)):
-                raise StoreError('INVALID_QUESTION')
+            from .question_agent import validate_answer_structure, validate_requirement
+            from .planner_agents import AgentFormatError
+            try:
+                validate_answer_structure(payload)
+                if requirements is not None:
+                    if not isinstance(requirements, (list, tuple)) or not 1 <= len(requirements) <= 2:
+                        raise AgentFormatError('required_points')
+                    for requirement in requirements: validate_requirement(requirement)
+            except AgentFormatError:
+                raise StoreError('INVALID_QUESTION') from None
             seen = payload.get('asked_in', [])
             if not isinstance(seen, list) or any(context not in ('module_test', 'skip_test', 'retest', 'check', 'practice') for context in seen):
                 raise StoreError('INVALID_QUESTION')
@@ -402,6 +409,10 @@ class CourseStore:
             if type(payload['correct']) is not bool or not isinstance(payload['point_ids'], list) or not payload['point_ids']:
                 raise StoreError('INVALID_PRACTICE')
             if payload.get('sequence') is not None: _number(payload['sequence'], True)
+            if 'wrong_points' in payload and (not isinstance(payload['wrong_points'], list)
+                    or not set(payload['wrong_points']) <= set(payload['point_ids'])
+                    or bool(payload['wrong_points']) == payload['correct']):
+                raise StoreError('INVALID_PRACTICE')
         _json(payload)
 
     def _materialize(self, entity, plan, payload, revision):
@@ -518,8 +529,13 @@ class CourseStore:
         self._get('modules', plan_id, module_id)
         valid_points = {p['id'] for p in self.records('points', plan_id) if p['module_id'] == module_id}
         identifiers = []
+        essay_exists = any(q['type'] == 'essay' for q in self.records('question_bank', plan_id)
+                           if q['module_id'] == module_id)
         for question in questions:
             row = asdict(question) if is_dataclass(question) else dict(question)
+            if row['type'] == 'essay':
+                if essay_exists: raise StoreError('MODULE_ESSAY_LIMIT')
+                essay_exists = True
             row['id'] = _id(uuid.uuid4().hex)
             row['module_id'] = module_id
             row['correct_seen'] = False
@@ -573,12 +589,14 @@ class CourseStore:
             self._put('question_bank', plan_id, row)
 
     @_atomic
-    def append_practice_result(self, plan_id, question_id, module_id, point_ids, correct, *, reason='', at=None, result_id=None):
+    def append_practice_result(self, plan_id, question_id, module_id, point_ids, correct, *, reason='', at=None, result_id=None, wrong_points=None):
         self._get('plans', plan_id, plan_id)
         identifier = _id(result_id or uuid.uuid4().hex)
         sequence = int(self._db.execute("SELECT value FROM _meta WHERE key='revision'").fetchone()[0]) + 1
+        wrong = list(wrong_points) if wrong_points is not None else ([] if correct else list(point_ids))
+        if not set(wrong) <= set(point_ids) or bool(wrong) == bool(correct): raise StoreError('INVALID_PRACTICE')
         self._put('practice_results', plan_id, dict(id=identifier, question_id=_id(question_id), module_id=_id(module_id),
-                  point_ids=list(point_ids), correct=bool(correct), reason=str(reason)[:400], at=_at(at), sequence=sequence))
+                  point_ids=list(point_ids), wrong_points=wrong, correct=bool(correct), reason=str(reason)[:400], at=_at(at), sequence=sequence))
         return identifier
 
     @_atomic

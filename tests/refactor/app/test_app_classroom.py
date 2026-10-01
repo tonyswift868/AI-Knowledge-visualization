@@ -54,7 +54,7 @@ class Agents:
                 return result
             value = {'lessons': [{'point_id': p['id'], 'lesson': one(p)} for p in task['points']]} if 'points' in task else one(task, live=purpose == 'teacher')
             return SimpleNamespace(text=json.dumps(value, ensure_ascii=False), search_hits=(), citations=())
-        if purpose == 'lesson_review':
+        if purpose in ('lesson_review', 'question_review'):
             return SimpleNamespace(text='{"verdict":"approve","issues":[],"revised":null}', search_hits=(), citations=())
         if purpose == "teacher":
             task = last_json(messages, "【本步任务】")

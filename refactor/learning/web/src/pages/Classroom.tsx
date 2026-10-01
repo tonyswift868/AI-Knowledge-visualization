@@ -245,7 +245,7 @@ export function Classroom() {
           </div>
         ) : <div className="class-points">
           {room.points.map((p, i) => (
-            <span key={p.id} className={`class-point ${p.current && ["teach", "answer"].includes(room.step) ? "current" : ""} ${p.taught ? "taught" : ""} ${POINT_TONE[p.state] ?? ""}`}
+            <span key={p.id} className={`class-point ${p.current && ["teach", "lesson", "answer"].includes(room.step) ? "current" : ""} ${p.taught ? "taught" : ""} ${POINT_TONE[p.state] ?? ""}`}
                   title={`${p.title} · ${p.minutes} 分钟${POINT_LABEL[p.state] ? " · " + POINT_LABEL[p.state] : ""}`}>
               {POINT_TONE[p.state] === "ok" ? <CheckCircle2 size={13} /> : <i>{i + 1}</i>}{p.title}
             </span>

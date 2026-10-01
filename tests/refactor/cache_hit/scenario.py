@@ -72,7 +72,9 @@ class ScriptedGateway:
         self.requests.append(entry)
         text = '\n'.join(m['content'] for m in messages)
         hits = ()
-        if purpose == 'sufficiency':
+        if purpose == 'question_review':
+            value = dict(verdict='approve', issues=[], revised=None)
+        elif purpose == 'sufficiency':
             value = dict(enough=count > 1, questions=[] if count > 1 else ['要掌握哪些列表操作？'],
                          goal='掌握 Python 列表方法', focus=['append/extend', 'remove/pop', 'sort 返回值'])
         elif purpose == 'plan_intent':
@@ -115,7 +117,8 @@ class ScriptedGateway:
                 available = [a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task.get('used_angles', {}).get(point['id'], ())]
                 for variant in range(task.get('counts', {}).get(point['id'], 2) if task['purpose'] == 'bank' else 1):
                     row = dict(id=f'q{i}-{variant}', type='short', stem=f"请解释{point['title']}（题组{count}-{variant}）。", options=[], answer='按原文解释',
-                               reference=point['summary'], point_ids=[point['id']], chunk_ids=[next(iter(excerpts))], required_points=[point['summary']])
+                               reference=point['summary'], point_ids=[point['id']], chunk_ids=[next(iter(excerpts))],
+                               required_points=[point['title'].split(' 与 ')[0].split(' 的')[0] + ' 的作用'])
                     if task['purpose'] == 'check':
                         row['angle'] = next(a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task['used_angles'][point['id']])
                     if task['purpose'] == 'bank': row['angle'] = available[variant]

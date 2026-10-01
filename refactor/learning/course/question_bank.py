@@ -92,5 +92,5 @@ def review_points(practice_results):
     latest = {}
     for row in sorted(practice_results, key=lambda r: (r['at'], r.get('sequence', 0), r['id'])):
         for pid in row['point_ids']:
-            latest[pid] = not row['correct']
+            latest[pid] = pid in row.get('wrong_points', [] if row['correct'] else row['point_ids'])
     return {pid for pid, needs_review in latest.items() if needs_review}

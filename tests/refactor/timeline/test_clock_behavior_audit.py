@@ -138,7 +138,7 @@ def env(monkeypatch):
             yield value
         finally:
             for worker in list(threading.enumerate()):
-                if worker.name == "classroom-profile":
+                if worker.name in ('classroom-profile', 'classroom-question-bank', 'classroom-lesson-prep'):
                     worker.join(5)
             store.close()
 
@@ -174,6 +174,11 @@ def act(env, name, *args):
     method = getattr(env.room, name)
     ctx = SimpleNamespace(cancel=threading.Event(), stream=lambda _: None)
     view = env.room.run(PLAN, lambda co, st, cx: method(co, st, cx, *args), ctx)
+    import time as wall_time
+    deadline = wall_time.monotonic() + 3
+    while view['step'] == 'preparing_questions' and wall_time.monotonic() < deadline:
+        wall_time.sleep(.005)
+        view = env.room.run(PLAN, lambda *a: None, ctx)
     if name in ('next', 'reply'):
         from tests.refactor.guided_lessons.fixtures import advance_to_question
         view = advance_to_question(env.room, PLAN, view, ctx)
