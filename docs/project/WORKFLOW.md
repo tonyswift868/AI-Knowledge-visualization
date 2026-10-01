@@ -62,14 +62,14 @@
 
 ## 待派队列
 
-第二十八批（4 个任务，原文见下节）已起草，等用户转发。之后：
+第二十八批已收尾（出题合入 28064c1，其余不合入）；第二十九批（第三次小测试）已起草，原文见下节。之后：
 
 | 建议批次 | 员工 | 内容 | 关联 |
 | --- | --- | --- | --- |
 | 第二十九批 | MF-06（保持独立） | 第三次小测试（功能验收）：初中数学、3 个模块 8–10 个点，跑通新课堂、模块检测、直接考、最终检验、报告、自由检验、中断恢复；同时用考卷终测 28-MF03 合入后的判定 | QA-01 |
 | 之后 | — | 小测试暴露的功能问题按“两轮规则”修；大测试（ai-agent-book + hello-agents）用户说了才写 | QA-01 |
 
-## 第二十九批任务原文（2026-10-02，基线 BASE）
+## 第二十九批任务原文（2026-10-02，基线 328907c）
 
 ### [29-MF06] classroom｜第三次小测试：功能验收（初中数学，完整跑到最后）
 
@@ -80,7 +80,7 @@
   cd D:\MentorFlow-office\classroom\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/classroom
-  git reset --hard BASE
+  git reset --hard 328907c
 测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。只允许提交验收脚本（放 tests/refactor/acceptance/，默认跳过）；提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止改产品代码（refactor/ 下任何文件）；禁止 ssh、连接 MentorFlow 服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\acceptance3\ 下；中间产物用完即删，回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
 验收按 CURRENT_STATE [QA-01]：不让被测模型给自己打分，老师讲解、题目、判定都由你本人对照原文逐条核对。回执里的测试结果要和实际一致。
@@ -845,7 +845,7 @@
 | 28-MF06 | MF-06 classroom | 用当前主线跑完没见过的考卷（174 条） | TEACH-04、QA-01 | 9c9f32b | 已完成（174 条：冤枉 1、放水 0、一致 98.24%；无代码） |
 | 28-MF06b | MF-06 classroom | 用同一份考卷对比 28-MF03 新判法与当前主线 | TEACH-04、QA-01 | 396bdb3 | 已完成（新判法冤枉同为 1、一致 98.8%；建议不合入，已采纳） |
 | 28-MF01b | MF-01 library | 讲稿按方案 A 收尾：保留第二十七批核对，只并入程序跑代码与学生试答 | TEACH-08 | 4484d87 | 已完成（部分：真实 4 点最终批准 0/4；不合入） |
-| 29-MF06 | MF-06 classroom | 第三次小测试：功能验收（初中数学，完整跑到最后），只找问题不改代码 | QA-01 及全部已实现条目 | BASE | 已起草，待用户转发 |
+| 29-MF06 | MF-06 classroom | 第三次小测试：功能验收（初中数学，完整跑到最后），只找问题不改代码 | QA-01 及全部已实现条目 | 328907c | 已起草，待用户转发 |
 
 ## 任务模板
 
