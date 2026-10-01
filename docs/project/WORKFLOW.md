@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-01）：第二十八批 4 个任务已起草（原文在“第二十八批任务原文”，基线 9c9f32b），等用户转发；这是“换方法”的第二轮，合入后跑第三次小测试。用户没空看长清单：要问的事列成带编号的短问题，每条附建议。
+- **现在在做的事**（2026-10-02）：第三次小测试已回（功能未通过，讲错 0、冤枉 0）；架构师已修 BUG-41、BUG-42；第三十批修剩下的 P1-02、P2-01、P2-02、P3-01，原文在“第三十批任务原文”（基线 8de04cd），等用户转发。
 
 ## 协作方式
 
@@ -62,12 +62,80 @@
 
 ## 待派队列
 
-第二十八批已收尾（出题合入 28064c1，其余不合入）；第二十九批（第三次小测试）已起草，原文见下节。之后：
+第三十批（2 个任务，原文见下节）已起草，等用户转发。之后：
 
 | 建议批次 | 员工 | 内容 | 关联 |
 | --- | --- | --- | --- |
-| 第二十九批 | MF-06（保持独立） | 第三次小测试（功能验收）：初中数学、3 个模块 8–10 个点，跑通新课堂、模块检测、直接考、最终检验、报告、自由检验、中断恢复；同时用考卷终测 28-MF03 合入后的判定 | QA-01 |
-| 之后 | — | 小测试暴露的功能问题按“两轮规则”修；大测试（ai-agent-book + hello-agents）用户说了才写 | QA-01 |
+| 第三十一批 | MF-06（保持独立） | 用 tests/refactor/acceptance/test_math_complete_flow_real.py 重跑第三次小测试，确认 P1、P2 都已解决、没有新问题 | QA-01 |
+| 之后 | — | 小测试达标后：发新版（BUG-40 必须）、大测试（用户说了才写）、GPT-6 审仓库 | QA-01、SYS-06 |
+
+## 第三十批任务原文（2026-10-02，基线 8de04cd）
+
+两个任务修第三次小测试剩下的问题（第一轮）；合入后 MF-06 用同一个脚本重跑第三次小测试。
+
+### [30-MF04] platform｜最终检验缺题永久卡住（P1-02）+ 补充说明里的点数要求被忽略（P2-02）
+
+~~~text
+【MentorFlow 第三十批｜MF-04（工位 platform）｜最终检验缺题永久卡住（P1-02）+ 补充说明里的点数要求被忽略（P2-02）】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard BASE
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：不让被测模型给自己打分，由你本人核对。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+花钱规则（用户定：功能优先，花费不离谱就不管）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥1.5。花费只记录，但要报告。
+只做一轮（用户定，防止无穷无尽地改）：实现 → 测 → 报告。达到完成标准就收；没达到不要继续微调，回执写清没过的样本、原因判断和建议换的方法。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑两个任务（按文件分工，冲突由架构师合并）：
+  30-MF04（platform）：course/question_review.py、app/classroom.py 的 _bank_fill 与题库补题部分、course/planner_agents.py、app/plan_flow.py 里把补充说明交给轮廓与生成的部分。
+  30-MF01（library）：course/extract.py、app/classroom.py 的备课时机部分（_prepare_later、_prep_targets、_schedule_*、讲稿缺稿时的前台准备）。
+背景：第三次小测试（.local/test-tmp/acceptance3/report.md）第一次跑到了计划完成，但有两处问题要你修（CURRENT_STATE [CHK-01] 与 [PLAN-04] 的“待修”）：
+  P1-02：最终检验时“等式加减性质与天平模型”缺一道题后永久卡住。原因判断：question_review 的结构检查把题面里的“同时”当成一题塞了多个要求而拒题；每点出题 2 次、每题核对 2 次的上限用完后不再补题，重试只在“检验中 / 正在准备题目”之间打转。证据：bundled-repro.json、bank-block-evidence*.json、candidate-recovery.json、operations/op-0089、op-0092。
+  P2-02：补充说明里写了“总共 8–10 个点、每模块 3 点”，实际 3 个模块 11 点（3 + 5 + 3），第二个模块标题说乘除、内容主要是化简。证据：outline.json、generated.json、points.json、plan-steps/08正式生成.json。
+先读：AGENTS.md；CURRENT_STATE 的 [CHK-01]（全部）、[PLAN-04]、[PLAN-01]、[ARCH-06]、[QA-01]；验收报告的 P1-02、P2-02 与上面的证据文件；course/question_review.py、app/classroom.py 的 _bank_fill 与补题部分、course/planner_agents.py。
+要做
+  1. P1-02 原则：任何情况下都不能让用户永久卡住；也不能放松题目质量（错题、歧义、泄题仍然 0）。具体：①结构检查里“一题多个要求”的判断不再单凭“同时、和、以及”等字眼直接拒题，拿不准的交给核对员判断；②某个点出题次数用完后，用户点“重新准备题目”（或下一次进入检验）要能重新开始一轮出题与核对（每次用户操作最多一轮，次数照样持久保存，防止后台无限重试）；③实在出不了，明确告诉用户哪一个点出不了题、为什么，并给出可继续的操作，不在两个状态间打转。
+  2. P2-02：补充说明里用户写明的数量与范围要求（总点数、每模块点数、模块数、只学哪些内容）要传给轮廓与正式生成并照做；生成结果超出时程序检查并让模型按要求调整一次，仍不符合就在轮廓里明确告诉用户。不是给全产品加点数上限，用户没写就按原来的每点约 15 分钟划分。
+  3. 测试：离线回放验收保存的拒题与出题记录（不花钱）复现 P1-02 并证明修后能走下去；P2-02 用验收的同一份表单和资料真实生成一次轮廓与正式生成（≤ ¥1），核对点数与模块内容。
+完成标准：P1-02 离线复现修前卡住、修后能继续，并有“出不了题时的提示与可继续操作”的测试；P2-02 真实生成符合用户写明的数量要求；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix30-bank-plan\report.md。
+回执：【MF-04｜platform｜第三十批｜完成/部分完成/受阻】基线 ／ 提交 ／ P1-02 修法与修前修后对照 ／ P2-02 修法与真实生成结果 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [30-MF01] library｜数学网页分数抽错（P2-01）+ 讲稿没提前备好时等 1–2 分钟（P3-01）
+
+~~~text
+【MentorFlow 第三十批｜MF-01（工位 library）｜数学网页分数抽错（P2-01）+ 讲稿没提前备好时等 1–2 分钟（P3-01）】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard BASE
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：不让被测模型给自己打分，由你本人核对。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+花钱规则（用户定：功能优先，花费不离谱就不管）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥1。花费只记录，但要报告。
+只做一轮（用户定，防止无穷无尽地改）：实现 → 测 → 报告。达到完成标准就收；没达到不要继续微调，回执写清没过的样本、原因判断和建议换的方法。
+遇到需要选择的事：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。对原因的判断要用真实数据验证后再写（BUG-20）。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑两个任务（按文件分工，冲突由架构师合并）：
+  30-MF04（platform）：course/question_review.py、app/classroom.py 的 _bank_fill 与题库补题部分、course/planner_agents.py、app/plan_flow.py 里把补充说明交给轮廓与生成的部分。
+  30-MF01（library）：course/extract.py、app/classroom.py 的备课时机部分（_prepare_later、_prep_targets、_schedule_*、讲稿缺稿时的前台准备）。
+背景：第三次小测试（.local/test-tmp/acceptance3/report.md）有两处问题要你修（CURRENT_STATE [PLAN-09]、[TEACH-08] 的“待修”）：
+  P2-01：OpenStax 网页里用 MathML 写的分数被抽成整数并与辅助文字重复拼接（3/4 变成 34），数学原文被污染，可能导致讲错。原因判断：course/extract.py 的 HTML 行内文字只把子节点文字拼起来，没有处理 mfrac 等数学结构。证据：check_math_source.py、source-math-audit.json、openstax-original.html、source_chunks.json。
+  P3-01：第 3 天第一点和第三点讲稿没提前备好，点“继续”等前台现场备稿 59 秒和 113 秒；与“上课中始终至少领先 3 个点”（第二十五批）不符。证据：ops.json、calls、metrics.json（按 seconds > 50 筛）。
+先读：AGENTS.md；CURRENT_STATE 的 [PLAN-09]、[TEACH-08]（全部，含“避开高峰价”）、[TEACH-06]、[QA-01]；验收报告的 P2-01、P3-01 与上面的证据；course/extract.py；app/classroom.py 的备课时机部分。
+要做
+  1. P2-01：HTML 里的 MathML（分数、上下标、根号、运算符等常见结构）转成可读的线性文字（如 3/4、x^2、√(x+1)），同一公式的可见形式与辅助形式（annotation、屏幕阅读用的重复文字）只保留一份；也检查 PDF、Word 里常见的分数写法有没有类似问题（只修确有问题的）。
+  2. P3-01：先用证据查清那两次为什么没提前备好（是领先规则没触发、高峰推迟、新的一天开头、还是前一批核对没完成），写明结论再改；目标是正常上课时点“继续”不再等现场备稿。学到没备好的点时仍然立刻备（不为省钱让人等），但要做到这种情况很少出现。
+  3. 测试：P2-01 用验收保存的 OpenStax 原网页离线验证（不花钱），重新抽取后人工核对数学式子；P3-01 用模拟时钟和假模型复现验收的上课节奏，证明讲稿始终提前备好，必要时用真实模型跑一小段（≤ ¥1）确认。
+完成标准：OpenStax 页面里的分数、式子抽取正确且不重复；按验收节奏上课时，点“继续”等待现场备稿的次数为 0（假模型复现）；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix30-extract-prep\report.md。
+回执：【MF-01｜library｜第三十批｜完成/部分完成/受阻】基线 ／ 提交 ／ P2-01 修法与抽取前后对照 ／ P3-01 原因结论、修法与复现结果 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
 
 ## 第二十九批任务原文（2026-10-02，基线 328907c）
 
@@ -845,7 +913,9 @@
 | 28-MF06 | MF-06 classroom | 用当前主线跑完没见过的考卷（174 条） | TEACH-04、QA-01 | 9c9f32b | 已完成（174 条：冤枉 1、放水 0、一致 98.24%；无代码） |
 | 28-MF06b | MF-06 classroom | 用同一份考卷对比 28-MF03 新判法与当前主线 | TEACH-04、QA-01 | 396bdb3 | 已完成（新判法冤枉同为 1、一致 98.8%；建议不合入，已采纳） |
 | 28-MF01b | MF-01 library | 讲稿按方案 A 收尾：保留第二十七批核对，只并入程序跑代码与学生试答 | TEACH-08 | 4484d87 | 已完成（部分：真实 4 点最终批准 0/4；不合入） |
-| 29-MF06 | MF-06 classroom | 第三次小测试：功能验收（初中数学，完整跑到最后），只找问题不改代码 | QA-01 及全部已实现条目 | 328907c | 已起草，待用户转发 |
+| 29-MF06 | MF-06 classroom | 第三次小测试：功能验收（初中数学，完整跑到最后），只找问题不改代码 | QA-01 及全部已实现条目 | 328907c | 已完成（功能验收未通过：P1 2、P2 2、P3 3；讲错 0、冤枉 0） |
+| 30-MF04 | MF-04 platform | 最终检验缺题永久卡住（P1-02）+ 补充说明点数要求被忽略（P2-02） | CHK-01、PLAN-04 | 8de04cd | 已起草，待用户转发 |
+| 30-MF01 | MF-01 library | 数学网页分数抽错（P2-01）+ 讲稿没提前备好时等 1–2 分钟（P3-01） | PLAN-09、TEACH-08 | 8de04cd | 已起草，待用户转发 |
 
 ## 任务模板
 
