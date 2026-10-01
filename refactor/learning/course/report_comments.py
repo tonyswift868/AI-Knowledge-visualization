@@ -30,7 +30,10 @@ def generate_comments(gateway, store, plan_id, report, *, cancel=None):
         stages = [f'{name}错 {counts[kind]} 次' for kind, name in names.items() if counts[kind]]
         reasons = list(dict.fromkeys(reason.strip()[:120] for _, reason in mistakes if reason.strip()))[:2]
         status = '现已通过。' if row['passed'] else '目前尚未通过。'
-        quiet = ('“' + row['summary'].strip()[:40] + '”无错答记录；') if row['summary'].strip() else '记录中没有答错；'
+        summary = row['summary'].strip()
+        # Quote only a whole summary; a 40-char cut ended mid-sentence (BUG-42).
+        quiet = ('“' + summary + '”无错答记录；') if summary and len(summary) <= 40 else (
+            '这个点没有答错记录；' if summary else '记录中没有答错；')
         comments[row['point_id']] = ('、'.join(stages) + '；' if stages else quiet) + (
             '当时的判定原因：' + '；'.join(reasons) + '；' if reasons else '') + status
     return comments

@@ -84,7 +84,7 @@ export function Report() {
           <b>{m.mastered}/{m.total}</b>
         </div>)}
       </div>
-      <div className="section-title"><h2>每日计划与实际时长</h2><span>含每天的欠账与超前</span></div>
+      <div className="section-title"><h2>每日计划与实际时长</h2><span>按当天单独比较，不是累计欠账</span></div>
       <div className="card stack" role="img" aria-label="每天目标和实际分钟数分组柱状图">
         <p className="muted" style={{ margin: 0 }}>上条：目标 · 下条：实际；长度按全部日期的最大值比较。</p>
         {views.history.map((d) => <div key={d.day} style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -122,7 +122,7 @@ export function Report() {
       <div className="card stack">
         {views.history.map((d) => <div key={d.day} className="row between" style={{ flexWrap: "wrap", gap: 8 }}>
           <b>{d.day}</b><span>目标 {d.target_minutes} 分</span><span>实际 {d.actual_minutes} 分</span>
-          <span>欠账 {d.debt_minutes} 分</span><span>超前 {d.ahead_minutes} 分</span>
+          <span>比当天目标少 {d.debt_minutes} 分</span><span>比当天目标多 {d.ahead_minutes} 分</span>
         </div>)}
       </div>
       <div className="section-title"><h2>模块</h2><span>{r.modules.length} 个{r.plan.replan_count ? ` · 调整过计划 ${r.plan.replan_count} 次` : ""}</span></div>

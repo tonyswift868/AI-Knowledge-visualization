@@ -575,8 +575,10 @@ class CourseStore:
 
     @_atomic
     def mark_bank_correct(self, plan_id, question_id):
-        row = self._get('question_bank', plan_id, question_id)
-        if not row['correct_seen']:
+        # Quick-check and deepen questions are generated on the spot and never
+        # enter the bank; answering them right must not fail the save (BUG-41).
+        row = next((q for q in self._rows('question_bank', plan_id) if q['id'] == question_id), None)
+        if row is not None and not row['correct_seen']:
             row['correct_seen'] = True
             self._put('question_bank', plan_id, row)
 

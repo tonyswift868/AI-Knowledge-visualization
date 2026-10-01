@@ -68,7 +68,7 @@ def render_report_pdf(report, titles, views, path: Path):
         nonlocal y
         page(42)
         label = f"{row['day']}  目标 {row['target_minutes']}  实际 {row['actual_minutes']}"
-        line(label + f"  欠账 {row['debt_minutes']}  超前 {row['ahead_minutes']}", size=9)
+        line(label + f"  比当天目标少 {row['debt_minutes']}  多 {row['ahead_minutes']}", size=9)
         x, span = margin + 110, usable - 250
         limit = max(1, row['target_minutes'], row['actual_minutes'])
         painter.fillRect(QRectF(x, y - 4, span * row['target_minutes'] / limit, 3), blue)
@@ -97,7 +97,7 @@ def render_report_pdf(report, titles, views, path: Path):
             bar(label, count, max(1, views['errors']['casual'], views['errors']['module'],
                                   views['errors']['check']), rose, count=True)
         heading('每日目标与实际时长 / 历史明细')
-        line('蓝色为计划，红色为实际；欠账与超前按当天目标减当天实际计算。', size=9, color=muted)
+        line('蓝色为计划，红色为实际；每天单独比较当天目标与实际，不是累计欠账。', size=9, color=muted)
         for row in views['history']:
             daily(row)
         heading('最需要注意的知识点')
