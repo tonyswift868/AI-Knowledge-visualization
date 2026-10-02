@@ -7,6 +7,11 @@ import sys
 
 
 def main():
+    # Build validation runs the frozen imports/resources without a signed
+    # installation or a real account. Normal startup still verifies its tree.
+    if len(sys.argv) == 3 and sys.argv[1] == "--packaging-smoke-root":
+        from refactor.desktop.packaging.smoke import check
+        return check(Path(sys.argv[2]))
     parser = argparse.ArgumentParser()
     parser.add_argument("--install-mode", choices=["per_user"], required=True)
     parser.add_argument("--install-root", type=Path, required=True)
