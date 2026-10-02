@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-03）：36-MF02 已交回（部分完成，¥5.48）。用户定了新方向（AI 只找权威资料、不自己出题，见 CURRENT_STATE 当前阶段），正在讨论；不派任务。
+- **现在在做的事**（2026-10-03）：第三十七批（A 线：更新、登录错报与日志、建计划卡忙/内部错误/首页）已起草交用户转发；B 线由架构师调研权威资料与带答案题目的来源，出设计给用户定。
 
 ## 协作方式
 
@@ -65,7 +65,116 @@
 
 ## 待派队列
 
-- 36-MF02：已交回（2026-10-03，部分完成）。
+- 37-MF01、37-MF02、37-MF03：已起草（2026-10-03），交用户转发。合入后：打包 2.0.2（未签名）→ 架构师签名发布（装好的是 2.0.1，可按 3 年签）→ 在用户软件里点更新复测 A 线。
+- B 线（AI 只找资料、不出题）：架构师先调研来源，再出设计给用户定。
+
+## 第三十七批任务原文（2026-10-03，基线 54cc6dc）
+
+A 线（用户 2026-10-03 认可）：只修和“AI 只找资料、不出题”新方向无关、改了不会白改的问题。三个任务按文件分工并行；合入后由架构师安排打包 2.0.2、签名发布，再在用户装好的软件里点更新复测。出题、讲稿、课堂判定流程不在本批（B 线重做），不要顺手修。
+
+### [37-MF01] runtime｜更新：慢网不断、发现新版就弹框、默认安装位置
+
+~~~text
+【MentorFlow 第三十七批｜MF-01（工位 runtime）｜更新：慢网不断、发现新版就弹框、默认安装位置】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 54cc6dc
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可 A 线），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+花费：本任务原则上不调用真实模型（¥0）；确需真实调用验证时上限 ¥0.5，写明原因。
+同时在跑三个任务（按文件分工，冲突由架构师合并）：
+  37-MF01（runtime）：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
+  37-MF02（platform）：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
+  37-MF03（client）：app/plan_flow.py 的 run、app/classroom.py 的 reply 路径（bridge.py 只动 reply 相关）、Home.tsx、ui.tsx。
+背景（CURRENT_STATE「当前阶段」36-MF02 各次回执、[SYS-06] 的“待修”与“更新提示的交互”）：用户的 2.0.0 升 2.0.1 时，本机到服务器 240–470 KB/s 且有波动，update_download.HTTPTransport 默认 total=30、read=3：14 MB 的文件 30 秒下不完被掐断，2 MB 的更新清单波动时也超时，界面停在“下载已暂停 / 暂时无法检查更新”，要用户反复手点。另外“关于”里只显示一行“发现新版本”，用户要的是弹框。
+先读：AGENTS.md；CURRENT_STATE 的 [SYS-06]、[BUG-45]；refactor/desktop/delivery/update_download.py（HTTPTransport、download）、update_service.py、per_user_update_core.py（one_click_service）、refactor/desktop/updates.py；web/src/pages/Settings.tsx 的“关于”；安装程序的 directory-policy.iss。
+要做（做法已定，照做）
+  1. 超时：HTTPTransport 下载更新文件时不设总时长上限，只按“连续多久没收到任何数据”判断断线（30 秒）；连接超时 15 秒。更新清单（stable.json）同样按 30 秒无数据判断，另设总上限 5 分钟。保留“同一时间只一个请求”和取消。
+  2. 自动续传：一个文件中断时保留已下部分（现有 .part 机制），自动重试最多 5 次，间隔 2、4、8、16、30 秒，每次用 Range 续传；5 次都失败才把状态报给界面（“网络不稳，已下载 X/Y，稍后会自动继续”，并保留“继续”按钮）。检查更新失败同样自动重试 3 次再报“暂时无法检查更新”。
+  3. 弹框（参照 macOS 上 Sparkle 和 VS Code 的做法，用户 2026-10-02 提出）：
+     - 登录进主界面后后台检查一次；软件一直开着时每 24 小时再查一次。登录前不弹。
+     - 发现新版本就弹框：当前版本、新版本、更新内容（清单里的 release_notes），按钮【立即更新并重启】【稍后】。点“稍后”：本次运行不再弹，设置入口和“关于”上显示红点；下次启动再提醒。
+     - “关于”里手动点“检查更新”：有新版直接弹同一个框；没有就提示“已是最新版本 x.y.z”。
+     - 正在上课、模块检测、最终检验或自由检验时不弹，等这一段结束回到首页或计划页再弹。
+     - 清单 mandatory 为真时框里只有【立即更新】。
+     - 点“立即更新”后框内显示下载进度（已下载/总量），完成后自动重启。
+  4. 安装程序默认位置改为 %LOCALAPPDATA%\Programs\MentorFlow（Windows 常见的按用户安装位置），不再用 %LOCALAPPDATA%\MentorFlow（会和旧版客户端的数据文件夹撞名，36-MF02 P3-01）。已有安装的升级不受影响。
+  5. 测试：假服务器模拟慢速（每秒几十 KB、每隔一段停 5 秒）、中途断开、Range 续传、清单慢返回，断言不再 30 秒掐断、能自动续完；弹框的各种情况（登录后自动检查、手动检查有/无新版、稍后、上课中不弹、强制更新）用前端测试或桥层测试覆盖。
+完成标准：慢速与断续网络下更新能自己下完；发现新版本会弹框；默认安装位置改好；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix37-update\report.md。
+回执：【MF-01｜runtime｜第三十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 超时与续传改法 ／ 弹框各情况 ／ 安装位置 ／ 测试结果 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [37-MF02] platform｜登录：网络波动不再错报“登录已失效”、旧登录窗口、软件日志
+
+~~~text
+【MentorFlow 第三十七批｜MF-02（工位 platform）｜登录：网络波动不再错报“登录已失效”、旧登录窗口、软件日志】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard 54cc6dc
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可 A 线），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+花费：本任务原则上不调用真实模型（¥0）；确需真实调用验证时上限 ¥0.5，写明原因。
+同时在跑三个任务（按文件分工，冲突由架构师合并）：
+  37-MF01（runtime）：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
+  37-MF02（platform）：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
+  37-MF03（client）：app/plan_flow.py 的 run、app/classroom.py 的 reply 路径（bridge.py 只动 reply 相关）、Home.tsx、ui.tsx。
+背景（CURRENT_STATE「当前阶段」36-MF02 回执 P1-04、P2-03）：真实使用中两次出现“账号已连接”与“登录已失效，请重新验证账号”同时显示，第二次离登录只有 3 分 48 秒。架构师读代码的初步结论：账号外壳在刷新登录凭证遇到网络波动时，按设计“保持登录、后台重试”（account_shell_main._retry_session_refresh 把 _session_refresh_degraded 置真），这期间 _feature_session 可能返回 None；学习侧 sync_source._session 拿到 None 就抛 SESSION_UNAVAILABLE，而 course_sync_service._finish、app/sync.py note_error、app/bridge.py 都把 SESSION_UNAVAILABLE 当成 REAUTH_REQUIRED：同步永久停止、页面显示“登录已失效”。另外重新登录后，旧的登录窗口没有关、仍显示“登录已失效”。装好的软件不写任何日志，无法事后查原因。
+先读：AGENTS.md；refactor/desktop/account_shell_main.py（_feature_session、_retry_session_refresh、刷新成功处、登录窗口 gate 的显示/隐藏）、refactor/learning/sync_source.py、refactor/learning/services/course_sync_service.py、refactor/learning/app/sync.py、refactor/learning/app/bridge.py、refactor/desktop/shell_paths.py（安装版数据目录）。
+要做（做法已定，照做）
+  1. 先用测试复现：模拟刷新凭证时网络超时一次、随后恢复，断言现在会出现“登录已失效”和同步停止（复现失败就把你找到的真实触发路径写清，再按下面原则修）。
+  2. 区分“暂时确认不了”和“真的失效”：SESSION_UNAVAILABLE（以及刷新时的网络错误、超时）只算暂时问题——同步按现有失败退避重试（30 秒起、最长 5 分钟），页面只显示“账号连接不稳，正在重试；当前学习不受影响”，不停同步、不弹登录。只有服务器明确拒绝（刷新凭证本身被拒、或刷新后的请求仍返回 401/403，即 REAUTH_REQUIRED / ENTERPRISE_SESSION_REAUTH_REQUIRED）才进入“需要重新登录”。课堂、计划等学习请求遇到暂时问题时自动重试一次，再不行提示“网络不稳，请稍后再试”，不说“登录已失效”。
+  3. 重新登录成功后，关闭或隐藏所有残留的登录窗口，主窗口与登录状态只认当前这一次登录。
+  4. 日志：安装版在 Data\logs\ 写滚动日志（单文件 5 MB、保留 5 个），记录错误与堆栈、更新/登录/同步状态变化、每次模型调用的用途/耗时/结果码；不写密码、Key、令牌、聊天正文与学习内容。源代码运行时写到原有数据目录下同样位置。设置“关于”里加“打开日志文件夹”。
+  5. 测试：暂时问题不进入重新登录、同步恢复；服务器拒绝时才要求登录；登录后旧窗口关闭；日志滚动与不含敏感信息（构造带令牌的异常，断言日志里没有令牌）。
+完成标准：网络波动不再显示“登录已失效”；真失效仍能正确要求登录；没有残留登录窗口；装好的软件有日志；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix37-session\report.md。
+回执：【MF-02｜platform｜第三十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 复现结果与真实触发路径 ／ 改法 ／ 日志位置与内容 ／ 测试结果 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [37-MF03] client｜建计划卡“忙”、提问返回内部错误、首页布局
+
+~~~text
+【MentorFlow 第三十七批｜MF-03（工位 client）｜建计划卡“忙”、提问返回内部错误、首页布局】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard 54cc6dc
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可 A 线），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+花费：本任务原则上不调用真实模型（¥0）；确需真实调用验证时上限 ¥0.5，写明原因。
+同时在跑三个任务（按文件分工，冲突由架构师合并）：
+  37-MF01（runtime）：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
+  37-MF02（platform）：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
+  37-MF03（client）：app/plan_flow.py 的 run、app/classroom.py 的 reply 路径（bridge.py 只动 reply 相关）、Home.tsx、ui.tsx。
+背景（CURRENT_STATE「当前阶段」36-MF02 回执 P1-02、P1-07 与用户截图）：
+  - 建计划每一步做完后界面仍显示忙、继续按钮一直灰。原因已定位：app/plan_flow.py 的 run() 在 finally 清掉状态之前就执行了 return {"draft": self.public(draft)}，public() 里的 busy 取到的是上一条状态文字。
+  - 最终检验第一题学生问术语澄清，两次 classroom.reply 返回 ok=false、code=INTERNAL（“操作没有完成，请重试”），学生的话还重复进了聊天。证据在 D:\MentorFlow\.local\test-tmp\acceptance4\（final-clarification-error-audit.json、views/092–093）。
+  - 首页（用户 2026-10-03 截图）：今日计划卡片标题是整句学习目标、超出卡片右边；“开课”按钮伸出卡片到窗口边缘；顶部和卡片各有一个“0/24 分钟”圆环重复；“暂记 10 分”看不懂。
+先读：AGENTS.md；app/plan_flow.py（run、public、status）、web/src/pages/NewPlan.tsx 里 busy 的用法；app/classroom.py 的 reply 路径与 app/bridge.py 的异常映射；web/src/pages/Home.tsx、web/src/ui.tsx。
+要做（做法已定，照做）
+  1. 建计划忙：先清状态再构造响应（finally 里清 status、释放锁之后再返回 public 视图），保证响应里的 busy 为空；加测试：一次操作结束后响应 busy 为空、再次操作不被 PLAN_BUSY 挡。
+  2. INTERNAL：用证据里的题目与请求在测试里复现 classroom.reply 的异常（可以把 D:\MentorFlowApp\MentorFlow\Data 里该计划的数据复制到 D:\MentorFlow\.local\test-tmp\fix37-client\ 下用假模型回放，只读原数据、不改用户数据）。找到真实异常后修掉；同时保证失败时学生的话不重复写进聊天（失败就不落库，或重试时去重）。复现不出来就写清尝试过什么，并在 reply 路径补上带堆栈的错误记录，交回。
+  3. 首页：今日计划卡片里标题最多两行、超出省略，鼠标悬停看全文；“开课”按钮宽度不超过卡片；卡片在窄窗口与宽窗口下都不溢出。去掉重复的圆环：顶部保留“今天全部计划”的合计，卡片里只写这份计划今天的进度文字。“暂记 X 分”改成“已学 X 分（模块检测通过后计入完成）”，或你找到更清楚的说法，回执写明。计划名称过长的问题（P3-02）留给 B 线，本任务只保证显示不溢出。
+  4. 测试：plan_flow busy 测试；reply 异常复现与修复测试；首页用前端测试或截图比对验证不溢出（给出 900 px 与 1600 px 宽两张截图）。
+完成标准：建计划不再卡忙；该澄清提问不再返回 INTERNAL、失败不重复写聊天；首页不溢出、不重复、文字看得懂；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix37-client\report.md。
+回执：【MF-03｜client｜第三十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 三项各自的原因与改法 ／ 截图 ／ 测试结果 ／ 本地最终占用 ／ 问题记录
+~~~
 
 ## 第三十六批任务原文（2026-10-02，基线 db874ac）
 
