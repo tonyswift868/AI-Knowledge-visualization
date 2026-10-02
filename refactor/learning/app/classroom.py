@@ -25,6 +25,7 @@ import re
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 
 from ..connections.errors import MODEL_OUTPUT_TRUNCATED, ModelCancelled, ModelError
 from ..course import answer_compare, check_agent, judge_agent, lesson_prep, profile_agent, question_agent, question_bank, teacher_agent
@@ -64,6 +65,9 @@ def _now():
 class Classroom:
     _lesson_mutex = threading.Lock()
     _lesson_locks = {}
+    _lesson_jobs = {}
+    _lesson_errors = {}
+    _room_locks = {}
     def __init__(self, services, study_day, *, now=_now, rng=None, review_wrong=None):
         self.services, self.study_day, self.now = services, study_day, now
         self.review_wrong = judge_agent.REVIEW_WRONG_DEFAULT if review_wrong is None else bool(review_wrong)
@@ -81,6 +85,8 @@ class Classroom:
         self._bank_jobs = {}
         self._bank_seen = {}
         self._bank_plans = set()
+        self._lesson_wait_jobs = set()
+        self.lesson_event = lambda data: None
         self._unsubscribe_bank = self.services.store.subscribe(self._bank_material_changed)
 
     # ------------------------------------------------------------------ state
@@ -90,8 +96,9 @@ class Classroom:
         return AccountJSON(self.services.account_id, self.services.data_root, f"classroom/{plan_id}.json")
 
     def _lock(self, plan_id):
-        with self._guard:
-            return self._locks.setdefault(plan_id, threading.Lock())
+        key = (str(self.services.data_root), self.services.account_id, plan_id)
+        with self._lesson_mutex:
+            return self._room_locks.setdefault(key, threading.Lock())
 
     def run(self, plan_id, work, ctx: CallContext | None = None):
         """One classroom operation per plan at a time; returns the page snapshot."""
@@ -107,6 +114,7 @@ class Classroom:
                     self._finish_test(course, state, ctx)  # finish the interrupted close instead of the action (BUG-23)
                 else:
                     work(course, state, ctx)
+                    self._resume_lesson_wait(course, state)
                     self._resume_bank_wait(course, state, ctx)
                     if state['step'] != 'preparing_questions':
                         state.pop('bank_wait_attempts', None)
@@ -214,6 +222,7 @@ class Classroom:
                            for i, p in enumerate(points)],
                 "step": state["step"], "question": question, "messages": messages,
                 "lesson": self._lesson_view(course, state),
+                "lesson_wait": self._lesson_wait_view(state),
                 "can_skip": state["step"] == "teach" and state["index"] == 0 and not any(p["id"] in taught for p in points),
                 "red": [p["title"] for p in points if book.point(p["id"]).state == "red"],
                 "more_modules": any(book.module(m["id"]).state == "untested" for m in course.modules if m["id"] != module["id"]),
@@ -274,6 +283,10 @@ class Classroom:
                     options=[o.text for o in step.options] if lesson["awaiting"] == "choice" else [])
 
     def next(self, course, state, ctx):
+        if state["step"] == "preparing_lesson":
+            if (state.get("lesson_wait") or {}).get("error"):
+                self._teach_point(course, state, ctx, "")
+            return
         lesson = state.get("lesson")
         if lesson and state["step"] == "lesson":
             if lesson["awaiting"] != "continue":
@@ -334,40 +347,149 @@ class Classroom:
         point = course.points_of(state["module_id"])[state["index"]]
         prepared = self._prepared_point(course, point)
         if prepared is None:
-            self._prep_context_local.foreground = ctx or True
-            try:
-                for _ in range(4):
-                    self._prepare_point(course, point, {p["id"] for p in course.points})
-                    if self._prep_row(course, point)["status"] in ("reviewed", "needs_live_teaching"):
-                        break
-            finally:
-                self._prep_context_local.foreground = None
-            prepared = self._prepared_point(self._course(course.plan_id), point)
-        live = prepared is None
+            row = self._prep_row(course, point)
+            if row.pop("delivery_error", None):
+                self._persist_prep(course, point, row, {p["id"] for p in course.points})
+            with self._lesson_mutex:
+                self._lesson_errors.pop((*self._prep_key(course, point), row["fingerprint"]), None)
+            state.pop("lesson", None)
+            state["pending"] = None
+            state["step"] = "preparing_lesson"
+            state["lesson_wait"] = dict(point_id=point["id"], fingerprint=self._prep_fingerprint(course, point),
+                                        started_at=self.now().isoformat())
+            self._request_lesson(course, state)
+            return
+        self._install_lesson(course, state, point, prepared, live=False)
+
+    def _install_lesson(self, course, state, point, prepared, *, live):
+        resume_asks = (state.get("lesson_wait") or {}).get("resume_casual_asks")
         if live:
-            context = self._prep_context(course, point)
-            request = teacher_agent.live_lesson_request(context)
-            for attempt in range(2):
-                result = self.services.gateway.complete("teacher", request[1], system=request[0],
-                    plan_id=course.plan_id, cancel=ctx.cancel if ctx else None, max_tokens=16384)
-                try:
-                    prepared = lesson_prep.parse_prep(result.text, chunk_ids=point["chunk_ids"], live=True)
-                    issues = lesson_prep.check_lesson(prepared, chunk_ids=point["chunk_ids"])
-                    if issues: raise AgentFormatError("；".join(issues))
-                    break
-                except AgentFormatError:
-                    if attempt:
-                        raise ModelError("AGENT_FORMAT", "现场讲稿这次未能核实，当前知识点保留，请稍后继续。") from None
-            row = dict(course.store.load_lesson_cache(course.plan_id)["lesson_preps"].get(point["id"]) or {})
+            row = self._prep_row(course, point)
             row["live_used"] = True
-            course.store.save_lesson_cache_item(course.plan_id, "lesson_preps", point["id"], row)
+            self._persist_prep(course, point, row, {p["id"] for p in course.points})
+        state.pop("lesson_wait", None)
         state["lesson"] = dict(point_id=point["id"], draft=asdict(prepared), position=0,
                                awaiting=None, live=live)
         state["pending"] = None
         state["step"] = "lesson"
         state["resume"] = False
-        self._show_step(course, state)
+        if resume_asks:
+            self._casual_card(course, state, prepared.questions[resume_asks - 1], asks=resume_asks)
+        else:
+            self._show_step(course, state)
         self._prepare_later(course, state)
+
+    def _lesson_wait_view(self, state):
+        wait = state.get("lesson_wait")
+        if not wait or state["step"] != "preparing_lesson":
+            return None
+        elapsed = max(0, (self.now() - datetime.fromisoformat(wait["started_at"])).total_seconds())
+        return dict(point_id=wait["point_id"], elapsed_seconds=int(elapsed), error=wait.get("error"))
+
+    def _resume_lesson_wait(self, course, state, *, launch=True):
+        wait = state.get("lesson_wait")
+        if state["step"] != "preparing_lesson" or not wait:
+            return
+        point = course.points_of(state["module_id"])[state["index"]]
+        if point["id"] != wait["point_id"] or self._prep_fingerprint(course, point) != wait["fingerprint"]:
+            state.pop("lesson_wait", None)
+            state["step"] = "teach"
+            return
+        prepared = self._prepared_point(course, point)
+        row = self._prep_row(course, point)
+        live = False
+        if prepared is None and row.get("live_lesson"):
+            prepared = lesson_prep.parse_prep(json.dumps(row["live_lesson"], ensure_ascii=False),
+                                             chunk_ids=point["chunk_ids"], live=True)
+            if lesson_prep.check_lesson(prepared, chunk_ids=point["chunk_ids"]):
+                prepared = None
+            else:
+                live = True
+        if prepared is not None:
+            self._install_lesson(course, state, point, prepared, live=live)
+        else:
+            with self._lesson_mutex:
+                error = self._lesson_errors.get((*self._prep_key(course, point), wait["fingerprint"]))
+            if row.get("delivery_error") or error:
+                wait["error"] = row.get("delivery_error") or error
+            elif launch and not wait.get("error") and state.get("in_session"):
+                self._request_lesson(course, state)
+
+    def _request_lesson(self, course, state):
+        """Only enqueue work here. No classroom bridge thread waits for a model or a job."""
+        point = course.point(state["lesson_wait"]["point_id"])
+        fingerprint = state["lesson_wait"]["fingerprint"]
+        token = (course.plan_id, point["id"], fingerprint)
+        with self._guard:
+            if token in self._lesson_wait_jobs:
+                return
+            self._lesson_wait_jobs.add(token)
+
+        def work():
+            error = None
+            try:
+                # Join this exact point if a batch owns it. Unrelated batches
+                # never stand in front of an urgently needed point.
+                while True:
+                    with self._prep_claim(course, point) as owned:
+                        if owned:
+                            fresh = self._course(course.plan_id)
+                            point_now = fresh.point(point["id"])
+                            if self._prep_fingerprint(fresh, point_now) != fingerprint:
+                                break
+                            keep = {p["id"] for p in fresh.points}
+                            for _ in range(4):
+                                self._prepare_point_locked(fresh, point_now, keep)
+                                if self._prep_row(fresh, point_now)["status"] in ("reviewed", "needs_live_teaching"):
+                                    break
+                            if self._prepared_point(fresh, point_now) is None:
+                                self._prepare_live(fresh, point_now, keep)
+                            break
+                        event = self._prep_job_event(course, point)
+                    if event is not None:
+                        event.wait()  # worker only; no DB/model lock held
+            except Exception as exc:
+                error = getattr(exc, "message", "这一点暂时没有备好，可以重新准备。")
+                log.info("requested lesson preparation failed", exc_info=True)
+            finally:
+                try:
+                    # Completion only invalidates the view, never locks or
+                    # writes a frozen room. Failure belongs to this exact
+                    # fingerprint; ordinary reads/reopen don't retry it.
+                    if error:
+                        with self._lesson_mutex:
+                            self._lesson_errors[(*self._prep_key(course, point), fingerprint)] = error
+                        row = self._prep_row(course, point)
+                        if row["fingerprint"] == fingerprint:
+                            row["delivery_error"] = error
+                            self._persist_prep(course, point, row, {p["id"] for p in course.points})
+                except Exception:
+                    log.debug("lesson room no longer available", exc_info=True)
+                finally:
+                    with self._guard:
+                        self._lesson_wait_jobs.discard(token)
+                self.lesson_event(dict(plan_id=course.plan_id, point_id=point["id"]))
+        threading.Thread(target=work, name="classroom-needed-lesson", daemon=True).start()
+
+    def _prepare_live(self, course, point, keep):
+        row = self._prep_row(course, point)
+        if row.get("live_lesson"):
+            return
+        request = teacher_agent.live_lesson_request(self._prep_context(course, point))
+        for attempt in range(2):
+            result = self.services.gateway.complete("teacher", request[1], system=request[0],
+                                                    plan_id=course.plan_id, max_tokens=16384)
+            try:
+                draft = lesson_prep.parse_prep(result.text, chunk_ids=point["chunk_ids"], live=True)
+                issues = lesson_prep.check_lesson(draft, chunk_ids=point["chunk_ids"])
+                if issues:
+                    raise AgentFormatError("；".join(issues))
+                row.update(live_lesson=asdict(draft))
+                self._persist_prep(course, point, row, keep)
+                return
+            except AgentFormatError:
+                if attempt:
+                    raise ModelError("AGENT_FORMAT", "现场讲稿这次未能核实，当前知识点保留，请稍后继续。") from None
 
     def _point_done(self, course, state):
         points = course.points_of(state["module_id"])
@@ -444,6 +566,9 @@ class Classroom:
                 # A pending v3 question can survive migration; do not retain
                 # its old reference when supplying the second new question.
                 self._teach_point(course, state, ctx, "")
+                if state["step"] == "preparing_lesson":
+                    state["lesson_wait"]["resume_casual_asks"] = 2
+                    return
                 lesson = state["lesson"]
             draft = lesson_prep.parse_prep(json.dumps(lesson["draft"], ensure_ascii=False), live=lesson.get("live", False))
             lesson["awaiting"] = None
@@ -1489,6 +1614,30 @@ class Classroom:
         with self._lesson_mutex:
             return self._lesson_locks.setdefault(key, threading.RLock())
 
+    def _prep_key(self, course, point):
+        return (str(self.services.data_root), self.services.account_id, course.plan_id, point["id"])
+
+    def _prep_job_event(self, course, point):
+        with self._lesson_mutex:
+            job = self._lesson_jobs.get(self._prep_key(course, point))
+            return job[1] if job else None
+
+    @contextmanager
+    def _prep_claim(self, course, point):
+        key, owner = self._prep_key(course, point), threading.get_ident()
+        with self._lesson_mutex:
+            previous = self._lesson_jobs.get(key)
+            owned = previous is None or previous[0] == owner
+            if previous is None:
+                self._lesson_jobs[key] = (owner, threading.Event())
+        try:
+            yield owned
+        finally:
+            if owned and previous is None:
+                with self._lesson_mutex:
+                    _, event = self._lesson_jobs.pop(key)
+                    event.set()
+
     def _prep_ask(self, course, purpose, request, parse, max_tokens):
         if purpose == "questions":
             while self._lock(course.plan_id).locked(): time.sleep(0.1)
@@ -1508,11 +1657,12 @@ class Classroom:
         return row
 
     def _persist_prep(self, course, point, row, keep):
-        fresh = self._course(course.plan_id)
-        if self._prep_fingerprint(fresh, fresh.point(point["id"])) != row["fingerprint"]:
-            return False
-        course.store.save_lesson_cache_item(course.plan_id, "lesson_preps", point["id"], row, keep_ids=keep)
-        return True
+        with self._prep_lock(course, point):
+            fresh = self._course(course.plan_id)
+            if self._prep_fingerprint(fresh, fresh.point(point["id"])) != row["fingerprint"]:
+                return False
+            course.store.save_lesson_cache_item(course.plan_id, "lesson_preps", point["id"], row, keep_ids=keep)
+            return True
 
     def _save_prepared(self, course, point, approved, keep):
         row = self._prep_row(course, point)
@@ -1523,7 +1673,7 @@ class Classroom:
     def _prepare_batch(self, course, points, keep):
         from contextlib import ExitStack
         with ExitStack() as stack:
-            for point in sorted(points, key=lambda p: p["id"]): stack.enter_context(self._prep_lock(course, point))
+            points = [p for p in points if stack.enter_context(self._prep_claim(course, p))]
             pending = [p for p in points if self._prep_row(course, p)["status"] not in ("reviewed", "needs_live_teaching")]
             new = [p for p in pending if self._prep_row(course, p)["generation_attempts"] == 0]
             if len(new) == 2:
@@ -1594,8 +1744,9 @@ class Classroom:
         self._persist_prep(course, point, row, keep)
 
     def _prepare_point(self, course, point, keep):
-        with self._prep_lock(course, point):
-            self._prepare_point_locked(course, point, keep)
+        with self._prep_claim(course, point) as owned:
+            if owned:
+                self._prepare_point_locked(course, point, keep)
 
     def _prepare_point_locked(self, course, point, keep):
         row = self._prep_row(course, point)
@@ -2141,6 +2292,7 @@ def register(bridge, services, study_day, *, presence=lambda active, plan_id=Non
         if key not in rooms:
             rooms.clear()
             rooms[key] = Classroom(current, lambda: study_day(current.settings.load()))
+            rooms[key].lesson_event = lambda data: bridge.push("classroom.lesson_ready", data)
         return rooms[key]
 
     def text(params, key="text", limit=4000):

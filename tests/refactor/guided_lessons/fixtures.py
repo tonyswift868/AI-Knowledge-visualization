@@ -25,6 +25,12 @@ def draft(chunk='c1', **kwargs):
 
 def advance_to_question(room, plan_id, view, ctx):
     """Older bank/ledger integration tests skip guide UI; contract tests do not."""
+    import time
+    deadline = time.monotonic()+5
+    while view['step'] == 'preparing_lesson':
+        assert time.monotonic() < deadline, view.get('lesson_wait')
+        time.sleep(.005)
+        view = room.run(plan_id, lambda *a: None, ctx)
     for _ in range(8):
         if view['step'] != 'lesson' or view['lesson']['awaiting'] == 'return':
             break

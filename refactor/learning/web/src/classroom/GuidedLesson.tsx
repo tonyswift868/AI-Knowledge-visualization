@@ -1,5 +1,6 @@
 import { ChevronRight, RotateCcw } from "lucide-react"
 import { Button } from "../ui"
+import * as React from "react"
 import "./guided-lesson.css"
 
 export type Lesson = {
@@ -9,6 +10,25 @@ export type Lesson = {
   total: number
   awaiting: "continue" | "choice" | "return" | null
   options: string[]
+}
+
+export type LessonWait = { point_id: string; elapsed_seconds: number; error?: string | null }
+
+export function LessonPreparing({ wait, busy, act }: {
+  wait: LessonWait; busy: boolean
+  act: (method: string, params?: Record<string, unknown>, label?: string) => Promise<boolean>
+}) {
+  const [seconds, setSeconds] = React.useState(wait.elapsed_seconds)
+  React.useEffect(() => {
+    const started = performance.now()
+    setSeconds(wait.elapsed_seconds)
+    const timer = window.setInterval(() => setSeconds(wait.elapsed_seconds + Math.floor((performance.now() - started) / 1000)), 1000)
+    return () => window.clearInterval(timer)
+  }, [wait.point_id, wait.elapsed_seconds])
+  return <div className="class-note" role="status">
+    {wait.error ? <><span>{wait.error}</span><Button disabled={busy} onClick={() => act("classroom.next")}>重新准备这一点</Button></>
+      : <span>老师正在准备这一点… 已等 {seconds} 秒。备好后会自动接着讲，你可以先打字问老师。</span>}
+  </div>
 }
 
 export function LessonProgress({ lesson }: { lesson: Lesson }) {

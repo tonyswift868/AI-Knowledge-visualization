@@ -181,7 +181,9 @@ def run_scenario(root, *, extended=False):
         # timestamps and reorder adjacent turns; use monotonic fixed timestamps.
         patches.enter_context(patch.object(store_module, '_at', lambda value=None: original_at(
             value if value is not None else NOW + timedelta(microseconds=next(ticks)))))
-        patches.enter_context(patch.object(room_module, 'threading', SimpleNamespace(Thread=ImmediateThread, Lock=threading.Lock, RLock=threading.RLock, local=threading.local)))
+        patches.enter_context(patch.object(room_module, 'threading', SimpleNamespace(Thread=ImmediateThread,
+            Lock=threading.Lock, RLock=threading.RLock, local=threading.local,
+            get_ident=threading.get_ident, Event=threading.Event)))
         patches.enter_context(patch.object(room_module.Classroom, '_schedule_idle_prep', lambda *a: None))
         # The original audit excludes preparation. The extended classroom audit
         # drains preparation after each host operation releases its plan lock.

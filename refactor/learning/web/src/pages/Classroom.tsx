@@ -8,13 +8,13 @@ import {
   ArrowLeft, BookOpen, CheckCircle2, ChevronRight, CircleAlert, ClipboardCheck, ExternalLink, Loader2, RotateCcw,
   SendHorizontal, SkipForward, Square, Volume2, VolumeX, X,
 } from "lucide-react"
-import { BridgeFailure, call } from "../bridge"
+import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
 import { Button } from "../ui"
 import { MicButton, useVoiceInput } from "../voice"
 import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacherVoice"
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
-import { LessonActions, LessonProgress, type Lesson } from "../classroom/GuidedLesson"
+import { LessonActions, LessonProgress, LessonPreparing, type Lesson, type LessonWait } from "../classroom/GuidedLesson"
 
 const TeacherStage = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherStage })))
 
@@ -27,6 +27,7 @@ type Room = {
   points: Point[]; step: string; question: Question | null; messages: Msg[]; can_skip: boolean; red: string[]
   more_modules: boolean; check: { passed: number; total: number } | null
   lesson?: Lesson | null
+  lesson_wait?: LessonWait | null
   today: { today_target: number; today_confirmed: number; today_tentative: number; needs_rest?: boolean; is_late_night?: boolean } | null
 }
 type Source = { text: string; title: string; url: string | null; section: string[] }
@@ -60,6 +61,8 @@ export function Classroom() {
   const mic = useVoiceInput({ value: text, onChange: setText, terms, scopeKey: room ? `${planId}:${room.module.id}` : undefined, disabled: !!busy })
   const abort = React.useRef<AbortController | null>(null)
   const acting = React.useRef(false)
+  const lessonRefresh = React.useRef<(() => void) | null>(null)
+  const lessonChanged = React.useRef(false)
   const scroller = React.useRef<HTMLDivElement>(null)
   const spoken = React.useRef<string | null>(null)
   const streamedMessages = React.useRef(new Set<string>())
@@ -123,6 +126,7 @@ export function Classroom() {
     } finally {
       acting.current = false
       setBusy(null); setStream(null); setVerdictPreview(null); setSelected(null); abort.current = null
+      if (lessonChanged.current) lessonRefresh.current?.()
     }
   }, [planId, room, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading])
 
@@ -136,11 +140,33 @@ export function Classroom() {
   }, [planId, go, toast, stopReading])
 
   React.useEffect(() => {
-    if (room?.step !== 'preparing_questions' || busy) return
+    let active = true
+    let pending = false
+    const refresh = () => {
+      if (!active || !planId) return
+      lessonChanged.current = true
+      if (acting.current || pending) return
+      pending = true
+      lessonChanged.current = false
+      call<Room>("classroom.state", { plan_id: planId }).then((r) => {
+        if (active && !acting.current) setRoom(r)
+        else if (active) lessonChanged.current = true
+      }).catch(() => { if (active) lessonChanged.current = true }).finally(() => { pending = false })
+    }
+    lessonRefresh.current = refresh
+    const unsubscribe = on("classroom.lesson_ready", (data) => {
+      if (data?.plan_id === planId) refresh()
+    })
+    return () => { active = false; unsubscribe(); lessonRefresh.current = null; lessonChanged.current = false }
+  }, [planId])
+
+  React.useEffect(() => {
+    if (!['preparing_questions', 'preparing_lesson'].includes(room?.step ?? '') || busy) return
     let active = true
     let pending = false
     const timer = window.setInterval(() => {
       if (pending) return
+      if (acting.current) return
       pending = true
       call<Room>('classroom.state', { plan_id: planId }).then((r) => {
         if (active) setRoom(r)
@@ -245,7 +271,7 @@ export function Classroom() {
           </div>
         ) : <div className="class-points">
           {room.points.map((p, i) => (
-            <span key={p.id} className={`class-point ${p.current && ["teach", "lesson", "answer"].includes(room.step) ? "current" : ""} ${p.taught ? "taught" : ""} ${POINT_TONE[p.state] ?? ""}`}
+            <span key={p.id} className={`class-point ${p.current && ["teach", "lesson", "answer", "preparing_lesson"].includes(room.step) ? "current" : ""} ${p.taught ? "taught" : ""} ${POINT_TONE[p.state] ?? ""}`}
                   title={`${p.title} · ${p.minutes} 分钟${POINT_LABEL[p.state] ? " · " + POINT_LABEL[p.state] : ""}`}>
               {POINT_TONE[p.state] === "ok" ? <CheckCircle2 size={13} /> : <i>{i + 1}</i>}{p.title}
             </span>
@@ -253,9 +279,10 @@ export function Classroom() {
           <span className="muted small">{done}/{room.points.length} 已讲</span>
         </div>}
         {room.lesson && <LessonProgress lesson={room.lesson} />}
+        {room.lesson_wait && <LessonPreparing wait={room.lesson_wait} busy={!!busy} act={act} />}
         {t?.is_late_night && <div className="banner">已经很晚了，注意休息。今天学的内容会记在开课那天。</div>}
         <div className="class-scroll" ref={scroller}>
-          {room.messages.length === 0 && !busy && (
+          {room.messages.length === 0 && !busy && room.step === "teach" && (
             <div className="class-empty">
               <BookOpen size={28} />
               <p>这个模块有 {room.points.length} 个知识点。点“开始上课”，老师一个点一个点地讲，讲完随口问一句。</p>

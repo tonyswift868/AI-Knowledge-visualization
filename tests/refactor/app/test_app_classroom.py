@@ -151,7 +151,7 @@ def room():
             yield classroom, agents, store
         finally:
             for thread in threading.enumerate():
-                if thread.name in ('classroom-profile', 'classroom-question-bank', 'classroom-lesson-prep'):
+                if thread.name in ('classroom-profile', 'classroom-question-bank', 'classroom-lesson-prep', 'classroom-needed-lesson'):
                     thread.join(5)
             store.close()
 
@@ -164,7 +164,7 @@ def act(classroom, name, *args, streamed=None):
     method = getattr(classroom, name)
     view = classroom.run(PLAN, lambda course, state, c: method(course, state, c, *args), ctx(streamed))
     deadline = time.monotonic() + 3
-    while view['step'] == 'preparing_questions' and time.monotonic() < deadline:
+    while view['step'] in ('preparing_questions', 'preparing_lesson') and time.monotonic() < deadline:
         time.sleep(.01)
         view = classroom.run(PLAN, lambda *a: None, ctx(streamed))
     if name in ('next', 'reply'):

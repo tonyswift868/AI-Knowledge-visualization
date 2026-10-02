@@ -1,0 +1,120 @@
+{
+  "provenance": "acceptance3b N-P2-01 points.json and modules.json",
+  "modules": [
+    {
+      "id": "6a4d31eb19a14fab",
+      "title": "等式与加减消元",
+      "position": 0
+    },
+    {
+      "id": "82eed70396e74a21",
+      "title": "乘除及综合解法（缺乘除资料，做综合简化）",
+      "position": 1
+    },
+    {
+      "id": "11eb1e9ac4fa4743",
+      "title": "简单应用与检验",
+      "position": 2
+    }
+  ],
+  "points": [
+    {
+      "module_id": "11eb1e9ac4fa4743",
+      "title": "等号词与文字句翻译",
+      "summary": "能找出 is、is equal to、was 等等号词，按“等号左右分别翻译”把文字句写成方程；完成3个翻译小练并核对等号两边表达式。",
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0008",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0009",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0016",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0017"
+      ],
+      "minutes": 15
+    },
+    {
+      "module_id": "6a4d31eb19a14fab",
+      "title": "方程的解与代入检验",
+      "summary": "能说出方程的解是使等式成立的变量值，并按代入、化简两边、判断是否相等三步检验给定数是否为解。",
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0002",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003"
+      ],
+      "minutes": 15
+    },
+    {
+      "module_id": "82eed70396e74a21",
+      "title": "方程的解与代入检验",
+      "summary": "能按代入、化简、判断三步骤检验某数是否为方程的解；本批缺乘除等式性质资料，模块暂只覆盖加减与综合化简，乘除待补。",
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0002",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004"
+      ],
+      "minutes": 15
+    },
+    {
+      "module_id": "11eb1e9ac4fa4743",
+      "title": "七步法解加减应用",
+      "summary": "能按读题、找所求、设变量、一句话重述关系、列方程、求解的七步策略，解决总量与差量类加减应用题；独立列式并求出未知量。",
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0010",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0011",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0012",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0013"
+      ],
+      "minutes": 16
+    },
+    {
+      "module_id": "6a4d31eb19a14fab",
+      "title": "加减等式性质解一步方程",
+      "summary": "能识别 x+a=b、x-a=b（含分数、小数），在两边同减或同加同一个数，按步骤求出未知数并代入原方程检验。",
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0005"
+      ],
+      "minutes": 16
+    },
+    {
+      "module_id": "82eed70396e74a21",
+      "title": "加减性质解一步方程",
+      "summary": "能用加减等式性质解 x+a=b、x−a=b 型一步方程（含分数、小数），写出必要步骤并代入检验。",
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0005"
+      ],
+      "minutes": 16
+    },
+    {
+      "module_id": "11eb1e9ac4fa4743",
+      "title": "代入检验与完整作答",
+      "summary": "能把解代回原方程和实际情境检查合理性，用完整句回答，并按“设、列、解、检、答”写出必要步骤；完成2道应用题的检验与作答。",
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0010",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0012",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0017",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0018"
+      ],
+      "minutes": 16
+    },
+    {
+      "module_id": "6a4d31eb19a14fab",
+      "title": "先化简再加减消元",
+      "summary": "能先合并同类项或去括号整理方程的一边或两边，再用加减等式性质求解，并把所得解代回原方程检验。",
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0006",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0007"
+      ],
+      "minutes": 17
+    },
+    {
+      "module_id": "82eed70396e74a21",
+      "title": "先化简再解方程",
+      "summary": "能先合并同类项或去括号化简方程两边，再用加减性质解出变量，写出完整步骤并检验结果。",
+      "chunk_ids": [
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0006",
+        "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0007"
+      ],
+      "minutes": 17
+    }
+  ]
+}

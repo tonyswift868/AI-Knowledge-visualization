@@ -40,7 +40,14 @@ class FlowAgents(Agents):
         if purpose != 'generate':
             return super().complete(purpose, messages, **kwargs)
         aliases = re.findall(r'\[(c\d+)\]', messages[-1]['content'])
-        return SimpleNamespace(text=json.dumps({'points': [dict(title=f'点{i}', summary=f'理解概念{i}',
+        # N-P2-01 now checks content across modules. This time-accounting fixture
+        # must actually supply distinct definitions and applications, rather
+        # than six identical fake points from the same coarse source block.
+        definitions = '【本模块】模块0' in messages[-1]['content']
+        title = '定义与特征' if definitions else '情境应用'
+        summary = ('解释概念{}的定义并辨识其基本特征' if definitions else
+                   '针对概念{}完成实际情境案例的独立应用任务')
+        return SimpleNamespace(text=json.dumps({'points': [dict(title=f'概念{i+1}的{title}', summary=summary.format(i+1),
             chunks=[aliases[0]], minutes=10) for i in range(3)]}), search_hits=(), citations=())
 
 

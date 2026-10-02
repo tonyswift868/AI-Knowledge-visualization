@@ -22,6 +22,10 @@ class AgentFormatError(ValueError):
     """The model's answer did not follow the required format."""
 
 
+class MaterialCoverageError(AgentFormatError):
+    """One regeneration still repeats previously admitted learning content."""
+
+
 def parse_json(text: str) -> dict:
     """Take the first complete JSON object in the answer (models add prose or fences)."""
     if not isinstance(text, str):
@@ -208,12 +212,13 @@ OUTLINE_SYSTEM = """你是课程设计师。根据学习者情况和已采用资
 - 按先后顺序排列；prerequisites 写这个模块依赖的前面模块的 key。
 - minutes 是这个模块首轮学习的时长区间（分钟），按内容量、难度和学习者水平估计，例如 [90, 150]。
 - 资料明显覆盖不到学习者目标的某部分时，在 message 里直接说明缺什么，建议再找资料。
+- 资料不足优先于数量要求：只列能从资料提炼且互不重复的模块，不建立缺资料的占位模块，不用改名、重复练习或资料外内容凑数。coverage报告现有资料能支持的模块数、约能提炼的独立知识点数和缺失范围；不要输出逐点清单。缺口必须在轮廓阶段说明，不等正式生成。
 - message 是给学习者看的：提到模块时写模块名称，不要写 key（如 m1）或资料编号（如 s1.2）。
 - 长资料的目录可能有几十个章节：先按当前目标、最终成果和已声明的先修能力筛掉无关或可选章节，再把相邻且同一主题的目录段合并。整条路线控制在 4–12 个模块；不要把每个目录条目机械地单列成模块，一个模块可以引用多个相邻 refs。宁可在模块内覆盖一组相连内容，也不要输出超过上限的细碎模块。
 """ + LEARNER_CONSTRAINTS + """
 输出约束：模块summary至多70字，把学习动作和验收标准合成一两句；不要写讲稿、逐点清单或代码。message至多120字，避免重复路线。
 只输出下列结构的一个完整、可解析的JSON对象，必须有stages和message；所有模块都写全，不用省略号或占位符，不在JSON外解释：
-{"stages": [{"title": "阶段名", "modules": [{"key": "m1", "title": "模块名", "summary": "这个模块学什么（一两句）", "refs": ["s1.2"], "prerequisites": [], "minutes": [60, 90]}]}], "message": "给学习者的简短说明：这条路线打算怎么带他学"}
+{"stages": [{"title": "阶段名", "modules": [{"key": "m1", "title": "模块名", "summary": "这个模块学什么（一两句）", "refs": ["s1.2"], "prerequisites": [], "minutes": [60, 90]}]}], "coverage": {"available_modules": 1, "available_points": 5, "missing": ["资料覆盖不到的目标；无缺口则空数组"]}, "message": "给学习者的简短说明：这条路线打算怎么带他学"}
 """
 
 
@@ -291,6 +296,10 @@ def note_requirements(form):
                     raise AgentFormatError('补充说明中的数量区间无效。')
                 result[key] = [low, high]
                 break
+    # Only the host sets this after the learner explicitly chooses the covered
+    # scope. Keep the original notes intact for scope/exclusion checks.
+    if form.get('coverage_limits'):
+        result.update(form['coverage_limits'])
     return result
 
 
@@ -369,8 +378,9 @@ def point_requirement_errors(points, module, form=None):
 
 def requirement_brief(form):
     return ('【用户明确要求（优先于按时间自行估点）】\n' + json.dumps(note_requirements(form), ensure_ascii=False)
-            + '\n数量必须照做；只学/不含的范围与模块指定内容必须遵守。资料不支持的目标不能换成别的内容还保留原模块名；'
-              '须在message和对应模块summary明确说明缺什么资料，模块名称反映实际可学内容。每点通常10–20分钟，'
+            + '\n资料充分时数量必须照做；只学/不含的范围与模块指定内容必须遵守。资料不足时不得用重复、改名或资料外内容凑数量；'
+              '只列实际能覆盖的模块，coverage和message明确缺什么、实际能支持多少模块/点，等待用户补资料或选择按覆盖范围生成。'
+              '若有coverage_limits，这是用户已确认的缩小范围，优先于原补充说明的数量和缺资料目标。每点通常10–20分钟，'
               '有数量要求时调整分钟区间，不能多生成点来凑原时间。没有数量要求时仍按每点约15分钟划分。')
 
 
@@ -438,7 +448,45 @@ def parse_outline(text: str, section_ids) -> dict:
     # Internal keys must never reach the learner even if the model ignores the rule.
     message = re.sub(r"\b(m\d{1,2})\b", lambda k: f"「{titles[k.group(1)]}」" if k.group(1) in titles else k.group(1), message)
     message = re.sub(r"\s*[（(]?\bs\d+\.\d+(?:\s*[,，、/]\s*s\d+\.\d+)*\b[）)]?", "", message)
-    return {"stages": out_stages, "message": message}
+    result = {"stages": out_stages, "message": message}
+    if 'coverage' in data:
+        coverage = data['coverage']
+        if (not isinstance(coverage, dict)
+                or type(coverage.get('available_modules')) is not int
+                or coverage['available_modules'] != len(keys)
+                or type(coverage.get('available_points')) is not int or coverage['available_points'] < len(keys)
+                or not isinstance(coverage.get('missing'), list)):
+            raise AgentFormatError('coverage: 需要实际模块数、独立点数估计和缺失范围')
+        result['coverage'] = dict(available_modules=len(keys), available_points=coverage['available_points'],
+                                  missing=[_text(item, 200) for item in coverage['missing']])
+    return result
+
+
+def coverage_notice(outline, form):
+    """Visible material shortfall, never a license to override learner counts."""
+    coverage = outline.get('coverage')
+    if not coverage:
+        return ''
+    req = note_requirements(form)
+    shortages = list(coverage['missing'])
+    for key, actual in (('modules', coverage['available_modules']), ('total', coverage['available_points'])):
+        if key in req and actual < req[key][0]:
+            shortages.append('要求的模块数量' if key == 'modules' else '要求的独立知识点数量')
+    if not shortages:
+        return ''
+    return (f"资料只够{coverage['available_modules']}个模块 / 约{coverage['available_points']}个独立知识点，缺"
+            + '、'.join(dict.fromkeys(shortages)) + '。可以补资料（贴网址或再找资料），'
+            '或回复“按资料范围生成”；不会用重复内容或资料外内容凑数。')
+
+
+def covered_form(form, outline):
+    """Effective quantities after explicit acceptance; original scope stays visible."""
+    coverage = outline.get('coverage')
+    if not coverage:
+        return form
+    return dict(form, coverage_limits={'modules': [coverage['available_modules']]*2,
+                                      'total': [coverage['available_points']]*2,
+                                      'per_module': [1, coverage['available_points']]})
 
 
 def outline_modules(outline: dict) -> list[dict]:
@@ -641,6 +689,41 @@ def batch_minute_ranges(batches, minutes_range) -> list[tuple[int, int]]:
 
 def _comparison_text(text):
     return "".join(c for c in unicodedata.normalize("NFKC", text).casefold() if c.isalnum())
+
+
+def cross_module_duplicates(points, previous):
+    """Conservative lexical/citation evidence, in curriculum order.
+
+    Shared citations alone never reject progressive exercises. Generic titles
+    without shared evidence are not duplicates. A changed gap disclaimer does
+    not turn the same skill into another learning point.
+    """
+    def text(value):
+        value = re.sub(r'[；;。]?(?:本批|本资料|本模块|本计划).*?(?:缺|未覆盖|待补).*$', '', value)
+        return _comparison_text(value)
+    def grams(value):
+        return {value[i:i+2] for i in range(len(value)-1)}
+    matches = []
+    for index, point in enumerate(points):
+        a, x = text(point['title']), text(point['summary'])
+        for prior in previous:
+            b, y = text(prior['title']), text(prior['summary'])
+            left, right = set(point['chunk_ids']), set(prior['chunk_ids'])
+            overlap = len(left & right) / max(1, min(len(left), len(right)))
+            title = SequenceMatcher(None, a, b, autojunk=False).ratio()
+            shared_phrase = SequenceMatcher(None, a, b, autojunk=False).find_longest_match().size
+            gx, gy = grams(x), grams(y)
+            summary = len(gx & gy) / max(1, min(len(gx), len(gy)))
+            if (overlap >= .5 and ((a == b and len(a) >= 4)
+                    or (title >= .85 and summary >= .35)
+                    or (title >= .5 and shared_phrase >= 3 and summary >= .45)
+                    or (title >= .55 and summary >= .8))) or (len(a) >= 8 and len(x) >= 20 and _same_point(point, prior)):
+                matches.append(dict(index=index, title=point['title'], previous_title=prior['title'],
+                                    previous_module=prior.get('module_title', prior.get('module_id', '前面模块')),
+                                    citation_overlap=round(overlap, 3), title_similarity=round(title, 3),
+                                    summary_overlap=round(summary, 3)))
+                break
+    return matches
 
 
 def _same_point(left, right):

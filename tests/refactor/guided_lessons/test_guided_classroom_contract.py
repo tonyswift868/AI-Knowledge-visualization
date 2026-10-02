@@ -73,7 +73,16 @@ def env(tmp_path,monkeypatch):
 
 
 def act(e,name,*args):
-    return e.room.run(PLAN,lambda co,st,cx:getattr(e.room,name)(co,st,cx,*args),SimpleNamespace(cancel=threading.Event(),stream=lambda _:None))
+    context=SimpleNamespace(cancel=threading.Event(),stream=lambda _:None)
+    view=e.room.run(PLAN,lambda co,st,cx:getattr(e.room,name)(co,st,cx,*args),context)
+    # These legacy tests inspect settled lessons. Nonblocking bridge timings
+    # are measured separately in test_prep32_nonblocking.py, without this wait.
+    deadline=time.monotonic()+3
+    while view['step']=='preparing_lesson':
+        assert time.monotonic()<deadline
+        time.sleep(.01)
+        view=e.room.run(PLAN,lambda *a:None,context)
+    return view
 
 
 def test_new_prep_validates_steps_refs_options_and_two_whole_questions():
