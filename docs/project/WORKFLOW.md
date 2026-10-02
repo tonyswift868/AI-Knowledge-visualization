@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-02）：小测试已达标（用户定）；正在和用户讨论建计划“要求与资料、时长对不上”的处理，讨论完再出方案；之后发新版、大测试（都要从头模拟真实用户）。暂不派任务。
+- **现在在做的事**（2026-10-02）：用户确认了建计划改造与已知问题的方案；第三十五批（4 个任务）已起草，等用户转发。合入后在最新主线上派第三十六批。
 
 ## 协作方式
 
@@ -65,7 +65,156 @@
 
 ## 待派队列
 
-暂停（2026-10-02 用户叫停），等用户回答 CURRENT_STATE「当前阶段」的待定事项。
+第三十五批（4 个任务，原文见下节）已起草，等用户转发。之后（合入后在最新主线上派）：
+
+| 建议批次 | 员工 | 内容 | 关联 |
+| --- | --- | --- | --- |
+| 第三十六批 | MF-06（独立） | 第四次小测试：初二物理“压强与浮力”，DeepSeek 扮演学生从聊需求开始，现有版本，体量小、测得全；一次跑完 P1、P2 都为 0 才算达标 | QA-01 |
+| 第三十六批 | MF-07（独立，没改过判定代码） | 用“没见过的考卷”在最新主线上公平复测判定（被追问时：人工判对的作答由模拟学生用自己的话补上，判错的补不出来） | TEACH-04 |
+| 小测试达标后 | 架构师 | 发新版 2.0.1（BUG-40；只做安装包内容检查，不重装测试；上传前问用户）；然后大测试（两仓库合并、上限 ¥60，先 ¥5 小规模确认） | SYS-06、QA-01 |
+
+## 第三十五批任务原文（2026-10-02，基线 6165200）
+
+用户 2026-10-02 确认的方案，四个任务按文件分工并行；做法都由架构师写定，员工照做。合入后在最新主线上派第三十六批（第四次小测试“压强与浮力”、没见过的考卷公平复测判定）。
+
+### [35-MF04] platform｜建计划改造：资料覆盖在聊天里说清、用户放弃的部分不出现、去掉每点时长与凑点数限制
+
+~~~text
+【MentorFlow 第三十五批｜MF-04（工位 platform）｜建计划改造：资料覆盖在聊天里说清、用户放弃的部分不出现、去掉每点时长与凑点数限制】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard BASE
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：不让被测模型给自己打分，由你本人核对。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+花钱规则（用户定：功能优先，花费不离谱就不管）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥1.5。花费只记录，但要报告。
+做法已由架构师定好（用户 2026-10-02 确认），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回，不自己另想一套。只做一轮：实现 → 测 → 报告。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑四个任务（按文件分工，冲突由架构师合并）：
+  35-MF04（platform）：建计划——course/planner_agents.py、app/plan_flow.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、connections/gateway.py 里用途档位的几行。
+  35-MF01（library）：纠错题自洽——course/question_agent.py 的纠错题部分、course/question_review.py、新增的代码运行模块。
+  35-MF03（client）：判定追问——course/judge_agent.py、course/data/ 下的判定示例、app/classroom.py 的 _judge 与各作答处理里的追问。
+  35-MF02（runtime）：学习档案与两项偶发测试——course/profile_agent.py、app/classroom.py 的 _profile_later、两个测试文件。
+背景（用户 2026-10-02 定，CURRENT_STATE「当前阶段」与 [PLAN-01]、[PLAN-04] 的“资料覆盖”“约 15 分钟只是平均数”）：
+  - “一个点约 15 分钟”只是整份计划的平均数，单个点 2 分钟、50 分钟都可以；不设上下限、不自动拆点。现在 planner_agents.py 第 611 行把每点卡在 10–20 分钟，超了整个模块生成失败（第三十四批真实生成就是这样失败的），要去掉。
+  - 用户不能规定每模块几个点这类结构；第三十批“按补充说明凑点数”（coverage_limits 等）要去掉。补充说明里“只学第 5 章”“不学 ××”这类范围要求照常交给模型理解。
+  - 资料覆盖不了学习目标就不能生成计划：用户觉得资料够了、要往下走时，检查覆盖；缺了就在聊天里说清缺什么、大约多少个点，反问用户（继续找资料 / 上传或贴网址 / 这部分不学），具体情况具体说，不出固定选项。用户说不学，就只按现有资料能覆盖的部分生成，缺的部分在轮廓、知识点、讲课、检验里都不出现，也不特意标出来。勾了“只用我的资料”时，同样要说清缺了哪些、大约多少个点，用户接受就按上一条，不接受就由 AI 帮着补资料。
+  - 第三十四批加的“按意思查重复”（plan_point_review）去掉，只留不花钱的字面比对；第三十二批的轮廓“三选一”和“按资料范围生成”这句固定口令也去掉。
+先读：AGENTS.md；CURRENT_STATE 的 [PLAN-01]、[PLAN-02]、[PLAN-04]、[PLAN-06]、[PLAN-07]、[ARCH-06]、[QA-01]；app/plan_flow.py（outline、generate、_meaning_duplicates、coverage 相关）、course/planner_agents.py（outline 提示与 coverage、parse_points、cross_module_duplicates）、course/plan_intent.py。
+要做（照做）
+  1. 每点时长：parse_points 只要求分钟数是正整数，去掉 10–20 的限制；提示里“通常 10–20 分钟”改成“按这个点实际需要估计，可短可长；整份计划平均约 15 分钟只作参考”。建计划时的总时长预估仍按平均 15 分钟推点数。
+  2. 去掉 coverage_limits、按补充说明凑点数/模块数的检查与提示、轮廓里的 coverage 数量字段与“按资料范围生成”口令、_meaning_duplicates 与 plan_point_review 用途。字面重复检查保留：发现重复点就静默去掉，模块去空了就去掉这个模块，不报错、不打扰用户。
+  3. 新的覆盖检查（新用途 coverage_check，思考“高”）：在用户确认资料、要求出轮廓时调用（资料有增删后、再要求出轮廓时重新查）。输入：规范化后的学习目标、最终目标、水平、补充说明、已采用资料的标题/目录/各块首句（不放全文）。输出严格 JSON：covered（是否覆盖）、missing（每项：缺的内容、为什么需要、大约几个知识点）、message（给用户的一段话，具体说缺什么、问要不要继续找）。covered 为 false 时：把 message 作为 AI 消息发进聊天；不出轮廓，界面上“出轮廓 / 正式生成”的按钮不出现，直到覆盖解决。
+  4. 用户的回答交给意图理解：找资料、上传、贴网址走现有流程，补完再查覆盖；新增一种意图“放弃这部分”（参数：放弃的内容列表）——记进草稿的学习范围，规范化目标改写为只含覆盖部分（在聊天里给用户看一句改后的目标），之后轮廓与正式生成的请求里明确“只学这些、不出现被放弃的内容”。程序检查：生成结果的模块、知识点标题和摘要里不能出现被放弃的内容关键词，出现就让该模块按要求重生成一次，仍出现就去掉那些点。
+  5. “只用我的资料”：覆盖检查同样执行，message 开头说明“你选了只用自己的资料”，并给出缺的内容与大约总点数；用户同意找资料时才去搜索。
+  6. 测试：假模型覆盖：覆盖完整直接往下走；缺内容时聊天说明且按钮不出现；用户补资料后重新检查通过；用户说“乘除先不学”后目标改写、轮廓与知识点里没有乘除；“只用我的资料”的说明；一个 45 分钟的点能正常入库；字面重复静默去掉。真实（≤ ¥1.5）：用第三次小测试的 OpenStax“加减法解方程”页面、目标写“初中一元一次方程（含乘除）”，走一遍：应先在聊天里说缺乘除；回答“乘除先不学”后生成的计划里完全没有乘除。你本人逐条核对聊天内容与生成结果。
+完成标准：上面每个场景按描述发生；缺内容时不给生成；放弃的部分在计划里完全不出现；没有每点时长与点数限制；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix35-plan-coverage\report.md。
+回执：【MF-04｜platform｜第三十五批｜完成/部分完成/受阻】基线 ／ 提交 ／ 去掉了什么 ／ 覆盖检查与“放弃这部分”的实现 ／ 各场景结果（假模型、真实）／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [35-MF01] library｜纠错题必须自洽：先写错因、程序逐行验算、解题员重算错误做法
+
+~~~text
+【MentorFlow 第三十五批｜MF-01（工位 library）｜纠错题必须自洽：先写错因、程序逐行验算、解题员重算错误做法】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard BASE
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：不让被测模型给自己打分，由你本人核对。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+花钱规则（用户定：功能优先，花费不离谱就不管）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥1。花费只记录，但要报告。
+做法已由架构师定好（用户 2026-10-02 确认），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回，不自己另想一套。只做一轮：实现 → 测 → 报告。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑四个任务（按文件分工，冲突由架构师合并）：
+  35-MF04（platform）：建计划——course/planner_agents.py、app/plan_flow.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、connections/gateway.py 里用途档位的几行。
+  35-MF01（library）：纠错题自洽——course/question_agent.py 的纠错题部分、course/question_review.py、新增的代码运行模块。
+  35-MF03（client）：判定追问——course/judge_agent.py、course/data/ 下的判定示例、app/classroom.py 的 _judge 与各作答处理里的追问。
+  35-MF02（runtime）：学习档案与两项偶发测试——course/profile_agent.py、app/classroom.py 的 _profile_later、两个测试文件。
+背景（CURRENT_STATE [CHK-01] 的“方案”）：题库里出过一道自相矛盾的纠错题——“小华解方程 m+4=−5 时，两边同时加 4，得到 m=−1”。两边加 4 得到的是 m+8=−1，得不到 −1；真正会得到 −1 的常见错误是“移项不变号”（m=−5+4）。出题员、不看答案的解题员、核对员都顺着题面走，没人检查“题面写的错误做法能不能真得出题面给的错误结果”。证据：D:\MentorFlow\.local\test-tmp\fix34-quick-check\calls.json 第 0 次调用（出题）与第 5–7 次（解题、判定、核对）。做法参照 DiVERT（https://arxiv.org/abs/2406.19356，先用文字写明错因、再由错因推出错误答案，保证两者一致）与数学选择题干扰项一致性研究（https://arxiv.org/html/2505.01903v1）。
+先读：AGENTS.md；CURRENT_STATE 的 [CHK-01]（全部，含“方案”）、[TEACH-04]“题型与判法”、[QA-01]；course/question_agent.py（纠错题部分）、course/question_review.py（结构检查、解题、核对）、course/answer_compare.py（_expression 能把一元方程化成标准系数，可判断两个方程是否等价）；你自己 keep/library-28 分支里的“隔离子进程真跑代码”实现（第二十八批写的，没合入）。
+要做（照做）
+  1. 纠错题结构加三个必填字段：error_cause（一句话写明错因，如“移项时没有变号”）、wrong_work（学生的错误做法，过程类按步骤列成数组，每步一行；概念类写成一段话）、wrong_result（错误结果）。出题提示要求：先写错因，再严格按这个错因一步步写出错误做法与错误结果；题面展示的错误做法与 wrong_work 一致。
+  2. 程序验算（数学）：wrong_work 每一行若都能被 answer_compare._expression 解析成方程，则：第一行与题目原方程等价；相邻两行之间恰好有一处不等价，且从这一步起推出的最后一行就是 wrong_result；标准答案满足原方程。不满足就退回修改（计入现有的修改与重出上限）。解析不了就跳过这一步，交给第 4 条。
+  3. 程序验算（代码）：把 keep/library-28 里的隔离子进程运行器抽成独立模块（限时、禁止联网与读写文件），纠错题里的错误代码真跑，输出必须等于 wrong_result；改正后的代码真跑，输出必须符合标准答案。
+  4. 不看答案的解题员多一步：先按题面的错误做法自己重算一遍，回答“能不能得到题面给的错误结果、错在哪一步、错因是什么”；算不出题面结果，或指出的错因与 error_cause 不同，就判题目自相矛盾，交核对员修改，改不好就丢。
+  5. 回归集：把 m+4 那道题（calls.json 第 0 次调用里的原题）加进出题回归集，新流程必须拦下；原有 6 道坏题、8 道好题的结果不变。
+  6. 测试：离线覆盖第 2、3、4 条；真实（≤ ¥1）各出 2 道数学、2 道 Python 纠错题过完整流程，你本人逐题核对自洽与正确。
+完成标准：m+4 题被拦下；回归集结果不变；真实出的纠错题全部自洽、正确；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix35-fix-error\report.md。
+回执：【MF-01｜library｜第三十五批｜完成/部分完成/受阻】基线 ／ 提交 ／ 新字段与出题提示 ／ 程序验算（数学、代码）／ 解题员新增步骤 ／ 回归集与真实结果 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [35-MF03] client｜判定：答对但只给结果时追问一次（合入你第二十八批的追问，并收窄触发条件）
+
+~~~text
+【MentorFlow 第三十五批｜MF-03（工位 client）｜判定：答对但只给结果时追问一次（合入你第二十八批的追问，并收窄触发条件）】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git branch keep/client-28 396bdb3   # 你第二十八批的提交
+  git reset --hard BASE
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：不让被测模型给自己打分，由你本人核对。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+花钱规则（用户定：功能优先，花费不离谱就不管）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥1。花费只记录，但要报告。
+做法已由架构师定好（用户 2026-10-02 确认），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回，不自己另想一套。只做一轮：实现 → 测 → 报告。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑四个任务（按文件分工，冲突由架构师合并）：
+  35-MF04（platform）：建计划——course/planner_agents.py、app/plan_flow.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、connections/gateway.py 里用途档位的几行。
+  35-MF01（library）：纠错题自洽——course/question_agent.py 的纠错题部分、course/question_review.py、新增的代码运行模块。
+  35-MF03（client）：判定追问——course/judge_agent.py、course/data/ 下的判定示例、app/classroom.py 的 _judge 与各作答处理里的追问。
+  35-MF02（runtime）：学习档案与两项偶发测试——course/profile_agent.py、app/classroom.py 的 _profile_later、两个测试文件。
+背景（CURRENT_STATE [TEACH-04] 的“方案”）：没见过的考卷上剩下那 1 条冤枉：题目问“说明 range(1, 6, 2) 是否包含 6、步长 2 怎样决定相邻的数”，学生只写 [1,3,5]——结果全对，但没写说明，被判错。你第二十八批的“信息不足就追问一次 + 同类示例”正是处理这种情况的；当时对比测试显得没用，是架构师的测试设计问题（所有追问都用“我就是这个意思，没有别的了”回答），不是你的做法错。用户 2026-10-02 确认按此合入，并要求所有测试在最新主线上跑。
+先读：AGENTS.md；CURRENT_STATE 的 [TEACH-04]（全部，含“方案”“过程题”）、[TEACH-06]（判定前不泄题）、[QA-01]；你第二十八批的报告（.local/test-tmp/judge-followup/report.md）与 keep/client-28 上的改动；app/classroom.py 当前的判定与快速确认部分（第三十四批你改过）。仍然不许读 D:\MentorFlow\.local\test-tmp\judge-holdout\。
+要做（照做）
+  1. 把 keep/client-28 的“信息不足 → 追问一次 → 合并两次回答再判”和同类示例移植到 6165200 上（与第三十四批的快速确认、深问改动共存）。
+  2. 收窄触发条件：只有在作答里没有任何说错的内容（所有要点不是 wrong），且缺的只是题面明确要求的说明、过程或理由（作答给了正确结果或正确方向）时才判“信息不足”；作答有说错的、或答非所问的，照常判错，不追问。每题最多追问一次；追问语句中性，程序检查不含任何要点或参考答案内容。
+  3. 测试：离线覆盖触发与不触发的各种情况（含 [1,3,5] 这类、只说“这个说法不对”这类、明显错答）；自建 180 个作答真实回归不退步（冤枉 0、放水 0）；报告追问触发了多少次、分别落在人工判对和判错的哪些作答上。真实（≤ ¥1）。
+完成标准：触发条件按第 2 条；自建 180 不退步；全量测试通过。之后由独立员工在最新主线上用“没见过的考卷”公平复测（被追问时，人工判对的作答由模拟学生用自己的话补上，判错的补不出来）。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix35-judge-followup\report.md。
+回执：【MF-03｜client｜第三十五批｜完成/部分完成/受阻】基线 ／ 提交 ／ 移植与收窄后的触发条件 ／ 自建 180 结果与追问分布 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [35-MF02] runtime｜学习档案只写有据的话 + 两项偶发失败的测试修稳
+
+~~~text
+【MentorFlow 第三十五批｜MF-02（工位 runtime）｜学习档案只写有据的话 + 两项偶发失败的测试修稳】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard BASE
+测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+验收按 CURRENT_STATE [QA-01]：不让被测模型给自己打分，由你本人核对。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+花钱规则（用户定：功能优先，花费不离谱就不管）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥0.3。花费只记录，但要报告。
+做法已由架构师定好（用户 2026-10-02 确认），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回，不自己另想一套。只做一轮：实现 → 测 → 报告。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑四个任务（按文件分工，冲突由架构师合并）：
+  35-MF04（platform）：建计划——course/planner_agents.py、app/plan_flow.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、connections/gateway.py 里用途档位的几行。
+  35-MF01（library）：纠错题自洽——course/question_agent.py 的纠错题部分、course/question_review.py、新增的代码运行模块。
+  35-MF03（client）：判定追问——course/judge_agent.py、course/data/ 下的判定示例、app/classroom.py 的 _judge 与各作答处理里的追问。
+  35-MF02（runtime）：学习档案与两项偶发测试——course/profile_agent.py、app/classroom.py 的 _profile_later、两个测试文件。
+背景（CURRENT_STATE [TEACH-01] 的“待定”，用户 2026-10-02 定要修）：学习档案（老师第二天开课接上进度用、报告里“老师的记录”也用它）把学生“答对了一道‘方程的解’的定义题”写成“已经掌握了解方程的操作”，说过头了（第三次小测试第二次复跑报告 .local/test-tmp/acceptance3c/report.md 的 P3）。另有两项测试在全量里偶发失败、单独重跑能过：tests/refactor/server/test_active_account_closure.py::test_active_account_closure_prepare_commit_recovery、tests/refactor/app/test_plan_read_browser.py::test_home_and_plans_read_failure_retry_and_stale_list。
+先读：AGENTS.md；CURRENT_STATE 的 [TEACH-01]、[RPT-01]、[QA-01]；course/profile_agent.py；app/classroom.py 的 _profile_later；复跑报告里 P3 的证据；两个测试文件。
+要做（照做）
+  1. 程序从判定记录整理一份“已验证事实”交给档案：每个知识点考过哪些题（随口问 / 检测 / 检验）、题型与角度（如 recall 定义、apply 应用）、对错、最近一次结果；没考过的写“还没考过”。档案提示要求：关于掌握情况的每句话都要能对应到这些事实，不能把答对定义题写成会操作，不能写没考过的内容。
+  2. 用复跑里那次说过头的档案调用（保存的输入）离线回放与一次真实调用（≤ ¥0.3）对比，你本人核对新档案没有说过头。
+  3. 两项偶发测试：先找出不稳定的原因（固定等待时间、线程或临时文件竞争等），改成确定性的等待或隔离，不靠加长等待掩盖；各连续跑 20 次全部通过，并在全量里跑通。
+完成标准：新档案不再说过头；两项测试连续 20 次通过；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix35-profile-flaky\report.md。
+回执：【MF-02｜runtime｜第三十五批｜完成/部分完成/受阻】基线 ／ 提交 ／ 已验证事实的内容与档案提示 ／ 回放与真实对比 ／ 两项测试的原因与修法、20 次结果 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
 
 ## 第三十四批任务原文（2026-10-02，基线 cfd1181）
 
@@ -1109,6 +1258,10 @@
 | 33-MF06 | MF-06 classroom | 再用同一脚本复跑第三次小测试 | QA-01 | 9d039ec | 已完成（P1 0；P2 2、P3 1；讲错 0、冤枉 0） |
 | 34-MF03 | MF-03 client | 快速确认与深问题目改用核对过的题库题 | TEACH-03、TEACH-04、CHK-01 | cfd1181 | 已合入 3b8c687（快速确认达标；发现一道未上屏错题） |
 | 34-MF04 | MF-04 platform | 跨模块重复第二轮：按意思比较 | PLAN-04 | cfd1181 | 已合入 3b8c687（部分：回放 2/2；真实生成被分钟矛盾卡住） |
+| 35-MF04 | MF-04 platform | 建计划改造：覆盖在聊天里说清、放弃部分不出现、去掉时长与凑点数限制 | PLAN-01、PLAN-04、ARCH-06 | 6165200 | 已起草，待用户转发 |
+| 35-MF01 | MF-01 library | 纠错题自洽：先写错因、程序逐行验算、解题员重算 | CHK-01 | 6165200 | 已起草，待用户转发 |
+| 35-MF03 | MF-03 client | 判定：答对只给结果时追问一次（合入第二十八批并收窄） | TEACH-04 | 6165200 | 已起草，待用户转发 |
+| 35-MF02 | MF-02 runtime | 学习档案只写有据的话 + 两项偶发测试修稳 | TEACH-01 | 6165200 | 已起草，待用户转发 |
 
 ## 任务模板
 
