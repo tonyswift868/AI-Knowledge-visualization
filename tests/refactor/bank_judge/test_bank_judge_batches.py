@@ -198,7 +198,9 @@ def test_deeper_probe_uses_original_final_or_practice_context(bankroom, mode, co
     assert len(store.records('judgements', PLAN)) == count
     pending = room._load(room._course(PLAN))['pending']
     assert pending['depth_probe'] and pending['point_ids'] == original['point_ids']
-    text = pending['question']['answer'] if correct else next(o for o in pending['question']['options'] if o != pending['question']['answer'])
+    # A reviewed deeper bank item may be short rather than a generated choice.
+    room._judge = lambda *a: Verdict('answer', correct, () if correct else tuple(pending['point_ids']), '深问的实际判定。')
+    text = pending['question']['answer'] if correct else '错误说明'
     run(room, 'reply', text)
     if mode == 'check':
         event = max((r['event'] for r in store.records('judgements', PLAN)), key=lambda e: e['seq'])
@@ -244,7 +246,8 @@ def test_uncertain_answer_is_replaced_by_deeper_question_and_only_probe_is_credi
     pending = room._load(room._course(PLAN))['pending']
     assert pending['depth_probe'] and pending['question']['stem'] != original['question']['stem']
     assert pending['point_ids'] == original['point_ids']
-    text = pending['question']['answer'] if correct else next(x for x in pending['question']['options'] if x != pending['question']['answer'])
+    room._judge = lambda *a: Verdict('answer', correct, () if correct else tuple(pending['point_ids']), '深问的实际判定。')
+    text = pending['question']['answer'] if correct else '错误说明'
     run(room, 'reply', text)
     rows = store.records('judgements', PLAN)
     assert len(rows) == 1 and rows[0]['event']['results'] == [[pending['point_ids'][0], correct]]

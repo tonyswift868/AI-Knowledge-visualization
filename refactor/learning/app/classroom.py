@@ -544,7 +544,8 @@ class Classroom:
     def _casual_reply(self, course, state, ctx, text, pending):
         if (verdict := self._adjudicate(course, state, ctx, "casual", pending, text)) is None: return
         if verdict.uncertain or verdict.kind == 'clarify':
-            return self._deepen_question(course, state, ctx, pending)
+            verdict = self._deepen_question(course, state, ctx, pending, verdict)
+            if verdict is None: return
         point = course.point(pending["point_ids"][0])
         if verdict.kind == "answer":
             self._record(course, state, "casual", pending, verdict, text)
@@ -591,12 +592,18 @@ class Classroom:
 
     def _quick_check(self, course, state, ctx, pending):
         """'I know this': one quick confirmation question; wrong is recorded, never argued (TEACH-02)."""
-        questions = self._questions(course, ctx, "quick_check", pending["point_ids"])
-        q = questions[0]
+        if (state.get('pending') or {}).get('kind') == 'quick':
+            return self._show_probe(course, state)
+        q, reason = self._probe_question(course, ctx, pending['point_ids'][0])
+        if q is None:
+            self._probe_unconfirmed(course, state, pending, '快速确认', reason)
+            point = course.point(pending['point_ids'][0])
+            self._point_done(course, state)
+            return self._go_on(course, state, ctx, '快速确认没有合格题，未确认；继续往下讲，不算答错。', point['id'])
         state["pending"] = {"kind": "quick", "answer_id": uuid.uuid4().hex,
-                            "point_ids": list(q.point_ids), "question": _question_dict(q)}
+                            "point_ids": list(q['point_ids']), "question": q}
         self._say(course, state, "好，那来一道快速确认题，答对就直接往下讲。")
-        self._say(course, state, _question_text(q), kind="question")
+        self._show_probe(course, state)
 
     # ------------------------------------------------------------------ tests
     def start_test(self, course, state, ctx, kind):
@@ -662,7 +669,8 @@ class Classroom:
             verdict = self._adjudicate(course, state, ctx, "test", pending, text)
         if verdict is None: return
         if verdict.uncertain or verdict.kind == 'clarify':
-            return self._deepen_question(course, state, ctx, pending)
+            verdict = self._deepen_question(course, state, ctx, pending, verdict)
+            if verdict is None: return
         if verdict.kind != "answer":
             self._say(course, state, "没看出这是对这道题的作答。请直接回答；不会的话说“不会”也可以。", role="system")
             return
@@ -700,9 +708,13 @@ class Classroom:
     def _bank_select(self, course, ctx, module_id, targets, unstable=(), *, limit=None,
                      smaller_than=None, single_once=(), asked=(), used_angles=None, background=False, defer=False):
         def select():
-            return question_bank.choose_questions(self._bank_rows(course, module_id), targets,
+            rows = self._bank_rows(course, module_id)
+            # Standalone confirmations/probes use the existing practice exposure
+            # bucket. Even an unanswered/wrong probe must not reappear in a test.
+            exposed = set(asked) | {q['id'] for q in rows if 'practice' in q.get('asked_in', ())}
+            return question_bank.choose_questions(rows, targets,
                 unstable, limit=limit, rng=self._rng, smaller_than=smaller_than, single_once=single_once,
-                asked=asked, used_angles=used_angles)
+                asked=exposed, used_angles=used_angles)
         chosen, missing = select()
         if missing:
             if defer:
@@ -725,7 +737,7 @@ class Classroom:
             [r for r in course.store.records('judgements', course.plan_id) if r['event']['module_id'] == module_id])
 
     def _bank_fill(self, course, ctx, module_id, *, background=False, point_ids=None, force=False,
-                   needs=None, used_angles=None, refill_for=None, reserve=None, asked=(), retry_round=None):
+                   needs=None, used_angles=None, refill_for=None, reserve=None, asked=(), retry_round=None, avoid=()):
         """Review before banking; retain drafts and durable per-point reissue limits."""
         from ..course import question_review, question_solver
         ids = list(point_ids or [p['id'] for p in course.points_of(module_id)])
@@ -855,7 +867,10 @@ class Classroom:
                 elif len(group) != 2 or composites:
                     row['status'] = 'surplus'; journal.save(token, row)
                     return composites
-                fresh.store.add_bank_questions(course.plan_id, module_id, [q], fingerprint=fingerprint, refill_for=refill_for)
+                # Admission evidence lets quick/deepen reuse only reviewed rows.
+                stored_ids = fresh.store.add_bank_questions(course.plan_id, module_id, [q], fingerprint=fingerprint, refill_for=refill_for)
+                if stored_ids:
+                    self._remember_probe_review(fresh,module_id,stored_ids)
                 if len(q['point_ids']) == 1:
                     remaining[pid] -= 1; angles[pid].add(q['angle'])
                     if q['type'] in question_review.WRITTEN_TYPES:
@@ -868,7 +883,7 @@ class Classroom:
             def generate(group, composites, *, written_only=False):
                 journal.start_generation(group)  # first generation + one reissue, survives reopening
                 current()
-                old = [q['stem'] for q in self._bank_rows(course, module_id) if set(q['point_ids']) & set(group)]
+                old = list(avoid) + [q['stem'] for q in self._bank_rows(course, module_id) if set(q['point_ids']) & set(group)]
                 old += [row['question']['stem'] for _, row in journal.candidates(group)]
                 if written_only:
                     fresh = current()
@@ -1239,7 +1254,8 @@ class Classroom:
             verdict = self._adjudicate(course, state, ctx, "casual", pending, text)  # a question is allowed here
         if verdict is None: return
         if verdict.uncertain or verdict.kind == 'clarify':
-            return self._deepen_question(course, state, ctx, pending)
+            verdict = self._deepen_question(course, state, ctx, pending, verdict)
+            if verdict is None: return
         if verdict.kind == "question":
             return self._teacher(course, state, ctx, "最终检验中，学习者先问了一个问题。简短解答，但不要说出当前这道检验题的答案，"
                                  "也不要重讲整个知识点；答完提醒他回答上面的题（不要出新题）。", q["point_ids"], user=text)
@@ -1355,7 +1371,8 @@ class Classroom:
             verdict = self._adjudicate(course, state, ctx, 'test', pending, text)
         if verdict is None: return
         if verdict.uncertain or verdict.kind == 'clarify':
-            return self._deepen_question(course, state, ctx, pending)
+            verdict = self._deepen_question(course, state, ctx, pending, verdict)
+            if verdict is None: return
         if verdict.kind != 'answer':
             return self._say(course, state, '请回答当前这道题。')
         if prior is None:
@@ -1984,25 +2001,114 @@ class Classroom:
         self._prepare_bank_later(course, module_id, point_ids=list(verdict.wrong_points),
             refill_for=self._answer_id(course, state, pending), used_angles={pid: sorted(a) for pid, a in used.items()})
 
-    def _deepen_question(self, course, state, ctx, pending):
+    def _probe_pool(self, course, pid, original=None):
+        """Reuse reviewed bank rows, including pre-marker initial-bank journals."""
+        from ..course import question_review
+        module_id = course.point(pid)['module_id']
+        asked, _ = self._bank_history(course, module_id)
+        old_stem = re.sub(r'\s+', '', (original or {}).get('stem', ''))
+        evidence=self._probe_review_file(course,module_id).read({})
+        admitted=set(evidence.get('question_ids',())) if evidence.get('version')==question_review.VERSION and evidence.get('fingerprint')==self._test_fingerprint(course,module_id) else set()
+        candidates = [q for q in self._bank_rows(course, module_id) if q['point_ids'] == [pid]
+            and q['type'] in ('choice', 'exact', 'short', 'fix_error') and not q['correct_seen']
+            and not q.get('asked_in') and q['id'] not in asked
+            and (not original or (q['angle'] in ('apply','contrast','fix_error','transfer')
+                and q['angle'] != original.get('angle') and re.sub(r'\s+', '', q['stem']) != old_stem))]
+        # Earlier bank inserts have no admission marker. Only the existing
+        # journal's successful review/independent solution can vouch for them;
+        # an old on-the-spot deepen insert has no such record.
+        legacy = []
+        if any(q['id'] not in admitted for q in candidates):
+            scope = dict(version=question_review.VERSION, fingerprint=self._test_fingerprint(course,module_id),
+                point_id=pid, mode='initial', force=False, refill_for=None, reserve=None, quota=None, used_angles=[])
+            journal = question_review.ReviewJournal(self.services.account_id,self.services.data_root,
+                course.plan_id,module_id,{pid:scope})
+            # Atomic journal reads do not acquire the long background-generation
+            # mutex: already-reviewed questions must be available immediately.
+            legacy = [row for _,row in journal.candidates([pid]) if row['status'] in ('stored','approved')
+                and row.get('reviews') and row['reviews'][-1]['verdict']=='approve'
+                and not row['reviews'][-1]['structure_issues'] and row.get('verification',{}).get('matched') is True]
+        def approved(q):
+            if q['id'] in admitted: return True
+            keys=('type','stem','options','answer','reference','point_ids','chunk_ids','angle')
+            return any(all(row['question'].get(k)==q.get(k) for k in keys) for row in legacy)
+        return [dict(q) for q in candidates if approved(q)]
+
+    def _probe_review_file(self, course, module_id):
+        import hashlib
+        digest=hashlib.sha256(json.dumps([course.plan_id,module_id]).encode()).hexdigest()[:24]
+        return AccountJSON(self.services.account_id,self.services.data_root,f'probe-{digest}.json')
+
+    def _remember_probe_review(self, course, module_id, identifiers):
+        from ..course import question_review
+        file=self._probe_review_file(course,module_id)
+        with file.lock:
+            row=file.read({})
+            fingerprint=self._test_fingerprint(course,module_id)
+            previous=row.get('question_ids',[]) if row.get('version')==question_review.VERSION and row.get('fingerprint')==fingerprint else []
+            file.write(dict(version=question_review.VERSION,fingerprint=fingerprint,question_ids=sorted(set(previous)|set(identifiers))))
+
+    def _probe_question(self, course, ctx, pid, original=None):
+        pool=self._probe_pool(course,pid,original)
+        error='没有未用且已核对的单点题。'
+        if not pool:
+            module_id=course.point(pid)['module_id']
+            _, used=self._bank_history(course,module_id)
+            excluded=set(used.get(pid,()))
+            if original:
+                excluded.add('recall')
+                if original.get('angle'): excluded.add(original['angle'])
+            try:
+                # Exactly the bank's bounded generation -> structure -> blind
+                # solve -> review pipeline, including durable interruption resume.
+                self._bank_fill(course,ctx,module_id,point_ids=[pid],needs={pid:1},used_angles={pid:sorted(excluded)},
+                                avoid=[original['stem']] if original else ())
+            except ModelCancelled:
+                raise
+            except (ModelError,AgentFormatError) as exc:
+                if getattr(exc,'code','')=='QUESTION_MATERIAL_CHANGED': raise
+                error=getattr(exc,'message',str(exc))
+            pool=self._probe_pool(course,pid,original)
+        if not pool: return None,error
+        preferred=[q for q in pool if q['type']=='choice'] or pool
+        q=dict(self._rng.choice(preferred))
+        if q['type']=='choice':
+            self._rng.shuffle(q['options']); q['shuffled']=True
+        return q,''
+
+    def _probe_unconfirmed(self, course, state, pending, purpose, reason):
+        pending.setdefault('answer_id',self._answer_id(course,state,pending))
+        pending['probe_failure']=dict(purpose=purpose,reason=reason)
+        self._save(course,state)
+        course.store.append_message(course.plan_id,self._channel(state),'system',
+            f'{purpose}未确认：暂时没有可用的新题，不新增答错记录。',kind='unconfirmed',
+            message_id=uuid.uuid5(uuid.NAMESPACE_URL,purpose+':'+pending['answer_id']).hex)
+
+    def _show_probe(self, course, state):
+        pending=state['pending']; q=pending['question']
+        self._save(course,state)  # preserve chosen question/answer identity before exposure
+        # The existing exposure contract has a practice bucket for standalone
+        # probes. Actual answer events still use quick_confirm/casual/etc.
+        course.store.mark_bank_asked(course.plan_id,q['id'],'practice')
+        course.store.append_message(course.plan_id,self._channel(state),'system',_question_text(q),kind='question',
+            message_id=uuid.uuid5(uuid.NAMESPACE_URL,'probe:'+pending['answer_id']).hex)
+
+    def _deepen_question(self, course, state, ctx, pending, verdict=None):
         """Do not record the uncertain answer; grade one deeper probe per point."""
         if pending.get('depth_probe'):
-            return self._say(course, state, '这道题还无法可靠判定，请点选一个选项。', role='system')
+            return self._say(course, state, '这道题还无法可靠判定，请补充说明你的作答。', role='system')
         probes = []
         for pid in pending['point_ids']:
-            module_id = course.point(pid)['module_id']
-            pool = [q for q in self._bank_rows(course, module_id) if q['point_ids'] == [pid]
-                    and q['type'] == 'choice' and q['angle'] != 'recall' and not q['correct_seen']
-                    and q['stem'] != pending['question']['stem']]
-            if pool:
-                q = dict(self._rng.choice(pool))
-            else:
-                generated = self._questions(course, ctx, 'quick_check', [pid],
-                    avoid=[pending['question']['stem']], deepen=True)[0]
-                q = dict(_question_dict(generated), angle='apply')
-                q['id'] = course.store.add_bank_questions(course.plan_id, module_id, [q],
-                    fingerprint=self._test_fingerprint(course, module_id))[0]
-                q['module_id'] = module_id
+            q,reason=self._probe_question(course,ctx,pid,pending['question'])
+            if q is None:
+                self._probe_unconfirmed(course,state,pending,'深问',reason)
+                # Keep the original explicit binary result when one exists.
+                # clarify has none: retain its original question, never invent
+                # a wrong/credit event. A subsequent answer can clarify it.
+                if verdict and type(verdict.correct) is bool:
+                    from dataclasses import replace
+                    return replace(verdict,uncertain=False)
+                return None
             probes.append(dict(q, depth_probe=True))
         self._say(course, state, '这次答案还无法确定，换一道同知识点的深入应用题，以这道题的结果为准。', role='system')
         kind = pending['kind']
@@ -2020,10 +2126,13 @@ class Classroom:
             self._ask_practice(course, state, ctx)
         else:
             q = probes[0]
-            self._rng.shuffle(q['options'])
-            state['pending'] = dict(pending, question=q, point_ids=q['point_ids'], answer_id=uuid.uuid4().hex)
-            self._say(course, state, _question_text(q), kind='question')
+            state['pending'] = dict(pending, question=q, point_ids=q['point_ids'], answer_id=uuid.uuid4().hex,depth_probe=True)
+            self._show_probe(course,state)
         state['pending']['depth_probe'] = True
+        exposure=state['pending']['kind']
+        course.store.mark_bank_asked(course.plan_id,state['pending']['question']['id'],
+                                     exposure if exposure in ('module_test','skip_test','retest','check','practice') else 'practice')
+        self._save(course,state)
 
     def _questions(self, course, ctx, purpose, point_ids, *, avoid=(), used_angles=None, background=False, deepen=False, counts=None):
         points = [course.point(pid) for pid in point_ids]

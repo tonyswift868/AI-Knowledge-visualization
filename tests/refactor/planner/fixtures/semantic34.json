@@ -1,0 +1,455 @@
+{
+  "provenance": "fixed outputs from fix32-no-duplicate/live/result.json and acceptance3c/points.json; human labels independent",
+  "batch32": {
+    "modules": [
+      {
+        "check_minutes": 8,
+        "check_question_minutes": 2,
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0001",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0002",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0005",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0006",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0007",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0015",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0016",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0017",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0018",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0019",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0020",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0021"
+        ],
+        "final_check_minutes": 10,
+        "id": "d271e664b58c4b19",
+        "learning_minutes": 72,
+        "point_count": 4,
+        "position": 0,
+        "prerequisites": [],
+        "stage_id": "0c94410002ae48aa",
+        "summary": "理解等式两边同加减保持相等，能解加减型及需先化简的方程，按步骤书写并代入检验。",
+        "title": "等式性质与加减法解方程"
+      },
+      {
+        "check_minutes": 8,
+        "check_question_minutes": 2,
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0008",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0009",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0010",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0011",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0012",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0013",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0014",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0015",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0016",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0017",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0018",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0019",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0020",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0021"
+        ],
+        "final_check_minutes": 10,
+        "id": "710cc93e8dd941bf",
+        "learning_minutes": 76,
+        "point_count": 4,
+        "position": 1,
+        "prerequisites": [
+          "d271e664b58c4b19"
+        ],
+        "stage_id": "0c94410002ae48aa",
+        "summary": "把简单实际问题翻译成一元一次方程，用等式性质求解，检验答案并规范写答。",
+        "title": "翻译方程与简单应用检验"
+      }
+    ],
+    "points": [
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0008",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0009",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0017"
+        ],
+        "id": "710cc93e8dd941bf-01",
+        "minutes": 18,
+        "module_id": "710cc93e8dd941bf",
+        "position": 0,
+        "summary": "能找出is、is equal to等表示等号的词，把等号左右文字分别写成代数表达式，完成“x多5等于26”类句子的翻译并列方程。",
+        "title": "等号词与句子翻译"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0002",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0016"
+        ],
+        "id": "d271e664b58c4b19-01",
+        "minutes": 18,
+        "module_id": "d271e664b58c4b19",
+        "position": 0,
+        "summary": "能说出方程的解是使等式成立的值，并按代入、化简两边、判断真假三步检验给定数是否为解，含分数情形。",
+        "title": "方程的解与检验"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0010",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0011",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0012",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0013"
+        ],
+        "id": "710cc93e8dd941bf-02",
+        "minutes": 20,
+        "module_id": "710cc93e8dd941bf",
+        "position": 1,
+        "summary": "能按读题、找所求、设变量、重述一句、列方程、求解、检验、完整作答的流程，处理合计或相差类简单问题。",
+        "title": "应用题七步策略"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004"
+        ],
+        "id": "d271e664b58c4b19-02",
+        "minutes": 18,
+        "module_id": "d271e664b58c4b19",
+        "position": 1,
+        "summary": "理解等式两边同加或同减同一个数仍相等，用平衡模型说明，并能根据未知数旁是加还是减来选择逆运算消去常数项。",
+        "title": "等式加减性质"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0010",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0012",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0016",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0020"
+        ],
+        "id": "710cc93e8dd941bf-03",
+        "minutes": 18,
+        "module_id": "710cc93e8dd941bf",
+        "position": 2,
+        "summary": "能用等式性质解所列加减型方程，代回原方程或实际问题检验，并判断给定值是否为方程的解。",
+        "title": "解应用方程并检验"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0005",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0016"
+        ],
+        "id": "d271e664b58c4b19-03",
+        "minutes": 18,
+        "module_id": "d271e664b58c4b19",
+        "position": 2,
+        "summary": "能规范求解 x+a=b、x−a=b 及含分数或小数的加减型方程，写出同加减、化简、得解、代回检验的完整步骤。",
+        "title": "解加减型方程"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0010",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0012",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0018",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0019",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0021"
+        ],
+        "id": "710cc93e8dd941bf-04",
+        "minutes": 20,
+        "module_id": "710cc93e8dd941bf",
+        "position": 3,
+        "summary": "能按设、列、解、检、答写出完整过程，用完整句子回答，并完成合计、相差、分数或小数简单应用练习。",
+        "title": "规范步骤与完整作答"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0006",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0007",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0016"
+        ],
+        "id": "d271e664b58c4b19-04",
+        "minutes": 18,
+        "module_id": "d271e664b58c4b19",
+        "position": 3,
+        "summary": "能先合并同类项或去括号化简方程一边或两边，再用加减性质求未知数，并独立检验形如 3x−7−2x−4=1 的方程。",
+        "title": "先化简再解方程"
+      }
+    ]
+  },
+  "acceptance3c": {
+    "modules": [
+      {
+        "id": "2f21f458df06433d",
+        "title": "等式与加减消元",
+        "position": 0
+      },
+      {
+        "id": "c45b0d35522242c5",
+        "title": "简单应用与检验",
+        "position": 1
+      }
+    ],
+    "points": [
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0002",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004"
+        ],
+        "id": "2f21f458df06433d-01",
+        "minutes": 15,
+        "module_id": "2f21f458df06433d",
+        "position": 0,
+        "summary": "能判断一个数是否为方程的解，说明等式两边同加或同减同一个数仍相等，并用平衡模型解释要把变量单独留在一边。",
+        "title": "等式、解与加减性质"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0008",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0009",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0010",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0012"
+        ],
+        "id": "c45b0d35522242c5-01",
+        "minutes": 15,
+        "module_id": "c45b0d35522242c5",
+        "position": 0,
+        "summary": "能识别 is、was 等等号词，重述问题并选变量，把总重/相差情境列成 x+a=b 或 x-a=b 方程；完成两题列式并说明变量含义。",
+        "title": "翻译简单加减情境为方程"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0005"
+        ],
+        "id": "2f21f458df06433d-02",
+        "minutes": 18,
+        "module_id": "2f21f458df06433d",
+        "position": 1,
+        "summary": "能对整数、分数、小数方程选择同减或同加，写出完整步骤求出 x，并代入原方程回代检验。",
+        "title": "用加减性质解 x+a=b 与 x−a=b"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0009",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0010",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0012",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0011",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0013"
+        ],
+        "id": "c45b0d35522242c5-02",
+        "minutes": 15,
+        "module_id": "c45b0d35522242c5",
+        "position": 1,
+        "summary": "能对已列出的应用方程用等式加减性质求解并写出步骤；独立解“总重求未知”和“比标价少多少”类方程，得到未知量。",
+        "title": "用加减性质解应用方程"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0006",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0007"
+        ],
+        "id": "2f21f458df06433d-03",
+        "minutes": 17,
+        "module_id": "2f21f458df06433d",
+        "position": 2,
+        "summary": "能先合并同类项或去括号化简方程两边，再用加减性质解出未知数，逐步写出过程并代入原方程检验。",
+        "title": "先化简再解并回代检验"
+      },
+      {
+        "chunk_ids": [
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0010",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0012",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0011",
+          "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0013"
+        ],
+        "id": "c45b0d35522242c5-03",
+        "minutes": 18,
+        "module_id": "c45b0d35522242c5",
+        "position": 2,
+        "summary": "能把解代回原情境检查等式与合理性，并用完整句子回答所问；完成一题后写出检验式和答句。",
+        "title": "回代检验与按题作答"
+      }
+    ]
+  },
+  "chunks": [
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0001",
+      "text": "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality\n\nBy the end of this section, you will be able to:\n\nSolve equations using the Subtraction and Addition Properties of Equality\n\nSolve equations that need to be simplified\n\nTranslate an equation and solve\n\nTranslate and solve applications\n\nBefore you get started, take this readiness quiz.\n\nSolve: n−12=16. If you missed this problem, review Example 2.33.\n\nTranslate into algebra ‘five less than x.’ If you missed this problem, review Example 2.24.\n\nIs x=2 a solution to 5x−3=7? If you missed this problem, review Example 2.28.\n\nWe are now ready to “get to the good stuff.” You have the basics down and are ready to begin one of the most important topics in algebra: solving equations. The applications are limitless and extend to all careers and fields. Also, the skills and techniques you learn here will help improve your critical thinking and problem-solving skills. This is a great benefit of studying mathematics and will be useful in your life in ways you may not see right now.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0002",
+      "text": "Solve Equations Using the Subtraction and Addition Properties of Equality\n\nWe began our work solving equations in previous chapters. It has been a while since we have seen an equation, so we will review some of the key concepts before we go any further.\n\nWe said that solving an equation is like discovering the answer to a puzzle. The purpose in solving an equation is to find the value or values of the variable that make each side of the equation the same. Any value of the variable that makes the equation true is called a solution to the equation. It is the answer to the puzzle.\n\nA solution of an equation is a value of a variable that makes a true statement when substituted into the equation.\n\nIn the earlier sections, we listed the steps to determine if a value is a solution. We restate them here.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Solve Equations Using the Subtraction and Addition Properties of Equality"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0003",
+      "text": "Determine whether a number is a solution to an equation.\n\nStep 1. Substitute the number for the variable in the equation.\n\nStep 2. Simplify the expressions on both sides of the equation.\n\nStep 3. Determine whether the resulting equation is true. If it is true, the number is a solution. If it is not true, the number is not a solution.\n\nDetermine whether y=3/4 is a solution for 4y+3=8y.\n\nSolution Multiply. Add. Since y=3/4 results in a true equation, 3/4 is a solution to the equation 4y+3=8y.\n\nIs y=2/3 a solution for 9y+2=6y?\n\nIs y=2/5 a solution for 5y−3=10y?\n\nWe introduced the Subtraction and Addition Properties of Equality in Solving Equations Using the Subtraction and Addition Properties of Equality. In that section, we modeled how these properties work and then applied them to solving equations with whole numbers. We used these properties again each time we introduced a new system of numbers. Let’s review those properties here.\n\nSubtraction Property of Equality\n\nFor all real numbers a,b, and c, if a=b, then a−c=b−c.\n\nAddition Property of Equality\n\nFor all real numbers a,b, and c, if a=b, then a+c=b+c.\n\nWhen you add or subtract the same quantity from both sides of an equation, you still have equality.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Determine whether a number is a solution to an equation."
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0004",
+      "text": "We introduced the Subtraction Property of Equality earlier by modeling equations with envelopes and counters. Figure 8.2 models the equation x+3=8.\n\nFigure 8.2\n\nThe goal is to isolate the variable on one side of the equation. So we ‘took away’ 3 from both sides of the equation and found the solution x=5.\n\nSome people picture a balance scale, as in Figure 8.3, when they solve equations.\n\nFigure 8.3\n\nThe quantities on both sides of the equal sign in an equation are equal, or balanced. Just as with the balance scale, whatever you do to one side of the equation you must also do to the other to keep it balanced.\n\nLet’s review how to use Subtraction and Addition Properties of Equality to solve equations. We need to isolate the variable on one side of the equation. And we check our solutions by substituting the value into the equation to make sure we have a true statement.\n\nSolve: x-11=−3.\n\nSolution To isolate x, we undo the addition of 11 by using the Subtraction Property of Equality. We \"undo\" the subtraction of 11 by adding 11 to each side. Simplify. Check: Substitute x=8. Since x=8 makes x-11=−3 a true statement, we know that it is a solution to the equation.\n\nSolve: x+9=−7.\n\nSolve: x+16=−4.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Determine whether a number is a solution to an equation."
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0005",
+      "text": "In the original equation in the previous example, 11 was added to the x, so we subtracted 11 to ‘undo’ the addition. In the next example, we will need to ‘undo’ subtraction by using the Addition Property of Equality.\n\nSolve: m+4=−5.\n\nSolution Subtract 4 from each side to \"undo\" the addition. Simplify. Check: Substitute m=−9. The solution to m−4=−5 is m=−1.\n\nSolve: n−6=−7.\n\nSolve: x−5=−9.\n\nNow let’s review solving equations with fractions.\n\nSolve: n−3/8=1/2.\n\nSolution Use the Addition Property of Equality. Find the LCD to add the fractions on the right. Simplify Check: Subtract. Simplify. The solution checks.\n\nSolve: p−1/3=5/6.\n\nSolve: q−1/2=1/6.\n\nIn Solve Equations with Decimals, we solved equations that contained decimals. We’ll review this next.\n\nSolve a−3.7=4.3.\n\nSolution Use the Addition Property of Equality. Add. Check: Substitute a=8. Simplify. The solution checks.\n\nSolve: b−2.8=3.6.\n\nSolve: c−6.9=7.1.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Determine whether a number is a solution to an equation."
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0006",
+      "text": "Solve Equations That Need to Be Simplified\n\nIn the examples up to this point, we have been able to isolate the variable with just one operation. Many of the equations we encounter in algebra will take more steps to solve. Usually, we will need to simplify one or both sides of an equation before using the Subtraction or Addition Properties of Equality. You should always simplify as much as possible before trying to isolate the variable.\n\nSolve: 3x−7−2x−4=1.\n\nSolution The left side of the equation has an expression that we should simplify before trying to isolate the variable. Rearrange the terms, using the Commutative Property of Addition. Combine like terms. Add 11 to both sides to isolate x. Simplify. Check. Substitute x=12 into the original equation. The solution checks.\n\nSolve: 8y−4−7y−7=4.\n\nSolve: 6z+5−5z−4=3.\n\nSolve: 3(n−4)−2n=−3.\n\nSolution The left side of the equation has an expression that we should simplify. Distribute on the left. Use the Commutative Property to rearrange terms. Combine like terms. Isolate n using the Addition Property of Equality. Simplify. Check. Substitute n=9 into the original equation. The solution checks.\n\nSolve: 5(p−3)−4p=−10.\n\nSolve: 4(q+2)−3q=−8.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Solve Equations That Need to Be Simplified"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0007",
+      "text": "Solve: 2(3k−1)−5k=−2−7.\n\nSolution Both sides of the equation have expressions that we should simplify before we isolate the variable. Distribute on the left, subtract on the right. Use the Commutative Property of Addition. Combine like terms. Undo subtraction by using the Addition Property of Equality. Simplify. Check. Let k=−7. The solution checks.\n\nSolve: 4(2h−3)−7h=−6−7.\n\nSolve: 2(5x+2)−9x=−2+7.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Solve Equations That Need to Be Simplified"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0008",
+      "text": "Translate an Equation and Solve\n\nIn previous chapters, we translated word sentences into equations. The first step is to look for the word (or words) that translate(s) to the equal sign. Table 8.1 reminds us of some of the words that translate to the equal sign.\n\nEquals (=)\nis | is equal to | is the same as | the result is | gives | was | will be\n\nTable 8.1\n\nLet’s review the steps we used to translate a sentence into an equation.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Translate an Equation and Solve"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0009",
+      "text": "Translate a word sentence to an algebraic equation.\n\nStep 1. Locate the \"equals\" word(s). Translate to an equal sign.\n\nStep 2. Translate the words to the left of the \"equals\" word(s) into an algebraic expression.\n\nStep 3. Translate the words to the right of the \"equals\" word(s) into an algebraic expression.\n\nNow we are ready to try an example.\n\nTranslate and solve: five more than x is equal to 26.\n\nSolution Translate. Subtract 5 from both sides. Simplify. Check: Is 26 five more than 21? The solution checks.\n\nTranslate and solve: Eleven more than x is equal to 41.\n\nTranslate and solve: Twelve less than y is equal to 51.\n\nTranslate and solve: The difference of 5p and 4p is 23.\n\nSolution Translate. Simplify. Check: The solution checks.\n\nTranslate and solve: The difference of 4x and 3x is 14.\n\nTranslate and solve: The difference of 7a and 6a is −8.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Translate an Equation and Solve",
+        "Translate a word sentence to an algebraic equation."
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0010",
+      "text": "Translate and Solve Applications\n\nIn most of the application problems we solved earlier, we were able to find the quantity we were looking for by simplifying an algebraic expression. Now we will be using equations to solve application problems. We’ll start by restating the problem in just one sentence, assign a variable, and then translate the sentence into an equation to solve. When assigning a variable, choose a letter that reminds you of what you are looking for.\n\nThe Robles family has two dogs, Buster and Chandler. Together, they weigh 71 pounds.\n\nChandler weighs 28 pounds. How much does Buster weigh?\n\nSolution Read the problem carefully. Identify what you are asked to find, and choose a variable to represent it. How much does Buster weigh? Let b= Buster's weight Write a sentence that gives the information to find it. Buster's weight plus Chandler's weight equals 71 pounds. We will restate the problem, and then include the given information. Buster's weight plus 28 equals 71. Translate the sentence into an equation, using the variable b. Solve the equation using good algebraic techniques. Check the answer in the problem and make sure it makes sense. Is 43 pounds a reasonable weight for a dog? Yes. Does Buster's weight plus Chandler's weight equal 71 pounds? 43+28=^(?)71 71=71 ✓ Write a complete sentence that answers the question, \"How much does Buster weigh?\" Buster weighs 43 pounds",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Translate and Solve Applications"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0011",
+      "text": "Translate into an algebraic equation and solve: The Pappas family has two cats, Zeus and Athena. Together, they weigh 13 pounds. Zeus weighs 6 pounds. How much does Athena weigh?\n\nTranslate into an algebraic equation and solve: Sam and Henry are roommates. Together, they have 68 books. Sam has 26 books. How many books does Henry have?",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Translate and Solve Applications"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0012",
+      "text": "Devise a problem-solving strategy.\n\nStep 1. Read the problem. Make sure you understand all the words and ideas.\n\nStep 2. Identify what you are looking for.\n\nStep 3. Name what you are looking for. Choose a variable to represent that quantity.\n\nStep 4. Translate into an equation. It may be helpful to restate the problem in one sentence with all the important information. Then, translate the English sentence into an algebra equation.\n\nStep 5. Solve the equation using good algebra techniques.\n\nStep 6. Check the answer in the problem and make sure it makes sense.\n\nStep 7. Answer the question with a complete sentence.\n\nShayla paid $24,575 for her new car. This was $875 less than the sticker price. What was the sticker price of the car?\n\nSolution What are you asked to find? \"What was the sticker price of the car?\" Assign a variable. Let s= the sticker price of the car. Write a sentence that gives the information to find it. $24,575 is $875 less than the sticker price $24,575 is $875 less than s Translate into an equation. Solve. Check: Is $875 less than $25,450 equal to $24,575? 25,450−875=^(?)24,575 24,575=24,575 ✓ Write a sentence that answers the question. The sticker price was $25,450.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Translate and Solve Applications",
+        "Devise a problem-solving strategy."
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0013",
+      "text": "Translate into an algebraic equation and solve: Eddie paid $19,875 for his new car. This was $1,025 less than the sticker price. What was the sticker price of the car?\n\nTranslate into an algebraic equation and solve: The admission price for the movies during the day is $7.75. This is $3.25 less than the price at night. How much does the movie cost at night?\n\nThe Links to Literacy activity, \"The 100-pound Problem\", will provide you with another view of the topics covered in this section.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Translate and Solve Applications",
+        "Devise a problem-solving strategy."
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0014",
+      "text": "ACCESS ADDITIONAL ONLINE RESOURCES\n\nSolving One Step Equations By Addition and Subtraction\n\nSolve One Step Equations By Add and Subtract Whole Numbers (Variable on Left)\n\nSolve One Step Equations By Add and Subtract Whole Numbers (Variable on Right)",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Translate and Solve Applications",
+        "ACCESS ADDITIONAL ONLINE RESOURCES"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0015",
+      "text": "Section 8.1 Exercises\n\nPractice Makes Perfect\n\nSolve Equations Using the Subtraction and Addition Properties of Equality",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Section 8.1 Exercises"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0016",
+      "text": "In the following exercises, determine whether the given value is a solution to the equation.\n\n1.\n\nIs y=1/3 a solution of 4y+2=10y?\n\n2.\n\nIs x=3/4 a solution of 5x+3=9x?\n\n3.\n\nIs u=−1/2 a solution of 8u−1=6u?\n\n4.\n\nIs v=−1/3 a solution of 9v−2=3v?\n\nIn the following exercises, solve each equation.\n\n5.\n\nx+7=12\n\n6.\n\ny+5=−6\n\n7.\n\nb+1/4=3/4\n\n8.\n\na+2/5=4/5\n\n9.\n\np+2.4=−9.3\n\n10.\n\nm+7.9=11.6\n\n11.\n\na−3=7\n\n12.\n\nm−8=−20\n\n13.\n\nx−1/3=2\n\n14.\n\nx−1/5=4\n\n15.\n\ny−3.8=10\n\n16.\n\ny−7.2=5\n\n17.\n\nx−15=−42\n\n18.\n\nz+5.2=−8.5\n\n19.\n\nq+3/4=1/2\n\n20.\n\np−2/5=2/3\n\n21.\n\ny−3/4=3/5\n\nSolve Equations that Need to be Simplified\n\nIn the following exercises, solve each equation.\n\n22.\n\nc+3−10=18\n\n23.\n\nm+6−8=15\n\n24.\n\n9x+5−8x+14=20\n\n25.\n\n6x+8−5x+16=32\n\n26.\n\n−6x−11+7x−5=−16\n\n27.\n\n−8n−17+9n−4=−41\n\n28.\n\n3(y−5)−2y=−7\n\n29.\n\n4(y−2)−3y=−6\n\n30.\n\n8(u+1.5)−7u=4.9\n\n31.\n\n5(w+2.2)−4w=9.3\n\n32.\n\n−5(y−2)+6y=−7+4\n\n33.\n\n−8(x−1)+9x=−3+9\n\n34.\n\n3(5n−1)−14n+9=1−2\n\n35.\n\n2(8m+3)−15m−4=3−5\n\n36.\n\n−(j+2)+2j−1=5\n\n37.\n\n−(k+7)+2k+8=7\n\n38.\n\n6a−5(a−2)+9=−11\n\n39.\n\n8c−7(c−3)+4=−16\n\n40.\n\n8(4x+5)−5(6x)−x=53\n\n41.\n\n6(9y−1)−10(5y)−3y=22\n\nTranslate to an Equation and Solve\n\nIn the following exercises, translate to an equation and then solve.\n\n42.\n\nFive more than x is equal to 21.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Section 8.1 Exercises",
+        "Practice Makes Perfect"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0017",
+      "text": "43.\n\nThe sum of x and −5 is 33.\n\n44.\n\nTen less than m is −14.\n\n45.\n\nThree less than y is −19.\n\n46.\n\nThe sum of y and −3 is 40.\n\n47.\n\nEight more than p is equal to 52.\n\n48.\n\nThe difference of 9x and 8x is 17.\n\n49.\n\nThe difference of 5c and 4c is 60.\n\n50.\n\nThe difference of n and 1/6 is 1/2.\n\n51.\n\nThe difference of f and 1/3 is 1/12.\n\n52.\n\nThe sum of −4n and 5n is −32.\n\n53.\n\nThe sum of −9m and 10m is −25.\n\nTranslate and Solve Applications\n\nIn the following exercises, translate into an equation and solve.\n\n54.\n\nPilar drove from home to school and then to her aunt’s house, a total of 18 miles. The distance from Pilar’s house to school is 7 miles. What is the distance from school to her aunt’s house?\n\n55.\n\nJeff read a total of 54 pages in his English and Psychology textbooks. He read 41 pages in his English textbook. How many pages did he read in his Psychology textbook?\n\n56.\n\nPablo’s father is 3 years older than his mother. Pablo’s mother is 42 years old. How old is his father?\n\n57.\n\nEva’s daughter is 5 years younger than her son. Eva’s son is 12 years old. How old is her daughter?\n\n58.\n\nAllie weighs 8 pounds less than her twin sister Lorrie. Allie weighs 124 pounds. How much does Lorrie weigh?",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Section 8.1 Exercises",
+        "Practice Makes Perfect"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0018",
+      "text": "59.\n\nFor a family birthday dinner, Celeste bought a turkey that weighed 5 pounds less than the one she bought for Thanksgiving. The birthday dinner turkey weighed 16 pounds. How much did the Thanksgiving turkey weigh?\n\n60.\n\nThe nurse reported that Tricia’s daughter had gained 4.2 pounds since her last checkup and now weighs 31.6 pounds. How much did Tricia’s daughter weigh at her last checkup?\n\n61.\n\nConnor’s temperature was 0.7 degrees higher this morning than it had been last night. His temperature this morning was 101.2 degrees. What was his temperature last night?\n\n62.\n\nMelissa’s math book cost $22.85 less than her art book cost. Her math book cost $93.75. How much did her art book cost?\n\n63.\n\nRon’s paycheck this week was $17.43 less than his paycheck last week. His paycheck this week was $103.76. How much was Ron’s paycheck last week?",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Section 8.1 Exercises",
+        "Practice Makes Perfect"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0019",
+      "text": "Everyday Math\n\n64.\n\nBaking Kelsey needs 2/3 cup of sugar for the cookie recipe she wants to make. She only has 1/4 cup of sugar and will borrow the rest from her neighbor. Let s equal the amount of sugar she will borrow. Solve the equation 1/4+s=2/3 to find the amount of sugar she should ask to borrow.\n\n65.\n\nConstruction Miguel wants to drill a hole for a 5/8 -inch screw. The screw should be 1/12 inch larger than the hole. Let d equal the size of the hole he should drill. Solve the equation d+1/12=5/8 to see what size the hole should be.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Section 8.1 Exercises",
+        "Everyday Math"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0020",
+      "text": "Writing Exercises\n\n66.\n\nIs −18 a solution to the equation 3x=16−5x? How do you know?\n\n67.\n\nWrite a word sentence that translates the equation y−18=41 and then make up an application that uses this equation in its solution.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Section 8.1 Exercises",
+        "Writing Exercises"
+      ]
+    },
+    {
+      "id": "url-1b1d4941f638a03986c2a99946d78caef34c30a79f307fb04d81ae3db99cedb8:bc4c35a0d46b:0021",
+      "text": "Self Check\n\nⓐ After completing the exercises, use this checklist to evaluate your mastery of the objectives of this section.\n\nⓑ If most of your checks were:\n\n…confidently. Congratulations! You have achieved the objectives in this section. Reflect on the study skills you used so that you can continue to use them. What did you do to become confident of your ability to do these things? Be specific.\n\n…with some help. This must be addressed quickly because topics you do not master become potholes in your road to success. In math, every topic builds upon previous work. It is important to make sure you have a strong foundation before you move on. Whom can you ask for help? Your fellow classmates and instructor are good resources. Is there a place on campus where math tutors are available? Can your study skills be improved?\n\n…no—I don’t get it! This is a warning sign and you must not ignore it. You should get help right away or you will quickly be overwhelmed. See your instructor as soon as you can to discuss your situation. Together you can come up with a plan to get you the help you need.",
+      "section": [
+        "8.1 Solve Equations Using the Subtraction and Addition Properties of Equality",
+        "Section 8.1 Exercises",
+        "Self Check"
+      ]
+    }
+  ]
+}

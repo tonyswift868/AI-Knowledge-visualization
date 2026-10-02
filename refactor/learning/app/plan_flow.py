@@ -857,10 +857,11 @@ class PlanFlow:
             raise ModelCancelled()
         previous, coverage_failures = [], []
         stored = store.records('points', plan_id)
+        evidence = self._module_chunks(all_chunks, titles)
         for module in agents.outline_modules(draft['outline']):
             if draft['generation'].get(module['id']) == 'done':
                 saved_points = [p for p in stored if p['module_id'] == module['id']]
-                if not agents.cross_module_duplicates(saved_points, previous):
+                if not previous:
                     previous.extend(dict(p, module_title=module['title']) for p in saved_points)
                     continue
                 # An earlier failed module may have completed on this retry.
@@ -871,7 +872,7 @@ class PlanFlow:
             chunks = self._module_chunks(self._span_chunks(module, all_chunks), titles)
             try:
                 points = self._check_module_points(dict(draft, form=effective_form), module, chunks, ctx,
-                                                   proposed[module['id']], previous)
+                                                   proposed[module['id']], previous, evidence=evidence)
                 payload = [dict(p, id=f"{module['id']}-{index:02d}") for index, p in enumerate(points, 1)]
                 question_minutes = max(1, round(CHECK_MINUTES_PER_QUESTION))
                 store.save_generated_module(plan_id, module['id'], payload, today=self.study_day(),
@@ -938,11 +939,36 @@ class PlanFlow:
         points = self._generate_module_batches(draft, module, chunks, ctx)
         return self._check_module_points(draft, module, chunks, ctx, points, [])
 
-    def _check_module_points(self, draft, module, chunks, ctx, points, previous):
+    def _meaning_duplicates(self, draft, points, previous, evidence, ctx):
+        matches = agents.cross_module_duplicates(points, previous)
+        if matches or not previous:
+            return matches
+        # Prefer one call for a normal module. Long curricula use bounded pair
+        # matrices, retaining ALL points and full cited text, without a plan cap.
+        width = max(1, 64 // max(1, len(points)))
+        matches = []
+        for start in range(0, len(previous), width):
+            if ctx is not None and ctx.cancel.is_set():
+                raise ModelCancelled()
+            prior = previous[start:start + width]
+            request = agents.point_review_request(points, prior, evidence)
+            rows, _ = self._ask('plan_point_review', request[:2],
+                lambda text: agents.parse_point_review(text, request[2]), ctx,
+                plan_id=draft['plan_id'], max_tokens=16384)
+            for row in rows:
+                if row['relation'] != 'duplicate':
+                    continue
+                i, j = int(row['point'][1:])-1, int(row['previous'][1:])-1
+                matches.append(dict(index=i, title=points[i]['title'], previous_title=prior[j]['title'],
+                    previous_module=prior[j].get('module_title', prior[j].get('module_id', '前面模块')),
+                    reason=row['reason'], method='semantic'))
+        return matches
+
+    def _check_module_points(self, draft, module, chunks, ctx, points, previous, *, evidence=None):
         errors = agents.point_requirement_errors(points, module, draft['form'])
-        duplicates = agents.cross_module_duplicates(points, previous)
+        duplicates = self._meaning_duplicates(draft, points, previous, evidence or chunks, ctx)
         had_duplicates = bool(duplicates)
-        errors.extend(f"跨模块重复：{hit['title']}重复{hit['previous_module']}的{hit['previous_title']}" for hit in duplicates)
+        errors.extend(f"跨模块重复：{hit['title']}重复{hit['previous_module']}的{hit['previous_title']}；{hit.get('reason', '标题、摘要与出处重合')}" for hit in duplicates)
         if not errors:
             return points
         # One explicit content adjustment, preserving all original material and
@@ -967,7 +993,7 @@ class PlanFlow:
             error_type = agents.MaterialCoverageError if had_duplicates else agents.AgentFormatError
             raise error_type('；'.join(errors) + ' 调整回复仍无有效知识点结构。') from exc
         errors = agents.point_requirement_errors(points, module, draft['form'])
-        duplicates = agents.cross_module_duplicates(points, previous)
+        duplicates = self._meaning_duplicates(draft, points, previous, evidence or chunks, ctx)
         if duplicates:
             # No duplicated point or its minutes reaches storage. Reject this
             # module atomically rather than relaxing its learner constraints.

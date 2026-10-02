@@ -84,7 +84,10 @@ class ScriptedModel:
             self.calls.append((purpose, enable_search, max_tokens))
         user = messages[-1]["content"]
         hits = ()
-        if purpose == "sufficiency":
+        if purpose == 'plan_point_review':
+            from tests.refactor.planner.semantic_fakes34 import wire
+            text = wire(messages)
+        elif purpose == "sufficiency":
             text = json.dumps(self.sufficiency.pop(0), ensure_ascii=False)
         elif purpose == "research":
             assert enable_search

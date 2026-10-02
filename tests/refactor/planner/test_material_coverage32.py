@@ -135,6 +135,9 @@ def test_parallel_generation_admits_in_order_and_returns_to_working_outline_acti
         flow._generate_module_batches=batches
         adjusted=[]
         def ask(purpose,request,parse,ctx,**kwargs):
+            if purpose == 'plan_point_review':
+                from tests.refactor.planner.semantic_fakes34 import wire
+                return parse(wire(request[1])),None
             adjusted.append(request)
             aliases={c:f'c{i}' for i,c in enumerate(ids,1)}
             return parse(json.dumps(dict(points=[dict(title=p['title'],summary=p['summary'],minutes=p['minutes'],
@@ -163,6 +166,9 @@ def test_replacement_unique_but_insufficient_returns_material_shortfall_not_coun
     draft=dict(plan_id='p',form=dict(FORM,notes=''),goal='方程',outline=covered_outline())
     calls=[]
     def ask(purpose,request,parse,*args,**kwargs):
+        if purpose == 'plan_point_review':
+            from tests.refactor.planner.semantic_fakes34 import wire
+            return parse(wire(request[1])),None
         calls.append(request)
         return parse(json.dumps(dict(points=[dict(title='文字句翻译',summary='识别等号词并将文字问题列为方程',
                                                    chunks=['c1'],minutes=15)]))),None

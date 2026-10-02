@@ -37,6 +37,9 @@ NAMES = ('目标', '正式', '暂记', '欠账', '超前', '逾期天数', '剩�
 
 class FlowAgents(Agents):
     def complete(self, purpose, messages, **kwargs):
+        if purpose == 'plan_point_review':
+            from tests.refactor.planner.semantic_fakes34 import wire
+            return SimpleNamespace(text=wire(messages), search_hits=(), citations=())
         if purpose != 'generate':
             return super().complete(purpose, messages, **kwargs)
         aliases = re.findall(r'\[(c\d+)\]', messages[-1]['content'])

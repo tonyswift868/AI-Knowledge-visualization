@@ -245,6 +245,9 @@ class ScriptedGateway:
     def complete(self, purpose, messages, **kwargs):
         self.calls.append({"purpose": purpose, "enable_search": kwargs.get("enable_search", False)})
         prompt = messages[-1]["content"]
+        if purpose == "plan_point_review":
+            from tests.refactor.planner.semantic_fakes34 import wire
+            return SimpleNamespace(text=wire(messages), search_hits=(), citations=())
         if purpose == "sufficiency":
             value = {"enough": True, "questions": [], "goal": "Python CSV 报表工具", "focus": ["CSV", "中文", "练习"]}
         elif purpose == "outline":
