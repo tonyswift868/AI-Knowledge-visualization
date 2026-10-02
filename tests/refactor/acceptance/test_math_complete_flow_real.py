@@ -1,4 +1,4 @@
-"""Batch 29/31 independent acceptance; MF_MATH_REAL=1 opts in to paid calls.
+"""Batch 29/31/33 independent acceptance; MF_MATH_REAL=1 opts in to paid calls.
 
 Only the registered bridge handlers, real agents and isolated CourseStore are
 used. Fault injection interrupts local persistence boundaries, not verdicts.
@@ -36,7 +36,7 @@ from refactor.learning.course.ledger import study_day
 from refactor.learning.course.store import CourseStore
 from refactor.learning.preferences.storage import AccountJSON, StorageError
 
-OUT = Path(r"D:\MentorFlow\.local\test-tmp\acceptance3b")
+OUT = Path(r"D:\MentorFlow\.local\test-tmp\acceptance3c")
 GOAL = "初中数学：一元一次方程（含解法与简单应用）"
 FALLBACK = "https://openstax.org/books/prealgebra-2e/pages/8-1-solve-equations-using-the-subtraction-and-addition-properties-of-equality"
 SCOPE = ("限定3个模块、总共8–10个知识点（推荐每模块3点），每点约15分钟。"
@@ -149,12 +149,12 @@ class MathRun:
                     json.dumps(evidence, ensure_ascii=True, indent=2), encoding="utf-8")
                 raise
         stack.enter_context(patch.object(AccountJSON, "write", record_failed_write))
-        self.store = CourseStore("acceptance_math_31", OUT / "data")
-        self.settings = AppSettings("acceptance_math_31", OUT / "data")
+        self.store = CourseStore("acceptance_math_33", OUT / "data")
+        self.settings = AppSettings("acceptance_math_33", OUT / "data")
         if phase == 1 and not (OUT / "plan-id.txt").exists():
             self.settings.save(dict(base.SETTINGS, detail="brief", examples="few"))
         self.services = SimpleNamespace(store=self.store, settings=self.settings, gateway=self.gw,
-            account_id="acceptance_math_31", data_root=OUT / "data")
+            account_id="acceptance_math_33", data_root=OUT / "data")
         self.day = lambda: study_day(self.clock.now(), base.time(4), self.clock.zone)
         self.rooms = []
         real_room = cm.Classroom
@@ -176,7 +176,15 @@ class MathRun:
 
     def bind(self):
         self.registry = base.HandlerRegistry()
-        self.registry.push = lambda *a: None
+        self.ready_event = threading.Event()
+        self.events = read(OUT / "bridge-events.json", [])
+        event_lock = threading.Lock()
+        def push(name, payload):
+            with event_lock:
+                self.events.append(dict(name=name, payload=payload, monotonic=time.monotonic()))
+                ce.dump(OUT / "bridge-events.json", self.events)
+            if name == "classroom.lesson_ready": self.ready_event.set()
+        self.registry.push = push
         handlers.register(self.registry, SimpleNamespace(services=self.services, settings_changed=lambda _: None))
         # The application's registered classroom factory gets our injected OS clock.
 
@@ -242,7 +250,10 @@ class MathRun:
         if draft["phase"] == "sources":
             for card in list(draft["sources"]):
                 if card["status"] == "new":
-                    draft = self.plan_step("03采用"+card["card_id"], lambda d,c,k=card["card_id"]:self.flow.decide(d,k,True))
+                    # Search and scoring still run, but this controlled rerun
+                    # uses the same OpenStax page as the preceding acceptance.
+                    adopt = card.get("url") == FALLBACK
+                    draft = self.plan_step("03资料选择"+card["card_id"], lambda d,c,k=card["card_id"],a=adopt:self.flow.decide(d,k,a))
             if not any(c["status"] == "adopted" for c in draft["sources"]):
                 self.coverage["pasted_url"] = FALLBACK
                 draft = self.plan_step("04权威不足贴网址", lambda d,c:self.flow.more_sources(d,c,FALLBACK))
@@ -251,11 +262,20 @@ class MathRun:
         if draft["phase"] == "outline":
             ce.dump(OUT / "outline.json", draft["outline"])
             mods = [m for s in draft["outline"]["stages"] for m in s["modules"]]
-            if len(mods) != 3:
+            if draft["outline"].get("coverage_notice"):
+                self.coverage["coverage_notice"] = draft["outline"]["coverage_notice"]
+                draft = self.plan_step("06按资料覆盖范围生成", lambda d,c:self.flow.make_outline(d,c,"按资料范围生成"))
+            elif len(mods) != 3:
                 draft = self.plan_step("06调整为三个模块", lambda d,c:self.flow.make_outline(d,c,SCOPE))
             self.plan_step("07正式生成前预估", lambda d,c:self.flow.estimate(d))
         if draft["phase"] in ("outline", "generating"):
             draft = self.plan_step("08正式生成", lambda d,c:self.flow.generate(d,c))
+            # A duplicate rejection can return a reduced outline. Consent is
+            # the real product action, never a draft/DB repair or forced count.
+            if draft["phase"] == "outline" and draft["outline"].get("coverage_notice"):
+                self.coverage["generation_coverage_notice"] = draft["outline"]["coverage_notice"]
+                self.plan_step("09确认调整后资料范围", lambda d,c:self.flow.make_outline(d,c,"按资料范围生成"))
+                draft = self.plan_step("10重试正式生成", lambda d,c:self.flow.generate(d,c))
         if draft["phase"] != "ready": raise RuntimeError("建计划未完成："+draft["phase"])
         self.call("plan.start")
         self.quiet()
@@ -403,6 +423,8 @@ class MathRun:
             if step == "preparing_questions":
                 self.quiet()
                 self.call("classroom.state")
+            elif step == "preparing_lesson":
+                self.wait_lesson()
             elif step == "teach":
                 if self.view.get("can_skip") and self.view["module"]["number"]==2 and not self.coverage.get("direct"):
                     self.coverage["direct"] = True
@@ -463,6 +485,28 @@ class MathRun:
             ce.dump(OUT / "coverage.json",self.coverage)
             self.dump()
         self.call("classroom.leave")
+
+    def wait_lesson(self):
+        """Mirror the page's ready event + 500ms state polling, no next click."""
+        started = time.monotonic()
+        point_id = (self.view.get("lesson_wait") or {}).get("point_id")
+        samples = []
+        while self.view["step"] == "preparing_lesson":
+            if time.monotonic() - started > 500:
+                raise RuntimeError("正在准备500秒仍未自动继续")
+            self.ready_event.wait(.5)
+            self.ready_event.clear()
+            self.view = self.registry.methods["classroom.state"](
+                dict(plan_id=self.plan_id), SimpleNamespace(cancel=threading.Event(), stream=lambda _:None))
+            wait = self.view.get("lesson_wait") or {}
+            samples.append(dict(seconds=time.monotonic()-started, step=self.view["step"], error=wait.get("error")))
+            if wait.get("error"):
+                ce.dump(OUT / "lesson-wait-failure.json", samples)
+                raise RuntimeError("准备失败，需真实重试按钮：" + wait["error"])
+        rows = read(OUT / "lesson-waits.json", [])
+        rows.append(dict(point_id=point_id, seconds=time.monotonic()-started, samples=samples))
+        ce.dump(OUT / "lesson-waits.json", rows)
+        self.call("classroom.state")
 
     def finish_report_practice(self):
         report=self.call("plan.report")
