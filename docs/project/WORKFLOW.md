@@ -71,7 +71,7 @@
 | 小测试通过后 | 架构师 + MF-06 | 发新版（BUG-40 必须，含安装版实机走一遍新建计划） | SYS-06 |
 | 之后 | — | 大测试（用户说了才写）、GPT-6 审仓库；两项偶发失败的测试修稳 | QA-01 |
 
-## 第三十三批任务原文（2026-10-02，基线 BASEHASH）
+## 第三十三批任务原文（2026-10-02，基线 9d039ec）
 
 ### [33-MF06] classroom｜再用同一脚本复跑第三次小测试
 
@@ -82,14 +82,14 @@
   cd D:\MentorFlow-office\classroom\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/classroom
-  git reset --hard BASEHASH
+  git reset --hard 9d039ec
 测试用 D:\MentorFlow\.venv\Scripts\python.exe（已装服务器依赖）；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。只允许提交验收脚本的必要调整（tests/refactor/acceptance/，默认跳过）；提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
 禁止 push；禁止改主目录；禁止改产品代码（refactor/ 下任何文件）；禁止 ssh、连接 MentorFlow 服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。先读 AGENTS.md（磁盘规则、D 盘不膨胀）：所有产物在 D:\MentorFlow\.local\test-tmp\acceptance3c\ 下；中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
 验收按 CURRENT_STATE [QA-01]：老师讲解、题目、判定都由你本人对照原文逐条核对，不让被测模型给自己打分。回执里的测试结果要和实际一致（已知两项偶发失败的测试：服务器账号注销、首页读取失败的浏览器测试，单独重跑能过就注明）。
 花钱规则（用户定：功能优先，花费不离谱就不管）：真实模型用管理员现有 DeepSeek Flash 预设（Key 只在 Windows 凭据里，不显示不保存），总上限 ¥8，第一段（建计划 + 第一个模块）最多 ¥3；花费只记录，按用途报告。
 遇到需要选择的事：自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停下来。遇到阻断流程的问题（P1）：记录完整证据后，能绕过就绕过继续（写明怎么绕的），绕不过才停。
 同时在跑：无。你是独立验收人，只找问题，不修产品代码。
-背景：你上次复跑（.local/test-tmp/acceptance3b/report.md）后，架构师修了 BUG-43（PDF 半个字符导致保存失败）、BUG-44（老师记录把直接考算已讲）、导出里的现场讲标注与“欠账”用词；第三十二批修了点“继续”卡住（改成“正在准备”后自动继续），并加了跨模块重复检查与“资料不够”提示（重复检查只能拦字面重复，CURRENT_STATE [PLAN-04]）。都已在 BASEHASH。
+背景：你上次复跑（.local/test-tmp/acceptance3b/report.md）后，架构师修了 BUG-43（PDF 半个字符导致保存失败）、BUG-44（老师记录把直接考算已讲）、导出里的现场讲标注与“欠账”用词；第三十二批修了点“继续”卡住（改成“正在准备”后自动继续），并加了跨模块重复检查与“资料不够”提示（重复检查只能拦字面重复，CURRENT_STATE [PLAN-04]）。都已在 9d039ec。
 先读：AGENTS.md；CURRENT_STATE「当前阶段」和 [QA-01]、[PLAN-04]、[TEACH-08]、[BUG-43]、[BUG-44]；你上次的报告和脚本 tests/refactor/acceptance/test_math_complete_flow_real.py。
 要做
   1. 同一表单、同一资料从新数据目录完整重跑。轮廓提示资料不够时，选“按资料覆盖范围生成”继续（写明提示内容）。
@@ -1045,7 +1045,7 @@
 | 31-MF06 | MF-06 classroom | 用同一个脚本重跑第三次小测试（复测第三十批修复） | QA-01 | cd09590 | 已完成（7 项旧问题 5 过；新问题 P1 1、P2 2、P3 1；讲错 0、冤枉 0） |
 | 32-MF01 | MF-01 library | 点“继续”不能卡住等后台备课（P3-01 第二轮） | TEACH-08、TEACH-06 | dd0215f | 已合入 808acf0（P3-01 解决） |
 | 32-MF04 | MF-04 platform | 资料覆盖不到时不能用重复内容凑满模块 | PLAN-04、PLAN-02 | dd0215f | 已合入 808acf0（部分：意思相同的重复仍漏拦） |
-| 33-MF06 | MF-06 classroom | 再用同一脚本复跑第三次小测试 | QA-01 | BASEHASH | 已起草，待用户转发 |
+| 33-MF06 | MF-06 classroom | 再用同一脚本复跑第三次小测试 | QA-01 | 9d039ec | 已起草，待用户转发 |
 
 ## 任务模板
 
