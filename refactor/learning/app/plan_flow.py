@@ -1620,10 +1620,13 @@ def report_markdown(report, titles):
     lines += ["", "## 错误分布", "",
               f"- 随口问：{views['errors']['casual']} 次；模块检测：{views['errors']['module']} 次；最终检验：{views['errors']['check']} 次"]
     lines += ["", "## 每日目标与实际 / 历史明细", "",
-              "按原始学习日统计实际完成；欠账与超前为当天目标与当天实际的差值。", ""]
+              "按原始学习日统计实际完成；每天单独比较当天目标与实际，不是累计欠账。", ""]
     lines += [f"- {day['day']}：目标 {day['target_minutes']} 分，实际 {day['actual_minutes']} 分，"
-              f"欠账 {day['debt_minutes']} 分，超前 {day['ahead_minutes']} 分"
+              f"比当天目标少 {day['debt_minutes']} 分，多 {day['ahead_minutes']} 分"
               for day in views['history']]
+    if report.get("live_points"):
+        lines += ["", "## 老师现场讲的知识点", "", "以下知识点的讲稿没通过核对，是老师现场讲的：", ""]
+        lines += [f"- {p['title']}" for p in report["live_points"]]
     lines += ["", "## 最需要注意的知识点", ""]
     lines += [f"- {titles.get(w['point_id'], w['point_id'])}（出错 {w['score']} 次）" for w in report["weakest_points"] if w["score"]] \
         or ["- 没有明显的薄弱点。"]

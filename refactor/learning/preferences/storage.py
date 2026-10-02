@@ -61,6 +61,12 @@ class AccountJSON:
                 raise StorageError() from None
 
     def write(self, value):
+        try:
+            json.dumps(value, ensure_ascii=False).encode("utf-8")
+        except UnicodeEncodeError:
+            value = _scrub(value)  # lone surrogates from a third-party text layer (BUG-43)
+        except (TypeError, ValueError):
+            pass  # reported by the normal path below
         with self.lock:
             self._check()
             temporary = None
@@ -81,3 +87,14 @@ class AccountJSON:
             finally:
                 if temporary is not None:
                     temporary.unlink(missing_ok=True)
+
+
+def _scrub(value):
+    """Replace unencodable lone surrogates so one bad excerpt cannot block a save."""
+    if isinstance(value, str):
+        return value.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+    if isinstance(value, dict):
+        return {_scrub(key): _scrub(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_scrub(item) for item in value]
+    return value

@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 import re
 import posixpath
+import unicodedata
 from urllib.parse import unquote, urlsplit
 import zipfile
 
@@ -153,7 +154,7 @@ def _pdf(data, cancel, ocr=None, progress=None):
         recognizer = None
         for index, page in enumerate(reader.pages, 1):
             _check(cancel)
-            text = page.extract_text() or ''
+            text = clean_text(page.extract_text() or '')
             _check(cancel)
             # Scanner watermarks are not a body text layer. Do not use a general
             # short-text threshold: even a brief real heading must stay native.
@@ -375,6 +376,23 @@ def _math_text(node, cancel):
         previous = child_tag
         previous_value = value
     return ''.join(parts)
+
+
+def clean_text(text: str) -> str:
+    """Repair what PDF text layers emit for math letters (BUG-43).
+
+    pypdf can return mathematical italic letters as UTF-16 surrogate halves;
+    lone halves cannot be encoded and broke saving a plan draft. Valid pairs
+    are joined, lone halves become U+FFFD, and the Mathematical Alphanumeric
+    Symbols block is folded to plain letters. Chinese full-width punctuation
+    and every other character are left untouched.
+    """
+    if any(0xD800 <= ord(char) <= 0xDFFF for char in text):
+        text = text.encode('utf-16', 'surrogatepass').decode('utf-16', 'replace')
+    if any(0x1D400 <= ord(char) <= 0x1D7FF for char in text):
+        text = ''.join(unicodedata.normalize('NFKC', char) if 0x1D400 <= ord(char) <= 0x1D7FF else char
+                       for char in text)
+    return text
 
 
 def _normalize_html_math(root, cancel):

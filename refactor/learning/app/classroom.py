@@ -2015,11 +2015,16 @@ class Classroom:
                             or book.point(p).state == "red"][-12:]
                     plan, module = self._skeleton(fresh, {"module_id": module_id}, [])
                     profile = (fresh.store.records("teacher_profile", plan_id) or [{}])[0].get("document", {}) or {}
-                    taught = len(fresh.taught())
+                    # Points of a module passed by a direct test were never taught (BUG-44).
+                    skipped = {p["id"] for m in fresh.modules if book.module(m["id"]).state == "skipped"
+                               for p in fresh.points_of(m["id"])}
+                    taught = len(set(fresh.taught()) - skipped)
+                    progress = f"已讲 {taught} 个知识点" + (f"，另有 {len(skipped)} 个点所在模块直接考通过、没有讲" if skipped else "")
                     pctx = {"prefs": self._prefs(), "plan": plan, "module": module, "mode": current_mode,
                             "dialogue": self._dialogue(fresh, {"module_id": module_id}),
                             "profile": (profile.get("text") or "")[:6000], "known_point_ids": all_points,
-                            "weak_point_ids": weak, "progress": f"已讲 {taught}/{len(all_points)} 个知识点，当前模块《{module['title']}》。"}
+                            "weak_point_ids": weak,
+                            "progress": f"{progress}（全计划共 {len(all_points)} 个），当前模块《{module['title']}》。"}
                     page = getattr(self, "_profile_request_page", None)
                     if page is None:
                         self._profile_request_page = page = AppendOnlyPage()

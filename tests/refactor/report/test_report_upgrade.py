@@ -44,6 +44,11 @@ def test_saved_events_drive_all_three_graphs_and_daily_history(completed):
     markdown = report_markdown(report, {p['point_id']: p['summary'] for p in report['points']})
     assert '最终检验：' in markdown and '错误分布' in markdown
     assert '每日目标与实际 / 历史明细' in markdown and report['plan']['actual_completion_date'] in markdown
+    assert '欠账' not in markdown.split('## 每日目标与实际')[1].split('## 最需要注意')[0].replace('不是累计欠账', '')
+    assert '老师现场讲的知识点' not in markdown
+    live = dict(report, live_points=[dict(point_id=point, title='现场讲的点')])
+    marked = report_markdown(live, {p['point_id']: p['summary'] for p in report['points']})
+    assert '## 老师现场讲的知识点' in marked and '- 现场讲的点' in marked
 
 
 def test_history_shows_overdue_daily_debt_and_late_ahead():
@@ -93,8 +98,9 @@ def test_pdf_has_chart_and_content_stream(completed, tmp_path):
     if QGuiApplication.instance() is None:
         os.environ['QT_QPA_PLATFORM'] = 'windows'
     app = QGuiApplication.instance() or QGuiApplication([])
-    _, report, _ = completed
+    _, report, point = completed
     target = tmp_path / 'report.pdf'
+    report = dict(report, live_points=[dict(point_id=point, title='现场讲的点')])
     render_report_pdf(report, {p['point_id']: p['summary'] for p in report['points']},
                       report_views(report), target)
     assert target.read_bytes().startswith(b'%PDF-')

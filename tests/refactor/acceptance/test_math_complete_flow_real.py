@@ -1,4 +1,4 @@
-"""Batch 29 independent acceptance; MF_MATH_REAL=1 opts in to paid calls.
+"""Batch 29/31 independent acceptance; MF_MATH_REAL=1 opts in to paid calls.
 
 Only the registered bridge handlers, real agents and isolated CourseStore are
 used. Fault injection interrupts local persistence boundaries, not verdicts.
@@ -34,8 +34,9 @@ from refactor.learning.connections.errors import ModelError
 from refactor.learning.course.judge_agent import _json_object
 from refactor.learning.course.ledger import study_day
 from refactor.learning.course.store import CourseStore
+from refactor.learning.preferences.storage import AccountJSON, StorageError
 
-OUT = Path(r"D:\MentorFlow\.local\test-tmp\acceptance3")
+OUT = Path(r"D:\MentorFlow\.local\test-tmp\acceptance3b")
 GOAL = "初中数学：一元一次方程（含解法与简单应用）"
 FALLBACK = "https://openstax.org/books/prealgebra-2e/pages/8-1-solve-equations-using-the-subtraction-and-addition-properties-of-equality"
 SCOPE = ("限定3个模块、总共8–10个知识点（推荐每模块3点），每点约15分钟。"
@@ -60,7 +61,7 @@ class MathGateway(ce.RecordedGateway):
             return sum(Decimal(r.get("peak_cost") or r["reserved"]) for r in self.rows)
 
     def complete(self, purpose, messages, **kw):
-        cap = Decimal("4") if self.phase == 1 else Decimal("10")
+        cap = Decimal("3") if self.phase == 1 else Decimal("8")
         packet = json.dumps(dict(system=kw.get("system"), messages=messages), ensure_ascii=False)
         bound = len(packet.encode("utf-8")) + 2048
         tokens = max(kw.get("max_tokens", 4096), gm.PURPOSE_MIN_OUTPUT.get(purpose, 0))
@@ -134,12 +135,26 @@ class MathRun:
         stack.enter_context(patch.object(ce, "RecordedGateway", MathGateway))
         self.gw = ce.live_gateway(stack, OUT)
         self.gw.phase = phase
-        self.store = CourseStore("acceptance_math_29", OUT / "data")
-        self.settings = AppSettings("acceptance_math_29", OUT / "data")
+        guarded_write = AccountJSON.write
+        def record_failed_write(storage, value):
+            try:
+                return guarded_write(storage, value)
+            except StorageError:
+                rendered = json.dumps(value, ensure_ascii=False, indent=2)
+                try: payload_bytes, encoding_error = len(rendered.encode("utf-8")), None
+                except UnicodeEncodeError as exc: payload_bytes, encoding_error = None, str(exc)
+                evidence = dict(path=str(storage.path), payload_bytes=payload_bytes,
+                    encoding_error=encoding_error, value=value)
+                (OUT / "storage-failure.json").write_text(
+                    json.dumps(evidence, ensure_ascii=True, indent=2), encoding="utf-8")
+                raise
+        stack.enter_context(patch.object(AccountJSON, "write", record_failed_write))
+        self.store = CourseStore("acceptance_math_31", OUT / "data")
+        self.settings = AppSettings("acceptance_math_31", OUT / "data")
         if phase == 1 and not (OUT / "plan-id.txt").exists():
             self.settings.save(dict(base.SETTINGS, detail="brief", examples="few"))
         self.services = SimpleNamespace(store=self.store, settings=self.settings, gateway=self.gw,
-            account_id="acceptance_math_29", data_root=OUT / "data")
+            account_id="acceptance_math_31", data_root=OUT / "data")
         self.day = lambda: study_day(self.clock.now(), base.time(4), self.clock.zone)
         self.rooms = []
         real_room = cm.Classroom
@@ -266,13 +281,20 @@ class MathRun:
         instruction = {"brief":"只写最简短的正确答案，允许代词和省略，不要另加无关解释。",
             "result_only":"只给最终结果，故意不写题目要求的过程或中间等式。",
             "process":"补充刚才题目要求的那一步等式与得到它的运算。"}.get(mode, "")
-        packet = dict(persona="零基础初中生，复习后认真回答", mode="correct" if mode in ("brief","process","result_only") else mode,
+        packet = dict(persona="零基础初中生，复习后认真回答", mode="correct" if mode in ("brief","process") else mode,
             instruction=instruction, question=self.view.get("question"), textbook=textbook,
             dialogue=[dict(role=m["role"],text=m["content"]) for m in self.view["messages"][-5:]])
         self.gw.operation = "学生作答:"+mode
-        result = self.gw.complete("simulated_student", [dict(role="user",content=json.dumps(packet,ensure_ascii=False))],
-            system=ce.STUDENT_SYSTEM+"\n必须遵守instruction的表达方式；不能看到标准答案。"
-                +("\n本次只给最终结果，故意省略过程；这条优先于mode=correct的完整作答要求。" if mode=="result_only" else ""),max_tokens=4096)
+        messages = [dict(role="user",content=json.dumps(packet,ensure_ascii=False))]
+        system = ce.STUDENT_SYSTEM+"\n必须遵守instruction的表达方式；不能看到标准答案。" + (
+            "\n本次只给最终结果，故意省略过程；这条优先于mode=correct的完整作答要求。" if mode=="result_only" else "")
+        try:
+            result = self.gw.complete("simulated_student", messages, system=system, max_tokens=4096)
+        except ModelError as exc:
+            if exc.code != "MODEL_OUTPUT_TRUNCATED": raise
+            # A test student exhausting its thinking budget is not a product failure.
+            # Record the failed call and pay for at most one larger retry.
+            result = self.gw.complete("simulated_student", messages, system=system, max_tokens=8192)
         return _json_object(result.text)["reply"]
 
     def probe_process_component(self):
@@ -360,6 +382,18 @@ class MathRun:
         last = None
         for _ in range(240):
             state, step = self.state(), self.view["step"]
+            if state.get("bank_retry"):
+                retry = state["bank_retry"]
+                key = retry["module_id"] + ":" + retry["method"]
+                count = self.coverage.setdefault("bank_retry_rounds", {}).get(key, 0)
+                if count >= 2:
+                    raise RuntimeError("真实按钮重备两轮仍无合格题，保留完整证据待人工处理")
+                self.coverage["bank_retry_rounds"][key] = count + 1
+                ce.dump(OUT / "coverage.json", self.coverage)
+                if retry["method"] in ("start_check", "_next_check"): self.call("classroom.check")
+                elif retry["method"] == "start_test": self.call("classroom.test", kind=retry["args"][0])
+                else: raise RuntimeError("待重备操作未覆盖：" + retry["method"])
+                continue
             key_step = "waiting_without_question" if step in ("checking","preparing_questions") and not state.get("pending") else step
             key = json.dumps([key_step,state.get("pending"),state.get("lesson",{}).get("position")],sort_keys=True)
             repeated = repeated+1 if key==last else 0
@@ -388,7 +422,9 @@ class MathRun:
             elif step in ("answer","testing","retesting","checking","practice") and self.view.get("question"):
                 pending = state["pending"]
                 mode="correct"
-                if pending.get("process_reply"): mode="process"
+                if pending.get("process_reply"):
+                    self.coverage["process_prompt_received"] = pending["answer_id"]
+                    mode="process"
                 elif pending["kind"] == "casual" and not self.coverage.get("casual_wrong"):
                     mode="wrong";self.coverage["casual_wrong"]=True
                 elif pending["kind"] == "casual" and not self.coverage.get("claim_known"):
@@ -403,6 +439,8 @@ class MathRun:
                     mode="wrong";self.coverage["check_wrong"]=True
                 elif step == "checking" and len(pending.get("point_ids",[]))==1 and self.store.load_mastery(self.plan_id).point(pending["point_ids"][0]).level==2 and not self.coverage.get("check_level2_wrong"):
                     mode="wrong";self.coverage["check_level2_wrong"]=True
+                elif self.phase == 2 and not self.coverage.get("strict_result_requested") and self.view["question"]["type"] in ("short","fix_error","exact") and re.search("步骤|过程|化简后的|第一步|代入.*化简|列.*方程",self.view["question"]["stem"]):
+                    mode="result_only";self.coverage["strict_result_requested"]=pending["answer_id"]
                 elif self.view["question"]["type"] in ("short","fix_error","exact") and re.search("步骤|过程|化简后的|第一步|代入.*化简",self.view["question"]["stem"]) and not self.coverage.get("process_probe"):
                     mode="result_only";self.coverage["process_probe"]=True
                 elif self.view["question"]["type"] in ("short","fix_error") and not self.coverage.get("brief"):
@@ -435,8 +473,12 @@ class MathRun:
             with patch.object(QFileDialog,"getSaveFileName",return_value=(str(OUT/name),"")):
                 ce.dump(OUT/(name+"-export.json"),self.call(method))
         before=copy.deepcopy(self.store.get_plan(self.plan_id))
-        self.call("classroom.practice",count=5)
-        for i in range(5):
+        practice = self.state().get("practice")
+        if not practice: self.call("classroom.practice",count=5)
+        # Resume the same pending practice after a test-student request fails.
+        # Do not reset its queue or start a second five-question attempt.
+        start = (self.state().get("practice") or {}).get("index", 0)
+        for i in range(start,5):
             while self.view["step"] == "preparing_questions":
                 self.quiet();self.call("classroom.state")
             self.reply_with_fault(self.student("wrong" if i==0 else "correct"))
@@ -516,7 +558,7 @@ def test_math_budget_reserves_effective_output_and_peak_before_call(tmp_path, mo
     client=SimpleNamespace(get_configuration=lambda:dict(provider_id="deepseek",model="deepseek-flash"),
         estimate_context=lambda:{},price_catalog=prices)
     recorder=MathGateway(client,tmp_path,budget_path=tmp_path/"budget.json")
-    recorder.rows=[dict(reserved="3.9")]
+    recorder.rows=[dict(reserved="2.9")]
     with pytest.raises(ModelError):recorder.complete("lesson_prep",[dict(role="user",content="offline")],max_tokens=4096)
     assert seen[0]["output_tokens"]==(24576,24576)
     assert not (tmp_path/"calls").exists()
