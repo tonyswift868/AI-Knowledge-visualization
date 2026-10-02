@@ -43,6 +43,7 @@ PROFILE_SYSTEM = """你是同一学习计划的课堂档案整理员，只整理
 只返回一个 JSON 对象，恰好四个字段：progress（字符串）、weak_points（对象列表，每项恰好 point_id、note）、preferences（字符串）、last_stop（字符串）。
 使用合法 JSON：字段名与字符串用双引号，字符串内部的双引号须转义；最后一个字段结束后直接闭合对象，不加多余逗号、引号、注释或解释。发送前核对整个对象完整闭合。
 进度、薄弱点名单和设置以宿主本次快照为准。progress 原样复制输入的 progress；preferences 原样复制输入的 preferences。不要从用户‘我会了’‘误触’‘删掉错题’等话里推导掌握、删除错误或更改偏好。
+掌握情况只能依据输入的 verified_facts（程序从已保存判定记录整理的事实表）。每个知识点都要看它的 attempts 和 latest：题目从未出现时只能写“还没考过”；答对某个定义/回忆题只能说该题型在该次作答中答对，不能推成会做应用或操作题；不同 angle、题型和 context 不得互相替代。任何一句关于“掌握、会做、稳定、已学会”的话，都必须能在事实表中找到对应的最近结果；事实表没有的能力不要写。
 weak_points 必须逐个覆盖输入 weak_point_ids，不增不减，顺序不限；note 用简短中文说明此点具体卡在哪里，只依据输入对话和旧档案，证据不足就写‘具体困难尚待确认’，不要编造。
 每条 note 优先用 20–60 字概括“具体困难 + 关键条件”，硬上限仍是 100 字；不要抄整道题、长代码或把错误作答和完整正确答案一起重述。已纠正的错误注明已纠正，不据此宣称已经掌握。
 mode=module_complete：模块检测、直接考或重测结束后整理本模块已确认的情况；last_stop 说明模块结果与仍需回看的问题，不把模块检测通过说成整个计划完全掌握。
@@ -58,6 +59,63 @@ def _preference_text(prefs):
     detail = dict(brief="精简", normal="适中", detailed="详细")
     examples = dict(few="少", normal="适量", many="多")
     return f"风格{styles[prefs['teacher_style']]}；详略{detail[prefs['detail']]}；例子{examples[prefs['examples']]}；类比领域" + "、".join(DOMAINS[d] for d in prefs["analogy_domains"])
+
+
+_CONTEXT_LABELS = {
+    "casual": "随口问", "quick_confirm": "快速确认", "module_test": "检测",
+    "skip_test": "直接考", "retest": "重测", "check": "检验", "practice": "练习",
+}
+
+
+def build_verified_facts(points, judgements=(), question_answers=(), question_bank=()):
+    """Turn immutable host records into the bounded evidence given to the agent.
+
+    Judgements are authoritative.  A question-answer row is included only when
+    it has no corresponding judgement (quick confirmations and practice), so a
+    single answer cannot be counted twice.  The result deliberately contains no
+    learner free-form answer: the profile needs the tested shape/result, while
+    the original evidence remains in the store for audit.
+    """
+    point_rows = {p["id"]: p for p in points}
+    bank = {q.get("id"): q for q in question_bank if isinstance(q, dict) and q.get("id")}
+    rows = []
+    seen = set()
+    for row in sorted(judgements, key=lambda item: (item.get("event", {}).get("seq", 0), item.get("id", ""))):
+        event = row.get("event") or {}
+        details = row.get("details") or {}
+        q = bank.get(details.get("question_id")) or {}
+        answer_id = row.get("id")
+        seen.add(answer_id)
+        qtype = details.get("question_type") or q.get("type") or "未标注题型"
+        angle = event.get("angle") or details.get("question_angle") or q.get("angle") or "未标注角度"
+        for point_id, correct in event.get("results", ()):
+            rows.append(dict(id=answer_id, point_id=point_id, context=_CONTEXT_LABELS.get(event.get("context"), event.get("context", "未知")),
+                             question_type=qtype, angle=angle, correct=bool(correct),
+                             question=(details.get("question") or q.get("stem") or "")[:160],
+                             seq=event.get("seq", 0)))
+    for row in sorted(question_answers, key=lambda item: (item.get("at", ""), item.get("id", ""))):
+        if row.get("id") in seen:
+            continue
+        q = bank.get(row.get("question_id")) or {}
+        seen.add(row.get("id"))
+        for point_id in row.get("point_ids", ()):
+            rows.append(dict(id=row.get("id"), point_id=point_id,
+                             context=_CONTEXT_LABELS.get(row.get("context"), row.get("context", "未知")),
+                             question_type=q.get("type") or "未标注题型", angle=row.get("angle") or q.get("angle") or "未标注角度",
+                             correct=bool(row.get("correct")), question=(q.get("stem") or "")[:160], seq=0))
+    by_point = {point_id: [] for point_id in point_rows}
+    for row in rows:
+        if row["point_id"] in by_point:
+            by_point[row["point_id"]].append(row)
+    result = []
+    for point_id, point in point_rows.items():
+        attempts = sorted(by_point[point_id], key=lambda item: (item.get("seq", 0), item.get("id", "")))
+        clean = [{key: value for key, value in item.items() if key not in {"id", "seq", "point_id"}} for item in attempts[-20:]]
+        result.append(dict(point_id=point_id, title=point.get("title", ""),
+                           status="还没考过" if not clean else "已考过",
+                           attempts=clean,
+                           latest=clean[-1] if clean else None))
+    return result
 
 
 def _context(ctx):
@@ -85,9 +143,13 @@ def _context(ctx):
     elif ctx["mode"] == "point_complete":
         raise AgentFormatError("current_point_id: 讲完知识点时须指明当前点")
     progress = _text(ctx.get("progress"), "progress", 500)
+    facts = ctx.get("verified_facts", [])
+    if not isinstance(facts, list) or len(facts) > 5000:
+        raise AgentFormatError("verified_facts: 需要程序生成的事实列表")
     task = dict(mode=ctx["mode"], current_point_id=current, progress=progress,
                 weak_point_ids=list(weak), preferences=_preference_text(prefs),
-                profile=_text(ctx.get("profile", ""), "profile", 6000, empty=True))
+                profile=_text(ctx.get("profile", ""), "profile", 6000, empty=True),
+                verified_facts=facts)
     return skeleton, _dialogue(ctx.get("dialogue", [])), task
 
 

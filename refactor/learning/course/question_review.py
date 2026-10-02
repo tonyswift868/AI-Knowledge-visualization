@@ -18,6 +18,8 @@ from .judge_agent import _fields, _json_object
 from .mastery import ANGLES
 from .planner_agents import AgentFormatError
 from ..preferences.storage import AccountJSON
+from . import answer_compare
+from .code_runner import extract_code, extract_work_code, verify_fix_error_code
 
 
 VERSION = 2                         # blind solve and program-owned written quota
@@ -63,6 +65,135 @@ def written_allocation(rows, remaining):
 
 def _text(value):
     return isinstance(value, str) and bool(value.strip())
+
+
+def _equation_candidates(value):
+    """Return parseable equations embedded in a short Chinese explanation."""
+    if not isinstance(value, str):
+        return []
+    candidates = []
+    for match in re.finditer(r'(?<![A-Za-z0-9_])([A-Za-z]\s*[^\n。；;，,。]{0,80}?\s*=\s*[^\n。；;，,。]{1,40})', value):
+        text = re.sub(r'^[“"「(（]|[”"」)）]$', '', match.group(1).strip())
+        try:
+            is_equation, polynomial = answer_compare._expression(text)
+        except (ValueError, SyntaxError, ZeroDivisionError, OverflowError, RecursionError):
+            continue
+        if is_equation:
+            candidates.append((text, polynomial))
+    return candidates
+
+
+def _same_equation(left, right):
+    return bool(left and right and left[1] == right[1])
+
+
+def _declared_code_output(answer):
+    if not isinstance(answer, str):
+        return None
+    fenced = re.search(r'(?:输出|结果)\s*(?:为|是|：|:)\s*```(?:text|output)?\s*\n?(.*?)```', answer, re.S | re.I)
+    if fenced:
+        return fenced.group(1).strip()
+    plain = re.search(r'(?:输出|结果)\s*(?:为|是|：|:)\s*([^\n]+)', answer)
+    return plain.group(1).strip() if plain else None
+
+
+def _legacy_fix_error_issue(q):
+    """Catch the historical m+4 contradiction without invalidating old bank rows.
+
+    Pre-contract rows are retained for reading.  If their stem claims a direct
+    arithmetic operation but neither answer nor reference contains the actual
+    intermediate equation, the row is unsafe and must be regenerated.
+    """
+    stem = q.get('stem', '')
+    match = re.search(r'([A-Za-z]\s*[+\-−]\s*\d+\s*=\s*[+\-−]?\s*\d+).*?两边同时(?:加|减)(\d+).*?(?:得到|得出)\s*([A-Za-z]\s*=\s*[+\-−]?\s*\d+)', stem)
+    if not match:
+        return None
+    original = _equation_candidates(match.group(1))
+    stated = _equation_candidates(match.group(3))
+    if not original or not stated:
+        return None
+    amount = int(match.group(2))
+    op = re.search(r'两边同时(加|减)', match.group(0)).group(1)
+    left, right = match.group(1).split('=', 1)
+    sign = '+' if op == '加' else '-'
+    derived = _equation_candidates(f'{left}{sign}{amount}={right}{sign}{amount}')
+    if not derived or _same_equation(derived[0], stated[0]):
+        return None
+    evidence = (str(q.get('answer', '')) + '\n' + str(q.get('reference', '')))
+    if derived[0][0].replace(' ', '') in evidence.replace(' ', ''):
+        return None  # legacy row explicitly shows the intermediate wrong step
+    return 'fix_error_wrong_work_contradicts_result'
+
+
+def check_fix_error_consistency(question, *, points=(), excerpts=None):
+    """Return deterministic fix-error issues; empty means no machine finding."""
+    q = question_data(question)
+    issues = []
+    if q.get('type') != 'fix_error':
+        return tuple()
+    required = ('error_cause', 'wrong_work', 'wrong_result')
+    if (not _text(q.get('error_cause')) or not q.get('wrong_work')
+            or not _text(q.get('wrong_result'))):
+        legacy = _legacy_fix_error_issue(q)
+        # Existing bank rows remain readable; a row that explicitly starts the
+        # new contract is checked strictly by the parser.  The historical
+        # m+4 contradiction is still rejected by _legacy_fix_error_issue.
+        return (legacy,) if legacy else tuple()
+    wrong_work = q['wrong_work']
+    lines = list(wrong_work) if isinstance(wrong_work, list) else [wrong_work]
+    equations = []
+    for line in lines:
+        found = _equation_candidates(line)
+        if not found:
+            # Non-equation conceptual/code work is checked by the reviewer.
+            equations = []
+            break
+        equations.append(found[0])
+    if equations:
+        original = _equation_candidates(q.get('stem', ''))
+        result = _equation_candidates(q['wrong_result'])
+        # Some generated stems describe the original only in the first
+        # wrong_work step.  Prefer a stem equation when it agrees with that
+        # step; otherwise use the explicit first step as the source equation.
+        if original and result:
+            candidates = [item for item in original if not _same_equation(item, result[-1])]
+            if candidates:
+                original = candidates
+        if not original or not any(_same_equation(equations[0], item) for item in original):
+            # If the stem only repeats the erroneous result, the first
+            # explicit work line is the only available original equation.
+            # Otherwise retain the stem equation so a wrong first step is
+            # reported instead of being silently adopted.
+            if not original or all(_same_equation(item, result[-1]) for item in original):
+                original = [equations[0]]
+        if not result:
+            issues.append('fix_error_wrong_result_unparseable')
+        if not original or not _same_equation(equations[0], original[0]):
+            issues.append('fix_error_first_step_not_original')
+        transitions = sum(not _same_equation(a, b) for a, b in zip(equations, equations[1:]))
+        if transitions != 1:
+            issues.append('fix_error_requires_one_error_transition')
+        if not result or not _same_equation(equations[-1], result[-1]):
+            issues.append('fix_error_wrong_result_not_last_step')
+        if original:
+            standard = _equation_candidates(q.get('answer', ''))
+            if standard and not any(_same_equation(item, original[0]) for item in standard):
+                issues.append('fix_error_correct_answer_not_original')
+    # Code rows opt into the optional corrected fields.  Fenced code in
+    # wrong_work/answer is also supported for generated rows that keep the
+    # public three-field shape.
+    wrong_code = extract_work_code(lines)
+    correct_source = q.get('correct_work') or q.get('answer', '')
+    correct_code = extract_work_code(correct_source) if isinstance(correct_source, (list, tuple)) else extract_code(correct_source)
+    if wrong_code and correct_code:
+        wrong_expected = q.get('wrong_result', '')
+        correct_expected = q.get('correct_result') or _declared_code_output(q.get('answer', ''))
+        if not correct_expected:
+            return tuple(dict.fromkeys(issues + ['fix_error_correct_output_missing']))
+        ok, _reason = verify_fix_error_code(wrong_code, wrong_expected, correct_code, correct_expected)
+        if not ok:
+            issues.append('fix_error_code_output_mismatch')
+    return tuple(dict.fromkeys(issues))
 
 
 def _normal(value):
@@ -151,6 +282,8 @@ def check_question(question, *, points, excerpts, purpose='bank', essay_count=0)
             claims = [item for item in claims if _text(item)]
             if len(set(claims)) != len(claims):
                 issues.append('duplicate_required_point')
+    if kind == 'fix_error':
+        issues.extend(check_fix_error_consistency(q, points=points, excerpts=excerpts))
     if kind == 'exact':
         answer_kind, accepted, tolerance = q.get('answer_kind'), q.get('accepted'), q.get('tolerance')
         if answer_kind not in ('number', 'expression', 'term', 'text'):
@@ -208,6 +341,7 @@ verification 是程序先运行的不看答案的独立解题记录；matched=fa
 逐题查：答案正确且在所给条件下唯一；题面范围和前提明确、没有歧义；题面没有给出所考结论或明显提示；每个评分要求在题面明确问到，且能由本题引用的资料得出；不要把局部事实套到整体，不能凭常识增加资料没有的必答条件。
 知识点标题和摘要不是证据，不能用其中的目标替代原文。先把题面要求的结论逐项对应到原文，再核对答案是否真的回答所问；选项里的事实各自为真，不代表它们证明了所问的关系。特别核对因果、方向、范围、相互影响：原文仅有并列事实或地点存在时，不能推成原因、向外传播或双向影响；reference 里的解释同样要核，不能把出题员的推断当证据。依据不足时修成原文明示的问题，无法修就拒绝。
 程序问题列表是必须解决的约束。不能批准结构不合格的题，但可改成合格题。选择题四选一，错误选项在条件下确实错误，不能仅因“不是原文推荐的写法”判错。有多个合法答案的操作题要补条件或换问题。
+纠错题必须先写 error_cause，再按 cause 逐步给出 wrong_work，最后得到 wrong_result；不得让题面声称的操作与结果自相矛盾。数学步骤由宿主比较方程等价性，Python 错误代码和改正代码由隔离子进程实际运行；程序问题不能靠改文字解释掩盖。核对前请逐项查看：错因是否真正解释错误步骤、过程是否能推出错误结果、改正代码输出是否与标准答案一致。
 type 为 choice、exact、short、fix_error、essay。所有题保留 id、point_ids、angle，chunk_ids 只可选本题知识点实际提供的原文。保留题型，除非原题型无法修成合格题；不靠把所有主观题改成选择题回避。
 exact 有 answer_kind(number/expression/term/text)、accepted(包含answer)，只有number用非负tolerance。short、fix_error 的 required_points 有1–2项，每项恰为 {point,accept,reject}，point 一个可单独判对错的说法，accept 有1–3个等价正确示例，reject 有0–3个常见误解（没有合适误解可以为空）；不以“和、以及、并且、顿号、分号”捆多个要求。题面明确问到各要点，意思等价即算对，不逼逐字照抄。
 兼容已有 short、fix_error 的 required_points 字符串数组：同样1–2条，每条一个说法，题面明确问到；修订时保持字符串数组格式，不迁移成对象，不凭旧格式拒绝。新格式修订保持对象数组，不能混用。

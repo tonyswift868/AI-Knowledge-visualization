@@ -543,6 +543,7 @@ class Classroom:
 
     def _casual_reply(self, course, state, ctx, text, pending):
         if (verdict := self._adjudicate(course, state, ctx, "casual", pending, text)) is None: return
+        if (verdict := self._information_result(course, state, pending, text, verdict)) is None: return
         if verdict.uncertain or verdict.kind == 'clarify':
             verdict = self._deepen_question(course, state, ctx, pending, verdict)
             if verdict is None: return
@@ -668,6 +669,7 @@ class Classroom:
         else:
             verdict = self._adjudicate(course, state, ctx, "test", pending, text)
         if verdict is None: return
+        if (verdict := self._information_result(course, state, pending, text, verdict)) is None: return
         if verdict.uncertain or verdict.kind == 'clarify':
             verdict = self._deepen_question(course, state, ctx, pending, verdict)
             if verdict is None: return
@@ -1253,6 +1255,7 @@ class Classroom:
         else:
             verdict = self._adjudicate(course, state, ctx, "casual", pending, text)  # a question is allowed here
         if verdict is None: return
+        if (verdict := self._information_result(course, state, pending, text, verdict)) is None: return
         if verdict.uncertain or verdict.kind == 'clarify':
             verdict = self._deepen_question(course, state, ctx, pending, verdict)
             if verdict is None: return
@@ -1370,6 +1373,7 @@ class Classroom:
         else:
             verdict = self._adjudicate(course, state, ctx, 'test', pending, text)
         if verdict is None: return
+        if (verdict := self._information_result(course, state, pending, text, verdict)) is None: return
         if verdict.uncertain or verdict.kind == 'clarify':
             verdict = self._deepen_question(course, state, ctx, pending, verdict)
             if verdict is None: return
@@ -1931,6 +1935,12 @@ class Classroom:
 
     def _judge(self, course, state, ctx, mode, pending, reply):
         q = pending["question"]
+        followed = pending.get('information_answer_id') == pending.get('answer_id') and pending.get('information_requested') is True
+        if followed:
+            if not self._information_delivered(course, pending):
+                return judge_agent.Verdict('insufficient', None, (), pending['information_reason'],
+                                           checks=tuple(pending['information_checks']))
+            reply = self._information_combined_reply(pending, reply)
         if q['type'] == 'choice' and reply.strip() in q['options']:
             correct = reply.strip() == q['answer']
             return judge_agent.Verdict('answer', correct, () if correct else tuple(q['point_ids']),
@@ -1948,10 +1958,12 @@ class Classroom:
                 "question": q,
                 "reference": q.get("reference") or q.get("answer") or "按知识点要点判断",
                 "required_points": q.get('required_points'),
+                "information_followed_up": followed,
                 "reply": reply, "require_evidence": q["type"] in ("short", "fix_error", "essay")}
         request = judge_agent.judge_request(jctx, reply)
         parse = lambda text: judge_agent.parse_judgement(text, jctx)
         first = self._ask(course, ctx, "judge", request, parse, 4096)
+        first = judge_agent.defer_incomplete(first, jctx)
         if q['type'] == 'exact' and first.kind == 'answer' and first.correct is False:
             # The answer is decidable, but a free-form reply required the judge
             # to identify it. Its text alone does not prove the student's method
@@ -1964,6 +1976,43 @@ class Classroom:
             second = self._ask(course, ctx, "judge", request, parse, 4096)
             return judge_agent.review_verdict(first, second)
         return first
+
+    @staticmethod
+    def _information_combined_reply(pending, reply):
+        if pending.get('information_requested') and pending.get('information_answer_id') == pending.get('answer_id'):
+            return f"原回答：{pending['information_reply']}\n补充回答：{reply}"
+        return reply
+
+    def _information_delivered(self, course, pending):
+        return any(r['id'] == pending.get('information_message_id')
+                   for r in course.store.records('messages', course.plan_id))
+
+    def _information_result(self, course, state, pending, text, verdict):
+        if verdict.kind != 'insufficient':
+            return verdict
+        existing = (pending.get('information_requested') and
+                    pending.get('information_answer_id') == pending.get('answer_id'))
+        if existing and self._information_delivered(course, pending):
+            points = [course.point(pid) for pid in pending['point_ids']]
+            return judge_agent.settle_insufficient(verdict, dict(
+                question=pending['question'], points=points, mode='test',
+                reference=pending['question'].get('reference') or pending['question'].get('answer') or '',
+                required_points=pending['question'].get('required_points'), require_evidence=True,
+                excerpts=course.excerpts(pending['point_ids']), information_followed_up=True))
+        if not existing:
+            pending.setdefault('answer_id', self._answer_id(course, state, pending))
+            pending.update(
+                information_requested=True,
+                information_answer_id=pending['answer_id'],
+                information_reply=self._combined_reply(pending, text),
+                information_checks=list(verdict.checks), information_reason=verdict.reason,
+                information_message_id=uuid.uuid5(uuid.NAMESPACE_URL,
+                                                   'information:' + pending['answer_id']).hex,
+                information_prompt=judge_agent.information_prompt(pending['question']))
+        self._save(course, state)
+        course.store.append_message(course.plan_id, self._channel(state), 'system',
+            pending['information_prompt'], message_id=pending['information_message_id'], kind='question', at=self.now())
+        return None
 
     @staticmethod
     def _combined_reply(pending, reply):
@@ -2233,7 +2282,13 @@ class Classroom:
         q = pending["question"]
         course.store.append_judgement(course.plan_id, event, details={
             "question": q["stem"], "question_id": q.get('id'), "question_angle": q.get('angle'),
-            "answer": self._combined_reply(pending, answer)[:4000], "reason": verdict.reason,
+            "question_type": q.get('type'),
+            "answer": self._information_combined_reply(pending, self._combined_reply(pending, answer))[:4000],
+            "reason": verdict.reason,
+            "information_followup": {
+                "original": pending['information_reply'], "prompt": pending['information_prompt']
+            } if pending.get('information_requested') and
+                 pending.get('information_answer_id') == pending.get('answer_id') else None,
             "point_checks": list(verdict.checks), "judgement_review": verdict.review,
             "chunk_ids": q.get("chunk_ids", [])},
             credit_day=self._day(state) if context == "check" else None)
@@ -2273,6 +2328,12 @@ class Classroom:
                     all_points = [p["id"] for p in fresh.points]
                     weak = [p for p in all_points if book.point(p).casual_errors or book.point(p).module_errors
                             or book.point(p).state == "red"][-12:]
+                    facts = profile_agent.build_verified_facts(
+                        fresh.points,
+                        fresh.store.records("judgements", plan_id),
+                        fresh.store.records("question_answers", plan_id),
+                        fresh.store.records("question_bank", plan_id),
+                    )
                     plan, module = self._skeleton(fresh, {"module_id": module_id}, [])
                     profile = (fresh.store.records("teacher_profile", plan_id) or [{}])[0].get("document", {}) or {}
                     # Points of a module passed by a direct test were never taught (BUG-44).
@@ -2284,6 +2345,7 @@ class Classroom:
                             "dialogue": self._dialogue(fresh, {"module_id": module_id}),
                             "profile": (profile.get("text") or "")[:6000], "known_point_ids": all_points,
                             "weak_point_ids": weak,
+                            "verified_facts": facts,
                             "progress": f"{progress}（全计划共 {len(all_points)} 个），当前模块《{module['title']}》。"}
                     page = getattr(self, "_profile_request_page", None)
                     if page is None:

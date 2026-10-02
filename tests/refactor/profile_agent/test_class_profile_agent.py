@@ -94,6 +94,24 @@ def test_profile_prefix_stable_across_modes_and_snapshot_changes():
     assert before["mode"] == "point_complete"
 
 
+def test_verified_facts_keep_question_shape_and_do_not_infer_unasked_operation():
+    facts = agent.build_verified_facts(
+        [{"id": "p1", "title": "方程的解", "summary": "定义"},
+         {"id": "p2", "title": "同加同减", "summary": "操作"}],
+        judgements=[{"id": "j1", "event": {"seq": 3, "context": "check", "angle": "recall",
+                                                "results": [["p1", True]]},
+                     "details": {"question": "什么是方程的解？", "question_type": "short",
+                                  "question_angle": "recall"}}],
+    )
+    assert facts[0]["latest"] == {"context": "检验", "question_type": "short", "angle": "recall",
+                                   "correct": True, "question": "什么是方程的解？"}
+    assert facts[1]["status"] == "还没考过" and facts[1]["latest"] is None
+    ctx = context(verified_facts=facts)
+    task = json.loads(agent.profile_request(ctx)[1][-1]["content"].split("\n", 1)[1])
+    assert task["verified_facts"][0]["latest"]["angle"] == "recall"
+    assert "只能依据输入的 verified_facts" in agent.PROFILE_SYSTEM
+
+
 def test_plan_whitelist_retains_earlier_module_weakness_without_accepting_other_plan_ids():
     ctx = context(current_point_id="new-point", weak_point_ids=["p1"], known_point_ids=["p1", "new-point"])
     ctx["module"] = dict(title="下一模块", points=[dict(id="new-point", title="新点", summary="新的内容")])
