@@ -15,13 +15,14 @@ type Card = {
 type OModule = { id?: string; key: string; title: string; summary: string; refs: string[]; ref_titles: string[]; prerequisites: string[]; minutes: [number, number] }
 type Outline = { stages: { title: string; modules: OModule[] }[]; ranges: { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; suggested_end: string | null }; version: number }
 type Msg = { id: string; role: "ai" | "user"; kind: string; text: string; cards?: string[]; version?: number }
+type Coverage = { covered: boolean; blocked?: boolean; missing: { content: string; why: string; points: number }[]; message: string; missing_points?: number }
 type FormData = {
   goal: string; final_goal: string; level: string; level_note: string; notes: string; start: string; end: string
   daily_cap: number; weekday_weights: number[]; special_days: { date: string; weight: number }[]; only_mine: boolean
 }
 export type Draft = {
   plan_id: string; phase: "form" | "questions" | "sources" | "outline" | "generating" | "ready"; form: FormData | null
-  goal: string; messages: Msg[]; sources: Card[]; outline: Outline | null; generation: Record<string, string>
+  goal: string; messages: Msg[]; sources: Card[]; outline: Outline | null; generation: Record<string, string>; coverage?: Coverage
   estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string }
   busy: string | null
 }
@@ -184,9 +185,9 @@ export function NewPlan() {
             <div className="plan-actions fade-in">
               <Button disabled={busy} onClick={() => act("plan.more")}><Search />再找找</Button>
               <Button disabled={busy} onClick={() => act("plan.upload")}><FileUp />上传资料</Button>
-              <Button kind="primary" disabled={busy || adopted === 0} onClick={() => act("plan.outline")}>
+              {!draft.coverage?.blocked && <Button kind="primary" disabled={busy || adopted === 0} onClick={() => act("plan.outline")}>
                 <GitBranch />{adopted ? `用已采用的 ${adopted} 份资料生成路线轮廓` : "先采用至少一份资料"}
-              </Button>
+              </Button>}
             </div>
           )}
           {status && <div className="plan-status fade-in"><Loader2 className="spin" size={16} />{status}</div>}

@@ -312,9 +312,9 @@ def test_formal_point_grain_is_about_fifteen_minutes_without_plan_wide_cap():
     parsed = planner_agents.parse_points(json.dumps({'points': [row]}, ensure_ascii=False), aliases,
                                           min_points=1, point_minutes_range=(10, 20))
     assert parsed[0]['minutes'] == 15
-    with pytest.raises(AgentFormatError, match='point minutes'):
-        planner_agents.parse_points(json.dumps({'points': [dict(row, minutes=5)]}, ensure_ascii=False), aliases,
-                                    min_points=1, point_minutes_range=(10, 20))
+    short = planner_agents.parse_points(json.dumps({'points': [dict(row, minutes=5)]}, ensure_ascii=False), aliases,
+                                        min_points=1, point_minutes_range=(10, 20))
+    assert short[0]['minutes'] == 5
     batches = [[dict(parsed[0], title=f'任务{i}', summary=f'掌握编号{i}的完整任务')]
                for i in range(31)]
     assert len(planner_agents.merge_point_batches(batches, [{'id': 'c1'}])) == 31

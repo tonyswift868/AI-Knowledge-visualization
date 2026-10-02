@@ -101,10 +101,10 @@ def test_planner_batch_ranges_conserve_both_endpoints_and_fail_on_impossible_bud
     batches = [[dict(text="a" * 200)], [dict(text="b" * 100)], [dict(text="c")]]
     ranges = agents.batch_minute_ranges(batches, (31, 61))
     assert sum(r[0] for r in ranges) == 31 and sum(r[1] for r in ranges) == 61
-    assert all(2 <= low <= high for low, high in ranges)
+    assert all(1 <= low <= high for low, high in ranges)
     assert ranges[0][0] > ranges[1][0] > ranges[2][0]
     with pytest.raises(agents.AgentFormatError, match="batch minutes"):
-        agents.batch_minute_ranges(batches, (5, 10))
+        agents.batch_minute_ranges(batches, (2, 10))
 
 
 def test_planner_merge_unions_citations_counts_time_once_and_orders_by_material():

@@ -77,7 +77,9 @@ class ScriptedGateway:
             return extra
         text = '\n'.join(m['content'] for m in messages)
         hits = ()
-        if purpose == 'question_review':
+        if purpose == 'coverage_check':
+            value = dict(covered=True, missing=[], message='')
+        elif purpose == 'question_review':
             value = dict(verdict='approve', issues=[], revised=None)
         elif purpose == 'sufficiency':
             value = dict(enough=count > 1, questions=[] if count > 1 else ['要掌握哪些列表操作？'],

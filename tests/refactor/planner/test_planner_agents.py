@@ -95,9 +95,9 @@ def test_points_must_cite_supplied_chunks_and_have_sane_minutes():
     assert points[0]["chunk_ids"] == ["src:0001", "src:0002"] and points[1]["minutes"] == 8
     for bad in ({"points": [{"title": "a", "summary": "b", "chunks": ["c7"], "minutes": 5}] * 2},
                 {"points": [{"title": "a", "summary": "b", "chunks": [], "minutes": 5}, {"title": "b", "summary": "b", "chunks": ["c1"], "minutes": 5}]},
-                {"points": [{"title": "a", "summary": "b", "chunks": ["c1"], "minutes": 500}, {"title": "b", "summary": "b", "chunks": ["c1"], "minutes": 5}]},
+                {"points": [{"title": "a", "summary": "b", "chunks": ["c1"], "minutes": 0}, {"title": "b", "summary": "b", "chunks": ["c1"], "minutes": 5}]},
                 {"points": [{"title": "a", "summary": "b", "chunks": ["c1"], "minutes": 5}] * 2},
-                {"points": [{"title": "a", "summary": "b", "chunks": ["c1"], "minutes": 5}]}):
+                {"points": [{"title": "a", "summary": "b", "chunks": ["c1"], "minutes": 1}]}):
         with pytest.raises(AgentFormatError):
             agents.parse_points(json.dumps(bad), aliases)
 

@@ -126,7 +126,7 @@ def window_note(window: PlanWindow) -> str:
             f"每天最多 {window.daily_cap_minutes} 分钟")
 
 
-MINUTES_PER_POINT_GUESS = 15  # PLAN-04: each generated point is about 10–20 learning minutes
+MINUTES_PER_POINT_GUESS = 15  # PLAN-04: average planning estimate only; individual points have no limit
 
 
 def with_checks(learning_minutes: int) -> int:
@@ -477,6 +477,7 @@ class PlanFlow:
                           "status": "adopted", "source_id": saved["id"],
                           "chars": source.document.char_count, "sha": source.document.sha256})
         draft["sources"].extend(cards)
+        draft.pop("coverage", None)
         draft["research"]["linked"] = sorted(done | set(urls))
         text = (f"已打开并采用你给的 {len(cards)} 个链接。" if cards else "") + \
                ("没能使用：" + "；".join(failed[:5]) + "。" if failed else "")
@@ -615,6 +616,7 @@ class PlanFlow:
                 if card["url"] not in draft["research"]["rejected"]:
                     draft["research"]["rejected"].append(card["url"])
         card["status"] = "adopted" if adopt else "rejected"
+        draft.pop("coverage", None)
         draft.pop("scope", None)  # section ids are numbered over the adopted sources
         self.save(draft)
 
@@ -643,6 +645,7 @@ class PlanFlow:
                                          "status": "adopted", "source_id": saved["id"], "chars": saved.get("char_count", 0)})
                 draft["messages"].append(_msg("ai", "sources", f"已读取你上传的《{saved.get('title') or path.name}》，默认采用。",
                                               cards=[draft["sources"][-1]["card_id"]]))
+                draft.pop("coverage", None)
             self.save(draft)
 
     # ----------------------------------------------------------- 3 outline
@@ -673,6 +676,37 @@ class PlanFlow:
             sections = [s for s in sections if s.id in scope["include"]]
         return sources, [s for s in sections if s.id not in scope.get("exclude", [])]
 
+    def _coverage_material(self, sources, sections, chunks_by_source):
+        """Return titles, headings and lead sentences only; never send full text."""
+        leads = []
+        for section in sections:
+            chunks = chunks_by_source.get(section.source_id, [])
+            text = " ".join(c.get("text", "").strip() for c in chunks[:2]).strip()
+            match = re.split(r"(?<=[。！？.!?])\s+|\n+", text, maxsplit=1)
+            lead = (match[0] if match else text)[:300]
+            leads.append({"source": section.source_title, "title": section.title, "lead": lead})
+        return leads
+
+    def _check_coverage(self, draft, ctx, sources, sections, chunks_by_source):
+        material = self._coverage_material(sources, sections, chunks_by_source)
+        self.status(draft["plan_id"], "正在核对资料能覆盖哪些内容…")
+        verdict, _ = self._ask("coverage_check", agents.coverage_request(
+            draft.get("goal") or draft["form"].get("goal", ""), draft["form"], sources, material,
+            abandoned=draft.get("abandoned_topics", ())), agents.parse_coverage, ctx,
+            plan_id=draft["plan_id"], max_tokens=8192)
+        result = dict(verdict, blocked=not verdict["covered"],
+                      missing_points=sum(item["points"] for item in verdict["missing"]))
+        if draft["form"].get("only_mine") and not result["covered"]:
+            result["message"] = "你选了只用自己的资料。" + result["message"] + \
+                f"目前缺口大约 {result['missing_points']} 个知识点。"
+        draft["coverage"] = result
+        if not result["covered"]:
+            draft["phase"] = "sources"
+            draft["messages"].append(_msg("ai", "coverage", result["message"]))
+            self.save(draft)
+            return False
+        return True
+
     def make_outline(self, draft, ctx, request="", *, echo=True):
         if draft["phase"] not in ("sources", "outline"):
             raise BridgeError("PHASE_INVALID", "现在还不能生成路线轮廓。")
@@ -681,15 +715,8 @@ class PlanFlow:
             raise BridgeError("NO_SOURCES", "请先采用至少一份资料，路线要从资料里来。")
         if not sections:
             raise BridgeError("NO_SECTIONS", "按现在的范围一章都不剩了，请重新说一下要学哪些章节。")
-        if request.strip().strip('。！!') == '按资料范围生成' and (draft.get('outline') or {}).get('coverage_notice'):
-            draft['outline']['coverage_accepted'] = True
-            effective = agents.covered_form(draft['form'], draft['outline'])
-            draft['outline']['constraint_errors'] = agents.outline_requirements(draft['outline'], effective)
-            if echo:
-                draft['messages'].append(_msg('user', 'user_text', request))
-            draft['messages'].append(_msg('ai', 'outline', '已选择按现有资料覆盖范围生成；原目标中的缺口仍保留说明，不补重复内容。'))
-            self.save(draft)
-            return
+        if not self._check_coverage(draft, ctx, sources, sections, self._adopted(draft)[1]):
+            return False
         window = self._window(draft)
         previous = draft["outline"]["agent"] if (request and draft.get("outline")) else None
         if request and echo:
@@ -699,16 +726,7 @@ class PlanFlow:
                                                                 sections, previous=previous, request=request),
                                lambda text: agents.parse_outline(text, [s.id for s in sections]), ctx,
                                plan_id=draft["plan_id"], max_tokens=8192)
-        constraint_errors = agents.outline_requirements(outline, draft['form'])
-        coverage_notice = agents.coverage_notice(outline, draft['form'])
-        if constraint_errors and not coverage_notice:
-            outline, _ = self._ask('outline', agents.outline_request(draft['goal'], draft['form'], window_note(window),
-                sources, sections, previous=outline,
-                request='程序核对未满足用户要求，请调整一次：' + '；'.join(constraint_errors)),
-                lambda text: agents.parse_outline(text, [s.id for s in sections]), ctx,
-                plan_id=draft['plan_id'], max_tokens=8192)
-            constraint_errors = agents.outline_requirements(outline, draft['form'])
-            coverage_notice = agents.coverage_notice(outline, draft['form'])
+        constraint_errors = agents.scope_requirement_errors(agents.outline_modules(outline), draft['form'])
         by_id = {s.id: s for s in sections}
         modules = agents.outline_modules(outline)
         for module in modules:
@@ -717,20 +735,14 @@ class PlanFlow:
             module["ref_titles"] = [f"{by_id[r].source_title} · {by_id[r].title}" for r in module["refs"]]
         low, high = sum(m["minutes"][0] for m in modules), sum(m["minutes"][1] for m in modules)
         draft["outline"] = {"agent": {"stages": [{"title": s["title"], "modules": [
-            {k: m[k] for k in ("key", "title", "summary", "refs", "prerequisites", "minutes", "point_count") if k in m} for m in s["modules"]]}
+            {k: m[k] for k in ("key", "title", "summary", "refs", "prerequisites", "minutes") if k in m} for m in s["modules"]]}
             for s in outline["stages"]]}, "stages": outline["stages"], "ranges": minute_ranges(window, low, high),
             "version": (draft["outline"] or {}).get("version", 0) + 1, 'constraint_errors': constraint_errors}
-        if outline.get('coverage'):
-            draft['outline']['coverage'] = outline['coverage']
-            draft['outline']['agent']['coverage'] = outline['coverage']
-        draft['outline']['coverage_notice'] = coverage_notice
         draft["phase"] = "outline"
         draft["messages"].append(_msg("ai", "outline", outline["message"] or "这是路线的大致样子。", version=draft["outline"]["version"]))
-        if coverage_notice:
-            draft['messages'].append(_msg('ai', 'outline', coverage_notice))
-        elif constraint_errors:
+        if constraint_errors:
             draft['messages'].append(_msg('ai', 'outline', '调整一次后仍不符合补充说明：' + '；'.join(constraint_errors)
-                                          + ' 请修改路线或数量要求后再生成。'))
+                                          + ' 请修改学习范围后再生成。'))
         self.save(draft)
 
     # ----------------------------------------------------------- 4 estimate + generate
@@ -795,16 +807,11 @@ class PlanFlow:
         if draft["phase"] not in ("outline", "generating"):
             raise BridgeError("PHASE_INVALID", "现在不能生成。")
         plan_id, store = draft["plan_id"], self.services.store
-        if draft['outline'].get('coverage_notice') and not draft['outline'].get('coverage_accepted'):
-            draft['messages'].append(_msg('ai', 'outline', draft['outline']['coverage_notice']))
-            self.save(draft)
-            return
-        effective_form = (agents.covered_form(draft['form'], draft['outline'])
-                          if draft['outline'].get('coverage_accepted') else draft['form'])
-        constraint_errors = agents.outline_requirements(draft['outline'], effective_form)
+        effective_form = draft['form']
+        constraint_errors = agents.scope_requirement_errors(agents.outline_modules(draft['outline']), effective_form)
         if constraint_errors:
             draft['outline']['constraint_errors'] = constraint_errors
-            draft['messages'].append(_msg('ai', 'outline', '轮廓尚不符合补充说明：' + '；'.join(constraint_errors)))
+            draft['messages'].append(_msg('ai', 'outline', '轮廓包含了你明确排除的内容：' + '；'.join(constraint_errors)))
             self.save(draft)
             return
         draft['outline']['constraint_errors'] = []
@@ -855,9 +862,8 @@ class PlanFlow:
                 self.status(plan_id, f"正在生成：{done_count}/{total} 个模块完成")
         if ctx.cancel.is_set():
             raise ModelCancelled()
-        previous, coverage_failures = [], []
+        previous = []
         stored = store.records('points', plan_id)
-        evidence = self._module_chunks(all_chunks, titles)
         for module in agents.outline_modules(draft['outline']):
             if draft['generation'].get(module['id']) == 'done':
                 saved_points = [p for p in stored if p['module_id'] == module['id']]
@@ -872,7 +878,11 @@ class PlanFlow:
             chunks = self._module_chunks(self._span_chunks(module, all_chunks), titles)
             try:
                 points = self._check_module_points(dict(draft, form=effective_form), module, chunks, ctx,
-                                                   proposed[module['id']], previous, evidence=evidence)
+                                                   proposed[module['id']], previous)
+                if not points:
+                    self._drop_empty_module(draft, module)
+                    self.save(draft)
+                    continue
                 payload = [dict(p, id=f"{module['id']}-{index:02d}") for index, p in enumerate(points, 1)]
                 question_minutes = max(1, round(CHECK_MINUTES_PER_QUESTION))
                 store.save_generated_module(plan_id, module['id'], payload, today=self.study_day(),
@@ -888,8 +898,6 @@ class PlanFlow:
             except Exception as exc:  # One invalid module does not prevent independent modules.
                 draft['generation'][module['id']] = 'failed'
                 message = str(exc) if isinstance(exc, agents.AgentFormatError) else '生成服务暂时不可用'
-                if isinstance(exc, agents.MaterialCoverageError):
-                    coverage_failures.append(module['title'])
                 draft['outline'].setdefault('constraint_errors', []).append(message)
                 draft['messages'].append(_msg('ai', 'error', f"{module['title']}未入库：{message}。"
                     '可以重试失败的模块；资料不足请返回资料步骤补网址/再找资料，或修改路线缩小覆盖范围。'))
@@ -897,36 +905,8 @@ class PlanFlow:
             self.status(plan_id, f"正在生成：{sum(v == 'done' for v in draft['generation'].values())}/{total} 个模块完成")
         if ctx.cancel.is_set():
             raise ModelCancelled()
-        if coverage_failures:
-            # These are unstarted creation results, not learned content. Return
-            # to the existing outline/source actions; do not advertise an action
-            # that the generating phase actually forbids.
-            admitted = {m['key'] for m in agents.outline_modules(draft['outline'])
-                        if draft['generation'].get(m['id']) == 'done'}
-            for saved in reversed(store.records('modules', plan_id)):
-                store.delete_module(plan_id, saved['id'], today=self.study_day())
-            if admitted:
-                stages = []
-                for stage in draft['outline']['stages']:
-                    kept = [m for m in stage['modules'] if m['key'] in admitted]
-                    for module in kept:
-                        module['prerequisites'] = [key for key in module['prerequisites'] if key in admitted]
-                    if kept:
-                        stages.append(dict(stage, modules=kept))
-                draft['outline']['stages'] = stages
-                draft['outline']['agent'] = {'stages': stages}
-                draft['outline']['coverage'] = dict(available_modules=len(admitted), available_points=len(previous),
-                                                   missing=coverage_failures)
-                draft['outline']['coverage_notice'] = agents.coverage_notice(draft['outline'], draft['form'])
-            else:
-                draft['outline']['coverage_notice'] = ('现有资料无法生成不重复的模块，请补资料（贴网址或再找资料）并修改路线。')
-            draft['outline']['coverage_accepted'] = False
-            draft['generation'] = {}
-            draft['phase'] = 'outline'
-            draft['messages'].append(_msg('ai', 'outline', draft['outline']['coverage_notice']))
-            self.save(draft)
-            return
-        failed = [m["title"] for m in agents.outline_modules(draft["outline"]) if draft["generation"][m["id"]] != "done"]
+        failed = [m["title"] for m in agents.outline_modules(draft["outline"])
+                  if draft["generation"].get(m["id"]) != "done"]
         if failed:
             draft["messages"].append(_msg("ai", "error", f"有 {len(failed)} 个模块没有生成成功：{'、'.join(failed[:5])}。"
                                                           "点“重试失败的模块”再试一次，已完成的不会重做。"))
@@ -939,76 +919,75 @@ class PlanFlow:
         points = self._generate_module_batches(draft, module, chunks, ctx)
         return self._check_module_points(draft, module, chunks, ctx, points, [])
 
-    def _meaning_duplicates(self, draft, points, previous, evidence, ctx):
-        matches = agents.cross_module_duplicates(points, previous)
-        if matches or not previous:
-            return matches
-        # Prefer one call for a normal module. Long curricula use bounded pair
-        # matrices, retaining ALL points and full cited text, without a plan cap.
-        width = max(1, 64 // max(1, len(points)))
-        matches = []
-        for start in range(0, len(previous), width):
-            if ctx is not None and ctx.cancel.is_set():
-                raise ModelCancelled()
-            prior = previous[start:start + width]
-            request = agents.point_review_request(points, prior, evidence)
-            rows, _ = self._ask('plan_point_review', request[:2],
-                lambda text: agents.parse_point_review(text, request[2]), ctx,
-                plan_id=draft['plan_id'], max_tokens=16384)
-            for row in rows:
-                if row['relation'] != 'duplicate':
-                    continue
-                i, j = int(row['point'][1:])-1, int(row['previous'][1:])-1
-                matches.append(dict(index=i, title=points[i]['title'], previous_title=prior[j]['title'],
-                    previous_module=prior[j].get('module_title', prior[j].get('module_id', '前面模块')),
-                    reason=row['reason'], method='semantic'))
-        return matches
+    def _drop_empty_module(self, draft, module):
+        """Remove a module whose generated points were all duplicate/forbidden."""
+        module_id = module.get('id')
+        try:
+            self.services.store.delete_module(draft['plan_id'], module_id, today=self.study_day())
+        except (AttributeError, StoreError):
+            # Unit-level callers may not have a store; the draft still needs the
+            # same visible result when the real host later persists the outline.
+            pass
+        for stage in draft.get('outline', {}).get('stages', []):
+            stage['modules'] = [m for m in stage.get('modules', []) if m.get('id') != module_id and m.get('key') != module.get('key')]
+            for remaining in stage['modules']:
+                remaining['prerequisites'] = [p for p in remaining.get('prerequisites', []) if p != module.get('key')]
+        agent = draft.get('outline', {}).get('agent', {})
+        for stage in agent.get('stages', []):
+            stage['modules'] = [m for m in stage.get('modules', []) if m.get('id') != module_id and m.get('key') != module.get('key')]
+            for remaining in stage['modules']:
+                remaining['prerequisites'] = [p for p in remaining.get('prerequisites', []) if p != module.get('key')]
+        draft.get('generation', {}).pop(module_id, None)
 
-    def _check_module_points(self, draft, module, chunks, ctx, points, previous, *, evidence=None):
+    @staticmethod
+    def _forbidden_point_indexes(points, form):
+        topics = [str(x).strip() for x in (form.get('abandoned_topics') or []) if str(x).strip()]
+        return {i for i, point in enumerate(points)
+                if any(topic in (point.get('title', '') + ' ' + point.get('summary', '')) for topic in topics)}
+
+    def _check_module_points(self, draft, module, chunks, ctx, points, previous):
+        # Cross-module comparison is deliberately deterministic and free. Keep
+        # the first occurrence and silently omit later lexical duplicates.
+        duplicate_indexes = {hit['index'] for hit in agents.cross_module_duplicates(points, previous)}
+        points = [point for index, point in enumerate(points) if index not in duplicate_indexes]
+        forbidden = self._forbidden_point_indexes(points, draft['form'])
         errors = agents.point_requirement_errors(points, module, draft['form'])
-        duplicates = self._meaning_duplicates(draft, points, previous, evidence or chunks, ctx)
-        had_duplicates = bool(duplicates)
-        errors.extend(f"跨模块重复：{hit['title']}重复{hit['previous_module']}的{hit['previous_title']}；{hit.get('reason', '标题、摘要与出处重合')}" for hit in duplicates)
-        if not errors:
+        if not errors and not forbidden:
             return points
+        if not points:
+            return []
         # One explicit content adjustment, preserving all original material and
-        # user scope. Never truncate the list or manufacture points in the host.
+        # user scope. A forbidden topic is filtered after this one retry.
         request = agents.generate_request(draft['form'], draft['goal'], draft['outline'], module, chunks)
         aliases = request[2]
         reverse = {value: key for key, value in aliases.items()}
         last_version = [dict(p, chunks=[reverse[r] for r in p['chunk_ids']]) for p in points]
         request[1].append({'role': 'user', 'content': '【程序检查与一次调整】\n' + '；'.join(errors)
             + '\n只重生成本模块，不能重复前面模块的学习目标（改名、改写摘要、重复练习都不算新内容）。'
-              '不足时不凑数，输出实际独立点即可；不添原文没有的内容。\n【前面模块已收的点】\n'
+              '不得出现学习者已放弃的内容；资料不足时不凑数，输出实际独立点即可；不添原文没有的内容。\n【前面模块已收的点】\n'
             + json.dumps(previous, ensure_ascii=False) + '\n【上一版】\n'
             + json.dumps(last_version, ensure_ascii=False)})
         try:
             points, _ = self._ask('generate', request[:2],
-                lambda text: agents.parse_points(text, aliases, min_points=1, max_points=30,
-                                                  point_minutes_range=(10, 20)), ctx,
+                lambda text: agents.parse_points(text, aliases, min_points=1, max_points=30), ctx,
                 plan_id=draft['plan_id'], max_tokens=8192)
         except ModelError as exc:
             if exc.code != 'AGENT_FORMAT':
                 raise
-            error_type = agents.MaterialCoverageError if had_duplicates else agents.AgentFormatError
-            raise error_type('；'.join(errors) + ' 调整回复仍无有效知识点结构。') from exc
+            raise agents.AgentFormatError('；'.join(errors) + ' 调整回复仍无有效知识点结构。') from exc
+        duplicate_indexes = {hit['index'] for hit in agents.cross_module_duplicates(points, previous)}
+        forbidden = self._forbidden_point_indexes(points, draft['form'])
+        points = [point for index, point in enumerate(points) if index not in duplicate_indexes and index not in forbidden]
+        if not points:
+            return []
         errors = agents.point_requirement_errors(points, module, draft['form'])
-        duplicates = self._meaning_duplicates(draft, points, previous, evidence or chunks, ctx)
-        if duplicates:
-            # No duplicated point or its minutes reaches storage. Reject this
-            # module atomically rather than relaxing its learner constraints.
-            raise agents.MaterialCoverageError('资料不足：调整一次仍有跨模块重复，未收这些点：'
-                                          + '、'.join(hit['title'] for hit in duplicates))
         if errors:
-            error_type = agents.MaterialCoverageError if had_duplicates else agents.AgentFormatError
-            raise error_type(('资料不足，去重后不能满足数量/范围要求：' if had_duplicates else '') + '；'.join(errors))
+            raise agents.AgentFormatError('；'.join(errors))
         return points
 
     def _generate_module_batches(self, draft, module, chunks, ctx):
         """Read all of a module's material: big modules go in bounded batches, merged afterwards."""
         limit = max(1, min(MAX_GENERATE_BATCHES, module["minutes"][0] // 10))
-        if module.get('point_count'):
-            limit = min(limit, module['point_count'])
         size = agents.DEFAULT_BATCH_CHARS
         batches = agents.split_module_chunks(chunks, max_chars=size)
         needed = min(limit, max(1, math.ceil(module["minutes"][1] / 450)))
@@ -1044,11 +1023,8 @@ class PlanFlow:
         # Count constraints are checked after ALL batches are merged. Allow an
         # overlong first result through parsing so the dedicated adjustment can
         # see and revise it, rather than repeating the same request unchanged.
-        constrained = module.get('point_count') is not None
-        parse = lambda text: agents.parse_points(text, aliases, minutes_range=None if constrained else minutes,
-                                                 max_points=30 if constrained else max_points,  # noqa: E731
-                                                 min_points=1 if position or constrained else min(2, max_points),
-                                                 point_minutes_range=(10, 20) if minutes[1] >= 10 else (2, 20))
+        parse = lambda text: agents.parse_points(text, aliases, minutes_range=minutes,
+                                                 max_points=max_points, min_points=1)  # noqa: E731
         try:
             return [self._ask("generate", request[:2], parse, ctx, plan_id=draft["plan_id"], max_tokens=8192)[0]]
         except ModelError as exc:
@@ -1142,6 +1118,56 @@ class PlanFlow:
         draft["messages"].append(_msg("ai", kind, text))
         self.save(draft)
 
+    def _abandon_scope(self, draft, ctx, items):
+        if draft["phase"] not in ("sources", "outline"):
+            return self._say(draft, "现在还不能改学习范围。")
+        topics = list(dict.fromkeys(str(item).strip() for item in items if str(item).strip()))
+        if not topics:
+            raise BridgeError("PARAM_INVALID", "请说清暂时不学的内容。")
+
+        def without(text):
+            value = text or ""
+            for topic in topics:
+                value = re.sub(r"[（(][^（）()]{0,80}" + re.escape(topic) + r"[^（）()]{0,80}[）)]", "", value)
+                value = re.sub(re.escape(topic), "", value)
+            value = re.sub(r"[（(]\s*(?:含|包括|以及|和)?\s*[）)]", "", value)
+            value = re.sub(r"\s{2,}", " ", value).strip(" ，,、；;：:")
+            return value
+
+        old_form = draft["form"]
+        abandoned = list(dict.fromkeys((draft.get("abandoned_topics") or []) + topics))
+        draft["abandoned_topics"] = abandoned
+        narrowed_goal = without(draft.get("goal") or old_form.get("goal")) or "资料覆盖的学习内容"
+        narrowed_final = without(old_form.get("final_goal")) or narrowed_goal
+        # A generic goal such as “solve linear equations” still implies the
+        # abandoned family to a coverage checker. Make the learner's accepted
+        # scope explicit while retaining the original wording for the chat.
+        scope_suffix = "（只学习现有资料能覆盖的部分）"
+        if scope_suffix not in narrowed_goal:
+            narrowed_goal += scope_suffix
+        if scope_suffix not in narrowed_final:
+            narrowed_final += scope_suffix
+        draft["goal"] = narrowed_goal
+        draft["form"] = dict(old_form, goal=narrowed_goal,
+                              final_goal=narrowed_final, abandoned_topics=abandoned)
+        draft["outline"] = None
+        draft.pop("estimate", None)
+        draft.pop("coverage", None)
+        draft["phase"] = "sources"
+        try:
+            self.services.store.save_intake(draft["plan_id"], goal=draft["form"]["goal"],
+                final_goal=draft["form"]["final_goal"], level=draft["form"]["level"],
+                notes=draft["form"].get("notes", ""), window=self._window(draft),
+                today=self.study_day(), reason="学习者放弃部分目标")
+        except AttributeError:
+            pass
+        self._say(draft, "已按你的意思调整目标，只学习资料能覆盖的部分；暂时不学：" + "、".join(topics)
+                  + "。调整后的目标是：" + draft["goal"] + "。")
+        sources, chunks = self._adopted(draft)
+        sections = self._sections(draft)[1]
+        if sources and sections:
+            self._check_coverage(draft, ctx, sources, sections, chunks)
+
     def _carry_out(self, draft, ctx, intent, context):
         kind, params, phase = intent.kind, intent.params, draft["phase"]
         if kind == "answer":
@@ -1179,6 +1205,8 @@ class PlanFlow:
                 self._say(draft, f"好的，范围改为{summary}。正在按新范围调整路线…")
                 return self.make_outline(draft, ctx, "按学习者要求调整学习范围，" + summary, echo=False)
             return self._say(draft, f"记下了，生成路线轮廓时{summary}。")
+        if kind == "abandon_scope":
+            return self._abandon_scope(draft, ctx, params["items"])
         if kind == "revise_outline":
             if phase == "sources":
                 return self.make_outline(draft, ctx, params["instruction"], echo=False)
@@ -1224,6 +1252,7 @@ class PlanFlow:
         self.services.store.save_intake(draft["plan_id"], window=window, today=self.study_day(),
                                         reason="新建计划时在对话中修改", **intake)
         draft["form"] = dict(form, only_mine=old.get("only_mine", False))
+        draft.pop("coverage", None)
         if draft.get("outline"):
             modules = agents.outline_modules(draft["outline"])
             draft["outline"]["ranges"] = minute_ranges(window, sum(m["minutes"][0] for m in modules),

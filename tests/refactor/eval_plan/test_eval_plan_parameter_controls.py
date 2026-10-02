@@ -237,7 +237,9 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
         def complete(self, purpose, messages, **kwargs):
             operations.append(purpose)
             text = messages[-1]["content"]
-            if purpose == "sufficiency":
+            if purpose == "coverage_check":
+                result = dict(covered=True, missing=[], message="")
+            elif purpose == "sufficiency":
                 result = dict(enough=True, questions=[], goal="智能体基础", focus=["基础"])
             elif purpose == "outline":
                 if self.fail_outline:
@@ -264,11 +266,11 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
     generated = exp.run_one("base", 1, generate=True)
     assert generated["formal_complete"] and generated["metrics"]["point_count"] == 2
     assert first["draft"]["plan_id"] == generated["draft"]["plan_id"]
-    assert operations == ["sufficiency", "outline", "generate"]
+    assert operations == ["sufficiency", "coverage_check", "outline", "generate"]
     assert len(generated["metrics"]["chapter_coverage"]) == 2
     assert generated["metrics"]["point_minutes_sum"] == 31
     assert exp.run_one("base", 1, generate=True)["formal_complete"]
-    assert len(operations) == 3
+    assert len(operations) == 4
     exp.budget.fail_outline = True
     failed = exp.run_one("advanced", 1)
     assert failed["error_code"] == "AGENT_FORMAT"

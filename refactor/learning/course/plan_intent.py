@@ -44,6 +44,7 @@ intents 必须有 1～3 个，按用户提及的先后顺序；同一种 kind �
 - find_sources {instruction}：找/换资料、再找一批，保留用户指定的语言/难度/类型等约束。instruction 非空，最多 1000 字。
 - decide_sources {adopt:[n...],reject:[n...]}：按名称、序号或描述定位具体 cards，n 必须是 ctx.cards 的整数编号，两列表都给，至少一个非空，不能重复/相交。不存在或有多个匹配就 ask_user。“只用这一份”明确指到某卡时采用它、拒绝其他尚未拒绝的卡；不能擅自丢掉已采用资料。
 - limit_scope {include:[id...],exclude:[id...]}：只学前几章/不要某章。id 必须来自 ctx.sections；两个列表都给，至少一个非空，不重复/相交。“只学前4章”列出 include，不编造编号。目录有多份资料、重号或顺序/范围不明时 ask_user，不能猜是哪本书。只凭 title 无法推断未提供的正文。
+- abandon_scope {items:[内容, ...]}：资料覆盖检查后，用户明确表示这部分暂时不学/放弃。items 是具体内容列表，至少一项；只记录范围，不把资料外内容换成新目标。
 - revise_outline {instruction}：改轮廓路线（拆细、合并、排序、加实战等），用最多 1000 字保留原要求，不自造模块。生成前的模块修改用它，生成后明确删除/移动用 edit_modules。
 - edit_modules {delete:[n...],move:[{"n":n,"to":位置}...]}：仅 ready 阶段。n 必须来自 modules，两个列表都给，至少一个动作；不能重复或一边删除一边移动同一模块。to 为删除完成后模块列表中 1 起的位置，不超过剩余模块数；move 按列表顺序执行。宿主仍需检查前置依赖。
 - proceed {step:"outline"|"estimate"|"generate"|"start"}：明确继续。sources 阶段资料已确定时进入 outline；outline 阶段“看费用预估”进入 estimate，“开始生成吧”进入 generate；ready 阶段明确开始进入 start。极短的“行/可以了”结合最近 AI 问话判断，若没有唯一指向就 ask_user。questions 阶段的“行”不能跳过需求核对和资料；用户不是明确改表单时优先 answer/ask_user。
@@ -63,7 +64,7 @@ _FIELDS = {
     "update_form": {"goal", "final_goal", "level", "level_note", "start", "end", "daily_cap",
                     "weekday_weights", "special_days", "notes_append"},
     "find_sources": {"instruction"}, "decide_sources": {"adopt", "reject"},
-    "limit_scope": {"include", "exclude"}, "revise_outline": {"instruction"},
+    "limit_scope": {"include", "exclude"}, "abandon_scope": {"items"}, "revise_outline": {"instruction"},
     "edit_modules": {"delete", "move"}, "proceed": {"step"},
     "question": {"answer"}, "ask_user": {"question"}, "refuse": {"reason"},
 }
@@ -269,6 +270,11 @@ def parse_intents(answer: str, ctx: dict) -> list[Intent]:
                         or type(to) is not int or not 1 <= to <= len(modules) - len(deleted)):
                     raise AgentFormatError("module move reference/position")
                 moved.add(n)
+        elif kind == "abandon_scope":
+            items = params["items"]
+            if (not isinstance(items, list) or not 1 <= len(items) <= 8
+                    or any(not isinstance(item, str) or not 1 <= len(item.strip()) <= 100 for item in items)):
+                raise AgentFormatError("abandon scope items")
         elif kind == "proceed":
             if not isinstance(params["step"], str) or params["step"] not in {"outline", "estimate", "generate", "start"}:
                 raise AgentFormatError("proceed step")
