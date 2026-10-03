@@ -6,6 +6,7 @@ import { Button, Skeleton, TASK_TIME_TIP, Tip } from "../ui"
 import { PlanTree } from "./NewPlan"
 
 type Detail = React.ComponentProps<typeof PlanTree>["detail"] & {
+  unusable?: boolean; message?: string
   progress?: { remaining: number; overdue_days: number }; has_report?: boolean
   plan: { weekday_weights?: number[] }
 }
@@ -24,6 +25,7 @@ export function PlanDetail() {
   }, [planId, go, toast])
 
   if (!detail) return <div className="page"><div className="card stack"><Skeleton h={26} w="40%" /><Skeleton h={120} /></div></div>
+  if (detail.unusable) return <div className="page"><Button small kind="ghost" onClick={() => go("plans")}><ArrowLeft />我的计划</Button><div className="card stack" style={{ marginTop: 12 }}><h1>{detail.plan.title || detail.plan.goal}</h1><p role="status">{detail.message || "旧版计划，已不可用"}</p></div></div>
   const points = detail.stages.reduce((a, s) => a + s.modules.reduce((b, m) => b + m.points.length, 0), 0)
   return (
     <div className="page">
@@ -31,7 +33,8 @@ export function PlanDetail() {
       <div className="card hero" style={{ marginTop: 10, gridTemplateColumns: "1fr" }}>
         <div>
           <div className="eyebrow">{detail.plan.window ? `${detail.plan.window.start} → ${detail.plan.window.end}` : "学习路线"}</div>
-          <h1 style={{ fontSize: "1.6rem" }}>{detail.plan.goal}</h1>
+          <h1 style={{ fontSize: "1.6rem" }}>{detail.plan.title || detail.plan.goal}</h1>
+          <p style={{ overflowWrap: "anywhere" }} data-selectable>学习目标：{detail.plan.goal}</p>
           <div className="outline-sum" style={{ marginTop: 14 }}>
             <div><span>模块</span><b>{detail.stages.reduce((a, s) => a + s.modules.length, 0)} 个 · {points} 个知识点</b></div>
             <div><span>总时长（含检验）</span><b>{Math.round(detail.plan.total_minutes / 6) / 10} 小时</b></div>

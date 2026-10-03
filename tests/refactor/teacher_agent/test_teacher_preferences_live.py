@@ -18,7 +18,7 @@ from urllib.parse import quote
 
 import pytest
 
-from refactor.learning.course.teacher_agent import teacher_request, parse_teaching, citation_diagnostics
+from refactor.learning.course.teacher_agent import teacher_request, parse_teaching, citation_map
 from refactor.learning.course.profile_agent import profile_request, parse_profile
 from refactor.learning.course.judge_agent import _json_object
 from refactor.learning.course.planner_agents import AgentFormatError
@@ -112,9 +112,9 @@ def metrics(teaching):
     return dict(chars=len(re.sub(r"\s", "", text)), han_chars=len(re.findall(r"[\u3400-\u9fff]", text)),
                 examples=len(re.findall(r"例\s*[1-9一二三四五六七八九十]+(?:\s*[（(][^）)\n]*[）)])?\s*[:：]", plain)),
                 analogies=len(re.findall(r"类比\s*[:：]", plain)),
-                questions=int(teaching.casual_question is not None),
-                question_marks=len(re.findall(r"[？?]", text + (teaching.casual_question or ""))),
-                citations=len(re.findall(r"\[c\d+\]", text + (teaching.casual_question or ""))),
+                questions=0,
+                question_marks=len(re.findall(r"[？?]", text)),
+                citations=len(re.findall(r"\[c\d+\]", text)),
                 source_chunks=len(teaching.cited_chunks))
 
 
@@ -210,7 +210,7 @@ def test_teacher_preference_effects_and_profile_real_model():
                     payload["issues"].append(f"{group}/{name} 讲解格式失败：{exc}")
                     report(payload, budget)
                     continue
-                if citation_diagnostics(raw, ctx) or not teaching.casual_question or not teaching.cited_chunks:
+                if tuple(a for a in re.findall(r'\[([cC]\d+)\]', raw) if a not in citation_map(ctx)) or not None or not teaching.cited_chunks:
                     payload["issues"].append(f"{group}/{name} 引用或随口问不符合本次导演要求。")
                 samples[name] = dict(metrics=metrics(teaching), teaching=asdict(teaching), prefs=ctx["prefs"])
                 report(payload, budget)

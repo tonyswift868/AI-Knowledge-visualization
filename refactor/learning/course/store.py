@@ -9,8 +9,8 @@ source_chunks: extract chunk_id as id, source_id, position, text, pages, section
 stages/modules/points: title/summary, position, prerequisites, minute estimates,
 and nonempty chunk_ids for every point; teacher_profile/reports: document;
 messages/chat_messages: role, content, kind, at, compressed, summary_of.
-question_bank: prompt, options, reference, optional required_points (1–2),
-correct_seen, asked_in and optional refill_for (wrong-answer idempotency key).
+question_bank: original-source question payload (question_bank.validate_question),
+source/answer_source locators and append-only purpose/time uses.
 question_answers: immutable answer ID, question/point IDs, context, attempt,
 angle, verdict and time; composites count for detection without mastery events.
 Module positions are global within a plan; point positions are within a module.
@@ -375,28 +375,13 @@ class CourseStore:
         elif entity == 'usage':
             for key in ('input_tokens', 'cache_hit_tokens', 'cache_miss_tokens', 'output_tokens', 'search_count'): _number(payload[key])
         elif entity == 'question_bank':
-            _id(payload['module_id'])
-            if (payload['type'] not in ('choice', 'exact', 'short', 'fix_error', 'essay') or payload['angle'] not in
-                    ('recall', 'apply', 'contrast', 'fix_error', 'transfer') or
-                    type(payload['correct_seen']) is not bool or not isinstance(payload['stem'], str) or
-                    not isinstance(payload['answer'], str) or not isinstance(payload['reference'], str) or
-                    not isinstance(payload['options'], list) or not isinstance(payload['point_ids'], list) or
-                    not 1 <= len(set(payload['point_ids'])) <= 4 or not isinstance(payload['chunk_ids'], list)):
-                raise StoreError('INVALID_QUESTION')
-            requirements = payload.get('required_points')
-            from .question_agent import validate_answer_structure, validate_requirement
-            from .planner_agents import AgentFormatError
+            from .question_bank import validate_question
             try:
-                validate_answer_structure(payload)
-                if requirements is not None:
-                    if not isinstance(requirements, (list, tuple)) or not 1 <= len(requirements) <= 2:
-                        raise AgentFormatError('required_points')
-                    for requirement in requirements: validate_requirement(requirement)
-            except AgentFormatError:
-                raise StoreError('INVALID_QUESTION') from None
-            seen = payload.get('asked_in', [])
-            if not isinstance(seen, list) or any(context not in ('module_test', 'skip_test', 'retest', 'check', 'practice') for context in seen):
-                raise StoreError('INVALID_QUESTION')
+                validate_question(payload)
+                _id(payload['module_id'])
+                for point_id in payload['point_ids']: _id(point_id)
+            except (ValueError, KeyError, TypeError):
+                raise StoreError('INVALID_QUESTION', '题库必须使用有原文与答案出处的新版格式。') from None
         elif entity == 'question_answers':
             _id(payload['module_id']); _at(payload['at'])
             if (payload['context'] not in ('module_test', 'skip_test', 'retest', 'check', 'practice', 'quick_confirm')
@@ -490,7 +475,7 @@ class CourseStore:
         configuration = _window_json(window) if window is not None else None
         self._put('plans', plan_id, dict(id=plan_id, goal=goal, final_goal=final_goal, level=level, notes=notes,
             window=configuration, initial_window=configuration, total_minutes=total_minutes,
-            initial_total_minutes=total_minutes, module_count=0, state='creating', archived=False))
+            initial_total_minutes=total_minutes, module_count=0, state='creating', archived=False, material_version=2))
         return plan_id
 
     @_atomic
@@ -511,12 +496,12 @@ class CourseStore:
         return self._put('plans', plan_id, plan)
 
     def get_plan(self, plan_id):
-        with self._lock: return self._get('plans', plan_id, plan_id)
+        with self._lock: return self._plan_availability(self._get('plans', plan_id, plan_id))
 
     def list_plans(self, *, include_archived=False):
         with self._lock:
             values = [json.loads(r[0]) for r in self._db.execute('SELECT payload FROM plans ORDER BY id')]
-            return [p for p in values if include_archived or not p['archived']]
+            return [self._plan_availability(p) for p in values if include_archived or not p['archived']]
 
     def records(self, entity, plan_id=''):
         """Read detached payloads; deterministic position/ID order for consumers."""
@@ -524,29 +509,54 @@ class CourseStore:
         with self._lock:
             return sorted(self._rows(entity, plan_id), key=lambda p: (p.get('position', 0), p['id']))
 
+    def _plan_availability(self, plan):
+        old = plan.get('material_version') != 2 or any('kind' not in q for q in self._rows('question_bank', plan['id']))
+        if old: plan.update(unusable=True, unusable_reason='旧版计划，已不可用')
+        return plan
+
+    def require_material_plan(self, plan_id):
+        plan = self.get_plan(plan_id)
+        if plan.get('unusable'): raise StoreError('OLD_PLAN', '旧版计划，已不可用')
+        return plan
+
     @_atomic
-    def add_bank_questions(self, plan_id, module_id, questions, *, fingerprint=None, refill_for=None):
+    def link_point_sources(self, plan_id, point_id, chunk_ids):
+        """Change provenance only, never content/mastery/schedule of a learnt point."""
+        self.require_material_plan(plan_id)
+        point = self._get('points', plan_id, point_id)
+        ids = list(dict.fromkeys(chunk_ids))
+        if not ids: raise StoreError('MISSING_PROVENANCE')
+        for cid in ids:
+            chunk = self._get('source_chunks', plan_id, cid)
+            source = self._get('sources', plan_id, chunk['source_id'])
+            if not source['adopted']: raise StoreError('MISSING_PROVENANCE')
+        point['chunk_ids'] = ids
+        self._put('points', plan_id, point)
+
+    @_atomic
+    def add_bank_questions(self, plan_id, module_id, questions):
+        self.require_material_plan(plan_id)
         self._get('modules', plan_id, module_id)
-        valid_points = {p['id'] for p in self.records('points', plan_id) if p['module_id'] == module_id}
+        valid_points = {p['id'] for p in self._rows('points', plan_id) if p['module_id'] == module_id}
         identifiers = []
-        essay_exists = any(q['type'] == 'essay' for q in self.records('question_bank', plan_id)
-                           if q['module_id'] == module_id)
         for question in questions:
-            row = asdict(question) if is_dataclass(question) else dict(question)
-            if row['type'] == 'essay':
-                if essay_exists: raise StoreError('MODULE_ESSAY_LIMIT')
-                essay_exists = True
-            row['id'] = _id(uuid.uuid4().hex)
-            row['module_id'] = module_id
-            row['correct_seen'] = False
-            if fingerprint is not None: row['fingerprint'] = fingerprint
-            if refill_for is not None: row['refill_for'] = _id(refill_for)
-            if not set(row['point_ids']) <= valid_points: raise StoreError('POINT_MODULE_MISMATCH')
-            row['options'] = list(row['options']); row['point_ids'] = list(row['point_ids'])
-            row['chunk_ids'] = list(row['chunk_ids'])
-            self._put('question_bank', plan_id, row)
+            row = dict(question)
+            if row['module_id'] != module_id or not set(row['point_ids']) <= valid_points:
+                raise StoreError('POINT_MODULE_MISMATCH')
+            # Content-addressed IDs make concurrent/background repeats idempotent.
+            existing = next((q for q in self._rows('question_bank', plan_id) if q['id'] == row['id']), None)
+            if existing is None: self._put('question_bank', plan_id, row)
             identifiers.append(row['id'])
         return identifiers
+
+    @_atomic
+    def record_question_use(self, plan_id, question_id, purpose, *, at=None):
+        from .question_bank import PURPOSES
+        self.require_material_plan(plan_id)
+        if purpose not in PURPOSES: raise StoreError('INVALID_QUESTION_USE')
+        row = self._get('question_bank', plan_id, question_id)
+        row['uses'].append(dict(purpose=purpose, at=_at(at)))
+        self._put('question_bank', plan_id, row)
 
     @_atomic
     def append_question_answer(self, plan_id, answer_id, *, module_id, context, attempt_id,
@@ -572,23 +582,6 @@ class CourseStore:
             raise StoreError('POINT_MODULE_MISMATCH')
         self._put('question_answers', plan_id, row)
         return answer_id
-
-    @_atomic
-    def mark_bank_correct(self, plan_id, question_id):
-        # Quick-check and deepen questions are generated on the spot and never
-        # enter the bank; answering them right must not fail the save (BUG-41).
-        row = next((q for q in self._rows('question_bank', plan_id) if q['id'] == question_id), None)
-        if row is not None and not row['correct_seen']:
-            row['correct_seen'] = True
-            self._put('question_bank', plan_id, row)
-
-    @_atomic
-    def mark_bank_asked(self, plan_id, question_id, context):
-        """Exposure is remembered even if the answer is uncertain or interrupted."""
-        row = next((q for q in self._rows('question_bank', plan_id) if q['id'] == question_id), None)
-        if row is not None and context not in row.get('asked_in', []):
-            row['asked_in'] = sorted([*row.get('asked_in', []), context])
-            self._put('question_bank', plan_id, row)
 
     @_atomic
     def append_practice_result(self, plan_id, question_id, module_id, point_ids, correct, *, reason='', at=None, result_id=None, wrong_points=None):
@@ -628,6 +621,17 @@ class CourseStore:
     def set_source_adopted(self, plan_id, source_id, adopted):
         source = self._get('sources', plan_id, source_id)
         source['adopted'] = adopted
+        self._put('sources', plan_id, source)
+
+    @_atomic
+    def set_source_publisher_evidence(self, plan_id, source_id, evidence):
+        from .source_filter import classify_source
+        source = self._get('sources', plan_id, source_id)
+        body = '\n'.join(c['text'] for c in self._rows('source_chunks',plan_id) if c['source_id']==source_id)
+        identity = classify_source(source.get('final_url') or source.get('url') or '',
+                                   publisher_evidence=evidence, page_text=body)
+        if identity['level'] not in (1,2): raise StoreError('UNKNOWN_PUBLISHER')
+        source['publisher_evidence'] = dict(evidence)
         self._put('sources', plan_id, source)
 
     def _structure_editable(self, plan):
@@ -883,6 +887,7 @@ class CourseStore:
     @_atomic
     def start_plan(self, plan_id, *, today=None):
         """Pass the current study day to record an exact start; no clock is read."""
+        self.require_material_plan(plan_id)
         plan = self._get('plans', plan_id, plan_id)
         if plan['state'] != 'ready' or plan['archived']: raise StoreError('PLAN_NOT_READY')
         self._load_ledger(plan)
@@ -1492,19 +1497,23 @@ class CourseStore:
                     continue  # A remote echo is not an upload acknowledgement.
             elif old and server_revision <= old['server_revision']:
                 continue
+            if not record.deleted and record.entity == 'question_bank' and 'kind' not in payload:
+                try: plan = self._get('plans', record.plan_key, record.plan_key)
+                except StoreError: plan = None
+                if plan is not None:
+                    plan.update(unusable=True, unusable_reason='旧版计划，已不可用', material_version=1)
+                    self._put('plans', record.plan_key, plan)
+                continue
             if not record.deleted:
                 # Validate the actual remote record before choosing local fields;
                 # otherwise a malformed remote edit could be silently hidden.
                 self._validate(record.entity, record.plan_key, payload)
-            # A correct answer is irreversible for question selection. Another
-            # device may upload an older, unanswered copy of the same question.
-            # Merge that bit monotonically and queue the repair for upload.
-            repair_answered = (record.entity == 'question_bank' and not record.deleted and old is not None
-                               and not old['deleted'] and json.loads(old['payload']).get('correct_seen')
-                               and not payload.get('correct_seen'))
-            seen_union = None
+            repair_answered = False
+            uses_union = None
             if record.entity == 'question_bank' and not record.deleted and old is not None and not old['deleted']:
-                seen_union = sorted(set(json.loads(old['payload']).get('asked_in', ())) | set(payload.get('asked_in', ())))
+                local_uses = json.loads(old['payload']).get('uses', [])
+                uses_union = [dict(purpose=purpose, at=at) for purpose, at in sorted(
+                    {(u['purpose'], u['at']) for u in local_uses + payload['uses']})]
             merged = False
             if old is not None and old['pending'] and record.entity not in PROGRESS and not record.deleted:
                 local = json.loads(old['payload'])
@@ -1537,11 +1546,9 @@ class CourseStore:
                     self._db.execute("INSERT INTO _meta(key,value) VALUES('merge_notices','1') ON CONFLICT(key) DO UPDATE SET value=CAST(value AS INTEGER)+1")
             else:
                 deleted = record.deleted
-            if repair_answered:
-                payload['correct_seen'] = True
-            if seen_union and seen_union != payload.get('asked_in'):
-                payload['asked_in'] = seen_union
-                repair_answered = True  # queue the monotonic exposure merge just like correct-seen
+            if uses_union is not None and uses_union != payload.get('uses'):
+                payload['uses'] = uses_union
+                repair_answered = True
             if not deleted: self._validate(record.entity, record.plan_key, payload)
             if record.entity == 'plans' and payload['id'] != record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
             self._db.execute('''INSERT INTO _records VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(entity,entity_id)

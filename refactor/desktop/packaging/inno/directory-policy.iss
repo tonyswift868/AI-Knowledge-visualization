@@ -61,12 +61,9 @@ end;
 function ExistingKnownParent: String;
 begin
   { Resolve on the user's machine. Never restore a development /PARENT value. }
-  Result := ExpandConstant('{localappdata}');
-  if DirExists(Result) then Exit;
-  Result := ExpandConstant('{userappdata}');
-  if DirExists(Result) then Exit;
-  Result := ExpandConstant('{userdocs}');
-  if DirExists(Result) then Exit;
+  Result := ExpandConstant('{localappdata}\Programs');
+  { Only the standard per-user Programs parent; no recursive mkdir or grants. }
+  if DirExists(Result) or CreateDir(Result) then Exit;
   Result := ''; { Fail closed; the location page requests a real folder. }
 end;
 

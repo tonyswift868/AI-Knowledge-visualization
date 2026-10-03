@@ -1,0 +1,10 @@
+.conversation-actions { display:flex; gap:8px; flex-wrap:wrap; padding:10px 20px; }
+.original-cards { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.original-card { display:flex; gap:8px; align-items:center; border:1px solid var(--line); border-radius:10px; padding:10px; background:var(--surface); color:inherit; text-align:left; cursor:pointer; }
+.original-card small { display:block; opacity:.7; margin-top:4px; }
+.bank-question-controls { padding:8px 20px; }
+.bank-question-controls .class-options { padding:8px 0; }
+.fill-answer { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.fill-answer .input { width:180px; }
+.answer-explanation { margin:8px 20px; padding:12px; border:1px solid var(--line); border-radius:10px; }
+.composer .ask-mode { white-space:nowrap; }

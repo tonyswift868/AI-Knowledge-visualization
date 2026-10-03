@@ -14,20 +14,21 @@ import { Button } from "../ui"
 import { MicButton, useVoiceInput } from "../voice"
 import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacherVoice"
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
-import { LessonActions, LessonProgress, LessonPreparing, type Lesson, type LessonWait } from "../classroom/GuidedLesson"
+import { ConversationActions, MaterialsPreparing, OriginalCards, QuestionInputs, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
 
 const TeacherStage = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherStage })))
 
-type Msg = { id: string; role: "user" | "assistant" | "system"; kind: string; content: string }
+type Msg = { id: string; role: "user" | "assistant" | "system"; kind: string; content: string; sources: SourceCard[] }
 type Point = { id: string; title: string; minutes: number; taught: boolean; state: string; current: boolean }
-type Question = { type: "choice" | "short" | "fix_error"; stem: string; options: string[]; kind: string; number?: number; total?: number }
 type Room = {
   plan: { id: string; goal: string; state: string }
   module: { id: string; title: string; number: number; total: number; state: string }
-  points: Point[]; step: string; question: Question | null; messages: Msg[]; can_skip: boolean; red: string[]
+  points: Point[]; step: string; question: BankQuestion | null; messages: Msg[]; can_skip: boolean; red: string[]
   more_modules: boolean; check: { passed: number; total: number } | null
-  lesson?: Lesson | null
-  lesson_wait?: LessonWait | null
+  conversation?: Conversation | null
+  preparation?: Preparation | null
+  failure?: { message: string } | null
+  explanation?: { text: string; source: { title: string; url: string; locator: string }; label: string; open: boolean; message_id: string } | null
   today: { today_target: number; today_confirmed: number; today_tentative: number; needs_rest?: boolean; is_late_night?: boolean } | null
 }
 type Source = { text: string; title: string; url: string | null; section: string[] }
@@ -39,7 +40,7 @@ const POINT_LABEL: Record<string, string> = { green: "已掌握", weak: "有瑕�
 
 /** What the teacher is saying while it streams: hide the question block and raw citation aliases. */
 function live(text: string) {
-  return text.replace(/【随口问】[\s\S]*?(【\/随口问】|$)/g, "").replace(/\[[cC]\d+\]/g, "").trim()
+  return text.replace(/【选项】[\s\S]*?(【\/选项】|$)/g, "").replace(/\[[cC]\d+\]/g, "").trim()
 }
 
 export function Classroom() {
@@ -53,7 +54,9 @@ export function Classroom() {
   const [verdictPreview, setVerdictPreview] = React.useState<{ text: string; correct: boolean } | null>(null)
   const [text, setText] = React.useState("")
   const [source, setSource] = React.useState<Source | null>(null)
-  const [selected, setSelected] = React.useState<number | null>(null)
+  const [askMode, setAskMode] = React.useState(false)
+  const input = React.useRef<HTMLTextAreaElement>(null)
+  const generation = React.useRef(0)
   const [reading, setReading] = React.useState(() => { try { return localStorage.getItem("mf.classroom.read") === "on" } catch { return false } })
   const teacher = React.useRef<TeacherStageHandle>(null)
   const voice = useTeacherVoice(teacher)
@@ -77,8 +80,7 @@ export function Classroom() {
     // A ref locks immediately, including two clicks before React has rendered.
     if (!planId || acting.current) return false
     acting.current = true
-    setSelected(method === "classroom.choose" ? Number(params.option) :
-      method === "classroom.reply" && room?.question?.type === "choice" ? room.question.options.indexOf(String(params.text)) : null)
+    const ownGeneration = generation.current
     const before = new Set(room?.messages.map((message) => message.id) ?? [])
     stopReading()
     const turn = { reader: reading && voice.availability?.ready ? createTeacherVoiceStream(voice) : null,
@@ -89,9 +91,10 @@ export function Classroom() {
     setStream("")
     setVerdictPreview(null)
     try {
-      const r = await call<Room>(method, { plan_id: planId, ...params }, {
+      const r = await call<Room>(method, { plan_id: planId, request_id: crypto.randomUUID(), ...params }, {
         signal: abort.current.signal,
         onStream: (d) => {
+          if (ownGeneration !== generation.current) return
           if (d.startsWith(VERDICT_EVENT)) {
             try {
               const result = JSON.parse(d.slice(VERDICT_EVENT.length)) as { text: string; correct: boolean }
@@ -104,39 +107,47 @@ export function Classroom() {
           if (turn.reader && !turn.cancelled) { turn.reader.append(d); if (d !== RESET) turn.streamed = true }
         },
       })
+      if (ownGeneration !== generation.current) { turn.cancelled = true; void turn.reader?.stop(); return false }
       if (turn.streamed || turn.cancelled) {
         const streamed = r.messages.find((m) => !before.has(m.id) && m.role === "assistant")?.id
         streamedMessages.current = new Set(r.messages.filter((m) => before.has(m.id) || turn.cancelled || m.id === streamed).map((m) => m.id))
       }
       if (!turn.cancelled) void turn.reader?.end()
       setRoom(r)
-      return true
+      return !r.failure
     } catch (e) {
       // A failed/cancelled attempt must not finish reading its queued tail.
       turn.cancelled = true
       void turn.reader?.stop()
+      if (ownGeneration !== generation.current) return false
       const failure = e as BridgeFailure
       if (failure.code !== "CANCELLED") toast("error", failure.message)
       await call<Room>("classroom.state", { plan_id: planId }).then((r) => {
         // Refresh visible state without restarting audio from the stopped attempt.
+        if (ownGeneration !== generation.current) return
         streamedMessages.current = new Set(r.messages.map((m) => m.id))
         setRoom(r)
       }).catch(() => undefined)
       return false
     } finally {
-      acting.current = false
-      setBusy(null); setStream(null); setVerdictPreview(null); setSelected(null); abort.current = null
+      if (ownGeneration === generation.current) {
+        acting.current = false
+        setBusy(null); setStream(null); setVerdictPreview(null); abort.current = null
+      }
       if (lessonChanged.current) lessonRefresh.current?.()
     }
   }, [planId, room, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading])
 
   React.useEffect(() => {
     if (!planId) { go("home"); return }
+    const ownGeneration = ++generation.current
+    setRoom(null); acting.current = false; setAskMode(false)
     call<Room>("classroom.enter", { plan_id: planId }).then((r) => {
+      if (ownGeneration !== generation.current) return
       spoken.current = r.messages.at(-1)?.id ?? null   // do not read old messages aloud on entry
       setRoom(r)
-    }).catch((e) => { toast("error", e.message); go("home") })
-    return () => { stopReading(); void call("classroom.leave", { plan_id: planId }).catch(() => undefined) }
+    }).catch((e) => { if (ownGeneration === generation.current) { toast("error", e.message); go("home") } })
+    return () => { ++generation.current; abort.current?.abort(); stopReading(); void call("classroom.leave", { plan_id: planId }).catch(() => undefined) }
   }, [planId, go, toast, stopReading])
 
   React.useEffect(() => {
@@ -154,45 +165,30 @@ export function Classroom() {
       }).catch(() => { if (active) lessonChanged.current = true }).finally(() => { pending = false })
     }
     lessonRefresh.current = refresh
-    const unsubscribe = on("classroom.lesson_ready", (data) => {
+    const unsubscribe = on("classroom.materials_ready", (data) => {
       if (data?.plan_id === planId) refresh()
     })
     return () => { active = false; unsubscribe(); lessonRefresh.current = null; lessonChanged.current = false }
   }, [planId])
 
   React.useEffect(() => {
-    if (!['preparing_questions', 'preparing_lesson'].includes(room?.step ?? '') || busy) return
+    if (!['preparing_materials'].includes(room?.step ?? '') || busy) return
     let active = true
     let pending = false
     const timer = window.setInterval(() => {
       if (pending) return
       if (acting.current) return
       pending = true
-      call<Room>('classroom.state', { plan_id: planId }).then((r) => {
-        if (active) setRoom(r)
-      }).catch(() => undefined).finally(() => { pending = false })
+      act('classroom.state', {}, '老师在准备…').finally(() => { pending = false })
     }, 500)
     return () => { active = false; window.clearInterval(timer) }
-  }, [room?.step, planId, busy])
+  }, [room?.step, planId, busy, act])
 
   React.useLayoutEffect(() => {
     const el = scroller.current
     const reduced = reduceMotion || window.matchMedia("(prefers-reduced-motion: reduce)").matches
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: reduced ? "auto" : "smooth" })
   }, [room?.messages.length, stream, busy, reduceMotion])
-
-  React.useEffect(() => {
-    if (room?.lesson?.awaiting !== "continue") return
-    const next = (event: KeyboardEvent) => {
-      const target = event.target instanceof HTMLElement ? event.target : null
-      if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey ||
-          event.isComposing || event.repeat || target?.closest("textarea, input, button, a, select, [contenteditable='true'], [role='dialog']")) return
-      event.preventDefault()
-      void act("classroom.next", {}, "正在接着讲…")
-    }
-    document.addEventListener("keydown", next)
-    return () => document.removeEventListener("keydown", next)
-  }, [room?.lesson?.awaiting, room?.question, act])
 
   // React to what is new since the last look: nod or think on a verdict, read the teacher's words aloud.
   React.useEffect(() => {
@@ -223,23 +219,26 @@ export function Classroom() {
 
   async function send(value?: string) {
     const t = (value ?? text).trim()
-    if (!t || acting.current || room?.step === 'preparing_questions') return
+    if (!t || acting.current) return
     stopReading()
     if (value === undefined) setText("")
-    if (!(await act("classroom.reply", { text: t }, "老师在看你的回答…")) && value === undefined) {
+    if (!(await act(askMode ? "classroom.ask" : "classroom.reply", { text: t }, "老师在看你的回答…")) && value === undefined) {
       setText((draft) => draft || t)
-    }
+    } else setAskMode(false)
   }
 
   async function openSource(chunk: string) {
-    try { setSource(await call<Source>("classroom.source", { plan_id: planId, chunk_id: chunk })) }
-    catch (e) { toast("error", (e as Error).message) }
+    const ownGeneration = generation.current
+    try {
+      const original = await call<Source>("classroom.source", { plan_id: planId, chunk_id: chunk })
+      if (ownGeneration === generation.current) setSource(original)
+    } catch (e) { if (ownGeneration === generation.current) toast("error", (e as Error).message) }
   }
 
   if (!room) return <div className="page"><div className="card"><Loader2 className="spin" /> 正在进入课堂…</div></div>
   // An active lesson interaction is authoritative; a saved casual question may
   // still be in the snapshot while an interjection waits for "回到刚才".
-  const q = room.lesson?.awaiting ? null : room.question
+  const q = room.question
   const done = room.points.filter((p) => p.taught).length
   const t = room.today
   const markdown = (content: string) => (
@@ -271,21 +270,22 @@ export function Classroom() {
           </div>
         ) : <div className="class-points">
           {room.points.map((p, i) => (
-            <span key={p.id} className={`class-point ${p.current && ["teach", "lesson", "answer", "preparing_lesson"].includes(room.step) ? "current" : ""} ${p.taught ? "taught" : ""} ${POINT_TONE[p.state] ?? ""}`}
+            <span key={p.id} className={`class-point ${p.current && ["teach", "opening", "teaching", "closing", "answer", "preparing_materials"].includes(room.step) ? "current" : ""} ${p.taught ? "taught" : ""} ${POINT_TONE[p.state] ?? ""}`}
                   title={`${p.title} · ${p.minutes} 分钟${POINT_LABEL[p.state] ? " · " + POINT_LABEL[p.state] : ""}`}>
               {POINT_TONE[p.state] === "ok" ? <CheckCircle2 size={13} /> : <i>{i + 1}</i>}{p.title}
             </span>
           ))}
           <span className="muted small">{done}/{room.points.length} 已讲</span>
         </div>}
-        {room.lesson && <LessonProgress lesson={room.lesson} />}
-        {room.lesson_wait && <LessonPreparing wait={room.lesson_wait} busy={!!busy} act={act} />}
+        {room.preparation && <MaterialsPreparing preparation={room.preparation} busy={!!busy} act={act} />}
+        {room.failure && <div className="banner" role="alert">{room.failure.message} <Button small disabled={!!busy}
+          onClick={() => act("classroom.retry", {}, "重试这一步…")}>重试</Button></div>}
         {t?.is_late_night && <div className="banner">已经很晚了，注意休息。今天学的内容会记在开课那天。</div>}
         <div className="class-scroll" ref={scroller}>
           {room.messages.length === 0 && !busy && room.step === "teach" && (
             <div className="class-empty">
               <BookOpen size={28} />
-              <p>这个模块有 {room.points.length} 个知识点。点“开始上课”，老师一个点一个点地讲，讲完随口问一句。</p>
+              <p>这个模块有 {room.points.length} 个知识点。点“开始上课”，老师一个点一个点地讲，依据原文解释，再用题库题确认。</p>
             </div>
           )}
           {room.messages.map((m) => {
@@ -293,12 +293,14 @@ export function Classroom() {
               {m.kind === "choice" && <span className="class-message-label">我的选择</span>}{m.content}</div>
             if (m.kind === "casual") return <div key={m.id} className="class-ask" data-selectable><span>随口问</span>{m.content}</div>
             if (m.kind === "question") return <div key={m.id} className="class-question" data-selectable>{markdown(m.content)}</div>
-            if (m.kind === "verdict") return <div key={m.id} className={`class-verdict ${m.content.startsWith("✓") ? "ok" : "bad"}`}>{m.content}</div>
+            if (m.kind === "verdict") return <div key={m.id} className={`class-verdict ${m.content.startsWith("✓") ? "ok" : "bad"}`}>{m.content}
+              {m.id === room.explanation?.message_id && <Button small disabled={!!busy} onClick={() => act("classroom.why")}>为什么？</Button>}</div>
             if (m.role === "system") return <div key={m.id} className={`class-note ${m.kind === "error" ? "warn" : ""}`}>
               {m.kind === "error" && <CircleAlert size={15} />}{m.content}</div>
             return <div key={m.id} className={`bubble bot ${m.kind === "step" ? "class-step" : m.kind === "step_reply" ? "class-step-reply" : ""}`} data-selectable>
               {m.kind === "step" && <span className="class-message-label">老师讲解</span>}
               {m.kind === "step_reply" && <span className="class-message-label">老师回应</span>}{markdown(m.content)}
+              <OriginalCards cards={m.sources ?? []} open={openSource} />
               <button className="icon-btn listen" title="听这段" onClick={() => listen(m.content)}><Volume2 size={15} /></button></div>
           })}
           {verdictPreview && <div className={`class-verdict ${verdictPreview.correct ? "ok" : "bad"}`}>{verdictPreview.text}</div>}
@@ -308,26 +310,28 @@ export function Classroom() {
         </div>
 
         <Actions room={room} act={act} busy={!!busy} />
-        {room.lesson && !q && <LessonActions lesson={room.lesson} busy={!!busy} selected={selected} act={act} />}
-        {q && q.type === "choice" && (
-          <div className="class-options" aria-label={q.kind === "casual" ? "随口问选项" : "检测题选项"}>
-            {q.options.map((o, i) => <button key={`${i}:${o}`} className={`choice ${selected === i ? "on" : ""}`} disabled={!!busy}
-              aria-pressed={selected === i} onClick={() => send(o)}><b>{String.fromCharCode(65 + i)}</b><span>{o}</span></button>)}
-          </div>
-        )}
+        <ConversationActions step={room.step} conversation={room.conversation} busy={!!busy} act={act}
+          ask={() => { setAskMode(true); input.current?.focus() }} />
+        {room.explanation && <div className="answer-explanation">
+          {room.explanation.open && <><div>{markdown(room.explanation.text)}</div><small className="muted">
+            {room.explanation.label} · {room.explanation.source.title} · {room.explanation.source.locator}</small>
+            {room.explanation.source.url && <a href={room.explanation.source.url} target="_blank" rel="noreferrer"> 查看答案出处</a>}</>}
+        </div>}
+        {q && <QuestionInputs question={q} act={act} busy={!!busy} />}
         <div className="composer">
-          <textarea className="input" rows={1} value={text} aria-label="课堂输入"
-                    placeholder={q ? (q.type === "choice" ? "点上面的选项，或者打字作答" : "写下你的回答（说不会也可以）") : "有问题随时问老师"}
+          <Button small kind={askMode ? "primary" : "ghost"} className="ask-mode" disabled={!!busy}
+            onClick={() => { setAskMode(!askMode); input.current?.focus() }}>{askMode ? "正在提问" : "提问"}</Button>
+          <textarea ref={input} className="input" rows={1} value={text} aria-label="课堂输入"
+                    placeholder={askMode ? "想问什么？答完回到刚才" : q ? "写下你的回答；想问问题可点左侧“提问”" : "有问题随时问老师"}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.repeat) {
                       e.preventDefault()
-                      if (!text.trim() && room.lesson?.awaiting === "continue" && !q) void act("classroom.next", {}, "正在接着讲…")
-                      else void send()
+                      void send()
                     } }} />
           <MicButton voice={mic} />
           {busy
             ? <Button onClick={() => { stopReading(); abort.current?.abort() }}><Square />停止</Button>
-            : <Button kind="primary" onClick={() => send()} disabled={!text.trim() || room.step === 'preparing_questions'}><SendHorizontal />发送</Button>}
+            : <Button kind="primary" onClick={() => send()} disabled={!text.trim()}><SendHorizontal />发送</Button>}
         </div>
       </section>
 
@@ -371,12 +375,11 @@ export function Classroom() {
 
 function Actions({ room, act, busy }: { room: Room; busy: boolean; act: (m: string, p?: Record<string, unknown>, label?: string) => Promise<boolean> }) {
   const step = room.step
-  if (step === 'preparing_questions') return <div className="class-note"><Loader2 className="spin" size={15} />正在准备题目，备好后会自动开始。</div>
-  if (step === "teach" && room.lesson && !room.can_skip) return null
+  if (step === "preparing_materials") return null
   if (step === "teach") return (
     <div className="plan-actions">
       {room.can_skip && <Button disabled={busy} onClick={() => act("classroom.test", { kind: "skip_test" }, "正在出题…")}><SkipForward />我会这部分，直接考</Button>}
-      {!room.lesson && <Button kind="primary" disabled={busy} onClick={() => act("classroom.next")}><ChevronRight />{room.messages.length ? "继续" : "开始上课"}</Button>}
+      {<Button kind="primary" disabled={busy} onClick={() => act("classroom.next")}><ChevronRight />{room.messages.length ? "继续" : "开始上课"}</Button>}
     </div>
   )
   if (step === "test_offer") return (

@@ -157,7 +157,7 @@ class MatureUpdateService:
             stream.write(release.envelope); stream.flush(); os.fsync(stream.fileno())
         temporary.replace(target)
 
-    def check(self, *, manual=True):
+    def check(self, *, manual=True, cancel=None):
         import logging
         import time
         from refactor.desktop.delivery.update_download import InstallUpdateLock
@@ -167,15 +167,18 @@ class MatureUpdateService:
         from refactor.desktop.delivery.update_protocol import verify_release
         from refactor.desktop.delivery.update_protocol import make_plan
         from refactor.desktop.delivery.update_protocol import rollout_eligible
+        from refactor.desktop.delivery.update_protocol import version_key
         if not manual and time.time() < self._next_check:
             return dict(self.snapshot)
+        if self._closed: return dict(self.snapshot)
+        self.cancel_event.clear()
         try:
             self.telemetry = UpdateTelemetry()
             self.telemetry.mark('T00_UPDATE_BEGIN')
             with InstallUpdateLock(self.cache.root):
                 self._state('CHECKING', '正在检查更新…')
                 self.telemetry.mark('T01_METADATA_FETCH_BEGIN')
-                raw = self.cache.transport.fetch_metadata(self.metadata_url, MAX_METADATA)
+                raw = self._fetch_metadata(cancel)
                 self.telemetry.totals['bytes_read'] += len(raw)
                 release = verify_release(raw, self.keys, current=self.current, channel=self.channel,
                                          highest_seen=self._witness()[0])
@@ -188,6 +191,7 @@ class MatureUpdateService:
                 plan['rollout_eligible'] = eligible
                 plan['withdrawn'] = release.signed['withdrawn']
                 plan['update'] = plan['update'] and eligible
+                plan['mandatory'] = release.signed['mandatory'] or version_key(self.current) < version_key(release.signed['min_supported_version'])
                 self.release, self.plan, self.staged = release, plan, None
                 self._failures = 0
                 self._next_check = time.time() + 86400
@@ -197,15 +201,33 @@ class MatureUpdateService:
                 self._persist_check()
         except Exception as exc:
             logging.getLogger(__name__).exception('desktop signed update check failed')
+            from refactor.desktop.delivery.update_protocol import RecoverableError, DownloadCancelled
             self.release, self.plan, self.staged = None, None, None
             self._failures += 1
             self._next_check = time.time() + min(86400, 60 * 2**min(self._failures, 10))
             self._state('FAILED_SECURITY' if isinstance(exc, SecurityError) else 'FAILED_RECOVERABLE',
                         '更新校验未通过，已阻止更新。' if isinstance(exc, SecurityError) else '暂时无法检查更新，当前版本可继续使用。',
-                        last_checked=time.time())
+                        last_checked=time.time(),
+                        code='UPDATE_CHECK_NETWORK_UNAVAILABLE' if isinstance(exc, RecoverableError) and not isinstance(exc, DownloadCancelled) else '')
             from refactor.desktop.delivery.runtime_path_budget import MESSAGE
             if str(exc)==MESSAGE: self.snapshot={**self.snapshot,'message':MESSAGE}
         return dict(self.snapshot)
+
+    def _fetch_metadata(self, cancel=None):
+        from refactor.desktop.delivery.update_download import HTTPTransport, retry_wait
+        from refactor.desktop.delivery.update_protocol import MAX_METADATA, RecoverableError, DownloadCancelled
+        cancelled = cancel or (lambda: self._closed or self.cancel_event.is_set())
+        for attempt in range(4):  # initial request + three automatic retries
+            if cancelled(): raise DownloadCancelled('update check cancelled')
+            try:
+                transport = self.cache.transport
+                return (transport.fetch_metadata(self.metadata_url, MAX_METADATA, cancel=cancelled)
+                        if isinstance(transport, HTTPTransport) else transport.fetch_metadata(self.metadata_url, MAX_METADATA))
+            except DownloadCancelled:
+                raise
+            except RecoverableError:
+                if attempt == 3: raise
+                retry_wait((2, 4, 8)[attempt], cancelled)
 
     def download(self, *, progress=None, cancel=None):
         import logging
@@ -235,14 +257,22 @@ class MatureUpdateService:
                                          highest_seen=self._witness()[0])
                 self._remember_release(release)
                 self._state('DOWNLOADING', '正在下载变化文件…', actual_downloaded_bytes=0)
+                assets = [self.release.assets[p] for p in self.plan['download_paths']]
+                import time
+                last_report = 0
                 def report_progress(_):
-                    self.snapshot = {**self.snapshot, 'actual_downloaded_bytes':self.cache.transport.bytes_received-before}
-                    if progress is not None: progress(dict(self.snapshot))
+                    nonlocal last_report
+                    self.snapshot = {**self.snapshot, 'actual_downloaded_bytes':self.cache.transport.bytes_received-before,
+                                     'downloaded_bytes': self.cache.downloaded_bytes(assets)}
+                    if progress is not None and time.monotonic() - last_report >= .2:
+                        last_report = time.monotonic()
+                        progress(dict(self.snapshot))
                 self.staged = self.cache.reconstruct(release, self.plan, self.install_root/'App',
                     cancel=cancelled, progress=report_progress,
                     telemetry=getattr(self, 'telemetry', None))
                 actual = self.cache.transport.bytes_received-before
                 self._state('READY_TO_APPLY', '下载和校验完成，可稍后更新。',
+                            downloaded_bytes=self.plan['expected_download_bytes'],
                             actual_downloaded_bytes=actual,
                             saved_bytes=max(0, self.plan['full_bytes']-actual),
                             saving_percent=100 * max(0, 1-actual/max(1,self.plan['full_bytes'])))
@@ -253,7 +283,12 @@ class MatureUpdateService:
             logging.getLogger(__name__).exception('desktop incremental download failed')
             self.staged = None
             state = 'FAILED_SECURITY' if isinstance(exc, SecurityError) else 'DOWNLOAD_PAUSED_OR_INTERRUPTED'
-            self._state(state, '更新校验未通过，已阻止应用。' if isinstance(exc, SecurityError) else '下载已暂停，当前版本不受影响，可稍后继续。',
+            downloaded = self.cache.downloaded_bytes([self.release.assets[p] for p in self.plan['download_paths']])
+            total = self.plan['expected_download_bytes']
+            from refactor.desktop.delivery.update_protocol import DownloadCancelled
+            self._state(state, '更新校验未通过，已阻止应用。' if isinstance(exc, SecurityError) else
+                        ('下载已暂停，可点继续。' if isinstance(exc, DownloadCancelled) else f'网络不稳，已下载 {downloaded}/{total} 字节，稍后会自动继续。'),
+                        downloaded_bytes=downloaded, cancelled=isinstance(exc, DownloadCancelled),
                         actual_downloaded_bytes=self.cache.transport.bytes_received-before)
             from refactor.desktop.delivery.runtime_path_budget import MESSAGE
             if str(exc)==MESSAGE: self.snapshot={**self.snapshot,'message':MESSAGE}
@@ -299,7 +334,7 @@ class MatureUpdateService:
             from refactor.desktop.delivery.update_protocol import SecurityError
             from refactor.desktop.delivery.update_protocol import digest
             from refactor.desktop.delivery.update_protocol import canonical
-            fresh = verify_release(self.cache.transport.fetch_metadata(self.metadata_url, MAX_METADATA),
+            fresh = verify_release(self._fetch_metadata(),
                 self.keys, current=self.current, channel=self.channel, highest_seen=self._witness()[0])
             self._remember_release(fresh)
             if not rollout_eligible(fresh, self.install_identity) or digest(canonical(fresh.signed)) != digest(canonical(self.release.signed)):

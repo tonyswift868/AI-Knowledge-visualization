@@ -103,8 +103,7 @@ class ReportTests(unittest.TestCase):
     def test_live_points_only_lists_actual_live_teaching(self):
         self.prepare()
         first, second = self.pids()
-        self.store.save_lesson_cache_item('p', 'lesson_preps', first, dict(status='needs_live_teaching', live_used=True))
-        self.store.save_lesson_cache_item('p', 'lesson_preps', second, dict(status='needs_live_teaching', live_used=False))
+        self.store.save_teacher_profile('p', {'teaching_points': {first: {'point_id': first, 'chunk_ids': ['c1']}}})
         report = self.finish()
         self.assertEqual([p['point_id'] for p in report['live_points']], [first])
         self.assertTrue(report['live_points'][0]['title'])

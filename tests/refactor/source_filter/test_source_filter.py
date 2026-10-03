@@ -16,7 +16,7 @@ from refactor.learning.course.source_filter import (
 
 @pytest.fixture
 def lists():
-    return load_lists()
+    return replace(load_lists(),whitelist=(DomainRule('wikipedia.org','test legacy suffix rule','Wikipedia','encyclopedia'),))
 
 
 @pytest.mark.parametrize("value", [None, "", "   ", "file:///a", "javascript:alert(1)",
@@ -159,11 +159,12 @@ def test_keywords_avoid_ambiguous_learning_terms_and_ignore_query_snippet(lists)
 
 
 def test_default_draft_is_immutable_and_every_entry_has_reason(lists):
-    assert 60 <= len(lists.whitelist) <= 200
+    lists=load_lists()
+    assert lists.version==2 and lists.type_rules and lists.directory
     assert len({rule.match for rule in lists.whitelist}) == len(lists.whitelist)
     assert all(rule.reason for group in (lists.whitelist, lists.low, lists.blocked, lists.candidates) for rule in group)
     assert all(entry.reason for entry in lists.github_orgs)
-    assert any(".edu.cn" in rule.match for rule in lists.whitelist)
+    assert any('edu.cn' in rule['suffixes'] for rule in lists.type_rules)
     assert not any(rule.match in {"github.com", "github.io", "csdn.net", "huggingface.co"} for rule in lists.whitelist)
     with pytest.raises(FrozenInstanceError):
         lists.version = 2
@@ -188,6 +189,7 @@ def test_default_draft_is_immutable_and_every_entry_has_reason(lists):
 def test_bad_list_schema_reports_path_and_field(tmp_path, change, field):
     source = Path(sf.__file__).with_name("data") / "source_lists.json"
     data = json.loads(source.read_text(encoding="utf-8"))
+    data['whitelist']=[dict(match='wikipedia.org',brand='Wikipedia',category='encyclopedia',reason='test v1 domain schema')]
     change(data)
     path = tmp_path / "bad-lists.json"
     path.write_text(json.dumps(data), encoding="utf-8")

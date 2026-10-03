@@ -21,7 +21,7 @@ import time
 from collections.abc import Callable, Mapping
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, parse_qs
 
 import httpx
 
@@ -60,6 +60,53 @@ class SearchDependencyError(ResearchSearchError):
 
 class ResearchFetchError(ResearchError):
     code = "RESEARCH_FETCH_FAILED"
+
+    def __init__(self, message='', *, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class ResearchUploadRequired(ResearchFetchError):
+    code = 'MATERIAL_UPLOAD_REQUIRED'
+
+
+def material_upload_guidance(url, title='', *, lists=None):
+    """A visible fallback, never a fabricated textbook body or auth workaround."""
+    from .source_filter import type_catalog,classify_source
+    parsed=urlparse(url)
+    host=parsed.hostname or ''
+    if not (host=='basic.smartedu.cn' or classify_source(url,lists=lists)['type']=='textbook_publisher'):
+        return ''
+    entries=[e for e in type_catalog(lists).directory if e['url']==url]
+    book=title or (entries[0]['title'] if entries else '所选教材')
+    platform='国家中小学智慧教育平台' if host=='basic.smartedu.cn' else '出版社官网'
+    return (f'《{book}》在{platform}，目前无法自动读取正文。'
+            '需要登录后下载的教材，请你登录后下载，再点“上传资料”传进来就行。'
+            f'教材页面：{url}')
+
+
+def smartedu_metadata_url(url):
+    """Public metadata endpoint described by MIT tchMaterial-parser/api.py.
+
+    https://github.com/happycola233/tchMaterial-parser/blob/main/src/tchmaterial_parser/api.py
+    No token extraction, alternative private CDN, or downloader code is used.
+    """
+    parsed=urlparse(url)
+    if parsed.hostname!='basic.smartedu.cn' or parsed.path!='/tchMaterial/detail':return None
+    identifier=parse_qs(parsed.query).get('contentId',[''])[0]
+    if not re.fullmatch(r'[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}',identifier):return None
+    return 'https://s-file-1.ykt.cbern.com.cn/zxx/ndrv2/resources/tch_material/details/'+identifier+'.json'
+
+
+def _smartedu_pdf(data):
+    for item in data.get('ti_items',[]):
+        if item.get('ti_format')!='pdf' or not (item.get('ti_is_source_file') or item.get('ti_file_flag')=='source'):continue
+        storage=item.get('ti_storage')
+        if storage:
+            url=storage.replace('cs_path:${ref-path}','https://r1-ndr-private.ykt.cbern.com.cn')
+        else:url=next(iter(item.get('ti_storages') or []),'')
+        if isinstance(url,str) and urlparse(url).scheme=='https':return url
+    return None
 
 
 class ResearchUnsupportedContent(ResearchFetchError):
@@ -337,6 +384,33 @@ def _extract_html(content: bytes, final_url: str) -> tuple[str, str, str]:
     return text, " ".join("".join(parser._title).split()), canonical
 
 
+def directory_candidates(query, *, stage='', subject='', lists=None, limit=8):
+    from .source_filter import directory_matches,type_catalog
+    matched=directory_matches(query,stage=stage,subject=subject,lists=lists,
+                              limit=len(type_catalog(lists).directory))
+    available=[e for e in matched if set(e['available']) & {'全文节选','习题','答案','目录'}]
+    if any(word in query for word in ('习题','真题','练习','答案')):
+        # An unavailable textbook must not crowd an actual answered paper out
+        # of the cap; ranking within each capability group remains unchanged.
+        available.sort(key=lambda e:'答案' not in e['available'])
+    return [Candidate(e['url'],e['title'],e['verification'],query,'directory') for e in available[:limit]]
+
+
+def directory_upload_guidance(query, *, stage='', subject='', lists=None, limit=3):
+    """Host can append these messages to planning chat without adopting a body."""
+    from .source_filter import directory_matches,type_catalog
+    matched=directory_matches(query,stage=stage,subject=subject,lists=lists,
+                              limit=len(type_catalog(lists).directory))
+    messages=[];seen=set()
+    for entry in matched:
+        if '全文节选' in entry['available'] or entry['url'] in seen:continue
+        text=material_upload_guidance(entry['url'],entry['title'],lists=lists)
+        if text:
+            seen.add(entry['url']);messages.append(text)
+        if len(messages)>=limit:break
+    return tuple(messages)
+
+
 class ResearchService:
     """Search public resources and fetch bounded, reference-only page text.
 
@@ -357,7 +431,7 @@ class ResearchService:
         max_bytes: int = 2_000_000,
         max_redirects: int = 4,
         chunk_size: int = 1_200,
-        user_agent: str = "MentorFlow/2.0",
+        user_agent: str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         doh_transport: httpx.BaseTransport | None = None,
     ) -> None:
         configured = searxng_endpoint if searxng_endpoint is not None else searxng_url
@@ -378,8 +452,22 @@ class ResearchService:
             transport=self._transport,
             timeout=self.timeout,
             follow_redirects=False,
-            headers={"User-Agent": self.user_agent},
+            headers={"User-Agent": self.user_agent,
+                     "Accept": "text/html,application/pdf,application/json;q=0.9,*/*;q=0.8",
+                     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.7"},
         )
+
+    def discover(self, query, *, stage='', subject='', limit=8, cancel=None, lists=None):
+        """Curriculum directory precedes ordinary web search; failures stay visible.
+
+        Catalog entries are candidates, never adopted passages. Fetch/extract and
+        point mapping remain mandatory. Callers may use directory_candidates
+        with their vendor-search gateway instead of this optional web transport.
+        """
+        first = directory_candidates(query, stage=stage, subject=subject, lists=lists, limit=limit)
+        if len(first) < limit:
+            first += self.search(query, limit=limit-len(first), cancel=cancel)
+        return first
 
     def search(
         self,
@@ -608,6 +696,31 @@ class ResearchService:
         if not current:
             raise ResearchInputError("资料候选 URL 无效。")
         original_url = current
+        metadata_url=smartedu_metadata_url(current)
+        if metadata_url:
+            import json
+            title=item.title
+            try:
+                metadata=self.fetch_bytes({'url':metadata_url},cancel=cancel,
+                    allowed_types={'application/json','text/plain'},request_guard=request_guard)
+                data=json.loads(metadata.body)
+                if not isinstance(data,dict):raise ValueError('教材元数据不是对象')
+                title=data.get('title') or title
+                if not isinstance(title,str):title=item.title
+                pdf=_smartedu_pdf(data)
+                if not pdf:raise ResearchUploadRequired(material_upload_guidance(original_url,title))
+                # Exactly one ordinary GET of the advertised PDF. A 401/403
+                # is NOT retried on a different CDN or with a manufactured auth.
+                fetched=self.fetch_bytes({'url':pdf},cancel=cancel,
+                    allowed_types={'application/pdf'},request_guard=request_guard)
+                return FetchedContent(original_url,fetched.final_url,fetched.content_type,
+                                      fetched.body,fetched.retrieved_at)
+            except (ResearchCancelled,ResearchTimeout):raise
+            except (ResearchFetchError,ValueError,KeyError,TypeError) as exc:
+                if isinstance(exc,ResearchUploadRequired):raise
+                raise ResearchUploadRequired(material_upload_guidance(original_url,title)+
+                    ('（资源返回 HTTP '+str(exc.status_code)+'。）' if getattr(exc,'status_code',None) else
+                     '（教材资源暂不可读取。）')) from exc
         redirect_count = 0
         deadline = time.monotonic() + self.timeout
         allowed_types = allowed_types if allowed_types is not None else {
@@ -640,7 +753,7 @@ class ResearchService:
                                 redirect_count += 1
                                 continue
                             if not 200 <= status < 300:
-                                raise ResearchFetchError(f"网页返回 HTTP {status}，未读取正文。")
+                                raise ResearchFetchError(f"网页返回 HTTP {status}，未读取正文。",status_code=status)
                             content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().casefold()
                             if content_type not in allowed_types:
                                 raise ResearchUnsupportedContent(f"网页内容类型 {content_type!r} 不支持正文读取。")

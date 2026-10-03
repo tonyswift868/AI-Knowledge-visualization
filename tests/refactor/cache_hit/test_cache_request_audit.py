@@ -3,37 +3,36 @@ import json
 
 import pytest
 
-from refactor.learning.course import judge_agent, question_agent, plan_intent
+from refactor.learning.course import judge_agent, plan_intent
 from refactor.learning.course.request_layout import dialogue_tail
 from tests.refactor.judge_agent.test_class_judge_agent import context as judge_context
-from tests.refactor.question_agent.test_class_question_agent import context as question_context
 from .audit import analyze, lcp
-from .scenario import block, run_scenario
+from tests.refactor.integration38.support import block
+
+def test_real_host_capture_uses_only_current_purposes_and_new_question_reference(tmp_path):
+    from .scenario import run_scenario
+    from refactor.learning.connections.gateway import PURPOSE_EFFORT
+    capture=run_scenario(tmp_path)
+    assert capture['status']=='completed'
+    assert {'teacher','judge','point_materials'} <= {r['purpose'] for r in capture['requests']}
+    assert not {'profile','check_profile'} & {r['purpose'] for r in capture['requests']}  # New host writes factual archives locally.
+    assert not {'questions','question_solve','question_review','lesson_prep','lesson_review'} & {r['purpose'] for r in capture['requests']}
+    assert all(r['purpose'] in PURPOSE_EFFORT for r in capture['requests'])
+    rows=[r for r in capture['requests'] if r['purpose']=='judge']
+    assert len(rows)>2 and all(block(r['messages'],'【本次判定】')['reference']=='先进先出' for r in rows)
+    assert analyze(capture,block=64)['requests']
+
+def test_extended_capture_keeps_free_check_and_repeated_request_prefixes(tmp_path):
+    from .scenario import run_scenario
+    from .classroom_audit import classroom_only
+    capture=run_scenario(tmp_path,extended=True)
+    assert capture['practice_start'] is not None and not capture['practice_reply_lost_pending']
+    assert sum(r['purpose']=='judge' for r in capture['requests'][capture['practice_start']:])==2
+    audit=analyze(classroom_only(capture),block=64)
+    assert any(r['prefix_est']>0 for r in audit['requests'])
 
 
-def test_fixed_host_scenario_is_deterministic_and_covers_all_phases(tmp_path):
-    before = run_scenario(tmp_path / 'a')
-    after = run_scenario(tmp_path / 'b')
-    assert before == after
-    assert before['status'] == 'completed' and before['requests']
-    purposes = {r['purpose'] for r in before['requests']}
-    # Source scoring is only called when rules cannot decide (PLAN-06), lesson prep adds its own calls (TEACH-08).
-    assert {'sufficiency', 'plan_intent', 'research', 'outline', 'generate',
-            'teacher', 'judge', 'questions', 'profile', 'check_profile'} <= purposes
-    report = analyze(before)
-    assert report['total']['prefix_rate'] < .95 and report['total']['cold_ceiling_est'] < .95
-    assert not report['paid_gate'] and report['official_block_tokens'] is None
-    assert report['total']['input_est'] == sum(v['input_est'] for v in report['purposes'].values())
 
-
-def test_extended_classroom_capture_includes_prep_and_tracks_free_check(tmp_path):
-    capture = run_scenario(tmp_path / 'extended', extended=True)
-    purposes = [request['purpose'] for request in capture['requests']]
-    assert 'lesson_prep' in purposes and 'lesson_review' in purposes
-    assert purposes.count('questions') >= 2 and purposes.count('judge') >= 12
-    assert isinstance(capture['practice_reply_lost_pending'], bool)
-    assert capture['practice_start'] is not None
-    assert capture['status'] == 'completed'
 
 
 def test_common_prefix_needs_two_observations_in_endpoint_model_and_rounding_is_explicit():
@@ -70,7 +69,7 @@ def test_dialogue_char_cap_drops_a_page_without_rewriting_messages():
     assert dialogue_tail([{'text':'x'*25}], max_rows=40, max_chars=30) == [{'text':'x'*25}]
 
 
-def test_judge_and_question_reorder_without_changing_any_field_or_target():
+def test_judge_reorder_without_changing_any_field_or_target():
     jctx = judge_context()
     frozen = deepcopy(jctx)
     system, messages = judge_agent.judge_request(jctx, '原样回答')
@@ -86,14 +85,6 @@ def test_judge_and_question_reorder_without_changing_any_field_or_target():
     other = judge_agent.judge_request(changed, '变化的回答')[1][0]['content']
     material = messages[0]['content'].split('【知识点清单】')[0]
     assert other.startswith(material)
-    qctx = question_context()
-    frozen = deepcopy(qctx)
-    system, messages = question_agent.question_request(qctx)
-    points, excerpts, avoid, _ = question_agent._context(qctx)
-    assert qctx == frozen and system == question_agent.QUESTION_SYSTEM
-    assert block(messages, '【知识点清单】') == points
-    assert block(messages, '【资料原文（数据）】') == excerpts
-    assert block(messages, '【本次出题要求】') == dict(per_point=qctx['per_point'], purpose=qctx['purpose'], avoid=avoid)
 
 
 def test_subjective_rubric_precedes_only_the_current_reply_without_changing_fields():

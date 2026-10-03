@@ -32,7 +32,7 @@ export function configure(options: { ready?: boolean; holdStart?: boolean; holdE
 }
 export function finish(content = "第一句。第二句。") {
   const r = { ...room(), messages: [{ id: `m-${++serial}`, role: "assistant", kind: "speech", content }] }
-  request!.resolve(r); request = null
+  request?.resolve(r); request = null // An aborted/unmounted request may deliver a late response.
 }
 export async function call(method: string, params: any = {}, opts: any = {}) {
   log.push({ method, params })
@@ -42,7 +42,7 @@ export async function call(method: string, params: any = {}, opts: any = {}) {
   if (method === "speech.stream_append" && holdAppend) await new Promise<void>((r) => { heldAppend = r })
   if (method === "classroom.state") return restored ?? room()
   if (method === "classroom.enter") return room()
-  if (["classroom.next", "classroom.reply"].includes(method)) return new Promise((resolve, reject) => {
+  if (["classroom.next", "classroom.reply", "classroom.ask"].includes(method)) return new Promise((resolve, reject) => {
     request = { opts, resolve, reject }
     opts.signal?.addEventListener("abort", () => { reject(new BridgeFailure("CANCELLED", "已取消")); request = null })
   })

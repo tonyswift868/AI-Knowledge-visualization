@@ -275,10 +275,11 @@ def test_learning_delivery_update_worker_uses_existing_core_and_real_window(tmp_
     calls = []
     class Core:
         def attach_shutdown_guard(self, _app): pass
-        def get_startup_update_state(self, root, full):
+        def get_startup_update_state(self, root, full, check_feed):
+            assert not check_feed
             calls.append(("startup", threading.get_ident()))
             return dict(state="HEALTHY", login_allowed=True)
-        def check_latest(self, root): return dict(state="UP_TO_DATE")
+        def check_latest(self, root, cancel=None): return dict(state="UP_TO_DATE")
         def update_to_latest(self, root, **kwargs):
             calls.append(("install", kwargs))
             return dict(state="APPLYING")

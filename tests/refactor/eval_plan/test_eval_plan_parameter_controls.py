@@ -247,28 +247,39 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
                     self.fail_outline = False
                     raise ModelError("AGENT_FORMAT", "标明用途的失败替身")
                 refs = re.findall(r"\[(s\d+\.\d+)\]", text)
-                result = dict(stages=[dict(title="基础", modules=[dict(key="m1", title="循环", summary="推理和行动", refs=refs,
-                                                                      prerequisites=[], minutes=[30, 60])])], message="学习基础")
-            elif purpose == "generate":
-                if self.fail_generation:
-                    from refactor.learning.connections.errors import ModelError
-                    self.fail_generation = False
-                    raise ModelError("AGENT_FORMAT", "标明用途的模块失败替身")
-                refs = re.findall(r"\[(c\d+)\]", text)
-                result = dict(points=[dict(title="推理", summary="解释推理", chunks=refs[:1], minutes=15),
-                                      dict(title="行动", summary="调用工具", chunks=refs[-1:], minutes=16)])
+                chunks=json.loads(text.split('【已取得的原文段落】\n')[1])
+                result=dict(stages=[dict(title='基础',modules=[dict(key='m1',title='循环',summary='推理和行动',refs=refs,prerequisites=[],
+                    points=[dict(title=title,summary='解释'+title,citations=[dict(chunk_id=c['chunk_id'],quote=c['text'][:80])])
+                            for title,c in zip(('推理','行动'),(chunks[0],chunks[-1]))])])],message='学习基础')
             else:
                 pytest.fail(purpose)
             return SimpleNamespace(text=json.dumps(result, ensure_ascii=False))
     exp.budget = ScriptedGateway()
+    # Preparation is not the evaluator under test; exercise its durable resume
+    # with stored new-bank rows instead of the removed AI generation response.
+    from refactor.learning.app.plan_flow import PlanFlow
+    from tests.refactor.integration38.support import seed_bank
+    def prepare(store,pid,mid,ctx,progress=None):
+        operations.append('point_materials')
+        if exp.budget.fail_generation:
+            exp.budget.fail_generation=False
+            from refactor.learning.connections.errors import ModelError
+            raise ModelError('AGENT_FORMAT','资料准备失败替身')
+        seed_bank(store,pid)
+    initialize=PlanFlow.__init__
+    def initialize_fixture(self,*args,**kwargs):
+        kwargs['prepare_module']=prepare
+        initialize(self,*args,**kwargs)
+    monkeypatch.setattr(PlanFlow,'__init__',initialize_fixture)
+    monkeypatch.setattr(PlanFlow,'_module_ready',lambda self,pid,mid:any(q['module_id']==mid for q in self.services.store.records('question_bank',pid)))
     first = exp.run_one("base", 1)
     assert first["outline_complete"] and not first["formal_complete"]
     generated = exp.run_one("base", 1, generate=True)
     assert generated["formal_complete"] and generated["metrics"]["point_count"] == 2
     assert first["draft"]["plan_id"] == generated["draft"]["plan_id"]
-    assert operations == ["sufficiency", "coverage_check", "outline", "generate"]
+    assert operations == ["sufficiency", "coverage_check", "outline", "point_materials"]
     assert len(generated["metrics"]["chapter_coverage"]) == 2
-    assert generated["metrics"]["point_minutes_sum"] == 31
+    assert generated["metrics"]["point_minutes_sum"] == 30
     assert exp.run_one("base", 1, generate=True)["formal_complete"]
     assert len(operations) == 4
     exp.budget.fail_outline = True
@@ -289,4 +300,4 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
     complete = exp.run_one("advanced", 1, generate=True)
     assert complete["formal_complete"] and complete["draft"]["plan_id"] == incomplete["draft"]["plan_id"]
     archived = [evalplan.read_json(p)["error_code"] for p in (exp.root / "runs/advanced-r1/failed-attempts").glob("*.json")]
-    assert sorted(archived) == ["AGENT_FORMAT", "INCOMPLETE_MODULES"]
+    assert sorted(archived) == ["AGENT_FORMAT", "AGENT_FORMAT"]  # New preparation errors retain their original code.

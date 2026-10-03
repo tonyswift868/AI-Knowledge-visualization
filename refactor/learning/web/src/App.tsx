@@ -13,6 +13,7 @@ import { PlanDetail } from "./pages/PlanDetail"
 import { Classroom } from "./pages/Classroom"
 import { Report } from "./pages/Report"
 import { Settings } from "./pages/Settings"
+import { UpdateNotice, useUpdates } from "./updates/UpdateNotice"
 import { TeacherStagePreview } from "./teacher/TeacherStagePreview"
 import { VoiceInputPreview } from "./voice/VoiceInputPreview"
 
@@ -61,6 +62,7 @@ function AccountMenu() {
 
 export function App() {
   const s = useApp()
+  const update = useUpdates()
   const theme = s.settings?.theme ?? "sakura"
   const [previewHash, setPreviewHash] = React.useState(window.location.hash)
   React.useEffect(() => {
@@ -115,6 +117,7 @@ export function App() {
                   <button key={n.id} className={`nav-item ${s.route === n.id || n.also?.includes(s.route) ? "active" : ""}`}
                           onClick={() => { if (n.id === "new-plan") s.set({ planId: null }); s.go(n.id) }} title={n.label}>
                     <span className="nav-icon"><n.icon /></span><span className="nav-label">{n.label}</span>
+                    {n.id === "settings" && update.later && <span aria-label="有新版本" style={{ color: "#f24b63" }}>●</span>}
                   </button>
                 ))}
               </div>
@@ -156,6 +159,7 @@ export function App() {
         </main>
       </div>
       <Toasts />
+      <UpdateNotice />
     </>
   )
 }

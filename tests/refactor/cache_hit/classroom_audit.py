@@ -9,8 +9,7 @@ from .scenario import run_scenario
 
 
 CLASSROOM_PURPOSES = frozenset({
-    'teacher', 'judge', 'questions', 'profile', 'lesson_prep',
-    'lesson_review', 'check_profile',
+    'teacher', 'judge', 'profile', 'point_materials', 'check_profile',
 })
 
 

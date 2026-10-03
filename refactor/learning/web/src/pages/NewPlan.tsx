@@ -11,9 +11,12 @@ import { Button, Field, Segmented, TASK_TIME_TIP, Tip } from "../ui"
 type Card = {
   card_id: string; kind: "url" | "file"; url: string | null; title: string; site: string; tier: string; summary: string
   relevance: number | null; credibility: number | null; note: string; status: "new" | "adopted" | "rejected"; chars: number
+  quality?: { source_type?: string }
 }
-type OModule = { id?: string; key: string; title: string; summary: string; refs: string[]; ref_titles: string[]; prerequisites: string[]; minutes: [number, number] }
-type Outline = { stages: { title: string; modules: OModule[] }[]; ranges: { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; suggested_end: string | null }; version: number }
+type Citation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
+type MapPoint = { title: string; summary: string; citations: Citation[] }
+type OModule = { points?: MapPoint[]; id?: string; key: string; title: string; summary: string; refs: string[]; ref_titles: string[]; prerequisites: string[]; minutes: [number, number] }
+type Outline = { stages: { title: string; modules: OModule[] }[]; ranges: { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; over_300?: boolean; points?: number; learning?: number; suggested_days?: number | null; suggested_end: string | null }; version: number }
 type Msg = { id: string; role: "ai" | "user"; kind: string; text: string; cards?: string[]; version?: number }
 type Coverage = { covered: boolean; blocked?: boolean; missing: { content: string; why: string; points: number }[]; message: string; missing_points?: number }
 type FormData = {
@@ -22,20 +25,20 @@ type FormData = {
 }
 export type Draft = {
   plan_id: string; phase: "form" | "questions" | "sources" | "outline" | "generating" | "ready"; form: FormData | null
-  goal: string; messages: Msg[]; sources: Card[]; outline: Outline | null; generation: Record<string, string>; coverage?: Coverage
-  estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string }
+  name?: string; goal: string; messages: Msg[]; sources: Card[]; outline: Outline | null; generation: Record<string, string>; coverage?: Coverage
+  estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string; blocked?: boolean; points?: number }
   busy: string | null
 }
 type Detail = {
-  plan: { id: string; goal: string; state: string; window: { start: string; end: string } | null; total_minutes: number }
+  plan: { id: string; title?: string; goal: string; state: string; window: { start: string; end: string } | null; total_minutes: number }
   stages: { id: string; title: string; modules: { id: string; title: string; summary: string; learning_minutes: number; check_minutes: number; state?: string | null
-    points: { id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number; needs_review?: boolean; taught?: boolean }[] }[] }[]
+    points: { citations?: Citation[]; id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number; needs_review?: boolean; taught?: boolean }[] }[] }[]
   sources: { id: string; title: string; url: string | null; kind: string }[]
   daily?: { full_day: number; cap: number; ok: boolean; suggested_end: string | null }
 }
 
 const STEPS: [Draft["phase"][], string][] = [
-  [["form", "questions"], "说清目标"], [["sources"], "找资料"], [["outline"], "路线轮廓"], [["generating"], "正式生成"], [["ready"], "确认开始"],
+  [["form", "questions"], "说清目标"], [["sources"], "找资料"], [["outline"], "知识地图"], [["generating"], "保存与准备"], [["ready"], "确认开始"],
 ]
 const LEVELS = [{ value: "zero", label: "零基础" }, { value: "beginner", label: "入门" }, { value: "intermediate", label: "有一定基础" }, { value: "advanced", label: "比较熟练" }]
 const WEEK = "一二三四五六日"
@@ -124,7 +127,7 @@ export function NewPlan() {
       <header className="plan-head card">
         <div className="row between">
           <div style={{ minWidth: 0 }}>
-            <b className="plan-title">{draft.form?.goal || "新建计划"}</b>
+            <b className="plan-title">{draft.name || draft.form?.goal || "新建计划"}</b>
             <span className="muted small">{draft.goal && draft.goal !== draft.form?.goal ? draft.goal : "和 AI 一起把目标变成每天学得完的路线"}</span>
           </div>
           {draft.phase !== "form" && (
@@ -168,13 +171,13 @@ export function NewPlan() {
                 {m.id === lastOutline && draft.phase === "outline" && (
                   <div className="plan-actions">
                     <Button disabled={busy} onClick={() => act("plan.more")}><Search />资料不够，再找找</Button>
-                    <Button kind="primary" disabled={busy} onClick={() => act("plan.estimate")}><Wand2 />满意了，准备正式生成</Button>
+                    <Button kind="primary" disabled={busy} onClick={() => act("plan.estimate")}><Wand2 />确认地图，查看时间预估</Button>
                   </div>
                 )}
               </div>
             )
             if (m.kind === "estimate") return <EstimateCard key={m.id} draft={draft} text={m.text} busy={busy} active={draft.phase === "outline"}
-                                                            onGo={() => act("plan.generate")} />
+                                                            onGo={() => act("plan.generate")} onExtend={(end) => act("plan.extend", { end })} onShrink={() => setText("暂时不学：")} />
             if (m.kind === "progress") return <ProgressCard key={m.id} draft={draft} text={m.text} busy={busy} onRetry={() => act("plan.generate")} />
             if (m.kind === "ready") return <ReadyCard key={m.id} draft={draft} text={m.text} busy={busy} act={act}
                                                       onStarted={() => { toast("ok", "计划已开始！首页会显示今天要学多久。"); set({ planId: null }); go("home") }} />
@@ -186,7 +189,7 @@ export function NewPlan() {
               <Button disabled={busy} onClick={() => act("plan.more")}><Search />再找找</Button>
               <Button disabled={busy} onClick={() => act("plan.upload")}><FileUp />上传资料</Button>
               {!draft.coverage?.blocked && <Button kind="primary" disabled={busy || adopted === 0} onClick={() => act("plan.outline")}>
-                <GitBranch />{adopted ? `用已采用的 ${adopted} 份资料生成路线轮廓` : "先采用至少一份资料"}
+                <GitBranch />{adopted ? `用已采用的 ${adopted} 份资料整理知识地图` : "先采用至少一份资料"}
               </Button>}
             </div>
           )}
@@ -329,13 +332,14 @@ function SourceCard({ card, locked, onDecide }: { card: Card; locked: boolean; o
         </div>
         <span className={`pill ${tier[1]}`}>{tier[0]}</span>
       </div>
-      {card.note && <p className="source-note">{card.note}</p>}
+      <p className="source-note">来源类型：{card.kind === "file" ? "上传文档" : ({ official_docs: "官方文档", academic: "大学与学术资料", education: "教材与教育平台", encyclopedia: "百科", standards: "标准", government: "官方机构", reference: "参考资料", official_repository: "官方代码仓库" } as Record<string, string>)[card.quality?.source_type ?? ""] ?? "网页资料"} · 用于讲解；带答案的题目在准备时核实。</p>
+      <p className="source-note">可信依据：{card.note || "由你提供，正文已读取；请确认适合本次学习。"}</p>
       <div className="row between wrap">
         <div className="row small" style={{ gap: 12 }}><Stars n={card.relevance} label="相关" /><Stars n={card.credibility} label="可信" /></div>
         <div className="row" style={{ gap: 6 }}>
           {card.url && <a className="btn small ghost" href={card.url} target="_blank" rel="noreferrer"><ExternalLink />打开</a>}
           <Button small kind={card.status === "rejected" ? "danger" : "ghost"} disabled={locked} onClick={() => onDecide(false)}><X />不要</Button>
-          <Button small kind={card.status === "adopted" ? "primary" : undefined} disabled={locked} onClick={() => onDecide(true)}><Check />{card.status === "adopted" ? "已采用" : "采用"}</Button>
+          <label className="row small"><input type="checkbox" checked={card.status === "adopted"} disabled={locked} onChange={(e) => onDecide(e.target.checked)} />认可并采用</label>
         </div>
       </div>
     </div>
@@ -367,6 +371,7 @@ function OutlineCard({ outline }: { outline: Outline }) {
                   <div key={m.key} className="module-node" style={{ animationDelay: `${n * 0.04}s` }}>
                     <div className="row between"><b><em>{n}</em>{m.title}</b><span className="pill muted">{m.minutes[0]}–{m.minutes[1]} 分钟</span></div>
                     <p>{m.summary}</p>
+                    <ol className="point-list">{m.points?.map((p, i) => <li key={i}><b>{p.title}</b><span>{p.summary}</span><PointCitations citations={p.citations} /></li>)}</ol>
                     {m.prerequisites.length > 0 && <span className="small muted">先学：{m.prerequisites.map((p) => titleOf[p]).join("、")}</span>}
                     <span className="small refs" title={m.ref_titles.join("\n")}><BookOpen size={12} />依据：{m.ref_titles.slice(0, 2).join("；")}{m.ref_titles.length > 2 ? ` 等 ${m.ref_titles.length} 处` : ""}</span>
                   </div>
@@ -376,30 +381,46 @@ function OutlineCard({ outline }: { outline: Outline }) {
           </div>
         ))}
       </div>
-      <p className="muted small" style={{ margin: "10px 2px 0" }}>轮廓只到模块，具体知识点在正式生成时从资料里提炼。想改哪里，直接在下面告诉我。</p>
+      <p className="muted small" style={{ margin: "10px 2px 0" }}>每个点均已核验原文出处。想增删、合并或放弃哪部分，直接在下面告诉我。</p>
     </div>
   )
 }
 
 // ------------------------------------------------------------------ estimate / progress / ready
-function EstimateCard({ draft, text, busy, active, onGo }: { draft: Draft; text: string; busy: boolean; active: boolean; onGo: () => void }) {
-  const e = draft.estimate as (NonNullable<Draft["estimate"]> & { calls?: number; note?: string }) | undefined
-  if (!e) return null
-  const k = (n: number) => `${Math.round(n / 1000)}k`
-  return (
-    <div className="plan-block fade-in">
-      <div className="bubble bot">{text}</div>
-      <div className="estimate-card">
-        <div className="outline-sum">
-          <div><span>要生成的模块</span><b>{e.modules} 个</b></div>
-          <div><span>预计用量</span><b>输入 {k(e.input_tokens[0])}–{k(e.input_tokens[1])} · 输出 {k(e.output_tokens[0])}–{k(e.output_tokens[1])} token</b></div>
-          <div><span>预计调用次数</span><b>{e.calls != null ? `${e.calls} 次` : "—（旧预估未记录）"}</b></div>
-        </div>
-        <p className="sub">{e.note ?? "token 为估算区间；失败重试或截断后拆分可能增加用量。"}</p>
-        {active && <div className="plan-actions"><Button kind="primary" disabled={busy} onClick={onGo}><Rocket />开始生成</Button></div>}
+function EstimateCard({ draft, text, busy, active, onGo, onExtend, onShrink }:
+  { draft: Draft; text: string; busy: boolean; active: boolean; onGo: () => void; onExtend: (end: string) => void; onShrink: () => void }) {
+  const r = draft.outline?.ranges
+  if (!draft.estimate || !r) return null
+  const blocked = !!r.over_300
+  return <div className="plan-block fade-in">
+    <div className="bubble bot">{text}</div>
+    <div className="estimate-card">
+      <div className="outline-sum">
+        <div><span>知识点 × 平均 15 分钟</span><b>{r.points} 个 · 学习 {hours(r.learning ?? 0)}</b></div>
+        <div><span>含模块检测与最终检验</span><b>约 {hours(r.total[1])}</b></div>
+        <div><span>每天 / 你的时间上限</span><b>{r.daily[1]} / {r.cap} 分钟</b></div>
       </div>
+      <p className="sub">这是预估；检测仍计入总时间。备题采用现成带答案题，找不到时从原文挖空。</p>
+      {r.over_cap && <p className="outline-warn">每天超过了你填写的时间上限，可以延长日期或缩小范围。</p>}
+      {blocked && <p className="outline-warn">每天超过 300 分钟，请先延长计划{r.suggested_days ? `到共 ${r.suggested_days} 天` : ""}或缩小范围。</p>}
+      {active && <div className="plan-actions">
+        {(blocked || r.over_cap) && r.suggested_end && <Button disabled={busy} onClick={() => onExtend(r.suggested_end!)}>延长到 {r.suggested_end}</Button>}
+        {(blocked || r.over_cap) && <Button disabled={busy} onClick={onShrink}>缩小范围，在聊天里说明</Button>}
+        <Button kind="primary" disabled={busy || blocked} onClick={onGo}><Rocket />确认，保存并准备第 1 模块</Button>
+      </div>}
     </div>
-  )
+  </div>
+}
+
+export function PointCitations({ citations }: { citations?: Citation[] }) {
+  if (!citations?.length) return null
+  return <div className="small refs" style={{ display: "block", overflowWrap: "anywhere" }}>
+    {citations.map((c, i) => <details key={i} style={{ marginTop: 6 }}>
+      <summary>依据：{c.title} · {c.locator}</summary>
+      <blockquote style={{ whiteSpace: "pre-wrap", margin: "8px 0" }}>{c.quote}</blockquote>
+      {c.url && <a href={c.url} target="_blank" rel="noreferrer">打开原文 <ExternalLink size={12} /></a>}
+    </details>)}
+  </div>
 }
 
 function ProgressCard({ draft, text, busy, onRetry }: { draft: Draft; text: string; busy: boolean; onRetry: () => void }) {
@@ -466,7 +487,7 @@ export function PlanTree({ detail, editable, busy, onDelete, onMove }:
                     <ol className="point-list fade-in">
                       {m.points.map((p) => <li key={p.id} className={p.state ? `mastery-${MASTERY[p.state]?.[1] ?? "none"}` : ""}>
                         <b>{p.state && <i className="mastery-dot" title={MASTERY[p.state]?.[0]} />}{p.title}</b><span>{p.summary}</span>
-                        <em>{p.minutes} 分钟{p.state && MASTERY[p.state] ? ` · ${MASTERY[p.state][0]}` : ""}{p.errors ? ` · 错过 ${p.errors} 次` : ""}{p.needs_review ? " · 需要复习" : ""}</em></li>)}
+                        <em>{p.minutes} 分钟{p.state && MASTERY[p.state] ? ` · ${MASTERY[p.state][0]}` : ""}{p.errors ? ` · 错过 ${p.errors} 次` : ""}{p.needs_review ? " · 需要复习" : ""}</em><PointCitations citations={p.citations} /></li>)}
                     </ol>
                   )}
                 </div>

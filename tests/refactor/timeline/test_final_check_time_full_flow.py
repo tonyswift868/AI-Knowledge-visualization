@@ -23,7 +23,7 @@ from refactor.learning.course.ledger import Ledger, PlanWindow, estimate_check_m
 from refactor.learning.course.mastery import AttemptClosed, Judgement
 from refactor.learning.course.report import build_report
 from refactor.learning.course.store import CourseStore, StoreError
-from tests.refactor.app.test_app_classroom import Agents
+from tests.refactor.integration38.support import Agents, seed_bank, to_question
 from test_course_timeline_simulation import InjectedClock, HandlerRegistry
 
 
@@ -138,22 +138,18 @@ def prepare(env):
                       window=PlanWindow(DAY, DAY + timedelta(days=5), 60))
     store.add_sources(PLAN, [dict(id='s', url='https://example.invalid/local', adopted=True,
         chunks=[dict(chunk_id='k', text='概念一、二、三的定义与应用。')])])
-    modules = [dict(id=f'm{i}', key=f'm{i}', title=f'模块{i}', summary='概念的定义与应用',
-        refs=['s1.1'], spans=[['s', 0, 0]], prerequisites=[], minutes=[30, 30]) for i in range(2)]
-    draft = dict(plan_id=PLAN, phase='outline', goal='掌握两组概念', messages=[],
-        form=dict(goal='掌握两组概念', final_goal='能够解释与应用', level='beginner', level_note='', notes='',
-                  start=DAY.isoformat(), end=(DAY+timedelta(days=5)).isoformat(), daily_cap=60,
-                  weekday_weights=[1]*7, special_days=[]),
-        sources=[dict(status='adopted', source_id='s')],
-        outline=dict(stages=[dict(id='st', title='基础', modules=modules)], ranges={}))
-    env.flow.generate(draft, SimpleNamespace(cancel=threading.Event()))
+    store.save_outline(PLAN,[dict(id='st',title='基础')],[dict(id=f'm{i}',stage_id='st',title=f'模块{i}') for i in range(2)])
+    for i in range(2):
+        store.save_generated_module(PLAN,f'm{i}',[dict(id=f'm{i}-{j:02d}',title=f'概念{j}模块{i}',summary='定义与应用',minutes=10,chunk_ids=['k']) for j in range(1,4)],
+            check_minutes=6, final_check_minutes=8,check_question_minutes=2,today=DAY)
+    seed_bank(store,PLAN)
+    draft=dict(plan_id=PLAN,phase='ready')
+
     assert draft['phase'] == 'ready'
     assert [(m['learning_minutes'], m['check_minutes'], m['final_check_minutes'], m['check_question_minutes'])
             for m in store.records('modules', PLAN)] == [(30, 6, 8, 2)] * 2
     assert store.get_plan(PLAN)['total_minutes'] == 88
-    from unittest.mock import patch
-    with patch.object(Classroom, 'prepare_started_plan', lambda *a: None):
-        env.flow.start(draft)
+    env.flow.start(draft)
 
 
 def act(env, name, *args):
@@ -163,9 +159,7 @@ def act(env, name, *args):
     while view['step'] == 'preparing_questions' and monotonic_time.monotonic() < deadline:
         monotonic_time.sleep(.005)
         view = snapshot(env)
-    if name in ('next', 'reply'):
-        from tests.refactor.guided_lessons.fixtures import advance_to_question
-        view = advance_to_question(env.room, PLAN, view, SimpleNamespace(cancel=threading.Event(), stream=lambda _: None))
+    if name in ('next','reply'):view=to_question(env.room,PLAN,view)
     return view
 
 
@@ -402,21 +396,7 @@ def test_ninety_ten_final_estimate_counts_correct_work():
     assert 9*2 + 4*2 == 26
 
 
-class GroupedModuleAgents(FlowAgents):
-    """One module-test question covers all three points; checks stay per point."""
-    def complete(self, purpose, messages, **kwargs):
-        result = super().complete(purpose, messages, **kwargs)
-        if purpose == 'questions':
-            task = json.loads(messages[-1]['content'].split('【本次出题要求】\n', 1)[1])
-            if task['purpose'] == 'bank':
-                raw = json.loads(result.text)
-                questions = raw['questions']
-                grouped = dict(questions[0], id='grouped', stem=f'请综合比较这些知识点的用途（第{len(self.calls)}轮）？',
-                               point_ids=list(dict.fromkeys(pid for q in questions for pid in q['point_ids'])),
-                               angle='contrast')
-                grouped['required_points'] = [f'{pid}的用途' for pid in grouped['point_ids']]
-                result.text = json.dumps({'questions': [*questions, grouped]})
-        return result
+GroupedModuleAgents = FlowAgents  # questions come from stored source fixtures
 
 
 def test_module_detection_releases_unused_estimate_and_report(flow_env, audit):
@@ -431,10 +411,10 @@ def test_module_detection_releases_unused_estimate_and_report(flow_env, audit):
     course = e.room._course(PLAN)
     for module in course.modules:
         mids = [p['id'] for p in course.points_of(module['id'])]
-        e.store.add_bank_questions(PLAN, module['id'], [dict(id='three-point', type='short',
-            stem='请综合比较三个知识点的用途？', options=[], answer='测试作答', reference='测试作答',
-            point_ids=mids, chunk_ids=['k'], angle='contrast')],
-            fingerprint=e.room._test_fingerprint(course, module['id']))
+        from tests.refactor.integration38.support import bank_question
+        row=bank_question(mids[0],module['id'],ids=mids,answer='测试作答',chunk='k')
+        row['id']='000-group-'+module['id']
+        e.store.add_bank_questions(PLAN,module['id'],[row])
     for index in range(2):
         act(e, 'start_test', 'skip_test')
         answer(e)

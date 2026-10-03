@@ -96,7 +96,7 @@ def test_pdf_plain_and_markdown_paths(media, data, title):
     (lambda url: page(url, text=TEXT + ' 色情直播 '), 'content_adult'),
     (lambda url: page(url, text=TEXT + ' online casino '), 'content_gambling'),
     (lambda url: page(url, text=TEXT + ' pirated software '), 'content_piracy'),
-    (lambda url: page(url, media='image/png'), 'unsupported_type'),
+    (lambda url: page(url, media='image/png'), 'ocr_required'),
     (lambda url: FetchedContent(url, url, 'application/pdf', b'%PDF corrupt', ''), 'extract_failed'),
     (lambda url: page(url, final='https://porn.example.test/tutorial'), 'blocked_redirect'),
     (lambda url: page(url, final='https://adg.csdn.net/tutorial'), 'low_quality'),

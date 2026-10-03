@@ -90,7 +90,7 @@ class SessionGuard(QObject):
                               transport=self._source._transport) as client:
                 with client.stream("GET", self._source._base_url + SESSION_PATH, headers=headers) as response:
                     self._source.require_current()
-                    if response.status_code == 401:
+                    if response.status_code in (401, 403):
                         return sync_auth_error(response, "登录已失效，请重新登录。").code
                     if response.status_code != 200:
                         return "retry"
@@ -102,7 +102,9 @@ class SessionGuard(QObject):
                     self._source.require_current()
                     return "active" if json.loads(raw) == {"state": "active"} else "retry"
         except PlanError as exc:
-            return "CANCELLED" if exc.code == "CANCELLED" else "REAUTH_REQUIRED"
+            # A temporarily missing shell session is not a server refusal.
+            return exc.code if exc.code in {'CANCELLED', 'REAUTH_REQUIRED',
+                'ENTERPRISE_SESSION_REAUTH_REQUIRED', 'NATIVE_SESSION_SUPERSEDED'} else 'retry'
         except (httpx.HTTPError, OSError, ValueError, TypeError):
             return "retry"
         finally:
@@ -135,7 +137,7 @@ class SessionGuard(QObject):
         if epoch != self._epoch:
             self._launch()  # A stopped request cannot affect a restarted lesson.
             return
-        if result in {"NATIVE_SESSION_SUPERSEDED", "REAUTH_REQUIRED"}:
+        if result in {"NATIVE_SESSION_SUPERSEDED", "REAUTH_REQUIRED", "ENTERPRISE_SESSION_REAUTH_REQUIRED"}:
             self._handle_error(result)
             return
         if result == "active":

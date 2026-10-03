@@ -149,7 +149,7 @@ def prepare(env, *, plan=PLAN, total=2130, end=END, weighted=True, active=True):
     store = env.store
     store.create_plan(plan, goal="计划甲" if plan == PLAN else "计划乙",
                       window=PlanWindow(START, end, 180, weights, special))
-    store.add_sources(plan, [dict(id="s", url="https://example.invalid/offline", chunks=[
+    store.add_sources(plan, [dict(id="s", url="https://docs.python.org/3/tutorial/", adopted=True, chunks=[
         dict(chunk_id="k1", text="队列按先进先出处理。"), dict(chunk_id="k2", text="栈按后进先出处理。")])])
     store.save_outline(plan, [dict(id="stage")], [dict(id="m0", stage_id="stage", title="队列"),
                                                     dict(id="m1", stage_id="stage", title="栈")])
@@ -158,6 +158,8 @@ def prepare(env, *, plan=PLAN, total=2130, end=END, weighted=True, active=True):
         dict(id="p1", title="队列操作", summary="入队出队", minutes=20, chunk_ids=["k1"])], check_minutes=10, today=START)
     store.save_generated_module(plan, "m1", [dict(id="p2", title="栈定义", summary="后进先出", minutes=total-60,
                                                      chunk_ids=["k2"])], check_minutes=10, today=START)
+    from tests.refactor.integration38.support import seed_bank
+    seed_bank(store,plan)
     if active:
         store.start_plan(plan, today=START)
 
@@ -180,8 +182,8 @@ def act(env, name, *args):
         wall_time.sleep(.005)
         view = env.room.run(PLAN, lambda *a: None, ctx)
     if name in ('next', 'reply'):
-        from tests.refactor.guided_lessons.fixtures import advance_to_question
-        view = advance_to_question(env.room, PLAN, view, ctx)
+        from tests.refactor.integration38.support import to_question
+        view = to_question(env.room,PLAN,view)
     return view
 
 

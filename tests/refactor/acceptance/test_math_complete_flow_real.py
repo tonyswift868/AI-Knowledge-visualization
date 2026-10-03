@@ -603,8 +603,8 @@ def test_math_budget_reserves_effective_output_and_peak_before_call(tmp_path, mo
         estimate_context=lambda:{},price_catalog=prices)
     recorder=MathGateway(client,tmp_path,budget_path=tmp_path/"budget.json")
     recorder.rows=[dict(reserved="2.9")]
-    with pytest.raises(ModelError):recorder.complete("lesson_prep",[dict(role="user",content="offline")],max_tokens=4096)
-    assert seen[0]["output_tokens"]==(24576,24576)
+    with pytest.raises(ModelError):recorder.complete("generate",[dict(role="user",content="offline")],max_tokens=4096)
+    assert seen[0]["output_tokens"]==(4096,4096)
     assert not (tmp_path/"calls").exists()
 
 

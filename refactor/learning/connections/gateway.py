@@ -34,6 +34,7 @@ from .pricing import PriceCatalog, timestamp
 from .usage import UsageLog
 from .balance import BalanceClient, supported as balance_supported
 from .providers._failure_evidence import FailureEvidence
+from refactor.runtime_logging import trace_model_call
 
 _UNSET = object()
 _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
@@ -44,18 +45,18 @@ _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
 # Profile replays contained an unsupported historical claim with thinking off;
 # the task's quality fallback retains the provider default for that purpose.
 PURPOSE_EFFORT = {
-    'judge': 'high', 'check_profile': 'high', 'lesson_review': 'high', 'question_review': 'high',
-    'questions': 'high', 'question_solve': 'high', 'outline': 'high',
-    'lesson_prep': 'high', 'generate': 'high', 'plan_additions_generate': 'high',
-    'source_scoring': 'high', 'teacher': 'high', 'coverage_check': 'high',
+    'judge': 'high', 'check_profile': 'high', 'point_materials': 'high',
+    'source_identity': 'high', 'outline': 'high',
+    'generate': 'high', 'plan_additions_generate': 'high',
+    'source_scoring': 'high', 'research': 'high', 'teacher': 'high', 'coverage_check': 'high',
     'profile': None, 'sufficiency': 'none', 'plan_intent': 'none',
 }
 
 PURPOSE_MIN_OUTPUT = {
     'teacher': 8192, 'judge': 8192, 'profile': 8192, 'check_profile': 8192, 'coverage_check': 8192,
-    'questions': 16384, 'question_solve': 16384, 'lesson_prep': 24576, 'lesson_review': 24576, 'question_review': 24576,
+    'point_materials': 24576, 'source_identity': 8192,
 }
-BACKGROUND_PURPOSES = frozenset({'lesson_prep', 'lesson_review', 'question_review', 'question_solve', 'questions', 'profile', 'check_profile', 'coverage_check'})
+BACKGROUND_PURPOSES = frozenset({'point_materials', 'source_identity', 'profile', 'check_profile', 'coverage_check'})
 
 
 def _storage_error():
@@ -438,6 +439,7 @@ class ModelGateway:
         except (OSError, ValueError, AttributeError):
             error.diagnostic_log_written = False
 
+    @trace_model_call
     def _complete(self, purpose, messages, *, system, enable_search, on_text, cancel, plan_id, max_tokens,
                   reasoning_effort):
         effort = reasoning_effort if reasoning_effort is not None else PURPOSE_EFFORT.get(purpose, 'high')

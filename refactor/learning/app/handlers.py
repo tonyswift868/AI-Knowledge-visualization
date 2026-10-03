@@ -91,7 +91,7 @@ def register(bridge, window):
         value = updater.snapshot() if action == "status" else updater.run(action, window)
         return {**value, "version": APP_VERSION}
 
-    for action in ("status", "check", "install"):
+    for action in ("status", "check", "automatic", "defer", "install"):
         bridge.register("update." + action, lambda p, c, action=action: update_action(action, p), ui=True)
     bridge.register("sync.status", lambda p, c: window.sync_status(), ui=True)
     bridge.register("sync.now", lambda p, c: window.sync_now(), ui=True)

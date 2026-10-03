@@ -1,4 +1,4 @@
-"""Rule-led source admission. Model opinions cannot raise authority or freshness.
+"""Source-type admission. Publisher classification needs visible original evidence.
 
 Scores use the fetched final URL and body, never a search snippet. Unknown
 publishers remain below the automatic admission threshold. User materials are
@@ -10,15 +10,15 @@ import json
 import re
 from urllib.parse import urlsplit, unquote
 
-from .source_filter import RawHit, screen, load_lists, github_repo, normalize_url
+from .source_filter import RawHit, screen, load_lists, github_repo, normalize_url, classify_source
 
 MIN_CREDIBILITY = 4
 MIN_RELEVANCE = 4
-MIN_SOURCES = 3
+MIN_SOURCES = 1  # Search display only. Readiness is point_sources coverage, not source count.
 MAX_SEARCH_ROUNDS = 3
 _STOP = set('learn learning study understand explain introduction basics basic tutorial course guide official documentation '
             'the and for with from about into that this how what beginner advanced intermediate'.split())
-_COMMUNITY = re.compile(r'(^|[./_-])(forum|forums|community|discuss|discussion|discussions|answers|questions|issues|pull|pulls|wiki|blog|blogs)(/|[._-]|$)', re.I)
+_COMMUNITY = re.compile(r'(^|[./_-])(forum|forums|community|discuss|discussion|discussions|issues|pull|pulls|wiki|blog|blogs)(/|[._-]|$)', re.I)
 _PERSONAL = re.compile(r'(~|(^|[./])(people|users|student|students|personal|sites)\.)|/(~|users?/|students?/|personal/)', re.I)
 _REPOST = re.compile(r'转载|转自[：:]|原文链接[：:]|译自[：:]|reprinted\s+(?:from|with)|originally published (?:at|on)|mirror of', re.I)
 _SCHEDULE_DATE = re.compile(r'20\d\d\s*[-/.年]\s*\d{1,2}\s*(?:[-/.月]\s*\d{1,2}\s*日?|月)')
@@ -39,6 +39,8 @@ _CONCEPTS = {
     'cuneiform': ('楔形文字',),
     'silk': ('丝绸之路', 'routes de la soie', '실크로드'),
     'road': ('丝绸之路', 'routes de la soie', '실크로드'),
+    'pressure': ('压强',),
+    'list': ('lists', '列表'),
 }
 
 
@@ -200,7 +202,7 @@ def is_landing_page(title, body):
                     and not re.search(r'(^|\n)\s*(?:Transcript|文字稿|字幕全文)\s*(\n|$)', body, re.I)))
 
 
-def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(), published_at=None, warnings=(), headings=()):
+def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(), published_at=None, warnings=(), headings=(), publisher_evidence=None):
     lists = lists or load_lists()
     today = today or date.today()
     checked = screen([RawHit(url or '', title)], lists=lists)
@@ -214,16 +216,18 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
         publisher, category = rule.brand, rule.category
         credibility = 5 if category in {'official_docs', 'standards'} else 4
         codes.append('listed_publisher')
-    if host == 'web.mit.edu' and not path.startswith('/18.06/'):
-        credibility = min(credibility, 2); codes.append('course_identity_unverified')
+    identity = classify_source(url or '', lists=lists, page_text=body, publisher_evidence=publisher_evidence)
+    # Legacy server whitelist entries do not override the source-type policy.
+    credibility = 5 if identity['level'] == 1 else 4 if identity['level'] == 2 else 2
+    publisher, category = identity['publisher'] or '来源身份未核实', identity['category']
+    if identity['level']: codes.append('source_type_level_' + str(identity['level']))
     repo = github_repo(url or '')
     if repo:
         org = next((o for o in lists.github_orgs if o.owner.casefold() == repo[0]), None)
         if org:
-            credibility, publisher, category = 4, org.brand, 'official_repository'
-            codes.append('listed_repository_owner')
-        else:
-            credibility = 2
+            codes.append('listed_repository_owner_requires_type_evidence')
+        # A known organization is search priority, not a publisher type or proof
+        # that this particular repository is an original textbook.
     if _COMMUNITY.search(host + path) and not _host_is(host, 'wikipedia.org'):
         credibility = min(credibility, 3); codes.append('community_content')
     if _PERSONAL.search(host + path):
@@ -240,7 +244,7 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
         credibility = 0; codes.append('body_unavailable')
     # A verified host/resource description is not the lesson itself. These
     # patterns were observed on real course download/video landing pages.
-    landing_only = (is_landing_page(title, body) or path in {'', '/'}
+    landing_only = (is_landing_page(title, body) or (bool(url) and path in {'', '/'})
                     or (host == 'modelcontextprotocol.io' and bool(re.fullmatch(r'/specification/20\d\d-\d\d-\d\d/?', path)))
                     or bool(re.search(r'/(?:category|tags?)/', path, re.I)))
     if landing_only:
@@ -350,7 +354,8 @@ def assess_stored(source, chunks, goal, *, level='', modules=(), today=None, lis
     return _assess(source.get('final_url') or source.get('url'), source.get('title', ''), '\n'.join(c['text'] for c in chunks),
         goal=goal, level=level, modules=modules, today=today, lists=lists, reasons=source.get('reasons', ()),
         published_at=source.get('published_at'), warnings=source.get('warnings', ()),
-        headings=[c['text'] for c in chunks if c.get('kind') == 'heading'])
+        headings=[c['text'] for c in chunks if c.get('kind') == 'heading'],
+        publisher_evidence=source.get('publisher_evidence'))
 
 
 def apply_review(quality, review):

@@ -22,6 +22,12 @@ SNAPSHOT_PATH = "/api/enterprise/sync/v1/snapshot"
 
 MAX_SNAPSHOT_BYTES = 160 * 1024 * 1024
 
+TRANSIENT_SESSION_CODES = frozenset({'SESSION_UNAVAILABLE', 'SOURCE_UNAVAILABLE', 'SYNC_UNAVAILABLE',
+    'ENTERPRISE_ACCOUNT_STATE_UNAVAILABLE', 'ENTERPRISE_OIDC_UNAVAILABLE', 'ENTERPRISE_NATIVE_UNAVAILABLE',
+    'NATIVE_NETWORK_UNAVAILABLE', 'NATIVE_AUTH_UNAVAILABLE'})
+CONNECTION_UNSTABLE = '账号连接不稳，正在重试；当前学习不受影响'
+NETWORK_RETRY_MESSAGE = '网络不稳，请稍后再试'
+
 def sync_auth_error(response, message):
     """Keep the native eviction reason available to SessionGuard.note_error."""
     if response.status_code == 401:
@@ -100,7 +106,7 @@ class AuthenticatedPlanSource:
                 raise ValueError()
             return (scope, result.access_token)
         except (AttributeError, KeyError, TypeError, ValueError):
-            raise PlanError('SESSION_UNAVAILABLE', '当前账号或空间正在更新或已切换，请稍后重试；当前计划数据未被替换。') from None
+            raise PlanError('SESSION_UNAVAILABLE', NETWORK_RETRY_MESSAGE) from None
 
     def require_current(self):
         return self._session()[0]
