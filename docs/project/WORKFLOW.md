@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-04 交班）：第四十四批三个任务（44-MF01 server 联调、44-MF02 library 找题与比对实验、44-MF03 classroom 程序判分）已起草交给用户，**用户是否已转发未确认，接班先问**。三个都从 integrate-42 分支（44d94fe）开始；回执回来后合到 integrate-42、跑全量与模拟工具离线完整场景，再合入 main。之后和用户商量“按块体验”（预算先说）。第四十三批没发出，内容已并入 44-MF01。
+- **现在在做的事**（2026-10-04）：没有在跑的任务。第四十四批三个回执已审查，合到 integrate-42（bdbbda3）后合入 main（82ffe31）：全量 2716 通过、0 失败，模拟工具离线完整场景 0 问题；合入时架构师修了两处衔接（CURRENT_STATE BUG-46）。下一步和用户商量“按块体验”（预算先说），见 CURRENT_STATE「当前阶段」。
 
 ## 协作方式
 
@@ -33,7 +33,7 @@
 ## 架构师操作手册
 
 - **全量测试**（约 4 分钟）：`TMP=D:/MentorFlow/.local/tmp TEMP=D:/MentorFlow/.local/tmp .venv/Scripts/python.exe -m pytest tests/refactor -q -p no:cacheprovider --basetemp=D:/MentorFlow/.local/tmp/pt`。2026-09-30 为 2436 通过、26 跳过。只单独跑 app 与 timeline 两组测试时偶发 pytest 段错误，属测试进程问题，忽略。
-- **界面构建**：先把 `/d/MentorFlow/.local/node` 加进 PATH，再 `node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 随仓库提交（员工不提交 dist，架构师合入后统一构建）。
+- **界面构建**：先把 `/d/MentorFlow/.local/node` 加进 PATH，再 `node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 不进仓库（.gitignore），打包时现构建；合入改过界面的任务后要构建一次确认能过。
 - **合入员工分支**：`git diff --binary <基线> <员工提交> | git apply --index --3way`，逐文件看改动是否在任务范围内，跑全量测试和界面构建，再用上面的署名提交。多人同时改 app/classroom.py 时手工合并冲突。
 - **基线**：合入并提交后，主目录 `git rev-parse --short HEAD` 就是下一批任务的基线，写进每条任务的“开工同步”。
 - **写脚本**：含 Windows 路径或反斜杠的内容不要用 bash heredoc（会被吃掉，BUG-10），写成文件再运行，或用编辑工具。
@@ -46,8 +46,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| main | 代码 414ed57（41 批），之后只有文档提交；派新任务前 `git rev-parse --short HEAD` 取 |
-| integrate-42 分支 | 44d94fe：第四十二批五个任务的合并，全量 3008 通过、9 失败，第四十四批以它为基线 |
+| main | 82ffe31 起含第四十一、四十二、四十四批（未发布）；派新任务前 `git rev-parse --short HEAD` 取 |
+| integrate-42 分支 | bdbbda3：第四十二、四十四批合并，已并入 main，不再使用 |
 | 已发布 | 2.0.2 = 4430aae（3 年签名）；打包脚本 D:\MentorFlow\.local\release-tools\build_release.py |
 | 未推送 | main 比 origin/main 多 200 多个提交；用户说了才推送 |
 | 工位分支 | office/* 只在本地，永不推送；每条任务第一步把工位 reset 到基线 |
@@ -56,19 +56,19 @@
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-01（library） | D:\MentorFlow-office\library | 44-MF02 已起草（待确认是否转发） |
+| MF-01（library） | D:\MentorFlow-office\library | 空闲 |
 | MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
 | MF-03（client） | D:\MentorFlow-office\client | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 44-MF03 已起草（待确认是否转发） |
-| MF-07（server） | D:\MentorFlow-office\server | 44-MF01 已起草（待确认是否转发） |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
+| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
 
 工位名只是称呼，不限制能接的任务类型。每个工位下的 repo 是主仓库的 git worktree，员工在分支 `office/<工位名>` 上提交。熟悉的领域：MF-01 老师与备课、MF-02 缓存/网关/报告、MF-03 题库/检测/账本、MF-04 资料检索与权威性、MF-05 语音与提醒、MF-06 验收与发布构建、MF-07 服务器与同步。
 
 ## 待派队列
 
-- 44-MF01～MF03：已起草（2026-10-03，用户同意后），交用户转发。合入 main 后：全量 + 模拟工具离线完整场景 → 和用户商量按块体验（先建计划与找资料，预算先说）。第四十三批未发出，内容并入 44-MF01。
+- 空。下一步先和用户商量按块体验（先建计划与找资料，预算先说），定了再写任务。
 
 ## 第四十四批任务原文（2026-10-03，基线 44d94fe = integrate-42 分支）
 
@@ -2116,9 +2116,9 @@ D 盘：freeze 中间目录用完即删，只留 payload 与未签名清单（�
 | 39-MF01 | library | 资料分档排序、教材上传指引 | PLAN-06 | 12c406c | 已合入 4430aae |
 | 40-MF01 | runtime | 打包 2.0.2 + 可重复打包脚本 | SYS-06 | 4430aae | 完成，2.0.2 已发布 |
 | 41-MF01 | runtime | 更新弹框样式、强制更新规则、前台显示、桌面快捷方式 | SYS-06 | 9343c20 | 已合入 414ed57（未发布） |
-| 42-MF01～05 | tools/library/classroom/server/platform | 多轮沟通与大致模块、找资料找题、课堂题目分配、模拟工具、更新后自动登录 | DIR-01 | 3483f07 | 已合到 integrate-42 44d94fe（9 个测试待 44-MF01 修） |
+| 42-MF01～05 | tools/library/classroom/server/platform | 多轮沟通与大致模块、找资料找题、课堂题目分配、模拟工具、更新后自动登录 | DIR-01 | 3483f07 | 已合入 main（82ffe31，随第四十四批） |
 | 43-MF01 | server | 联调 | — | 44d94fe | 未发出，作废（并入 44-MF01） |
-| 44-MF01～03 | server/library/classroom | 联调；找题优先级、客观题、比对实验；程序判分 | DIR-01、CHK-01、TEACH-04 | 44d94fe | 已起草，待确认是否已转发 |
+| 44-MF01～03 | server/library/classroom | 联调；找题优先级、客观题、比对实验；程序判分 | DIR-01、CHK-01、TEACH-04 | 44d94fe | 已合入 main（bdbbda3 → 82ffe31）；44-MF01 完成，44-MF02/03 部分完成（只差联调失败，合入后全过）；比对实验未达门槛、保持关闭 |
 
 ## 任务模板
 
