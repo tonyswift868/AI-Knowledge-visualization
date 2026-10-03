@@ -25,7 +25,7 @@ from urllib.parse import urlsplit
 
 from .extract import ExtractedDocument, ExtractError, extract_bytes, extract_html
 from .source_quality import published_date, assess, rank_key, terms
-from .source_quality import is_landing_page, body_publication_date
+from .source_quality import is_landing_page, body_publication_date, junk_reasons
 from .source_follow import lesson_links, is_spec_overview_index
 from .source_filter import (RawHit, SourceLists, blocked_keyword_reasons,
                             load_lists, normalize_url, screen, classify_source)
@@ -264,6 +264,9 @@ class ResearchPipeline:
                 raise _Rejected('unsupported_type', '仅接受 HTML、PDF、纯文本或 Markdown 正文。')
             token.check()
             body = '\n\n'.join(block.text for block in doc.blocks)
+            junk = junk_reasons(doc.title, body)
+            if junk:
+                raise _Rejected(junk[0], '资料属于采集、标题党营销或推广页面，未采用。')
             bad = blocked_keyword_reasons(doc.title + '\n' + body, lists=lists)
             if bad:
                 kind = bad[0]

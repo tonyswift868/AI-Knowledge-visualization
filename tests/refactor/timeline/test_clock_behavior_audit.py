@@ -4,6 +4,7 @@ No model or network; the fake agents and local clock are reused from batches
 seven/eight. The Markdown report is an audit, including out-of-scope findings,
 not a claim that passing test assertions prove every product rule is satisfied.
 """
+from tests.refactor.objective44.support import objective_bank, scripted_answer
 from collections import Counter
 from datetime import date, time, timedelta, timezone
 from pathlib import Path
@@ -160,6 +161,7 @@ def prepare(env, *, plan=PLAN, total=2130, end=END, weighted=True, active=True):
                                                      chunk_ids=["k2"])], check_minutes=10, today=START)
     from tests.refactor.integration38.support import seed_bank
     seed_bank(store,plan)
+    objective_bank(store)
     if active:
         store.start_plan(plan, today=START)
 
@@ -173,6 +175,7 @@ def check_status(audit, scene, expected, actual, rule="PLAN-05", **kwargs):
 
 
 def act(env, name, *args):
+    if name=='reply':name,args=scripted_answer(env.room,PLAN,env.agent,args[0])
     method = getattr(env.room, name)
     ctx = SimpleNamespace(cancel=threading.Event(), stream=lambda _: None)
     view = env.room.run(PLAN, lambda co, st, cx: method(co, st, cx, *args), ctx)
@@ -181,7 +184,7 @@ def act(env, name, *args):
     while view['step'] == 'preparing_questions' and wall_time.monotonic() < deadline:
         wall_time.sleep(.005)
         view = env.room.run(PLAN, lambda *a: None, ctx)
-    if name in ('next', 'reply'):
+    if name in ('next', 'reply', 'answer'):
         from tests.refactor.integration38.support import to_question
         view = to_question(env.room,PLAN,view)
     return view

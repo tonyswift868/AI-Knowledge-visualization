@@ -35,6 +35,7 @@ type Source = { text: string; title: string; url: string | null; section: string
 
 const RESET = "\u0000"
 const VERDICT_EVENT = "\u0001VERDICT:"
+const MATERIAL_EVENT = "\u0001MATERIAL:"
 const POINT_TONE: Record<string, string> = { green: "ok", weak: "warn", red: "danger" }
 const POINT_LABEL: Record<string, string> = { green: "已掌握", weak: "有瑕疵", red: "没过" }
 
@@ -95,6 +96,10 @@ export function Classroom() {
         signal: abort.current.signal,
         onStream: (d) => {
           if (ownGeneration !== generation.current) return
+          if (d.startsWith(MATERIAL_EVENT)) {
+            try { const p = JSON.parse(d.slice(MATERIAL_EVENT.length)) as Preparation; setBusy(`${p.text} ${p.done}/${p.total}`) } catch { /* keep the current progress */ }
+            return
+          }
           if (d.startsWith(VERDICT_EVENT)) {
             try {
               const result = JSON.parse(d.slice(VERDICT_EVENT.length)) as { text: string; correct: boolean }
@@ -222,7 +227,9 @@ export function Classroom() {
     if (!t || acting.current) return
     stopReading()
     if (value === undefined) setText("")
-    if (!(await act(askMode ? "classroom.ask" : "classroom.reply", { text: t }, "老师在看你的回答…")) && value === undefined) {
+    const numericAnswer = !askMode && room?.question?.kind === "calc"
+    if (!(await act(askMode ? "classroom.ask" : numericAnswer ? "classroom.answer" : "classroom.reply",
+      numericAnswer ? { value: t } : { text: t }, numericAnswer ? "正在核对数值…" : "老师在看你的回答…")) && value === undefined) {
       setText((draft) => draft || t)
     } else setAskMode(false)
   }
@@ -322,7 +329,7 @@ export function Classroom() {
           <Button small kind={askMode ? "primary" : "ghost"} className="ask-mode" disabled={!!busy}
             onClick={() => { setAskMode(!askMode); input.current?.focus() }}>{askMode ? "正在提问" : "提问"}</Button>
           <textarea ref={input} className="input" rows={1} value={text} aria-label="课堂输入"
-                    placeholder={askMode ? "想问什么？答完回到刚才" : q ? "写下你的回答；想问问题可点左侧“提问”" : "有问题随时问老师"}
+                    placeholder={askMode ? "想问什么？答完回到刚才" : q?.kind === "calc" ? "填写计算数值，可带单位" : q ? "请用上方选项或填空作答；想问问题可点“提问”" : "有问题随时问老师"}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.repeat) {
                       e.preventDefault()

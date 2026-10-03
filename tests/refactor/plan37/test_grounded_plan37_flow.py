@@ -47,7 +47,10 @@ class Model:
         self.calls.append(purpose)
         text = messages[-1]["content"]
         if purpose == "sufficiency":
-            result = {"enough": True, "goal": "初二物理：压强与浮力", "focus": ["压强"], "questions": []}
+            from refactor.learning.course.planner_agents import PREVIEW_SYSTEM
+            result = ({"summary": "理解压强与浮力", "modules": [{"title": "压强", "summary": "理解生活应用"}]}
+                if kwargs.get('system') == PREVIEW_SYSTEM else
+                {"enough": True, "goal": "初二物理：压强与浮力", "focus": ["压强"], "questions": []})
         elif purpose == "research":
             assert kwargs["enable_search"]
             result = {"sources": [{"title": "Pressure", "url": URL, "why": "正规教材"}]}
@@ -102,6 +105,8 @@ def adopt_and_map(fixture):
     pid = draft["plan_id"]
     response = flow.run(pid, lambda d, c: flow.submit_form(d, c, form()), ctx)
     assert response["draft"]["busy"] is None
+    assert response['draft']['phase'] == 'preview' and 'research' not in model.calls
+    flow.run(pid, lambda d,c: flow.chat(d,c,'确认并找资料'),ctx)
     assert "research" in model.calls
     draft = flow.load(pid)
     card = draft["sources"][0]

@@ -57,6 +57,9 @@ class AccountShell:
         self._remembered_profile = None
         self._login_result = None
         self._session_credentials = None
+        self._update_login_token = None
+        self._update_restore_pending = False
+        self._update_handoff_account = None
         self._generation = 0
         self._cancelled = threading.Event()
         self._closing = False
@@ -152,12 +155,23 @@ class AccountShell:
             profile, automatic = None, False
             self.gate.notice_label.setText("本机账号状态无法安全读取，请重新选择账号。")
         self._remembered_profile = profile
+        # A handoff takes precedence even when automatic login is disabled.
+        # Invalid/expired handoffs lead to the normal gate, not saved auto-login.
+        take_handoff = getattr(self.session, 'take_update_login', None)
+        if take_handoff is not None:
+            present, handoff_profile, token = take_handoff()
+            if present:
+                automatic = bool(token)
+                if token:
+                    profile = self._remembered_profile = handoff_profile
+                    self._update_login_token = token
+                    self._update_restore_pending = True
         if profile is not None:
             row = self.session.registry.get(profile.account_id)
             self.gate.username_field.setText(row.get("username", "") if row else "")
             self.gate.remember_password_box.setChecked(bool(row and row["remember_password"]))
             self.gate.remember_box.setChecked(bool(row and row["remember_session"]))
-            self.gate.auto_box.setChecked(automatic)
+            self.gate.auto_box.setChecked(bool(row and row['auto_login']) if self._update_login_token else automatic)
             from refactor.desktop.login_shell import LoginGateState
 
             self.gate.set_state(LoginGateState.LOGIN_READY)
@@ -342,6 +356,11 @@ class AccountShell:
                 pane.deleteLater()
 
     def _cancel_login(self) -> None:
+        update_restore = getattr(self, '_update_restore_pending', False)
+        self._update_restore_pending = False
+        self._update_login_token = None
+        if update_restore:
+            self._update_auto_pending = False
         self._invalidate_login_jobs()
         self._remembered_profile = None
         self._login_result = None
@@ -353,7 +372,8 @@ class AccountShell:
         self.gate.clear_password()
         self._refresh_remembered_password_hint()
         try:
-            self.session.suspend_automatic()
+            if not update_restore:
+                self.session.suspend_automatic()
         except Exception:
             self.gate.notice_label.setText("本机自动登录设置暂未保存；请重试或手动选择账号。")
         from refactor.desktop.login_shell import LoginGateState
@@ -379,13 +399,23 @@ class AccountShell:
         if self._closing or profile is None:
             return
         generation, cancelled = self._new_request()
+        update_token = getattr(self, '_update_login_token', None)
+        self._update_login_token = None
         self.gate.set_state(LoginGateState.AUTHENTICATING, detail="正在安全恢复已记住的会话…")
 
         def work():
             try:
+                if update_token:
+                    result = self.session.restore_update_login(profile, update_token, cancelled,
+                        restorer=self._native_restorer)
+                    self.gate.background_succeeded.emit(f"{generation}:update_restore", result)
+                    return
                 result = self.session.restore(profile, cancelled)
                 self.gate.background_succeeded.emit(f"{generation}:restore", result)
             except Exception as exc:
+                if update_token:
+                    self.gate.background_failed.emit(f"{generation}:update_restore", "更新后的登录未能恢复，请重新登录。")
+                    return
                 code = getattr(exc, "code", "")
                 expired = code in {
                     "ENTERPRISE_SESSION_REAUTH_REQUIRED",
@@ -468,7 +498,7 @@ class AccountShell:
 
         threading.Thread(target=work, name="mentorflow-shell-login", daemon=True).start()
 
-    def _accept_login(self, result, *, username=None, password=None, remember=None, automatic=None):
+    def _accept_login(self, result, *, username=None, password=None, remember=None, automatic=None, update_handoff=False):
         from refactor.desktop.account_protocol import AccountLoginResult
         from refactor.desktop.login_shell import LoginGateState
 
@@ -483,14 +513,15 @@ class AccountShell:
                 remember = self.gate.remember_box.isChecked()
             if automatic is None:
                 automatic = self.gate.auto_box.isChecked()
-            self.session.accept(
-                result,
-                remember=remember,
-                automatic=automatic,
-                remember_password=self.gate.remember_password_box.isChecked(),
-                username=username,
-                password=password,
-            )
+            if not update_handoff:
+                self.session.accept(
+                    result,
+                    remember=remember,
+                    automatic=automatic,
+                    remember_password=self.gate.remember_password_box.isChecked(),
+                    username=username,
+                    password=password,
+                )
         except Exception:
             self._discard_login_result(result)
             self.gate.set_state(
@@ -976,6 +1007,7 @@ class AccountShell:
         source = self._login_result
         if (
             self._closing
+            or getattr(self, '_update_handoff_account', None) is not None
             or source is None
             or self.home is None
             or self._session_refresh_busy
@@ -1251,7 +1283,7 @@ class AccountShell:
             return
         is_current = generation_number == self._generation and not self._closing
         if not is_current:
-            if job in {"restore", "authenticate"}:
+            if job in {"restore", "authenticate", "update_restore"}:
                 self._discard_login_result(
                     result,
                     revoke_remote=(
@@ -1273,18 +1305,20 @@ class AccountShell:
             finally:
                 password = None
             return
-        if job == "restore":
+        if job in {"restore", "update_restore"}:
+            if job == 'update_restore':
+                self._update_restore_pending = False
             if (
                 self._remembered_profile is None
                 or result.identity.profile().account_id != self._remembered_profile.account_id
             ):
                 self._discard_login_result(result)
                 self._background_failed(
-                    f"{generation}:restore",
+                    f"{generation}:{job}",
                     "登录会话与所选账号不匹配，请重新登录。",
                 )
                 return
-            self._accept_login(result)
+            self._accept_login(result, **({'update_handoff': True} if job == 'update_restore' else {}))
             return
         if job == "logout":
             self._finish_logout(bool(result))
@@ -1309,6 +1343,8 @@ class AccountShell:
             return
         if generation_number != self._generation or self._closing:
             return
+        if job == 'update_restore':
+            self._update_restore_pending = False
         if job == "logout_error":
             self._invalidate_login_jobs()
             self.gate.set_state(LoginGateState.AUTH_FAILED, detail=message)
@@ -1411,6 +1447,7 @@ class AccountShell:
         self.gate.set_state(LoginGateState.LOGIN_READY, detail=detail)
 
     def _switch_account(self) -> None:
+        AccountShell.clear_update_login(self)
         self._close_account_closure()
         self._close_account_settings()
         if self._session_refresh_busy:
@@ -1453,6 +1490,7 @@ class AccountShell:
         self.gate.username_field.setFocus()
 
     def _logout_account(self) -> None:
+        AccountShell.clear_update_login(self)
         if self._login_result is None or self._closing:
             return
         self._close_account_closure()
@@ -1523,12 +1561,52 @@ class AccountShell:
     def _remembered_password_login(self):
         self._begin_remembered_login()
 
+    def prepare_update_login(self):
+        """Called synchronously on update worker, after download, before handoff."""
+        from .login_session import account_session_lock
+        result = self._login_result
+        if result is None:
+            return False  # Updating at the login gate needs no session handoff.
+        if (self._closing or self._session_refresh_busy or self._logout_pending or self._switch_pending
+                or (self._account_settings is not None and self._account_settings.password_pending)
+                or (self._closure is not None and not self._closure._closed)):
+            raise RuntimeError('账号正在处理其他操作，请稍后再更新。')
+        profile = result.identity.profile()
+        self._update_handoff_account = profile.account_id
+        try:
+            with account_session_lock(profile):
+                if self.session.closure_blocks_login(profile) or self.session.requires_reauthentication(profile):
+                    raise RuntimeError('请重新登录后再更新。')
+                _, refresh = self._session_credentials.load_oauth_tokens(profile)
+                self.session.update_handoff.write(profile, refresh)
+            return True
+        except Exception:
+            self.clear_update_login()
+            raise RuntimeError('无法准备更新后的登录，请稍后重试。') from None
+
+    def clear_update_login(self):
+        if getattr(self, '_update_handoff_account', None) is None:
+            return
+        try:
+            self.session.update_handoff.clear()
+        except Exception:
+            self.session.update_handoff._log('交接失败')
+        finally:
+            self._update_handoff_account = None
+
+    def notify_update_health(self, root, attempt, nonce):
+        from refactor.desktop.delivery.per_user_install import notify_health
+        # Fast handoff login may already have hidden the gate at 250 ms.
+        # Report the visible home instead of a now-hidden login HWND.
+        notify_health(root, self.home if self.home is not None else self.gate, attempt, nonce)
+
     def close(self) -> None:
         if self._closing:
             return
         self._close_account_closure()
         self._close_account_settings()
         self._closing = True
+        self._update_login_token = None
         if self.home is not None:
             self.home.dispose()
         self._session_epoch += 1
@@ -1543,7 +1621,8 @@ class AccountShell:
         if result is not None and isinstance(self._session_credentials, self._EphemeralCredentials):
             profile = result.identity.profile()
             refresh_token = self._refresh_token_for_logout(profile, result)
-            self._best_effort_native_logout(refresh_token, identity=result.identity)
+            if getattr(self, '_update_handoff_account', None) != profile.account_id:
+                self._best_effort_native_logout(refresh_token, identity=result.identity)
             self._session_credentials.logout(profile)
         self._session_credentials = None
 
@@ -1635,17 +1714,16 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         if install_root is not None:
             from .updates import DesktopUpdates
 
-            app._mentorflow_updates = DesktopUpdates(app, install_root, shell.gate)
+            app._mentorflow_updates = DesktopUpdates(app, install_root, shell.gate, login_handoff=shell)
             app._mentorflow_updates.changed.connect(
                 lambda value: diagnostic_event('update', state=value.get('state', 'UNKNOWN')))
             app._mentorflow_updates.changed.connect(shell._resume_update_login)
             app._mentorflow_updates.start()
             if update_attempt and update_nonce:
-                from refactor.desktop.delivery.per_user_install import notify_health
                 from PySide6.QtCore import QTimer
 
-                QTimer.singleShot(250, lambda: notify_health(
-                    install_root, shell.gate, update_attempt, update_nonce))
+                QTimer.singleShot(250, lambda: shell.notify_update_health(
+                    install_root, update_attempt, update_nonce))
         return app.exec()
     except Exception as exc:
         diagnostic_event('startup', state='FAILED', exc_info=True)

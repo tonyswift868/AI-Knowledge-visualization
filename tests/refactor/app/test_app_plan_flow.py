@@ -24,7 +24,7 @@ PAGES = {
 def page(title):
     body = "".join(f"<h2>{title} 第{i}节</h2><p>" + f"{title} 的第 {i} 部分讲解，包含定义、例子和练习。" * 12 + "</p>"
                    for i in range(1, 4))
-    body += ''.join(f'<p>第{j}道：{title}学习时依据什么？ 答案：定义、例子和练习。</p>' for j in range(3))
+    body += ''.join(f'<p>第{j}道：{title}学习时依据____？ 答案：资料。</p>' for j in range(3))
     return f"<html><head><title>{title}</title></head><body><h1>{title}</h1>{body}</body></html>".encode("utf-8")
 
 
@@ -88,7 +88,11 @@ class ScriptedModel:
         if purpose == "coverage_check":
             text = json.dumps({"covered": True, "missing": [], "message": ""}, ensure_ascii=False)
         elif purpose == "sufficiency":
-            text = json.dumps(self.sufficiency.pop(0), ensure_ascii=False)
+            from refactor.learning.course.planner_agents import PREVIEW_SYSTEM
+            value = ({'summary':'理解 Python 的类、异常和模块','modules':[{'title':'Python 基础','summary':'学习定义与练习'}]}
+                if system == PREVIEW_SYSTEM else self.sufficiency.pop(0) if self.sufficiency else
+                dict(enough=True,questions=[],goal='Python 类、异常和模块',focus=['类','异常']))
+            text = json.dumps(value, ensure_ascii=False)
         elif purpose == "research":
             assert enable_search
             hits = tuple(WebHit(url, title, "") for url, title in PAGES.items())
@@ -99,8 +103,10 @@ class ScriptedModel:
         elif purpose == 'outline':
             chunks=json.loads(user.split('【已取得的原文段落】\n')[1])
             modules=[]
+            first_title=re.search(r'资料 1：(.+?)（',user)[1]
+            first_chunk=next(c for c in chunks if c['text'].startswith(first_title+'\n') and '第1节' in c['text'])
             for i in range(1,4):
-                c=chunks[0]  # Three distinct learning targets grounded in the same obtained section.
+                c=first_chunk  # Match s1.1; hashed source order is not section order.
                 quote=c['text'][:80]
                 modules.append(dict(key=f'm{i}',title='改过的模块1' if i==1 and '修改意见' in user else f'模块{i}',summary='理解资料',
                     refs=['s1.1'],prerequisites=[f'm{i-1}'] if i>1 else [],points=[dict(title=f'资料点{i}',summary='理解定义与练习',citations=[dict(chunk_id=c['chunk_id'],quote=quote)])]))
@@ -109,9 +115,12 @@ class ScriptedModel:
             packet=json.loads(user);found=[]
             for passage in packet['passages']:
                 for stem in re.findall(r'第\d道：[^？]+？',passage['text']):
-                    found.append(dict(kind='short',stem=stem,answer='定义、例子和练习。',explanation='',question_chunk=passage['id'],
-                        answer_chunk=passage['id'],answer_quote='定义、例子和练习。',pairing='same_block',question_number='',answer_number=''))
-            text=json.dumps(dict(passages=[p['id'] for p in packet['passages']],found=found,cloze=[]),ensure_ascii=False)
+                    found.append(dict(kind='fill',stem=stem,answer=[['资料']],explanation='',question_chunk=passage['id'],
+                        answer_chunk=passage['id'],answer_quote='资料',pairing='same_block',question_number='',answer_number=''))
+            p=packet['passages'][0]
+            sentence=next(s+'。' for s in p['text'].split('。') if '定义、例子和练习' in s)
+            text=json.dumps(dict(passages=[p['id'] for p in packet['passages']],found=found,cloze=[
+                dict(chunk_id=p['id'],sentence=sentence,word='定义',importance='key',keywords=['学习','依据'])]),ensure_ascii=False)
         elif purpose == "plan_intent":
             payload = json.loads(user.split("\n", 1)[1])
             phase, said = payload["ctx"]["phase"], payload["text"]
@@ -174,6 +183,8 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root, request):
     draft = ask("plan.submit", plan_id=pid, form=form(today))["draft"]
     assert draft["phase"] == "questions" and "写什么样的程序" in draft["messages"][-1]["text"]
     draft = ask("plan.say", plan_id=pid, text="能写命令行小工具")["draft"]
+    assert draft['phase']=='preview' and not any(p=='research' for p,_,_ in model.calls)
+    draft = ask('plan.say',plan_id=pid,text='确认并找资料')['draft']
     assert draft["phase"] == "sources" and draft["goal"].startswith("三周")
     cards = [c for c in draft["sources"] if c["status"] == "new"]
     assert len(cards) == 3 and all(c["tier"] == "whitelist" for c in cards)
@@ -193,7 +204,10 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root, request):
     draft = ask("plan.say", plan_id=pid, text="每天改成两小时，多给点练习")["draft"]
     assert draft["form"]["daily_cap"] == 120 and draft["form"]["notes"] == "多做练习"
     assert services.store.get_plan(pid)["window"]["daily_cap_minutes"] == 120
-    assert draft["messages"][-1]["text"].startswith("已修改：每天最多学习时长改为 120 分钟")
+    assert any(m['text'].startswith('已修改：每天最多学习时长改为 120 分钟') for m in draft['messages'])
+    assert draft['phase']=='preview'
+    draft = ask('plan.say',plan_id=pid,text='确认并找资料')['draft']
+    draft = ask('plan.outline',plan_id=pid)['draft']
     model.intents = [[{"kind": "refuse", "reason": "路线要从资料里来，不能跳过资料。"}]]
     draft = ask("plan.say", plan_id=pid, text="别管资料了直接生成")["draft"]
     assert draft["messages"][-1]["text"] == "路线要从资料里来，不能跳过资料。" and draft["phase"] == "outline"
@@ -271,6 +285,8 @@ def test_links_from_form_and_chat_are_opened_and_adopted_without_search(qapp, tm
         pid = ask("plan.current")["draft"]["plan_id"]
         linked = dict(form(date.today()), notes="主要用这个：https://docs.python.org/3/tutorial/classes.html", only_mine=True)
         draft = ask("plan.submit", plan_id=pid, form=linked)["draft"]
+        assert draft['phase']=='preview' and not draft['sources']
+        draft = ask('plan.say',plan_id=pid,text='确认并找资料')['draft']
         mine = [c for c in draft["sources"] if c.get("user_provided")]
         assert all("可信" in c["note"] and c["quality"]["user_provided"] for c in mine)
         assert [c["url"] for c in mine] == ["https://docs.python.org/3/tutorial/classes.html"] and mine[0]["status"] == "adopted"
@@ -304,6 +320,9 @@ def test_a_github_repo_link_imports_its_docs(qapp, tmp_root):
         linked = dict(form(date.today()), notes="教材：https://github.com/acme/book", only_mine=True)
         bridge.call(json.dumps({"id": "g2", "method": "plan.submit", "params": {"plan_id": pid, "form": linked}}))
         draft = pump(qapp, bridge, sent, lambda m: m.get("id") == "g2", timeout=20)[0]["result"]["draft"]
+        assert draft['phase']=='preview'
+        bridge.call(json.dumps({'id':'g3','method':'plan.say','params':{'plan_id':pid,'text':'确认并找资料'}}))
+        draft = pump(qapp,bridge,sent,lambda m:m.get('id')=='g3',timeout=20)[0]['result']['draft']
         cards = [c for c in draft["sources"] if c["status"] == "adopted"]
         assert [c["url"] for c in cards] == ["https://github.com/acme/book"] and cards[0]["site"] == "github.com"
         chunks = services.store.records("source_chunks", pid)

@@ -15,18 +15,29 @@ def bank_question(pid, mid, *, index=0, kind='short', ids=None, answer='先进�
     source = dict(title='官方原文', url='https://docs.python.org/3/tutorial/', locator=chunk)
     row = dict(id=f'{pid}-{index}', module_id=mid, point_ids=ids or [pid], kind=kind,
         stem=f'请说明{pid}的含义（{index}）？', answer=answer, explanation='', origin='found',
-        source=source, answer_source=source, importance='key', uses=[], created_at='2026-10-03T00:00:00+00:00')
+        source=source, answer_source=source, importance='key', role='bank', uses=[], created_at='2026-10-03T00:00:00+00:00')
     if kind in ('choice', 'multi'):
         row.update(options=['先进先出', '后进先出', '没有顺序'], answer=[0])
-    if kind == 'fill': row.update(stem=f'{pid}按____处理元素（{index}）。', answer=[[answer]])
+    if kind == 'fill':
+        # This shared flow fixture exercises ledger/state transitions, not
+        # subjective bank admission. Use a literal short term from its source.
+        term=re.search(r'[A-Za-z0-9_]+|[\u4e00-\u9fff]{1,8}',answer)
+        row.update(stem=f'{pid}原文关键词是____（{index}）。', answer=[[term[0] if term else '先进先出']])
     return row
 
 
 def seed_bank(store, plan_id, *, count=3):
-    """Stored original-source fixtures; no substitute for pick/mark/prepare."""
+    """Persist synthetic bank/quick rows through the real schema, never project records."""
     for p in store.records('points', plan_id):
-        store.add_bank_questions(plan_id, p['module_id'], [bank_question(p['id'], p['module_id'], index=i,
+        store.add_bank_questions(plan_id, p['module_id'], [bank_question(p['id'], p['module_id'], index=i, kind='fill',
             answer=store.records('source_chunks', plan_id)[0]['text'], chunk=p['chunk_ids'][0]) for i in range(count)])
+    for p in store.records('points', plan_id):
+        chunk=next(c for c in store.records('source_chunks',plan_id) if c['id']==p['chunk_ids'][0])
+        word=chunk['text'][:2]
+        q=bank_question(p['id'],p['module_id'],kind='choice',chunk=chunk['id'])
+        q.update(id=p['id']+'-quick42',role='quick',origin='cloze',stem=chunk['text'].replace(word,'____',1),
+                 options=[word,'另一概念','无关说法'],answer=[0],explanation=chunk['text'])
+        store.add_bank_questions(plan_id,p['module_id'],[q])
 
 
 class Agents:

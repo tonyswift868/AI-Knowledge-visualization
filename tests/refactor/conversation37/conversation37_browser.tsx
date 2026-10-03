@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client"
 import { Classroom } from "../../../refactor/learning/web/src/pages/Classroom"
 import { useApp } from "../../../refactor/learning/web/src/store"
 import "../../../refactor/learning/web/src/theme.css"
-import { calls } from "./conversation37_bridge"
+import { calls, requests, showNumeric } from "./conversation37_bridge"
 declare global { interface Window { conversationResult?: { ok: boolean; checks: string[]; error?: string }; conversationShow: (stage: string) => void } }
 const root = createRoot(document.getElementById("root")!)
 const wait = (ms = 20) => new Promise((r) => setTimeout(r, ms))
@@ -41,9 +41,18 @@ async function run() {
   selected.click(); selected.click(); await until(() => content().includes("答对了"))
   if (calls.filter((m) => m === "classroom.answer").length !== 1) throw new Error("Double submit")
   checks.push("计分单选传下标，双击只提交一次")
-  button("为什么？").click(); await until(() => content().includes("参考答案原文")); checks.push("为什么展开资料原答案")
+  button("为什么？").click(); await until(() => content().includes("刚讲的原文")); checks.push("为什么展开刚讲的原文")
   if (document.querySelector<HTMLTextAreaElement>("textarea")?.disabled) throw new Error("Input disabled")
   checks.push("输入框保持可用")
+  showNumeric()
+  root.render(<main style={{ height: "100%", padding: 18 }}><Classroom key="numeric" /></main>)
+  await until(() => document.querySelector<HTMLTextAreaElement>("textarea")?.placeholder === "填写计算数值，可带单位")
+  fill("2000 Pa"); await wait(); button("发送").click()
+  await until(() => requests.filter((r) => r.method === "classroom.answer").length === 2)
+  const numeric = requests.filter((r) => r.method === "classroom.answer")[1]
+  if (numeric.params.value !== "2000 Pa" || "text" in numeric.params) throw new Error("Numeric answer routed through reply")
+  await until(() => content().includes("答对了"))
+  checks.push("计算值含单位经answer提交，由程序判，未走AI回复")
   window.conversationResult = { ok: true, checks }
 }
 run().catch((e) => { window.conversationResult = { ok: false, checks, error: String(e.stack || e) + JSON.stringify({ calls, content: content(), input: document.querySelector("textarea")?.value }) } })

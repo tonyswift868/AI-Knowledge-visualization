@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[3]))
-from tests.refactor.conversation37.test_grounded_conversation37 import make_environment, act
+from tests.refactor.conversation37.test_grounded_conversation37 import make_environment, act, question
 from refactor.learning.app.classroom import Classroom
 
 def build(directory):
@@ -26,6 +26,14 @@ def build(directory):
             for name,action,args in [('opening','next',()),('teaching','choose',(0,)),('confused','confused',()),
                 ('ask','ask',('硬度相同吗？',)),('back','back',()),('question','next',()),('closing','answer',([0],)),('why','why',())]:
                 states[name]=act(e,action,*args)
+            numeric=make_environment(directory/'numeric')
+            try:
+                numeric.materials.bank=[question('p0','calc')]
+                with patch.object(Classroom,'_materials',staticmethod(lambda:numeric.materials)):
+                    states['calc']=act(numeric,'start_test','skip_test')
+                    states['calc_answer']=act(numeric,'answer','2000 Pa')
+                assert not states['calc']['failure'] and states['calc']['question']['kind']=='calc'
+            finally:numeric.store.close()
             (directory/'states.json').write_text(json.dumps(states,ensure_ascii=False),encoding='utf-8')
     finally:e.store.close()
     aliases=[dict(find=k,replacement=(fixture/v).as_posix()) for k,v in [

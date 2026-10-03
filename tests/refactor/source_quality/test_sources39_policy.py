@@ -120,7 +120,7 @@ def test_sources39_only_falls_back_when_higher_band_cannot_cover(store,higher_ha
         return pointer('c' if level==1 else 'gc')
     context=ctx();context['finder']=finder
     assert pm.prepare_point(store,'p',store.records('points','p')[0],context)['questions']==3
-    assert calls==([1] if higher_has_answers else [1,3])
+    assert calls==[1,3]  # seek found questions before relying on cloze
     assert store.records('points','p')[0]['chunk_ids'][0]=='c'  # existing better lecture text remains first
     assert all(q['source']['url'].startswith('https://www.pep.com.cn/' if higher_has_answers else 'https://www.zhihu.com/') for q in store.records('question_bank','p'))
 

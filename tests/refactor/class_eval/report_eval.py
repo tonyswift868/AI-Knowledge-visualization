@@ -10,7 +10,7 @@ from statistics import mean
 from types import SimpleNamespace
 
 from .class_eval import ROOT, PERSONAS, POINTS, SETTINGS, baseline_components, dump, judge_input
-from refactor.learning.course.judge_agent import _json_object, parse_judgement
+from refactor.learning.course.judge_agent import _json_object
 
 
 def read(path, default=None):
@@ -33,7 +33,8 @@ def phase_metrics(phase):
         ctx.pop("id")
         ctx.pop("reply")
         try:
-            actual = SimpleNamespace(**entry["actual"]) if direct else parse_judgement(entry["text"], ctx)
+            # Historical records remain inspectable; no live AI grader exists.
+            actual = SimpleNamespace(**(entry["actual"] if direct else _json_object(entry["text"])))
         except Exception:
             continue  # incomplete/invalid model answer is not an accepted verdict
         expected = dict(row, **manual.get(row["id"], {}))
@@ -113,7 +114,7 @@ def format_results(calls, phase):
                 if purpose == "judge":
                     ctx = judge_input(row)
                     ctx.pop("id"); ctx.pop("reply")
-                    app.judge_agent.parse_judgement(row["text"], ctx)
+                    _json_object(row["text"])
                 elif purpose == "questions":
                     content = row["messages"][-1]["content"]
                     points = json.JSONDecoder().raw_decode(content.split("【知识点清单】\n",1)[1])[0]

@@ -61,7 +61,7 @@ def test_study_schedule_dates_do_not_make_evergreen_goals_time_sensitive():
 def test_module_coverage_and_level():
     result = score(goal='软件开发完整学习路线', modules=[{'title': 'Python functions parameters'}])
     assert result['eligible'] and 1 in result['covered_scopes']
-    assert not score(title='Advanced Python functions parameters', level='beginner')['eligible']
+    assert score(title='Advanced Python functions parameters', level='beginner')['eligible']
 
 
 def test_model_cannot_elevate_authority_or_omit_reviewable_reason():
@@ -95,7 +95,7 @@ def test_real_course_resource_landing_patterns_cannot_be_admitted_by_model():
         assert 'lesson_body_unavailable' in result['reasons']
 
 
-def test_level_mismatch_is_not_overridden_by_model():
+def test_level_mismatch_is_display_only_and_still_reviewable():
     result=score(title='Advanced Python functions parameters',level='beginner')
     assert not result['needs_review']
-    assert not q.apply_review(result, {'relevance':5,'note':'This course contains Python functions and parameters.'})['eligible']
+    assert q.apply_review(result, {'relevance':5,'note':'This course contains Python functions and parameters.'})['eligible']

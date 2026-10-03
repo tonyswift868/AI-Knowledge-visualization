@@ -48,6 +48,29 @@ def _host_is(host, suffix):
     return host == suffix or host.endswith('.' + suffix)
 
 
+def junk_reasons(title, body):
+    """Observable publishing/page traits, not a ban on unfamiliar domains.
+
+    A copyright notice or one advert alone is not evidence of a content farm.
+    Explicit automated harvesting, or clickbait combined with commercial calls
+    to action, is. Return evidence codes also usable by the fetch pipeline.
+    """
+    text = title + '\n' + body
+    reasons = []
+    if re.search(r'本站(?:内容|文章|资料)?(?:均|全部)?(?:由|为)?自动采集|全网自动采集|'
+                 r'automatically (?:scraped|harvested) content', text, re.I):
+        reasons.append('content_farm')
+    bait = re.search(r'震惊|不看后悔|竟然是|速看.{0,12}删|你绝对想不到|'
+                     r'you won.t believe|shocking secret', title, re.I)
+    selling = re.search(r'加.{0,8}(?:微信|客服)|私信.{0,10}(?:领取|购买)|扫码.{0,8}(?:购买|领取)|'
+                        r'购买课程|限时抢购|buy now|affiliate links?|sponsored post', body, re.I)
+    if bait and selling:
+        reasons.append('clickbait_marketing')
+    if re.search(r'营销号|广告推广|商业推广|sponsored post', title, re.I) and selling:
+        reasons.append('marketing_page')
+    return tuple(reasons)
+
+
 def content_identity(url):
     """Group known language/version mirrors of one publisher's lesson.
 
@@ -243,6 +266,9 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
         credibility = min(credibility, 1); codes.append('non_original_or_disallowed')
     if not body.strip():
         credibility = 0; codes.append('body_unavailable')
+    junk = junk_reasons(title, body)
+    if junk:
+        credibility = min(credibility, 1); codes.extend(junk)
     # A verified host/resource description is not the lesson itself. These
     # patterns were observed on real course download/video landing pages.
     landing_only = (is_landing_page(title, body) or (bool(url) and path in {'', '/'})
@@ -315,9 +341,9 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
         matches += present
     level_fit = 'unknown'
     if level in {'zero', 'beginner'} and re.search(r'advanced|graduate|research paper|高阶|研究生|前沿研究', title, re.I):
-        relevance = min(relevance, 3); level_fit = 'too_advanced'; codes.append('level_mismatch')
+        level_fit = 'too_advanced'; codes.append('level_mismatch')
     elif level in {'advanced', 'intermediate'} and re.search(r'absolute beginner|零基础|初识', title, re.I):
-        relevance = min(relevance, 3); level_fit = 'review_only'; codes.append('level_mismatch')
+        level_fit = 'review_only'; codes.append('level_mismatch')
     elif relevance >= 4:
         level_fit = 'no_obvious_mismatch'
     if landing_only:
@@ -328,12 +354,14 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
         if at >= 0:
             excerpt = body[max(0, at-120):at+1400]; break
     cross_language = bool(re.search(r'[\u4e00-\u9fff]', goal)) != bool(re.search(r'[\u4e00-\u9fff]', title))
-    review = (not landing_only and credibility >= MIN_CREDIBILITY and level_fit not in {'too_advanced', 'review_only'}
+    review = (not landing_only and credibility >= MIN_CREDIBILITY
               and (relevance == 3 or (relevance == 1 and cross_language)))
     eligible = credibility >= MIN_CREDIBILITY and relevance >= MIN_RELEVANCE
     if credibility < MIN_CREDIBILITY: codes.append('authority_below_threshold')
     if relevance < MIN_RELEVANCE: codes.append('relevance_unresolved' if review else 'relevance_below_threshold')
     note = f'{publisher}；可信 {credibility}/5，相关 {relevance}/5。'
+    if level_fit == 'too_advanced': note += '偏难，老师会讲浅。'
+    if level_fit == 'review_only': note += '适合复习。'
     if not eligible:
         note += '尚未达到可用资料门槛。'
     if freshness in {'unknown', 'stale'}: note += '此主题需较新资料，发布日期未知或超过两年。'
@@ -354,7 +382,18 @@ def rank_key(row):
     """Credibility first, then relevance; an exact tie favours non-community."""
     quality = row.get('quality') or row
     return (-(quality.get('credibility') or 0), -(quality.get('relevance') or 0),
-            bool(quality.get('community') or quality.get('source_type')=='community'))
+            bool(quality.get('community') or quality.get('source_type')=='community'),
+            quality.get('level_fit') in {'too_advanced', 'review_only'})
+
+
+def question_priority(url, title='', *, authority=None, lists=None):
+    """Publisher band first; third-band online Q&A is the last resort."""
+    identity=authority or classify_source(url,lists=lists)
+    level=identity.get('level') or 4
+    host=(urlsplit(url).hostname or '').casefold()
+    qa=(any(_host_is(host,name) for name in ('zhihu.com','zhidao.baidu.com','quora.com','stackoverflow.com','stackexchange.com'))
+        or bool(re.search(r'interview[ -]questions|questions?[ -]and[ -]answers?|问答|面试题|/questions?/',title+' '+url,re.I)))
+    return (level,bool(level==3 and qa))
 
 
 def general_only(chunk_ids, sources, chunks, *, lists=None):
@@ -398,6 +437,8 @@ def apply_review(quality, review):
     result.update(relevance=relevance, needs_review=False, method='rules+model_relevance', review_note=note,
                   eligible=quality['credibility'] >= MIN_CREDIBILITY and relevance >= MIN_RELEVANCE,
                   note=quality['note'].split('；')[0] + f'；可信 {quality["credibility"]}/5，相关 {relevance}/5。' + note)
+    if quality.get('level_fit')=='too_advanced':result['note']+='偏难，老师会讲浅。'
+    if quality.get('level_fit')=='review_only':result['note']+='适合复习。'
     return result
 
 

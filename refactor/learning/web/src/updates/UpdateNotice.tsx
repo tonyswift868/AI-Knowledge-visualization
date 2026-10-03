@@ -109,6 +109,7 @@ export function UpdateNotice() {
       <h2>MentorFlow 更新</h2>
       <p>当前版本 {status?.current || status?.version} → 新版本 {status?.latest || status?.target}</p>
       <p style={{ whiteSpace: "pre-wrap" }}>{status?.release_notes || "此版本未提供更新说明。"}</p>
+      <p>更新完成后会自动重启，并继续当前登录（仅这一次）。</p>
       {mandatory(status) && <p>版本 {status?.mandatory_floor || status?.min_supported_version || status?.latest} 必须安装：{({security:"安全修复",protocol:"更新协议兼容要求",data_compatibility:"数据兼容要求",support_floor:"版本兼容要求"} as Record<string,string>)[status?.mandatory_reason || "support_floor"] || status?.mandatory_reason}</p>}
       <p role="status">{notice.error || status?.message}</p>
       {downloading && <div aria-label="下载进度"><progress max={Math.max(1, total)} value={Math.min(total, received)} style={{ width: "100%" }} /><p>{bytes(received)} / {bytes(total)}</p></div>}

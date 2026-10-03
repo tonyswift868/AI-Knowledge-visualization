@@ -256,7 +256,9 @@ class ScriptedGateway:
         if purpose == "coverage_check":
             return SimpleNamespace(text=json.dumps({"covered": True, "missing": [], "message": ""}, ensure_ascii=False), search_hits=(), citations=())
         if purpose == "sufficiency":
-            value = {"enough": True, "questions": [], "goal": "Python CSV 报表工具", "focus": ["CSV", "中文", "练习"]}
+            value = (dict(summary='Python CSV 报表工具',modules=[dict(title='CSV 报表',summary='读取和整理数据')])
+                if kwargs.get('system') == planner_agents.PREVIEW_SYSTEM else
+                {"enough": True, "questions": [], "goal": "Python CSV 报表工具", "focus": ["CSV", "中文", "练习"]})
         elif purpose == "outline":
             refs = list(dict.fromkeys(re.findall(r"\[(s\d+\.\d+)\]", prompt)))
             titles = ["Python 基础", "CSV 读写", "数据清洗", "异常处理", "汇总报表", "命令行工具", "测试与综合实战", "可选图表"]

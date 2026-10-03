@@ -45,7 +45,7 @@ _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
 # Profile replays contained an unsupported historical claim with thinking off;
 # the task's quality fallback retains the provider default for that purpose.
 PURPOSE_EFFORT = {
-    'judge': 'high', 'check_profile': 'high', 'point_materials': 'high',
+    'check_profile': 'high', 'point_materials': 'high',
     'source_identity': 'high', 'outline': 'high',
     'generate': 'high', 'plan_additions_generate': 'high',
     'source_scoring': 'high', 'research': 'high', 'teacher': 'high', 'coverage_check': 'high',
@@ -53,7 +53,7 @@ PURPOSE_EFFORT = {
 }
 
 PURPOSE_MIN_OUTPUT = {
-    'teacher': 8192, 'judge': 8192, 'profile': 8192, 'check_profile': 8192, 'coverage_check': 8192,
+    'teacher': 8192, 'profile': 8192, 'check_profile': 8192, 'coverage_check': 8192,
     'point_materials': 24576, 'source_identity': 8192,
 }
 BACKGROUND_PURPOSES = frozenset({'point_materials', 'source_identity', 'profile', 'check_profile', 'coverage_check'})

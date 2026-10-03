@@ -317,35 +317,6 @@ class MathRun:
             result = self.gw.complete("simulated_student", messages, system=system, max_tokens=8192)
         return _json_object(result.text)["reply"]
 
-    def probe_process_component(self):
-        """Additional real component probe; does not alter completed-plan events.
-
-        The main scripted student once ignored result_only, so a coverage flag
-        alone cannot establish that scenario. This explicit supplemental probe
-        uses a real saved question and the actual judge, with no reference
-        answer visible to the simulated student. It is not a bridge/UAT pass.
-        """
-        from dataclasses import asdict
-        self.call("classroom.state")
-        course=self.room._course(self.plan_id)
-        question=next(q for q in self.store.records("question_bank",self.plan_id)
-            if q["type"]=="short" and "3(n−4)−2n=−3" in q["stem"])
-        state=copy.deepcopy(self.state());state["module_id"]=question["module_id"]
-        pending=dict(kind="check",answer_id="acceptance-process-probe",point_ids=question["point_ids"],question=question)
-        textbook=course.excerpts(question["point_ids"])
-        packet=dict(question={k:question[k] for k in ("type","stem","options")},textbook=textbook)
-        self.gw.operation="过程题只给结果补测（组件，不记进度）"
-        result=self.gw.complete("simulated_student",[dict(role="user",content=json.dumps(packet,ensure_ascii=False))],
-            system="你是模拟学生，不是评审。依据题目与资料求解，但这次故意只写最终n值，不写过程、不写检验，即使题面要求也省略。只返回JSON {\"reply\":\"学生原话\"}。",max_tokens=4096)
-        reply=_json_object(result.text)["reply"]
-        evidence=dict(scope="现有真实题的判定组件补测；状态副本，不修改题库、计划、掌握或时长；不能冒充课堂桥全场景通过。",
-            question=question,reply=reply)
-        if not re.fullmatch(r"\s*(?:n\s*[=＝]\s*)?9[。.]?\s*",reply):
-            evidence["not_covered"]="模拟学生没有按要求只给结果，不修改模型作答来伪装覆盖。"
-        else:
-            ctx=SimpleNamespace(cancel=threading.Event(),stream=lambda _:None)
-            evidence["verdict"]=asdict(self.room._judge(course,state,ctx,"test",pending,reply))
-        ce.dump(OUT/"process-probe.json",evidence)
 
     def reopen(self, label):
         before = self.state()

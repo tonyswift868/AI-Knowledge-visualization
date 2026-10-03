@@ -62,19 +62,19 @@ def test_materials38_single_chunk_question_candidates_are_halved_too():
         if len(sent)==1:raise ModelError('MODEL_OUTPUT_TRUNCATED','截断')
         return dict(passages=[],found=[],cloze=[])
     text='\n'.join(f'{i}. 原题？\n答案：帕。' for i in range(1,9))
-    pm._locate(dict(id='p'),[dict(id='c',text=text,authority=dict(level=1,type='textbook_publisher'))],dict(finder=finder),'answered_exercises')
+    pm._locate(dict(id='p'),[dict(passages(1)[0],id='c',text=text)],dict(finder=finder),'answered_exercises')
     assert '8. 原题？' in sent[0] and '4. 原题？' in sent[1] and '5. 原题？' not in sent[1]
 
 
 def test_materials38_compact_long_question_reconstructed_from_original():
-    text='1. '+('题面原文，'*70)+'结尾？\n答案：帕。'
+    text='1. '+('题面原文，'*70)+'结尾____？\n答案：帕。'
     p=dict(passages(1)[0],text=text)
-    item=dict(kind='short',stem=dict(quote='1. 题面原文，',end_quote='结尾？'),answer=dict(quote='帕。'),
+    item=dict(kind='fill',stem=dict(quote='1. 题面原文，',end_quote='结尾____？'),answer=[[dict(quote='帕')]],
               question_chunk='c0',answer_chunk='c0',answer_quote=dict(quote='帕。'),pairing='same_block')
     output=pm._expand_output(dict(passages=['c0'],found=[item],cloze=[]),[p])
     assert len(output['found'][0]['stem'])>300
     q=pm._found(output['found'][0],dict(id='point',module_id='module'),{'c0':p})
-    assert q['answer']=='帕。' and q['stem'] in text and q['source']==q['answer_source']
+    assert '帕' in q['answer'][0] and q['stem'] in text and q['source']==q['answer_source']
 
 
 @pytest.mark.parametrize('value',[
@@ -92,10 +92,10 @@ def test_materials38_found_and_cloze_output_capped():
 
 
 def test_materials38_official_reference_answer_header_and_next_example_scope():
-    p=dict(passages(1)[0],text='【例 1】压强单位是什么？\n【参考答案】帕。\n【例 2】压力单位是什么？\n【参考答案】牛顿。')
-    item=dict(kind='short',stem='压强单位是什么？',answer='帕',answer_quote='帕。',question_chunk='c0',answer_chunk='c0',pairing='same_block')
-    assert pm._found(item,dict(id='p',module_id='m'),{'c0':p})['answer']=='帕'
-    assert pm._found(dict(item,answer='牛顿',answer_quote='牛顿。'),dict(id='p',module_id='m'),{'c0':p}) is None
+    p=dict(passages(1)[0],text='【例 1】压强单位是____？\n【参考答案】帕。\n【例 2】压力单位是什么？\n【参考答案】牛顿。')
+    item=dict(kind='fill',stem='压强单位是____？',answer=[['帕']],answer_quote='帕。',question_chunk='c0',answer_chunk='c0',pairing='same_block')
+    assert pm._found(item,dict(id='p',module_id='m'),{'c0':p})['answer'][0][0]=='帕'
+    assert pm._found(dict(item,answer=[['牛顿']],answer_quote='牛顿。'),dict(id='p',module_id='m'),{'c0':p}) is None
 
 
 def test_materials38_required_diagram_is_not_silently_lost():

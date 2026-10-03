@@ -5,7 +5,6 @@ import json
 import random
 from datetime import datetime, timezone
 
-from refactor.learning.course.judge_agent import judge_request, parse_judgement
 from refactor.learning.course.mastery import AttemptClosed, Judgement, MasteryBook, PointRef
 from tests.refactor.integration38.support import bank_question
 from refactor.learning.course.question_bank import select_question, review_points
@@ -102,15 +101,6 @@ def test_practice_is_separate_and_review_marker_follows_latest_answer(room):
 
 
 
-def test_short_answer_uncertainty_returns_one_clarifying_question():
-    context = dict(mode='test', points=[dict(id='p', title='概念', summary='说明')],
-                   excerpts={'c': '概念资料'}, question={'stem': '请说明概念的作用？', 'type': 'short'},
-                   reference='只要求作用')
-    system, _ = judge_request(context, '可能是这样')
-    assert '再问一道更深的题' in system
-    verdict = parse_judgement(json.dumps(dict(kind='clarify', correct=None, wrong_points=[],
-        reason='你说的作用是指哪一步？'), ensure_ascii=False), context)
-    assert verdict.kind == 'clarify' and verdict.correct is None
 
 
 
@@ -131,7 +121,7 @@ def test_report_comments_quote_only_stored_reasons_and_never_call_gateway():
     assert comments['q'] == '“后进先出”无错答记录；目前尚未通过。'
 
 def question(identifier,ids,chunk='k1'):
-    return bank_question(ids[0],'m0',ids=list(ids),answer='队列是先进先出的结构。',chunk=chunk)|{'id':identifier}
+    return bank_question(ids[0],'m0',kind='fill',ids=list(ids),answer='队列是先进先出的结构。',chunk=chunk)|{'id':identifier}
 
 def test_selector_uses_per_purpose_history_and_can_reuse_original_questions():
     bank=[question('a',['p0']),question('b',['p0'])]

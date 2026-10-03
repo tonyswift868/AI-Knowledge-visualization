@@ -11,7 +11,7 @@ from refactor.learning.course.question_bank import validate_question
 from refactor.learning.course.source_filter import classify_source, directory_matches, load_lists, parse_lists, SourceListsError
 
 
-TEXT='压强是压力与受力面积的比值。国际单位制中压强的单位是帕。压力越大，在面积不变时压强越大。\n同章术语：压力、浮力、密度、面积。\n1. 压强单位是什么？\n答案：帕。'
+TEXT='压强是压力与受力面积的比值。国际单位制中压强的单位是帕。压力越大，在面积不变时压强越大。\n同章术语：压力、浮力、密度、面积。\n1. 压强单位是____？\n答案：帕。'
 
 
 @pytest.fixture
@@ -39,6 +39,16 @@ def ctx(output=None):
     return dict(finder=lambda p,passages,**kw: output or pointer(),search=lambda *a,**k:[],fetcher=offline_fetch,stage='初二')
 
 
+def incomplete(store, point, context):
+    # Insufficient locator evidence is now an explicit non-ready result;
+    # inspect partial rows only to retain the original provenance assertions.
+    with pytest.raises(StoreError) as error:
+        pm.prepare_point(store, 'p', point, context)
+    assert error.value.code == 'MATERIALS_INCOMPLETE'
+    rows = store.records('question_bank', 'p')
+    return pm._counts(rows, store.records('points', 'p')[0]['chunk_ids'])
+
+
 def test_point_prepare_idempotent_and_provenance(store):
     calls=[]
     context=ctx(); context['finder']=lambda *a,**k:(calls.append(1) or pointer())
@@ -57,7 +67,7 @@ def test_normal_cloze_distractors_same_source_and_word_exact(store):
     with store.transaction():
         p=store._get('points','p','point');p['importance']='normal';store._put('points','p',p)
     out=pointer();out['cloze']=[dict(chunk_id='c',sentence='压强是压力与受力面积的比值。',word='压强',importance='normal',keywords=['浮力','密度','不存在'])]
-    assert pm.prepare_point(store,'p',store.records('points','p')[0],ctx(out))['questions']==1
+    assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
     q=store.records('question_bank','p')[0]
     assert q['kind']=='choice' and set(q['options'])=={'压强','浮力','密度'}
     out['cloze'][0]['word']='强压'
@@ -66,19 +76,19 @@ def test_normal_cloze_distractors_same_source_and_word_exact(store):
 
 def test_found_same_block_has_original_answer_and_no_fabrication(store):
     out=pointer();out['cloze']=[]
-    q=dict(kind='short',stem='压强单位是什么？',answer='帕',answer_quote='帕。',explanation='',question_chunk='c',answer_chunk='c',pairing='same_block',question_number='1',answer_number='1')
+    q=dict(kind='fill',stem='压强单位是____？',answer=[['帕']],answer_quote='帕。',explanation='',question_chunk='c',answer_chunk='c',pairing='same_block',question_number='1',answer_number='1')
     out['found']=[q]
-    assert pm.prepare_point(store,'p',store.records('points','p')[0],ctx(out))['questions']==1
+    assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
     stored=store.records('question_bank','p')[0]
-    assert stored['origin']=='found' and stored['answer']=='帕'
-    q['answer']='公斤'; q['stem']='压力的单位是什么？'
-    assert pm.prepare_point(store,'p',store.records('points','p')[0],ctx(out))['questions']==1
+    assert stored['origin']=='found' and '帕' in stored['answer'][0]
+    q['answer']=[['公斤']]; q['stem']='压力的单位是什么？'
+    assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
 
 
 def test_number_pairing_mismatch_is_rejected(store):
     out=pointer();out['cloze']=[]
-    out['found']=[dict(kind='short',stem='压强单位是什么？',answer='帕',answer_quote='1. 帕',question_chunk='c',answer_chunk='c',pairing='numbered',question_number='1',answer_number='2')]
-    assert pm.prepare_point(store,'p',store.records('points','p')[0],ctx(out))['questions']==0
+    out['found']=[dict(kind='fill',stem='压强单位是____？',answer=[['帕']],answer_quote='1. 帕',question_chunk='c',answer_chunk='c',pairing='numbered',question_number='1',answer_number='2')]
+    assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==0
 
 
 def test_pick_unused_then_lru_and_never_calls_model(store):
@@ -92,7 +102,7 @@ def test_pick_unused_then_lru_and_never_calls_model(store):
     assert pm.pick_question(store,'p','point','final',picked) is None
     assert pm.pick_question(store,'p','point','module') is not None
     pm.mark_used(store,'p',picked[0],'quick')
-    assert store.records('question_bank','p')[0]['uses']
+    assert next(q for q in store.records('question_bank','p') if q['id']==picked[0])['uses']
     with pytest.raises(ValueError): pm.pick_question(store,'p','point','bad')
 
 
@@ -105,7 +115,7 @@ def test_cancellation_no_late_write_and_background_dedup(store):
     with ThreadPoolExecutor(2) as pool:
         results=list(pool.map(lambda _:pm.prepare_point(store,'p',store.records('points','p')[0],ctx()),range(2)))
     assert all(r['questions']==3 for r in results)
-    assert len(store.records('question_bank','p'))==3
+    assert len(store.records('question_bank','p'))==4
 
 
 def test_old_plans_unusable_no_migration(store):
@@ -163,7 +173,7 @@ def test_schema_rejects_legacy_fields_and_unequal_fill_blanks(store):
 def test_module_progress_and_account_isolation(store,tmp_path):
     progress=[]
     result=pm.prepare_module(store,'p','m',ctx(),lambda *args:progress.append(args))
-    assert result['questions']==3 and progress[-1][0:2]==(1,1)
+    assert result==dict(points=1,cloze_points=1,cloze_heavy=True) and progress[-1][0:2]==(1,1)
     with pytest.raises(StoreError):pm.prepare_module(store,'p','not-a-module',ctx(),lambda *a:None)
     with CourseStore('other-account',tmp_path) as other:
         with pytest.raises(StoreError):pm.pick_question(other,'p','point','final')
@@ -198,8 +208,8 @@ def test_numbered_question_and_answer_separate_blocks_same_book(store):
     with store.transaction():
         source=store._get('sources','p','s');source['url']='https://openstax.org/books/test/pages/exercises';store._put('sources','p',source)
     out=pointer();out['cloze']=[]
-    out['found']=[dict(kind='short',stem='压强单位是什么？',answer='帕',answer_quote='1. 帕。',question_chunk='c',answer_chunk='a',pairing='numbered',question_number='1',answer_number='1')]
-    result=pm.prepare_point(store,'p',store.records('points','p')[0],ctx(out))
+    out['found']=[dict(kind='fill',stem='压强单位是____？',answer=[['帕']],answer_quote='1. 帕。',question_chunk='c',answer_chunk='a',pairing='numbered',question_number='1',answer_number='1')]
+    result=incomplete(store,store.records('points','p')[0],ctx(out))
     assert result['questions']==1
     assert store.records('question_bank','p')[0]['source']['url']!=store.records('question_bank','p')[0]['answer_source']['url']
 
@@ -218,7 +228,7 @@ def test_program_can_pair_same_block_explicit_answer_letter(store):
         chunks=[dict(chunk_id='choice-c',text='1. 压强的单位是？\nA. 帕\nB. 牛顿\n答案：A')])])
     out=pointer();out['cloze']=[]
     out['found']=[dict(kind='choice',stem='压强的单位是？',options=['帕','牛顿'],answer=[0],answer_quote='A',question_chunk='choice-c',answer_chunk='choice-c',pairing='same_block')]
-    assert pm.prepare_point(store,'p',store.records('points','p')[0],ctx(out))['questions']==1
+    assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
 
     # The locator cannot silently omit a second correct option in a multi-answer.
     passages=pm._passages(store,'p',dict(ctx(),store=store,plan_id='p',lists=load_lists()))

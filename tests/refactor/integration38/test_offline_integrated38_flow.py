@@ -35,7 +35,10 @@ class IntegratedModel(Agents):
             return super().complete(purpose,messages,**kw)
         self.calls.append(purpose)
         self.requests.append(dict(purpose=purpose,system=kw.get('system'),messages=messages))
-        if purpose == 'sufficiency': value=dict(enough=True,goal='队列与栈',focus=['顺序'],questions=[])
+        if purpose == 'sufficiency':
+            from refactor.learning.course.planner_agents import PREVIEW_SYSTEM
+            value = (dict(summary='理解队列与栈',modules=[dict(title='数据结构',summary='理解处理顺序')])
+                if kw.get('system')==PREVIEW_SYSTEM else dict(enough=True,goal='队列与栈',focus=['顺序'],questions=[]))
         elif purpose == 'research':
             assert kw['enable_search']; value=dict(sources=[dict(url=URL,title='Python 数据结构',why='官方文档')])
         elif purpose == 'source_scoring':
@@ -56,7 +59,9 @@ class IntegratedModel(Agents):
                 found.append(dict(kind='choice',stem=stem,options=['先进先出','后进先出'],answer=[0],
                     explanation='',question_chunk=p['id'],answer_chunk=p['id'],answer_quote='先进先出',
                     pairing='same_block',question_number='',answer_number=''))
-            value=dict(passages=[p['id'] for p in passages],found=found,cloze=[])
+            p=next(p for p in passages if QUOTE in p['text'])
+            value=dict(passages=[p['id'] for p in passages],found=found,cloze=[
+                dict(chunk_id=p['id'],sentence=QUOTE,word='队列',importance='key',keywords=['栈','后进先出'])])
         else: raise AssertionError('unexpected purpose '+purpose)
         return SimpleNamespace(text=json.dumps(value,ensure_ascii=False),search_hits=(),citations=())
 
@@ -83,7 +88,9 @@ def build_plan(root, events):
     def run(fn):
         result=flow.run(pid,fn,ctx);assert result['draft']['busy'] is None
         return result['draft']
-    d=run(lambda d,c:flow.submit_form(d,c,form()));assert d['phase']=='sources'
+    d=run(lambda d,c:flow.submit_form(d,c,form()));assert d['phase']=='preview'
+    assert 'research' not in model.calls
+    d=run(lambda d,c:flow.chat(d,c,'确认并找资料'));assert d['phase']=='sources'
     for card in d['sources']:
         if card['status']=='new': run(lambda d,c,card=card:flow.decide(d,card['card_id'],True))
     d=run(lambda d,c:flow.make_outline(d,c));assert d['outline']['grounded']
@@ -93,7 +100,8 @@ def build_plan(root, events):
     join_workers()
     assert store.get_plan(pid)['total_minutes']==estimate
     bank=store.records('question_bank',pid)
-    assert len(bank)==9 and all(q['origin']=='found' and q['answer_source']['url']==URL for q in bank)
+    assert len(bank)==12 and sum(q.get('role')=='bank' for q in bank)==9
+    assert all(q['origin']=='found' and q['answer_source']['url']==URL for q in bank if q.get('role')=='bank')
     assert any(k=='plan_preparation' for k,_ in events)
     assert 'generate' not in model.calls
     flow.start_request(pid)
@@ -121,8 +129,7 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
         v=act('confused');assert v['messages'][-1]['sources']
         v=act('ask',text='我想问顺序。');assert v['conversation']['interrupted']
         act('back');v=act('next');assert v['question']['purpose']=='quick'
-        v=act('answer',value=[1]);assert v['explanation']['open'] and v['question']
-        v=act('answer',value=[0]);assert v['step']=='closing'
+        v=act('answer',value=[1]);assert v['explanation']['open'] and not v['question'] and v['step']=='closing'
         v=act('why');assert v['explanation']['open']
         # Reopening retains the finished verdict/position, no duplicate grade.
         before=len(services.store.records('judgements',pid));v=act('state')
@@ -134,7 +141,8 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
         v=act('test',kind='skip_test');v=act('answer',value=[0]);assert v['module']['state']=='skipped'
         act('next_module');act('next');act('choose',option=0)
         known=act('reply',text='我会了');assert known['question']['purpose']=='quick'
-        v=act('answer',value=[0]);assert v['step']=='test_offer'
+        quick=next(q for q in services.store.records('question_bank',pid) if q['id']==known['question']['id'])
+        v=act('answer',value=quick['answer']);assert v['step']=='test_offer'
         act('test',kind='module_test');act('answer',value=[0])
         v=act('next_module');assert v['step']=='check_offer'
         v=act('check');steps=0
@@ -214,3 +222,28 @@ def test_real_materials_wait_resumes_once_with_mapping_context(tmp_path):
         assert fresh.run(pid,lambda *args:None,ctx)['step']=='opening'
     finally:
         release.set();room.cancel_materials();join_workers();services._closed=True;services.store.close()
+
+
+def test_integration44_real_roles_and_uses_survive_store_reopen(tmp_path):
+    """No autouse material boundary: select/mark/prepare are real and durable."""
+    services,flow,model,pid=build_plan(tmp_path,[])
+    try:
+        point=services.store.records('points',pid)[0]
+        before=len(model.calls)
+        point_materials.prepare_point(services.store,pid,point,dict(gateway=model,cancel=threading.Event()))
+        assert len(model.calls)==before  # Stored complete rows avoid locating again.
+        quick=point_materials.pick_question(services.store,pid,point['id'],'quick')
+        bank=point_materials.pick_question(services.store,pid,point['id'],'module')
+        assert quick['role']=='quick' and bank['role']=='bank' and quick['id']!=bank['id']
+        point_materials.mark_used(services.store,pid,quick['id'],'quick')
+        point_materials.mark_used(services.store,pid,bank['id'],'module')
+    finally:
+        join_workers();services._closed=True;services.store.close()
+    fresh=CourseStore('integration38',tmp_path)
+    try:
+        rows={q['id']:q for q in fresh.records('question_bank',pid)}
+        assert rows[quick['id']]['uses'][0]['purpose']=='quick'
+        assert rows[bank['id']]['uses'][0]['purpose']=='module'
+        assert point_materials.pick_question(fresh,pid,point['id'],'quick')['id']==quick['id']
+        assert point_materials.pick_question(fresh,pid,point['id'],'module')['id']!=bank['id']
+    finally:fresh.close()

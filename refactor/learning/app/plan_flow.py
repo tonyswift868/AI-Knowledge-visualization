@@ -275,7 +275,7 @@ class PlanFlow:
             if item["phase"] == "form":
                 return self.load(item["plan_id"])
         draft = {"version": 1, "plan_id": _new_id(), "phase": "form", "form": None, "goal": "", "focus": [],
-                 "messages": [_msg("ai", "form", "你好！先告诉我你想学什么。填好下面这张表，我会据此找资料、搭路线。")],
+                 "messages": [_msg("ai", "form", "你好！先告诉我你想学什么。填好表后我们聊清需求，先看大致模块，确认后再找资料。")],
                  "sources": [], "research": {"round": 0, "rejected": []}, "outline": None, "generation": {}}
         self.save(draft)
         return draft
@@ -370,20 +370,61 @@ class PlanFlow:
 
     def _conversation(self, draft):
         return [{"role": m["role"], "text": m["text"]} for m in draft["messages"]
-                if m["kind"] in ("questions", "user_text")]
+                if m["kind"] in ("questions", "user_text", "preview")]
+
+    def _effective_form(self, draft):
+        """Carry every accepted chat requirement into research/coverage/map requests."""
+        form = dict(draft["form"])
+        requirements = draft.get("requirements", [])
+        if requirements:
+            form["notes"] = "\n".join([form.get("notes", ""), "【对话补充，冲突时以最新要求为准】", *requirements])
+        if draft.get("accepted_preview"):
+            form["notes"] += "\n【认可的需求摘要】\n" + draft['accepted_preview']['summary']
+            form["notes"] += "\n【认可的大致模块，正式地图仍以资料为依据】\n" + "\n".join(
+                f"{m['title']}：{m['summary']}" for m in draft["accepted_preview"]["modules"])
+        return form
+
+    def _show_preview(self, draft, ctx):
+        # Invalidate derived work before calling the model: cancellation/failure
+        # must not leave an obsolete map available for generation.
+        draft["phase"] = "questions"
+        draft["outline"] = None
+        draft.pop("preview", None)
+        draft.pop("accepted_preview", None)
+        draft.pop("estimate", None)
+        draft.pop("coverage", None)
+        self.save(draft)
+        self.status(draft["plan_id"], "正在整理需求摘要和大致模块…")
+        preview, _ = self._ask("sufficiency", agents.preview_request(self._effective_form(draft), self._conversation(draft)),
+                               agents.parse_preview, ctx, plan_id=draft["plan_id"])
+        preview["version"] = draft.get("preview_version", 0) + 1
+        draft["preview_version"] = preview["version"]
+        draft["preview"] = preview
+        draft["phase"] = "preview"
+        text = preview["summary"] + "\n\n" + "\n".join(f"{m['title']}｜{m['summary']}" for m in preview["modules"])
+        text += "\n\n这样可以吗？确认后我再找资料；想改哪里也可以继续说。"
+        draft["messages"].append(_msg("ai", "preview", text, version=preview["version"]))
+        self.save(draft)
 
     def _check_sufficiency(self, draft, ctx):
         self.status(draft["plan_id"], "正在核对信息是否足够…")
-        verdict, _ = self._ask("sufficiency", agents.sufficiency_request(draft["form"], self._conversation(draft)),
+        verdict, _ = self._ask("sufficiency", agents.sufficiency_request(self._effective_form(draft), self._conversation(draft)),
                                agents.parse_sufficiency, ctx, plan_id=draft["plan_id"])
         draft["goal"], draft["focus"] = verdict["goal"], verdict["focus"]
         if not verdict["enough"]:
-            text = "还需要确认几件事，这样找的资料和路线才准：\n" + "\n".join(f"{i}. {q}" for i, q in enumerate(verdict["questions"], 1))
-            draft["messages"].append(_msg("ai", "questions", text))
+            text = "\n".join(filter(None, [verdict["message"], *verdict["questions"]]))
+            draft["messages"].append(_msg("ai", "questions", text, options=verdict["options"]))
             draft["phase"] = "questions"
             self.save(draft)
             return
-        draft["messages"].append(_msg("ai", "text", f"信息够了。我理解的目标是：{verdict['goal']}"))
+        self._show_preview(draft, ctx)
+
+    def _confirm_preview(self, draft, ctx):
+        if draft["phase"] != "preview" or not draft.get("preview"):
+            raise BridgeError("PHASE_INVALID", "请先确认当前的大致模块。")
+        draft["accepted_preview"] = draft["preview"]
+        self.services.store.save_intake(draft['plan_id'], notes=self._effective_form(draft)['notes'],
+                                        today=self.study_day(), reason='确认需求摘要和大致模块')
         draft["phase"] = "sources"
         self.save(draft)
         links = find_links(" ".join([draft["form"].get("notes", ""), draft["form"].get("goal", "")] +
@@ -443,7 +484,7 @@ class PlanFlow:
         accepted = [(s["title"], s["url"]) for s in draft["sources"] if s["status"] == "adopted" and s.get("url")]
         self.status(plan_id, "正在联网搜索资料（通常要半分钟到一分钟）…")
         suggestions, result = self._ask(
-            "research", agents.research_request(draft["goal"], draft["form"], draft["focus"], accepted=accepted,
+            "research", agents.research_request(draft["goal"], self._effective_form(draft), draft["focus"], accepted=accepted,
                                                 rejected=draft["research"]["rejected"], round_no=draft["research"]["round"],
                                                 instruction=instruction),
             agents.parse_research, ctx, plan_id=plan_id, search=True)
@@ -679,7 +720,7 @@ class PlanFlow:
         lock = self._lock(plan_id)
         with lock:
             draft = self.load(plan_id)
-            if draft["phase"] not in ("form", "questions", "sources", "outline"):
+            if draft["phase"] not in ("form", "questions", "preview", "sources", "outline"):
                 raise BridgeError("PHASE_INVALID", "路线已经开始生成，不能再加资料。")
             try:
                 self.services.store.get_plan(plan_id)
@@ -746,7 +787,7 @@ class PlanFlow:
         material = self._coverage_material(sources, sections, chunks_by_source)
         self.status(draft["plan_id"], "正在核对资料能覆盖哪些内容…")
         verdict, _ = self._ask("coverage_check", agents.coverage_request(
-            draft.get("goal") or draft["form"].get("goal", ""), draft["form"], sources, material,
+            draft.get("goal") or draft["form"].get("goal", ""), self._effective_form(draft), sources, material,
             abandoned=draft.get("abandoned_topics", ())), agents.parse_coverage, ctx,
             plan_id=draft["plan_id"], max_tokens=8192)
         result = dict(verdict, blocked=not verdict["covered"],
@@ -779,7 +820,7 @@ class PlanFlow:
             draft["messages"].append(_msg("user", "user_text", request))
         chunks = [c for items in self._adopted(draft)[1].values() for c in items]
         self.status(draft["plan_id"], "正在从已认可资料整理知识地图…" if not previous else "正在按你的意见修改知识地图…")
-        outline, _ = self._ask("outline", agents.map_request(draft["goal"], draft["form"], window_note(window), sources,
+        outline, _ = self._ask("outline", agents.map_request(draft["goal"], self._effective_form(draft), window_note(window), sources,
                                                                 sections, chunks, previous=previous, request=request),
                                lambda text: agents.parse_map(text, sections, sources, chunks), ctx,
                                plan_id=draft["plan_id"], max_tokens=8192)
@@ -913,7 +954,8 @@ class PlanFlow:
         draft["generation"][first["id"]] = "running"
         self.save(draft)
         try:
-            prepare(store, plan_id, first["id"], self._material_context(ctx), progress)
+            preparation = prepare(store, plan_id, first["id"], self._material_context(ctx), progress)
+            self._save_material_summary(plan_id, first["id"], preparation)
             if ctx.cancel.is_set():
                 raise ModelCancelled()
             if not self._module_ready(plan_id, first['id']):
@@ -942,7 +984,18 @@ class PlanFlow:
         uncovered = set(uncovered_points(store, plan_id, self._material_context(
             CallContext('material-check', threading.Event(), lambda _: None))))
         return bool(points) and all(p['id'] not in uncovered and
-            sum(p['id'] in q['point_ids'] for q in bank) >= 2 for p in points)
+            sum(p['id'] in q['point_ids'] for q in bank if q.get('role', 'bank') == 'bank') >= 2 for p in points)
+
+    def _save_material_summary(self, plan_id, module_id, result):
+        if not isinstance(result, dict) or not any(k in result for k in ('points', 'cloze_points', 'cloze_heavy')):
+            # The integrated baseline still returns aggregate question counts.
+            # MF-02's new summary will be exercised through the agreed test stub.
+            return
+        summary = {k: result.get(k) for k in ('points', 'cloze_points', 'cloze_heavy')}
+        if (type(summary['points']) is not int or type(summary['cloze_points']) is not int
+                or not 0 <= summary['cloze_points'] <= summary['points'] or type(summary['cloze_heavy']) is not bool):
+            raise BridgeError('PREPARATION_FORMAT', '资料准备结果不完整，请重试。')
+        self.services.store.save_module_preparation(plan_id, module_id, summary)
 
     def _prepare_remaining(self, plan_id, modules, prepare):
         with self._guard:
@@ -958,7 +1011,8 @@ class PlanFlow:
                     def progress(done, total, text):
                         self.push("plan_preparation", {"plan_id": plan_id, "module_id": module["id"],
                             "done": done, "total": total, "text": text})
-                    prepare(self.services.store, plan_id, module["id"], self._material_context(ctx), progress)
+                    preparation = prepare(self.services.store, plan_id, module["id"], self._material_context(ctx), progress)
+                    self._save_material_summary(plan_id, module["id"], preparation)
                     if not self._module_ready(plan_id, module['id']):
                         raise BridgeError('MATERIALS_INCOMPLETE', '后续模块的原文或题目不足。')
                     self._record_preparation(plan_id, module["id"], "done")
@@ -1145,6 +1199,8 @@ class PlanFlow:
                                 for s in draft["outline"]["stages"]]
         if draft.get("estimate"):
             facts["estimate"] = draft["estimate"]
+        if draft.get("preview"):
+            facts["preview"] = draft["preview"]
         if phase == "ready":
             store, plan_id = self.services.store, draft["plan_id"]
             rows = store.records("modules", plan_id)
@@ -1159,10 +1215,16 @@ class PlanFlow:
     def chat(self, draft, ctx, message):
         """The chat box: the intent agent says what the message asks for; the host does it (BUG-13)."""
         phase = draft["phase"]
-        if phase not in ("questions", "sources", "outline", "ready"):
+        if phase not in ("questions", "preview", "sources", "outline", "ready"):
             raise BridgeError("PHASE_INVALID", "请先填写上面的表单。" if phase == "form" else "正在生成，请稍等。")
         draft["messages"].append(_msg("user", "user_text", message))
         self.save(draft)
+        compact = re.sub(r"[\s，,。！!？?]+", "", message)
+        if phase == 'questions' and compact in ('就这样吧', '就这样', '直接开始', '直接开始吧', '开始吧'):
+            draft['goal'] = draft.get('goal') or draft['form']['goal']
+            return self._show_preview(draft, ctx)
+        if phase == 'preview' and compact in ('可以', '可以了', '行', '好的', '同意', '就这样吧', '确认并找资料', '开始找资料', '直接开始'):
+            return self._confirm_preview(draft, ctx)
         text = message
         links = find_links(message) if phase in ("sources", "outline") else []
         if links:  # pasted addresses are opened directly; no model is needed to understand them
@@ -1244,6 +1306,16 @@ class PlanFlow:
             return self._import_links(draft, ctx, params["urls"])
         if kind == "answer":
             return self._check_sufficiency(draft, ctx)
+        if kind == "supplement":
+            draft.setdefault('requirements', []).append(params['instruction'])
+            draft['outline'] = None
+            draft.pop('estimate', None)
+            draft.pop('coverage', None)
+            draft.pop('preview', None)
+            draft.pop('accepted_preview', None)
+            draft['phase'] = 'questions'
+            self.save(draft)
+            return self._check_sufficiency(draft, ctx)
         if kind in ("question", "ask_user", "refuse"):
             return self._say(draft, params[{"question": "answer", "ask_user": "question", "refuse": "reason"}[kind]])
         if kind == "chat":
@@ -1280,6 +1352,8 @@ class PlanFlow:
         if kind == "abandon_scope":
             return self._abandon_scope(draft, ctx, params["items"])
         if kind == "revise_outline":
+            if phase in ('questions', 'preview'):
+                return self._carry_out(draft, ctx, plan_intent.Intent('supplement', params), context)
             if phase == "sources":
                 return self.make_outline(draft, ctx, params["instruction"], echo=False)
             if phase != "outline":
@@ -1289,6 +1363,15 @@ class PlanFlow:
             return self._edit_modules(draft, params)
         if kind == "proceed":
             step = params["step"]
+            if step == 'preview':
+                if phase != 'questions':
+                    return self._say(draft, '请先确认大致模块，之后再找资料。')
+                return self._show_preview(draft, ctx)
+            if step == 'sources':
+                previous = (context.get('facts') or {}).get('preview') or {}
+                if context.get('phase') != 'preview' or previous.get('version') != (draft.get('preview') or {}).get('version'):
+                    return self._say(draft, '大致模块已调整，请先看新版摘要和模块，确认后再找资料。')
+                return self._confirm_preview(draft, ctx)
             if step == "outline":
                 if phase != "sources":
                     return self._say(draft, "路线轮廓已经有了。" if phase == "outline" else "现在还不到生成路线的时候。")
@@ -1330,7 +1413,6 @@ class PlanFlow:
             self.services.store.rename_plan(draft["plan_id"], draft["name"])
             draft["outline"] = None
             draft.pop("estimate", None)
-            draft["phase"] = "sources"
         draft.pop("coverage", None)
         if draft.get("outline"):
             modules = agents.outline_modules(draft["outline"])
@@ -1342,7 +1424,13 @@ class PlanFlow:
                      "start": form["start"], "end": form["end"]}.get(key)
             shown.append(f"{self._FORM_LABELS[key]}改为 {value}" if value else f"更新了{self._FORM_LABELS[key]}")
         self._say(draft, "已修改：" + "，".join(shown) + "。")
-        if phase == "questions" and any(form[k] != old[k] for k in about):
+        if phase in ('questions', 'preview', 'sources', 'outline') and any(form[k] != old[k] for k in about):
+            draft['outline'] = None
+            draft.pop('preview', None)
+            draft.pop('accepted_preview', None)
+            draft.pop('estimate', None)
+            draft['phase'] = 'questions'
+            self.save(draft)
             self._check_sufficiency(draft, ctx)
 
     def _edit_modules(self, draft, params):
@@ -1409,7 +1497,8 @@ class PlanFlow:
                   "stages": [{"id": s["id"], "title": s.get("title", ""), "modules": [
                       {"id": m["id"], "title": m["title"], "summary": m.get("summary", ""), "learning_minutes": m["learning_minutes"],
                        "check_minutes": m["check_minutes"], "points": by_module.get(m["id"], []),
-                       "state": book.module(m["id"]).state if book else None}
+                       "state": book.module(m["id"]).state if book else None,
+                       "cloze_heavy": bool((m.get('material_preparation') or {}).get('cloze_heavy'))}
                       for m in modules if m["stage_id"] == s["id"]]} for s in stages],
                   "sources": [{"id": s["id"], "title": s.get("title") or s.get("url") or s.get("filename"), "url": s.get("url"),
                                "kind": s["kind"]} for s in store.records("sources", plan_id) if s.get("adopted")]}

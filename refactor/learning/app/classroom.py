@@ -11,12 +11,11 @@ import random
 import re
 import threading
 import time
-import unicodedata
 import uuid
 from types import SimpleNamespace
 
 from ..connections.errors import ModelCancelled, ModelError
-from ..course import judge_agent, teacher_agent, question_bank
+from ..course import judge_agent, teacher_agent, question_bank, answer_compare
 from ..course.request_layout import AppendOnlyPage, dialogue_tail
 from ..course.mastery import ANGLES, AttemptClosed, Judgement
 from ..course.planner_agents import LEVELS, AgentFormatError
@@ -29,6 +28,7 @@ _PLAN_ID = re.compile(r"[a-f0-9]{32}")
 PREF_KEYS = ("teacher_style", "detail", "examples", "analogy_domains")
 DIALOGUE_ROWS, DIALOGUE_CHARS, CHECK_BATCH = 40, 60000, 4
 RESET, VERDICT_EVENT = "\x00", "\x01VERDICT:"
+MATERIAL_EVENT = "\x01MATERIAL:"
 PURPOSE = {"casual": "quick", "quick": "quick", "module_test": "module", "skip_test": "direct",
            "retest": "retest", "check": "final", "practice": "free"}
 
@@ -37,22 +37,16 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-def _normal(value):
-    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", value).casefold())
-
-
 class Classroom:
     _mutex = threading.Lock()
     _room_locks = {}
-    _inflight = {}
 
-    def __init__(self, services, study_day, *, now=_now, rng=None, review_wrong=None):
+    def __init__(self, services, study_day, *, now=_now, rng=None):
         self.services, self.study_day, self.now = services, study_day, now
         self._rng = rng or random.Random()
         self._jobs, self._entered_plans = {}, set()
         self._local = threading.local()
         self.material_event = lambda data: None
-        self.review_wrong = judge_agent.REVIEW_WRONG_DEFAULT if review_wrong is None else review_wrong
         self._teacher_request_page = AppendOnlyPage()
 
     def cancel_materials(self, plan_id=None):
@@ -81,7 +75,7 @@ class Classroom:
     def run(self, plan_id, work, ctx=None):
         lock = self._lock(plan_id)
         if not lock.acquire(False):
-            message = "正在判定这道题，请稍后再问。" if self._inflight.get(self._activity_key(plan_id)) == "judging" else "老师正在回复，请稍后再发；已有内容和位置保留。"
+            message = "课堂正在处理，请稍后再发；已有内容和位置保留。"
             raise BridgeError("CLASS_BUSY", message)
         try:
             course = self._course(plan_id)
@@ -91,7 +85,9 @@ class Classroom:
                 return self.snapshot(course, state)
             original = copy.deepcopy(state)
             try:
-                if self._test_already_closed(course, state):
+                if state.get('pending') and not answer_compare.can_grade(state['pending']['question']) and not (action and action[0]=='leave'):
+                    self._replace_subjective(course,state,ctx)
+                elif self._test_already_closed(course, state):
                     self._finish_test(course, state, ctx)
                 else:
                     work(course, state, ctx)
@@ -120,7 +116,6 @@ class Classroom:
             self._save(course, state)
             return self.snapshot(course, state)
         finally:
-            self._inflight.pop(self._activity_key(plan_id), None)
             lock.release()
 
     def _load(self, course):
@@ -172,9 +167,9 @@ class Classroom:
         today = self._today(course,state)
         return dict(plan={k:course.plan.get(k) for k in ('id','goal','state')},
             module=dict(id=module['id'],title=module['title'],number=course.modules.index(module)+1,total=len(course.modules),state=book.module(module['id']).state),
-            points=[dict(id=p['id'],title=p['title'],minutes=p['minutes'],taught=p['id'] in taught,state=book.point(p['id']).state,current=i==state['index']) for i,p in enumerate(points)],
+            points=[dict(id=p['id'],title=p['title'],minutes=p['minutes'],taught=p['id'] in taught,state='weak' if book.point(p['id']).casual_errors and book.point(p['id']).state=='untested' else book.point(p['id']).state,current=i==state['index']) for i,p in enumerate(points)],
             step=state['step'],question=question,messages=messages,conversation=state.get('conversation'),
-            preparation=state.get('material_wait'),failure=state.get('failure'),explanation=state.get('answer_explanation'),
+            preparation=state.get('material_wait') or self._final_progress(course),failure=state.get('failure'),explanation=state.get('answer_explanation'),
             can_skip=state['step']=='teach' and state['index']==0 and not any(p['id'] in taught for p in points),
             red=[p['title'] for p in points if book.point(p['id']).state=='red'],
             more_modules=any(book.module(m['id']).state=='untested' for m in course.modules if m['id']!=module['id']),
@@ -187,7 +182,8 @@ class Classroom:
 
     def _ready(self, course, module_id):
         bank=course.store.records('question_bank',course.plan_id)
-        return all(course.passages([p['id']]) and sum(p['id'] in q.get('point_ids',[]) and q.get('kind') in ('choice','multi','fill','short','essay','calc') for q in bank)>=2 for p in course.points_of(module_id))
+        return all(course.passages([p['id']]) and sum(p['id'] in q.get('point_ids',[]) and q.get('role','bank')=='bank' for q in bank)>=2
+                   and any(q.get('role')=='quick' and q.get('point_ids')==[p['id']] for q in bank) for p in course.points_of(module_id))
 
     def _fingerprint(self, course, module_id):
         data=[{k:v for k,v in p.items() if k!='chunk_ids'} for p in course.points_of(module_id)]
@@ -213,9 +209,7 @@ class Classroom:
                     fresh=self._course(course.plan_id)
                     if self._fingerprint(fresh,module_id)!=fingerprint:
                         job['status']='stale'
-                    elif not self._ready(fresh,module_id):
-                        job.update(status='failed',error='原文或带答案题不足，请在计划里补资料后重试。')
-                    else:job['status']='ready'
+                    else:job['status']='ready'  # Shortages are handled per point, not an endless module gate.
             except Exception as exc:
                 log.info('material preparation failed',exc_info=True)
                 job.update(status='failed',error=getattr(exc,'message','资料准备没有完成，请重试。'))
@@ -235,7 +229,8 @@ class Classroom:
         if not wait:return
         job=self._jobs.get((course.plan_id,wait['module_id'])) or self._prepare(course,wait['module_id'])
         wait.update(done=job['done'],total=job['total'],text=job['text'],error=job['error'])
-        if job['status']=='ready' and self._ready(course,wait['module_id']):
+        if job['status']=='ready':
+            state.setdefault('materials_attempted',{})[wait['module_id']]=job['fingerprint']
             state['step']=wait['previous_step'];state.pop('material_wait')
             getattr(self,wait['action'])(course,state,ctx,*wait['args'])
 
@@ -263,6 +258,11 @@ class Classroom:
             if job:job['cancel'].set()
             self._prepare(course,wait['module_id'])
 
+    def stop_preparation(self, course, state, ctx):
+        self.cancel_materials(course.plan_id)
+        wait=state.pop('material_wait',None)
+        if wait:state['step']=wait['previous_step']
+
     def next(self, course, state, ctx):
         if state['step']=='preparing_materials':return
         if state['step']=='closing':
@@ -271,8 +271,16 @@ class Classroom:
             if self._target_met(course,state):return
         if state['step']=='teaching':return self._casual_card(course,state,ctx)
         if state['step']!='teach':raise BridgeError('STEP_INVALID','请先完成当前的对话或题目。')
-        if not self._ready(course,state['module_id']):return self._wait(course,state,'next')
+        if not self._ready(course,state['module_id']) and state.get('materials_attempted',{}).get(state['module_id'])!=self._fingerprint(course,state['module_id']):return self._wait(course,state,'next')
         point=course.points_of(state['module_id'])[state['index']]
+        if not course.passages([point['id']]):
+            self._prepare_one(course,point['id'],ctx)
+            course = self._course(course.plan_id)
+            if not course.passages([point['id']]):
+                self._skip_question(course,state,point['id'],'learning','没有关联的原文段落')
+                state['index']+=1
+                state['step']='teach' if state['index']<len(course.points_of(state['module_id'])) else 'test_offer'
+                return
         chapter=f"先用一句话说明这一章要解决什么问题：{course.module(state['module_id'])['title']}。" if state['index']==0 else ''
         teaching=self._teacher(course,state,ctx,chapter+'用一个生活化问题开头，给2～3个不计分的可点选项，也允许打字。先不要讲完整结论。',[point['id']],opening=True)
         self._deliver(course,state,teaching)
@@ -314,62 +322,40 @@ class Classroom:
             if text.strip() in ('我会了','我已经会了') and state['step'] in ('teaching','closing'):
                 return self._casual_card(course,state,ctx,quick=True)
             return self.ask(course,state,ctx,text)
-        verdict=self._prior_verdict(course,state,pending) or self._judge(course,state,ctx,pending,text)
-        if verdict.kind=='question':return self.ask(course,state,ctx,text)
-        if verdict.kind=='claim_known' and pending['kind']=='casual':return self._casual_card(course,state,ctx,quick=True)
-        if verdict.kind in ('insufficient','process_missing'):
-            prompt='写一下你是怎么得到的。' if verdict.kind=='process_missing' else '能再具体说说你的回答吗？'
-            if pending.get('followup'):
-                raise BridgeError('JUDGE_UNCLEAR','补充后仍无法完成判定，请重试；本题还没有记分。')
-            pending['followup']=text
-            self._user(course,state,text);self._say(course,state,prompt,kind='question')
-            return
-        if verdict.kind=='clarify' or verdict.uncertain:
-            replacement=self._pick(course,pending['point_ids'][0],PURPOSE[pending['kind']],exclude=(pending['question']['id'],))
-            self._user(course,state,text)
-            self._say(course,state,'这次判定拿不准，同一点换一道题确认；刚才的作答还没有记分。')
-            old=pending['kind'];state['pending']=None
-            return self._show_question(course,state,replacement,old,asks=pending.get('asks',1))
-        if verdict.kind!='answer':
-            self._user(course,state,text)
-            self._say(course,state,'对错和进度由系统记录，老师不能直接判过；你可以提问，也可以回答当前题。')
-            return
-        return self._settle(course,state,ctx,pending,verdict,text)
+        q=pending['question']
+        prior=self._prior_verdict(course,state,pending)
+        if prior:return self._settle(course,state,ctx,pending,prior,text)
+        if not answer_compare.can_grade(q):return self._replace_subjective(course,state,ctx)
+        if q['kind'] in ('choice','multi'):
+            value=answer_compare.choice_text(q,text)
+            if value is None:
+                self._user(course,state,text)
+                return self._say(course,state,'请点题目选项作答；想问老师可以点“提问”，当前题目保留。',role='system')
+        elif q['kind']=='fill':
+            value=[text] if len(q['answer'])==1 else re.split(r'[；;\n]+',text)
+        else:value=text
+        return self.answer(course,state,ctx,value)
 
     def answer(self, course, state, ctx, value):
         pending=state.get('pending')
         if not pending:raise BridgeError('STEP_INVALID','现在没有待答题。')
-        q=pending['question'];kind=q['kind']
-        if kind in ('choice','multi'):
-            if not isinstance(value,list) or any(type(i) is not int or not 0<=i<len(q['options']) for i in value) or len(set(value))!=len(value) or not value or (kind=='choice' and len(value)!=1):
-                raise BridgeError('PARAM_INVALID','请选择有效的选项。')
-            good=set(value)==set(q['answer'])
-            verdict=judge_agent.Verdict('answer',good,() if good else tuple(q['point_ids']),'选项与资料答案一致。' if good else '选项与资料答案不一致。')
-            return self._settle(course,state,ctx,pending,self._prior_verdict(course,state,pending) or verdict,'、'.join(q['options'][i] for i in sorted(value)))
-        if kind=='fill':
-            if not isinstance(value,list) or len(value)!=len(q['answer']) or any(not isinstance(x,str) or len(x)>4000 for x in value):raise BridgeError('PARAM_INVALID','请填写每一个空。')
-            if all(any(_normal(v)==_normal(a) for a in allowed) for v,allowed in zip(value,q['answer'])):
-                verdict=judge_agent.Verdict('answer',True,(),'填空符合资料列出的可接受写法。')
-                return self._settle(course,state,ctx,pending,self._prior_verdict(course,state,pending) or verdict,'；'.join(value))
-            return self.reply(course,state,ctx,'；'.join(value))
-        raise BridgeError('PARAM_INVALID','这道题请用文字作答。')
-
-    def _judge(self, course, state, ctx, pending, text):
         q=pending['question']
-        combined=f"原回答：{pending['followup']}\n补充回答：{text}" if pending.get('followup') else text
-        jctx=dict(mode='casual',points=[course.point(pid) for pid in pending['point_ids']],
-            excerpts=course.excerpts(pending['point_ids']),question=q,reference=self._reference(q),
-            information_followed_up=bool(pending.get('followup')),require_evidence=q['kind'] in ('short','essay','calc'))
-        request=judge_agent.judge_request(jctx,combined)
-        self._inflight[self._activity_key(course.plan_id)]='judging'
-        try:
-            result=self.services.gateway.complete('judge',request[1],system=request[0],cancel=ctx.cancel if ctx else None,plan_id=course.plan_id,max_tokens=4096)
-            first=judge_agent.defer_incomplete(judge_agent.parse_judgement(result.text,jctx),jctx)
-            if self.review_wrong and jctx['require_evidence'] and first.kind=='answer' and first.correct is False and not first.uncertain:
-                second=self.services.gateway.complete('judge',request[1],system=request[0],cancel=ctx.cancel if ctx else None,plan_id=course.plan_id,max_tokens=4096)
-                return judge_agent.review_verdict(first,judge_agent.parse_judgement(second.text,jctx))
-            return first
-        finally:self._inflight[self._activity_key(course.plan_id)]='working'
+        if not answer_compare.can_grade(q):return self._replace_subjective(course,state,ctx)
+        try:good,text=answer_compare.grade(q,value)
+        except ValueError as exc:raise BridgeError('PARAM_INVALID',str(exc)) from None
+        verdict=judge_agent.Verdict('answer',good,() if good else tuple(q['point_ids']),
+            {'choice':'选项','multi':'选项','fill':'填空','calc':'计算值'}[q['kind']] +
+            ('符合资料标准答案。' if good else '不符合资料标准答案。'))
+        return self._settle(course,state,ctx,pending,self._prior_verdict(course,state,pending) or verdict,text)
+
+    def _replace_subjective(self, course, state, ctx):
+        pending=state['pending'];old=pending['question']
+        self._say(course,state,'旧主观题不计分，换一道可由程序判定的题。',role='system')
+        q=self._pick(course,pending['point_ids'][0],PURPOSE[pending['kind']],exclude=(old['id'],),state=state,ctx=ctx)
+        state['pending']=None
+        if q:return self._show_question(course,state,q,pending['kind'],number=pending.get('number'),total=pending.get('total'))
+        return self._advance_missing(course,state,ctx,pending['kind'])
+
 
     @staticmethod
     def _reference(q):
@@ -377,9 +363,32 @@ class Classroom:
         if q['kind']=='fill':return '\n'.join(' / '.join(a) for a in q['answer'])
         return q['answer']
 
-    def _pick(self, course, point_id, purpose, exclude=()):
-        q=self._materials().pick_question(course.store,course.plan_id,point_id,purpose,exclude_ids=tuple(exclude))
-        if q is None:raise BridgeError('NO_QUESTION','这个点暂时没有带答案的可用题，请补充资料或重新准备；不会现场出题。')
+    def _pick(self, course, point_id, purpose, exclude=(), *, state=None, ctx=None):
+        from ..course.question_bank import objective_question
+        history=self._test_questions(course,point_id) if purpose in ('retest','final') else []
+        avoid=tuple(dict.fromkeys([*exclude,*history]))
+        def select():
+            q=self._materials().pick_question(course.store,course.plan_id,point_id,purpose,exclude_ids=avoid)
+            role='quick' if purpose=='quick' else 'bank'
+            seen=set(avoid)
+            while q and q.get('role','bank')==role:
+                if answer_compare.can_grade(q):return q
+                if q['id'] in seen:break
+                seen.add(q['id'])
+                q=self._materials().pick_question(course.store,course.plan_id,point_id,purpose,exclude_ids=tuple(seen))
+            return None
+        q=select()
+        if q is None and history:
+            # Prefer another question, but a shortage is allowed to reuse the original test.
+            bank={q['id']:q for q in course.store.records('question_bank',course.plan_id)}
+            fallback=self._test_questions(course,point_id,include_retest=False) if purpose=='final' else history
+            q=next((bank[qid] for qid in reversed(fallback) if qid in bank and qid not in exclude and bank[qid].get('role','bank')=='bank' and answer_compare.can_grade(bank[qid]) and objective_question(bank[qid])),None)
+        if q is None:
+            reason=self._prepare_one(course,point_id,ctx)
+            q=select()
+            if q is None:
+                if state is not None:self._skip_question(course,state,point_id,purpose,reason or '没有可由程序判定的客观题（旧主观题不计分）')
+                return None
         q=copy.deepcopy(q)
         if q.get('kind') not in ('choice','multi','fill','short','essay','calc') or not q.get('answer'):
             raise BridgeError('QUESTION_INVALID','题库里这道题缺少有效参考答案，请重新准备。')
@@ -393,7 +402,76 @@ class Classroom:
             if not isinstance(q['answer'],list) or any(not isinstance(a,list) or not a or any(not isinstance(v,str) or not v.strip() for v in a) for a in q['answer']):
                 raise BridgeError('QUESTION_INVALID','填空题可接受写法表不完整。')
         elif not isinstance(q['answer'],str):raise BridgeError('QUESTION_INVALID','题库参考答案须为原文。')
+        if purpose=='quick' and (q['kind']!='choice' or q['point_ids']!=[point_id] or q.get('origin')!='cloze'):
+            raise BridgeError('QUESTION_INVALID','随口问必须是当前点的原文挖空选择题。')
         return q
+
+    @staticmethod
+    def _test_questions(course, point_id, *, include_retest=True):
+        return list(dict.fromkeys(r['question_id'] for r in course.store.records('question_answers',course.plan_id)
+            if point_id in r['point_ids'] and r['context'] in (('module_test','skip_test','retest') if include_retest else ('module_test','skip_test'))))
+
+    def _prepare_one(self, course, point_id, ctx):
+        cancel=ctx.cancel if ctx else threading.Event()
+        if cancel.is_set():raise ModelCancelled()
+        if ctx:ctx.stream(MATERIAL_EVENT+json.dumps(dict(text='正在找题…',done=0,total=1),ensure_ascii=False))
+        try:
+            self._materials().prepare_point(course.store,course.plan_id,course.point(point_id),dict(
+                gateway=self.services.gateway,cancel=cancel,on_status=lambda text: ctx.stream(MATERIAL_EVENT+json.dumps(dict(text=text,done=0,total=1),ensure_ascii=False)) if ctx else None))
+        except Exception as exc:
+            if cancel.is_set() or isinstance(exc,ModelCancelled):raise ModelCancelled() from None
+            log.info('point preparation did not produce a question',exc_info=True)
+            return '找题没有完成；本次已跳过，可补充资料后再试'
+        if cancel.is_set():raise ModelCancelled()
+        return '没有关联的原文段落' if not self._course(course.plan_id).passages([point_id]) else None
+
+    def _skip_question(self, course, state, point_id, purpose, reason):
+        entry=dict(point_id=point_id,title=course.point(point_id)['title'],purpose=purpose,reason=reason,day=self._day(state))
+        gaps=state.setdefault('question_gaps',[])
+        if not any(g['point_id']==point_id and g['purpose']==purpose and g['reason']==reason for g in gaps):gaps.append(entry)
+        if purpose=='final' and point_id not in state.setdefault('check_missing',[]):state['check_missing'].append(point_id)
+        self._say(course,state,f"{entry['title']}：资料缺失，已跳过本次检测（{reason}）。",kind='material_gap')
+
+    def _advance_missing(self, course, state, ctx, kind):
+        if kind in ('casual','quick'):state['step']='closing'
+        elif kind in ('module_test','skip_test','retest'):
+            state['test']['index']+=1
+            if state['test']['index']<len(state['test']['queue']):self._ask_next(course,state,ctx)
+            else:self._finish_test(course,state,ctx)
+        elif kind=='check':
+            state['check']['index']+=1
+            self._next_check(course,state,ctx)
+        else:
+            state['practice']['index']+=1
+            self._ask_practice(course,state,ctx)
+
+    def _final_progress(self, course):
+        job=self._jobs.get((course.plan_id,'final'))
+        return {k:job[k] for k in ('done','total','text','error')} if job and job['status']=='running' else None
+
+    def _prepare_final(self, course):
+        book=course.book();bank=course.store.records('question_bank',course.plan_id)
+        points=[p for p in course.points if book.point(p['id']).level<3 and (book.point(p['id']).module_errors or
+                sum(p['id'] in q.get('point_ids',[]) and q.get('role','bank')=='bank' for q in bank)<3)]
+        fingerprint=repr([(p['id'],book.point(p['id']).check_questions) for p in points])
+        key=(course.plan_id,'final');previous=self._jobs.get(key)
+        if not points or previous and previous['fingerprint']==fingerprint:return
+        if previous:previous['cancel'].set()
+        job=dict(fingerprint=fingerprint,status='running',done=0,total=len(points),text='正在为最终检验准备题目',error=None,cancel=threading.Event())
+        self._jobs[key]=job
+        def worker():
+            try:
+                for i,p in enumerate(points):
+                    if job['cancel'].is_set():return
+                    try:self._materials().prepare_point(course.store,course.plan_id,p,dict(gateway=self.services.gateway,cancel=job['cancel']))
+                    except Exception:
+                        if job['cancel'].is_set():return
+                        log.info('final preparation shortage; retaining existing questions',exc_info=True)
+                    job['done']=i+1;self.material_event(dict(plan_id=course.plan_id))
+            finally:
+                job['status']='ready'
+                if not job['cancel'].is_set():self.material_event(dict(plan_id=course.plan_id))
+        threading.Thread(target=worker,name='classroom-materials',daemon=True).start()
 
     def _show_question(self, course, state, q, kind, *, asks=1, number=None,total=None):
         self._materials().mark_used(course.store,course.plan_id,q['id'],PURPOSE[kind])
@@ -404,7 +482,10 @@ class Classroom:
 
     def _casual_card(self, course, state, ctx, quick=False):
         pid=self._focus(course,state)[0]
-        q=self._pick(course,pid,'quick')
+        q=self._pick(course,pid,'quick',state=state,ctx=ctx)
+        if q is None:
+            state['step']='closing'
+            return
         self._show_question(course,state,q,'quick' if quick else 'casual')
 
     def _explanation(self, course, q):
@@ -421,44 +502,46 @@ class Classroom:
         pieces=[]
         if split:
             for pid in q['point_ids']:
-                piece=self._pick(course,pid,PURPOSE[kind],exclude=(q['id'],))
-                if piece['point_ids']!=[pid]:raise BridgeError('NO_SINGLE_QUESTION','综合题未通过；题库还没有逐点确认题，请重新准备。')
-                pieces.append(piece)
+                piece=self._pick(course,pid,PURPOSE[kind],exclude=(q['id'],),state=state,ctx=ctx)
+                if piece and piece['point_ids']==[pid]:pieces.append(piece)
+                elif piece:self._skip_question(course,state,pid,PURPOSE[kind],'没有逐点确认题')
         with course.store.transaction():
             self._user(course,state,text)
             if kind=='practice':
                 if not any(r['id']==pending['answer_id'] for r in course.store.records('practice_results',course.plan_id)):
                     course.store.append_practice_result(course.plan_id,q['id'],course.point(q['point_ids'][0])['module_id'],q['point_ids'],verdict.correct,reason=verdict.reason,at=self.now(),result_id=pending['answer_id'],wrong_points=list(verdict.wrong_points))
             elif not split:
-                combined=f"原回答：{pending['followup']}\n补充回答：{text}" if pending.get('followup') else text
+                combined=text
                 self._record(course,state,context,pending,verdict,combined)
             self._answer_fact(course,state,context,pending,verdict)
             verdict_id=self._say(course,state,'✓ 答对了。' if verdict.correct else '✗ 这题没答对。',kind='verdict')
-        state['answer_explanation']=dict(self._explanation(course,q),open=not verdict.correct,message_id=verdict_id)
+        explanation=self._explanation(course,q)
+        if kind in ('casual','quick'):
+            paragraphs=course.passages(pending['point_ids'])
+            original=q.get('explanation') or next(iter(paragraphs.values()),{}).get('text') or self._reference(q)
+            restored=q['stem'].replace('____',self._reference(q),1)
+            if '____' in q['stem'] and any(restored in p['text'] for p in paragraphs.values()):original=restored
+            if not q.get('explanation'):
+                original=next((s for s in re.split(r'(?<=[。！？])|\n',original) if self._reference(q) in s),original)
+            explanation=dict(text=original,source=q['answer_source'],label='刚讲的原文')
+        state['answer_explanation']=dict(explanation,open=not verdict.correct,message_id=verdict_id)
         if not verdict.correct:self._say(course,state,state['answer_explanation']['text'],kind='answer_source',role='assistant')
         if ctx:ctx.stream(VERDICT_EVENT+json.dumps(dict(text='答对了' if verdict.correct else '这题没答对',correct=verdict.correct),ensure_ascii=False))
         state['pending']=None
         if kind in ('casual','quick'):
             if kind=='quick' and verdict.correct:
                 self._point_done(course,state);return
-            if verdict.correct or pending['asks']>=2:
-                state['step']='closing'
-                paragraph=next(iter(course.excerpts(pending['point_ids']).values()))
-                summary=re.split(r'[。\n]',paragraph)[0]
-                cid=next(iter(course.excerpts(pending['point_ids'])))
-                self._say(course,state,f"这一点：{summary}。[〔原文〕](mf-source:{cid}) 还有想问的吗？",role='assistant',kind='summary')
-            else:
-                other=self._pick(course,pending['point_ids'][0],'quick',exclude=(q['id'],))
-                self._show_question(course,state,other,'casual',asks=2)
+            state['step']='closing'
         elif kind in ('module_test','skip_test','retest'):
             test=state['test'];test['index']+=1
             if split:
                 test['queue'][test['index']:test['index']]=pieces
                 self._say(course,state,'综合题未通过，暂不归因到任何点；用题库里的逐点题分别确认。')
-            if test['index']<len(test['queue']):self._ask_next(course,state)
+            if test['index']<len(test['queue']):self._ask_next(course,state,ctx)
             else:self._finish_test(course,state,ctx)
         elif kind=='check':
             state['check_used']=state.get('check_used',0)+1;state['check']['index']+=1
+            if not verdict.correct:self._prepare_final(course)
             self._next_check(course,state,ctx)
         else:
             practice=state['practice'];practice['index']+=1
@@ -479,22 +562,32 @@ class Classroom:
         if kind=='module_test' and state['step']!='test_offer':raise BridgeError('STEP_INVALID','模块还没讲完。')
         targets=[p['id'] for p in points if kind!='retest' or book.point(p['id']).state=='red']
         if kind=='retest' and (state['step']!='test_done' or not targets):raise BridgeError('STEP_INVALID','现在没有待重测的点。')
-        if not self._ready(course,mid):return self._wait(course,state,'start_test',(kind,))
         queue=[];covered=set()
         for pid in targets:
             if pid not in covered:
-                q=self._pick(course,pid,PURPOSE[kind]);queue.append(q);covered.update(q['point_ids'])
+                q=self._pick(course,pid,PURPOSE[kind],state=state,ctx=ctx)
+                if q:queue.append(q);covered.update(q['point_ids'])
         state.update(step='retesting' if kind=='retest' else 'testing',test=dict(kind=kind,attempt=uuid.uuid4().hex[:16],queue=queue,index=0,targets=targets))
-        self._ask_next(course,state)
+        if queue:self._ask_next(course,state,ctx)
+        else:self._finish_test(course,state,ctx)
 
-    def _ask_next(self, course, state):
-        test=state['test'];self._show_question(course,state,test['queue'][test['index']],test['kind'],number=test['index']+1,total=len(test['queue']))
+    def _ask_next(self, course, state, ctx=None):
+        test=state['test']
+        while test['index']<len(test['queue']):
+            q=test['queue'][test['index']]
+            if not answer_compare.can_grade(q):
+                q=self._pick(course,q['point_ids'][0],PURPOSE[test['kind']],exclude=(q['id'],),state=state,ctx=ctx)
+            if q:
+                return self._show_question(course,state,q,test['kind'],number=test['index']+1,total=len(test['queue']))
+            test['index']+=1
+        self._finish_test(course,state,ctx)
 
     def start_check(self, course, state, ctx):
         if state['step'] not in ('check_offer','checking') or state.get('pending'):raise BridgeError('STEP_INVALID','请先完成当前步骤。')
+        self._prepare_final(course)
         if course.plan['state']=='active':
             course.store.start_checking(course.plan_id);course.plan=course.store.get_plan(course.plan_id)
-        state.update(phase='check',step='checking',pending=None,check=None,check_used=0)
+        state.update(phase='check',step='checking',pending=None,check=None,check_used=0,check_missing=[])
         self._next_check(course,state,ctx)
 
     def _next_check(self, course, state, ctx):
@@ -504,14 +597,22 @@ class Classroom:
         if book.check_complete():return self._complete(course,state,ctx)
         if state.get('check_used',0)>=CHECK_BATCH:
             state['check']=None;return self._say(course,state,'这组已答完，点继续检验开始下一组。')
-        items=book.next_check_items(n=24,min_gap=3)
+        items=book.next_check_items(n=max(24,len(course.points)*4),min_gap=3)
         if not items:raise BridgeError('CHECK_PENDING','还有知识点需要确认，请继续检验。')
         selected=[];seen=set()
         for pid,_ in items:
+            if pid in state.get('check_missing',[]):continue
             if pid not in seen:
                 selected.append(pid);seen.add(pid)
             if len(selected)>=CHECK_BATCH-state.get('check_used',0):break
-        queue=[self._pick(course,pid,'final') for pid in selected]
+        queue=[]
+        for pid in selected:
+            q=self._pick(course,pid,'final',state=state,ctx=ctx)
+            if q:queue.append(q)
+        if not queue:
+            state['check']=None
+            self._say(course,state,'本组没有可用题，资料缺失的点已跳过；可以下课，到计划详情补充资料后继续检验。')
+            return
         state['check']=dict(queue=queue,index=0)
         self._ask_check(course,state)
 
@@ -536,7 +637,13 @@ class Classroom:
         practice=state['practice'];targets=list(practice['targets']);self._rng.shuffle(targets)
         review=question_bank.review_points(course.store.records('practice_results',course.plan_id))
         targets.sort(key=lambda pid:pid not in review)
-        pid=targets[0];q=self._pick(course,pid,'free')
+        q=None
+        for pid in targets:
+            q=self._pick(course,pid,'free',state=state,ctx=ctx)
+            if q:break
+        if q is None:
+            resume=practice['resume'];gaps=state.get('question_gaps',[]);state.clear();state.update(resume);state['question_gaps']=gaps
+            return self._say(course,state,'本轮没有可用题，资料缺失的点已跳过；练习已结束，计划与报告不变。')
         state['module_id']=course.point(pid)['module_id']
         state['index']=next(i for i,p in enumerate(course.points_of(state['module_id'])) if p['id']==pid)
         self._show_question(course,state,q,'practice',number=practice['index']+1,total=practice['count'])
@@ -711,7 +818,8 @@ class Classroom:
         if state["step"] not in ("test_done",):
             raise BridgeError("STEP_INVALID", "请先完成这个模块的检测。")
         book = course.book()
-        after = [m for m in course.modules if book.module(m["id"]).state == "untested"]
+        after = [m for m in course.modules if book.module(m["id"]).state == "untested"
+                 and m['id'] not in state.get('skipped_modules', [])]
         if after:
             state.update(module_id=after[0]["id"], index=0, step="teach", pending=None, test=None, stems=[])
             for m in course.modules:
@@ -723,7 +831,11 @@ class Classroom:
                          pending=None, test=None)
             self._say(course, state, "所有模块都学过了。这个模块还有没过的点，重测通过后才能进入最终检验。", role="system")
             return
+        if not book.check_ready():
+            self._say(course, state, '本次可学模块已结束。资料缺失的点已跳过，补齐资料后再检测；跳过不代表已掌握。', role='system')
+            return
         state.update(step="check_offer", pending=None, test=None)
+        self._prepare_final(course)
         self._say(course, state, "全部模块都通过了！接下来是最终检验：每个知识点换不同角度问，答对升级，"
                                  "全部升到最高级就完成整个计划。", role="system")
 
@@ -794,6 +906,15 @@ class Classroom:
         day = self._day(state)
         state["pending"], state["test"] = None, None
         store = course.store
+        answered = any(r.get('attempt_id') == test['attempt'] for r in store.records('question_answers', course.plan_id))
+        answered = answered or any(r['event'].get('attempt_id') == test['attempt']
+                                   for r in store.records('judgements', course.plan_id))
+        if not test['queue'] or not answered:
+            skipped = state.setdefault('skipped_modules', [])
+            if module_id not in skipped: skipped.append(module_id)
+            state['step'] = 'test_done'
+            self._say(course, state, '本轮没有可用题目，已记录资料缺失并跳过。可以继续后续模块；没有记入答题、时长或通过。', role='system')
+            return
         # A crash after the close but before the room state was saved leaves the attempt closed in the
         # store; finishing again must not close it twice (BUG-23). The steps below are idempotent.
         if test["kind"] != "retest":
@@ -952,6 +1073,8 @@ def register(bridge, services, study_day, *, presence=lambda active,plan_id=None
         'classroom.why':lambda p,c:invoke('why',p,c),
         'classroom.back':lambda p,c:invoke('back',p,c),
         'classroom.retry':lambda p,c:invoke('retry',p,c),
+        'classroom.cancel_preparation':lambda p,c:invoke('stop_preparation',p,c),
+        'classroom.gaps':lambda p,c:room()._file(p.get('plan_id')).read({}).get('question_gaps',[]),
         'classroom.test':test,
         'classroom.next_module':lambda p,c:invoke('next_module',p,c),
         'classroom.check':lambda p,c:invoke('start_check',p,c),
