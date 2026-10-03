@@ -54,7 +54,7 @@ async function run() {
   fixture.mandatory = true
   useApp.getState().go("settings", "account")
   await checkUpdate(); await wait(1300)
-  assert(dialog() && button("立即更新") && !button("稍后"), "强制更新无稍后按钮")
+  assert(dialog() && button("立即更新") && button("稍后")?.disabled, "强制更新稍后灰色")
   button("立即更新").click(); await wait(1300)
   assert(fixture.installs === 1 && dialog()?.textContent?.includes("2.00 MiB / 10.00 MiB"), "框内进度")
   passed.push("强制更新/框内进度")

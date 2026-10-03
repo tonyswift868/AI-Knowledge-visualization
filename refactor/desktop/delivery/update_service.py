@@ -191,7 +191,10 @@ class MatureUpdateService:
                 plan['rollout_eligible'] = eligible
                 plan['withdrawn'] = release.signed['withdrawn']
                 plan['update'] = plan['update'] and eligible
-                plan['mandatory'] = release.signed['mandatory'] or version_key(self.current) < version_key(release.signed['min_supported_version'])
+                from refactor.desktop.delivery.update_protocol import mandatory_floor, startup_mandatory_reason
+                plan['mandatory_floor'] = mandatory_floor(release)
+                plan['mandatory'] = version_key(self.current) < version_key(plan['mandatory_floor'])
+                plan['mandatory_reason'] = startup_mandatory_reason(release, self.current)
                 self.release, self.plan, self.staged = release, plan, None
                 self._failures = 0
                 self._next_check = time.time() + 86400

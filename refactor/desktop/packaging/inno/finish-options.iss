@@ -12,6 +12,11 @@ begin
   Result := ExpandConstant('{app}\Maintenance\finish-options.ini');
 end;
 
+function NewInstallationShortcuts: Boolean;
+begin
+  Result := ValidatedTargetKind = tkNew;
+end;
+
 function DesktopShortcutPath: String;
 begin
   Result := ExpandConstant('{userdesktop}\{#ShortcutName}.lnk');
@@ -78,6 +83,8 @@ function ApplyFinishOptions: String;
 var SourceLink, LinkHash, ExistingCommand: String;
 begin
   Result := '';
+  { Updates and repairs preserve the user's shortcuts and startup preferences. }
+  if not NewInstallationShortcuts then Exit;
   if not WizardIsTaskSelected('desktopicon') and not WizardIsTaskSelected('startup') then Exit;
   if IsAdminInstallMode or IsAdmin then begin
     Result := '可选设置需要普通用户权限，请取消勾选后继续。'; Exit;

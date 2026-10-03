@@ -1,5 +1,6 @@
 export const fixture = {
   checks: 0, installs: 0, newest: true, mandatory: false,
+  current: "2.0.1", latest: "2.0.2", floor: "", reason: "",
   status: { available: true, busy: false, state: "HEALTHY", version: "2.0.1", current: "2.0.1", message: "尚未检查更新。" } as any,
 }
 export async function call(method: string) {
@@ -17,7 +18,8 @@ export async function call(method: string) {
     fixture.checks++
     fixture.status = { ...fixture.status, state: "CHECKING", busy: true }
     setTimeout(() => { fixture.status = { available: true, busy: false, state: fixture.newest ? "UPDATE_AVAILABLE" : "UP_TO_DATE",
-      version: "2.0.1", current: "2.0.1", latest: fixture.newest ? "2.0.2" : "2.0.1", message: "检查完成",
+      version: fixture.current, current: fixture.current, latest: fixture.newest ? fixture.latest : fixture.current, message: "检查完成",
+      mandatory_floor:fixture.floor, mandatory_reason:fixture.reason,
       release_notes: "慢网自动续传与新课堂", mandatory: fixture.mandatory, deferred: fixture.status.deferred } }, 30)
     return { ...fixture.status }
   }

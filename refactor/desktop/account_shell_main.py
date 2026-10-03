@@ -142,7 +142,9 @@ class AccountShell:
 
     def show(self) -> None:
         self._refresh_local_accounts()
-        self.gate.show()
+        self.gate.showNormal()
+        self.gate.raise_()
+        self.gate.activateWindow()
         self._load_capabilities()
         try:
             profile, automatic = self.session.remembered()
@@ -358,9 +360,21 @@ class AccountShell:
 
         self.gate.set_state(LoginGateState.LOGIN_READY)
 
+    def _updates_allow_login(self) -> bool:
+        adapter = getattr(getattr(self, 'app', None), '_mentorflow_updates', None)
+        return adapter is None or bool(adapter.state.get('login_allowed') and not adapter.state.get('mandatory'))
+
+    def _resume_update_login(self, value) -> None:
+        if getattr(self, '_update_auto_pending', False) and AccountShell._updates_allow_login(self):
+            self._update_auto_pending = False
+            self._begin_remembered_login()
+
     def _begin_remembered_login(self) -> None:
         from refactor.desktop.login_shell import LoginGateState
 
+        if not AccountShell._updates_allow_login(self):
+            self._update_auto_pending = True
+            return
         profile = self._remembered_profile
         if self._closing or profile is None:
             return
@@ -399,7 +413,7 @@ class AccountShell:
         from refactor.desktop.login_shell import LoginGateState
         from refactor.desktop.native_auth import MESSAGES
 
-        if self._closing:
+        if self._closing or not AccountShell._updates_allow_login(self):
             return
         selected = (
             self.session.registry.get(self._remembered_profile.account_id)
@@ -458,6 +472,9 @@ class AccountShell:
         from refactor.desktop.account_protocol import AccountLoginResult
         from refactor.desktop.login_shell import LoginGateState
 
+        if not AccountShell._updates_allow_login(self):
+            self._discard_login_result(result)
+            return
         if not isinstance(result, AccountLoginResult):
             self.gate.set_state(LoginGateState.AUTH_FAILED, detail="登录结果无法验证，请重新登录。")
             return
@@ -532,7 +549,9 @@ class AccountShell:
         # visible.  The first native Chromium surface can otherwise make the
         # Windows top-level window briefly hide and show on first navigation.
         self._bind_learning_features(home)
-        home.show()
+        home.showNormal()
+        home.raise_()
+        home.activateWindow()
         self._session_timer.setInterval(240_000)
         self._session_timer.start()
 
@@ -1537,11 +1556,14 @@ def _show_launch_error(message: str) -> None:
         "并使用 python -m refactor.desktop.account_shell_main 重新启动。"
     ))
     try:
-        if os.name == "nt":
-            import ctypes
-
-            ctypes.windll.user32.MessageBoxW(None, detail, title, 0x10)
-            return
+        from PySide6.QtWidgets import QApplication
+        from .update_dialog import UpdateDialog
+        app = QApplication.instance() or QApplication([])
+        dialog = UpdateDialog()
+        dialog.update_status(dict(state='FATAL_UNRECOVERABLE', message=detail))
+        dialog.later.setText('关闭')
+        dialog.exec()
+        return
     except Exception:
         pass
     sys.stderr.write(title + ": " + detail + "\n")
@@ -1616,6 +1638,7 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
             app._mentorflow_updates = DesktopUpdates(app, install_root, shell.gate)
             app._mentorflow_updates.changed.connect(
                 lambda value: diagnostic_event('update', state=value.get('state', 'UNKNOWN')))
+            app._mentorflow_updates.changed.connect(shell._resume_update_login)
             app._mentorflow_updates.start()
             if update_attempt and update_nonce:
                 from refactor.desktop.delivery.per_user_install import notify_health

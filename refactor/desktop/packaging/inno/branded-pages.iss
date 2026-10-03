@@ -244,8 +244,9 @@ begin
     Bounds(SecondaryButton, 416, 396, 104, 40);
     SecondaryButton.Anchors := [akLeft, akTop];
     if not FinishOptionsShown then begin
-      { Ignore previous installer task state: finish choices always start off. }
-      WizardSelectTasks('');
+      { New installations default to a desktop link; upgrades do not alter it. }
+      if NewInstallationShortcuts then WizardSelectTasks('desktopicon')
+      else WizardSelectTasks('');
       FinishOptionsShown := True;
     end;
   end;

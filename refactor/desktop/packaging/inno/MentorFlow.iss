@@ -77,12 +77,13 @@ Source: "{#SignedRelease}"; DestDir: "{tmp}"; DestName: "base-release.json"; Fla
 Source: "{#BuildInput}\shell.ini"; DestDir: "{app}\Maintenance"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#ShortcutName}"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"
-Name: "{autoprograms}\{#ShortcutName} 修复与更新"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "repair-update --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"
-Name: "{autoprograms}\卸载 {#ShortcutName}"; Filename: "{uninstallexe}"
+Name: "{autoprograms}\{#ShortcutName}"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"; Check: NewInstallationShortcuts
+Name: "{autoprograms}\{#ShortcutName} 修复与更新"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "repair-update --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"; Check: NewInstallationShortcuts
+Name: "{autoprograms}\卸载 {#ShortcutName}"; Filename: "{uninstallexe}"; Check: NewInstallationShortcuts
+Name: "{app}\{#ShortcutName}"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"; Check: NewInstallationShortcuts
 
 [Tasks]
-Name: "desktopicon"; Description: "创建桌面快捷方式"; Flags: unchecked checkablealone
+Name: "desktopicon"; Description: "创建桌面快捷方式"; Flags: checkablealone
 Name: "startup"; Description: "开机时启动 MentorFlow"; Flags: unchecked checkablealone
 
 [Run]

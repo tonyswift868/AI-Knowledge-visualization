@@ -128,7 +128,9 @@ def freeze(args):
             "--noupx", "--paths", ROOT, "--paths", work, "--hidden-import", "mentorflow_delivery_authority",
             "--specpath", work, "--icon", work / "MentorFlow.ico"]
     runtime = base + ["--name", "UserRuntime", "--distpath", work / "runtime", "--workpath", work / "runtime-build"]
-    for module in EXCLUDES + ["PySide6", "numpy", "docling"]:
+    # Recovery uses the same branded QtWidgets dialogs, independently of App.
+    # It still does not load the learning UI/WebEngine or model libraries.
+    for module in EXCLUDES + ["PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "numpy", "docling"]:
         runtime += ["--exclude-module", module]
     run(runtime + [ROOT / "refactor/desktop/delivery/per_user_install.py"], work, work / "runtime-build.log")
     data = [(resources, "refactor/desktop/resources"),
@@ -181,13 +183,49 @@ def audit_payload(payload):
             raise ValueError("test or model unexpectedly bundled: " + str(path))
 
 
+def previous_release(feed, key_id, public, *, path=None, ca=None):
+    """Verify publisher policy before touching payload/output directories."""
+    from refactor.desktop.delivery.update_protocol import verify_release
+    if path is not None:
+        raw = Path(path).read_bytes()
+    else:
+        import ssl
+        import httpx
+        tls = ssl.create_default_context()
+        if ca is not None and ca.is_file(): tls.load_verify_locations(cafile=str(ca))
+        with httpx.Client(verify=tls, trust_env=False, timeout=httpx.Timeout(30, connect=15)) as client:
+            response = client.get(feed); response.raise_for_status(); raw = response.content
+    return verify_release(raw, {key_id: public}, current='0.0.0')
+
+
+def release_policy(version, previous, *, mandatory=False, reason='', minimum=None):
+    from refactor.desktop.delivery.update_protocol import mandatory_floor, version_key
+    if mandatory and reason not in ('security', 'protocol', 'data_compatibility'):
+        raise ValueError('强制更新必须指定 security/protocol/data_compatibility 原因')
+    if reason and reason not in ('security', 'protocol', 'data_compatibility'):
+        raise ValueError('未知强制更新原因')
+    floor = max((mandatory_floor(previous), version if mandatory else '0.0.0'), key=version_key)
+    if minimum is not None:
+        if version_key(minimum) < version_key(floor):
+            raise ValueError('不允许下调线上 mandatory_floor')
+        floor = minimum
+    if version_key(floor) > version_key(version): raise ValueError('强制版本线超过本版本')
+    return dict(min_supported_version=floor, mandatory=mandatory, mandatory_reason=reason)
+
+
 def release(args):
     from refactor.desktop.delivery.gui_manifest import collect_closure
     from refactor.desktop.delivery.package_verification import build_manifest
     payload = args.payload.resolve()
     version = json.loads((payload / "mentorflow-version.json").read_bytes())
     product = validate_feed(args.feed, args.app_id)
-    key_id, _ = read_key(args.public_key)
+    key_id, public = read_key(args.public_key)
+    prior = previous_release(args.feed, key_id, public,
+        path=getattr(args, 'previous_release', None),
+        ca=payload/'_internal/refactor/desktop/resources/trust/account-api.pem')
+    policy = release_policy(version['version'], prior,
+        mandatory=getattr(args, 'mandatory', False), reason=getattr(args, 'mandatory_reason', ''),
+        minimum=getattr(args, 'minimum_version', None))
     check = payload / "SELF-CHECK"
     check.mkdir(exist_ok=True)
     (check / "gui-bootstrap-closure.json").write_bytes(canonical(collect_closure(payload)))
@@ -213,8 +251,8 @@ def release(args):
                   metadata_version=args.epoch, issued_at=now.isoformat(), published_at=now.isoformat(),
                   expires_at=(now + timedelta(days=args.valid_days)).isoformat(), key_id=key_id,
                   rollout_percentage=100, rollout_seed="mentorflow-new-ui-v1", withdrawn=False,
-                  min_supported_version=args.minimum_version, min_updater_version="1.0.0", mandatory=False,
-                  mandatory_reason="", release_notes=args.notes, full_release={"format": "file-set-v1", "size": sum(a["size"] for a in assets), "assets": assets},
+                  **policy, min_updater_version="1.0.0",
+                  release_notes=args.notes, full_release={"format": "file-set-v1", "size": sum(a["size"] for a in assets), "assets": assets},
                   incremental_assets=[row["path"] for row in rows], file_manifest=manifest,
                   hash_algorithm="sha256", signature_algorithm="ed25519", base_versions=args.base_versions,
                   source_sha=source_sha, tree_sha=tree_sha)
@@ -290,7 +328,10 @@ def main():
     for name in ("payload", "public-key", "output"):
         p.add_argument("--" + name, type=Path, required=True)
     p.add_argument("--feed", required=True); p.add_argument("--app-id", default="MentorFlow")
-    p.add_argument("--epoch", type=int, required=True); p.add_argument("--minimum-version", required=True)
+    p.add_argument("--epoch", type=int, required=True); p.add_argument("--minimum-version")
+    p.add_argument('--mandatory', action='store_true')
+    p.add_argument('--mandatory-reason', choices=('security', 'protocol', 'data_compatibility'), default='')
+    p.add_argument('--previous-release', type=Path, help='verified online stable snapshot, instead of a second GET')
     p.add_argument("--base-versions", nargs="*", default=[]); p.add_argument("--valid-days", type=int, default=1096)  # 3 years (SYS-06, user 2026-09-29)
     p.add_argument("--notes", required=True)
     p = sub.add_parser("sign")

@@ -9,7 +9,7 @@ import threading
 import time
 
 from PySide6.QtCore import QObject, QTimer, Qt, Signal, Slot
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 
 class DesktopUpdates(QObject):
@@ -41,6 +41,7 @@ class DesktopUpdates(QObject):
         self._deferred = False
         self._next_automatic = 0
         self._continuing_download = False
+        self._login_blocked = True
         app.aboutToQuit.connect(self.close)
         app.commitDataRequest.connect(self._defer_session)
         core.attach_shutdown_guard(app)
@@ -61,6 +62,8 @@ class DesktopUpdates(QObject):
         if self._closed:
             return self.snapshot()
         if action == "defer":
+            if self.state.get('mandatory') or self.state.get('state') == 'MANDATORY_UPDATE':
+                return self.snapshot()
             self._deferred = True
             self.changed.emit(self.snapshot())
             return self.snapshot()
@@ -84,16 +87,19 @@ class DesktopUpdates(QObject):
         self._cancel.clear()
         self._publish({**self.state, "state": "DOWNLOADING" if action == "install" else "CHECKING",
                        "message": "正在下载并准备更新…" if action == "install" else "正在检查更新…"})
+        self._update_prompt()
 
         def work():
             try:
                 if action == "startup":
-                    result = self.core.get_startup_update_state(self.root, full=False, check_feed=False)
+                    result = self.core.get_startup_update_state(self.root, full=False, check_feed=True,
+                                                               cancel=self._cancel.is_set)
                 elif action == "check":
                     result = self.core.check_latest(self.root, cancel=self._cancel.is_set)
                 else:
                     self._session.require_running()
-                    result = self.core.update_to_latest(
+                    operation = self.core.repair_installation if self.state.get('shell') == 'repair' else self.core.update_to_latest
+                    result = operation(
                         self.root, progress=lambda value: self._send({"progress": value}),
                         cancel=self._cancel.is_set, pid=os.getpid(), hwnd_hex=hwnd)
                     if result.get("coordinator_started"):
@@ -143,14 +149,19 @@ class DesktopUpdates(QObject):
             return
         if "progress" in value:
             self._publish({**self.state, **value["progress"]})
+            self._update_prompt()
             return
         self._busy = False
         result = value["result"]
+        if value['action'] == 'startup':
+            result = {**result, 'mandatory': result.get('state') == 'MANDATORY_UPDATE'}
         self._publish({**self.state, **result})
         if value["action"] == "startup":
-            self.gate.setEnabled(result.get("login_allowed", False))
-            if not result.get("login_allowed", False):
-                QMessageBox.warning(self.gate, "MentorFlow 安装检查", result.get("message", "请使用可信安装包修复。"))
+            if result.get('feed') == 'VERIFIED': self._next_automatic = time.monotonic() + 86400
+            self._login_blocked = not result.get("login_allowed", False)
+            self.gate.setEnabled(not self._login_blocked)
+            if self._login_blocked:
+                self._show_prompt()
         elif value["action"] == "install":
             # User already consented. Retain the .part files and try again later;
             # security failures and explicit cancellation never auto-retry.
@@ -162,11 +173,26 @@ class DesktopUpdates(QObject):
                 self._publish({**self.state, "state": "DOWNLOAD_PAUSED_OR_INTERRUPTED",
                                "message": f"网络不稳，已下载 {done}/{total} 字节，稍后会自动继续。"})
             if self._continuing_download: self._retry.start()
+        self._update_prompt()
+
+    def _show_prompt(self):
+        from .update_dialog import UpdateDialog
+        if self._prompt is None:
+            self._prompt = UpdateDialog(self.gate)
+            self._prompt.install_requested.connect(lambda: self.run('install', self.gate))
+            self._prompt.defer_requested.connect(lambda: self.run('defer'))
+        self._update_prompt()
+        self._prompt.show(); self._prompt.raise_(); self._prompt.activateWindow()
+
+    def _update_prompt(self):
+        if self._prompt is not None:
+            self._prompt.update_status(self.snapshot())
 
     def close(self):
         if self._closed:
             return
         self._closed = True
+        if self._prompt is not None: self._prompt.hide()
         self._retry.stop()
         self._cancel.set()
         self._session.close()

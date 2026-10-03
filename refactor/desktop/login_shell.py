@@ -407,6 +407,7 @@ class LoginGateWindow(QWidget):
                 area = screen.availableGeometry()
                 self.move(area.center() - self.rect().center())
             self._centered = True
+            self.showNormal()
             # One normal activation request on initial user launch, not a
             # topmost flag or repeated foreground-stealing loop.
             self.raise_()

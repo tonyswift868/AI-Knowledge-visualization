@@ -598,6 +598,20 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
 STARTUP_HEALTH_TIMEOUT = 180
 
 
+def app_launch_options():
+    """Pass the user's launcher foreground permission to its normal App child."""
+    if os.name != 'nt': return {}
+    import ctypes
+    # ASFW_ANY must precede Popen; granting the returned PID can lose the race
+    # against the child's initial showEvent. Windows may still reject a grant
+    # from a background caller; do not force focus or attach input threads.
+    ctypes.windll.user32.AllowSetForegroundWindow(ctypes.c_ulong(0xffffffff))
+    startup = subprocess.STARTUPINFO()
+    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.wShowWindow = 1  # SW_SHOWNORMAL
+    return {'startupinfo': startup}
+
+
 def launch_health(root, release, *, timeout=STARTUP_HEALTH_TIMEOUT):
     from refactor.desktop.delivery.windows_update_pipe import Listener
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
@@ -611,7 +625,7 @@ def launch_health(root, release, *, timeout=STARTUP_HEALTH_TIMEOUT):
             app = app_path(root)
             process = subprocess.Popen([str(app / 'MentorFlow.exe'), '--install-mode', 'per_user',
                 '--install-root', str(root), '--update-attempt', attempt, '--update-nonce', nonce],
-                cwd=app, close_fds=True)
+                cwd=app, close_fds=True, **app_launch_options())
             pid = channel.accept(timeout=timeout)
             if pid != process.pid: raise SecurityError('health came from another process')
             signal = channel.receive(timeout=5)
