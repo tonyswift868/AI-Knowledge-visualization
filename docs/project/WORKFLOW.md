@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-03）：第三十七批（A 线：更新、登录错报与日志、建计划卡忙/内部错误/首页）已起草交用户转发；B 线由架构师调研权威资料与带答案题目的来源，出设计给用户定。
+- **现在在做的事**（2026-10-03）：第三十七批六个任务（A 线：更新、登录与日志、首页；B 线：资料与题目、建计划、课堂）已起草交用户转发；回执回来逐个审查合入，全部合入后发 2.0.2 由用户亲自测。
 
 ## 协作方式
 
@@ -65,12 +65,11 @@
 
 ## 待派队列
 
-- 37-MF01、37-MF02、37-MF03：已起草（2026-10-03），交用户转发。合入后：打包 2.0.2（未签名）→ 架构师签名发布（装好的是 2.0.1，可按 3 年签）→ 在用户软件里点更新复测 A 线。
-- B 线（AI 只找资料、不出题）：架构师先调研来源，再出设计给用户定。
+- 37-MF01～MF06：已起草（2026-10-03），交用户转发，六个同时开工。全部合入后：打包 2.0.2（未签名）→ 架构师签名发布（装好的是 2.0.1，可按 3 年签）→ 用户本人在装好的软件里点更新并测试（用户 2026-10-03 定：员工不做模拟学生长流程测试）。
 
-## 第三十七批任务原文（2026-10-03，基线 54cc6dc）
+## 第三十七批任务原文（2026-10-03，基线 eecb4a6）
 
-A 线（用户 2026-10-03 认可）：只修和“AI 只找资料、不出题”新方向无关、改了不会白改的问题。三个任务按文件分工并行；合入后由架构师安排打包 2.0.2、签名发布，再在用户装好的软件里点更新复测。出题、讲稿、课堂判定流程不在本批（B 线重做），不要顺手修。
+用户 2026-10-03 定：A 线（更新、登录与日志、首页）和 B 线（AI 只找资料、不出题：资料与题目、建计划、课堂）六个任务同时开工；全部合入后发 2.0.2，由用户本人在装好的软件里测，员工不做模拟学生长流程测试。
 
 ### [37-MF01] runtime｜更新：慢网不断、发现新版就弹框、默认安装位置
 
@@ -81,16 +80,19 @@ A 线（用户 2026-10-03 认可）：只修和“AI 只找资料、不出题”
   cd D:\MentorFlow-office\runtime\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/runtime
-  git reset --hard 54cc6dc
+  git reset --hard eecb4a6
 测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...（不提交 dist）
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-做法已由架构师定好（用户 2026-10-03 认可 A 线），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
 遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
-花费：本任务原则上不调用真实模型（¥0）；确需真实调用验证时上限 ¥0.5，写明原因。
-同时在跑三个任务（按文件分工，冲突由架构师合并）：
-  37-MF01（runtime）：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
-  37-MF02（platform）：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
-  37-MF03（client）：app/plan_flow.py 的 run、app/classroom.py 的 reply 路径（bridge.py 只动 reply 相关）、Home.tsx、ui.tsx。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）：你只做离线测试和“要做”里写明的小量真实验证，不做模拟学生的长流程测试。花费：¥0（本任务不调用真实模型）。
+同时在跑六个任务（按文件分工，冲突由架构师合并；全部合入后发 2.0.2 给用户测）：
+  37-MF01（runtime）更新：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
+  37-MF02（platform）登录与日志：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
+  37-MF03（client）首页：web/src/pages/Home.tsx、web/src/ui.tsx 里首页用到的部分。
+  37-MF04（library）资料与题目：course/research_pipeline.py、research.py、source_quality.py、source_filter.py、course/data/source_lists.json、course/store.py 的 question_bank 字段、新 course/point_materials.py；删除 question_agent.py、question_solver.py、question_review.py、code_runner.py 及其测试。
+  37-MF05（tools）建计划：app/plan_flow.py、course/planner_agents.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、web/src/pages/PlanDetail.tsx。
+  37-MF06（classroom）课堂：app/classroom.py、course/teacher_agent.py、course/judge_agent.py 的输入、删除 course/lesson_prep.py、web/src/pages/Classroom.tsx、web/src/classroom/*。
 背景（CURRENT_STATE「当前阶段」36-MF02 各次回执、[SYS-06] 的“待修”与“更新提示的交互”）：用户的 2.0.0 升 2.0.1 时，本机到服务器 240–470 KB/s 且有波动，update_download.HTTPTransport 默认 total=30、read=3：14 MB 的文件 30 秒下不完被掐断，2 MB 的更新清单波动时也超时，界面停在“下载已暂停 / 暂时无法检查更新”，要用户反复手点。另外“关于”里只显示一行“发现新版本”，用户要的是弹框。
 先读：AGENTS.md；CURRENT_STATE 的 [SYS-06]、[BUG-45]；refactor/desktop/delivery/update_download.py（HTTPTransport、download）、update_service.py、per_user_update_core.py（one_click_service）、refactor/desktop/updates.py；web/src/pages/Settings.tsx 的“关于”；安装程序的 directory-policy.iss。
 要做（做法已定，照做）
@@ -119,16 +121,19 @@ A 线（用户 2026-10-03 认可）：只修和“AI 只找资料、不出题”
   cd D:\MentorFlow-office\platform\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/platform
-  git reset --hard 54cc6dc
+  git reset --hard eecb4a6
 测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...（不提交 dist）
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-做法已由架构师定好（用户 2026-10-03 认可 A 线），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
 遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
-花费：本任务原则上不调用真实模型（¥0）；确需真实调用验证时上限 ¥0.5，写明原因。
-同时在跑三个任务（按文件分工，冲突由架构师合并）：
-  37-MF01（runtime）：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
-  37-MF02（platform）：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
-  37-MF03（client）：app/plan_flow.py 的 run、app/classroom.py 的 reply 路径（bridge.py 只动 reply 相关）、Home.tsx、ui.tsx。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）：你只做离线测试和“要做”里写明的小量真实验证，不做模拟学生的长流程测试。花费：¥0（本任务不调用真实模型）。
+同时在跑六个任务（按文件分工，冲突由架构师合并；全部合入后发 2.0.2 给用户测）：
+  37-MF01（runtime）更新：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
+  37-MF02（platform）登录与日志：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
+  37-MF03（client）首页：web/src/pages/Home.tsx、web/src/ui.tsx 里首页用到的部分。
+  37-MF04（library）资料与题目：course/research_pipeline.py、research.py、source_quality.py、source_filter.py、course/data/source_lists.json、course/store.py 的 question_bank 字段、新 course/point_materials.py；删除 question_agent.py、question_solver.py、question_review.py、code_runner.py 及其测试。
+  37-MF05（tools）建计划：app/plan_flow.py、course/planner_agents.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、web/src/pages/PlanDetail.tsx。
+  37-MF06（classroom）课堂：app/classroom.py、course/teacher_agent.py、course/judge_agent.py 的输入、删除 course/lesson_prep.py、web/src/pages/Classroom.tsx、web/src/classroom/*。
 背景（CURRENT_STATE「当前阶段」36-MF02 回执 P1-04、P2-03）：真实使用中两次出现“账号已连接”与“登录已失效，请重新验证账号”同时显示，第二次离登录只有 3 分 48 秒。架构师读代码的初步结论：账号外壳在刷新登录凭证遇到网络波动时，按设计“保持登录、后台重试”（account_shell_main._retry_session_refresh 把 _session_refresh_degraded 置真），这期间 _feature_session 可能返回 None；学习侧 sync_source._session 拿到 None 就抛 SESSION_UNAVAILABLE，而 course_sync_service._finish、app/sync.py note_error、app/bridge.py 都把 SESSION_UNAVAILABLE 当成 REAUTH_REQUIRED：同步永久停止、页面显示“登录已失效”。另外重新登录后，旧的登录窗口没有关、仍显示“登录已失效”。装好的软件不写任何日志，无法事后查原因。
 先读：AGENTS.md；refactor/desktop/account_shell_main.py（_feature_session、_retry_session_refresh、刷新成功处、登录窗口 gate 的显示/隐藏）、refactor/learning/sync_source.py、refactor/learning/services/course_sync_service.py、refactor/learning/app/sync.py、refactor/learning/app/bridge.py、refactor/desktop/shell_paths.py（安装版数据目录）。
 要做（做法已定，照做）
@@ -142,38 +147,205 @@ A 线（用户 2026-10-03 认可）：只修和“AI 只找资料、不出题”
 回执：【MF-02｜platform｜第三十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 复现结果与真实触发路径 ／ 改法 ／ 日志位置与内容 ／ 测试结果 ／ 本地最终占用 ／ 问题记录
 ~~~
 
-### [37-MF03] client｜建计划卡“忙”、提问返回内部错误、首页布局
+### [37-MF03] client｜首页布局
 
 ~~~text
-【MentorFlow 第三十七批｜MF-03（工位 client）｜建计划卡“忙”、提问返回内部错误、首页布局】
+【MentorFlow 第三十七批｜MF-03（工位 client）｜首页布局】
 
 开工同步（第一步）
   cd D:\MentorFlow-office\client\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/client
-  git reset --hard 54cc6dc
+  git reset --hard eecb4a6
 测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...（不提交 dist）
 禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-做法已由架构师定好（用户 2026-10-03 认可 A 线），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
 遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
-花费：本任务原则上不调用真实模型（¥0）；确需真实调用验证时上限 ¥0.5，写明原因。
-同时在跑三个任务（按文件分工，冲突由架构师合并）：
-  37-MF01（runtime）：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
-  37-MF02（platform）：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
-  37-MF03（client）：app/plan_flow.py 的 run、app/classroom.py 的 reply 路径（bridge.py 只动 reply 相关）、Home.tsx、ui.tsx。
-背景（CURRENT_STATE「当前阶段」36-MF02 回执 P1-02、P1-07 与用户截图）：
-  - 建计划每一步做完后界面仍显示忙、继续按钮一直灰。原因已定位：app/plan_flow.py 的 run() 在 finally 清掉状态之前就执行了 return {"draft": self.public(draft)}，public() 里的 busy 取到的是上一条状态文字。
-  - 最终检验第一题学生问术语澄清，两次 classroom.reply 返回 ok=false、code=INTERNAL（“操作没有完成，请重试”），学生的话还重复进了聊天。证据在 D:\MentorFlow\.local\test-tmp\acceptance4\（final-clarification-error-audit.json、views/092–093）。
-  - 首页（用户 2026-10-03 截图）：今日计划卡片标题是整句学习目标、超出卡片右边；“开课”按钮伸出卡片到窗口边缘；顶部和卡片各有一个“0/24 分钟”圆环重复；“暂记 10 分”看不懂。
-先读：AGENTS.md；app/plan_flow.py（run、public、status）、web/src/pages/NewPlan.tsx 里 busy 的用法；app/classroom.py 的 reply 路径与 app/bridge.py 的异常映射；web/src/pages/Home.tsx、web/src/ui.tsx。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）：你只做离线测试和“要做”里写明的小量真实验证，不做模拟学生的长流程测试。花费：¥0（本任务不调用真实模型）。
+同时在跑六个任务（按文件分工，冲突由架构师合并；全部合入后发 2.0.2 给用户测）：
+  37-MF01（runtime）更新：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
+  37-MF02（platform）登录与日志：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
+  37-MF03（client）首页：web/src/pages/Home.tsx、web/src/ui.tsx 里首页用到的部分。
+  37-MF04（library）资料与题目：course/research_pipeline.py、research.py、source_quality.py、source_filter.py、course/data/source_lists.json、course/store.py 的 question_bank 字段、新 course/point_materials.py；删除 question_agent.py、question_solver.py、question_review.py、code_runner.py 及其测试。
+  37-MF05（tools）建计划：app/plan_flow.py、course/planner_agents.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、web/src/pages/PlanDetail.tsx。
+  37-MF06（classroom）课堂：app/classroom.py、course/teacher_agent.py、course/judge_agent.py 的输入、删除 course/lesson_prep.py、web/src/pages/Classroom.tsx、web/src/classroom/*。
+背景（用户 2026-10-03 截图，CURRENT_STATE「当前阶段」）：首页今日计划卡片里标题是整句学习目标、超出卡片右边；“开课”按钮伸出卡片一直到窗口边缘；页面顶部和卡片里各有一个“0/24 分钟”圆环，重复；“暂记 10 分”看不懂。
+先读：AGENTS.md；web/src/pages/Home.tsx、web/src/ui.tsx（首页用到的组件与提示文字）、对应样式。
 要做（做法已定，照做）
-  1. 建计划忙：先清状态再构造响应（finally 里清 status、释放锁之后再返回 public 视图），保证响应里的 busy 为空；加测试：一次操作结束后响应 busy 为空、再次操作不被 PLAN_BUSY 挡。
-  2. INTERNAL：用证据里的题目与请求在测试里复现 classroom.reply 的异常（可以把 D:\MentorFlowApp\MentorFlow\Data 里该计划的数据复制到 D:\MentorFlow\.local\test-tmp\fix37-client\ 下用假模型回放，只读原数据、不改用户数据）。找到真实异常后修掉；同时保证失败时学生的话不重复写进聊天（失败就不落库，或重试时去重）。复现不出来就写清尝试过什么，并在 reply 路径补上带堆栈的错误记录，交回。
-  3. 首页：今日计划卡片里标题最多两行、超出省略，鼠标悬停看全文；“开课”按钮宽度不超过卡片；卡片在窄窗口与宽窗口下都不溢出。去掉重复的圆环：顶部保留“今天全部计划”的合计，卡片里只写这份计划今天的进度文字。“暂记 X 分”改成“已学 X 分（模块检测通过后计入完成）”，或你找到更清楚的说法，回执写明。计划名称过长的问题（P3-02）留给 B 线，本任务只保证显示不溢出。
-  4. 测试：plan_flow busy 测试；reply 异常复现与修复测试；首页用前端测试或截图比对验证不溢出（给出 900 px 与 1600 px 宽两张截图）。
-完成标准：建计划不再卡忙；该澄清提问不再返回 INTERNAL、失败不重复写聊天；首页不溢出、不重复、文字看得懂；全量测试通过。
-验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix37-client\report.md。
-回执：【MF-03｜client｜第三十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 三项各自的原因与改法 ／ 截图 ／ 测试结果 ／ 本地最终占用 ／ 问题记录
+  1. 今日计划卡片：标题最多两行，超出省略，鼠标悬停看全文；“开课”按钮宽度不超过卡片；卡片在窄窗口与宽窗口下都不溢出（多份计划时卡片网格排列）。
+  2. 去掉重复的圆环：顶部保留“今天全部计划”的合计圆环；卡片里只写这份计划今天的进度文字（如“今天 0/24 分钟”）。
+  3. “暂记 X 分”改成“已学 X 分（模块检测通过后计入完成）”，或你找到更清楚的说法，回执写明。
+  4. 计划名过长由 37-MF05 改成短名；本任务只保证任何长度都不溢出。
+  5. 测试：前端测试覆盖长标题、多份计划；给出 900 px 与 1600 px 宽各一张截图（用假数据）。
+完成标准：首页不溢出、不重复、文字看得懂；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix37-home\report.md。
+回执：【MF-03｜client｜第三十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 改法 ／ 截图 ／ 测试结果 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [37-MF04] library｜资料与题目：按来源类型判权威、常用来源目录、找现成带答案题、挖空兜底，删掉 AI 出题与核对
+
+~~~text
+【MentorFlow 第三十七批｜MF-04（工位 library）｜资料与题目：按来源类型判权威、常用来源目录、找现成带答案题、挖空兜底，删掉 AI 出题与核对】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard eecb4a6
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）：你只做离线测试和“要做”里写明的小量真实验证，不做模拟学生的长流程测试。花费：只在“要做”写明的真实小量验证里调用真实模型，上限 ¥1，回执报告实际花费。
+同时在跑六个任务（按文件分工，冲突由架构师合并；全部合入后发 2.0.2 给用户测）：
+  37-MF01（runtime）更新：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
+  37-MF02（platform）登录与日志：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
+  37-MF03（client）首页：web/src/pages/Home.tsx、web/src/ui.tsx 里首页用到的部分。
+  37-MF04（library）资料与题目：course/research_pipeline.py、research.py、source_quality.py、source_filter.py、course/data/source_lists.json、course/store.py 的 question_bank 字段、新 course/point_materials.py；删除 question_agent.py、question_solver.py、question_review.py、code_runner.py 及其测试。
+  37-MF05（tools）建计划：app/plan_flow.py、course/planner_agents.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、web/src/pages/PlanDetail.tsx。
+  37-MF06（classroom）课堂：app/classroom.py、course/teacher_agent.py、course/judge_agent.py 的输入、删除 course/lesson_prep.py、web/src/pages/Classroom.tsx、web/src/classroom/*。
+【B 线共用约定（37-MF04、MF05、MF06 必须一致；用户 2026-10-03 定的方向见 CURRENT_STATE「当前阶段」）】
+  方向：AI 生成、AI 核对不可信。AI 只负责找权威资料、在资料里“找、指出、配对”；讲解依据资料原文，题目来自资料或别处现成的带答案题，找不到才从原文挖空；AI 不出题、不解题、不写答案、不讲资料里没有的知识点。判对错仍由判定员（AI）对照参考答案做。
+  1. 讲解依据：已采用资料的分块（store 的 source_chunks）+ 知识点到分块的关联（point_sources）。每个知识点至少关联 1 个分块，分块要能展示原文与位置（资料标题、网址、章节/段落）。
+  2. 题目：question_bank 实体，payload 改为下列字段（旧字段全部去掉）：
+     id、module_id、point_ids（通常 1 个）、kind（choice 单选｜multi 多选｜fill 填空｜short 简答｜essay 综述｜calc 计算）、stem、options（选择题才有）、answer（choice/multi：正确选项下标列表；fill：每个空的可接受答案列表；short/essay/calc：参考答案原文）、explanation（资料自带的解析，没有就空）、origin（found 现成题｜cloze 挖空题）、source {title,url,locator}（题目出处）、answer_source {title,url,locator}（答案出处）、importance（key｜normal）、uses（[{purpose: quick|module|direct|final|retest|free, at}]）、created_at。
+  3. 数量：每点 2～3 道（目标 3）。顺序：已采用资料自带的带答案题 → 到别处找现成的带答案题 → 仍不够才挖空。没有答案的题一律不用。
+  4. 接口（MF-04 在新文件 course/point_materials.py 提供，MF-05、MF-06 调用）：
+     prepare_point(store, plan_id, point, ctx) -> {"passages": n, "questions": n, "cloze": n}（幂等，可后台跑）；
+     prepare_module(store, plan_id, module_id, ctx, progress)（progress(done, total, text)）；
+     pick_question(store, plan_id, point_id, purpose, exclude_ids=()) -> 题或 None（先取这个用途没用过的；都用过就取最久没用的；绝不现场生成）；
+     mark_used(store, plan_id, question_id, purpose)。
+     MF-05、MF-06 在 MF-04 合入前先按这个签名写假实现做测试，最终以 MF-04 的实现为准（架构师合并时对齐）。
+  5. 准备时机：生成计划时同步备好第一个模块的资料段落与题目（界面显示进度），其余模块后台准备；进入某模块前还没备好就显示进度等候，不现场出题。
+背景（CURRENT_STATE「当前阶段」36-MF02 最终回执与用户 2026-10-03 的决定）：真实测试里“初二物理：压强与浮力”搜了两轮 55/49 个候选、0 份达到门槛——权威名单里中文中小学官方来源只有 m.pep.com.cn；最终检验有道 AI 出的题把“压强 P”写成“压力 P”，AI 核对还批准了；软件 ¥5.29 里 81% 花在 AI 写讲稿/出题再 AI 核对上。
+先读：AGENTS.md；CURRENT_STATE 的「当前阶段」、[PLAN-06]、[CHK-01]；course/research_pipeline.py、research.py、source_quality.py、source_filter.py、catalog_client.py、data/source_lists.json、extract.py、ocr.py、materials.py、store.py（question_bank、source_chunks、point_sources）、question_bank.py。
+要做（做法已定，照做）
+  1. 权威判断改成按来源类型，不再一个网站一个网站往名单里补：
+     - 一级：政府与教育部门、考试院（gov.cn、各省市教育考试院）、国家中小学智慧教育平台（smartedu.cn 各子站）、正规教材出版社官网（人民教育出版社 pep.com.cn 全站、北师大、苏教、沪科、外研等）、大学与公开教材（.edu、.edu.cn、OpenStax、MIT OpenCourseWare、LibreTexts）、编程语言与框架官方文档。
+     - 二级：成熟的教育平台（菁优网、学科网、组卷网、Khan Academy、中国大学 MOOC 等），可作补充讲解，也可作题目来源（必须带答案或解析）。
+     - 其他网站：由模型依据网页上能看到的发布者信息（关于我们、备案主体、作者署名）判断属于哪一类，证据写进记录；判断不了的不用。社区帖、转载站、盗版站一律不用。
+     - source_lists.json 改成“来源类型规则 + 常用来源目录”：目录按学科、学段整理，至少覆盖国内中小学语文、数学、英语、物理、化学、生物、历史、地理、道德与法治的官方教材入口，OpenStax 全部教材，Python、JavaScript、Java、C/C++ 官方文档；每条你实际打开验证能访问，写明能取到什么（电子课本全文 / 目录 / 习题 / 答案）。
+     - 门槛从“至少 3 份资料达标”改成“知识地图里每个知识点至少有 1 段一级或二级来源的原文”。
+  2. 搜索：先查目录里对口的来源（例：初二物理压强 → 人教版八年级下册对应章节，在智慧教育平台或人教网），再网页搜索。电子课本若是 PDF 或图片，用现有 extract / ocr 取文字；取不到的来源类型在回执写清。
+  3. 新文件 course/point_materials.py，实现共用约定第 4 条的接口：
+     - 讲解段落：从已采用资料里取与该点相关的分块，建立 point_sources 关联。
+     - 现成题：从已采用资料里找带答案的题（课后习题 + 书后答案、真题 + 答案、OpenStax 章末题 + 答案页、带解析的平台题）；题与答案的配对要有依据（同页题号、答案页题号对应），配不上就不用。
+     - 每点不足 2 道时，用“知识点名 + 学段 + 习题/真题/练习 + 答案”到一级、二级来源里找现成题，只收带答案的。
+     - 仍不足才挖空（origin=cloze）：从该点关联的原文里选关键句。importance=key（定义句、公式、计划里标为重点的点）做填空，最重要的可以做综述题（参考答案就是原文段落）；importance=normal 做挖空选择题。挖掉的词由模型从原文里“指出”，必须是原文原词（程序校验），不改写原文；选择题的错误选项由程序从同一份资料里同类关键词（同章的其他术语、数值、单位）中挑，不让模型编。
+     - 模型在这里只做“找、指出、配对”，不出题、不解题、不写答案。所有答案文字必须能在来源原文里找到（程序做字符串校验，允许空白与标点差异），校验不过的题丢掉。
+  4. 删除旧的出题与核对链路：question_agent.py、question_solver.py、question_review.py、code_runner.py 以及只为它们服务的代码、提示、模型用途与测试；question_bank.py 改为新字段的存取（或并入 point_materials.py）；store.py 里 question_bank 的字段校验改成新字段。旧格式的计划直接作废：检测到旧格式就标为“旧版计划，已不可用”，不迁移（用户 2026-10-03 定）。
+  5. 测试：离线覆盖类型判定、目录匹配、题与答案配对、挖空（原词校验、错误选项来自同一份资料）、pick_question（不重复、全用过时取最久没用的、绝不生成）、答案原文校验能拦住编造的答案。真实小量验证（≤ ¥1）：“初二物理：压强”和“Python：列表”两个点各跑一次 prepare_point，回执列出找到的来源、每道题原文、答案出处，你本人逐条核对答案确实来自来源原文。
+完成标准：搜索能为常见课程找到一、二级来源；每点 2～3 道题都有出处和答案出处；挖空只用原文；旧的 AI 出题与核对代码已删除；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；报告写到 D:\MentorFlow\.local\test-tmp\fix37-materials\report.md（含来源目录的验证清单）。
+回执：【MF-04｜library｜第三十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 类型规则与来源目录（条数、各类能取到什么）／ point_materials 接口 ／ 删除了什么 ／ 两个真实点的结果与核对 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [37-MF05] tools｜建计划：有交互感的流程、知识地图每点标出处、时间预估、短计划名
+
+~~~text
+【MentorFlow 第三十七批｜MF-05（工位 tools）｜建计划：有交互感的流程、知识地图每点标出处、时间预估、短计划名】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\tools\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/tools
+  git reset --hard eecb4a6
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker tools" -c user.email="worker-tools@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）：你只做离线测试和“要做”里写明的小量真实验证，不做模拟学生的长流程测试。花费：只在“要做”写明的真实小量验证里调用真实模型，上限 ¥1，回执报告实际花费。
+同时在跑六个任务（按文件分工，冲突由架构师合并；全部合入后发 2.0.2 给用户测）：
+  37-MF01（runtime）更新：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
+  37-MF02（platform）登录与日志：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
+  37-MF03（client）首页：web/src/pages/Home.tsx、web/src/ui.tsx 里首页用到的部分。
+  37-MF04（library）资料与题目：course/research_pipeline.py、research.py、source_quality.py、source_filter.py、course/data/source_lists.json、course/store.py 的 question_bank 字段、新 course/point_materials.py；删除 question_agent.py、question_solver.py、question_review.py、code_runner.py 及其测试。
+  37-MF05（tools）建计划：app/plan_flow.py、course/planner_agents.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、web/src/pages/PlanDetail.tsx。
+  37-MF06（classroom）课堂：app/classroom.py、course/teacher_agent.py、course/judge_agent.py 的输入、删除 course/lesson_prep.py、web/src/pages/Classroom.tsx、web/src/classroom/*。
+【B 线共用约定（37-MF04、MF05、MF06 必须一致；用户 2026-10-03 定的方向见 CURRENT_STATE「当前阶段」）】
+  方向：AI 生成、AI 核对不可信。AI 只负责找权威资料、在资料里“找、指出、配对”；讲解依据资料原文，题目来自资料或别处现成的带答案题，找不到才从原文挖空；AI 不出题、不解题、不写答案、不讲资料里没有的知识点。判对错仍由判定员（AI）对照参考答案做。
+  1. 讲解依据：已采用资料的分块（store 的 source_chunks）+ 知识点到分块的关联（point_sources）。每个知识点至少关联 1 个分块，分块要能展示原文与位置（资料标题、网址、章节/段落）。
+  2. 题目：question_bank 实体，payload 改为下列字段（旧字段全部去掉）：
+     id、module_id、point_ids（通常 1 个）、kind（choice 单选｜multi 多选｜fill 填空｜short 简答｜essay 综述｜calc 计算）、stem、options（选择题才有）、answer（choice/multi：正确选项下标列表；fill：每个空的可接受答案列表；short/essay/calc：参考答案原文）、explanation（资料自带的解析，没有就空）、origin（found 现成题｜cloze 挖空题）、source {title,url,locator}（题目出处）、answer_source {title,url,locator}（答案出处）、importance（key｜normal）、uses（[{purpose: quick|module|direct|final|retest|free, at}]）、created_at。
+  3. 数量：每点 2～3 道（目标 3）。顺序：已采用资料自带的带答案题 → 到别处找现成的带答案题 → 仍不够才挖空。没有答案的题一律不用。
+  4. 接口（MF-04 在新文件 course/point_materials.py 提供，MF-05、MF-06 调用）：
+     prepare_point(store, plan_id, point, ctx) -> {"passages": n, "questions": n, "cloze": n}（幂等，可后台跑）；
+     prepare_module(store, plan_id, module_id, ctx, progress)（progress(done, total, text)）；
+     pick_question(store, plan_id, point_id, purpose, exclude_ids=()) -> 题或 None（先取这个用途没用过的；都用过就取最久没用的；绝不现场生成）；
+     mark_used(store, plan_id, question_id, purpose)。
+     MF-05、MF-06 在 MF-04 合入前先按这个签名写假实现做测试，最终以 MF-04 的实现为准（架构师合并时对齐）。
+  5. 准备时机：生成计划时同步备好第一个模块的资料段落与题目（界面显示进度），其余模块后台准备；进入某模块前还没备好就显示进度等候，不现场出题。
+背景（CURRENT_STATE「当前阶段」用户 2026-10-03 的流程描述、36-MF02 回执 P1-02、P2-02、P3-02）：用户要建计划有交互感：先填预设表单，之后随时聊天补充；AI 自己去找资料（不是填完表就反问用户）；用户认可资料后生成简略知识地图；用户确认、勾选资料；看时间预估；再生成。真实测试中还有：每步结束后一直显示忙（plan_flow.run 在 finally 清状态前就构造了响应）；一句话里同时给网址和缩小范围时意图理解出错；放弃 p=ρgh 后计划名仍含该公式、名字是一整句目标。
+先读：AGENTS.md；CURRENT_STATE 的「当前阶段」、[PLAN-01]、[PLAN-02]、[PLAN-04]、[PLAN-06]、[PLAN-07]；app/plan_flow.py、course/planner_agents.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、PlanDetail.tsx。
+要做（做法已定，照做）
+  1. 流程：表单（现有）→ 聊天随时补充（现有意图理解）→ 自动找资料（调 MF-04 的搜索，用户不需要先找）→ 列出找到的资料让用户勾选认可（每份显示标题、来源类型、为什么可信、能用于讲解还是题目）→ 生成“简略知识地图”：模块与知识点只能来自已认可资料的目录与内容，每个点标出依据的资料和段落（程序校验引用的段落确实在已取得的原文里，引用不到的点删掉，并在聊天里说明删了什么）→ 用户在聊天里要求增删、合并、放弃部分（沿用 35-MF04 的覆盖检查与“放弃这部分”）→ 时间预估（规则不变：按点数 × 平均 15 分钟），对照用户填的每天时长；按用户日期每天需要超过 300 分钟时，提示延长天数（给出建议天数）或缩小范围，用户选了再继续 → 确认后生成。
+     资料不够覆盖某些点时，说清缺什么、大约几个点，问用户是继续找、提供资料，还是这部分不学；题目不够不在建计划时问用户（由 MF-04 找现成题或挖空解决）。
+  2. 生成：保存计划，调 prepare_module 同步备好第一个模块（界面显示“正在准备第 1 模块的资料与题目 x/y”），其余模块后台准备；第一个模块好了就能开始。
+  3. 计划名：从表单目标提炼短名（≤20 字，如“初二物理：压强与浮力”），长目标放进计划详情；放弃部分后，名称和目标同步去掉被放弃的内容。
+  4. 卡忙：plan_flow.run 改成 finally 里清状态、释放锁之后再构造并返回 public 视图，保证响应里 busy 为空。
+  5. 混合意图：一句话里同时给网址和缩小范围时，意图理解返回多个意图依次执行（先导入网址，再处理范围），不再报格式错误。
+  6. 去掉不再需要的旧步骤与调用（例如为 AI 出题、AI 写讲稿服务的大纲字段）；大纲仍可由模型依据资料目录组织，但每个点必须引用资料段落。
+  7. 测试：离线覆盖完整流程（假模型、假搜索）、引用校验删点、300 分钟提示、短名、放弃后改名、busy 为空、混合意图。真实小量验证（≤ ¥1）：用“初二物理：压强与浮力”走到知识地图，回执贴出地图和每个点引用的资料段落，你本人核对引用确实在原文里。
+完成标准：上面流程在界面上走得通；知识地图每点有出处；卡忙、混合意图、计划名问题消失；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix37-plan\report.md。
+回执：【MF-05｜tools｜第三十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 新流程各步 ／ 知识地图与引用校验 ／ 时间提示 ／ 计划名 ／ 卡忙与混合意图 ／ 真实验证结果 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [37-MF06] classroom｜课堂：像对话一样跟着老师走，讲解依据原文，题目取自题库
+
+~~~text
+【MentorFlow 第三十七批｜MF-06（工位 classroom）｜课堂：像对话一样跟着老师走，讲解依据原文，题目取自题库】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard eecb4a6
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）：你只做离线测试和“要做”里写明的小量真实验证，不做模拟学生的长流程测试。花费：只在“要做”写明的真实小量验证里调用真实模型，上限 ¥1，回执报告实际花费。
+同时在跑六个任务（按文件分工，冲突由架构师合并；全部合入后发 2.0.2 给用户测）：
+  37-MF01（runtime）更新：desktop/delivery/*、desktop/updates.py、Settings.tsx 的“关于”与更新弹框组件、安装程序脚本。
+  37-MF02（platform）登录与日志：desktop/account_shell_main.py、learning/sync_source.py、learning/services/course_sync_service.py、learning/app/sync.py、bridge.py 的登录错误映射、新的日志模块（Settings.tsx 只加“打开日志文件夹”一个入口）。
+  37-MF03（client）首页：web/src/pages/Home.tsx、web/src/ui.tsx 里首页用到的部分。
+  37-MF04（library）资料与题目：course/research_pipeline.py、research.py、source_quality.py、source_filter.py、course/data/source_lists.json、course/store.py 的 question_bank 字段、新 course/point_materials.py；删除 question_agent.py、question_solver.py、question_review.py、code_runner.py 及其测试。
+  37-MF05（tools）建计划：app/plan_flow.py、course/planner_agents.py、course/plan_intent.py、web/src/pages/NewPlan.tsx、web/src/pages/PlanDetail.tsx。
+  37-MF06（classroom）课堂：app/classroom.py、course/teacher_agent.py、course/judge_agent.py 的输入、删除 course/lesson_prep.py、web/src/pages/Classroom.tsx、web/src/classroom/*。
+【B 线共用约定（37-MF04、MF05、MF06 必须一致；用户 2026-10-03 定的方向见 CURRENT_STATE「当前阶段」）】
+  方向：AI 生成、AI 核对不可信。AI 只负责找权威资料、在资料里“找、指出、配对”；讲解依据资料原文，题目来自资料或别处现成的带答案题，找不到才从原文挖空；AI 不出题、不解题、不写答案、不讲资料里没有的知识点。判对错仍由判定员（AI）对照参考答案做。
+  1. 讲解依据：已采用资料的分块（store 的 source_chunks）+ 知识点到分块的关联（point_sources）。每个知识点至少关联 1 个分块，分块要能展示原文与位置（资料标题、网址、章节/段落）。
+  2. 题目：question_bank 实体，payload 改为下列字段（旧字段全部去掉）：
+     id、module_id、point_ids（通常 1 个）、kind（choice 单选｜multi 多选｜fill 填空｜short 简答｜essay 综述｜calc 计算）、stem、options（选择题才有）、answer（choice/multi：正确选项下标列表；fill：每个空的可接受答案列表；short/essay/calc：参考答案原文）、explanation（资料自带的解析，没有就空）、origin（found 现成题｜cloze 挖空题）、source {title,url,locator}（题目出处）、answer_source {title,url,locator}（答案出处）、importance（key｜normal）、uses（[{purpose: quick|module|direct|final|retest|free, at}]）、created_at。
+  3. 数量：每点 2～3 道（目标 3）。顺序：已采用资料自带的带答案题 → 到别处找现成的带答案题 → 仍不够才挖空。没有答案的题一律不用。
+  4. 接口（MF-04 在新文件 course/point_materials.py 提供，MF-05、MF-06 调用）：
+     prepare_point(store, plan_id, point, ctx) -> {"passages": n, "questions": n, "cloze": n}（幂等，可后台跑）；
+     prepare_module(store, plan_id, module_id, ctx, progress)（progress(done, total, text)）；
+     pick_question(store, plan_id, point_id, purpose, exclude_ids=()) -> 题或 None（先取这个用途没用过的；都用过就取最久没用的；绝不现场生成）；
+     mark_used(store, plan_id, question_id, purpose)。
+     MF-05、MF-06 在 MF-04 合入前先按这个签名写假实现做测试，最终以 MF-04 的实现为准（架构师合并时对齐）。
+  5. 准备时机：生成计划时同步备好第一个模块的资料段落与题目（界面显示进度），其余模块后台准备；进入某模块前还没备好就显示进度等候，不现场出题。
+背景（CURRENT_STATE「当前阶段」用户 2026-10-03 的课堂设计、36-MF02 回执 P1-03、P1-07、P2-01）：现在的课堂是 AI 事先写讲稿、点“继续”一步步出，回应写死，用户觉得像程序；老师现场点评说出了原文没有的条件（“手指和针尖材料硬度相同”）；学生追问被误当成“正在判定”拒答；澄清提问返回 INTERNAL 且学生的话重复进聊天。
+先读：AGENTS.md；CURRENT_STATE 的「当前阶段」、[TEACH-01]～[TEACH-08]、[CHK-01]；app/classroom.py、course/teacher_agent.py、course/lesson_prep.py、course/judge_agent.py、web/src/pages/Classroom.tsx、web/src/classroom/*。
+要做（做法已定，用户 2026-10-03 认可，照做）
+  1. 一个知识点的流程（例：压强）：
+     - 开头：老师按用户偏好用一个生活化问题起头，给 2～3 个可点的选项，也能打字；不计分。每个模块开始时多一句“这一章要解决什么问题”。
+     - 顺着回答讲：答对就顺着讲重点、不重复铺垫；答错或“不知道”不纠缠，直接一起看。讲解依据该点关联的资料原文，旁边附“原文”卡片（资料标题、位置，点开看原文）；老师可以换口语说法、按偏好举生活化例子，但不能说资料里没有的知识点。
+     - 每段讲解下面常驻三个按钮：〔懂了，继续〕〔没太懂〕〔我想问…〕；“没太懂”时依据原文换个角度再讲；不要老师每段开口问“清楚吗”。
+     - 出题（计分）：用 pick_question 从题库取。选择题直接点选项、由程序判；填空先由程序做规范化比对（空白、全半角、大小写、同义写法表），比不上再交判定员；简答、综述、计算交判定员，对照题目的参考答案判。答对只显示“答对了”，旁边一个〔为什么？〕按钮，点开显示题目自带解析或答案出处原文；答错时，老师依据题目解析或答案出处原文讲为什么，不自己推理新理由，然后用 pick_question 出第二道。
+     - 收尾：一句话总结这个点，问“还有想问的吗？”，给〔没有，下一个〕，也能打字。
+     - 任何时候都能打字提问：老师依据本点与本计划已采用资料的原文回答；资料里没有就直说“资料里没讲到”，并告诉用户可以在计划里补充资料；答完回到原来位置。判定进行中时才不给答案，其余时间学生追问一律正常回答（修 P2-01）。
+     - 用户说“我会了”：从题库出一道快速确认题，答对直接到下一个点。
+  2. 老师的提示词：只能依据给出的原文段落讲；每段讲解要标出依据的段落编号（界面据此显示原文卡片）；例子只用来说明，不能借例子引入新的知识结论；程序检查老师回复里引用的段落编号确实属于本点关联段落，不属于就重写一次，还不行就只显示原文段落。
+  3. 模块检测、直接考、重测、最终检验、自由检验的题全部用 pick_question 从题库取，用途分别记 module / direct / retest / final / free；不再现场出题。判定、时长记账、90% 通过等规则不变（TEACH-02、TEACH-07、CHK-01）。
+  4. 删除 AI 写讲稿与讲稿核对：lesson_prep.py 和课堂里为它服务的代码、提示、模型用途与测试；报告里依赖讲稿字段的部分改为依据本流程的记录，报告照常可看可导出。
+  5. 稳定：任何一步失败都返回能看懂的提示并可重试，学生的话只写一次（失败不落库或重试时去重）；按钮防重复点击；有准备好的内容时点击后 1 秒内出下一步；老师回复边生成边显示。
+  6. 界面：对话式（老师消息、原文卡片、可点选项、常驻三个按钮、题目卡片、〔为什么？〕、随时可用的输入框）；去掉“第 N/M 步、继续”的分步界面。
+  7. 测试：离线覆盖上面每条（开头、答对/答错分支、没太懂、我想问、资料里没讲到、我会了、计分题各题型判法、各检验取题、失败不重复写聊天、引用段落校验）。真实小量验证（≤ ¥1）：用一份带原文段落和题目的“压强”假计划，跑一个知识点的完整对话，你本人逐句核对老师说的每条知识都能在引用段落里找到。
+完成标准：课堂像对话、跟着老师走；讲解每段有原文卡片；计分题全部来自题库；老师不说原文没有的知识；没有 INTERNAL 与重复消息；旧讲稿链路已删除；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix37-classroom\report.md（附界面截图）。
+回执：【MF-06｜classroom｜第三十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 课堂流程与界面 ／ 老师提示与引用校验 ／ 各检验取题 ／ 删除了什么 ／ 真实验证与逐句核对 ／ 花费 ／ 本地最终占用 ／ 问题记录
 ~~~
 
 ## 第三十六批任务原文（2026-10-02，基线 db874ac）
