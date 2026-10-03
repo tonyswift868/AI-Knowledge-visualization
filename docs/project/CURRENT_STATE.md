@@ -646,6 +646,7 @@
   - 签名有效期 3 年；每次发新版重新计时，过期只影响“检查更新”，再发一版即恢复。
 - 当前实现：scripts/build_learning_installer.py（构建、签名，--valid-days 默认 1096）、scripts/build_learning_voice_assets.py；客户端更新校验 refactor/desktop/delivery/update_protocol.py（有效期上限 1100 天）。正式通道 https://89.45.45.28/mentorflow/updates/app/（stable、objects、voice、installer），签名密钥 key_id mentorflow-app-2026（Ed25519）。
 - 待修（P1，36-MF02 发现，2026-10-02）：慢网络下更新必然中断——HTTPTransport 每个请求总时长上限 30 秒、3 秒没数据就断，大文件下不完，界面停在“下载已暂停”，要用户手动再点；2 MB 的更新清单在网速波动时也会超时，显示“暂时无法检查更新”。方案（待用户确认）：下载文件只按“多久没收到数据”判断断线（如 30 秒），不设总时长上限；中断后自动续传几次再提示用户。已装的 2.0.0 只能靠多点几次续传升级到修好的版本。
+- 待修（P2，用户 2026-10-03 反馈）：从快捷方式打开软件，窗口是最小化/在后台的，要去任务栏点才出来。快捷方式本身是“常规窗口”。架构师读代码的初步判断：快捷方式先启动更新程序 Updater\UserRuntime.exe launch，再由它用 subprocess.Popen 启动 App\MentorFlow.exe（per_user_install.launch_health）；Windows 只允许用户刚点开的那个进程把窗口放到前台，第二层启动的程序被系统挡住，窗口只能在任务栏闪。修法：启动前调用 AllowSetForegroundWindow 把前台权限交给 App 进程，并显式要求正常显示；App 第一次显示登录窗口或主窗口时 showNormal + raise + activateWindow。待在 2.0.2 日志里确认。
 - 待修（P3，用户 2026-10-03 反馈）：安装后桌面没有快捷方式，安装目录里一堆文件夹看不出从哪打开（真正入口是开始菜单“MentorFlow”，指向 Updater\UserRuntime.exe launch）；安装程序应默认在桌面放“MentorFlow”快捷方式，安装目录根下也放一个。
 - 待定（P3，36-MF02 发现，2026-10-02）：安装程序默认位置 %LOCALAPPDATA%\MentorFlow 与旧版客户端的数据文件夹同名，装过旧版的电脑上默认位置会被拒绝、要手动换位置；只影响装过旧版的电脑。
 - 注意（接手必看）：2.0.0 客户端里还是旧上限“有效期超过 31 天就拒绝”，所以 2.0.1 按 30 天签（2026-10-02 发布，2026-11-01 过期）。2.0.1 及以后客户端上限 1100 天；等用户装着的软件都到 2.0.1 以后，再发版可按 3 年签。发布步骤见 WORKFLOW 操作手册。
