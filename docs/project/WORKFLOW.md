@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-03）：第四十二批五个回执已合到 integrate-42（44d94fe，全量 3008 通过、9 失败，都是测试没跟上新流程）。第四十三批联调交用户转发；“找来的题本身有错”待用户定。
+- **现在在做的事**（2026-10-03）：第四十四批三个任务（联调、找题优先级与客观题与比对实验、课堂只用程序判分）已起草交用户转发。
 
 ## 协作方式
 
@@ -66,8 +66,111 @@
 
 ## 待派队列
 
-- 43-MF01：已起草（2026-10-03），交用户转发。合入 main 后：按块体验（先建计划这一块，预算先和用户说）。
-- 找来的题本身可能有错（42-MF02 发现），怎么处理待用户定。
+- 44-MF01～MF03：已起草（2026-10-03，用户同意后），交用户转发。合入 main 后：全量 + 模拟工具离线完整场景 → 和用户商量按块体验（先建计划与找资料，预算先说）。第四十三批未发出，内容并入 44-MF01。
+
+## 第四十四批任务原文（2026-10-03，基线 44d94fe = integrate-42 分支）
+
+用户 2026-10-03 定（CURRENT_STATE「当前阶段」“找来的题有错”一条）：找题按来源排优先级；挖空用程序规则防歧义；“比对”先做实验再决定；计入过关的题一律用客观题、由程序判，不让 AI 判主观题，简答/论述/综述不计分、尽量不出；不做“用自己的话说一遍”和〔我觉得我答对了〕。第四十二批已合到 integrate-42（44d94fe，全量 3008 通过、9 失败）。三个任务同时开工，文件分工见下；合入 main 后架构师跑全量与模拟工具离线完整场景，再和用户商量按块体验。
+派发前检查（WORKFLOW“派任务前的检查”）：三个任务的完成标准都只要求本块测试与已有测试通过，不依赖彼此；比对实验的结果两种都算完成；没有依赖外部网站必须成功的条件；环境：三个工位都从 44d94fe 开始。
+
+### [44-MF01] server｜第四十二批联调：模拟工具与端到端测试接上新流程、拆掉临时替身
+
+~~~text
+【MentorFlow 第四十四批｜MF-01（工位 server）｜第四十二批联调：模拟工具与端到端测试接上新流程、拆掉临时替身】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 44d94fe
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）：你只做离线测试和“要做”里写明的小量真实验证。花费：¥0（本任务不调用真实模型）。
+同时在跑三个任务（都从 44d94fe 开始，冲突由架构师合并；完成标准只要求你这块与已有测试通过）：
+  44-MF01（server）联调：tests/refactor/simulation/*、tests/refactor/conftest.py、tests/refactor/integration38/*，产品代码只做接线所需的最小改动。
+  44-MF02（library）找题：course/point_materials.py、question_bank.py、research.py、research_pipeline.py、source_quality.py 及其测试。
+  44-MF03（classroom）判法：app/classroom.py、course/judge_agent.py 及其调用处、web/src/pages/Classroom.tsx 及其测试。
+每个任务只改自己名下的文件；必须动别人的文件时，改动最小并在回执写明。
+背景：44d94fe 是第四十二批五个任务的合并（integrate-42 分支）。全量 3008 通过、9 失败：tests/refactor/simulation/test_simulation42_flow.py 的 8 项（你在 42-MF04 写的模拟工具）与 tests/refactor/integration38/test_offline_integrated38_flow.py 的 1 项，都是按合并前流程写的，没有“需求摘要 + 大致模块预览 → 用户同意才找资料”这一步（42-MF01，见 app/plan_flow.py 与 fix42-plan 报告）。42-MF03 在 tests/refactor/conftest.py 加了一个全局 autouse 替身、在 integration38/support.py 加了 attach_quick_contract，用来在资料层合并前模拟 role=quick；现在 42-MF02 的真实 role 字段与 pick_question 已经合入。
+先读：AGENTS.md；WORKFLOW「第四十二批任务原文」（含共用约定）；报告 D:\MentorFlow\.local\test-tmp\fix42-plan\report.md、fix42-materials\report.md、fix42-classroom\report.md、fix42-sim\report.md；tests/refactor/simulation/ 全部文件与 README；tests/refactor/conftest.py；tests/refactor/integration38/。
+要做（做法已定，照做）
+  1. 模拟工具接上新流程：模拟用户在出现“大致模块预览”时能确认（或按人设提修改意见后再确认），之后才进入找资料；脚本用户的固定回复里加上这一步；README 写清。
+  2. 拆替身：删掉 tests/refactor/conftest.py 里的全局替身和 integration38/support.py 的 attach_quick_contract 投影，改为用真实的 role=quick/bank 题目做测试数据（store.add_bank_questions 写入真实字段），pick_question、mark_used、prepare_point 走 point_materials 的真实实现（只把模型和联网换成假的）。
+  3. 9 个失败与拆替身后新出现的失败逐个处理到通过；不改产品设计，产品代码确有接不上的地方取最小改动并在回执写明。
+  4. 离线完整场景（假模型、脚本用户）从填表、聊需求、预览确认一直走到报告 PDF 与自由检验。测试数据里的计分题用客观题（选择、填空），与 44-MF03 的方向一致。
+完成标准：你负责的测试与已有测试都通过；离线完整场景通过；替身已删除。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix44-integrate\report.md。
+回执：【MF-01｜server｜第四十四批｜完成/部分完成/受阻】基线 ／ 提交 ／ 模拟工具改了什么 ／ 拆替身 ／ 每个失败的原因与处理 ／ 产品代码的最小改动（如有）／ 全量结果 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [44-MF02] library｜找题：来源优先级、只收客观题、挖空防歧义，加“比对”实验
+
+~~~text
+【MentorFlow 第四十四批｜MF-02（工位 library）｜找题：来源优先级、只收客观题、挖空防歧义，加“比对”实验】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard 44d94fe
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）：你只做离线测试和“要做”里写明的小量真实验证。花费：只在比对实验（含真实找约 26 道题）里调用真实模型，上限 ¥2，回执报告实际花费。
+同时在跑三个任务（都从 44d94fe 开始，冲突由架构师合并；完成标准只要求你这块与已有测试通过）：
+  44-MF01（server）联调：tests/refactor/simulation/*、tests/refactor/conftest.py、tests/refactor/integration38/*，产品代码只做接线所需的最小改动。
+  44-MF02（library）找题：course/point_materials.py、question_bank.py、research.py、research_pipeline.py、source_quality.py 及其测试。
+  44-MF03（classroom）判法：app/classroom.py、course/judge_agent.py 及其调用处、web/src/pages/Classroom.tsx 及其测试。
+每个任务只改自己名下的文件；必须动别人的文件时，改动最小并在回执写明。
+背景（你的 42-MF02 回执与用户 2026-10-03 的决定）：你逐题核对 24 道找来的题，1 道是原网页本身写错（“TCP/IP”问答把 TCP 与 TCP/IP 混写，来自网上问答类来源），IP 地址的 quick 题选项有歧义；出处校验只能证明“来自原文”，不能证明原文对。用户定：①找题按来源排优先级——教材、考试院、大学等一二档来源的题在前，网上问答站的题排最后、凑不够才用；②计入过关的题一律用客观题（选择、多选、填空、有标准数值的计算），由程序判；简答、论述、综述不收进 bank；③挖空防歧义先用程序规则；④“拿找来的题与权威讲解原文比对”先做实验再决定开不开。
+先读：AGENTS.md；你的 42-MF02 报告 D:\MentorFlow\.local\test-tmp\fix42-materials\report.md；course/point_materials.py、question_bank.py、research.py、research_pipeline.py、source_quality.py。
+要做（做法已定，照做）
+  1. 来源优先级：找现成题时按来源档位从高到低取，一二档凑够 3 道就不用三档；三档里网上问答类（知乎、百度知道、各类问答站等）排在最后。
+  2. 只收客观题：现成题只收 choice、multi、fill、calc；fill 只收答案是短而写法固定的词（术语、数字、单位，可接受写法列全）；calc 只收有标准数值答案的（记下允许误差）；short、essay 不收。挖空也只做 choice 或 fill：挖掉的词短而写法固定才做 fill，否则做 choice。
+  3. 挖空防歧义（程序规则，quick 与 bank 都适用）：错误选项不能是正确答案的同义说法（用同义词表与“互相包含”判断，例如“协议/网络协议”算互相包含）；选项之间不互相包含；挖掉的词在该句里只出现一次、句子其余部分不含正确答案的别称；违反就换一个词挖或换一句。
+  4. 比对（做成可开关的功能，默认关闭）：对网上来源（三档）的现成题，把题目与参考答案和这个点的一二档讲解原文给模型，只输出三选一——“原文支持 / 原文明确矛盾 / 原文没提到”；只有“明确矛盾”才丢弃，换下一道。
+  5. 比对实验：收集约 50 道找来的现成题（可用你 42-MF02 的 24 道，再真实找约 26 道，覆盖中文与英文、多个档位），你本人逐题标“对 / 错”并写理由（这是人工标注，不让模型标）；然后开着比对跑一遍。回执给出：错题被拦下几道（占错题几成）、好题被误拦几道（占好题几成）、每道题平均花费与用时。架构师按“错题拦下一半以上且好题误拦不超过 10%”决定开不开；数据不够判断也照实写，两种结果都算完成。
+  6. 测试：离线覆盖来源优先级、只收客观题、fill/calc 条件、挖空三条规则、比对开关与三选一处理。
+完成标准：上面 1～4 实现并有测试；实验数据如实给出；你负责的测试与已有测试都通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；报告写到 D:\MentorFlow\.local\test-tmp\fix44-questions\report.md（含 50 道题的人工标注表与比对结果）。
+回执：【MF-02｜library｜第四十四批｜完成/部分完成/受阻】基线 ／ 提交 ／ 来源优先级 ／ 只收客观题 ／ 挖空规则 ／ 比对实现 ／ 实验结果（拦下、误拦、花费、用时）／ 花费合计 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [44-MF03] classroom｜课堂：计入过关的题只用程序判，不再让 AI 判主观题
+
+~~~text
+【MentorFlow 第四十四批｜MF-03（工位 classroom）｜课堂：计入过关的题只用程序判，不再让 AI 判主观题】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard 44d94fe
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）：你只做离线测试和“要做”里写明的小量真实验证。花费：¥0（本任务不调用真实模型）。
+同时在跑三个任务（都从 44d94fe 开始，冲突由架构师合并；完成标准只要求你这块与已有测试通过）：
+  44-MF01（server）联调：tests/refactor/simulation/*、tests/refactor/conftest.py、tests/refactor/integration38/*，产品代码只做接线所需的最小改动。
+  44-MF02（library）找题：course/point_materials.py、question_bank.py、research.py、research_pipeline.py、source_quality.py 及其测试。
+  44-MF03（classroom）判法：app/classroom.py、course/judge_agent.py 及其调用处、web/src/pages/Classroom.tsx 及其测试。
+每个任务只改自己名下的文件；必须动别人的文件时，改动最小并在回执写明。
+背景（用户 2026-10-03 定）：用户不信任 AI 判主观题。计入过关的题（模块检测按模块内知识点 90% 答对算过、重考、最终检验、直接考、自由检验）一律用客观题，由程序判；简答、论述、综述不计分；不做“用自己的话说一遍”的练习，也不做〔我觉得我答对了〕按钮。随口问已经是程序判的原文挖空选择题（42-MF03）。
+先读：AGENTS.md；CURRENT_STATE「当前阶段」“找来的题有错”一条；app/classroom.py（判定路径、各检验流程、_reference、填空判法）、course/judge_agent.py 及其调用处、报告与学习档案里用到判定结果的地方、web/src/pages/Classroom.tsx。
+要做（做法已定，照做）
+  1. 判法：choice/multi 由程序比对下标；fill 由程序做规范化比对（去空白与标点、全半角、大小写、可接受写法表），比上就对，比不上就错，不再交给模型；calc 由程序按标准数值和允许误差比对（能识别常见单位与写法，如“1.5”“1.50”“1.5 N”）。
+  2. 计分路径里不再调用判定模型。题库里如果仍遇到 short/essay（旧数据），跳过取下一道，不计分；全部跳过时按 42-MF03 的“没题不卡”处理。
+  3. 判定模型如果因此在产品里不再被用到，删除它和只为它服务的代码、提示、模型用途与测试；如果报告、学习档案等别处还要用，就只保留那部分并在回执写明。
+  4. 答错后的讲解照旧：老师依据题目解析或答案出处原文讲为什么。
+  5. 测试：离线覆盖三种题型的程序判法（含填空的各种写法、计算的误差与单位）、遇到旧主观题跳过、计分路径不调用判定模型。本任务 ¥0。
+完成标准：计入过关的题全部由程序判；计分路径里没有模型调用；你负责的测试与已有测试都通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix44-judging\report.md。
+回执：【MF-03｜classroom｜第四十四批｜完成/部分完成/受阻】基线 ／ 提交 ／ 三种判法 ／ 旧主观题处理 ／ 判定模型删除或保留情况 ／ 测试结果 ／ 本地最终占用 ／ 问题记录
+~~~
 
 ## 第四十三批任务原文（2026-10-03，基线 44d94fe = integrate-42 分支）
 
