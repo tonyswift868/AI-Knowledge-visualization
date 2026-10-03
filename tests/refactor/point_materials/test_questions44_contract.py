@@ -6,7 +6,7 @@ from refactor.learning.course import question_bank as qb
 from refactor.learning.course.source_quality import question_priority
 
 
-def passage(cid='c',level=3,qa=False):
+def passage(cid='c',level=1,qa=False):
     text='1. 压强单位是？\nA. 帕\nB. 牛顿\n答案：A\n压强是压力与受力面积的比值。'
     return dict(id=cid,source_id=cid,text=text,section='',authority=dict(level=level,type='general_site'),
         source=dict(url='https://example.test/'+('interview-questions' if qa else cid),title='问答' if qa else '教材练习',locator='1'))
@@ -21,7 +21,7 @@ POINT=dict(id='p',module_id='m',importance='normal')
 
 
 def test_questions44_high_bands_stop_before_qa_without_cloze():
-    passages=[passage('high',1),passage('second',2),passage('normal'),passage('qa',qa=True)]
+    passages=[passage('high',1),passage('second',2),passage('normal',3),passage('qa',3,qa=True)]
     calls=[]
     def finder(point,ps,**kw):
         calls.append(ps[0]['id'])
@@ -37,7 +37,7 @@ def test_questions44_high_bands_stop_before_qa_without_cloze():
 def test_questions44_third_qa_runs_after_normal_even_if_more_relevant():
     calls=[]
     def finder(point,ps,**kw):calls.append(ps[0]['id']);return dict(passages=[],found=[],cloze=[])
-    pm._locate(POINT,[passage('qa',qa=True),passage('c')],dict(finder=finder),'adopted')
+    pm._locate(POINT,[passage('qa',3,qa=True),passage('c',3)],dict(finder=finder),'adopted')
     assert calls==['c','qa']
     assert question_priority('https://zhidao.baidu.com/q',authority=dict(level=3))==(3,True)
 
@@ -106,31 +106,33 @@ def test_questions44_long_blank_uses_choice_not_fill():
     assert q['kind']=='choice'
 
 
-@pytest.mark.parametrize('enabled,state,kept',[(False,'原文明确矛盾',True),(True,'原文支持',True),
-    (True,'原文没提到',True),(True,'原文明确矛盾',False),(True,'possibly wrong',True)])
-def test_questions44_comparison_switch_and_only_contradiction_rejects(enabled,state,kept):
-    high=passage('high',1);p=passage()
+@pytest.mark.parametrize('enabled,state',[(False,'原文明确矛盾'),(True,'原文支持'),(True,'原文没提到')])
+def test_questions44_third_band_found_questions_never_enter_bank(enabled,state):
+    # User 2026-10-04: scored questions only from bands 1–2; band 3 falls back to cloze.
+    high=passage('high',1);p=passage(level=3)
     calls=[]
     def finder(point,ps,**kw):
         return dict(passages=[ps[0]['id']],found=[found()] if ps[0]['id']=='c' else [],cloze=[])
     def comparator(packet,**kw):calls.append(packet);return state
     result=pm._locate(dict(POINT,chunk_ids=['high']),[high,p],dict(finder=finder,compare_questions=enabled,comparator=comparator),'adopted')
-    assert bool(result['found'])==kept
-    assert len(calls)==int(enabled)
+    assert not calls
+    assert pm._collect(result['found'],pm._found,POINT,[high,p])==[]
 
 
 def test_questions44_no_authority_never_calls_model_or_uses_third_as_evidence():
     comparator=lambda *a,**k:pytest.fail('third-band cannot be evidence')
-    assert pm.compare_question(found(),[passage()],comparator=comparator)=='原文没提到'
+    assert pm.compare_question(found(),[passage(level=3)],comparator=comparator)=='原文没提到'
     cancel=threading.Event();cancel.set()
     with pytest.raises(pm.ResearchCancelled):pm.compare_question(found(),[],cancel=cancel)
 
 
 def test_questions44_selection_skips_subjective_history_prioritizes_band():
     rows=[]
-    for cid,level,qa in [('hi',1,False),('lo',3,False),('qa',3,True)]:
+    for cid,level,qa in [('hi',1,False),('mid',2,False),('lo',3,False),('qa',3,True)]:
         p=passage(cid,level,qa)
         rows.append(pm._found(found(cid),POINT,{cid:p}))
+    assert rows[2] is None and rows[3] is None
+    rows=rows[:2]
     subjective=dict(rows[0],id='old',kind='short',answer='旧主观题');subjective.pop('options')
     chosen=qb.select_question([subjective,*reversed(rows)],'p','module')
     assert chosen['source_level']==1

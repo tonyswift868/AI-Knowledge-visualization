@@ -291,6 +291,10 @@ def _numbered(text,number):
 def _found(item, point, by_id):
     if item.get('kind') not in OBJECTIVE_KINDS:return None
     q,a=by_id[item['question_chunk']],by_id[item['answer_chunk']]
+    # Found questions count toward passing, so only bands 1–2 (textbooks, exam
+    # boards, universities, official docs) may supply them; otherwise the point
+    # uses cloze from its own source text (DIR-01, user 2026-10-04).
+    if any((p.get('authority') or {}).get('level') not in (1,2) for p in (q,a)):return None
     stem,quote=item['stem'],item['answer_quote']
     if not contains_original(stem,q['text']) or not contains_original(quote,a['text']): return None
     # The current bank is text-only: keep references, but never strip a required
