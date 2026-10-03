@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-03）：第四十二批五个任务（建计划多轮沟通与大致模块、找资料找题、课堂题目分配与不卡、模拟流程工具、更新后自动登录）已起草交用户转发。
+- **现在在做的事**（2026-10-03）：第四十二批五个回执已合到 integrate-42（44d94fe，全量 3008 通过、9 失败，都是测试没跟上新流程）。第四十三批联调交用户转发；“找来的题本身有错”待用户定。
 
 ## 协作方式
 
@@ -66,8 +66,40 @@
 
 ## 待派队列
 
-- 42-MF01～MF05：已起草（2026-10-03），交用户转发，五个同时开工。合入后：架构师联调全量 → 用 42-MF04 模拟工具按块体验（建计划、找资料、课堂、各类检验、跨天，每块三四次，每块预算先和用户说）→ 修 → 中测试。
-- 更新程序自更新：用户 2026-10-03 定不做（更新功能已够用，不在这里纠结）。
+- 43-MF01：已起草（2026-10-03），交用户转发。合入 main 后：按块体验（先建计划这一块，预算先和用户说）。
+- 找来的题本身可能有错（42-MF02 发现），怎么处理待用户定。
+
+## 第四十三批任务原文（2026-10-03，基线 44d94fe = integrate-42 分支）
+
+第四十二批五个任务已由架构师合到 integrate-42（44d94fe），全量 3008 通过、9 个失败：8 个是 42-MF04 的模拟工具测试、1 个是 38 批的离线端到端测试——它们按合并前的流程写，不认识 42-MF01 新加的“大致模块预览、用户同意后才找资料”这一步；另外 42-MF03 为了在资料层合并前测试，加了一个临时替身（tests/refactor/conftest.py 与 integration38/support.py 的 attach_quick_contract），现在真实的 role=quick/bank 已经合进来，替身该拆了。本批一个任务把它接齐，合入 main 后再做按块体验。
+
+### [43-MF01] server｜第四十二批联调：模拟工具与端到端测试接上新流程、拆掉临时替身
+
+~~~text
+【MentorFlow 第四十三批｜MF-01（工位 server）｜第四十二批联调：模拟工具与端到端测试接上新流程、拆掉临时替身】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 44d94fe
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）。花费：¥0（本任务不调用真实模型）。
+本批只有这一个任务。
+背景：44d94fe 是第四十二批五个任务的合并（integrate-42 分支）。全量 3008 通过、9 失败：tests/refactor/simulation/test_simulation42_flow.py 的 8 项（你在 42-MF04 写的模拟工具）与 tests/refactor/integration38/test_offline_integrated38_flow.py 的 1 项，都是按合并前流程写的，没有“需求摘要 + 大致模块预览 → 用户同意才找资料”这一步（42-MF01，见 app/plan_flow.py 与 fix42-plan 报告）。42-MF03 在 tests/refactor/conftest.py 加了一个全局 autouse 替身、在 integration38/support.py 加了 attach_quick_contract，用来在资料层合并前模拟 role=quick；现在 42-MF02 的真实 role 字段与 pick_question 已经合入。
+先读：AGENTS.md；WORKFLOW「第四十二批任务原文」（含共用约定）；四份报告 D:\MentorFlow\.local\test-tmp\fix42-plan\report.md、fix42-materials\report.md、fix42-classroom\report.md、fix42-sim\report.md；tests/refactor/simulation/ 全部文件与 README；tests/refactor/conftest.py；tests/refactor/integration38/。
+要做（做法已定，照做）
+  1. 模拟工具接上新流程：模拟用户在出现“大致模块预览”时能确认（或按人设提修改意见后再确认），之后才进入找资料；脚本用户的固定回复里加上这一步；README 写清。
+  2. 拆替身：删掉 tests/refactor/conftest.py 里的全局替身和 integration38/support.py 的 attach_quick_contract 投影，改为用真实的 role=quick/bank 题目做测试数据（store.add_bank_questions 写入真实字段），pick_question、mark_used、prepare_point 都走 point_materials 的真实实现（只把模型和联网换成假的）。
+  3. 9 个失败测试与拆替身后新出现的失败逐个处理到通过；不改产品设计，产品代码确有接不上的地方，取最小改动并在回执写明。
+  4. 离线完整场景（假模型、脚本用户）从填表、聊需求、预览确认一直走到报告 PDF 与自由检验。
+完成标准：pytest tests/refactor 全部通过；离线完整场景通过；替身已删除。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix43-integrate\report.md。
+回执：【MF-01｜server｜第四十三批｜完成/部分完成/受阻】基线 ／ 提交 ／ 模拟工具改了什么 ／ 拆替身 ／ 每个失败的原因与处理 ／ 产品代码的最小改动（如有）／ 全量结果 ／ 本地最终占用 ／ 问题记录
+~~~
 
 ## 第四十二批任务原文（2026-10-03，基线 3483f07）
 
