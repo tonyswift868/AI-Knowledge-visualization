@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-03）：2.0.2 已发布（主线 4430aae，公网验签通过）。等用户本人在 D:\MentorFlowApp 的软件里点更新并测试，按用户反馈再定下一批。
+- **现在在做的事**（2026-10-03）：2.0.2 已发布，用户正在测（还没进到学习部分）。第四十一批（更新弹框样式、强制更新规则、窗口到前台、桌面快捷方式）交用户转发。
 
 ## 协作方式
 
@@ -65,7 +65,45 @@
 
 ## 待派队列
 
-- 无。等用户测试 2.0.2 的反馈。
+- 41-MF01：已起草（2026-10-03），交用户转发。合入后与用户测 2.0.2 的反馈一起出 2.0.3。
+
+## 第四十一批任务原文（2026-10-03，基线 9343c20）
+
+用户 2026-10-03 试用时提出：更新弹框是系统默认样式，要做成软件自己的界面；强制更新的规则要严格；另外从快捷方式打开时窗口是最小化/在后台的、桌面没有快捷方式。本批一个任务，合入后与用户测 2.0.2 的反馈一起出 2.0.3。
+
+### [41-MF01] runtime｜更新弹框做成软件自己的样式、强制更新规则、打开窗口到前台、桌面快捷方式
+
+~~~text
+【MentorFlow 第四十一批｜MF-01（工位 runtime）｜更新弹框做成软件自己的样式、强制更新规则、打开窗口到前台、桌面快捷方式】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 9343c20
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-03 认可），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。只做一轮：实现 → 测 → 报告。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有要动服务器或正式密钥、要删用户数据才停下来。回执附“问题记录”（现象、原因、排查、解决、验证）。
+验收由用户本人在装好的软件里测（用户 2026-10-03 定）。花费：¥0（本任务不调用真实模型）。
+本批只有这一个任务。
+背景（用户 2026-10-03 试用 2.0.1→2.0.2，CURRENT_STATE「当前阶段」与 [SYS-06] 的“待修”）：
+  - 登录窗口上弹出的“MentorFlow 更新”是系统默认的消息框（截图：标题栏、“立即更新 / 稍后”两个系统按钮），和软件的界面风格不符。
+  - 用户定的强制更新规则：发布的每个版本带“必须更新 / 非必须”标签。打开软件时，如果从当前版本到最新版本之间没有任何一个版本是必须更新的，弹框里“稍后”可以点；只要中间任何一个版本是必须更新的（哪怕最新版本本身不是必须的），“稍后”就是灰色不能点，必须更新。
+  - 从快捷方式打开软件时，窗口是最小化/在后台的，要去任务栏点才出来。快捷方式本身是“常规窗口”。架构师初步判断：快捷方式先启动 Updater\UserRuntime.exe launch，再由它在 per_user_install.launch_health 里用 subprocess.Popen 启动 App\MentorFlow.exe；Windows 只允许用户刚点开的那个进程把窗口放到前台，第二层启动的程序被系统挡住。
+  - 安装后桌面没有快捷方式，安装目录里一堆文件夹看不出从哪打开。
+先读：AGENTS.md；CURRENT_STATE 的 [SYS-06]；refactor/desktop/delivery/update_protocol.py（mandatory_floor、require_monotonic_floor、startup_version_policy、startup_mandatory_reason——“中间有必须更新的版本就必须更新”在协议里已经能表达：后续版本的 min_supported_version 继承最高的强制版本号，客户端拒绝下调）、per_user_update_core.py、per_user_install.py（launch_health）、per_user_launcher.py、refactor/desktop/updates.py、login_shell.py、dialog_theme.py、web/src/updates/UpdateNotice.tsx；scripts/build_learning_installer.py（release 子命令目前写死 mandatory=False）；D:\MentorFlow\.local\release-tools\build_release.py 与 README.txt；安装程序脚本。
+要做（做法已定，照做）
+  1. 弹框样式：登录前（登录窗口上）和登录后（软件里）的所有更新提示都用软件自己的界面——与登录窗口、软件页面同一套颜色、圆角、字体和按钮（登录前用 Qt 按 dialog_theme 做，登录后用 web 的 UpdateNotice）；内容：当前版本、新版本、更新内容、按钮；下载时框内显示进度。不再使用系统默认消息框（更新、修复、安装检查的提示一并换掉）。
+  2. 强制更新规则（客户端）：按协议的 mandatory_floor 判断——当前版本低于这道线就是强制：弹框里“稍后”显示为灰色不可点，并写明原因（“版本 x.y.z 必须安装：<原因>”）；强制时登录前就弹出，更新完成前不能进入学习。不是强制时“稍后”可点，行为按 37-MF01 已做的（本次不再弹、红点、下次启动再提醒）。
+  3. 强制更新规则（发布端）：build_learning_installer.py 的 release 和 build_release.py 增加 --mandatory 与 --mandatory-reason；min_supported_version 由脚本自动算：读取线上当前 stable.json，取它的 mandatory_floor，与“本版本若为强制则为本版本号”取较大者；不允许比线上低（脚本直接报错）。README.txt 写清用法。
+  4. 测试：2.0.3 标强制、2.0.4 不标强制并发布时，2.0.2 的客户端看到“必须更新”（稍后灰色），2.0.3 的客户端看到可选更新；发布脚本对下调的线报错；登录前强制弹框阻止进入；样式用截图验证（登录窗口上的弹框、软件里的弹框各一张）。
+  5. 打开窗口到前台：launch_health 启动 App 前调用 AllowSetForegroundWindow 把前台权限交给子进程（或 ASFW_ANY），Popen 时显式传正常显示的 STARTUPINFO；App 第一次显示登录窗口或主窗口时 showNormal、raise_、activateWindow。用测试覆盖启动参数；能在本机用打包版验证就截图验证（不碰用户装好的软件），验证不了写清。
+  6. 快捷方式：安装程序默认在桌面放“MentorFlow”快捷方式（安装页面可取消勾选），安装目录根下也放一个；都指向 Updater\UserRuntime.exe launch --root <安装目录>。已有安装更新时不改用户的快捷方式。
+完成标准：更新提示全部是软件自己的样式；强制规则在客户端与发布端都按上面实现并有测试；打开时窗口在前台；新安装有桌面快捷方式；全量测试通过。
+验收：pytest tests/refactor 全部通过（新测试放 tests/refactor/<模块>/，文件名在整个 tests/ 下不重名）；web 构建通过（不提交 dist）；报告写到 D:\MentorFlow\.local\test-tmp\fix41-update-ui\report.md（附截图）。
+回执：【MF-01｜runtime｜第四十一批｜完成/部分完成/受阻】基线 ／ 提交 ／ 弹框样式（截图）／ 强制规则（客户端、发布端、测试场景）／ 窗口前台 ／ 快捷方式 ／ 测试结果 ／ 本地最终占用 ／ 问题记录
+~~~
 
 ## 第四十批任务原文（2026-10-03，基线 4430aae）
 
