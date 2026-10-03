@@ -6,6 +6,7 @@ calls a model or network. A clock subclass controls both the classroom event
 time and the local timezone used by Classroom._today.
 """
 from __future__ import annotations
+from tests.refactor.integration38.support import Agents as FakeAgent, seed_bank, to_question, join_workers
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
@@ -73,88 +74,6 @@ def _last_json(messages, label):
     return json.loads(content.split(label + "\n", 1)[1])
 
 
-class FakeAgent:
-    """Deterministic teacher, judge, question and profile responses."""
-
-    def __init__(self):
-        self.calls = []
-        self.verdicts = []
-        self.lock = threading.Lock()
-
-    def complete(self, purpose, messages, *, on_text=None, **_kwargs):
-        with self.lock:
-            self.calls.append(purpose)
-        from tests.refactor.question_solver.fakes import response, grade, is_solver_judgement
-        if purpose == 'question_solve': return response(purpose, messages)
-        if purpose == 'judge' and is_solver_judgement(messages): return grade(messages)
-        if purpose == 'question_review':
-            return SimpleNamespace(text='{"verdict":"approve","issues":[],"revised":null}')
-        if purpose in ('lesson_prep', 'lesson_review'):
-            from tests.refactor.guided_lessons.fixtures import wire
-            task = json.loads(messages[-1]['content'].split('\n', 1)[1])
-            if purpose == 'lesson_review': value = dict(verdict='approve', issues=[], revised=None)
-            elif 'points' in task:
-                value = dict(lessons=[dict(point_id=p['id'], lesson=wire(p['chunk_ids'][0], short=True)) for p in task['points']])
-            else: value = wire(task['chunk_ids'][0], short=True)
-            return SimpleNamespace(text=json.dumps(value, ensure_ascii=False))
-        if purpose == "teacher":
-            task = _last_json(messages, "【本步任务】")
-            if "用随口问" in task["director"]:
-                text = ("我们先看这个知识点 [c1]。\n"
-                        "【随口问】它的关键作用是什么？\n【/随口问】")
-            else:
-                text = "好的，按刚才的结果继续。"
-            if on_text:
-                on_text(text)
-            return SimpleNamespace(text=text, search_hits=(), citations=())
-        if purpose == "judge":
-            with self.lock:
-                kind, correct, wrong = self.verdicts.pop(0)
-            task = _last_json(messages, "【本次判定】")
-            points = json.JSONDecoder().raw_decode(messages[-1]["content"].split("【知识点清单】\n", 1)[1])[0]
-            value = {
-                "kind": kind, "correct": correct, "wrong_points": wrong,
-                "reason": "回答覆盖了关键要点" if correct else "混淆了关键要点",
-            }
-            if task["question"]["type"] in ("short", "fix_error"):
-                value.update(uncertain=False, checks=[dict(point_id=points[min(i, len(points)-1)]["id"], requirement=req, applies=True,
-                    met=points[min(i, len(points)-1)]["id"] not in wrong,
-                    evidence=task["reply"] if points[min(i, len(points)-1)]["id"] not in wrong else "")
-                    for i, req in enumerate(task['required_points'])] if kind == "answer" else [])
-            return SimpleNamespace(text=json.dumps(value, ensure_ascii=False), search_hits=(), citations=())
-        if purpose == "questions":
-            content = messages[-1]["content"]
-            points = json.JSONDecoder().raw_decode(content.split("【知识点清单】\n", 1)[1])[0]
-            task = json.loads(content.split("【本次出题要求】\n", 1)[1])
-            purpose_name = task['purpose']
-            rows = []
-            for index, point in enumerate(points):
-                available = [a for a in ('recall', 'apply', 'contrast', 'fix_error', 'transfer') if a not in task.get('used_angles', {}).get(point['id'], ())]
-                for variant in range(task.get('counts', {}).get(point['id'], 2) if purpose_name == 'bank' else 1):
-                    choice = purpose_name in ('module_test', 'bank') and point['id'] == 'p2' and not task.get('written_only') and not (purpose_name == 'bank' and variant == 1)
-                    row = {
-                        "id": f"q-{purpose_name}-{index}-{variant}",
-                        "type": "choice" if choice else "short",
-                        "stem": f"请说明{point['title']}的关键作用（第 {len(self.calls)} 轮第 {index + 1}-{variant} 题）",
-                        "options": ["甲答案", "乙答案", "丙答案", "丁答案"] if choice else [],
-                        "answer": "乙答案" if choice else "标准答案",
-                        "reference": "关键要点是正确区分并说明作用。",
-                        "point_ids": [point["id"]], "chunk_ids": ["k1" if point["id"] != "p2" else "k2"],
-                    }
-                    if not choice: row['required_points'] = ['关键作用']
-                    if purpose_name == 'bank': row['angle'] = available[variant]
-                    rows.append(row)
-            return SimpleNamespace(text=json.dumps({"questions": rows}, ensure_ascii=False),
-                                   search_hits=(), citations=())
-        if purpose == "profile":
-            task = _last_json(messages, "【本次档案更新】")
-            return SimpleNamespace(text=json.dumps({
-                "progress": task["progress"], "weak_points": [
-                    {"point_id": point_id, "note": "具体困难尚待确认"}
-                    for point_id in task["weak_point_ids"]
-                ], "preferences": task["preferences"], "last_stop": "本次课堂停在当前模块。",
-            }, ensure_ascii=False), search_hits=(), citations=())
-        raise AssertionError(f"unexpected fake-agent purpose: {purpose}")
 
 
 @dataclass
@@ -224,7 +143,7 @@ def classroom_room(evidence):
         store = CourseStore(ACCOUNT, Path(root))
         store.create_plan(PLAN, goal="学会队列和栈", final_goal="能正确应用两种结构", level="beginner",
                           window=PlanWindow(DAY1, DAY3, 120))
-        store.add_sources(PLAN, [dict(id="s", kind="url", url="https://example.invalid/offline",
+        store.add_sources(PLAN, [dict(id="s", kind="url", url="https://docs.python.org/3/tutorial/", adopted=True,
                                       chunks=[dict(chunk_id="k1", text="队列按先进先出处理元素。"),
                                               dict(chunk_id="k2", text="栈按后进先出处理元素。")])])
         store.save_outline(PLAN, [dict(id="stage", title="基础")], [
@@ -242,6 +161,7 @@ def classroom_room(evidence):
         settings = SimpleNamespace(load=lambda: dict(SETTINGS))
         services = SimpleNamespace(store=store, gateway=agent, account_id=ACCOUNT,
                                    data_root=Path(root), settings=settings)
+        seed_bank(store,PLAN)
         classroom = Classroom(services, clock.study_day, now=clock.now)
         trace = Trace("单课堂：暂记→检测失败→重测→直接考→跨刷新→重新进入")
         evidence.append(trace)
@@ -258,21 +178,6 @@ def _ctx(streamed=None):
     return SimpleNamespace(cancel=threading.Event(), stream=(streamed.append if streamed is not None else lambda _d: None))
 
 
-def _act(classroom, name, *args, streamed=None):
-    method = getattr(classroom, name)
-    ctx = _ctx(streamed)
-    view = classroom.run(PLAN, lambda course, state, cx: method(course, state, cx, *args), ctx)
-    # Bank validation now has durable I/O and a separate review. Wait for the
-    # actual async host result, not the first preparing_questions snapshot.
-    import time as wall_time
-    deadline = wall_time.monotonic() + 3
-    while view['step'] == 'preparing_questions' and wall_time.monotonic() < deadline:
-        wall_time.sleep(.005)
-        view = classroom.run(PLAN, lambda *a: None, ctx)
-    if name in ('next','reply'):
-        from tests.refactor.guided_lessons.fixtures import advance_to_question
-        view = advance_to_question(classroom, PLAN, view, ctx)
-    return view
 
 
 def _record(clock, trace, action, view):
@@ -416,3 +321,9 @@ def test_classroom_module_test_pass_confirms_tentative_credits(classroom_room):
     trace.conclusion = "模块检测通过路径确认暂记点和检测分钟，状态为 passed。"
     trace.notes.append("两点先记暂记；模块检测两题全对后，learn:p0、learn:p1 与 test 时长全部转为 confirmed。")
     _act(classroom, "leave")
+
+def _act(classroom,name,*args,streamed=None):
+    view=classroom.perform(PLAN,name,_ctx(streamed),args)
+    if view.get('failure'):raise AssertionError(view['failure'])
+    if name in ('next','reply'):view=to_question(classroom,PLAN,view,streamed=streamed)
+    return view

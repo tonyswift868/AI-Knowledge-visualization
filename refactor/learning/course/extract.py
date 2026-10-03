@@ -342,6 +342,15 @@ def _math_text(node, cancel):
     if tag == 'mfrac' and len(values) == 2:
         return operand(values[0]) + '/' + operand(values[1])
     if tag in ('msup', 'msub') and len(values) == 2:
+        # Presentation mtext is literal typography, not an algebraic mrow.
+        # OpenStax prints N/m with a superscript 2 immediately after m (also
+        # lb/in followed by 2). Adding parentheses invents (N/m)^2 and changes
+        # the printed pressure unit. Keep this limited to literal unit ratios;
+        # structured fractions/compound algebra still use operand grouping.
+        base_tag=str(children[0].tag).rsplit('}',1)[-1].rsplit(':',1)[-1].lower()
+        if (tag=='msup' and base_tag=='mtext' and re.fullmatch(r'(?:N|J|W|kg|lb)/(?:m|s|in)',values[0])
+                and re.fullmatch(r'\d+',values[1])):
+            return values[0]+'^'+values[1]
         return operand(values[0]) + ('^' if tag == 'msup' else '_') + operand(values[1])
     if tag == 'msubsup' and len(values) == 3:
         return operand(values[0]) + '_' + operand(values[1]) + '^' + operand(values[2])

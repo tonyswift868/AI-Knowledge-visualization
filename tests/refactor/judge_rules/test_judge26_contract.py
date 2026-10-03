@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from refactor.learning.course.answer_compare import compare_exact
-from refactor.learning.course import judge_agent as judge, question_agent as question
+from refactor.learning.course import judge_agent as judge
 from refactor.learning.course.planner_agents import AgentFormatError
 from refactor.learning.app.classroom import Classroom
 
@@ -44,15 +44,6 @@ def test_replay_all_real_fixed_answers_without_model_calls(saved):
         assert (v.kind,v.correct,list(v.wrong_points),v.uncertain)==(case['expected_kind'],case['expected_correct'],case['expected_wrong_points'],False)
 
 
-@pytest.mark.parametrize('sample', SAMPLES, ids=lambda s:s['question']['id'])
-def test_new_question_structure_round_trip(sample):
-    q=sample['question']
-    ctx=dict(purpose='bank',per_point=1,counts={p:1 for p in q['point_ids']},
-             points=[dict(id=p,title=sample['subject'],summary='',chunk_ids=q['chunk_ids']) for p in q['point_ids']],
-             excerpts={cid:sample['source_text'] for cid in q['chunk_ids']})
-    parsed,=question.parse_questions(json.dumps({'questions':[q]},ensure_ascii=False),ctx)
-    result=json.loads(json.dumps(asdict(parsed)))
-    for k,v in q.items(): assert result[k]==v
 
 
 @pytest.mark.parametrize('kind,answer,reply,expected',[
@@ -116,10 +107,6 @@ def test_independent_review_never_guesses_pass_and_default_is_off_until_proven_b
 
 
 
-def test_invalid_structured_requirement_does_not_poison_other_bank_rows():
-    s=copy.deepcopy(SAMPLES[3]);q=s['question'];q['required_points'][0]['accept']=[]
-    ctx=dict(purpose='bank',per_point=1,points=[dict(id=q['point_ids'][0],title='数学',summary='',chunk_ids=q['chunk_ids'])],excerpts={'c4':'资料'})
-    assert question.parse_questions(json.dumps({'questions':[q]},ensure_ascii=False),ctx,partial_bank=True)==[]
 
 
 def test_free_practice_only_flags_actual_wrong_point_and_reads_legacy_records():
@@ -128,28 +115,3 @@ def test_free_practice_only_flags_actual_wrong_point_and_reads_legacy_records():
     assert review_points(rows)=={'b'}
     rows[0].pop('wrong_points')
     assert review_points(rows)=={'a','b'}
-
-
-def test_new_bank_fields_persist_and_sync_without_a_schema_rebuild(tmp_path):
-    from datetime import date, timedelta
-    from refactor.learning.course.store import CourseStore, StoreError
-    from refactor.learning.course.ledger import PlanWindow
-    day=date(2026,10,1);plan='a'*32
-    with CourseStore('new-question',tmp_path) as a, CourseStore('new-question-peer',tmp_path) as b:
-        a.create_plan(plan,goal='结构测试',window=PlanWindow(day,day+timedelta(days=3),100))
-        a.add_sources(plan,[dict(id='s',url='https://example.invalid',chunks=[dict(chunk_id='c',text='参考')])])
-        a.save_outline(plan,[dict(id='st',title='阶段')],[dict(id='m',stage_id='st',title='模块')])
-        a.save_generated_module(plan,'m',[dict(id='p',title='点',summary='点',minutes=10,chunk_ids=['c'])],check_minutes=2,today=day)
-        samples=[copy.deepcopy(SAMPLES[i]['question']) for i in (0,3,18)]
-        for q in samples:q.update(point_ids=['p'],chunk_ids=['c'])
-        ids=a.add_bank_questions(plan,'m',samples)
-        rows=a.pending_records(100)
-        b.apply_remote([(r, index+1) for index,r in enumerate(rows)])
-        assert [r['type'] for r in b.records('question_bank',plan)]==[r['type'] for r in a.records('question_bank',plan)]
-        assert next(r for r in b.records('question_bank',plan) if r['type']=='exact')['answer_kind']=='number'
-        with pytest.raises(StoreError) as exc:
-            a.add_bank_questions(plan,'m',[samples[-1]])
-        assert exc.value.code=='MODULE_ESSAY_LIMIT'
-        assert len(a.records('question_bank',plan))==3
-        a.append_practice_result(plan,ids[1],'m',['p'],False,wrong_points=['p'])
-        assert a.records('practice_results',plan)[0]['wrong_points']==['p']

@@ -253,6 +253,8 @@ def prepare_b(h, pid, case):
         h.services.gateway = ScriptedGateway()
         try:
             h.call("plan.generate", plan_id=pid)
+            if h.flow.load(pid)['phase']=='outline':
+                h.call("plan.generate", plan_id=pid)  # First call presents the cost/time confirmation.
         finally:
             h.services.gateway = old
         if h.flow.load(pid)["phase"] != "ready":

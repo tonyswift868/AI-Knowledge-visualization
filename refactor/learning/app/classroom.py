@@ -206,8 +206,8 @@ class Classroom:
             self.material_event(dict(plan_id=course.plan_id,module_id=module_id))
         def worker():
             try:
-                ctx=SimpleNamespace(cancel=job['cancel'],gateway=self.services.gateway,services=self.services,
-                                    stream=lambda _:None,plan_id=course.plan_id)
+                ctx=dict(cancel=job['cancel'],gateway=self.services.gateway,
+                         on_status=lambda text: progress(job['done'],job['total'],text))
                 self._materials().prepare_module(course.store,course.plan_id,module_id,ctx,progress)
                 if not job['cancel'].is_set():
                     fresh=self._course(course.plan_id)
@@ -268,6 +268,7 @@ class Classroom:
         if state['step']=='closing':
             self._point_done(course,state)
             if state['step']!='teach':return
+            if self._target_met(course,state):return
         if state['step']=='teaching':return self._casual_card(course,state,ctx)
         if state['step']!='teach':raise BridgeError('STEP_INVALID','请先完成当前的对话或题目。')
         if not self._ready(course,state['module_id']):return self._wait(course,state,'next')
@@ -426,7 +427,8 @@ class Classroom:
         with course.store.transaction():
             self._user(course,state,text)
             if kind=='practice':
-                course.store.append_practice_result(course.plan_id,q['id'],course.point(q['point_ids'][0])['module_id'],q['point_ids'],verdict.correct,reason=verdict.reason,at=self.now(),result_id=pending['answer_id'],wrong_points=list(verdict.wrong_points))
+                if not any(r['id']==pending['answer_id'] for r in course.store.records('practice_results',course.plan_id)):
+                    course.store.append_practice_result(course.plan_id,q['id'],course.point(q['point_ids'][0])['module_id'],q['point_ids'],verdict.correct,reason=verdict.reason,at=self.now(),result_id=pending['answer_id'],wrong_points=list(verdict.wrong_points))
             elif not split:
                 combined=f"原回答：{pending['followup']}\n补充回答：{text}" if pending.get('followup') else text
                 self._record(course,state,context,pending,verdict,combined)
@@ -669,6 +671,8 @@ class Classroom:
             plan = store.get_plan(plan_id)
         except StoreError:
             raise BridgeError("PLAN_NOT_FOUND", "找不到这份计划。") from None
+        if plan.get('unusable'):
+            raise BridgeError('OLD_PLAN', '旧版计划，已不可用')
         if plan.get("state") not in ("active", "checking", "completed"):
             raise BridgeError("PLAN_NOT_STARTED", "这份计划还没开始，请先在新建计划里点“开始计划”。")
         return _Course(store, plan)

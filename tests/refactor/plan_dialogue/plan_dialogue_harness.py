@@ -153,6 +153,12 @@ class Harness:
         with patch.object(plan_flow, "PlanFlow", return_value=self.flow):
             plan_flow.register(self.bridge, lambda: self.services, None, lambda _: date.today(), fetcher=self.web)
             self.call("plan.drafts")  # populate register's cache without creating a draft
+        # These dialogue-oracle tests isolate material preparation; the real
+        # component is exercised separately in integration38 end to end.
+        from tests.refactor.integration38.support import seed_bank
+        self.flow._prepare_module=lambda store,pid,mid,ctx,progress=None:seed_bank(store,pid)
+        self.flow._module_ready=lambda pid,mid:any(q['module_id']==mid for q in self.services.store.records('question_bank',pid))
+        gateway.store=self.services.store
         if hasattr(gateway, "web"):
             gateway.web = self.web
 
@@ -173,6 +179,8 @@ class Harness:
                             ("sources", "source_chunks", "stages", "modules", "points")}}
 
     def close(self):
+        from tests.refactor.integration38.support import join_workers
+        join_workers()
         self.services.store.close()
 
 
@@ -252,14 +260,15 @@ class ScriptedGateway:
         elif purpose == "outline":
             refs = list(dict.fromkeys(re.findall(r"\[(s\d+\.\d+)\]", prompt)))
             titles = ["Python 基础", "CSV 读写", "数据清洗", "异常处理", "汇总报表", "命令行工具", "测试与综合实战", "可选图表"]
-            value = {"stages": [{"title": "合成前置轮廓", "modules": [
-                {"key": "m" + str(i), "title": titles[i % len(titles)], "summary": "合成模块",
-                 "refs": [ref], "minutes": [30, 60], "prerequisites": []} for i, ref in enumerate(refs)]}],
-                "message": "此为离线合成前置状态。"}
-        elif purpose == "generate":
-            aliases = re.findall(r"\[(c\d+)\]", prompt)
-            value = {"points": [{"title": "合成知识点" + str(i), "summary": "仅测试前置数据",
-                                  "chunks": [aliases[0]], "minutes": 20} for i in range(2)]}
+            chunks=json.loads(prompt.split('【已取得的原文段落】\n')[1])
+            pid=self.store.list_plans()[0]['id']
+            sources=[s for s in self.store.records('sources',pid) if s['adopted']]
+            stored=self.store.records('source_chunks',pid)
+            sections=planner_agents.build_sections(sources,{s['id']:[c for c in stored if c['source_id']==s['id']] for s in sources})
+            byid={c['chunk_id']:c for c in chunks}
+            value=dict(stages=[dict(title='合成前置知识地图',modules=[dict(key='m'+str(i),title=titles[i%len(titles)],summary='合成模块',
+                refs=[s.id],prerequisites=[],points=[dict(title='合成知识点'+str(i),summary='理解资料',
+                    citations=[dict(chunk_id=s.chunk_ids[0],quote=byid[s.chunk_ids[0]]['text'][:80])])]) for i,s in enumerate(sections)])],message='离线合成前置状态。')
         elif purpose == "research":
             value = {"sources": [{"url": "https://docs.python.org/3/library/csv.html",
                                   "title": "Python CSV 教程", "why": "入门练习"}]}

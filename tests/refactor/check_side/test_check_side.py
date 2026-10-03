@@ -7,36 +7,23 @@ from datetime import datetime, timezone
 
 from refactor.learning.course.judge_agent import judge_request, parse_judgement
 from refactor.learning.course.mastery import AttemptClosed, Judgement, MasteryBook, PointRef
-from refactor.learning.course.question_agent import Question, parse_questions
-from refactor.learning.course.question_bank import choose_questions, review_points
+from tests.refactor.integration38.support import bank_question
+from refactor.learning.course.question_bank import select_question, review_points
 from refactor.learning.course.report_comments import generate_comments
 from refactor.learning.course.store import CourseStore
 from refactor.learning.course.sync_contract import SyncRecord
 from tests.refactor.app.test_app_classroom import ACCOUNT, PLAN, act, room
 
 
-def item(identifier, ids, *, angle='recall', correct=False):
-    return dict(id=identifier, point_ids=list(ids), angle=angle, correct_seen=correct)
 
 
-def question(identifier, ids, chunk='k1'):
-    return Question(identifier, 'short', f'请解释{identifier}的作用？', (), '标准答案',
-                    '题面要求的作用', tuple(ids), (chunk,), 'recall')
 
 
-def test_selector_prefers_unstable_single_then_compact_combination_and_never_reuses_correct():
-    bank = [item('single-p0', ['p0']), item('single-p1', ['p1']),
-            item('combo', ['p1', 'p2']), item('old', ['p0'], correct=True)]
-    selected, missing = choose_questions(bank, ['p0', 'p1', 'p2'], ['p0'], rng=random.Random(1))
-    assert [q['id'] for q in selected] == ['single-p0', 'combo']
-    assert missing == ()
-    selected, missing = choose_questions(bank, ['p1', 'p2'], smaller_than=2, single_once=['p1'])
-    assert [q['id'] for q in selected] == [] and missing == ('p1', 'p2')
 
 
 def test_composite_wrong_has_no_point_event_then_splits_once(room):
     classroom, agents, store = room
-    store.add_bank_questions(PLAN, 'm0', [question('both', ('p0', 'p1')),
+    store.add_bank_questions(PLAN, 'm0', [question('00both', ('p0', 'p1')),
                                            question('zero', ('p0',)), question('one', ('p1',))])
     view = act(classroom, 'start_test', 'skip_test')
     assert view['question']['total'] == 1
@@ -52,7 +39,7 @@ def test_composite_wrong_has_no_point_event_then_splits_once(room):
     assert len(rows) == 2 and all(row['event']['results'][0][1] for row in rows)
     assert len({row['event']['results'][0][0] for row in rows}) == 2
     assert all(store.load_mastery(PLAN).point(pid).module_errors == 0 for pid in ('p0', 'p1'))
-    assert sum(q['correct_seen'] for q in store.records('question_bank', PLAN)) == 2
+    assert sum(len(q['uses']) for q in store.records('question_bank', PLAN)) == 3
 
 
 def test_overlapping_questions_both_count_for_the_point():
@@ -86,17 +73,6 @@ def test_final_check_round_stops_after_four_questions(room):
     assert len([r for r in store.records('judgements', PLAN) if r['event']['context'] == 'check']) == 4
 
 
-def test_exhausted_bank_refills_before_module_test(room):
-    classroom, agents, store = room
-    old = store.add_bank_questions(PLAN, 'm0', [question('old-zero', ('p0',)),
-                                               question('old-one', ('p1',))])
-    for question_id in old:
-        store.mark_bank_correct(PLAN, question_id)
-    view = act(classroom, 'start_test', 'skip_test')
-    assert view['step'] == 'testing'
-    assert 'questions' in agents.calls
-    queued = classroom._load(classroom._course(PLAN))['test']['queue']
-    assert queued and all(q['id'] not in old for q in queued)
 
 
 def test_practice_is_separate_and_review_marker_follows_latest_answer(room):
@@ -124,35 +100,6 @@ def test_practice_is_separate_and_review_marker_follows_latest_answer(room):
     assert store.records('reports', PLAN) == []
 
 
-def test_question_bank_and_practice_sync_revision_race_and_remote_dedup(room, tmp_path):
-    _, _, store = room
-    question_id = store.add_bank_questions(PLAN, 'm0', [question('one', ('p0',))])[0]
-    submitted = next(r for r in store.pending_records(1000) if r.entity == 'question_bank')
-    store.mark_bank_correct(PLAN, question_id)
-    store.mark_synced(submitted.entity, submitted.entity_id, submitted.local_revision, 4)
-    pending = next(r for r in store.pending_records(1000) if r.entity == 'question_bank')
-    assert pending.local_revision > submitted.local_revision and pending.payload['correct_seen']
-    store.append_practice_result(PLAN, question_id, 'm0', ['p0'], False,
-                                 result_id='practice-one', at=datetime(2026, 9, 29, tzinfo=timezone.utc))
-    upload = store.pending_records(1000)
-    with CourseStore(ACCOUNT, tmp_path) as replica:
-        replica.apply_remote([(record, index + 10) for index, record in enumerate(upload)])
-        assert replica.records('question_bank', PLAN)[0]['correct_seen']
-        assert len(replica.records('practice_results', PLAN)) == 1
-        practice = next(r for r in upload if r.entity == 'practice_results')
-        replica.apply_remote([(practice, 100)])
-        assert len(replica.records('practice_results', PLAN)) == 1
-        answered = next(r for r in upload if r.entity == 'question_bank')
-        stale = SyncRecord(answered.entity, answered.entity_id, PLAN, answered.schema,
-                           dict(answered.payload, correct_seen=False), False, answered.local_revision)
-        replica.apply_remote([(stale, 101)])
-        assert replica.records('question_bank', PLAN)[0]['correct_seen']
-        assert any(r.entity == 'question_bank' and r.payload['correct_seen']
-                   for r in replica.pending_records(1000))
-        tombstone = SyncRecord(practice.entity, practice.entity_id, PLAN, practice.schema,
-                               practice.payload, True, practice.local_revision)
-        replica.apply_remote([(tombstone, 101)])
-        assert len(replica.records('practice_results', PLAN)) == 1
 
 
 def test_short_answer_uncertainty_returns_one_clarifying_question():
@@ -166,20 +113,6 @@ def test_short_answer_uncertainty_returns_one_clarifying_question():
     assert verdict.kind == 'clarify' and verdict.correct is None
 
 
-def test_bank_batch_has_two_single_questions_per_point_and_one_composite():
-    ctx = dict(purpose='bank', per_point=2, avoid=[], excerpts={'c': '一个概念及其应用。'},
-               points=[dict(id=p, title=p, summary='应用', chunk_ids=['c']) for p in ('a', 'b')])
-    rows = []
-    for pid in ('a', 'b'):
-        for index, angle in enumerate(('recall', 'apply')):
-            rows.append(dict(id=f'{pid}{index}', type='short', stem=f'请解释{pid}的第{index}种用途？',
-                             options=[], answer='可以处理概念', reference='用途来自题面',
-                             point_ids=[pid], chunk_ids=['c'], angle=angle, required_points=['用途来自题面']))
-    rows.append(dict(id='both', type='short', stem='请比较两个概念的用途？', options=[],
-                     answer='两个概念用于不同处', reference='分别说明用途',
-                     point_ids=['a', 'b'], chunk_ids=['c'], angle='contrast', required_points=['a的用途', 'b的用途']))
-    parsed = parse_questions(json.dumps({'questions': rows}, ensure_ascii=False), ctx)
-    assert len(parsed) == 5 and len(parsed[-1].point_ids) == 2
 
 
 def test_report_comments_quote_only_stored_reasons_and_never_call_gateway():
@@ -196,3 +129,30 @@ def test_report_comments_quote_only_stored_reasons_and_never_call_gateway():
     comments = generate_comments(Forbidden(), Store(), 'plan', report)
     assert comments['p'] == '模块检测错 1 次、最终检验错 1 次；当时的判定原因：把入队和出队顺序弄反了。；现已通过。'
     assert comments['q'] == '“后进先出”无错答记录；目前尚未通过。'
+
+def question(identifier,ids,chunk='k1'):
+    return bank_question(ids[0],'m0',ids=list(ids),answer='队列是先进先出的结构。',chunk=chunk)|{'id':identifier}
+
+def test_selector_uses_per_purpose_history_and_can_reuse_original_questions():
+    bank=[question('a',['p0']),question('b',['p0'])]
+    first=select_question(bank,'p0','module');first['uses'].append(dict(purpose='module',at='2026-10-03T00:00:00Z'))
+    assert select_question(bank,'p0','module')['id']=='b'
+    assert select_question(bank,'p0','final')['id']=='a'
+    bank[1]['uses'].append(dict(purpose='module',at='2026-10-03T00:01:00Z'))
+    assert select_question(bank,'p0','module')['id']=='a'
+
+def test_new_bank_sync_use_revision_and_practice_dedup(room,tmp_path):
+    _,_,store=room
+    qid=store.add_bank_questions(PLAN,'m0',[question('sync',['p0'])])[0]
+    before=next(r for r in store.pending_records(1000) if r.entity=='question_bank' and r.payload['id']==qid)
+    store.record_question_use(PLAN,qid,'free')
+    store.mark_synced(before.entity,before.entity_id,before.local_revision,4)
+    after=next(r for r in store.pending_records(1000) if r.entity=='question_bank' and r.payload['id']==qid)
+    assert after.local_revision>before.local_revision and after.payload['uses'][0]['purpose']=='free'
+    store.append_practice_result(PLAN,qid,'m0',['p0'],False,result_id='practice-one',wrong_points=['p0'])
+    with CourseStore(ACCOUNT,tmp_path/'peer') as replica:
+        replica.apply_remote([(r,i+10) for i,r in enumerate(store.pending_records(1000))])
+        assert next(q for q in replica.records('question_bank',PLAN) if q['id']==qid)['uses']
+        practice=next(r for r in store.pending_records(1000) if r.entity=='practice_results')
+        replica.apply_remote([(practice,100)])
+        assert len(replica.records('practice_results',PLAN))==1

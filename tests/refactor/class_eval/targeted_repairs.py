@@ -8,7 +8,7 @@ import os
 
 from .class_eval import ROOT, live_gateway, dump, audit, judge_input
 from refactor.learning.connections.errors import ModelError
-from refactor.learning.course import judge_agent, question_agent, teacher_agent
+from refactor.learning.course import judge_agent, teacher_agent
 
 
 def run():
@@ -25,7 +25,6 @@ def run():
         gateway=live_gateway(stack,output)
         for purpose,identifier,module in (("teacher","call-0622",teacher_agent),
                                           ("judge","call-0510",judge_agent),
-                                          ("questions","call-0503",question_agent),
                                           ("teacher","call-0577",teacher_agent)):
             original=json.loads((ROOT/"after/calls"/(identifier+".json")).read_text(encoding="utf-8"))
             if purpose=="teacher":

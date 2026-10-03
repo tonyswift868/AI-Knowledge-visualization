@@ -14,9 +14,7 @@ import time
 import pytest
 
 from refactor.learning.course.check_agent import check_request, parse_check
-from refactor.learning.course.mastery import ANGLES
 from refactor.learning.course.planner_agents import AgentFormatError
-from refactor.learning.course.question_agent import parse_questions, question_request
 
 
 pytestmark = pytest.mark.skipif(os.environ.get("MF_LIVE_EVAL") != "1", reason="真实模型抽查须显式设置 MF_LIVE_EVAL=1")
@@ -69,7 +67,7 @@ class _Budget:
         _save(self.path, self.rows)
         started = time.monotonic()
         try:
-            value = self.gateway.complete("check_agent_eval", messages, system=system,
+            value = self.gateway.complete("check_profile", messages, system=system,
                                           enable_search=False, max_tokens=max_tokens)
             # gateway.complete already records usage; this normalized copy is
             # only for the local cost report and must receive Usage, not the
@@ -89,11 +87,6 @@ class _Budget:
             _save(self.path, self.rows)
 
 
-def _question_context(used):
-    points = [dict(id=f"p{i}", title=f"检验点{i}", summary="区分当前感知、内部状态和新场景中的应用。", chunk_ids=["c1"])
-              for i in range(1, 6)]
-    return dict(points=points, excerpts={"c1": "简单反射只依赖当前感知；基于模型的反射用内部世界模型追踪不可直接感知的方面。"},
-                per_point=1, avoid=[], purpose="check", used_angles=used)
 
 
 def _attribution_context():
@@ -116,17 +109,14 @@ def _report(payload, budget):
     known = sum(Decimal(row["amount"]) for row in budget.rows if row.get("amount") is not None)
     reserved = sum(Decimal(row["reserved"]) for row in budget.rows if row.get("amount") is None)
     lines = ["# MF-01 第八批 CHK-01 真实抽查", "", "模型：管理员配置的 DeepSeek Flash；资料为合成课堂材料。",
-             "出题角度由 used_angles 为每个点留下唯一未使用角度，归因记录均为合成错题。",
-             "", "## 出题输出"]
-    for row in payload["questions"]:
-        lines += ["", "```json", json.dumps(row, ensure_ascii=False, indent=2), "```"]
+             "只抽查保留的归因组件，记录均为合成错题；不调用已删除的出题组件。"]
     lines += ["", "## 归因输出", "```json", json.dumps(payload.get("profile"), ensure_ascii=False, indent=2), "```",
               "", "## 人工核对记录", *[f"- {item}" for item in payload["review"]], "", "## 花费",
               f"累计调用 {len(budget.rows)} 次；已核价 ¥{known}；未知结果预留 ¥{reserved}；预算上限 ¥3。"]
     (ROOT / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def test_check_agent_real_angles_and_attribution():
+def test_check_agent_real_attribution():
     from refactor.learning.connections.gateway import ModelGateway
     from refactor.learning.connections.pricing import PriceCatalog
 
@@ -134,27 +124,8 @@ def test_check_agent_real_angles_and_attribution():
     catalog = PriceCatalog(Path(__file__).resolve().parents[3] / "refactor/learning/course/data/model-prices.json")
     gateway = ModelGateway(ACCOUNT, r"D:\MentorFlowData\account-shell", price_catalog=catalog)
     budget = _Budget(gateway)
-    payload = {"questions": [], "profile": None, "review": []}
+    payload = {"profile": None, "review": []}
     try:
-        # Five points each have exactly one remaining angle. This checks that
-        # the model preserves the host's angle assignment rather than reusing a
-        # previous angle for the same point.
-        used = {f"p{i}": [angle for angle in ANGLES if angle != target]
-                for i, target in enumerate(ANGLES, 1)}
-        qctx = _question_context(used)
-        raw = budget.call("questions-all-angles", question_request(qctx))
-        try:
-            questions = parse_questions(raw, qctx)
-        except AgentFormatError:
-            retry = (question_request(qctx)[0], question_request(qctx)[1] +
-                     [{"role": "user", "content": "上次输出未通过宿主格式检查，请只输出完整 JSON，并保留每点唯一未使用 angle。"}])
-            raw = budget.call("questions-all-angles-retry", retry)
-            questions = parse_questions(raw, qctx)
-        payload["questions"] = [asdict(item) for item in questions]
-        assert len(questions) == 5 and {item.angle for item in questions} == set(ANGLES)
-        assert {item.point_ids[0] for item in questions} == set(used)
-        payload["review"].append("五题分别返回 recall/apply/contrast/fix_error/transfer；每题点 id 与出处均通过解析器校验，角度没有重复。")
-
         actx = _attribution_context()
         raw = budget.call("attribution", check_request(actx))
         try:

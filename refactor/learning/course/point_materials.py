@@ -45,9 +45,72 @@ def _json(text):
 
 _SYSTEM = '''你是资料定位员，不是出题员或解题员。只从输入原文找、指出和配对，绝不写题、写答案、解题或改写原句。
 返回严格 JSON，只有 passages（相关块 id 列表）、found（现成带答案题列表）、cloze（原文挖空指针列表）。
-found 每项：kind(choice/multi/fill/short/essay/calc)、stem（题面原文）、options（选择题原选项）、answer（choice/multi 为从0开始的下标列表；fill 为每个空的原答案列表；其他为参考答案原文）、explanation（原解析或空）、question_chunk、answer_chunk、answer_quote（包含参考答案的原文）、pairing(same_block 或 numbered)、question_number、answer_number。
+found 最多8项。每项：kind(choice/multi/fill/short/essay/calc)、question_chunk、answer_chunk、pairing(same_block 或 numbered)、question_number、answer_number、stem、options、answer、answer_quote、explanation。
+紧凑原文指针：stem/options 中每个选项在 question_chunk 中定位；answer_quote/explanation/非选择题 answer 在 answer_chunk 中定位。指针格式 {"quote":"唯一的原文短片段"}；长题面/长答案用 {"quote":"开头短片段","end_quote":"末尾短片段"}，程序取两者之间完整原文。短片段不超过160字，不重复整段。无解析用空字符串。choice/multi 的 answer 仍为从0开始的下标列表；fill 为每个空的指针列表；其他 answer 为一个指针。不要编字符下标。
 same_block 仅可用于同一块里该题紧接的“答案/解析/Solution/Answer”。跨块须 numbered，题号与答案号一致。配不上、不带答案就不返回。绝不能自行推算选项下标；必须依据明确的答案标记/原文选项。
-cloze 每项：chunk_id、sentence（完整原句）、word（句中只出现一次的原词）、importance(key/normal)、keywords（同一资料同章节的其他同类原词指针）。定义句、公式和重点做 key；其他 normal。只指出，不改写。给出最多5个独立关键句供程序取3题，不选无关句或导航、学习目标清单。passages 必须真的解释当前知识点。找不到如实返回空数组。'''
+cloze 每项：chunk_id、sentence（完整原句的上述指针）、word（句中只出现一次的原词）、importance(key/normal)、keywords（同一资料同章节的其他同类原词）。定义句、公式和重点做 key；其他 normal。只指出，不改写。给出最多3个独立关键句，不选无关句或导航、学习目标清单。passages 必须真的解释当前知识点。找不到如实返回空数组。'''
+
+
+def _quote(value, text):
+    """Expand short, unique anchors using only the selected original chunk."""
+    if isinstance(value, str): return value  # Existing offline locator contract.
+    if not isinstance(value, dict) or set(value) - {'quote', 'end_quote'}:
+        raise ValueError('原文指针无效')
+    start = value.get('quote')
+    end = value.get('end_quote')
+    if not isinstance(start, str) or not start or len(start)>160 or text.count(start)!=1:
+        raise ValueError('原文起点不唯一或不存在')
+    left = text.index(start)
+    if end is None: return start
+    if not isinstance(end, str) or not end or len(end)>160 or text.count(end)!=1:
+        raise ValueError('原文终点不唯一或不存在')
+    right = text.index(end)+len(end)
+    if right < left+len(start): raise ValueError('原文终点在起点之前')
+    return text[left:right]
+
+
+def _expand_output(output, passages):
+    by_id={p['id']:p['text'] for p in passages}
+    rows=[]
+    for raw in output.get('found',[])[:8]:
+        try:
+            item=dict(raw);question=by_id[item['question_chunk']];answer=by_id[item['answer_chunk']]
+            item['stem']=_quote(item['stem'],question)
+            item['options']=[_quote(v,question) for v in item.get('options',[])]
+            item['answer_quote']=_quote(item['answer_quote'],answer)
+            item['explanation']=_quote(item.get('explanation',''),answer)
+            if item['kind']=='fill':
+                item['answer']=[[_quote(v,answer) for v in group] if isinstance(group,list)
+                                else [_quote(group,answer)] for group in item['answer']]
+            elif item['kind'] not in ('choice','multi'):item['answer']=_quote(item['answer'],answer)
+            rows.append(item)
+        except (ValueError,KeyError,TypeError):continue
+    cloze=[]
+    for raw in output.get('cloze',[])[:3]:
+        try:
+            item=dict(raw);item['sentence']=_quote(item['sentence'],by_id[item['chunk_id']]);cloze.append(item)
+        except (ValueError,KeyError,TypeError):continue
+    return dict(passages=[v for v in output.get('passages',[]) if isinstance(v,str) and v in by_id],found=rows,cloze=cloze)
+
+
+def _candidates(ranked, *, max_passages=6, max_questions=8):
+    """At most six original chunks and eight numbered candidate questions.
+
+    A prefix ends BEFORE the ninth question. All pointers are checked against
+    this visible prefix and later against the stored original, never a summary.
+    """
+    selected=[];size=0;questions=0
+    for raw in ranked:
+        passage=dict(raw);text=passage['text']
+        starts=list(re.finditer(r'(?m)^\s*(?:\d{1,3}[.．、)]|【例\s*\d{1,3}】)\s*',text))
+        remaining=max_questions-questions
+        if len(starts)>remaining:
+            text=text[:starts[remaining].start()]
+        if not text.strip() or size+len(text)>16000:continue
+        passage['text']=text;selected.append(passage);size+=len(text)
+        questions+=min(len(starts),remaining)
+        if len(selected)==max_passages:break
+    return selected
 
 
 def _locate(point, passages, ctx, mode):
@@ -57,25 +120,30 @@ def _locate(point, passages, ctx, mode):
     # in the prompt; a selected quote is still validated against original text.
     ranked=sorted(passages,key=lambda p:(p['id'] not in point.get('chunk_ids',[]),
         -sum(t in p['text'].casefold() for t in wanted),p['id']))
-    selected=[];size=0
-    for passage in ranked:
-        if size+len(passage['text'])>32000: continue
-        selected.append(passage);size+=len(passage['text'])
-        if len(selected)>=16: break
-    passages=selected
-    if ctx.get('finder'):
-        output = ctx['finder'](point, passages, mode=mode, cancel=ctx.get('cancel'))
-    else:
-        if ctx.get('gateway') is None: raise ValueError('准备资料需要 gateway 或离线 finder')
-        result = ctx['gateway'].complete('point_materials', [{'role':'user','content':json.dumps(
-            dict(point=point, mode=mode, passages=passages), ensure_ascii=False)}],
-            system=_SYSTEM, cancel=ctx.get('cancel'), plan_id=ctx['plan_id'], max_tokens=8192)
-        output = _json(result.text)
-        if ctx.get('on_call'): ctx['on_call']('point_materials', result)
+    passages=_candidates(ranked)
+    if not passages:return dict(passages=[],found=[],cloze=[])
+    for attempt in range(2):
+        try:
+            if ctx.get('finder'):
+                output=ctx['finder'](point,passages,mode=mode,cancel=ctx.get('cancel'))
+            else:
+                if ctx.get('gateway') is None:raise ValueError('准备资料需要 gateway 或离线 finder')
+                result=ctx['gateway'].complete('point_materials',[{'role':'user','content':json.dumps(
+                    dict(point=point,mode=mode,passages=passages),ensure_ascii=False)}],
+                    system=_SYSTEM,cancel=ctx.get('cancel'),plan_id=ctx['plan_id'],max_tokens=24576)
+                if ctx.get('on_call'):ctx['on_call']('point_materials',result)
+                output=_json(result.text)
+            break
+        except ModelError as exc:
+            _check(ctx)
+            if exc.code!='MODEL_OUTPUT_TRUNCATED' or attempt:raise
+            # Retry exactly once; don't change the account, point or source scope.
+            passages=_candidates(passages,max_passages=max(1,len(passages)//2),max_questions=4)
+            if ctx.get('on_status'):ctx['on_status']('资料定位输出截断，候选减半后重试一次。')
     _check(ctx)
     if not isinstance(output,dict) or any(not isinstance(output.get(k,[]),list) for k in ('passages','found','cloze')):
         raise ValueError('资料定位结果字段无效')
-    return output
+    return _expand_output(output,passages)
 
 
 def _identity(source, chunks, ctx):
@@ -138,6 +206,9 @@ def _found(item, point, by_id):
     q,a=by_id[item['question_chunk']],by_id[item['answer_chunk']]
     stem,quote=item['stem'],item['answer_quote']
     if not contains_original(stem,q['text']) or not contains_original(quote,a['text']): return None
+    # The current bank is text-only: keep references, but never strip a required
+    # diagram and turn it into an incomplete assessment question.
+    if re.search(r'如图|图\s*\d+\s*所示|见图|shown in (?:the )?figure',stem,re.I):return None
     if item['pairing']=='same_block':
         if q['id']!=a['id']: return None
         # Same-block evidence must immediately follow this question, not another
@@ -147,10 +218,11 @@ def _found(item, point, by_id):
         start=q['text'].find(stem)
         if start<0: return None
         tail=q['text'][start+len(stem):]
-        marker=re.search(r'(?:【|\[)?(?:参考答案|答案|解析|Answer|Solution|解)(?:】|\])?\s*[:：\n]',tail)
+        marker=re.search(r'(?:【|\[)?(?:参考答案|答案|解析|Answer|Solution|解)(?:[】\]]\s*[:：]?|\s*[:：]|\s+)',tail)
         if not marker or len(tail[:marker.start()])>800: return None
-        if re.search(r'(?:\n|^)\s*\d+[.、]',tail[:marker.start()]): return None
-        answer_part=re.split(r'(?:\n|^)\s*\d+[.、]',tail[marker.end():],maxsplit=1)[0]
+        next_question=r'(?:\n|^)\s*(?:\d+[.．、)]|【例\s*\d+】)'
+        if re.search(next_question,tail[:marker.start()]): return None
+        answer_part=re.split(next_question,tail[marker.end():],maxsplit=1)[0]
         if not contains_original(quote,answer_part): return None
     elif item['pairing']=='numbered':
         number=item.get('question_number')
@@ -250,6 +322,9 @@ def _discover_questions(point, ctx):
         result=pipeline.run(hits,lists=ctx['lists'],cancel=ctx.get('cancel'),
             accepted_urls=[s.get('url') for s in ctx['store'].records('sources',ctx['plan_id'])])
         _check(ctx)
+        if ctx.get('on_status'):
+            for rejected in result.rejected:
+                if rejected.code=='material_upload_required':ctx['on_status'](rejected.message)
         for source in result.verified:
             candidate=dict(url=source.url,final_url=source.final_url,title=source.title)
             identity=_identity(candidate,[dict(text=b.text) for b in source.document.blocks],ctx)

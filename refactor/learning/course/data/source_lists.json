@@ -2816,7 +2816,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 403；未取到正文"
+      "verification": "正常 GET + 浏览器请求头仍 HTTP 403；公开教材目录/详情元数据 HTTP 200，但本次物理八年级下册 PDF HTTP 401；正文需要用户登录后下载上传。未绕过访问控制。"
     },
     {
       "id": "pep-0",
@@ -2835,7 +2835,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 405；未取到正文"
+      "verification": "正常 GET + 浏览器请求头：电子教材入口 TLS UNEXPECTED_EOF；出版社首页 HTTP 200 只读到新闻/目录，不是教材正文；本次未取得电子教材。请用户在出版社页面下载后上传。此前 HTTP 405 的具体原因未证实。"
     },
     {
       "id": "smartedu-1",
@@ -2854,7 +2854,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 403；未取到正文"
+      "verification": "正常 GET + 浏览器请求头仍 HTTP 403；公开教材目录/详情元数据 HTTP 200，但本次物理八年级下册 PDF HTTP 401；正文需要用户登录后下载上传。未绕过访问控制。"
     },
     {
       "id": "pep-1",
@@ -2873,7 +2873,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 405；未取到正文"
+      "verification": "正常 GET + 浏览器请求头：电子教材入口 TLS UNEXPECTED_EOF；出版社首页 HTTP 200 只读到新闻/目录，不是教材正文；本次未取得电子教材。请用户在出版社页面下载后上传。此前 HTTP 405 的具体原因未证实。"
     },
     {
       "id": "smartedu-2",
@@ -2892,7 +2892,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 403；未取到正文"
+      "verification": "正常 GET + 浏览器请求头仍 HTTP 403；公开教材目录/详情元数据 HTTP 200，但本次物理八年级下册 PDF HTTP 401；正文需要用户登录后下载上传。未绕过访问控制。"
     },
     {
       "id": "pep-2",
@@ -2911,7 +2911,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 405；未取到正文"
+      "verification": "正常 GET + 浏览器请求头：电子教材入口 TLS UNEXPECTED_EOF；出版社首页 HTTP 200 只读到新闻/目录，不是教材正文；本次未取得电子教材。请用户在出版社页面下载后上传。此前 HTTP 405 的具体原因未证实。"
     },
     {
       "id": "smartedu-3",
@@ -2930,7 +2930,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 403；未取到正文"
+      "verification": "正常 GET + 浏览器请求头仍 HTTP 403；公开教材目录/详情元数据 HTTP 200，但本次物理八年级下册 PDF HTTP 401；正文需要用户登录后下载上传。未绕过访问控制。"
     },
     {
       "id": "pep-3",
@@ -2952,7 +2952,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 405；未取到正文"
+      "verification": "正常 GET + 浏览器请求头：电子教材入口 TLS UNEXPECTED_EOF；出版社首页 HTTP 200 只读到新闻/目录，不是教材正文；本次未取得电子教材。请用户在出版社页面下载后上传。此前 HTTP 405 的具体原因未证实。"
     },
     {
       "id": "smartedu-4",
@@ -2971,7 +2971,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 403；未取到正文"
+      "verification": "正常 GET + 浏览器请求头仍 HTTP 403；公开教材目录/详情元数据 HTTP 200，但本次物理八年级下册 PDF HTTP 401；正文需要用户登录后下载上传。未绕过访问控制。"
     },
     {
       "id": "pep-4",
@@ -2990,7 +2990,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 405；未取到正文"
+      "verification": "正常 GET + 浏览器请求头：电子教材入口 TLS UNEXPECTED_EOF；出版社首页 HTTP 200 只读到新闻/目录，不是教材正文；本次未取得电子教材。请用户在出版社页面下载后上传。此前 HTTP 405 的具体原因未证实。"
     },
     {
       "id": "smartedu-5",
@@ -3009,7 +3009,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 403；未取到正文"
+      "verification": "正常 GET + 浏览器请求头仍 HTTP 403；公开教材目录/详情元数据 HTTP 200，但本次物理八年级下册 PDF HTTP 401；正文需要用户登录后下载上传。未绕过访问控制。"
     },
     {
       "id": "pep-5",
@@ -3028,7 +3028,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 405；未取到正文"
+      "verification": "正常 GET + 浏览器请求头：电子教材入口 TLS UNEXPECTED_EOF；出版社首页 HTTP 200 只读到新闻/目录，不是教材正文；本次未取得电子教材。请用户在出版社页面下载后上传。此前 HTTP 405 的具体原因未证实。"
     },
     {
       "id": "smartedu-6",
@@ -3047,7 +3047,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 403；未取到正文"
+      "verification": "正常 GET + 浏览器请求头仍 HTTP 403；公开教材目录/详情元数据 HTTP 200，但本次物理八年级下册 PDF HTTP 401；正文需要用户登录后下载上传。未绕过访问控制。"
     },
     {
       "id": "pep-6",
@@ -3066,7 +3066,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 405；未取到正文"
+      "verification": "正常 GET + 浏览器请求头：电子教材入口 TLS UNEXPECTED_EOF；出版社首页 HTTP 200 只读到新闻/目录，不是教材正文；本次未取得电子教材。请用户在出版社页面下载后上传。此前 HTTP 405 的具体原因未证实。"
     },
     {
       "id": "smartedu-7",
@@ -3085,7 +3085,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 403；未取到正文"
+      "verification": "正常 GET + 浏览器请求头仍 HTTP 403；公开教材目录/详情元数据 HTTP 200，但本次物理八年级下册 PDF HTTP 401；正文需要用户登录后下载上传。未绕过访问控制。"
     },
     {
       "id": "pep-7",
@@ -3104,7 +3104,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 405；未取到正文"
+      "verification": "正常 GET + 浏览器请求头：电子教材入口 TLS UNEXPECTED_EOF；出版社首页 HTTP 200 只读到新闻/目录，不是教材正文；本次未取得电子教材。请用户在出版社页面下载后上传。此前 HTTP 405 的具体原因未证实。"
     },
     {
       "id": "smartedu-8",
@@ -3123,7 +3123,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 403；未取到正文"
+      "verification": "正常 GET + 浏览器请求头仍 HTTP 403；公开教材目录/详情元数据 HTTP 200，但本次物理八年级下册 PDF HTTP 401；正文需要用户登录后下载上传。未绕过访问控制。"
     },
     {
       "id": "pep-8",
@@ -3142,7 +3142,7 @@
       ],
       "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 405；未取到正文"
+      "verification": "正常 GET + 浏览器请求头：电子教材入口 TLS UNEXPECTED_EOF；出版社首页 HTTP 200 只读到新闻/目录，不是教材正文；本次未取得电子教材。请用户在出版社页面下载后上传。此前 HTTP 405 的具体原因未证实。"
     },
     {
       "id": "python",
@@ -3315,11 +3315,9 @@
         "数学",
         "英语"
       ],
-      "available": [
-        "出版信息"
-      ],
+      "available": [],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 200；加载中...；出版/资源导航信息，未确认课本正文/题目/答案"
+      "verification": "正常GET+浏览器请求头HTTP200，仅JavaScript“加载中”壳（167字），没有具体教材目录或正文。需要用户在出版社页面查找、按要求登录下载后上传；未绕过访问控制。"
     },
     {
       "id": "sujiao-publisher",
@@ -3341,10 +3339,10 @@
         "英语"
       ],
       "available": [
-        "出版信息"
+        "出版社信息"
       ],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 200；江苏凤凰教育出版社；出版/资源导航信息，未确认课本正文/题目/答案"
+      "verification": "本次正常GET+浏览器请求头HTTP200，可读出版社首页/机构信息（不是教材目录）（128字），未取得具体教材PDF/正文。请到出版社页面下载合法教材后上传，登录/验证码不绕过。"
     },
     {
       "id": "huke-publisher",
@@ -3365,10 +3363,10 @@
         "生物"
       ],
       "available": [
-        "出版信息"
+        "出版社信息"
       ],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 200；传播科学，提高国力 - 上海科学技术出版社；出版/资源导航信息，未确认课本正文/题目/答案"
+      "verification": "本次正常GET+浏览器请求头HTTP200，可读出版社首页/机构信息（不是教材目录）（778字），未取得具体教材PDF/正文。请到出版社页面下载合法教材后上传，登录/验证码不绕过。"
     },
     {
       "id": "fltrp-publisher",
@@ -3386,10 +3384,10 @@
         "英语"
       ],
       "available": [
-        "出版信息"
+        "出版社信息"
       ],
       "verified_at": "2026-10-03",
-      "verification": "HTTP 200；外语教学与研究出版社 -；出版/资源导航信息，未确认课本正文/题目/答案"
+      "verification": "本次正常GET+浏览器请求头HTTP200，可读出版社首页/机构信息（不是教材目录）（2190字），未取得具体教材PDF/正文。请到出版社页面下载合法教材后上传，登录/验证码不绕过。"
     },
     {
       "id": "c-wg14",
@@ -3430,6 +3428,101 @@
       ],
       "verified_at": "2026-10-03",
       "verification": "HTTP 200；Get Started! : Standard C++；出版/资源导航信息，未确认课本正文/题目/答案"
+    },
+    {
+      "id": "smartedu-physics-8-down",
+      "title": "（根据2022年版课程标准修订）义务教育教科书·物理八年级下册",
+      "url": "https://basic.smartedu.cn/tchMaterial/detail?contentType=assets_document&contentId=aec6de38-33d2-417a-bbdb-e39154a046a9&catalogType=tchMaterial&subCatalog=tchMaterial",
+      "subjects": [
+        "物理"
+      ],
+      "stages": [
+        "初中",
+        "初二",
+        "八年级"
+      ],
+      "keywords": [
+        "压强",
+        "浮力",
+        "物理教材",
+        "八年级下册"
+      ],
+      "available": [
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "公开目录匹配到教材、详情 JSON HTTP 200；资源 PDF HTTP 401，未下载正文。需用户登录平台后下载，再点“上传资料”；未尝试替代 CDN 或认证绕过。"
+    },
+    {
+      "id": "shmeea-2020-physics-answers",
+      "title": "2020 年上海市初中物理课程终结性评价指南",
+      "url": "https://www.shmeea.edu.cn/download/20190926/04.pdf",
+      "subjects": [
+        "物理"
+      ],
+      "stages": [
+        "初中",
+        "初二",
+        "八年级",
+        "九年级"
+      ],
+      "keywords": [
+        "压强",
+        "液体压强",
+        "大气压强",
+        "习题",
+        "真题",
+        "练习",
+        "答案"
+      ],
+      "available": [
+        "全文节选",
+        "习题",
+        "答案"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "普通 GET HTTP 200，PDF 1905552 字节，现有 extract 提取 17437 字、41 个页块；例8压强题及参考答案D可见。此文件是官方评价指南/参考例题，不能描述成2020中考真题；带图题需保留图或不用。"
+    },
+    {
+      "id": "jyeoo-pressure-unanswered",
+      "title": "北师大版八年级下册《8.1 压强》2022年同步练习卷（3）",
+      "url": "https://www.jyeoo.com/sj/6e1a095c-f0d8-4d8a-b2dd-a9d97029df9b",
+      "subjects": [
+        "物理"
+      ],
+      "stages": [
+        "初中",
+        "初二",
+        "八年级"
+      ],
+      "keywords": [
+        "压强",
+        "习题",
+        "练习"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "正常 GET HTTP 200，仅题面/导航1973字，解析按钮未返回答案正文。不能作为带答案题源，需平台用户自行获取合法资料后上传；未绕过登录/付费。"
+    },
+    {
+      "id": "gx-2023-physics-unreachable",
+      "title": "2023 年广西初中学业水平考试物理参考样卷与答案",
+      "url": "https://jyt.gxzf.gov.cn/zntj/W020230131636744534597.pdf",
+      "subjects": [
+        "物理"
+      ],
+      "stages": [
+        "初中",
+        "九年级"
+      ],
+      "keywords": [
+        "压强",
+        "参考样卷",
+        "中考"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "官方搜索结果可见参考样卷和答案线索，但本机正常 GET TLS 握手35秒超时，未下载或验证正文，不能声称可直接取得。"
     }
   ]
 }

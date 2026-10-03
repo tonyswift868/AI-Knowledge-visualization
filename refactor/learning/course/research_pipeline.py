@@ -35,6 +35,7 @@ from refactor.learning.course.research import ResearchError
 from refactor.learning.course.research import ResearchCancelled
 from refactor.learning.course.research import ResearchTimeout
 from refactor.learning.course.research import ResearchUnsupportedContent
+from refactor.learning.course.research import ResearchUploadRequired, ResearchFetchError, material_upload_guidance
 
 
 @dataclass(frozen=True)
@@ -321,10 +322,18 @@ class ResearchPipeline:
             if code in {'EMPTY', 'SCANNED_NO_TEXT'}:
                 return RejectedSource(hit.url, hit.title, 'body_too_short', str(exc))
             return RejectedSource(hit.url, hit.title, 'extract_failed', '正文提取失败：' + str(exc))
+        except ResearchUploadRequired as exc:
+            return RejectedSource(hit.url,hit.title,'material_upload_required',str(exc))
         except ResearchUnsupportedContent:
             return RejectedSource(hit.url, hit.title, 'unsupported_type', '服务器未返回支持的正文类型。')
         except (ResearchTimeout, TimeoutError):
             return RejectedSource(hit.url, hit.title, 'fetch_timeout', '资料抓取超过时间限制。')
+        except ResearchFetchError as exc:
+            guidance=material_upload_guidance(hit.url,hit.title,lists=lists)
+            if guidance:
+                return RejectedSource(hit.url,hit.title,'material_upload_required',guidance+
+                    (f'（HTTP {exc.status_code}。）' if exc.status_code else '（网络读取失败。）'))
+            return RejectedSource(hit.url,hit.title,'fetch_failed','资料抓取失败，未把搜索摘要当作已验证正文。')
         except Exception:
             return RejectedSource(hit.url, hit.title, 'fetch_failed', '资料抓取失败，未把搜索摘要当作已验证正文。')
 

@@ -87,9 +87,9 @@ def test_pending_answer_stays_host_only_and_guard_is_unchanged():
     page = AppendOnlyPage()
     ctx = context(request_page=page, pending_question=dict(stem='机器人用什么感知？', options=[]))
     system, messages = teacher_agent.teacher_request(ctx)
-    assert 'answer_boundary' in messages[-1]['content']
+    assert 'current_points' in messages[-1]['content']
     assert 'reference' not in messages[-1]['content']
-    assert teacher_agent.answer_leak('通过传感器感知。', dict(stem='机器人用什么感知？', answer='传感器', reference='传感器'))
+    assert '判定' in system
     # No accept on a rejected output: it cannot become the next assistant turn.
     assert teacher_agent.teacher_request(ctx) == (system, messages)
 

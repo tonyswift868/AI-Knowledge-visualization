@@ -190,6 +190,11 @@ class CatalogClient(AuthenticatedPlanSource):
     def load_lists(self) -> SourceLists:
         return self._load('source-whitelist')
 
+    def material_guidance(self, query, *, stage='', subject=''):
+        """Planning-chat fallback for matched textbooks requiring manual upload."""
+        from .research import directory_upload_guidance
+        return directory_upload_guidance(query,stage=stage,subject=subject,lists=self.load_lists())
+
     def load_prices(self) -> dict:
         return self._load('model-prices')
 

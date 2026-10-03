@@ -159,9 +159,17 @@ def short_plan_name(goal):
     return (text or "学习计划")[:20].rstrip(" ：:、与和")
 
 
-def map_ranges(window, point_count):
+def map_ranges(window, point_count, *, module_counts=None):
     learning = point_count * MINUTES_PER_POINT_GUESS
     ranges = minute_ranges(window, learning, learning)
+    if module_counts is not None:
+        # Generation persists each module's integer reserve separately.
+        # Round at that same boundary, rather than once for the whole map.
+        total = learning + point_count * 2 + sum(estimate_check_minutes(n, minutes_per_question=2) for n in module_counts)
+        daily = full_day_minutes(distribute(window, total), window)
+        cap = check_cap(window, total)
+        ranges.update(total=[total,total],daily=[daily,daily],over_cap=daily>window.daily_cap_minutes,
+                      suggested_end=cap.suggested_end.isoformat() if cap.suggested_end else None)
     threshold = min(window.daily_cap_minutes, 300)
     suggested = check_cap(PlanWindow(window.start, window.end, threshold,
         window.weekday_weights, window.date_weights), ranges["total"][1])
@@ -771,7 +779,7 @@ class PlanFlow:
         draft["outline"] = {"agent": {"stages": [{"title": s["title"], "modules": [
             {k: m[k] for k in ("key", "title", "summary", "refs", "prerequisites", "points") if k in m} for m in s["modules"]]}
             for s in outline["stages"]]}, "stages": outline["stages"],
-            "ranges": map_ranges(window, sum(len(m["points"]) for m in modules)),
+            "ranges": map_ranges(window, sum(len(m["points"]) for m in modules), module_counts=[len(m['points']) for m in modules]),
             "version": (draft["outline"] or {}).get("version", 0) + 1, 'constraint_errors': constraint_errors,
             "grounded": True, "dropped": outline["dropped"]}
         draft.pop("estimate", None)
@@ -787,7 +795,7 @@ class PlanFlow:
         if draft["phase"] != "outline" or not draft.get("outline"):
             raise BridgeError("PHASE_INVALID", "请先生成路线轮廓。")
         modules = agents.outline_modules(draft["outline"])
-        ranges = map_ranges(self._window(draft), sum(len(m.get("points", [])) for m in modules))
+        ranges = map_ranges(self._window(draft), sum(len(m.get("points", [])) for m in modules), module_counts=[len(m['points']) for m in modules])
         draft["outline"]["ranges"] = ranges
         draft["estimate"] = {"modules": len(modules), "points": ranges["points"],
             "input_tokens": [0, 0], "output_tokens": [0, 0], "model": "",
@@ -839,7 +847,7 @@ class PlanFlow:
             if not draft.get("estimate"):
                 self.estimate(draft)
                 return
-            if map_ranges(self._window(draft), sum(len(m["points"]) for m in modules))["over_300"]:
+            if map_ranges(self._window(draft), sum(len(m["points"]) for m in modules), module_counts=[len(m['points']) for m in modules])["over_300"]:
                 self.estimate(draft)
                 return
         errors = agents.scope_requirement_errors(modules + [p for m in modules for p in m["points"]], draft["form"])
@@ -884,6 +892,8 @@ class PlanFlow:
             prepare(store, plan_id, first["id"], self._material_context(ctx), progress)
             if ctx.cancel.is_set():
                 raise ModelCancelled()
+            if not self._module_ready(plan_id, first['id']):
+                raise BridgeError('MATERIALS_INCOMPLETE', '第 1 模块的原文或带答案题不足，请补充资料后重试；计划尚未就绪。')
         except Exception:
             draft["generation"][first["id"]] = "failed"
             self.save(draft)
@@ -897,9 +907,18 @@ class PlanFlow:
     def _material_context(self, ctx):
         # Preserve the bridge cancellation/stream contract and expose the
         # existing account gateway; MF-04 owns material/question preparation.
-        from types import SimpleNamespace
-        return SimpleNamespace(cancel=ctx.cancel, request_id=ctx.request_id, stream=ctx.stream,
-                               gateway=self.services.gateway)
+        return dict(cancel=ctx.cancel, gateway=self.services.gateway, fetcher=self.fetcher,
+                    on_status=lambda text: ctx.stream(text))
+
+    def _module_ready(self, plan_id, module_id):
+        store = self.services.store
+        points = [p for p in store.records('points', plan_id) if p['module_id'] == module_id]
+        bank = store.records('question_bank', plan_id)
+        from ..course.point_materials import uncovered_points
+        uncovered = set(uncovered_points(store, plan_id, self._material_context(
+            CallContext('material-check', threading.Event(), lambda _: None))))
+        return bool(points) and all(p['id'] not in uncovered and
+            sum(p['id'] in q['point_ids'] for q in bank) >= 2 for p in points)
 
     def _prepare_remaining(self, plan_id, modules, prepare):
         with self._guard:
@@ -916,6 +935,8 @@ class PlanFlow:
                         self.push("plan_preparation", {"plan_id": plan_id, "module_id": module["id"],
                             "done": done, "total": total, "text": text})
                     prepare(self.services.store, plan_id, module["id"], self._material_context(ctx), progress)
+                    if not self._module_ready(plan_id, module['id']):
+                        raise BridgeError('MATERIALS_INCOMPLETE', '后续模块的原文或题目不足。')
                     self._record_preparation(plan_id, module["id"], "done")
             except Exception as exc:
                 log.warning("background material preparation stopped: %s", type(exc).__name__)
@@ -1331,6 +1352,9 @@ class PlanFlow:
     def detail(self, plan_id):
         store = self.services.store
         plan = store.get_plan(plan_id)
+        if plan.get('unusable'):
+            return dict(plan=dict(plan, state='unusable'), stages=[], sources=[], has_report=False,
+                        unusable=True, message='旧版计划，已不可用')
         stages = store.records("stages", plan_id)
         modules = store.records("modules", plan_id)
         points = store.records("points", plan_id)

@@ -261,7 +261,7 @@ def test_materials_wait_progress_auto_resume_and_leave_cancel(env,monkeypatch):
     def prepare(store,plan_id,module_id,ctx,progress):
         started.set();progress(0,1,'正在查找带答案原题')
         while not release.wait(.005):
-            if ctx.cancel.is_set():return
+            if ctx['cancel'].is_set():return
         env.materials.bank=bank;progress(1,1,'备好原文与题目')
     monkeypatch.setattr(env.materials,'prepare_module',prepare)
     act(env,'enter');assert started.wait(1)

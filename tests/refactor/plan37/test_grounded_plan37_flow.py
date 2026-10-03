@@ -82,6 +82,8 @@ def fixture(tmp_path):
         assert url == URL
         return FetchedContent(url, url, "text/html", body, "2026-10-03T00:00:00Z")
     def prepare(store, pid, mid, ctx, progress):
+        from tests.refactor.integration38.support import seed_bank
+        seed_bank(store,pid)
         assert store.records("points", pid)
         prepared.append(mid)
         progress(1, 1, "原文与备题完成")
@@ -124,6 +126,22 @@ def test_plan37_whole_offline_flow_and_reopen(fixture):
     assert flow.load(pid)["outline"]["grounded"]
     flow.start_request(pid)
     assert flow.services.store.get_plan(pid)["state"] == "active"
+
+def test_plan38_incomplete_first_module_does_not_become_ready_and_retry_keeps_points(fixture):
+    flow,model,ctx,*_=fixture
+    draft=adopt_and_map(fixture);pid=draft['plan_id']
+    flow.estimate(draft)
+    prepare=flow._prepare_module
+    flow._prepare_module=lambda *args:None
+    with pytest.raises(BridgeError,match='题不足'):
+        flow.generate(draft,ctx)
+    assert flow.load(pid)['phase']=='generating' and flow.services.store.get_plan(pid)['state']!='active'
+    with pytest.raises(BridgeError,match='还没生成完'):
+        flow.start_request(pid)
+    points=flow.services.store.records('points',pid)
+    flow._prepare_module=prepare
+    flow.generate(draft,ctx)
+    assert flow.load(pid)['phase']=='ready' and flow.services.store.records('points',pid)==points
 
 
 def test_plan37_prunes_invalid_quote_and_reports_name(fixture):
@@ -260,6 +278,7 @@ def test_plan37_other_modules_prepare_in_background(fixture):
         thread_ids.append(threading.get_ident())
         entered.set()
         finish.wait(2)
+    flow._module_ready = lambda pid, mid: True  # scheduling-only test; no persisted module
     draft = flow.current()
     draft["phase"] = "ready"
     draft["generation"] = {"second": "pending"}

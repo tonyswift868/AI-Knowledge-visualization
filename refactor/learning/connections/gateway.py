@@ -48,7 +48,7 @@ PURPOSE_EFFORT = {
     'judge': 'high', 'check_profile': 'high', 'point_materials': 'high',
     'source_identity': 'high', 'outline': 'high',
     'generate': 'high', 'plan_additions_generate': 'high',
-    'source_scoring': 'high', 'teacher': 'high', 'coverage_check': 'high',
+    'source_scoring': 'high', 'research': 'high', 'teacher': 'high', 'coverage_check': 'high',
     'profile': None, 'sufficiency': 'none', 'plan_intent': 'none',
 }
 

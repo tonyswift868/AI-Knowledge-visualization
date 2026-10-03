@@ -156,20 +156,14 @@ def test_saved_short_question_with_three_numbered_requirements_remains_readable(
 
 
 def test_uncertain_grading_does_not_run_an_independent_second_call():
-    room = Classroom.__new__(Classroom)
-    room.review_wrong = False
-    seen = []
-    decisions = iter([Verdict('answer', True, (), '答到了。', True),
-                      Verdict('answer', False, ('p1',), '缺要点。')])
-    def ask(_course, _ctx, purpose, request, _parse, _limit):
-        seen.append((purpose, request[1][0]['content']))
-        return next(decisions)
-    room._ask = ask
-    course = SimpleNamespace(point=lambda _pid: dict(id='p1', title='append', summary=''),
-                             excerpts=lambda _ids: {'c1': '原文'})
-    pending = dict(point_ids=['p1'], question=dict(type='short', stem='append 做什么？',
-                   reference='把值加入列表末尾。', answer='把值加入列表末尾。'))
-    verdict = room._judge(course, {}, None, 'test', pending, '我肯定对')
-    assert len(seen) == 1
-    assert verdict.kind == 'answer' and verdict.uncertain
-    assert '原文' not in seen[0][1]
+    seen=[]
+    def complete(purpose,messages,**kwargs):
+        seen.append(purpose)
+        return SimpleNamespace(text=json.dumps(dict(kind='answer',correct=True,wrong_points=[],reason='答到了。',uncertain=True,
+            checks=[dict(point_id='p1',requirement='把值加入列表末尾。',applies=True,met=True,evidence='我肯定对')]),ensure_ascii=False))
+    services=SimpleNamespace(gateway=SimpleNamespace(complete=complete),data_root='isolated',account_id='fixture')
+    room=Classroom(services,lambda:None,review_wrong=False)
+    course=SimpleNamespace(plan_id='p',point=lambda _:dict(id='p1',title='append',summary=''),excerpts=lambda _:{'c1':'原文'})
+    pending=dict(point_ids=['p1'],question=dict(kind='short',stem='append 做什么？',answer='把值加入列表末尾。'))
+    verdict=room._judge(course,{},None,pending,'我肯定对')
+    assert seen==['judge'] and verdict.kind=='answer' and verdict.uncertain

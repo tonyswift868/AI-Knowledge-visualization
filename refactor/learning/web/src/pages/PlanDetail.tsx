@@ -6,6 +6,7 @@ import { Button, Skeleton, TASK_TIME_TIP, Tip } from "../ui"
 import { PlanTree } from "./NewPlan"
 
 type Detail = React.ComponentProps<typeof PlanTree>["detail"] & {
+  unusable?: boolean; message?: string
   progress?: { remaining: number; overdue_days: number }; has_report?: boolean
   plan: { weekday_weights?: number[] }
 }
@@ -24,6 +25,7 @@ export function PlanDetail() {
   }, [planId, go, toast])
 
   if (!detail) return <div className="page"><div className="card stack"><Skeleton h={26} w="40%" /><Skeleton h={120} /></div></div>
+  if (detail.unusable) return <div className="page"><Button small kind="ghost" onClick={() => go("plans")}><ArrowLeft />我的计划</Button><div className="card stack" style={{ marginTop: 12 }}><h1>{detail.plan.title || detail.plan.goal}</h1><p role="status">{detail.message || "旧版计划，已不可用"}</p></div></div>
   const points = detail.stages.reduce((a, s) => a + s.modules.reduce((b, m) => b + m.points.length, 0), 0)
   return (
     <div className="page">

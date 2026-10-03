@@ -24,6 +24,7 @@ PAGES = {
 def page(title):
     body = "".join(f"<h2>{title} 第{i}节</h2><p>" + f"{title} 的第 {i} 部分讲解，包含定义、例子和练习。" * 12 + "</p>"
                    for i in range(1, 4))
+    body += ''.join(f'<p>第{j}道：{title}学习时依据什么？ 答案：定义、例子和练习。</p>' for j in range(3))
     return f"<html><head><title>{title}</title></head><body><h1>{title}</h1>{body}</body></html>".encode("utf-8")
 
 
@@ -95,21 +96,22 @@ class ScriptedModel:
         elif purpose == "source_scoring":
             ids = re.findall(r"\[(r\d+)\]", user)
             text = json.dumps({"scores": [{"id": i, "relevance": 5, "credibility": 5, "note": "Python 官方教程包含目标中的类、异常和模块，可核对章节。"} for i in ids]})
-        elif purpose == "outline":
-            refs = re.findall(r"\[(s\d+\.\d+)\]", user)
-            modules = [{"key": f"m{i}", "title": f"模块{i}", "summary": f"学第{i}块", "refs": [ref],
-                        "prerequisites": [f"m{i - 1}"] if i > 1 else [], "minutes": [30, 60]} for i, ref in enumerate(refs[:3], 1)]
-            if "修改意见" in user:
-                modules[0]["title"] = "改过的模块1"
-            text = json.dumps({"stages": [{"title": "基础", "modules": modules}], "message": "先打基础再进阶。"}, ensure_ascii=False)
-        elif purpose == "generate":
-            aliases = re.findall(r"\[(c\d+)\]", user)
-            with self.lock:
-                fail = self.generate_failures > 0 and "模块2" in user.split("【本模块】")[1][:10]
-                if fail:
-                    self.generate_failures -= 1
-            text = "不是 JSON" if fail else json.dumps({"points": [
-                {"title": f"点{i}", "summary": f"掌握第{i}件事", "chunks": [aliases[0]], "minutes": 10} for i in range(1, 4)]})
+        elif purpose == 'outline':
+            chunks=json.loads(user.split('【已取得的原文段落】\n')[1])
+            modules=[]
+            for i in range(1,4):
+                c=chunks[0]  # Three distinct learning targets grounded in the same obtained section.
+                quote=c['text'][:80]
+                modules.append(dict(key=f'm{i}',title='改过的模块1' if i==1 and '修改意见' in user else f'模块{i}',summary='理解资料',
+                    refs=['s1.1'],prerequisites=[f'm{i-1}'] if i>1 else [],points=[dict(title=f'资料点{i}',summary='理解定义与练习',citations=[dict(chunk_id=c['chunk_id'],quote=quote)])]))
+            text=json.dumps(dict(stages=[dict(title='基础',modules=modules)],message='依据原文学习。'),ensure_ascii=False)
+        elif purpose == 'point_materials':
+            packet=json.loads(user);found=[]
+            for passage in packet['passages']:
+                for stem in re.findall(r'第\d道：[^？]+？',passage['text']):
+                    found.append(dict(kind='short',stem=stem,answer='定义、例子和练习。',explanation='',question_chunk=passage['id'],
+                        answer_chunk=passage['id'],answer_quote='定义、例子和练习。',pairing='same_block',question_number='',answer_number=''))
+            text=json.dumps(dict(passages=[p['id'] for p in packet['passages']],found=found,cloze=[]),ensure_ascii=False)
         elif purpose == "plan_intent":
             payload = json.loads(user.split("\n", 1)[1])
             phase, said = payload["ctx"]["phase"], payload["text"]
@@ -143,11 +145,13 @@ def form(today):
             "weekday_weights": [1, 1, 1, 1, 1, 0.5, 0], "special_days": [{"date": (today + timedelta(days=3)).isoformat(), "weight": 0}]}
 
 
-def test_new_plan_chain_from_form_to_start(qapp, tmp_root):
+def test_new_plan_chain_from_form_to_start(qapp, tmp_root, request):
     services = AppServices(account_id=ACCOUNT, data_root=tmp_root, session_provider=lambda: None,
                            api_base_url="https://api.invalid", ca_bundle=tmp_root / "ca.pem")
     model = services._gateway = ScriptedModel()
     bridge, sent = make_bridge(qapp)
+    request.addfinalizer(services.close)
+    request.addfinalizer(bridge.close)
     handlers.register(bridge, Window(services))
     n = iter(range(1000))
 
@@ -196,19 +200,18 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root):
     model.intents = [[{"kind": "proceed", "step": "generate"}]]
     draft = ask("plan.say", plan_id=pid, text="开始生成吧")["draft"]     # a paid step: show the estimate, never start it
     assert draft["estimate"]["modules"] == 3 and "amount" not in draft["estimate"]
-    assert draft["estimate"]["calls"] >= 3
+    assert draft["estimate"]["points"] == 3
     assert draft["phase"] == "outline" and not any(c[0] == "generate" for c in model.calls)
 
     draft = ask("plan.generate", plan_id=pid)["draft"]
-    assert draft["phase"] == "generating" and sorted(draft["generation"].values()) == ["done", "done", "failed"]
-    draft = ask("plan.generate", plan_id=pid)["draft"]                # retries only the failed module
-    assert draft["phase"] == "ready" and set(draft["generation"].values()) == {"done"}
-    assert sum(1 for c in model.calls if c[0] == "generate") == 5    # 3 + retry + second round
-    assert all(tokens == 8192 for purpose, _, tokens in model.calls if purpose in ("generate", "outline"))
+    assert draft['phase']=='ready'
+    assert not any(purpose=='generate' for purpose,_,_ in model.calls)
+    from tests.refactor.integration38.support import join_workers
+    join_workers()  # Await the short background fixture writes before editing modules.
 
     detail = ask("plan.detail", plan_id=pid)
     mods = [m for s in detail["stages"] for m in s["modules"]]
-    assert len(mods) == 3 and all(len(m["points"]) == 3 for m in mods) and detail["plan"]["state"] == "ready"
+    assert len(mods) == 3 and all(len(m["points"]) == 1 for m in mods) and detail["plan"]["state"] == "ready"
     assert len(detail["sources"]) == 2 and detail["daily"]["cap"] == 120
     model.intents = [[{"kind": "edit_modules", "delete": [], "move": [{"n": 2, "to": 1}]}]]
     draft = ask("plan.say", plan_id=pid, text="把第二个模块挪到最前面")["draft"]
