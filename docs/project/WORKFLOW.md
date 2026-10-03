@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-03）：第三十七～三十九批全部合入主线（4430aae，全量 2914 通过）。第四十批（打包 2.0.2、留可重复的打包脚本）交用户转发；回执回来架构师签名发布，用户本人测。
+- **现在在做的事**（2026-10-03）：2.0.2 已发布（主线 4430aae，公网验签通过）。等用户本人在 D:\MentorFlowApp 的软件里点更新并测试，按用户反馈再定下一批。
 
 ## 协作方式
 
@@ -38,7 +38,7 @@
 - **写脚本**：含 Windows 路径或反斜杠的内容不要用 bash heredoc（会被吃掉，BUG-10），写成文件再运行，或用编辑工具。
 - **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，用户 mentorflow-admin，用 sudo -n）。线上后端是瘦身镜像 mentorflow-slim-backend:MF-14，按 refactor/server/DEPLOY.md 用 compose.slim.yml 启动；回滚 `sudo bash /opt/mentorflow/state/mf14/switch.sh rollback`（切回 MF-U11），切换前的数据库备份 /opt/mentorflow/state/mf14/mentorflow-before-mf14.dump。服务器上只有管理员一个账号。
 - **资料白名单目录**：服务器 /opt/mentorflow/state/mentorflow-e1-preview/catalog/（source-whitelist.json 129 条、model-prices.json；旧版备份 *.bak-20260929）；本机待发布副本在 .local/catalog-release/。发布前用客户端同一套格式检查，下发的文件不能带 "candidates" 键。
-- **发布新版**（SYS-06）：用 scripts/build_learning_installer.py 的 freeze → release（签名清单，--valid-days）→ sign（私钥 .local/release-keys/mentorflow-app-2026.private.key，说明见同目录 README.txt）→ installer。上传到服务器 /opt/mentorflow/update-static/e108/app/ 的 .staging，逐个按 SHA256 校验后放入，最后原子替换 stable/stable.json；公网地址 https://89.45.45.28/mentorflow/updates/app/。给已装的 2.0.0 推的第一版必须 --valid-days 30；线上 stable.json 2026-10-28 过期。发布要用户同意。
+- **发布新版**（SYS-06）：打包用 D:\MentorFlow\.localelease-toolsuild_release.py（README.txt 有用法，员工或架构师都能跑，不碰私钥）；签名后上传可参考 .local	est-tmpelease-2.0.2\ 里的 stage_missing.py（只传服务器缺的对象）、upload_each.sh（逐个传、逐个校验）、verify_public.py（公网验签）。原流程：用 scripts/build_learning_installer.py 的 freeze → release（签名清单，--valid-days）→ sign（私钥 .local/release-keys/mentorflow-app-2026.private.key，说明见同目录 README.txt）→ installer。上传到服务器 /opt/mentorflow/update-static/e108/app/ 的 .staging，逐个按 SHA256 校验后放入，最后原子替换 stable/stable.json；公网地址 https://89.45.45.28/mentorflow/updates/app/。给已装的 2.0.0 推的第一版必须 --valid-days 30；线上 stable.json 2026-10-28 过期。发布要用户同意。
 - **磁盘**：测试与验收产物都在 .local/test-tmp/ 下（2026-09-30 共约 3.7 GB，release 1.3 GB、eval-plan 0.7 GB、installer 0.5 GB 最大）；acceptance/、acceptance2/ 是两次小测试的证据，保留到修复验收完。其余可在用户同意后清理。
 
 ## 当前基线
@@ -65,7 +65,7 @@
 
 ## 待派队列
 
-- 40-MF01：已起草（2026-10-03），交用户转发。回执回来：架构师签名（3 年）、生成安装程序、上传、公网验签 → 用户本人点更新到 2.0.2 并测试。
+- 无。等用户测试 2.0.2 的反馈。
 
 ## 第四十批任务原文（2026-10-03，基线 4430aae）
 
