@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-04）：没有在跑的任务。第四十四批三个回执已审查，合到 integrate-42（bdbbda3）后合入 main（82ffe31）：全量 2716 通过、0 失败，模拟工具离线完整场景 0 问题；合入时架构师修了两处衔接（CURRENT_STATE BUG-46）。下一步和用户商量“按块体验”（预算先说），见 CURRENT_STATE「当前阶段」。
+- **现在在做的事**（2026-10-04）：第四十四批已合入 main（82ffe31）；之后架构师按用户决定改了找题来源（81fdc93，计分题只收一、二档现成题，否则原文挖空）。第四十五批（按块体验第一块：真实模型从建计划对话跑到知识地图，只找问题）已起草，待用户转发。用户在核对学习回路，三个问题讨论中（CURRENT_STATE「当前阶段」）。
 
 ## 协作方式
 
@@ -40,7 +40,7 @@
 - **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，用户 mentorflow-admin，用 sudo -n）。线上后端是瘦身镜像 mentorflow-slim-backend:MF-14，按 refactor/server/DEPLOY.md 用 compose.slim.yml 启动；回滚 `sudo bash /opt/mentorflow/state/mf14/switch.sh rollback`（切回 MF-U11），切换前的数据库备份 /opt/mentorflow/state/mf14/mentorflow-before-mf14.dump。服务器上只有管理员一个账号。
 - **资料白名单目录**：服务器 /opt/mentorflow/state/mentorflow-e1-preview/catalog/（source-whitelist.json 129 条、model-prices.json；旧版备份 *.bak-20260929）；本机待发布副本在 .local/catalog-release/。发布前用客户端同一套格式检查，下发的文件不能带 "candidates" 键。
 - **发布新版**（SYS-06）：打包用 D:\MentorFlow\.local\release-tools\build_release.py（README.txt 有用法，员工或架构师都能跑，不碰私钥）；签名后上传可参考 .local\test-tmp\release-2.0.2\ 里的 stage_missing.py（只传服务器缺的对象）、upload_each.sh（逐个传、逐个校验）、verify_public.py（公网验签）。原流程：用 scripts/build_learning_installer.py 的 freeze → release（签名清单，--valid-days）→ sign（私钥 .local/release-keys/mentorflow-app-2026.private.key，说明见同目录 README.txt）→ installer。上传到服务器 /opt/mentorflow/update-static/e108/app/ 的 .staging，逐个按 SHA256 校验后放入，最后原子替换 stable/stable.json；公网地址 https://89.45.45.28/mentorflow/updates/app/。给已装的 2.0.0 推的第一版必须 --valid-days 30；线上 stable.json 2026-10-28 过期。发布要用户同意。
-- **磁盘**：测试与验收产物都在 .local/test-tmp/ 下（2026-09-30 共约 3.7 GB，release 1.3 GB、eval-plan 0.7 GB、installer 0.5 GB 最大）；acceptance/、acceptance2/ 是两次小测试的证据，保留到修复验收完。其余可在用户同意后清理。
+- **磁盘**：测试与验收产物都在 .local/test-tmp/ 下，用户 2026-10-04 定“垃圾定期清”：每批合入后删掉本批的中间目录，不用再问。必须保留：installer/build-tools（打包工具）、release-2.0.1/payload（发版脚本的对照包）、已发布版本的构建目录（现为 release-2.0.2）、acceptance/（cache_hit/acceptance_replay.py 读它）。2026-10-04 清理后约 2.0 GB。
 
 ## 当前基线
 
@@ -62,13 +62,53 @@
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
 | MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
-| MF-07（server） | D:\MentorFlow-office\server | 空闲 |
+| MF-07（server） | D:\MentorFlow-office\server | 45-MF01 已起草，待用户转发 |
 
 工位名只是称呼，不限制能接的任务类型。每个工位下的 repo 是主仓库的 git worktree，员工在分支 `office/<工位名>` 上提交。熟悉的领域：MF-01 老师与备课、MF-02 缓存/网关/报告、MF-03 题库/检测/账本、MF-04 资料检索与权威性、MF-05 语音与提醒、MF-06 验收与发布构建、MF-07 服务器与同步。
 
 ## 待派队列
 
-- 空。下一步先和用户商量按块体验（先建计划与找资料，预算先说），定了再写任务。
+- 45-MF01（server）：按块体验第一块，已起草（用户 2026-10-04 同意，预算 ¥3），待用户转发。回执回来后架构师逐条核对记录，和用户定修什么，再测下一块（课堂）。
+
+## 第四十五批任务原文（2026-10-04，基线 81fdc93）
+
+### [45-MF01] server｜按块体验第一块：真实模型从建计划对话跑到知识地图，只找问题
+
+~~~text
+【MentorFlow 第四十五批｜MF-01（工位 server）｜按块体验第一块：真实模型从建计划对话跑到知识地图，只找问题】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 81fdc93
+测试用 D:\MentorFlow\.venv\Scripts\python.exe。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\block45-plan\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+本任务是体验和找问题：refactor/ 下的产品代码一行都不改。模拟工具（tests/refactor/simulation/）跑真实模式时有接不上的地方可以修，改动写进回执并提交。查出的产品问题全部写进报告，由架构师和用户定怎么修。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据才停下来。对原因的判断要用真实记录验证过再写。回执里的数字要和实际记录一致。
+花钱规则（用户 2026-10-04 定）：真实模型用管理员现有的 DeepSeek Flash 预设，总上限 ¥3。用模拟工具的真实模式：--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell（工具只复制预设元数据到隔离目录，Key 由 Windows 凭据读取，你不读、不显示、不保存 Key；不改原账号数据）。分两段：第一段只跑第 1 次（--budget 0.8）；如果卡在会让后面几次都跑不下去的产品问题，就停下交回执，不继续花钱。否则再跑第 2～4 次（每次 --budget 0.7）。每次运行前在报告里写下预计花费。
+只有一个人在跑：本批只有你这一个任务。
+背景：产品方向见 CURRENT_STATE 的 [DIR-01]（AI 只找资料和现成题，建计划先多轮聊天、给需求摘要和大致模块、用户同意才找资料）。第四十四批已合入，模拟工具离线能从填表走到自由检验；现在要用真实模型按块体验，第一块是“建计划到找资料”（用户 2026-10-04 定）。先只跑到知识地图（--to map），课堂以后再测。
+先读：AGENTS.md；D:\MentorFlow\docs\project\CURRENT_STATE.md（只读）的「当前阶段」和 [DIR-01]、[PLAN-01]、[PLAN-06]、[PLAN-04]、[QA-01]；tests/refactor/simulation/README.md（“真实小量对话”“止损与证据”两节）；app/plan_flow.py、course/planner_agents.py、course/research_pipeline.py、course/source_quality.py 了解流程。
+要做
+  1. 4 次真实运行，每次一个新的模拟用户人设（人设 JSON 你写，模拟用户由真实模型按人设实时说话，不预写台词），都用 --to map（填表 → 多轮聊需求 → 需求摘要与大致模块预览 → 确认 → 找资料与打分 → 勾选 → 知识地图）：
+     ① “我不太懂计算机，想把各种术语概念都搞明白，不用上手操作，要生活化的例子”，零基础，一周，每天上限 60 分钟，不带资料（这是之后中测试的目标）。
+     ② 初中数学“一元二次方程的解法和应用”，初二水平，10 天，回答含糊、需要追问才说清。
+     ③ 历史“唐朝与丝绸之路”，中学水平，8 天；看到大致模块后提一次修改意见（例如要求先讲路线再讲商品），再确认。
+     ④ “雅思写作 Task 2 的论证结构”，有基础，两周；第一轮追问后就说“直接开始”。
+  2. 每次运行的全部记录（steps、model、events、summary）都保留，逐条人工核对（模型初筛只作参考）：
+     - 聊需求：每轮是否只问一两个、问得是否必要；有没有替用户编设置或声称改了实际没改的；“直接开始”是否立刻尊重；共几轮。
+     - 预览：需求摘要是否和用户说的一致；大致模块是否覆盖目标、顺序合理；用户提修改后是否照改。
+     - 资料：每份采用资料的来源档位、是否权威、是否相关、是否原文（不是转载、营销号、内容农场、采集站）；有没有明显该找到却没找到的权威来源（写出你知道的对照来源）；不够时是否如实提示；难资料有没有被压下去。
+     - 知识地图：每个点是否都标出依据的原文段落、那段是否真的讲这个点；点的粒度（约 15 分钟一个）；有没有资料里没有的点；模块划分是否合理。
+     - 时长预估：是否按点数 × 15 分钟、每天超过 300 分钟才预警。
+     - 速度：每一步用户要等多久；花费：每次运行按用途分开。
+     - 卡住、报错、提示文字让人看不懂的地方。
+  3. 问题分级：P1（卡死、丢数据、采用了垃圾或内容错误的资料）／P2（功能或判断错误）／P3（体验）。每条写现象、复现（第几次运行、第几步）、证据文件、你判断的原因。
+完成标准：4 次运行都跑到知识地图（或按第一段规则如实停下）；上面每一项都有核对结果；花费不超过 ¥3。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\block45-plan\report.md；每次运行目录 run1～run4 保留原始记录，其余中间产物删除。
+回执：【MF-01｜server｜第四十五批｜完成/部分完成/受阻】基线 ／ 提交（如修了模拟工具）／ 4 次运行各到哪一步 ／ P1、P2、P3 各几条（每条一句话）／ 资料：采用几份、权威几份、不合格几份 ／ 地图：点数、没有出处或出处不对的点数 ／ 聊需求轮数与问题 ／ 速度 ／ 花费（每次与合计）／ 本地最终占用 ／ 问题记录
+~~~
 
 ## 第四十四批任务原文（2026-10-03，基线 44d94fe = integrate-42 分支）
 
@@ -2119,6 +2159,7 @@ D 盘：freeze 中间目录用完即删，只留 payload 与未签名清单（�
 | 42-MF01～05 | tools/library/classroom/server/platform | 多轮沟通与大致模块、找资料找题、课堂题目分配、模拟工具、更新后自动登录 | DIR-01 | 3483f07 | 已合入 main（82ffe31，随第四十四批） |
 | 43-MF01 | server | 联调 | — | 44d94fe | 未发出，作废（并入 44-MF01） |
 | 44-MF01～03 | server/library/classroom | 联调；找题优先级、客观题、比对实验；程序判分 | DIR-01、CHK-01、TEACH-04 | 44d94fe | 已合入 main（bdbbda3 → 82ffe31）；44-MF01 完成，44-MF02/03 部分完成（只差联调失败，合入后全过）；比对实验未达门槛、保持关闭 |
+| 45-MF01 | server | 按块体验第一块：真实模型从建计划对话跑到知识地图，只找问题（4 个人设，¥3） | DIR-01、PLAN-01、PLAN-06、PLAN-04、QA-01 | 81fdc93 | 已起草，待用户转发 |
 
 ## 任务模板
 
