@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-04）：第四十四批已合入 main（82ffe31）；之后架构师按用户决定改了找题来源（81fdc93，计分题只收一、二档现成题，否则原文挖空）。第四十五批（按块体验第一块：真实模型从建计划对话跑到知识地图，只找问题）已转发，进行中。学习回路已与用户核对完（DIR-01）。
+- **现在在做的事**（2026-10-04）：45-MF01（server，按块体验第一块）进行中。第四十六批三个任务已起草，待用户转发：46-MF01 library 挖空对准掌握目标与失败处理、46-MF02 runtime 打包 2.0.3（未签名）、46-MF03 classroom 偶发计时测试。基线 ae5b876。2.0.3 打好后架构师签名上传（发布要用户同意）。
 
 ## 协作方式
 
@@ -56,19 +56,117 @@
 
 | 员工 | 工位 | 状态 |
 | --- | --- | --- |
-| MF-01（library） | D:\MentorFlow-office\library | 空闲 |
-| MF-02（runtime） | D:\MentorFlow-office\runtime | 空闲 |
+| MF-01（library） | D:\MentorFlow-office\library | 46-MF01 已起草，待用户转发  |
+| MF-02（runtime） | D:\MentorFlow-office\runtime | 46-MF02 已起草，待用户转发  |
 | MF-03（client） | D:\MentorFlow-office\client | 空闲 |
 | MF-04（platform） | D:\MentorFlow-office\platform | 空闲 |
 | MF-05（tools） | D:\MentorFlow-office\tools | 空闲 |
-| MF-06（classroom） | D:\MentorFlow-office\classroom | 空闲 |
+| MF-06（classroom） | D:\MentorFlow-office\classroom | 46-MF03 已起草，待用户转发  |
 | MF-07（server） | D:\MentorFlow-office\server | 45-MF01 进行中 |
 
 工位名只是称呼，不限制能接的任务类型。每个工位下的 repo 是主仓库的 git worktree，员工在分支 `office/<工位名>` 上提交。熟悉的领域：MF-01 老师与备课、MF-02 缓存/网关/报告、MF-03 题库/检测/账本、MF-04 资料检索与权威性、MF-05 语音与提醒、MF-06 验收与发布构建、MF-07 服务器与同步。
 
 ## 待派队列
 
-- 45-MF01（server）：按块体验第一块，进行中（2026-10-04 已转发，预算 ¥3）。修复批另加 DIR-01 待修（挖空出不了题改为重挖或报错）。回执回来后架构师逐条核对记录，和用户定修什么，再测下一块（课堂）。
+- 45-MF01（server）：按块体验第一块，进行中（2026-10-04 已转发，预算 ¥3）。
+- 46-MF01～03：已起草（2026-10-04），待用户转发。2.0.3 未签名包回来后：架构师签名、上传（要用户同意）。45 回执回来后：架构师核对记录、和用户定修什么；再测下一块（课堂，等 46-MF01 合入后）。回执回来后架构师逐条核对记录，和用户定修什么，再测下一块（课堂）。
+
+## 第四十六批任务原文（2026-10-04，基线 ae5b876）
+
+### [46-MF01] library｜挖空对准每个知识点的掌握目标；挖空失败换句重挖，仍失败按程序错误报出
+
+~~~text
+【MentorFlow 第四十六批｜MF-01（工位 library）｜挖空对准每个知识点的掌握目标；挖空失败换句重挖，仍失败按程序错误报出】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard ae5b876
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\fix46-cloze\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据才停下来。对原因的判断要用真实数据验证过再写。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑的任务（各改各的文件，冲突由架构师合并；完成标准只要求你这块与已有测试通过）：
+  45-MF01（server）按块体验第一块：只跑模拟工具、不改产品代码。
+  46-MF01（library）挖空：course/point_materials.py、course/question_bank.py、app/classroom.py 里“出不了题”的处理（_prepare_one、_skip_question、_advance_missing 及其提示）及其测试。
+  46-MF02（runtime）打包 2.0.3：只在 .local\test-tmp\release-2.0.3\ 下构建，不改仓库。
+  46-MF03（classroom）偶发失败的计时测试：只改 tests/refactor/providers/test_safety.py、tests/refactor/teacher_voice_v2/、tests/refactor/server/test_slim_runtime.py（必要时最小改动被测代码的时间注入点）。
+花钱规则：真实模型用管理员现有 DeepSeek Flash 预设，总上限 ¥1.5，分两段——第一段最多 ¥0.5（用旧做法跑标注样本，得到基线数字）；第二段跑新做法。能离线做的先离线（假模型）。每次花钱前把“预计改善什么、为什么”写进报告。
+背景（用户 2026-10-04 定，CURRENT_STATE [DIR-01] 两条“待修”）：
+  ① 挖空要挖这个知识点的核心。用户的例子：知识点是“麦哲伦船队环球航行的意义”，该挖的是“证明了地球是圆的”这类结论，而不是“和多少名船员”里的人数。现状：挖哪处完全由模型指（point_materials._SYSTEM 的 cloze 段只要求“句中只出现一次的原词”“定义句、公式做 key”），程序（_cloze、_quick、question_bank.safe_blank）只查歧义，不查挖的是不是本点要学的内容。用户明确否决了按词的类型写死规则（例如“默认不挖数字、人名”）——知识点本身讲年份就该挖年份，讲意义就挖结论。
+  ② 一个知识点不可能没有原文（生成地图时没有原文出处的点直接丢弃，planner_agents.py 约 547 行）。所以“出不了题”只可能是程序问题：模型指的几处全被防歧义规则拒掉。现在课堂把它当“资料缺失”跳过（classroom._prepare_one 返回原因 → _skip_question 说“资料缺失，已跳过本次检测”），这是错的。
+做法（架构师定，照做；参考 Becker 等《Mind the Gap: Learning to Choose Gaps for Question Generation》：好的空可以是短语、覆盖各种语义角色、多数不是专有名词；RevUP：按与要考知识的相关性选空）：
+  1. 以掌握目标为准选空：每个知识点已有 summary（生成地图时写的“掌握目标”，可检验的掌握标准）。改 point_materials._SYSTEM 的 cloze 要求：先把本点掌握目标改写成一个问题（例如“麦哲伦船队的环球航行证明了什么？”），在本点依据的原文（point 的 chunk_ids 与本次 passages）里找出直接回答这个问题的原句，挖掉回答它的那一段（可以是短语，不限单个词）。cloze 每项增加 target（这个空回答的掌握目标问题）字段；sentence、answer 片段仍必须是原文逐字片段。干扰项仍取同一资料、同一类的原文片段。随口问（_quick）同样按掌握目标选空。
+  2. 程序检查只保留与“对不对得上原文、会不会有歧义”有关的规则（逐字在原文、片段在句中唯一、safe_blank、选项不重叠），不加任何按词的类型写死的规则。答案是短语时，填空只在它短而固定时出，否则出选择题（沿用 fixed_answer 的判断）。
+  3. 挖空失败换句重挖：一次定位的 cloze 指针全部被程序拒掉时，带上每条被拒的原因（例如“片段在句中出现两次”“选项与答案重叠”）再请求一次，要求换本点原文里的另一句或另一段；仍然没有可用的空，就抛出明确的错误码（例如 CLOZE_FAILED），把这次的请求、回复和每条被拒原因存进日志或证据文件。
+  4. 课堂：这种情况不再叫“资料缺失”。classroom 收到 CLOZE_FAILED（以及“没有关联的原文段落”这种按设计不该发生的情况）时，按程序错误提示，例如“这个知识点出题失败（程序问题，已记录）”，不计答题、不计时长、不算通过；kind 改成能和真正的资料问题区分的值；其余流程（继续学别的点、别的模块）照旧不被卡死。相关测试一起改。
+  5. 样本检验（先标注、后运行，标注冻结后不改）：从一、二档权威来源取 3 个科目（中学历史、初中数学或物理概念、计算机术语）的真实原文，用产品现有的地图生成（planner_agents 的知识地图步骤，真实模型）得到约 30 个知识点（带标题、掌握目标、出处原文）。你本人先为每个点标出“该挖哪一段”和“哪些挖法算对”（只要考到掌握目标就算对），保存并记录哈希。然后用旧做法和新做法各跑一遍挖空，人工逐题判：考到掌握目标 / 挖了无关细节 / 没出题。
+完成标准：新做法在样本上“挖了无关细节”0 道，“考到掌握目标” ≥ 90%（低于就如实报数字和逐题原因，不改标注凑数）；失败重挖与错误报出有离线测试；课堂不再出现“资料缺失”字样的出题失败提示；pytest tests/refactor 全部通过（偶发的计时测试见 46-MF03，如出现写明是哪一项）。
+先读：AGENTS.md；D:\MentorFlow\docs\project\CURRENT_STATE.md（只读）的 [DIR-01]、[CHK-01]、[QA-01]；course/point_materials.py、course/question_bank.py、course/planner_agents.py（地图与掌握目标）、app/classroom.py 的 _pick、_prepare_one、_skip_question、_advance_missing；tests/refactor/point_materials/ 下现有测试。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix46-cloze\report.md（含标注文件、两种做法的逐题结果、花费）。
+回执：【MF-01｜library｜第四十六批｜完成/部分完成/受阻】基线 ／ 提交 ／ 选空改了什么 ／ 重挖与报错 ／ 课堂提示 ／ 样本：点数、旧做法与新做法的“考到目标 / 挖了细节 / 没出题”各几道 ／ 全量结果 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [46-MF02] runtime｜打包 2.0.3（未签名），包含第四十一、四十二、四十四批
+
+~~~text
+【MentorFlow 第四十六批｜MF-02（工位 runtime）｜打包 2.0.3（未签名），包含第四十一、四十二、四十四批】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard ae5b876
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\release-2.0.3\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据才停下来。对原因的判断要用真实数据验证过再写。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑的任务（各改各的文件，冲突由架构师合并；完成标准只要求你这块与已有测试通过）：
+  45-MF01（server）按块体验第一块：只跑模拟工具、不改产品代码。
+  46-MF01（library）挖空：course/point_materials.py、course/question_bank.py、app/classroom.py 里“出不了题”的处理（_prepare_one、_skip_question、_advance_missing 及其提示）及其测试。
+  46-MF02（runtime）打包 2.0.3：只在 .local\test-tmp\release-2.0.3\ 下构建，不改仓库。
+  46-MF03（classroom）偶发失败的计时测试：只改 tests/refactor/providers/test_safety.py、tests/refactor/teacher_voice_v2/、tests/refactor/server/test_slim_runtime.py（必要时最小改动被测代码的时间注入点）。
+花费：¥0（不调用模型）。
+背景（WORKFLOW 协作方式“测试只认装好的最新版”，用户 2026-10-02 定）：每合入一批就发新版本。线上是 2.0.2（4430aae）；之后合入了第四十一批（更新弹框、强制更新规则、前台显示、桌面快捷方式）、第四十二批（多轮建计划与大致模块、找资料找题、课堂题目分配）、第四十四批（程序判分、只收客观题、计分题只收一二档来源），都没发版。你在第四十批写过可重复运行的打包脚本。
+先读：AGENTS.md；D:\MentorFlow\.local\release-tools\README.txt（用法、强制更新规则）；你的 2.0.2 报告 D:\MentorFlow\.local\test-tmp\release-2.0.2\report.md；CURRENT_STATE（只读）的 [SYS-06]。
+要做
+  1. 用 build_release.py 打 2.0.3：--version 2.0.3 --baseline ae5b876 --valid-days 1096 --base-versions 2.0.2 --output-dir D:\MentorFlow\.local\test-tmp\release-2.0.3，--notes 用一句话写清用户能感到的变化（建计划先聊清需求再给大致模块、题目只用权威来源的现成题或原文挖空并由程序判分、更新弹框与桌面快捷方式）。非强制版本（不传 --mandatory），除非你核实第四十一至四十四批改了与 2.0.2 不兼容的数据或协议——那样写明证据，按 README 用 --mandatory --mandatory-reason data_compatibility。
+  2. 脚本自带的检查全部通过（course/data、输入哈希、公钥身份、包内离线后端检查、文件哈希、增量估算）；对照 2.0.2 的包，核对新加或删掉的文件都说得出原因（例如删掉的 AI 判定相关文件）。
+  3. 不签名、不生成正式安装程序、不上传；把脚本打印的 sign 与 installer 命令原样写进报告，交架构师。
+完成标准：payload/、unsigned-release.json、report.md、build-evidence.json 齐全，检查全过；只保留这四样，其余中间产物删除。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\release-2.0.3\report.md。
+回执：【MF-02｜runtime｜第四十六批｜完成/部分完成/受阻】基线 ／ 版本与是否强制（理由）／ 检查结果 ／ 相比 2.0.2 增删的文件（摘要）／ 增量大小 ／ 架构师要执行的命令 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [46-MF03] classroom｜修三个偶发失败的计时测试，让全量结果可信
+
+~~~text
+【MentorFlow 第四十六批｜MF-03（工位 classroom）｜修三个偶发失败的计时测试，让全量结果可信】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard ae5b876
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\fix46-flaky\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据才停下来。对原因的判断要用真实数据验证过再写。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑的任务（各改各的文件，冲突由架构师合并；完成标准只要求你这块与已有测试通过）：
+  45-MF01（server）按块体验第一块：只跑模拟工具、不改产品代码。
+  46-MF01（library）挖空：course/point_materials.py、course/question_bank.py、app/classroom.py 里“出不了题”的处理（_prepare_one、_skip_question、_advance_missing 及其提示）及其测试。
+  46-MF02（runtime）打包 2.0.3：只在 .local\test-tmp\release-2.0.3\ 下构建，不改仓库。
+  46-MF03（classroom）偶发失败的计时测试：只改 tests/refactor/providers/test_safety.py、tests/refactor/teacher_voice_v2/、tests/refactor/server/test_slim_runtime.py（必要时最小改动被测代码的时间注入点）。
+花费：¥0（不调用模型）。
+背景：全量测试在机器满载时偶发失败，单独重跑又通过，每批员工和架构师都要花时间甄别“是不是我改坏的”。已知三项：
+  - tests/refactor/providers/test_safety.py::test_total_deadline_covers_all_tool_roundtrips（假服务器每次 sleep 55 毫秒、总时限 90 毫秒，负载下第一次往返就可能超时，2026-10-04 架构师全量时失败、单独 3/3 通过）；
+  - tests/refactor/teacher_voice_v2/test_teacher_voice_bridge.py::test_teacher_voice_v2_mouth_20hz_stop_zero_and_owner_guard（口型间隔断言 35–90 毫秒，44-MF03 全量时失败、单独通过）；
+  - tests/refactor/server/test_slim_runtime.py 里满载时偶发失败的那项（CURRENT_STATE「当前阶段」已知问题；先复现找出是哪一项）。
+做法：让这些测试不再依赖真实时钟的快慢——用可控时钟或事件顺序来验证同一件事（时限覆盖所有工具往返、口型 20 Hz 节奏与停止归零、运行时检查），不放宽断言的意思，不删测试。只有被测代码确实没有时间注入点时，才在产品代码里做最小改动（例如把 time.monotonic 作为可替换参数），并在回执写明。
+怎么证明修好了：每项修改前先在负载下复现（例如同时跑另一组测试或用 pytest-xdist 风格的并发；不安装新包，用 Python 自带的方式并发起几份全量），记录失败次数；修改后在同样负载下连续跑 20 次该项全部通过，再跑 2 次全量都通过。
+先读：AGENTS.md；上面三个测试文件与它们测的代码（connections/providers 的总时限、voice/tts 或 app/speech 的口型推送、refactor/server 的运行时检查）。
+完成标准：三项在负载下 20/20 通过；全量连续 2 次通过；断言的意思没有放宽（回执逐项写原断言与新断言）。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix46-flaky\report.md。
+回执：【MF-03｜classroom｜第四十六批｜完成/部分完成/受阻】基线 ／ 提交 ／ 每项：修前负载下失败几次、原因、怎么改、修后 20 次结果 ／ 是否动了产品代码 ／ 全量两次结果 ／ 本地最终占用 ／ 问题记录
+~~~
 
 ## 第四十五批任务原文（2026-10-04，基线 81fdc93）
 
@@ -2160,6 +2258,9 @@ D 盘：freeze 中间目录用完即删，只留 payload 与未签名清单（�
 | 43-MF01 | server | 联调 | — | 44d94fe | 未发出，作废（并入 44-MF01） |
 | 44-MF01～03 | server/library/classroom | 联调；找题优先级、客观题、比对实验；程序判分 | DIR-01、CHK-01、TEACH-04 | 44d94fe | 已合入 main（bdbbda3 → 82ffe31）；44-MF01 完成，44-MF02/03 部分完成（只差联调失败，合入后全过）；比对实验未达门槛、保持关闭 |
 | 45-MF01 | server | 按块体验第一块：真实模型从建计划对话跑到知识地图，只找问题（4 个人设，¥3） | DIR-01、PLAN-01、PLAN-06、PLAN-04、QA-01 | 81fdc93 | 进行中（2026-10-04 已转发） |
+| 46-MF01 | library | 挖空对准掌握目标；挖空失败换句重挖，仍失败按程序错误报出（¥1.5） | DIR-01、CHK-01 | ae5b876 | 已起草，待用户转发 |
+| 46-MF02 | runtime | 打包 2.0.3（未签名），含第四十一、四十二、四十四批 | SYS-06 | ae5b876 | 已起草，待用户转发 |
+| 46-MF03 | classroom | 修三个偶发失败的计时测试 | — | ae5b876 | 已起草，待用户转发 |
 
 ## 任务模板
 
