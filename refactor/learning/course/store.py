@@ -630,7 +630,7 @@ class CourseStore:
         body = '\n'.join(c['text'] for c in self._rows('source_chunks',plan_id) if c['source_id']==source_id)
         identity = classify_source(source.get('final_url') or source.get('url') or '',
                                    publisher_evidence=evidence, page_text=body)
-        if identity['level'] not in (1,2): raise StoreError('UNKNOWN_PUBLISHER')
+        if identity['level'] not in (1,2,3): raise StoreError('UNKNOWN_PUBLISHER')
         source['publisher_evidence'] = dict(evidence)
         self._put('sources', plan_id, source)
 

@@ -875,7 +875,7 @@ class _Course:
         """Point chunk_ids are the projection of point_sources, never a guessed source."""
         chunks={c['id']:c for c in self.store.records('source_chunks',self.plan_id)}
         sources={s['id']:s for s in self.store.records('sources',self.plan_id)}
-        wanted={cid for pid in point_ids for cid in self.point(pid).get('chunk_ids',[])}
+        wanted=list(dict.fromkeys(cid for pid in point_ids for cid in self.point(pid).get('chunk_ids',[])))
         return {cid:chunks[cid] for cid in wanted if cid in chunks and chunks[cid].get('text','').strip()
                 and sources.get(chunks[cid]['source_id'],{}).get('adopted')}
 

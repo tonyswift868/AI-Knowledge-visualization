@@ -1,8 +1,8 @@
 """Source-type admission. Publisher classification needs visible original evidence.
 
-Scores use the fetched final URL and body, never a search snippet. Unknown
-publishers remain below the automatic admission threshold. User materials are
-retained with this same assessment, clearly distinguished from recommended ones.
+Scores use the fetched final URL and body, never a search snippet. Authority
+sets priority; identifiable general/community publishers are usable at 3.
+Unknown publishers stay below the gate. User materials remain retained.
 """
 from datetime import date
 from html.parser import HTMLParser
@@ -12,7 +12,7 @@ from urllib.parse import urlsplit, unquote
 
 from .source_filter import RawHit, screen, load_lists, github_repo, normalize_url, classify_source
 
-MIN_CREDIBILITY = 4
+MIN_CREDIBILITY = 3
 MIN_RELEVANCE = 4
 MIN_SOURCES = 1  # Search display only. Readiness is point_sources coverage, not source count.
 MAX_SEARCH_ROUNDS = 3
@@ -196,7 +196,8 @@ def body_publication_date(body):
 
 
 def is_landing_page(title, body):
-    return (bool(re.search(r'\.pdf(?:\s*\||$)', title, re.I) and re.search(r'Download File|下载文件', body, re.I))
+    return (bool(re.fullmatch(r'\s*(?:Client Challenge|Just a moment(?:\.{3})?|Attention Required!?|访问验证|安全验证)\s*',title,re.I))
+            or bool(re.search(r'\.pdf(?:\s*\||$)', title, re.I) and re.search(r'Download File|下载文件', body, re.I))
             or bool(re.search(r'lesson plans?\b', title, re.I) and len(re.findall(r'View lesson|查看课程', body, re.I)) >= 2)
             or bool(re.search(r'Your browser does not support.*?play this video', body, re.I | re.S)
                     and not re.search(r'(^|\n)\s*(?:Transcript|文字稿|字幕全文)\s*(\n|$)', body, re.I)))
@@ -218,7 +219,7 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
         codes.append('listed_publisher')
     identity = classify_source(url or '', lists=lists, page_text=body, publisher_evidence=publisher_evidence)
     # Legacy server whitelist entries do not override the source-type policy.
-    credibility = 5 if identity['level'] == 1 else 4 if identity['level'] == 2 else 2
+    credibility = {1: 5, 2: 4, 3: 3}.get(identity['level'], 2)
     publisher, category = identity['publisher'] or '来源身份未核实', identity['category']
     if identity['level']: codes.append('source_type_level_' + str(identity['level']))
     repo = github_repo(url or '')
@@ -230,7 +231,7 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
         # that this particular repository is an original textbook.
     if _COMMUNITY.search(host + path) and not _host_is(host, 'wikipedia.org'):
         credibility = min(credibility, 3); codes.append('community_content')
-    if _PERSONAL.search(host + path):
+    if _PERSONAL.search(host + path) and identity['level'] == 0:
         credibility = min(credibility, 2); codes.append('author_unverified')
     if any(_host_is(host, h) for h in _AGGREGATORS):
         credibility = min(credibility, 3); codes.append('publication_or_author_unverified')
@@ -248,6 +249,7 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
                     or (host == 'modelcontextprotocol.io' and bool(re.fullmatch(r'/specification/20\d\d-\d\d-\d\d/?', path)))
                     or bool(re.search(r'/(?:category|tags?)/', path, re.I)))
     if landing_only:
+        credibility = min(credibility, 1)
         codes.append('lesson_body_unavailable')
     if '/_sources/' in path:
         credibility = 1; codes.append('documentation_source_markup')
@@ -285,7 +287,7 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
         except (ValueError, TypeError):
             freshness = 'unknown'
         if freshness != 'current':
-            credibility = min(credibility, 3); codes.append('freshness_' + freshness)
+            credibility = min(credibility, MIN_CREDIBILITY-1); codes.append('freshness_' + freshness)
 
     # Match goal and each module separately: one relevant module is useful, but
     # a body-only name-drop or generic keyword cannot pass on its own.
@@ -333,14 +335,36 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
     if relevance < MIN_RELEVANCE: codes.append('relevance_unresolved' if review else 'relevance_below_threshold')
     note = f'{publisher}；可信 {credibility}/5，相关 {relevance}/5。'
     if not eligible:
-        note += '尚未达到权威推荐门槛。'
+        note += '尚未达到可用资料门槛。'
     if freshness in {'unknown', 'stale'}: note += '此主题需较新资料，发布日期未知或超过两年。'
     return dict(version=1, credibility=credibility, relevance=relevance, eligible=eligible, needs_review=review,
                 context=dict(goal=goal, level=level, scopes=scopes),
-                publisher=publisher, source_type=category, originality='unconfirmed' if credibility < 4 else 'publisher_original',
+                publisher=publisher, source_type=category, source_group=source_group(credibility),
+                community=identity['type']=='community', originality='unconfirmed' if credibility < 4 else 'publisher_original',
                 freshness=freshness, published_at=published_at, level_fit=level_fit, covered_scopes=coverage,
                 reasons=list(dict.fromkeys(codes)), note=note, method='rules', url=url,
                 evidence=dict(title=title, excerpt=excerpt, matched_terms=sorted(set(matches))))
+
+
+def source_group(credibility):
+    return '权威（官方/教材）' if credibility >= 5 else '成熟平台' if credibility >= 4 else '一般网站'
+
+
+def rank_key(row):
+    """Credibility first, then relevance; an exact tie favours non-community."""
+    quality = row.get('quality') or row
+    return (-(quality.get('credibility') or 0), -(quality.get('relevance') or 0),
+            bool(quality.get('community') or quality.get('source_type')=='community'))
+
+
+def general_only(chunk_ids, sources, chunks, *, lists=None):
+    """Display label from persisted provenance, not a model's assertion."""
+    by_chunk={c['id']:c for c in chunks}
+    source_ids={by_chunk[cid]['source_id'] for cid in chunk_ids if cid in by_chunk}
+    if not source_ids or len([cid for cid in chunk_ids if cid in by_chunk]) != len(chunk_ids): return False
+    by_source={s['id']:s for s in sources}
+    return all(sid in by_source and assess_stored(by_source[sid],
+        [c for c in chunks if c['source_id']==sid],'',lists=lists)['credibility']==3 for sid in source_ids)
 
 
 def assess(source, goal, *, level='', modules=(), today=None, lists=None):

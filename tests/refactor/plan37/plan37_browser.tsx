@@ -15,9 +15,13 @@ async function run() {
   useApp.getState().set({ planId: null })
   root.render(<NewPlan />); await wait(150)
   check(document.body.textContent?.includes("可信依据"), "source credibility")
+  check(["权威（官方/教材）","成熟平台","一般网站"].every(t=>document.querySelector(`section[aria-label="${t}"]`)),"three source groups")
+  check([...document.querySelectorAll(".source-title")].map(x=>x.textContent).join("|")==="OpenStax · Pressure|成熟教学平台|一般教学网站|社区解释","credibility and community source order")
+  check(document.body.textContent?.includes("下载后点‘上传资料’"),"textbook instruction in chat")
   document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await wait()
   await click("整理知识地图")
   check(document.body.textContent?.includes("单位面积上的压力"), "point before generation")
+  check(document.body.textContent?.includes("来源一般"),"general-only map label")
   document.querySelector<HTMLDetailsElement>("details")!.open = true
   check(document.body.textContent?.includes("Pressure is the force"), "literal source quote")
   await click("查看时间预估")

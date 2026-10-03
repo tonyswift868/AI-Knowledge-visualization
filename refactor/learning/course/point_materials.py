@@ -113,13 +113,13 @@ def _candidates(ranked, *, max_passages=6, max_questions=8):
     return selected
 
 
-def _locate(point, passages, ctx, mode):
+def _locate_tier(point, passages, ctx, mode):
     _check(ctx)
     wanted=terms(point.get('title','')+' '+point.get('summary',''))
     # Keep complete chunks, rank linked/relevant ones first. No whole textbook
     # in the prompt; a selected quote is still validated against original text.
-    ranked=sorted(passages,key=lambda p:(p['id'] not in point.get('chunk_ids',[]),
-        -sum(t in p['text'].casefold() for t in wanted),p['id']))
+    ranked=sorted(passages,key=lambda p:(-sum(t in p['text'].casefold() for t in wanted),
+        p['authority'].get('type')=='community',p['id'] not in point.get('chunk_ids',[]),p['id']))
     passages=_candidates(ranked)
     if not passages:return dict(passages=[],found=[],cloze=[])
     for attempt in range(2):
@@ -146,6 +146,27 @@ def _locate(point, passages, ctx, mode):
     return _expand_output(output,passages)
 
 
+def _locate(point, passages, ctx, mode):
+    # Try each credibility band separately. A weaker band is only consulted
+    # when the better one cannot supply the point and two validated answers.
+    combined=dict(passages=[],found=[],cloze=[])
+    by_id={p['id']:p for p in passages}
+    for level in (1,2,3):
+        band=[p for p in passages if p['authority']['level']==level]
+        if not band: continue
+        output=_locate_tier(point,band,ctx,mode)
+        allowed={p['id'] for p in band}
+        output['passages']=[cid for cid in output.get('passages',[]) if cid in allowed]
+        output['found']=[i for i in output.get('found',[]) if isinstance(i,dict) and i.get('question_chunk') in allowed and i.get('answer_chunk') in allowed]
+        output['cloze']=[i for i in output.get('cloze',[]) if isinstance(i,dict) and i.get('chunk_id') in allowed]
+        for key in combined: combined[key]+=output.get(key,[])
+        selected={cid for cid in combined['passages'] if cid in by_id}
+        found=_collect(combined['found'],_found,point,passages)
+        cloze=_collect(combined['cloze'],lambda i,p,b:_cloze(i,p,{cid:by_id[cid] for cid in selected},passages),point,passages)
+        if selected and len({original_text(q['stem']) for q in found+cloze})>=2: break
+    return combined
+
+
 def _identity(source, chunks, ctx):
     body = '\n'.join(c['text'] for c in chunks)
     url = source.get('final_url') or source.get('url') or ''
@@ -155,7 +176,7 @@ def _identity(source, chunks, ctx):
     if ctx.get('gateway') and body.strip():
         result = ctx['gateway'].complete('source_identity',[{'role':'user','content':json.dumps(
             dict(url=url,title=source['title'],text=body[:10000]),ensure_ascii=False)}],
-            system='只判断页面原文可见发布者属于 government、school、national_education、textbook_publisher、open_textbook、official_documentation、education_platform 中哪一类。社区、转载、盗版或不能确认返回 unknown。返回 JSON {"type":"...","publisher":"...","quote":"原文关于发布主体/作者机构/备案的信息"}。不能依据域名猜测或编造证据。',
+            system='只判断页面原文可见发布者属于 government、school、national_education、textbook_publisher、open_textbook、official_documentation、education_platform、general_site、news_media、encyclopedia、company、teacher 中哪一类。转载、盗版或不能确认返回 unknown。一般网站不冒充权威。返回 JSON {"type":"...","publisher":"...","quote":"原文关于发布主体/作者机构/备案的信息"}。不能依据域名猜测或编造证据。',
             cancel=ctx.get('cancel'),plan_id=ctx['plan_id'],max_tokens=2048)
         evidence = _json(result.text)
         if ctx.get('on_call'): ctx['on_call']('source_identity',result)
@@ -175,7 +196,7 @@ def _passages(store, plan_id, ctx):
         if not source['adopted']: continue
         own=[c for c in chunks if c['source_id']==source['id']]
         identity=_identity(source,own,ctx)
-        if identity['level'] not in (1,2): continue
+        if identity['level'] not in (1,2,3): continue
         for chunk in own:
             if not chunk['text'].strip(): continue
             section=' / '.join(chunk.get('section',[]))
@@ -184,7 +205,7 @@ def _passages(store, plan_id, ctx):
             output.append(dict(id=chunk['id'],source_id=source['id'],text=chunk['text'],section=section,
                 source=dict(title=source['title'],url=source.get('final_url') or source.get('url') or '',locator=locator),
                 authority=identity))
-    return output
+    return sorted(output,key=lambda p:({1:0,2:1,3:2}[p['authority']['level']],p['authority']['type']=='community',p['id']))
 
 
 def _base(point, kind, stem, answer, origin, question, answer_source, explanation='', importance='normal', options=None):
@@ -309,7 +330,7 @@ def _discover_questions(point, ctx):
         hits+=list(ctx['search'](query,cancel=ctx.get('cancel')))
     elif ctx.get('gateway'):
         result=ctx['gateway'].complete('research',[{'role':'user','content':query}],
-            system='找现成带答案的练习，只找政府教育、正规教材出版社、大学、OpenStax、官方文档或成熟教育题库平台。不要出题或解题。',
+            system='找现成带答案的练习。优先政府教育、正规教材出版社、大学、OpenStax、官方文档或成熟教育题库平台；高档找不到时可用发布者可辨认的一般网站或社区。拒绝转载、采集、盗版与无答案资料。不要出题或解题。',
             enable_search=True,cancel=ctx.get('cancel'),plan_id=ctx['plan_id'],max_tokens=2048)
         hits += [dict(url=h.url,title=h.title,snippet=h.snippet) for h in result.search_hits+result.citations]
         if ctx.get('on_call'): ctx['on_call']('research',result)
@@ -319,7 +340,7 @@ def _discover_questions(point, ctx):
     owned=pipeline is None
     pipeline=pipeline or ResearchPipeline(fetcher=ctx.get('fetcher'),max_sources=6,ocr=ctx.get('ocr'))
     try:
-        result=pipeline.run(hits,lists=ctx['lists'],cancel=ctx.get('cancel'),
+        result=pipeline.run(hits,lists=ctx['lists'],cancel=ctx.get('cancel'),goal=point.get('title',''),
             accepted_urls=[s.get('url') for s in ctx['store'].records('sources',ctx['plan_id'])])
         _check(ctx)
         if ctx.get('on_status'):
@@ -328,7 +349,7 @@ def _discover_questions(point, ctx):
         for source in result.verified:
             candidate=dict(url=source.url,final_url=source.final_url,title=source.title)
             identity=_identity(candidate,[dict(text=b.text) for b in source.document.blocks],ctx)
-            if identity['level'] in (1,2):
+            if identity['level'] in (1,2,3):
                 saved=import_verified_source(ctx['store'],ctx['plan_id'],source)
                 if candidate.get('publisher_evidence'):
                     ctx['store'].set_source_publisher_evidence(ctx['plan_id'],saved['id'],candidate['publisher_evidence'])
@@ -379,11 +400,14 @@ def prepare_point(store, plan_id, point, ctx):
                 if ctx.get('on_status'):
                     ctx['on_status']('外部带答案题查找未完成，改用已核实的原文挖空：'+str(exc))
         selected=list(dict.fromkeys(selected))
+        order={p['id']:i for i,p in enumerate(passages)}
+        selected.sort(key=lambda cid:order.get(cid,len(order)))
         if not selected: return dict(passages=0,questions=len(rows),cloze=sum(q['origin']=='cloze' for q in rows))
         # Cloze pointers must refer to the passages actually linked to this point.
         by_id={p['id']:p for p in passages if p['id'] in selected}
         cloze=_collect(located.get('cloze',[]),lambda i,p,b:_cloze(i,p,by_id,passages),point,passages)
-        candidates=found+cloze
+        levels={p['source']['url']:p['authority']['level'] for p in passages}
+        candidates=sorted(found+cloze,key=lambda q:({1:0,2:1,3:2}.get(levels.get(q['source']['url']),3),q['origin']!='found'))
         distinct={original_text(q['stem']) for q in rows}
         additions=[]
         for q in candidates:

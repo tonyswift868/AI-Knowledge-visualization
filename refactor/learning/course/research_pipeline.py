@@ -24,11 +24,11 @@ import unicodedata
 from urllib.parse import urlsplit
 
 from .extract import ExtractedDocument, ExtractError, extract_bytes, extract_html
-from .source_quality import published_date
+from .source_quality import published_date, assess, rank_key, terms
 from .source_quality import is_landing_page, body_publication_date
 from .source_follow import lesson_links, is_spec_overview_index
 from .source_filter import (RawHit, SourceLists, blocked_keyword_reasons,
-                            load_lists, normalize_url, screen)
+                            load_lists, normalize_url, screen, classify_source)
 from refactor.learning.course.research import FetchedContent
 from refactor.learning.course.research import ResearchService
 from refactor.learning.course.research import ResearchError
@@ -338,8 +338,11 @@ class ResearchPipeline:
             return RejectedSource(hit.url, hit.title, 'fetch_failed', '资料抓取失败，未把搜索摘要当作已验证正文。')
 
     def run(self, hits, *, accepted_urls=(), rejected_urls=(), lists: SourceLists | None = None,
-            include_low=False, cancel=None) -> ResearchResult:
-        """Return input-ordered outcomes; accepted/rejected exclusions apply to redirects too.
+            include_low=False, cancel=None, goal='') -> ResearchResult:
+        """Return verified outcomes; goal enables credibility/relevance priority.
+
+        Without goal retain input order for existing audit callers.
+        Accepted/rejected exclusions apply to redirects too.
 
         max_sources caps attempted fetches, not the input audit. Each skipped
         item has a reason. Use ResearchPool.take() BEFORE another search round.
@@ -347,11 +350,11 @@ class ResearchPipeline:
         if not self._running.acquire(blocking=False):
             raise RuntimeError('同一验证流水线已有一批任务在运行。')
         try:
-            return self._run(hits, accepted_urls, rejected_urls, lists, include_low, cancel)
+            return self._run(hits, accepted_urls, rejected_urls, lists, include_low, cancel, goal)
         finally:
             self._running.release()
 
-    def _run(self, hits, accepted_urls, rejected_urls, lists, include_low, cancel):
+    def _run(self, hits, accepted_urls, rejected_urls, lists, include_low, cancel, goal):
         start = time.monotonic()
         lists = lists if lists is not None else (self.lists_provider() if self.lists_provider else load_lists())
         excluded = dict.fromkeys(_urls(accepted_urls), 'already_accepted')
@@ -375,12 +378,22 @@ class ResearchPipeline:
                 reason = ('possible_fork', '该仓库疑似同名 fork，保留原始来源。')
             elif hit.tier == 'low' and not include_low:
                 reason = ('low_quality', '该来源属于低质或转载来源，默认不展示。')
-            elif len(todo) >= self.max_sources:
-                reason = ('limit_reached', '本轮已达到抓取数量上限，该资料尚未验证。')
             if reason:
                 outcomes[index] = RejectedSource(hit.url, hit.title, *reason)
             else:
                 todo.append((index, hit))
+        if goal:
+            wanted=terms(goal)
+            def priority(item):
+                hit=item[1]
+                identity=classify_source(hit.url,lists=lists)
+                grade={1:5,2:4,3:3}.get(identity['level'],2)
+                relevance=len(wanted.intersection(terms(hit.title+' '+raw[item[0]].snippet)))
+                return (-grade,-relevance,identity['type']=='community')
+            todo.sort(key=priority)
+        for index,hit in todo[self.max_sources:]:
+            outcomes[index]=RejectedSource(hit.url,hit.title,'limit_reached','本轮已达到抓取数量上限，该资料尚未验证。')
+        todo=todo[:self.max_sources]
         active, attempted, cancelled = {}, 0, False
         while todo or active:
             if _cancelled(cancel) or self._closed.is_set():
@@ -437,6 +450,8 @@ class ResearchPipeline:
                     seen.update(aliases)
             else:
                 rejected.append(result)
+        if goal:
+            verified.sort(key=lambda s:rank_key(assess(s,goal,lists=lists)))
         return ResearchResult(tuple(verified), tuple(rejected), attempted, time.monotonic()-start, cancelled)
 
 
@@ -475,19 +490,19 @@ class ResearchPool:
                 self._records.append(source)
                 seen.update(aliases)
 
-    def take(self, n, *, include_low=False):
+    def take(self, n, *, include_low=False, key=None):
         if type(n) is not int or n < 0:
             raise ValueError('n 必须是非负整数')
         with self._lock:
             output = []
-            for tier in ('whitelist', 'neutral', 'low') if include_low else ('whitelist', 'neutral'):
-                for source in self._records:
-                    if len(output) >= n:
-                        return tuple(output)
-                    if source.tier != tier or _aliases(source) & (self._shown | self._accepted | self._rejected):
-                        continue
-                    output.append(source)
-                    self._shown.update(_aliases(source))
+            tiers=('whitelist','neutral','low') if include_low else ('whitelist','neutral')
+            records=[s for s in self._records if s.tier in tiers]
+            ordered=sorted(records,key=key) if key else sorted(records,key=lambda s:tiers.index(s.tier))
+            for source in ordered:
+                if len(output) >= n: break
+                if _aliases(source) & (self._shown | self._accepted | self._rejected): continue
+                output.append(source)
+                self._shown.update(_aliases(source))
             return tuple(output)
 
     def _mark(self, url, accepted):

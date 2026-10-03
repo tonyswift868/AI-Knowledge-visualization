@@ -22,12 +22,12 @@ def score(url='https://docs.python.org/3/tutorial/controlflow.html', *, title='P
     ('https://docs.python.org.attacker.test/guide', False),
     ('https://unknown.test/python', False),
     ('https://adg.csdn.net/python', False),
-    ('https://learn.microsoft.com/en-us/answers/questions/12', False),
+    ('https://learn.microsoft.com/en-us/answers/questions/12', True),
     ('https://mit.edu/~student/python', False),
     ('https://arxiv.org/abs/2401.00001', False),
     ('https://github.com/datawhalechina/hello-agents', False),  # owner priority alone is not publisher evidence
     ('https://github.com/wshao12/hello-agents', False),
-    ('https://github.com/datawhalechina/hello-agents/issues/1', False),
+    ('https://github.com/datawhalechina/hello-agents/issues/1', True),
     ('https://en.wikipedia.org/wiki/Talk:Python', False),
 ])
 def test_fixed_authority_gold(url, expected):

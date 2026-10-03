@@ -198,6 +198,14 @@ def _matches(host: str, rule: DomainRule) -> bool:
     return host == rule.match or host.endswith("." + rule.match)
 
 
+def _low_matches(host, rule):
+    # Older cached/server catalogs excluded the whole CSDN domain. The current
+    # product policy allows its community articles, while keeping ad portals low.
+    if rule.match in {'csdn.net','csdn.com'}:
+        return host in {'adg.csdn.net','ad.csdn.net'}
+    return _matches(host,rule)
+
+
 def _keyword_text(value: str) -> str:
     # Detect obvious percent-encoded/full-width variants without fetching. Do
     # not treat a snippet or the user's query as a page's title or identity.
@@ -264,7 +272,7 @@ def screen(hits: Iterable[RawHit], *, lists: SourceLists | None = None) -> list[
         if any(_matches(name, rule) for rule in lists.blocked for name in hosts):
             tier, category = "blocked", "blocked_site"
             reasons.append("blocked_site")
-        elif any(_matches(name, rule) for rule in lists.low for name in hosts):
+        elif any(_low_matches(name, rule) for rule in lists.low for name in hosts):
             tier, category = "low", "repost"
             reasons.append("repost_site")
         else:
@@ -450,11 +458,21 @@ def type_catalog(lists=None):
     return lists if lists.version == 2 else load_lists()
 
 
+_COMMUNITY_HOSTS = ('csdn.net', 'csdn.com', 'zhihu.com', 'tieba.baidu.com', 'stackoverflow.com',
+                    'stackexchange.com', 'reddit.com', 'quora.com', 'cnblogs.com')
+_GENERAL_HOSTS = ('baike.baidu.com', 'wikipedia.org', 'bbc.com', 'bbc.co.uk', 'xinhuanet.com',
+                  'people.com.cn', 'news.cn', 'thepaper.cn', 'reuters.com')
+
+
+def _is_host(host, suffix):
+    return host == suffix or host.endswith('.' + suffix)
+
+
 def classify_source(url, *, lists=None, publisher_evidence=None, page_text=''):
     """Publisher classification, never a claim that an individual page is a lesson.
 
-    Unknown sites require a visible publisher quotation and a declared source
-    type. The injected classifier cannot elevate community/repost/blocked sites.
+    Unknown sites require a visible byline or publisher quotation. Community
+    pages are level 3 and cannot be elevated by an injected type claim.
     """
     lists = lists or load_lists()
     normalized = normalize_url(url)
@@ -464,16 +482,19 @@ def classify_source(url, *, lists=None, publisher_evidence=None, page_text=''):
     # extracted original text is checked by the same classifier.
     normalized = normalized or ''
     host = urlsplit(normalized).hostname or ''
-    if ('webvpn' in host or any(_matches(host,r) for r in (*lists.low,*lists.blocked))
+    if ('webvpn' in host or any(_low_matches(host,r) for r in lists.low) or any(_matches(host,r) for r in lists.blocked)
             or blocked_keyword_reasons(url+' '+page_text, lists=lists)
             or re.search(r'转载自|转自\s*[:：]|转载\s*[:：]|reprinted\s+from|originally published (?:at|on)',page_text,re.I)
-            or re.search(r'/(?:forums?|discussions?|issues|pulls?)(?:/|$)|(?:^|\.)stackoverflow\.com$',host+urlsplit(normalized).path,re.I)
-            or (host=='learn.microsoft.com' and '/answers/' in urlsplit(normalized).path)):
+            ):
         return dict(result, type='excluded')
-    if re.search(r'/(?:~|users?/|students?/|personal/)',urlsplit(normalized).path,re.I):
-        return dict(result,type='excluded')
+    path = urlsplit(normalized).path
+    if (any(_is_host(host,h) for h in _COMMUNITY_HOSTS)
+            or re.search(r'/(?:forums?|discussions?|issues|pulls?)(?:/|$)',path,re.I)
+            or (host=='learn.microsoft.com' and '/answers/' in path)):
+        return dict(level=3,type='community',publisher=host,category='community',evidence='社区公开页面')
+    personal = bool(re.search(r'/(?:~|users?/|students?/|personal/)',path,re.I))
     for rule in type_catalog(lists).type_rules:
-        if any(host == suffix or host.endswith('.'+suffix) for suffix in rule['suffixes']):
+        if not personal and any(host == suffix or host.endswith('.'+suffix) for suffix in rule['suffixes']):
             return dict(level=rule['level'],type=rule['type'],publisher=rule['publisher'],
                         category=rule['category'],evidence=rule['reason'])
     evidence = publisher_evidence or {}
@@ -484,6 +505,17 @@ def classify_source(url, *, lists=None, publisher_evidence=None, page_text=''):
         rule = allowed[evidence['type']]
         return dict(level=rule['level'],type=rule['type'],publisher=evidence['publisher'],
                     category=rule['category'],evidence=quote)
+    general_types = {'general_site','news_media','encyclopedia','company','teacher'}
+    if (evidence.get('type') in general_types and isinstance(quote,str) and len(quote.strip()) >= 8
+            and quote in page_text and isinstance(evidence.get('publisher'),str) and evidence['publisher'].strip()):
+        return dict(level=3,type='general_site',publisher=evidence['publisher'],category='general_site',evidence=quote)
+    if any(_is_host(host,h) for h in _GENERAL_HOSTS) and ':' not in path and '/w/' not in path:
+        return dict(level=3,type='general_site',publisher=host,category='general_site',evidence='公开媒体或百科页面')
+    # A visible byline/imprint identifies a general publisher; it is not proof
+    # of official/academic authority and can never elevate the page above 3.
+    match = re.search(r'(?:发布者|发布机构|主办单位|作者|撰稿|版权所有|来源|Author|Published by|Copyright)\s*[:：©]?\s*([^\n。；;<>]{2,80})',page_text,re.I)
+    if match and re.search(r'[A-Za-z\u4e00-\u9fff]',match[1]) and not re.search(r'匿名|佚名|unknown|anonymous',match[1],re.I):
+        return dict(level=3,type='general_site',publisher=match[1].strip(),category='general_site',evidence=match[0])
     return result
 
 

@@ -11,10 +11,10 @@ import { Button, Field, Segmented, TASK_TIME_TIP, Tip } from "../ui"
 type Card = {
   card_id: string; kind: "url" | "file"; url: string | null; title: string; site: string; tier: string; summary: string
   relevance: number | null; credibility: number | null; note: string; status: "new" | "adopted" | "rejected"; chars: number
-  quality?: { source_type?: string }
+  quality?: { source_type?: string; community?: boolean; source_group?: string }
 }
 type Citation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
-type MapPoint = { title: string; summary: string; citations: Citation[] }
+type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean }
 type OModule = { points?: MapPoint[]; id?: string; key: string; title: string; summary: string; refs: string[]; ref_titles: string[]; prerequisites: string[]; minutes: [number, number] }
 type Outline = { stages: { title: string; modules: OModule[] }[]; ranges: { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; over_300?: boolean; points?: number; learning?: number; suggested_days?: number | null; suggested_end: string | null }; version: number }
 type Msg = { id: string; role: "ai" | "user"; kind: string; text: string; cards?: string[]; version?: number }
@@ -32,7 +32,7 @@ export type Draft = {
 type Detail = {
   plan: { id: string; title?: string; goal: string; state: string; window: { start: string; end: string } | null; total_minutes: number }
   stages: { id: string; title: string; modules: { id: string; title: string; summary: string; learning_minutes: number; check_minutes: number; state?: string | null
-    points: { citations?: Citation[]; id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number; needs_review?: boolean; taught?: boolean }[] }[] }[]
+    points: { citations?: Citation[]; source_general?: boolean; id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number; needs_review?: boolean; taught?: boolean }[] }[] }[]
   sources: { id: string; title: string; url: string | null; kind: string }[]
   daily?: { full_day: number; cap: number; ok: boolean; suggested_end: string | null }
 }
@@ -154,12 +154,9 @@ export function NewPlan() {
             if (m.kind === "sources") return (
               <div key={m.id} className="plan-block fade-in">
                 <div className="bubble bot">{m.text}</div>
-                <div className="source-grid">
-                  {(m.cards ?? []).map((id) => cards[id] && (
-                    <SourceCard key={id} card={cards[id]} locked={busy || !["questions", "sources", "outline"].includes(draft.phase)}
-                                onDecide={(adopt) => act("plan.decide", { card_id: id, adopt })} />
-                  ))}
-                </div>
+                <GroupedSources cards={(m.cards ?? []).map(id => cards[id]).filter(Boolean)}
+                  locked={busy || !["questions", "sources", "outline"].includes(draft.phase)}
+                  onDecide={(id,adopt) => act("plan.decide", {card_id:id,adopt})} />
               </div>
             )
             if (m.kind === "outline") return (
@@ -322,7 +319,7 @@ function Stars({ n, label }: { n: number | null; label: string }) {
 }
 
 function SourceCard({ card, locked, onDecide }: { card: Card; locked: boolean; onDecide: (adopt: boolean) => void }) {
-  const tier = card.kind === "file" ? ["上传", "file"] : card.tier === "whitelist" ? ["权威来源", "ok"] : ["一般来源", "muted"]
+  const tier = card.kind === "file" ? ["上传", "file"] : (card.credibility ?? 0) >= 5 ? ["权威来源", "ok"] : (card.credibility ?? 0) >= 4 ? ["成熟平台", "ok"] : ["一般来源", "muted"]
   return (
     <div className={`source-card ${card.status}`}>
       <div className="row between" style={{ alignItems: "flex-start" }}>
@@ -344,6 +341,17 @@ function SourceCard({ card, locked, onDecide }: { card: Card; locked: boolean; o
       </div>
     </div>
   )
+}
+
+export function GroupedSources({cards,locked,onDecide}: {cards:Card[];locked:boolean;onDecide:(id:string,adopt:boolean)=>void}) {
+  const ordered=[...cards].sort((a,b)=>(b.credibility??0)-(a.credibility??0) || (b.relevance??0)-(a.relevance??0)
+    || Number(!!(a.quality?.community || a.quality?.source_type==="community"))-Number(!!(b.quality?.community || b.quality?.source_type==="community")))
+  const groups=[{name:"权威（官方/教材）",cards:ordered.filter(c=>(c.credibility??0)>=5)},
+    {name:"成熟平台",cards:ordered.filter(c=>c.credibility===4)},
+    {name:"一般网站",cards:ordered.filter(c=>(c.credibility??0)<4)}]
+  return <>{groups.filter(g=>g.cards.length).map(g=><section key={g.name} aria-label={g.name}>
+    <h3 className="small muted">{g.name}</h3><div className="source-grid">{g.cards.map(c=><SourceCard key={c.card_id} card={c} locked={locked} onDecide={adopt=>onDecide(c.card_id,adopt)} />)}</div>
+  </section>)}</>
 }
 
 // ------------------------------------------------------------------ outline
@@ -371,7 +379,7 @@ function OutlineCard({ outline }: { outline: Outline }) {
                   <div key={m.key} className="module-node" style={{ animationDelay: `${n * 0.04}s` }}>
                     <div className="row between"><b><em>{n}</em>{m.title}</b><span className="pill muted">{m.minutes[0]}–{m.minutes[1]} 分钟</span></div>
                     <p>{m.summary}</p>
-                    <ol className="point-list">{m.points?.map((p, i) => <li key={i}><b>{p.title}</b><span>{p.summary}</span><PointCitations citations={p.citations} /></li>)}</ol>
+                    <ol className="point-list">{m.points?.map((p, i) => <li key={i}><b>{p.title}</b><span>{p.summary}</span>{p.source_general && <small className="muted">来源一般</small>}<PointCitations citations={p.citations} /></li>)}</ol>
                     {m.prerequisites.length > 0 && <span className="small muted">先学：{m.prerequisites.map((p) => titleOf[p]).join("、")}</span>}
                     <span className="small refs" title={m.ref_titles.join("\n")}><BookOpen size={12} />依据：{m.ref_titles.slice(0, 2).join("；")}{m.ref_titles.length > 2 ? ` 等 ${m.ref_titles.length} 处` : ""}</span>
                   </div>
@@ -487,7 +495,7 @@ export function PlanTree({ detail, editable, busy, onDelete, onMove }:
                     <ol className="point-list fade-in">
                       {m.points.map((p) => <li key={p.id} className={p.state ? `mastery-${MASTERY[p.state]?.[1] ?? "none"}` : ""}>
                         <b>{p.state && <i className="mastery-dot" title={MASTERY[p.state]?.[0]} />}{p.title}</b><span>{p.summary}</span>
-                        <em>{p.minutes} 分钟{p.state && MASTERY[p.state] ? ` · ${MASTERY[p.state][0]}` : ""}{p.errors ? ` · 错过 ${p.errors} 次` : ""}{p.needs_review ? " · 需要复习" : ""}</em><PointCitations citations={p.citations} /></li>)}
+                        <em>{p.minutes} 分钟{p.state && MASTERY[p.state] ? ` · ${MASTERY[p.state][0]}` : ""}{p.errors ? ` · 错过 ${p.errors} 次` : ""}{p.needs_review ? " · 需要复习" : ""}</em>{p.source_general && <small className="muted">来源一般</small>}<PointCitations citations={p.citations} /></li>)}
                     </ol>
                   )}
                 </div>

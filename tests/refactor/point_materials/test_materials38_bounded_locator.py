@@ -8,6 +8,7 @@ from refactor.learning.connections.errors import ModelError
 
 def passages(n=12):
     return [dict(id=f'c{i}',text=f'第{i}段：压强是压力与受力面积的比值。',source_id='s',section=[],
+                 authority=dict(level=1,type='textbook_publisher'),
                  source=dict(title='原文',url='https://pep.com.cn/book',locator=f'块{i}')) for i in range(n)]
 
 
@@ -61,7 +62,7 @@ def test_materials38_single_chunk_question_candidates_are_halved_too():
         if len(sent)==1:raise ModelError('MODEL_OUTPUT_TRUNCATED','截断')
         return dict(passages=[],found=[],cloze=[])
     text='\n'.join(f'{i}. 原题？\n答案：帕。' for i in range(1,9))
-    pm._locate(dict(id='p'),[dict(id='c',text=text)],dict(finder=finder),'answered_exercises')
+    pm._locate(dict(id='p'),[dict(id='c',text=text,authority=dict(level=1,type='textbook_publisher'))],dict(finder=finder),'answered_exercises')
     assert '8. 原题？' in sent[0] and '4. 原题？' in sent[1] and '5. 原题？' not in sent[1]
 
 

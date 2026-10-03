@@ -41,7 +41,7 @@ def test_research_shortlist_precedes_raw_hits_at_fetch_limit(monkeypatch):
 
         def run(self, hits, **kwargs):
             captured.extend(hits)
-            return SimpleNamespace(verified=[])
+            return SimpleNamespace(verified=[],rejected=[])
 
         def close(self):
             pass

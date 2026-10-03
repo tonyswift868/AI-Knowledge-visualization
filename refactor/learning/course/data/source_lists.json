@@ -126,12 +126,12 @@
   ],
   "low": [
     {
-      "match": "csdn.net",
-      "reason": "混有转载、聚合与 SEO 导流内容；优先追溯原作者，不能作为权威性背书。"
+      "match": "adg.csdn.net",
+      "reason": "广告聚合入口；普通 CSDN 社区文章另按三级来源核实。"
     },
     {
-      "match": "csdn.com",
-      "reason": "CSDN 相关内容入口，同样优先追溯一手来源。"
+      "match": "ad.csdn.net",
+      "reason": "广告入口，不作为学习正文。"
     },
     {
       "match": "iteye.com",
@@ -327,6 +327,7 @@
         "developers.google.com",
         "developers.openai.com",
         "doc.rust-lang.org",
+        "doc.qt.io",
         "docs.anthropic.com",
         "docs.aws.amazon.com",
         "docs.djangoproject.com",

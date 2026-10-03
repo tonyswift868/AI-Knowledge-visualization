@@ -9,6 +9,14 @@ export const draft: Draft = {
   outline: { version: 1, stages: [{ title: "基础", modules: [{ id: "m", key: "m1", title: "压强的定义", summary: "理解压强", refs: ["s1.1"], ref_titles: ["OpenStax · Pressure"], prerequisites: [], minutes: [450,450], points: [{ title: "单位面积上的压力", summary: "理解定义", citations: [citation] }] }] }], ranges: { points: 30, learning: 450, total: [560,560], daily: [560,560], cap: 60, over_cap: true, over_300: true, suggested_end: "2026-10-12", suggested_days: 10 } }, generation: {},
 }
 export const methods: string[] = []
+draft.sources.push(...[
+  {card_id:"community39",kind:"url" as const,url:"https://zhihu.com/question/1",title:"社区解释",site:"知乎",tier:"neutral",summary:"原文",relevance:5,credibility:3,note:"一般来源",status:"new" as const,chars:3000,quality:{source_type:"community",community:true}},
+  {card_id:"general39",kind:"url" as const,url:"https://news.example/lesson",title:"一般教学网站",site:"教学网站",tier:"neutral",summary:"原文",relevance:5,credibility:3,note:"一般来源",status:"new" as const,chars:3000},
+  {card_id:"platform39",kind:"url" as const,url:"https://jyeoo.com/q",title:"成熟教学平台",site:"题库",tier:"whitelist",summary:"原文",relevance:4,credibility:4,note:"成熟来源",status:"new" as const,chars:3000},
+])
+draft.messages[0].cards=["community39","general39","platform39","card"]
+draft.messages.push({id:"guide39",role:"ai",kind:"text",text:"《物理八年级下册》需登录下载。教材页面：https://basic.smartedu.cn/tchMaterial/detail；下载后点‘上传资料’传进来。"})
+draft.outline!.stages[0].modules[0].points![0].source_general=true
 export const detail = { plan: { id: draft.plan_id, title: draft.name, goal: draft.form!.goal, state: "ready", window: { start: "2026-10-03", end: "2026-10-12" }, total_minutes: 560 },
   stages: [{ id: "s", title: "基础", modules: [{ id: "m", title: "压强的定义", summary: "理解定义", learning_minutes: 15, check_minutes: 2,
     points: [{ id: "p", title: "单位面积上的压力", summary: "理解定义", minutes: 15, citations: [citation] }] }] }], sources: [{ id: "src", title: citation.title, url: citation.url, kind: "url" }], daily: { full_day: 56, cap: 60, ok: true, suggested_end: null } }

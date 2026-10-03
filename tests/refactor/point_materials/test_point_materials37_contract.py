@@ -120,7 +120,7 @@ def test_old_plans_unusable_no_migration(store):
     ('https://www.pep.com.cn/physics',1),('https://math.any.edu.cn/course',1),('https://math.any.edu/course',1),
     ('https://jyeoo.com/questions/123',2),('https://zxxk.com/answer/123',2),
     ('https://evilpep.com.cn/physics',0),('https://adg.csdn.net/physics',0),('https://any.webvpn.edu.cn/course',0),
-    ('https://math.any.edu.cn/forum/post',0)])
+    ('https://math.any.edu.cn/forum/post',3)])
 def test_source_type_rules(url,level):assert classify_source(url)['level']==level
 
 
@@ -129,7 +129,7 @@ def test_unknown_identity_visible_evidence_only():
     evidence=dict(type='government',publisher='某省教育考试院',quote=text)
     assert classify_source('https://exam.example.org/exam',publisher_evidence=evidence,page_text=text)['level']==1
     assert classify_source('https://exam.example.org/exam',publisher_evidence=evidence,page_text='不存在证据')['level']==0
-    assert classify_source('https://csdn.net/exam',publisher_evidence=evidence,page_text=text)['level']==0
+    assert classify_source('https://csdn.net/exam',publisher_evidence=evidence,page_text=text)['level']==3  # never promoted to government
     assert classify_source('',publisher_evidence=evidence,page_text=text)['level']==1
     assert classify_source('javascript:fake',publisher_evidence=evidence,page_text=text)['level']==0
     assert classify_source('https://math.any.edu/course',page_text='转载自 CSDN：正文')['level']==0

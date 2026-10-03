@@ -419,8 +419,8 @@ class PlanFlow:
                 # model search on the same pool of URLs.
                 break
             previous_count = count
-            instruction = (instruction + " 权威资料不足，请换来源继续找官方文档、原始教材、大学课程或权威机构，避免转载和社区帖。")[-1000:]
-        draft["messages"].append(_msg("ai", "text", f"权威资料不足：本次最多检索 {source_quality.MAX_SEARCH_ROUNDS} 轮，"
+            instruction = (instruction + " 可用资料不足，优先官方、教材和成熟平台；高档找不到时也找发布者可辨认的一般网站或社区，拒绝转载、采集与无正文页面。")[-1000:]
+        draft["messages"].append(_msg("ai", "text", f"可用资料不足：本次最多检索 {source_quality.MAX_SEARCH_ROUNDS} 轮，"
             f"目前只有 {count} 份达到门槛，期望至少 {source_quality.MIN_SOURCES} 份。不会降低标准凑数；可以缩小主题或提供你自己的资料。"))
         self.save(draft)
 
@@ -429,6 +429,16 @@ class PlanFlow:
         from ..course.source_filter import RawHit
         plan_id = draft["plan_id"]
         pool = self._pool(plan_id)
+        try:
+            catalog=getattr(self.services,'catalog',None)
+            guidance=catalog.material_guidance(draft['goal'],stage=draft['form'].get('notes','')) if catalog else None
+        except Exception:
+            # Match _lists(): built-in metadata does not need a live catalog.
+            guidance=None
+        if guidance is None:
+            from ..course.research import directory_upload_guidance
+            guidance=directory_upload_guidance(draft['goal'],lists=self._lists())
+        for message in guidance: self._material_guidance(draft,message)
         draft["research"]["round"] += 1
         accepted = [(s["title"], s["url"]) for s in draft["sources"] if s["status"] == "adopted" and s.get("url")]
         self.status(plan_id, "正在联网搜索资料（通常要半分钟到一分钟）…")
@@ -449,17 +459,27 @@ class PlanFlow:
         self.status(plan_id, f"搜到 {len(hits)} 条结果，正在逐个打开核实…")
         pipeline = ResearchPipeline(fetcher=self.fetcher, lists_provider=self._lists, max_sources=30, timeout=15.0)
         try:
-            outcome = pipeline.run(hits, accepted_urls=pool.accepted_urls, rejected_urls=pool.rejected_urls, cancel=ctx.cancel)
+            outcome = pipeline.run(hits, accepted_urls=pool.accepted_urls, rejected_urls=pool.rejected_urls, cancel=ctx.cancel,goal=draft['goal'])
         finally:
             pipeline.close()
         if ctx.cancel.is_set():
             raise ModelCancelled()
+        for rejected in outcome.rejected:
+            if rejected.code=='material_upload_required': self._material_guidance(draft,rejected.message)
         # Sphinx "view source" pages (/_sources/...) are markup, not the lesson itself.
         verified = [s for s in outcome.verified if "/_sources/" not in s.final_url and "/_sources/" not in s.url]
         pool.add(verified)
         for source in verified:
             self._verified.setdefault(plan_id, {})[source.url] = source
         self._show_batch(draft, ctx, searched=len(hits), verified=len(verified))
+
+    def _material_guidance(self,draft,text):
+        if not isinstance(text,str) or not text.strip(): return
+        key=' '.join(text.split())
+        seen=draft['research'].setdefault('material_guidance',[])
+        if key in seen:return
+        seen.append(key)
+        draft['messages'].append(_msg('ai','text',text))
 
     def _import_links(self, draft, ctx, urls):
         """Links the learner gave: open and verify each, adopt what passes; no search, no scoring gate."""
@@ -529,7 +549,8 @@ class PlanFlow:
         plan_id = draft["plan_id"]
         pool, cards = self._pool(plan_id), []
         for _ in range(3):
-            batch = pool.take(8)
+            batch = pool.take(8,key=lambda s:source_quality.rank_key(source_quality.assess(
+                s,draft['goal'],level=draft['form']['level'],today=self.study_day(),lists=self._lists())))
             if not batch:
                 break
             self.status(plan_id, "正在评估资料的相关性和可信度…")
@@ -563,7 +584,7 @@ class PlanFlow:
                               "content_key": identity})
             if len(cards) >= 3:
                 break
-        cards.sort(key=lambda c: (c["relevance"] * c["credibility"], c["tier"] == "whitelist"), reverse=True)
+        cards.sort(key=source_quality.rank_key)
         cards = cards[:MAX_CARDS_PER_ROUND]
         draft["sources"].extend(cards)
         if cards:
@@ -573,7 +594,7 @@ class PlanFlow:
         elif quiet:
             return 0
         else:
-            draft["messages"].append(_msg("ai", "text", "这一轮权威资料不足。可以点“再找找”换个思路，"
+            draft["messages"].append(_msg("ai", "text", "这一轮可用资料不足。可以点“再找找”换个思路，"
                                                         "或告诉我更具体的方向；也可以上传你手头的资料。"))
         self.save(draft)
         return len(cards)
@@ -622,7 +643,7 @@ class PlanFlow:
                 if previous.get("context") == quality["context"]:
                     quality = source_quality.apply_review(quality, previous)
                 if not quality["eligible"]:
-                    raise BridgeError("SOURCE_QUALITY_LOW", "这份检索资料尚未达到权威性与相关性门槛，不能采用。")
+                    raise BridgeError("SOURCE_QUALITY_LOW", "这份检索资料尚未达到可用性与相关性门槛，不能采用。")
                 card["quality"] = quality
                 if stored is not None:
                     store.add_sources(plan_id, [dict(stored, quality=quality, user_provided=False)])
@@ -688,6 +709,7 @@ class PlanFlow:
         sources = {s["id"]: s for s in store.records("sources", plan_id)}
         chosen = [sources[i] for i in adopted_ids if i in sources]
         chosen = [dict(s, summary=(s.get("quality", {}).get("note", "") + " " + s.get("summary", "")).strip()) for s in chosen]
+        chosen.sort(key=source_quality.rank_key)
         chunks: dict[str, list] = {}
         for chunk in store.records("source_chunks", plan_id):
             chunks.setdefault(chunk["source_id"], []).append(chunk)
@@ -773,6 +795,8 @@ class PlanFlow:
         by_id = {s.id: s for s in sections}
         modules = agents.outline_modules(outline)
         for module in modules:
+            for point in module['points']:
+                point['source_general']=source_quality.general_only(point['chunk_ids'],sources,chunks,lists=self._lists())
             # Compact spans (source + chunk positions) keep the draft small for big books.
             module["spans"] = [[by_id[r].source_id, by_id[r].first, by_id[r].last] for r in module["refs"]]
             module["ref_titles"] = [f"{by_id[r].source_title} · {by_id[r].title}" for r in module["refs"]]
@@ -1373,10 +1397,13 @@ class PlanFlow:
                                         "needs_review": point['id'] in review,
                                         "taught": point['id'] in taught}
         by_module: dict[str, list] = {}
+        sources=store.records('sources',plan_id)
+        chunks=store.records('source_chunks',plan_id)
         for point in points:
             by_module.setdefault(point["module_id"], []).append(
                 {"id": point["id"], "title": point.get("title", ""), "summary": point["summary"], "minutes": point["minutes"],
                  "citations": point.get("citations", []),
+                 "source_general":source_quality.general_only(point['chunk_ids'],sources,chunks,lists=self._lists()),
                  **mastery.get(point["id"], {})})
         result = {"plan": {k: plan.get(k) for k in ("id", "title", "goal", "final_goal", "state", "window", "total_minutes", "module_count")},
                   "stages": [{"id": s["id"], "title": s.get("title", ""), "modules": [
