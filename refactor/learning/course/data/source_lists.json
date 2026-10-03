@@ -1,782 +1,7 @@
 {
-  "version": 1,
-  "updated": "2026-09-29",
-  "whitelist": [
-    {
-      "match": "takeielts.britishcouncil.org",
-      "brand": "British Council IELTS",
-      "category": "education",
-      "reason": "英国文化教育协会自营雅思备考与教学站，发布考试样题和原始教师讲义。"
-    },
-    {
-      "match": "www.britishcouncil.in",
-      "brand": "British Council India",
-      "category": "education",
-      "reason": "英国文化教育协会印度站自有的雅思写作原始练习讲义。"
-    },
-    {
-      "match": "owl.purdue.edu",
-      "brand": "Purdue Online Writing Lab",
-      "category": "education",
-      "reason": "普渡大学写作实验室直接发布的英文写作和语法教材，原始课程正文可供核对。"
-    },
-    {
-      "match": "wikipedia.org",
-      "brand": "Wikipedia / 维基百科",
-      "category": "encyclopedia",
-      "reason": "广泛使用的协作百科，有引用与公开修订记录；具体条目仍需核验。"
-    },
-    {
-      "match": "britannica.com",
-      "brand": "Encyclopaedia Britannica / 大英百科",
-      "category": "encyclopedia",
-      "reason": "长期出版的编辑型百科，适合作为基础概念参考。"
-    },
-    {
-      "match": "plato.stanford.edu",
-      "brand": "Stanford Encyclopedia of Philosophy",
-      "category": "encyclopedia",
-      "reason": "斯坦福主办的专家撰写哲学百科，有作者与参考文献。"
-    },
-    {
-      "match": "mathworld.wolfram.com",
-      "brand": "Wolfram MathWorld",
-      "category": "encyclopedia",
-      "reason": "Wolfram 维护的数学参考百科，条目提供公式与文献线索。"
-    },
-    {
-      "match": "docs.python.org",
-      "brand": "Python",
-      "category": "official_docs",
-      "reason": "Python 官方语言与标准库文档，可追溯版本。"
-    },
-    {
-      "match": "developer.mozilla.org",
-      "brand": "MDN Web Docs",
-      "category": "official_docs",
-      "reason": "广泛使用的 Web 平台文档，提供兼容性信息和规范引用。"
-    },
-    {
-      "match": "docs.oracle.com",
-      "brand": "Oracle",
-      "category": "official_docs",
-      "reason": "Oracle 官方产品与 Java 文档，适合核对接口和版本行为。"
-    },
-    {
-      "match": "learn.microsoft.com",
-      "brand": "Microsoft Learn",
-      "category": "official_docs",
-      "reason": "微软官方技术文档与学习资料，有产品和版本归属。"
-    },
-    {
-      "match": "docs.aws.amazon.com",
-      "brand": "AWS Documentation",
-      "category": "official_docs",
-      "reason": "AWS 官方服务文档，适合核对服务接口与配置。"
-    },
-    {
-      "match": "cloud.google.com",
-      "brand": "Google Cloud",
-      "category": "official_docs",
-      "reason": "Google Cloud 官方产品文档与技术教程。"
-    },
-    {
-      "match": "developer.apple.com",
-      "brand": "Apple Developer",
-      "category": "official_docs",
-      "reason": "Apple 官方开发文档和平台接口说明。"
-    },
-    {
-      "match": "developer.android.com",
-      "brand": "Android Developers",
-      "category": "official_docs",
-      "reason": "Android 官方开发指南与 API 参考。"
-    },
-    {
-      "match": "developers.google.com",
-      "brand": "Google for Developers",
-      "category": "official_docs",
-      "reason": "Google 官方开发者文档与技术指南。"
-    },
-    {
-      "match": "developers.openai.com",
-      "brand": "OpenAI Developers",
-      "category": "official_docs",
-      "reason": "OpenAI 官方 API 与开发者文档；具体接口仍按页面版本核验。"
-    },
-    {
-      "match": "platform.openai.com",
-      "brand": "OpenAI Platform",
-      "category": "official_docs",
-      "reason": "OpenAI 官方平台文档与 API 参考入口。"
-    },
-    {
-      "match": "docs.anthropic.com",
-      "brand": "Anthropic Documentation",
-      "category": "official_docs",
-      "reason": "Anthropic 官方文档域名；旧链接是否重定向需后续实读确认。"
-    },
-    {
-      "match": "api-docs.deepseek.com",
-      "brand": "DeepSeek API Docs",
-      "category": "official_docs",
-      "reason": "DeepSeek 官方 API 文档，提供接口与参数定义。"
-    },
-    {
-      "match": "docs.github.com",
-      "brand": "GitHub Docs",
-      "category": "official_docs",
-      "reason": "GitHub 官方产品文档，不泛指用户仓库内容。"
-    },
-    {
-      "match": "git-scm.com",
-      "brand": "Git",
-      "category": "official_docs",
-      "reason": "Git 项目官方文档与 Pro Git 图书入口。"
-    },
-    {
-      "match": "docs.docker.com",
-      "brand": "Docker Docs",
-      "category": "official_docs",
-      "reason": "Docker 官方文档，说明容器工具的使用与行为。"
-    },
-    {
-      "match": "kubernetes.io",
-      "brand": "Kubernetes",
-      "category": "official_docs",
-      "reason": "Kubernetes 项目官方文档和概念说明。"
-    },
-    {
-      "match": "doc.rust-lang.org",
-      "brand": "Rust Documentation",
-      "category": "official_docs",
-      "reason": "Rust 官方语言书、标准库与参考文档。"
-    },
-    {
-      "match": "nodejs.org",
-      "brand": "Node.js",
-      "category": "official_docs",
-      "reason": "Node.js 项目官方运行时与 API 文档。"
-    },
-    {
-      "match": "typescriptlang.org",
-      "brand": "TypeScript",
-      "category": "official_docs",
-      "reason": "TypeScript 官方语言手册和配置参考。"
-    },
-    {
-      "match": "react.dev",
-      "brand": "React",
-      "category": "official_docs",
-      "reason": "React 项目官方文档与学习指南。"
-    },
-    {
-      "match": "vuejs.org",
-      "brand": "Vue.js",
-      "category": "official_docs",
-      "reason": "Vue 项目官方文档，含中文学习资源入口。"
-    },
-    {
-      "match": "angular.dev",
-      "brand": "Angular",
-      "category": "official_docs",
-      "reason": "Angular 项目官方框架文档。"
-    },
-    {
-      "match": "docs.djangoproject.com",
-      "brand": "Django",
-      "category": "official_docs",
-      "reason": "Django 官方框架文档，可核对版本与 API。"
-    },
-    {
-      "match": "flask.palletsprojects.com",
-      "brand": "Flask / Pallets",
-      "category": "official_docs",
-      "reason": "Flask 维护团队的官方文档。"
-    },
-    {
-      "match": "fastapi.tiangolo.com",
-      "brand": "FastAPI",
-      "category": "official_docs",
-      "reason": "FastAPI 项目官方教程与接口说明。"
-    },
-    {
-      "match": "numpy.org",
-      "brand": "NumPy",
-      "category": "official_docs",
-      "reason": "NumPy 官方科学计算文档与教程。"
-    },
-    {
-      "match": "scipy.org",
-      "brand": "SciPy",
-      "category": "official_docs",
-      "reason": "SciPy 官方科学计算文档与社区项目入口。"
-    },
-    {
-      "match": "pandas.pydata.org",
-      "brand": "pandas",
-      "category": "official_docs",
-      "reason": "pandas 项目官方数据分析文档。"
-    },
-    {
-      "match": "matplotlib.org",
-      "brand": "Matplotlib",
-      "category": "official_docs",
-      "reason": "Matplotlib 官方绘图文档和示例。"
-    },
-    {
-      "match": "scikit-learn.org",
-      "brand": "scikit-learn",
-      "category": "official_docs",
-      "reason": "scikit-learn 官方机器学习教程与算法说明。"
-    },
-    {
-      "match": "pytorch.org",
-      "brand": "PyTorch",
-      "category": "official_docs",
-      "reason": "PyTorch 官方框架文档与教程。"
-    },
-    {
-      "match": "tensorflow.org",
-      "brand": "TensorFlow",
-      "category": "official_docs",
-      "reason": "TensorFlow 官方框架文档与教程。"
-    },
-    {
-      "match": "docs.nvidia.com",
-      "brand": "NVIDIA Documentation",
-      "category": "official_docs",
-      "reason": "NVIDIA 官方计算与软件文档。"
-    },
-    {
-      "match": "postgresql.org",
-      "brand": "PostgreSQL",
-      "category": "official_docs",
-      "reason": "PostgreSQL 官方数据库手册与项目资料。"
-    },
-    {
-      "match": "dev.mysql.com",
-      "brand": "MySQL Developer Zone",
-      "category": "official_docs",
-      "reason": "MySQL 官方数据库参考手册。"
-    },
-    {
-      "match": "sqlite.org",
-      "brand": "SQLite",
-      "category": "official_docs",
-      "reason": "SQLite 作者维护的数据库规范与实现文档。"
-    },
-    {
-      "match": "r-project.org",
-      "brand": "The R Project",
-      "category": "official_docs",
-      "reason": "R 项目官方语言、手册与发布资料。"
-    },
-    {
-      "match": "cran.r-project.org",
-      "brand": "CRAN",
-      "category": "official_docs",
-      "reason": "R 官方生态的包手册与文档索引；包内容仍须核验。"
-    },
-    {
-      "match": "docs.kernel.org",
-      "brand": "Linux Kernel Documentation",
-      "category": "official_docs",
-      "reason": "Linux 内核项目官方技术文档。"
-    },
-    {
-      "match": "openai.github.io",
-      "brand": "OpenAI 官方项目文档",
-      "category": "official_docs",
-      "reason": "OpenAI 组织的 GitHub Pages 文档，不泛信整个 github.io。"
-    },
-    {
-      "match": "docs.langchain.com",
-      "brand": "LangChain Documentation",
-      "category": "official_docs",
-      "reason": "LangChain 官方框架与 LangGraph 文档。"
-    },
-    {
-      "match": "modelcontextprotocol.io",
-      "brand": "Model Context Protocol",
-      "category": "official_docs",
-      "reason": "MCP 项目官方协议文档与规范。"
-    },
-    {
-      "match": "arxiv.org",
-      "brand": "arXiv",
-      "category": "academic",
-      "reason": "长期使用的学术预印本档案；收录不等于经过同行评审。"
-    },
-    {
-      "match": "aclanthology.org",
-      "brand": "ACL Anthology",
-      "category": "academic",
-      "reason": "ACL 官方自然语言处理论文档案，提供出版信息。"
-    },
-    {
-      "match": "proceedings.neurips.cc",
-      "brand": "NeurIPS Proceedings",
-      "category": "academic",
-      "reason": "NeurIPS 官方论文集，可核对会议和作者信息。"
-    },
-    {
-      "match": "proceedings.mlr.press",
-      "brand": "Proceedings of Machine Learning Research",
-      "category": "academic",
-      "reason": "机器学习会议论文的正式出版档案。"
-    },
-    {
-      "match": "openreview.net",
-      "brand": "OpenReview",
-      "category": "academic",
-      "reason": "广泛使用的学术评审与论文平台；必须区分投稿、评审与录用状态。"
-    },
-    {
-      "match": "jmlr.org",
-      "brand": "Journal of Machine Learning Research",
-      "category": "academic",
-      "reason": "知名机器学习期刊的官方论文网站。"
-    },
-    {
-      "match": "dl.acm.org",
-      "brand": "ACM Digital Library",
-      "category": "academic",
-      "reason": "ACM 官方数字图书馆，提供正式论文出版记录。"
-    },
-    {
-      "match": "ieee.org",
-      "brand": "IEEE",
-      "category": "academic",
-      "reason": "IEEE 专业学会及官方出版来源，具体论文仍需核验。"
-    },
-    {
-      "match": "nature.com",
-      "brand": "Nature Portfolio",
-      "category": "academic",
-      "reason": "知名学术出版平台，提供论文作者、刊物与引用资料。"
-    },
-    {
-      "match": "science.org",
-      "brand": "Science / AAAS",
-      "category": "academic",
-      "reason": "AAAS 的学术期刊与科学出版来源。"
-    },
-    {
-      "match": "pnas.org",
-      "brand": "PNAS",
-      "category": "academic",
-      "reason": "美国国家科学院院刊官方出版来源。"
-    },
-    {
-      "match": "link.springer.com",
-      "brand": "SpringerLink",
-      "category": "academic",
-      "reason": "Springer 学术图书与期刊的出版平台。"
-    },
-    {
-      "match": "sciencedirect.com",
-      "brand": "ScienceDirect",
-      "category": "academic",
-      "reason": "Elsevier 学术期刊与图书平台，具有出版元数据。"
-    },
-    {
-      "match": "pubmed.ncbi.nlm.nih.gov",
-      "brand": "PubMed",
-      "category": "academic",
-      "reason": "美国国家医学图书馆的生物医学文献索引。"
-    },
-    {
-      "match": "pmc.ncbi.nlm.nih.gov",
-      "brand": "PubMed Central",
-      "category": "academic",
-      "reason": "美国国家医学图书馆的开放全文文献档案。"
-    },
-    {
-      "match": "pubs.acs.org",
-      "brand": "American Chemical Society Publications",
-      "category": "academic",
-      "reason": "美国化学会官方学术出版平台。"
-    },
-    {
-      "match": "aps.org",
-      "brand": "American Physical Society",
-      "category": "academic",
-      "reason": "美国物理学会及其官方期刊来源。"
-    },
-    {
-      "match": "siam.org",
-      "brand": "SIAM",
-      "category": "academic",
-      "reason": "工业与应用数学学会的出版与专业资料来源。"
-    },
-    {
-      "match": "zenodo.org",
-      "brand": "Zenodo",
-      "category": "academic",
-      "reason": "CERN 支持的研究成果存储平台；上传内容不自动等同同行评审。"
-    },
-    {
-      "match": "semanticscholar.org",
-      "brand": "Semantic Scholar",
-      "category": "academic",
-      "reason": "广泛使用的学术检索与论文元数据平台；优先追溯论文原文。"
-    },
-    {
-      "match": "openaire.eu",
-      "brand": "OpenAIRE",
-      "category": "academic",
-      "reason": "欧洲开放科研基础设施，提供研究成果与来源链接。"
-    },
-    {
-      "match": "ocw.mit.edu",
-      "brand": "MIT OpenCourseWare",
-      "category": "education",
-      "reason": "麻省理工学院官方开放课程，提供教学大纲和课程资料。"
-    },
-    {
-      "match": "openlearning.mit.edu",
-      "brand": "MIT Open Learning",
-      "category": "education",
-      "reason": "麻省理工学院官方开放学习入口。"
-    },
-    {
-      "match": "cs.stanford.edu",
-      "brand": "Stanford Computer Science",
-      "category": "education",
-      "reason": "斯坦福计算机科学系的官方课程与研究资料来源。"
-    },
-    {
-      "match": "cs.cmu.edu",
-      "brand": "Carnegie Mellon School of Computer Science",
-      "category": "education",
-      "reason": "卡内基梅隆计算机科学学院的课程与研究资料来源。"
-    },
-    {
-      "match": "berkeley.edu",
-      "brand": "University of California, Berkeley",
-      "category": "education",
-      "reason": "加州大学伯克利分校官方教学与学术来源；具体作者仍需核实。"
-    },
-    {
-      "match": "cs50.harvard.edu",
-      "brand": "Harvard CS50",
-      "category": "education",
-      "reason": "哈佛 CS50 官方课程材料与公开教学资源。"
-    },
-    {
-      "match": "oyc.yale.edu",
-      "brand": "Open Yale Courses",
-      "category": "education",
-      "reason": "耶鲁大学官方开放课程。"
-    },
-    {
-      "match": "open.edu",
-      "brand": "The Open University",
-      "category": "education",
-      "reason": "英国开放大学的开放学习与大学教育资源。"
-    },
-    {
-      "match": "khanacademy.org",
-      "brand": "Khan Academy",
-      "category": "education",
-      "reason": "广泛使用的非营利教育平台，提供系统化基础课程。"
-    },
-    {
-      "match": "openstax.org",
-      "brand": "OpenStax",
-      "category": "education",
-      "reason": "莱斯大学支持的开放教材项目，教材有编写和审订信息。"
-    },
-    {
-      "match": "nptel.ac.in",
-      "brand": "NPTEL",
-      "category": "education",
-      "reason": "印度高校联合的官方工程与科学公开课项目。"
-    },
-    {
-      "match": "tsinghua.edu.cn",
-      "brand": "清华大学",
-      "category": "education",
-      "reason": "清华大学官方教学与学术来源，支持中文高等教育资料。"
-    },
-    {
-      "match": "pku.edu.cn",
-      "brand": "北京大学",
-      "category": "education",
-      "reason": "北京大学官方课程与学术资料来源。"
-    },
-    {
-      "match": "ustc.edu.cn",
-      "brand": "中国科学技术大学",
-      "category": "education",
-      "reason": "中国科学技术大学官方教育与研究资料来源。"
-    },
-    {
-      "match": "zju.edu.cn",
-      "brand": "浙江大学",
-      "category": "education",
-      "reason": "浙江大学官方教学与研究资料来源。"
-    },
-    {
-      "match": "sjtu.edu.cn",
-      "brand": "上海交通大学",
-      "category": "education",
-      "reason": "上海交通大学官方教学与学术资料来源。"
-    },
-    {
-      "match": "fudan.edu.cn",
-      "brand": "复旦大学",
-      "category": "education",
-      "reason": "复旦大学官方教育与学术资料来源。"
-    },
-    {
-      "match": "nju.edu.cn",
-      "brand": "南京大学",
-      "category": "education",
-      "reason": "南京大学官方教育与研究资料来源。"
-    },
-    {
-      "match": "w3.org",
-      "brand": "World Wide Web Consortium",
-      "category": "standards",
-      "reason": "W3C 官方 Web 标准与技术报告。"
-    },
-    {
-      "match": "whatwg.org",
-      "brand": "WHATWG",
-      "category": "standards",
-      "reason": "HTML 等 Web 平台现行标准的官方发布来源。"
-    },
-    {
-      "match": "ietf.org",
-      "brand": "Internet Engineering Task Force",
-      "category": "standards",
-      "reason": "IETF 官方互联网标准、工作组与技术文档来源。"
-    },
-    {
-      "match": "rfc-editor.org",
-      "brand": "RFC Editor",
-      "category": "standards",
-      "reason": "RFC 系列正式发布与勘误来源。"
-    },
-    {
-      "match": "iso.org",
-      "brand": "International Organization for Standardization",
-      "category": "standards",
-      "reason": "国际标准化组织官方标准目录与说明。"
-    },
-    {
-      "match": "iec.ch",
-      "brand": "International Electrotechnical Commission",
-      "category": "standards",
-      "reason": "国际电工委员会官方标准与技术资料来源。"
-    },
-    {
-      "match": "ecma-international.org",
-      "brand": "Ecma International",
-      "category": "standards",
-      "reason": "ECMAScript 等标准的官方发布组织。"
-    },
-    {
-      "match": "unicode.org",
-      "brand": "Unicode Consortium",
-      "category": "standards",
-      "reason": "Unicode 字符编码与文本处理标准的官方来源。"
-    },
-    {
-      "match": "nist.gov",
-      "brand": "NIST",
-      "category": "standards",
-      "reason": "美国国家标准与技术研究院的标准和计量技术资料。"
-    },
-    {
-      "match": "open-std.org",
-      "brand": "Open Standards",
-      "category": "standards",
-      "reason": "标准工作组公开草案与技术材料档案；草案状态须核验。"
-    },
-    {
-      "match": "stats.gov.cn",
-      "brand": "中国国家统计局",
-      "category": "government",
-      "reason": "中国国家统计局官方统计数据与方法说明。"
-    },
-    {
-      "match": "gov.cn",
-      "brand": "中国政府网",
-      "category": "government",
-      "reason": "中国政府机构公开政策和政务资料来源。"
-    },
-    {
-      "match": "moe.gov.cn",
-      "brand": "中国教育部",
-      "category": "government",
-      "reason": "中国教育部官方教育政策与统计信息。"
-    },
-    {
-      "match": "cas.cn",
-      "brand": "中国科学院",
-      "category": "government",
-      "reason": "中国科学院官方科研与科学传播资料。"
-    },
-    {
-      "match": "data.gov",
-      "brand": "Data.gov",
-      "category": "government",
-      "reason": "美国政府开放数据目录，标明数据发布机构。"
-    },
-    {
-      "match": "census.gov",
-      "brand": "U.S. Census Bureau",
-      "category": "government",
-      "reason": "美国人口普查局官方数据和统计方法。"
-    },
-    {
-      "match": "bls.gov",
-      "brand": "U.S. Bureau of Labor Statistics",
-      "category": "government",
-      "reason": "美国劳工统计局官方统计与方法资料。"
-    },
-    {
-      "match": "nasa.gov",
-      "brand": "NASA",
-      "category": "government",
-      "reason": "美国国家航空航天局官方科学与教育资料。"
-    },
-    {
-      "match": "noaa.gov",
-      "brand": "NOAA",
-      "category": "government",
-      "reason": "美国国家海洋和大气管理局官方科学与观测资料。"
-    },
-    {
-      "match": "data.worldbank.org",
-      "brand": "World Bank Open Data",
-      "category": "government",
-      "reason": "世界银行官方开放发展指标与方法资料。"
-    },
-    {
-      "match": "unstats.un.org",
-      "brand": "UN Statistics Division",
-      "category": "government",
-      "reason": "联合国统计司官方统计标准与数据来源。"
-    },
-    {
-      "match": "ec.europa.eu",
-      "brand": "European Commission",
-      "category": "government",
-      "reason": "欧盟委员会官方政策、统计与研究信息来源。"
-    },
-    {
-      "match": "oecd.org",
-      "brand": "OECD",
-      "category": "government",
-      "reason": "经合组织官方统计、方法与研究出版物。"
-    },
-    {
-      "match": "doi.org",
-      "brand": "DOI Foundation",
-      "category": "reference",
-      "reason": "DOI 标识解析基础设施，可追溯出版记录；跳转目标仍须核验。"
-    },
-    {
-      "match": "crossref.org",
-      "brand": "Crossref",
-      "category": "reference",
-      "reason": "学术出版物 DOI 与引用元数据的权威登记基础设施。"
-    },
-    {
-      "match": "dlmf.nist.gov",
-      "brand": "NIST Digital Library of Mathematical Functions",
-      "category": "reference",
-      "reason": "NIST 数学函数参考库，提供定义、公式与文献。"
-    },
-    {
-      "match": "cppreference.com",
-      "brand": "cppreference",
-      "category": "reference",
-      "reason": "C/C++ 社区广泛使用的语言和标准库参考；并非 ISO 标准原文。"
-    },
-    {
-      "match": "who.int",
-      "brand": "World Health Organization / 世界卫生组织",
-      "category": "reference",
-      "reason": "联合国公共卫生专门机构；医学页面仍须核验发布日期和具体正文。"
-    },
-    {
-      "match": "learnenglish.britishcouncil.org",
-      "brand": "British Council LearnEnglish",
-      "category": "education",
-      "reason": "英国文化教育协会自编英语学习材料；不泛化至其他个人学习网站。"
-    },
-    {
-      "match": "ielts.org",
-      "brand": "IELTS",
-      "category": "education",
-      "reason": "IELTS 考试官方资料与评分说明；现行考试规则仍须核验版本。"
-    },
-    {
-      "match": "metmuseum.org",
-      "brand": "The Metropolitan Museum of Art",
-      "category": "reference",
-      "reason": "大都会艺术博物馆馆藏与专家署名艺术史文章，可追溯机构和作者。"
-    },
-    {
-      "match": "web.mit.edu",
-      "brand": "MIT 18.06 course",
-      "category": "education",
-      "reason": "MIT 官方 18.06 课程讲义与练习；评分规则限 /18.06/，不泛化个人页面。"
-    },
-    {
-      "match": "whc.unesco.org",
-      "brand": "UNESCO World Heritage Centre",
-      "category": "reference",
-      "reason": "联合国教科文组织世界遗产中心的原始遗产说明。"
-    },
-    {
-      "match": "webarchive.unesco.org",
-      "brand": "UNESCO own web archive",
-      "category": "reference",
-      "reason": "UNESCO 自有历史页面归档，需核查原机构署名，不泛指第三方归档。"
-    },
-    {
-      "match": "heritage.go.kr",
-      "brand": "Korea National Heritage Portal",
-      "category": "government",
-      "reason": "韩国国家遗产门户对登记遗产的官方说明。"
-    },
-    {
-      "match": "m.pep.com.cn",
-      "brand": "People's Education Press",
-      "category": "education",
-      "reason": "人民教育出版社自有历史教学设计与教材配套资料。"
-    },
-    {
-      "match": "heart.org",
-      "brand": "American Heart Association",
-      "category": "reference",
-      "reason": "美国心脏协会自有循证心血管科普与资料。"
-    },
-    {
-      "match": "acc.org",
-      "brand": "American College of Cardiology",
-      "category": "reference",
-      "reason": "美国心脏病学会发布的原始指南摘要及专业声明。"
-    },
-    {
-      "match": "med.stanford.edu",
-      "brand": "Stanford Medicine",
-      "category": "education",
-      "reason": "斯坦福医学院自有研究与医学科普页面，正文仍核作者与日期。"
-    },
-    {
-      "match": "utswmed.org",
-      "brand": "UT Southwestern Medical Center",
-      "category": "education",
-      "reason": "得克萨斯大学西南医学中心自有医生署名健康文章。"
-    }
-  ],
+  "version": 2,
+  "updated": "2026-10-03",
+  "whitelist": [],
   "github_orgs": [
     {
       "owner": "datawhalechina",
@@ -1027,126 +252,3184 @@
       "免激活版"
     ]
   },
-  "candidates": [
+  "candidates": [],
+  "type_rules": [
     {
-      "match": "datawhalechina.github.io",
-      "brand": "Datawhale 课程站",
+      "type": "government",
+      "level": 1,
+      "suffixes": [
+        "gov.cn"
+      ],
+      "publisher": "政府与教育部门",
+      "category": "government",
+      "reason": "政府官方域名；具体页面仍需核实正文与相关性"
+    },
+    {
+      "type": "school",
+      "level": 1,
+      "suffixes": [
+        "edu",
+        "edu.cn"
+      ],
+      "publisher": "大学与学校",
       "category": "education",
-      "reason": "原始课程组织的网站，但是否达到全站白名单标准请用户确认。"
+      "reason": "学校官方域名；社区/个人页面除外"
     },
     {
-      "match": "huggingface.co",
-      "brand": "Hugging Face Hub",
-      "category": "reference",
-      "reason": "平台包含任意用户上传内容，不对白名单开放整个域名；请决定是否仅收官方文档子范围。"
+      "type": "national_education",
+      "level": 1,
+      "suffixes": [
+        "smartedu.cn"
+      ],
+      "publisher": "国家智慧教育平台",
+      "category": "education",
+      "reason": "国家教育平台全体子站；入口不作为教材正文"
     },
     {
-      "match": "docs.rs",
-      "brand": "Docs.rs",
-      "category": "reference",
-      "reason": "广泛使用但托管任意第三方 Rust 包文档，请决定是否接受平台级优先。"
+      "type": "textbook_publisher",
+      "level": 1,
+      "suffixes": [
+        "pep.com.cn",
+        "bnupg.com",
+        "1088.com.cn",
+        "sstp.cn",
+        "sstp.com.cn",
+        "fltrp.com"
+      ],
+      "publisher": "正规教材出版社",
+      "category": "education",
+      "reason": "出版社官网署名核实：人教、北师大出版集团、江苏凤凰教育、上海科学技术、外研社；具体页面仍须核实正文"
     },
     {
-      "match": "pkg.go.dev",
-      "brand": "Go Packages",
-      "category": "reference",
-      "reason": "Go 官方生态文档托管，但包含任意第三方模块，待用户审定范围。"
+      "type": "open_textbook",
+      "level": 1,
+      "suffixes": [
+        "openstax.org",
+        "libretexts.org"
+      ],
+      "publisher": "开放教材出版机构",
+      "category": "education",
+      "reason": "OpenStax 与 LibreTexts 正式开放教材；须验证具体章节"
     },
     {
-      "match": "mlanthology.org",
-      "brand": "ML Anthology",
-      "category": "academic",
-      "reason": "当前样本出现的论文聚合来源，尚未核实其出版归属。"
-    },
-    {
-      "match": "mintlify.wiki",
-      "brand": "Mintlify Wiki",
-      "category": "reference",
-      "reason": "样本中为第三方文档镜像，尚未核实与项目原站的授权和更新关系。"
-    },
-    {
-      "match": "cnblogs.com",
-      "brand": "博客园",
-      "category": "reference",
-      "reason": "有原创技术文章也有转载，不能把全站视为官方文档。"
-    },
-    {
-      "match": "developer.cloud.tencent.cn",
-      "brand": "腾讯云开发者社区",
-      "category": "reference",
-      "reason": "官方运营社区仍有用户投稿和转载，是否按作者分层需用户审定。"
-    },
-    {
-      "match": "cloud.tencent.com",
-      "brand": "腾讯云",
+      "type": "official_documentation",
+      "level": 1,
+      "suffixes": [
+        "angular.dev",
+        "api-docs.deepseek.com",
+        "cloud.google.com",
+        "cran.r-project.org",
+        "dev.java",
+        "dev.mysql.com",
+        "developer.android.com",
+        "developer.apple.com",
+        "developer.mozilla.org",
+        "developers.google.com",
+        "developers.openai.com",
+        "doc.rust-lang.org",
+        "docs.anthropic.com",
+        "docs.aws.amazon.com",
+        "docs.djangoproject.com",
+        "docs.docker.com",
+        "docs.github.com",
+        "docs.kernel.org",
+        "docs.langchain.com",
+        "docs.nvidia.com",
+        "docs.oracle.com",
+        "docs.python.org",
+        "ecma-international.org",
+        "fastapi.tiangolo.com",
+        "flask.palletsprojects.com",
+        "git-scm.com",
+        "gnu.org",
+        "iec.ch",
+        "ietf.org",
+        "iso.org",
+        "kubernetes.io",
+        "learn.microsoft.com",
+        "matplotlib.org",
+        "modelcontextprotocol.io",
+        "nist.gov",
+        "nodejs.org",
+        "numpy.org",
+        "open-std.org",
+        "openai.github.io",
+        "pandas.pydata.org",
+        "platform.openai.com",
+        "postgresql.org",
+        "pytorch.org",
+        "r-project.org",
+        "react.dev",
+        "rfc-editor.org",
+        "scikit-learn.org",
+        "scipy.org",
+        "sqlite.org",
+        "tensorflow.org",
+        "typescriptlang.org",
+        "unicode.org",
+        "vuejs.org",
+        "w3.org",
+        "whatwg.org"
+      ],
+      "publisher": "语言、框架与标准维护机构",
       "category": "official_docs",
-      "reason": "产品文档与开发者社区内容同域，域名级白名单难区分，请先审定范围。"
+      "reason": "官方语言/框架/标准文档；非官方社区不采用"
     },
     {
-      "match": "zhihu.com",
-      "brand": "知乎",
-      "category": "reference",
-      "reason": "问答平台，作者与可信度差异大，不进入默认权威来源。"
-    },
-    {
-      "match": "stackoverflow.com",
-      "brand": "Stack Overflow",
-      "category": "reference",
-      "reason": "高质量问答与过期或错误答案并存，是否纳入参考类别请用户决定。"
-    },
-    {
-      "match": "researchgate.net",
-      "brand": "ResearchGate",
-      "category": "academic",
-      "reason": "用户上传资料和论文元数据混合，优先追溯正式出版来源。"
-    },
-    {
-      "match": "coursera.org",
-      "brand": "Coursera",
+      "type": "education_platform",
+      "level": 2,
+      "suffixes": [
+        "jyeoo.com",
+        "zxxk.com",
+        "zujuan.xkw.com",
+        "zujuan.com",
+        "khanacademy.org",
+        "icourse163.org"
+      ],
+      "publisher": "成熟教育平台",
       "category": "education",
-      "reason": "知名课程平台，课程主办方与材料开放性各异，待用户审定。"
+      "reason": "成熟课程与题库平台；题目必须能配对到来源答案"
     },
     {
-      "match": "edx.org",
-      "brand": "edX",
-      "category": "education",
-      "reason": "知名公开课平台，课程来源和访问条件需要逐项核实。"
+      "type": "public_institution",
+      "level": 1,
+      "suffixes": [
+        "who.int",
+        "un.org",
+        "unesco.org",
+        "worldbank.org"
+      ],
+      "publisher": "国际公共机构",
+      "category": "government",
+      "reason": "WHO、联合国、教科文与世界银行机构官方出版资料"
+    }
+  ],
+  "directory": [
+    {
+      "id": "openstax-873",
+      "title": "Additive Manufacturing Essentials",
+      "url": "https://openstax.org/books/additive-manufacturing-essentials/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "Business",
+        "科学",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Additive Manufacturing Essentials"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1584 字"
     },
     {
-      "match": "icourse163.org",
-      "brand": "中国大学 MOOC",
-      "category": "education",
-      "reason": "知名课程平台，课程主办方与可访问资料范围请用户审定。"
+      "id": "openstax-867",
+      "title": "Algebra 1",
+      "url": "https://openstax.org/books/algebra-1/pages/quick-start",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Algebra 1"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 3205 字"
     },
     {
-      "match": "xuetangx.com",
-      "brand": "学堂在线",
-      "category": "education",
-      "reason": "公开课平台，具体课程来源及开放材料需要审定。"
+      "id": "openstax-38",
+      "title": "Algebra and Trigonometry",
+      "url": "https://openstax.org/books/algebra-and-trigonometry/pages/1-introduction-to-prerequisites",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Algebra and Trigonometry"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1201 字"
     },
     {
-      "match": "runoob.com",
-      "brand": "菜鸟教程",
-      "category": "education",
-      "reason": "中文教程聚合来源，尚不按官方文档或原始教材处理。"
+      "id": "openstax-553",
+      "title": "Algebra and Trigonometry 2e",
+      "url": "https://openstax.org/books/algebra-and-trigonometry-2e/pages/1-introduction-to-prerequisites",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Algebra and Trigonometry 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1632 字"
     },
     {
-      "match": "cdu.edu.au",
-      "brand": "Charles Darwin University",
-      "category": "education",
-      "reason": "样本中的高校论文副本来源；是否纳入高校名单请用户确认。"
+      "id": "openstax-84",
+      "title": "American Government",
+      "url": "https://cnx.org/contents/5bcc0e59-7345-421d-8507-a1e4608685e8",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "American Government"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - American Government 4e | OpenStax；正文 2122 字"
     },
     {
-      "match": "ciscolive.com",
-      "brand": "Cisco Live",
-      "category": "education",
-      "reason": "技术会议资料来源，样本相关性较弱，是否列入官方教育资源请用户审定。"
+      "id": "openstax-300",
+      "title": "American Government 2e",
+      "url": "https://openstax.org/books/american-government-2e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "American Government 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2122 字"
     },
     {
-      "match": "go.dev",
-      "brand": "Go",
-      "category": "official_docs",
-      "reason": "主站是官方文档，但域名后缀规则也会包含第三方包托管子域 pkg.go.dev；请用户先审定范围。"
+      "id": "openstax-518",
+      "title": "American Government 3e",
+      "url": "https://openstax.org/books/american-government-3e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "American Government 3e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1946 字"
+    },
+    {
+      "id": "openstax-931",
+      "title": "American Government 4e",
+      "url": "https://openstax.org/books/american-government-4e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "American Government 4e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2122 字"
+    },
+    {
+      "id": "openstax-35",
+      "title": "Anatomy and Physiology",
+      "url": "https://openstax.org/books/anatomy-and-physiology/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Anatomy and Physiology"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2132 字"
+    },
+    {
+      "id": "openstax-585",
+      "title": "Anatomy and Physiology 2e",
+      "url": "https://openstax.org/books/anatomy-and-physiology-2e/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Anatomy and Physiology 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2127 字"
+    },
+    {
+      "id": "openstax-81",
+      "title": "Astronomy",
+      "url": "https://openstax.org/books/astronomy/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Astronomy"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 3212 字"
+    },
+    {
+      "id": "openstax-576",
+      "title": "Astronomy 2e",
+      "url": "https://openstax.org/books/astronomy-2e/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Astronomy 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 3212 字"
+    },
+    {
+      "id": "openstax-121",
+      "title": "Biology",
+      "url": "https://openstax.org/books/biology/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Biology"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 829 字"
+    },
+    {
+      "id": "openstax-207",
+      "title": "Biology 2e",
+      "url": "https://openstax.org/books/biology-2e/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Biology 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 894 字"
+    },
+    {
+      "id": "openstax-162",
+      "title": "Biology for AP® Courses",
+      "url": "https://openstax.org/books/biology-ap-courses/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Biology for AP® Courses"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2604 字"
+    },
+    {
+      "id": "openstax-261",
+      "title": "Business Ethics",
+      "url": "https://openstax.org/books/business-ethics/pages/1-introduction",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Business Ethics"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1856 字"
+    },
+    {
+      "id": "openstax-340",
+      "title": "Business Law I Essentials",
+      "url": "https://openstax.org/books/business-law-i-essentials/pages/1-introduction",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Business Law I Essentials"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Business Law I Essentials | OpenStax；正文 310 字"
+    },
+    {
+      "id": "openstax-975",
+      "title": "Business Law I Essentials 2e",
+      "url": "https://openstax.org/books/business-law-i-essentials-2e/pages/1-introduction",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Business Law I Essentials 2e"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Business Law I Essentials 2e | OpenStax；正文 310 字"
+    },
+    {
+      "id": "openstax-74",
+      "title": "Calculus Volume 1",
+      "url": "https://openstax.org/books/calculus-volume-1/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Calculus Volume 1"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1656 字"
+    },
+    {
+      "id": "openstax-75",
+      "title": "Calculus Volume 2",
+      "url": "https://openstax.org/books/calculus-volume-2/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Calculus Volume 2"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1505 字"
+    },
+    {
+      "id": "openstax-76",
+      "title": "Calculus Volume 3",
+      "url": "https://openstax.org/books/calculus-volume-3/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Calculus Volume 3"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1532 字"
+    },
+    {
+      "id": "openstax-43",
+      "title": "Chemistry",
+      "url": "https://cnx.org/contents/85abf193-2bd2-4908-8563-90b8a7ac8df6",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Chemistry"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Chemistry | OpenStax；正文 1919 字"
+    },
+    {
+      "id": "openstax-298",
+      "title": "Chemistry 2e",
+      "url": "https://openstax.org/books/chemistry-2e/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Chemistry 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1919 字"
+    },
+    {
+      "id": "openstax-93",
+      "title": "Chemistry: Atoms First",
+      "url": "https://cnx.org/contents/4539ae23-1ccc-421e-9b25-843acbb6c4b0",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Chemistry: Atoms First"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Chemistry: Atoms First | OpenStax；正文 1919 字"
+    },
+    {
+      "id": "openstax-299",
+      "title": "Chemistry: Atoms First 2e",
+      "url": "https://openstax.org/books/chemistry-atoms-first-2e/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Chemistry: Atoms First 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1919 字"
+    },
+    {
+      "id": "openstax-814",
+      "title": "Clinical Nursing Skills",
+      "url": "https://openstax.org/books/clinical-nursing-skills/pages/1-introduction",
+      "subjects": [
+        "Nursing"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Clinical Nursing Skills"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1194 字"
+    },
+    {
+      "id": "openstax-39",
+      "title": "College Algebra",
+      "url": "https://openstax.org/books/college-algebra/pages/1-introduction-to-prerequisites",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "College Algebra"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1201 字"
+    },
+    {
+      "id": "openstax-550",
+      "title": "College Algebra 2e",
+      "url": "https://openstax.org/books/college-algebra-2e/pages/1-introduction-to-prerequisites",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "College Algebra 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1632 字"
+    },
+    {
+      "id": "openstax-554",
+      "title": "College Algebra 2e with Corequisite Support",
+      "url": "https://openstax.org/books/college-algebra-corequisite-support-2e/pages/1-introduction-to-prerequisites",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "College Algebra 2e with Corequisite Support"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1632 字"
+    },
+    {
+      "id": "openstax-443",
+      "title": "College Algebra with Corequisite Support",
+      "url": "https://openstax.org/books/college-algebra-corequisite-support/pages/1-introduction-to-prerequisites",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "College Algebra with Corequisite Support"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1201 字"
+    },
+    {
+      "id": "openstax-31",
+      "title": "College Physics",
+      "url": "https://openstax.org/books/college-physics/pages/1-introduction-to-science-and-the-realm-of-physics-physical-quantities-and-units",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "College Physics"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 4525 字"
+    },
+    {
+      "id": "openstax-603",
+      "title": "College Physics 2e",
+      "url": "https://openstax.org/books/college-physics-2e/pages/1-introduction-to-science-and-the-realm-of-physics-physical-quantities-and-units",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "College Physics 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 5675 字"
+    },
+    {
+      "id": "openstax-604",
+      "title": "College Physics For AP® Courses 2e",
+      "url": "https://openstax.org/books/college-physics-ap-courses-2e/pages/1-connection-for-ap-r-courses",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "College Physics For AP® Courses 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 5229 字"
+    },
+    {
+      "id": "openstax-506",
+      "title": "College Physics with Courseware",
+      "url": "https://openstax.org/details/books/college-physics-courseware",
+      "subjects": [],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "College Physics with Courseware"
+      ],
+      "available": [
+        "入口"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；OpenStax；未确认正文（不能算全文可用）"
+    },
+    {
+      "id": "openstax-382",
+      "title": "College Success",
+      "url": "https://openstax.org/books/college-success/pages/1-introduction",
+      "subjects": [
+        "College Success"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "College Success"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 5914 字"
+    },
+    {
+      "id": "openstax-694",
+      "title": "College Success Concise",
+      "url": "https://openstax.org/books/college-success-concise/pages/1-introduction",
+      "subjects": [
+        "College Success"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "College Success Concise"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 6079 字"
+    },
+    {
+      "id": "openstax-34",
+      "title": "Concepts of Biology",
+      "url": "https://openstax.org/books/concepts-biology/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Concepts of Biology"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 839 字"
+    },
+    {
+      "id": "openstax-689",
+      "title": "Contemporary Mathematics",
+      "url": "https://openstax.org/books/contemporary-mathematics/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Contemporary Mathematics"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1221 字"
+    },
+    {
+      "id": "openstax-130",
+      "title": "Elementary Algebra",
+      "url": "https://openstax.org/books/elementary-algebra/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Elementary Algebra"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 726 字"
+    },
+    {
+      "id": "openstax-414",
+      "title": "Elementary Algebra 2e",
+      "url": "https://openstax.org/books/elementary-algebra-2e/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Elementary Algebra 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 726 字"
+    },
+    {
+      "id": "openstax-314",
+      "title": "Entrepreneurship",
+      "url": "https://openstax.org/books/entrepreneurship/pages/1-introduction",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Entrepreneurship"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 3418 字"
+    },
+    {
+      "id": "openstax-870",
+      "title": "Foundations of Information Systems",
+      "url": "https://openstax.org/books/foundations-information-systems/pages/1-introduction",
+      "subjects": [
+        "Computer Science"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Foundations of Information Systems"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2624 字"
+    },
+    {
+      "id": "openstax-815",
+      "title": "Fundamentals of Nursing",
+      "url": "https://openstax.org/books/fundamentals-nursing/pages/1-introduction",
+      "subjects": [
+        "Nursing"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Fundamentals of Nursing"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1898 字"
+    },
+    {
+      "id": "openstax-131",
+      "title": "Intermediate Algebra",
+      "url": "https://openstax.org/books/intermediate-algebra/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Intermediate Algebra"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1400 字"
+    },
+    {
+      "id": "openstax-418",
+      "title": "Intermediate Algebra 2e",
+      "url": "https://openstax.org/books/intermediate-algebra-2e/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Intermediate Algebra 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1400 字"
+    },
+    {
+      "id": "openstax-573",
+      "title": "Introduction to Anthropology",
+      "url": "https://openstax.org/books/introduction-anthropology/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Anthropology"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 3757 字"
+    },
+    {
+      "id": "openstax-844",
+      "title": "Introduction to Behavioral Neuroscience",
+      "url": "https://openstax.org/books/introduction-behavioral-neuroscience/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "Science",
+        "社会科学",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Behavioral Neuroscience"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 4271 字"
+    },
+    {
+      "id": "openstax-259",
+      "title": "Introduction to Business",
+      "url": "https://openstax.org/books/introduction-business/pages/1-introduction",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Business"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 7920 字"
+    },
+    {
+      "id": "openstax-960",
+      "title": "Introduction to Business 2e",
+      "url": "https://openstax.org/books/introduction-business-2e/pages/1-introduction",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Business 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 8441 字"
+    },
+    {
+      "id": "openstax-847",
+      "title": "Introduction to Computer Science",
+      "url": "https://openstax.org/books/introduction-computer-science/pages/1-introduction",
+      "subjects": [
+        "Computer Science"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Computer Science"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 3233 字"
+    },
+    {
+      "id": "openstax-489",
+      "title": "Introduction to Intellectual Property",
+      "url": "https://openstax.org/books/introduction-intellectual-property/pages/1-introduction",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Intellectual Property"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Introduction to Intellectual Property | OpenStax；正文 451 字"
+    },
+    {
+      "id": "openstax-601",
+      "title": "Introduction to Philosophy",
+      "url": "https://openstax.org/books/introduction-philosophy/pages/1-introduction",
+      "subjects": [
+        "Humanities",
+        "人文"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Philosophy"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1508 字"
+    },
+    {
+      "id": "openstax-598",
+      "title": "Introduction to Political Science",
+      "url": "https://openstax.org/books/introduction-political-science/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Political Science"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 3642 字"
+    },
+    {
+      "id": "openstax-775",
+      "title": "Introduction to Python Programming",
+      "url": "https://openstax.org/books/introduction-python-programming/pages/1-introduction",
+      "subjects": [
+        "Computer Science"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Python Programming"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1187 字"
+    },
+    {
+      "id": "openstax-466",
+      "title": "Introduction to Sociology",
+      "url": "https://cnx.org/contents/afe4332a-c97f-4fc4-be27-4e4d384a32d8",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Sociology"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Introduction to Sociology 3e | OpenStax；正文 3396 字"
+    },
+    {
+      "id": "openstax-32",
+      "title": "Introduction to Sociology 2e",
+      "url": "https://openstax.org/books/introduction-sociology-2e/pages/1-introduction-to-sociology",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Sociology 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1352 字"
+    },
+    {
+      "id": "openstax-515",
+      "title": "Introduction to Sociology 3e",
+      "url": "https://openstax.org/books/introduction-sociology-3e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introduction to Sociology 3e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 3396 字"
+    },
+    {
+      "id": "openstax-189",
+      "title": "Introductory Business Statistics",
+      "url": "https://openstax.org/books/introductory-business-statistics/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "Business",
+        "数学",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introductory Business Statistics"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1409 字"
+    },
+    {
+      "id": "openstax-751",
+      "title": "Introductory Business Statistics 2e",
+      "url": "https://openstax.org/books/introductory-business-statistics-2e/pages/1-introduction",
+      "subjects": [
+        "Business",
+        "Math",
+        "商科",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introductory Business Statistics 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1471 字"
+    },
+    {
+      "id": "openstax-36",
+      "title": "Introductory Statistics",
+      "url": "https://openstax.org/books/introductory-statistics/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introductory Statistics"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1614 字"
+    },
+    {
+      "id": "openstax-750",
+      "title": "Introductory Statistics 2e",
+      "url": "https://openstax.org/books/introductory-statistics-2e/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Introductory Statistics 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1676 字"
+    },
+    {
+      "id": "openstax-391",
+      "title": "Life, Liberty, and the Pursuit of Happiness",
+      "url": "https://tutor.openstax.org/",
+      "subjects": [
+        "Humanities",
+        "人文"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Life, Liberty, and the Pursuit of Happiness"
+      ],
+      "available": [
+        "入口"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；OpenStax；未确认正文（不能算全文可用）"
+    },
+    {
+      "id": "openstax-834",
+      "title": "Lifespan Development",
+      "url": "https://openstax.org/books/lifespan-development/pages/1-what-does-psychology-say",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Lifespan Development"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2285 字"
+    },
+    {
+      "id": "openstax-813",
+      "title": "Maternal-Newborn Nursing",
+      "url": "https://openstax.org/books/maternal-newborn-nursing/pages/1-introduction",
+      "subjects": [
+        "Nursing"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Maternal-Newborn Nursing"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2508 字"
+    },
+    {
+      "id": "openstax-820",
+      "title": "Medical-Surgical Nursing",
+      "url": "https://openstax.org/books/medical-surgical-nursing/pages/1-introduction",
+      "subjects": [
+        "Nursing"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Medical-Surgical Nursing"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1554 字"
+    },
+    {
+      "id": "openstax-83",
+      "title": "Microbiology",
+      "url": "https://openstax.org/books/microbiology/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Microbiology"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1772 字"
+    },
+    {
+      "id": "openstax-771",
+      "title": "Nutrition for Nurses",
+      "url": "https://openstax.org/books/nutrition/pages/1-introduction",
+      "subjects": [
+        "Nursing"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Nutrition for Nurses"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1232 字"
+    },
+    {
+      "id": "openstax-707",
+      "title": "Organic Chemistry: A Tenth Edition",
+      "url": "https://openstax.org/books/organic-chemistry/pages/dedication-and-preface",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Organic Chemistry: A Tenth Edition"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 14446 字"
+    },
+    {
+      "id": "openstax-315",
+      "title": "Organizational Behavior",
+      "url": "https://openstax.org/books/organizational-behavior/pages/1-introduction",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Organizational Behavior"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 4559 字"
+    },
+    {
+      "id": "openstax-770",
+      "title": "Pharmacology for Nurses",
+      "url": "https://openstax.org/books/pharmacology/pages/1-introduction",
+      "subjects": [
+        "Nursing"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Pharmacology for Nurses"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1037 字"
+    },
+    {
+      "id": "openstax-415",
+      "title": "Physics",
+      "url": "https://openstax.org/books/physics/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Physics"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1996 字"
+    },
+    {
+      "id": "openstax-772",
+      "title": "Population Health for Nurses",
+      "url": "https://openstax.org/books/population-health/pages/1-introduction",
+      "subjects": [
+        "Nursing"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Population Health for Nurses"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 5310 字"
+    },
+    {
+      "id": "openstax-46",
+      "title": "Prealgebra",
+      "url": "https://openstax.org/books/prealgebra/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Prealgebra"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 772 字"
+    },
+    {
+      "id": "openstax-392",
+      "title": "Prealgebra 2e",
+      "url": "https://openstax.org/books/prealgebra-2e/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Prealgebra 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 772 字"
+    },
+    {
+      "id": "openstax-37",
+      "title": "Precalculus",
+      "url": "https://openstax.org/books/precalculus/pages/1-introduction-to-functions",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Precalculus"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1461 字"
+    },
+    {
+      "id": "openstax-551",
+      "title": "Precalculus 2e",
+      "url": "https://openstax.org/books/precalculus-2e/pages/1-introduction-to-functions",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Precalculus 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1470 字"
+    },
+    {
+      "id": "openstax-720",
+      "title": "Preparing for College Success",
+      "url": "https://openstax.org/books/preparing-for-college-success/pages/1-1-what-are-the-benefits-of-college",
+      "subjects": [
+        "College Success"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Preparing for College Success"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 13861 字"
+    },
+    {
+      "id": "openstax-303",
+      "title": "Principles of Accounting, Volume 1: Financial Accounting",
+      "url": "https://openstax.org/books/principles-financial-accounting/pages/1-why-it-matters",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Accounting, Volume 1: Financial Accounting"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2811 字"
+    },
+    {
+      "id": "openstax-292",
+      "title": "Principles of Accounting, Volume 2: Managerial Accounting",
+      "url": "https://openstax.org/books/principles-managerial-accounting/pages/1-why-it-matters",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Accounting, Volume 2: Managerial Accounting"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2568 字"
+    },
+    {
+      "id": "openstax-865",
+      "title": "Principles of Data Science",
+      "url": "https://openstax.org/books/principles-data-science/pages/1-introduction",
+      "subjects": [
+        "Computer Science",
+        "Business",
+        "Math",
+        "商科",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Data Science"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1090 字"
+    },
+    {
+      "id": "openstax-40",
+      "title": "Principles of Economics",
+      "url": "https://cnx.org/contents/69619d2b-68f0-44b0-b074-a9b2bf90b2c6",
+      "subjects": [],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Economics"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Principles of Economics 3e | OpenStax；正文 2784 字"
+    },
+    {
+      "id": "openstax-177",
+      "title": "Principles of Economics 2e",
+      "url": "https://openstax.org/books/principles-economics-2e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Economics 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2772 字"
+    },
+    {
+      "id": "openstax-620",
+      "title": "Principles of Economics 3e",
+      "url": "https://openstax.org/books/principles-economics-3e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "Business",
+        "社会科学",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Economics 3e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2784 字"
+    },
+    {
+      "id": "openstax-583",
+      "title": "Principles of Finance",
+      "url": "https://openstax.org/books/principles-finance/pages/1-why-it-matters",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Finance"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2880 字"
+    },
+    {
+      "id": "openstax-976",
+      "title": "Principles of Finance 2e",
+      "url": "https://openstax.org/books/principles-finance-2e/pages/1-why-it-matters",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Finance 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2880 字"
+    },
+    {
+      "id": "openstax-41",
+      "title": "Principles of Macroeconomics",
+      "url": "https://cnx.org/contents/4061c832-098e-4b3c-a1d9-7eb593a2cb31",
+      "subjects": [],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Macroeconomics"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Principles of Macroeconomics 3e | OpenStax；正文 2784 字"
+    },
+    {
+      "id": "openstax-178",
+      "title": "Principles of Macroeconomics 2e",
+      "url": "https://openstax.org/books/principles-macroeconomics-2e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Macroeconomics 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2772 字"
+    },
+    {
+      "id": "openstax-622",
+      "title": "Principles of Macroeconomics 3e",
+      "url": "https://openstax.org/books/principles-macroeconomics-3e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "Business",
+        "社会科学",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Macroeconomics 3e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2784 字"
+    },
+    {
+      "id": "openstax-48",
+      "title": "Principles of Macroeconomics for AP® Courses",
+      "url": "https://cnx.org/contents/33076054-ec1d-4417-8824-ce354efe42d0",
+      "subjects": [],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Macroeconomics for AP® Courses"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Principles of Macroeconomics 3e | OpenStax；正文 2784 字"
+    },
+    {
+      "id": "openstax-186",
+      "title": "Principles of Macroeconomics for AP® Courses 2e",
+      "url": "https://openstax.org/books/principles-macroeconomics-ap-courses-2e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Macroeconomics for AP® Courses 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2784 字"
+    },
+    {
+      "id": "openstax-304",
+      "title": "Principles of Management",
+      "url": "https://openstax.org/books/principles-management/pages/1-introduction",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Management"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2580 字"
+    },
+    {
+      "id": "openstax-629",
+      "title": "Principles of Marketing",
+      "url": "https://openstax.org/books/principles-marketing/pages/1-unit-introduction",
+      "subjects": [
+        "Business",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Marketing"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 837 字"
+    },
+    {
+      "id": "openstax-42",
+      "title": "Principles of Microeconomics",
+      "url": "https://cnx.org/contents/ea2f225e-6063-41ca-bcd8-36482e15ef65",
+      "subjects": [],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Microeconomics"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Principles of Microeconomics 3e | OpenStax；正文 2784 字"
+    },
+    {
+      "id": "openstax-155",
+      "title": "Principles of Microeconomics 2e",
+      "url": "https://openstax.org/books/principles-microeconomics-2e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Microeconomics 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2772 字"
+    },
+    {
+      "id": "openstax-621",
+      "title": "Principles of Microeconomics 3e",
+      "url": "https://openstax.org/books/principles-microeconomics-3e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "Business",
+        "社会科学",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Microeconomics 3e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2784 字"
+    },
+    {
+      "id": "openstax-49",
+      "title": "Principles of Microeconomics for AP® Courses",
+      "url": "https://cnx.org/contents/ca344e2d-6731-43cd-b851-a7b3aa0b37aa",
+      "subjects": [],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Microeconomics for AP® Courses"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Ch. 1 Introduction - Principles of Microeconomics 3e | OpenStax；正文 2784 字"
+    },
+    {
+      "id": "openstax-188",
+      "title": "Principles of Microeconomics for AP® Courses 2e",
+      "url": "https://openstax.org/books/principles-microeconomics-ap-courses-2e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Principles of Microeconomics for AP® Courses 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2784 字"
+    },
+    {
+      "id": "openstax-810",
+      "title": "Psychiatric-Mental Health Nursing",
+      "url": "https://openstax.org/books/psychiatric-mental-health/pages/1-introduction",
+      "subjects": [
+        "Nursing"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Psychiatric-Mental Health Nursing"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1160 字"
+    },
+    {
+      "id": "openstax-45",
+      "title": "Psychology",
+      "url": "https://openstax.org/books/psychology/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Psychology"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2002 字"
+    },
+    {
+      "id": "openstax-417",
+      "title": "Psychology 2e",
+      "url": "https://openstax.org/books/psychology-2e/pages/1-introduction",
+      "subjects": [
+        "Social Sciences",
+        "社会科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Psychology 2e"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1936 字"
+    },
+    {
+      "id": "openstax-413",
+      "title": "Statistics",
+      "url": "https://openstax.org/books/statistics/pages/1-introduction",
+      "subjects": [
+        "Math",
+        "数学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Statistics"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1612 字"
+    },
+    {
+      "id": "openstax-47",
+      "title": "The AP Physics Collection",
+      "url": "https://openstax.org/books/college-physics-ap-courses/pages/1-connection-for-ap-r-courses",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "The AP Physics Collection"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 5068 字"
+    },
+    {
+      "id": "openstax-82",
+      "title": "University Physics Volume 1",
+      "url": "https://openstax.org/books/university-physics-volume-1/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "Science",
+        "科学",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "University Physics Volume 1"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1527 字"
+    },
+    {
+      "id": "openstax-94",
+      "title": "University Physics Volume 2",
+      "url": "https://openstax.org/books/university-physics-volume-2/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "University Physics Volume 2"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1629 字"
+    },
+    {
+      "id": "openstax-95",
+      "title": "University Physics Volume 3",
+      "url": "https://openstax.org/books/university-physics-volume-3/pages/1-introduction",
+      "subjects": [
+        "Science",
+        "科学"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "University Physics Volume 3"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1586 字"
+    },
+    {
+      "id": "openstax-44",
+      "title": "U.S. History",
+      "url": "https://openstax.org/books/us-history/pages/1-introduction",
+      "subjects": [
+        "Humanities",
+        "人文"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "U.S. History"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1711 字"
+    },
+    {
+      "id": "openstax-745",
+      "title": "Workplace Software and Skills",
+      "url": "https://openstax.org/books/workplace-software-skills/pages/1-chapter-scenario",
+      "subjects": [
+        "Business",
+        "Computer Science",
+        "商科"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Workplace Software and Skills"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1774 字"
+    },
+    {
+      "id": "openstax-690",
+      "title": "World History, Volume 1: to 1500",
+      "url": "https://openstax.org/books/world-history-volume-1/pages/1-introduction",
+      "subjects": [
+        "Humanities",
+        "人文"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "World History, Volume 1: to 1500"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1623 字"
+    },
+    {
+      "id": "openstax-623",
+      "title": "World History, Volume 2: from 1400",
+      "url": "https://openstax.org/books/world-history-volume-2/pages/1-introduction",
+      "subjects": [
+        "Humanities",
+        "人文"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "World History, Volume 2: from 1400"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 1623 字"
+    },
+    {
+      "id": "openstax-555",
+      "title": "Writing Guide with Handbook",
+      "url": "https://openstax.org/books/writing-guide/pages/1-introduction",
+      "subjects": [
+        "Humanities",
+        "人文"
+      ],
+      "stages": [
+        "大学",
+        "college"
+      ],
+      "keywords": [
+        "Writing Guide with Handbook"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 2516 字"
+    },
+    {
+      "id": "smartedu-0",
+      "title": "国家中小学智慧教育平台：语文",
+      "url": "https://basic.smartedu.cn/tchMaterial",
+      "subjects": [
+        "语文"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "语文教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 403；未取到正文"
+    },
+    {
+      "id": "pep-0",
+      "title": "人教版教材电子版：语文",
+      "url": "https://jc.pep.com.cn/",
+      "subjects": [
+        "语文"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "语文教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 405；未取到正文"
+    },
+    {
+      "id": "smartedu-1",
+      "title": "国家中小学智慧教育平台：数学",
+      "url": "https://basic.smartedu.cn/tchMaterial",
+      "subjects": [
+        "数学"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "数学教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 403；未取到正文"
+    },
+    {
+      "id": "pep-1",
+      "title": "人教版教材电子版：数学",
+      "url": "https://jc.pep.com.cn/",
+      "subjects": [
+        "数学"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "数学教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 405；未取到正文"
+    },
+    {
+      "id": "smartedu-2",
+      "title": "国家中小学智慧教育平台：英语",
+      "url": "https://basic.smartedu.cn/tchMaterial",
+      "subjects": [
+        "英语"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "英语教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 403；未取到正文"
+    },
+    {
+      "id": "pep-2",
+      "title": "人教版教材电子版：英语",
+      "url": "https://jc.pep.com.cn/",
+      "subjects": [
+        "英语"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "英语教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 405；未取到正文"
+    },
+    {
+      "id": "smartedu-3",
+      "title": "国家中小学智慧教育平台：物理",
+      "url": "https://basic.smartedu.cn/tchMaterial",
+      "subjects": [
+        "物理"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "物理教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 403；未取到正文"
+    },
+    {
+      "id": "pep-3",
+      "title": "人教版教材电子版：物理",
+      "url": "https://jc.pep.com.cn/",
+      "subjects": [
+        "物理"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "物理教材",
+        "压强",
+        "初二",
+        "八年级下册"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 405；未取到正文"
+    },
+    {
+      "id": "smartedu-4",
+      "title": "国家中小学智慧教育平台：化学",
+      "url": "https://basic.smartedu.cn/tchMaterial",
+      "subjects": [
+        "化学"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "化学教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 403；未取到正文"
+    },
+    {
+      "id": "pep-4",
+      "title": "人教版教材电子版：化学",
+      "url": "https://jc.pep.com.cn/",
+      "subjects": [
+        "化学"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "化学教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 405；未取到正文"
+    },
+    {
+      "id": "smartedu-5",
+      "title": "国家中小学智慧教育平台：生物",
+      "url": "https://basic.smartedu.cn/tchMaterial",
+      "subjects": [
+        "生物"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "生物教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 403；未取到正文"
+    },
+    {
+      "id": "pep-5",
+      "title": "人教版教材电子版：生物",
+      "url": "https://jc.pep.com.cn/",
+      "subjects": [
+        "生物"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "生物教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 405；未取到正文"
+    },
+    {
+      "id": "smartedu-6",
+      "title": "国家中小学智慧教育平台：历史",
+      "url": "https://basic.smartedu.cn/tchMaterial",
+      "subjects": [
+        "历史"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "历史教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 403；未取到正文"
+    },
+    {
+      "id": "pep-6",
+      "title": "人教版教材电子版：历史",
+      "url": "https://jc.pep.com.cn/",
+      "subjects": [
+        "历史"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "历史教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 405；未取到正文"
+    },
+    {
+      "id": "smartedu-7",
+      "title": "国家中小学智慧教育平台：地理",
+      "url": "https://basic.smartedu.cn/tchMaterial",
+      "subjects": [
+        "地理"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "地理教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 403；未取到正文"
+    },
+    {
+      "id": "pep-7",
+      "title": "人教版教材电子版：地理",
+      "url": "https://jc.pep.com.cn/",
+      "subjects": [
+        "地理"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "地理教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 405；未取到正文"
+    },
+    {
+      "id": "smartedu-8",
+      "title": "国家中小学智慧教育平台：道德与法治",
+      "url": "https://basic.smartedu.cn/tchMaterial",
+      "subjects": [
+        "道德与法治"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "道德与法治教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 403；未取到正文"
+    },
+    {
+      "id": "pep-8",
+      "title": "人教版教材电子版：道德与法治",
+      "url": "https://jc.pep.com.cn/",
+      "subjects": [
+        "道德与法治"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "道德与法治教材"
+      ],
+      "available": [],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 405；未取到正文"
+    },
+    {
+      "id": "python",
+      "title": "Python 官方教程：数据结构",
+      "url": "https://docs.python.org/zh-cn/3/tutorial/datastructures.html",
+      "subjects": [
+        "Python",
+        "列表",
+        "list"
+      ],
+      "stages": [
+        "通用"
+      ],
+      "keywords": [
+        "Python",
+        "列表",
+        "list"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；5. 数据结构 — Python 3.14.8 文档；正文 12590 字"
+    },
+    {
+      "id": "javascript",
+      "title": "JavaScript MDN Guide",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide",
+      "subjects": [
+        "JavaScript",
+        "数组",
+        "array"
+      ],
+      "stages": [
+        "通用"
+      ],
+      "keywords": [
+        "JavaScript",
+        "数组",
+        "array"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；JavaScript Guide - JavaScript | MDN；正文 2975 字"
+    },
+    {
+      "id": "java",
+      "title": "Java dev.java Learn",
+      "url": "https://dev.java/learn/",
+      "subjects": [
+        "Java"
+      ],
+      "stages": [
+        "通用"
+      ],
+      "keywords": [
+        "Java"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Learn Java - Dev.java；正文 1328 字"
+    },
+    {
+      "id": "c",
+      "title": "GNU C Language Manual",
+      "url": "https://www.gnu.org/software/c-intro-and-ref/manual/html_node/",
+      "subjects": [
+        "C语言",
+        "C"
+      ],
+      "stages": [
+        "通用"
+      ],
+      "keywords": [
+        "C语言",
+        "C"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Top (GNU C Language Manual)；正文 13707 字"
+    },
+    {
+      "id": "cpp",
+      "title": "Microsoft C++ language reference",
+      "url": "https://learn.microsoft.com/en-us/cpp/cpp/cpp-language-reference?view=msvc-170",
+      "subjects": [
+        "C++",
+        "CPP"
+      ],
+      "stages": [
+        "通用"
+      ],
+      "keywords": [
+        "C++",
+        "CPP"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；C++ Language Reference | Microsoft Learn；正文 3929 字"
+    },
+    {
+      "id": "physics-pressure",
+      "title": "OpenStax College Physics 2e 11.3 Pressure",
+      "url": "https://openstax.org/books/college-physics-2e/pages/11-3-pressure",
+      "subjects": [
+        "压强",
+        "pressure"
+      ],
+      "stages": [
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "压强",
+        "pressure"
+      ],
+      "available": [
+        "全文节选",
+        "目录"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 4106 字"
+    },
+    {
+      "id": "physics-answers",
+      "title": "OpenStax College Physics 2e Chapter 11 Answer Key",
+      "url": "https://openstax.org/books/college-physics-2e/pages/chapter-11",
+      "subjects": [
+        "压强习题答案",
+        "pressure answers"
+      ],
+      "stages": [
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "压强习题答案",
+        "pressure answers"
+      ],
+      "available": [
+        "答案"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；正文 3362 字；答案页原文可取"
+    },
+    {
+      "id": "bnu-publisher",
+      "title": "北师大版教师资源入口",
+      "url": "https://jiaoshi.bnupg.com/",
+      "subjects": [
+        "语文",
+        "数学",
+        "英语"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "语文",
+        "数学",
+        "英语"
+      ],
+      "available": [
+        "出版信息"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；加载中...；出版/资源导航信息，未确认课本正文/题目/答案"
+    },
+    {
+      "id": "sujiao-publisher",
+      "title": "江苏凤凰教育出版社教材入口",
+      "url": "https://1088.com.cn/",
+      "subjects": [
+        "语文",
+        "数学",
+        "英语"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "语文",
+        "数学",
+        "英语"
+      ],
+      "available": [
+        "出版信息"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；江苏凤凰教育出版社；出版/资源导航信息，未确认课本正文/题目/答案"
+    },
+    {
+      "id": "huke-publisher",
+      "title": "上海科学技术出版社教材入口",
+      "url": "https://www.sstp.com.cn/p/aboutus.html",
+      "subjects": [
+        "物理",
+        "化学",
+        "生物"
+      ],
+      "stages": [
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "物理",
+        "化学",
+        "生物"
+      ],
+      "available": [
+        "出版信息"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；传播科学，提高国力 - 上海科学技术出版社；出版/资源导航信息，未确认课本正文/题目/答案"
+    },
+    {
+      "id": "fltrp-publisher",
+      "title": "外研社教材入口",
+      "url": "https://www.fltrp.com/",
+      "subjects": [
+        "英语"
+      ],
+      "stages": [
+        "小学",
+        "初中",
+        "高中"
+      ],
+      "keywords": [
+        "英语"
+      ],
+      "available": [
+        "出版信息"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；外语教学与研究出版社 -；出版/资源导航信息，未确认课本正文/题目/答案"
+    },
+    {
+      "id": "c-wg14",
+      "title": "ISO WG14 C11 公共委员会草案",
+      "url": "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf",
+      "subjects": [
+        "C语言",
+        "C"
+      ],
+      "stages": [
+        "通用"
+      ],
+      "keywords": [
+        "C语言",
+        "C"
+      ],
+      "available": [
+        "全文节选"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；委员会草案全文可提取 1294186 字；C11 而非最新标准"
+    },
+    {
+      "id": "cpp-foundation",
+      "title": "Standard C++ Foundation 官方学习入口",
+      "url": "https://isocpp.org/get-started",
+      "subjects": [
+        "C++"
+      ],
+      "stages": [
+        "通用"
+      ],
+      "keywords": [
+        "C++"
+      ],
+      "available": [
+        "出版信息"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "HTTP 200；Get Started! : Standard C++；出版/资源导航信息，未确认课本正文/题目/答案"
     }
   ]
 }

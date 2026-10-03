@@ -1,0 +1,23 @@
+/* Homepage-only sizing: long plan names must never set the grid's width. */
+.home-hero { grid-template-columns: minmax(0, 1fr) auto; }
+.home-hero > div { min-width: 0; overflow-wrap: anywhere; }
+.home-total { display: grid; justify-items: center; gap: 10px; }
+.home-plan-grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+.today-plan { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.today-plan > * { min-width: 0; max-width: 100%; }
+.today-plan-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
+.today-plan-title { font-size: 1.02rem; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box;
+  -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.today-plan-progress { display: grid; gap: 10px; }
+.today-plan-minutes { margin: 0; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.today-plan-minutes b { color: var(--text); }
+.today-plan-tentative { margin: 0; line-height: 1.6; color: var(--text-2); overflow-wrap: anywhere; }
+.today-plan-tentative span { display: block; color: var(--text-3); }
+.today-plan .pill { white-space: normal; overflow-wrap: anywhere; }
+.today-plan .pill svg { flex: none; }
+.today-plan .negotiate { overflow-wrap: anywhere; }
+.today-plan-start { width: 100%; max-width: 100%; margin-top: auto; }
+@media (max-width: 760px) {
+  .home-hero { grid-template-columns: minmax(0, 1fr); padding: 24px; }
+  .home-total { justify-self: start; }
+}

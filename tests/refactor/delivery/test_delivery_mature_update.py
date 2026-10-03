@@ -286,7 +286,7 @@ def test_offline_check_is_bounded_and_old_files_unchanged(feed):
     service=feed.service(); service.metadata_url=feed.origin+'/missing-feed.json'
     started=time.monotonic()
     assert service.check()['state']=='FAILED_RECOVERABLE'
-    assert time.monotonic()-started<3
+    assert time.monotonic()-started<20  # includes the new 2+4+8 second retry schedule
     assert (feed.app/'MentorFlow.exe').read_bytes()==feed.old_files['MentorFlow.exe']
 
 
@@ -374,7 +374,7 @@ def test_real_disconnect_resume_preserves_verified_object(feed):
     service.cache.download(manifest_asset)
     asset=service.release.assets['_internal/frontend/ui.txt']
     feed.disconnect_once=True
-    with pytest.raises(RecoverableError): service.cache.download(asset)
+    service.cache.download(asset)  # transient disconnect now resumes automatically
     # Small abrupt responses may be buffered by HTTPX; regardless, only the
     # interrupted object may restart, the completed manifest must be reused.
     before=sum(1 for path,_ in feed.requests if path==url_path(manifest_asset['url']))

@@ -379,11 +379,11 @@ def one_click_service(root, *, repair=False):
         channel='stable', transport=HTTPTransport(url, signed_static_http=install.configured().uat))
 
 
-def check_latest(root, *, service=None):
+def check_latest(root, *, service=None, cancel=None):
     owned = service is None
     try:
         service = service if service is not None else one_click_service(root)
-        return service.check(manual=True)
+        return service.check(manual=True, cancel=cancel) if cancel is not None else service.check(manual=True)
     except NoFeedConfigured: return _no_feed_result()
     except SecurityError as error: return dict(state='FAILED_SECURITY', message=str(error))
     except (OSError, RuntimeError, ValueError) as error:

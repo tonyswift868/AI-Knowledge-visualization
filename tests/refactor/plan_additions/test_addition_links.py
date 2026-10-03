@@ -142,7 +142,7 @@ def test_already_linked_source_not_sent_to_analysis(store):
     ('file:///secret', TEXT, 'text/html', 'invalid_url'),
     ('https://school.webvpn.edu.cn/doc', TEXT, 'text/html', 'blocked'),
     ('https://example.test/bad', 'tiny', 'text/html', 'body_too_short'),
-    ('https://example.test/bad', TEXT, 'image/png', 'unsupported_type'),
+    ('https://example.test/bad', TEXT, 'image/png', 'ocr_required'),
     ('https://example.test/bad', TEXT + ' 色情直播 ', 'text/html', 'content_adult'),
 ])
 def test_individual_failure_keeps_other_successes(store, url, body, media, expected):

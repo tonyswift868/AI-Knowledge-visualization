@@ -33,6 +33,14 @@ class DesktopUpdates(QObject):
             self._session = UnavailableSession()
         self._finished.connect(self._receive, Qt.ConnectionType.QueuedConnection)
         self._prompt = None
+        self._retry = QTimer(self)
+        self._retry.setSingleShot(True)
+        self._retry.setInterval(60000)
+        self._retry.timeout.connect(lambda: self.run("install", self._window))
+        self._window = None
+        self._deferred = False
+        self._next_automatic = 0
+        self._continuing_download = False
         app.aboutToQuit.connect(self.close)
         app.commitDataRequest.connect(self._defer_session)
         core.attach_shutdown_guard(app)
@@ -42,7 +50,7 @@ class DesktopUpdates(QObject):
         QTimer.singleShot(0, lambda: self.run("startup"))
 
     def snapshot(self):
-        return {**self.state, "busy": self._busy, "available": True}
+        return {**self.state, "busy": self._busy, "available": True, "deferred": self._deferred}
 
     def _publish(self, value):
         if not self._closed:
@@ -50,25 +58,39 @@ class DesktopUpdates(QObject):
             self.changed.emit(self.snapshot())
 
     def run(self, action, window=None):
-        if self._closed or self._busy:
+        if self._closed:
             return self.snapshot()
+        if action == "defer":
+            self._deferred = True
+            self.changed.emit(self.snapshot())
+            return self.snapshot()
+        if self._busy: return self.snapshot()
+        if action == "automatic":
+            if time.monotonic() < self._next_automatic: return self.snapshot()
+            self._next_automatic = time.monotonic() + 86400
+            action = "check"
         if action not in {"startup", "check", "install"}:
             raise ValueError("unknown update operation")
         # HWND must be captured on the GUI thread, even though apply runs on
         # the worker. The existing native coordinator closes and relaunches us.
+        if window is not None:
+            from shiboken6 import isValid
+            if not isValid(window): window = None
         target = window or QApplication.activeWindow() or self.gate
+        self._window = target
+        self._retry.stop()
         hwnd = f"{int(target.winId()):016x}"
         self._busy = True
         self._cancel.clear()
-        self._publish({"state": "DOWNLOADING" if action == "install" else "CHECKING",
+        self._publish({**self.state, "state": "DOWNLOADING" if action == "install" else "CHECKING",
                        "message": "正在下载并准备更新…" if action == "install" else "正在检查更新…"})
 
         def work():
             try:
                 if action == "startup":
-                    result = self.core.get_startup_update_state(self.root, full=False)
+                    result = self.core.get_startup_update_state(self.root, full=False, check_feed=False)
                 elif action == "check":
-                    result = self.core.check_latest(self.root)
+                    result = self.core.check_latest(self.root, cancel=self._cancel.is_set)
                 else:
                     self._session.require_running()
                     result = self.core.update_to_latest(
@@ -124,30 +146,28 @@ class DesktopUpdates(QObject):
             return
         self._busy = False
         result = value["result"]
-        self._publish(result)
+        self._publish({**self.state, **result})
         if value["action"] == "startup":
             self.gate.setEnabled(result.get("login_allowed", False))
-            if result["state"] in {"OPTIONAL_UPDATE", "MANDATORY_UPDATE"}:
-                self._show_offer(result)
-            elif not result.get("login_allowed", False):
+            if not result.get("login_allowed", False):
                 QMessageBox.warning(self.gate, "MentorFlow 安装检查", result.get("message", "请使用可信安装包修复。"))
-
-    def _show_offer(self, result):
-        dialog = QMessageBox(QApplication.activeWindow() or self.gate)
-        dialog.setWindowTitle("MentorFlow 更新")
-        dialog.setText("发现新版本 " + str(result.get("latest", "")) + "。更新完成后会自动重启。")
-        dialog.setInformativeText(str(result.get("message", "")))
-        install = dialog.addButton("立即更新", QMessageBox.ButtonRole.AcceptRole)
-        dialog.addButton("稍后", QMessageBox.ButtonRole.RejectRole)
-        dialog.buttonClicked.connect(lambda button: self.run("install") if button is install else None)
-        dialog.finished.connect(lambda _: setattr(self, "_prompt", None))
-        self._prompt = dialog
-        dialog.open()
+        elif value["action"] == "install":
+            # User already consented. Retain the .part files and try again later;
+            # security failures and explicit cancellation never auto-retry.
+            paused = result.get("state") == "DOWNLOAD_PAUSED_OR_INTERRUPTED" and not result.get("cancelled")
+            retry_check = self._continuing_download and result.get("state") == "FAILED_RECOVERABLE" and result.get("code") == "UPDATE_CHECK_NETWORK_UNAVAILABLE"
+            self._continuing_download = bool(paused or retry_check)
+            if retry_check:
+                done, total = self.state.get("downloaded_bytes", 0), self.state.get("expected_download_bytes", 0)
+                self._publish({**self.state, "state": "DOWNLOAD_PAUSED_OR_INTERRUPTED",
+                               "message": f"网络不稳，已下载 {done}/{total} 字节，稍后会自动继续。"})
+            if self._continuing_download: self._retry.start()
 
     def close(self):
         if self._closed:
             return
         self._closed = True
+        self._retry.stop()
         self._cancel.set()
         self._session.close()
         self._pool.shutdown(wait=False, cancel_futures=True)

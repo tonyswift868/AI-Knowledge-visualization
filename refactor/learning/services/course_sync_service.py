@@ -14,6 +14,8 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot, Qt
 
 from ..course.sync_course import CourseSync
 from .session_guard import SUPERSEDED_MESSAGE
+from ..sync_source import TRANSIENT_SESSION_CODES, CONNECTION_UNSTABLE
+from refactor.runtime_logging import event
 
 
 class CourseSyncService(QObject):
@@ -93,6 +95,7 @@ class CourseSyncService(QObject):
         return dict(self._status)
 
     def _publish(self, state, message, *, at=None, merged_conflicts=0):
+        event('sync', state=state)
         self._status = dict(state=state, at=at or self._status['at'], message=message)
         if merged_conflicts:
             self._status['merged_conflicts'] = merged_conflicts
@@ -136,7 +139,7 @@ class CourseSyncService(QObject):
                 if self._guard is not None:
                     self._guard.note_error(code)
                 return
-            if code in {"REAUTH_REQUIRED", "ENTERPRISE_SESSION_REAUTH_REQUIRED", "SESSION_UNAVAILABLE"}:
+            if code in {"REAUTH_REQUIRED", "ENTERPRISE_SESSION_REAUTH_REQUIRED"}:
                 self._reauth()
                 return
             if code == "CANCELLED":
@@ -145,7 +148,8 @@ class CourseSyncService(QObject):
             self._failures = min(self._failures + 1, 5)
             self._retry_at = now + min(30 * 2 ** (self._failures - 1), 300)
             self._due = self._retry_at
-            self._publish('failed', "同步失败，可重试")
+            event('sync', code=code, exc_info=(type(error), error, error.__traceback__))
+            self._publish('failed', CONNECTION_UNSTABLE if code in TRANSIENT_SESSION_CODES else "同步失败，可重试")
         elif kind == "probe":
             if result:
                 self._on_change()

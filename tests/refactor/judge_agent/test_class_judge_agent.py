@@ -149,7 +149,7 @@ def test_pure_modules_do_not_import_io_qt_storage_or_network_in_fresh_process():
     # Other test modules legitimately import Qt/storage, so inspect a fresh interpreter.
     code = """
 import sys
-from refactor.learning.course import judge_agent, question_agent
+from refactor.learning.course import judge_agent
 for name in sys.modules:
     assert not name.startswith(('PySide', 'PyQt', 'requests', 'httpx', 'sqlite3',
                                'refactor.learning.connections', 'refactor.learning.course.store')), name

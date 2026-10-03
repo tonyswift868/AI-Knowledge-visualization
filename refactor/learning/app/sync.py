@@ -9,6 +9,7 @@ from PySide6.QtCore import QObject, Signal, Slot, Qt
 from ..sync_transport import SyncTransport
 from ..services.course_sync_service import CourseSyncService
 from ..services.session_guard import SessionGuard, SUPERSEDED_MESSAGE
+from ..sync_source import TRANSIENT_SESSION_CODES, CONNECTION_UNSTABLE
 
 
 class WindowSync(QObject):
@@ -66,7 +67,9 @@ class WindowSync(QObject):
     @Slot(str)
     def note_error(self, code):
         if not self._closed and not self._paused:
-            self.guard.note_error('REAUTH_REQUIRED' if code == 'SESSION_UNAVAILABLE' else code)
+            self.guard.note_error(code)
+            if code in TRANSIENT_SESSION_CODES:
+                self.window.set_session_notice(CONNECTION_UNSTABLE, show_verify=False)
 
     def _store_changed(self, origin, entities):
         if self._closed: return
@@ -88,6 +91,10 @@ class WindowSync(QObject):
             self.bridge.cancel_pending()
             message = (SUPERSEDED_MESSAGE if status['state'] == 'superseded' else '登录已失效，请重新验证账号。')
             self.window.set_session_notice(message, show_verify=True)
+        elif status['state'] == 'failed' and status['message'] == CONNECTION_UNSTABLE:
+            self.window.set_session_notice(CONNECTION_UNSTABLE, show_verify=False)
+        elif status['state'] == 'synced' and (self.window.session_notice or {}).get('message') == CONNECTION_UNSTABLE:
+            self.window.clear_session_notice()
         self.bridge.push('sync_status', status)
         if status.get('merged_conflicts'):
             self.bridge.push('sync_conflict', {'message': '另一台设备也改过，已按最新的保留。'})

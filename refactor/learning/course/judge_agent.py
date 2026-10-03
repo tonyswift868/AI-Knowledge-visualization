@@ -354,6 +354,9 @@ def _required_points(reference, point_count=1):
 def judge_request(ctx: dict, reply: str) -> tuple[str, list[dict]]:
     points, _excerpts_data, question, reference, _recent = _context(ctx)
     task = dict(mode=ctx["mode"], question=question, reference=reference)
+    if isinstance(question,dict) and 'kind' in question:
+        task['reference_source']=question.get('answer_source')
+        task['answer_policy']='参考答案为题库原文；按题面实际所问判，允许等价、简略表达，不增加原文未要求的条件。'
     if ctx.get('require_evidence') and not (isinstance(question, dict) and question.get('type') == 'essay'):
         task['required_points'] = list(ctx.get('required_points') or _required_points(reference, len(points)))
     if ctx.get('information_followed_up'):
@@ -409,7 +412,7 @@ def parse_judgement(answer: str, ctx: dict) -> Verdict:
         if type(uncertain) is not bool or not isinstance(checks, list):
             raise AgentFormatError('checks: 须提供逐点依据和不确定标记')
         if kind == 'insufficient':
-            if uncertain or not isinstance(ctx['question'], dict) or ctx['question']['type'] not in ('short','fix_error','essay'):
+            if uncertain or not isinstance(ctx['question'], dict) or ctx['question'].get('kind',ctx['question'].get('type')) not in ('short','fix_error','essay','calc'):
                 raise AgentFormatError('insufficient: 只用于主观题表达不足')
             provisional = Verdict(kind,None,(),reason,checks=tuple(dict(c) for c in checks))
             settled = settle_insufficient(provisional, ctx)

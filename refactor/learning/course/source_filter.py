@@ -68,6 +68,8 @@ class SourceLists:
     blocked: tuple[DomainRule, ...]
     blocked_keywords: Mapping[str, tuple[str, ...]]
     candidates: tuple[DomainRule, ...]
+    type_rules: tuple[dict, ...] = ()
+    directory: tuple[dict, ...] = ()
 
 
 class SourceListsError(ValueError):
@@ -271,6 +273,9 @@ def screen(hits: Iterable[RawHit], *, lists: SourceLists | None = None) -> list[
                 tier, category = "whitelist", rule.category
             elif repo and repo[0] in official:
                 tier = "whitelist"
+            identity = classify_source(normalized, lists=lists)
+            if identity['level'] in (1, 2):
+                tier, category = 'whitelist', identity['category']
         if "webvpn" in original_host:
             tier, category = "blocked", "proxy"
             reasons.append("webvpn_proxy")
@@ -330,15 +335,19 @@ def parse_lists(data, *, source="source lists", allow_candidates=True) -> Source
         raise SourceListsError(f"{source}: {field}: {message}")
     if not isinstance(data, dict):
         fail("root", "expected an object")
+    if type(data.get('version')) is not int or data['version'] not in (1,2):
+        fail('version','expected supported integer version 1 or 2')
     required = {"version", "updated", "whitelist", "github_orgs", "low", "blocked", "blocked_keywords"}
+    if data.get('version') == 2:
+        required.update(('type_rules', 'directory'))
     if allow_candidates:
         required.add("candidates")
     if set(data) != required:
         fail("root", f"missing keys {sorted(required - set(data))}; unknown keys {sorted(set(data) - required)}")
     data = dict(data)
     data.setdefault("candidates", [])
-    if type(data["version"]) is not int or data["version"] != 1:
-        fail("version", "expected supported integer version 1")
+    if type(data["version"]) is not int or data["version"] not in (1, 2):
+        fail("version", "expected supported integer version 1 or 2")
     try:
         if not isinstance(data["updated"], str) or date.fromisoformat(data["updated"]).isoformat() != data["updated"]:
             raise ValueError()
@@ -411,8 +420,90 @@ def parse_lists(data, *, source="source lists", allow_candidates=True) -> Source
         if any(not v for v in normalized) or len(set(normalized)) != len(normalized):
             fail(field, "empty or duplicate normalized keyword")
         normalized_keywords[category] = normalized
-    return SourceLists(1, data["updated"], whitelist, tuple(orgs), low, blocked,
-        MappingProxyType(normalized_keywords), candidates)
+    types, directory = [], []
+    if data['version'] == 2:
+        for entry, field in entries('type_rules', {'type', 'level', 'suffixes', 'publisher', 'category', 'reason'}):
+            if type(entry['level']) is not int or entry['level'] not in (1, 2):
+                fail(field + '.level', 'expected 1 or 2')
+            if not isinstance(entry['suffixes'], list) or not entry['suffixes']:
+                fail(field + '.suffixes', 'expected nonempty domain suffix array')
+            for suffix in entry['suffixes']:
+                try: _host(suffix)
+                except (ValueError, TypeError): fail(field + '.suffixes', 'invalid domain suffix')
+            for key in ('type', 'publisher', 'category', 'reason'): text(entry, key, field)
+            types.append(dict(entry))
+        for entry, field in entries('directory', {'id', 'title', 'url', 'subjects', 'stages', 'keywords', 'available', 'verified_at', 'verification'}):
+            for key in ('id', 'title', 'url', 'verified_at', 'verification'): text(entry, key, field)
+            if not normalize_url(entry['url']): fail(field+'.url', 'invalid URL')
+            for key in ('subjects', 'stages', 'keywords', 'available'):
+                if not isinstance(entry[key], list) or any(not isinstance(v,str) or not v for v in entry[key]):
+                    fail(field+'.'+key, 'expected string array')
+            directory.append(dict(entry))
+        if len({e['id'] for e in directory}) != len(directory): fail('directory', 'duplicate id')
+    return SourceLists(data['version'], data["updated"], whitelist, tuple(orgs), low, blocked,
+        MappingProxyType(normalized_keywords), candidates, tuple(types), tuple(directory))
+
+
+def type_catalog(lists=None):
+    """Local type policy remains available with the existing v1 server catalog."""
+    lists = lists or load_lists()
+    return lists if lists.version == 2 else load_lists()
+
+
+def classify_source(url, *, lists=None, publisher_evidence=None, page_text=''):
+    """Publisher classification, never a claim that an individual page is a lesson.
+
+    Unknown sites require a visible publisher quotation and a declared source
+    type. The injected classifier cannot elevate community/repost/blocked sites.
+    """
+    lists = lists or load_lists()
+    normalized = normalize_url(url)
+    result = dict(level=0, type='unknown', publisher='', category='unknown', evidence='')
+    if not normalized and url != '': return result
+    # Imported books may have no web URL; publisher imprint evidence in their
+    # extracted original text is checked by the same classifier.
+    normalized = normalized or ''
+    host = urlsplit(normalized).hostname or ''
+    if ('webvpn' in host or any(_matches(host,r) for r in (*lists.low,*lists.blocked))
+            or blocked_keyword_reasons(url+' '+page_text, lists=lists)
+            or re.search(r'转载自|转自\s*[:：]|转载\s*[:：]|reprinted\s+from|originally published (?:at|on)',page_text,re.I)
+            or re.search(r'/(?:forums?|discussions?|issues|pulls?)(?:/|$)|(?:^|\.)stackoverflow\.com$',host+urlsplit(normalized).path,re.I)
+            or (host=='learn.microsoft.com' and '/answers/' in urlsplit(normalized).path)):
+        return dict(result, type='excluded')
+    if re.search(r'/(?:~|users?/|students?/|personal/)',urlsplit(normalized).path,re.I):
+        return dict(result,type='excluded')
+    for rule in type_catalog(lists).type_rules:
+        if any(host == suffix or host.endswith('.'+suffix) for suffix in rule['suffixes']):
+            return dict(level=rule['level'],type=rule['type'],publisher=rule['publisher'],
+                        category=rule['category'],evidence=rule['reason'])
+    evidence = publisher_evidence or {}
+    quote = evidence.get('quote','')
+    allowed = {r['type']:r for r in type_catalog(lists).type_rules}
+    if (evidence.get('type') in allowed and isinstance(quote,str) and len(quote.strip()) >= 8
+            and quote in page_text and isinstance(evidence.get('publisher'),str) and evidence['publisher'].strip()):
+        rule = allowed[evidence['type']]
+        return dict(level=rule['level'],type=rule['type'],publisher=evidence['publisher'],
+                    category=rule['category'],evidence=quote)
+    return result
+
+
+def directory_matches(query, *, stage='', subject='', lists=None, limit=8):
+    """Rank matching curriculum entries; inaccessible records stay inspectable."""
+    text = (query+' '+stage+' '+subject).casefold()
+    def matches(keyword):
+        key=keyword.casefold()
+        if re.search(r'[a-z]',key):
+            return bool(re.search(r'(?<![a-z0-9_])'+re.escape(key)+r'(?![a-z0-9_])',text))
+        return key in text
+    scored = []
+    for entry in type_catalog(lists).directory:
+        score = sum(4 for k in entry['subjects'] if matches(k))
+        score += sum(2 for k in entry['stages'] if matches(k))
+        score += sum(6 for k in entry['keywords'] if matches(k))
+        # A stage alone must not suggest another discipline's textbook.
+        match = any(matches(k) for k in (*entry['subjects'],*entry['keywords']))
+        if score and match: scored.append((score,entry))
+    return [dict(e) for _,e in sorted(scored,key=lambda v:(-v[0],v[1]['id']))[:limit]]
 
 
 def is_probable_fork(owner: str, repo: str, *, fetch: Callable[[str], dict]) -> bool | None:

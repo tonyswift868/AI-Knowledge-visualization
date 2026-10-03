@@ -21,9 +21,12 @@ import json
 import logging
 import re
 import threading
+import httpx
 from typing import Any, Callable
 
 from PySide6.QtCore import QObject, Qt, Signal, Slot
+from ..sync_source import TRANSIENT_SESSION_CODES, NETWORK_RETRY_MESSAGE
+from refactor.runtime_logging import event as diagnostic_event, log_directory
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +85,19 @@ class AppBridge(QObject):
         # Worker threads hand results to the GUI thread through this queued
         # signal; QWebChannel signals must only be emitted from the GUI thread.
         self._deliver.connect(self._emit, Qt.ConnectionType.QueuedConnection)
+        if parent is not None and hasattr(parent, '_data_root'):
+            self.register('logs.open', self._open_logs, ui=True)
+
+    def _open_logs(self, params, context):
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        if params:
+            raise BridgeError('PARAM_INVALID', '日志操作不接受路径参数。')
+        directory = log_directory(self.parent()._data_root)
+        directory.mkdir(parents=True, exist_ok=True)
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory.resolve()))):
+            raise BridgeError('LOG_FOLDER_UNAVAILABLE', '暂时无法打开日志文件夹。')
+        return {'ok': True}
 
     def register(self, method: str, function, *, ui: bool = False):
         if not _METHOD.fullmatch(method) or method in self._handlers:
@@ -145,19 +161,31 @@ class AppBridge(QObject):
         try:
             if context.cancel.is_set():
                 raise BridgeError('CANCELLED', '已取消。')
-            result = handler.function(params, context)
+            for attempt in range(2):
+                try:
+                    result = handler.function(params, context)
+                    break
+                except Exception as exc:
+                    transient = (getattr(exc, 'code', '') in TRANSIENT_SESSION_CODES
+                                 or isinstance(exc, (httpx.TimeoutException, httpx.NetworkError)))
+                    if not transient or handler.ui or attempt:
+                        raise
+                    diagnostic_event('bridge', state='RETRY', code=getattr(exc, 'code', 'NETWORK_UNAVAILABLE'))
+                    if context.cancel.wait(.25):
+                        raise BridgeError('CANCELLED', '已取消。') from None
             response = {"type": "response", "id": request_id, "ok": True, "result": result}
-        except BridgeError as exc:
-            response = {"type": "response", "id": request_id, "ok": False,
-                        "error": {"code": exc.code, "message": exc.message}}
         except Exception as exc:  # noqa: BLE001 - map every service failure to a visible error
+            diagnostic_event('bridge', state='FAILED', code=getattr(exc, 'code', 'INTERNAL'), exc_info=True)
             code = getattr(exc, "code", None)
             message = getattr(exc, "message", None)
             # PlanError deliberately keeps its text in Exception.args. Preserve
             # known auth codes even when that exception has no .message field.
             if code == 'NATIVE_SESSION_SUPERSEDED':
                 message = '账号已在另一台设备登录'
-            elif isinstance(code, str) and code in {'REAUTH_REQUIRED', 'ENTERPRISE_SESSION_REAUTH_REQUIRED', 'SESSION_UNAVAILABLE'}:
+            elif code in TRANSIENT_SESSION_CODES or isinstance(exc, (httpx.TimeoutException, httpx.NetworkError)):
+                code = code or 'SOURCE_UNAVAILABLE'
+                message = NETWORK_RETRY_MESSAGE
+            elif isinstance(code, str) and code in {'REAUTH_REQUIRED', 'ENTERPRISE_SESSION_REAUTH_REQUIRED'}:
                 message = '登录已失效，请重新验证账号。'
             if isinstance(code, str) and isinstance(message, str) and message:
                 response = {"type": "response", "id": request_id, "ok": False,

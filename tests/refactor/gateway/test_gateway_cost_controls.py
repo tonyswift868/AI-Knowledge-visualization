@@ -31,14 +31,14 @@ def test_purpose_caps_raise_only_and_background_timeout(tmp_path,monkeypatch,pur
 
 
 @pytest.mark.parametrize('timeout',[1,270,300])
-@pytest.mark.parametrize('purpose',['teacher','lesson_review'])
+@pytest.mark.parametrize('purpose',['teacher','question_review'])
 def test_timeout_keeps_larger_preset_and_foreground_unchanged(tmp_path,monkeypatch,timeout,purpose):
     g,p= configured(tmp_path)
     g.save_preset('deepseek',preset_id=p['id'],timeout=timeout)
     calls=[]
     monkeypatch.setattr(providers,'complete',lambda p,**kw:(calls.append(kw),answer())[1])
     g.complete(purpose,MESSAGES)
-    assert calls[0]['timeout']==(max(240,timeout) if purpose=='lesson_review' else timeout)
+    assert calls[0]['timeout']==(max(240,timeout) if purpose=='question_review' else timeout)
 
 
 @pytest.mark.parametrize('effort',['none','low','high','max'])
@@ -100,7 +100,7 @@ def test_partial_stream_subtotals_and_unknown_count_survive_storage(tmp_path):
     value=providers.Usage(100,20,80,7,0,0,{'_mentorflow':dict(partial_usage=True,
         unreported_fields=['reasoning_tokens'],request_attempted=True,thinking_blocks=1,thinking_characters=10,
         sent_reasoning_parameters={'thinking':{'type':'enabled'},'output_config':{'effort':'high'},'api_key':KEY})})
-    log.record('deepseek','fixture','lesson_review',value,error_code='MODEL_CONNECTION_FAILED')
+    log.record('deepseek','fixture','question_review',value,error_code='MODEL_CONNECTION_FAILED')
     s=log.summary(START,END)['total']
     assert s['unknown_usage_calls']==s['partial_usage_calls']==1
     assert s['known_tokens']['input_tokens']==100 and s['known_tokens']['output_tokens']==7
@@ -124,7 +124,7 @@ def test_real_interrupted_adapter_journals_partial_meters(tmp_path,monkeypatch,m
             raise (httpx.ReadTimeout(KEY) if mode=='timeout' else httpx.ReadError(KEY))
     response=httpx.Response(200,headers={'content-type':'text/event-stream'},stream=Interrupted())
     monkeypatch.setattr(providers,'complete',lambda p,**kw:_REAL_COMPLETE(p,http_client=httpx.MockTransport(lambda _:response),**kw))
-    with pytest.raises(ModelError):g.complete('lesson_review',MESSAGES,on_text=lambda _:None,cancel=cancel)
+    with pytest.raises(ModelError):g.complete('question_review',MESSAGES,on_text=lambda _:None,cancel=cancel)
     s=g.usage_log.summary(START,END)['total']
     assert s['partial_usage_calls']==s['unknown_usage_calls']==1
     assert s['known_tokens']['input_tokens']==150 and s['known_tokens']['output_tokens']==1

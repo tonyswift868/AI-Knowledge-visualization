@@ -25,6 +25,12 @@ def convert(source):
         raise ValueError('blocked_keywords must map categories to lists of words')
     # Explicit projection: candidates (and future editorial fields) never ship.
     data = {key: source[key] for key in FIELDS}
+    # The local v2 curriculum/type policy is independent of the existing
+    # seven-field server endpoint. Never export a v2 tag without its fields.
+    if source['version'] == 2:
+        from .source_filter import parse_lists
+        parse_lists(source)
+        data['version'] = 1
     encoded = (json.dumps(data, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + '\n').encode('utf-8')
     if len(encoded) > 1024 * 1024:
         raise ValueError('catalog exceeds the server 1 MiB limit')

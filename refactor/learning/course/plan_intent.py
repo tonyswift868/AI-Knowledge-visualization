@@ -1,7 +1,8 @@
 """New-plan intent requests and validation (ARCH-04/06); no I/O or state changes.
 
 The host calls its gateway, then validates the answer here before executing it.
-Duplicate kinds are rejected, never merged/reordered. A malformed member rejects
+Duplicate kinds are rejected, never merged. URL imports precede scope changes;
+other actions retain their order. A malformed member rejects
 the entire batch. ``reply`` is validated as part of the response envelope but is
 not put into Intent.params: the fixed return contract contains only action
 parameters. The caller still owns the model's original response for display.
@@ -33,9 +34,10 @@ INTENT_SYSTEM = """你是 MentorFlow 新建学习计划的意图判断员。只�
 
 输出一个 JSON 对象，不要 Markdown 或额外说明：
 {"intents":[{"kind":"种类", "参数名":"值"}],"reply":"给用户的一句中文，可空"}
-intents 必须有 1～3 个，按用户提及的先后顺序；同一种 kind 只出现一次（同类要求合在同一项），不要增加参数、params 包装层或自造 kind。不能可靠归入三项以内时只用 ask_user，请用户先明确一件事。
+intents 必须有 1～3 个；同一种 kind 只出现一次（同类要求合在同一项），不要增加参数、params 包装层或自造 kind。网址与缩小范围可以同时返回多个意图：先 import_sources，再处理范围。宿主会先导入网址，把新目录提供给下一步意图理解，不要凭空编造新目录编号。其他意图按提及顺序。不能可靠归入三项以内时只用 ask_user，请用户先明确一件事。
 
 种类和唯一允许的参数（? 表示可选，其他字段必须给出）：
+- import_sources {urls:[网址,...]}：仅 sources/outline 阶段，导入本轮明确提供的 http/https 网址（最多10个）。网址已经由宿主导入、当前文本不再含网址时不要重复返回此项。
 - answer {}：仅 questions 阶段，用户正在回答最近 AI 的追问，宿主会把用户原话交给需求核对，不要复制原话到参数。
 - update_form {goal?,final_goal?,level?,level_note?,start?,end?,daily_cap?,weekday_weights?,special_days?,notes_append?}：明确修改表单；只给明确要改的字段，至少一个。
   goal/final_goal 各 1～300 字；level 只能 zero（零基础）/beginner（入门）/intermediate（有一定基础）/advanced（比较熟练），按这四个中文名对应，例如“比较熟练、挺熟了”是 advanced；level_note 最多 300 字，可空；notes_append 为追加的说明，追加后 notes 不超过 1000 字。
@@ -60,6 +62,7 @@ ask_user 只确认缺少的指代；不要替用户改变范围，例如目录�
 """
 
 _FIELDS = {
+    "import_sources": {"urls"},
     "answer": set(), "chat": set(),
     "update_form": {"goal", "final_goal", "level", "level_note", "start", "end", "daily_cap",
                     "weekday_weights", "special_days", "notes_append"},
@@ -246,7 +249,12 @@ def parse_intents(answer: str, ctx: dict) -> list[Intent]:
             raise AgentFormatError("intent parameters")
         if kind == "answer" and ctx["phase"] != "questions":
             raise AgentFormatError("answer phase")
-        if kind == "update_form":
+        if kind == "import_sources":
+            urls = params["urls"]
+            if (ctx["phase"] not in ("sources", "outline") or not isinstance(urls, list) or not 1 <= len(urls) <= 10
+                    or any(not isinstance(u, str) or not re.fullmatch(r"https?://[^\s]+", u) for u in urls)):
+                raise AgentFormatError("import sources")
+        elif kind == "update_form":
             _update(params, ctx)
         elif kind in {"find_sources", "revise_outline"}:
             _string(params["instruction"], "instruction", 1000)
@@ -289,4 +297,4 @@ def parse_intents(answer: str, ctx: dict) -> list[Intent]:
             if not re.search(r"[\u3400-\u9fff]", reason):
                 raise AgentFormatError("refuse reason must be Chinese")
         result.append(Intent(kind, deepcopy(params)))
-    return result
+    return [i for i in result if i.kind == "import_sources"] + [i for i in result if i.kind != "import_sources"]

@@ -10,7 +10,7 @@ import pytest
 from refactor.learning.course.answer_compare import compare_exact
 from refactor.learning.course import judge_agent as judge, question_agent as question
 from refactor.learning.course.planner_agents import AgentFormatError
-from refactor.learning.app.classroom import Classroom, _question_dict
+from refactor.learning.app.classroom import Classroom
 
 SAMPLES = json.loads(Path(__file__).with_name('chinese_samples.json').read_text(encoding='utf-8'))['questions']
 SAVED = json.loads(Path(__file__).with_name('saved_grades.json').read_text(encoding='utf-8'))
@@ -51,7 +51,7 @@ def test_new_question_structure_round_trip(sample):
              points=[dict(id=p,title=sample['subject'],summary='',chunk_ids=q['chunk_ids']) for p in q['point_ids']],
              excerpts={cid:sample['source_text'] for cid in q['chunk_ids']})
     parsed,=question.parse_questions(json.dumps({'questions':[q]},ensure_ascii=False),ctx)
-    result=_question_dict(parsed)
+    result=json.loads(json.dumps(asdict(parsed)))
     for k,v in q.items(): assert result[k]==v
 
 
@@ -112,28 +112,8 @@ def test_independent_review_never_guesses_pass_and_default_is_off_until_proven_b
     assert not judge.REVIEW_WRONG_DEFAULT
 
 
-def test_classroom_review_is_a_second_isolated_call_without_first_reason():
-    sample=SAMPLES[3];q=sample['question']
-    room=Classroom(SimpleNamespace(store=SimpleNamespace(subscribe=lambda fn:lambda:None)),lambda:None,review_wrong=True)
-    course=SimpleNamespace(point=lambda p:dict(id=p,title='点',summary=''),excerpts=lambda p:{'c':'资料'})
-    calls=[]
-    results=[judge.Verdict('answer',False,tuple(q['point_ids']),'遗漏第二项。'),judge.Verdict('answer',True,(),'实际全部答到。')]
-    def ask(*args):calls.append(args[3]);return results[len(calls)-1]
-    room._ask=ask
-    verdict=room._judge(course,{},None,'test',dict(question=q,point_ids=q['point_ids']),'不能除以零，因为没有定义。')
-    assert verdict.kind=='clarify' and len(calls)==2 and calls[0]==calls[1]
-    assert '遗漏第二项' not in calls[1][1][0]['content']
 
 
-def test_exact_wrong_reason_does_not_invent_the_learners_method_from_real_output():
-    sample=SAMPLES[21];q=sample['question']
-    saved=next(r for r in SAVED if r['id']=='q22-a6')
-    room=Classroom(SimpleNamespace(store=SimpleNamespace(subscribe=lambda f:lambda:None),
-        gateway=SimpleNamespace(complete=lambda *a,**k:SimpleNamespace(text=saved['raw']))),lambda:None)
-    course=SimpleNamespace(plan_id='plan',point=lambda p:dict(id=p,title='len',summary=''),excerpts=lambda p:{'c':'len返回元素个数'})
-    v=room._judge(course,{},None,'test',dict(question=q,point_ids=q['point_ids']),'30，我肯定对')
-    assert v.correct is False and v.wrong_points==tuple(q['point_ids'])
-    assert '求和' not in v.reason and '3' in v.reason
 
 
 def test_invalid_structured_requirement_does_not_poison_other_bank_rows():

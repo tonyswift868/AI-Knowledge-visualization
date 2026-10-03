@@ -31,7 +31,8 @@ export function PlanDetail() {
       <div className="card hero" style={{ marginTop: 10, gridTemplateColumns: "1fr" }}>
         <div>
           <div className="eyebrow">{detail.plan.window ? `${detail.plan.window.start} → ${detail.plan.window.end}` : "学习路线"}</div>
-          <h1 style={{ fontSize: "1.6rem" }}>{detail.plan.goal}</h1>
+          <h1 style={{ fontSize: "1.6rem" }}>{detail.plan.title || detail.plan.goal}</h1>
+          <p style={{ overflowWrap: "anywhere" }} data-selectable>学习目标：{detail.plan.goal}</p>
           <div className="outline-sum" style={{ marginTop: 14 }}>
             <div><span>模块</span><b>{detail.stages.reduce((a, s) => a + s.modules.length, 0)} 个 · {points} 个知识点</b></div>
             <div><span>总时长（含检验）</span><b>{Math.round(detail.plan.total_minutes / 6) / 10} 小时</b></div>

@@ -50,6 +50,10 @@ def session(subject='synthetic-user', token='synthetic-token-one'):
 def catalogs():
     lists = json.loads((DATA / 'source_lists.json').read_text(encoding='utf-8'))
     lists.pop('candidates')
+    # The server keeps its v1 contract; local v2 type/directory policy is retained.
+    lists['version']=1
+    lists.pop('type_rules');lists.pop('directory')
+    lists['whitelist']=[dict(match='docs.python.org',brand='Python',category='official_docs',reason='official')]
     lists['updated'] = '2026-09-28'
     prices = json.loads((DATA / 'model-prices.json').read_text(encoding='utf-8'))
     prices['version'] = 'synthetic-next-version'

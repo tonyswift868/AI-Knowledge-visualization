@@ -242,7 +242,8 @@ def test_guarded_provider_rejects_another_account_before_any_http(window, qapp):
     win.services.store.create_chat_session('当前账号数据', session_id='pending', created_at=NOW)
     calls = len(requests)
     assert win.rebind_feature_context(session_provider=lambda: other, api_base_url='https://api.invalid', ca_bundle=certifi.where())
-    spin(qapp, win, lambda: win.sync_status()['state'] == 'reauth')
+    spin(qapp, win, lambda: win.sync_status()['state'] == 'failed')
+    assert win._sync.service._active and not win.session_notice['show_verify']
     assert len(requests) == calls and win.services.store.pending_records(100)
 
 

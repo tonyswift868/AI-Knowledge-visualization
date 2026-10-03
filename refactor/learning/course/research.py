@@ -337,6 +337,13 @@ def _extract_html(content: bytes, final_url: str) -> tuple[str, str, str]:
     return text, " ".join("".join(parser._title).split()), canonical
 
 
+def directory_candidates(query, *, stage='', subject='', lists=None, limit=8):
+    from .source_filter import directory_matches
+    return [Candidate(e['url'], e['title'], e['verification'], query, 'directory')
+            for e in directory_matches(query, stage=stage, subject=subject, lists=lists, limit=limit)
+            if set(e['available']) & {'全文节选', '习题', '答案', '目录'}]
+
+
 class ResearchService:
     """Search public resources and fetch bounded, reference-only page text.
 
@@ -380,6 +387,18 @@ class ResearchService:
             follow_redirects=False,
             headers={"User-Agent": self.user_agent},
         )
+
+    def discover(self, query, *, stage='', subject='', limit=8, cancel=None, lists=None):
+        """Curriculum directory precedes ordinary web search; failures stay visible.
+
+        Catalog entries are candidates, never adopted passages. Fetch/extract and
+        point mapping remain mandatory. Callers may use directory_candidates
+        with their vendor-search gateway instead of this optional web transport.
+        """
+        first = directory_candidates(query, stage=stage, subject=subject, lists=lists, limit=limit)
+        if len(first) < limit:
+            first += self.search(query, limit=limit-len(first), cancel=cancel)
+        return first
 
     def search(
         self,

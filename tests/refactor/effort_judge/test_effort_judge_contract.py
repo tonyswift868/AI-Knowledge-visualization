@@ -90,7 +90,7 @@ def test_qwen_native_38_effort_and_older_on_off_switch():
 
 def test_purpose_table_covers_confirmed_tasks():
     assert PURPOSE_EFFORT['judge'] == 'high'
-    assert PURPOSE_EFFORT['lesson_review'] == 'high'
+    assert 'lesson_review' not in PURPOSE_EFFORT and 'lesson_prep' not in PURPOSE_EFFORT
     assert PURPOSE_EFFORT['teacher'] == 'high'
     assert PURPOSE_EFFORT['plan_intent'] == 'none'
     usage = providers.Usage(10, 0, 10, 4, 0, 0, raw={'input_tokens': 10, 'output_tokens': 4})

@@ -12,9 +12,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
+import hashlib
+import io
 import re
 from threading import BoundedSemaphore, Event, Lock, RLock
 import time
@@ -154,7 +156,7 @@ def _title_check(search_title, titles):
 
 class ResearchPipeline:
     def __init__(self, *, fetcher=None, lists_provider=None, concurrency=4, per_site=2,
-                 timeout=15.0, max_sources=40, min_text_chars=120, max_bytes=8*1024*1024):
+                 timeout=15.0, max_sources=40, min_text_chars=120, max_bytes=8*1024*1024, ocr=None):
         for name, value in (('concurrency', concurrency), ('per_site', per_site),
                             ('max_sources', max_sources), ('min_text_chars', min_text_chars), ('max_bytes', max_bytes)):
             if type(value) is not int or value < 1:
@@ -164,6 +166,7 @@ class ResearchPipeline:
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError('timeout 必须是正数')
         self.fetcher, self.lists_provider = fetcher, lists_provider
+        self.ocr = ocr  # existing PdfOCR engine; no new OCR model/dependency
         self.concurrency, self.per_site, self.timeout = concurrency, per_site, timeout
         self.max_sources, self.min_text_chars, self.max_bytes = max_sources, min_text_chars, max_bytes
         self._executor = ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix='research')
@@ -223,7 +226,9 @@ class ResearchPipeline:
             token.check()
             if self.fetcher is None:
                 fetched = ResearchService(timeout=self.timeout, max_bytes=self.max_bytes).fetch_bytes(
-                    {'url': hit.url, 'title': hit.title}, cancel=token, request_guard=guard)
+                    {'url': hit.url, 'title': hit.title}, cancel=token, request_guard=guard,
+                    allowed_types={'text/html','application/xhtml+xml','application/pdf','text/plain','text/markdown',
+                                   'image/png','image/jpeg','image/webp'})
             else:
                 with self._site_slot(hit.url, token):
                     fetched = self.fetcher(hit.url, cancel=token, timeout=self.timeout)
@@ -239,8 +244,21 @@ class ResearchPipeline:
                 fallback = urlsplit(final.url).path.rstrip('/').rsplit('/', 1)[-1] or urlsplit(final.url).hostname
             elif media in {'application/pdf', 'text/plain', 'text/markdown'}:
                 suffix = {'application/pdf': '.pdf', 'text/plain': '.txt', 'text/markdown': '.md'}[media]
-                doc = extract_bytes(fetched.body, 'download' + suffix, max_bytes=self.max_bytes, cancel=token)
+                doc = extract_bytes(fetched.body, 'download' + suffix, max_bytes=self.max_bytes, cancel=token,
+                                    ocr=self.ocr if media == 'application/pdf' else None)
                 fallback = 'download'
+            elif media in {'image/png','image/jpeg','image/webp'}:
+                if self.ocr is None:
+                    raise _Rejected('ocr_required','该教材页是图片，请提供现有离线 OCR 引擎后重试。')
+                from PIL import Image
+                with Image.open(io.BytesIO(fetched.body)) as image:
+                    if image.width*image.height > 20_000_000:
+                        raise _Rejected('content_too_large','教材图片过大，请按页提供。')
+                    pdf=io.BytesIO()
+                    image.convert('RGB').save(pdf,format='PDF')
+                doc=extract_bytes(pdf.getvalue(),'page.pdf',ocr=self.ocr,cancel=token,max_bytes=self.max_bytes)
+                doc=replace(doc,sha256=hashlib.sha256(fetched.body).hexdigest(),media_type=media)
+                fallback='download'
             else:
                 raise _Rejected('unsupported_type', '仅接受 HTML、PDF、纯文本或 Markdown 正文。')
             token.check()

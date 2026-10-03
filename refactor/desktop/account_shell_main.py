@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urlsplit
+from refactor.runtime_logging import event as diagnostic_event
 
 
 class AccountShell:
@@ -389,6 +390,7 @@ class AccountShell:
                     else "暂时无法恢复登录，请检查网络或账号权限后重试。"
                 )
                 job = "restore_expired" if expired else "restore"
+                diagnostic_event('login', state=job, code=code, exc_info=True)
                 self.gate.background_failed.emit(f"{generation}:{job}", message)
 
         threading.Thread(target=work, name="mentorflow-shell-restore", daemon=True).start()
@@ -441,6 +443,7 @@ class AccountShell:
                 self.gate.background_succeeded.emit(f"{generation}:authenticate", payload)
                 payload = None
             except Exception as exc:
+                diagnostic_event('login', state='FAILED', code=getattr(exc, 'code', 'INTERNAL'), exc_info=True)
                 message = MESSAGES.get(
                     getattr(exc, "code", ""),
                     "登录暂时无法完成，请检查网络或账号服务后重试。",
@@ -523,7 +526,7 @@ class AccountShell:
         self._session_epoch += 1
         self._session_refresh_busy = False
         self._feature_session_confirmed = True
-        self.gate.hide()
+        self._hide_login_windows()
         # Bind the account services (and let LearningWindow prewarm its
         # WebEngine-backed planning page) before the signed-in window becomes
         # visible.  The first native Chromium surface can otherwise make the
@@ -532,6 +535,28 @@ class AccountShell:
         home.show()
         self._session_timer.setInterval(240_000)
         self._session_timer.start()
+
+    def _hide_login_windows(self):
+        """Dismiss the gate and its owned auth surfaces after confirmed login.
+
+        Hide rather than close: closing the gate invokes the shell quit handler.
+        Generation/epoch fences already reject callbacks from prior login jobs.
+        """
+        from refactor.desktop.login_shell import LoginGateWindow
+        self.gate.clear_password()
+        self.gate.hide()
+        for window in self.app.topLevelWidgets():
+            if isinstance(window, LoginGateWindow):
+                window.clear_password()
+                window.hide()
+            elif window is not self.home:
+                # Qt's isAncestorOf stops at a separate Window surface.
+                owner = window.parentWidget()
+                while owner is not None and owner is not self.gate:
+                    owner = owner.parentWidget()
+                if owner is self.gate:
+                    window.hide()
+        diagnostic_event('login', state='CONNECTED')
 
     def _feature_session(self, home, account_id):
         # Called by learning clients on every request; never capture a token.
@@ -975,6 +1000,7 @@ class AccountShell:
                     f"{session_epoch}:session_refresh", (source, refreshed)
                 )
             except Exception as exc:
+                diagnostic_event('refresh', state='FAILED', code=getattr(exc, 'code', 'NETWORK_UNAVAILABLE'), exc_info=True)
                 code = getattr(exc, "code", "")
                 expired = code in {
                     "ENTERPRISE_SESSION_REAUTH_REQUIRED",
@@ -1074,6 +1100,8 @@ class AccountShell:
         if self._confirmed_role_account_id == refreshed.identity.profile().account_id:
             self.home.set_server_role(self._confirmed_server_role)
         self.home.clear_session_notice()
+        self._hide_login_windows()
+        diagnostic_event('refresh', state='RECOVERED')
         self.home.session_recovered()
         if self._logout_pending:
             from PySide6.QtCore import QTimer
@@ -1089,6 +1117,7 @@ class AccountShell:
     def _expire_active_session(self, source) -> None:
         if self._login_result is not source:
             return
+        diagnostic_event('login', state='REAUTH_REQUIRED')
         self._close_account_settings()
         from refactor.desktop.login_shell import LoginGateState
 
@@ -1138,9 +1167,10 @@ class AccountShell:
         # Previously this cleared the feature session, so classroom and plan
         # pages reported a logout even though no account change had occurred.
         self._session_refresh_degraded = True
+        diagnostic_event('refresh', state='RETRY')
         if self.home is not None:
             self.home.set_session_notice(
-                "账号服务暂时无法确认登录状态，正在自动重试；当前账号仍保持登录。",
+                "账号连接不稳，正在重试；当前学习不受影响",
                 show_verify=False,
             )
         self._session_refresh_busy = False
@@ -1552,6 +1582,9 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         from .shell_paths import prepare_shell_runtime
 
         shell_runtime = prepare_shell_runtime()
+        from refactor.runtime_logging import configure, install_exception_hooks
+        configure(shell_runtime.data_root)
+        install_exception_hooks()
         from .web_schemes import register_teacher_stage_scheme
 
         register_teacher_stage_scheme()
@@ -1581,6 +1614,8 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
             from .updates import DesktopUpdates
 
             app._mentorflow_updates = DesktopUpdates(app, install_root, shell.gate)
+            app._mentorflow_updates.changed.connect(
+                lambda value: diagnostic_event('update', state=value.get('state', 'UNKNOWN')))
             app._mentorflow_updates.start()
             if update_attempt and update_nonce:
                 from refactor.desktop.delivery.per_user_install import notify_health
@@ -1590,6 +1625,7 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
                     install_root, shell.gate, update_attempt, update_nonce))
         return app.exec()
     except Exception as exc:
+        diagnostic_event('startup', state='FAILED', exc_info=True)
         _show_launch_error(str(exc) or "账号外壳运行环境暂不可用。")
         return 1
 

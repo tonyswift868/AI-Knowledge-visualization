@@ -4,6 +4,7 @@ import { call, on } from "../bridge"
 import { useApp } from "../store"
 import { Button, Ring, SakuraArt, Skeleton } from "../ui"
 import type { PlanItem } from "./Plans"
+import "./home.css"
 
 function greeting(): string {
   const h = new Date().getHours()
@@ -47,22 +48,25 @@ export function Home() {
   const dateText = `${date.getMonth() + 1} 月 ${date.getDate()} 日 · 周${"日一二三四五六"[date.getDay()]}`
 
   return (
-    <div className="page">
-      <div className="card hero">
+    <div className="page home-page">
+      <div className="card hero home-hero">
         <div>
           <div className="eyebrow">{dateText}</div>
           <h1>{greeting()}，<em>{account?.name ?? "同学"}</em></h1>
           <p>{running.length
             ? `今天有 ${running.length} 份计划在进行。按自己的节奏来，学会一点就记下一点。`
             : "从一个想学的东西开始：告诉我你的目标，我会帮你找资料、搭好路线，再陪你一节一节学完。"}</p>
-          <div className="row" style={{ marginTop: 18 }}>
+          <div className="row wrap" style={{ marginTop: 18 }}>
             <Button kind="primary" onClick={() => go("new-plan")}><Plus />新建计划</Button>
             <Button onClick={() => go("plans")}>查看全部计划</Button>
           </div>
         </div>
-        <Ring value={done} total={target || 1} tentative={tentative} size={150} stroke={13}>
-          {target ? <><b>{done}</b><span>/ {target} 分钟</span></> : <><b>—</b><span>今日目标</span></>}
-        </Ring>
+        <div className="home-total">
+          <span className="small muted">今天全部计划</span>
+          <Ring value={done} total={target || 1} tentative={tentative} size={150} stroke={13}>
+            {target ? <><b>{done}</b><span>/ {target} 分钟</span></> : <><b>—</b><span>今日目标</span></>}
+          </Ring>
+        </div>
       </div>
 
       <div className="section-title">
@@ -90,7 +94,7 @@ export function Home() {
           </Button>
         </div>
       ) : (
-        <div className="grid three stagger">
+        <div className="home-plan-grid stagger">
           {running.map((p) => <TodayCard key={p.id} plan={p} />)}
         </div>
       )}
@@ -102,22 +106,21 @@ function TodayCard({ plan }: { plan: PlanItem }) {
   const t = plan.today!
   const go = useApp((s) => s.go)
   const set = useApp((s) => s.set)
+  const title = plan.title || plan.goal || "未命名计划"
   return (
-    <div className="card hover stack">
-      <div className="row between">
-        <b style={{ fontSize: "1.02rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{plan.title || plan.goal || "未命名计划"}</b>
+    <div className="card hover today-plan">
+      <div className="today-plan-header">
+        <b className="today-plan-title" title={title}>{title}</b>
         {t.overdue_days ? <span className="pill warn">逾期 {t.overdue_days} 天</span> : plan.state === "checking" ? <span className="pill">检验中</span> : null}
       </div>
-      <div className="row" style={{ gap: 18 }}>
-        <Ring value={t.today_confirmed} total={t.today_target || 1} tentative={t.today_tentative} size={104} stroke={10}>
-          {t.today_target ? <><b>{t.today_confirmed}</b><span>/ {t.today_target} 分</span></> : <><b>休</b><span>今天</span></>}
-        </Ring>
-        <div className="stack" style={{ gap: 8 }}>
+      <div className="today-plan-progress">
+        <p className="today-plan-minutes">今天 <b>{t.today_confirmed}/{t.today_target} 分钟</b></p>
+        <div className="row wrap">
           {t.debt_minutes > 0 && <span className="pill warn"><Flame size={13} />欠 {minutes(t.debt_minutes)}</span>}
           {t.ahead_minutes > 0 && <span className="pill ok"><TrendingUp size={13} />超前 {t.ahead_days ? `${t.ahead_days} 天` : minutes(t.ahead_minutes)}</span>}
-          {t.today_tentative > 0 && <span className="pill muted">暂记 {t.today_tentative} 分</span>}
           {!t.debt_minutes && !t.ahead_minutes && <span className="muted small">{t.today_target ? "按计划进行" : "今天是休息日，不用学"}</span>}
         </div>
+        {t.today_tentative > 0 && <p className="today-plan-tentative small">已学 {t.today_tentative} 分<span>（模块检测通过后计入完成）</span></p>}
       </div>
       {t.needs_negotiation && (
         <div className="negotiate small">
@@ -125,7 +128,7 @@ function TodayCard({ plan }: { plan: PlanItem }) {
           <Button small onClick={() => { set({ planId: plan.id }); go("plan") }}>调整安排</Button>
         </div>
       )}
-      <Button kind="primary" onClick={() => { set({ planId: plan.id }); go("classroom") }}><PlayCircle />开课</Button>
+      <Button className="today-plan-start" kind="primary" onClick={() => { set({ planId: plan.id }); go("classroom") }}><PlayCircle />开课</Button>
     </div>
   )
 }

@@ -4,12 +4,11 @@ import json
 
 import pytest
 
-from refactor.learning.course import teacher_agent, lesson_prep
+from refactor.learning.course import teacher_agent
 from refactor.learning.course.request_layout import ordered_payload
 from tests.refactor.teacher_agent.test_class_teacher_agent import context
 from .acceptance_audit import analyze, reorder, load_calls
 from .audit import canonical, lcp
-from tests.refactor.lesson_prep.test_lesson_prep_contract import context as prep_context, draft
 
 
 def call(identifier, messages, purpose='teacher', usage=None, system='fixed'):
@@ -47,23 +46,14 @@ def test_ordered_fields_preserve_every_value_and_batch_order(data):
         assert list(record)[:2] == ['point','draft']
 
 
-def test_review_assembly_matches_saved_replay_and_keeps_drafts_verbatim():
-    ctx=prep_context()
-    system,messages=lesson_prep.review_request(ctx,draft())
-    payload=json.loads(messages[1]['content'].split('\n',1)[1])
-    assert list(payload) == ['point','draft']
-    assert payload == dict(point=ctx['point'],draft=json.loads(json.dumps(asdict(draft()))))
-    assert system == lesson_prep.REVIEW_SYSTEM
-    contexts=[prep_context('p1'),prep_context('p2')]
-    _, batch=lesson_prep.batch_review_request(contexts,(draft(),draft()))
-    data=json.loads(batch[1]['content'].split('\n',1)[1])
-    assert [r['point']['id'] for r in data] == ['p1','p2']
-    assert all(list(r)==['point','draft'] for r in data)
+def test_current_teacher_has_no_draft_or_review_input():
+    system,messages=teacher_agent.teacher_request(context())
+    assert 'prepared_lesson' not in str(messages) and '备课稿' not in system
 
 
 def test_reordering_saved_record_does_not_mutate_or_lose_messages():
     messages=[dict(role='user',content='【计划与当前模块】\n{"module":{},"plan":{}}'),
-              dict(role='user',content='【当前模块原文（数据）】\n[]'),
+              dict(role='user',content='【本点原文（数据）】\n[]'),
               dict(role='user',content='【对话原文（数据）】\n{"role":"user","text":"原文"}'),
               dict(role='user',content='【本步任务】\n{"user":"本次"}')]
     old=call('1',messages)
@@ -88,7 +78,7 @@ def test_missing_usage_not_counted_as_zero_but_request_still_forms_history():
 
 
 def test_system_variant_and_dialogue_window_are_distinct_causes():
-    source=dict(role='user',content='【当前模块原文】\n{"c":"资料"}')
+    source=dict(role='user',content='【本点原文】\n{"c":"资料"}')
     r=analyze([call('1',[source],system='固定'),call('2',[source],system='固定 双点')])
     assert r['requests'][1]['cause'] == 'system_variant'
     rows=[call(str(i),[dict(role='user',content='【对话原文（数据）】\n'+json.dumps(dict(role='user',text=text)))])

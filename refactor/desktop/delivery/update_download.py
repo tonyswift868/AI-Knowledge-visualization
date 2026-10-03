@@ -122,19 +122,20 @@ class UpdateTransport(Protocol):
 
 
 class HTTPTransport:
-    """Explicit connect/read/total bounds without blocking Qt or waiting on DNS.
+    """Idle-bounded transfers; metadata alone also has a total deadline.
 
     A daemon network worker owns HTTPX. The caller's deadline is authoritative
     even if OS DNS has not returned. At most one worker per transport is allowed;
     subsequent requests fail recoverably while a timed-out worker is finishing.
     """
     def __init__(self, origin: str, *, fixture_http=False, signed_static_http=False,
-                 connect=3.0, read=3.0, total=30.0):
+                 connect=15.0, read=30.0, total=None, metadata_total=300.0):
         self.origin = urlsplit(origin)
         self.fixture_http = fixture_http
         self.signed_static_http = signed_static_http
         self.connect, self.read, self.total = connect, read, total
-        if not all(0 < n <= 300 for n in (connect, read, total)):
+        self.metadata_total = metadata_total
+        if not all(0 < n <= 300 for n in (connect, read, metadata_total)) or (total is not None and not 0 < total <= 300):
             raise ValueError('invalid HTTP timeout')
         self._active = threading.BoundedSemaphore(1)
         self._tls_context = None
@@ -159,13 +160,14 @@ class HTTPTransport:
         if (parsed.scheme, parsed.hostname, parsed.port) != (self.origin.scheme, self.origin.hostname, self.origin.port):
             raise SecurityError('update origin mismatch')
 
-    def stream(self, url, *, offset=0, cancel=lambda: False):
+    def stream(self, url, *, offset=0, cancel=lambda: False, _total=None):
         self.validate_url(url)
         if not self._active.acquire(blocking=False):
             raise RecoverableError('previous network request is still finishing')
         events = queue.Queue(maxsize=4)
         stop = threading.Event()
-        deadline = time.monotonic() + self.total
+        started = last_received = time.monotonic()
+        total = self.total if _total is None else _total
 
         def put(value):
             while not stop.is_set():
@@ -175,6 +177,7 @@ class HTTPTransport:
                     pass
 
         def network():
+            nonlocal last_received
             failure = None
             try:
                 if self._tls_context is None:
@@ -191,7 +194,11 @@ class HTTPTransport:
                                   follow_redirects=False, trust_env=False, verify=self._tls_context) as client:
                     with client.stream('GET', url, headers=headers) as response:
                         put(('headers', (response.status_code, dict(response.headers))))
-                        for block in response.iter_raw(chunk_size=65536):
+                        # Do not wait for a 64 KiB buffer to fill: even a small
+                        # arriving socket block means the connection is alive.
+                        last_received = time.monotonic()
+                        for block in response.iter_raw():
+                            last_received = time.monotonic()
                             self.bytes_received += len(block)
                             if stop.is_set():
                                 break
@@ -207,10 +214,13 @@ class HTTPTransport:
             while True:
                 if cancel():
                     raise DownloadCancelled('download cancelled')
-                if time.monotonic() >= deadline:
+                now = time.monotonic()
+                if total is not None and now - started >= total:
                     raise RecoverableError('update request total timeout')
+                if now - last_received >= self.read:
+                    raise RecoverableError('update request idle timeout')
                 try:
-                    kind, value = events.get(timeout=min(.05, max(.001, deadline-time.monotonic())))
+                    kind, value = events.get(timeout=.05)
                 except queue.Empty:
                     continue
                 if kind == 'done':
@@ -221,9 +231,10 @@ class HTTPTransport:
         finally:
             stop.set()
 
-    def fetch_metadata(self, url, maximum):
+    def fetch_metadata(self, url, maximum, *, cancel=lambda: False):
         result = bytearray()
-        for kind, value in self.stream(url):
+        total = min(self.total, self.metadata_total) if self.total is not None else self.metadata_total
+        for kind, value in self.stream(url, cancel=cancel, _total=total):
             if kind == 'headers':
                 status, headers = value
                 if status != 200:
@@ -235,6 +246,17 @@ class HTTPTransport:
                 if len(result) > maximum:
                     raise SecurityError('metadata exceeds size limit')
         return bytes(result)
+
+
+def retry_wait(seconds, cancel=lambda: False):
+    """Cancellation stays responsive during the agreed network backoff."""
+    until = time.monotonic() + seconds
+    while time.monotonic() < until:
+        if cancel():
+            raise DownloadCancelled('download cancelled')
+        time.sleep(min(.05, max(0, until - time.monotonic())))
+    if cancel():
+        raise DownloadCancelled('download cancelled')
 
 
 class ObjectCache:
@@ -251,6 +273,7 @@ class ObjectCache:
         self.runtime_root = Path(runtime_root).absolute() if runtime_root else self.root
         self.accepted_app = accepted_app
         self._hardlinks = {}
+        self._download_offsets = {}
         safe_entry(self.root, self.root, directory=True)
         self.root.mkdir(parents=True, exist_ok=True)
         self.objects = self.root / 'objects'
@@ -266,12 +289,41 @@ class ObjectCache:
         raise SecurityError('completed cache object was modified')
 
     def download(self, asset, *, cancel=lambda: False, progress=lambda n: None):
+        for attempt in range(6):  # original attempt + five automatic resumes
+            try:
+                return self._download_once(asset, cancel=cancel, progress=progress)
+            except DownloadCancelled:
+                raise
+            except RecoverableError:
+                if attempt == 5:
+                    raise
+                retry_wait((2, 4, 8, 16, 30)[attempt], cancel)
+
+    def downloaded_bytes(self, assets):
+        """Presentation only; completion still requires the existing SHA check."""
+        total = 0
+        for asset in assets:
+            hashed = asset['sha256']
+            if hashed not in self._download_offsets:
+                complete = self.objects / hashed
+                partial = self.objects / (hashed + '.part')
+                self._download_offsets[hashed] = (complete.stat().st_size if complete.is_file() else
+                                                 partial.stat().st_size if partial.is_file() else 0)
+            amount = self._download_offsets[hashed]
+            total += min(asset['size'], amount)
+        return total
+
+    def _download_once(self, asset, *, cancel=lambda: False, progress=lambda n: None):
+        if cancel():
+            raise DownloadCancelled('download cancelled')
         existing = self.complete(asset)
         if existing:
+            self._download_offsets[asset['sha256']] = asset['size']
             return existing
         partial = self.objects / (asset['sha256'] + '.part')
         safe_entry(partial, self.root)
         offset = partial.stat().st_size if partial.exists() else 0
+        self._download_offsets[asset['sha256']] = offset
         if offset > asset['size']:
             raise SecurityError('oversized partial object')
         if offset == asset['size'] and partial.exists():
@@ -291,6 +343,7 @@ class ObjectCache:
                                 raise SecurityError('invalid range response')
                         elif status == 200:
                             offset = 0  # Range unsupported: restart only THIS object.
+                            self._download_offsets[asset['sha256']] = 0
                         else:
                             raise RecoverableError('asset HTTP status ' + str(status))
                         safe_entry(partial, self.root)
@@ -298,7 +351,9 @@ class ObjectCache:
                     else:
                         if stream is None or offset + len(value) > asset['size']:
                             raise SecurityError('asset response size mismatch')
-                        stream.write(value); offset += len(value); progress(len(value))
+                        stream.write(value); offset += len(value)
+                        self._download_offsets[asset['sha256']] = offset
+                        progress(len(value))
                         trace = _trace.get()
                         if trace:
                             trace.totals['bytes_written'] += len(value)

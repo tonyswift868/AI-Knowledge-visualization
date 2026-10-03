@@ -14,7 +14,8 @@ def test_real_lists_export_exactly_seven_fields_without_candidates():
     value = json.loads(result)
     assert set(value) == set(FIELDS)
     assert 'candidates' in original and 'candidates' not in value
-    assert all(value[k] == original[k] for k in FIELDS)
+    assert all(value[k] == original[k] for k in FIELDS if k!='version')
+    assert value['version']==1
     assert original == before
     assert result == convert(original) and len(result) <= 1024 * 1024
 
@@ -32,7 +33,7 @@ def test_missing_fields_and_oversized_output_rejected():
     source = json.loads(DEFAULT_SOURCE.read_text(encoding='utf-8'))
     with pytest.raises(ValueError):
         convert({k: v for k, v in source.items() if k != 'version'})
-    source['whitelist'][0]['reason'] = 'x' * (1024 * 1024)
+    source['low'][0]['reason'] = 'x' * (1024 * 1024)
     with pytest.raises(ValueError, match='1 MiB'):
         convert(source)
 
