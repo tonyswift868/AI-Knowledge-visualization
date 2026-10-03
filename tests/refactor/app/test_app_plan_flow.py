@@ -24,7 +24,7 @@ PAGES = {
 def page(title):
     body = "".join(f"<h2>{title} 第{i}节</h2><p>" + f"{title} 的第 {i} 部分讲解，包含定义、例子和练习。" * 12 + "</p>"
                    for i in range(1, 4))
-    body += ''.join(f'<p>第{j}道：{title}学习时依据什么？ 答案：定义、例子和练习。</p>' for j in range(3))
+    body += ''.join(f'<p>第{j}道：{title}学习时依据____？ 答案：资料。</p>' for j in range(3))
     return f"<html><head><title>{title}</title></head><body><h1>{title}</h1>{body}</body></html>".encode("utf-8")
 
 
@@ -103,8 +103,10 @@ class ScriptedModel:
         elif purpose == 'outline':
             chunks=json.loads(user.split('【已取得的原文段落】\n')[1])
             modules=[]
+            first_title=re.search(r'资料 1：(.+?)（',user)[1]
+            first_chunk=next(c for c in chunks if c['text'].startswith(first_title+'\n') and '第1节' in c['text'])
             for i in range(1,4):
-                c=chunks[0]  # Three distinct learning targets grounded in the same obtained section.
+                c=first_chunk  # Match s1.1; hashed source order is not section order.
                 quote=c['text'][:80]
                 modules.append(dict(key=f'm{i}',title='改过的模块1' if i==1 and '修改意见' in user else f'模块{i}',summary='理解资料',
                     refs=['s1.1'],prerequisites=[f'm{i-1}'] if i>1 else [],points=[dict(title=f'资料点{i}',summary='理解定义与练习',citations=[dict(chunk_id=c['chunk_id'],quote=quote)])]))
@@ -113,8 +115,8 @@ class ScriptedModel:
             packet=json.loads(user);found=[]
             for passage in packet['passages']:
                 for stem in re.findall(r'第\d道：[^？]+？',passage['text']):
-                    found.append(dict(kind='short',stem=stem,answer='定义、例子和练习。',explanation='',question_chunk=passage['id'],
-                        answer_chunk=passage['id'],answer_quote='定义、例子和练习。',pairing='same_block',question_number='',answer_number=''))
+                    found.append(dict(kind='fill',stem=stem,answer=[['资料']],explanation='',question_chunk=passage['id'],
+                        answer_chunk=passage['id'],answer_quote='资料',pairing='same_block',question_number='',answer_number=''))
             p=packet['passages'][0]
             sentence=next(s+'。' for s in p['text'].split('。') if '定义、例子和练习' in s)
             text=json.dumps(dict(passages=[p['id'] for p in packet['passages']],found=found,cloze=[

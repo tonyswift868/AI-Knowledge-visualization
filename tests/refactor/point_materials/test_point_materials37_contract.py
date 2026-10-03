@@ -11,7 +11,7 @@ from refactor.learning.course.question_bank import validate_question
 from refactor.learning.course.source_filter import classify_source, directory_matches, load_lists, parse_lists, SourceListsError
 
 
-TEXT='压强是压力与受力面积的比值。国际单位制中压强的单位是帕。压力越大，在面积不变时压强越大。\n同章术语：压力、浮力、密度、面积。\n1. 压强单位是什么？\n答案：帕。'
+TEXT='压强是压力与受力面积的比值。国际单位制中压强的单位是帕。压力越大，在面积不变时压强越大。\n同章术语：压力、浮力、密度、面积。\n1. 压强单位是____？\n答案：帕。'
 
 
 @pytest.fixture
@@ -76,18 +76,18 @@ def test_normal_cloze_distractors_same_source_and_word_exact(store):
 
 def test_found_same_block_has_original_answer_and_no_fabrication(store):
     out=pointer();out['cloze']=[]
-    q=dict(kind='short',stem='压强单位是什么？',answer='帕',answer_quote='帕。',explanation='',question_chunk='c',answer_chunk='c',pairing='same_block',question_number='1',answer_number='1')
+    q=dict(kind='fill',stem='压强单位是____？',answer=[['帕']],answer_quote='帕。',explanation='',question_chunk='c',answer_chunk='c',pairing='same_block',question_number='1',answer_number='1')
     out['found']=[q]
     assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
     stored=store.records('question_bank','p')[0]
-    assert stored['origin']=='found' and stored['answer']=='帕'
-    q['answer']='公斤'; q['stem']='压力的单位是什么？'
+    assert stored['origin']=='found' and '帕' in stored['answer'][0]
+    q['answer']=[['公斤']]; q['stem']='压力的单位是什么？'
     assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
 
 
 def test_number_pairing_mismatch_is_rejected(store):
     out=pointer();out['cloze']=[]
-    out['found']=[dict(kind='short',stem='压强单位是什么？',answer='帕',answer_quote='1. 帕',question_chunk='c',answer_chunk='c',pairing='numbered',question_number='1',answer_number='2')]
+    out['found']=[dict(kind='fill',stem='压强单位是____？',answer=[['帕']],answer_quote='1. 帕',question_chunk='c',answer_chunk='c',pairing='numbered',question_number='1',answer_number='2')]
     assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==0
 
 
@@ -102,7 +102,7 @@ def test_pick_unused_then_lru_and_never_calls_model(store):
     assert pm.pick_question(store,'p','point','final',picked) is None
     assert pm.pick_question(store,'p','point','module') is not None
     pm.mark_used(store,'p',picked[0],'quick')
-    assert store.records('question_bank','p')[0]['uses']
+    assert next(q for q in store.records('question_bank','p') if q['id']==picked[0])['uses']
     with pytest.raises(ValueError): pm.pick_question(store,'p','point','bad')
 
 
@@ -208,7 +208,7 @@ def test_numbered_question_and_answer_separate_blocks_same_book(store):
     with store.transaction():
         source=store._get('sources','p','s');source['url']='https://openstax.org/books/test/pages/exercises';store._put('sources','p',source)
     out=pointer();out['cloze']=[]
-    out['found']=[dict(kind='short',stem='压强单位是什么？',answer='帕',answer_quote='1. 帕。',question_chunk='c',answer_chunk='a',pairing='numbered',question_number='1',answer_number='1')]
+    out['found']=[dict(kind='fill',stem='压强单位是____？',answer=[['帕']],answer_quote='1. 帕。',question_chunk='c',answer_chunk='a',pairing='numbered',question_number='1',answer_number='1')]
     result=incomplete(store,store.records('points','p')[0],ctx(out))
     assert result['questions']==1
     assert store.records('question_bank','p')[0]['source']['url']!=store.records('question_bank','p')[0]['answer_source']['url']

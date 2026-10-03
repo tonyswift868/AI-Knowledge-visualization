@@ -17,7 +17,7 @@ from refactor.learning.course.source_filter import load_lists
 from refactor.learning.course.store import CourseStore
 from refactor.learning.course.report_views import report_views
 from refactor.learning.course.report_pdf import render_report_pdf
-from tests.refactor.integration38.support import Agents, block, join_workers, attach_quick_contract
+from tests.refactor.integration38.support import Agents, block, join_workers
 
 DAY = date(2026, 10, 3)
 URL = 'https://docs.python.org/3/tutorial/datastructures.html'
@@ -113,7 +113,6 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
     events=[];services=None
     try:
         services,flow,model,pid=build_plan(tmp_path,events)
-        attach_quick_contract(services.store,pid)
         class Registry:
             methods={}
             def register(self,name,fn):self.methods[name]=fn
@@ -223,3 +222,28 @@ def test_real_materials_wait_resumes_once_with_mapping_context(tmp_path):
         assert fresh.run(pid,lambda *args:None,ctx)['step']=='opening'
     finally:
         release.set();room.cancel_materials();join_workers();services._closed=True;services.store.close()
+
+
+def test_integration44_real_roles_and_uses_survive_store_reopen(tmp_path):
+    """No autouse material boundary: select/mark/prepare are real and durable."""
+    services,flow,model,pid=build_plan(tmp_path,[])
+    try:
+        point=services.store.records('points',pid)[0]
+        before=len(model.calls)
+        point_materials.prepare_point(services.store,pid,point,dict(gateway=model,cancel=threading.Event()))
+        assert len(model.calls)==before  # Stored complete rows avoid locating again.
+        quick=point_materials.pick_question(services.store,pid,point['id'],'quick')
+        bank=point_materials.pick_question(services.store,pid,point['id'],'module')
+        assert quick['role']=='quick' and bank['role']=='bank' and quick['id']!=bank['id']
+        point_materials.mark_used(services.store,pid,quick['id'],'quick')
+        point_materials.mark_used(services.store,pid,bank['id'],'module')
+    finally:
+        join_workers();services._closed=True;services.store.close()
+    fresh=CourseStore('integration38',tmp_path)
+    try:
+        rows={q['id']:q for q in fresh.records('question_bank',pid)}
+        assert rows[quick['id']]['uses'][0]['purpose']=='quick'
+        assert rows[bank['id']]['uses'][0]['purpose']=='module'
+        assert point_materials.pick_question(fresh,pid,point['id'],'quick')['id']==quick['id']
+        assert point_materials.pick_question(fresh,pid,point['id'],'module')['id']!=bank['id']
+    finally:fresh.close()

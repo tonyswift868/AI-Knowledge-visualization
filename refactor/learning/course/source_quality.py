@@ -386,6 +386,16 @@ def rank_key(row):
             quality.get('level_fit') in {'too_advanced', 'review_only'})
 
 
+def question_priority(url, title='', *, authority=None, lists=None):
+    """Publisher band first; third-band online Q&A is the last resort."""
+    identity=authority or classify_source(url,lists=lists)
+    level=identity.get('level') or 4
+    host=(urlsplit(url).hostname or '').casefold()
+    qa=(any(_host_is(host,name) for name in ('zhihu.com','zhidao.baidu.com','quora.com','stackoverflow.com','stackexchange.com'))
+        or bool(re.search(r'interview[ -]questions|questions?[ -]and[ -]answers?|问答|面试题|/questions?/',title+' '+url,re.I)))
+    return (level,bool(level==3 and qa))
+
+
 def general_only(chunk_ids, sources, chunks, *, lists=None):
     """Display label from persisted provenance, not a model's assertion."""
     by_chunk={c['id']:c for c in chunks}

@@ -14,7 +14,7 @@ from .actors import Persona,ScriptUser,ModelUser,OfflineGateway,offline_fetch
 from .driver import Driver
 from .engine import Clock,Evidence,RecordedGateway,Simulation,StopRun
 
-ROOT=Path(r'D:\MentorFlow\.local\test-tmp\fix42-sim\offline-tests')
+ROOT=Path(r'D:\MentorFlow\.local\test-tmp\fix44-integrate\offline-tests')
 
 
 @pytest.fixture
@@ -45,6 +45,10 @@ def test_simulation42_full_bridge_flow_from_dialogue_to_pdf_and_free(simulation)
     methods=[s['method'] for s in simulation.evidence.steps]
     assert methods[0:2]==['plan.current','plan.submit']
     assert methods.count('plan.say')>=2
+    consent=next(i for i,s in enumerate(simulation.evidence.steps)
+        if json.loads((simulation.evidence.root/s['evidence']).read_text(encoding='utf-8'))['request']['params'].get('text')=='确认并找资料')
+    before=json.loads((simulation.evidence.root/simulation.evidence.steps[consent-1]['evidence']).read_text(encoding='utf-8'))
+    assert before['response']['result']['draft']['phase']=='preview'
     assert methods.index('plan.say')<methods.index('plan.decide')<methods.index('plan.outline')<methods.index('plan.generate')
     assert 'classroom.ask' in methods and 'classroom.reply' in methods
     assert 'classroom.leave' in methods and 'reopen' in driver.state['flags']
@@ -57,6 +61,9 @@ def test_simulation42_full_bridge_flow_from_dialogue_to_pdf_and_free(simulation)
     assert 'quality' in summary and '不自动' in summary['quality']
     assert any(c['purpose']=='research' for c in simulation.evidence.calls)
     assert not any(c['purpose'] in ('questions','question_review','question_solve') for c in simulation.evidence.calls)
+    assert all(q['kind'] in ('choice','fill') for q in store.records('question_bank',pid))
+    assert {q['role'] for q in store.records('question_bank',pid)}=={'quick','bank'}
+    assert all(u['purpose']=='quick' for q in store.records('question_bank',pid) if q['role']=='quick' for u in q['uses'])
 
 
 def test_simulation42_map_checkpoint_then_resume_same_store(simulation):
@@ -186,8 +193,8 @@ def test_simulation42_clarification_has_no_default_three_round_limit(simulation)
     driver=Driver(simulation,ScriptUser(),Persona())
     result=driver.run(to='sources')
     assert result['stop'] is None,result
-    assert driver.state['rounds']==8
-    assert sum(s['method']=='plan.say' for s in simulation.evidence.steps)==7
+    assert driver.state['rounds']==9  # eight clarification rounds plus preview consent
+    assert sum(s['method']=='plan.say' for s in simulation.evidence.steps)==8
 
 
 def test_simulation42_script_resume_consumes_remaining_fixed_replies(simulation):
@@ -197,4 +204,35 @@ def test_simulation42_script_resume_consumes_remaining_fixed_replies(simulation)
     second=Driver(simulation,ScriptUser(script),Persona())
     assert not second.run(to='sources')['stop']
     user_texts=[m['text'] for m in second.state['view']['messages'] if m['kind']=='user_text']
-    assert user_texts==['固定第一句','固定第二句']
+    assert user_texts==['固定第一句','固定第二句','确认并找资料']
+
+
+def test_simulation44_preview_stop_and_reopen_requires_consent(simulation):
+    first=Driver(simulation,ScriptUser(),Persona())
+    result=first.run(to='dialogue')
+    assert result['stop'] is None and first.state['view']['phase']=='preview'
+    assert not any(c['purpose']=='research' for c in simulation.evidence.calls)
+    second=Driver(simulation,ScriptUser(),Persona())
+    assert not second.run(to='sources',from_stage='dialogue')['stop']
+    assert second.state['view']['phase']=='sources'
+    assert second.state['plan_id']==first.state['plan_id']
+    assert any(m.get('text')=='确认并找资料' for m in second.state['view']['messages'])
+
+
+def test_simulation44_script_modifies_preview_then_confirms(simulation):
+    driver=Driver(simulation,ScriptUser(),Persona())
+    assert not driver.run(to='dialogue')['stop']
+    old=driver.state['view']['preview']['version']
+    driver.user=ScriptUser([dict(method='plan.say',params=dict(text='路线要先讲队列，再比较栈。'))])
+    result=driver.run(to='dialogue')
+    # The dialogue segment stops at the preview; an explicit user action revises it.
+    assert result['stop'] is None
+    driver.action()
+    assert driver.state['view']['phase']=='preview' and driver.state['view']['preview']['version']>old
+    assert not any(c['purpose']=='research' for c in simulation.evidence.calls)
+    result=driver.run(to='sources')
+    assert result['stop'] is None
+    texts=[m['text'] for m in driver.state['view']['messages'] if m['kind']=='user_text']
+    assert texts[-2:]==['路线要先讲队列，再比较栈。','确认并找资料']
+    research=next(r for r in simulation.gateway.real.agent.requests if r['purpose']=='research')
+    assert '路线要先讲队列' in json.dumps(research,ensure_ascii=False)

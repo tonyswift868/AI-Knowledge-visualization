@@ -6,6 +6,7 @@ calls a model or network. A clock subclass controls both the classroom event
 time and the local timezone used by Classroom._today.
 """
 from __future__ import annotations
+from tests.refactor.objective44.support import objective_bank, scripted_answer
 from tests.refactor.integration38.support import Agents as FakeAgent, seed_bank, to_question, join_workers
 
 from dataclasses import dataclass, field
@@ -162,6 +163,7 @@ def classroom_room(evidence):
         services = SimpleNamespace(store=store, gateway=agent, account_id=ACCOUNT,
                                    data_root=Path(root), settings=settings)
         seed_bank(store,PLAN)
+        objective_bank(store)
         classroom = Classroom(services, clock.study_day, now=clock.now)
         trace = Trace("单课堂：暂记→检测失败→重测→直接考→跨刷新→重新进入")
         evidence.append(trace)
@@ -261,7 +263,7 @@ def test_classroom_cross_day_timeline_uses_real_today_status(classroom_room):
     if written: agent.verdicts.append(('answer', True, []))
     before_judge = len(agent.calls)
     view = _act(classroom, "reply", "乙答案")
-    assert agent.calls[before_judge:].count('judge') == int(written)
+    assert agent.calls[before_judge:].count('judge') == 0
     assert view["module"]["state"] == "skipped"
     _assert_today(clock, trace, view, "DAY2 课堂未退出，直接考跳过 m1，模块时长记开课日并超前", target=30,
                   confirmed=30, tentative=0, debt=0, ahead=60, ahead_days=2, progress_day=DAY1,
@@ -319,7 +321,8 @@ def test_classroom_module_test_pass_confirms_tentative_credits(classroom_room):
     _act(classroom, "leave")
 
 def _act(classroom,name,*args,streamed=None):
+    if name=='reply':name,args=scripted_answer(classroom,PLAN,classroom.services.gateway,args[0])
     view=classroom.perform(PLAN,name,_ctx(streamed),args)
     if view.get('failure'):raise AssertionError(view['failure'])
-    if name in ('next','reply'):view=to_question(classroom,PLAN,view,streamed=streamed)
+    if name in ('next','reply','answer'):view=to_question(classroom,PLAN,view,streamed=streamed)
     return view

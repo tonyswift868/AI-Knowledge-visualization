@@ -72,11 +72,9 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     old = {n: load_baseline(n, args.baseline) for n in MODULES}
     current = {n: importlib.import_module('refactor.learning.' + n) for n in MODULES}
-    bindings = [(current['course.judge_agent'], 'judge_request', old['course.judge_agent'].judge_request, 1),
-                (current['course.question_agent'], 'question_request', old['course.question_agent'].question_request, 1),
+    bindings = [(current['course.question_agent'], 'question_request', old['course.question_agent'].question_request, 1),
                 (current['course.plan_intent'], 'intent_request', old['course.plan_intent'].intent_request, 2),
                 (current['app.classroom'].Classroom, '_dialogue', old['app.classroom'].Classroom._dialogue, 3),
-                (current['app.classroom'].Classroom, '_judge', old['app.classroom'].Classroom._judge, 3),
                 (current['app.plan_flow'].PlanFlow, '_intent_context', old['app.plan_flow'].PlanFlow._intent_context, 3)]
     summaries, captures = [], []
     for stage in range(4):

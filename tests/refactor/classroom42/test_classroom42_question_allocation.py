@@ -213,15 +213,3 @@ def test_background_cancel_stops_final_prep_without_cancelling_question(e):
     v=act(e,'start_check');assert started.wait(1);pending=v['question']
     v=act(e,'stop_preparation');assert stopped.wait(1)
     assert not v['preparation'] and v['question']==pending
-
-
-def test_uncertain_answer_with_no_replacement_skips_empty_attempt(e):
-    q=question('p0','short')
-    e.materials.bank=[q]+[q for q in e.materials.bank if q['point_ids']==['p1']]
-    act(e,'start_test','skip_test')
-    e.gateway.verdicts=[('clarify',None)]
-    v=act(e,'reply','也许是这样')
-    assert not v['failure'] and not v['question'] and v['step']=='test_done'
-    assert not e.store.records('question_answers',PLAN)
-    assert not e.store.records('attempt_closed',PLAN)
-    assert not e.store.records('judgements',PLAN)

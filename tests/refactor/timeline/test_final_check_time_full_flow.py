@@ -23,6 +23,7 @@ from refactor.learning.course.ledger import Ledger, PlanWindow, estimate_check_m
 from refactor.learning.course.mastery import AttemptClosed, Judgement
 from refactor.learning.course.report import build_report
 from refactor.learning.course.store import CourseStore, StoreError
+from tests.refactor.objective44.support import objective_bank, scripted_answer
 from tests.refactor.integration38.support import Agents, seed_bank, to_question
 from test_course_timeline_simulation import InjectedClock, HandlerRegistry
 
@@ -143,6 +144,7 @@ def prepare(env):
         store.save_generated_module(PLAN,f'm{i}',[dict(id=f'm{i}-{j:02d}',title=f'概念{j}模块{i}',summary='定义与应用',minutes=10,chunk_ids=['k']) for j in range(1,4)],
             check_minutes=6, final_check_minutes=8,check_question_minutes=2,today=DAY)
     seed_bank(store,PLAN)
+    objective_bank(store)
     draft=dict(plan_id=PLAN,phase='ready')
 
     assert draft['phase'] == 'ready'
@@ -153,13 +155,14 @@ def prepare(env):
 
 
 def act(env, name, *args):
+    if name=='reply':name,args=scripted_answer(env.room,PLAN,env.agent,args[0])
     view = env.room.run(PLAN, lambda co, st, cx: getattr(env.room, name)(co, st, cx, *args),
                         SimpleNamespace(cancel=threading.Event(), stream=lambda _: None))
     deadline = monotonic_time.monotonic() + 3
     while view['step'] == 'preparing_questions' and monotonic_time.monotonic() < deadline:
         monotonic_time.sleep(.005)
         view = snapshot(env)
-    if name in ('next','reply'):view=to_question(env.room,PLAN,view)
+    if name in ('next','reply','answer'):view=to_question(env.room,PLAN,view)
     return view
 
 
@@ -412,7 +415,7 @@ def test_module_detection_releases_unused_estimate_and_report(flow_env, audit):
     for module in course.modules:
         mids = [p['id'] for p in course.points_of(module['id'])]
         from tests.refactor.integration38.support import bank_question
-        row=bank_question(mids[0],module['id'],ids=mids,answer='测试作答',chunk='k')
+        row=bank_question(mids[0],module['id'],kind='fill',ids=mids,answer='测试作答',chunk='k')
         row['id']='000-group-'+module['id']
         e.store.add_bank_questions(PLAN,module['id'],[row])
     for index in range(2):

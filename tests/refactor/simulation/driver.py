@@ -104,6 +104,8 @@ class Driver:
             stage=self.state['stage'];view=self.state['view'];phase=view.get('phase')
             if stage=='dialogue':
                 if rounds and self.state['rounds']>=rounds:return
+                # Stop this segment at the actual preview, before consent/search.
+                if phase=='preview' and to=='dialogue':return
                 if phase not in ('questions','preview','clarification'):
                     if to=='dialogue':return
                     self.state['stage']='sources';self.save();continue

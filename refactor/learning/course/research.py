@@ -392,7 +392,8 @@ def directory_candidates(query, *, stage='', subject='', lists=None, limit=8):
     if any(word in query.casefold() for word in ('习题','真题','练习','题目','答案','questions','quiz','exercises','solutions')):
         # An unavailable textbook must not crowd an actual answered paper out
         # of the cap; ranking within each capability group remains unchanged.
-        available.sort(key=lambda e:'答案' not in e['available'])
+        from .source_quality import question_priority
+        available.sort(key=lambda e:(*question_priority(e['url'],e['title'],lists=lists),'答案' not in e['available']))
     return [Candidate(e['url'],e['title'],e['verification'],query,'directory') for e in available[:limit]]
 
 

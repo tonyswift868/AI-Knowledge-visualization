@@ -65,15 +65,7 @@ class Gateway:
                 ('资料里没讲到硬度相同，可以在计划里补充资料；它只比较面积。[c1]' if '硬度' in task['user'] else '压力相同，面积越小压强越大，我们顺着面积看。[c1]'))
             if kw.get('on_text'):
                 for char in text:kw['on_text'](char)
-        else:
-            task=json.loads(messages[-1]['content'].split('【本次判定】\n',1)[1])
-            pid=json.JSONDecoder().raw_decode(messages[-1]['content'].split('【知识点清单】\n',1)[1])[0][0]['id']
-            kind,correct=self.verdicts.pop(0) if self.verdicts else ('answer',True)
-            data=dict(kind=kind,correct=correct,wrong_points=[] if correct or correct is None else [pid],reason='回答符合题目所问。' if correct else '回答还没有满足题目所问。')
-            if task['question']['kind'] in ('short','essay','calc'):
-                data.update(uncertain=False,checks=[dict(point_id=pid,requirement=req,applies=True,met=bool(correct),evidence=task['reply'] if correct else '')
-                    for req in task['required_points']] if kind in ('answer','insufficient') else [])
-            text=json.dumps(data,ensure_ascii=False)
+        else:raise AssertionError('计分不得调用模型：'+purpose)
         return SimpleNamespace(text=text)
 
 def make_environment(root,first_points=1):
@@ -150,24 +142,12 @@ def test_program_grade_never_calls_model(env,kind,value):
     assert v['step']=='closing' and not env.gateway.calls
     assert env.store.records('judgements',PLAN)[0]['event']['results']==[['p0',True]]
 
-@pytest.mark.parametrize('kind', ['short','essay','calc','fill'])
-def test_subjective_and_nonmatching_fill_use_original_reference(env,kind):
-    pending(env,kind)
-    v=act(env,'answer',['压力比面积','帕斯卡']) if kind=='fill' else act(env,'reply','面积小压强大')
-    assert v['step']=='closing',v['failure']
-    assert env.gateway.calls==['judge']
 
 def test_pending_question_is_not_active_judging(env):
     before=pending(env)['question'];v=act(env,'ask','为什么要比较面积？')
     assert v['question']==before and env.gateway.calls==['teacher']
     assert not env.store.records('judgements',PLAN)
 
-def test_information_followup_no_duplicate_student(env):
-    pending(env,'short');env.gateway.verdicts=[('insufficient',None),('answer',True)]
-    v=act(env,'reply','就那个意思',token='original');assert not v['failure']
-    assert not env.store.records('judgements',PLAN)
-    v=act(env,'reply','面积变小',token='supplement');assert v['step']=='closing'
-    assert [m['content'] for m in v['messages'] if m['role']=='user']==['就那个意思','面积变小']
 
 def test_model_failure_retry_and_idempotent_buttons(env):
     act(env,'next');env.gateway.fail=True
@@ -225,14 +205,14 @@ def test_test_final_retest_and_practice_are_selected_not_generated(env):
     assert {'quick','direct','module','retest','final','free'}<=set(p for _,p in e.materials.used)
     assert set(e.gateway.calls)<={'teacher'}
 
-def test_active_judge_only_blocks_concurrent_turn(env,monkeypatch):
-    pending(env,'short');started=threading.Event();finish=threading.Event();original=env.gateway.complete
+def test_active_teacher_only_blocks_concurrent_turn(env,monkeypatch):
+    pending(env);started=threading.Event();finish=threading.Event();original=env.gateway.complete
     def gateway(*args,**kwargs):started.set();assert finish.wait(3);return original(*args,**kwargs)
     monkeypatch.setattr(env.gateway,'complete',gateway)
-    t=threading.Thread(target=lambda:act(env,'reply','回答'))
+    t=threading.Thread(target=lambda:act(env,'ask','问一下'))
     t.start();assert started.wait(3)
     try:
-        with pytest.raises(BridgeError,match='正在判定'):act(env,'ask','问一下')
+        with pytest.raises(BridgeError,match='正在处理'):act(env,'ask','问一下')
     finally:finish.set();t.join(3)
 
 def test_report_uses_actual_explained_points_not_old_drafts(env):
@@ -290,20 +270,7 @@ def test_preparation_failure_is_visible_and_retryable(env,monkeypatch):
     old=env.room._jobs[(PLAN,'m0')];act(env,'retry')
     assert old['cancel'].is_set() and old is not env.room._jobs[(PLAN,'m0')]
 
-def test_reopen_keeps_followup_and_combined_answer_history(env):
-    pending(env,'calc');env.gateway.verdicts=[('process_missing',None),('answer',True)]
-    v=act(env,'reply','2000Pa');assert not v['failure']
-    env.room=Classroom(env.services,lambda:DAY)
-    v=act(env,'reply','p=F/S=20/0.01=2000Pa')
-    assert v['step']=='closing' and len(env.store.records('judgements',PLAN))==1
-    assert '原回答：2000Pa' in env.store.records('judgements',PLAN)[0]['details']['answer']
 
-def test_uncertain_replacement_keeps_original_context_and_no_first_grade(env):
-    pending(env,'short','quick');env.gateway.verdicts=[('clarify',None)]
-    v=act(env,'reply','这个是那个')
-    assert not v['failure'] and v['question']['purpose']=='quick' and v['question']['id']!='p0-short-0'
-    assert not env.store.records('judgements',PLAN)
-    act(env,'answer',[0]);assert len(env.store.records('judgements',PLAN))==1
 
 def test_incomplete_bank_composite_wrong_splits_without_point_attribution(tmp_path,monkeypatch):
     e=make_environment(tmp_path,first_points=2)

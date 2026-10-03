@@ -6,9 +6,9 @@ from contextlib import ExitStack
 import json
 import os
 
-from .class_eval import ROOT, live_gateway, dump, audit, judge_input
+from .class_eval import ROOT, live_gateway, dump, audit
 from refactor.learning.connections.errors import ModelError
-from refactor.learning.course import judge_agent, teacher_agent
+from refactor.learning.course import teacher_agent
 
 
 def run():
@@ -24,13 +24,9 @@ def run():
     with ExitStack() as stack:
         gateway=live_gateway(stack,output)
         for purpose,identifier,module in (("teacher","call-0622",teacher_agent),
-                                          ("judge","call-0510",judge_agent),
                                           ("teacher","call-0577",teacher_agent)):
             original=json.loads((ROOT/"after/calls"/(identifier+".json")).read_text(encoding="utf-8"))
-            if purpose=="teacher":
-                system=module.TEACHER_SYSTEM+"\n【固定教学偏好】\n"+original["system"].split("\n【固定教学偏好】\n",1)[1]
-            else:
-                system=module.JUDGE_SYSTEM if purpose=="judge" else module.QUESTION_SYSTEM
+            system=module.TEACHER_SYSTEM+"\n【固定教学偏好】\n"+original["system"].split("\n【固定教学偏好】\n",1)[1]
             for attempt in range(repeats):
                 marker=output/f"{purpose}-{identifier}-{attempt}.json"
                 if marker.exists():
@@ -38,16 +34,10 @@ def run():
                     continue
                 gateway.case,gateway.operation="final-repair",f"{identifier}-{attempt}"
                 try:
-                    # Bound this final sample to remaining budget. Judge and
-                    # teacher retain their original caps; question batches cap
-                    # at 4096 instead of 8192, recorded for honest comparison.
+                    # Historical teacher-only replay retains its budget cap.
                     cap=min(original["max_tokens"],4096)
                     result=gateway.complete(purpose,original["messages"],system=system,max_tokens=cap)
                     row=dict(before=identifier,after=gateway.calls[-1]["id"],purpose=purpose,text=result.text,max_tokens=cap)
-                    if purpose=="judge":
-                        context=judge_input(original); context.pop("id");context.pop("reply")
-                        verdict=judge_agent.parse_judgement(result.text,context)
-                        row["passed"]=verdict.kind=="answer" and verdict.correct is True and not verdict.wrong_points
                 except ModelError as exc:
                     row=dict(before=identifier,purpose=purpose,error=exc.code,passed=False)
                 dump(marker,row)

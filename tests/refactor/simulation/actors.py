@@ -37,7 +37,10 @@ class ScriptUser:
             return self.script.pop(0)
         names = {a['method'] for a in actions}
         def action(method, **params): return dict(method=method, params=params)
-        if stage == 'dialogue': return action('plan.say', text='我想看懂队列和栈的处理顺序。请先说说学习路线。')
+        if stage == 'dialogue':
+            if view.get('phase') == 'preview':
+                return action('plan.say', text='确认并找资料')
+            return action('plan.say', text='我想看懂队列和栈的处理顺序。请先说说学习路线。')
         if stage == 'sources':
             cards = [c for c in view.get('sources', []) if c['status'] == 'new']
             if cards: return action('plan.decide', card_id=cards[0]['card_id'], adopt=True)
@@ -50,8 +53,11 @@ class ScriptUser:
             purpose = question['purpose']
             wrong = purpose in ('quick', 'module') and purpose not in self.flags
             if wrong: self.flags.add(purpose)
-            # Fixed answers for the documented synthetic choice fixture only.
-            return action('classroom.answer', value=[1 if wrong else 0])
+            # Public option labels of the documented synthetic fixture only;
+            # real quick choices are sorted by the material layer, not index 0.
+            word = '队列' if purpose == 'quick' else '先进先出'
+            correct = question['options'].index(word)
+            return action('classroom.answer', value=[(correct+1)%len(question['options']) if wrong else correct])
         if 'simulation.reopen' in names and 'exit' not in self.flags and view.get('step') == 'teaching':
             self.flags.add('exit'); return action('simulation.reopen')
         if 'classroom.ask' in names and 'ask' not in self.flags and view.get('step') == 'teaching':
@@ -113,6 +119,9 @@ class OfflineGateway:
         return PriceCatalog.empty()
     def complete(self,purpose,messages,**kwargs):
         if purpose=='sufficiency':
+            from refactor.learning.course.planner_agents import PREVIEW_SYSTEM
+            if kwargs.get('system') == PREVIEW_SYSTEM:
+                return self.agent.complete(purpose,messages,**kwargs)
             self.clarifications+=1
             if self.clarifications<self.clarification_rounds:
                 prompts=['想区分哪些顺序？','学完希望能怎么用？','以前看过哪些资料？','更喜欢读原理还是看例子？',
@@ -121,7 +130,10 @@ class OfflineGateway:
                     questions=[prompts[(self.clarifications-1)%len(prompts)]]),ensure_ascii=False),search_hits=(),citations=())
         if purpose=='plan_intent':
             packet=json.loads(messages[-1]['content'].split('\n',1)[1]); phase=packet['ctx']['phase']
-            intent={'kind':'answer'} if phase=='questions' else {'kind':'proceed','step':'outline'}
+            if phase=='preview':
+                intent={'kind':'supplement','instruction':packet['text']}
+            else:
+                intent={'kind':'answer'} if phase=='questions' else {'kind':'proceed','step':'outline'}
             return SimpleNamespace(text=json.dumps(dict(intents=[intent],reply='')),search_hits=(),citations=())
         return self.agent.complete(purpose,messages,**kwargs)
     def close(self): pass

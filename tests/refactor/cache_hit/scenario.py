@@ -10,16 +10,10 @@ def run_scenario(root,*,extended=False):
     services,flow,model,pid=build_plan(root,[])
     room=Classroom(services,lambda:DAY,now=lambda:datetime(2026,10,3,10,tzinfo=timezone.utc))
     try:
-        # Subjective answered-source rows capture real judge requests too.
-        with services.store.transaction():
-            for q in services.store.records('question_bank',pid):
-                if q.get('role')=='quick':continue
-                q=dict(q,kind='short',answer='先进先出');q.pop('options',None)
-                services.store._put('question_bank',pid,q)
         def act(name,*args):
             pending=room._file(pid).read({}).get('pending') or {}
             q=pending.get('question') or {}
-            if name=='reply' and q.get('role')=='quick':
+            if name=='reply' and q.get('kind') in ('choice','multi'):
                 name,args='answer',(q['answer'],)  # scripted literal-cloze choice
             v=room.perform(pid,name,context(),args)
             assert not v['failure'],v['failure']

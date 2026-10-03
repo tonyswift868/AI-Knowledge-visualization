@@ -11,6 +11,7 @@ from refactor.learning.course.store import CourseStore, StoreError
 from refactor.learning.course.judge_agent import Verdict
 from refactor.learning.preferences.storage import StorageError
 from tests.refactor.integration38.support import Agents, seed_bank, context as ctx, operate, to_question, join_workers
+from tests.refactor.objective44.support import objective_bank, scripted_answer
 ACCOUNT='mfa1_'+'c'*64
 PLAN='a'*32
 DAY=date(2026,10,1)
@@ -27,6 +28,7 @@ def room(tmp_path):
         dict(id='p1',title='队列操作',summary='入队出队',minutes=15,chunk_ids=['k1'])],check_minutes=5,today=DAY)
     store.save_generated_module(PLAN,'m1',[dict(id='p2',title='栈定义',summary='后进先出',minutes=10,chunk_ids=['k2'])],check_minutes=5,today=DAY)
     seed_bank(store,PLAN)
+    objective_bank(store)
     store.start_plan(PLAN,today=DAY)
     agents=Agents()
     services=SimpleNamespace(store=store,gateway=agents,account_id=ACCOUNT,data_root=tmp_path,settings=SimpleNamespace(load=lambda:dict(SETTINGS)))
@@ -36,9 +38,10 @@ def room(tmp_path):
         classroom.cancel_materials();join_workers();store.close()
 
 def act(classroom,name,*args,streamed=None):
+    if name=='reply':name,args=scripted_answer(classroom,PLAN,classroom.services.gateway,args[0])
     view=operate(classroom,PLAN,name,*args,streamed=streamed)
     if view.get('failure'):raise BridgeError('CLASS_FAILED',view['failure']['message'])
-    if name in ('next','reply'):view=to_question(classroom,PLAN,view,streamed=streamed)
+    if name in ('next','reply','answer'):view=to_question(classroom,PLAN,view,streamed=streamed)
     return view
 
 def credits(store):return {r['id']:r['credit']['state'] for r in store.records('credits',PLAN)}
@@ -117,13 +120,13 @@ def test_casual_and_practice_resume_saved_verdict_without_regrading(room,monkeyp
     original=classroom._save
     monkeypatch.setattr(classroom,'_save',lambda *args:(_ for _ in ()).throw(BridgeError('CLASS_SAVE_FAILED','保存失败')))
     with pytest.raises(BridgeError):
-        classroom.perform(PLAN,'reply',ctx(),('队列是先进先出的结构。',),request_id='saved-grade')
+        classroom.perform(PLAN,'reply',ctx(),('A',),request_id='saved-grade')
     before=len(agents.calls)
     entity='practice_results' if practice else 'judgements'
     count=len(store.records(entity,PLAN))
     monkeypatch.setattr(classroom,'_save',original)
     classroom.now=lambda:datetime(2026,10,1,11,tzinfo=timezone.utc)
-    v=classroom.perform(PLAN,'reply',ctx(),('队列是先进先出的结构。',),request_id='saved-grade')
+    v=classroom.perform(PLAN,'reply',ctx(),('A',),request_id='saved-grade')
     assert not v['failure'] and len(agents.calls)==before and len(store.records(entity,PLAN))==count
 
 def test_steps_are_enforced(room):

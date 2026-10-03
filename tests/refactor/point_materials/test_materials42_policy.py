@@ -117,7 +117,7 @@ def test_materials42_twenty_percent_boundary_extra_round(store42,monkeypatch,cou
     calls=[]
     rows=[]
     for i,p in enumerate(points):
-        for j in range(2):rows.append(dict(point_ids=[p['id']],role='bank',origin='cloze' if i<fallback else 'found'))
+        for j in range(2):rows.append(dict(point_ids=[p['id']],kind='choice',role='bank',origin='cloze' if i<fallback else 'found'))
         rows.append(dict(point_ids=[p['id']],role='quick',origin='cloze'))
     monkeypatch.setattr(store42,'records',lambda kind,plan: points if kind=='points' else rows if kind=='question_bank' else real(kind,plan))
     monkeypatch.setattr(pm,'prepare_point',lambda s,plan,p,ctx:(calls.append((p['id'],ctx.get('extra_search',False))) or dict(passages=1,questions=2,cloze=int(p['id'][5:])<fallback)))
@@ -145,7 +145,7 @@ def test_materials42_written_question_heading_pairs_only_its_answer():
            qa_headings=['1. What is a CPU?','2. What is RAM?'],qa_complete=True,source=dict(title='原文问答',url='https://school.edu/questions',locator='提问标题1'))
     point=dict(id='point',module_id='m')
     item=dict(kind='short',stem='What is a CPU?',answer='A central processing unit executes instructions.',answer_quote='A central processing unit executes instructions.',explanation='',question_chunk='c',answer_chunk='c',pairing='heading_answer')
-    assert pm._found(item,point,{'c':p})['origin']=='found'
+    assert pm._found(item,point,{'c':p}) is None  # historical subjective headings are no longer admitted
     assert pm._found(dict(item,answer='Random access memory.',answer_quote='Random access memory.'),point,{'c':p}) is None
     assert pm._found(item,point,{'c':dict(p,qa_headings=[])}) is None
     assert pm._found(item,point,{'c':dict(p,qa_complete=False)}) is None
@@ -171,7 +171,7 @@ def test_materials42_long_literal_anchor_needs_unique_original():
 def test_materials42_real_pipeline_late_answers_replace_only_unused_fallback(store42,arrival):
     queries=[]
     url='https://pep.com.cn/physics/extra'
-    questions=[('压强单位是什么？','帕'),('受力面积不变压力增大时压强怎样变化？','增大'),('压强是哪些量的比值？','压力与受力面积')]
+    questions=[('压强单位是____？','帕'),('受力面积不变压力增大时压强____？','增大'),('压强是____与受力面积的比值？','压力')]
     html=('<h1>压强</h1>'+''.join(f'<p>{i+1}. {stem}\n答案：{answer}。\n原文解释：{TEXT}</p>' for i,(stem,answer) in enumerate(questions))+'<p>这段只讲无关的建筑。</p>').encode()
     context=context42()
     context['search']=lambda query,**kw:(queries.append(query) or ([dict(url=url,title='压强')] if len(queries)==arrival+1 else []))
@@ -185,7 +185,7 @@ def test_materials42_real_pipeline_late_answers_replace_only_unused_fallback(sto
         for passage in passages:
             for stem,answer in questions:
                 if stem in passage['text']:
-                    selected.append(passage['id']);found.append(dict(kind='short',stem=stem,answer=answer,
+                    selected.append(passage['id']);found.append(dict(kind='fill',stem=stem,answer=[[answer]],
                         answer_quote=answer+'。',question_chunk=passage['id'],answer_chunk=passage['id'],pairing='same_block',explanation=''))
         return dict(passages=selected,found=found,cloze=[])
     context['finder']=finder
