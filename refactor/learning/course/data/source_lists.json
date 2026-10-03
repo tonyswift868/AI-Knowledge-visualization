@@ -3524,6 +3524,152 @@
       "available": [],
       "verified_at": "2026-10-03",
       "verification": "官方搜索结果可见参考样卷和答案线索，但本机正常 GET TLS 握手35秒超时，未下载或验证正文，不能声称可直接取得。"
+    },
+    {
+      "id": "computer-terms42-ip",
+      "title": "Top 50 TCP/IP Interview Questions and Answers 2026 - GeeksforGeeks",
+      "url": "https://www.geeksforgeeks.org/blogs/top-50-tcp-ip-interview-questions-and-answers/",
+      "subjects": [
+        "计算机",
+        "IP 地址"
+      ],
+      "stages": [
+        "计算机基础"
+      ],
+      "keywords": [
+        "网络",
+        "IP地址",
+        "IP 地址",
+        "IPv4",
+        "IPv6"
+      ],
+      "available": [
+        "全文节选",
+        "习题",
+        "答案"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "正常公开 GET 已取得原网页问答；一般网站第三档，不冒充权威；只定位相关原文与原文回答，2026-10-03。"
+    },
+    {
+      "id": "computer-terms42-cpu",
+      "title": "Top 50+ CPU & Processor Interview Questions & Answers (2026) | W4School",
+      "url": "https://www.w4school.in/interview-questions/cpu-processor-interview-questions.php",
+      "subjects": [
+        "计算机",
+        "CPU"
+      ],
+      "stages": [
+        "计算机基础"
+      ],
+      "keywords": [
+        "硬件",
+        "CPU",
+        "中央处理器"
+      ],
+      "available": [
+        "全文节选",
+        "习题",
+        "答案"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "正常公开 GET 已取得原网页问答；一般网站第三档，不冒充权威；只定位相关原文与原文回答，2026-10-03。"
+    },
+    {
+      "id": "computer-terms42-os",
+      "title": "Operating System Interview Questions - GeeksforGeeks",
+      "url": "https://www.geeksforgeeks.org/operating-systems/operating-systems-interview-questions/",
+      "subjects": [
+        "计算机",
+        "操作系统"
+      ],
+      "stages": [
+        "计算机基础"
+      ],
+      "keywords": [
+        "软件",
+        "操作系统",
+        "OS"
+      ],
+      "available": [
+        "全文节选",
+        "习题",
+        "答案"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "正常公开 GET 已取得原网页问答；一般网站第三档，不冒充权威；只定位相关原文与原文回答，2026-10-03。"
+    },
+    {
+      "id": "computer-terms42-db",
+      "title": "DBMS Interview Questions with Answers - GeeksforGeeks",
+      "url": "https://www.geeksforgeeks.org/dbms/commonly-asked-dbms-interview-questions/",
+      "subjects": [
+        "计算机",
+        "数据库"
+      ],
+      "stages": [
+        "计算机基础"
+      ],
+      "keywords": [
+        "数据",
+        "数据库",
+        "DBMS"
+      ],
+      "available": [
+        "全文节选",
+        "习题",
+        "答案"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "正常公开 GET 已取得原网页问答；一般网站第三档，不冒充权威；只定位相关原文与原文回答，2026-10-03。"
+    },
+    {
+      "id": "computer-terms42-nn",
+      "title": "Deep Learning Interview Questions - GeeksforGeeks",
+      "url": "https://www.geeksforgeeks.org/deep-learning/deep-learning-interview-questions/",
+      "subjects": [
+        "计算机",
+        "神经网络"
+      ],
+      "stages": [
+        "计算机基础"
+      ],
+      "keywords": [
+        "人工智能",
+        "神经网络",
+        "neural network"
+      ],
+      "available": [
+        "全文节选",
+        "习题",
+        "答案"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "正常公开 GET 已取得原网页问答；一般网站第三档，不冒充权威；只定位相关原文与原文回答，2026-10-03。"
+    },
+    {
+      "id": "computer-terms42-fw",
+      "title": "Top 50+ Firewall Interview Questions & Answers (2026) | W4School",
+      "url": "https://www.w4school.in/interview-questions/firewall-interview-questions.php",
+      "subjects": [
+        "计算机",
+        "防火墙"
+      ],
+      "stages": [
+        "计算机基础"
+      ],
+      "keywords": [
+        "安全",
+        "防火墙",
+        "firewall"
+      ],
+      "available": [
+        "全文节选",
+        "习题",
+        "答案"
+      ],
+      "verified_at": "2026-10-03",
+      "verification": "正常公开 GET 已取得原网页问答；一般网站第三档，不冒充权威；只定位相关原文与原文回答，2026-10-03。"
     }
   ]
 }

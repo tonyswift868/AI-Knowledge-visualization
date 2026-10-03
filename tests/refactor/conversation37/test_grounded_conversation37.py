@@ -30,7 +30,7 @@ def question(pid, kind='choice', index=0):
              'short':'压力相同时，受力面积越小，压强越大。','essay':'压强是压力与受力面积之比。','calc':'p=F/S=20/0.01=2000Pa。'}
     q=dict(id=f'{pid}-{kind}-{index}',module_id='m0' if pid=='p0' else 'm1',point_ids=[pid],kind=kind,
            stem='压力相同时，受力面积减小，压强怎样变化？',answer=answers[kind],explanation='',origin='found',
-           source=source,answer_source=source,importance='key',uses=[],created_at='2026-10-03T00:00:00+00:00')
+           source=source,answer_source=source,importance='key',role='bank',uses=[],created_at='2026-10-03T00:00:00+00:00')
     if kind in ('choice','multi'):q['options']=['增大','减小','与受力面积有关']
     return q
 
@@ -38,16 +38,21 @@ class Materials:
     """Only MF04's unmerged boundary is substituted; grading/storage are real."""
     def __init__(self):
         self.bank=[question(pid,index=i) for pid in ('p0','p1') for i in range(3)]
+        for pid in ('p0','p1'):
+            q=question(pid);q.update(id=f'{pid}-quick',role='quick',origin='cloze',explanation=PARAGRAPH)
+            self.bank.append(q)
         self.selected=[];self.used=[];self.prepare=[]
     def pick_question(self,store,plan_id,point_id,purpose,exclude_ids=()):
         self.selected.append((point_id,purpose,exclude_ids))
-        rows=[q for q in self.bank if point_id in q['point_ids'] and q['id'] not in exclude_ids]
+        rows=[q for q in self.bank if point_id in q['point_ids'] and q['id'] not in exclude_ids and q['role']==('quick' if purpose=='quick' else 'bank')]
         return copy.deepcopy(min(rows,key=lambda q:len(q['uses']))) if rows else None
     def mark_used(self,store,plan_id,question_id,purpose):
         self.used.append((question_id,purpose))
         next(q for q in self.bank if q['id']==question_id)['uses'].append(dict(purpose=purpose,at='now'))
     def prepare_module(self,store,plan_id,module_id,ctx,progress):
         self.prepare.append(module_id);progress(1,1,'已准备原文和题目')
+    def prepare_point(self,store,plan_id,point,ctx):
+        self.prepare.append(point['id'])
 
 class Gateway:
     def __init__(self):self.calls=[];self.replies=[];self.verdicts=[];self.fail=False
@@ -132,11 +137,9 @@ def test_known_quick_confirm_uses_bank_and_advances(env):
     assert env.materials.used[-1][1]=='quick'
 
 def test_casual_wrong_second_question_and_original_reason(env):
-    pending(env);v=act(env,'answer',[1]);assert v['question']['id']=='p0-choice-1'
-    assert v['explanation']['open'] and v['explanation']['text']=='增大'
+    pending(env);v=act(env,'answer',[1]);assert v['question'] is None and v['step']=='closing'
+    assert v['explanation']['open'] and '压强越大' in v['explanation']['text']
     assert len(env.store.records('judgements',PLAN))==1
-    v=act(env,'answer',[0]);assert v['step']=='closing'
-    assert v['messages'][-1]['sources']
     v=act(env,'why');assert v['explanation']['open']
     v=act(env,'next');assert not v['failure'] and v['step']=='test_offer'
 
@@ -247,7 +250,7 @@ def test_report_uses_actual_explained_points_not_old_drafts(env):
 
 def test_missing_question_is_readable_retryable_no_generation(env):
     pending(env);env.materials.bank=[]
-    v=act(env,'answer',[1]);assert v['failure'] and '没有带答案' in v['failure']['message']
+    v=act(env,'answer',[1]);assert not v['failure'] and v['step']=='closing'
     assert not env.gateway.calls
 
 def test_missing_point_sources_not_guessed(env):

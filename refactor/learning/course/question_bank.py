@@ -21,7 +21,12 @@ def contains_original(quote, text):
 
 
 def validate_question(row):
-    keys = set(row) - {'_field_versions'}
+    # Previously saved B-line questions remain bank questions; no invented
+    # quick questions are inferred from their old usage history.
+    keys = set(row) - {'_field_versions', 'role'}
+    if row.get('role', 'bank') not in ('bank', 'quick'): raise ValueError('题目角色无效')
+    if row.get('role') == 'quick' and (row.get('kind') != 'choice' or row.get('origin') != 'cloze'):
+        raise ValueError('随口问题必须为原文挖空单选')
     expected = FIELDS | ({'options'} if row.get('kind') in ('choice', 'multi') else set())
     if keys != expected: raise ValueError('题库字段不符合新版契约')
     if row['kind'] not in KINDS: raise ValueError('题型无效')
@@ -71,7 +76,9 @@ def _time(at):
 def select_question(rows, point_id, purpose, exclude_ids=()):
     if purpose not in PURPOSES: raise ValueError('选题用途无效')
     excluded=set(exclude_ids)
-    pool=[q for q in rows if point_id in q['point_ids'] and q['id'] not in excluded]
+    role = 'quick' if purpose == 'quick' else 'bank'
+    pool=[q for q in rows if point_id in q['point_ids'] and q['id'] not in excluded
+          and q.get('role', 'bank') == role]
     def rank(q):
         times=[_time(u['at']) for u in q['uses'] if u['purpose']==purpose]
         return (bool(times),max(times,default=0),q['created_at'],q['id'])

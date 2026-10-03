@@ -218,11 +218,11 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
     answer(e)
     check_both(audit, e, '第一点答上记暂记10分钟', (15, 0, 10, 0, 0, 0, 78))
     answer(e, wrong=['m0-02'])
-    check_both(audit, e, '第二点随口问第一次错，尚不新增暂记', (15, 0, 10, 0, 0, 0, 78))
+    check_both(audit, e, '第二点随口问一次错，解释后记学习并停在下一点前', (15, 0, 15, 0, 5, 0, 68))
     e.clock.set('2026-10-06T04:01:00+08:00')
-    view = answer(e, wrong=['m0-02'])
+    view = snapshot(e)
     assert view['step'] == 'teach' and view['question'] is None
-    check_both(audit, e, '跨刷新后第二次不会，达到第一天目标后停在下一点前',
+    check_both(audit, e, '跨刷新后没有重复随口问，仍停在下一点前',
                (15, 0, 5, 0, 0, 0, 68), class_expected=(15, 0, 15, 0, 5, 0, 68), view=view)
     assert {c['credit']['day'] for c in e.store.records('credits', PLAN)} == {DAY.isoformat()}
     act(e, 'leave')
@@ -283,7 +283,7 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
     audit('完成报告时间核对', (88, 86, 0, 2, '2026-10-14'),
           tuple(report['plan'][k] for k in ('planned_minutes', 'confirmed_minutes', 'tentative_minutes', 'overdue_days', 'actual_completion_date')), rule='CHK-01')
     point = next(p for p in report['points'] if p['point_id'] == 'm0-02')
-    audit('报告错误统计逐事件核对', (2, 1, 2, 4),
+    audit('报告错误统计逐事件核对', (1, 1, 2, 4),
           tuple(point[k] for k in ('casual_errors', 'module_errors', 'check_errors_before_pass', 'check_questions')), rule='CHK-01')
     assert e.store.load_report(PLAN) == report
     assert build_report(e.store, PLAN, today=e.day()) == {k: v for k, v in report.items() if k != 'point_comments'}

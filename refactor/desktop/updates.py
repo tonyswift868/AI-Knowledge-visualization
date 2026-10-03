@@ -16,11 +16,13 @@ class DesktopUpdates(QObject):
     changed = Signal(object)
     _finished = Signal(object)
 
-    def __init__(self, app, root, gate, *, core=None):
+    def __init__(self, app, root, gate, *, core=None, login_handoff=None):
         super().__init__(app)
         if core is None:
             from refactor.desktop.delivery import per_user_update_core as core
         self.core, self.root, self.gate = core, Path(root), gate
+        self._login_handoff = login_handoff
+        self._handoff_armed = False
         self.state = {"state": "IDLE", "message": "尚未检查更新。"}
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mf-app-update")
         self._busy = self._closed = False
@@ -100,17 +102,37 @@ class DesktopUpdates(QObject):
                     self._session.require_running()
                     operation = self.core.repair_installation if self.state.get('shell') == 'repair' else self.core.update_to_latest
                     result = operation(
-                        self.root, progress=lambda value: self._send({"progress": value}),
+                        self.root, progress=self._install_progress,
                         cancel=self._cancel.is_set, pid=os.getpid(), hwnd_hex=hwnd)
                     if result.get("coordinator_started"):
                         self._send({"progress": {**result, "message": "正在安装更新，完成后将自动重启…"}})
                         result = self._coordinator_result(result)
+                    if not result.get('coordinator_started') or result.get('state') == 'FAILED_RECOVERABLE' or result.get('cancelled'):
+                        self._clear_login_handoff()
             except Exception as exc:
+                self._clear_login_handoff()
                 result = {"state": "FAILED_RECOVERABLE", "message": "更新失败：" + str(exc)}
             self._send({"action": action, "result": result})
 
         self._pool.submit(work)
         return self.snapshot()
+
+    def _install_progress(self, value):
+        # The existing core calls APPLYING synchronously immediately before
+        # launching the installed coordinator. Never write during downloading.
+        if value.get('state') == 'APPLYING' and self._login_handoff is not None:
+            if self._cancel.is_set():
+                raise RuntimeError('更新已取消。')
+            self._handoff_armed = self._login_handoff.prepare_update_login()
+            if self._cancel.is_set():
+                self._clear_login_handoff()
+                raise RuntimeError('更新已取消。')
+        self._send({'progress': value})
+
+    def _clear_login_handoff(self):
+        if self._handoff_armed:
+            self._login_handoff.clear_update_login()
+            self._handoff_armed = False
 
     def _coordinator_result(self, result):
         """Observe a failed handoff instead of leaving the old UI in APPLYING.
@@ -135,6 +157,7 @@ class DesktopUpdates(QObject):
     def _defer_session(self, _manager=None):
         self._session.defer()
         self._cancel.set()
+        self._clear_login_handoff()
 
     def _send(self, value):
         if not self._closed:

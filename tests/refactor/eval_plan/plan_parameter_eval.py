@@ -447,6 +447,8 @@ class Experiment:
                 flow._check_sufficiency(draft, context)
             if draft["phase"] == "questions":
                 raise RuntimeError("Sufficiency did not converge after three fixed replies.")
+            if draft['phase'] == 'preview':
+                flow.chat(draft, context, '确认并找资料')  # explicit scripted learner agreement
             if draft["phase"] == "sources":
                 # This is exactly the sources-phase plan.say path, passing ONLY the two pasted URLs.
                 if not draft["sources"]:

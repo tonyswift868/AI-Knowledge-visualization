@@ -98,9 +98,10 @@ def _transcript(conversation) -> str:
 SUFFICIENCY_SYSTEM = """你是学习计划的需求核对员。你只判断信息够不够，不制定计划。
 一份计划至少需要：学什么（学习目标）、学到什么程度（最终目标）、现在的水平、起止日期、每天能学多久。表单里已经有的不要再问。
 判断“够”的标准：据此能确定要找什么资料、覆盖多大范围、讲到多深。目标太宽泛（如“学编程”“学英语”）、看不出范围或深度、最终目标无法检验时，算不够。
-不够时最多提 3 个具体的问题，每个问题一句话、能直接回答；够了就不要提问。
+用自然对话把需求聊清，不做一次性问卷。每轮只问最关键的一两个问题，可以在 options 中给学习者可点的简短选项；对话轮数不限。表单和前面已经回答的不要重复问。
+宽泛目标可以逐轮确认用途、范围、深度和讲法；只想理解术语、不想上手操作也是有效目标，不要强迫学习者做项目。学习者主动说“就这样吧/直接开始”时按已知信息往下走，不再追问。够了就不要提问。
 只输出一个 JSON 对象，不要其他文字：
-{"enough": true 或 false, "questions": ["问题", ...], "goal": "把学习目标改写成一句清楚、具体的话", "focus": ["需要找资料的主题或关键词", ...]}
+{"enough": true 或 false, "questions": ["问题", ...], "options": ["可选的回答", ...], "message": "自然承接学习者的一两句话，可空", "goal": "把学习目标改写成一句清楚、具体的话", "focus": ["需要找资料的主题或关键词", ...]}
 focus 最多 6 个。"""
 
 
@@ -113,12 +114,40 @@ def parse_sufficiency(text: str) -> dict:
     data = parse_json(text)
     if type(data.get("enough")) is not bool or not isinstance(data.get("questions", []), list):
         raise AgentFormatError("fields")
-    questions = [_text(q, 200) for q in data.get("questions", []) if isinstance(q, str) and q.strip()][:3]
+    questions = [_text(q, 200) for q in data.get("questions", []) if isinstance(q, str) and q.strip()][:2]
     if not data["enough"] and not questions:
         raise AgentFormatError("not enough without questions")
     focus = [_text(f, 60) for f in data.get("focus", []) if isinstance(f, str) and f.strip()][:6]
+    options = data.get("options", [])
+    if not isinstance(options, list) or any(not isinstance(o, str) or not o.strip() for o in options):
+        raise AgentFormatError("options")
     return {"enough": data["enough"] and not questions, "questions": questions,
-            "goal": _text(data.get("goal"), 200), "focus": focus}
+            "goal": _text(data.get("goal"), 200), "focus": focus,
+            "message": _text(data.get("message", ""), 600, required=False),
+            "options": [_text(o, 100) for o in options[:5]] if len(questions) == 1 else []}
+
+
+PREVIEW_SYSTEM = """你是学习计划的需求沟通老师。根据表单和全部需求对话，先给需求摘要与大致模块，供学习者确认；还没有找资料，不声称已找到资料。
+只列模块名和一句话说明，不展开知识点、不列题目、不估造资料或时长。不把模块预览当成正式知识地图；正式地图仍须从找到的原文提炼。
+准确保留学习者的用途、范围、深度、讲解偏好和排除内容；用户说直接开始时按已知信息给预览，不额外追问。
+按最新要求重新预览，可以增删、改名和调整模块，不强迫零基础用户做操作项目。
+只输出 JSON：{"summary":"我理解你想……的一段需求摘要", "modules":[{"title":"模块名","summary":"一句话说明"}, ...]}。不要自加知识点或其他字段。"""
+
+
+def preview_request(form, conversation):
+    return PREVIEW_SYSTEM, [{"role": "user", "content": f"【表单】\n{form_brief(form)}\n【需求对话】\n{_transcript(conversation)}"}]
+
+
+def parse_preview(text):
+    data = parse_json(text)
+    if set(data) != {"summary", "modules"} or not isinstance(data["modules"], list) or not data["modules"]:
+        raise AgentFormatError("preview fields")
+    modules = []
+    for item in data["modules"]:
+        if not isinstance(item, dict) or set(item) != {"title", "summary"}:
+            raise AgentFormatError("preview module fields")
+        modules.append({"title": _text(item["title"], 100), "summary": _text(item["summary"], 200)})
+    return {"summary": _text(data["summary"], 1200), "modules": modules}
 
 
 # ------------------------------------------------------------------ 2 research

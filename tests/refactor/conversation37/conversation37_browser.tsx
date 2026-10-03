@@ -41,7 +41,7 @@ async function run() {
   selected.click(); selected.click(); await until(() => content().includes("答对了"))
   if (calls.filter((m) => m === "classroom.answer").length !== 1) throw new Error("Double submit")
   checks.push("计分单选传下标，双击只提交一次")
-  button("为什么？").click(); await until(() => content().includes("参考答案原文")); checks.push("为什么展开资料原答案")
+  button("为什么？").click(); await until(() => content().includes("刚讲的原文")); checks.push("为什么展开刚讲的原文")
   if (document.querySelector<HTMLTextAreaElement>("textarea")?.disabled) throw new Error("Input disabled")
   checks.push("输入框保持可用")
   window.conversationResult = { ok: true, checks }

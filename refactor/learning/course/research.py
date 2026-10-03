@@ -389,7 +389,7 @@ def directory_candidates(query, *, stage='', subject='', lists=None, limit=8):
     matched=directory_matches(query,stage=stage,subject=subject,lists=lists,
                               limit=len(type_catalog(lists).directory))
     available=[e for e in matched if set(e['available']) & {'全文节选','习题','答案','目录'}]
-    if any(word in query for word in ('习题','真题','练习','答案')):
+    if any(word in query.casefold() for word in ('习题','真题','练习','题目','答案','questions','quiz','exercises','solutions')):
         # An unavailable textbook must not crowd an actual answered paper out
         # of the cap; ranking within each capability group remains unchanged.
         available.sort(key=lambda e:'答案' not in e['available'])

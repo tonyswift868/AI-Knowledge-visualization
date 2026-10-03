@@ -19,6 +19,7 @@ def test_sources39_textbook_failure_and_catalog_guidance_reach_chat_without_fake
     flow.fetcher=fetch
     draft=flow.current();pid=draft['plan_id']
     flow.run(pid,lambda d,c:flow.submit_form(d,c,form()),ctx)
+    flow.run(pid,lambda d,c:flow.chat(d,c,'确认并找资料'),ctx)
     saved=flow.load(pid)
     texts=[m['text'] for m in saved['messages']]
     assert sum(t==message for t in texts)==1

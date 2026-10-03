@@ -18,10 +18,13 @@ export function PlanDetail() {
   const go = useApp((s) => s.go)
   const toast = useApp((s) => s.toast)
   const [detail, setDetail] = React.useState<Detail | null>(null)
+  const [gaps, setGaps] = React.useState<{ point_id: string; title: string; purpose: string; reason: string }[]>([])
 
   React.useEffect(() => {
     if (!planId) { go("plans"); return }
     call<Detail>("plan.detail", { plan_id: planId }).then(setDetail).catch((e) => { toast("error", e.message); go("plans") })
+    setGaps([])
+    call<typeof gaps>("classroom.gaps", { plan_id: planId }).then(setGaps).catch(() => {})
   }, [planId, go, toast])
 
   if (!detail) return <div className="page"><div className="card stack"><Skeleton h={26} w="40%" /><Skeleton h={120} /></div></div>
@@ -54,6 +57,10 @@ export function PlanDetail() {
         call<Detail>("plan.detail", { plan_id: detail.plan.id }).then(setDetail)} />}
       <div className="section-title"><h2>路线</h2><span>点模块名展开知识点；绿色已掌握、黄色有瑕疵、红色没过</span></div>
       <div className="card"><PlanTree detail={detail} /></div>
+      {gaps.length > 0 && <div className="card stack" style={{ marginTop: 12 }} role="status">
+        <b>资料缺失，已跳过</b>
+        {gaps.map((g, i) => <span key={`${g.point_id}:${g.purpose}:${i}`}>{g.title}：{g.reason}。本次跳过不代表已掌握。</span>)}
+      </div>}
       {(detail.plan.state === "active" || detail.plan.state === "checking" || detail.plan.state === "completed") &&
         <PracticeCard detail={detail} onOpen={() => go("classroom")} />}
       <div className="section-title"><h2>资料</h2><span>{detail.sources.length} 份</span></div>

@@ -23,10 +23,31 @@ def bank_question(pid, mid, *, index=0, kind='short', ids=None, answer='先进�
 
 
 def seed_bank(store, plan_id, *, count=3):
-    """Stored original-source fixtures; no substitute for pick/mark/prepare."""
+    """Stored bank plus batch42 quick fixtures while MF02's role schema is unmerged."""
     for p in store.records('points', plan_id):
         store.add_bank_questions(plan_id, p['module_id'], [bank_question(p['id'], p['module_id'], index=i,
             answer=store.records('source_chunks', plan_id)[0]['text'], chunk=p['chunk_ids'][0]) for i in range(count)])
+    attach_quick_contract(store, plan_id)
+
+
+def attach_quick_contract(store, plan_id):
+    """Add the unmerged quick contract without changing persisted bank questions."""
+    quick=[]
+    for p in store.records('points', plan_id):
+        chunk=next(c for c in store.records('source_chunks',plan_id) if c['id']==p['chunk_ids'][0])
+        word=chunk['text'][:2]
+        q=bank_question(p['id'],p['module_id'],kind='choice',chunk=chunk['id'])
+        q.update(id=p['id']+'-quick42',role='quick',origin='cloze',stem=chunk['text'].replace(word,'____',1),
+                 options=[word,'另一概念','无关说法'],answer=[0],explanation=chunk['text'])
+        quick.append(q)
+    store._offline_quick42=quick
+    records=store.records
+    def projected(entity, plan_key=''):
+        rows=records(entity,plan_key)
+        if entity=='question_bank' and plan_key==plan_id:
+            return [dict(q,role='bank') for q in rows]+[dict(q) for q in quick]
+        return rows
+    store.records=projected
 
 
 class Agents:

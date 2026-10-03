@@ -35,6 +35,7 @@ type Source = { text: string; title: string; url: string | null; section: string
 
 const RESET = "\u0000"
 const VERDICT_EVENT = "\u0001VERDICT:"
+const MATERIAL_EVENT = "\u0001MATERIAL:"
 const POINT_TONE: Record<string, string> = { green: "ok", weak: "warn", red: "danger" }
 const POINT_LABEL: Record<string, string> = { green: "已掌握", weak: "有瑕疵", red: "没过" }
 
@@ -95,6 +96,10 @@ export function Classroom() {
         signal: abort.current.signal,
         onStream: (d) => {
           if (ownGeneration !== generation.current) return
+          if (d.startsWith(MATERIAL_EVENT)) {
+            try { const p = JSON.parse(d.slice(MATERIAL_EVENT.length)) as Preparation; setBusy(`${p.text} ${p.done}/${p.total}`) } catch { /* keep the current progress */ }
+            return
+          }
           if (d.startsWith(VERDICT_EVENT)) {
             try {
               const result = JSON.parse(d.slice(VERDICT_EVENT.length)) as { text: string; correct: boolean }

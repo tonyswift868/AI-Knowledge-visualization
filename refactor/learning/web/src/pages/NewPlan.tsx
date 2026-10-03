@@ -17,28 +17,29 @@ type Citation = { chunk_id: string; title: string; url: string | null; locator: 
 type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean }
 type OModule = { points?: MapPoint[]; id?: string; key: string; title: string; summary: string; refs: string[]; ref_titles: string[]; prerequisites: string[]; minutes: [number, number] }
 type Outline = { stages: { title: string; modules: OModule[] }[]; ranges: { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; over_300?: boolean; points?: number; learning?: number; suggested_days?: number | null; suggested_end: string | null }; version: number }
-type Msg = { id: string; role: "ai" | "user"; kind: string; text: string; cards?: string[]; version?: number }
+type Msg = { id: string; role: "ai" | "user"; kind: string; text: string; cards?: string[]; version?: number; options?: string[] }
 type Coverage = { covered: boolean; blocked?: boolean; missing: { content: string; why: string; points: number }[]; message: string; missing_points?: number }
 type FormData = {
   goal: string; final_goal: string; level: string; level_note: string; notes: string; start: string; end: string
   daily_cap: number; weekday_weights: number[]; special_days: { date: string; weight: number }[]; only_mine: boolean
 }
 export type Draft = {
-  plan_id: string; phase: "form" | "questions" | "sources" | "outline" | "generating" | "ready"; form: FormData | null
+  plan_id: string; phase: "form" | "questions" | "preview" | "sources" | "outline" | "generating" | "ready"; form: FormData | null
   name?: string; goal: string; messages: Msg[]; sources: Card[]; outline: Outline | null; generation: Record<string, string>; coverage?: Coverage
   estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string; blocked?: boolean; points?: number }
+  preview?: { summary: string; modules: { title: string; summary: string }[]; version: number }
   busy: string | null
 }
 type Detail = {
   plan: { id: string; title?: string; goal: string; state: string; window: { start: string; end: string } | null; total_minutes: number }
-  stages: { id: string; title: string; modules: { id: string; title: string; summary: string; learning_minutes: number; check_minutes: number; state?: string | null
+  stages: { id: string; title: string; modules: { id: string; title: string; summary: string; learning_minutes: number; check_minutes: number; state?: string | null; cloze_heavy?: boolean
     points: { citations?: Citation[]; source_general?: boolean; id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number; needs_review?: boolean; taught?: boolean }[] }[] }[]
   sources: { id: string; title: string; url: string | null; kind: string }[]
   daily?: { full_day: number; cap: number; ok: boolean; suggested_end: string | null }
 }
 
 const STEPS: [Draft["phase"][], string][] = [
-  [["form", "questions"], "说清目标"], [["sources"], "找资料"], [["outline"], "知识地图"], [["generating"], "保存与准备"], [["ready"], "确认开始"],
+  [["form", "questions", "preview"], "说清目标与模块"], [["sources"], "找资料"], [["outline"], "知识地图"], [["generating"], "保存与准备"], [["ready"], "确认开始"],
 ]
 const LEVELS = [{ value: "zero", label: "零基础" }, { value: "beginner", label: "入门" }, { value: "intermediate", label: "有一定基础" }, { value: "advanced", label: "比较熟练" }]
 const WEEK = "一二三四五六日"
@@ -114,9 +115,10 @@ export function NewPlan() {
   const cards = Object.fromEntries(draft.sources.map((c) => [c.card_id, c]))
   const adopted = draft.sources.filter((c) => c.status === "adopted").length
   const lastOutline = [...draft.messages].reverse().find((m) => m.kind === "outline")?.id
-  const canType = ["questions", "sources", "outline", "ready"].includes(draft.phase)
+  const canType = ["questions", "preview", "sources", "outline", "ready"].includes(draft.phase)
   const placeholder = {
-    questions: "回答上面的问题，也可以直接说要改的设置…",
+    questions: "说说你的想法；也可以说“就这样吧”，先看大致模块…",
+    preview: "大致模块这样可以吗？想加、删或调整什么，继续告诉我…",
     sources: "想要什么样的资料？比如：要中文的、只学前四章、采用第二份；也可以直接贴资料网址",
     outline: "想怎么改？比如：第二阶段拆细一点、截止日期推迟两周、每天改成 90 分钟",
     ready: "还想调整？比如：删掉第 3 个模块、把实战挪到最后、结束日期推迟一周",
@@ -151,6 +153,20 @@ export function NewPlan() {
           {draft.messages.map((m) => {
             if (m.kind === "form") return <FormCard key={m.id} draft={draft} text={m.text} busy={busy} onSubmit={(form) => act("plan.submit", { form })} />
             if (m.role === "user") return <div key={m.id} className="bubble user" data-selectable>{m.text}</div>
+            if (m.kind === "preview") return <div key={m.id} className="plan-block">
+              <div className="bubble bot" data-selectable style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
+              {draft.phase === "preview" && m.version === draft.preview?.version && <div className="plan-actions">
+                <Button disabled={busy} onClick={() => setText("我想调整大致模块：")} >我想调整</Button>
+                <Button kind="primary" disabled={busy} onClick={() => act("plan.say", { text: "确认并找资料" })}>确认，开始找资料</Button>
+              </div>}
+            </div>
+            if (m.kind === "questions") return <div key={m.id} className="plan-block">
+              <div className="bubble bot" data-selectable style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
+              {draft.phase === "questions" && m.id === draft.messages[draft.messages.length - 1]?.id && <div className="plan-actions">
+                {m.options?.map((option) => <Button key={option} disabled={busy} onClick={() => act("plan.say", { text: option })}>{option}</Button>)}
+                <Button kind="ghost" disabled={busy} onClick={() => act("plan.say", { text: "就这样吧" })}>就这样吧，先看大致模块</Button>
+              </div>}
+            </div>
             if (m.kind === "sources") return (
               <div key={m.id} className="plan-block fade-in">
                 <div className="bubble bot">{m.text}</div>
@@ -491,6 +507,7 @@ export function PlanTree({ detail, editable, busy, onDelete, onMove }:
                     </div>
                   </div>
                   <p>{m.summary}</p>
+                  {m.cloze_heavy && <small className="muted">这个模块有较多知识点用的是原文填空题</small>}
                   {open === m.id && (
                     <ol className="point-list fade-in">
                       {m.points.map((p) => <li key={p.id} className={p.state ? `mastery-${MASTERY[p.state]?.[1] ?? "none"}` : ""}>

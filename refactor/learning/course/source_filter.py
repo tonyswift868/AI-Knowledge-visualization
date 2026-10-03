@@ -461,7 +461,10 @@ def type_catalog(lists=None):
 _COMMUNITY_HOSTS = ('csdn.net', 'csdn.com', 'zhihu.com', 'tieba.baidu.com', 'stackoverflow.com',
                     'stackexchange.com', 'reddit.com', 'quora.com', 'cnblogs.com')
 _GENERAL_HOSTS = ('baike.baidu.com', 'wikipedia.org', 'bbc.com', 'bbc.co.uk', 'xinhuanet.com',
-                  'people.com.cn', 'news.cn', 'thepaper.cn', 'reuters.com')
+                  'people.com.cn', 'news.cn', 'thepaper.cn', 'reuters.com',
+                  # Batch42: fetched original question/answer pages and visible
+                  # publisher titles on 2026-10-03; general band only, not 1/2.
+                  'geeksforgeeks.org', 'w4school.in')
 
 
 def _is_host(host, suffix):
@@ -513,7 +516,7 @@ def classify_source(url, *, lists=None, publisher_evidence=None, page_text=''):
         return dict(level=3,type='general_site',publisher=host,category='general_site',evidence='公开媒体或百科页面')
     # A visible byline/imprint identifies a general publisher; it is not proof
     # of official/academic authority and can never elevate the page above 3.
-    match = re.search(r'(?:发布者|发布机构|主办单位|作者|撰稿|版权所有|来源|Author|Published by|Copyright)\s*[:：©]?\s*([^\n。；;<>]{2,80})',page_text,re.I)
+    match = re.search(r'(?:发布者|发布机构|主办单位|作者|撰稿|版权所有|来源|\bAuthor\b|\bPublished by\b|\bCopyright\b)\s*[:：©]?\s*([^\n。；;<>]{2,80})',page_text,re.I)
     if match and re.search(r'[A-Za-z\u4e00-\u9fff]',match[1]) and not re.search(r'匿名|佚名|unknown|anonymous',match[1],re.I):
         return dict(level=3,type='general_site',publisher=match[1].strip(),category='general_site',evidence=match[0])
     return result

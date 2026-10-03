@@ -27,7 +27,7 @@ def test_sufficiency_requires_questions_when_not_enough_and_caps_them():
     ok = agents.parse_sufficiency(json.dumps({"enough": True, "questions": [], "goal": "学 Python 类", "focus": ["类"] * 9}))
     assert ok["enough"] and len(ok["focus"]) == 6
     many = agents.parse_sufficiency(json.dumps({"enough": False, "questions": ["1", "2", "3", "4"], "goal": "g"}))
-    assert not many["enough"] and len(many["questions"]) == 3
+    assert not many["enough"] and len(many["questions"]) == 2  # per turn; no limit on dialogue rounds
     # "enough" with questions still asks: the host never skips a question the model raised.
     assert not agents.parse_sufficiency(json.dumps({"enough": True, "questions": ["几点？"], "goal": "g"}))["enough"]
     with pytest.raises(AgentFormatError):

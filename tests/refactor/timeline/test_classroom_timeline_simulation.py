@@ -217,15 +217,11 @@ def test_classroom_cross_day_timeline_uses_real_today_status(classroom_room):
     _assert_today(clock, trace, view, "DAY1 随口问答对，队列定义记暂记，继续讲队列操作", target=30, confirmed=0, tentative=20,
                   debt=0, ahead=0, ahead_days=0)
 
-    # Two wrong casual answers are recorded, then the host moves on without a loop.
+    # Batch42: one wrong casual answer marks weakness; no second casual question.
     agent.verdicts.append(("answer", False, ["p1"]))
     view = _act(classroom, "reply", "不会")
-    _assert_today(clock, trace, view, "DAY1 随口问第一次答错，再确认一次，暂不记这个点", target=30, confirmed=0, tentative=20,
-                  debt=0, ahead=0, ahead_days=0)
-    agent.verdicts.append(("answer", False, ["p1"]))
-    view = _act(classroom, "reply", "还是不会")
     assert view["step"] == "test_offer"
-    _assert_today(clock, trace, view, "DAY1 随口问第二次答错，进入检测入口", target=30, confirmed=0, tentative=30,
+    _assert_today(clock, trace, view, "DAY1 随口问一次答错，原文解释后进入检测入口", target=30, confirmed=0, tentative=30,
                   debt=0, ahead=10, ahead_days=0)
 
     # 20 + 10 test minutes become formal; p1 is revoked and becomes red.

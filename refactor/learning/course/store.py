@@ -503,6 +503,13 @@ class CourseStore:
             values = [json.loads(r[0]) for r in self._db.execute('SELECT payload FROM plans ORDER BY id')]
             return [self._plan_availability(p) for p in values if include_archived or not p['archived']]
 
+    @_atomic
+    def save_module_preparation(self, plan_id, module_id, summary):
+        """Persist the material component's per-module summary with normal sync."""
+        row = self._get('modules', plan_id, module_id)
+        row['material_preparation'] = dict(summary)
+        return self._put('modules', plan_id, row)
+
     def records(self, entity, plan_id=''):
         """Read detached payloads; deterministic position/ID order for consumers."""
         if entity not in PARENTS or entity == 'plans': raise StoreError('UNKNOWN_ENTITY')

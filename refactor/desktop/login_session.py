@@ -5,6 +5,7 @@ import threading
 import asyncio
 import os
 import time
+import json
 from contextlib import contextmanager
 
 from .account_identity import AccountCredentialVault, AccountPreferenceStore, ProfileMode
@@ -12,6 +13,67 @@ from .account_protocol import AccountError
 
 _locks_guard = threading.Lock()
 _locks: dict[tuple[str, str], threading.RLock] = {}
+
+
+class UpdateLoginHandoff:
+    """One Windows Locker record, independent of updater restart arguments.
+
+    Consume before attempting refresh, so a failed/crashed attempt cannot reuse
+    it. The refreshed session lives in memory unless Remember was already set.
+    """
+    REFERENCE = 'mfcred_update_login_once_v1'
+    TTL_SECONDS = 600
+
+    def __init__(self, *, clock=time.time):
+        self.clock = clock
+
+    @staticmethod
+    def _log(state):
+        from refactor.runtime_logging import event
+        event('update', state={'交接成功': 'HANDOFF_SUCCESS', '交接失败': 'HANDOFF_FAILED',
+                               '交接过期': 'HANDOFF_EXPIRED'}[state])
+
+    def clear(self):
+        from .credential_store import delete_secret
+        delete_secret(self.REFERENCE)
+
+    def write(self, profile, refresh_token):
+        from .credential_store import store_secret
+        if not profile.account_id or not refresh_token:
+            raise ValueError('UPDATE_LOGIN_UNAVAILABLE')
+        store_secret(json.dumps(dict(account_id=profile.account_id,
+            refresh_token=refresh_token, written_at=self.clock())), self.REFERENCE)
+
+    def take(self, profile):
+        """Return (record existed, token or None); never alter preferences."""
+        from .credential_store import get_secret
+        try:
+            raw = get_secret(self.REFERENCE)
+        except Exception as exc:
+            if getattr(exc, 'code', '') == 'CREDENTIAL_NOT_FOUND':
+                return False, None
+            try:
+                self.clear()
+            except Exception:
+                pass  # Locker unavailable: normal login, never a disk fallback.
+            self._log('交接失败')
+            return True, None
+        try:
+            self.clear()
+            value = json.loads(raw)
+            age = self.clock() - value['written_at']
+            if not 0 <= age < self.TTL_SECONDS:
+                self._log('交接过期')
+                return True, None
+            if not profile.account_id or value['account_id'] != profile.account_id:
+                raise ValueError('UPDATE_LOGIN_ACCOUNT_MISMATCH')
+            token = value['refresh_token']
+            if not isinstance(token, str) or not token:
+                raise ValueError('UPDATE_LOGIN_UNAVAILABLE')
+            return True, token
+        except Exception:
+            self._log('交接失败')
+            return True, None
 
 
 @contextmanager
@@ -56,6 +118,47 @@ class LoginSession:
         self.credentials = credentials if credentials is not None else AccountCredentialVault()
         self.registry = AccountRegistry(preferences)
         self.passwords = passwords if passwords is not None else SavedPasswordVault()
+        self.update_handoff = UpdateLoginHandoff()
+
+    def take_update_login(self):
+        from types import SimpleNamespace
+        try:
+            profile = self.preferences.load_unvalidated()
+            selected = self.registry.snapshot()['current_account_id']
+            if profile.account_id != selected:
+                profile = None
+        except Exception:
+            profile = None
+        present, token = self.update_handoff.take(profile or SimpleNamespace(account_id=None))
+        return present, profile, token
+
+    def restore_update_login(self, profile, token, cancelled, *, restorer=None):
+        # This private in-memory adapter receives rotation from the native
+        # client without creating an ordinary remembered credential record.
+        from types import SimpleNamespace
+        from .account_shell_main import AccountShell
+        from .native_auth import restore_native_account_from_env
+        memory = AccountShell._EphemeralCredentials(SimpleNamespace(
+            identity=SimpleNamespace(profile=lambda: profile), access_token='', refresh_token=token))
+        try:
+            with account_session_lock(profile):
+                if cancelled.is_set() or self.closure_blocks_login(profile) or self.requires_reauthentication(profile):
+                    raise ValueError('UPDATE_LOGIN_UNAVAILABLE')
+                result = (restorer or restore_native_account_from_env)(profile, memory)
+                if cancelled.is_set() or result.identity.profile().account_id != profile.account_id:
+                    raise ValueError('UPDATE_LOGIN_ACCOUNT_MISMATCH')
+                row = self.registry.get(profile.account_id)
+                if row and row['remember_session']:
+                    self.credentials.store_oauth_tokens(result.identity, access_token=result.access_token,
+                                                       refresh_token=result.refresh_token)
+            self.update_handoff._log('交接成功')
+            return result
+        except Exception:
+            self.update_handoff._log('交接失败')
+            # Never carry a backend exception/token into UI or exception logs.
+            raise AccountError('UPDATE_LOGIN_FAILED', '更新后的登录未能恢复，请重新登录。') from None
+        finally:
+            memory.logout(profile)
 
     def requires_reauthentication(self, profile):
         if not profile.account_id:

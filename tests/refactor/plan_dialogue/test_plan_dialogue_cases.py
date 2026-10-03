@@ -84,9 +84,10 @@ def test_plan_dialogue_real_route_and_copy_isolate_form_cards_and_course(dialogu
         first = len(gateway.calls)
         h.call("plan.say", plan_id=pid, text=case["user"])
         after = h.snapshot(pid)
-        assert [c["purpose"] for c in gateway.calls[first:]] == ["plan_intent", "sufficiency"]
-        assert after["draft"]["phase"] == "sources"
+        assert [c["purpose"] for c in gateway.calls[first:]] == ["plan_intent", "sufficiency", "sufficiency"]
+        assert after["draft"]["phase"] == "preview"
         assert before["draft"]["form"] == after["draft"]["form"]
+        h.call('plan.say',plan_id=pid,text='确认并找资料')
         h.call("plan.outline", plan_id=pid)
         assert len(modules(h.snapshot(pid))) >= 8
         assert not h.snapshot(pid)["records"]["points"]

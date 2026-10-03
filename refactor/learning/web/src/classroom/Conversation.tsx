@@ -40,6 +40,7 @@ export function MaterialsPreparing({ preparation, act, busy }: { preparation: Pr
     <Loader2 size={15} className="spin" />{preparation.text} · {preparation.done}/{preparation.total}
     {preparation.error && <><span role="alert">{preparation.error}</span><Button small disabled={busy}
       onClick={() => act("classroom.retry", {}, "重新准备…")}>重试</Button></>}
+    <Button small disabled={busy} onClick={() => act("classroom.cancel_preparation", {}, "取消准备…")}>取消准备</Button>
   </div>
 }
 
