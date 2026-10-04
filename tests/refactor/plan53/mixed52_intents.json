@@ -1,0 +1,4 @@
+{
+  "response": "{\"intents\":[{\"kind\":\"proceed\",\"step\":\"outline\"},{\"kind\":\"supplement\",\"instruction\":\"资料里缺的让步段和结尾这两块，后面还是重点补上、多安排练习。\"}],\"reply\":\"\"}",
+  "user_text": "可以，就按资料调整后的结构来。不过资料里缺的让步段和结尾这两块，后面还是重点补上、多安排练习。"
+}

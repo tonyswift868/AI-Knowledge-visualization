@@ -105,7 +105,17 @@ class RecordedGateway:
                 output_tokens=(tokens,tokens),cache_hit_rate=(0,0),context=context)
             if estimate is None or estimate.currency!='CNY':
                 self.reject('SIMULATION_UNPRICED','无法确认人民币价格，不进行付费调用。',purpose)
-            amount=estimate.high
+            worst_case=estimate.high
+            # This task reserves observed unit prices, not every output cap.
+            # Unknown-usage failures retain the full bound and stop the run.
+            observed=[Decimal(c['peak_cost_cny']) for c in self.evidence.calls
+                if not c.get('offline') and c.get('wire_purpose')==wire and 'peak_cost_cny' in c]
+            if observed:
+                amount=min(worst_case,max(observed[-1],sum(observed)/len(observed))*Decimal('1.1'))
+            else:
+                bootstrap=self.real.price_catalog.estimate_cost(config['provider_id'],config['model'],input_tokens=(upper,upper),
+                    output_tokens=(min(tokens,8192),min(tokens,8192)),cache_hit_rate=(0,0),context=context)
+                amount=bootstrap.high
         with self.lock:
             if self.halted.is_set() or (not self.offline and self.spent+self.reserved+amount>self.limit):
                 self.reject('SIMULATION_BUDGET','下一次调用预留会超过花费上限，已停止。',purpose)
@@ -114,6 +124,7 @@ class RecordedGateway:
         started=time.monotonic();result=None;error=None;usage=None
         record=dict(id=cid,purpose=purpose,wire_purpose=wire,wall_utc=real_now.isoformat(),reservation_cny=str(amount),
             system=kwargs.get('system'),messages=messages,plan_id=kwargs.get('plan_id',''))
+        if not self.offline:record['unknown_usage_bound_cny']=str(worst_case)
         # Persist request before network; failed calls remain reconstructible.
         file=f'model/call-{cid:05d}.json';self.evidence.save(file,record)
         try:
@@ -145,7 +156,7 @@ class RecordedGateway:
             record['seconds']=round(time.monotonic()-started,3)
             charged=actual=Decimal(0)
             if not self.offline:
-                charged=amount  # Unknown usage retains the reservation, not zero.
+                charged=worst_case  # Unknown usage remains bounded, never free.
                 if usage is not None:
                     record['usage']=asdict(usage) if is_dataclass(usage) else str(usage)
                     for peak,name in [(True,'peak_cost_cny'),(False,'time_cost_cny')]:
@@ -227,15 +238,27 @@ class Simulation:
         event=json.loads(text);self.received.append(event);self.evidence.event('bridge',payload=event)
     def call(self,method,**params):
         if self.gateway.halted.is_set():raise StopRun('STOPPED','调用已止损')
-        sequence=len(self.evidence.steps)+1;rid=f'sim-{sequence}-{time.monotonic_ns()}'
+        # A timed-out step has a request file but no completed steps entry.
+        # Resuming must not overwrite that original failure evidence.
+        used=[int(p.stem[5:]) for p in (self.evidence.root/'steps').glob('step-*.json') if p.stem[5:].isdigit()]
+        sequence=max(len(self.evidence.steps),max(used,default=0))+1
+        rid=f'sim-{sequence}-{time.monotonic_ns()}'
         request=dict(id=rid,method=method,params=params)
         path=f'steps/step-{sequence:05d}.json';record=dict(request=request,simulated_now=self.clock.now().isoformat(),study_day=self.clock.day().isoformat())
-        self.evidence.save(path,record);start=time.monotonic();self.bridge.call(json.dumps(request,ensure_ascii=False))
+        self.evidence.save(path,record);start=time.monotonic()
+        last_activity=start;activity=(self.gateway.attempted,len(self.evidence.calls))
+        self.bridge.call(json.dumps(request,ensure_ascii=False))
         while True:
             self.qapp.processEvents()
             reply=next((v for v in self.received if v.get('id')==rid and v['type']=='response'),None)
             if reply:break
-            if time.monotonic()-start>self.timeout:
+            now=time.monotonic();current=(self.gateway.attempted,len(self.evidence.calls))
+            # A whole-book map is one bridge action with many bounded model
+            # calls. New calls/completions are progress, not a hung request.
+            # Cosmetic status/stream events do not extend this deadline.
+            if current!=activity:
+                activity=current;last_activity=now
+            if now-last_activity>self.timeout:
                 self.bridge.cancel_pending();self.gateway.halt()
                 self.evidence.issue('STEP_TIMEOUT',method,path)
                 raise StopRun('STEP_TIMEOUT',method)
@@ -261,7 +284,7 @@ class Simulation:
         # workers are joined before closing their store, avoiding SQLite locks.
         for thread in list(threading.enumerate()):
             if thread.name.startswith(('plan-materials','classroom-','plan-upload')):
-                thread.join(min(self.timeout,30))
+                thread.join(self.timeout)
                 if thread.is_alive():raise StopRun('WORKER_TIMEOUT',thread.name)
     def reopen(self,plan_id):
         self.call('classroom.leave',plan_id=plan_id);self.join_jobs()

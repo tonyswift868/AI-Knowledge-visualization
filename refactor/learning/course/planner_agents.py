@@ -14,6 +14,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from .question_bank import contains_original, original_text
 
 LEVELS = {"zero": "零基础", "beginner": "入门", "intermediate": "有一定基础", "advanced": "比较熟练"}
 
@@ -499,6 +500,25 @@ def parse_material_map(text, sections, sources, chunks, structure):
     return outline
 
 
+def _citation_body(chunk, *, text=None):
+    """Exclude heading lines before checking a citation against body text.
+
+    Imported legacy chunks can end in an isolated heading whose section still
+    names its parent (e.g. UNESCO's 'The Silk Roads Map'). A short standalone
+    line without sentence punctuation is not sufficient body evidence; request
+    a body sentence instead. Comparison itself stays in question_bank.
+    """
+    headings = {original_text(s) for s in chunk.get('section') or ()}
+    headings.update(original_text(b['text']) for b in chunk.get('block_fragments') or ()
+                    if b.get('kind') == 'heading')
+    lines = [line for line in (chunk['text'] if text is None else text).splitlines() if line.strip()
+             and original_text(line) not in headings
+             and not re.match(r'^\s*#{1,6}\s+', line)]
+    if text is None and len(lines) == 1 and len(lines[0].strip()) <= 80 and not re.search(r'[。！？.!?；;]', lines[0]):
+        return ''
+    return '\n'.join(lines)
+
+
 def parse_map(text, sections, sources, chunks):
     """Validate quotes against obtained adopted text, never model claims.
 
@@ -532,14 +552,17 @@ def parse_map(text, sections, sources, chunks):
                 raise AgentFormatError("map point")
             title = _text(point.get("title"), 80)
             summary = _text(point.get("summary") or title, 300)
-            citations = []
+            citations, heading_only = [], False
             for citation in point.get("citations", []) if isinstance(point.get("citations"), list) else []:
                 if not isinstance(citation, dict) or not isinstance(citation.get("chunk_id"), str):
                     continue
                 chunk = by_chunk.get(citation.get("chunk_id"))
                 quote = citation.get("quote")
                 if (not chunk or chunk["id"] not in allowed or chunk["source_id"] not in by_source
-                        or not isinstance(quote, str) or len(quote.strip()) < 12 or quote not in chunk["text"]):
+                        or not isinstance(quote, str) or len(quote.strip()) < 12 or not contains_original(quote, chunk["text"])):
+                    continue
+                if not contains_original(_citation_body(chunk, text=quote), _citation_body(chunk)):
+                    heading_only = True
                     continue
                 source = by_source[chunk["source_id"]]
                 location = " / ".join(chunk.get("section") or [])
@@ -548,7 +571,7 @@ def parse_map(text, sections, sources, chunks):
                 citations.append({"chunk_id": chunk["id"], "title": source.get("title") or source.get("filename") or "资料",
                                   "url": source.get("url"), "locator": location or f"段落 {chunk['position'] + 1}", "quote": quote})
             identity = (title, tuple(sorted(c["chunk_id"] for c in citations)))
-            if not citations or identity in seen:
+            if heading_only or not citations or identity in seen:
                 dropped.append(title)
                 continue
             seen.add(identity)
@@ -653,7 +676,7 @@ def generate_request(form: dict, goal: str, outline: dict, module: dict, chunks,
            "\n\n【本次生成约束】\n" + "\n".join(constraints) + "\n请提炼本模块的知识点。"
     system = GENERATE_SYSTEM
     if material_map:
-        system += '\n本次只填当前模块的知识点，结构与顺序由程序保管，不返回stages/modules。minutes固定15用于预估，不凑点数。每点另有citations数组，每项必须包含chunk_id（c1等本次编号）和quote（逐字连续原文，至少12字符）；chunks与citations须指向相同片段。只保留本模块中真正独立的学习量，汇总、小结不要另切一点。'
+        system += '\n本次只填当前模块的知识点，结构与顺序由程序保管，不返回stages/modules。minutes固定15用于预估，不凑点数。每点另有citations数组，每项必须包含chunk_id（c1等本次编号）和quote（逐字连续原文，至少12字符）；chunks与citations须指向相同片段。出处要引用正文句子，不能只引用章节标题。只保留本模块中真正独立的学习量，汇总、小结不要另切一点。'
         task += '\n引用格式："citations":[{"chunk_id":"c1","quote":"从该片段逐字摘录的连续原文"}]；每点必填。'
     return system, [{"role": "user", "content": shared + "\n\n" + task}], aliases
 
@@ -696,19 +719,26 @@ def parse_points(text: str, aliases: dict, *, minutes_range=None, min_points=2, 
             citations = point.get('citations')
             if not isinstance(citations, list) or not citations:
                 raise AgentFormatError('每个知识点缺少逐字citations')
-            checked = []
+            checked, heading_only = [], False
             for cite in citations:
                 alias = cite.get('chunk_id') if isinstance(cite, dict) else None
                 quote = cite.get('quote') if isinstance(cite, dict) else None
                 if alias not in refs or not isinstance(quote, str) or len(quote.strip()) < 12:
                     raise AgentFormatError('citations片段编号或quote长度无效')
                 cid = aliases[alias]
-                if cid not in by_id or quote not in by_id[cid]['text']:
+                if cid not in by_id or not contains_original(quote, by_id[cid]['text']):
                     raise AgentFormatError('quote必须逐字存在于本批原文，不能改写或补充')
+                if not contains_original(_citation_body(by_id[cid], text=quote), _citation_body(by_id[cid])):
+                    heading_only = True
                 checked.append(dict(chunk_id=cid, quote=quote))
             if {aliases[r] for r in refs} != {c['chunk_id'] for c in checked}:
                 raise AgentFormatError('chunks与citations的片段编号不一致')
+            if heading_only:
+                result.pop()
+                continue
             result[-1].update(minutes=15, citations=checked)
+    if quoted_chunks is not None and not result:
+        raise AgentFormatError('出处要引用正文句子；本批只有标题依据，没有有效知识点')
     if minutes_range is not None:
         validate_point_minutes(result, minutes_range)
     return result

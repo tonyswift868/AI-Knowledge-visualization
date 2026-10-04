@@ -46,12 +46,14 @@ def controls(view,stage):
 
 
 class Driver:
-    def __init__(self,simulation,user,persona,*,stuck_limit=5,reopen_before_adopt=False,material_url=None,material_file=None,pause_material=False):
+    def __init__(self,simulation,user,persona,*,stuck_limit=5,reopen_before_adopt=False,material_url=None,material_file=None,pause_material=False,first_module=False,skip_days=()):
         self.sim,self.user,self.persona=simulation,user,persona
         self.stuck_limit=stuck_limit
         self.reopen_before_adopt=reopen_before_adopt
         self.material_url,self.material_file=material_url,material_file
         self.pause_material=pause_material or bool(material_url or material_file)
+        self.first_module=first_module
+        self.skip_days=frozenset(skip_days)
         if stuck_limit<1:raise ValueError('stuck_limit must be positive')
         p=simulation.evidence.root/'checkpoint.json'
         self.state=json.loads(p.read_text(encoding='utf-8')) if p.exists() else dict(stage='form',plan_id=None,rounds=0,view={},flags=[])
@@ -145,12 +147,20 @@ class Driver:
                 # Start response has no draft. Read the actual classroom once.
                 self.state['stage']='classroom';self.request('classroom.enter');return
     def new_day(self):
-        self.request('classroom.leave');self.sim.advance_day();self.request('classroom.enter')
+        self.request('classroom.leave');self.sim.advance_day()
+        start=self.sim.services.store.get_plan(self.state['plan_id'])['window']['start']
+        from datetime import date
+        while (self.sim.clock.day()-date.fromisoformat(start)).days+1 in self.skip_days:
+            self.sim.evidence.event('skipped_study_day',day=self.sim.clock.day().isoformat())
+            self.sim.advance_day()
+        self.request('classroom.enter')
         self.state['flags'].append('next_day');self.save()
     def classroom(self,to,day_limit=None):
         if not self.state['view'].get('step'):self.request('classroom.enter')
         while True:
             view=self.state['view'];stage=self.state['stage'];step=view.get('step')
+            if self.first_module and stage=='classroom' and step=='test_done' and view.get('module',{}).get('number')==1:
+                self.state['flags'].append('first_module_segment');self.save();return
             if stage=='classroom' and step=='check_offer':
                 if to=='classroom':return
                 self.state['stage']='final';self.save();continue

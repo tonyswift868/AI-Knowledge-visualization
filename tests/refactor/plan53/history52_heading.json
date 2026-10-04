@@ -1,0 +1,105 @@
+{
+  "point": {
+    "title": "用丝路地图回看路线、商品与交流",
+    "summary": "借助丝绸之路地图指出主要路线走向与关键节点，并用“路线—商品—交流”的关系说明丝路遗产如何形成，完成本模块的关系梳理。",
+    "minutes": 15,
+    "chunks": [
+      "c1",
+      "c2"
+    ],
+    "citations": [
+      {
+        "chunk_id": "c1",
+        "quote": "marking the passage of the Silk Roads through caravanserais, ports and cities"
+      },
+      {
+        "chunk_id": "c2",
+        "quote": "The Silk Roads Map"
+      }
+    ]
+  },
+  "chunks": [
+    {
+      "block_fragments": [
+        {
+          "index": 28,
+          "kind": "heading",
+          "length": 28,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "About the Silk Roads",
+            "The legacy of the Silk Roads"
+          ],
+          "text": "The legacy of the Silk Roads"
+        },
+        {
+          "index": 29,
+          "kind": "paragraph",
+          "length": 521,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "About the Silk Roads",
+            "The legacy of the Silk Roads"
+          ],
+          "text": "In the nineteenth century, a new kind of traveller ventured onto the Silk Roads: archaeologists, geographers and explorers driven by a spirit of discovery. Coming from France, England, Germany, Russia and Japan, these scholars crossed, among other regions, the Taklamakan Desert in western China (present-day Xinjiang) to explore the ancient sites along these routes. Their work led to numerous archaeological discoveries, significant academic research and, above all, a renewed interest in the history of the Silk Roads."
+        },
+        {
+          "index": 30,
+          "kind": "paragraph",
+          "length": 709,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "About the Silk Roads",
+            "The legacy of the Silk Roads"
+          ],
+          "text": "Today, many historic buildings and monuments still stand, marking the passage of the Silk Roads through caravanserais, ports and cities. However, the long-standing and ongoing legacy of this remarkable network is reflected in the many distinct but interconnected cultures, languages, customs and religions that have developed over millennia along these routes. The passage of merchants and travellers of many different nationalities resulted not only in commercial exchange but in a continuous and widespread process of cultural interaction. As such, from their early, exploratory origins, the Silk Roads developed to become a driving force in the formation of diverse societies across Eurasia and far beyond."
+        }
+      ],
+      "char_end": 16107,
+      "char_start": 14845,
+      "extract_chunk_id": "fda6543a5a6c:0012",
+      "id": "c1",
+      "page_end": null,
+      "page_start": null,
+      "position": 11,
+      "section": [
+        "About the Silk Roads",
+        "The legacy of the Silk Roads"
+      ],
+      "source_id": "file-fda6543a5a6cfa81cf12debb3cb65c1e809e76ee3b6958b26a6dafa393500417",
+      "text": "The legacy of the Silk Roads\n\nIn the nineteenth century, a new kind of traveller ventured onto the Silk Roads: archaeologists, geographers and explorers driven by a spirit of discovery. Coming from France, England, Germany, Russia and Japan, these scholars crossed, among other regions, the Taklamakan Desert in western China (present-day Xinjiang) to explore the ancient sites along these routes. Their work led to numerous archaeological discoveries, significant academic research and, above all, a renewed interest in the history of the Silk Roads.\n\nToday, many historic buildings and monuments still stand, marking the passage of the Silk Roads through caravanserais, ports and cities. However, the long-standing and ongoing legacy of this remarkable network is reflected in the many distinct but interconnected cultures, languages, customs and religions that have developed over millennia along these routes. The passage of merchants and travellers of many different nationalities resulted not only in commercial exchange but in a continuous and widespread process of cultural interaction. As such, from their early, exploratory origins, the Silk Roads developed to become a driving force in the formation of diverse societies across Eurasia and far beyond."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 31,
+          "kind": "paragraph",
+          "length": 18,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "About the Silk Roads",
+            "The legacy of the Silk Roads"
+          ],
+          "text": "The Silk Roads Map"
+        }
+      ],
+      "char_end": 16127,
+      "char_start": 16109,
+      "extract_chunk_id": "fda6543a5a6c:0013",
+      "id": "c2",
+      "page_end": null,
+      "page_start": null,
+      "position": 12,
+      "section": [
+        "About the Silk Roads",
+        "The legacy of the Silk Roads"
+      ],
+      "source_id": "file-fda6543a5a6cfa81cf12debb3cb65c1e809e76ee3b6958b26a6dafa393500417",
+      "text": "The Silk Roads Map"
+    }
+  ]
+}

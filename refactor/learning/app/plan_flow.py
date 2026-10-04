@@ -26,6 +26,7 @@ from ..course import plan_intent
 from ..course import planner_agents as agents
 from ..course.request_layout import dialogue_tail
 from ..course import source_quality
+from ..course.question_bank import contains_original
 from ..course.ledger import LedgerError, PlanWindow, check_cap, distribute, estimate_check_minutes, full_day_minutes
 from ..course.store import StoreError
 from ..preferences.storage import AccountJSON, StorageError
@@ -670,7 +671,7 @@ class PlanFlow:
             sections = [s for s in sections if s.id in scope["include"]]
         return sources, [s for s in sections if s.id not in scope.get("exclude", [])]
 
-    def material_structure(self, draft, ctx, instruction=""):
+    def material_structure(self, draft, ctx, instruction="", *, confirmed=False):
         sources, sections = self._sections(draft)
         if not sources or not sections:
             raise BridgeError('NO_SOURCES', '请先上传资料，或贴资料网址、GitHub 仓库。')
@@ -691,7 +692,8 @@ class PlanFlow:
             '\n章节：' + '；'.join(m['chapters']) for m in value['modules'])
         if value['missing']:
             text += '\n\n所选资料没讲到：' + '、'.join(value['missing']) + '。可以再传一份资料、删掉这些部分，或就这样继续。'
-        text += '\n\n请确认这份按资料调整的结构，确认后再填知识点。'
+        text += ('\n\n已按这次补充调整结构，按你同一句的确认继续填知识点。' if confirmed else
+                 '\n\n请确认这份按资料调整的结构，确认后再填知识点。')
         draft['messages'].append(_msg('ai', 'material_preview', text, version=value['version']))
         self.save(draft)
 
@@ -857,7 +859,7 @@ class PlanFlow:
             for point in module["points"]:
                 for citation in point["citations"]:
                     c = chunks.get(citation["chunk_id"])
-                    if not c or c["source_id"] not in allowed or citation["quote"] not in c["text"]:
+                    if not c or c["source_id"] not in allowed or not contains_original(citation["quote"], c["text"]):
                         raise BridgeError("MAP_SOURCE_CHANGED", "地图引用的资料已变化，请重新整理知识地图。")
         if draft["phase"] == "outline":
             self._save_outline(draft)
@@ -1106,6 +1108,7 @@ class PlanFlow:
     @staticmethod
     def _module_chunks(chunks, titles):
         return [{"id": c["id"], "text": c["text"], "section": c.get("section") or [],
+                 "block_fragments": c.get("block_fragments") or [],
                  "source_title": titles.get(c["source_id"], "资料")} for c in chunks if c["text"].strip()]
 
     # ----------------------------------------------------------- chat box (ARCH-06 intents)
@@ -1172,13 +1175,19 @@ class PlanFlow:
         intents, _ = self._ask("plan_intent", plan_intent.intent_request(context, text),
                                lambda answer: plan_intent.parse_intents(answer, context, user_text=text), ctx, plan_id=draft["plan_id"])
         supplements = [i for i in intents if i.kind == 'supplement']
-        confirms = [i for i in intents if i.kind == 'proceed' and i.params['step'] == 'sources']
-        if phase == 'preview' and supplements and confirms:
+        confirm_step = {'preview': 'sources', 'material_preview': 'outline'}.get(phase)
+        confirms = [i for i in intents if i.kind == 'proceed' and i.params['step'] == confirm_step]
+        if confirm_step and supplements and confirms:
             # The same message confirms the amended requirements. Never spend
             # a search on the obsolete preview or ask for consent a second time.
             draft.setdefault('requirements', []).extend(i.params['instruction'] for i in supplements)
-            self._show_preview(draft, ctx, confirmed=True)
-            self._confirm_preview(draft, ctx)
+            if phase == 'preview':
+                self._show_preview(draft, ctx, confirmed=True)
+                self._confirm_preview(draft, ctx)
+            else:
+                self.material_structure(draft, ctx, '\n'.join(i.params['instruction'] for i in supplements),
+                                        confirmed=True)
+                self.make_outline(draft, ctx)
             intents = [i for i in intents if i not in supplements and i not in confirms]
             context = self._intent_context(draft)
         for intent in intents:

@@ -47,6 +47,8 @@ def main(argv=None):
     parser.add_argument('--to',choices=STAGES,default='free')
     parser.add_argument('--from-stage',choices=STAGES,help='只能从已到达检查点续跑，不能跳过建计划')
     parser.add_argument('--day',type=int,help='检查点已建计划时，只跑第N天的课')
+    parser.add_argument('--first-module',action='store_true',help='首模块第一次检测结束后暂停（未重测）')
+    parser.add_argument('--skip-study-day',type=int,action='append',default=[],help='跨日时不进入指定学习日，可重复')
     parser.add_argument('--dialogue-rounds',type=int,help='填表计第1轮，到指定轮数停止；没有默认对话轮数上限')
     parser.add_argument('--stuck-limit',type=int,default=5)
     parser.add_argument('--reopen-before-adopt',action='store_true',help='资料卡片出现后重建服务并读取本机草稿一次，不替用户采用')
@@ -73,10 +75,14 @@ def main(argv=None):
             clock=args.clock,stuck_limit=args.stuck_limit,timeout=args.timeout,reopen_before_adopt=args.reopen_before_adopt))
         user=ScriptUser(json.loads(args.script.read_text(encoding='utf-8')) if args.script else None) if not args.live or args.script else ModelUser(sim.gateway,persona)
         driver=Driver(sim,user,persona,stuck_limit=args.stuck_limit,reopen_before_adopt=args.reopen_before_adopt,
-            material_url=args.material_url,material_file=args.material_file,pause_material=args.pause_material)
+            material_url=args.material_url,material_file=args.material_file,pause_material=args.pause_material,
+            first_module=args.first_module,skip_days=args.skip_study_day)
         summary=driver.run(to=args.to,from_stage=args.from_stage,rounds=args.dialogue_rounds,day=args.day)
-        print(json.dumps(summary,ensure_ascii=False,indent=2));return 1 if summary['stop'] else 0
     finally:sim.close()
+    # Cancellation accounting may arrive while the bridge workers shut down.
+    # Print/persist the final total after joining them, not an earlier snapshot.
+    summary=sim.evidence.summary(summary['stage'],sim.gateway.spent)
+    print(json.dumps(summary,ensure_ascii=False,indent=2));return 1 if summary['stop'] else 0
 
 
 if __name__=='__main__':raise SystemExit(main())
