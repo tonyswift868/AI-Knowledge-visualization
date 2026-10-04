@@ -26,7 +26,6 @@ from ..course import plan_intent
 from ..course import planner_agents as agents
 from ..course.request_layout import dialogue_tail
 from ..course import source_quality
-from ..course.question_bank import contains_original
 from ..course.ledger import LedgerError, PlanWindow, check_cap, distribute, estimate_check_minutes, full_day_minutes
 from ..course.store import StoreError
 from ..preferences.storage import AccountJSON, StorageError
@@ -745,8 +744,8 @@ class PlanFlow:
             picked = self._module_chunks(selected, {s['id']: s['title'] for s in sources})
             self.status(draft['plan_id'], '正在填知识点：' + module['title'])
             module['points'] = self._generate_module_batches(working, module, picked, ctx)
-        # The existing literal-citation validator and cross-material merge now
-        # receive a PROGRAM-constructed envelope, not a model-written structure.
+        # Resolve numbered evidence from stored paragraphs inside a host-owned
+        # envelope; the model cannot rewrite structure or original quotations.
         outline = agents.parse_material_map(json.dumps(dict(skeleton, message='已按确认的资料结构逐模块填入知识点。'),
             ensure_ascii=False), sections, sources, chunks, structure)
         if outline["dropped"]:
@@ -859,8 +858,10 @@ class PlanFlow:
             for point in module["points"]:
                 for citation in point["citations"]:
                     c = chunks.get(citation["chunk_id"])
-                    if not c or c["source_id"] not in allowed or not contains_original(citation["quote"], c["text"]):
+                    original = agents.resolve_paragraph(c, citation) if c and 'paragraph_id' in citation else None
+                    if not c or c["source_id"] not in allowed or original is None:
                         raise BridgeError("MAP_SOURCE_CHANGED", "地图引用的资料已变化，请重新整理知识地图。")
+                    citation['quote'] = original
         if draft["phase"] == "outline":
             self._save_outline(draft)
             for module in modules:
@@ -1035,7 +1036,7 @@ class PlanFlow:
     def _generate_module_batches(self, draft, module, chunks, ctx):
         """Read all of a module's material: big modules go in bounded batches, merged afterwards."""
         if draft.get('material_map'):
-            batches = agents.split_module_chunks(chunks, max_chars=agents.DEFAULT_BATCH_CHARS)
+            batches = agents.split_module_chunks(agents.material_paragraphs(chunks), max_chars=agents.DEFAULT_BATCH_CHARS)
             parts = [part for index, batch in enumerate(batches, 1)
                      for part in self._generate_batch(draft, module, batch, None,
                          (index, len(batches)), ctx, max_points=30)]
@@ -1069,6 +1070,8 @@ class PlanFlow:
 
     def _generate_batch(self, draft, module, batch, minutes, position, ctx, *, max_points, split=True):
         """Returns a list of point lists; an answer cut off at the output limit is retried as two halves."""
+        if draft.get('material_map'):
+            batch = agents.material_paragraphs(batch)
         index, count = position or (None, None)
         request = agents.generate_request(draft["form"], draft["goal"], draft["outline"], module, batch,
                                           minutes_range=minutes, batch_index=index, batch_count=count, max_points=max_points,
@@ -1079,7 +1082,7 @@ class PlanFlow:
         # see and revise it, rather than repeating the same request unchanged.
         parse = lambda text: agents.parse_points(text, aliases, minutes_range=minutes,
                                                  max_points=max_points, min_points=1,
-                                                 quoted_chunks=batch if draft.get('material_map') else None)  # noqa: E731
+                                                 paragraph_chunks=batch if draft.get('material_map') else None)  # noqa: E731
         try:
             return [self._ask("generate", request[:2], parse, ctx, plan_id=draft["plan_id"], max_tokens=8192)[0]]
         except ModelError as exc:

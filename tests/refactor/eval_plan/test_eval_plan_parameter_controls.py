@@ -252,8 +252,8 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
                 result=dict(summary='按资料调整',modules=[dict(key='m1',title='循环',summary='推理和行动',refs=[s['id'] for s in directory],chapters=[s['title'] for s in directory])],missing=[])
             elif purpose == 'generate':
                 prompt=messages[0]['content']
-                blocks=re.findall(r'\[(c\d+)\] [^\n]*\n(.*?)(?=\n\n\[c|\n\n【本次生成约束】)',prompt,re.S)
-                result=dict(points=[dict(title=title,summary='解释'+title,chunks=[a],minutes=15,citations=[dict(chunk_id=a,quote=t[:80])]) for title,(a,t) in zip(('推理','行动'),(blocks[0],blocks[-1]))])
+                blocks=re.findall(r'\[(c\d+)\] [^\n]*（paragraph）\n(.*?)(?=\n\n\[c|\n\n【本次生成约束】)',prompt,re.S)
+                result=dict(points=[dict(title=title,summary='解释'+title,chunks=[a],minutes=15) for title,(a,t) in zip(('推理','行动'),(blocks[0],blocks[-1]))])
             elif purpose == "outline":
                 if self.fail_outline:
                     from refactor.learning.connections.errors import ModelError

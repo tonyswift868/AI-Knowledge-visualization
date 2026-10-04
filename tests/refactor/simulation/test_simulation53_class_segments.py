@@ -49,14 +49,14 @@ def test_simulation53_actual_price_forecast_avoids_output_cap_reservation(tmp_pa
         assert Decimal(gw.evidence.calls[-1]['reservation_cny'])==Decimal('.033')
 
 
-def test_simulation53_worker_join_uses_requested_deadline_not_fixed_thirty(monkeypatch):
+def test_simulation53_completed_worker_does_not_wait_a_fixed_deadline(monkeypatch):
     from . import engine
     calls=[]
     worker=SimpleNamespace(name='plan-materials-fixture',join=lambda timeout:calls.append(timeout),is_alive=lambda:False)
     monkeypatch.setattr(engine.threading,'enumerate',lambda:[worker])
     sim=Simulation.__new__(Simulation);sim.timeout=240
     sim.join_jobs()
-    assert calls==[240]
+    assert calls==[]
 
 
 def _simulation53_wait_fixture(path,monkeypatch,progress):

@@ -64,8 +64,12 @@ class Model:
             packet=json.loads(text); section=packet['directory'][0]
             result=dict(summary='按资料理解压强',modules=[dict(key='m1',title='压强与面积',summary='理解压强',refs=[section['id']],chapters=[section['title']])],missing=['浮力'] if self.missing else [])
         elif purpose == 'generate':
-            result=dict(points=[dict(p,title=p['title'],chunks=['c1'],minutes=15) for p in raw_map('c1',invalid=self.invalid,count=self.count)['stages'][0]['modules'][0]['points']])
-            self.invalid=False  # Repair responds to the host's explicit quote error.
+            import re
+            alias=re.search(r'\[(c\d+)\] [^\n]*（paragraph）\n',text)[1]
+            result=dict(points=[dict(title=p['title'],summary=p['summary'],chunks=[
+                'c9999' if p['title']=='资料没有的液体公式' else alias],minutes=15)
+                for p in raw_map(invalid=self.invalid,count=self.count)['stages'][0]['modules'][0]['points']])
+            self.invalid=False
         elif purpose == "outline":
             chunks = json.JSONDecoder().raw_decode(text.split("【已取得的原文段落】\n")[1])[0]
             result = raw_map(chunks[0]["chunk_id"], invalid=self.invalid, count=self.count)
@@ -153,11 +157,11 @@ def test_plan38_incomplete_first_module_does_not_become_ready_and_retry_keeps_po
     assert flow.load(pid)['phase']=='ready' and flow.services.store.records('points',pid)==points
 
 
-def test_plan37_prunes_invalid_quote_and_reports_name(fixture):
+def test_plan37_prunes_invalid_number_without_retrying_valid_points(fixture):
     fixture[1].invalid = True
     draft = adopt_and_map(fixture)
     assert len(agents.outline_modules(draft["outline"])[0]["points"]) == 1
-    assert fixture[1].calls.count("generate") == 2
+    assert fixture[1].calls.count("generate") == 1
     assert all(p["title"] != "资料没有的液体公式" for p in agents.outline_modules(draft["outline"])[0]["points"])
 
 

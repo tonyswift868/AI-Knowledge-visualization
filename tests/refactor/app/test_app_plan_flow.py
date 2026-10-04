@@ -76,9 +76,9 @@ class ScriptedModel:
         elif purpose == 'generate':
             prompt=messages[0]['content']
             title=re.search(r'【本模块】(.+?)：',prompt)[1]
-            quote=prompt.split('[c1] ',1)[1].split('\n',1)[1][:80]
+            alias=re.search(r'\[(c\d+)\] [^\n]*（paragraph）\n',prompt)[1]
             number=re.search(r'\d+',title)[0]
-            text=json.dumps(dict(points=[dict(title='资料点'+number,summary='理解定义与练习',chunks=['c1'],minutes=15,citations=[dict(chunk_id='c1',quote=quote)])]))
+            text=json.dumps(dict(points=[dict(title='资料点'+number,summary='理解定义与练习',chunks=[alias],minutes=15)]))
         elif purpose == 'outline':
             chunks=json.JSONDecoder().raw_decode(user.split('【已取得的原文段落】\n')[1])[0]
             modules=[]

@@ -500,6 +500,47 @@ def parse_material_map(text, sections, sources, chunks, structure):
     return outline
 
 
+def material_paragraphs(chunks):
+    """Project existing imported blocks, keeping offsets in the stored chunk.
+
+    This is numbering, not text parsing. Legacy chunk-only imports are one
+    paragraph; imported heading blocks remain headings. Split batch fragments
+    retain their parent coordinates, so only the actually supplied text is cited.
+    """
+    result = []
+    for chunk in chunks:
+        if chunk.get('parent_chunk_id'):
+            start = chunk['paragraph_start'] + chunk.get('fragment_start', 0)
+            result.append(dict(chunk, id=f"{chunk['parent_chunk_id']}@{start}:{start+len(chunk['text'])}",
+                               paragraph_start=start, paragraph_end=start+len(chunk['text']),
+                               fragment_start=0, fragment_end=len(chunk['text'])))
+            continue
+        cursor = 0
+        parts = chunk.get('block_fragments') or [dict(text=chunk['text'], kind=chunk.get('kind', 'paragraph'))]
+        for part in parts:
+            text = part.get('text', '')
+            start = chunk['text'].find(text, cursor)
+            if not text.strip() or start < 0:
+                continue
+            end = start + len(text)
+            cursor = end
+            result.append(dict(chunk, id=f"{chunk['id']}@{start}:{end}", parent_chunk_id=chunk['id'],
+                paragraph_start=start, paragraph_end=end, kind=part.get('kind', 'paragraph'), text=text,
+                fragment_start=0, fragment_end=len(text)))
+    return result
+
+
+def resolve_paragraph(chunk, citation):
+    """Resolve a host paragraph ID against current stored blocks, never a quote."""
+    for paragraph in material_paragraphs([chunk]):
+        start, end = citation.get('paragraph_start'), citation.get('paragraph_end')
+        if (type(start) is int and type(end) is int and paragraph['kind'] != 'heading'
+                and paragraph['paragraph_start'] <= start < end <= paragraph['paragraph_end']
+                and citation.get('paragraph_id') == f"{chunk['id']}@{start}:{end}"):
+            return chunk['text'][start:end]
+    return None
+
+
 def _citation_body(chunk, *, text=None):
     """Exclude heading lines before checking a citation against body text.
 
@@ -557,11 +598,13 @@ def parse_map(text, sections, sources, chunks):
                 if not isinstance(citation, dict) or not isinstance(citation.get("chunk_id"), str):
                     continue
                 chunk = by_chunk.get(citation.get("chunk_id"))
-                quote = citation.get("quote")
+                numbered = 'paragraph_id' in citation
+                quote = resolve_paragraph(chunk, citation) if chunk and numbered else citation.get("quote")
                 if (not chunk or chunk["id"] not in allowed or chunk["source_id"] not in by_source
-                        or not isinstance(quote, str) or len(quote.strip()) < 12 or not contains_original(quote, chunk["text"])):
+                        or not isinstance(quote, str) or not quote.strip()
+                        or (not numbered and (len(quote.strip()) < 12 or not contains_original(quote, chunk["text"])))):
                     continue
-                if not contains_original(_citation_body(chunk, text=quote), _citation_body(chunk)):
+                if not numbered and not contains_original(_citation_body(chunk, text=quote), _citation_body(chunk)):
                     heading_only = True
                     continue
                 source = by_source[chunk["source_id"]]
@@ -570,6 +613,8 @@ def parse_map(text, sections, sources, chunks):
                     location += f" · 第 {chunk['page_start']} 页"
                 citations.append({"chunk_id": chunk["id"], "title": source.get("title") or source.get("filename") or "资料",
                                   "url": source.get("url"), "locator": location or f"段落 {chunk['position'] + 1}", "quote": quote})
+                if numbered:
+                    citations[-1].update({k: citation[k] for k in ('paragraph_id', 'paragraph_start', 'paragraph_end')})
             identity = (title, tuple(sorted(c["chunk_id"] for c in citations)))
             if heading_only or not citations or identity in seen:
                 dropped.append(title)
@@ -656,11 +701,12 @@ def generate_request(form: dict, goal: str, outline: dict, module: dict, chunks,
         skeleton.append(f"阶段：{stage['title']}")
         skeleton.extend(f"  - {m['title']}：{m['summary']}" for m in stage["modules"])
     aliases, blocks = {}, []
-    for index, chunk in enumerate(chunks, 1):
+    for index, chunk in enumerate(material_paragraphs(chunks) if material_map else chunks, 1):
         alias = f"c{index}"
         aliases[alias] = chunk["id"]
         where = " / ".join(chunk.get("section") or ()) or ""
-        blocks.append(f"[{alias}] {chunk.get('source_title', '')}{(' · ' + where) if where else ''}\n{chunk['text']}")
+        label = f"（{chunk.get('kind', 'paragraph')}）" if material_map else ''
+        blocks.append(f"[{alias}] {chunk.get('source_title', '')}{(' · ' + where) if where else ''}{label}\n{chunk['text']}")
     # Layout for cache reuse (ARCH-08): fixed system, then the plan skeleton shared
     # by every module, then this module's materials, then the short task at the end.
     shared = f"【学习者】\n{form_brief(form)}\n【核对后的目标】{goal}\n\n【整条路线】\n" + "\n".join(skeleton)
@@ -676,13 +722,13 @@ def generate_request(form: dict, goal: str, outline: dict, module: dict, chunks,
            "\n\n【本次生成约束】\n" + "\n".join(constraints) + "\n请提炼本模块的知识点。"
     system = GENERATE_SYSTEM
     if material_map:
-        system += '\n本次只填当前模块的知识点，结构与顺序由程序保管，不返回stages/modules。minutes固定15用于预估，不凑点数。每点另有citations数组，每项必须包含chunk_id（c1等本次编号）和quote（逐字连续原文，至少12字符）；chunks与citations须指向相同片段。出处要引用正文句子，不能只引用章节标题。只保留本模块中真正独立的学习量，汇总、小结不要另切一点。'
-        task += '\n引用格式："citations":[{"chunk_id":"c1","quote":"从该片段逐字摘录的连续原文"}]；每点必填。'
+        system += '\n本次只填当前模块的知识点，结构与顺序由程序保管，不返回stages/modules。minutes固定15用于预估，不凑点数。每点chunks只填本批送出的段落编号（例如c1、c2，可多个）；不返回quote或citations，不抄原句。原文由程序按编号取。标记为heading的标题段不能作为依据；选择真正讲这个知识点的正文段，不能用相邻但无关的段。只保留本模块中真正独立的学习量，汇总、小结不要另切一点。'
+        task += '\n返回格式：{"points":[{"title":"知识点","summary":"学习内容","minutes":15,"chunks":["c2"]}]}。只填本批编号，不返回原文引用。'
     return system, [{"role": "user", "content": shared + "\n\n" + task}], aliases
 
 
 def parse_points(text: str, aliases: dict, *, minutes_range=None, min_points=2, max_points=30,
-                 point_minutes_range=None, quoted_chunks=None) -> list[dict]:
+                 point_minutes_range=None, quoted_chunks=None, paragraph_chunks=None) -> list[dict]:
     """Validate supplied citations and, when provided, the host's minute range.
 
     Use min_points=1 for a small batch. Omitting minutes_range preserves the
@@ -699,12 +745,21 @@ def parse_points(text: str, aliases: dict, *, minutes_range=None, min_points=2, 
     if not isinstance(points, list) or not min_points <= len(points) <= max_points:
         raise AgentFormatError("point count")
     result, titles = [], set()
+    paragraphs = {c['id']: c for c in material_paragraphs(paragraph_chunks)} if paragraph_chunks is not None else None
     for point in points:
         if not isinstance(point, dict):
             raise AgentFormatError("point")
         refs = point.get("chunks")
         if not isinstance(refs, list) or not refs or any(not isinstance(r, str) or r not in aliases for r in refs):
+            if paragraphs is not None:
+                continue
             raise AgentFormatError("chunks")
+        if paragraphs is not None:
+            if any(aliases[r] not in paragraphs for r in refs):
+                continue
+            refs = [r for r in refs if paragraphs[aliases[r]]['kind'] != 'heading']
+            if not refs:
+                continue
         minutes = point.get("minutes")
         if type(minutes) is not int or minutes <= 0:
             raise AgentFormatError("minutes")
@@ -714,6 +769,11 @@ def parse_points(text: str, aliases: dict, *, minutes_range=None, min_points=2, 
         titles.add(title)
         result.append({"title": title, "summary": _text(point.get("summary"), 400),
                        "chunk_ids": list(dict.fromkeys(aliases[r] for r in refs)), "minutes": minutes})
+        if paragraphs is not None:
+            citations = [dict(chunk_id=paragraphs[aliases[r]]['parent_chunk_id'], paragraph_id=aliases[r],
+                paragraph_start=paragraphs[aliases[r]]['paragraph_start'], paragraph_end=paragraphs[aliases[r]]['paragraph_end'],
+                quote=paragraphs[aliases[r]]['text']) for r in dict.fromkeys(refs)]
+            result[-1].update(minutes=15, chunk_ids=list(dict.fromkeys(c['chunk_id'] for c in citations)), citations=citations)
         if quoted_chunks is not None:
             by_id = {c['id']: c for c in quoted_chunks}
             citations = point.get('citations')
@@ -737,6 +797,8 @@ def parse_points(text: str, aliases: dict, *, minutes_range=None, min_points=2, 
                 result.pop()
                 continue
             result[-1].update(minutes=15, citations=checked)
+    if paragraphs is not None and not result:
+        raise AgentFormatError('出处要选择本批正文段落编号；标题或越界编号不能作为依据')
     if quoted_chunks is not None and not result:
         raise AgentFormatError('出处要引用正文句子；本批只有标题依据，没有有效知识点')
     if minutes_range is not None:

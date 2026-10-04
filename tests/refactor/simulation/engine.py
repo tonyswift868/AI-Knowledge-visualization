@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import random
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -16,6 +17,16 @@ from unittest.mock import patch
 from refactor.learning.connections.errors import ModelError
 
 SCRATCH=Path(r'D:\MentorFlow\.local\test-tmp')
+
+
+def ensure_offscreen_fonts():
+    """Windows offscreen Qt has no native fonts; read the installed font only."""
+    from PySide6.QtGui import QFontDatabase
+    if sys.platform != 'win32' or QFontDatabase.families():
+        return
+    font = Path(os.environ.get('WINDIR', r'C:\Windows')) / 'Fonts' / 'msyh.ttc'
+    if font.is_file():
+        QFontDatabase.addApplicationFont(str(font))
 
 
 class StopRun(RuntimeError):
@@ -188,6 +199,7 @@ class Simulation:
         from refactor.learning.app import classroom,handlers
         from refactor.learning.course import store,point_materials
         self.qapp=QApplication.instance() or QApplication([])
+        ensure_offscreen_fonts()
         original_room=classroom.Classroom;original_at=store._at
         def room(*args,**kwargs):
             kwargs['now']=clock.now;kwargs['rng']=random.Random(42)
@@ -284,8 +296,17 @@ class Simulation:
         # workers are joined before closing their store, avoiding SQLite locks.
         for thread in list(threading.enumerate()):
             if thread.name.startswith(('plan-materials','classroom-','plan-upload')):
-                thread.join(self.timeout)
-                if thread.is_alive():raise StopRun('WORKER_TIMEOUT',thread.name)
+                if not thread.is_alive():continue
+                last_activity=time.monotonic()
+                activity=(self.gateway.attempted,len(self.evidence.calls))
+                while thread.is_alive():
+                    thread.join(min(.1,self.timeout))
+                    current=(self.gateway.attempted,len(self.evidence.calls))
+                    now=time.monotonic()
+                    if current!=activity:
+                        activity=current;last_activity=now
+                    if thread.is_alive() and now-last_activity>self.timeout:
+                        raise StopRun('WORKER_TIMEOUT',thread.name)
     def reopen(self,plan_id):
         self.call('classroom.leave',plan_id=plan_id);self.join_jobs()
         self.bridge.close();self.bridge._pool.shutdown(wait=True,cancel_futures=True);self.services.close()
