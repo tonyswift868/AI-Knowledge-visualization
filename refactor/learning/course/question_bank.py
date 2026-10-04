@@ -150,7 +150,27 @@ def contains_original(quote, text):
 def validate_question(row):
     # Previously saved B-line questions remain bank questions; no invented
     # quick questions are inferred from their old usage history.
-    keys = set(row) - {'_field_versions', 'role', 'source_level', 'source_type', 'target'}
+    keys = set(row) - {'_field_versions', 'role', 'source_level', 'source_type', 'target',
+        'cloze_subject', 'contrast_evidence', 'distractor_check'}
+    if 'cloze_subject' in row and (not isinstance(row['cloze_subject'],str) or not row['cloze_subject'].strip()):
+        raise ValueError('挖空对象无效')
+    if 'contrast_evidence' in row:
+        evidence=row['contrast_evidence']
+        if not isinstance(evidence,list) or any(not isinstance(v,dict) or set(v)!=
+            {'chunk_id','contrast_quote','contrast_subject','contrast_value'} or
+            any(not isinstance(t,str) or not t.strip() for t in v.values()) for v in evidence):
+            raise ValueError('对照原文证据无效')
+    if 'distractor_check' in row:
+        check=row['distractor_check']
+        if not isinstance(check,dict) or set(check)!= {'state','checks','reason','at'} or check['state'] not in ('passed','rejected'):
+            raise ValueError('干扰项检查记录无效')
+        if not isinstance(check['checks'],list) or not isinstance(check['reason'],str):raise ValueError('干扰项检查记录无效')
+        for item in check['checks']:
+            if not isinstance(item,dict) or set(item)!= {'option','index','verdict','quote','removed'} or type(item['index']) is not int or item['index']<0 or type(item['removed']) is not bool:
+                raise ValueError('干扰项逐项记录无效')
+            if item['verdict'] not in ('also_supported','not_supported') or not all(isinstance(item[k],str) for k in ('option','quote')):
+                raise ValueError('干扰项逐项记录无效')
+        _time(check['at'])
     if 'target' in row and (row.get('origin')!='cloze' or not isinstance(row['target'],str) or not row['target'].strip()):
         raise ValueError('挖空掌握目标问题无效')
     if row.get('source_level') is not None and (type(row['source_level']) is not int or row['source_level'] not in (1,2,3)):
@@ -215,7 +235,7 @@ def select_question(rows, point_id, purpose, exclude_ids=()):
     excluded=set(exclude_ids)
     role = 'quick' if purpose == 'quick' else 'bank'
     pool=[q for q in rows if point_id in q['point_ids'] and q['id'] not in excluded
-          and q.get('role', 'bank') == role and objective_question(q)]
+          and q.get('role', 'bank') == role and objective_question(q) and checked_question(q)]
     def rank(q):
         from .source_quality import question_priority
         times=[_time(u['at']) for u in q['uses'] if u['purpose']==purpose]
@@ -223,6 +243,14 @@ def select_question(rows, point_id, purpose, exclude_ids=()):
             authority=dict(level=q['source_level'],type=q.get('source_type','')) if q.get('source_level') else None)
         return (*priority,bool(times),max(times,default=0),q['created_at'],q['id'])
     return min(pool,key=rank) if pool else None
+
+
+def checked_question(row):
+    """Only persisted, successful preparation checks authorize selection."""
+    passed=objective_question(row) and isinstance(row.get('distractor_check'),dict) and row['distractor_check'].get('state')=='passed'
+    if row.get('origin')=='cloze':
+        passed=passed and bool(row.get('cloze_subject')) and len(row.get('contrast_evidence',[]))>=2
+    return passed
 
 
 def review_points(practice_results):

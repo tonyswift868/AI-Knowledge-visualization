@@ -8,7 +8,7 @@ from refactor.learning.course import source_quality as quality, point_materials 
 from refactor.learning.course.source_filter import classify_source, load_lists, RawHit, screen, DomainRule
 from refactor.learning.course.research_pipeline import ResearchPipeline
 from refactor.learning.course.research import FetchedContent
-from tests.refactor.point_materials.test_point_materials37_contract import store, ctx, pointer, TEXT
+from tests.refactor.point_materials.test_point_materials37_contract import store, ctx, pointer, TEXT, CONTRAST37
 
 
 @pytest.mark.parametrize('url,body,credibility',[
@@ -99,7 +99,7 @@ def change_source(store,url):
 def test_sources39_general_materials_and_original_answers_are_usable(store):
     change_source(store,'https://blog.csdn.net/teacher/article/details/1')
     point=store.records('points','p')[0]
-    assert pm.prepare_point(store,'p',point,ctx())['questions']==3
+    assert pm.prepare_point(store,'p',point,ctx())['questions']==2
     assert not pm.uncovered_points(store,'p',ctx())
     assert quality.general_only(['c'],store.records('sources','p'),store.records('source_chunks','p'))
     bank=store.records('question_bank','p')
@@ -113,14 +113,18 @@ def test_sources39_general_materials_and_original_answers_are_usable(store):
 def test_sources39_only_falls_back_when_higher_band_cannot_cover(store,higher_has_answers):
     store.add_sources('p',[dict(id='g',title='社区教学',url='https://www.zhihu.com/question/12',adopted=True,
         chunks=[dict(chunk_id='gc',text=TEXT,section=['压强']),
-            dict(chunk_id='gother39',text='速度、位移和加速度属于运动学。',section=['运动学'])])])
+            dict(chunk_id='gother39',text=CONTRAST37,section=['运动学'])])])
     calls=[]
     def finder(point,passages,**kwargs):
         level=passages[0]['authority']['level'];calls.append(level)
         if level==1 and not higher_has_answers:return dict(passages=[],found=[],cloze=[])
-        return pointer('c' if level==1 else 'gc')
+        output=pointer('c' if level==1 else 'gc')
+        if level!=1:
+            for item in output['cloze']:
+                for contrast in item['contrasts']:contrast['chunk_id']='gother39'
+        return output
     context=ctx();context['finder']=finder
-    assert pm.prepare_point(store,'p',store.records('points','p')[0],context)['questions']==3
+    assert pm.prepare_point(store,'p',store.records('points','p')[0],context)['questions']==2
     assert calls==[1,3]  # seek found questions before relying on cloze
     assert store.records('points','p')[0]['chunk_ids'][0]=='c'  # existing better lecture text remains first
     assert all(q['source']['url'].startswith('https://www.pep.com.cn/' if higher_has_answers else 'https://www.zhihu.com/') for q in store.records('question_bank','p'))

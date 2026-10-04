@@ -12,6 +12,7 @@ from refactor.learning.course.source_filter import classify_source, directory_ma
 
 
 TEXT='压强是压力与受力面积的比值。国际单位制中压强的单位是帕。压力越大，在面积不变时压强越大。\n同章术语：压力、浮力、密度、面积。\n1. 压强单位是____？\n答案：帕。'
+CONTRAST37='速度是位移与时间的比值。密度是质量与体积的比值。浮力随体积增大。重力随质量增大。'
 
 
 @pytest.fixture
@@ -21,7 +22,7 @@ def store(tmp_path):
     s.create_plan('p',goal='压强',window=PlanWindow(today,today+timedelta(days=3),100))
     s.add_sources('p',[dict(id='s',title='物理教材',url='https://www.pep.com.cn/physics/pressure',adopted=True,
         chunks=[dict(target='本点原文定义是什么？',chunk_id='c',text=TEXT,section=['第九章 压强']),
-            dict(chunk_id='other37',text='速度、位移和加速度属于运动学。',section=['运动学'])])])
+            dict(chunk_id='other37',text=CONTRAST37,section=['运动学'])])])
     s.save_outline('p',[dict(id='stage',title='初二物理')],[dict(id='m',stage_id='stage',title='压强',prerequisites=[])])
     s.save_generated_module('p','m',[dict(id='point',title='压强',summary='压力与受力面积',minutes=15,chunk_ids=['c'],importance='key')],check_minutes=5,today=today)
     yield s
@@ -30,14 +31,22 @@ def store(tmp_path):
 
 def pointer(chunk='c'):
     return dict(passages=[chunk],found=[],cloze=[
-        dict(target='本点原文定义是什么？',chunk_id=chunk,sentence='压强是压力与受力面积的比值。',word='压强',importance='key',keywords=['速度','位移']),
-        dict(target='本点原文定义是什么？',chunk_id=chunk,sentence='国际单位制中压强的单位是帕。',word='帕',importance='key',keywords=[]),
-        dict(target='本点原文定义是什么？',chunk_id=chunk,sentence='压力越大，在面积不变时压强越大。',word='压力',importance='key',keywords=[])])
+        dict(target='压强的定义是什么？',subject='压强',chunk_id=chunk,sentence='压强是压力与受力面积的比值。',word='压力与受力面积的比值',importance='key',contrasts=[
+            dict(chunk_id='other37',contrast_quote='速度是位移与时间的比值。',contrast_subject='速度',contrast_value='位移与时间的比值'),
+            dict(chunk_id='other37',contrast_quote='密度是质量与体积的比值。',contrast_subject='密度',contrast_value='质量与体积的比值')]),
+        dict(target='面积一定时哪个量增大使压强增大？',subject='压强',chunk_id=chunk,sentence='压力越大，在面积不变时压强越大。',word='压力',importance='key',contrasts=[
+            dict(chunk_id='other37',contrast_quote='浮力随体积增大。',contrast_subject='浮力',contrast_value='体积'),
+            dict(chunk_id='other37',contrast_quote='重力随质量增大。',contrast_subject='重力',contrast_value='质量')])])
+
+
+def approve37(packet,**kwargs):
+    return dict(questions=[dict(id=q['id'],checks=[dict(index=i,verdict='not_supported',quote='')
+        for i in range(len(q['options'])) if i not in q['answer']]) for q in packet['questions']])
 
 
 def ctx(output=None):
     def offline_fetch(*args,**kwargs): raise RuntimeError('offline: no page available')
-    return dict(finder=lambda p,passages,**kw: output or pointer(),search=lambda *a,**k:[],fetcher=offline_fetch,stage='初二')
+    return dict(finder=lambda p,passages,**kw: output or pointer(),search=lambda *a,**k:[],fetcher=offline_fetch,stage='初二',distractor_checker=approve37)
 
 
 def incomplete(store, point, context):
@@ -55,7 +64,7 @@ def test_point_prepare_idempotent_and_provenance(store):
     context=ctx(); context['finder']=lambda *a,**k:(calls.append(1) or pointer())
     point=store.records('points','p')[0]
     result=pm.prepare_point(store,'p',point,context)
-    assert result==dict(passages=1,questions=3,cloze=3)
+    assert result==dict(passages=1,questions=2,cloze=2)
     assert pm.prepare_point(store,'p',point,context)==result
     assert len(calls)==1
     assert store._db.execute('SELECT chunk_id FROM point_sources').fetchall()[0][0]=='c'
@@ -67,10 +76,10 @@ def test_point_prepare_idempotent_and_provenance(store):
 def test_normal_cloze_distractors_same_source_and_word_exact(store):
     with store.transaction():
         p=store._get('points','p','point');p['importance']='normal';store._put('points','p',p)
-    out=pointer();out['cloze']=[dict(target='本点原文定义是什么？',chunk_id='c',sentence='压强是压力与受力面积的比值。',word='压强',importance='normal',keywords=['速度','位移','不存在'])]
+    out=pointer();out['cloze']=[dict(out['cloze'][0],importance='normal')]
     assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
     q=store.records('question_bank','p')[0]
-    assert q['kind']=='choice' and set(q['options'])=={'压强','速度','位移'}
+    assert q['kind']=='choice' and set(q['options'])=={'压力与受力面积的比值','位移与时间的比值','质量与体积的比值'}
     out['cloze'][0]['word']='强压'
     assert not pm._cloze(out['cloze'][0],p,{'c':pm._passages(store,'p',dict(ctx(),store=store,plan_id='p',lists=load_lists()))[0]},[])
 
@@ -95,10 +104,10 @@ def test_number_pairing_mismatch_is_rejected(store):
 def test_pick_unused_then_lru_and_never_calls_model(store):
     pm.prepare_point(store,'p',store.records('points','p')[0],ctx())
     picked=[]
-    for i in range(3):
+    for i in range(2):
         q=pm.pick_question(store,'p','point','final');picked.append(q['id'])
         store.record_question_use('p',q['id'],'final',at=f'2026-10-03T00:00:0{i}+00:00')
-    assert len(set(picked))==3
+    assert len(set(picked))==2
     assert pm.pick_question(store,'p','point','final')['id']==picked[0]
     assert pm.pick_question(store,'p','point','final',picked) is None
     assert pm.pick_question(store,'p','point','module') is not None
@@ -115,8 +124,8 @@ def test_cancellation_no_late_write_and_background_dedup(store):
     assert not store.records('question_bank','p')
     with ThreadPoolExecutor(2) as pool:
         results=list(pool.map(lambda _:pm.prepare_point(store,'p',store.records('points','p')[0],ctx()),range(2)))
-    assert all(r['questions']==3 for r in results)
-    assert len(store.records('question_bank','p'))==4
+    assert all(r['questions']==2 for r in results)
+    assert len(store.records('question_bank','p'))==3
 
 
 def test_old_plans_unusable_no_migration(store):
@@ -220,7 +229,7 @@ def test_valid_cloze_survives_failed_external_locator(store):
     context=ctx()
     context['search']=lambda *a,**k:(_ for _ in ()).throw(ModelError('MODEL_OUTPUT_TRUNCATED','saved failure'))
     messages=[];context['on_status']=messages.append
-    assert pm.prepare_point(store,'p',store.records('points','p')[0],context)['questions']==3
+    assert pm.prepare_point(store,'p',store.records('points','p')[0],context)['questions']==2
     assert messages and '原文挖空' in messages[0]
 
 
@@ -229,7 +238,8 @@ def test_program_can_pair_same_block_explicit_answer_letter(store):
         chunks=[dict(target='本点原文定义是什么？',chunk_id='choice-c',text='1. 压强的单位是？\nA. 帕\nB. 牛顿\n答案：A')])])
     out=pointer();out['cloze']=[]
     out['found']=[dict(kind='choice',stem='压强的单位是？',options=['帕','牛顿'],answer=[0],answer_quote='A',question_chunk='choice-c',answer_chunk='choice-c',pairing='same_block')]
-    assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
+    assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==0
+    assert store.records('question_bank','p')[0]['distractor_check']['state']=='rejected'
 
     # The locator cannot silently omit a second correct option in a multi-answer.
     passages=pm._passages(store,'p',dict(ctx(),store=store,plan_id='p',lists=load_lists()))

@@ -10,6 +10,7 @@ from refactor.learning.course.source_filter import load_lists
 from refactor.learning.course.extract import extract_bytes
 from refactor.learning.course.research_pipeline import ResearchPipeline
 from refactor.learning.course.research import FetchedContent
+from test_point_materials37_contract import pointer,CONTRAST37,approve37
 
 TEXT = '压强是压力与受力面积的比值。国际单位制中压强的单位是帕。压力越大，在面积不变时压强越大。\n同章术语：压力、浮力、密度、面积。'
 
@@ -21,22 +22,19 @@ def store42(tmp_path):
         store.create_plan('p',goal='压强',window=PlanWindow(today,today+timedelta(days=5),100))
         store.add_sources('p',[dict(id='s',title='压强教材',url='https://pep.com.cn/physics/pressure',adopted=True,
             chunks=[dict(target='本点原文定义是什么？',chunk_id='c',text=TEXT,section=['压强']),
-                dict(chunk_id='other42',text='速度、位移和加速度属于运动学。',section=['运动学'])])])
+                dict(chunk_id='other37',text=CONTRAST37,section=['运动学'])])])
         store.save_outline('p',[dict(id='stage',title='物理')],[dict(id='m',stage_id='stage',title='压强',prerequisites=[])])
         store.save_generated_module('p','m',[dict(id='point',title='压强',summary='压力面积',minutes=15,chunk_ids=['c'],importance='key')],check_minutes=5,today=today)
         yield store
 
 
 def pointers42(cid='c'):
-    return dict(passages=[cid],found=[],cloze=[
-        dict(target='本点原文定义是什么？',chunk_id=cid,sentence='压强是压力与受力面积的比值。',word='压强',importance='key',keywords=['速度','位移']),
-        dict(target='本点原文定义是什么？',chunk_id=cid,sentence='国际单位制中压强的单位是帕。',word='帕',importance='key',keywords=[]),
-        dict(target='本点原文定义是什么？',chunk_id=cid,sentence='压力越大，在面积不变时压强越大。',word='压力',importance='key',keywords=[])])
+    return pointer(cid)
 
 
 def context42():
     return dict(finder=lambda *a,**k:pointers42(),search=lambda *a,**k:[],
-                fetcher=lambda *a,**k:(_ for _ in ()).throw(OSError('offline')),stage='初二')
+                fetcher=lambda *a,**k:(_ for _ in ()).throw(OSError('offline')),stage='初二',distractor_checker=approve37)
 
 
 @pytest.mark.parametrize('level,title,fit',[('beginner','Advanced Python functions parameters','too_advanced'),('advanced','Absolute beginner Python functions parameters','review_only')])
@@ -75,14 +73,14 @@ def test_materials42_three_search_rounds_quick_separation_reopen(store42):
     context['search']=lambda q,**k:(queries.append(q) or [])
     point=store42.records('points','p')[0]
     result=pm.prepare_point(store42,'p',point,context)
-    assert result==dict(passages=1,questions=3,cloze=3)
+    assert result==dict(passages=1,questions=2,cloze=2)
     assert len(set(queries))==3 and 'practice questions with answers' in queries[-1]
     rows=store42.records('question_bank','p')
-    assert sum(q['role']=='bank' for q in rows)==3
+    assert sum(q['role']=='bank' for q in rows)==2
     assert sum(q['role']=='quick' for q in rows)==1
     quick=pm.pick_question(store42,'p','point','quick')
     assert quick['kind']=='choice' and quick['origin']=='cloze'
-    assert all(option in TEXT+'速度、位移和加速度属于运动学。' for option in quick['options'])
+    assert all(option in TEXT+CONTRAST37 for option in quick['options'])
     for purpose in ('module','retest','final','direct','free'):
         assert pm.pick_question(store42,'p','point',purpose)['role']=='bank'
         assert pm.pick_question(store42,'p','point',purpose,[q['id'] for q in rows if q['role']=='bank']) is None
@@ -112,14 +110,17 @@ def test_materials42_excerpt_only_selected_original_blocks(store42):
 
 @pytest.mark.parametrize('count,fallback,heavy',[(5,1,False),(4,1,True),(5,2,True),(1,0,False)])
 def test_materials42_twenty_percent_boundary_extra_round(store42,monkeypatch,count,fallback,heavy,caplog):
-    points=[dict(id='point'+str(i),module_id='m',title='压强') for i in range(count)]
+    points=[dict(id='point'+str(i),module_id='m',title='压强',chunk_ids=['c']) for i in range(count)]
     real=store42.records
     monkeypatch.setattr(store42,'records',lambda kind,plan: points if kind=='points' else real(kind,plan))
     calls=[]
     rows=[]
     for i,p in enumerate(points):
-        for j in range(2):rows.append(dict(point_ids=[p['id']],kind='choice',role='bank',origin='cloze' if i<fallback else 'found'))
-        rows.append(dict(point_ids=[p['id']],role='quick',origin='cloze'))
+        check=dict(state='passed',checks=[],reason='',at='2026-10-04T00:00:00Z')
+        for j in range(2):rows.append(dict(module_id='m',point_ids=[p['id']],kind='choice',role='bank',origin='cloze' if i<fallback else 'found',
+            cloze_subject='压强',contrast_evidence=pointer()['cloze'][0]['contrasts'],distractor_check=check))
+        rows.append(dict(module_id='m',point_ids=[p['id']],kind='choice',role='quick',origin='cloze',
+            cloze_subject='压强',contrast_evidence=pointer()['cloze'][0]['contrasts'],distractor_check=check))
     monkeypatch.setattr(store42,'records',lambda kind,plan: points if kind=='points' else rows if kind=='question_bank' else real(kind,plan))
     monkeypatch.setattr(pm,'prepare_point',lambda s,plan,p,ctx:(calls.append((p['id'],ctx.get('extra_search',False))) or dict(passages=1,questions=2,cloze=int(p['id'][5:])<fallback)))
     result=pm.prepare_module(store42,'p','m',context42(),lambda *a:None)
@@ -195,9 +196,9 @@ def test_materials42_real_pipeline_late_answers_replace_only_unused_fallback(sto
         result=pm.prepare_module(store42,'p','m',context,lambda *a:None)
         assert result==dict(points=1,cloze_points=0,cloze_heavy=False)
     rows=store42.records('question_bank','p')
-    assert sum(q.get('role')=='bank' and q['origin']=='found' for q in rows)==3
+    assert sum(q.get('role')=='bank' and q['origin']=='found' for q in rows)==2
     assert sum(q.get('role')=='quick' for q in rows)==1
-    assert len(rows)==4 and len(queries)==arrival+1
+    assert len(rows)==3 and len(queries)==arrival+1
     supplements=[s for s in store42.records('sources','p') if s.get('excerpt')]
     assert len(supplements)==1 and supplements[0]['group']=='补充摘录'
     assert not any('建筑' in c['text'] for c in store42.records('source_chunks','p') if c['source_id']==supplements[0]['id'])

@@ -44,9 +44,10 @@ def controls(view,stage):
 
 
 class Driver:
-    def __init__(self,simulation,user,persona,*,stuck_limit=5):
+    def __init__(self,simulation,user,persona,*,stuck_limit=5,reopen_before_adopt=False):
         self.sim,self.user,self.persona=simulation,user,persona
         self.stuck_limit=stuck_limit
+        self.reopen_before_adopt=reopen_before_adopt
         if stuck_limit<1:raise ValueError('stuck_limit must be positive')
         p=simulation.evidence.root/'checkpoint.json'
         self.state=json.loads(p.read_text(encoding='utf-8')) if p.exists() else dict(stage='form',plan_id=None,rounds=0,view={},flags=[])
@@ -101,7 +102,7 @@ class Driver:
             self.request('plan.current')
             if to=='form':return
             today=self.sim.clock.day();p=self.persona
-            form=dict(goal=p.goal,final_goal=p.final_goal,level=p.level,level_note='',notes=p.notes,
+            form=dict(goal=p.goal,final_goal=p.final_goal,level=p.level,level_note=p.level_note,notes=p.notes,
                 start=today.isoformat(),end=(today+timedelta(days=p.days-1)).isoformat(),daily_cap=p.daily_cap,
                 weekday_weights=[1]*7,special_days=[],only_mine=False)
             self.request('plan.submit',form=form);self.state.update(stage='dialogue',rounds=1);self.save()
@@ -115,6 +116,11 @@ class Driver:
                     if to=='dialogue':return
                     self.state['stage']='sources';self.save();continue
             if stage=='sources' and phase=='outline':self.state['stage']='map';self.save();continue
+            if (stage=='sources' and self.reopen_before_adopt and view.get('sources')
+                    and 'draft_reopen' not in self.state['flags']):
+                self.state['view']=self.sim.reopen_draft(self.state['plan_id'])
+                if hasattr(self.user,'gateway'):self.user.gateway=self.sim.gateway
+                self.state['flags'].append('draft_reopen');self.save();continue
             if stage=='map' and view.get('estimate'):self.state['stage']='estimate';self.save();continue
             if stage=='estimate' and phase=='ready':
                 self.sim.join_jobs();self.state['stage']='generated';self.save();continue

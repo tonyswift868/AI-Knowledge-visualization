@@ -23,6 +23,10 @@ def bank_question(pid, mid, *, index=0, kind='short', ids=None, answer='先进�
         # subjective bank admission. Use a literal short term from its source.
         term=re.search(r'[A-Za-z0-9_]+|[\u4e00-\u9fff]{1,8}',answer)
         row.update(stem=f'{pid}原文关键词是____（{index}）。', answer=[[term[0] if term else '先进先出']])
+    # State/ledger tests start with a synthetic, already-reviewed bank. The
+    # actual quote checking and admission are covered by point_materials tests.
+    row['distractor_check']=dict(state='passed',checks=[dict(option=option,index=i,verdict='not_supported',quote='',removed=False)
+        for i,option in enumerate(row.get('options',[])) if i not in row['answer']],reason='',at=row['created_at'])
     return row
 
 
@@ -37,6 +41,10 @@ def seed_bank(store, plan_id, *, count=3):
         q=bank_question(p['id'],p['module_id'],kind='choice',chunk=chunk['id'])
         q.update(id=p['id']+'-quick42',role='quick',origin='cloze',stem=chunk['text'].replace(word,'____',1),
                  options=[word,'另一概念','无关说法'],answer=[0],explanation=chunk['text'])
+        q.update(cloze_subject=p['title'],contrast_evidence=[dict(chunk_id=chunk['id'],contrast_quote=value,
+            contrast_subject='隔离夹具对象'+str(i),contrast_value=value) for i,value in enumerate(q['options'][1:])])
+        q['distractor_check']['checks']=[dict(option=value,index=i,verdict='not_supported',quote='',removed=False)
+            for i,value in enumerate(q['options']) if i not in q['answer']]
         store.add_bank_questions(plan_id,p['module_id'],[q])
 
 

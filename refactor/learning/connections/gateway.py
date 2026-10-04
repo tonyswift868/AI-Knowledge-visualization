@@ -45,7 +45,7 @@ _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
 # Profile replays contained an unsupported historical claim with thinking off;
 # the task's quality fallback retains the provider default for that purpose.
 PURPOSE_EFFORT = {
-    'check_profile': 'high', 'point_materials': 'high',
+    'check_profile': 'high', 'point_materials': 'high', 'distractor_check': 'high',
     'source_identity': 'high', 'outline': 'high',
     'generate': 'high', 'plan_additions_generate': 'high',
     'source_scoring': 'high', 'research': 'high', 'teacher': 'high', 'coverage_check': 'high',

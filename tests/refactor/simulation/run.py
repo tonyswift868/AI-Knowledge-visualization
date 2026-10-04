@@ -49,6 +49,7 @@ def main(argv=None):
     parser.add_argument('--day',type=int,help='检查点已建计划时，只跑第N天的课')
     parser.add_argument('--dialogue-rounds',type=int,help='填表计第1轮，到指定轮数停止；没有默认对话轮数上限')
     parser.add_argument('--stuck-limit',type=int,default=5)
+    parser.add_argument('--reopen-before-adopt',action='store_true',help='资料卡片出现后重建服务并读取本机草稿一次，不替用户采用')
     parser.add_argument('--timeout',type=float,default=240)
     parser.add_argument('--clock',default='2026-10-03T10:00:00+09:00')
     args=parser.parse_args(argv)
@@ -66,9 +67,9 @@ def main(argv=None):
     try:
         sim.evidence.save('run-config.json',dict(mode='live' if args.live else 'offline',persona=asdict(persona),
             budget=args.budget,to=args.to,from_stage=args.from_stage,day=args.day,dialogue_rounds=args.dialogue_rounds,
-            clock=args.clock,stuck_limit=args.stuck_limit,timeout=args.timeout))
+            clock=args.clock,stuck_limit=args.stuck_limit,timeout=args.timeout,reopen_before_adopt=args.reopen_before_adopt))
         user=ScriptUser(json.loads(args.script.read_text(encoding='utf-8')) if args.script else None) if not args.live or args.script else ModelUser(sim.gateway,persona)
-        driver=Driver(sim,user,persona,stuck_limit=args.stuck_limit)
+        driver=Driver(sim,user,persona,stuck_limit=args.stuck_limit,reopen_before_adopt=args.reopen_before_adopt)
         summary=driver.run(to=args.to,from_stage=args.from_stage,rounds=args.dialogue_rounds,day=args.day)
         print(json.dumps(summary,ensure_ascii=False,indent=2));return 1 if summary['stop'] else 0
     finally:sim.close()

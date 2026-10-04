@@ -7,13 +7,13 @@ from refactor.learning.course.source_quality import question_priority
 
 
 def passage(cid='c',level=1,qa=False):
-    text='1. 压强单位是？\nA. 帕\nB. 牛顿\n答案：A\n压强是压力与受力面积的比值。'
+    text='1. 压强单位是？\nA. 帕\nB. 牛顿\nC. 焦耳\n答案：A\n压强是压力与受力面积的比值。'
     return dict(id=cid,source_id=cid,text=text,section='',authority=dict(level=level,type='general_site'),
         source=dict(url='https://example.test/'+('interview-questions' if qa else cid),title='问答' if qa else '教材练习',locator='1'))
 
 
 def found(cid='c',kind='choice'):
-    return dict(kind=kind,stem='压强单位是？',answer=[0],options=['帕','牛顿'],answer_quote='A',
+    return dict(kind=kind,stem='压强单位是？',answer=[0],options=['帕','牛顿','焦耳'],answer_quote='A',
         explanation='',pairing='same_block',question_chunk=cid,answer_chunk=cid)
 
 
@@ -26,10 +26,10 @@ def test_questions44_high_bands_stop_before_qa_without_cloze():
     def finder(point,ps,**kw):
         calls.append(ps[0]['id'])
         # Independent standard-answer source questions.
-        for p in ps:p['text']='\n'.join(f'{i}. 题{i}？\nA. 帕\nB. 牛顿\n答案：A' for i in range(3))
+        for p in ps:p['text']='\n'.join(f'{i}. 题{i}？\nA. 帕\nB. 牛顿\nC. 焦耳\n答案：A' for i in range(3))
         return dict(passages=[ps[0]['id']],found=[dict(found(ps[0]['id']),stem=f'题{i}？') for i in range(3)],cloze=[])
     # The stored originals already contain these three questions.
-    passages[0]['text']='\n'.join(f'{i}. 题{i}？\nA. 帕\nB. 牛顿\n答案：A' for i in range(3))
+    passages[0]['text']='\n'.join(f'{i}. 题{i}？\nA. 帕\nB. 牛顿\nC. 焦耳\n答案：A' for i in range(3))
     result=pm._locate(POINT,passages,dict(finder=finder),'adopted')
     assert calls==['high'] and len(result['found'])==3
 
@@ -92,18 +92,23 @@ def test_questions44_remaining_sentence_cannot_reveal_alias(sentence,word,valid)
 def test_questions44_quick_filters_overlapping_distractors_not_whole_row():
     p=passage();p['text']='The private address is used within a network.'
     other=dict(p,id='other44',section='Other chapter',text='local public global public address')
-    item=dict(target='本点原文定义是什么？',chunk_id='c',sentence='The private address is used within a network.',word='private',keywords=['local','public','public address','global'])
+    other['text']='Loopback is local. Routed is public. Broadcast is public address. Universal is global.'
+    item=dict(target='本点原文定义是什么？',subject='address',chunk_id='c',sentence='The private address is used within a network.',word='private',contrasts=[
+        dict(chunk_id='other44',contrast_quote=quote,contrast_subject=subj,contrast_value=value) for quote,subj,value in
+        [('Loopback is local.','Loopback','local'),('Routed is public.','Routed','public'),('Broadcast is public address.','Broadcast','public address'),('Universal is global.','Universal','global')]])
     q=pm._quick(item,POINT,{'c':p},[p,other])
     assert q['options']==['global','private','public'] and q['role']=='quick'
-    assert pm._quick(dict(item,keywords=['local']),POINT,{'c':p},[p]) is None
+    assert pm._quick(dict(item,contrasts=item['contrasts'][:1]),POINT,{'c':p},[p,other]) is None
 
 
 def test_questions44_long_blank_uses_choice_not_fill():
     p=passage();word='a uniquely written but very long technical phrase'
     sentence='The term '+word+' identifies this abstraction.'
     p['text']=sentence
-    other=dict(p,id='other44',section='Other chapter',text='beta gamma delta')
-    item=dict(target='本点原文定义是什么？',chunk_id='c',sentence=sentence,word=word,keywords=['beta','gamma'],importance='key')
+    other=dict(p,id='other44',section='Other chapter',text='Object B is beta. Object C is gamma.')
+    item=dict(target='本点原文定义是什么？',subject='abstraction',chunk_id='c',sentence=sentence,word=word,importance='key',contrasts=[
+        dict(chunk_id='other44',contrast_quote='Object B is beta.',contrast_subject='Object B',contrast_value='beta'),
+        dict(chunk_id='other44',contrast_quote='Object C is gamma.',contrast_subject='Object C',contrast_value='gamma')])
     q=pm._cloze(item,dict(POINT,importance='key'),{'c':p},[p,other])
     assert q['kind']=='choice'
 
@@ -135,6 +140,8 @@ def test_questions44_selection_skips_subjective_history_prioritizes_band():
         rows.append(pm._found(found(cid),POINT,{cid:p}))
     assert rows[2] is None and rows[3] is None
     rows=rows[:2]
+    rows=pm.check_distractors(rows,[],[passage('hi',1),passage('mid',2)],dict(distractor_checker=lambda packet,**kw:
+        dict(questions=[dict(id=q['id'],checks=[dict(index=i,verdict='not_supported',quote='') for i in range(len(q['options'])) if i not in q['answer']]) for q in packet['questions']])))
     subjective=dict(rows[0],id='old',kind='short',answer='旧主观题');subjective.pop('options')
     chosen=qb.select_question([subjective,*reversed(rows)],'p','module')
     assert chosen['source_level']==1

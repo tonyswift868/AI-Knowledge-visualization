@@ -27,8 +27,8 @@ QUOTE = '队列按先进先出的顺序处理元素，栈按后进先出的顺�
 STEMS = ['队列按哪种顺序处理元素？', '队列的处理顺序是什么？', '请选择资料中队列的处理顺序。']
 BODY = ('<html><head><title>Python 数据结构</title></head><body><h1>队列与栈</h1>'
     + ''.join('<p>'+QUOTE+'</p>' for _ in range(50))
-    + ''.join(f'<p>{stem} A. 先进先出 B. 后进先出 答案：先进先出</p>' for stem in STEMS)
-    + '<h1>其他数据结构</h1><p>链表按链接存储元素。二叉树按分支组织节点。哈希表按散列定位键值。其他数据结构有各自的存储和查找方法。</p>'
+    + ''.join(f'<p>{stem} A. 先进先出 B. 后进先出 C. 散列次序 答案：先进先出</p>' for stem in STEMS)
+    + '<h1>其他数据结构</h1><p>哈希表按散列次序处理元素。栈按后进先出的顺序处理元素。其他数据结构有各自的存储和查找方法。</p>'
     + '</body></html>').encode()
 
 
@@ -59,12 +59,22 @@ class IntegratedModel(Agents):
             found=[]
             for stem in STEMS:
                 p=next(p for p in passages if stem in p['text'])
-                found.append(dict(kind='choice',stem=stem,options=['先进先出','后进先出'],answer=[0],
+                found.append(dict(kind='choice',stem=stem,options=['先进先出','后进先出','散列次序'],answer=[0],
                     explanation='',question_chunk=p['id'],answer_chunk=p['id'],answer_quote='先进先出',
                     pairing='same_block',question_number='',answer_number=''))
             p=next(p for p in passages if QUOTE in p['text'])
+            contrast=next(v for v in passages if '哈希表按散列次序' in v['text'])
             value=dict(passages=[p['id'] for p in passages],found=found,cloze=[
-                dict(target='哪种结构先进先出？',chunk_id=p['id'],sentence=QUOTE,word='队列',importance='key',keywords=['链表','二叉树'])])
+                # Keep the shared fixture's documented quick answer (队列).
+                # Here the queried object is a processing order and its value
+                # is the structure using it; contrast other orders/structures.
+                dict(target='哪种结构按先进先出的顺序处理元素？',subject='先进先出',chunk_id=p['id'],sentence=QUOTE,word='队列',importance='key',contrasts=[
+                    dict(chunk_id=contrast['id'],contrast_quote='栈按后进先出的顺序处理元素。',contrast_subject='后进先出',contrast_value='栈'),
+                    dict(chunk_id=contrast['id'],contrast_quote='哈希表按散列次序处理元素。',contrast_subject='散列次序',contrast_value='哈希表')])])
+        elif purpose == 'distractor_check':
+            packet=json.loads(messages[-1]['content'])
+            value=dict(questions=[dict(id=q['id'],checks=[dict(index=i,verdict='not_supported',quote='')
+                for i in range(len(q['options'])) if i not in q['answer']]) for q in packet['questions']])
         else: raise AssertionError('unexpected purpose '+purpose)
         return SimpleNamespace(text=json.dumps(value,ensure_ascii=False),search_hits=(),citations=())
 
@@ -103,7 +113,7 @@ def build_plan(root, events):
     join_workers()
     assert store.get_plan(pid)['total_minutes']==estimate
     bank=store.records('question_bank',pid)
-    assert len(bank)==12 and sum(q.get('role')=='bank' for q in bank)==9
+    assert len(bank)==9 and sum(q.get('role')=='bank' for q in bank)==6
     assert all(q['origin']=='found' and q['answer_source']['url']==URL for q in bank if q.get('role')=='bank')
     assert any(k=='plan_preparation' for k,_ in events)
     assert 'generate' not in model.calls

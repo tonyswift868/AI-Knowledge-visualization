@@ -1,4 +1,4 @@
-"""Position-only distractors and literal complete parallel answer sets."""
+"""Literal parallel sets retained with the batch-48 explicit-contrast rule."""
 import pytest
 from refactor.learning.course import point_materials as pm
 from refactor.learning.course.question_bank import parallel_answer_parts,validate_question
@@ -10,7 +10,9 @@ def data47():
         source=dict(title='教材',url='https://school.edu/book',locator='第1章'),authority={'level':1,'type':'school'})
     other=dict(own,id='d',text='其他设备用于定位星位、记录距离和发出信号。',section='其他设备')
     i=dict(target='三角帆有什么作用？',chunk_id='c',sentence=own['text'],word='增强操纵、逆风航行和任意方向航行',
-        answer_parts=['增强操纵','逆风航行','任意方向航行'],importance='normal',keywords=['定位星位','记录距离','发出信号'])
+        answer_parts=['增强操纵','逆风航行','任意方向航行'],importance='normal',subject='三角帆',contrasts=[
+            dict(chunk_id='d',contrast_quote=other['text'],contrast_subject='其他设备',contrast_value=value)
+            for value in ['定位星位','记录距离','发出信号']])
     return p,[own,other],i
 
 @pytest.mark.parametrize('sentence,word,parts,expected',[
@@ -47,20 +49,20 @@ def test_cloze47_quick_keeps_one_gap_and_two_foreign_distractors():
     assert len(q['options'])>=3
     validate_question(q)
 
-def test_cloze47_blocks_true_fragments_in_any_linked_chunk_and_answer_sentence():
+def test_cloze47_replaced_position_rule_requires_explicit_other_object():
     p,passages,i=data47()
-    i=dict(i,answer_parts=[],word='增强操纵',keywords=['逆风航行','任意方向航行','定位星位'])
+    i=dict(i,answer_parts=[],word='增强操纵',contrasts=[dict(chunk_id='c',contrast_quote=passages[0]['text'],contrast_subject='三角帆',contrast_value='逆风航行')])
     rejected=[]
     assert pm._cloze(i,p,{'c':passages[0]},passages,rejected=rejected) is None
     assert '不足' in rejected[-1]['reason']
     linked=dict(passages[1],id='linked',section='第三章');p['chunk_ids'].append('linked')
     passages.append(linked)
-    i['keywords']=['定位星位','记录距离','发出信号']
-    assert pm._quick(i,p,{'c':passages[0]},passages) is None
+    _,_,original=data47();i['contrasts']=original['contrasts']
+    assert pm._quick(i,p,{'c':passages[0]},passages) is not None
 
-def test_cloze47_same_module_other_point_is_an_allowed_source():
+def test_cloze47_same_module_does_not_authorize_a_different_document_contrast():
     p,passages,i=data47();passages[1].update(source_id='other',section='帆',module_ids=['m'],point_ids=['otherpoint'])
-    assert pm._cloze(i,p,{'c':passages[0]},passages)['kind']=='multi'
+    assert pm._cloze(i,p,{'c':passages[0]},passages) is None
     passages[1]['module_ids']=['othermodule']
     assert pm._cloze(i,p,{'c':passages[0]},passages) is None
 
@@ -73,16 +75,16 @@ def test_cloze47_single_has_exactly_one_answer_and_does_not_relax_two_distractor
     p,passages,i=data47();i=dict(i,word='增强操纵',answer_parts=[],keywords=['定位星位','记录距离'])
     q=pm._cloze(i,p,{'c':passages[0]},passages)
     assert q['kind']=='choice' and len(q['answer'])==1
-    i['keywords']=['定位星位'];assert pm._quick(i,p,{'c':passages[0]},passages) is None
+    i['contrasts']=i['contrasts'][:1];assert pm._quick(i,p,{'c':passages[0]},passages) is None
 
 def test_cloze47_distractor_context_does_not_expand_point_provenance():
     p,passages,i=data47()
     ctx=dict(finder=lambda *a,**kw:dict(passages=['c','d'],found=[],cloze=[i]),_cloze_calls=[])
     output=pm._locate_tier(p,passages,ctx,'adopted')
-    assert output['passages']==['c']
-    assert ctx['_cloze_calls'][0]['request']['distractor_passages']==['d']
+    assert output['passages']==['c','d']
+    assert 'distractor_passages' not in ctx['_cloze_calls'][0]['request']
     output=pm._locate_tier(p,passages,dict(ctx,cloze_rejections=[{'reason':'换句'}]),'cloze_retry')
-    assert output['passages']==['c'] and ctx['_cloze_calls'][-1]['request']['distractor_passages']==['d']
+    assert output['passages']==['c','d'] and output['cloze'][0]['contrasts']==i['contrasts']
 
 
 def test_cloze47_external_keyword_anchors_resolve_in_their_original_chapter():

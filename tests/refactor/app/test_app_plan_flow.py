@@ -25,6 +25,7 @@ def page(title):
     body = "".join(f"<h2>{title} 第{i}节</h2><p>" + f"{title} 的第 {i} 部分讲解，包含定义、例子和练习。" * 12 + "</p>"
                    for i in range(1, 4))
     body += ''.join(f'<p>第{j}道：{title}学习时依据____？ 答案：资料。</p>' for j in range(3))
+    body += '<p>练习手册讲解操作和实验。术语词典讲解名称和缩写。</p>'
     return f"<html><head><title>{title}</title></head><body><h1>{title}</h1>{body}</body></html>".encode("utf-8")
 
 
@@ -119,8 +120,16 @@ class ScriptedModel:
                         answer_chunk=passage['id'],answer_quote='资料',pairing='same_block',question_number='',answer_number=''))
             p=packet['passages'][0]
             sentence=next(s+'。' for s in p['text'].split('。') if '定义、例子和练习' in s)
+            contrast=next(v for v in packet['passages'] if '练习手册讲解操作和实验。' in v['text'])
             text=json.dumps(dict(passages=[p['id'] for p in packet['passages']],found=found,cloze=[
-                dict(target='本点原文有哪些定义？',chunk_id=p['id'],sentence=sentence,word='定义',importance='key',keywords=['学习','依据'])]),ensure_ascii=False)
+                dict(target='本点原文包含哪些学习内容？',subject=sentence.split(' 的第')[0].strip(),chunk_id=p['id'],sentence=sentence,
+                    word='定义、例子和练习',answer_parts=['定义','例子','练习'],importance='key',contrasts=[
+                        dict(chunk_id=contrast['id'],contrast_quote='练习手册讲解操作和实验。',contrast_subject='练习手册',contrast_value='操作和实验'),
+                        dict(chunk_id=contrast['id'],contrast_quote='术语词典讲解名称和缩写。',contrast_subject='术语词典',contrast_value='名称和缩写')])]),ensure_ascii=False)
+        elif purpose == 'distractor_check':
+            packet=json.loads(user)
+            text=json.dumps(dict(questions=[dict(id=q['id'],checks=[dict(index=i,verdict='not_supported',quote='')
+                for i in range(len(q.get('options',[]))) if i not in q['answer']]) for q in packet['questions']]),ensure_ascii=False)
         elif purpose == "plan_intent":
             payload = json.loads(user.split("\n", 1)[1])
             phase, said = payload["ctx"]["phase"], payload["text"]

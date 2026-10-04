@@ -10,6 +10,7 @@ class Persona:
     goal: str = '队列与栈'
     final_goal: str = '区分处理顺序'
     level: str = 'beginner'
+    level_note: str = ''
     style: str = '简短口语，愿意提问'
     wrong_ratio: float = .2
     ask_ratio: float = .1
@@ -108,20 +109,31 @@ class ModelUser:
                     if isinstance(card.get('quality'),dict):
                         card['quality']={k:v for k,v in card['quality'].items() if k in {'credibility','relevance',
                             'eligible','note','source_group','publisher','source_type','community','level_fit','freshness','published_at'}}
-        result = self.gateway.complete('simulation_user', [{'role':'user','content':json.dumps(
-            dict(persona=asdict(self.persona), behavior=behavior, stage=stage, screen=screen, allowed_actions=actions),ensure_ascii=False)}],
-            system=system, max_tokens=2048)
-        text=result.text.strip()
-        if text.startswith('```'): text=text.split('\n',1)[1].rsplit('```',1)[0].strip()
-        action=json.loads(text)
-        if not isinstance(action,dict) or set(action)!={'method','params'} or not isinstance(action['params'],dict):
-            raise ValueError('模拟用户动作格式错误')
-        if action['method'] not in {a['method'] for a in actions}: raise ValueError('模拟用户选择了屏幕不存在的动作')
-        if action['method']=='plan.decide':
-            offered=[{'card_id':c['card_id'],'adopt':c.get('status')!='adopted'} for c in view.get('sources',[])]
-            if action['params'] not in offered:
-                raise ValueError('模拟用户选择了屏幕不存在的资料勾选动作')
-        return action
+        messages=[{'role':'user','content':json.dumps(dict(persona=asdict(self.persona), behavior=behavior,
+            stage=stage, screen=screen, allowed_actions=actions),ensure_ascii=False)}]
+        for attempt in range(2):
+            # Only an invalid user action gets one explicit correction. Never
+            # retry transport/model failures or a product bridge error here.
+            result=self.gateway.complete('simulation_user',messages,system=system,max_tokens=2048)
+            text=result.text.strip()
+            if text.startswith('```'):text=text.split('\n',1)[1].rsplit('```',1)[0].strip()
+            try:
+                action=json.loads(text)
+                if not isinstance(action,dict) or set(action)!={'method','params'} or not isinstance(action['params'],dict):
+                    raise ValueError('模拟用户动作格式错误')
+                if action['method'] not in {a['method'] for a in actions}:
+                    raise ValueError('模拟用户选择了屏幕不存在的动作')
+                if action['method']=='plan.decide':
+                    offered=[{'card_id':c['card_id'],'adopt':c.get('status')!='adopted'} for c in view.get('sources',[])]
+                    if action['params'] not in offered:
+                        raise ValueError('模拟用户选择了屏幕不存在的资料勾选动作；已采用卡片不可再采用，只能取消')
+                return action
+            except ValueError as exc:
+                evidence=getattr(self.gateway,'evidence',None)
+                if evidence:evidence.event('simulated_user_action_rejected',stage=stage,text=text,reason=str(exc),attempt=attempt+1)
+                if attempt:raise
+                messages += [{'role':'assistant','content':result.text},{'role':'user','content':
+                    '上一次动作没有执行。原因：'+str(exc)+'。屏幕没有变化，请重新根据当前屏幕和 allowed_actions 自己选择有效动作；不要声称操作已成功。'}]
 
 
 class OfflineGateway:

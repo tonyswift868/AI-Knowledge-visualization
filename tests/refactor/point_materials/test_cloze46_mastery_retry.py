@@ -9,8 +9,10 @@ from refactor.learning.course.store import CourseStore,StoreError
 from refactor.learning.course.ledger import PlanWindow
 from refactor.learning.app.classroom import Classroom
 from refactor.learning.connections.errors import ModelCancelled
+from test_point_materials37_contract import approve37
 
-TEXT='环球航行表明地球是一个球体。首次航行开始于1519年，完成于1522年。航行经过大西洋、太平洋和印度洋。'
+TEXT='环球航行表明地球是一个球体。航行证实地球近似球形。首次航行开始于1519年，完成于1522年。航行经过大西洋、太平洋和印度洋。'
+OTHER46='方盒的外形是方块。圆锥模型的外形是锥体。另一航行开始于1600年。第三航行开始于1700年。'
 
 @pytest.fixture
 def data46(tmp_path):
@@ -19,7 +21,7 @@ def data46(tmp_path):
         store.create_plan('p',goal='航行意义',window=PlanWindow(today,today+timedelta(days=3),100))
         store.add_sources('p',[dict(id='s',url='https://history.edu/text',title='历史原文',adopted=True,
             chunks=[dict(chunk_id='c',text=TEXT,section=['历史']),
-                dict(chunk_id='other46',text='古代地形包含丘陵、盆地和高原。',section=['地理'])])])
+                dict(chunk_id='other46',text=OTHER46,section=['地理'])])])
         store.save_outline('p',[dict(id='st',title='历史')],[dict(id='m',stage_id='st',title='航行')])
         store.save_generated_module('p','m',[dict(id='pt',title='环球航行意义',summary='能说明航行表明地球是球体',
             minutes=15,chunk_ids=['c'],importance='key')],check_minutes=5,today=today)
@@ -27,12 +29,15 @@ def data46(tmp_path):
 
 def items46():
     return [dict(target='环球航行表明地球是什么形状？',chunk_id='c',sentence='环球航行表明地球是一个球体。',
-        word='球体',importance='key',keywords=['丘陵','盆地']),
-        dict(target='首次航行什么时候开始？',chunk_id='c',sentence='首次航行开始于1519年，完成于1522年。',
-        word='1519年',importance='key',keywords=['1522年'])]
+        word='球体',importance='key',subject='地球',contrasts=[
+            dict(chunk_id='other46',contrast_quote='方盒的外形是方块。',contrast_subject='方盒',contrast_value='方块'),
+            dict(chunk_id='other46',contrast_quote='圆锥模型的外形是锥体。',contrast_subject='圆锥模型',contrast_value='锥体')]),
+        dict(target='航行证实地球是什么形状？',chunk_id='c',sentence='航行证实地球近似球形。',word='球形',importance='key',subject='地球',contrasts=[
+            dict(chunk_id='other46',contrast_quote='方盒的外形是方块。',contrast_subject='方盒',contrast_value='方块'),
+            dict(chunk_id='other46',contrast_quote='圆锥模型的外形是锥体。',contrast_subject='圆锥模型',contrast_value='锥体')])]
 
 def context46(finder):
-    return dict(finder=finder,search=lambda *a,**k:[],fetcher=lambda *a,**k:(_ for _ in ()).throw(OSError('offline')))
+    return dict(finder=finder,search=lambda *a,**k:[],fetcher=lambda *a,**k:(_ for _ in ()).throw(OSError('offline')),distractor_checker=approve37)
 
 def result46(items):return dict(passages=['c'],found=[],cloze=items)
 
@@ -41,14 +46,20 @@ def test_cloze46_system_uses_summary_question_and_preserves_phrase_years():
     assert '年份、人数、人名或结论都不按类型排除' in pm._SYSTEM
     chunk=dict(id='c',source_id='s',text=TEXT,section='',source=dict(title='书',url='',locator='段落'))
     point=dict(id='pt',module_id='m',importance='key')
-    q=pm._cloze(items46()[1],point,{'c':chunk},[chunk])
-    assert q['kind']=='fill' and q['answer']==[['1519年']]
+    other=dict(chunk,id='other46',text=OTHER46)
+    year=dict(items46()[0],subject='首次航行',sentence='首次航行开始于1519年，完成于1522年。',word='1519年',contrasts=[
+        dict(chunk_id='other46',contrast_quote='另一航行开始于1600年。',contrast_subject='另一航行',contrast_value='1600年'),
+        dict(chunk_id='other46',contrast_quote='第三航行开始于1700年。',contrast_subject='第三航行',contrast_value='1700年')])
+    q=pm._cloze(year,point,{'c':chunk},[chunk,other])
+    assert q['kind']=='choice' and q['options'][q['answer'][0]]=='1519年'
     phrase='说明地球的形状并确认海洋相互连通'
-    sentence='航行意义在于'+phrase+'。'
+    sentence='环球船队意义在于'+phrase+'。'
     chunk['text']=sentence
-    other=dict(chunk,id='other',section='其他航行',text='独立研究陆地边界。证明季节性风向变化。')
+    other=dict(chunk,id='other',section='其他航行',text='测绘队的意义在于独立研究陆地边界。气象队的意义在于证明季节性风向变化。')
     item=dict(target='航行意义是什么？',chunk_id='c',sentence=sentence,word=phrase,importance='key',
-        keywords=['独立研究陆地边界','证明季节性风向变化'])
+        subject='环球船队',contrasts=[
+        dict(chunk_id='other',contrast_quote='测绘队的意义在于独立研究陆地边界。',contrast_subject='测绘队',contrast_value='独立研究陆地边界'),
+        dict(chunk_id='other',contrast_quote='气象队的意义在于证明季节性风向变化。',contrast_subject='气象队',contrast_value='证明季节性风向变化')])
     q=pm._quick(item,point,{'c':chunk},[chunk,other])
     assert q['kind']=='choice' and q['options'][q['answer'][0]]==phrase
     assert q['stem'].startswith(item['target']+'\n')
@@ -90,7 +101,7 @@ def test_cloze46_all_rejected_retry_passes_reasons_and_changes_sentence(data46):
 
 def test_cloze46_retry_still_fails_raw_evidence_once(data46):
     store,point=data46;calls=[]
-    bad=dict(items46()[0],keywords=['球体','一个球体'],importance='normal')
+    bad=dict(items46()[0],contrasts=[],importance='normal')
     def finder(p,ps,mode,**kw):calls.append(mode);return result46([bad])
     with pytest.raises(StoreError) as error:pm.prepare_point(store,'p',point,context46(finder))
     assert error.value.code=='CLOZE_FAILED' and calls.count('cloze_retry')==1

@@ -257,6 +257,12 @@ class Simulation:
         self.bridge.close();self.bridge._pool.shutdown(wait=True,cancel_futures=True);self.services.close()
         self.evidence.event('reopen',plan_id=plan_id);self.bind()
         return self.call('classroom.enter',plan_id=plan_id)
+    def reopen_draft(self,plan_id):
+        """Rebuild services and read the saved draft through the real UI bridge."""
+        self.join_jobs()
+        self.bridge.close();self.bridge._pool.shutdown(wait=True,cancel_futures=True);self.services.close()
+        self.evidence.event('draft_reopen',plan_id=plan_id);self.bind()
+        return self.call('plan.get',plan_id=plan_id)['draft']
     def close(self):
         if self.closed:return
         self.closed=True
