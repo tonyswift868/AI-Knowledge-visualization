@@ -202,6 +202,38 @@
     {
       "match": "1337x.to",
       "reason": "以未授权内容分发为显著风险的站点，不进入资料推荐。"
+    },
+    {
+      "match": "youtube.com",
+      "reason": "视频或报名课程入口，不作为完整文字学习资料推荐（52-MF01）。"
+    },
+    {
+      "match": "youtu.be",
+      "reason": "视频或报名课程入口，不作为完整文字学习资料推荐（52-MF01）。"
+    },
+    {
+      "match": "bilibili.com",
+      "reason": "视频或报名课程入口，不作为完整文字学习资料推荐（52-MF01）。"
+    },
+    {
+      "match": "vimeo.com",
+      "reason": "视频或报名课程入口，不作为完整文字学习资料推荐（52-MF01）。"
+    },
+    {
+      "match": "youku.com",
+      "reason": "视频或报名课程入口，不作为完整文字学习资料推荐（52-MF01）。"
+    },
+    {
+      "match": "edx.org",
+      "reason": "视频或报名课程入口，不作为完整文字学习资料推荐（52-MF01）。"
+    },
+    {
+      "match": "coursera.org",
+      "reason": "视频或报名课程入口，不作为完整文字学习资料推荐（52-MF01）。"
+    },
+    {
+      "match": "udemy.com",
+      "reason": "视频或报名课程入口，不作为完整文字学习资料推荐（52-MF01）。"
     }
   ],
   "blocked_keywords": {
@@ -396,7 +428,12 @@
     {
       "type": "language_education_institution",
       "level": 1,
-      "suffixes": ["britishcouncil.org", "britishcouncil.in", "ielts.org", "ielts.idp.com"],
+      "suffixes": [
+        "britishcouncil.org",
+        "britishcouncil.in",
+        "ielts.org",
+        "ielts.idp.com"
+      ],
       "publisher": "British Council / IELTS 考试机构",
       "category": "education",
       "reason": "保存候选中的机构署名教学及考试原文；正文相关性单独核实"
@@ -404,7 +441,9 @@
     {
       "type": "academic_institution",
       "level": 1,
-      "suffixes": ["cass.cn"],
+      "suffixes": [
+        "cass.cn"
+      ],
       "publisher": "中国社会科学院",
       "category": "academic",
       "reason": "研究机构发布原文；目录与无教学正文页面不采用"

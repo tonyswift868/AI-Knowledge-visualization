@@ -306,7 +306,7 @@ def parse_intents(answer: str, ctx: dict, *, user_text=None) -> list[Intent]:
                 raise AgentFormatError("refuse reason must be Chinese")
         result.append(Intent(kind, deepcopy(params)))
     if ctx['phase'] == 'preview' and user_text is not None:
-        explicit = bool(re.search(r'确认|同意|(?:预览|模块|方向).{0,8}可以|先按这个方向', user_text))
+        explicit = bool(re.search(r'确认|同意|(?:预览|模块|方向).{0,8}可以|先按这个方向|(?:可以[，,\s]*)?就按这个来', user_text))
         negative = bool(re.search(r'(?:不|别|不要|尚未|还没)(?:确认|同意)|不可以', user_text))
         if explicit and not negative and any(i.kind == 'supplement' for i in result) and not any(i.kind == 'proceed' for i in result):
             result.append(Intent('proceed', {'step':'sources'}))

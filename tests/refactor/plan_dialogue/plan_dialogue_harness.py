@@ -261,6 +261,10 @@ class ScriptedGateway:
             directory=json.loads(prompt)['directory']
             titles=["Python 基础", "CSV 读写", "数据清洗", "异常处理", "汇总报表", "命令行工具", "测试与综合实战", "可选图表"]
             value=dict(summary='按资料调整结构',modules=[dict(key='m'+str(i),title=titles[i%len(titles)],summary='合成模块',refs=[section['id']],chapters=[section['title']]) for i,section in enumerate(directory)],missing=[])
+        elif purpose == 'generate':
+            title=re.search(r'【本模块】(.+?)：',messages[0]['content'])[1]
+            quote=messages[0]['content'].split('[c1] ',1)[1].split('\n',1)[1].split('\n\n【本次生成约束】',1)[0][:80]
+            value=dict(points=[dict(title=title,summary='理解资料',chunks=['c1'],minutes=15,citations=[dict(chunk_id='c1',quote=quote)])])
         elif purpose == "outline":
             refs = list(dict.fromkeys(re.findall(r"\[(s\d+\.\d+)\]", prompt)))
             titles = ["Python 基础", "CSV 读写", "数据清洗", "异常处理", "汇总报表", "命令行工具", "测试与综合实战", "可选图表"]

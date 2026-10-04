@@ -237,6 +237,29 @@ def blocked_keyword_reasons(text: str, *, lists: SourceLists) -> tuple[str, ...]
         if any(_has_keyword(text, keyword) for keyword in lists.blocked_keywords[kind]))
 
 
+def recommendation_rejection(url: str, *, lists=None) -> str:
+    """URL rules for complete text material recommendations; no HTTP or body analysis."""
+    normalized = normalize_url(url)
+    if not normalized:
+        return '链接无效'
+    parsed = urlsplit(normalized)
+    policy = lists or load_lists()
+    local = load_lists()
+    if any(_matches(parsed.hostname, rule) for rule in (*policy.blocked, *local.blocked)):
+        return '视频站或屏蔽来源'
+    path = unquote(parsed.path).lower()
+    if not path or re.fullmatch(r'/[a-z]{2}(?:-[a-z]{2})?', path):
+        return '网站首页，不是完整资料目录'
+    if re.search(r'/(?:videos?|watch|signup|sign-up|signin|sign-in|login|log-in|enroll|register)(?:/|$)', path):
+        return '视频、报名或登录页'
+    if re.search(r'/(select-a-goal|syncclassroom)(/|$)', path):
+        return '通用入口，不是完整资料目录'
+    if (_is_host(parsed.hostname, 'runoob.com') and re.fullmatch(r'/computer(?:-organization)?/[^/]+\.html', path)
+            and not path.endswith(('/index.html', '/computer.html'))):
+        return '单个小节，不是完整资料目录'
+    return ''
+
+
 def screen(hits: Iterable[RawHit], *, lists: SourceLists | None = None) -> list[ScreenedHit]:
     """Drop invalid URLs and annotate all other hits, including blocked ones.
 

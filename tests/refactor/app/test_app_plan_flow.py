@@ -73,6 +73,12 @@ class ScriptedModel:
         elif purpose == 'outline' and system == __import__('refactor.learning.course.planner_agents',fromlist=['MATERIAL_STRUCTURE_SYSTEM']).MATERIAL_STRUCTURE_SYSTEM:
             packet=json.loads(user);section=packet['directory'][0]
             text=json.dumps(dict(summary='按资料调整结构',modules=[dict(key=f'm{i}',title='改过的模块1' if i==1 and packet.get('instruction') else f'模块{i}',summary='理解资料',refs=[section['id']],chapters=[section['title']]) for i in range(1,4)],missing=[]),ensure_ascii=False)
+        elif purpose == 'generate':
+            prompt=messages[0]['content']
+            title=re.search(r'【本模块】(.+?)：',prompt)[1]
+            quote=prompt.split('[c1] ',1)[1].split('\n',1)[1][:80]
+            number=re.search(r'\d+',title)[0]
+            text=json.dumps(dict(points=[dict(title='资料点'+number,summary='理解定义与练习',chunks=['c1'],minutes=15,citations=[dict(chunk_id='c1',quote=quote)])]))
         elif purpose == 'outline':
             chunks=json.JSONDecoder().raw_decode(user.split('【已取得的原文段落】\n')[1])[0]
             modules=[]
@@ -199,11 +205,11 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root, request):
     draft = ask("plan.say", plan_id=pid, text="开始生成吧")["draft"]     # a paid step: show the estimate, never start it
     assert draft["estimate"]["modules"] == 3 and "amount" not in draft["estimate"]
     assert draft["estimate"]["points"] == 3
-    assert draft["phase"] == "outline" and not any(c[0] == "generate" for c in model.calls)
+    assert draft["phase"] == "outline" and sum(c[0] == 'generate' for c in model.calls) == 9
 
     draft = ask("plan.generate", plan_id=pid)["draft"]
     assert draft['phase']=='ready'
-    assert not any(purpose=='generate' for purpose,_,_ in model.calls)
+    assert sum(purpose=='generate' for purpose,_,_ in model.calls) == 9
     from tests.refactor.integration38.support import join_workers
     join_workers()  # Await the short background fixture writes before editing modules.
 
@@ -211,6 +217,12 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root, request):
     mods = [m for s in detail["stages"] for m in s["modules"]]
     assert len(mods) == 3 and all(len(m["points"]) == 1 for m in mods) and detail["plan"]["state"] == "ready"
     assert len(detail["sources"]) == 2 and detail["daily"]["cap"] == 120
+    # This part tests persisted dependency editing. Point generation no longer
+    # returns structure or prerequisites; seed the explicit dependency fixture.
+    dependency = next(m for m in services.store.records('modules', pid) if m['id'] == mods[1]['id'])
+    dependency['prerequisites'] = [mods[0]['id']]
+    with services.store.transaction():
+        services.store._put('modules', pid, dependency)
     model.intents = [[{"kind": "edit_modules", "delete": [], "move": [{"n": 2, "to": 1}]}]]
     draft = ask("plan.say", plan_id=pid, text="把第二个模块挪到最前面")["draft"]
     assert "依赖" in draft["messages"][-1]["text"]                   # module 2 needs module 1

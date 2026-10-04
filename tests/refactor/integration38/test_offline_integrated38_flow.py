@@ -59,6 +59,10 @@ class IntegratedModel(Agents):
             packet=json.loads(messages[-1]['content']); section=packet['directory'][0]
             value=dict(summary='按资料目录理解处理顺序',modules=[dict(key=f'm{i}',title=title,summary='理解处理顺序',
                 refs=[section['id']],chapters=[section['title']]) for i,title in enumerate(('队列基础','顺序比较','队列应用'))],missing=[])
+        elif purpose == 'generate':
+            title=re.search(r'【本模块】(.+?)：',messages[0]['content'])[1]
+            alias=next(a for a,t in re.findall(r'\[(c\d+)\] [^\n]*\n(.*?)(?=\n\n\[c|\n\n【本次生成约束】)',messages[0]['content'],re.S) if QUOTE in t)
+            value=dict(points=[dict(title=title,summary='理解处理顺序',chunks=[alias],minutes=15,citations=[dict(chunk_id=alias,quote=QUOTE)])])
         elif purpose == 'outline':
             chunks=block(messages,'【已取得的原文段落】')
             cid=next(c['chunk_id'] for c in chunks if QUOTE in c['text'])
@@ -127,7 +131,7 @@ def build_plan(root, events):
     assert len(bank)==9 and sum(q.get('role')=='bank' for q in bank)==6
     assert all(q['origin']=='found' and q['answer_source']['url']==URL for q in bank if q.get('role')=='bank')
     assert any(k=='plan_preparation' for k,_ in events)
-    assert 'generate' not in model.calls
+    assert model.calls.count('generate') == 3
     flow.start_request(pid)
     return services,flow,model,pid
 

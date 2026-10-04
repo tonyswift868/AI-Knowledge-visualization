@@ -321,30 +321,47 @@ class PlanFlow:
     # ----------------------------------------------------------- model calls
     def _ask(self, purpose, request, parse, ctx, *, plan_id, search=False, max_tokens=4096):
         system, messages = request[0], request[1]
+        messages = list(messages)
         last = None
-        for attempt in range(2):  # one retry on a malformed answer (ARCH-04) or a transient provider hiccup
+        transport_retried = format_retried = False
+        for attempt in range(3):  # one provider retry and one format repair, both bounded
             try:
                 result = self.services.gateway.complete(purpose, messages, system=system, enable_search=search,
                                                         cancel=ctx.cancel, plan_id=plan_id, max_tokens=max_tokens,
                                                         **({'on_text': lambda _text: None} if purpose == 'outline' else {}))
             except ModelError as exc:
-                if (exc.code == MODEL_OUTPUT_TRUNCATED and not attempt and max_tokens < 32768
+                if (exc.code == MODEL_OUTPUT_TRUNCATED and not transport_retried and max_tokens < 32768
                         and not ctx.cancel.is_set()):
                     # A long outline can outgrow its cap; the same request with room to finish.
                     log.info("agent %s hit the output cap %s, retrying with double", purpose, max_tokens)
                     max_tokens, last = min(32768, max_tokens * 2), exc
+                    transport_retried = True
                     continue
-                if attempt or exc.code not in TRANSIENT or ctx.cancel.is_set():
+                if transport_retried or exc.code not in TRANSIENT or ctx.cancel.is_set():
                     raise
                 log.info("agent %s transient error %s, retrying once", purpose, exc.code)
                 last = exc
+                transport_retried = True
                 continue
             try:
                 return parse(result.text), result
             except agents.AgentFormatError as exc:
                 last = exc
                 log.info("agent %s returned an invalid format (%s), attempt %s", purpose, exc, attempt + 1)
-        raise ModelError("AGENT_FORMAT", "AI 的回答格式不对，已重试一次仍不行。") from last
+                if format_retried:
+                    break
+                format_retried = True
+                if not ctx.cancel.is_set():
+                    detail = (' plan_intent 的 reply 必须在根对象；chat 没有参数，不能把 reply 放进 params。'
+                              if purpose == 'plan_intent' else '')
+                    reason = str(exc)
+                    if exc.__cause__:
+                        reason += '：' + str(exc.__cause__)
+                    messages = messages + [{'role': 'assistant', 'content': result.text},
+                        {'role': 'user', 'content': '上一条格式校验失败：' + reason + '。' + detail +
+                         '请依据原输出结构修正一次，返回完整合法JSON，检查括号、字段层级及引用；不执行任何动作。'}]
+        raise ModelError("AGENT_FORMAT", "没听懂，换个说法。" if purpose == 'plan_intent' else
+                         "AI 的回答格式不对，已重试一次仍不行。") from last
 
     # ----------------------------------------------------------- 1 form + sufficiency
     def submit_form(self, draft, ctx, raw):
@@ -468,6 +485,10 @@ class PlanFlow:
                     ok, final, reason = False, row['url'], type(exc).__name__
             else:
                 ok, final, reason = self._link_available(row['url'], ctx.cancel)
+            if ok:
+                from ..course.source_filter import recommendation_rejection
+                reason = recommendation_rejection(final, lists=self._lists())
+                ok = not reason
             if not ok:
                 log.info('recommended link unavailable: %s (%s)', row['url'], reason)
                 continue
@@ -487,6 +508,10 @@ class PlanFlow:
             with ResearchService()._client() as client:
                 with client.stream('GET', url, follow_redirects=True, timeout=15,
                                    headers={'Range': 'bytes=0-16383'}) as response:
+                    from ..course.source_filter import recommendation_rejection
+                    rejected = recommendation_rejection(str(response.url), lists=self._lists())
+                    if rejected:
+                        return False, str(response.url), rejected
                     if response.status_code not in (200, 206):
                         return False, str(response.url), f'HTTP {response.status_code}'
                     prefix = b''
@@ -705,10 +730,23 @@ class PlanFlow:
             draft["messages"].append(_msg("user", "user_text", request))
         chunks = [c for items in self._adopted(draft)[1].values() for c in items]
         self.status(draft["plan_id"], "正在从已认可资料整理知识地图…" if not previous else "正在按你的意见修改知识地图…")
-        outline, _ = self._ask("outline", agents.map_request(draft["goal"], self._effective_form(draft), window_note(window), sources,
-                                                                sections, chunks, previous=previous, request=request, structure=structure),
-                               lambda text: agents.parse_material_map(text, sections, sources, chunks, structure), ctx,
-                               plan_id=draft["plan_id"], max_tokens=32768)
+        # Structure is host-owned. Reuse module generation, bounded material
+        # batches and truncation splitting; never ask a model for a whole map.
+        modules = [dict(m, id=m['key'], prerequisites=[], minutes=[15, 15], points=[])
+                   for m in structure['modules']]
+        skeleton = {'stages': [{'title': draft['goal'][:60], 'modules': modules}]}
+        working = dict(draft, form=self._effective_form(draft), outline=skeleton, material_map=True)
+        by_section = {s.id: s for s in sections}
+        for module in modules:
+            allowed = {cid for ref in module['refs'] for cid in by_section[ref].chunk_ids}
+            selected = [c for c in chunks if c['id'] in allowed]
+            picked = self._module_chunks(selected, {s['id']: s['title'] for s in sources})
+            self.status(draft['plan_id'], '正在填知识点：' + module['title'])
+            module['points'] = self._generate_module_batches(working, module, picked, ctx)
+        # The existing literal-citation validator and cross-material merge now
+        # receive a PROGRAM-constructed envelope, not a model-written structure.
+        outline = agents.parse_material_map(json.dumps(dict(skeleton, message='已按确认的资料结构逐模块填入知识点。'),
+            ensure_ascii=False), sections, sources, chunks, structure)
         if outline["dropped"]:
             self._say(draft, "找不到可核验原文，已删除这些知识点：" + "、".join(outline["dropped"]) +
                       "。如还需要学习这些内容，请继续找资料、提供资料，或告诉我这部分暂时不学。")
@@ -994,6 +1032,12 @@ class PlanFlow:
 
     def _generate_module_batches(self, draft, module, chunks, ctx):
         """Read all of a module's material: big modules go in bounded batches, merged afterwards."""
+        if draft.get('material_map'):
+            batches = agents.split_module_chunks(chunks, max_chars=agents.DEFAULT_BATCH_CHARS)
+            parts = [part for index, batch in enumerate(batches, 1)
+                     for part in self._generate_batch(draft, module, batch, None,
+                         (index, len(batches)), ctx, max_points=30)]
+            return parts[0] if len(parts) == 1 else agents.merge_point_batches(parts, chunks, min_points=1)
         limit = max(1, min(MAX_GENERATE_BATCHES, module["minutes"][0] // 10))
         size = agents.DEFAULT_BATCH_CHARS
         batches = agents.split_module_chunks(chunks, max_chars=size)
@@ -1025,23 +1069,25 @@ class PlanFlow:
         """Returns a list of point lists; an answer cut off at the output limit is retried as two halves."""
         index, count = position or (None, None)
         request = agents.generate_request(draft["form"], draft["goal"], draft["outline"], module, batch,
-                                          minutes_range=minutes, batch_index=index, batch_count=count, max_points=max_points)
+                                          minutes_range=minutes, batch_index=index, batch_count=count, max_points=max_points,
+                                          material_map=bool(draft.get('material_map')))
         aliases = request[2]
         # Count constraints are checked after ALL batches are merged. Allow an
         # overlong first result through parsing so the dedicated adjustment can
         # see and revise it, rather than repeating the same request unchanged.
         parse = lambda text: agents.parse_points(text, aliases, minutes_range=minutes,
-                                                 max_points=max_points, min_points=1)  # noqa: E731
+                                                 max_points=max_points, min_points=1,
+                                                 quoted_chunks=batch if draft.get('material_map') else None)  # noqa: E731
         try:
             return [self._ask("generate", request[:2], parse, ctx, plan_id=draft["plan_id"], max_tokens=8192)[0]]
         except ModelError as exc:
-            if exc.code != MODEL_OUTPUT_TRUNCATED or not split or minutes[0] < 4:
+            if exc.code != MODEL_OUTPUT_TRUNCATED or not split or (minutes is not None and minutes[0] < 4):
                 raise
             log.info("module %s batch %s hit the output limit; retrying in two halves", module["id"], index)
         halves = agents.split_module_chunks(batch, max_chars=sum(len(c["text"]) for c in batch) // 2 + 1)
         if len(halves) != 2:
             raise ModelError(MODEL_OUTPUT_TRUNCATED, "模型输出达到上限，这个模块的资料拆小后仍然不行。")
-        ranges = agents.batch_minute_ranges(halves, minutes)
+        ranges = agents.batch_minute_ranges(halves, minutes) if minutes is not None else [None, None]
         return [part for i, (half, r) in enumerate(zip(halves, ranges), 1)
                 for part in self._generate_batch(draft, module, half, r, (i, 2), ctx,
                                                  max_points=max(1, max_points // 2), split=False)]

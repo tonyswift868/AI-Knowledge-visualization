@@ -181,15 +181,16 @@ def test_plan51_material_map_output_budget_covers_high_thinking(flow,monkeypatch
     f,c,pid,model=flow
     original=model.complete;limits=[]
     def complete(purpose,messages,**kwargs):
-        if kwargs.get('system')==agents.MAP_SYSTEM:
+        if purpose=='generate':
             limits.append(kwargs['max_tokens'])
-            assert callable(kwargs.get('on_text'))
+            assert 'citations' in kwargs['system']
+        assert kwargs.get('system')!=agents.MAP_SYSTEM
         return original(purpose,messages,**kwargs)
     monkeypatch.setattr(model,'complete',complete)
     f.run(pid,lambda d,c:f.chat(d,c,URL),c)
     f.run(pid,lambda d,c:f.make_outline(d,c),c)
     f.run(pid,lambda d,c:f.resolve_missing(d,c,'continue'),c)
-    assert limits==[32768]
+    assert limits==[8192]*3
 
 
 def test_plan51_directory_keeps_one_chapter_when_body_exceeds_legacy_batch_size(flow,tmp_path):

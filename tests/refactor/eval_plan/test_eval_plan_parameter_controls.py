@@ -250,6 +250,10 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
                     raise ModelError('AGENT_FORMAT','标明用途的失败替身')
                 directory=json.loads(text)['directory']
                 result=dict(summary='按资料调整',modules=[dict(key='m1',title='循环',summary='推理和行动',refs=[s['id'] for s in directory],chapters=[s['title'] for s in directory])],missing=[])
+            elif purpose == 'generate':
+                prompt=messages[0]['content']
+                blocks=re.findall(r'\[(c\d+)\] [^\n]*\n(.*?)(?=\n\n\[c|\n\n【本次生成约束】)',prompt,re.S)
+                result=dict(points=[dict(title=title,summary='解释'+title,chunks=[a],minutes=15,citations=[dict(chunk_id=a,quote=t[:80])]) for title,(a,t) in zip(('推理','行动'),(blocks[0],blocks[-1]))])
             elif purpose == "outline":
                 if self.fail_outline:
                     from refactor.learning.connections.errors import ModelError
@@ -286,7 +290,7 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
     generated = exp.run_one("base", 1, generate=True)
     assert generated["formal_complete"] and generated["metrics"]["point_count"] == 2
     assert first["draft"]["plan_id"] == generated["draft"]["plan_id"]
-    assert operations == ["sufficiency", "sufficiency", "outline", "outline", "point_materials"]
+    assert operations == ["sufficiency", "sufficiency", "outline", "generate", "point_materials"]
     assert len(generated["metrics"]["chapter_coverage"]) == 2
     assert generated["metrics"]["point_minutes_sum"] == 30
     assert exp.run_one("base", 1, generate=True)["formal_complete"]

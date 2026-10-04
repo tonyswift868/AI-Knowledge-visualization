@@ -63,6 +63,9 @@ class Model:
         elif purpose == 'outline' and kwargs.get('system') == agents.MATERIAL_STRUCTURE_SYSTEM:
             packet=json.loads(text); section=packet['directory'][0]
             result=dict(summary='按资料理解压强',modules=[dict(key='m1',title='压强与面积',summary='理解压强',refs=[section['id']],chapters=[section['title']])],missing=['浮力'] if self.missing else [])
+        elif purpose == 'generate':
+            result=dict(points=[dict(p,title=p['title'],chunks=['c1'],minutes=15) for p in raw_map('c1',invalid=self.invalid,count=self.count)['stages'][0]['modules'][0]['points']])
+            self.invalid=False  # Repair responds to the host's explicit quote error.
         elif purpose == "outline":
             chunks = json.JSONDecoder().raw_decode(text.split("【已取得的原文段落】\n")[1])[0]
             result = raw_map(chunks[0]["chunk_id"], invalid=self.invalid, count=self.count)
@@ -123,7 +126,7 @@ def test_plan37_whole_offline_flow_and_reopen(fixture):
     flow.run(pid, lambda d, c: flow.estimate(d), ctx)
     result = flow.run(pid, lambda d, c: flow.generate(d, c), ctx)
     assert result["draft"]["phase"] == "ready" and result["draft"]["busy"] is None
-    assert len(prepared) == 1 and "generate" not in model.calls
+    assert len(prepared) == 1 and model.calls.count("generate") == 1
     assert any("第 1 模块的资料与题目 1/1" in str(e) for e in events)
     detail = flow.detail(pid)
     point = detail["stages"][0]["modules"][0]["points"][0]
@@ -154,8 +157,8 @@ def test_plan37_prunes_invalid_quote_and_reports_name(fixture):
     fixture[1].invalid = True
     draft = adopt_and_map(fixture)
     assert len(agents.outline_modules(draft["outline"])[0]["points"]) == 1
-    assert "资料没有的液体公式" in draft["outline"]["dropped"]
-    assert any("已删除这些知识点" in m["text"] for m in draft["messages"])
+    assert fixture[1].calls.count("generate") == 2
+    assert all(p["title"] != "资料没有的液体公式" for p in agents.outline_modules(draft["outline"])[0]["points"])
 
 
 @pytest.mark.parametrize("bad", ["missing", "unadopted", "short", "invented"])

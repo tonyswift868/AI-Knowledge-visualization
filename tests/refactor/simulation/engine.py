@@ -131,9 +131,14 @@ class RecordedGateway:
             with self.lock:
                 allow=(record['error']['code']=='MODEL_RESPONSE_INVALID' and purpose!='simulation_user'
                        and key not in self.protocol_retries)
+                # Module generation owns its bounded cap retry and split into
+                # halves (BUG-15). Do not halt before that host path executes;
+                # every attempt still reserves/charges the same shared budget.
+                truncation=(record['error']['code']=='MODEL_OUTPUT_TRUNCATED' and purpose=='generate')
                 if allow:self.protocol_retries.add(key)
-                else:self.halt()
+                elif not truncation:self.halt()
             record['host_protocol_retry_allowed']=allow
+            if truncation:record['host_batch_split_allowed']=True
             if isinstance(getattr(exc,'diagnostics',None),dict):record['diagnostics']=exc.diagnostics
             raise
         finally:
