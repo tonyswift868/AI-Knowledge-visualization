@@ -230,12 +230,13 @@ def test_valid_cloze_survives_failed_external_locator(store):
     context['search']=lambda *a,**k:(_ for _ in ()).throw(ModelError('MODEL_OUTPUT_TRUNCATED','saved failure'))
     messages=[];context['on_status']=messages.append
     assert pm.prepare_point(store,'p',store.records('points','p')[0],context)['questions']==2
-    assert messages and '原文挖空' in messages[0]
+    assert messages==[]  # removed discovery: the supplied search is never called
 
 
 def test_program_can_pair_same_block_explicit_answer_letter(store):
     store.add_sources('p',[dict(id='choice',url='https://pep.com.cn/test',title='原卷',adopted=True,
         chunks=[dict(target='本点原文定义是什么？',chunk_id='choice-c',text='1. 压强的单位是？\nA. 帕\nB. 牛顿\n答案：A')])])
+    store.link_point_sources('p','point',['c','choice-c'])
     out=pointer();out['cloze']=[]
     out['found']=[dict(kind='choice',stem='压强的单位是？',options=['帕','牛顿'],answer=[0],answer_quote='A',question_chunk='choice-c',answer_chunk='choice-c',pairing='same_block')]
     assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==0

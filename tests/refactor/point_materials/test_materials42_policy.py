@@ -1,13 +1,10 @@
 """Fixed original evidence, no model judging its own answers or network."""
 from datetime import date, timedelta
-from types import SimpleNamespace
 import pytest
 
 from refactor.learning.course import point_materials as pm, source_quality as quality
 from refactor.learning.course.store import CourseStore, StoreError
 from refactor.learning.course.ledger import PlanWindow
-from refactor.learning.course.source_filter import load_lists
-from refactor.learning.course.extract import extract_bytes
 from refactor.learning.course.research_pipeline import ResearchPipeline
 from refactor.learning.course.research import FetchedContent
 from test_point_materials37_contract import pointer,CONTRAST37,approve37
@@ -68,13 +65,13 @@ def test_materials42_junk_is_evidence_based_and_blocks_pipeline(title,body,block
     assert bool(result.verified)==(not blocked)
 
 
-def test_materials42_three_search_rounds_quick_separation_reopen(store42):
+def test_materials50_no_search_quick_separation_reopen(store42):
     queries=[];context=context42()
     context['search']=lambda q,**k:(queries.append(q) or [])
     point=store42.records('points','p')[0]
     result=pm.prepare_point(store42,'p',point,context)
     assert result==dict(passages=1,questions=2,cloze=2)
-    assert len(set(queries))==3 and 'practice questions with answers' in queries[-1]
+    assert queries==[]
     rows=store42.records('question_bank','p')
     assert sum(q['role']=='bank' for q in rows)==2
     assert sum(q['role']=='quick' for q in rows)==1
@@ -86,30 +83,13 @@ def test_materials42_three_search_rounds_quick_separation_reopen(store42):
         assert pm.pick_question(store42,'p','point',purpose,[q['id'] for q in rows if q['role']=='bank']) is None
     assert pm.pick_question(store42,'p','point','quick',[quick['id']]) is None
     pm.prepare_point(store42,'p',point,context)
-    assert len(queries)==3
+    assert queries==[]
     with CourseStore(store42.account_id,store42.root.parents[2]) as reopened:
         assert pm.pick_question(reopened,'p','point','quick')['id']==quick['id']
 
 
-def test_materials42_excerpt_only_selected_original_blocks(store42):
-    text='压强是压力与受力面积的比值。\n\n这段只讲无关的古代建筑。\n\n版权所有：测试教育出版社。'
-    doc=extract_bytes(text.encode(),'supplement.txt')
-    source=SimpleNamespace(final_url='https://pep.com.cn/other',title='补充教材',document=doc)
-    passages=pm._excerpt_candidates(source,dict(level=1,type='textbook_publisher',evidence=None))
-    selected=passages[0]
-    context=dict(context42(),store=store42,plan_id='p',lists=load_lists())
-    pm._save_excerpts(store42.records('points','p')[0],passages,dict(passages=[selected['id']],found=[],cloze=[]),context)
-    row=next(s for s in store42.records('sources','p') if s.get('excerpt'))
-    chunks=[c for c in store42.records('source_chunks','p') if c['source_id']==row['id']]
-    assert row['group']=='补充摘录' and row['original_title']=='补充教材'
-    assert len(chunks)==1 and '古代建筑' not in chunks[0]['text']
-    assert chunks[0]['original_locator']=='原文段落 1'
-    pm._save_excerpts(store42.records('points','p')[0],passages,dict(passages=[selected['id']],found=[],cloze=[]),context)
-    assert len(store42.records('sources','p'))==2
-
-
 @pytest.mark.parametrize('count,fallback,heavy',[(5,1,False),(4,1,True),(5,2,True),(1,0,False)])
-def test_materials42_twenty_percent_boundary_extra_round(store42,monkeypatch,count,fallback,heavy,caplog):
+def test_materials50_ratio_is_only_statistics_no_extra_round(store42,monkeypatch,count,fallback,heavy,caplog):
     points=[dict(id='point'+str(i),module_id='m',title='压强',chunk_ids=['c']) for i in range(count)]
     real=store42.records
     monkeypatch.setattr(store42,'records',lambda kind,plan: points if kind=='points' else real(kind,plan))
@@ -118,15 +98,15 @@ def test_materials42_twenty_percent_boundary_extra_round(store42,monkeypatch,cou
     for i,p in enumerate(points):
         check=dict(state='passed',checks=[],reason='',at='2026-10-04T00:00:00Z')
         for j in range(2):rows.append(dict(module_id='m',point_ids=[p['id']],kind='choice',role='bank',origin='cloze' if i<fallback else 'found',
-            cloze_subject='压强',contrast_evidence=pointer()['cloze'][0]['contrasts'],distractor_check=check))
+            cloze_subject='压强',contrast_evidence=pointer()['cloze'][0]['contrasts'],distractor_check=check,source=dict(url='https://pep.com.cn/physics/pressure',locator='压强；正文块 1 [c]'),answer_source=dict(url='https://pep.com.cn/physics/pressure',locator='压强；正文块 1 [c]')))
         rows.append(dict(module_id='m',point_ids=[p['id']],kind='choice',role='quick',origin='cloze',
-            cloze_subject='压强',contrast_evidence=pointer()['cloze'][0]['contrasts'],distractor_check=check))
+            cloze_subject='压强',contrast_evidence=pointer()['cloze'][0]['contrasts'],distractor_check=check,source=dict(url='https://pep.com.cn/physics/pressure',locator='压强；正文块 1 [c]'),answer_source=dict(url='https://pep.com.cn/physics/pressure',locator='压强；正文块 1 [c]')))
     monkeypatch.setattr(store42,'records',lambda kind,plan: points if kind=='points' else rows if kind=='question_bank' else real(kind,plan))
     monkeypatch.setattr(pm,'prepare_point',lambda s,plan,p,ctx:(calls.append((p['id'],ctx.get('extra_search',False))) or dict(passages=1,questions=2,cloze=int(p['id'][5:])<fallback)))
     result=pm.prepare_module(store42,'p','m',context42(),lambda *a:None)
     assert result==dict(points=count,cloze_points=fallback,cloze_heavy=heavy)
-    assert sum(extra for _,extra in calls)==(fallback if heavy else 0)
-    assert ('module cloze-heavy' in caplog.text)==heavy
+    assert len(calls)==count and not any(extra for _,extra in calls)
+    assert 'module cloze-heavy' not in caplog.text
 
 
 def test_materials42_incomplete_original_is_not_fake_success(store42):
@@ -167,38 +147,3 @@ def test_materials42_long_literal_anchor_needs_unique_original():
     assert 160<len(sentence)<512
     assert pm._quote(dict(quote=sentence),sentence)==sentence
     with pytest.raises(ValueError):pm._quote(dict(quote=sentence),sentence+sentence)
-
-
-@pytest.mark.parametrize('arrival',[2,3])
-def test_materials42_real_pipeline_late_answers_replace_only_unused_fallback(store42,arrival):
-    queries=[]
-    url='https://pep.com.cn/physics/extra'
-    questions=[('压强单位是____？','帕'),('受力面积不变压力增大时压强____？','增大'),('压强是____与受力面积的比值？','压力')]
-    html=('<h1>压强</h1>'+''.join(f'<p>{i+1}. {stem}\n答案：{answer}。\n原文解释：{TEXT}</p>' for i,(stem,answer) in enumerate(questions))+'<p>这段只讲无关的建筑。</p>').encode()
-    context=context42()
-    context['search']=lambda query,**kw:(queries.append(query) or ([dict(url=url,title='压强')] if len(queries)==arrival+1 else []))
-    def fetch(candidate,**kwargs):
-        if candidate!=url:raise OSError('offline: only the declared answer source exists')
-        return FetchedContent(url,url,'text/html',html,'')
-    context['fetcher']=fetch
-    def finder(point,passages,mode,**kwargs):
-        if mode=='adopted':return pointers42()
-        found=[];selected=[]
-        for passage in passages:
-            for stem,answer in questions:
-                if stem in passage['text']:
-                    selected.append(passage['id']);found.append(dict(kind='fill',stem=stem,answer=[[answer]],
-                        answer_quote=answer+'。',question_chunk=passage['id'],answer_chunk=passage['id'],pairing='same_block',explanation=''))
-        return dict(passages=selected,found=found,cloze=[])
-    context['finder']=finder
-    if arrival==2:pm.prepare_point(store42,'p',store42.records('points','p')[0],context)
-    else:
-        result=pm.prepare_module(store42,'p','m',context,lambda *a:None)
-        assert result==dict(points=1,cloze_points=0,cloze_heavy=False)
-    rows=store42.records('question_bank','p')
-    assert sum(q.get('role')=='bank' and q['origin']=='found' for q in rows)==2
-    assert sum(q.get('role')=='quick' for q in rows)==1
-    assert len(rows)==3 and len(queries)==arrival+1
-    supplements=[s for s in store42.records('sources','p') if s.get('excerpt')]
-    assert len(supplements)==1 and supplements[0]['group']=='补充摘录'
-    assert not any('建筑' in c['text'] for c in store42.records('source_chunks','p') if c['source_id']==supplements[0]['id'])

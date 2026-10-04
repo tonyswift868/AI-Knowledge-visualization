@@ -1,10 +1,10 @@
 """Prepare source passages and answered questions, never generate or solve them.
 
 ctx is a mapping: gateway (ModelGateway), cancel (Event), lists (SourceLists),
-optional finder(point, passages, *, mode, cancel) -> JSON object,
-search(query, *, cancel) -> hits, fetcher (ResearchPipeline byte fetcher), ocr.
-finder replaces only the locator model in offline tests; search replaces only
-discovery. Public pick/mark functions perform no model/network work.
+optional finder(point, passages, *, mode, cancel) -> JSON object.
+Only adopted user materials are read; preparation performs no discovery or
+fetching. finder replaces the locator model in offline tests. Public pick/mark
+functions perform no model/network work.
 """
 from datetime import datetime, timezone
 import hashlib
@@ -18,9 +18,8 @@ from weakref import WeakKeyDictionary
 from .question_bank import (contains_original, original_text, validate_question, select_question,
     OBJECTIVE_KINDS, objective_question, numeric_reference, fixed_answer, answer_spellings,
     overlapping_options, blank_rejection, parallel_answer_parts, checked_question)
-from .source_filter import classify_source, load_lists, RawHit
-from .research import directory_candidates, ResearchCancelled
-from .research_pipeline import ResearchPipeline
+from .source_filter import classify_source, load_lists
+from .research import ResearchCancelled
 from .store import StoreError
 from .source_quality import terms, junk_reasons, question_priority
 from ..connections.errors import ModelError
@@ -306,12 +305,25 @@ def _identity(source, chunks, ctx):
     return identity
 
 
+def _source_reference(source, chunk):
+    section=' / '.join(chunk.get('section',[]));page=chunk.get('page_start')
+    locator=chunk.get('original_locator') or (section+'；' if section else '')+(f'第{page}页；' if page else '')+f"正文块 {chunk['position']+1} [{chunk['id']}]"
+    return dict(title=source['title'],url=source.get('final_url') or source.get('url') or '',locator=locator)
+
+
+def _selection_passages(store, plan_id):
+    """Selection provenance only; reading prepared questions never runs AI."""
+    sources={s['id']:s for s in store.records('sources',plan_id) if s['adopted'] and not s.get('excerpt')}
+    return [dict(id=c['id'],source_id=c['source_id'],source=_source_reference(sources[c['source_id']],c))
+        for c in store.records('source_chunks',plan_id) if c['source_id'] in sources]
+
+
 def _passages(store, plan_id, ctx):
     chunks = store.records('source_chunks',plan_id)
     points=store.records('points',plan_id)
     output=[]
     for source in store.records('sources',plan_id):
-        if not source['adopted']: continue
+        if not source['adopted'] or source.get('excerpt'): continue
         own=[c for c in chunks if c['source_id']==source['id']]
         identity=_identity(source,own,ctx)
         if identity['level'] not in (1,2,3): continue
@@ -319,14 +331,13 @@ def _passages(store, plan_id, ctx):
             if not chunk['text'].strip() or chunk.get('kind')=='publisher_evidence': continue
             section=' / '.join(chunk.get('section',[]))
             page=chunk.get('page_start')
-            locator=chunk.get('original_locator') or (section+'；' if section else '')+(f'第{page}页；' if page else '')+f"正文块 {chunk['position']+1} [{chunk['id']}]"
             output.append(dict(id=chunk['id'],source_id=source['id'],text=chunk['text'],section=section,
                 point_ids=[p['id'] for p in points if chunk['id'] in p['chunk_ids']],
                 module_ids=list(dict.fromkeys(p['module_id'] for p in points if chunk['id'] in p['chunk_ids'])),
                 qa_headings=[f['text'] for f in chunk.get('block_fragments',[]) if f['kind']=='heading' and '?' in f['text']]
                     + ([chunk['question_heading']] if chunk.get('question_heading') else []),
                 qa_complete=chunk.get('qa_complete',False),
-                source=dict(title=source['title'],url=source.get('final_url') or source.get('url') or '',locator=locator),
+                source=_source_reference(source,chunk),
                 authority=identity))
     return sorted(output,key=lambda p:({1:0,2:1,3:2}[p['authority']['level']],p['authority']['type']=='community',p['id']))
 
@@ -539,153 +550,6 @@ def _cloze_failure(point, ctx, rejected, *, code='CLOZE_FAILED'):
     raise error
 
 
-_SYNONYMS = {
-    'IP 地址': ('IP地址 Internet Protocol address', '互联网协议地址 网络地址'),
-    'CPU': ('中央处理器 central processing unit', '处理器 计算机硬件'),
-    '操作系统': ('operating system OS', '系统软件 操作系统'),
-    '数据库': ('database DBMS', '数据管理 关系数据库'),
-    '神经网络': ('neural network artificial neural networks', '人工神经网络 人工智能'),
-    '防火墙': ('firewall network security', '网络防火墙 安全过滤'),
-}
-
-
-def question_queries(point, stage=''):
-    title = point.get('title', point.get('summary', ''))
-    variants = _SYNONYMS.get(title, (point.get('summary', '') or title, title))
-    return (f'{title} {stage} 练习题 习题 答案 解析',
-            f'{title} {variants[1]} 题目 答案 解析',
-            f'{title} {variants[0]} practice questions with answers',
-            f'{title} {variants[0]} quiz worked exercises solutions')
-
-
-def _excerpt_candidates(source, identity):
-    """Transient original paragraphs; never import the entire fetched source."""
-    result = []
-    sid = 'excerpt-' + hashlib.sha256(source.final_url.encode()).hexdigest()
-    from dataclasses import replace
-    blocks=[];complete={}
-    pending=[]
-    for index,block in enumerate(source.document.blocks):
-        if re.match(r'^\s*\d{1,3}[.．、)]\s+',block.text) or (block.kind=='heading' and '?' in block.text):
-            if pending:
-                first,parts=pending[0][0],pending
-                blocks.append((first,replace(parts[0][1],text='\n'.join(b.text for _,b in parts))))
-                complete[first]=True
-            # A paragraph that already contains its labelled answer is a
-            # complete excerpt. Do not attach the next unrelated paragraph.
-            if re.search(r'(?:答案|解析|Answer)\s*[:：]', block.text, re.I):
-                blocks.append((index,block))
-                complete[index]=True
-                pending=[]
-            else:
-                pending=[(index,block)]
-        elif pending and block.kind!='heading' and sum(len(b.text) for _,b in pending)+len(block.text)<=4000:
-            pending.append((index,block))
-        else:
-            if pending:
-                blocks.append((pending[0][0],replace(pending[0][1],text='\n'.join(b.text for _,b in pending))))
-                # A non-question subheading or size cut means more original
-                # answer follows outside this bounded candidate. It cannot be
-                # advertised as a complete answered interview question.
-                complete[pending[0][0]]=False
-                pending=[]
-            blocks.append((index,block))
-    if pending:
-        blocks.append((pending[0][0],replace(pending[0][1],text='\n'.join(b.text for _,b in pending))))
-        complete[pending[0][0]]=True
-    for index, block in blocks:
-        if not block.text.strip() or (block.kind == 'heading' and '?' not in block.text): continue
-        # Keep paragraph boundaries and original locations. Oversized blocks
-        # stay intact for provenance; the bounded locator may skip them.
-        cid = sid + '-' + hashlib.sha256((str(index) + block.text).encode()).hexdigest()
-        section = ' / '.join(block.section)
-        locator = (section + '；' if section else '') + (f'第{block.page}页；' if block.page else '') + f'原文段落 {index+1}'
-        result.append(dict(id=cid, source_id=sid, text=block.text, section=section,
-            qa_headings=[block.text.split('\n',1)[0]] if block.kind=='heading' and '?' in block.text.split('\n',1)[0] else [],
-            qa_complete=complete.get(index,False),
-            page=block.page, position=index, source=dict(title=source.title, url=source.final_url, locator=locator),
-            authority=identity))
-    return result
-
-
-def _save_excerpts(point, passages, output, ctx):
-    selected = set(output.get('passages', []))
-    # Only validated paired question/answer paragraphs can accompany excerpts.
-    by_id = {p['id']: p for p in passages}
-    for item in output.get('found', []):
-        try:
-            if _found(item, point, by_id): selected.update((item['question_chunk'], item['answer_chunk']))
-        except (ValueError, KeyError, TypeError, IndexError): pass
-    groups = {}
-    for p in passages:
-        if p['id'] in selected: groups.setdefault(p['source_id'], []).append(p)
-    with ctx['store'].transaction():
-        _check(ctx)
-        previous = {s['id']: s for s in ctx['store'].records('sources', ctx['plan_id'])}
-        for sid, own in groups.items():
-            first = own[0]
-            evidence = first['authority'].get('evidence')
-            chunks=[dict(chunk_id=p['id'], text=p['text'], section=[p['section']] if p['section'] else [],
-                    position=p['position'],
-                    page_start=p['page'], page_end=p['page'], original_locator=p['source']['locator'],
-                    question_heading=p.get('qa_headings',[''])[0] if p.get('qa_headings') else '',
-                    qa_complete=p.get('qa_complete',False),
-                    original_position=p['position']) for p in own]
-            if isinstance(evidence,dict) and evidence.get('quote'):
-                chunks.append(dict(chunk_id=sid+'-publisher',text=evidence['quote'],kind='publisher_evidence',section=[]))
-            row = dict(previous.get(sid, {}), id=sid, kind='url', url=first['source']['url'],
-                final_url=first['source']['url'], title=first['source']['title'], adopted=True,
-                excerpt=True, group='补充摘录', original_title=first['source']['title'],
-                chunks=chunks)
-            ctx['store'].add_sources(ctx['plan_id'], [row])
-            # Identity was validated against the full fetched original. Only
-            # carry evidence if it also exists in the saved excerpt itself.
-            if isinstance(evidence, dict) and evidence.get('quote'):
-                ctx['store'].set_source_publisher_evidence(ctx['plan_id'], sid, evidence)
-        _check(ctx)
-    return dict(output, passages=[cid for cid in output.get('passages', []) if cid in selected])
-
-
-def _discover_questions(point, ctx, round_index=0):
-    query=question_queries(point, ctx.get('stage',''))[round_index]
-    hits=directory_candidates(query,stage=ctx.get('stage',''),lists=ctx['lists'],limit=3)
-    if ctx.get('search'):
-        hits+=list(ctx['search'](query,cancel=ctx.get('cancel')))
-    elif ctx.get('gateway'):
-        result=ctx['gateway'].complete('research',[{'role':'user','content':query}],
-            system='找现成带答案的练习。优先政府教育、正规教材出版社、大学、OpenStax、官方文档或成熟教育题库平台；高档找不到时可用发布者可辨认的一般网站或社区。拒绝转载、采集、盗版与无答案资料。不要出题或解题。',
-            enable_search=True,cancel=ctx.get('cancel'),plan_id=ctx['plan_id'],max_tokens=2048)
-        hits += [dict(url=h.url,title=h.title,snippet=h.snippet) for h in result.search_hits+result.citations]
-        if ctx.get('on_call'): ctx['on_call']('research',result)
-    if not hits: return dict(passages=[], found=[], cloze=[])
-    _check(ctx)
-    pipeline=ctx.get('pipeline')
-    owned=pipeline is None
-    pipeline=pipeline or ResearchPipeline(fetcher=ctx.get('fetcher'),max_sources=6,ocr=ctx.get('ocr'))
-    try:
-        result=pipeline.run(hits,lists=ctx['lists'],cancel=ctx.get('cancel'),goal=point.get('title',''),
-            accepted_urls=[s.get('url') for s in ctx['store'].records('sources',ctx['plan_id']) if not s.get('excerpt')])
-        _check(ctx)
-        if ctx.get('on_status'):
-            for rejected in result.rejected:
-                if rejected.code=='material_upload_required':ctx['on_status'](rejected.message)
-        passages=[]
-        for source in result.verified:
-            candidate=dict(url=source.url,final_url=source.final_url,title=source.title)
-            identity=_identity(candidate,[dict(text=b.text) for b in source.document.blocks],ctx)
-            if identity['level'] in (1,2,3):
-                evidence=candidate.get('publisher_evidence')
-                visible='\n'.join(b.text for b in source.document.blocks)
-                if not evidence and identity.get('evidence') and identity['evidence'] in visible:
-                    evidence=dict(type=identity['type'],publisher=identity['publisher'],quote=identity['evidence'])
-                identity=dict(identity, evidence=evidence)
-                passages.extend(_excerpt_candidates(source, identity))
-        output=_locate(point, passages, ctx, 'supplementary_answered_exercises')
-        return _save_excerpts(point, passages, output, ctx)
-    finally:
-        if owned: pipeline.close()
-
-
 _DISTRACTOR_SYSTEM = '''你是原文检查员，只检查给出的题目干扰项，不出题、不解题、不改任何题目。
 逐题逐个检查不是正确答案的选项：原文有没有说它对本题对象也成立？只返回严格JSON：
 {"questions":[{"id":"原id","checks":[{"index":原选项下标,"verdict":"also_supported或not_supported","quote":"逐字原文或空字符串"}]}]}。
@@ -768,7 +632,11 @@ def _check_pending(store,plan_id,module_id,ctx):
     with _lock(store,plan_id,'distractor-check:'+module_id):
         pending=[q for q in store.records('question_bank',plan_id) if q['module_id']==module_id and objective_question(q) and 'distractor_check' not in q]
         if not pending:return
-        checked=check_distractors(pending,store.records('points',plan_id),_passages(store,plan_id,ctx),ctx)
+        points=store.records('points',plan_id);passages=_passages(store,plan_id,ctx)
+        eligible={q['id'] for point in points for q in _selected_rows(pending,point,passages)}
+        pending=[q for q in pending if q['id'] in eligible]
+        if not pending:return
+        checked=check_distractors(pending,points,passages,ctx)
         with store.transaction():
             _check(ctx)
             for q in checked:store._put('question_bank',plan_id,q)
@@ -779,6 +647,18 @@ def _counts(rows, linked, *, provisional=False):
     bank = [q for q in rows if q.get('role', 'bank') == 'bank']
     return dict(passages=len(linked), questions=len(bank),
                 cloze=sum(q['origin'] == 'cloze' for q in bank))
+
+
+def _selected_rows(rows, point, passages):
+    """Keep historical external questions as evidence, never select them."""
+    # A chosen book's exercise chapter need not be the paragraph cited by its
+    # knowledge map. Locator still pairs the question/answer verbatim.
+    question_refs={(p['source']['url'],p['source']['locator']) for p in passages}
+    # A separately selected answer chapter may pair by number with its book's
+    # linked exercise chapter; _found retains the same-book check.
+    answer_refs={(p['source']['url'],p['source']['locator']) for p in passages}
+    def ref(value):return (value.get('url'),value.get('locator'))
+    return [q for q in rows if point['id'] in q['point_ids'] and ref(q['source']) in question_refs and ref(q['answer_source']) in answer_refs]
 
 
 def _stem_key(question):
@@ -794,7 +674,7 @@ def prepare_point(store, plan_id, point, ctx):
 
     Missing linked text is an invariant failure. Rejected cloze pointers are
     retried once with reasons, then raise CLOZE_FAILED with raw evidence.
-    Existing used questions are retained when later searches improve the bank.
+    Existing used questions are retained; only selected original sources qualify.
     """
     ctx=dict(ctx,store=store,plan_id=plan_id,lists=ctx.get('lists') or load_lists(),_cloze_calls=[])
     store.require_material_plan(plan_id)
@@ -803,31 +683,17 @@ def prepare_point(store, plan_id, point, ctx):
         point=next((p for p in store.records('points',plan_id) if p['id']==point['id']),None)
         if point is None: raise StoreError('NOT_FOUND','知识点尚未保存。')
         if not ctx.get('_defer_distractor_check'):_check_pending(store,plan_id,point['module_id'],ctx)
-        rows=[q for q in store.records('question_bank',plan_id) if point['id'] in q['point_ids'] and objective_question(q)
-            and (checked_question(q) or ctx.get('_defer_distractor_check') and 'distractor_check' not in q)]
         passages=_passages(store,plan_id,ctx)
+        rows=[q for q in _selected_rows(store.records('question_bank',plan_id),point,passages) if objective_question(q)
+            and (checked_question(q) or ctx.get('_defer_distractor_check') and 'distractor_check' not in q)]
         linked=[cid for cid in point['chunk_ids'] if cid in {p['id'] for p in passages}]
         if not linked:_cloze_failure(point,ctx,[dict(reason='没有关联的原文段落')],code='POINT_SOURCE_MISSING')
-        if linked and len([q for q in rows if q.get('role','bank')=='bank'])>=2 and any(q.get('role')=='quick' for q in rows) and not ctx.get('extra_search'):
+        if linked and len([q for q in rows if q.get('role','bank')=='bank'])>=2 and any(q.get('role')=='quick' for q in rows):
             return _counts(rows,linked,provisional=ctx.get('_defer_distractor_check',False))
         located=_locate(point,passages,ctx,'adopted') if passages else dict(passages=[],found=[],cloze=[])
         selected=list(dict.fromkeys(linked+located['passages']))
         found=_collect(located['found'],_found,point,passages)
         previous_found=[q for q in rows if q.get('role','bank')=='bank' and q['origin']=='found']
-        rounds=(3,) if ctx.get('extra_search') else range(3)
-        for round_index in rounds:
-            if not ctx.get('extra_search') and len({original_text(q['stem']) for q in found+previous_found})>=2 and selected: break
-            try:
-                extra=_discover_questions(point,ctx,round_index)
-                passages=_passages(store,plan_id,ctx)
-                selected=list(dict.fromkeys(selected+extra['passages']))
-                found+=_collect(extra['found'],_found,point,passages)
-                located['cloze']+=extra['cloze']
-            except (ModelError,ValueError,OSError) as exc:
-                _check(ctx)
-                if getattr(exc,'code','')=='MODEL_CANCELLED': raise
-                _log.warning('answered exercise discovery incomplete: round=%s code=%s',round_index,getattr(exc,'code',type(exc).__name__))
-                if ctx.get('on_status'):ctx['on_status']('外部带答案题查找未完成，继续换说法；最后才使用原文挖空。')
         selected=list(dict.fromkeys(selected))
         by_id={p['id']:p for p in passages if p['id'] in selected}
         if not selected:_cloze_failure(point,ctx,[dict(reason='没有关联的原文段落')],code='POINT_SOURCE_MISSING')
@@ -865,15 +731,15 @@ def prepare_point(store, plan_id, point, ctx):
             store.add_bank_questions(plan_id,point['module_id'],additions)
             _check(ctx)
         if not ctx.get('_defer_distractor_check'):
-            provisional_rows=[q for q in store.records('question_bank',plan_id) if point['id'] in q['point_ids']]
+            provisional_rows=_selected_rows(store.records('question_bank',plan_id),point,passages)
             precheck_ready=(_counts(provisional_rows,selected,provisional=True)['questions']>=2 and
                 any(q.get('role')=='quick' and ('distractor_check' not in q or checked_question(q)) for q in provisional_rows))
             _check_pending(store,plan_id,point['module_id'],ctx)
-            ready=[q for q in store.records('question_bank',plan_id) if point['id'] in q['point_ids'] and checked_question(q)]
+            ready=[q for q in _selected_rows(store.records('question_bank',plan_id),point,passages) if checked_question(q)]
             if precheck_ready and (_counts(ready,selected)['questions']<2 or not any(q.get('role')=='quick' for q in ready)):
                 _recloze_after_check(store,plan_id,point,ctx)
                 _check_pending(store,plan_id,point['module_id'],ctx)
-        rows=[q for q in store.records('question_bank',plan_id) if point['id'] in q['point_ids'] and objective_question(q)]
+        rows=[q for q in _selected_rows(store.records('question_bank',plan_id),point,passages) if objective_question(q)]
         provisional=ctx.get('_defer_distractor_check',False)
         counts=_counts(rows,selected,provisional=provisional)
         ready=[q for q in rows if checked_question(q) or provisional and 'distractor_check' not in q]
@@ -883,14 +749,14 @@ def prepare_point(store, plan_id, point, ctx):
 
 
 def _recloze_after_check(store,plan_id,point,ctx):
-    """One fresh gap search after delete-only review, never reuse rejected IDs."""
+    """One fresh gap location after delete-only review, never reuse rejected IDs."""
     with _lock(store,plan_id,point['id']):
         point=next(p for p in store.records('points',plan_id) if p['id']==point['id'])
-        rows=[q for q in store.records('question_bank',plan_id) if point['id'] in q['point_ids']]
+        passages=_passages(store,plan_id,ctx)
+        rows=_selected_rows(store.records('question_bank',plan_id),point,passages)
         ready=[q for q in rows if checked_question(q)]
         reasons=[dict(question_id=q['id'],reason=q['distractor_check']['reason'],checks=q['distractor_check']['checks'])
             for q in rows if q.get('distractor_check',{}).get('state')=='rejected']
-        passages=_passages(store,plan_id,ctx)
         output=_locate_tier(point,passages,dict(ctx,cloze_rejections=reasons or [dict(reason='检查后不足两道bank或缺quick，请换目标原句')]),'cloze_retry')
         by_id={p['id']:p for p in passages if p['id'] in point['chunk_ids']}
         bank,quick,rejected=_cloze_rows(output['cloze'],point,by_id,passages)
@@ -925,32 +791,30 @@ def prepare_module(store,plan_id,module_id,ctx,progress):
             progress(index+1,len(points),'本点出题失败，继续准备其余知识点')
     def fallback_points():
         rows=store.records('question_bank',plan_id)
-        return [p for p in points if sum(p['id'] in q['point_ids'] and q.get('role','bank')=='bank' and q['origin']=='found' and objective_question(q) for q in rows)<2]
-    missing=fallback_points()
-    if len(missing)/len(points)>.2:
-        for point in missing:
-            _check(ctx)
-            try:prepare_point(store,plan_id,point,dict(ctx,extra_search=True))
-            except StoreError as exc:
-                if exc.code not in ('CLOZE_FAILED','POINT_SOURCE_MISSING'):raise
-        missing=fallback_points()
-    heavy=len(missing)/len(points)>.2
-    if heavy:_log.warning('module cloze-heavy: points=%s cloze_points=%s',len(points),len(missing))
+        passages=_passages(store,plan_id,ctx)
+        return [p for p in points if sum(q.get('role','bank')=='bank' and q['origin']=='found' and checked_question(q) for q in _selected_rows(rows,p,passages))<2]
     _check_pending(store,plan_id,module_id,ctx)
     def ready(point):
-        rows=[q for q in store.records('question_bank',plan_id) if point['id'] in q['point_ids'] and checked_question(q)]
+        rows=[q for q in _selected_rows(store.records('question_bank',plan_id),point,_passages(store,plan_id,ctx)) if checked_question(q)]
         return _counts(rows,point['chunk_ids'])['questions']>=2 and any(q.get('role')=='quick' for q in rows)
     missing_check=[p for p in points if not ready(p)]
     for point in missing_check:_recloze_after_check(store,plan_id,point,ctx)
     if missing_check:_check_pending(store,plan_id,module_id,ctx)
     for point in points:
         if not ready(point):_cloze_failure(point,ctx,[dict(reason='对照挖空及批量检查后仍不足两道bank或缺quick')])
-    return dict(points=len(points),cloze_points=len(missing),cloze_heavy=heavy)
+    missing=fallback_points()
+    _log.info('module cloze statistics: points=%s cloze_points=%s',len(points),len(missing))
+    return dict(points=len(points),cloze_points=len(missing),cloze_heavy=len(missing)/len(points)>.2)
 
 
 def pick_question(store,plan_id,point_id,purpose,exclude_ids=()):
     store.require_material_plan(plan_id)
-    return select_question(store.records('question_bank',plan_id),point_id,purpose,exclude_ids)
+    rows=[q for q in store.records('question_bank',plan_id) if objective_question(q) and checked_question(q)]
+    if not rows:return None
+    point=next((p for p in store.records('points',plan_id) if p['id']==point_id),None)
+    if point is None:return None
+    passages=_selection_passages(store,plan_id)
+    return select_question(_selected_rows(rows,point,passages),point_id,purpose,exclude_ids)
 
 
 def mark_used(store,plan_id,question_id,purpose):

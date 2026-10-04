@@ -12,7 +12,8 @@ def block(messages, label):
 
 
 def bank_question(pid, mid, *, index=0, kind='short', ids=None, answer='先进先出', chunk='k1'):
-    source = dict(title='官方原文', url='https://docs.python.org/3/tutorial/', locator=chunk)
+    position=int(chunk[1:]) if chunk.startswith('k') and chunk[1:].isdigit() else 1
+    source = dict(title='官方原文', url='https://docs.python.org/3/tutorial/', locator=f'正文块 {position} [{chunk}]')
     row = dict(id=f'{pid}-{index}', module_id=mid, point_ids=ids or [pid], kind=kind,
         stem=f'请说明{pid}的含义（{index}）？', answer=answer, explanation='', origin='found',
         source=source, answer_source=source, importance='key', role='bank', uses=[], created_at='2026-10-03T00:00:00+00:00')
@@ -32,13 +33,17 @@ def bank_question(pid, mid, *, index=0, kind='short', ids=None, answer='先进�
 
 def seed_bank(store, plan_id, *, count=3):
     """Persist synthetic bank/quick rows through the real schema, never project records."""
+    from refactor.learning.course.point_materials import _selection_passages
+    refs={p['id']:p['source']|dict(title=p['source']['title'] or '隔离测试资料') for p in _selection_passages(store,plan_id)}
     for p in store.records('points', plan_id):
+        source=refs[p['chunk_ids'][0]]
         store.add_bank_questions(plan_id, p['module_id'], [bank_question(p['id'], p['module_id'], index=i, kind='fill',
-            answer=store.records('source_chunks', plan_id)[0]['text'], chunk=p['chunk_ids'][0]) for i in range(count)])
+            answer=store.records('source_chunks', plan_id)[0]['text'], chunk=p['chunk_ids'][0])|dict(source=source,answer_source=source) for i in range(count)])
     for p in store.records('points', plan_id):
         chunk=next(c for c in store.records('source_chunks',plan_id) if c['id']==p['chunk_ids'][0])
         word=chunk['text'][:2]
         q=bank_question(p['id'],p['module_id'],kind='choice',chunk=chunk['id'])
+        q.update(source=refs[chunk['id']],answer_source=refs[chunk['id']])
         q.update(id=p['id']+'-quick42',role='quick',origin='cloze',stem=chunk['text'].replace(word,'____',1),
                  options=[word,'另一概念','无关说法'],answer=[0],explanation=chunk['text'])
         q.update(cloze_subject=p['title'],contrast_evidence=[dict(chunk_id=chunk['id'],contrast_quote=value,

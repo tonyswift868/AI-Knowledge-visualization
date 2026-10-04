@@ -10,6 +10,14 @@ def objective_bank(store):
         if entity!='question_bank':return rows
         result=copy.deepcopy(rows)
         for q in result:
+            # State-only fixtures must point at their actual selected material,
+            # rather than the old helper's placeholder URL/location.
+            from refactor.learning.course.point_materials import _selection_passages
+            refs={p['id']:p['source']|dict(title=p['source']['title'] or '隔离测试资料') for p in _selection_passages(store,plan)}
+            points={p['id']:p for p in records('points',plan)}
+            point=points.get(q['point_ids'][0])
+            if point and point['chunk_ids'] and point['chunk_ids'][0] in refs:
+                q.update(source=refs[point['chunk_ids'][0]],answer_source=refs[point['chunk_ids'][0]])
             if q['kind'] in ('short','essay'):
                 q.update(kind='choice',options=[q['answer'],'与资料相反的错误说法'],answer=[0])
         return result
