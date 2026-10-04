@@ -17,7 +17,7 @@ from weakref import WeakKeyDictionary
 
 from .question_bank import (contains_original, original_text, validate_question, select_question,
     OBJECTIVE_KINDS, objective_question, numeric_reference, fixed_answer, answer_spellings,
-    overlapping_options, blank_rejection)
+    overlapping_options, blank_rejection, parallel_answer_parts)
 from .source_filter import classify_source, load_lists, RawHit
 from .research import directory_candidates, ResearchCancelled
 from .research_pipeline import ResearchPipeline
@@ -56,6 +56,10 @@ same_block 仅可用于同一块里该题紧接的“答案/解析/Solution/Answ
 cloze 先把本点 summary（掌握目标）改写成一个可检验的问题 target；在本点 chunk_ids 与本次 passages 的原文里找到直接回答这个问题的原句，挖掉回答问题的那一段，不能挖与掌握目标无关的细节。年份、人数、人名或结论都不按类型排除：本点要掌握什么就挖什么，可以是完整短语，不限单词。
 cloze 每项：target（这个空回答的掌握目标问题）、chunk_id、sentence（完整原句的上述指针）、word（回答 target 的逐字原文片段，可用上述指针）、importance(key/normal)、keywords（同一资料中与答案同类、意义不同的逐字原文片段）。sentence、word、keywords 均不得改写或生成。随口问同样考掌握目标。答案短且固定才填空，否则选择；至少给两个不与答案或彼此重叠的干扰片段。给出最多3个不同句或不同回答片段的空，以支持 bank 和 quick；不选导航或学习目标清单。passages 必须真的解释当前知识点。收到 cloze_rejections 时，换本点原文另一句或另一段，避免所有已拒绝指针。找不到如实返回空数组。'''
 
+_SYSTEM += '''
+干扰片段必须来自 distractor_passages 标明的同一资料其他章节、或同模块其他知识点的原文，不能出现在本点任何 chunk_ids 段落中，也不能取答案句内的其他片段。至少两个合格干扰片段；不够就换句，不降低标准。
+只在答案原句直接并列列举两个及以上同类项（中文“、/和/及/与/以及”，英文逗号加and）时给 answer_parts 列表，列全每项的逐字片段；word 必须是包含所有并列项和连接词的完整连续原文。程序核实后才出多选，所有并列项均为正确答案。其他情况不提供answer_parts，出单选或短固定填空。不把多个不同句子的结论拼成多选，不遗漏并列项。'''
+
 
 def _quote(value, text):
     """Expand short, unique anchors using only the selected original chunk."""
@@ -75,6 +79,21 @@ def _quote(value, text):
     right = text.index(end)+len(end)
     if right < left+len(start): raise ValueError('原文终点在起点之前')
     return text[left:right]
+
+
+def _keyword_quote(value, passages):
+    """Resolve an original distractor anchor in its visible source chunks.
+
+    The answer chunk is not the distractor's source. Identical expansions in
+    multiple chunks are harmless; different expansions are ambiguous. Actual
+    chapter/point eligibility is still checked by the cloze compiler.
+    """
+    matches=set()
+    for passage in passages:
+        try:matches.add(_quote(value,passage['text']))
+        except ValueError:continue
+    if len(matches)!=1:raise ValueError('干扰片段原文指针不存在或展开不唯一')
+    return matches.pop()
 
 
 def _expand_output(output, passages, rejected=None):
@@ -99,7 +118,13 @@ def _expand_output(output, passages, rejected=None):
             item=dict(raw);text=by_id[item['chunk_id']]
             item['sentence']=_quote(item['sentence'],text)
             item['word']=_quote(item['word'],text)
-            item['keywords']=[_quote(v,text) if isinstance(v,dict) else v for v in item.get('keywords',[])]
+            if isinstance(item.get('answer_parts'),list):item['answer_parts']=[_quote(v,text) for v in item['answer_parts']]
+            keywords=[]
+            for value in item.get('keywords',[]):
+                try:keywords.append(_keyword_quote(value,passages) if isinstance(value,dict) else value)
+                except ValueError as exc:
+                    if rejected is not None:rejected.append(dict(pointer=raw,keyword=value,reason=str(exc)))
+            item['keywords']=keywords
             cloze.append(item)
         except (ValueError,KeyError,TypeError) as exc:
             if rejected is not None:rejected.append(dict(pointer=raw,reason='原文指针无效：'+str(exc)))
@@ -133,10 +158,16 @@ def _locate_tier(point, passages, ctx, mode):
     # in the prompt; a selected quote is still validated against original text.
     ranked=sorted(passages,key=lambda p:(p['id'] not in point.get('chunk_ids',[]),
         -sum(t in p['text'].casefold() for t in wanted),p['authority'].get('type')=='community',p['id']))
+    if mode=='cloze_retry' or mode=='adopted':
+        linked=[p for p in ranked if p['id'] in point.get('chunk_ids',[])]
+        foreign=[p for p in ranked if any(_distractor_scope(point,c,p) for c in linked)]
+        if foreign:ranked=linked[:4]+foreign[:2]+[p for p in ranked if p not in linked[:4]+foreign[:2]]
     passages=_candidates(ranked)
     if not passages:return dict(passages=[],found=[],cloze=[])
     for attempt in range(2):
         packet=dict(point=point,mode=mode,passages=passages)
+        packet['distractor_passages']=[p['id'] for p in passages if any(
+            _distractor_scope(point,c,p) for c in passages if c['id'] in point.get('chunk_ids',[]))]
         if ctx.get('cloze_rejections'):packet['cloze_rejections']=ctx['cloze_rejections']
         try:
             if ctx.get('finder'):
@@ -163,6 +194,9 @@ def _locate_tier(point, passages, ctx, mode):
         raise ValueError('资料定位结果字段无效')
     rejected=[]
     expanded=_expand_output(output,passages,rejected)
+    # Distractor-only context must never become this point's explanatory
+    # provenance, or the next preparation would prohibit every option again.
+    expanded['passages']=[cid for cid in expanded['passages'] if cid not in packet['distractor_passages']]
     if '_cloze_calls' in ctx:ctx['_cloze_calls'].append(dict(request=packet,system=_SYSTEM,reply=reply,rejected=rejected))
     return expanded
 
@@ -261,6 +295,7 @@ def _identity(source, chunks, ctx):
 
 def _passages(store, plan_id, ctx):
     chunks = store.records('source_chunks',plan_id)
+    points=store.records('points',plan_id)
     output=[]
     for source in store.records('sources',plan_id):
         if not source['adopted']: continue
@@ -273,6 +308,8 @@ def _passages(store, plan_id, ctx):
             page=chunk.get('page_start')
             locator=chunk.get('original_locator') or (section+'；' if section else '')+(f'第{page}页；' if page else '')+f"正文块 {chunk['position']+1} [{chunk['id']}]"
             output.append(dict(id=chunk['id'],source_id=source['id'],text=chunk['text'],section=section,
+                point_ids=[p['id'] for p in points if chunk['id'] in p['chunk_ids']],
+                module_ids=list(dict.fromkeys(p['module_id'] for p in points if chunk['id'] in p['chunk_ids'])),
                 qa_headings=[f['text'] for f in chunk.get('block_fragments',[]) if f['kind']=='heading' and '?' in f['text']]
                     + ([chunk['question_heading']] if chunk.get('question_heading') else []),
                 qa_complete=chunk.get('qa_complete',False),
@@ -386,6 +423,15 @@ def _found(item, point, by_id):
                  importance='key' if point.get('importance')=='key' else 'normal')
 
 
+def _distractor_scope(point, chunk, candidate):
+    if candidate['id'] in set(point.get('chunk_ids',[]))|{chunk['id']}:return False
+    other_chapter=(candidate['source_id']==chunk['source_id'] and bool(candidate.get('section'))
+        and candidate['section']!=chunk.get('section'))
+    other_point=(point.get('module_id') in candidate.get('module_ids',[]) and
+        any(pid!=point.get('id') for pid in candidate.get('point_ids',[])))
+    return other_chapter or other_point
+
+
 def _cloze(item,point,by_id,passages,*,minimum_distractors=2,allow_sentence_terms=False,rejected=None):
     def reject(reason):
         if rejected is not None:rejected.append(dict(pointer=item,role='quick' if allow_sentence_terms else 'bank',reason=reason))
@@ -400,26 +446,28 @@ def _cloze(item,point,by_id,passages,*,minimum_distractors=2,allow_sentence_term
     if reason:return reject(reason)
     if '____' in sentence:return reject('原句已含空位，无法唯一定位本次空')
     key=point.get('importance')=='key' or item.get('importance')=='key'
+    parts=parallel_answer_parts(sentence,word,item.get('answer_parts')) if not allow_sentence_terms else ()
     # A phrase-length gap needs the goal question on the card as well: the
     # remaining clause alone may not tell the learner what is being asked.
     stem=item['target'].strip()+'\n'+sentence.replace(word,'____',1)
-    if key and fixed_answer(word) and not allow_sentence_terms:
+    if not parts and key and fixed_answer(word) and not allow_sentence_terms:
         accepted=[v for v in answer_spellings(word) if fixed_answer(v)]
         return _base(point,'fill',stem,[list(dict.fromkeys([word,*accepted]))],'cloze',chunk,chunk,importance='key',target=item['target'].strip())
-    # Model points to terms, program chooses original distractors. Same source,
-    # same chapter, same kind; terms are never supplied as invented alternatives.
-    same='\n'.join(p['text'] for p in passages if p['source_id']==chunk['source_id'] and p['section']==chunk['section'])
+    # Original position is the rejection rule, never an AI correctness score.
+    same='\n'.join(p['text'] for p in passages if _distractor_scope(point,chunk,p))
+    forbidden='\n'.join(p['text'] for p in passages if p['id'] in set(point.get('chunk_ids',[]))|{chunk['id']})
     candidates=[]
     option_reasons=[]
     for term in item.get('keywords',[]):
-        if not isinstance(term,str) or not term.strip() or term not in same:option_reasons.append('干扰片段不在同一资料原文');continue
-        if overlapping_options(term,word):option_reasons.append('选项与答案重叠或同义');continue
-        if not allow_sentence_terms and term in sentence:option_reasons.append('干扰片段也在题面中');continue
+        if not isinstance(term,str) or not term.strip() or term not in same:option_reasons.append('干扰片段不在其他章节或同模块其他点的原文');continue
+        if term.casefold() in forbidden.casefold() or term.casefold() in sentence.casefold():option_reasons.append('干扰片段出现在本点依据或答案句中');continue
+        if any(overlapping_options(term,answer) for answer in (parts or (word,))):option_reasons.append('选项与答案重叠或同义');continue
         if any(overlapping_options(term,other) for other in candidates):option_reasons.append('选项之间重叠或同义');continue
         candidates.append(term)
     if len(candidates)<minimum_distractors:return reject('可用干扰片段不足：'+'；'.join(dict.fromkeys(option_reasons or ['未提供足够同类原文片段'])))
-    options=sorted([word,*candidates[:3]])
-    return _base(point,'choice',stem,[options.index(word)],'cloze',chunk,chunk,options=options,target=item['target'].strip())
+    options=sorted([*(parts or (word,)),*candidates[:3]])
+    return _base(point,'multi' if parts else 'choice',stem,[options.index(p) for p in (parts or (word,))],
+        'cloze',chunk,chunk,options=options,target=item['target'].strip())
 
 
 def _collect(items, converter, point, passages):
@@ -439,10 +487,12 @@ def _quick(item, point, by_id, passages, *, rejected=None):
         if rejected is not None:rejected.append(dict(pointer=item,role='quick',reason='原文段落不在本点关联范围'))
         return None
     chunk = by_id[cid]
-    # For the quick role the contract permits same material, not just chapter.
-    same = [dict(p, section=chunk['section']) for p in passages]
-    q = _cloze(dict(item, importance='normal'), dict(point, importance='normal'), by_id, same,
-               minimum_distractors=1,allow_sentence_terms=True,rejected=rejected)
+    # Quick remains a single-choice gap. For a verified list, remove just one
+    # member; the remaining members stay visible and never become distractors.
+    parts=parallel_answer_parts(item.get('sentence'),item.get('word'),item.get('answer_parts'))
+    if parts:item=dict(item,word=parts[0],answer_parts=[],target='补全原文空位：'+item['target'])
+    q = _cloze(dict(item, importance='normal'), dict(point, importance='normal'), by_id, passages,
+               minimum_distractors=2,allow_sentence_terms=True,rejected=rejected)
     if q is None or q['kind'] != 'choice': return None
     return _base(point, q['kind'], q['stem'], q['answer'], 'cloze', chunk, chunk,
                  options=q['options'], role='quick',target=q['target'])
@@ -691,7 +741,7 @@ def prepare_point(store, plan_id, point, ctx):
         if needs_quick or len(bank_stems)<2:
             if not rejected:rejected=[dict(reason='未得到两道不同bank题或缺少quick题，请换另一句或另一段')]
             retry_ctx=dict(ctx,cloze_rejections=rejected)
-            retry=_locate_tier(point,[p for p in passages if p['id'] in selected],retry_ctx,'cloze_retry')
+            retry=_locate_tier(point,passages,retry_ctx,'cloze_retry')
             located['cloze']+=retry['cloze']
             cloze,quick,final_rejected=_cloze_rows(located['cloze'],point,by_id,passages)
             rejected+=final_rejected+[r for call in ctx['_cloze_calls'] for r in call['rejected']]

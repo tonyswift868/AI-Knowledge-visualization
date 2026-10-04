@@ -16,7 +16,7 @@ def test_only_ambiguous_authoritative_sources_go_to_model():
     def fetch(url, **_):
         title = titles[urls.index(url)]
         text = ('Python supports reusable code.' if url.endswith('two') else 'Python functions parameters return values.') * 12
-        html = f'<title>{title}</title><h1>{title}</h1><p>{text}</p>'.encode()
+        html = f'<title>{title}</title><h1>{title}</h1><p>{text}</p><p>Example identifier: {url}</p>'.encode()
         return FetchedContent(url, url, 'text/html', html, '')
     with ResearchPipeline(fetcher=fetch) as p:
         sources = p.run([RawHit(u) for u in urls]).verified

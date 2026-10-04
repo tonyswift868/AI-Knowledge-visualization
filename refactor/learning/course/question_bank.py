@@ -64,6 +64,33 @@ def safe_blank(sentence, word):
     return blank_rejection(sentence,word) is None
 
 
+def parallel_answer_parts(sentence, word, parts):
+    """Verify a complete, contiguous coordination, never infer meaning/types.
+
+    Missing/partial lists, separate clauses and repeated/overlapping spans
+    fall back to a single original-span answer. The locator only points to
+    terms; conjunctions and complete coverage are checked here.
+    """
+    if blank_rejection(sentence,word) or not isinstance(parts,list) or len(parts)<2:return ()
+    if any(not isinstance(p,str) or not p.strip() or sentence.count(p)!=1 for p in parts):return ()
+    ordered=sorted(parts,key=word.find)
+    if any(p not in word for p in ordered) or any(overlapping_options(a,b) for i,a in enumerate(ordered) for b in ordered[i+1:]):return ()
+    if not word.startswith(ordered[0]) or not word.endswith(ordered[-1]):return ()
+    gaps=[]
+    for left,right in zip(ordered,ordered[1:]):
+        end=word.find(left)+len(left);start=word.find(right)
+        if start<end:return ()
+        gaps.append(word[end:start].strip())
+    chinese=all(re.fullmatch(r'、|(?:、)?(?:以及|和|及|与)',g) for g in gaps)
+    english=all(g==',' for g in gaps[:-1]) and bool(re.fullmatch(r',?\s*and',gaps[-1],re.I))
+    if not (chinese or english):return ()
+    before,after=sentence.split(word,1)
+    # A claimed answer cannot hide another sibling immediately outside it.
+    if re.search(r'(?:、|,|以及|和|及|与|\band)\s*$',before,re.I):return ()
+    if re.match(r'\s*(?:、|,\s*(?![;.]|$)|以及|和|及|与|\band\b)',after,re.I):return ()
+    return tuple(ordered)
+
+
 def blank_rejection(sentence, word):
     """Literal/ambiguity check for any span, without semantic-role restrictions."""
     if not isinstance(sentence,str) or not isinstance(word,str) or not word.strip():return '原句或答案片段为空'
@@ -161,6 +188,7 @@ def validate_question(row):
         if not isinstance(answer,list) or not answer or any(type(i) is not int or not 0<=i<len(options) for i in answer) or len(set(answer))!=len(answer):
             raise ValueError('答案下标无效')
         if row['kind']=='choice' and len(answer)!=1: raise ValueError('单选必须有唯一答案')
+        if row['kind']=='multi' and row['origin']=='cloze' and len(answer)<2: raise ValueError('并列挖空多选须有至少两项正确答案')
     elif row['kind']=='fill':
         if not isinstance(answer,list) or not answer or any(not isinstance(a,list) or not a or any(not isinstance(t,str) or not t.strip() for t in a) for a in answer):
             raise ValueError('填空答案无效')

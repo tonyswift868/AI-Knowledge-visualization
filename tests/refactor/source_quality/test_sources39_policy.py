@@ -72,7 +72,7 @@ def test_sources39_verified_search_is_sorted_after_actual_body_validation():
           'https://jyeoo.com/questions/1','https://docs.python.org/3/tutorial/controlflow.html']
     def fetch(url,**kwargs):
         body=('<title>Python functions parameters</title><h1>Python functions parameters</h1><p>'
-              +'Python functions accept parameters and return values. '*10+'</p>').encode()
+              +'Python functions accept parameters and return values. '*10+f'</p><p>Example identifier: {url}</p>').encode()
         return FetchedContent(url,url,'text/html',body,'')
     with ResearchPipeline(fetcher=fetch) as pipeline:
         result=pipeline.run([RawHit(url) for url in urls],goal='Python functions parameters')
@@ -112,7 +112,8 @@ def test_sources39_general_materials_and_original_answers_are_usable(store):
 @pytest.mark.parametrize('higher_has_answers',[True,False])
 def test_sources39_only_falls_back_when_higher_band_cannot_cover(store,higher_has_answers):
     store.add_sources('p',[dict(id='g',title='社区教学',url='https://www.zhihu.com/question/12',adopted=True,
-        chunks=[dict(chunk_id='gc',text=TEXT)])])
+        chunks=[dict(chunk_id='gc',text=TEXT,section=['压强']),
+            dict(chunk_id='gother39',text='速度、位移和加速度属于运动学。',section=['运动学'])])])
     calls=[]
     def finder(point,passages,**kwargs):
         level=passages[0]['authority']['level'];calls.append(level)

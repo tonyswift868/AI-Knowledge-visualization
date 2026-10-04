@@ -33,10 +33,11 @@ _locks_guard = threading.Lock()
 
 
 class AccountJSON:
-    def __init__(self, account_id: str, data_root, filename: str):
+    def __init__(self, account_id: str, data_root, filename: str, *, max_bytes=262144):
         self.account_id = account_id
         self.data_root = Path(data_root).expanduser().resolve()
         self.path = account_directory(account_id, data_root) / filename
+        self.max_bytes = max_bytes
         with _locks_guard:
             self.lock = _locks.setdefault(os.path.normcase(str(self.path)), threading.RLock())
 
@@ -51,7 +52,7 @@ class AccountJSON:
             try:
                 if not self.path.exists():
                     return json.loads(json.dumps(default))
-                if self.path.stat().st_size > 262144:
+                if self.path.stat().st_size > self.max_bytes:
                     raise StorageError()
                 value = json.loads(self.path.read_text(encoding="utf-8"))
                 if not isinstance(value, dict):
@@ -72,7 +73,7 @@ class AccountJSON:
             temporary = None
             try:
                 payload = json.dumps(value, ensure_ascii=False, indent=2).encode("utf-8")
-                if len(payload) > 262144:
+                if len(payload) > self.max_bytes:
                     raise StorageError()
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 self._check()

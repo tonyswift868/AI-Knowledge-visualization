@@ -6,6 +6,17 @@ import re
 from .source_filter import normalize_url
 
 
+def is_document_preview(url, title='', body=''):
+    """Converted document previews are not the uploaded original document."""
+    parsed = urlsplit(url or '')
+    if parsed.path.lower().endswith(('.pdf', '.docx', '.pptx', '.epub')):
+        return False
+    host = parsed.hostname or ''
+    repositories = ('51jiaoxi.com', 'jiaoxiwang.com', 'docin.com', 'wenku.baidu.com',
+                    'book118.com', 'renrendoc.com', 'doc88.com')
+    return any(host == h or host.endswith('.' + h) for h in repositories)
+
+
 def is_spec_overview_index(url):
     parsed = urlsplit(url)
     return (parsed.hostname == 'modelcontextprotocol.io'

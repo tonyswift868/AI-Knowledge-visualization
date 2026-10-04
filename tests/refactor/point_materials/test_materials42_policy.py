@@ -20,7 +20,8 @@ def store42(tmp_path):
         today=date(2026,10,3)
         store.create_plan('p',goal='压强',window=PlanWindow(today,today+timedelta(days=5),100))
         store.add_sources('p',[dict(id='s',title='压强教材',url='https://pep.com.cn/physics/pressure',adopted=True,
-            chunks=[dict(target='本点原文定义是什么？',chunk_id='c',text=TEXT,section=['压强'])])])
+            chunks=[dict(target='本点原文定义是什么？',chunk_id='c',text=TEXT,section=['压强']),
+                dict(chunk_id='other42',text='速度、位移和加速度属于运动学。',section=['运动学'])])])
         store.save_outline('p',[dict(id='stage',title='物理')],[dict(id='m',stage_id='stage',title='压强',prerequisites=[])])
         store.save_generated_module('p','m',[dict(id='point',title='压强',summary='压力面积',minutes=15,chunk_ids=['c'],importance='key')],check_minutes=5,today=today)
         yield store
@@ -28,7 +29,7 @@ def store42(tmp_path):
 
 def pointers42(cid='c'):
     return dict(passages=[cid],found=[],cloze=[
-        dict(target='本点原文定义是什么？',chunk_id=cid,sentence='压强是压力与受力面积的比值。',word='压强',importance='key',keywords=['浮力','密度']),
+        dict(target='本点原文定义是什么？',chunk_id=cid,sentence='压强是压力与受力面积的比值。',word='压强',importance='key',keywords=['速度','位移']),
         dict(target='本点原文定义是什么？',chunk_id=cid,sentence='国际单位制中压强的单位是帕。',word='帕',importance='key',keywords=[]),
         dict(target='本点原文定义是什么？',chunk_id=cid,sentence='压力越大，在面积不变时压强越大。',word='压力',importance='key',keywords=[])])
 
@@ -81,7 +82,7 @@ def test_materials42_three_search_rounds_quick_separation_reopen(store42):
     assert sum(q['role']=='quick' for q in rows)==1
     quick=pm.pick_question(store42,'p','point','quick')
     assert quick['kind']=='choice' and quick['origin']=='cloze'
-    assert all(option in TEXT for option in quick['options'])
+    assert all(option in TEXT+'速度、位移和加速度属于运动学。' for option in quick['options'])
     for purpose in ('module','retest','final','direct','free'):
         assert pm.pick_question(store42,'p','point',purpose)['role']=='bank'
         assert pm.pick_question(store42,'p','point',purpose,[q['id'] for q in rows if q['role']=='bank']) is None

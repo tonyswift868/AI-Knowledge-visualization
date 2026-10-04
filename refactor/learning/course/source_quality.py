@@ -8,9 +8,13 @@ from datetime import date
 from html.parser import HTMLParser
 import json
 import re
+import hashlib
+import unicodedata
 from urllib.parse import urlsplit, unquote
 
 from .source_filter import RawHit, screen, load_lists, github_repo, normalize_url, classify_source
+from .source_follow import is_document_preview
+from .extract import clean_page_text, useful_title
 
 MIN_CREDIBILITY = 3
 MIN_RELEVANCE = 4
@@ -28,6 +32,13 @@ _GENERIC_CN = {'学习', '入门', '基础', '理解', '掌握', '教程', '课�
 _MONTHS = {name: index for index, name in enumerate(('january', 'february', 'march', 'april', 'may', 'june',
     'july', 'august', 'september', 'october', 'november', 'december'), 1)}
 _CONCEPTS = {
+    'computer': ('电脑', '计算机'),
+    'memory': ('内存', '内部存储器'), 'storage': ('硬盘', '存储', '外存', '外部存储器'), 'cpu': ('处理器',),
+    'operating system': ('操作系统',), 'software': ('软件',),
+    'files': ('文件',), 'folders': ('文件夹',), 'network': ('网络',),
+    'browser': ('浏览器',), 'quadratic': ('一元二次', '二次方程'),
+    'completing the square': ('配方法', '配方'),
+    'essay': ('作文', '写作'), 'paragraph': ('段落',), 'argument': ('论证', '论点'),
     'functions': ('function', '函数', '関数', 'funktion', 'funções', 'função'),
     'parameters': ('parameter', '参数', 'パラメーター', 'parametern', 'parâmetros', 'parâmetro'),
     'hypertension': ('high blood pressure', '高血压'),
@@ -83,7 +94,7 @@ def content_identity(url):
     parsed = urlsplit(normalized)
     host, path = parsed.hostname or '', parsed.path.rstrip('/')
     if host == 'learn.microsoft.com':
-        path = re.sub(r'^/[a-z]{2}(?:-[a-z]{2})?(?=/training/modules/)', '', path, flags=re.I)
+        path = re.sub(r'^/[a-z]{2}(?:-[a-z]{2})?(?=/(?:training/modules|archive/blogs)/)', '', path, flags=re.I)
         return 'https://learn.microsoft.com' + path
     if host == 'docs.python.org':
         path = re.sub(r'^/(?:zh-cn|ja|fr|de|pt-br)/(?=3/)', '/', path, flags=re.I)
@@ -100,6 +111,66 @@ def content_identity(url):
     if host == 'takeielts.britishcouncil.org':
         return 'https://' + host + path
     return normalized
+
+
+def body_identity(body):
+    """Identity of cleaned substantial lesson text, independent of raw HTML."""
+    # Keep word boundaries and case: "a b" and "ab", or case-sensitive
+    # identifiers, must not merge two different lessons.
+    text = ' '.join(unicodedata.normalize('NFKC', clean_page_text(body)).split())
+    while True:
+        shorter = None
+        for copies in range(4, 1, -1):
+            size = (len(text)+1)//copies-1
+            part = text[:size]
+            if size >= 150 and text == ' '.join([part]*copies):
+                shorter = part
+                break
+        if shorter is None: break
+        text = shorter
+    return 'body:' + hashlib.sha256(text.encode('utf-8')).hexdigest() if len(text) >= 150 else ''
+
+
+def canonical_link_key(url):
+    parsed = urlsplit(normalize_url(url) or url)
+    mobile = bool(re.match(r'^(?:m|mobile)\.', parsed.hostname or '') or '/amp' in parsed.path)
+    locale = bool(re.search(r'/(?!en(?:-us)?/)[a-z]{2}-[a-z]{2}/', parsed.path, re.I))
+    return (mobile, parsed.scheme != 'https', bool(parsed.query), locale, len(url), url)
+
+
+def lesson_selection(qualities, modules, *, existing=()):
+    """Third-band material is a manual fallback only for uncovered modules.
+
+    Compare the complete candidate set, not individual display batches. A
+    positive overall-goal match alone never claims coverage of every module.
+    """
+    scopes = set(range(1, len(modules) + 1)) if modules else {0}
+    module_scopes = [m.get('title', '') + ' ' + m.get('summary', '') for m in modules]
+    high_coverage = set()
+    for q in [*qualities, *existing]:
+        context = q.get('coverage_context') or q.get('context')
+        if context and context.get('scopes', [])[1:] != module_scopes:
+            continue  # old indices are not coverage of a changed preview
+        if q.get('eligible') and q.get('credibility', 0) >= 4:
+            high_coverage.update(scopes.intersection(q.get('covered_scopes', ())))
+    output = []
+    for q in qualities:
+        q = dict(q)
+        covered = scopes.intersection(q.get('covered_scopes', ()))
+        high = q.get('credibility', 0) >= 4
+        missing = covered - high_coverage
+        shown = bool(q.get('eligible') and (high or missing))
+        q.update(display=shown, recommended=bool(shown and high), default_adopt=bool(shown and high),
+                 fallback_scopes=sorted(missing) if not high else [],
+                 covered_modules=[modules[i-1].get('title', '') for i in sorted(covered) if i > 0],
+                 display_reason=('一二档资料' if shown and high else '一二档无覆盖，供手动选择' if shown
+                                 else '已有一二档覆盖' if q.get('eligible') and not high and covered
+                                 else '未核实模块覆盖' if q.get('eligible') else '；'.join(q.get('reasons', ()))))
+        q['note'] = ('覆盖：' + '、'.join(q['covered_modules']) if q['covered_modules'] else '覆盖本次学习目标')
+        if not high:
+            q['note'] += '。一般网站，可能有错，请自行判断；不默认采用。'
+        output.append(q)
+    return output
 
 
 def terms(text):
@@ -227,6 +298,12 @@ def is_landing_page(title, body):
 
 
 def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(), published_at=None, warnings=(), headings=(), publisher_evidence=None):
+    body = clean_page_text(body)
+    if not useful_title(title):
+        candidates = [*headings, *(s for s in body.splitlines()[:8]
+            if re.match(r'^\s*(?:第.{1,8}[章节]|Chapter\s+\d+|\d+(?:\.\d+)*[.、\s])', s, re.I))]
+        title = next((s.strip() for s in candidates if useful_title(s) and 4 <= len(s.strip()) <= 120), title)
+    title_verified = useful_title(title)
     lists = lists or load_lists()
     today = today or date.today()
     checked = screen([RawHit(url or '', title)], lists=lists)
@@ -252,7 +329,7 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
             codes.append('listed_repository_owner_requires_type_evidence')
         # A known organization is search priority, not a publisher type or proof
         # that this particular repository is an original textbook.
-    if _COMMUNITY.search(host + path) and not _host_is(host, 'wikipedia.org'):
+    if _COMMUNITY.search(host + path) and identity['level'] in {0, 3} and not _host_is(host, 'wikipedia.org'):
         credibility = min(credibility, 3); codes.append('community_content')
     if _PERSONAL.search(host + path) and identity['level'] == 0:
         credibility = min(credibility, 2); codes.append('author_unverified')
@@ -266,6 +343,8 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
         credibility = min(credibility, 1); codes.append('non_original_or_disallowed')
     if not body.strip():
         credibility = 0; codes.append('body_unavailable')
+    if not title_verified:
+        credibility = min(credibility, 2); codes.append('title_unverified')
     junk = junk_reasons(title, body)
     if junk:
         credibility = min(credibility, 1); codes.extend(junk)
@@ -274,9 +353,19 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
     landing_only = (is_landing_page(title, body) or (bool(url) and path in {'', '/'})
                     or (host == 'modelcontextprotocol.io' and bool(re.fullmatch(r'/specification/20\d\d-\d\d-\d\d/?', path)))
                     or bool(re.search(r'/(?:category|tags?)/', path, re.I)))
+    # Library catalogue/imprint metadata identifies a book, not its lesson text.
+    catalogue = ('/opac/' in path.lower() or sum(word in body for word in
+                 ('中图分类法', '主要责任者', '责任者附注', '馆藏信息', '索书号')) >= 2)
+    landing_only = landing_only or catalogue
     if landing_only:
         credibility = min(credibility, 1)
         codes.append('lesson_body_unavailable')
+        if catalogue: codes.append('catalogue_not_original')
+    preview = is_document_preview(url, title, body)
+    if preview:
+        credibility = min(credibility, 1)
+        landing_only = True
+        codes.extend(['document_preview', '预览页，非原文'])
     if '/_sources/' in path:
         credibility = 1; codes.append('documentation_source_markup')
     if warnings:
@@ -336,6 +425,13 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
         ratio = len(present) / max(1, len(wanted))
         single_clear = len(wanted) == 1 and headings and _occurrences(body_text, present[0]) >= 2
         score = 5 if ratio >= .8 and len(headings) >= 2 else 4 if single_clear or (ratio >= .45 and headings and len(present) >= 2) else 3 if present else 1
+        concepts = [name for name, variants in _CONCEPTS.items()
+                    if _occurrences(scope.casefold(), name)]
+        concept_hits = [name for name in concepts if _occurrences(body_text, name)]
+        concept_headings = [name for name in concept_hits if _occurrences(title_text, name)]
+        if re.search(r'[\u4e00-\u9fff]', scope) and concepts and len(concept_hits)/len(concepts) >= .5 and concept_headings:
+            if len(concept_hits) >= 2 or (len(concepts) == 1 and _occurrences(body_text, concept_hits[0]) >= 2):
+                score = max(score, 4)
         relevance = max(relevance, score)
         if score >= 4: coverage.append(index)
         matches += present
@@ -364,14 +460,16 @@ def _assess(url, title, body, *, goal, level, modules, today, lists, reasons=(),
     if level_fit == 'review_only': note += '适合复习。'
     if not eligible:
         note += '尚未达到可用资料门槛。'
+    if preview: note += '预览页，非原文；请上传原始课件或文档。'
+    if not title_verified: note += '未找到真实页面或章节标题，暂不展示占位标题。'
     if freshness in {'unknown', 'stale'}: note += '此主题需较新资料，发布日期未知或超过两年。'
     return dict(version=1, credibility=credibility, relevance=relevance, eligible=eligible, needs_review=review,
                 context=dict(goal=goal, level=level, scopes=scopes),
                 publisher=publisher, source_type=category, source_group=source_group(credibility),
-                community=identity['type']=='community', originality='unconfirmed' if credibility < 4 else 'publisher_original',
+                community=identity['type']=='community' or 'community_content' in codes, originality='unconfirmed' if credibility < 4 else 'publisher_original',
                 freshness=freshness, published_at=published_at, level_fit=level_fit, covered_scopes=coverage,
                 reasons=list(dict.fromkeys(codes)), note=note, method='rules', url=url,
-                evidence=dict(title=title, excerpt=excerpt, matched_terms=sorted(set(matches))))
+                body_key=body_identity(body), evidence=dict(title=title, excerpt=excerpt, matched_terms=sorted(set(matches))))
 
 
 def source_group(credibility):

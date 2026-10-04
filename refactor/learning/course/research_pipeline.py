@@ -23,10 +23,10 @@ import time
 import unicodedata
 from urllib.parse import urlsplit
 
-from .extract import ExtractedDocument, ExtractError, extract_bytes, extract_html
-from .source_quality import published_date, assess, rank_key, terms
+from .extract import ExtractedDocument, ExtractError, extract_bytes, extract_html, useful_title
+from .source_quality import published_date, assess, rank_key, terms, body_identity, canonical_link_key
 from .source_quality import is_landing_page, body_publication_date, junk_reasons
-from .source_follow import lesson_links, is_spec_overview_index
+from .source_follow import lesson_links, is_spec_overview_index, is_document_preview
 from .source_filter import (RawHit, SourceLists, blocked_keyword_reasons,
                             load_lists, normalize_url, screen, classify_source)
 from refactor.learning.course.research import FetchedContent
@@ -36,6 +36,12 @@ from refactor.learning.course.research import ResearchCancelled
 from refactor.learning.course.research import ResearchTimeout
 from refactor.learning.course.research import ResearchUnsupportedContent
 from refactor.learning.course.research import ResearchUploadRequired, ResearchFetchError, material_upload_guidance
+
+
+def _canonical_source_key(source):
+    # Do not replace a publisher's original by a shorter community mirror.
+    level = classify_source(source.final_url)['level'] or 4
+    return (level, canonical_link_key(source.url))
 
 
 @dataclass(frozen=True)
@@ -264,6 +270,8 @@ class ResearchPipeline:
                 raise _Rejected('unsupported_type', '仅接受 HTML、PDF、纯文本或 Markdown 正文。')
             token.check()
             body = '\n\n'.join(block.text for block in doc.blocks)
+            if is_document_preview(final.url, doc.title, body):
+                raise _Rejected('document_preview', '预览页，非原文；请上传原始课件或文档。')
             junk = junk_reasons(doc.title, body)
             if junk:
                 raise _Rejected(junk[0], '资料属于采集、标题党营销或推广页面，未采用。')
@@ -274,14 +282,14 @@ class ResearchPipeline:
                 raise _Rejected('content_' + kind, f'资料正文命中{label}关键词，已拒绝展示。')
             if sum(char.isalnum() for char in body) < self.min_text_chars:
                 raise _Rejected('body_too_short', f'提取正文少于 {self.min_text_chars} 个有效字符，无法验证资料内容。')
-            titles = [doc.title] if doc.title != fallback else []
+            titles = [doc.title] if doc.title != fallback and useful_title(doc.title) else []
             # Search engines often target a real section within a chapter
             # (for example ``#function-definitions``), while normalization
             # strips the fragment. Compare its extracted subheadings too.
-            titles.extend(block.text for block in doc.blocks if block.kind == 'heading')
+            titles.extend(block.text for block in doc.blocks if block.kind == 'heading' and useful_title(block.text))
             if media in {'text/plain', 'application/pdf'} and not titles:
                 first = body.splitlines()[0].strip()
-                if 4 <= len(first) <= 180:
+                if 4 <= len(first) <= 180 and useful_title(first):
                     titles.append(first)
             matches, tag = _title_check(hit.title, titles)
             if not matches:
@@ -442,15 +450,27 @@ class ResearchPipeline:
                 else:
                     continue
                 del active[future]
-        verified, rejected, seen = [], [], set()
+        verified, rejected, seen, bodies = [], [], set(), {}
         for _, result in sorted(outcomes.items()):
             if isinstance(result, VerifiedSource):
                 aliases = _aliases(result)
+                fingerprint = body_identity('\n'.join(b.text for b in result.document.blocks))
                 if aliases & seen:
                     rejected.append(RejectedSource(result.url, result.title, 'duplicate', '重定向后的资料地址与前面的结果重复。'))
+                elif fingerprint and fingerprint in bodies:
+                    previous = bodies[fingerprint]
+                    if _canonical_source_key(result) < _canonical_source_key(previous):
+                        verified[verified.index(previous)] = result
+                        bodies[fingerprint] = result
+                        duplicate = previous
+                    else:
+                        duplicate = result
+                    rejected.append(RejectedSource(duplicate.url, duplicate.title, 'duplicate_body', '正文相同，已合并并保留更规范的链接。'))
+                    seen.update(aliases)
                 else:
                     verified.append(result)
                     seen.update(aliases)
+                    if fingerprint: bodies[fingerprint] = result
             else:
                 rejected.append(result)
         if goal:
@@ -469,7 +489,12 @@ class ResearchPool:
     def __init__(self, *, accepted_urls=(), rejected_urls=()):
         self._accepted, self._rejected = _urls(accepted_urls), _urls(rejected_urls)
         self._records, self._shown = [], set()
+        self._aliases_by_body = {}
         self._lock = RLock()
+
+    def _record_aliases(self, source):
+        fingerprint = body_identity('\n'.join(b.text for b in source.document.blocks))
+        return _aliases(source) | self._aliases_by_body.get(fingerprint, set())
 
     @property
     def accepted_urls(self):
@@ -490,8 +515,30 @@ class ResearchPool:
                 aliases = _aliases(source)
                 if aliases & seen:
                     continue
+                fingerprint = body_identity('\n'.join(b.text for b in source.document.blocks))
+                if fingerprint:
+                    self._aliases_by_body.setdefault(fingerprint, set()).update(aliases)
+                duplicate = next((s for s in self._records if fingerprint and
+                    body_identity('\n'.join(b.text for b in s.document.blocks)) == fingerprint), None)
+                if duplicate is not None:
+                    if not (_aliases(duplicate) & self._shown) and _canonical_source_key(source) < _canonical_source_key(duplicate):
+                        self._records[self._records.index(duplicate)] = source
+                    seen.update(aliases)
+                    continue
                 self._records.append(source)
                 seen.update(aliases)
+
+    def available(self):
+        """Snapshot the whole unseen set before deciding per-module fallback."""
+        with self._lock:
+            return tuple(s for s in self._records if s.tier in {'whitelist', 'neutral'}
+                         and not self._record_aliases(s) & (self._shown | self._accepted | self._rejected))
+
+    def mark_shown(self, url):
+        with self._lock:
+            for source in self._records:
+                if normalize_url(url) in self._record_aliases(source):
+                    self._shown.update(self._record_aliases(source))
 
     def take(self, n, *, include_low=False, key=None):
         if type(n) is not int or n < 0:
@@ -503,9 +550,9 @@ class ResearchPool:
             ordered=sorted(records,key=key) if key else sorted(records,key=lambda s:tiers.index(s.tier))
             for source in ordered:
                 if len(output) >= n: break
-                if _aliases(source) & (self._shown | self._accepted | self._rejected): continue
+                if self._record_aliases(source) & (self._shown | self._accepted | self._rejected): continue
                 output.append(source)
-                self._shown.update(_aliases(source))
+                self._shown.update(self._record_aliases(source))
             return tuple(output)
 
     def _mark(self, url, accepted):
@@ -515,8 +562,8 @@ class ResearchPool:
         with self._lock:
             aliases = {normalized}
             for source in self._records:
-                if normalized in _aliases(source):
-                    aliases.update(_aliases(source))
+                if normalized in self._record_aliases(source):
+                    aliases.update(self._record_aliases(source))
             target, opposite = (self._accepted, self._rejected) if accepted else (self._rejected, self._accepted)
             target.update(aliases)
             opposite.difference_update(aliases)

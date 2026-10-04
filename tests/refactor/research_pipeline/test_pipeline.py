@@ -41,7 +41,8 @@ def offline(monkeypatch):
 
 
 def page(url, *, title=TITLE, text=TEXT, media='text/html', final=None):
-    body = f'<html><head><title>{escape(title)}</title></head><body><main><h1>{escape(title)}</h1><p>{escape(text)}</p></main></body></html>'.encode()
+    # These fixtures exercise transport/scheduling, not identical lesson copies.
+    body = f'<html><head><title>{escape(title)}</title></head><body><main><h1>{escape(title)}</h1><p>{escape(text)}</p><p>Example identifier: {escape(final or url)}</p></main></body></html>'.encode()
     return FetchedContent(url, final or url, media, body, '2026-09-27T10:00:00+00:00')
 
 

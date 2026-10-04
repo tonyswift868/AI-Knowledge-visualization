@@ -11,7 +11,7 @@ import { Button, Field, Segmented, TASK_TIME_TIP, Tip } from "../ui"
 type Card = {
   card_id: string; kind: "url" | "file"; url: string | null; title: string; site: string; tier: string; summary: string
   relevance: number | null; credibility: number | null; note: string; status: "new" | "adopted" | "rejected"; chars: number
-  quality?: { source_type?: string; community?: boolean; source_group?: string }
+  quality?: { source_type?: string; community?: boolean; source_group?: string; covered_modules?: string[] }
 }
 type Citation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
 type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean }
@@ -335,18 +335,20 @@ function Stars({ n, label }: { n: number | null; label: string }) {
 }
 
 function SourceCard({ card, locked, onDecide }: { card: Card; locked: boolean; onDecide: (adopt: boolean) => void }) {
-  const tier = card.kind === "file" ? ["上传", "file"] : (card.credibility ?? 0) >= 5 ? ["权威来源", "ok"] : (card.credibility ?? 0) >= 4 ? ["成熟平台", "ok"] : ["一般来源", "muted"]
+  const general = card.kind !== "file" && card.credibility === 3
+  const tier = card.kind === "file" ? ["上传", "file"] : (card.credibility ?? 0) >= 5 ? ["权威来源", "ok"] : (card.credibility ?? 0) >= 4 ? ["成熟平台", "ok"] : ["一般网站", "muted"]
   return (
     <div className={`source-card ${card.status}`}>
       <div className="row between" style={{ alignItems: "flex-start" }}>
         <div style={{ minWidth: 0 }}>
-          <b className="source-title">{card.kind === "file" ? <BookOpen size={15} /> : null}{card.title}</b>
+          <b className="source-title" title={card.title}>{card.kind === "file" ? <BookOpen size={15} /> : null}{card.title}</b>
           <span className="muted small">{card.site}{card.chars ? ` · 约 ${Math.round(card.chars / 1000)} 千字` : ""}</span>
         </div>
         <span className={`pill ${tier[1]}`}>{tier[0]}</span>
       </div>
       <p className="source-note">来源类型：{card.kind === "file" ? "上传文档" : ({ official_docs: "官方文档", academic: "大学与学术资料", education: "教材与教育平台", encyclopedia: "百科", standards: "标准", government: "官方机构", reference: "参考资料", official_repository: "官方代码仓库" } as Record<string, string>)[card.quality?.source_type ?? ""] ?? "网页资料"} · 用于讲解；带答案的题目在准备时核实。</p>
-      <p className="source-note">可信依据：{card.note || "由你提供，正文已读取；请确认适合本次学习。"}</p>
+      <p className="source-note">{card.quality?.covered_modules?.length ? `覆盖：${card.quality.covered_modules.join("、")}` : card.note || "由你提供，正文已读取；请确认适合本次学习。"}</p>
+      {general && <p className="source-note" role="note">一般网站，可能有错，请自行判断；不默认采用。</p>}
       <div className="row between wrap">
         <div className="row small" style={{ gap: 12 }}><Stars n={card.relevance} label="相关" /><Stars n={card.credibility} label="可信" /></div>
         <div className="row" style={{ gap: 6 }}>

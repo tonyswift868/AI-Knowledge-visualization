@@ -12,6 +12,7 @@ Phases: form -> questions -> sources -> outline -> generating -> ready.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from datetime import date, timedelta
 import json
 import logging
@@ -200,7 +201,9 @@ class PlanFlow:
     def _file(self, plan_id):
         if not isinstance(plan_id, str) or not _PLAN_ID.fullmatch(plan_id):
             raise BridgeError("PARAM_INVALID", "计划编号无效。")
-        return AccountJSON(self.services.account_id, self.services.data_root, f"plan-drafts/{plan_id}.json")
+        # Intake drafts include full verified material, unlike small settings.
+        return AccountJSON(self.services.account_id, self.services.data_root,
+                           f"plan-drafts/{plan_id}.json", max_bytes=64*1024*1024)
 
     def load(self, plan_id):
         try:
@@ -212,6 +215,14 @@ class PlanFlow:
         return draft
 
     def save(self, draft):
+        # Only displayed cards are retained. This stays in the local intake
+        # draft, never CourseStore/sync until the learner actually adopts it.
+        snapshots = draft.setdefault('_verified_sources', {})
+        for card in draft.get('sources', []):
+            source = self._verified.get(draft['plan_id'], {}).get(card.get('url'))
+            if source is not None and (card.get('sha') == source.document.sha256):
+                if snapshots.get(card['url'], {}).get('content_sha256') != source.content_sha256:
+                    snapshots[card['url']] = asdict(source)
         try:
             self._file(draft["plan_id"]).write(draft)
         except StorageError:
@@ -219,7 +230,8 @@ class PlanFlow:
         self.push("plan_draft", self.public(draft))
 
     def public(self, draft):
-        view = dict(draft, busy=self._status.get(draft["plan_id"]))
+        view = {k:v for k,v in draft.items() if k != '_verified_sources'}
+        view['busy'] = self._status.get(draft["plan_id"])
         if draft.get("outline"):
             view["outline"] = {k: v for k, v in draft["outline"].items() if k != "agent"}
             view["outline"]["stages"] = [dict(s, modules=[{k: v for k, v in m.items() if k != "spans"} for m in s["modules"]])
@@ -384,7 +396,7 @@ class PlanFlow:
                 f"{m['title']}：{m['summary']}" for m in draft["accepted_preview"]["modules"])
         return form
 
-    def _show_preview(self, draft, ctx):
+    def _show_preview(self, draft, ctx, *, confirmed=False):
         # Invalidate derived work before calling the model: cancellation/failure
         # must not leave an obsolete map available for generation.
         draft["phase"] = "questions"
@@ -402,7 +414,8 @@ class PlanFlow:
         draft["preview"] = preview
         draft["phase"] = "preview"
         text = preview["summary"] + "\n\n" + "\n".join(f"{m['title']}｜{m['summary']}" for m in preview["modules"])
-        text += "\n\n这样可以吗？确认后我再找资料；想改哪里也可以继续说。"
+        text += ("\n\n已按你这条消息的确认采用新版大致模块，接下来找资料。" if confirmed else
+                 "\n\n这样可以吗？确认后我再找资料；想改哪里也可以继续说。")
         draft["messages"].append(_msg("ai", "preview", text, version=preview["version"]))
         self.save(draft)
 
@@ -589,47 +602,69 @@ class PlanFlow:
         """Score and show the next unseen verified sources; returns how many cards were added."""
         plan_id = draft["plan_id"]
         pool, cards = self._pool(plan_id), []
-        for _ in range(3):
-            batch = pool.take(8,key=lambda s:source_quality.rank_key(source_quality.assess(
-                s,draft['goal'],level=draft['form']['level'],today=self.study_day(),lists=self._lists())))
+        outline_modules = [m for stage in (draft.get("outline") or {}).get("stages", []) for m in stage["modules"]]
+        modules = outline_modules
+        if not modules:
+            modules = (draft.get("preview") or {}).get("modules", [])
+        # Assess all available candidates before allowing a third-band fallback;
+        # an authority later in the pool must not lose to the first display batch.
+        for batch in [sorted(pool.available(), key=lambda s: source_quality.rank_key(source_quality.assess(
+                s, draft['goal'], level=draft['form']['level'], today=self.study_day(), lists=self._lists())))]:
             if not batch:
                 break
             self.status(plan_id, "正在评估资料的相关性和可信度…")
-            modules = [m for stage in (draft.get("outline") or {}).get("stages", []) for m in stage["modules"]]
-            qualities = [source_quality.assess(s, draft["goal"], level=draft["form"]["level"], modules=modules,
+            qualities = [source_quality.assess(s, draft["goal"], level=draft["form"]["level"], modules=outline_modules,
                                                today=self.study_day(), lists=self._lists()) for s in batch]
             candidates = [{"id": f"r{i}", "title": s.title or s.url, "site": s.site,
                            "excerpt": qualities[i]["evidence"]["excerpt"]}
                           for i, s in enumerate(batch) if qualities[i]["needs_review"]]
             scores = {}
-            if candidates:
-                scores, _ = self._ask("source_scoring", agents.scoring_request(draft["goal"], draft["form"], candidates),
-                                      lambda text: agents.parse_scoring(text, [c["id"] for c in candidates]), ctx, plan_id=plan_id,
+            for start in range(0, len(candidates), 8):
+                group = candidates[start:start+8]
+                reviewed, _ = self._ask("source_scoring", agents.scoring_request(draft["goal"], draft["form"], group),
+                                      lambda text: agents.parse_scoring(text, [c["id"] for c in group]), ctx, plan_id=plan_id,
                                       max_tokens=8192)
+                scores.update(reviewed)
+            qualities = [source_quality.apply_review(q, scores.get(f"r{i}", {})) for i, q in enumerate(qualities)]
+            if modules != outline_modules:
+                # Preview coverage is display policy; keep the admission-review
+                # context unchanged for the existing adopt/save contract.
+                for source, quality in zip(batch, qualities):
+                    coverage = source_quality.assess(source, draft['goal'], level=draft['form']['level'],
+                        modules=modules, today=self.study_day(), lists=self._lists())
+                    quality.update(covered_scopes=coverage['covered_scopes'], coverage_context=coverage['context'])
+            qualities = source_quality.lesson_selection(qualities, modules,
+                existing=[draft['research'].get('quality_audit', {}).get(c.get('url'), c.get('quality', {}))
+                          for c in draft['sources'] if c.get('status') != 'rejected'])
             shown = {c.get("sha") for c in draft["sources"]} | {c["sha"] for c in cards}
             shown_keys = {c.get("content_key") or source_quality.content_identity(c.get("url", ""))
                           for c in draft["sources"]} | {c["content_key"] for c in cards}
-            for i, source in enumerate(batch):
-                score = source_quality.apply_review(qualities[i], scores.get(f"r{i}", {}))
+            shown_bodies = {c.get('quality', {}).get('body_key') for c in draft['sources']}
+            ordered = sorted(zip(batch, qualities), key=lambda item: (source_quality.rank_key(item[1]), source_quality.canonical_link_key(item[0].url)))
+            for source, score in ordered:
                 draft["research"].setdefault("quality_audit", {})[source.url] = score
                 identity = source_quality.content_identity(source.final_url)
-                if not score["eligible"] or source.document.sha256 in shown or identity in shown_keys:
+                if not score["display"] or source.document.sha256 in shown or identity in shown_keys or (score['body_key'] and score['body_key'] in shown_bodies):
                     continue  # also skips a page whose text is identical to one already shown
+                if len(cards) >= MAX_CARDS_PER_ROUND:
+                    continue
                 shown.add(source.document.sha256)
                 shown_keys.add(identity)
-                cards.append({"card_id": _new_id()[:12], "kind": "url", "url": source.url, "title": source.title or source.url,
+                shown_bodies.add(score['body_key'])
+                pool.mark_shown(source.url)
+                cards.append({"card_id": _new_id()[:12], "kind": "url", "url": source.url, "title": score['evidence']['title'] or source.url,
                               "site": source.site, "tier": source.tier, "summary": source.summary[:300],
                               "relevance": score["relevance"], "credibility": score["credibility"], "note": score["note"],
                               "quality": score, "user_provided": False,
                               "status": "new", "chars": source.document.char_count, "sha": source.document.sha256,
                               "content_key": identity})
-            if len(cards) >= 3:
-                break
         cards.sort(key=source_quality.rank_key)
         cards = cards[:MAX_CARDS_PER_ROUND]
         draft["sources"].extend(cards)
         if cards:
-            text = f"找到 {len(cards)} 份合适的资料" + (f"（共搜到 {searched} 条，核实通过 {verified} 条）" if searched else "") + \
+            preferred = sum(c['quality']['recommended'] for c in cards)
+            fallback = len(cards) - preferred
+            text = f"找到 {preferred} 份一二档资料" + (f"，另有 {fallback} 份一般网站仅供自行判断，不默认采用" if fallback else "") + (f"（共搜到 {searched} 条，核实通过 {verified} 条）" if searched else "") + \
                    "。请勾选“认可并采用”；不想用的点“不要”。不满意可以点“再找找”，或者直接告诉我想要什么样的资料。"
             draft["messages"].append(_msg("ai", "sources", text, cards=[c["card_id"] for c in cards]))
         elif quiet:
@@ -660,17 +695,68 @@ class PlanFlow:
         if not self._show_batch(draft, ctx, quiet=True):
             self._research(draft, ctx)
 
-    def decide(self, draft, card_id, adopt):
+    def _source_phase_message(self, draft):
+        phase = draft['phase']
+        if phase == 'preview':
+            return '现在还在确认大致模块，确认后再采用或调整资料。'
+        if phase in ('form', 'questions'):
+            return '现在还在填写或核对学习需求，请先完成需求和大致模块确认。'
+        if phase == 'ready':
+            return '计划已经生成，现在不能再改创建时的资料。'
+        return '正在生成计划，请稍等，当前不能再改资料。'
+
+    def _card_source(self, draft, card, ctx):
+        """Restore displayed verified text; legacy drafts must re-verify the URL."""
+        from ..course.research_pipeline import VerifiedSource, ResearchPipeline
+        from ..course.extract import ExtractedDocument, TextBlock, SourceChunk
+        from ..course.source_filter import RawHit, normalize_url
+        plan_id, url = draft['plan_id'], card['url']
+        source = self._verified.get(plan_id, {}).get(url)
+        if source is not None:
+            return source
+        snapshot = draft.get('_verified_sources', {}).get(url)
+        if snapshot:
+            try:
+                data = dict(snapshot)
+                doc = dict(data['document'])
+                doc['blocks'] = tuple(TextBlock(**dict(b, section=tuple(b['section']))) for b in doc['blocks'])
+                doc['chunks'] = tuple(SourceChunk(**dict(c, section=tuple(c['section']))) for c in doc['chunks'])
+                doc['warnings'] = tuple(doc['warnings'])
+                data['document'] = ExtractedDocument(**doc)
+                data['reasons'] = tuple(data['reasons'])
+                source = VerifiedSource(**data)
+            except (KeyError, TypeError, ValueError):
+                raise BridgeError('SOURCE_RECHECK_FAILED', '这份资料需要重新查找，保存的正文无法读取。') from None
+        else:
+            self.status(plan_id, '正在重新核实这份资料…')
+            pipeline = ResearchPipeline(fetcher=self.fetcher, lists_provider=self._lists, max_sources=1, timeout=15.0)
+            try:
+                result = pipeline.run([RawHit(url, card.get('title', ''), '')],
+                                      cancel=ctx.cancel, goal=draft['goal'])
+            finally:
+                pipeline.close()
+            if ctx.cancel.is_set():
+                raise ModelCancelled()
+            source = next((s for s in result.verified if normalize_url(s.url) == normalize_url(url)), None)
+            if source is None:
+                raise BridgeError('SOURCE_RECHECK_FAILED', '这份资料需要重新查找，重新抓取或核实未通过。')
+        self._verified.setdefault(plan_id, {})[url] = source
+        return source
+
+    def decide(self, draft, card_id, adopt, *, ctx=None):
         card = next((c for c in draft["sources"] if c["card_id"] == card_id), None)
         if card is None:
             raise BridgeError("PARAM_INVALID", "找不到这份资料。")
         if draft["phase"] not in ("sources", "outline", "questions"):
-            raise BridgeError("PHASE_INVALID", "路线已经开始生成，不能再改资料。")
+            raise BridgeError("PHASE_INVALID", self._source_phase_message(draft))
+        ctx = ctx or CallContext('adopt-source', threading.Event(), lambda _: None)
         store, plan_id = self.services.store, draft["plan_id"]
         if adopt:
             if card.get("kind") == "url" and not card.get("user_provided"):
                 source = self._verified.get(plan_id, {}).get(card["url"])
                 stored = next((s for s in store.records("sources", plan_id) if s["id"] == card.get("source_id")), None)
+                if source is None and stored is None:
+                    source = self._card_source(draft, card, ctx)
                 modules = [m for stage in (draft.get("outline") or {}).get("stages", []) for m in stage["modules"]]
                 options = dict(level=draft["form"]["level"], modules=modules, today=self.study_day(), lists=self._lists())
                 if source is not None:
@@ -678,14 +764,21 @@ class PlanFlow:
                 elif stored is not None:
                     chunks = [c for c in store.records("source_chunks", plan_id) if c["source_id"] == stored["id"]]
                     quality = source_quality.assess_stored(stored, chunks, draft["goal"], **options)
-                else:
-                    raise BridgeError("SOURCE_EXPIRED", "请重新检索并核实这份资料后再采用。")
                 previous = card.get("quality", {})
-                if previous.get("context") == quality["context"]:
+                same_text = source is None or card.get('sha') == source.document.sha256
+                if same_text and previous.get("context") == quality["context"]:
                     quality = source_quality.apply_review(quality, previous)
+                elif quality['needs_review'] and source is not None:
+                    candidate = dict(id='r0', title=source.title, site=source.site, excerpt=quality['evidence']['excerpt'])
+                    reviews, _ = self._ask('source_scoring', agents.scoring_request(draft['goal'], draft['form'], [candidate]),
+                        lambda text:agents.parse_scoring(text, ['r0']), ctx, plan_id=plan_id, max_tokens=8192)
+                    quality = source_quality.apply_review(quality, reviews.get('r0', {}))
                 if not quality["eligible"]:
-                    raise BridgeError("SOURCE_QUALITY_LOW", "这份检索资料尚未达到可用性与相关性门槛，不能采用。")
+                    raise BridgeError("SOURCE_QUALITY_LOW", "这份资料需要重新查找，当前核实未达到可用性与相关性门槛，不能采用。")
                 card["quality"] = quality
+                if source is not None:
+                    card.update(sha=source.document.sha256, title=source.title or card['title'],
+                                chars=source.document.char_count, summary=source.summary[:300])
                 if stored is not None:
                     store.add_sources(plan_id, [dict(stored, quality=quality, user_provided=False)])
             if card.get("source_id"):
@@ -693,7 +786,7 @@ class PlanFlow:
             else:
                 verified = self._verified.get(plan_id, {}).get(card["url"])
                 if verified is None:
-                    raise BridgeError("SOURCE_EXPIRED", "这份资料的正文已不在内存里（软件重启过），请点“再找找”重新获取。")
+                    verified = self._card_source(draft, card, ctx)
                 from ..course.materials import import_verified_source
                 self.status(plan_id, "正在保存资料正文…")
                 saved = import_verified_source(store, plan_id, verified)
@@ -1236,6 +1329,16 @@ class PlanFlow:
         context = self._intent_context(draft)
         intents, _ = self._ask("plan_intent", plan_intent.intent_request(context, text),
                                lambda answer: plan_intent.parse_intents(answer, context), ctx, plan_id=draft["plan_id"])
+        supplements = [i for i in intents if i.kind == 'supplement']
+        confirms = [i for i in intents if i.kind == 'proceed' and i.params['step'] == 'sources']
+        if phase == 'preview' and supplements and confirms:
+            # The same message confirms the amended requirements. Never spend
+            # a search on the obsolete preview or ask for consent a second time.
+            draft.setdefault('requirements', []).extend(i.params['instruction'] for i in supplements)
+            self._show_preview(draft, ctx, confirmed=True)
+            self._confirm_preview(draft, ctx)
+            intents = [i for i in intents if i not in supplements and i not in confirms]
+            context = self._intent_context(draft)
         for intent in intents:
             try:
                 self._carry_out(draft, ctx, intent, context)
@@ -1332,7 +1435,7 @@ class PlanFlow:
             for adopt, key in ((True, "adopt"), (False, "reject")):
                 for n in params[key]:
                     card = draft["sources"][n - 1]
-                    self.decide(draft, card["card_id"], adopt)
+                    self.decide(draft, card["card_id"], adopt, ctx=ctx)
                     titles[adopt].append(f"《{card['title']}》")
             parts = ([f"已采用{'、'.join(titles[True])}"] if titles[True] else []) + \
                     ([f"已不要{'、'.join(titles[False])}"] if titles[False] else [])
@@ -1819,7 +1922,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.submit": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().submit_form(d, x, p.get("form")), c),
         "plan.say": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().chat(d, x, text(p)), c),
         "plan.more": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().more_sources(d, x), c),
-        "plan.decide": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().decide(d, text(p, "card_id", 40), p.get("adopt") is True), c),
+        "plan.decide": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().decide(d, text(p, "card_id", 40), p.get("adopt") is True, ctx=x), c),
         "plan.outline": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().make_outline(d, x), c),
         "plan.estimate": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().estimate(d), c),
         "plan.generate": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().generate(d, x), c),

@@ -84,7 +84,7 @@ _REPO = re.compile(r"[a-z0-9_.-]{1,100}", re.I)
 _DNS_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", re.I)
 _BAD_ESCAPE = re.compile(r"%(?![0-9a-fA-F]{2})")
 _UNRESERVED = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-_TRACKING = frozenset({"spm", "from", "share", "share_id", "share_source", "share_token",
+_TRACKING = frozenset({"spm", "from", "frompage", "share", "share_id", "share_source", "share_token",
     "fbclid", "gclid", "dclid", "msclkid", "igshid", "yclid", "mc_cid", "mc_eid",
     "__cf_chl_tk", "__cf_chl_rt_tk"})
 _ARXIV_HOST = re.compile(r"(?:(?:www|export|web\d+)\.)?arxiv\.org")
@@ -459,16 +459,26 @@ def type_catalog(lists=None):
 
 
 _COMMUNITY_HOSTS = ('csdn.net', 'csdn.com', 'zhihu.com', 'tieba.baidu.com', 'stackoverflow.com',
-                    'stackexchange.com', 'reddit.com', 'quora.com', 'cnblogs.com')
+                    'stackexchange.com', 'reddit.com', 'quora.com', 'cnblogs.com',
+                    'developer.aliyun.com', 'juejin.cn', 'juejin.im')
 _GENERAL_HOSTS = ('baike.baidu.com', 'wikipedia.org', 'bbc.com', 'bbc.co.uk', 'xinhuanet.com',
                   'people.com.cn', 'news.cn', 'thepaper.cn', 'reuters.com',
                   # Batch42: fetched original question/answer pages and visible
                   # publisher titles on 2026-10-03; general band only, not 1/2.
-                  'geeksforgeeks.org', 'w4school.in')
+                  'geeksforgeeks.org', 'w4school.in', '51jiaoxi.com')
 
 
 def _is_host(host, suffix):
     return host == suffix or host.endswith('.' + suffix)
+
+
+def valid_publisher(value):
+    """A name, not a footer, legal notice, sales instruction or URL."""
+    return (isinstance(value, str) and 1 < len(value.strip()) <= 80
+            and bool(re.search(r'[A-Za-z\u4e00-\u9fff]', value))
+            and not re.search(r'版权|著作权|免责声明|侵权|联系我们|联系邮箱|不承担|购买|扫码|'
+                              r'所有，如|匿名|佚名|unknown|anonymous|copyright|all rights reserved|'
+                              r'https?://|www\.|@|[{}<>]', value, re.I))
 
 
 def classify_source(url, *, lists=None, publisher_evidence=None, page_text=''):
@@ -492,8 +502,10 @@ def classify_source(url, *, lists=None, publisher_evidence=None, page_text=''):
         return dict(result, type='excluded')
     path = urlsplit(normalized).path
     if (any(_is_host(host,h) for h in _COMMUNITY_HOSTS)
+            or (any(_is_host(host,h) for h in ('cloud.tencent.com', 'cloud.tencent.com.cn', 'ctyun.cn'))
+                and path.startswith('/developer/'))
             or re.search(r'/(?:forums?|discussions?|issues|pulls?)(?:/|$)',path,re.I)
-            or (host=='learn.microsoft.com' and '/answers/' in path)):
+            or (host=='learn.microsoft.com' and ('/answers/' in path or '/archive/blogs/' in path))):
         return dict(level=3,type='community',publisher=host,category='community',evidence='社区公开页面')
     personal = bool(re.search(r'/(?:~|users?/|students?/|personal/)',path,re.I))
     for rule in type_catalog(lists).type_rules:
@@ -504,21 +516,22 @@ def classify_source(url, *, lists=None, publisher_evidence=None, page_text=''):
     quote = evidence.get('quote','')
     allowed = {r['type']:r for r in type_catalog(lists).type_rules}
     if (evidence.get('type') in allowed and isinstance(quote,str) and len(quote.strip()) >= 8
-            and quote in page_text and isinstance(evidence.get('publisher'),str) and evidence['publisher'].strip()):
+            and quote in page_text and valid_publisher(evidence.get('publisher'))):
         rule = allowed[evidence['type']]
         return dict(level=rule['level'],type=rule['type'],publisher=evidence['publisher'],
                     category=rule['category'],evidence=quote)
     general_types = {'general_site','news_media','encyclopedia','company','teacher'}
     if (evidence.get('type') in general_types and isinstance(quote,str) and len(quote.strip()) >= 8
-            and quote in page_text and isinstance(evidence.get('publisher'),str) and evidence['publisher'].strip()):
+            and quote in page_text and valid_publisher(evidence.get('publisher'))):
         return dict(level=3,type='general_site',publisher=evidence['publisher'],category='general_site',evidence=quote)
     if any(_is_host(host,h) for h in _GENERAL_HOSTS) and ':' not in path and '/w/' not in path:
         return dict(level=3,type='general_site',publisher=host,category='general_site',evidence='公开媒体或百科页面')
     # A visible byline/imprint identifies a general publisher; it is not proof
     # of official/academic authority and can never elevate the page above 3.
-    match = re.search(r'(?:发布者|发布机构|主办单位|作者|撰稿|版权所有|来源|\bAuthor\b|\bPublished by\b|\bCopyright\b)\s*[:：©]?\s*([^\n。；;<>]{2,80})',page_text,re.I)
-    if match and re.search(r'[A-Za-z\u4e00-\u9fff]',match[1]) and not re.search(r'匿名|佚名|unknown|anonymous',match[1],re.I):
-        return dict(level=3,type='general_site',publisher=match[1].strip(),category='general_site',evidence=match[0])
+    for match in re.finditer(r'(?:^|\n)\s*(?:发布者|发布机构|主办单位|作者|撰稿|来源|Author|Published by)\s*[:：]\s*([^\n。；;<>]{2,80})', page_text, re.I):
+        name = re.split(r'\s+(?:发布时间|更新时间|上传时间|20\d\d[-/])', match[1])[0].strip()
+        if valid_publisher(name):
+            return dict(level=3,type='general_site',publisher=name,category='general_site',evidence=match[0].strip())
     return result
 
 

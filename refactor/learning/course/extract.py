@@ -323,6 +323,41 @@ def _markdown(text, cancel):
 
 _HTML_NOISE = frozenset('script style nav header footer aside form noscript iframe object embed svg canvas template button input select textarea'.split())
 _HTML_NOISE_NAMES = frozenset('nav navbar navigation sidebar breadcrumbs breadcrumb site-header site-footer cookie-banner advertisement'.split())
+
+
+def useful_title(title):
+    return bool(title and title.strip().casefold() not in
+                {'标题', '图文详情', '图文详情——科普中国资源服务', 'untitled', 'document', 'letter', '首页', '在线预览'})
+
+
+def clean_page_text(text):
+    """Remove standalone page boilerplate, never words inside lesson sentences."""
+    lines = []
+    for line in text.splitlines():
+        if line.strip() in {'上一小节', '下一小节', '上一篇', '下一篇', '返回首页', '返回顶部', '打印本页'}:
+            continue
+        if re.match(r'^\s*(?:版权声明|免责声明|侵权联系|版权所有|Copyright\s*(?:©|20\d\d)|'
+                    r'All rights reserved|联系邮箱\s*[:：]|购买提示\s*[:：])', line, re.I):
+            continue
+        if re.fullmatch(r'\s*[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\s*', line):
+            continue
+        lines.append(line)
+    result = '\n'.join(lines).strip()
+    # Responsive/print copies can duplicate the entire article. Only remove
+    # an exact, substantial repeated span; mathematical repeated symbols stay.
+    for copies in range(4, 1, -1):
+        compact = result.strip()
+        if len(compact) % copies == 0:
+            part = compact[:len(compact)//copies]
+            if len(part.strip()) >= 150 and part * copies == compact:
+                return part.strip()
+    nonempty = [line for line in result.splitlines() if line.strip()]
+    for copies in range(4, 1, -1):
+        size = len(nonempty)//copies
+        if size and len(nonempty) == size * copies and nonempty == nonempty[:size] * copies:
+            if len('\n'.join(nonempty[:size])) >= 150:
+                return '\n'.join(nonempty[:size])
+    return result
 _HTML_CONTAINER = frozenset('html body main article section div p h1 h2 h3 h4 h5 h6 ul ol li dl dt dd blockquote pre table figure figcaption hr address'.split())
 
 
@@ -443,13 +478,14 @@ def _html(html, cancel):
     for node in list(root.iter()):
         _check(cancel)
         names = set((node.get('class', '') + ' ' + node.get('id', '')).lower().split())
-        if node.tag in _HTML_NOISE or names & _HTML_NOISE_NAMES or node.get('role', '').lower() in {'navigation', 'banner', 'contentinfo', 'complementary', 'search'} or node.get('hidden') is not None or node.get('aria-hidden') == 'true':
+        noise_name = any(re.fullmatch(r'(?:site[-_])?(?:nav|navigation|menu|footer|copyright|disclaimer|toolbar|breadcrumbs?)(?:[-_].*)?', name) for name in names)
+        if node.tag in _HTML_NOISE or names & _HTML_NOISE_NAMES or noise_name or node.get('role', '').lower() in {'navigation', 'banner', 'contentinfo', 'complementary', 'search'} or node.get('hidden') is not None or node.get('aria-hidden') == 'true':
             if node.getparent() is not None:
                 node.drop_tree()
     mains = root.xpath('//main')
     articles = root.xpath('//article[not(ancestor::article)]')
     roots = mains[:1] or articles or root.xpath('//body') or [root]
-    if not title:
+    if not useful_title(title):
         headings = [heading for node in roots for heading in node.xpath('.//h1')]
         title = ' '.join(headings[0].text_content().split()) if headings else ''
     sections, blocks = _Sections(), []
@@ -464,6 +500,8 @@ def _html(html, cancel):
 
     def add(value, kind='paragraph'):
         value = _newlines(value).strip('\n') if kind == 'code' else ' '.join(value.split())
+        if kind != 'code':
+            value = clean_page_text(value)
         if value.strip():
             blocks.append(TextBlock(value, kind, None, sections.path))
 
@@ -504,7 +542,21 @@ def _html(html, cancel):
 
     for node in roots:
         walk(node)
-    return blocks, title, []
+    # Two copies of the same article (desktop/mobile or print layout).
+    for copies in range(4, 1, -1):
+        size = len(blocks)//copies
+        keys = [(b.kind, b.text) for b in blocks]
+        if size and len(blocks) == size * copies and keys == keys[:size] * copies and sum(len(b.text) for b in blocks[:size]) >= 150:
+            blocks = blocks[:size]
+            break
+    seen, unique = set(), []
+    for block in blocks:
+        key = (block.kind, block.text)
+        if len(block.text) >= 180 and key in seen:
+            continue
+        seen.add(key)
+        unique.append(block)
+    return unique, title, []
 
 
 def _archive_guard(data, cancel):

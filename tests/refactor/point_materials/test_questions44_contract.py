@@ -90,9 +90,10 @@ def test_questions44_remaining_sentence_cannot_reveal_alias(sentence,word,valid)
 
 
 def test_questions44_quick_filters_overlapping_distractors_not_whole_row():
-    p=passage();p['text']='The private address is used within a network. local public global public address'
+    p=passage();p['text']='The private address is used within a network.'
+    other=dict(p,id='other44',section='Other chapter',text='local public global public address')
     item=dict(target='本点原文定义是什么？',chunk_id='c',sentence='The private address is used within a network.',word='private',keywords=['local','public','public address','global'])
-    q=pm._quick(item,POINT,{'c':p},[p])
+    q=pm._quick(item,POINT,{'c':p},[p,other])
     assert q['options']==['global','private','public'] and q['role']=='quick'
     assert pm._quick(dict(item,keywords=['local']),POINT,{'c':p},[p]) is None
 
@@ -100,9 +101,10 @@ def test_questions44_quick_filters_overlapping_distractors_not_whole_row():
 def test_questions44_long_blank_uses_choice_not_fill():
     p=passage();word='a uniquely written but very long technical phrase'
     sentence='The term '+word+' identifies this abstraction.'
-    p['text']=sentence+' beta gamma delta'
+    p['text']=sentence
+    other=dict(p,id='other44',section='Other chapter',text='beta gamma delta')
     item=dict(target='本点原文定义是什么？',chunk_id='c',sentence=sentence,word=word,keywords=['beta','gamma'],importance='key')
-    q=pm._cloze(item,dict(POINT,importance='key'),{'c':p},[p])
+    q=pm._cloze(item,dict(POINT,importance='key'),{'c':p},[p,other])
     assert q['kind']=='choice'
 
 

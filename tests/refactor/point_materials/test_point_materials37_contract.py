@@ -20,7 +20,8 @@ def store(tmp_path):
     today=date(2026,10,3)
     s.create_plan('p',goal='压强',window=PlanWindow(today,today+timedelta(days=3),100))
     s.add_sources('p',[dict(id='s',title='物理教材',url='https://www.pep.com.cn/physics/pressure',adopted=True,
-        chunks=[dict(target='本点原文定义是什么？',chunk_id='c',text=TEXT,section=['第九章 压强'])])])
+        chunks=[dict(target='本点原文定义是什么？',chunk_id='c',text=TEXT,section=['第九章 压强']),
+            dict(chunk_id='other37',text='速度、位移和加速度属于运动学。',section=['运动学'])])])
     s.save_outline('p',[dict(id='stage',title='初二物理')],[dict(id='m',stage_id='stage',title='压强',prerequisites=[])])
     s.save_generated_module('p','m',[dict(id='point',title='压强',summary='压力与受力面积',minutes=15,chunk_ids=['c'],importance='key')],check_minutes=5,today=today)
     yield s
@@ -29,7 +30,7 @@ def store(tmp_path):
 
 def pointer(chunk='c'):
     return dict(passages=[chunk],found=[],cloze=[
-        dict(target='本点原文定义是什么？',chunk_id=chunk,sentence='压强是压力与受力面积的比值。',word='压强',importance='key',keywords=['压力','浮力']),
+        dict(target='本点原文定义是什么？',chunk_id=chunk,sentence='压强是压力与受力面积的比值。',word='压强',importance='key',keywords=['速度','位移']),
         dict(target='本点原文定义是什么？',chunk_id=chunk,sentence='国际单位制中压强的单位是帕。',word='帕',importance='key',keywords=[]),
         dict(target='本点原文定义是什么？',chunk_id=chunk,sentence='压力越大，在面积不变时压强越大。',word='压力',importance='key',keywords=[])])
 
@@ -66,10 +67,10 @@ def test_point_prepare_idempotent_and_provenance(store):
 def test_normal_cloze_distractors_same_source_and_word_exact(store):
     with store.transaction():
         p=store._get('points','p','point');p['importance']='normal';store._put('points','p',p)
-    out=pointer();out['cloze']=[dict(target='本点原文定义是什么？',chunk_id='c',sentence='压强是压力与受力面积的比值。',word='压强',importance='normal',keywords=['浮力','密度','不存在'])]
+    out=pointer();out['cloze']=[dict(target='本点原文定义是什么？',chunk_id='c',sentence='压强是压力与受力面积的比值。',word='压强',importance='normal',keywords=['速度','位移','不存在'])]
     assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
     q=store.records('question_bank','p')[0]
-    assert q['kind']=='choice' and set(q['options'])=={'压强','浮力','密度'}
+    assert q['kind']=='choice' and set(q['options'])=={'压强','速度','位移'}
     out['cloze'][0]['word']='强压'
     assert not pm._cloze(out['cloze'][0],p,{'c':pm._passages(store,'p',dict(ctx(),store=store,plan_id='p',lists=load_lists()))[0]},[])
 

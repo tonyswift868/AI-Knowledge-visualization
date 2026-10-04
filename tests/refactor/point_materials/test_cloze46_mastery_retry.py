@@ -18,7 +18,8 @@ def data46(tmp_path):
         today=date(2026,10,4)
         store.create_plan('p',goal='航行意义',window=PlanWindow(today,today+timedelta(days=3),100))
         store.add_sources('p',[dict(id='s',url='https://history.edu/text',title='历史原文',adopted=True,
-            chunks=[dict(chunk_id='c',text=TEXT,section=['历史'])])])
+            chunks=[dict(chunk_id='c',text=TEXT,section=['历史']),
+                dict(chunk_id='other46',text='古代地形包含丘陵、盆地和高原。',section=['地理'])])])
         store.save_outline('p',[dict(id='st',title='历史')],[dict(id='m',stage_id='st',title='航行')])
         store.save_generated_module('p','m',[dict(id='pt',title='环球航行意义',summary='能说明航行表明地球是球体',
             minutes=15,chunk_ids=['c'],importance='key')],check_minutes=5,today=today)
@@ -26,7 +27,7 @@ def data46(tmp_path):
 
 def items46():
     return [dict(target='环球航行表明地球是什么形状？',chunk_id='c',sentence='环球航行表明地球是一个球体。',
-        word='球体',importance='key',keywords=['大西洋','太平洋']),
+        word='球体',importance='key',keywords=['丘陵','盆地']),
         dict(target='首次航行什么时候开始？',chunk_id='c',sentence='首次航行开始于1519年，完成于1522年。',
         word='1519年',importance='key',keywords=['1522年'])]
 
@@ -44,10 +45,11 @@ def test_cloze46_system_uses_summary_question_and_preserves_phrase_years():
     assert q['kind']=='fill' and q['answer']==[['1519年']]
     phrase='说明地球的形状并确认海洋相互连通'
     sentence='航行意义在于'+phrase+'。'
-    chunk['text']=sentence+'独立研究陆地边界。证明季节性风向变化。'
+    chunk['text']=sentence
+    other=dict(chunk,id='other',section='其他航行',text='独立研究陆地边界。证明季节性风向变化。')
     item=dict(target='航行意义是什么？',chunk_id='c',sentence=sentence,word=phrase,importance='key',
         keywords=['独立研究陆地边界','证明季节性风向变化'])
-    q=pm._quick(item,point,{'c':chunk},[chunk])
+    q=pm._quick(item,point,{'c':chunk},[chunk,other])
     assert q['kind']=='choice' and q['options'][q['answer'][0]]==phrase
     assert q['stem'].startswith(item['target']+'\n')
     assert q['target']==item['target']
@@ -96,7 +98,7 @@ def test_cloze46_retry_still_fails_raw_evidence_once(data46):
     evidence=json.loads(paths[0].read_text(encoding='utf-8'))
     assert len(paths)==1 and evidence['calls'][-1]['request']['mode']=='cloze_retry'
     assert evidence['calls'][0]['reply']['cloze'][0]['word']=='球体'
-    assert any('重叠' in r['reason'] for r in evidence['rejected'])
+    assert any('不足' in r['reason'] for r in evidence['rejected'])
     assert not store.records('question_answers','p') and not store.records('judgements','p')
 
 def test_cloze46_bad_pointer_keeps_expansion_reason_in_retry(data46):

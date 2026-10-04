@@ -28,6 +28,7 @@ STEMS = ['队列按哪种顺序处理元素？', '队列的处理顺序是什么
 BODY = ('<html><head><title>Python 数据结构</title></head><body><h1>队列与栈</h1>'
     + ''.join('<p>'+QUOTE+'</p>' for _ in range(50))
     + ''.join(f'<p>{stem} A. 先进先出 B. 后进先出 答案：先进先出</p>' for stem in STEMS)
+    + '<h1>其他数据结构</h1><p>链表按链接存储元素。二叉树按分支组织节点。哈希表按散列定位键值。其他数据结构有各自的存储和查找方法。</p>'
     + '</body></html>').encode()
 
 
@@ -63,7 +64,7 @@ class IntegratedModel(Agents):
                     pairing='same_block',question_number='',answer_number=''))
             p=next(p for p in passages if QUOTE in p['text'])
             value=dict(passages=[p['id'] for p in passages],found=found,cloze=[
-                dict(target='哪种结构先进先出？',chunk_id=p['id'],sentence=QUOTE,word='队列',importance='key',keywords=['栈','后进先出'])])
+                dict(target='哪种结构先进先出？',chunk_id=p['id'],sentence=QUOTE,word='队列',importance='key',keywords=['链表','二叉树'])])
         else: raise AssertionError('unexpected purpose '+purpose)
         return SimpleNamespace(text=json.dumps(value,ensure_ascii=False),search_hits=(),citations=())
 
