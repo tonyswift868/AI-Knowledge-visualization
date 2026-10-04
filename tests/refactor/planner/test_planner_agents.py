@@ -34,18 +34,8 @@ def test_sufficiency_requires_questions_when_not_enough_and_caps_them():
         agents.parse_sufficiency(json.dumps({"enough": False, "questions": [], "goal": "g"}))
 
 
-def test_research_suggestions_are_only_http_candidates():
-    items = agents.parse_research('{"sources": [{"url": "https://a.org/x", "title": "A"}, {"url": "javascript:alert(1)"}, {"url": 3}]}')
-    assert [i["url"] for i in items] == ["https://a.org/x"]
-    assert agents.parse_research("搜索失败了") == []
 
 
-def test_scoring_keeps_only_known_ids_and_valid_ranges():
-    text = json.dumps({"scores": [{"id": "r0", "relevance": 5, "credibility": 4, "note": "好"},
-                                  {"id": "r9", "relevance": 5, "credibility": 5}, {"id": "r1", "relevance": 7, "credibility": 5}]})
-    assert agents.parse_scoring(text, ["r0", "r1"]) == {"r0": {"relevance": 5, "credibility": 4, "note": "好"}}
-    with pytest.raises(AgentFormatError):
-        agents.parse_scoring(json.dumps({"scores": [{"id": "r9", "relevance": 5, "credibility": 5}]}), ["r0"])
 
 
 def chunks(source, sections):

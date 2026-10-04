@@ -42,6 +42,10 @@ class ScriptUser:
             if view.get('phase') == 'preview':
                 return action('plan.say', text='确认并找资料')
             return action('plan.say', text='我想看懂队列和栈的处理顺序。请先说说学习路线。')
+        if stage == 'sources' and view.get('phase')=='material_preview':
+            return action('plan.say', text='确认结构')
+        if stage == 'sources' and not view.get('sources'):
+            return action('plan.say', text='https://docs.python.org/3/tutorial/datastructures.html')
         if stage == 'sources':
             cards = [c for c in view.get('sources', []) if c['status'] == 'new']
             if cards: return action('plan.decide', card_id=cards[0]['card_id'], adopt=True)
@@ -92,7 +96,7 @@ class ModelUser:
         system = '''扮演真实学习者，按人设与本次屏幕实时决定下一步，不能读取隐藏答案或伪造已执行操作。
 你不是教师、评测员或质量打分员。不要点评教学质量，不要求程序判你正确；有时答错、有时追问、有时说我会了、有时退出再进。
 只能选择allowed_actions中列出的method，参数照其说明。不要预写后续台词或跳过聊天、资料选择。聊天时具体回答屏幕里的反问，暂不懂的直接说；看到路线后表达认可或具体修改。
-资料卡片 status=adopted 表示已勾选并保存，不需要重复采用；plan.decide 的参数只能从当前给出的组合中选择。愿意用现有资料整理地图时可以选 plan.outline，不满意仍可以要求补搜。
+资料卡片 status=adopted 表示已勾选并保存，不需要重复采用；plan.decide 的参数只能从当前给出的组合中选择。推荐链接不是已导入资料。操作员会下载上传或提供网址，不能自行声称已上传；有已导入资料时可选 plan.outline，先看按资料调整的结构，确认后才填知识点。material_preview明确确认用plan.say。
 仅返回JSON {"method":"...","params":{...}}。choice/multi答案为从0开始的整数数组，fill为每空文本数组，其余文本。
 这是一次模拟用户动作，不是产品意图理解请求。'''
         screen=view
@@ -101,7 +105,7 @@ class ModelUser:
             # pool and quality audit. Those can grow by hundreds of KB and
             # were unnecessarily exhausting live simulation budgets.
             screen={k:v for k,v in view.items() if k in {'version','plan_id','phase','form','goal','focus',
-                'messages','sources','outline','estimate','preview','coverage','busy','generation','name'}}
+                'messages','sources','outline','estimate','preview','recommendations','material_structure','busy','generation','name'}}
             if 'sources' in screen:
                 screen['sources']=[{k:v for k,v in card.items() if k in {'card_id','source_id','status',
                     'title','url','summary','quality','tier','warnings','kind','site','chars','credibility','relevance','note'}} for card in view['sources']]
@@ -114,7 +118,7 @@ class ModelUser:
         for attempt in range(2):
             # Only an invalid user action gets one explicit correction. Never
             # retry transport/model failures or a product bridge error here.
-            result=self.gateway.complete('simulation_user',messages,system=system,max_tokens=2048)
+            result=self.gateway.complete('simulation_user',messages,system=system,max_tokens=4096)
             text=result.text.strip()
             if text.startswith('```'):text=text.split('\n',1)[1].rsplit('```',1)[0].strip()
             try:

@@ -13,10 +13,12 @@ STAGES=('form','dialogue','sources','map','estimate','generated','classroom','fi
 def controls(view,stage):
     def a(method,params=''):return dict(method=method,params=params)
     if stage=='dialogue':return [a('plan.say','text: 回答当前追问、认可预览或请求修改')]
+    if stage=='sources' and view.get('phase')=='material_preview':
+        return [a('plan.say','text: 确认按资料调整的结构，或具体要求修改'),a('plan.missing','action: add/delete/continue') ]
     if stage=='sources':
         decisions=[{'card_id':c['card_id'],'adopt':c.get('status')!='adopted'} for c in view.get('sources',[])]
         result=[a('plan.decide','params 是单张卡片的对象 {card_id, adopt}，不是数组；可选组合：'+json.dumps(decisions,ensure_ascii=False)),
-                a('plan.say','text: 资料选择/范围要求'),a('plan.more','再找找')]
+                a('plan.say','text: 主动贴资料网址或GitHub仓库、资料选择/范围要求'),a('plan.more','更多整体资料推荐'),a('plan.upload','操作员已选本地文件时上传')]
         if any(c.get('status')=='adopted' for c in view.get('sources',[])):
             result.append(a('plan.outline','资料已认可，愿意按现有资料出地图时点击；不需要再次采用已采用卡片'))
         return result
@@ -44,10 +46,12 @@ def controls(view,stage):
 
 
 class Driver:
-    def __init__(self,simulation,user,persona,*,stuck_limit=5,reopen_before_adopt=False):
+    def __init__(self,simulation,user,persona,*,stuck_limit=5,reopen_before_adopt=False,material_url=None,material_file=None,pause_material=False):
         self.sim,self.user,self.persona=simulation,user,persona
         self.stuck_limit=stuck_limit
         self.reopen_before_adopt=reopen_before_adopt
+        self.material_url,self.material_file=material_url,material_file
+        self.pause_material=pause_material or bool(material_url or material_file)
         if stuck_limit<1:raise ValueError('stuck_limit must be positive')
         p=simulation.evidence.root/'checkpoint.json'
         self.state=json.loads(p.read_text(encoding='utf-8')) if p.exists() else dict(stage='form',plan_id=None,rounds=0,view={},flags=[])
@@ -115,6 +119,15 @@ class Driver:
                 if phase not in ('questions','preview','clarification'):
                     if to=='dialogue':return
                     self.state['stage']='sources';self.save();continue
+            if stage=='sources' and phase=='sources' and not any(c.get('status')=='adopted' for c in view.get('sources',[])):
+                if self.material_file:
+                    self.sim.upload_path=self.material_file
+                    self.material_file=None
+                    self.request('plan.upload');self.sim.join_jobs();self.sim.upload_path=None
+                    self.request('plan.get');continue
+                if self.material_url:
+                    self.request('plan.say',text=self.material_url);self.material_url=None;continue
+                if self.pause_material:return
             if stage=='sources' and phase=='outline':self.state['stage']='map';self.save();continue
             if (stage=='sources' and self.reopen_before_adopt and view.get('sources')
                     and 'draft_reopen' not in self.state['flags']):

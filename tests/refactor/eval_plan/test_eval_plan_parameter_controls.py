@@ -243,13 +243,20 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
                 from refactor.learning.course.planner_agents import PREVIEW_SYSTEM
                 result = (dict(summary='智能体基础',modules=[dict(title='智能体',summary='理解推理和行动')])
                     if kwargs.get('system') == PREVIEW_SYSTEM else dict(enough=True, questions=[], goal="智能体基础", focus=["基础"]))
+            elif purpose == 'outline' and kwargs.get('system')==__import__('refactor.learning.course.planner_agents',fromlist=['MATERIAL_STRUCTURE_SYSTEM']).MATERIAL_STRUCTURE_SYSTEM:
+                if self.fail_outline:
+                    from refactor.learning.connections.errors import ModelError
+                    self.fail_outline=False
+                    raise ModelError('AGENT_FORMAT','标明用途的失败替身')
+                directory=json.loads(text)['directory']
+                result=dict(summary='按资料调整',modules=[dict(key='m1',title='循环',summary='推理和行动',refs=[s['id'] for s in directory],chapters=[s['title'] for s in directory])],missing=[])
             elif purpose == "outline":
                 if self.fail_outline:
                     from refactor.learning.connections.errors import ModelError
                     self.fail_outline = False
                     raise ModelError("AGENT_FORMAT", "标明用途的失败替身")
                 refs = re.findall(r"\[(s\d+\.\d+)\]", text)
-                chunks=json.loads(text.split('【已取得的原文段落】\n')[1])
+                chunks=json.JSONDecoder().raw_decode(text.split('【已取得的原文段落】\n')[1])[0]
                 result=dict(stages=[dict(title='基础',modules=[dict(key='m1',title='循环',summary='推理和行动',refs=refs,prerequisites=[],
                     points=[dict(title=title,summary='解释'+title,citations=[dict(chunk_id=c['chunk_id'],quote=c['text'][:80])])
                             for title,c in zip(('推理','行动'),(chunks[0],chunks[-1]))])])],message='学习基础')
@@ -279,7 +286,7 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
     generated = exp.run_one("base", 1, generate=True)
     assert generated["formal_complete"] and generated["metrics"]["point_count"] == 2
     assert first["draft"]["plan_id"] == generated["draft"]["plan_id"]
-    assert operations == ["sufficiency", "sufficiency", "coverage_check", "outline", "point_materials"]
+    assert operations == ["sufficiency", "sufficiency", "outline", "outline", "point_materials"]
     assert len(generated["metrics"]["chapter_coverage"]) == 2
     assert generated["metrics"]["point_minutes_sum"] == 30
     assert exp.run_one("base", 1, generate=True)["formal_complete"]

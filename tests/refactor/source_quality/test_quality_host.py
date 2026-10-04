@@ -9,38 +9,6 @@ from refactor.learning.course.research import FetchedContent
 from refactor.learning.course.source_filter import RawHit, load_lists
 
 
-def test_only_ambiguous_authoritative_sources_go_to_model():
-    goal = 'Python functions parameters'
-    urls = ['https://docs.python.org/3/one', 'https://example.test/unknown', 'https://docs.python.org/3/two']
-    titles = [goal, goal, 'Python tutorial']
-    def fetch(url, **_):
-        title = titles[urls.index(url)]
-        text = ('Python supports reusable code.' if url.endswith('two') else 'Python functions parameters return values.') * 12
-        html = f'<title>{title}</title><h1>{title}</h1><p>{text}</p><p>Example identifier: {url}</p>'.encode()
-        return FetchedContent(url, url, 'text/html', html, '')
-    with ResearchPipeline(fetcher=fetch) as p:
-        sources = p.run([RawHit(u) for u in urls]).verified
-    assert len(sources) == 3
-    pool = ResearchPool(); pool.add(sources)
-    flow = PlanFlow.__new__(PlanFlow)
-    flow._pools = {'p': pool}
-    flow._lists = load_lists
-    flow.study_day = lambda: date(2026, 9, 29)
-    flow.status = lambda *_: None
-    flow.save = lambda *_: None
-    calls = []
-    def ask(purpose, request, parser, ctx, **kwargs):
-        calls.append(request)
-        assert 'example.test' not in request[1][0]['content']
-        assert '[r1]' in request[1][0]['content'] and '[r0]' not in request[1][0]['content']
-        return {'r1': {'relevance': 1, 'credibility': 5, 'note': 'The excerpt is only a generic introduction; parameters are absent.'}}, None
-    flow._ask = ask
-    draft = dict(plan_id='p', goal=goal, form=dict(level='beginner', goal=goal, final_goal='Write functions',
-        start='2026-09-29', end='2026-10-29', daily_cap=60, notes='', level_note='', weekday_weights=[1]*7, special_days=[]),
-        sources=[], research={}, messages=[])
-    assert flow._show_batch(draft, SimpleNamespace(cancel=threading.Event())) == 1
-    assert len(calls) == 1 and draft['sources'][0]['url'] == urls[0]
-    assert not draft['research']['quality_audit'][urls[1]]['eligible']
 
 
 def test_saved_source_can_be_readopted_without_memory_cache(tmp_path):
@@ -66,8 +34,8 @@ def test_saved_source_can_be_readopted_without_memory_cache(tmp_path):
                      research={'rejected':[url]})
         flow.save(draft)
         flow.decide(draft,'c',True)
-        assert store.records('sources',pid)[0]['quality']['eligible']
+        assert store.records('sources',pid)[0]['adopted']
         # Changing the goal cannot reuse a stale model or source score.
         draft=flow.load(pid); draft['goal']='Ancient Roman pottery'; flow.save(draft)
-        with pytest.raises(BridgeError, match='门槛'):
-            flow.decide(draft,'c',True)
+        flow.decide(draft,'c',True)
+        assert store.records('sources',pid)[0]['adopted']  # User-owned material has no creation scoring gate.

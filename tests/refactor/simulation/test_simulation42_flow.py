@@ -14,7 +14,7 @@ from .actors import Persona,ScriptUser,ModelUser,OfflineGateway,offline_fetch
 from .driver import Driver
 from .engine import Clock,Evidence,RecordedGateway,Simulation,StopRun
 
-ROOT=Path(r'D:\MentorFlow\.local\test-tmp\fix44-integrate\offline-tests')
+ROOT=Path(r'D:\MentorFlow\.local\test-tmp\fix51-plan\offline-tests')
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def test_simulation42_full_bridge_flow_from_dialogue_to_pdf_and_free(simulation)
         if json.loads((simulation.evidence.root/s['evidence']).read_text(encoding='utf-8'))['request']['params'].get('text')=='确认并找资料')
     before=json.loads((simulation.evidence.root/simulation.evidence.steps[consent-1]['evidence']).read_text(encoding='utf-8'))
     assert before['response']['result']['draft']['phase']=='preview'
-    assert methods.index('plan.say')<methods.index('plan.decide')<methods.index('plan.outline')<methods.index('plan.generate')
+    assert methods.index('plan.say')<methods.index('plan.outline')<methods.index('plan.generate')
     assert 'classroom.ask' in methods and 'classroom.reply' in methods
     assert 'classroom.leave' in methods and 'reopen' in driver.state['flags']
     purposes={u['purpose'] for q in store.records('question_bank',pid) for u in q['uses']}
@@ -172,7 +172,7 @@ def test_simulation42_sources_segment_stops_before_adoption(simulation):
     driver=Driver(simulation,ScriptUser(),Persona())
     result=driver.run(to='sources')
     assert not result['stop'] and result['stage']=='sources'
-    assert driver.state['view']['sources']
+    assert driver.state['view']['recommendations'] and not driver.state['view']['sources']
     assert 'plan.decide' not in [s['method'] for s in simulation.evidence.steps]
 
 

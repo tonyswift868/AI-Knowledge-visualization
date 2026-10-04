@@ -30,15 +30,15 @@ def test_purpose_caps_raise_only_and_background_timeout(tmp_path,monkeypatch,pur
     assert calls[0]['reasoning_effort']==(None if purpose=='profile' else 'high')
 
 
-@pytest.mark.parametrize('timeout',[1,270,300])
-@pytest.mark.parametrize('purpose',['teacher','point_materials'])
+@pytest.mark.parametrize('timeout',[1,60,270,300])
+@pytest.mark.parametrize('purpose',['teacher','point_materials','outline'])
 def test_timeout_keeps_larger_preset_and_foreground_unchanged(tmp_path,monkeypatch,timeout,purpose):
     g,p= configured(tmp_path)
     g.save_preset('deepseek',preset_id=p['id'],timeout=timeout)
     calls=[]
     monkeypatch.setattr(providers,'complete',lambda p,**kw:(calls.append(kw),answer())[1])
     g.complete(purpose,MESSAGES)
-    assert calls[0]['timeout']==(max(240,timeout) if purpose=='point_materials' else timeout)
+    assert calls[0]['timeout']==(max(240,timeout) if purpose in BACKGROUND_PURPOSES else timeout)
 
 
 @pytest.mark.parametrize('effort',['none','low','high','max'])

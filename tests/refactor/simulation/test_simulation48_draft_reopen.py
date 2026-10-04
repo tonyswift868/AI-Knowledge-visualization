@@ -13,7 +13,7 @@ from .engine import Clock, Simulation
 
 
 def test_simulation48_reopen_before_adoption_preserves_sources_and_budget(monkeypatch):
-    root=Path(r'D:\MentorFlow\.local\test-tmp\block48-plan\offline-tests')
+    root=Path(r'D:\MentorFlow\.local\test-tmp\fix51-plan\offline-tests')
     root.mkdir(parents=True,exist_ok=True)
     monkeypatch.setattr(socket,'create_connection',lambda *a,**k:pytest.fail('offline network'))
     with tempfile.TemporaryDirectory(dir=root) as directory:
@@ -22,7 +22,7 @@ def test_simulation48_reopen_before_adoption_preserves_sources_and_budget(monkey
             driver=Driver(sim,ScriptUser(),Persona(level_note='一般，说不清基础'),reopen_before_adopt=True)
             initial=driver.run(to='sources')
             assert initial['stop'] is None,initial
-            assert driver.state['view'].get('sources'),driver.state['view']
+            assert driver.state['view'].get('recommendations') and not driver.state['view'].get('sources')
             result=driver.run(to='map',from_stage='sources')
             assert result['stop'] is None,result
             assert result['stage']=='map'
@@ -31,9 +31,9 @@ def test_simulation48_reopen_before_adoption_preserves_sources_and_budget(monkey
             steps=[json.loads((Path(directory)/s['evidence']).read_text(encoding='utf-8')) for s in sim.evidence.steps]
             names=[s['request']['method'] for s in steps]
             assert names.count('plan.get')==1
-            assert names.index('plan.get')<names.index('plan.decide')
+            assert names.index('plan.get')<names.index('plan.outline')
             reopened=steps[names.index('plan.get')]['response']['result']['draft']
-            assert reopened['sources'] and all(s['status']=='new' for s in reopened['sources'])
+            assert reopened['sources'] and all(s['status']=='adopted' for s in reopened['sources'])
             assert all(s['status']=='adopted' for s in driver.state['view']['sources'])
             ids=[call['id'] for call in sim.evidence.calls]
             assert ids==list(range(1,len(ids)+1))

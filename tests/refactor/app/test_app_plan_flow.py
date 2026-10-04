@@ -33,36 +33,6 @@ def fetcher(url, *, cancel, timeout):
     return FetchedContent(url, url, "text/html; charset=utf-8", page(PAGES[url]), "2026-09-27T00:00:00Z")
 
 
-def test_research_shortlist_precedes_raw_hits_at_fetch_limit(monkeypatch):
-    captured = []
-
-    class Pipeline:
-        def __init__(self, **kwargs):
-            assert kwargs['max_sources'] == 30
-
-        def run(self, hits, **kwargs):
-            captured.extend(hits)
-            return SimpleNamespace(verified=[],rejected=[])
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr('refactor.learning.course.research_pipeline.ResearchPipeline', Pipeline)
-    flow = PlanFlow(None, lambda *_: None, date.today)
-    flow.status = lambda *_: None
-    flow._lists = lambda: None
-    flow._show_batch = lambda *_args, **_kwargs: None
-    pool = SimpleNamespace(accepted_urls=set(), rejected_urls=set(), add=lambda *_: None)
-    flow._pool = lambda *_: pool
-    shortlist = 'https://docs.python.org/3/reference/compound_stmts.html#function-definitions'
-    raw = tuple(WebHit(f'https://example.org/{n}', f'Hit {n}', '') for n in range(40))
-    flow._ask = lambda *_args, **_kwargs: ([{'url': shortlist, 'title': 'Function definitions', 'why': 'Original reference'}],
-                                          SimpleNamespace(search_hits=raw, citations=()))
-    draft = {'plan_id': 'p1', 'research': {'round': 0, 'rejected': []}, 'goal': 'Python functions parameters',
-             'form': form(date.today()), 'focus': [], 'sources': []}
-    flow._research_once(draft, SimpleNamespace(cancel=threading.Event()))
-    assert captured[0].url == shortlist
-    assert len(captured) == 41
 
 
 class ScriptedModel:
@@ -95,21 +65,23 @@ class ScriptedModel:
                 dict(enough=True,questions=[],goal='Python 类、异常和模块',focus=['类','异常']))
             text = json.dumps(value, ensure_ascii=False)
         elif purpose == "research":
-            assert enable_search
             hits = tuple(WebHit(url, title, "") for url, title in PAGES.items())
-            text = "我搜到了这些。" + json.dumps({"sources": [{"url": "https://docs.python.org/3/tutorial/classes.html", "title": "类", "why": "官方"}]})
+            text = json.dumps({"sources": [dict(url=url,title=title,why="官方",type="文档",modules=["Python 基础"]) for url,title in PAGES.items()]})
         elif purpose == "source_scoring":
             ids = re.findall(r"\[(r\d+)\]", user)
             text = json.dumps({"scores": [{"id": i, "relevance": 5, "credibility": 5, "note": "Python 官方教程包含目标中的类、异常和模块，可核对章节。"} for i in ids]})
+        elif purpose == 'outline' and system == __import__('refactor.learning.course.planner_agents',fromlist=['MATERIAL_STRUCTURE_SYSTEM']).MATERIAL_STRUCTURE_SYSTEM:
+            packet=json.loads(user);section=packet['directory'][0]
+            text=json.dumps(dict(summary='按资料调整结构',modules=[dict(key=f'm{i}',title='改过的模块1' if i==1 and packet.get('instruction') else f'模块{i}',summary='理解资料',refs=[section['id']],chapters=[section['title']]) for i in range(1,4)],missing=[]),ensure_ascii=False)
         elif purpose == 'outline':
-            chunks=json.loads(user.split('【已取得的原文段落】\n')[1])
+            chunks=json.JSONDecoder().raw_decode(user.split('【已取得的原文段落】\n')[1])[0]
             modules=[]
             first_title=re.search(r'资料 1：(.+?)（',user)[1]
             first_chunk=next(c for c in chunks if c['text'].startswith(first_title+'\n') and '第1节' in c['text'])
             for i in range(1,4):
                 c=first_chunk  # Match s1.1; hashed source order is not section order.
                 quote=c['text'][:80]
-                modules.append(dict(key=f'm{i}',title='改过的模块1' if i==1 and '修改意见' in user else f'模块{i}',summary='理解资料',
+                modules.append(dict(key=f'm{i}',title=json.JSONDecoder().raw_decode(user.split('【已确认的资料结构】\n')[1])[0]['modules'][i-1]['title'],summary='理解资料',
                     refs=['s1.1'],prerequisites=[f'm{i-1}'] if i>1 else [],points=[dict(title=f'资料点{i}',summary='理解定义与练习',citations=[dict(chunk_id=c['chunk_id'],quote=quote)])]))
             text=json.dumps(dict(stages=[dict(title='基础',modules=modules)],message='依据原文学习。'),ensure_ascii=False)
         elif purpose == 'point_materials':
@@ -195,19 +167,21 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root, request):
     assert draft['phase']=='preview' and not any(p=='research' for p,_,_ in model.calls)
     draft = ask('plan.say',plan_id=pid,text='确认并找资料')['draft']
     assert draft["phase"] == "sources" and draft["goal"].startswith("三周")
-    cards = [c for c in draft["sources"] if c["status"] == "new"]
-    assert len(cards) == 3 and all(c["tier"] == "whitelist" for c in cards)
-    ask("plan.decide", plan_id=pid, card_id=cards[0]["card_id"], adopt=True)
-    ask("plan.decide", plan_id=pid, card_id=cards[1]["card_id"], adopt=True)
+    assert len(draft['recommendations'])==3 and not draft['sources']
+    draft = ask('plan.say',plan_id=pid,text=' '.join(PAGES))['draft']
+    cards = draft['sources']
     draft = ask("plan.decide", plan_id=pid, card_id=cards[2]["card_id"], adopt=False)["draft"]
     assert [c["status"] for c in draft["sources"]] == ["adopted", "adopted", "rejected"]
-
     draft = ask("plan.outline", plan_id=pid)["draft"]
+    assert draft['phase']=='material_preview' and draft['outline'] is None
+    draft = ask('plan.say',plan_id=pid,text='确认结构')['draft']
     modules = [m for s in draft["outline"]["stages"] for m in s["modules"]]
     assert draft["phase"] == "outline" and len(modules) == 3 and "spans" not in modules[0]
     assert draft["outline"]["ranges"]["total"][0] > 0
     draft = ask("plan.say", plan_id=pid, text="第一个模块换个名字")["draft"]
-    assert draft["outline"]["stages"][0]["modules"][0]["title"] == "改过的模块1" and draft["outline"]["version"] == 2
+    assert draft["material_structure"]["modules"][0]["title"] == "改过的模块1"
+    draft=ask("plan.say",plan_id=pid,text="确认结构")["draft"]
+    assert draft["outline"]["stages"][0]["modules"][0]["title"] == "改过的模块1"
     # The chat box changes settings through the host, never by the model's say-so (BUG-13).
     model.intents = [[{"kind": "update_form", "daily_cap": 120, "notes_append": "多做练习"}]]
     draft = ask("plan.say", plan_id=pid, text="每天改成两小时，多给点练习")["draft"]
@@ -217,6 +191,7 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root, request):
     assert draft['phase']=='preview'
     draft = ask('plan.say',plan_id=pid,text='确认并找资料')['draft']
     draft = ask('plan.outline',plan_id=pid)['draft']
+    draft = ask('plan.say',plan_id=pid,text='确认结构')['draft']
     model.intents = [[{"kind": "refuse", "reason": "路线要从资料里来，不能跳过资料。"}]]
     draft = ask("plan.say", plan_id=pid, text="别管资料了直接生成")["draft"]
     assert draft["messages"][-1]["text"] == "路线要从资料里来，不能跳过资料。" and draft["phase"] == "outline"
@@ -297,7 +272,7 @@ def test_links_from_form_and_chat_are_opened_and_adopted_without_search(qapp, tm
         assert draft['phase']=='preview' and not draft['sources']
         draft = ask('plan.say',plan_id=pid,text='确认并找资料')['draft']
         mine = [c for c in draft["sources"] if c.get("user_provided")]
-        assert all("可信" in c["note"] and c["quality"]["user_provided"] for c in mine)
+        assert all(c["user_provided"] and c["source_id"] for c in mine)
         assert [c["url"] for c in mine] == ["https://docs.python.org/3/tutorial/classes.html"] and mine[0]["status"] == "adopted"
         assert not any(c[0] == "research" for c in model.calls)       # only_mine + a link: no web search
         draft = ask("plan.say", plan_id=pid, text="再加上 https://docs.python.org/3/tutorial/errors.html")["draft"]
@@ -333,7 +308,7 @@ def test_a_github_repo_link_imports_its_docs(qapp, tmp_root):
         bridge.call(json.dumps({'id':'g3','method':'plan.say','params':{'plan_id':pid,'text':'确认并找资料'}}))
         draft = pump(qapp,bridge,sent,lambda m:m.get('id')=='g3',timeout=20)[0]['result']['draft']
         cards = [c for c in draft["sources"] if c["status"] == "adopted"]
-        assert [c["url"] for c in cards] == ["https://github.com/acme/book"] and cards[0]["site"] == "github.com"
+        assert [c["url"] for c in cards] == ["https://github.com/acme/book"] and cards[0]["site"].startswith("https://github.com")
         chunks = services.store.records("source_chunks", pid)
         assert chunks and {tuple(c["section"])[0] for c in chunks} >= {"第二章 发展史"}
     finally:

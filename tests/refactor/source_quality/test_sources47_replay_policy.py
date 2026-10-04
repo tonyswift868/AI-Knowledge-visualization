@@ -132,33 +132,3 @@ def test_sources47_cleanup_title_whole_copy_noise_and_math():
     assert 'ρρ' not in body and body.count('P=hρg') == 1
     # A lesson discussing copyright/email or repeated mathematical symbols stays.
     assert clean_page_text('Email addresses contain @. Copyright protects works. ρρ') == 'Email addresses contain @. Copyright protects works. ρρ'
-
-
-def test_sources47_show_batch_uses_preview_all_candidates_and_keeps_manual_state():
-    urls = ['https://www.bbc.com/news/python', 'https://docs.python.org/3/functions',
-            'https://www.bbc.com/news/network']
-    def fetch(u, **k):
-        return page(u, 'Network browser' if u.endswith('network') else 'Python functions parameters',
-            'Network browser explain network browsing. '*10 if u.endswith('network')
-            else ('Python functions parameters teaching. '+u+' ')*8)
-    with ResearchPipeline(fetcher=fetch) as pipeline:
-        sources = pipeline.run([RawHit(u) for u in urls]).verified
-    pool = ResearchPool(); pool.add(sources)
-    flow = PlanFlow.__new__(PlanFlow); flow._pools = {'p': pool}
-    flow._lists = load_lists; flow.study_day = lambda: date(2026, 10, 4)
-    flow.status = flow.save = lambda *a: None
-    flow._ask = lambda *a, **k: ({'r2': dict(relevance=5, note='The original chapter explicitly explains network browsers.')}, None)
-    draft = dict(plan_id='p', goal='Python functions parameters network browser', form=dict(level='beginner', final_goal='Understand programming and networks'),
-        preview=dict(modules=[dict(title='Python functions parameters'), dict(title='Network browser')]),
-        sources=[], research={}, messages=[])
-    flow._show_batch(draft, SimpleNamespace(cancel=threading.Event()))
-    assert {c['url'] for c in draft['sources']} == set(urls[1:])
-    assert all(c['status'] == 'new' for c in draft['sources'])
-    fallback = next(c for c in draft['sources'] if c['credibility'] == 3)
-    assert not fallback['quality']['default_adopt'] and fallback['quality']['covered_modules'] == ['Network browser']
-    # Adoption rechecks admission without preview fields. The saved display
-    # audit still prevents a later third-band card replacing adopted authority.
-    official = next(c for c in draft['sources'] if c['credibility'] == 5)
-    official['status'] = 'adopted'
-    official['quality'] = dict(eligible=True, credibility=5, covered_scopes=[0])
-    assert flow._show_batch(draft, SimpleNamespace(cancel=threading.Event()), quiet=True) == 0

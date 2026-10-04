@@ -50,6 +50,9 @@ def main(argv=None):
     parser.add_argument('--dialogue-rounds',type=int,help='填表计第1轮，到指定轮数停止；没有默认对话轮数上限')
     parser.add_argument('--stuck-limit',type=int,default=5)
     parser.add_argument('--reopen-before-adopt',action='store_true',help='资料卡片出现后重建服务并读取本机草稿一次，不替用户采用')
+    parser.add_argument('--material-file',type=Path,help='操作员已挑选下载到隔离目录的文件，通过真实上传入口导入')
+    parser.add_argument('--material-url',help='操作员主动提供的资料网址或GitHub仓库')
+    parser.add_argument('--pause-material',action='store_true',help='资料推荐后暂停，等待操作员挑选下载，再使用上传参数续跑')
     parser.add_argument('--timeout',type=float,default=240)
     parser.add_argument('--clock',default='2026-10-03T10:00:00+09:00')
     args=parser.parse_args(argv)
@@ -69,7 +72,8 @@ def main(argv=None):
             budget=args.budget,to=args.to,from_stage=args.from_stage,day=args.day,dialogue_rounds=args.dialogue_rounds,
             clock=args.clock,stuck_limit=args.stuck_limit,timeout=args.timeout,reopen_before_adopt=args.reopen_before_adopt))
         user=ScriptUser(json.loads(args.script.read_text(encoding='utf-8')) if args.script else None) if not args.live or args.script else ModelUser(sim.gateway,persona)
-        driver=Driver(sim,user,persona,stuck_limit=args.stuck_limit,reopen_before_adopt=args.reopen_before_adopt)
+        driver=Driver(sim,user,persona,stuck_limit=args.stuck_limit,reopen_before_adopt=args.reopen_before_adopt,
+            material_url=args.material_url,material_file=args.material_file,pause_material=args.pause_material)
         summary=driver.run(to=args.to,from_stage=args.from_stage,rounds=args.dialogue_rounds,day=args.day)
         print(json.dumps(summary,ensure_ascii=False,indent=2));return 1 if summary['stop'] else 0
     finally:sim.close()

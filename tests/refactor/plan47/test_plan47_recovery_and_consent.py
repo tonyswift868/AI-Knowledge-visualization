@@ -34,88 +34,12 @@ def reopened(flow, fetcher):
     return PlanFlow(flow.services, flow.push, flow.study_day, fetcher=fetcher)
 
 
-def test_plan47_run1_restart_adopts_saved_text_without_fetch(fixture):
-    flow,_,ctx,*_=fixture
-    pid=searched(fixture)
-    card=flow.load(pid)['sources'][0]
-    assert flow.load(pid)['_verified_sources']
-    assert flow.services.store.records('sources',pid)==[]
-    assert not any(r.entity=='sources' for r in flow.services.store.pending_records(10000))
-    expected=flow._verified[pid][card['url']].document.chunks[0].text
-    def forbidden(*args,**kwargs):
-        pytest.fail('saved verified text must not require network after restart')
-    fresh=reopened(flow,forbidden)
-    result=fresh.run(pid,lambda d,c:fresh.decide(d,card['card_id'],True),ctx)['draft']
-    assert result['sources'][0]['status']=='adopted'
-    chunks=flow.services.store.records('source_chunks',pid)
-    assert chunks[0]['text']==expected
-    assert '_verified_sources' not in result
-    assert '_verified_sources' not in flow.public(flow.load(pid))
-    assert not any(r.entity=='sources' for r in flow.services.store.pending_records(10000)
-                   if r.payload.get('adopted') is False)
 
 
-@pytest.mark.parametrize('valid',[True,False])
-def test_plan47_legacy_card_refetches_and_rechecks(fixture,valid):
-    flow,_,ctx,*_=fixture
-    pid=searched(fixture)
-    d=flow.load(pid);d.pop('_verified_sources',None)
-    flow._verified.clear();flow.save(d)
-    calls=[]
-    def fetch(url,**kwargs):
-        calls.append(url)
-        if not valid:
-            from refactor.learning.course.research import ResearchFetchError
-            raise ResearchFetchError('offline missing page')
-        return flow.fetcher(url,**kwargs)
-    fresh=reopened(flow,fetch)
-    card=d['sources'][0]
-    if valid:
-        result=fresh.run(pid,lambda d,c:fresh.decide(d,card['card_id'],True),ctx)['draft']
-        assert result['sources'][0]['status']=='adopted'
-        assert fresh.load(pid)['_verified_sources']
-    else:
-        with pytest.raises(BridgeError,match='这份资料需要重新查找'):
-            fresh.run(pid,lambda d,c:fresh.decide(d,card['card_id'],True),ctx)
-        assert fresh.load(pid)['sources'][0]['status']=='new'
-        assert not flow.services.store.records('sources',pid)
-    assert calls==[URL]
 
 
-def test_plan47_verified_document_larger_than_settings_limit_reopens(fixture):
-    flow,_,ctx,*_=fixture
-    from tests.refactor.plan37.test_grounded_plan37_flow import QUOTE
-    from refactor.learning.course.research import FetchedContent
-    # Distinct paragraphs: 47-MF03's body cleanup drops repeated copies of the same text,
-    # so a large document has to be large without repeating itself.
-    paras=''.join(f'<p>{QUOTE} Example {i}: a load of {i} newtons on {i+1} square metres.</p>' for i in range(4000))
-    body=('<html><title>Pressure OpenStax</title><h1>Pressure</h1>' + paras + '</html>').encode()
-    flow.fetcher=lambda url,**kw:FetchedContent(url,url,'text/html',body,'2026-10-03T00:00:00Z')
-    pid=searched(fixture)
-    assert flow._file(pid).path.stat().st_size>262144
-    fresh=reopened(flow,lambda *_args,**_kw:pytest.fail('should not fetch'))
-    d=fresh.load(pid)
-    fresh.run(pid,lambda d,c:fresh.decide(d,d['sources'][0]['card_id'],True,ctx=c),ctx)
-    assert fresh.load(pid)['sources'][0]['status']=='adopted'
 
 
-def test_plan47_legacy_changed_text_does_not_reuse_old_approval(fixture):
-    flow,model,ctx,*_=fixture
-    pid=searched(fixture)
-    d=flow.load(pid);d.pop('_verified_sources',None);flow._verified.clear();flow.save(d)
-    from refactor.learning.course.research import FetchedContent
-    body=('<html><title>Pressure OpenStax</title><p>'+'其他课程的介绍，不再提供所选知识点的学习内容。'*100+'</p></html>').encode()
-    fresh=reopened(flow,lambda url,**kw:FetchedContent(url,url,'text/html',body,'2026-10-03T00:00:00Z'))
-    original=model.complete
-    def complete(purpose,messages,**kw):
-        if purpose=='source_scoring':
-            from types import SimpleNamespace
-            return SimpleNamespace(text=json.dumps(dict(scores=[dict(id='r0',credibility=5,relevance=1,note='重新获取的正文已不包含压强知识点，不能继续采用。')]),ensure_ascii=False))
-        return original(purpose,messages,**kw)
-    model.complete=complete
-    with pytest.raises(BridgeError,match='这份资料需要重新查找'):
-        fresh.run(pid,lambda d,c:fresh.decide(d,d['sources'][0]['card_id'],True,ctx=c),ctx)
-    assert not flow.services.store.records('sources',pid)
 
 
 @pytest.mark.parametrize('reverse',[False,True])
@@ -124,11 +48,11 @@ def test_plan47_run4_combined_confirmation_searches_only_new_preview(fixture,rev
     pid=flow.current()['plan_id']
     flow.run(pid,lambda d,c:flow.submit_form(d,c,form()),ctx)
     searches=[]
-    real_research=flow._research
+    real_research=flow._recommend
     def research(d,c,*args,**kwargs):
         searches.append((d['phase'],dict(d['accepted_preview']),flow._effective_form(d)))
         return real_research(d,c,*args,**kwargs)
-    flow._research=research
+    flow._recommend=research
     original=model.complete
     def complete(purpose,messages,**kwargs):
         if purpose=='plan_intent':
@@ -147,18 +71,16 @@ def test_plan47_run4_combined_confirmation_searches_only_new_preview(fixture,rev
     assert SUPPLEMENT in searches[0][2]['notes']
     assert result['phase']=='sources' and result['accepted_preview']['version']==2
     kinds=[m['kind'] for m in result['messages']]
-    assert max(i for i,k in enumerate(kinds) if k=='preview') < kinds.index('sources')
+    assert max(i for i,k in enumerate(kinds) if k=='preview') < kinds.index('recommendations')
     assert '再确认' not in result['messages'][max(i for i,k in enumerate(kinds) if k=='preview')]['text']
-    card=result['sources'][0]
-    result=flow.run(pid,lambda d,c:flow.decide(d,card['card_id'],True),ctx)['draft']
-    assert result['sources'][0]['status']=='adopted'
+    assert result['recommendations'] and not result['sources']
 
 
 def test_plan47_invalid_decide_names_actual_preview_phase(fixture):
     flow,_,_,*_=fixture
     pid=searched(fixture);d=flow.load(pid);d['phase']='preview'
     with pytest.raises(BridgeError,match='确认大致模块'):
-        flow.decide(d,d['sources'][0]['card_id'],True)
+        flow.decide(d,'recommendation-is-not-imported',True)
 
 
 def test_plan47_run1_known_information_is_explicit_in_sufficiency_request():

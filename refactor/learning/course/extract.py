@@ -150,6 +150,22 @@ def _pdf(data, cancel, ocr=None, progress=None):
         raise ExtractError('EMPTY')
     if ocr is not None:
         ocr.check_page_count(count)
+    # pypdf owns bookmark parsing. The supplied chapter hierarchy is carried
+    # into the existing blocks/chunks; PDFs without bookmarks keep the fallback.
+    bookmarks = {}
+    pending = [(reader.outline, ())]
+    while pending:
+        entries, parent = pending.pop()
+        current = parent
+        for entry in entries:
+            _check(cancel)
+            if isinstance(entry, list):
+                pending.append((entry, current))
+            else:
+                current = parent + (entry.title,)
+                page_number = reader.get_destination_page_number(entry)
+                if page_number is not None: bookmarks.setdefault(page_number + 1, []).append(current)
+    section = ()
     with ExitStack() as stack:
         recognizer = None
         for index, page in enumerate(reader.pages, 1):
@@ -171,7 +187,9 @@ def _pdf(data, cancel, ocr=None, progress=None):
             effective += sum(char.isalnum() for char in text)
             if not text.strip():
                 warnings.append(f'第 {index} 页未提取到文字，可能是扫描页或空白页。')
-            blocks.extend(_paragraphs(text, page=index, cancel=cancel))
+            if index in bookmarks:
+                section = max(bookmarks[index], key=len)
+            blocks.extend(_paragraphs(text, page=index, section=section, cancel=cancel))
             if progress is not None:
                 progress(index, count)
             _check(cancel)

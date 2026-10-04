@@ -45,7 +45,7 @@ def conversation(tmp_path):
     services=SimpleNamespace(store=store,gateway=model,account_id='plan42_synthetic',data_root=tmp_path)
     flow=PlanFlow(services,lambda *_:None,lambda:date(2026,10,3))
     searches=[]
-    flow._research=lambda d,c:searches.append(flow._effective_form(d))
+    flow._recommend=lambda d,c:searches.append(flow._effective_form(d))
     ctx=CallContext('plan42',threading.Event(),lambda _:None)
     pid=flow.current()['plan_id']
     yield flow,model,ctx,pid,searches
@@ -99,7 +99,7 @@ def test_plan42_supplement_invalidates_derived_work_and_repreviews(conversation,
     say(flow,ctx,pid,'确认并找资料')
     assert '只理解术语，不写代码，增加网络' in searches[-1]['notes']
     assert '只理解术语' in flow.services.store.get_plan(pid)['notes']
-    request=agents.coverage_request(d['goal'],flow._effective_form(d),[],[])
+    request=agents.material_structure_request(d['goal'],flow._effective_form(d),d.get('preview'),[])
     assert '只理解术语，不写代码，增加网络' in request[1][0]['content']
 
 

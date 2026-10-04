@@ -89,6 +89,7 @@ def test_plan_dialogue_real_route_and_copy_isolate_form_cards_and_course(dialogu
         assert before["draft"]["form"] == after["draft"]["form"]
         h.call('plan.say',plan_id=pid,text='确认并找资料')
         h.call("plan.outline", plan_id=pid)
+        h.call("plan.say", plan_id=pid, text="确认结构")
         assert len(modules(h.snapshot(pid))) >= 8
         assert not h.snapshot(pid)["records"]["points"]
     finally:
@@ -113,8 +114,9 @@ def test_plan_dialogue_url_path_import_and_source_search_are_distinct(dialogue_t
         assert not gateway.calls
         h.call("plan.say", plan_id=pid, text="请找有练习的入门资料")
         # No qualifying new source: a second round that adds nothing stops the search (16-MF04), then shortage is reported.
-        assert [c["purpose"] for c in gateway.calls] == ["plan_intent", "research", "research"]
-        assert any("可用资料不足" in m.get("text", "") for m in h.snapshot(pid)["draft"]["messages"])
+        assert [c["purpose"] for c in gateway.calls] == ["plan_intent", "research"]
+        assert h.snapshot(pid)["draft"]["recommendations"]
+        assert not h.snapshot(pid)["records"]["points"]
         assert all(c["mode"] == "offline_synthetic_html" for c in h.web.calls)
     finally:
         h.close()
@@ -273,6 +275,7 @@ def test_plan_dialogue_future_b_ready_precondition_and_confirmation_are_executab
     try:
         pid = seed_sources(h)
         h.call("plan.outline", plan_id=pid)
+        h.call("plan.say", plan_id=pid, text="确认结构")
         case = next(c for c in load_cases() if c["id"] == "B-M01")
         prepare_b(h, pid, case)
         assert h.snapshot(pid)["draft"]["phase"] == "ready"
@@ -288,6 +291,7 @@ def test_plan_dialogue_false_form_ack_is_failure_even_when_host_data_is_safe(dia
     try:
         pid = seed_sources(h)
         h.call('plan.outline', plan_id=pid)
+        h.call('plan.say', plan_id=pid, text='确认结构')
         before = h.snapshot(pid)
         after = copy.deepcopy(before)
         after['draft']['messages'].append({'role': 'ai', 'kind': 'text',

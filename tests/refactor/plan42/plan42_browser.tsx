@@ -17,7 +17,7 @@ async function run(){
   button('交流时能解释').click();await wait()
   assert(fixture.calls.find(c=>c.method==='plan.say').params.text==='交流时能解释','选项送出用户原话')
   assert(button('确认，开始找资料'),'确认模块预览入口')
-  assert(!button('再找找'),'确认前没有搜索入口')
+  assert(!button('让 AI 推荐 / 换一批'),'确认前没有搜索入口')
   button('我想调整').click();await wait()
   const input=document.querySelector('textarea') as HTMLTextAreaElement
   assert(!input.disabled && input.value.includes('调整'),'可以继续聊')
@@ -27,7 +27,7 @@ async function run(){
   assert(document.body.textContent?.includes('网络｜'),'新版预览呈现')
   assert([...document.querySelectorAll('button')].filter(b=>b.textContent?.trim()==='确认，开始找资料').length===1,'旧预览不能确认')
   button('确认，开始找资料').click();await wait()
-  assert(button('再找找'),'确认后资料操作')
+  assert(button('让 AI 推荐 / 换一批'),'确认后资料操作')
   root.render(<PlanDetail />);await wait(200)
   const warnings=document.body.textContent?.match(/这个模块有较多知识点用的是原文填空题/g)||[]
   assert(warnings.length===1,'只对cloze_heavy模块显示说明')

@@ -108,7 +108,7 @@ def evaluate(case, before, after, calls, repo_calls, *, intermediate=None, bridg
             check(key, len(values) >= expected[key], expected[key], len(values))
     if expected.get("recommendation_any"):
         suggestions = [s for c in research if c.get("result")
-                       for s in planner_agents.parse_research(c["result"]["text"])]
+                           for s in planner_agents.parse_json(c["result"]["text"]).get('sources', [])]
         text = json.dumps(suggestions, ensure_ascii=False)
         check("recommendation_matches_request", has_any(text, expected["recommendation_any"]),
               expected["recommendation_any"], suggestions)

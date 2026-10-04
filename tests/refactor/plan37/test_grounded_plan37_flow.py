@@ -52,8 +52,7 @@ class Model:
                 if kwargs.get('system') == PREVIEW_SYSTEM else
                 {"enough": True, "goal": "初二物理：压强与浮力", "focus": ["压强"], "questions": []})
         elif purpose == "research":
-            assert kwargs["enable_search"]
-            result = {"sources": [{"title": "Pressure", "url": URL, "why": "正规教材"}]}
+            result = {"sources": [{"title": "Pressure", "url": URL, "why": "正规教材", "type":"教材", "modules":["压强"]}]}
         elif purpose == "source_scoring":
             import re
             result = {"scores": [{"id": r, "relevance": 5, "credibility": 5, "note": "OpenStax 正规教材，有定义原文。"}
@@ -61,8 +60,11 @@ class Model:
         elif purpose == "coverage_check":
             result = {"covered": not self.missing, "missing": [{"content": "浮力", "why": "未取得浮力正文", "points": 2}] if self.missing else [],
                       "message": "缺浮力原文，需要补资料。" if self.missing else ""}
+        elif purpose == 'outline' and kwargs.get('system') == agents.MATERIAL_STRUCTURE_SYSTEM:
+            packet=json.loads(text); section=packet['directory'][0]
+            result=dict(summary='按资料理解压强',modules=[dict(key='m1',title='压强与面积',summary='理解压强',refs=[section['id']],chapters=[section['title']])],missing=['浮力'] if self.missing else [])
         elif purpose == "outline":
-            chunks = json.loads(text.split("【已取得的原文段落】\n")[1])
+            chunks = json.JSONDecoder().raw_decode(text.split("【已取得的原文段落】\n")[1])[0]
             result = raw_map(chunks[0]["chunk_id"], invalid=self.invalid, count=self.count)
         elif purpose == "plan_intent":
             payload = json.loads(text.split("\n", 1)[1])
@@ -108,10 +110,9 @@ def adopt_and_map(fixture):
     assert response['draft']['phase'] == 'preview' and 'research' not in model.calls
     flow.run(pid, lambda d,c: flow.chat(d,c,'确认并找资料'),ctx)
     assert "research" in model.calls
-    draft = flow.load(pid)
-    card = draft["sources"][0]
-    flow.run(pid, lambda d, c: flow.decide(d, card["card_id"], True), ctx)
+    flow.run(pid,lambda d,c:flow.chat(d,c,URL),ctx)
     flow.run(pid, lambda d, c: flow.make_outline(d, c), ctx)
+    flow.run(pid,lambda d,c:flow.chat(d,c,'确认结构'),ctx)
     return flow.load(pid)
 
 
@@ -172,15 +173,6 @@ def test_plan37_reference_must_be_in_selected_obtained_original(bad):
     assert not result["stages"] and result["dropped"] == ["压强的定义0"]
 
 
-def test_plan37_missing_material_reports_points_and_choices(fixture):
-    flow, model, ctx, *_ = fixture
-    draft = adopt_and_map(fixture)
-    draft["phase"] = "sources"
-    model.missing = True
-    assert flow.make_outline(draft, ctx) is False
-    assert draft["coverage"]["blocked"]
-    assert "2 个知识点" in draft["messages"][-1]["text"]
-    assert all(word in draft["messages"][-1]["text"] for word in ("继续找", "提供", "暂时不学"))
 
 
 def test_plan37_300_minutes_blocks_until_user_extends(fixture):

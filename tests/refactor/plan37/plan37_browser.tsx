@@ -19,7 +19,9 @@ async function run() {
   check([...document.querySelectorAll(".source-title")].map(x=>x.textContent).join("|")==="OpenStax · Pressure|成熟教学平台|一般教学网站|社区解释","credibility and community source order")
   check(document.body.textContent?.includes("下载后点‘上传资料’"),"textbook instruction in chat")
   document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await wait()
-  await click("整理知识地图")
+  await click("调整结构")
+  check(document.body.textContent?.includes("按资料调整"), "material directory preview")
+  await click("确认结构")
   check(document.body.textContent?.includes("单位面积上的压力"), "point before generation")
   check(document.body.textContent?.includes("来源一般"),"general-only map label")
   document.querySelector<HTMLDetailsElement>("details")!.open = true

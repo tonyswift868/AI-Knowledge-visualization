@@ -190,8 +190,6 @@ class PlanFlow:
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
         self._status: dict[str, str] = {}
-        self._pools: dict[str, object] = {}
-        self._verified: dict[str, dict] = {}
         self._additions: dict[str, dict] = {}   # PLAN-10 sessions: the host holds state, the page only picks
         self._picked: dict[str, list] = {}      # files chosen in the dialog, by token
         self._prepare_module = prepare_module  # MF-04 contract; injected by offline tests
@@ -215,14 +213,7 @@ class PlanFlow:
         return draft
 
     def save(self, draft):
-        # Only displayed cards are retained. This stays in the local intake
-        # draft, never CourseStore/sync until the learner actually adopts it.
-        snapshots = draft.setdefault('_verified_sources', {})
-        for card in draft.get('sources', []):
-            source = self._verified.get(draft['plan_id'], {}).get(card.get('url'))
-            if source is not None and (card.get('sha') == source.document.sha256):
-                if snapshots.get(card['url'], {}).get('content_sha256') != source.content_sha256:
-                    snapshots[card['url']] = asdict(source)
+        draft.pop('_verified_sources', None)
         try:
             self._file(draft["plan_id"]).write(draft)
         except StorageError:
@@ -326,8 +317,6 @@ class PlanFlow:
     def _cleanup_plan_files(self, plan_id):
         self._file(plan_id).path.unlink(missing_ok=True)
         AccountJSON(self.services.account_id, self.services.data_root, f"classroom/{plan_id}.json").path.unlink(missing_ok=True)
-        self._pools.pop(plan_id, None)
-        self._verified.pop(plan_id, None)
 
     # ----------------------------------------------------------- model calls
     def _ask(self, purpose, request, parse, ctx, *, plan_id, search=False, max_tokens=4096):
@@ -336,7 +325,8 @@ class PlanFlow:
         for attempt in range(2):  # one retry on a malformed answer (ARCH-04) or a transient provider hiccup
             try:
                 result = self.services.gateway.complete(purpose, messages, system=system, enable_search=search,
-                                                        cancel=ctx.cancel, plan_id=plan_id, max_tokens=max_tokens)
+                                                        cancel=ctx.cancel, plan_id=plan_id, max_tokens=max_tokens,
+                                                        **({'on_text': lambda _text: None} if purpose == 'outline' else {}))
             except ModelError as exc:
                 if (exc.code == MODEL_OUTPUT_TRUNCATED and not attempt and max_tokens < 32768
                         and not ctx.cancel.is_set()):
@@ -405,6 +395,7 @@ class PlanFlow:
         draft.pop("accepted_preview", None)
         draft.pop("estimate", None)
         draft.pop("coverage", None)
+        draft.pop('material_structure', None)
         self.save(draft)
         self.status(draft["plan_id"], "正在整理需求摘要和大致模块…")
         preview, _ = self._ask("sufficiency", agents.preview_request(self._effective_form(draft), self._conversation(draft)),
@@ -440,155 +431,107 @@ class PlanFlow:
                                         today=self.study_day(), reason='确认需求摘要和大致模块')
         draft["phase"] = "sources"
         self.save(draft)
-        links = find_links(" ".join([draft["form"].get("notes", ""), draft["form"].get("goal", "")] +
-                                    [m["text"] for m in draft["messages"] if m["kind"] == "user_text"]))
+        links = [] if draft.get('initial_links_imported') else find_links(" ".join(
+            [draft["form"].get("notes", ""), draft["form"].get("goal", "")] +
+            [m["text"] for m in draft["messages"] if m["kind"] == "user_text"]))
         if links:
             self._import_links(draft, ctx, links)
+        draft['initial_links_imported'] = True
         if draft["form"].get("only_mine"):
             has_own = any(s["status"] == "adopted" for s in draft["sources"])
             draft["messages"].append(_msg("ai", "text", "你说只用自己给的资料，我就不另外搜索了。" +
                                           ("可以直接生成路线轮廓。" if has_own else "请点下面的“上传资料”，传好后生成路线轮廓。")))
             self.save(draft)
             return
-        self._research(draft, ctx)
+        self._say(draft, '你有自己信任的教材、课程、仓库或学习清单吗？可以上传或贴网址，也可以让我推荐。看中推荐资料后请下载上传。')
+        self._recommend(draft, ctx)
 
     # ----------------------------------------------------------- 2 research
-    def _pool(self, plan_id):
-        from ..course.research_pipeline import ResearchPool
-        return self._pools.setdefault(plan_id, ResearchPool())
-
-    def _research(self, draft, ctx, instruction=""):
-        """Bounded replenishment; a shortage never lowers the admission bar."""
-        previous_count = -1
-        for attempt in range(source_quality.MAX_SEARCH_ROUNDS):
-            if ctx.cancel.is_set():
-                raise ModelCancelled()
-            self._research_once(draft, ctx, instruction)
-            count = sum(c.get("quality", {}).get("eligible", False) and c["status"] != "rejected"
-                        for c in draft["sources"] if not c.get("user_provided"))
-            if count >= source_quality.MIN_SOURCES:
-                return
-            if attempt > 0 and count <= previous_count:
-                # A second round that added nothing should not spend another
-                # model search on the same pool of URLs.
-                break
-            previous_count = count
-            instruction = (instruction + " 可用资料不足，优先官方、教材和成熟平台；高档找不到时也找发布者可辨认的一般网站或社区，拒绝转载、采集与无正文页面。")[-1000:]
-        draft["messages"].append(_msg("ai", "text", f"可用资料不足：本次最多检索 {source_quality.MAX_SEARCH_ROUNDS} 轮，"
-            f"目前只有 {count} 份达到门槛，期望至少 {source_quality.MIN_SOURCES} 份。不会降低标准凑数；可以缩小主题或提供你自己的资料。"))
+    def _recommend(self, draft, ctx, instruction=""):
+        self.status(draft['plan_id'], '正在推荐完整资料链接…')
+        rows, _ = self._ask('research', agents.recommendation_request(
+            draft['goal'], self._effective_form(draft), draft.get('accepted_preview') or draft.get('preview'),
+            self._lists(), instruction=instruction, previous=draft.get('recommendations', [])),
+            agents.parse_recommendations, ctx, plan_id=draft['plan_id'], max_tokens=12288)
+        cards = []
+        for row in rows:
+            if ctx.cancel.is_set(): raise ModelCancelled()
+            if self.fetcher is not None:
+                # Offline adapters replace HTTP only, not extraction or scoring.
+                try:
+                    response = self.fetcher(row['url'], cancel=ctx.cancel, timeout=15)
+                    ok, final, reason = True, response.final_url, ''
+                    body = response.body[:16384].decode('utf-8', errors='ignore').lower()
+                    if 'this book has been removed' in body:
+                        ok, reason = False, '资料已下架'
+                except Exception as exc:
+                    ok, final, reason = False, row['url'], type(exc).__name__
+            else:
+                ok, final, reason = self._link_available(row['url'], ctx.cancel)
+            if not ok:
+                log.info('recommended link unavailable: %s (%s)', row['url'], reason)
+                continue
+            cards.append(dict(row, final_url=final, card_id=_new_id()[:12]))
+        draft.setdefault('recommendations', []).extend(cards)
+        draft['messages'].append(_msg('ai', 'recommendations',
+            '看中哪份，打开后下载下来传给我；也可以直接贴网址或 GitHub 仓库。推荐链接只检查能否打开，还没有读取正文。'
+            if cards else '这次推荐的链接暂时打不开。可以上传自己的资料，或让我换一批推荐。',
+            cards=[c['card_id'] for c in cards]))
         self.save(draft)
 
-    def _research_once(self, draft, ctx, instruction=""):
-        from ..course.research_pipeline import ResearchPipeline
-        from ..course.source_filter import RawHit
-        plan_id = draft["plan_id"]
-        pool = self._pool(plan_id)
+    def _link_available(self, url, cancel):
+        # Existing httpx transport only; no extraction, scoring or body import.
+        from ..course.research import ResearchService
         try:
-            catalog=getattr(self.services,'catalog',None)
-            guidance=catalog.material_guidance(draft['goal'],stage=draft['form'].get('notes','')) if catalog else None
-        except Exception:
-            # Match _lists(): built-in metadata does not need a live catalog.
-            guidance=None
-        if guidance is None:
-            from ..course.research import directory_upload_guidance
-            guidance=directory_upload_guidance(draft['goal'],lists=self._lists())
-        for message in guidance: self._material_guidance(draft,message)
-        draft["research"]["round"] += 1
-        accepted = [(s["title"], s["url"]) for s in draft["sources"] if s["status"] == "adopted" and s.get("url")]
-        self.status(plan_id, "正在联网搜索资料（通常要半分钟到一分钟）…")
-        suggestions, result = self._ask(
-            "research", agents.research_request(draft["goal"], self._effective_form(draft), draft["focus"], accepted=accepted,
-                                                rejected=draft["research"]["rejected"], round_no=draft["research"]["round"],
-                                                instruction=instruction),
-            agents.parse_research, ctx, plan_id=plan_id, search=True)
-        hits, seen = [], set()
-        # Tool output may contain dozens of raw hits. Give the model's short
-        # explicit shortlist a chance to be verified before the 30-fetch cap;
-        # every URL still goes through the same screen, fetch and quality gate.
-        for url, title, snippet in ([(s["url"], s["title"], s["why"]) for s in suggestions]
-                                    + [(h.url, h.title, h.snippet) for h in result.search_hits + result.citations]):
-            if url and url not in seen:
-                seen.add(url)
-                hits.append(RawHit(url=url, title=title or "", snippet=snippet or ""))
-        self.status(plan_id, f"搜到 {len(hits)} 条结果，正在逐个打开核实…")
-        pipeline = ResearchPipeline(fetcher=self.fetcher, lists_provider=self._lists, max_sources=30, timeout=15.0)
-        try:
-            outcome = pipeline.run(hits, accepted_urls=pool.accepted_urls, rejected_urls=pool.rejected_urls, cancel=ctx.cancel,goal=draft['goal'])
-        finally:
-            pipeline.close()
-        if ctx.cancel.is_set():
-            raise ModelCancelled()
-        for rejected in outcome.rejected:
-            if rejected.code=='material_upload_required': self._material_guidance(draft,rejected.message)
-        # Sphinx "view source" pages (/_sources/...) are markup, not the lesson itself.
-        verified = [s for s in outcome.verified if "/_sources/" not in s.final_url and "/_sources/" not in s.url]
-        pool.add(verified)
-        for source in verified:
-            self._verified.setdefault(plan_id, {})[source.url] = source
-        self._show_batch(draft, ctx, searched=len(hits), verified=len(verified))
-
-    def _material_guidance(self,draft,text):
-        if not isinstance(text,str) or not text.strip(): return
-        key=' '.join(text.split())
-        seen=draft['research'].setdefault('material_guidance',[])
-        if key in seen:return
-        seen.append(key)
-        draft['messages'].append(_msg('ai','text',text))
+            if cancel.is_set(): raise ModelCancelled()
+            with ResearchService()._client() as client:
+                with client.stream('GET', url, follow_redirects=True, timeout=15,
+                                   headers={'Range': 'bytes=0-16383'}) as response:
+                    if response.status_code not in (200, 206):
+                        return False, str(response.url), f'HTTP {response.status_code}'
+                    prefix = b''
+                    if 'html' in response.headers.get('content-type', ''):
+                        for part in response.iter_bytes(chunk_size=4096):
+                            if cancel.is_set(): raise ModelCancelled()
+                            prefix += part
+                            if len(prefix) >= 16384: break
+                    text = prefix.decode('utf-8', errors='ignore').lower()
+                    if any(v in text for v in ('this book has been removed', 'this page has been removed',
+                            '<title>404', '<title>page not found', '该资源已下架')):
+                        return False, str(response.url), '资料已下架或不存在'
+                    return True, str(response.url), ''
+        except ModelCancelled: raise
+        except Exception as exc:
+            return False, url, type(exc).__name__
 
     def _import_links(self, draft, ctx, urls):
-        """Links the learner gave: open and verify each, adopt what passes; no search, no scoring gate."""
-        from ..course.materials import import_verified_source
-        from ..course.research_pipeline import ResearchPipeline
-        from ..course.source_filter import RawHit
-        plan_id = draft["plan_id"]
-        done = set(draft["research"].setdefault("linked", []))
-        urls = [u for u in urls if u not in done]
-        if not urls:
-            return
-        from ..course import github_repo
-        repos = [u for u in urls if github_repo.parse(u)]
-        pages = [u for u in urls if u not in repos]
-        verified, failed = [], []
-        for url in repos:   # a repository's real material is its docs, not the home page
-            self.status(plan_id, "正在读取 GitHub 仓库里的文档（大仓库要一两分钟）…")
-            try:
-                verified.append(github_repo.import_repo(url, fetch=self.repo_fetch, cancel=ctx.cancel, lists=self._lists()))
-            except github_repo.RepoImportError as exc:
-                failed.append(f"{url}（{exc.message}）")
-            except Exception:  # noqa: BLE001 - network trouble on one link must not hide the others
-                if ctx.cancel.is_set():
-                    raise ModelCancelled() from None
-                log.warning("repository import failed", exc_info=True)
-                failed.append(f"{url}（读取失败，请稍后重试）")
-        if pages:
-            self.status(plan_id, f"正在打开你给的 {len(pages)} 个链接…")
-            pipeline = ResearchPipeline(fetcher=self.fetcher, lists_provider=self._lists, max_sources=10, timeout=20.0)
-            try:
-                outcome = pipeline.run([RawHit(url=u) for u in pages], include_low=True, cancel=ctx.cancel)
-            finally:
-                pipeline.close()
-            verified.extend(outcome.verified)
-            failed.extend(f"{r.url}（{r.message}）" for r in outcome.rejected)
-        if ctx.cancel.is_set():
-            raise ModelCancelled()
+        from ..course.addition_links import import_links
+        self.status(draft['plan_id'], '正在读取你提供的资料…')
+        outcome = import_links(self.services.store, draft['plan_id'], urls, fetcher=self.fetcher,
+            repo_fetch=self.repo_fetch, lists=self._lists(), cancel=ctx.cancel, creating=True)
+        if outcome['cancelled']: raise ModelCancelled()
         cards = []
-        for source in verified:
-            saved = import_verified_source(self.services.store, plan_id, source)
-            if any(c.get("source_id") == saved["id"] for c in draft["sources"]):
-                continue
-            self._pool(plan_id).mark_accepted(source.url)
-            quality = source_quality.annotate(self.services.store, plan_id, [saved["id"]], lists=self._lists(), today=self.study_day())[0]
-            cards.append({"card_id": _new_id()[:12], "kind": "url", "url": source.url, "title": source.title or source.url,
-                          "site": source.site, "tier": source.tier, "summary": source.summary[:300], "relevance": quality["relevance"],
-                          "credibility": quality["credibility"], "note": quality["note"], "quality": quality, "user_provided": True,
-                          "status": "adopted", "source_id": saved["id"],
-                          "chars": source.document.char_count, "sha": source.document.sha256})
-        draft["sources"].extend(cards)
-        draft.pop("coverage", None)
-        draft["research"]["linked"] = sorted(done | set(urls))
-        text = (f"已打开并采用你给的 {len(cards)} 个链接。" if cards else "") + \
-               ("没能使用：" + "；".join(failed[:5]) + "。" if failed else "")
-        draft["messages"].append(_msg("ai", "sources", text or "这些链接已经在资料里了。", cards=[c["card_id"] for c in cards]))
+        stored = {s['id']: s for s in self.services.store.records('sources', draft['plan_id'])}
+        for result in outcome['results']:
+            if result['status'] in ('imported', 'existing'):
+                source = stored[result['source_id']]
+                existing = next((c for c in draft['sources'] if c.get('source_id') == source['id']), None)
+                if existing:
+                    existing['status'] = 'adopted'
+                else:
+                    cards.append(dict(card_id=_new_id()[:12], kind='url', url=source['url'],
+                        title=source['title'], site=source['url'], tier='user', summary='', relevance=None,
+                        credibility=None, note='由你提供，正文已读取。', user_provided=True, status='adopted',
+                        source_id=source['id'], chars=result['char_count'], sha=source.get('sha256')))
+            else:
+                draft['messages'].append(_msg('ai', 'error', result['original_url']+'：'+result['message']))
+        draft['sources'].extend(cards)
+        if any(r['status'] in ('imported', 'existing') for r in outcome['results']):
+            self._invalidate_material_structure(draft)
+        imported = any(r['status'] in ('imported', 'existing') for r in outcome['results'])
+        draft['messages'].append(_msg('ai', 'sources' if imported else 'error',
+            '已读取你提供的资料。请按这些资料调整结构。' if imported else '这次资料未能导入，请检查链接，或下载后上传文件。',
+            cards=[c['card_id'] for c in cards]))
         self.save(draft)
 
     def _lists(self):
@@ -598,102 +541,15 @@ class PlanFlow:
             from ..course.source_filter import load_lists
             return load_lists()
 
-    def _show_batch(self, draft, ctx, *, searched=None, verified=None, quiet=False):
-        """Score and show the next unseen verified sources; returns how many cards were added."""
-        plan_id = draft["plan_id"]
-        pool, cards = self._pool(plan_id), []
-        outline_modules = [m for stage in (draft.get("outline") or {}).get("stages", []) for m in stage["modules"]]
-        modules = outline_modules
-        if not modules:
-            modules = (draft.get("preview") or {}).get("modules", [])
-        # Assess all available candidates before allowing a third-band fallback;
-        # an authority later in the pool must not lose to the first display batch.
-        for batch in [sorted(pool.available(), key=lambda s: source_quality.rank_key(source_quality.assess(
-                s, draft['goal'], level=draft['form']['level'], today=self.study_day(), lists=self._lists())))]:
-            if not batch:
-                break
-            self.status(plan_id, "正在评估资料的相关性和可信度…")
-            qualities = [source_quality.assess(s, draft["goal"], level=draft["form"]["level"], modules=outline_modules,
-                                               today=self.study_day(), lists=self._lists()) for s in batch]
-            candidates = [{"id": f"r{i}", "title": s.title or s.url, "site": s.site,
-                           "excerpt": qualities[i]["evidence"]["excerpt"]}
-                          for i, s in enumerate(batch) if qualities[i]["needs_review"]]
-            scores = {}
-            for start in range(0, len(candidates), 8):
-                group = candidates[start:start+8]
-                reviewed, _ = self._ask("source_scoring", agents.scoring_request(draft["goal"], draft["form"], group),
-                                      lambda text: agents.parse_scoring(text, [c["id"] for c in group]), ctx, plan_id=plan_id,
-                                      max_tokens=8192)
-                scores.update(reviewed)
-            qualities = [source_quality.apply_review(q, scores.get(f"r{i}", {})) for i, q in enumerate(qualities)]
-            if modules != outline_modules:
-                # Preview coverage is display policy; keep the admission-review
-                # context unchanged for the existing adopt/save contract.
-                for source, quality in zip(batch, qualities):
-                    coverage = source_quality.assess(source, draft['goal'], level=draft['form']['level'],
-                        modules=modules, today=self.study_day(), lists=self._lists())
-                    quality.update(covered_scopes=coverage['covered_scopes'], coverage_context=coverage['context'])
-            qualities = source_quality.lesson_selection(qualities, modules,
-                existing=[draft['research'].get('quality_audit', {}).get(c.get('url'), c.get('quality', {}))
-                          for c in draft['sources'] if c.get('status') != 'rejected'])
-            shown = {c.get("sha") for c in draft["sources"]} | {c["sha"] for c in cards}
-            shown_keys = {c.get("content_key") or source_quality.content_identity(c.get("url", ""))
-                          for c in draft["sources"]} | {c["content_key"] for c in cards}
-            shown_bodies = {c.get('quality', {}).get('body_key') for c in draft['sources']}
-            ordered = sorted(zip(batch, qualities), key=lambda item: (source_quality.rank_key(item[1]), source_quality.canonical_link_key(item[0].url)))
-            for source, score in ordered:
-                draft["research"].setdefault("quality_audit", {})[source.url] = score
-                identity = source_quality.content_identity(source.final_url)
-                if not score["display"] or source.document.sha256 in shown or identity in shown_keys or (score['body_key'] and score['body_key'] in shown_bodies):
-                    continue  # also skips a page whose text is identical to one already shown
-                if len(cards) >= MAX_CARDS_PER_ROUND:
-                    continue
-                shown.add(source.document.sha256)
-                shown_keys.add(identity)
-                shown_bodies.add(score['body_key'])
-                pool.mark_shown(source.url)
-                cards.append({"card_id": _new_id()[:12], "kind": "url", "url": source.url, "title": score['evidence']['title'] or source.url,
-                              "site": source.site, "tier": source.tier, "summary": source.summary[:300],
-                              "relevance": score["relevance"], "credibility": score["credibility"], "note": score["note"],
-                              "quality": score, "user_provided": False,
-                              "status": "new", "chars": source.document.char_count, "sha": source.document.sha256,
-                              "content_key": identity})
-        cards.sort(key=source_quality.rank_key)
-        cards = cards[:MAX_CARDS_PER_ROUND]
-        draft["sources"].extend(cards)
-        if cards:
-            preferred = sum(c['quality']['recommended'] for c in cards)
-            fallback = len(cards) - preferred
-            text = f"找到 {preferred} 份一二档资料" + (f"，另有 {fallback} 份一般网站仅供自行判断，不默认采用" if fallback else "") + (f"（共搜到 {searched} 条，核实通过 {verified} 条）" if searched else "") + \
-                   "。请勾选“认可并采用”；不想用的点“不要”。不满意可以点“再找找”，或者直接告诉我想要什么样的资料。"
-            draft["messages"].append(_msg("ai", "sources", text, cards=[c["card_id"] for c in cards]))
-        elif quiet:
-            return 0
-        else:
-            draft["messages"].append(_msg("ai", "text", "这一轮可用资料不足。可以点“再找找”换个思路，"
-                                                        "或告诉我更具体的方向；也可以上传你手头的资料。"))
-        self.save(draft)
-        return len(cards)
-
     def more_sources(self, draft, ctx, instruction="", *, echo=True):
-        if draft["phase"] not in ("sources", "outline"):
-            raise BridgeError("PHASE_INVALID", "现在还不能找资料。")
-        draft["phase"] = "sources"
-        if instruction and not echo:  # chat() already showed the message and opened its links
-            return self._research(draft, ctx, instruction)
-        if instruction:
-            draft["messages"].append(_msg("user", "user_text", instruction))
-            self.save(draft)
-            links = find_links(instruction)
-            if links:
-                self._import_links(draft, ctx, links)
-                rest = _URL.sub("", instruction).strip(" ，,。;；\n")
-                if len(rest) < 6:   # only links: no extra search
-                    return
-                instruction = rest
-            return self._research(draft, ctx, instruction)
-        if not self._show_batch(draft, ctx, quiet=True):
-            self._research(draft, ctx)
+        if draft['phase'] not in ('sources', 'material_preview', 'outline'):
+            raise BridgeError('PHASE_INVALID', self._source_phase_message(draft))
+        if instruction and echo:
+            draft['messages'].append(_msg('user', 'user_text', instruction))
+        draft['phase'] = 'sources'
+        draft['outline'] = None
+        draft.pop('estimate', None)
+        self._recommend(draft, ctx, instruction)
 
     def _source_phase_message(self, draft):
         phase = draft['phase']
@@ -701,119 +557,36 @@ class PlanFlow:
             return '现在还在确认大致模块，确认后再采用或调整资料。'
         if phase in ('form', 'questions'):
             return '现在还在填写或核对学习需求，请先完成需求和大致模块确认。'
+        if phase == 'material_preview':
+            return '现在还在确认按资料调整的结构，请先确认或修改。'
         if phase == 'ready':
             return '计划已经生成，现在不能再改创建时的资料。'
         return '正在生成计划，请稍等，当前不能再改资料。'
 
-    def _card_source(self, draft, card, ctx):
-        """Restore displayed verified text; legacy drafts must re-verify the URL."""
-        from ..course.research_pipeline import VerifiedSource, ResearchPipeline
-        from ..course.extract import ExtractedDocument, TextBlock, SourceChunk
-        from ..course.source_filter import RawHit, normalize_url
-        plan_id, url = draft['plan_id'], card['url']
-        source = self._verified.get(plan_id, {}).get(url)
-        if source is not None:
-            return source
-        snapshot = draft.get('_verified_sources', {}).get(url)
-        if snapshot:
-            try:
-                data = dict(snapshot)
-                doc = dict(data['document'])
-                doc['blocks'] = tuple(TextBlock(**dict(b, section=tuple(b['section']))) for b in doc['blocks'])
-                doc['chunks'] = tuple(SourceChunk(**dict(c, section=tuple(c['section']))) for c in doc['chunks'])
-                doc['warnings'] = tuple(doc['warnings'])
-                data['document'] = ExtractedDocument(**doc)
-                data['reasons'] = tuple(data['reasons'])
-                source = VerifiedSource(**data)
-            except (KeyError, TypeError, ValueError):
-                raise BridgeError('SOURCE_RECHECK_FAILED', '这份资料需要重新查找，保存的正文无法读取。') from None
-        else:
-            self.status(plan_id, '正在重新核实这份资料…')
-            pipeline = ResearchPipeline(fetcher=self.fetcher, lists_provider=self._lists, max_sources=1, timeout=15.0)
-            try:
-                result = pipeline.run([RawHit(url, card.get('title', ''), '')],
-                                      cancel=ctx.cancel, goal=draft['goal'])
-            finally:
-                pipeline.close()
-            if ctx.cancel.is_set():
-                raise ModelCancelled()
-            source = next((s for s in result.verified if normalize_url(s.url) == normalize_url(url)), None)
-            if source is None:
-                raise BridgeError('SOURCE_RECHECK_FAILED', '这份资料需要重新查找，重新抓取或核实未通过。')
-        self._verified.setdefault(plan_id, {})[url] = source
-        return source
-
     def decide(self, draft, card_id, adopt, *, ctx=None):
-        card = next((c for c in draft["sources"] if c["card_id"] == card_id), None)
-        if card is None:
-            raise BridgeError("PARAM_INVALID", "找不到这份资料。")
-        if draft["phase"] not in ("sources", "outline", "questions"):
-            raise BridgeError("PHASE_INVALID", self._source_phase_message(draft))
-        ctx = ctx or CallContext('adopt-source', threading.Event(), lambda _: None)
-        store, plan_id = self.services.store, draft["plan_id"]
-        if adopt:
-            if card.get("kind") == "url" and not card.get("user_provided"):
-                source = self._verified.get(plan_id, {}).get(card["url"])
-                stored = next((s for s in store.records("sources", plan_id) if s["id"] == card.get("source_id")), None)
-                if source is None and stored is None:
-                    source = self._card_source(draft, card, ctx)
-                modules = [m for stage in (draft.get("outline") or {}).get("stages", []) for m in stage["modules"]]
-                options = dict(level=draft["form"]["level"], modules=modules, today=self.study_day(), lists=self._lists())
-                if source is not None:
-                    quality = source_quality.assess(source, draft["goal"], **options)
-                elif stored is not None:
-                    chunks = [c for c in store.records("source_chunks", plan_id) if c["source_id"] == stored["id"]]
-                    quality = source_quality.assess_stored(stored, chunks, draft["goal"], **options)
-                previous = card.get("quality", {})
-                same_text = source is None or card.get('sha') == source.document.sha256
-                if same_text and previous.get("context") == quality["context"]:
-                    quality = source_quality.apply_review(quality, previous)
-                elif quality['needs_review'] and source is not None:
-                    candidate = dict(id='r0', title=source.title, site=source.site, excerpt=quality['evidence']['excerpt'])
-                    reviews, _ = self._ask('source_scoring', agents.scoring_request(draft['goal'], draft['form'], [candidate]),
-                        lambda text:agents.parse_scoring(text, ['r0']), ctx, plan_id=plan_id, max_tokens=8192)
-                    quality = source_quality.apply_review(quality, reviews.get('r0', {}))
-                if not quality["eligible"]:
-                    raise BridgeError("SOURCE_QUALITY_LOW", "这份资料需要重新查找，当前核实未达到可用性与相关性门槛，不能采用。")
-                card["quality"] = quality
-                if source is not None:
-                    card.update(sha=source.document.sha256, title=source.title or card['title'],
-                                chars=source.document.char_count, summary=source.summary[:300])
-                if stored is not None:
-                    store.add_sources(plan_id, [dict(stored, quality=quality, user_provided=False)])
-            if card.get("source_id"):
-                store.set_source_adopted(plan_id, card["source_id"], True)
-            else:
-                verified = self._verified.get(plan_id, {}).get(card["url"])
-                if verified is None:
-                    verified = self._card_source(draft, card, ctx)
-                from ..course.materials import import_verified_source
-                self.status(plan_id, "正在保存资料正文…")
-                saved = import_verified_source(store, plan_id, verified)
-                card["source_id"] = saved["id"]
-                store.add_sources(plan_id, [dict(saved, quality=card["quality"], user_provided=False)])
-            if card.get("url"):
-                self._pool(plan_id).mark_accepted(card["url"])
-            if card.get("url") in draft["research"]["rejected"]:
-                draft["research"]["rejected"].remove(card["url"])
-        else:
-            if card.get("source_id"):
-                store.set_source_adopted(plan_id, card["source_id"], False)
-            if card.get("url"):
-                self._pool(plan_id).mark_rejected(card["url"])
-                if card["url"] not in draft["research"]["rejected"]:
-                    draft["research"]["rejected"].append(card["url"])
-        card["status"] = "adopted" if adopt else "rejected"
-        draft.pop("coverage", None)
-        draft.pop("scope", None)  # section ids are numbered over the adopted sources
+        if draft['phase'] not in ('sources', 'material_preview', 'outline', 'questions'):
+            raise BridgeError('PHASE_INVALID', self._source_phase_message(draft))
+        card = next((c for c in draft['sources'] if c['card_id'] == card_id), None)
+        if not card or not card.get('source_id'):
+            raise BridgeError('PARAM_INVALID', '推荐链接还不是学习资料，请先下载上传或主动贴网址。')
+        self.services.store.set_source_adopted(draft['plan_id'], card['source_id'], adopt)
+        card['status'] = 'adopted' if adopt else 'rejected'
+        self._invalidate_material_structure(draft)
         self.save(draft)
+
+    def _invalidate_material_structure(self, draft):
+        draft.pop('material_structure', None)
+        draft['outline'] = None
+        draft.pop('estimate', None)
+        if draft['phase'] in ('material_preview', 'outline'): draft['phase'] = 'sources'
 
     def add_file(self, plan_id, path):
         from ..course.materials import import_file
+        from ..course.extract import ExtractError
         lock = self._lock(plan_id)
         with lock:
             draft = self.load(plan_id)
-            if draft["phase"] not in ("form", "questions", "preview", "sources", "outline"):
+            if draft["phase"] not in ("form", "questions", "preview", "sources", "material_preview", "outline"):
                 raise BridgeError("PHASE_INVALID", "路线已经开始生成，不能再加资料。")
             try:
                 self.services.store.get_plan(plan_id)
@@ -821,7 +594,12 @@ class PlanFlow:
                 raise BridgeError("FORM_FIRST", "请先提交表单，再上传资料。") from None
             self.status(plan_id, f"正在读取 {path.name}…")
             try:
-                saved = import_file(self.services.store, plan_id, path)
+                try:
+                    saved = import_file(self.services.store, plan_id, path, ocr=False)
+                except ExtractError as error:
+                    if error.code != 'SCANNED_NO_TEXT':
+                        raise
+                    saved = import_file(self.services.store, plan_id, path, ocr=True)
             finally:
                 self.status(plan_id, "")
             if not any(c.get("source_id") == saved["id"] for c in draft["sources"]):
@@ -833,7 +611,7 @@ class PlanFlow:
                                          "status": "adopted", "source_id": saved["id"], "chars": saved.get("char_count", 0)})
                 draft["messages"].append(_msg("ai", "sources", f"已读取你上传的《{saved.get('title') or path.name}》，默认采用。",
                                               cards=[draft["sources"][-1]["card_id"]]))
-                draft.pop("coverage", None)
+                self._invalidate_material_structure(draft)
             self.save(draft)
 
     # ----------------------------------------------------------- 3 outline
@@ -843,7 +621,6 @@ class PlanFlow:
         sources = {s["id"]: s for s in store.records("sources", plan_id)}
         chosen = [sources[i] for i in adopted_ids if i in sources]
         chosen = [dict(s, summary=(s.get("quality", {}).get("note", "") + " " + s.get("summary", "")).strip()) for s in chosen]
-        chosen.sort(key=source_quality.rank_key)
         chunks: dict[str, list] = {}
         for chunk in store.records("source_chunks", plan_id):
             chunks.setdefault(chunk["source_id"], []).append(chunk)
@@ -859,54 +636,69 @@ class PlanFlow:
     def _sections(self, draft):
         """Sections of the adopted sources, limited to the chapters the learner chose."""
         sources, chunks = self._adopted(draft)
-        sections = agents.build_sections(sources, chunks)
+        sections = agents.build_sections(sources, chunks,
+            max_per_source=max(40, sum(map(len, chunks.values()))),
+            max_chars=max(9000, sum(len(c['text']) for items in chunks.values() for c in items)),
+            max_depth=None)
         scope = draft.get("scope") or {}
         if scope.get("include"):
             sections = [s for s in sections if s.id in scope["include"]]
         return sources, [s for s in sections if s.id not in scope.get("exclude", [])]
 
-    def _coverage_material(self, sources, sections, chunks_by_source):
-        """Return titles, headings and lead sentences only; never send full text."""
-        leads = []
-        for section in sections:
-            chunks = chunks_by_source.get(section.source_id, [])
-            text = " ".join(c.get("text", "").strip() for c in chunks if c["id"] in section.chunk_ids).strip()
-            match = re.split(r"(?<=[。！？.!?])\s+|\n+", text, maxsplit=1)
-            lead = (match[0] if match else text)[:300]
-            leads.append({"source": section.source_title, "title": section.title, "lead": lead})
-        return leads
+    def material_structure(self, draft, ctx, instruction=""):
+        sources, sections = self._sections(draft)
+        if not sources or not sections:
+            raise BridgeError('NO_SOURCES', '请先上传资料，或贴资料网址、GitHub 仓库。')
+        previous = draft.get('material_structure')
+        self._invalidate_material_structure(draft)
+        self.save(draft)
+        self.status(draft['plan_id'], '正在按资料目录调整结构…')
+        value, _ = self._ask('outline', agents.material_structure_request(draft['goal'],
+            self._effective_form(draft), draft.get('accepted_preview'), sections,
+            previous=previous, instruction=instruction),
+            lambda text: agents.parse_material_structure(text, sections), ctx,
+            plan_id=draft['plan_id'], max_tokens=12288)
+        value['version'] = draft.get('material_version', 0) + 1
+        draft['material_version'] = value['version']
+        draft['material_structure'] = value
+        draft['phase'] = 'material_preview'
+        text = value['summary'] + '\n\n' + '\n'.join(m['title'] + '｜' + m['summary'] +
+            '\n章节：' + '；'.join(m['chapters']) for m in value['modules'])
+        if value['missing']:
+            text += '\n\n所选资料没讲到：' + '、'.join(value['missing']) + '。可以再传一份资料、删掉这些部分，或就这样继续。'
+        text += '\n\n请确认这份按资料调整的结构，确认后再填知识点。'
+        draft['messages'].append(_msg('ai', 'material_preview', text, version=value['version']))
+        self.save(draft)
 
-    def _check_coverage(self, draft, ctx, sources, sections, chunks_by_source):
-        material = self._coverage_material(sources, sections, chunks_by_source)
-        self.status(draft["plan_id"], "正在核对资料能覆盖哪些内容…")
-        verdict, _ = self._ask("coverage_check", agents.coverage_request(
-            draft.get("goal") or draft["form"].get("goal", ""), self._effective_form(draft), sources, material,
-            abandoned=draft.get("abandoned_topics", ())), agents.parse_coverage, ctx,
-            plan_id=draft["plan_id"], max_tokens=8192)
-        result = dict(verdict, blocked=not verdict["covered"],
-                      missing_points=sum(item["points"] for item in verdict["missing"]))
-        if draft["form"].get("only_mine") and not result["covered"]:
-            result["message"] = "你选了只用自己的资料。" + result["message"] + \
-                f"目前缺口大约 {result['missing_points']} 个知识点。"
-        draft["coverage"] = result
-        if not result["covered"]:
-            draft["phase"] = "sources"
-            draft["messages"].append(_msg("ai", "coverage", result["message"] +
-                f" 缺口大约 {result['missing_points']} 个知识点。可以继续找资料、提供资料，或告诉我这部分暂时不学。"))
-            self.save(draft)
-            return False
-        return True
+    def resolve_missing(self, draft, ctx, action):
+        if draft['phase'] != 'material_preview' or action not in ('add', 'delete', 'continue'):
+            raise BridgeError('PHASE_INVALID', '请先看按资料调整的结构。')
+        if action == 'add':
+            draft['phase'] = 'sources'
+            return self._say(draft, '请再上传资料或贴网址，也可以让我推荐完整资料链接。')
+        structure = draft['material_structure']
+        structure['missing_choice'] = action
+        if action == 'delete':
+            structure['removed_goals'] = list(structure['missing'])
+            structure['missing'] = []
+        self.save(draft)
+        return self.make_outline(draft, ctx)
 
     def make_outline(self, draft, ctx, request="", *, echo=True):
-        if draft["phase"] not in ("sources", "outline"):
-            raise BridgeError("PHASE_INVALID", "现在还不能生成路线轮廓。")
+        if draft['phase'] == 'sources' or request:
+            return self.material_structure(draft, ctx, request)
+        if draft['phase'] != 'material_preview':
+            raise BridgeError('PHASE_INVALID', '请先确认按资料调整的结构。')
         sources, sections = self._sections(draft)
         if not sources:
             raise BridgeError("NO_SOURCES", "请先采用至少一份资料，路线要从资料里来。")
         if not sections:
             raise BridgeError("NO_SECTIONS", "按现在的范围一章都不剩了，请重新说一下要学哪些章节。")
-        if not self._check_coverage(draft, ctx, sources, sections, self._adopted(draft)[1]):
-            return False
+        structure = draft.get('material_structure')
+        if not structure:
+            raise BridgeError('STRUCTURE_REQUIRED', '请先按资料调整并确认结构。')
+        matched = {r for m in structure['modules'] for r in m['refs']}
+        sections = [s for s in sections if s.id in matched]
         window = self._window(draft)
         previous = draft["outline"]["agent"] if (request and draft.get("outline")) else None
         if request and echo:
@@ -914,9 +706,9 @@ class PlanFlow:
         chunks = [c for items in self._adopted(draft)[1].values() for c in items]
         self.status(draft["plan_id"], "正在从已认可资料整理知识地图…" if not previous else "正在按你的意见修改知识地图…")
         outline, _ = self._ask("outline", agents.map_request(draft["goal"], self._effective_form(draft), window_note(window), sources,
-                                                                sections, chunks, previous=previous, request=request),
-                               lambda text: agents.parse_map(text, sections, sources, chunks), ctx,
-                               plan_id=draft["plan_id"], max_tokens=8192)
+                                                                sections, chunks, previous=previous, request=request, structure=structure),
+                               lambda text: agents.parse_material_map(text, sections, sources, chunks, structure), ctx,
+                               plan_id=draft["plan_id"], max_tokens=32768)
         if outline["dropped"]:
             self._say(draft, "找不到可核验原文，已删除这些知识点：" + "、".join(outline["dropped"]) +
                       "。如还需要学习这些内容，请继续找资料、提供资料，或告诉我这部分暂时不学。")
@@ -1280,7 +1072,7 @@ class PlanFlow:
                   "status": {"new": "待定", "adopted": "已采用", "rejected": "不要"}[c["status"]]}
                  for n, c in enumerate(draft["sources"], 1)]
         sections, modules, facts = [], [], {}
-        if phase in ("sources", "outline"):
+        if phase in ("sources", "material_preview", "outline"):
             sources, chunks = self._adopted(draft)
             sections = [{"id": s.id, "source": s.source_title, "title": s.title, "chars": s.chars}
                         for s in agents.build_sections(sources, chunks)]
@@ -1294,6 +1086,8 @@ class PlanFlow:
             facts["estimate"] = draft["estimate"]
         if draft.get("preview"):
             facts["preview"] = draft["preview"]
+        if draft.get('material_structure'):
+            facts['material_structure'] = draft['material_structure']
         if phase == "ready":
             store, plan_id = self.services.store, draft["plan_id"]
             rows = store.records("modules", plan_id)
@@ -1308,7 +1102,7 @@ class PlanFlow:
     def chat(self, draft, ctx, message):
         """The chat box: the intent agent says what the message asks for; the host does it (BUG-13)."""
         phase = draft["phase"]
-        if phase not in ("questions", "preview", "sources", "outline", "ready"):
+        if phase not in ("questions", "preview", "sources", "material_preview", "outline", "ready"):
             raise BridgeError("PHASE_INVALID", "请先填写上面的表单。" if phase == "form" else "正在生成，请稍等。")
         draft["messages"].append(_msg("user", "user_text", message))
         self.save(draft)
@@ -1318,8 +1112,10 @@ class PlanFlow:
             return self._show_preview(draft, ctx)
         if phase == 'preview' and compact in ('可以', '可以了', '行', '好的', '同意', '就这样吧', '确认并找资料', '开始找资料', '直接开始'):
             return self._confirm_preview(draft, ctx)
+        if phase == 'material_preview' and compact in ('确认', '同意', '可以', '好的', '就这样继续', '确认结构', '确认并填知识点'):
+            return self.resolve_missing(draft, ctx, 'continue')
         text = message
-        links = find_links(message) if phase in ("sources", "outline") else []
+        links = find_links(message) if phase in ("sources", "material_preview", "outline") else []
         if links:  # pasted addresses are opened directly; no model is needed to understand them
             self._carry_out(draft, ctx, plan_intent.Intent("import_sources", {"urls": links}), {})
             text = _URL.sub("", message).strip(" ，,。;；\n")
@@ -1328,7 +1124,7 @@ class PlanFlow:
         self.status(draft["plan_id"], "正在理解你的意思…")
         context = self._intent_context(draft)
         intents, _ = self._ask("plan_intent", plan_intent.intent_request(context, text),
-                               lambda answer: plan_intent.parse_intents(answer, context), ctx, plan_id=draft["plan_id"])
+                               lambda answer: plan_intent.parse_intents(answer, context, user_text=text), ctx, plan_id=draft["plan_id"])
         supplements = [i for i in intents if i.kind == 'supplement']
         confirms = [i for i in intents if i.kind == 'proceed' and i.params['step'] == 'sources']
         if phase == 'preview' and supplements and confirms:
@@ -1351,7 +1147,7 @@ class PlanFlow:
         self.save(draft)
 
     def _abandon_scope(self, draft, ctx, items):
-        if draft["phase"] not in ("sources", "outline"):
+        if draft["phase"] not in ("sources", "material_preview", "outline"):
             return self._say(draft, "现在还不能改学习范围。")
         topics = list(dict.fromkeys(str(item).strip() for item in items if str(item).strip()))
         if not topics:
@@ -1400,7 +1196,7 @@ class PlanFlow:
         sources, chunks = self._adopted(draft)
         sections = self._sections(draft)[1]
         if sources and sections:
-            self._check_coverage(draft, ctx, sources, sections, chunks)
+            return self.material_structure(draft, ctx)
 
     def _carry_out(self, draft, ctx, intent, context):
         kind, params, phase = intent.kind, intent.params, draft["phase"]
@@ -1409,6 +1205,11 @@ class PlanFlow:
             return self._import_links(draft, ctx, params["urls"])
         if kind == "answer":
             return self._check_sufficiency(draft, ctx)
+        if kind == 'supplement' and phase in ('sources', 'material_preview', 'outline'):
+            draft.setdefault('requirements', []).append(params['instruction'])
+            if any(c.get('status') == 'adopted' for c in draft['sources']):
+                return self.material_structure(draft, ctx, params['instruction'])
+            return self._show_preview(draft, ctx)
         if kind == "supplement":
             draft.setdefault('requirements', []).append(params['instruction'])
             draft['outline'] = None
@@ -1426,7 +1227,7 @@ class PlanFlow:
         if kind == "update_form":
             return self._update_form(draft, ctx, params)
         if kind == "find_sources":
-            if phase not in ("sources", "outline"):
+            if phase not in ("sources", "material_preview", "outline"):
                 return self._say(draft, "等需求确认好、开始找资料时再说资料的要求。" if phase == "questions"
                                  else "路线已经生成，不能再换资料了。")
             return self.more_sources(draft, ctx, params["instruction"], echo=False)
@@ -1441,19 +1242,21 @@ class PlanFlow:
                     ([f"已不要{'、'.join(titles[False])}"] if titles[False] else [])
             return self._say(draft, "；".join(parts) + "。")
         if kind == "limit_scope":
-            if phase not in ("sources", "outline"):
+            if phase not in ("sources", "material_preview", "outline"):
                 return self._say(draft, "现在已经不能改学习范围了。")
             names = {s["id"]: f"{s['source']} · {s['title']}" for s in context["sections"]}
             draft["scope"] = {"include": params["include"], "exclude": params["exclude"]}
             picked = params["include"] or params["exclude"]
             summary = ("只学" if params["include"] else "不学") + "：" + "、".join(names[i] for i in picked[:6]) + \
                       (f" 等 {len(picked)} 部分" if len(picked) > 6 else "")
-            if phase == "outline":
+            if phase in ('outline', 'material_preview'):
                 self._say(draft, f"好的，范围改为{summary}。正在按新范围调整路线…")
                 return self.make_outline(draft, ctx, "按学习者要求调整学习范围，" + summary, echo=False)
             return self._say(draft, f"记下了，生成路线轮廓时{summary}。")
         if kind == "abandon_scope":
             return self._abandon_scope(draft, ctx, params["items"])
+        if kind == 'revise_outline' and phase == 'material_preview':
+            return self.material_structure(draft, ctx, params['instruction'])
         if kind == "revise_outline":
             if phase in ('questions', 'preview'):
                 return self._carry_out(draft, ctx, plan_intent.Intent('supplement', params), context)
@@ -1476,9 +1279,11 @@ class PlanFlow:
                     return self._say(draft, '大致模块已调整，请先看新版摘要和模块，确认后再找资料。')
                 return self._confirm_preview(draft, ctx)
             if step == "outline":
-                if phase != "sources":
+                if phase not in ('sources', 'material_preview'):
                     return self._say(draft, "路线轮廓已经有了。" if phase == "outline" else "现在还不到生成路线的时候。")
                 return self.make_outline(draft, ctx, echo=False)
+            if step in ('estimate', 'generate') and phase == 'material_preview':
+                return self.resolve_missing(draft, ctx, 'continue')
             if step in ("estimate", "generate"):
                 if phase != "outline":
                     return self._say(draft, "要先有路线轮廓，才能预估费用和正式生成。")
@@ -1844,8 +1649,6 @@ class PlanFlow:
                     raise BridgeError("PHASE_INVALID", "计划还没生成完。")
                 self.services.store.start_plan(draft["plan_id"], today=self.study_day())
         self._file(draft["plan_id"]).path.unlink(missing_ok=True)
-        self._pools.pop(draft["plan_id"], None)
-        self._verified.pop(draft["plan_id"], None)
         self.push("plan_started", {"plan_id": draft["plan_id"]})
 
     def start_request(self, plan_id):
@@ -1923,6 +1726,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.say": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().chat(d, x, text(p)), c),
         "plan.more": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().more_sources(d, x), c),
         "plan.decide": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().decide(d, text(p, "card_id", 40), p.get("adopt") is True, ctx=x), c),
+        "plan.missing": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().resolve_missing(d, x, text(p, 'action', 20)), c),
         "plan.outline": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().make_outline(d, x), c),
         "plan.estimate": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().estimate(d), c),
         "plan.generate": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().generate(d, x), c),

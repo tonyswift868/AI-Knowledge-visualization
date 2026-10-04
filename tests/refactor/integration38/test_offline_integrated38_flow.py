@@ -43,11 +43,22 @@ class IntegratedModel(Agents):
             value = (dict(summary='理解队列与栈',modules=[dict(title='数据结构',summary='理解处理顺序')])
                 if kw.get('system')==PREVIEW_SYSTEM else dict(enough=True,goal='队列与栈',focus=['顺序'],questions=[]))
         elif purpose == 'research':
-            assert kw['enable_search']; value=dict(sources=[dict(url=URL,title='Python 数据结构',why='官方文档')])
+            value=dict(sources=[dict(url=URL,title='Python 数据结构',why='官方文档',type='文档',modules=['数据结构'])])
         elif purpose == 'source_scoring':
             value=dict(scores=[dict(id=i,relevance=5,credibility=5,note='官方教程的数据结构原文')
                 for i in re.findall(r'\[(r\d+)\]',messages[-1]['content'])])
         elif purpose == 'coverage_check': value=dict(covered=True,missing=[],message='')
+        elif purpose == 'source_identity':
+            # A file has no official URL; the fake model reads the fixture's
+            # explicit publisher text instead of bypassing real classification.
+            packet=json.loads(messages[-1]['content'])
+            marker='本合成教材由测试教育平台编写发布。'
+            value=(dict(type='education_platform',publisher='测试教育平台',quote=marker)
+                if marker in packet['text'] else dict(type='unknown',publisher='',quote=''))
+        elif purpose == 'outline' and kw.get('system') == __import__('refactor.learning.course.planner_agents',fromlist=['MATERIAL_STRUCTURE_SYSTEM']).MATERIAL_STRUCTURE_SYSTEM:
+            packet=json.loads(messages[-1]['content']); section=packet['directory'][0]
+            value=dict(summary='按资料目录理解处理顺序',modules=[dict(key=f'm{i}',title=title,summary='理解处理顺序',
+                refs=[section['id']],chapters=[section['title']]) for i,title in enumerate(('队列基础','顺序比较','队列应用'))],missing=[])
         elif purpose == 'outline':
             chunks=block(messages,'【已取得的原文段落】')
             cid=next(c['chunk_id'] for c in chunks if QUOTE in c['text'])
@@ -104,9 +115,9 @@ def build_plan(root, events):
     d=run(lambda d,c:flow.submit_form(d,c,form()));assert d['phase']=='preview'
     assert 'research' not in model.calls
     d=run(lambda d,c:flow.chat(d,c,'确认并找资料'));assert d['phase']=='sources'
-    for card in d['sources']:
-        if card['status']=='new': run(lambda d,c,card=card:flow.decide(d,card['card_id'],True))
-    d=run(lambda d,c:flow.make_outline(d,c));assert d['outline']['grounded']
+    d=run(lambda d,c:flow.chat(d,c,URL))
+    d=run(lambda d,c:flow.make_outline(d,c));assert d['phase']=='material_preview'
+    d=run(lambda d,c:flow.chat(d,c,'确认结构'));assert d['outline']['grounded']
     assert all(p['citations'] for s in d['outline']['stages'] for m in s['modules'] for p in m['points'])
     d=run(lambda d,c:flow.estimate(d));estimate=d['outline']['ranges']['total'][1]
     d=run(lambda d,c:flow.generate(d,c));assert d['phase']=='ready'

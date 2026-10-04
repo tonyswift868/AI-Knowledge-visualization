@@ -25,6 +25,11 @@ export async function call<T = unknown>(method: string, params: Record<string, a
   if (method === "plan.detail") return structuredClone(detail) as T
   if (method === "plan.decide") draft.sources[0].status = params.adopt ? "adopted" : "rejected"
   if (method === "plan.outline") {
+    draft.phase="material_preview";draft.material_structure={version:1,missing:[]}
+    draft.messages.push({id:"material",role:"ai",kind:"material_preview",text:"按资料调整的结构：压强",version:1})
+    return {draft:{...draft,messages:[...draft.messages]}}
+  }
+  if (method === "plan.missing") {
     draft.phase = "outline"
     draft.messages.push({ id: "o", role: "ai", kind: "outline", text: "这是原文知识地图。", version: 1 })
   }

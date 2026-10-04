@@ -452,12 +452,13 @@ class Experiment:
             if draft["phase"] == "sources":
                 # This is exactly the sources-phase plan.say path, passing ONLY the two pasted URLs.
                 if not draft["sources"]:
-                    flow.more_sources(draft, context, "\n".join(URLS))
+                    flow.chat(draft, context, "\n".join(URLS))
                 adopted = [s for s in draft["sources"] if s["status"] == "adopted"]
                 expected = {s["url"]: s["sha256"] for s in self.manifest["sources"]}
                 if {s["url"]: s.get("sha") for s in adopted} != expected:
                     raise RuntimeError("Both fixed real materials must be adopted with identical content hashes.")
                 flow.make_outline(draft, context)
+                if draft["phase"]=="material_preview":flow.resolve_missing(draft,context,"continue")
             if generate and draft["phase"] in ("outline", "generating"):
                 if draft["phase"] == "outline":
                     flow.estimate(draft)

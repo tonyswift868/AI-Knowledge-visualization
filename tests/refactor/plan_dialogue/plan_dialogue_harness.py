@@ -84,7 +84,7 @@ class OfflineWeb:
         for hit in (*result.search_hits, *result.citations):
             if hit.url:
                 self.pages[clean_url(hit.url)] = (hit.title, hit.snippet)
-        for item in planner_agents.parse_research(result.text):
+        for item in planner_agents.parse_json(result.text).get("sources", []):
             self.pages.setdefault(clean_url(item["url"]), (item.get("title", ""), item.get("why", "")))
 
     def __call__(self, url, *, cancel, timeout):
@@ -167,10 +167,8 @@ class Harness:
         return self.bridge.handlers[method](params, context)
 
     def restore_pool_decisions(self, draft):
-        for c in draft["sources"]:
-            if c.get("url") and c["status"] in {"adopted", "rejected"}:
-                fn = self.flow._pool(draft["plan_id"]).mark_accepted if c["status"] == "adopted" else self.flow._pool(draft["plan_id"]).mark_rejected
-                fn(c["url"])
+        # The adopted flags are already durable in CourseStore. No search pool.
+        pass
 
     def snapshot(self, pid):
         draft = copy.deepcopy(self.flow.load(pid))
@@ -259,10 +257,14 @@ class ScriptedGateway:
             value = (dict(summary='Python CSV 报表工具',modules=[dict(title='CSV 报表',summary='读取和整理数据')])
                 if kwargs.get('system') == planner_agents.PREVIEW_SYSTEM else
                 {"enough": True, "questions": [], "goal": "Python CSV 报表工具", "focus": ["CSV", "中文", "练习"]})
+        elif purpose == 'outline' and kwargs.get('system')==planner_agents.MATERIAL_STRUCTURE_SYSTEM:
+            directory=json.loads(prompt)['directory']
+            titles=["Python 基础", "CSV 读写", "数据清洗", "异常处理", "汇总报表", "命令行工具", "测试与综合实战", "可选图表"]
+            value=dict(summary='按资料调整结构',modules=[dict(key='m'+str(i),title=titles[i%len(titles)],summary='合成模块',refs=[section['id']],chapters=[section['title']]) for i,section in enumerate(directory)],missing=[])
         elif purpose == "outline":
             refs = list(dict.fromkeys(re.findall(r"\[(s\d+\.\d+)\]", prompt)))
             titles = ["Python 基础", "CSV 读写", "数据清洗", "异常处理", "汇总报表", "命令行工具", "测试与综合实战", "可选图表"]
-            chunks=json.loads(prompt.split('【已取得的原文段落】\n')[1])
+            chunks=json.JSONDecoder().raw_decode(prompt.split('【已取得的原文段落】\n')[1])[0]
             pid=self.store.list_plans()[0]['id']
             sources=[s for s in self.store.records('sources',pid) if s['adopted']]
             stored=self.store.records('source_chunks',pid)
@@ -273,7 +275,7 @@ class ScriptedGateway:
                     citations=[dict(chunk_id=s.chunk_ids[0],quote=byid[s.chunk_ids[0]]['text'][:80])])]) for i,s in enumerate(sections)])],message='离线合成前置状态。')
         elif purpose == "research":
             value = {"sources": [{"url": "https://docs.python.org/3/library/csv.html",
-                                  "title": "Python CSV 教程", "why": "入门练习"}]}
+                                  "title": "Python CSV 教程", "why": "入门练习", "type":"文档", "modules":["CSV 报表"]}]}
         elif purpose == "source_scoring":
             value = {"scores": [{"id": item, "relevance": 5, "credibility": 5, "note": "合成评分"}
                                 for item in re.findall(r"\[(r\d+)\]", prompt)]}
@@ -283,6 +285,7 @@ class ScriptedGateway:
             value = {"intents": [{"questions": {"kind": "answer"},
                                   "sources": {"kind": "find_sources", "instruction": said},
                                   "outline": {"kind": "revise_outline", "instruction": said},
+                                  "material_preview": {"kind": "proceed", "step": "outline"},
                                   "ready": {"kind": "question", "answer": "合成回答"}}[payload["ctx"]["phase"]]], "reply": ""}
         else:
             raise AssertionError(purpose)

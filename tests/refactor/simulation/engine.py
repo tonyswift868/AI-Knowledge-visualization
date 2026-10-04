@@ -190,6 +190,8 @@ class Simulation:
             suffix='.pdf' if 'PDF' in str(args[1:]) else '.md'
             return str(self.evidence.root/('learning-report'+suffix)), ''
         self.stack.enter_context(patch.object(QFileDialog,'getSaveFileName',save_dialog))
+        self.upload_path=None
+        self.stack.enter_context(patch.object(QFileDialog,'getOpenFileNames',lambda *a,**k:([str(self.upload_path)] if self.upload_path else [],'')))
         try:self.bind()
         except Exception as exc:
             self.evidence.stopped=dict(code='INIT_FAILED',message=str(exc))
@@ -237,7 +239,11 @@ class Simulation:
         self.evidence.save(path,record);self.evidence.steps.append(dict(method=method,evidence=path,seconds=record['seconds']))
         self.evidence.save('steps.json',self.evidence.steps)
         result=reply.get('result',{});failure=result.get('failure') or (result.get('draft') or {}).get('error')
-        errors=[m for m in (result.get('draft') or {}).get('messages',[])[-1:] if m.get('kind')=='error']
+        # Reading a recovered draft can legitimately show the previous run's
+        # saved error. Keep it as evidence, but do not treat it as a new failure
+        # of this read-only bridge request and prevent a user-initiated retry.
+        errors=[] if method in ('plan.get','plan.current','plan.drafts') else [
+            m for m in (result.get('draft') or {}).get('messages',[])[-1:] if m.get('kind')=='error']
         if not reply['ok'] or failure or errors or self.gateway.halted.is_set():
             detail=reply.get('error') or failure or errors or '模型调用已止损'
             self.evidence.issue('BRIDGE_FAILED',str(detail),path);self.gateway.halt()
@@ -249,7 +255,7 @@ class Simulation:
         # Only workers carrying this tool's callbacks / bridge pool; product
         # workers are joined before closing their store, avoiding SQLite locks.
         for thread in list(threading.enumerate()):
-            if thread.name.startswith(('plan-materials','classroom-')):
+            if thread.name.startswith(('plan-materials','classroom-','plan-upload')):
                 thread.join(min(self.timeout,30))
                 if thread.is_alive():raise StopRun('WORKER_TIMEOUT',thread.name)
     def reopen(self,plan_id):

@@ -28,9 +28,9 @@ def _check(cancel):
         raise LinkImportError('cancelled', '已停止读取；本条未保存，之前成功导入的资料仍保留。')
 
 
-def _active(store, plan_id):
+def _active(store, plan_id, *, creating=False):
     plan = store.get_plan(plan_id)
-    if plan['state'] != 'active' or plan['archived']:
+    if plan['state'] not in (('creating',) if creating else ('active',)) or plan['archived']:
         raise LinkImportError('plan_not_active', '只有进行中且未归档的计划可以中途加资料。')
 
 
@@ -82,7 +82,7 @@ def _success(store, plan_id, source, status):
 
 
 def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=None,
-                 cancel=None, max_urls=10, timeout=20.0):
+                 cancel=None, max_urls=10, timeout=20.0, creating=False):
     """Return a JSON-ready batch result in input order.
 
     fetcher(url, *, cancel, timeout) -> FetchedContent; repo_fetch(url, cancel)
@@ -104,7 +104,7 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
         raise LinkImportError('invalid_urls', '请提供网址字符串列表。')
     if type(max_urls) is not int or not 1 <= max_urls <= 100:
         raise LinkImportError('invalid_limit', '一次导入上限须为 1–100。')
-    _active(store, plan_id)  # fail before network for a wrong account or plan
+    _active(store, plan_id, creating=creating)  # fail before network for a wrong account or plan
     lists = lists if lists is not None else load_lists()
     started, results, source_ids = time.monotonic(), [], []
 
@@ -129,7 +129,7 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
                 if hit.tier == 'blocked':
                     raise LinkImportError('blocked', '资料地址命中屏蔽规则，不能使用。')
                 with store.transaction():
-                    _active(store, plan_id)
+                    _active(store, plan_id, creating=creating)
                     source = _existing(store, plan_id, {url})
                     if source is not None:
                         source = _use_existing(store, plan_id, source)
@@ -155,7 +155,7 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
                     _check(cancel)
                     aliases = {url, _key(verified.url), _key(verified.final_url)} - {None}
                     with store.transaction():
-                        _active(store, plan_id)  # may have changed while fetching
+                        _active(store, plan_id, creating=creating)  # may have changed while fetching
                         _check(cancel)
                         source = _existing(store, plan_id, aliases)
                         if source is not None:

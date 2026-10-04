@@ -12,6 +12,7 @@ type Card = {
   card_id: string; kind: "url" | "file"; url: string | null; title: string; site: string; tier: string; summary: string
   relevance: number | null; credibility: number | null; note: string; status: "new" | "adopted" | "rejected"; chars: number
   quality?: { source_type?: string; community?: boolean; source_group?: string; covered_modules?: string[] }
+  user_provided?: boolean
 }
 type Citation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
 type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean }
@@ -24,10 +25,12 @@ type FormData = {
   daily_cap: number; weekday_weights: number[]; special_days: { date: string; weight: number }[]; only_mine: boolean
 }
 export type Draft = {
-  plan_id: string; phase: "form" | "questions" | "preview" | "sources" | "outline" | "generating" | "ready"; form: FormData | null
+  plan_id: string; phase: "form" | "questions" | "preview" | "sources" | "material_preview" | "outline" | "generating" | "ready"; form: FormData | null
   name?: string; goal: string; messages: Msg[]; sources: Card[]; outline: Outline | null; generation: Record<string, string>; coverage?: Coverage
   estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string; blocked?: boolean; points?: number }
   preview?: { summary: string; modules: { title: string; summary: string }[]; version: number }
+  recommendations?: { card_id: string; title: string; type: string; url: string; why: string; modules: string[] }[]
+  material_structure?: { version: number; missing: string[] }
   busy: string | null
 }
 type Detail = {
@@ -39,7 +42,7 @@ type Detail = {
 }
 
 const STEPS: [Draft["phase"][], string][] = [
-  [["form", "questions", "preview"], "说清目标与模块"], [["sources"], "找资料"], [["outline"], "知识地图"], [["generating"], "保存与准备"], [["ready"], "确认开始"],
+  [["form", "questions", "preview"], "说清目标与模块"], [["sources"], "选择并提供资料"], [["material_preview"], "按资料确认结构"], [["outline"], "知识地图"], [["generating"], "保存与准备"], [["ready"], "确认开始"],
 ]
 const LEVELS = [{ value: "zero", label: "零基础" }, { value: "beginner", label: "入门" }, { value: "intermediate", label: "有一定基础" }, { value: "advanced", label: "比较熟练" }]
 const WEEK = "一二三四五六日"
@@ -115,11 +118,12 @@ export function NewPlan() {
   const cards = Object.fromEntries(draft.sources.map((c) => [c.card_id, c]))
   const adopted = draft.sources.filter((c) => c.status === "adopted").length
   const lastOutline = [...draft.messages].reverse().find((m) => m.kind === "outline")?.id
-  const canType = ["questions", "preview", "sources", "outline", "ready"].includes(draft.phase)
+  const canType = ["questions", "preview", "sources", "material_preview", "outline", "ready"].includes(draft.phase)
   const placeholder = {
     questions: "说说你的想法；也可以说“就这样吧”，先看大致模块…",
     preview: "大致模块这样可以吗？想加、删或调整什么，继续告诉我…",
-    sources: "想要什么样的资料？比如：要中文的、只学前四章、采用第二份；也可以直接贴资料网址",
+    sources: "可贴资料网址或 GitHub 仓库，或要求更多推荐、换一批…",
+    material_preview: "按资料调整的结构可以吗？可调整模块，或补充资料…",
     outline: "想怎么改？比如：第二阶段拆细一点、截止日期推迟两周、每天改成 90 分钟",
     ready: "还想调整？比如：删掉第 3 个模块、把实战挪到最后、结束日期推迟一周",
   }[draft.phase as string] ?? ""
@@ -167,11 +171,31 @@ export function NewPlan() {
                 <Button kind="ghost" disabled={busy} onClick={() => act("plan.say", { text: "就这样吧" })}>就这样吧，先看大致模块</Button>
               </div>}
             </div>
+            if (m.kind === "recommendations") return <div key={m.id} className="plan-block">
+              <div className="bubble bot">{m.text}</div>
+              {(draft.recommendations ?? []).filter(c => m.cards?.includes(c.card_id)).map(c => <div className="card" key={c.card_id}>
+                <strong>{c.title}</strong><span className="muted small"> · {c.type}</span>
+                <p>{c.why}</p><p className="small">大致覆盖：{c.modules.join("、")}</p>
+                <a className="btn ghost" href={c.url} target="_blank" rel="noreferrer"><ExternalLink />打开完整资料</a>
+                <div className="muted small">打开后下载并上传，也可主动贴网址导入。</div>
+              </div>)}
+            </div>
+            if (m.kind === "material_preview") return <div key={m.id} className="plan-block">
+              <div className="bubble bot" style={{whiteSpace:"pre-wrap"}} data-selectable>{m.text}</div>
+              {draft.phase === "material_preview" && m.version === draft.material_structure?.version && <div className="plan-actions">
+                <Button disabled={busy} onClick={() => setText("我想调整资料结构：")}>调整结构</Button>
+                {(draft.material_structure?.missing.length ?? 0) > 0 && <>
+                  <Button disabled={busy} onClick={() => act("plan.missing", {action:"add"})}>再传一份资料</Button>
+                  <Button disabled={busy} onClick={() => act("plan.missing", {action:"delete"})}>删掉没讲到的部分并继续</Button>
+                </>}
+                <Button kind="primary" disabled={busy} onClick={() => act("plan.missing", {action:"continue"})}>确认结构，就这样继续</Button>
+              </div>}
+            </div>
             if (m.kind === "sources") return (
               <div key={m.id} className="plan-block fade-in">
                 <div className="bubble bot">{m.text}</div>
                 <GroupedSources cards={(m.cards ?? []).map(id => cards[id]).filter(Boolean)}
-                  locked={busy || !["questions", "sources", "outline"].includes(draft.phase)}
+                  locked={busy || !["questions", "sources", "material_preview", "outline"].includes(draft.phase)}
                   onDecide={(id,adopt) => act("plan.decide", {card_id:id,adopt})} />
               </div>
             )
@@ -183,7 +207,7 @@ export function NewPlan() {
                 ) : <div className="muted small outline-old">第 {m.version} 版轮廓（已被新版替换）</div>}
                 {m.id === lastOutline && draft.phase === "outline" && (
                   <div className="plan-actions">
-                    <Button disabled={busy} onClick={() => act("plan.more")}><Search />资料不够，再找找</Button>
+                    <Button disabled={busy} onClick={() => act("plan.more")}><Search />补充资料或更多推荐</Button>
                     <Button kind="primary" disabled={busy} onClick={() => act("plan.estimate")}><Wand2 />确认地图，查看时间预估</Button>
                   </div>
                 )}
@@ -199,11 +223,11 @@ export function NewPlan() {
           })}
           {draft.phase === "sources" && !status && (
             <div className="plan-actions fade-in">
-              <Button disabled={busy} onClick={() => act("plan.more")}><Search />再找找</Button>
+              <Button disabled={busy} onClick={() => act("plan.more")}><Search />让 AI 推荐 / 换一批</Button>
               <Button disabled={busy} onClick={() => act("plan.upload")}><FileUp />上传资料</Button>
-              {!draft.coverage?.blocked && <Button kind="primary" disabled={busy || adopted === 0} onClick={() => act("plan.outline")}>
-                <GitBranch />{adopted ? `用已采用的 ${adopted} 份资料整理知识地图` : "先采用至少一份资料"}
-              </Button>}
+              <Button kind="primary" disabled={busy || adopted === 0} onClick={() => act("plan.outline")}>
+                <GitBranch />{adopted ? `按已提供的 ${adopted} 份资料调整结构` : "先上传资料或贴网址"}
+              </Button>
             </div>
           )}
           {status && <div className="plan-status fade-in"><Loader2 className="spin" size={16} />{status}</div>}
@@ -335,7 +359,7 @@ function Stars({ n, label }: { n: number | null; label: string }) {
 }
 
 function SourceCard({ card, locked, onDecide }: { card: Card; locked: boolean; onDecide: (adopt: boolean) => void }) {
-  const general = card.kind !== "file" && card.credibility === 3
+  const general = !card.user_provided && card.kind !== "file" && card.credibility === 3
   const tier = card.kind === "file" ? ["上传", "file"] : (card.credibility ?? 0) >= 5 ? ["权威来源", "ok"] : (card.credibility ?? 0) >= 4 ? ["成熟平台", "ok"] : ["一般网站", "muted"]
   return (
     <div className={`source-card ${card.status}`}>
@@ -350,7 +374,7 @@ function SourceCard({ card, locked, onDecide }: { card: Card; locked: boolean; o
       <p className="source-note">{card.quality?.covered_modules?.length ? `覆盖：${card.quality.covered_modules.join("、")}` : card.note || "由你提供，正文已读取；请确认适合本次学习。"}</p>
       {general && <p className="source-note" role="note">一般网站，可能有错，请自行判断；不默认采用。</p>}
       <div className="row between wrap">
-        <div className="row small" style={{ gap: 12 }}><Stars n={card.relevance} label="相关" /><Stars n={card.credibility} label="可信" /></div>
+        <div className="row small" style={{ gap: 12 }}>{!card.user_provided && <><Stars n={card.relevance} label="相关" /><Stars n={card.credibility} label="可信" /></>}</div>
         <div className="row" style={{ gap: 6 }}>
           {card.url && <a className="btn small ghost" href={card.url} target="_blank" rel="noreferrer"><ExternalLink />打开</a>}
           <Button small kind={card.status === "rejected" ? "danger" : "ghost"} disabled={locked} onClick={() => onDecide(false)}><X />不要</Button>
@@ -362,9 +386,10 @@ function SourceCard({ card, locked, onDecide }: { card: Card; locked: boolean; o
 }
 
 export function GroupedSources({cards,locked,onDecide}: {cards:Card[];locked:boolean;onDecide:(id:string,adopt:boolean)=>void}) {
-  const ordered=[...cards].sort((a,b)=>(b.credibility??0)-(a.credibility??0) || (b.relevance??0)-(a.relevance??0)
+  const own=cards.filter(c=>c.user_provided)
+  const ordered=cards.filter(c=>!c.user_provided).sort((a,b)=>(b.credibility??0)-(a.credibility??0) || (b.relevance??0)-(a.relevance??0)
     || Number(!!(a.quality?.community || a.quality?.source_type==="community"))-Number(!!(b.quality?.community || b.quality?.source_type==="community")))
-  const groups=[{name:"权威（官方/教材）",cards:ordered.filter(c=>(c.credibility??0)>=5)},
+  const groups=[{name:"你提供的资料",cards:own},{name:"权威（官方/教材）",cards:ordered.filter(c=>(c.credibility??0)>=5)},
     {name:"成熟平台",cards:ordered.filter(c=>c.credibility===4)},
     {name:"一般网站",cards:ordered.filter(c=>(c.credibility??0)<4)}]
   return <>{groups.filter(g=>g.cards.length).map(g=><section key={g.name} aria-label={g.name}>
