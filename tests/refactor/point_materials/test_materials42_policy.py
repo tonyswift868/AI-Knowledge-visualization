@@ -20,7 +20,7 @@ def store42(tmp_path):
         today=date(2026,10,3)
         store.create_plan('p',goal='压强',window=PlanWindow(today,today+timedelta(days=5),100))
         store.add_sources('p',[dict(id='s',title='压强教材',url='https://pep.com.cn/physics/pressure',adopted=True,
-            chunks=[dict(chunk_id='c',text=TEXT,section=['压强'])])])
+            chunks=[dict(target='本点原文定义是什么？',chunk_id='c',text=TEXT,section=['压强'])])])
         store.save_outline('p',[dict(id='stage',title='物理')],[dict(id='m',stage_id='stage',title='压强',prerequisites=[])])
         store.save_generated_module('p','m',[dict(id='point',title='压强',summary='压力面积',minutes=15,chunk_ids=['c'],importance='key')],check_minutes=5,today=today)
         yield store
@@ -28,9 +28,9 @@ def store42(tmp_path):
 
 def pointers42(cid='c'):
     return dict(passages=[cid],found=[],cloze=[
-        dict(chunk_id=cid,sentence='压强是压力与受力面积的比值。',word='压强',importance='key',keywords=['浮力','密度']),
-        dict(chunk_id=cid,sentence='国际单位制中压强的单位是帕。',word='帕',importance='key',keywords=[]),
-        dict(chunk_id=cid,sentence='压力越大，在面积不变时压强越大。',word='压力',importance='key',keywords=[])])
+        dict(target='本点原文定义是什么？',chunk_id=cid,sentence='压强是压力与受力面积的比值。',word='压强',importance='key',keywords=['浮力','密度']),
+        dict(target='本点原文定义是什么？',chunk_id=cid,sentence='国际单位制中压强的单位是帕。',word='帕',importance='key',keywords=[]),
+        dict(target='本点原文定义是什么？',chunk_id=cid,sentence='压力越大，在面积不变时压强越大。',word='压力',importance='key',keywords=[])])
 
 
 def context42():
@@ -130,7 +130,7 @@ def test_materials42_twenty_percent_boundary_extra_round(store42,monkeypatch,cou
 def test_materials42_incomplete_original_is_not_fake_success(store42):
     context=context42();context['finder']=lambda *a,**k:dict(passages=['c'],found=[],cloze=[])
     with pytest.raises(StoreError) as error:pm.prepare_point(store42,'p',store42.records('points','p')[0],context)
-    assert error.value.code=='MATERIALS_INCOMPLETE'
+    assert error.value.code=='CLOZE_FAILED'
     assert not store42.records('question_bank','p')
 
 

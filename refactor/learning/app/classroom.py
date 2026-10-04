@@ -421,16 +421,29 @@ class Classroom:
         except Exception as exc:
             if cancel.is_set() or isinstance(exc,ModelCancelled):raise ModelCancelled() from None
             log.info('point preparation did not produce a question',exc_info=True)
-            return '找题没有完成；本次已跳过，可补充资料后再试'
+            if getattr(exc,'code','') in ('CLOZE_FAILED','POINT_SOURCE_MISSING'):
+                return dict(kind='question_program_error',code=exc.code,reason=str(exc),
+                    recorded=getattr(exc,'evidence_saved',True))
+            return dict(kind='material_gap',code=getattr(exc,'code','PREPARATION_UNAVAILABLE'),reason='找题暂未完成，请稍后再试')
         if cancel.is_set():raise ModelCancelled()
-        return '没有关联的原文段落' if not self._course(course.plan_id).passages([point_id]) else None
+        if not self._course(course.plan_id).passages([point_id]):
+            log.error('point preparation invariant: POINT_SOURCE_MISSING')
+            return dict(kind='question_program_error',code='POINT_SOURCE_MISSING',reason='没有关联的原文段落',recorded=True)
+        return None
 
     def _skip_question(self, course, state, point_id, purpose, reason):
-        entry=dict(point_id=point_id,title=course.point(point_id)['title'],purpose=purpose,reason=reason,day=self._day(state))
+        if not isinstance(reason,dict):
+            reason=dict(kind='question_program_error',code='QUESTION_UNAVAILABLE',reason=reason,recorded=True)
+            log.error('point preparation program error: QUESTION_UNAVAILABLE')
+        kind=reason['kind'];text=reason['reason']
+        entry=dict(point_id=point_id,title=course.point(point_id)['title'],purpose=purpose,reason=text,
+            kind=kind,code=reason['code'],day=self._day(state))
         gaps=state.setdefault('question_gaps',[])
-        if not any(g['point_id']==point_id and g['purpose']==purpose and g['reason']==reason for g in gaps):gaps.append(entry)
+        if not any(g['point_id']==point_id and g['purpose']==purpose and g['reason']==text for g in gaps):gaps.append(entry)
         if purpose=='final' and point_id not in state.setdefault('check_missing',[]):state['check_missing'].append(point_id)
-        self._say(course,state,f"{entry['title']}：资料缺失，已跳过本次检测（{reason}）。",kind='material_gap')
+        message=('这个知识点出题失败（程序问题，'+('已记录' if reason.get('recorded') else '证据保存失败')+'），本次未计分、未算通过。'
+                 if kind=='question_program_error' else '找题暂未完成，请稍后再试；本次未计分、未算通过。')
+        self._say(course,state,f"{entry['title']}：{message}",kind=kind)
 
     def _advance_missing(self, course, state, ctx, kind):
         if kind in ('casual','quick'):state['step']='closing'
@@ -611,7 +624,7 @@ class Classroom:
             if q:queue.append(q)
         if not queue:
             state['check']=None
-            self._say(course,state,'本组没有可用题，资料缺失的点已跳过；可以下课，到计划详情补充资料后继续检验。')
+            self._say(course,state,'本组没有可用题，出题失败的点未计分、未算通过；可以下课或继续学习其他点，稍后重试。')
             return
         state['check']=dict(queue=queue,index=0)
         self._ask_check(course,state)
@@ -643,7 +656,7 @@ class Classroom:
             if q:break
         if q is None:
             resume=practice['resume'];gaps=state.get('question_gaps',[]);state.clear();state.update(resume);state['question_gaps']=gaps
-            return self._say(course,state,'本轮没有可用题，资料缺失的点已跳过；练习已结束，计划与报告不变。')
+            return self._say(course,state,'本轮没有可用题，出题失败的点未计分；练习已结束，计划与报告不变。')
         state['module_id']=course.point(pid)['module_id']
         state['index']=next(i for i,p in enumerate(course.points_of(state['module_id'])) if p['id']==pid)
         self._show_question(course,state,q,'practice',number=practice['index']+1,total=practice['count'])
@@ -832,7 +845,7 @@ class Classroom:
             self._say(course, state, "所有模块都学过了。这个模块还有没过的点，重测通过后才能进入最终检验。", role="system")
             return
         if not book.check_ready():
-            self._say(course, state, '本次可学模块已结束。资料缺失的点已跳过，补齐资料后再检测；跳过不代表已掌握。', role='system')
+            self._say(course, state, '本次可学模块已结束。出题失败的点未算通过，稍后重试检测；可以继续学习其他模块。', role='system')
             return
         state.update(step="check_offer", pending=None, test=None)
         self._prepare_final(course)
@@ -913,7 +926,7 @@ class Classroom:
             skipped = state.setdefault('skipped_modules', [])
             if module_id not in skipped: skipped.append(module_id)
             state['step'] = 'test_done'
-            self._say(course, state, '本轮没有可用题目，已记录资料缺失并跳过。可以继续后续模块；没有记入答题、时长或通过。', role='system')
+            self._say(course, state, '本轮没有可用题目，出题未完成。可以继续后续模块；没有记入答题、时长或通过。', role='system')
             return
         # A crash after the close but before the room state was saved leaves the attempt closed in the
         # store; finishing again must not close it twice (BUG-23). The steps below are idempotent.
@@ -1032,14 +1045,14 @@ def _link_citations(text, mapping):
     return "".join(out)
 
 
-def register(bridge, services, study_day, *, presence=lambda active,plan_id=None:None):
+def register(bridge, services, study_day, *, presence=lambda active,plan_id=None:None, now=_now):
     rooms={}
     def room():
         current=services();key=id(current)
         if key not in rooms:
             for old in rooms.values():old.cancel_materials()
             rooms.clear()
-            rooms[key]=Classroom(current,study_day)
+            rooms[key]=Classroom(current,study_day,now=now)
             rooms[key].material_event=lambda data:bridge.push('classroom.materials_ready',data)
         return rooms[key]
     def text(p):

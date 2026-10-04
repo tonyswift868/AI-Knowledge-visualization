@@ -91,10 +91,25 @@ class ModelUser:
         system = '''扮演真实学习者，按人设与本次屏幕实时决定下一步，不能读取隐藏答案或伪造已执行操作。
 你不是教师、评测员或质量打分员。不要点评教学质量，不要求程序判你正确；有时答错、有时追问、有时说我会了、有时退出再进。
 只能选择allowed_actions中列出的method，参数照其说明。不要预写后续台词或跳过聊天、资料选择。聊天时具体回答屏幕里的反问，暂不懂的直接说；看到路线后表达认可或具体修改。
+资料卡片 status=adopted 表示已勾选并保存，不需要重复采用；plan.decide 的参数只能从当前给出的组合中选择。愿意用现有资料整理地图时可以选 plan.outline，不满意仍可以要求补搜。
 仅返回JSON {"method":"...","params":{...}}。choice/multi答案为从0开始的整数数组，fill为每空文本数组，其余文本。
 这是一次模拟用户动作，不是产品意图理解请求。'''
+        screen=view
+        if stage in ('dialogue','sources','map','estimate','generated'):
+            # NewPlan displays messages/cards/map, not the internal research
+            # pool and quality audit. Those can grow by hundreds of KB and
+            # were unnecessarily exhausting live simulation budgets.
+            screen={k:v for k,v in view.items() if k in {'version','plan_id','phase','form','goal','focus',
+                'messages','sources','outline','estimate','preview','coverage','busy','generation','name'}}
+            if 'sources' in screen:
+                screen['sources']=[{k:v for k,v in card.items() if k in {'card_id','source_id','status',
+                    'title','url','summary','quality','tier','warnings','kind','site','chars','credibility','relevance','note'}} for card in view['sources']]
+                for card in screen['sources']:
+                    if isinstance(card.get('quality'),dict):
+                        card['quality']={k:v for k,v in card['quality'].items() if k in {'credibility','relevance',
+                            'eligible','note','source_group','publisher','source_type','community','level_fit','freshness','published_at'}}
         result = self.gateway.complete('simulation_user', [{'role':'user','content':json.dumps(
-            dict(persona=asdict(self.persona), behavior=behavior, stage=stage, screen=view, allowed_actions=actions),ensure_ascii=False)}],
+            dict(persona=asdict(self.persona), behavior=behavior, stage=stage, screen=screen, allowed_actions=actions),ensure_ascii=False)}],
             system=system, max_tokens=2048)
         text=result.text.strip()
         if text.startswith('```'): text=text.split('\n',1)[1].rsplit('```',1)[0].strip()
@@ -102,6 +117,10 @@ class ModelUser:
         if not isinstance(action,dict) or set(action)!={'method','params'} or not isinstance(action['params'],dict):
             raise ValueError('模拟用户动作格式错误')
         if action['method'] not in {a['method'] for a in actions}: raise ValueError('模拟用户选择了屏幕不存在的动作')
+        if action['method']=='plan.decide':
+            offered=[{'card_id':c['card_id'],'adopt':c.get('status')!='adopted'} for c in view.get('sources',[])]
+            if action['params'] not in offered:
+                raise ValueError('模拟用户选择了屏幕不存在的资料勾选动作')
         return action
 
 

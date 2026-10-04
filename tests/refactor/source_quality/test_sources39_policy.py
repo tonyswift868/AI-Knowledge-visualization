@@ -127,5 +127,8 @@ def test_sources39_only_falls_back_when_higher_band_cannot_cover(store,higher_ha
 
 def test_sources39_unverified_or_reposted_material_is_not_auto_usable(store):
     change_source(store,'https://unknown.example/chapter')
-    assert pm.prepare_point(store,'p',store.records('points','p')[0],ctx())['questions']==0
+    from refactor.learning.course.store import StoreError
+    with pytest.raises(StoreError) as error:
+        pm.prepare_point(store,'p',store.records('points','p')[0],ctx())
+    assert error.value.code=='POINT_SOURCE_MISSING'
     assert pm.uncovered_points(store,'p',ctx())==['point']

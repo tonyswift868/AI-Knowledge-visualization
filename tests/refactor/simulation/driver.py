@@ -13,8 +13,13 @@ STAGES=('form','dialogue','sources','map','estimate','generated','classroom','fi
 def controls(view,stage):
     def a(method,params=''):return dict(method=method,params=params)
     if stage=='dialogue':return [a('plan.say','text: 回答当前追问、认可预览或请求修改')]
-    if stage=='sources':return [a('plan.decide','card_id: 屏幕卡片编号, adopt: bool'),a('plan.say','text: 资料选择/范围要求'),
-        a('plan.outline','资料已认可时出知识地图'),a('plan.more','再找找')]
+    if stage=='sources':
+        decisions=[{'card_id':c['card_id'],'adopt':c.get('status')!='adopted'} for c in view.get('sources',[])]
+        result=[a('plan.decide','params 是单张卡片的对象 {card_id, adopt}，不是数组；可选组合：'+json.dumps(decisions,ensure_ascii=False)),
+                a('plan.say','text: 资料选择/范围要求'),a('plan.more','再找找')]
+        if any(c.get('status')=='adopted' for c in view.get('sources',[])):
+            result.append(a('plan.outline','资料已认可，愿意按现有资料出地图时点击；不需要再次采用已采用卡片'))
+        return result
     if stage=='map':return [a('plan.say','text: 修改或认可知识地图'),a('plan.estimate','认可后时间/花费预估')]
     if stage=='estimate':return [a('plan.generate','明确同意生成'),a('plan.say','text: 调整要求')]
     if stage=='generated':return [a('plan.start','开始计划')]

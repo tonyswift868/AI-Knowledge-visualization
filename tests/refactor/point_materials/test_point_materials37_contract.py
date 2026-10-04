@@ -20,7 +20,7 @@ def store(tmp_path):
     today=date(2026,10,3)
     s.create_plan('p',goal='压强',window=PlanWindow(today,today+timedelta(days=3),100))
     s.add_sources('p',[dict(id='s',title='物理教材',url='https://www.pep.com.cn/physics/pressure',adopted=True,
-        chunks=[dict(chunk_id='c',text=TEXT,section=['第九章 压强'])])])
+        chunks=[dict(target='本点原文定义是什么？',chunk_id='c',text=TEXT,section=['第九章 压强'])])])
     s.save_outline('p',[dict(id='stage',title='初二物理')],[dict(id='m',stage_id='stage',title='压强',prerequisites=[])])
     s.save_generated_module('p','m',[dict(id='point',title='压强',summary='压力与受力面积',minutes=15,chunk_ids=['c'],importance='key')],check_minutes=5,today=today)
     yield s
@@ -29,9 +29,9 @@ def store(tmp_path):
 
 def pointer(chunk='c'):
     return dict(passages=[chunk],found=[],cloze=[
-        dict(chunk_id=chunk,sentence='压强是压力与受力面积的比值。',word='压强',importance='key',keywords=['压力','浮力']),
-        dict(chunk_id=chunk,sentence='国际单位制中压强的单位是帕。',word='帕',importance='key',keywords=[]),
-        dict(chunk_id=chunk,sentence='压力越大，在面积不变时压强越大。',word='压力',importance='key',keywords=[])])
+        dict(target='本点原文定义是什么？',chunk_id=chunk,sentence='压强是压力与受力面积的比值。',word='压强',importance='key',keywords=['压力','浮力']),
+        dict(target='本点原文定义是什么？',chunk_id=chunk,sentence='国际单位制中压强的单位是帕。',word='帕',importance='key',keywords=[]),
+        dict(target='本点原文定义是什么？',chunk_id=chunk,sentence='压力越大，在面积不变时压强越大。',word='压力',importance='key',keywords=[])])
 
 
 def ctx(output=None):
@@ -44,7 +44,7 @@ def incomplete(store, point, context):
     # inspect partial rows only to retain the original provenance assertions.
     with pytest.raises(StoreError) as error:
         pm.prepare_point(store, 'p', point, context)
-    assert error.value.code == 'MATERIALS_INCOMPLETE'
+    assert error.value.code == 'CLOZE_FAILED'
     rows = store.records('question_bank', 'p')
     return pm._counts(rows, store.records('points', 'p')[0]['chunk_ids'])
 
@@ -66,7 +66,7 @@ def test_point_prepare_idempotent_and_provenance(store):
 def test_normal_cloze_distractors_same_source_and_word_exact(store):
     with store.transaction():
         p=store._get('points','p','point');p['importance']='normal';store._put('points','p',p)
-    out=pointer();out['cloze']=[dict(chunk_id='c',sentence='压强是压力与受力面积的比值。',word='压强',importance='normal',keywords=['浮力','密度','不存在'])]
+    out=pointer();out['cloze']=[dict(target='本点原文定义是什么？',chunk_id='c',sentence='压强是压力与受力面积的比值。',word='压强',importance='normal',keywords=['浮力','密度','不存在'])]
     assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
     q=store.records('question_bank','p')[0]
     assert q['kind']=='choice' and set(q['options'])=={'压强','浮力','密度'}
@@ -204,7 +204,7 @@ def test_image_textbook_uses_existing_ocr_and_original_digest():
 
 def test_numbered_question_and_answer_separate_blocks_same_book(store):
     store.add_sources('p',[dict(id='answer',url='https://openstax.org/books/test/pages/chapter-9',title='Answers',adopted=True,
-        chunks=[dict(chunk_id='a',text='1. 帕。\n2. 牛顿。')])])
+        chunks=[dict(target='本点原文定义是什么？',chunk_id='a',text='1. 帕。\n2. 牛顿。')])])
     with store.transaction():
         source=store._get('sources','p','s');source['url']='https://openstax.org/books/test/pages/exercises';store._put('sources','p',source)
     out=pointer();out['cloze']=[]
@@ -225,7 +225,7 @@ def test_valid_cloze_survives_failed_external_locator(store):
 
 def test_program_can_pair_same_block_explicit_answer_letter(store):
     store.add_sources('p',[dict(id='choice',url='https://pep.com.cn/test',title='原卷',adopted=True,
-        chunks=[dict(chunk_id='choice-c',text='1. 压强的单位是？\nA. 帕\nB. 牛顿\n答案：A')])])
+        chunks=[dict(target='本点原文定义是什么？',chunk_id='choice-c',text='1. 压强的单位是？\nA. 帕\nB. 牛顿\n答案：A')])])
     out=pointer();out['cloze']=[]
     out['found']=[dict(kind='choice',stem='压强的单位是？',options=['帕','牛顿'],answer=[0],answer_quote='A',question_chunk='choice-c',answer_chunk='choice-c',pairing='same_block')]
     assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1

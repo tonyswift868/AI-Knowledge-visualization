@@ -86,7 +86,7 @@ def test_materials38_invalid_or_ambiguous_anchor_rejected(value):
 
 def test_materials38_found_and_cloze_output_capped():
     p=passages(1)[0]
-    cloze=dict(chunk_id='c0',sentence=dict(quote='压强是压力与受力面积的比值。'),word='压强',importance='key')
+    cloze=dict(target='本点原文定义是什么？',chunk_id='c0',sentence=dict(quote='压强是压力与受力面积的比值。'),word='压强',importance='key')
     out=pm._expand_output(dict(passages=['c0'],found=[],cloze=[cloze]*8),[p])
     assert len(out['cloze'])==3
 

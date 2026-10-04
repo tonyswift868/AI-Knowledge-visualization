@@ -3,7 +3,7 @@ import json
 import re
 import socket
 import threading
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -20,6 +20,8 @@ from refactor.learning.course.report_pdf import render_report_pdf
 from tests.refactor.integration38.support import Agents, block, join_workers
 
 DAY = date(2026, 10, 3)
+# Events are stamped by the classroom clock; pin it to DAY so the report date check does not depend on the wall clock.
+NOW = lambda: datetime(2026, 10, 3, 10, tzinfo=timezone.utc)
 URL = 'https://docs.python.org/3/tutorial/datastructures.html'
 QUOTE = '队列按先进先出的顺序处理元素，栈按后进先出的顺序处理元素。'
 STEMS = ['队列按哪种顺序处理元素？', '队列的处理顺序是什么？', '请选择资料中队列的处理顺序。']
@@ -61,7 +63,7 @@ class IntegratedModel(Agents):
                     pairing='same_block',question_number='',answer_number=''))
             p=next(p for p in passages if QUOTE in p['text'])
             value=dict(passages=[p['id'] for p in passages],found=found,cloze=[
-                dict(chunk_id=p['id'],sentence=QUOTE,word='队列',importance='key',keywords=['栈','后进先出'])])
+                dict(target='哪种结构先进先出？',chunk_id=p['id'],sentence=QUOTE,word='队列',importance='key',keywords=['栈','后进先出'])])
         else: raise AssertionError('unexpected purpose '+purpose)
         return SimpleNamespace(text=json.dumps(value,ensure_ascii=False),search_hits=(),citations=())
 
@@ -117,7 +119,7 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
             methods={}
             def register(self,name,fn):self.methods[name]=fn
             def push(self,kind,data):events.append((kind,data))
-        registry=Registry();register(registry,lambda:services,lambda:DAY)
+        registry=Registry();register(registry,lambda:services,lambda:DAY,now=NOW)
         ctx=CallContext('class38',threading.Event(),lambda _:None)
         def act(action,**params):
             v=registry.methods['classroom.'+action](dict(plan_id=pid,**params),ctx)
@@ -148,7 +150,12 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
         v=act('check');steps=0
         while v['step']!='completed':
             steps+=1;assert steps<20
-            v=act('answer',value=[0]) if v['question'] else act('check')
+            # Answer each final-check question with its stored key: the offline
+            # fixture's correct option is not always index 0 once cloze options are sorted.
+            if v['question']:
+                stored=next(q for q in services.store.records('question_bank',pid) if q['id']==v['question']['id'])
+                v=act('answer',value=stored['answer'])
+            else:v=act('check')
         report=flow.report(pid)['report'];views=report_views(report)
         titles={p['id']:p['title'] for p in services.store.records('points',pid)}
         assert report['plan']['actual_completion_date'] and report['point_comments']
@@ -185,13 +192,13 @@ def test_old_plan_opens_with_clear_unusable_state(tmp_path):
         detail=PlanFlow(services,lambda *a:None,lambda:DAY).detail(pid)
         assert detail['unusable'] and detail['message']=='旧版计划，已不可用'
         with pytest.raises(BridgeError,match='旧版计划，已不可用'):
-            Classroom(services,lambda:DAY)._course(pid)
+            Classroom(services,lambda:DAY,now=NOW)._course(pid)
     finally:store.close()
 
 def test_real_materials_wait_resumes_once_with_mapping_context(tmp_path):
     import time
     services,flow,model,pid=build_plan(tmp_path,[])
-    room=Classroom(services,lambda:DAY)
+    room=Classroom(services,lambda:DAY,now=NOW)
     started,release=threading.Event(),threading.Event()
     events=[];room.material_event=events.append
     original=model.complete
@@ -218,7 +225,7 @@ def test_real_materials_wait_resumes_once_with_mapping_context(tmp_path):
         v=room.run(pid,lambda *args:None,ctx)
         assert v['step']=='opening' and not v['failure'] and v['messages'][-1]['sources']
         assert model.calls.count('point_materials')==before+1 and events
-        fresh=Classroom(services,lambda:DAY)
+        fresh=Classroom(services,lambda:DAY,now=NOW)
         assert fresh.run(pid,lambda *args:None,ctx)['step']=='opening'
     finally:
         release.set();room.cancel_materials();join_workers();services._closed=True;services.store.close()

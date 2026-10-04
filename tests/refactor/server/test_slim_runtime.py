@@ -8,6 +8,8 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timedelta, timezone
+from functools import partial
 
 import httpx
 from sqlalchemy import create_engine, event, text
@@ -67,6 +69,7 @@ def test_slim_real_uvicorn_health_and_local_business_requests(schema_template, t
     import shutil
     from refactor.server import app as entry
     from refactor.server.enterprise.identity.native import NativeSessions
+    from refactor.server.enterprise.identity import runtime as identity_runtime
     from refactor.server.enterprise.identity.oidc import IdentityError
     from test_slim_course_record_sync import envelope, entity_id
     database=tmp_path/'uvicorn.db'
@@ -75,12 +78,22 @@ def test_slim_real_uvicorn_health_and_local_business_requests(schema_template, t
     statements=[]
     event.listen(engine,'before_cursor_execute',lambda conn,cursor,statement,*args:statements.append(statement))
     identity=runtime('refactor.server',engine)
+    # The fake verifier and the real session validation share one clock.
+    # datetime.now().timestamp() can round slightly ahead of time.time() on
+    # Windows, spuriously rejecting the fixture as a future-issued principal.
+    now=datetime.fromtimestamp(1_700_000_000,timezone.utc)
+    verified=principal('refactor.server').model_copy(update={
+        'issued_at':now,'authentication_time':now,'expires_at':now+timedelta(minutes=5)})
     class Verifier:
         async def authenticate(self, username, password):
             assert username=='user-a' and password=='test-only'
-            return principal('refactor.server')
+            return verified
         async def aclose(self): pass
-    identity.native_sessions=NativeSessions(Verifier(),principal('refactor.server').issuer)
+    identity.native_sessions=NativeSessions(Verifier(),verified.issuer,clock=lambda:now.timestamp())
+    # Tenant context rechecks expiry too; pass its existing `now` argument
+    # through to the original validator, preserving all membership checks.
+    monkeypatch.setattr(identity_runtime,'enterprise_request_context',
+        partial(identity_runtime.enterprise_request_context,now=now))
     def verify():
         with engine.connect() as conn:
             assert conn.scalar(text('SELECT version_num FROM alembic_version'))=='0042_structured_sync_changes'

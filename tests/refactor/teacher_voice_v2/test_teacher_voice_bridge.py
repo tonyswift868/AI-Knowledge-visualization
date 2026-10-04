@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtWidgets import QApplication
@@ -14,6 +15,7 @@ from refactor.learning.app.speech import TeacherSpeech
 from refactor.learning.voice.download import DownloadError
 from refactor.learning.voice.tts.runtime import SpeechAudio
 from refactor.learning.voice.tts.service import TtsService
+from refactor.learning.voice.tts import service as tts_module
 
 
 @pytest.fixture
@@ -107,6 +109,7 @@ class Harness:
         self.app, self.bridge, self.resources = app, AppBridge(), Resources()
         self.engines, self.sinks, self.sent, self.event_threads = [], [], [], []
         self.counter = 0
+        self.clock = time.monotonic
         def service(config, parent):
             assert threading.current_thread() is threading.main_thread()
             engine = Engine()
@@ -119,7 +122,7 @@ class Harness:
         self.voice = TeacherSpeech(self.bridge, tmp_path, resources=self.resources, service_factory=service)
         self.bridge.event.connect(self.receive)
     def receive(self, raw):
-        self.sent.append((time.monotonic(), json.loads(raw)))
+        self.sent.append((self.clock(), json.loads(raw)))
         self.event_threads.append(threading.get_ident())
     def call(self, method, **params):
         self.counter += 1
@@ -167,27 +170,57 @@ def test_teacher_voice_v2_pipeline_device_timing_and_thread_boundary(h):
     assert set(h.event_threads + sink.threads) == {main}
 
 
-def test_teacher_voice_v2_mouth_20hz_stop_zero_and_owner_guard(h):
+def test_teacher_voice_v2_mouth_20hz_stop_zero_and_owner_guard(h, monkeypatch):
+    elapsed_us = 0
+    h.clock = lambda: elapsed_us / 1_000_000
+    monkeypatch.setattr(tts_module, 'time', SimpleNamespace(monotonic=h.clock))
     h.call("speak", owner="current", utterance_id="audio", text="一段持续朗读。后续不能在停止后播放。")
-    spin(h.app, lambda: bool(h.sinks) and h.sinks[-1].written > 0)
+    # Finish fake synthesis at time zero so asynchronous preparation cannot
+    # reset the mouth schedule halfway through the controlled playback.
+    spin(h.app, lambda: bool(h.sinks) and h.sinks[-1].written >= 64000)
     sink = h.sinks[-1]
-    start = time.monotonic()
-    until = start + .65
-    while time.monotonic() < until:
-        sink.played = int((time.monotonic() - start) * 32000)
-        h.app.processEvents(); time.sleep(.003)
-    samples = [(at, e) for at, e in h.events("mouth") if e["utterance_id"] == "audio" and e["level"] > 0]
-    assert 9 <= len(samples) <= 15
-    assert all(.035 <= b[0] - a[0] <= .09 for a, b in zip(samples, samples[1:]))
+    service = h.voice.service
+    assert service._timer.interval() == 5
+    service._timer.stop()  # Drive the real pump; OS timer delivery is not the oracle.
+    def pump(at_us):
+        nonlocal elapsed_us
+        elapsed_us = at_us
+        sink.played = int(h.clock() * 32000)
+        service._pump()
+        h.app.processEvents()
+    def positive_samples():
+        return [(at, e) for at, e in h.events("mouth")
+                if e["utterance_id"] == "audio" and e["level"] > 0]
+    for i in range(1, 14):
+        pump(i * 50000 - 1)
+        assert len(positive_samples()) == i - 1  # Not before the 50 ms boundary.
+        pump(i * 50000 + 1)  # One microsecond avoids binary float rounding.
+        assert len(positive_samples()) == i
+    samples = positive_samples()
+    assert [at for at, _ in samples] == pytest.approx(
+        [i * .05 + .000001 for i in range(1, 14)], rel=0, abs=1e-9)
+    assert all(b[0] - a[0] == pytest.approx(.05, rel=0, abs=1e-9)
+               for a, b in zip(samples, samples[1:]))
     assert h.call("stop", owner="old-page", utterance_id="audio")["result"]["stopped"] is False
-    before = time.monotonic()
-    assert h.call("stop", owner="current", utterance_id="audio")["result"]["stopped"]
-    assert time.monotonic() - before < .1 and sink.resets == 1
+    assert sink.resets == 0 and len(positive_samples()) == 13
+    before = len(h.sent)
+    response = h.call("stop", owner="current", utterance_id="audio")
+    assert response["result"]["stopped"] and sink.resets == 1
     assert h.events("mouth")[-1][1]["level"] == 0
     assert h.events("sentence")[-1][1]["state"] == "interrupted"
+    delivered = [message for _, message in h.sent[before:]]
+    response_index = next(i for i, m in enumerate(delivered) if m.get("id") == response["id"])
+    # Stop must reset the device and deliver zero/interruption before its reply,
+    # rather than depending on the loaded machine meeting a wall-clock budget.
+    assert any(m.get("name") == "speech.mouth" and m["data"]["level"] == 0
+               for m in delivered[:response_index])
+    assert any(m.get("name") == "speech.sentence" and m["data"]["state"] == "interrupted"
+               for m in delivered[:response_index])
+    assert elapsed_us == 650001
     count = len(h.events("sentence"))
-    tick(h.app, .2)
+    pump(elapsed_us + 200000)
     assert len(h.events("sentence")) == count
+    assert len(positive_samples()) == 13 and sink.resets == 1
 
 
 def test_teacher_voice_v2_late_preparation_and_missing_voice_are_quiet(h):

@@ -120,7 +120,7 @@ class ScriptedModel:
             p=packet['passages'][0]
             sentence=next(s+'。' for s in p['text'].split('。') if '定义、例子和练习' in s)
             text=json.dumps(dict(passages=[p['id'] for p in packet['passages']],found=found,cloze=[
-                dict(chunk_id=p['id'],sentence=sentence,word='定义',importance='key',keywords=['学习','依据'])]),ensure_ascii=False)
+                dict(target='本点原文有哪些定义？',chunk_id=p['id'],sentence=sentence,word='定义',importance='key',keywords=['学习','依据'])]),ensure_ascii=False)
         elif purpose == "plan_intent":
             payload = json.loads(user.split("\n", 1)[1])
             phase, said = payload["ctx"]["phase"], payload["text"]

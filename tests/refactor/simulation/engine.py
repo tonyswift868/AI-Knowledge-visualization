@@ -78,7 +78,7 @@ class RecordedGateway:
     def __init__(self,real,evidence,*,budget='0',offline=False,allowed=None):
         self.real,self.evidence,self.limit,self.offline=real,evidence,Decimal(str(budget)),offline
         if not self.limit.is_finite() or self.limit<0:raise ValueError('预算必须是非负有限人民币金额')
-        self.allowed=allowed;self.lock=threading.RLock();self.halted=threading.Event()
+        self.allowed=allowed;self.lock=threading.RLock();self.halted=threading.Event();self.protocol_retries=set()
         self.spent=sum((Decimal(c.get('charged_bound','0')) for c in evidence.calls),Decimal(0));self.reserved=Decimal(0)
         self.attempted=0;self.base_id=max((c['id'] for c in evidence.calls),default=0)
     def __getattr__(self,name): return getattr(self.real,name)
@@ -123,7 +123,19 @@ class RecordedGateway:
         except Exception as exc:
             error=exc;usage=getattr(exc,'usage',None)
             record['error']=dict(code=getattr(exc,'code',type(exc).__name__),message=str(exc))
-            self.halt();raise
+            # Let the host execute its existing ONE malformed-protocol retry.
+            # The recorder must not replace that retry with SIMULATION_STOPPED.
+            # It never retries itself; transport failures still stop immediately.
+            key=json.dumps([purpose,messages,kwargs.get('system'),kwargs.get('plan_id'),
+                            kwargs.get('enable_search',False)],sort_keys=True,ensure_ascii=False)
+            with self.lock:
+                allow=(record['error']['code']=='MODEL_RESPONSE_INVALID' and purpose!='simulation_user'
+                       and key not in self.protocol_retries)
+                if allow:self.protocol_retries.add(key)
+                else:self.halt()
+            record['host_protocol_retry_allowed']=allow
+            if isinstance(getattr(exc,'diagnostics',None),dict):record['diagnostics']=exc.diagnostics
+            raise
         finally:
             record['seconds']=round(time.monotonic()-started,3)
             charged=actual=Decimal(0)

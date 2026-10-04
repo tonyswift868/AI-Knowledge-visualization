@@ -3,6 +3,7 @@ import json
 import threading
 import time
 import traceback
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -182,16 +183,32 @@ def test_callback_cancel_prevents_tool_roundtrip_even_in_one_network_chunk():
     assert len(sent) == 1
 
 
-def test_total_deadline_covers_all_tool_roundtrips():
-    sent = []
+def test_total_deadline_covers_all_tool_roundtrips(monkeypatch):
+    # HTTP's deadline and asyncio's outer guard must share the same clock.
+    # Advancing only HTTP's clock would leave a real 90 ms timer racing the test.
+    elapsed_ms = 0
+    monotonic = lambda: elapsed_ms / 1000
+    monkeypatch.setattr(_http, 'time', SimpleNamespace(monotonic=monotonic))
+    new_event_loop = asyncio.events.new_event_loop
+    def controlled_loop():
+        loop = new_event_loop()
+        loop.time = monotonic
+        return loop
+    monkeypatch.setattr(asyncio.events, 'new_event_loop', controlled_loop)
+    sent, starts = [], []
     async def handler(request):
+        nonlocal elapsed_ms
         sent.append(request)
-        await asyncio.sleep(.055)
+        starts.append(elapsed_ms)
+        elapsed_ms += 55
+        await asyncio.sleep(0)  # Yield to the actual timeout guard, without waiting.
         return httpx.Response(200, json=chat(provider='kimi', tool=len(sent) == 1))
     with pytest.raises(ModelError) as exc:
         invoke(httpx.MockTransport(handler), provider='kimi', enable_search=True, timeout=.09)
     assert exc.value.code == 'MODEL_TIMEOUT'
     assert len(sent) == 2
+    assert starts == [0, 55] and elapsed_ms == 110
+    assert any(m['role'] == 'tool' for m in json.loads(sent[1].content)['messages'])
 
 
 def test_callback_error_never_exposes_secret_even_as_modelerror():

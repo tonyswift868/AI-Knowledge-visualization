@@ -61,9 +61,17 @@ def _occurs(term, text):
 
 
 def safe_blank(sentence, word):
-    if not isinstance(sentence,str) or not isinstance(word,str) or not word or sentence.count(word)!=1:return False
+    return blank_rejection(sentence,word) is None
+
+
+def blank_rejection(sentence, word):
+    """Literal/ambiguity check for any span, without semantic-role restrictions."""
+    if not isinstance(sentence,str) or not isinstance(word,str) or not word.strip():return '原句或答案片段为空'
+    if word not in sentence:return '答案片段不在原句中'
+    if sentence.count(word)!=1:return '答案片段在句中出现多次'
     rest=sentence.replace(word,'',1)
-    return not any(_occurs(alias,rest) for alias in aliases(word))
+    if any(_occurs(alias,rest) for alias in aliases(word)):return '句子其余部分含答案别称或重复写法'
+    return None
 
 
 def fixed_answer(value):
@@ -115,7 +123,9 @@ def contains_original(quote, text):
 def validate_question(row):
     # Previously saved B-line questions remain bank questions; no invented
     # quick questions are inferred from their old usage history.
-    keys = set(row) - {'_field_versions', 'role', 'source_level', 'source_type'}
+    keys = set(row) - {'_field_versions', 'role', 'source_level', 'source_type', 'target'}
+    if 'target' in row and (row.get('origin')!='cloze' or not isinstance(row['target'],str) or not row['target'].strip()):
+        raise ValueError('挖空掌握目标问题无效')
     if row.get('source_level') is not None and (type(row['source_level']) is not int or row['source_level'] not in (1,2,3)):
         raise ValueError('题目来源档位无效')
     if 'source_type' in row and not isinstance(row['source_type'],str):raise ValueError('题目来源类型无效')

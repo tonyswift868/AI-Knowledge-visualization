@@ -92,7 +92,8 @@ def test_all_subjective_skips_without_grade_or_empty_close(e):
     assert not e.gateway.calls and not e.store.records('judgements',PLAN)
     assert not e.store.records('attempt_closed',PLAN)
     assert e.store.load_mastery(PLAN).module('m0').state=='untested'
-    assert any('旧主观题不计分' in m['content'] for m in v['messages'])
+    assert any('出题失败（程序问题，已记录）' in m['content'] for m in v['messages'])
+    assert e.room._load(e.room._course(PLAN))['question_gaps'][0]['kind']=='question_program_error'
 
 
 def test_reopen_pending_old_subjective_changes_question_without_grading(e):

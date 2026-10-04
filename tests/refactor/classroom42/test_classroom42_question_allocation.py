@@ -127,7 +127,7 @@ def test_missing_point_skips_without_grade_and_next_module_is_available(e):
     e.store.set_source_adopted(PLAN,'s',False)
     e.room.run(PLAN,lambda co,st,cx:st.update(step='test_offer'))
     v=act(e,'start_test','module_test')
-    assert not v['failure'] and not v['question'] and any('资料缺失，已跳过' in m['content'] for m in v['messages'])
+    assert not v['failure'] and not v['question'] and any('出题失败（程序问题，已记录）' in m['content'] for m in v['messages'])
     assert not e.store.records('judgements',PLAN)
     co=e.room._course(PLAN)
     assert e.room._load(co)['question_gaps'][0]['point_id']=='p0'
@@ -189,7 +189,7 @@ def test_final_missing_does_not_hold_up_other_points_or_fabricate_pass(e):
     v=act(e,'answer',[0])
     assert not v['failure'] and not v['question'] and v['plan']['state']=='checking'
     assert e.store.load_mastery(PLAN).point('p0').level<3
-    assert any('资料缺失' in m['content'] for m in v['messages'])
+    assert any('出题失败' in m['content'] for m in v['messages'])
 
 
 def test_final_prepare_wrong_module_point_even_with_three_bank_questions(e):
