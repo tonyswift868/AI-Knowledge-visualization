@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-04）：没有在跑的任务。第四十五批（MF-01）与第四十六批（MF-02/03/04）回执已审查合入 main，全量 2734 通过；2.0.3 未签名包在 .local/test-tmp/release-2.0.3，签名上传等用户同意。下一批等用户对 CURRENT_STATE「当前阶段」里的问题拍板后再写。
+- **现在在做的事**（2026-10-04）：第四十七批三个任务已起草，待用户转发（基线 945982b）：47-MF01（MF-01，server）建计划流程三处修复、47-MF02（MF-02，library）挖空干扰项与多选及 30 点验收、47-MF03（MF-03，platform）资料质量。三个合入后，下一批用第四十五批同样 4 个人设重跑到知识地图（预算约 ¥2，用户已同意）。内测阶段不打包不发版。
 
 ## 协作方式
 
@@ -58,19 +58,115 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲 | — |
-| MF-02 | 空闲 | — |
-| MF-03 | 空闲 | — |
+| MF-01 | 47-MF01 已起草，待用户转发 | server |
+| MF-02 | 47-MF02 已起草，待用户转发 | library |
+| MF-03 | 47-MF03 已起草，待用户转发 | platform |
 | MF-04 | 空闲 | — |
 | MF-05 | 空闲 | — |
 | MF-06 | 空闲 | — |
 | MF-07 | 空闲 | — |
 
-空闲工位：全部。每个工位下的 repo 是主仓库的 git worktree，分支 `office/<工位名>`。
+空闲工位：runtime、client、tools、classroom。每个工位下的 repo 是主仓库的 git worktree，分支 `office/<工位名>`。
 
 ## 待派队列
 
-- 第四十七批起草中（用户 2026-10-04 拍板后）。2.0.3 未签名包按“内测不发版”删除。
+- 47-MF01～03：已起草（2026-10-04），待用户转发。
+- 之后：用第四十五批同样 4 个人设重跑到知识地图（约 ¥2，用户已同意；修正数学人设表单保持含糊、历史人设提真正改变顺序的修改）。
+
+## 第四十七批任务原文（2026-10-04，基线 945982b）
+
+### [47-MF01] server｜建计划流程三处修复：重开后资料卡片能采用、“确认并补充”不先搜再退回、不重复追问已知信息
+
+~~~text
+【MentorFlow 第四十七批｜MF-01（工位 server）｜建计划流程三处修复：重开后资料卡片能采用、“确认并补充”不先搜再退回、不重复追问已知信息】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 945982b
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。不打包、不发版（用户 2026-10-04 定：内测阶段不打包）。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\fix47-plan\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-04 拍板的部分写明了），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据才停下来。对原因的判断要用真实数据验证过再写。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑的任务（各改各的文件，冲突由架构师合并；完成标准只要求你这块与已有测试通过）：
+  47-MF01（MF-01，工位 server）建计划流程：app/plan_flow.py 里资料卡片的保存与采用（decide 及卡片持久化）、意图处理顺序（proceed/supplement）、course/planner_agents.py 的追问提示，及其测试。
+  47-MF02（MF-02，工位 library）挖空干扰项与多选、30 点样本验收：course/point_materials.py、course/question_bank.py 及其测试。
+  47-MF03（MF-03，工位 platform）资料质量：course/source_quality.py、source_filter.py、research_pipeline.py、source_follow.py、extract.py、course/data/source_lists.json，及 app/plan_flow.py 里只限“哪些资料卡片展示/推荐”（_show_batch 一带）的改动、web/src/pages/NewPlan.tsx 的卡片显示，及其测试。
+花费：¥0（离线完成；真实效果下一批用同样 4 个人设重跑来验）。
+背景：你在第四十五批的按块体验（报告 D:\MentorFlow\.local\test-tmp\block45-plan\report.md，原始记录 run1～run4）里查出这三处，CURRENT_STATE [ARCH-06]“待修”。
+要做
+  1. P2-01 重开后资料卡片能采用：展示给用户的资料卡片，其核实过的正文要和卡片一起保存在本机草稿里（和现有草稿同一处、同样不进同步），重开软件后 decide 从保存的正文采用，不再报 SOURCE_EXPIRED。旧草稿里只有卡片、没有正文的，采用时用卡片上的网址重新抓取并按原规则重新核实，核实通过才采用，不通过就明确提示“这份资料需要重新查找”。不能再出现“看得见、点了必失败”的卡片。
+  2. P2-03 “确认并补充”的顺序：同一条消息里既确认预览又补充重点时，先把补充写进需求、生成新版预览并显示出来，然后因为用户在这句话里已经表示确认，直接按新版预览去找资料（不再让用户确认第二遍，也绝不先按旧预览搜一遍再退回）。之后任何阶段用户再补充，照现有规则处理。decide 等操作在不该出现的阶段被调用时，错误提示要说真实阶段（例如“现在还在确认大致模块”），不能说“已开始生成”。
+  3. P3-03 不重复追问：需求核对的提示里列出表单和对话里已经给出的信息，要求只追问真正缺的；已经回答过的同一件事（例如“达到什么程度”）不再问。用第四十五批 run1 的真实对话做固定输入检查提示内容。
+  4. 验证（离线）：用假模型按第四十五批 run1（重开后采用）、run4（确认并补充）的真实步骤各写一个复现测试，先确认修前失败、修后通过；模拟工具离线完整场景（--to free）照旧通过。
+完成标准：三处都有修前失败、修后通过的测试；pytest tests/refactor 全部通过；模拟工具离线完整场景通过。
+先读：AGENTS.md；D:\MentorFlow\docs\project\CURRENT_STATE.md（只读）的 [DIR-01]、[ARCH-06]、[PLAN-01]；你的第四十五批报告；app/plan_flow.py（decide、草稿保存、意图处理）、course/planner_agents.py（需求核对与预览提示）。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix47-plan\report.md。
+回执：【MF-01｜server｜第四十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 三处各怎么改、复现测试修前修后 ／ 全量结果 ／ 离线完整场景 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [47-MF02] library｜挖空干扰项不能是对的、并列同类才出多选，30 点样本完整验收（新旧对照）
+
+~~~text
+【MentorFlow 第四十七批｜MF-02（工位 library）｜挖空干扰项不能是对的、并列同类才出多选，30 点样本完整验收（新旧对照）】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard 945982b
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。不打包、不发版（用户 2026-10-04 定：内测阶段不打包）。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\fix47-cloze\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-04 拍板的部分写明了），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据才停下来。对原因的判断要用真实数据验证过再写。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑的任务（各改各的文件，冲突由架构师合并；完成标准只要求你这块与已有测试通过）：
+  47-MF01（MF-01，工位 server）建计划流程：app/plan_flow.py 里资料卡片的保存与采用（decide 及卡片持久化）、意图处理顺序（proceed/supplement）、course/planner_agents.py 的追问提示，及其测试。
+  47-MF02（MF-02，工位 library）挖空干扰项与多选、30 点样本验收：course/point_materials.py、course/question_bank.py 及其测试。
+  47-MF03（MF-03，工位 platform）资料质量：course/source_quality.py、source_filter.py、research_pipeline.py、source_follow.py、extract.py、course/data/source_lists.json，及 app/plan_flow.py 里只限“哪些资料卡片展示/推荐”（_show_batch 一带）的改动、web/src/pages/NewPlan.tsx 的卡片显示，及其测试。
+花钱规则：真实模型用管理员现有 DeepSeek Flash 预设，总上限 ¥2.5（用户 2026-10-04 同意），分两段——第一段最多 ¥1：用旧做法（ae5b876 的定位提示）跑完 30 点，得到基线；第二段跑新做法 30 点。地图不要重新生成，直接用你第四十六批保存的 maps.json、source-corpus.json 和冻结的 annotations.json（D:\MentorFlow\.local\test-tmp\fix46-cloze\）。定位请求的输出上限用产品的 24576，不要再压到 8192。每次花钱前把预计效果写进报告。
+背景：你第四十六批的报告（fix46-cloze\report.md）：新做法 9 点里考到目标 7、挖了细节 0；但 23 道题里 3 道多个选项都对——干扰项取自同一段原文，原文里本来就成立（三角帆“增强操纵”“逆风航行”“任意方向航行”）。用户 2026-10-04 定（CURRENT_STATE [DIR-01]“题型”）：计分的客观题以单选为主、答案唯一；只有原文一句话里并列列出几个同类的点时才出多选，并列的几项都是正确答案；干扰项必须是错的；不能因此绕回主观题判定。
+做法（架构师定；参考干扰项生成的通行流程“收集候选 → 过滤掉其实也成立的候选 → 排序”，过滤依据是“干扰项与原文的吻合程度不能达到正确答案的程度”。我们不让 AI 判对错，用程序按原文位置过滤）：
+  1. 干扰项过滤（程序）：本知识点依据的原文段落（point 的 chunk_ids）里出现的片段，一律不能当干扰项——那是这个点的原文说成成立的内容；答案所在句子里的其他片段也不能当。干扰项改从同一份资料的其他章节、或同模块其他知识点的原文里取同一类的片段（例如别的工具的功能、别的事件的结果）。不按词的类型写死规则。凑不够两个合格干扰项时，换句重挖（沿用你第四十六批的重挖），不降低标准。
+  2. 多选（程序判定是否成立）：定位结果里，答案所在句子若用“、”“和”“及”“与”“以及”、英文逗号加 and 等把两个及以上同一类的片段并列，模型把它们都列为 answer_parts（每个都要逐字在原句里），程序核实它们在句中确实是并列关系后，出多选题，并列的几项都是正确答案，干扰项按第 1 条从别处取。不满足就出单选。
+  3. 单选的唯一性：单选的正确答案只有一个；其他选项都必须经过第 1 条过滤。
+  4. 30 点完整验收：旧做法、新做法各跑 30 点。你本人逐题人工判：考到掌握目标 / 挖了无关细节 / 没出题 / 单选有两个及以上选项成立 / 多选的正确集合不对 / 其他问题。对照冻结的 annotations.json，不改标注。
+完成标准：新做法 30 点里“挖了无关细节”0、“单选多个成立”0、“多选集合不对”0、“没出题”0，“考到掌握目标” ≥ 90%；达不到就如实报数字和逐题原因，不改标注、不挑样本凑数；旧做法的同项数字一起列出。pytest tests/refactor 全部通过。
+先读：AGENTS.md；D:\MentorFlow\docs\project\CURRENT_STATE.md（只读）的 [DIR-01]、[CHK-01]、[QA-01]；你的第四十六批报告与保存的样本；course/point_materials.py（_SYSTEM、_cloze、_quick、重挖）、course/question_bank.py（overlapping_options、safe_blank、选择/多选结构）、course/answer_compare.py（多选按下标集合判，已有）。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix47-cloze\report.md（含旧/新逐题表、花费）。
+回执：【MF-02｜library｜第四十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 干扰项过滤与多选怎么做 ／ 30 点旧做法与新做法：考到目标、挖了细节、没出题、单选多个成立、多选集合不对 各几道 ／ 全量结果 ／ 花费 ／ 本地最终占用 ／ 问题记录
+~~~
+
+### [47-MF03] platform｜资料质量：讲课资料一二档为主、一般网站兜底并标明，修发布者识别、去重、正文噪声、课件预览、卡片标题
+
+~~~text
+【MentorFlow 第四十七批｜MF-03（工位 platform）｜资料质量：讲课资料一二档为主、一般网站兜底并标明，修发布者识别、去重、正文噪声、课件预览、卡片标题】
+
+开工同步（第一步）
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard 945982b
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。不打包、不发版（用户 2026-10-04 定：内测阶段不打包）。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\fix47-sources\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师定好（用户 2026-10-04 拍板的部分写明了），照“要做”逐条实现，不自行换方案；实现中发现方案本身走不通，写清证据和原因交回。遇到需要选择的细节：按 CURRENT_STATE 条目和本任务写的原则自己决定，在回执写明决定与理由，继续做完，不要停下来问。只有超出花费上限、要动服务器或正式密钥、要删用户数据才停下来。对原因的判断要用真实数据验证过再写。回执里的测试结果要和实际一致：全量测试有几项失败就写几项。回执附“问题记录”（现象、原因、排查、解决、验证）。
+同时在跑的任务（各改各的文件，冲突由架构师合并；完成标准只要求你这块与已有测试通过）：
+  47-MF01（MF-01，工位 server）建计划流程：app/plan_flow.py 里资料卡片的保存与采用（decide 及卡片持久化）、意图处理顺序（proceed/supplement）、course/planner_agents.py 的追问提示，及其测试。
+  47-MF02（MF-02，工位 library）挖空干扰项与多选、30 点样本验收：course/point_materials.py、course/question_bank.py 及其测试。
+  47-MF03（MF-03，工位 platform）资料质量：course/source_quality.py、source_filter.py、research_pipeline.py、source_follow.py、extract.py、course/data/source_lists.json，及 app/plan_flow.py 里只限“哪些资料卡片展示/推荐”（_show_batch 一带）的改动、web/src/pages/NewPlan.tsx 的卡片显示，及其测试。
+花费：¥0（离线完成：用第四十五批保存的真实候选与正文重放；真实效果下一批用同样 4 个人设重跑来验）。
+背景：第四十五批按块体验（D:\MentorFlow\.local\test-tmp\block45-plan\report.md，原始记录 run1～run4、audit-records.json）采用的 4 份资料里 3 份是一般网站，其中 2 份不合格：阿里云开发者文章的缓存说法错误（P1-01），教习网课件预览把根号弄丢（P1-02）；MDN、OpenStax、UNESCO、British Council 这类权威原文没被采用。另有发布者把免责声明当作者、社区站被当一般网站（P2-02），同一篇资料多个网址重复（P3-01），正文混导航且整篇重复（P3-02），标题“标题”“图文详情”看不懂（P3-04）。第四十六批还发现 OpenStax 物理页的 MathJax 提取出“ρρ”“P=hρgP=hρg”这类重复符号。用户 2026-10-04 定（CURRENT_STATE [DIR-01]“资料”）：讲课资料以一、二档为主；某个模块在一、二档里实在找不到时才用三档（一般网站），并在资料卡片上标明“一般网站”，由用户决定用不用；英文权威原文照用，老师用中文讲。
+要做
+  1. 一二档为主：推荐和默认采用只给一、二档；按大致模块逐个看覆盖，只有某个模块在一、二档候选里一份覆盖都没有时，才把该模块的三档候选展示出来，卡片明确标“一般网站，可能有错，请自行判断”，且不默认采用。英文一、二档资料不因语言降级。改动限在 source_quality 的打分与 plan_flow 的卡片展示选择（_show_batch 一带），不动 47-MF01 负责的 decide/意图处理。
+  2. 发布者识别（P2-02）：版权声明、免责声明、侵权联系、购买提示等文字不能当作者或发布机构；识别开发者社区、论坛、问答站（例如阿里云开发者社区、CSDN、掘金、知乎、贴吧这类）为社区类，同分排在一般网站之后。
+  3. 课件/文档预览页（P1-02）：文库、课件网站的“在线预览”页只是转出的线性文字，不当原文采用（不合格原因写“预览页，非原文”），提示用户可上传原件。
+  4. 去重（P3-01）：同一篇内容的不同网址（语言版本、带追踪参数、移动版）按正文内容合并为一份，保留最规范的链接。
+  5. 正文清理（P3-02）：去掉整版导航、版权、邮箱等页面噪声；同一页面里正文被复制两份的只留一份；MathJax/MathML 页面不出现重复符号（ρρ 这类），公式保留一份可读形式。
+  6. 卡片标题与说明（P3-04）：卡片显示真实的页面或章节标题，不显示“标题”“图文详情”这类占位；说明写这份资料覆盖大致模块里的哪几个，不重复可信度和相关度的套话。
+  7. 验证（离线）：把第四十五批 run1～run4 保存的全部候选（含未采用的）与正文用新规则重放，列一张表：每份候选的档位、是否展示、是否默认采用、原因；要求阿里云文章与教习网预览不再被推荐，重复网址合并，发布者字段不再出现免责声明。物理 MathJax 用第四十六批保存的 D:\MentorFlow\.local\test-tmp\fix46-cloze\physics-*.html 验证。
+完成标准：上面 1～6 都有离线测试；重放表达到第 7 条的要求；pytest tests/refactor 全部通过；web 构建通过（不提交 dist）。
+先读：AGENTS.md；D:\MentorFlow\docs\project\CURRENT_STATE.md（只读）的 [DIR-01]、[PLAN-06]、[QA-01]；第四十五批报告与 run1～run4 记录；course/source_quality.py、source_filter.py、research_pipeline.py、source_follow.py、extract.py、course/data/source_lists.json；app/plan_flow.py 的 _show_batch；web/src/pages/NewPlan.tsx 的资料卡片。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix47-sources\report.md（含重放表）。
+回执：【MF-03｜platform｜第四十七批｜完成/部分完成/受阻】基线 ／ 提交 ／ 1～6 各怎么改 ／ 重放结果（阿里云、教习网、重复网址、发布者字段、MathJax）／ 全量结果 ／ web 构建 ／ 本地最终占用 ／ 问题记录
+~~~
 
 ## 第四十六批任务原文（2026-10-04，基线 ae5b876）
 
@@ -2262,6 +2358,9 @@ D 盘：freeze 中间目录用完即删，只留 payload 与未签名清单（�
 | 46-MF02 | MF-02 library | 挖空对准掌握目标；挖空失败换句重挖，仍失败按程序错误报出（¥1.5） | DIR-01、CHK-01 | ae5b876 | 部分完成，已合入（fc50fe6）：样本只跑完 9/30，干扰项多解待修 |
 | 46-MF04 | MF-04 runtime | 打包 2.0.3（未签名），含第四十一、四十二、四十四批 | SYS-06 | ae5b876 | 完成，但用户定内测阶段不发版，包已删除 |
 | 46-MF03 | MF-03 classroom | 修三个偶发失败的计时测试 | — | ae5b876 | 完成，已合入（1b35b04） |
+| 47-MF01 | MF-01 server | 建计划流程三处修复（重开采用、确认并补充、重复追问） | ARCH-06、PLAN-01 | 945982b | 已起草，待用户转发 |
+| 47-MF02 | MF-02 library | 挖空干扰项不能是对的、并列才多选，30 点新旧对照（¥2.5） | DIR-01、CHK-01 | 945982b | 已起草，待用户转发 |
+| 47-MF03 | MF-03 platform | 资料质量：一二档为主、发布者识别、去重、正文噪声、预览页、卡片标题 | DIR-01、PLAN-06 | 945982b | 已起草，待用户转发 |
 
 ## 任务模板
 
