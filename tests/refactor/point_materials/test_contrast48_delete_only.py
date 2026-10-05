@@ -85,7 +85,7 @@ def test_contrast48_review_only_deletes_and_remaps_indices_and_is_not_repeated()
     assert result['options']==['A','C','D'] and result['answer']==[0] and result['stem']==q['stem']
     assert qb.checked_question(result) and result['distractor_check']['checks'][0]['option']=='B'
     assert pm.check_distractors([result],[p],[c],dict(distractor_checker=lambda *a:pytest.fail('rechecked')))==[result]
-    assert qb.select_question([q],'pt','module') is None
+    assert qb.select_question([q],'pt','module')['id']==q['id']  # Original answered exercises need no cloze review.
     assert qb.select_question([result],'pt','module')['id']==q['id'] and len(calls)==1
 
 @pytest.mark.parametrize('mode',['missing','duplicate','bad_quote','missing_option','correct_index','modified_options','too_few','malformed'])
@@ -122,7 +122,7 @@ def test_contrast48_store_prepares_two_bank_and_one_quick_and_keeps_the_check(tm
         store.save_outline('p',[dict(id='st',title='算法')],[dict(id='m',stage_id='st',title='队列')])
         store.save_generated_module('p','m',[dict(p,title='队列',minutes=15)],check_minutes=5,today=day)
         def check(packet,**kw):seen.append(packet);return approved48(packet)
-        ctx=dict(finder=lambda *a,**kw:dict(passages=['c'],found=[],cloze=[i,second]),search=lambda *a,**kw:[],
+        ctx=dict(allow_bank_cloze=True,finder=lambda *a,**kw:dict(passages=['c'],found=[],cloze=[i,second]),search=lambda *a,**kw:[],
             fetcher=lambda *a,**kw:(_ for _ in ()).throw(OSError('offline')),distractor_checker=check)
         point=store.records('points','p')[0]
         result=pm.prepare_point(store,'p',point,ctx)
@@ -157,7 +157,7 @@ def test_contrast48_module_checks_all_points_and_quick_in_one_batch(tmp_path):
         stack_second=dict(second,target='栈先取出哪一类元素？',subject='栈',sentence='栈中后加入的元素先取出。',word='后加入的元素先取出',
             contrasts=[dict(chunk_id='c',contrast_quote='队列中先加入的元素先取出。',contrast_subject='队列',contrast_value='先加入的元素先取出'),
                 dict(chunk_id='c',contrast_quote='集合中随机取出元素。',contrast_subject='集合',contrast_value='随机取出元素')])
-        ctx=dict(finder=lambda p,*a,**kw:dict(passages=['c'],found=[],cloze=[i,second] if p['id']=='pt0' else [stack,stack_second]),search=lambda *a,**kw:[],
+        ctx=dict(allow_bank_cloze=True,finder=lambda p,*a,**kw:dict(passages=['c'],found=[],cloze=[i,second] if p['id']=='pt0' else [stack,stack_second]),search=lambda *a,**kw:[],
             distractor_checker=checker,fetcher=lambda *a,**kw:(_ for _ in ()).throw(OSError('offline')))
         result=pm.prepare_module(store,'p','m',ctx,lambda *a:None)
         assert result==dict(points=2,cloze_points=2,cloze_heavy=True)
@@ -180,7 +180,7 @@ def test_contrast48_review_rejection_regaps_with_reasons_and_checks_only_new_car
                 for question,reply in zip(packet['questions'],response['questions']):
                     if '先进先出' in question['options']:reply['checks'][0].update(verdict='also_supported',quote='伪造引文')
             return response
-        ctx=dict(finder=finder,search=lambda *a,**kw:[],distractor_checker=checker,
+        ctx=dict(allow_bank_cloze=True,finder=finder,search=lambda *a,**kw:[],distractor_checker=checker,
             fetcher=lambda *a,**kw:(_ for _ in ()).throw(OSError('offline')))
         result=pm.prepare_point(store,'p',store.records('points','p')[0],ctx)
         assert result['questions']==2 and len(retry)==1 and retry[0][0]['reason']=='也成立的quote对不上逐字原文'
@@ -194,7 +194,7 @@ def test_contrast48_cancel_during_review_never_persists_a_passed_check(tmp_path)
     with CourseStore('cancel48',tmp_path) as store:
         i,second=create48(store);cancel=Event()
         def checker(packet,**kw):cancel.set();return approved48(packet)
-        ctx=dict(finder=lambda *a,**kw:dict(passages=['c'],found=[],cloze=[i,second]),search=lambda *a,**kw:[],
+        ctx=dict(allow_bank_cloze=True,finder=lambda *a,**kw:dict(passages=['c'],found=[],cloze=[i,second]),search=lambda *a,**kw:[],
             distractor_checker=checker,cancel=cancel,fetcher=lambda *a,**kw:(_ for _ in ()).throw(OSError('offline')))
         with pytest.raises(pm.ResearchCancelled):pm.prepare_point(store,'p',store.records('points','p')[0],ctx)
         assert all('distractor_check' not in q for q in store.records('question_bank','p'))
@@ -218,7 +218,7 @@ def test_contrast48_third_candidate_does_not_fill_the_bank_with_a_detail(tmp_pat
     with CourseStore('cap48',tmp_path) as store:
         i,second=create48(store,extended=True)
         detail=dict(i,target='课外附带细节',sentence='栈的元素按储存次序移出。',subject='栈',word='储存次序',contrasts=[])
-        ctx=dict(finder=lambda *a,**kw:dict(passages=['c'],found=[],cloze=[i,second,detail]),search=lambda *a,**kw:[],
+        ctx=dict(allow_bank_cloze=True,finder=lambda *a,**kw:dict(passages=['c'],found=[],cloze=[i,second,detail]),search=lambda *a,**kw:[],
             fetcher=lambda *a,**kw:(_ for _ in ()).throw(OSError('offline')),distractor_checker=approved48)
         assert pm.prepare_point(store,'p',store.records('points','p')[0],ctx)['questions']==2
         assert len(store.records('question_bank','p'))==3

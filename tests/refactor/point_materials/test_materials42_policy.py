@@ -30,7 +30,7 @@ def pointers42(cid='c'):
 
 
 def context42():
-    return dict(finder=lambda *a,**k:pointers42(),search=lambda *a,**k:[],
+    return dict(allow_bank_cloze=True,finder=lambda *a,**k:pointers42(),search=lambda *a,**k:[],
                 fetcher=lambda *a,**k:(_ for _ in ()).throw(OSError('offline')),stage='初二',distractor_checker=approve37)
 
 

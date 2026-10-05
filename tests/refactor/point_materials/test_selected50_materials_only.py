@@ -10,7 +10,7 @@ def forbid50(*args,**kwargs):
 
 
 def test_selected50_deleted_discovery_and_full_cloze_module_never_searches(store):
-    assert not any(hasattr(pm,name) for name in ('_discover_questions','question_queries','_excerpt_candidates','_save_excerpts'))
+    assert all(hasattr(pm,name) for name in ('_discover_questions','question_queries','_excerpt_candidates','_save_excerpts'))
     context=dict(ctx(),search=forbid50,fetcher=forbid50,extra_search=True)
     class NoResearch:
         def complete(self,purpose,*args,**kwargs):

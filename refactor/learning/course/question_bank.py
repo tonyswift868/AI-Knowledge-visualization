@@ -151,7 +151,9 @@ def validate_question(row):
     # Previously saved B-line questions remain bank questions; no invented
     # quick questions are inferred from their old usage history.
     keys = set(row) - {'_field_versions', 'role', 'source_level', 'source_type', 'target',
-        'cloze_subject', 'contrast_evidence', 'distractor_check'}
+        'cloze_subject', 'contrast_evidence', 'distractor_check', 'question_origin'}
+    if 'question_origin' in row and row['question_origin'] not in ('material','web'):
+        raise ValueError('原题来源分类无效')
     if 'cloze_subject' in row and (not isinstance(row['cloze_subject'],str) or not row['cloze_subject'].strip()):
         raise ValueError('挖空对象无效')
     if 'contrast_evidence' in row:
@@ -238,14 +240,17 @@ def select_question(rows, point_id, purpose, exclude_ids=()):
           and q.get('role', 'bank') == role and objective_question(q) and checked_question(q)]
     def rank(q):
         times=[_time(u['at']) for u in q['uses'] if u['purpose']==purpose]
-        # All eligible questions belong to selected material. Prefer unused
-        # questions then least recent use, not the publisher's historical tier.
-        return (bool(times),max(times,default=0),q['created_at'],q['id'])
+        # Selected original exercises first; then web exercises by authority.
+        # Within that source band prefer unused questions and least recent use.
+        return (q.get('question_origin')=='web',q.get('source_level',3) if q.get('question_origin')=='web' else 0,
+                bool(times),max(times,default=0),q['created_at'],q['id'])
     return min(pool,key=rank) if pool else None
 
 
 def checked_question(row):
-    """Only persisted, successful preparation checks authorize selection."""
+    """Original answered exercises are eligible; gaps need their retained review."""
+    if row.get('origin')=='found':
+        return objective_question(row) and row.get('distractor_check',{}).get('state')!='rejected'
     passed=objective_question(row) and isinstance(row.get('distractor_check'),dict) and row['distractor_check'].get('state')=='passed'
     if row.get('origin')=='cloze':
         passed=passed and bool(row.get('cloze_subject')) and len(row.get('contrast_evidence',[]))>=2

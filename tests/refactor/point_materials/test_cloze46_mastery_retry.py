@@ -37,7 +37,7 @@ def items46():
             dict(chunk_id='other46',contrast_quote='圆锥模型的外形是锥体。',contrast_subject='圆锥模型',contrast_value='锥体')])]
 
 def context46(finder):
-    return dict(finder=finder,search=lambda *a,**k:[],fetcher=lambda *a,**k:(_ for _ in ()).throw(OSError('offline')),distractor_checker=approve37)
+    return dict(allow_bank_cloze=True,finder=finder,search=lambda *a,**k:[],fetcher=lambda *a,**k:(_ for _ in ()).throw(OSError('offline')),distractor_checker=approve37)
 
 def result46(items):return dict(passages=['c'],found=[],cloze=items)
 

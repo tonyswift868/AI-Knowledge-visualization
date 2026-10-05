@@ -153,7 +153,7 @@ def test_questions44_classroom_history_cannot_bypass_objective_gate():
     q=dict(pm._found(found(),POINT,{'c':passage()}),id='historical',kind='short',answer='历史参考答案')
     q.pop('options')
     def records(entity,plan):
-        return [q] if entity=='question_bank' else [dict(question_id=q['id'],point_ids=['p'],context='module_test')]
+        return [q] if entity=='question_bank' else [dict(question_id=q['id'],point_ids=['p'],context='module_test',correct=False,wrong_points=['p'])]
     store=SimpleNamespace(records=records,require_material_plan=lambda _:None)
     course=SimpleNamespace(store=store,plan_id='fixture',point=lambda _:POINT,points_of=lambda _: [POINT])
     room=object.__new__(Classroom)

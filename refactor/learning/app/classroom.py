@@ -393,6 +393,13 @@ class Classroom:
                     pool.append(candidate);avoiding.add(candidate['id'])
                 q=min(pool,key=lambda row:last.get(row['id'],-1)) if pool else None
         else:q=select()
+        if q is None and purpose=='retest' and prepare:
+            mistakes=[r for r in course.store.records('question_answers',course.plan_id)
+                if r['context'] in ('module_test','skip_test','retest')
+                and point_id in r.get('wrong_points',[] if r['correct'] else r['point_ids'])]
+            if len(mistakes)>=2:
+                self._prepare_one(course,point_id,ctx,exclude_ids=avoid)
+                q=select()
         if q is None and history:
             # Prefer another question, but a shortage is allowed to reuse the original test.
             bank={q['id']:q for q in course.store.records('question_bank',course.plan_id)}
@@ -427,13 +434,13 @@ class Classroom:
         return list(dict.fromkeys(r['question_id'] for r in course.store.records('question_answers',course.plan_id)
             if point_id in r['point_ids'] and r['context'] in (('module_test','skip_test','retest') if include_retest else ('module_test','skip_test'))))
 
-    def _prepare_one(self, course, point_id, ctx):
+    def _prepare_one(self, course, point_id, ctx, *, exclude_ids=()):
         cancel=ctx.cancel if ctx else threading.Event()
         if cancel.is_set():raise ModelCancelled()
         if ctx:ctx.stream(MATERIAL_EVENT+json.dumps(dict(text='正在找题…',done=0,total=1),ensure_ascii=False))
         try:
             self._materials().prepare_point(course.store,course.plan_id,course.point(point_id),dict(
-                gateway=self.services.gateway,cancel=cancel,on_status=lambda text: ctx.stream(MATERIAL_EVENT+json.dumps(dict(text=text,done=0,total=1),ensure_ascii=False)) if ctx else None))
+                gateway=self.services.gateway,cancel=cancel,exclude_ids=exclude_ids,on_status=lambda text: ctx.stream(MATERIAL_EVENT+json.dumps(dict(text=text,done=0,total=1),ensure_ascii=False)) if ctx else None))
         except Exception as exc:
             if cancel.is_set() or isinstance(exc,ModelCancelled):raise ModelCancelled() from None
             log.info('point preparation did not produce a question',exc_info=True)

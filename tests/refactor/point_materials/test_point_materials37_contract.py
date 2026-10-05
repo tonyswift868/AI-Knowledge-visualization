@@ -46,7 +46,7 @@ def approve37(packet,**kwargs):
 
 def ctx(output=None):
     def offline_fetch(*args,**kwargs): raise RuntimeError('offline: no page available')
-    return dict(finder=lambda p,passages,**kw: output or pointer(),search=lambda *a,**k:[],fetcher=offline_fetch,stage='初二',distractor_checker=approve37)
+    return dict(allow_bank_cloze=True,finder=lambda p,passages,**kw: output or pointer(),search=lambda *a,**k:[],fetcher=offline_fetch,stage='初二',distractor_checker=approve37)
 
 
 def incomplete(store, point, context):
@@ -239,8 +239,8 @@ def test_program_can_pair_same_block_explicit_answer_letter(store):
     store.link_point_sources('p','point',['c','choice-c'])
     out=pointer();out['cloze']=[]
     out['found']=[dict(kind='choice',stem='压强的单位是？',options=['帕','牛顿'],answer=[0],answer_quote='A',question_chunk='choice-c',answer_chunk='choice-c',pairing='same_block')]
-    assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==0
-    assert store.records('question_bank','p')[0]['distractor_check']['state']=='rejected'
+    assert incomplete(store,store.records('points','p')[0],ctx(out))['questions']==1
+    assert 'distractor_check' not in store.records('question_bank','p')[0]
 
     # The locator cannot silently omit a second correct option in a multi-answer.
     passages=pm._passages(store,'p',dict(ctx(),store=store,plan_id='p',lists=load_lists()))

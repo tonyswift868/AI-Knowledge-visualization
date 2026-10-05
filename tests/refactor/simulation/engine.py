@@ -157,7 +157,7 @@ class RecordedGateway:
                 # that split candidates into halves. Let those host paths run;
                 # every attempt still reserves/charges the same shared budget.
                 truncation=(record['error']['code']=='MODEL_OUTPUT_TRUNCATED'
-                            and purpose in ('generate','point_materials'))
+                            and purpose in ('generate','point_materials','outline'))
                 expected_cancel=(record['error']['code']=='MODEL_CANCELLED'
                     and isinstance(kwargs.get('cancel'),threading.Event) and kwargs['cancel'].is_set())
                 if allow:self.protocol_retries.add(key)
