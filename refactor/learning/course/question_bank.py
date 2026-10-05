@@ -237,11 +237,10 @@ def select_question(rows, point_id, purpose, exclude_ids=()):
     pool=[q for q in rows if point_id in q['point_ids'] and q['id'] not in excluded
           and q.get('role', 'bank') == role and objective_question(q) and checked_question(q)]
     def rank(q):
-        from .source_quality import question_priority
         times=[_time(u['at']) for u in q['uses'] if u['purpose']==purpose]
-        priority=question_priority(q['source']['url'],q['source']['title'],
-            authority=dict(level=q['source_level'],type=q.get('source_type','')) if q.get('source_level') else None)
-        return (*priority,bool(times),max(times,default=0),q['created_at'],q['id'])
+        # All eligible questions belong to selected material. Prefer unused
+        # questions then least recent use, not the publisher's historical tier.
+        return (bool(times),max(times,default=0),q['created_at'],q['id'])
     return min(pool,key=rank) if pool else None
 
 

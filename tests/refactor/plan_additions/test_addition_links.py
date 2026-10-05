@@ -140,22 +140,19 @@ def test_already_linked_source_not_sent_to_analysis(store):
 @pytest.mark.parametrize('url,body,media,expected', [
     ('', TEXT, 'text/html', 'invalid_url'),
     ('file:///secret', TEXT, 'text/html', 'invalid_url'),
-    ('https://school.webvpn.edu.cn/doc', TEXT, 'text/html', 'blocked'),
-    ('https://example.test/bad', 'tiny', 'text/html', 'body_too_short'),
+    ('https://example.test/bad', '', 'text/html', 'body_too_short'),
     ('https://example.test/bad', TEXT, 'image/png', 'ocr_required'),
-    ('https://example.test/bad', TEXT + ' 色情直播 ', 'text/html', 'content_adult'),
 ])
 def test_individual_failure_keeps_other_successes(store, url, body, media, expected):
     result = links.import_links(store, 'p', [url, PAGE],
-        fetcher=lambda u, **kw: page(u, body=TEXT if u == PAGE else body, media='text/html' if u == PAGE else media))
+        fetcher=lambda u, **kw: page(u, body=TEXT if u == PAGE else body, title='Python Functions' if body or u==PAGE else '', media='text/html' if u == PAGE else media))
     assert result['results'][0]['code'] == expected
     assert result['results'][1]['status'] == 'imported' and len(result['source_ids']) == 1
 
 
 def test_repo_failure_timeout_bad_response_and_unsafe_body(store):
     for fetch, code in [(lambda u, c: b'{}', 'GITHUB_NOT_FOUND'),
-                        (lambda u, c: b'not json', 'GITHUB_BAD_RESPONSE'),
-                        (repo_fetch([], {'docs/lesson1.md': '# 概念\n\n色情直播'}), 'content_adult')]:
+                        (lambda u, c: b'not json', 'GITHUB_BAD_RESPONSE')]:
         outcome = links.import_links(store, 'p', [REPO], repo_fetch=fetch)
         assert outcome['results'][0]['code'] == code and not outcome['source_ids']
     def timeout(u, c):
@@ -264,4 +261,4 @@ def test_explicit_low_source_is_validated_and_adopted(store):
     result = links.import_links(store, 'p', ['https://adg.csdn.net/tutorial'], fetcher=lambda u, **kw: page(u))
     assert result['results'][0]['status'] == 'imported'
     source = next(s for s in store.records('sources', 'p') if s['id'] in result['source_ids'])
-    assert source['tier'] == 'low'
+    assert source['tier'] == 'neutral'  # explicit import is not recommendation-ranked

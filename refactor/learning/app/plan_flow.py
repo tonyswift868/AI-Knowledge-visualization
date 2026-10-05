@@ -678,11 +678,21 @@ class PlanFlow:
         self._invalidate_material_structure(draft)
         self.save(draft)
         self.status(draft['plan_id'], '正在按资料目录调整结构…')
-        value, _ = self._ask('outline', agents.material_structure_request(draft['goal'],
+        request = agents.material_structure_request(draft['goal'],
             self._effective_form(draft), draft.get('accepted_preview'), sections,
-            previous=previous, instruction=instruction),
+            previous=previous, instruction=instruction)
+        value, _ = self._ask('outline', request,
             lambda text: agents.parse_material_structure(text, sections), ctx,
             plan_id=draft['plan_id'], max_tokens=12288)
+        # Classroom already reads the plan's original goal/final_goal. Preserve
+        # note/chat-only preferences there too, without changing account presets
+        # or introducing another persisted preference schema.
+        preferences = json.loads(request[1][0]['content'])['teaching_preferences']
+        original = draft['form']['goal'] + '\n' + draft['form']['final_goal']
+        extra = [p for p in preferences if p not in original]
+        final_goal = draft['form']['final_goal']
+        if extra: final_goal += '\n讲法偏好：' + '；'.join(extra)
+        self.services.store.save_intake(draft['plan_id'], final_goal=final_goal)
         value['version'] = draft.get('material_version', 0) + 1
         draft['material_version'] = value['version']
         draft['material_structure'] = value

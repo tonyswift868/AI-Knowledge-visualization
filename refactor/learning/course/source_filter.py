@@ -260,7 +260,7 @@ def recommendation_rejection(url: str, *, lists=None) -> str:
     return ''
 
 
-def screen(hits: Iterable[RawHit], *, lists: SourceLists | None = None) -> list[ScreenedHit]:
+def screen(hits: Iterable[RawHit], *, lists: SourceLists | None = None, user_provided=False) -> list[ScreenedHit]:
     """Drop invalid URLs and annotate all other hits, including blocked ones.
 
     Consumers must exclude blocked/duplicate hits, assess neutral/low/fork/raw
@@ -287,6 +287,14 @@ def screen(hits: Iterable[RawHit], *, lists: SourceLists | None = None) -> list[
                 owners.append(repo[0])
     output, seen = [], set()
     for hit, normalized, repo in valid:
+        if user_provided:
+            # Explicit imports use only URL/readability checks. Recommendation
+            # publisher, blocklist and fork heuristics do not judge user text.
+            duplicate = normalized if normalized in seen else None
+            output.append(ScreenedHit(normalized, hit.url, hit.title, 'neutral',
+                'user_selected', ('duplicate',) if duplicate else (), duplicate))
+            seen.add(normalized)
+            continue
         host = urlsplit(normalized).hostname
         original_host = _host(urlsplit(hit.url.strip()).hostname)
         hosts = {host, original_host}

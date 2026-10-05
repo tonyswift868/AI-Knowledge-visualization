@@ -148,7 +148,8 @@ def test_pasted_links_are_imported_then_analyzed(flow, monkeypatch):
     assert seen["urls"] == ["https://a.example/doc", "https://b.example/x"]
     assert first["failed"] == ["https://b.example/x：网页打不开"] and first["preview"]["modules"]
     quality, = first["source_quality"]
-    assert quality["source_id"] == "new" and quality["user_provided"] and not quality["eligible"]
+    assert quality["source_id"] == "new" and quality["user_provided"] and quality["eligible"]
+    assert quality["credibility"] is None and not quality["needs_review"]
     assert not any(s['id'] == 'new' for s in store.records('sources', PLAN))
 
 

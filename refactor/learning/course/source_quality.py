@@ -2,7 +2,7 @@
 
 Scores use the fetched final URL and body, never a search snippet. Authority
 sets priority; identifiable general/community publishers are usable at 3.
-Unknown publishers stay below the gate. User materials remain retained.
+Unknown recommendation publishers stay below the gate. User selections bypass grading.
 """
 from datetime import date
 from html.parser import HTMLParser
@@ -151,11 +151,15 @@ def lesson_selection(qualities, modules, *, existing=()):
         context = q.get('coverage_context') or q.get('context')
         if context and context.get('scopes', [])[1:] != module_scopes:
             continue  # old indices are not coverage of a changed preview
-        if q.get('eligible') and q.get('credibility', 0) >= 4:
+        if not q.get('user_provided') and q.get('eligible') and q.get('credibility', 0) >= 4:
             high_coverage.update(scopes.intersection(q.get('covered_scopes', ())))
     output = []
     for q in qualities:
         q = dict(q)
+        if q.get('user_provided'):
+            output.append(dict(q, display=True, recommended=False, default_adopt=False,
+                fallback_scopes=[], covered_modules=[], display_reason='用户选定资料'))
+            continue
         covered = scopes.intersection(q.get('covered_scopes', ()))
         high = q.get('credibility', 0) >= 4
         missing = covered - high_coverage
@@ -479,6 +483,8 @@ def source_group(credibility):
 def rank_key(row):
     """Credibility first, then relevance; an exact tie favours non-community."""
     quality = row.get('quality') or row
+    if quality.get('user_provided') or row.get('user_provided'):
+        return (0, 0, False, False)
     return (-(quality.get('credibility') or 0), -(quality.get('relevance') or 0),
             bool(quality.get('community') or quality.get('source_type')=='community'),
             quality.get('level_fit') in {'too_advanced', 'review_only'})
@@ -512,6 +518,15 @@ def assess(source, goal, *, level='', modules=(), today=None, lists=None):
 
 
 def assess_stored(source, chunks, goal, *, level='', modules=(), today=None, lists=None):
+    if source.get('adopted') or source.get('user_provided'):
+        body='\n'.join(c['text'] for c in chunks)
+        return dict(version=1, credibility=None, relevance=None, eligible=True, needs_review=False,
+            context=dict(goal=goal,level=level,scopes=[]),publisher='',source_type='user_provided',
+            source_group='用户选定资料',community=False,originality='user_selected',freshness='unknown',
+            published_at=source.get('published_at'),level_fit='unknown',covered_scopes=[],reasons=[],
+            note='用户选定的可信资料，按原文讲解和备题，不按发布者或档位筛选。',method='user_selected',
+            url=source.get('final_url') or source.get('url'),body_key=body_identity(body),
+            evidence=dict(title=source.get('title',''),excerpt=body[:1400],matched_terms=[]),user_provided=True)
     return _assess(source.get('final_url') or source.get('url'), source.get('title', ''), '\n'.join(c['text'] for c in chunks),
         goal=goal, level=level, modules=modules, today=today, lists=lists, reasons=source.get('reasons', ()),
         published_at=source.get('published_at'), warnings=source.get('warnings', ()),
@@ -525,7 +540,7 @@ def apply_review(quality, review):
     Retain its explanation alongside the exact fetched evidence for review.
     Missing/empty explanations fail closed. A model cannot override origin/date.
     """
-    if not quality['needs_review']:
+    if quality.get('user_provided') or not quality['needs_review']:
         return quality
     result = dict(quality)
     note = review.get('note', '')
@@ -549,10 +564,9 @@ def annotate(store, plan_id, source_ids, *, lists=None, today=None):
     with store.transaction():
         for source in store.records('sources', plan_id):
             if source['id'] not in source_ids: continue
-            quality = assess_stored(source, [c for c in chunks if c['source_id'] == source['id']], plan['goal'],
+            quality = assess_stored(dict(source,user_provided=True), [c for c in chunks if c['source_id'] == source['id']], plan['goal'],
                                      level=plan['level'], modules=modules, lists=lists, today=today)
             quality['user_provided'] = True
-            quality['note'] += ' 用户提供的资料已保留；评分不足不等于已核实为权威。'
             store.add_sources(plan_id, [dict(source, quality=quality, user_provided=True)])
             rows.append(dict(source_id=source['id'], title=source['title'], **quality))
     return rows

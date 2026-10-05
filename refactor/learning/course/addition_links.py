@@ -12,7 +12,7 @@ import time
 
 from . import github_repo, materials
 from .research_pipeline import ResearchPipeline
-from .source_filter import RawHit, blocked_keyword_reasons, load_lists, normalize_url, screen
+from .source_filter import RawHit, load_lists, normalize_url
 from refactor.learning.course.research import ResearchCancelled
 from refactor.learning.course.research import ResearchTimeout
 
@@ -125,9 +125,6 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
                     raise LinkImportError('limit_reached', f'一次最多读取 {max_urls} 个网址，本条尚未读取。')
                 if url is None:
                     raise LinkImportError('invalid_url', '请输入完整的 HTTP(S) 网址。')
-                hit = screen([RawHit(url)], lists=lists)[0]
-                if hit.tier == 'blocked':
-                    raise LinkImportError('blocked', '资料地址命中屏蔽规则，不能使用。')
                 with store.transaction():
                     _active(store, plan_id, creating=creating)
                     source = _existing(store, plan_id, {url})
@@ -141,13 +138,8 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
                         # import_repo's root-only canonical URL drops explicit
                         # branch selection. Keep it here to avoid merging branches.
                         verified = replace(verified, url=url, final_url=url)
-                        bad = blocked_keyword_reasons(verified.title + '\n' + '\n'.join(
-                            b.text for b in verified.document.blocks), lists=lists)
-                        if bad:
-                            label = {'adult': '色情', 'gambling': '赌博', 'piracy': '盗版'}[bad[0]]
-                            raise LinkImportError('content_' + bad[0], f'仓库正文命中{label}关键词，未采用。')
                     else:
-                        outcome = pipeline.run([RawHit(url)], lists=lists, include_low=True, cancel=cancel)
+                        outcome = pipeline.run([RawHit(url)], lists=lists, user_provided=True, cancel=cancel)
                         if not outcome.verified:
                             rejected = outcome.rejected[0]
                             raise LinkImportError(rejected.code, rejected.message)

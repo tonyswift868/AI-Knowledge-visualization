@@ -21,7 +21,7 @@ from .question_bank import (contains_original, original_text, validate_question,
 from .source_filter import classify_source, load_lists
 from .research import ResearchCancelled
 from .store import StoreError
-from .source_quality import terms, junk_reasons, question_priority
+from .source_quality import terms
 from ..connections.errors import ModelError
 
 _locks = WeakKeyDictionary()
@@ -179,7 +179,7 @@ def _locate_tier(point, passages, ctx, mode):
     # Keep complete chunks, rank linked/relevant ones first. No whole textbook
     # in the prompt; a selected quote is still validated against original text.
     ranked=sorted(passages,key=lambda p:(p['id'] not in point.get('chunk_ids',[]),
-        -sum(t in p['text'].casefold() for t in wanted),p['authority'].get('type')=='community',p['id']))
+        -sum(t in p['text'].casefold() for t in wanted),p['id']))
     passages=_candidates(ranked)
     if not passages:return dict(passages=[],found=[],cloze=[])
     for attempt in range(2):
@@ -215,42 +215,9 @@ def _locate_tier(point, passages, ctx, mode):
 
 
 def _locate(point, passages, ctx, mode):
-    # Try each credibility band separately. A weaker band is only consulted
-    # when the better one cannot supply the point and two validated answers.
-    combined=dict(passages=[],found=[],cloze=[])
-    by_id={p['id']:p for p in passages}
-    for level,qa in ((1,False),(2,False),(3,False),(3,True)):
-        band=[p for p in passages if question_priority(p['source']['url'],p['source']['title'],authority=p['authority'])==(level,qa)]
-        if not band: continue
-        output=_locate_tier(point,band,ctx,mode)
-        allowed={p['id'] for p in band}
-        output['passages']=[cid for cid in output.get('passages',[]) if cid in allowed]
-        output['found']=[i for i in output.get('found',[]) if isinstance(i,dict) and i.get('question_chunk') in allowed and i.get('answer_chunk') in allowed]
-        if level==3 and ctx.get('compare_questions',False):
-            retained=[]
-            linked=set(point.get('chunk_ids',[]))|set(combined['passages'])
-            authority_passages=[p for p in passages if p['authority']['level'] in (1,2) and p['id'] in linked]
-            for item in output['found']:
-                try:q=_found(item,point,by_id)
-                except (ValueError,KeyError,TypeError,IndexError):q=None
-                if q is None:continue
-                try:
-                    decision=compare_question(q,authority_passages,gateway=ctx.get('gateway'),
-                        comparator=ctx.get('comparator'),cancel=ctx.get('cancel'),plan_id=ctx.get('plan_id',''))
-                    if ctx.get('on_comparison'):ctx['on_comparison'](q,decision)
-                except (ModelError,ValueError) as exc:
-                    _check(ctx)
-                    if getattr(exc,'code','')=='MODEL_CANCELLED':raise
-                    decision='原文没提到'
-                    _log.warning('question comparison unavailable: code=%s',getattr(exc,'code',type(exc).__name__))
-                if decision!='原文明确矛盾':retained.append(item)
-            output['found']=retained
-        output['cloze']=[i for i in output.get('cloze',[]) if isinstance(i,dict) and i.get('chunk_id') in allowed]
-        for key in combined: combined[key]+=output.get(key,[])
-        selected={cid for cid in combined['passages'] if cid in by_id}
-        found=_collect(combined['found'],_found,point,passages)
-        if selected and len({original_text(q['stem']) for q in found})>=2: break
-    return combined
+    # Adoption is the user's selection. Publisher bands belong to AI
+    # recommendations, never admission or correctness checks of chosen text.
+    return _locate_tier(point, passages, ctx, mode)
 
 
 COMPARISON_STATES = frozenset(('原文支持','原文明确矛盾','原文没提到'))
@@ -282,27 +249,14 @@ def compare_question(question, authority_passages, *, gateway=None, comparator=N
 
 
 def _identity(source, chunks, ctx):
-    body = '\n'.join(c['text'] for c in chunks)
-    url = source.get('final_url') or source.get('url') or ''
-    evidence = source.get('publisher_evidence')
-    identity = classify_source(url, lists=ctx['lists'], page_text=body, publisher_evidence=evidence)
-    if junk_reasons(source.get('title', ''), body):
-        return dict(identity, level=0, type='excluded')
-    if identity['level'] or identity['type']=='excluded': return identity
-    if ctx.get('gateway') and body.strip():
-        result = ctx['gateway'].complete('source_identity',[{'role':'user','content':json.dumps(
-            dict(url=url,title=source['title'],text=body[:10000]),ensure_ascii=False)}],
-            system='只判断页面原文可见发布者属于 government、school、national_education、textbook_publisher、open_textbook、official_documentation、education_platform、general_site、news_media、encyclopedia、company、teacher 中哪一类。转载、盗版或不能确认返回 unknown。一般网站不冒充权威。返回 JSON {"type":"...","publisher":"...","quote":"原文关于发布主体/作者机构/备案的信息"}。不能依据域名猜测或编造证据。',
-            cancel=ctx.get('cancel'),plan_id=ctx['plan_id'],max_tokens=2048)
-        evidence = _json(result.text)
-        if ctx.get('on_call'): ctx['on_call']('source_identity',result)
-        identity = classify_source(url,lists=ctx['lists'],page_text=body,publisher_evidence=evidence)
-        _check(ctx)
-        if identity['level']:
-            source['publisher_evidence']=evidence
-            if source.get('id'):
-                ctx['store'].set_source_publisher_evidence(ctx['plan_id'],source['id'],evidence)
-    return identity
+    # Uploaded files and explicitly pasted URLs/repos are adopted on import;
+    # adopting an AI recommendation is also an explicit user selection. Do not
+    # invent a publisher grade or spend a model call recognizing its publisher.
+    if source.get('adopted') or source.get('user_provided'):
+        return dict(level=0, type='user_provided', category='user_selected')
+    return classify_source(source.get('final_url') or source.get('url') or '',
+        lists=ctx['lists'], page_text='\n'.join(c['text'] for c in chunks),
+        publisher_evidence=source.get('publisher_evidence'))
 
 
 def _source_reference(source, chunk):
@@ -326,9 +280,8 @@ def _passages(store, plan_id, ctx):
         if not source['adopted'] or source.get('excerpt'): continue
         own=[c for c in chunks if c['source_id']==source['id']]
         identity=_identity(source,own,ctx)
-        if identity['level'] not in (1,2,3): continue
         for chunk in own:
-            if not chunk['text'].strip() or chunk.get('kind')=='publisher_evidence': continue
+            if not chunk['text'].strip(): continue
             section=' / '.join(chunk.get('section',[]))
             page=chunk.get('page_start')
             output.append(dict(id=chunk['id'],source_id=source['id'],text=chunk['text'],section=section,
@@ -339,7 +292,7 @@ def _passages(store, plan_id, ctx):
                 qa_complete=chunk.get('qa_complete',False),
                 source=_source_reference(source,chunk),
                 authority=identity))
-    return sorted(output,key=lambda p:({1:0,2:1,3:2}[p['authority']['level']],p['authority']['type']=='community',p['id']))
+    return output
 
 
 def _base(point, kind, stem, answer, origin, question, answer_source, explanation='', importance='normal', options=None, role='bank', target=None, subject=None, contrasts=None):
@@ -370,10 +323,8 @@ def _numbered(text,number):
 def _found(item, point, by_id):
     if item.get('kind') not in OBJECTIVE_KINDS:return None
     q,a=by_id[item['question_chunk']],by_id[item['answer_chunk']]
-    # Found questions count toward passing, so only bands 1–2 (textbooks, exam
-    # boards, universities, official docs) may supply them; otherwise the point
-    # uses cloze from its own source text (DIR-01, user 2026-10-04).
-    if any((p.get('authority') or {}).get('level') not in (1,2) for p in (q,a)):return None
+    # Selected material's own questions need original answer evidence and an
+    # objective answer, irrespective of publisher or historical tier.
     stem,quote=item['stem'],item['answer_quote']
     if not contains_original(stem,q['text']) or not contains_original(quote,a['text']): return None
     # The current bank is text-only: keep references, but never strip a required
@@ -545,8 +496,13 @@ def _cloze_failure(point, ctx, rejected, *, code='CLOZE_FAILED'):
         _log.error('point preparation program error: code=%s evidence=%s',code,path.name)
     except OSError:
         _log.exception('point preparation evidence write failed: code=%s',code)
-    error=StoreError(code,'这个知识点出题失败（程序问题，'+('已记录' if saved else '证据保存失败')+'）。')
+    reason='；'.join(dict.fromkeys(r['reason'] for r in rejected)) if code=='POINT_SOURCE_UNAVAILABLE' else ''
+    # Keep the existing classroom program-error contract; the evidence subtype
+    # and explicit reason distinguish skipped source text from absent links.
+    error=StoreError('CLOZE_FAILED' if code=='POINT_SOURCE_UNAVAILABLE' else code,
+        '这个知识点出题失败（程序问题，'+('已记录' if saved else '证据保存失败')+'）。'+reason)
     error.evidence_saved=saved
+    error.source_unavailable=code=='POINT_SOURCE_UNAVAILABLE'
     raise error
 
 
@@ -720,7 +676,21 @@ def prepare_point(store, plan_id, point, ctx):
         rows=[q for q in _selected_rows(store.records('question_bank',plan_id),point,passages) if objective_question(q)
             and (checked_question(q) or ctx.get('_defer_distractor_check') and 'distractor_check' not in q)]
         linked=[cid for cid in point['chunk_ids'] if cid in {p['id'] for p in passages}]
-        if not linked:_cloze_failure(point,ctx,[dict(reason='没有关联的原文段落')],code='POINT_SOURCE_MISSING')
+        if not linked:
+            original=[c for c in store.records('source_chunks',plan_id) if c['id'] in point['chunk_ids']]
+            if not original:
+                _cloze_failure(point,ctx,[dict(reason='没有关联的原文段落')],code='POINT_SOURCE_MISSING')
+            sources={s['id']:s for s in store.records('sources',plan_id)}
+            reasons=[]
+            for chunk in original:
+                source=sources.get(chunk['source_id'])
+                reason=('关联资料记录不存在' if source is None else
+                        '关联资料未采用' if not source.get('adopted') else
+                        '关联资料为旧补充摘录，尚未选定为本计划资料' if source.get('excerpt') else
+                        '资料内容为空' if not chunk['text'].strip() else
+                        '关联原文尚不可用')
+                reasons.append(dict(chunk_id=chunk['id'],source_id=chunk['source_id'],reason=reason))
+            _cloze_failure(point,ctx,reasons,code='POINT_SOURCE_UNAVAILABLE')
         if linked and len([q for q in rows if q.get('role','bank')=='bank'])>=2 and any(q.get('role')=='quick' for q in rows):
             return _counts(rows,linked,provisional=ctx.get('_defer_distractor_check',False))
         located=_locate(point,passages,ctx,'adopted') if passages else dict(passages=[],found=[],cloze=[])
@@ -748,8 +718,7 @@ def prepare_point(store, plan_id, point, ctx):
             rejected+=final_rejected+[r for call in ctx['_cloze_calls'] for r in call['rejected']]
             cloze = _exclude_adjacent(cloze, adjacent, rejected)
             quick = _exclude_adjacent(quick, adjacent, rejected)
-        priorities={p['source']['url']:question_priority(p['source']['url'],p['source']['title'],authority=p['authority']) for p in passages}
-        candidates=sorted(found,key=lambda q:priorities.get(q['source']['url'],(4,False)))+cloze
+        candidates=found+cloze
         # A new source can replace an unused fallback, never a recorded answer.
         new_found={original_text(q['stem']):q for q in found+previous_found}
         replace=[q for q in rows if q.get('role','bank')=='bank' and q['origin']=='cloze' and not q['uses']][:max(0,len(new_found)-len(previous_found))]
@@ -825,6 +794,7 @@ def prepare_module(store,plan_id,module_id,ctx,progress):
         raise StoreError('NOT_FOUND','找不到当前计划的模块。')
     points=[p for p in store.records('points',plan_id) if p['module_id']==module_id]
     if not points: raise StoreError('NO_POINTS','该模块还没有已保存的知识点，不能报告资料准备完成。')
+    source_failures={}
     for index,point in enumerate(points):
         _check(ctx)
         progress(index,len(points),'正在准备 '+point.get('title',point['id']))
@@ -833,6 +803,8 @@ def prepare_module(store,plan_id,module_id,ctx,progress):
             progress(index+1,len(points),f"已定位 {result['passages']} 段原文、{result['questions']} 道候选题，等待干扰项检查")
         except StoreError as exc:
             if exc.code not in ('CLOZE_FAILED','POINT_SOURCE_MISSING'):raise
+            if exc.code=='POINT_SOURCE_MISSING' or getattr(exc,'source_unavailable',False):
+                source_failures[point['id']]=exc
             progress(index+1,len(points),'本点出题失败，继续准备其余知识点')
     def fallback_points():
         rows=store.records('question_bank',plan_id)
@@ -843,9 +815,11 @@ def prepare_module(store,plan_id,module_id,ctx,progress):
         rows=[q for q in _selected_rows(store.records('question_bank',plan_id),point,_passages(store,plan_id,ctx)) if checked_question(q)]
         return _counts(rows,point['chunk_ids'])['questions']>=2 and any(q.get('role')=='quick' for q in rows)
     missing_check=[p for p in points if not ready(p)]
-    for point in missing_check:_recloze_after_check(store,plan_id,point,ctx)
+    for point in missing_check:
+        if point['id'] not in source_failures:_recloze_after_check(store,plan_id,point,ctx)
     if missing_check:_check_pending(store,plan_id,module_id,ctx)
     for point in points:
+        if point['id'] in source_failures:raise source_failures[point['id']]
         if not ready(point):_cloze_failure(point,ctx,[dict(reason='对照挖空及批量检查后仍不足两道bank或缺quick')])
     missing=fallback_points()
     _log.info('module cloze statistics: points=%s cloze_points=%s',len(points),len(missing))
@@ -867,7 +841,7 @@ def mark_used(store,plan_id,question_id,purpose):
 
 
 def uncovered_points(store,plan_id,ctx):
-    """Per-point authority gate for the plan workflow, replacing source quotas."""
+    """Original-text coverage only; publisher identity never gates selected sources."""
     ctx=dict(ctx,store=store,plan_id=plan_id,lists=ctx.get('lists') or load_lists())
     eligible={p['id'] for p in _passages(store,plan_id,ctx)}
     return [p['id'] for p in store.records('points',plan_id) if not eligible.intersection(p['chunk_ids'])]

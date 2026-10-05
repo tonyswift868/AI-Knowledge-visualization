@@ -206,11 +206,11 @@ class ResearchPipeline:
         finally:
             semaphore.release()
 
-    def _verify(self, hit, token, lists, include_low, excluded, *, depth=0, follow_count=None):
+    def _verify(self, hit, token, lists, include_low, excluded, *, depth=0, follow_count=None, user_provided=False):
         if follow_count is None:
             follow_count = [0]
         def target(url):
-            result = screen([RawHit(url)], lists=lists)
+            result = screen([RawHit(url)], lists=lists, user_provided=user_provided)
             if not result:
                 raise _Rejected('invalid_redirect', '最终资料地址无效。')
             checked = result[0]
@@ -270,18 +270,18 @@ class ResearchPipeline:
                 raise _Rejected('unsupported_type', '仅接受 HTML、PDF、纯文本或 Markdown 正文。')
             token.check()
             body = '\n\n'.join(block.text for block in doc.blocks)
-            if is_document_preview(final.url, doc.title, body):
+            if not user_provided and is_document_preview(final.url, doc.title, body):
                 raise _Rejected('document_preview', '预览页，非原文；请上传原始课件或文档。')
-            junk = junk_reasons(doc.title, body)
+            junk = [] if user_provided else junk_reasons(doc.title, body)
             if junk:
                 raise _Rejected(junk[0], '资料属于采集、标题党营销或推广页面，未采用。')
-            bad = blocked_keyword_reasons(doc.title + '\n' + body, lists=lists)
+            bad = [] if user_provided else blocked_keyword_reasons(doc.title + '\n' + body, lists=lists)
             if bad:
                 kind = bad[0]
                 label = {'adult': '色情', 'gambling': '赌博', 'piracy': '盗版'}[kind]
                 raise _Rejected('content_' + kind, f'资料正文命中{label}关键词，已拒绝展示。')
-            if sum(char.isalnum() for char in body) < self.min_text_chars:
-                raise _Rejected('body_too_short', f'提取正文少于 {self.min_text_chars} 个有效字符，无法验证资料内容。')
+            if not body.strip() or (not user_provided and sum(char.isalnum() for char in body) < self.min_text_chars):
+                raise _Rejected('body_too_short', '资料内容为空。' if user_provided else f'提取正文少于 {self.min_text_chars} 个有效字符，无法验证资料内容。')
             titles = [doc.title] if doc.title != fallback and useful_title(doc.title) else []
             # Search engines often target a real section within a chapter
             # (for example ``#function-definitions``), while normalization
@@ -292,7 +292,7 @@ class ResearchPipeline:
                 if 4 <= len(first) <= 180 and useful_title(first):
                     titles.append(first)
             matches, tag = _title_check(hit.title, titles)
-            if not matches:
+            if not user_provided and not matches:
                 raise _Rejected('title_mismatch', '网页标题或主标题与搜索标题明显不符，未作为该资料展示。')
             token.check()
             rank = {'whitelist': 0, 'neutral': 1, 'low': 2}
@@ -302,7 +302,7 @@ class ResearchPipeline:
             reasons = tuple(dict.fromkeys((*hit.reasons, *final.reasons, *((tag,) if tag else ()))))
             title = (titles[0] if titles else hit.title) or final.url
             if media in {'text/html', 'application/xhtml+xml'} and (is_landing_page(title, body)
-                    or is_spec_overview_index(fetched.final_url)) and depth < 2:
+                    or is_spec_overview_index(fetched.final_url)) and depth < 2 and not user_provided:
                 # The original page remains a rejected lesson if no complete
                 # same-site document can be verified. At most three extra
                 # fetches across both levels share this hit's cancel/deadline.
@@ -349,7 +349,7 @@ class ResearchPipeline:
             return RejectedSource(hit.url, hit.title, 'fetch_failed', '资料抓取失败，未把搜索摘要当作已验证正文。')
 
     def run(self, hits, *, accepted_urls=(), rejected_urls=(), lists: SourceLists | None = None,
-            include_low=False, cancel=None, goal='') -> ResearchResult:
+            include_low=False, cancel=None, goal='', user_provided=False) -> ResearchResult:
         """Return verified outcomes; goal enables credibility/relevance priority.
 
         Without goal retain input order for existing audit callers.
@@ -361,17 +361,17 @@ class ResearchPipeline:
         if not self._running.acquire(blocking=False):
             raise RuntimeError('同一验证流水线已有一批任务在运行。')
         try:
-            return self._run(hits, accepted_urls, rejected_urls, lists, include_low, cancel, goal)
+            return self._run(hits, accepted_urls, rejected_urls, lists, include_low, cancel, goal, user_provided)
         finally:
             self._running.release()
 
-    def _run(self, hits, accepted_urls, rejected_urls, lists, include_low, cancel, goal):
+    def _run(self, hits, accepted_urls, rejected_urls, lists, include_low, cancel, goal, user_provided):
         start = time.monotonic()
         lists = lists if lists is not None else (self.lists_provider() if self.lists_provider else load_lists())
         excluded = dict.fromkeys(_urls(accepted_urls), 'already_accepted')
         excluded.update(dict.fromkeys(_urls(rejected_urls), 'already_rejected'))
         raw = [_raw(hit) for hit in hits]
-        screened = iter(screen(raw, lists=lists))
+        screened = iter(screen(raw, lists=lists, user_provided=user_provided))
         outcomes, todo = {}, []
         for index, item in enumerate(raw):
             if normalize_url(item.url) is None:
@@ -393,7 +393,7 @@ class ResearchPipeline:
                 outcomes[index] = RejectedSource(hit.url, hit.title, *reason)
             else:
                 todo.append((index, hit))
-        if goal:
+        if goal and not user_provided:
             wanted=terms(goal)
             def priority(item):
                 hit=item[1]
@@ -431,7 +431,7 @@ class ResearchPipeline:
                 with self._lifecycle:
                     if self._closed.is_set():
                         break
-                    future = self._executor.submit(self._verify, hit, token, lists, include_low, excluded)
+                    future = self._executor.submit(self._verify, hit, token, lists, include_low, excluded, user_provided=user_provided)
                 active[future] = (index, hit, token)
                 todo.remove((index, hit))
                 sites[host] = sites.get(host, 0) + 1
@@ -459,7 +459,7 @@ class ResearchPipeline:
                     rejected.append(RejectedSource(result.url, result.title, 'duplicate', '重定向后的资料地址与前面的结果重复。'))
                 elif fingerprint and fingerprint in bodies:
                     previous = bodies[fingerprint]
-                    if _canonical_source_key(result) < _canonical_source_key(previous):
+                    if not user_provided and _canonical_source_key(result) < _canonical_source_key(previous):
                         verified[verified.index(previous)] = result
                         bodies[fingerprint] = result
                         duplicate = previous
@@ -473,7 +473,7 @@ class ResearchPipeline:
                     if fingerprint: bodies[fingerprint] = result
             else:
                 rejected.append(result)
-        if goal:
+        if goal and not user_provided:
             verified.sort(key=lambda s:rank_key(assess(s,goal,lists=lists)))
         return ResearchResult(tuple(verified), tuple(rejected), attempted, time.monotonic()-start, cancelled)
 

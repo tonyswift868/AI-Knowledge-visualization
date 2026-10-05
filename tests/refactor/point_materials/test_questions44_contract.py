@@ -38,7 +38,7 @@ def test_questions44_third_qa_runs_after_normal_even_if_more_relevant():
     calls=[]
     def finder(point,ps,**kw):calls.append(ps[0]['id']);return dict(passages=[],found=[],cloze=[])
     pm._locate(POINT,[passage('qa',3,qa=True),passage('c',3)],dict(finder=finder),'adopted')
-    assert calls==['c','qa']
+    assert calls==['c']  # one bounded batch, no publisher bands
     assert question_priority('https://zhidao.baidu.com/q',authority=dict(level=3))==(3,True)
 
 
@@ -114,16 +114,16 @@ def test_questions44_long_blank_uses_choice_not_fill():
 
 
 @pytest.mark.parametrize('enabled,state',[(False,'原文明确矛盾'),(True,'原文支持'),(True,'原文没提到')])
-def test_questions44_third_band_found_questions_never_enter_bank(enabled,state):
-    # User 2026-10-04: scored questions only from bands 1–2; band 3 falls back to cloze.
+def test_questions44_selected_third_band_questions_never_get_model_correctness_review(enabled,state):
+    # User 2026-10-05: selected material is trusted, including its own answers.
     high=passage('high',1);p=passage(level=3)
     calls=[]
     def finder(point,ps,**kw):
-        return dict(passages=[ps[0]['id']],found=[found()] if ps[0]['id']=='c' else [],cloze=[])
+        return dict(passages=[p['id'] for p in ps],found=[found()],cloze=[])
     def comparator(packet,**kw):calls.append(packet);return state
     result=pm._locate(dict(POINT,chunk_ids=['high']),[high,p],dict(finder=finder,compare_questions=enabled,comparator=comparator),'adopted')
     assert not calls
-    assert pm._collect(result['found'],pm._found,POINT,[high,p])==[]
+    assert len(pm._collect(result['found'],pm._found,POINT,[high,p]))==1
 
 
 def test_questions44_no_authority_never_calls_model_or_uses_third_as_evidence():
@@ -138,13 +138,13 @@ def test_questions44_selection_skips_subjective_history_prioritizes_band():
     for cid,level,qa in [('hi',1,False),('mid',2,False),('lo',3,False),('qa',3,True)]:
         p=passage(cid,level,qa)
         rows.append(pm._found(found(cid),POINT,{cid:p}))
-    assert rows[2] is None and rows[3] is None
+    assert all(row is not None for row in rows)
     rows=rows[:2]
     rows=pm.check_distractors(rows,[],[passage('hi',1),passage('mid',2)],dict(distractor_checker=lambda packet,**kw:
         dict(questions=[dict(id=q['id'],checks=[dict(index=i,verdict='not_supported',quote='') for i in range(len(q['options'])) if i not in q['answer']]) for q in packet['questions']])))
     subjective=dict(rows[0],id='old',kind='short',answer='旧主观题');subjective.pop('options')
     chosen=qb.select_question([subjective,*reversed(rows)],'p','module')
-    assert chosen['source_level']==1
+    assert chosen['id']==min(rows,key=lambda q:(q['created_at'],q['id']))['id']
     assert qb.select_question([subjective],'p','module') is None
 
 

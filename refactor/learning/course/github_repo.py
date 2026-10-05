@@ -189,10 +189,8 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
     if parsed is None:
         raise RepoImportError("NOT_A_REPO", "这不是 GitHub 仓库地址。")
     owner, repo, branch, subpath = parsed
-    screened = screen([RawHit(url=f"https://github.com/{owner}/{repo}")], lists=lists or load_lists())
+    screened = screen([RawHit(url=f"https://github.com/{owner}/{repo}")], lists=lists or load_lists(), user_provided=True)
     tier = screened[0].tier if screened else "neutral"
-    if tier == "blocked":
-        raise RepoImportError("BLOCKED", "这个来源在屏蔽名单里，不能使用。")
     meta = _json(fetch, f"https://api.github.com/repos/{owner}/{repo}", cancel)
     if not isinstance(meta, dict) or not meta.get("full_name"):
         raise RepoImportError("GITHUB_NOT_FOUND", "找不到这个仓库，或它不是公开仓库。")

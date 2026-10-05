@@ -101,7 +101,7 @@ def test_sources39_general_materials_and_original_answers_are_usable(store):
     point=store.records('points','p')[0]
     assert pm.prepare_point(store,'p',point,ctx())['questions']==2
     assert not pm.uncovered_points(store,'p',ctx())
-    assert quality.general_only(['c'],store.records('sources','p'),store.records('source_chunks','p'))
+    assert not quality.general_only(['c'],store.records('sources','p'),store.records('source_chunks','p'))  # selected text is not publisher-graded
     bank=store.records('question_bank','p')
     assert all(q['origin']=='cloze' and q['answer_source']['url'].startswith('https://blog.csdn.net/') for q in bank)
     bad=dict(kind='short',stem='压强单位是什么？',answer='公斤',answer_quote='公斤',question_chunk='c',answer_chunk='c',pairing='same_block')
@@ -109,31 +109,21 @@ def test_sources39_general_materials_and_original_answers_are_usable(store):
     assert pm._found(bad,point,{p['id']:p for p in passages}) is None
 
 
-@pytest.mark.parametrize('higher_has_answers',[True,False])
-def test_sources39_only_falls_back_when_higher_band_cannot_cover(store,higher_has_answers):
+def test_sources39_selected_sources_share_one_batch_without_authority_bands(store):
     store.add_sources('p',[dict(id='g',title='社区教学',url='https://www.zhihu.com/question/12',adopted=True,
         chunks=[dict(chunk_id='gc',text=TEXT,section=['压强']),
             dict(chunk_id='gother39',text=CONTRAST37,section=['运动学'])])])
     calls=[]
     def finder(point,passages,**kwargs):
-        level=passages[0]['authority']['level'];calls.append(level)
-        if level==1 and not higher_has_answers:return dict(passages=[],found=[],cloze=[])
-        output=pointer('c' if level==1 else 'gc')
-        if level!=1:
-            for item in output['cloze']:
-                for contrast in item['contrasts']:contrast['chunk_id']='gother39'
-        return output
+        calls.append([p['id'] for p in passages])
+        assert all(p['authority']['type']=='user_provided' for p in passages)
+        return pointer()
     context=ctx();context['finder']=finder
     assert pm.prepare_point(store,'p',store.records('points','p')[0],context)['questions']==2
-    assert calls==[1,3]  # seek found questions before relying on cloze
-    assert store.records('points','p')[0]['chunk_ids'][0]=='c'  # existing better lecture text remains first
-    assert all(q['source']['url'].startswith('https://www.pep.com.cn/' if higher_has_answers else 'https://www.zhihu.com/') for q in store.records('question_bank','p'))
+    assert len(calls)==1 and {'c','gc'} <= set(calls[0])
 
 
-def test_sources39_unverified_or_reposted_material_is_not_auto_usable(store):
+def test_sources39_selected_unknown_publisher_is_usable(store):
     change_source(store,'https://unknown.example/chapter')
-    from refactor.learning.course.store import StoreError
-    with pytest.raises(StoreError) as error:
-        pm.prepare_point(store,'p',store.records('points','p')[0],ctx())
-    assert error.value.code=='POINT_SOURCE_MISSING'
-    assert pm.uncovered_points(store,'p',ctx())==['point']
+    assert pm.prepare_point(store,'p',store.records('points','p')[0],ctx())['questions']==2
+    assert not pm.uncovered_points(store,'p',ctx())

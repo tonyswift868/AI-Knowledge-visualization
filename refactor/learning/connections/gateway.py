@@ -56,7 +56,7 @@ PURPOSE_MIN_OUTPUT = {
     'teacher': 8192, 'profile': 8192, 'check_profile': 8192, 'coverage_check': 8192,
     'point_materials': 24576, 'source_identity': 8192,
 }
-BACKGROUND_PURPOSES = frozenset({'point_materials', 'source_identity', 'profile', 'check_profile', 'coverage_check', 'outline', 'generate'})
+BACKGROUND_PURPOSES = frozenset({'point_materials', 'source_identity', 'profile', 'check_profile', 'coverage_check', 'outline', 'generate', 'distractor_check'})
 
 
 def _storage_error():
