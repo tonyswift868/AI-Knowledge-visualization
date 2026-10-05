@@ -78,8 +78,18 @@ class _AppPage(QWebEnginePage):
             QDesktopServices.openUrl(url)
         return False
 
-    def createWindow(self, _type):  # noqa: N802 - never open extra web windows
-        return None
+    def createWindow(self, _type):  # noqa: N802 - target=_blank links land here, not in acceptNavigationRequest
+        return _ExternalLinkPage(self.profile(), self)
+
+
+class _ExternalLinkPage(QWebEnginePage):
+    """Throwaway page for a new-window request: hands its https URL to the system browser."""
+
+    def acceptNavigationRequest(self, url, kind, is_main_frame):  # noqa: N802 - Qt API
+        if url.scheme() == "https":
+            QDesktopServices.openUrl(url)
+        self.deleteLater()
+        return False
 
 
 class LearningWindow(QWidget):
