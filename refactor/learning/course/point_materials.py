@@ -661,7 +661,7 @@ def _discover_questions(point, ctx, round_index=0):
     elif ctx.get('gateway'):
         result=ctx['gateway'].complete('research',[{'role':'user','content':query}],
             system='找现成带答案的练习。优先政府教育、正规教材出版社、大学、OpenStax、官方文档或成熟教育题库平台；高档找不到时可用发布者可辨认的一般网站或社区。拒绝转载、采集、盗版与无答案资料。不要出题或解题。',
-            enable_search=True,cancel=ctx.get('cancel'),plan_id=ctx['plan_id'],max_tokens=2048)
+            enable_search=True,cancel=ctx.get('cancel'),plan_id=ctx['plan_id'],max_tokens=24576)
         hits += [dict(url=h.url,title=h.title,snippet=h.snippet) for h in result.search_hits+result.citations]
         if ctx.get('on_call'): ctx['on_call']('research',result)
     if not hits: return dict(passages=[], found=[], cloze=[])
