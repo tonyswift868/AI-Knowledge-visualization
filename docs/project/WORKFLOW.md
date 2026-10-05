@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-05）：没有在跑的任务。55-MF02 小测试卡在正式生成（备题的旧权威关卡挡住用户上传的资料），讨论中，未派新任务。
+- **现在在做的事**（2026-10-05）：第五十六批已起草，待用户转发（基线 24dbddd4）：56-MF01（MF-01，server）讲法与内容分开（¥0.2）；56-MF02（MF-02，library）用户资料不再按发布者/档位筛（¥0.5）。两个合入后，第五十七批重跑小测试。
 
 ## 协作方式
 
@@ -63,20 +63,85 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲 | — |
-| MF-02 | 空闲 | — |
+| MF-01 | 56-MF01 已起草，待用户转发 | server |
+| MF-02 | 56-MF02 已起草，待用户转发 | library |
 | MF-03 | 空闲 | — |
 | MF-04 | 空闲 | — |
 | MF-05 | 空闲 | — |
 | MF-06 | 空闲 | — |
 | MF-07 | 空闲 | — |
 
-空闲工位：runtime、client、platform、tools、library。
+空闲工位：runtime、client、platform、tools、classroom。
 
 ## 待派队列
 
 - 53-MF01：已起草，待用户转发。
 - 53-MF02：已起草，等用户批预算（建议 ¥4）。
+
+## 第五十六批任务原文（2026-10-05，基线 24dbddd4）
+
+### [56-MF01] server｜资料结构核对分开“讲法偏好”和“学习内容”：生活化例子等讲法不当成资料缺的章节
+
+~~~text
+【MentorFlow 第五十六批｜MF-01（工位 server）｜资料结构核对分开“讲法偏好”和“学习内容”：生活化例子等讲法不当成资料缺的章节】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有的资料结构提示（course/planner_agents.py）与 plan_flow 资料结构阶段把需求传给模型的那一段；讲法偏好已有现成去处（设置里的学习偏好、老师提示），不新建字段体系。
+  - 不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 24dbddd4
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。不打包、不发版（内测阶段）。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\fix56-structure\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师和用户定好，照“要做”逐条做，不自行换方案；走不通就写清证据交回。细节按 CURRENT_STATE 条目和本任务原则自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。原因要用真实数据验证过再写。架构师只读你的结论、不重跑测试，所以全量测试、离线完整场景、web 构建都由你跑并如实写结果。
+真实模型用管理员现有 DeepSeek Flash 预设（模拟工具真实模式 --live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 你不读、不显示、不保存）。按实际单价预留。
+同时在跑：56-MF01（MF-01，工位 server）结构核对分开“讲法”和“内容”，改 course/planner_agents.py 的资料结构提示与 app/plan_flow.py 的资料结构阶段；56-MF02（MF-02，工位 library）用户资料不再按发布者/档位筛，改 course/point_materials.py、question_bank.py、source_quality.py、source_filter.py（确需动 plan_flow.py 的只改关卡那几行并在回执写明）。冲突由架构师合并。两个都合入后，下一批重跑小测试。
+花钱规则：离线为主（¥0）；修完真实复现一次小测试那步（≤ ¥0.2）。
+背景：小测试（55-MF02，D:\MentorFlow\.local\test-tmp\small55\report.md，P3-01）里，用户需求说“要生活化的例子”，资料结构核对把“用生活化例子区分这些概念”列成资料没讲到的部分，要求补资料或删目标；其实这是老师讲课的方式，不是学习内容，用户解释后才消失（live\steps\step-00011.json、step-00012.json）。
+要做
+  1. 把用户需求拆成两部分再交给资料结构核对：学习内容范围（要学会什么）和讲法偏好（生活化例子、少用术语、不上手操作等）。只拿学习内容去对资料目录、判断有没有讲到；讲法偏好不参与核对，原样交给老师（现有学习偏好与老师提示里已有对应的位置就用它）。
+  2. 拆分由程序规则加提示完成：提示里明确“讲法、例子、语气、深浅类要求不是内容，不要列为缺失”；不另写分类模型。
+  3. 离线复现：用 small55 step-00011 的原请求做复现测试（修前把生活化例子列为缺失，修后不列）；再加一条真正缺内容的例子（例如目标里有“数据库”而资料没有），确认仍会列出。全量、离线完整场景（--to free）、web 构建通过。
+  4. 真实复现一次（≤ ¥0.2）。
+完成标准：复现测试修前失败、修后通过；真缺内容仍能列出；真实那次不再把讲法列成缺失。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix56-structure\report.md。
+回执（尽量短，用表格）：【MF-01｜server｜第五十六批｜完成/部分完成/受阻】基线 ／ 提交 ／ 怎么改 ／ 复现修前修后 ／ 真实复现结果 ／ 全量、离线完整场景、web 构建 ／ 花费 ／ 本地最终占用
+~~~
+
+### [56-MF02] library｜用户给的资料一律当可信：找出并去掉所有按发布者/档位筛资料的旧关卡
+
+~~~text
+【MentorFlow 第五十六批｜MF-02（工位 library）｜用户给的资料一律当可信：找出并去掉所有按发布者/档位筛资料的旧关卡】
+
+现成项目与许可证（第一节）
+  - 不写新东西，只删改现有判断：本项目 course/point_materials.py（_identity、_passages、_found 的档位过滤、prepare_point/prepare_module 的报错）、course/question_bank.py、course/source_quality.py（classify/identity 相关）、course/source_filter.py（classify_source）。
+  - 不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard 24dbddd4
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。不打包、不发版（内测阶段）。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\fix56-trust\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师和用户定好，照“要做”逐条做，不自行换方案；走不通就写清证据交回。细节按 CURRENT_STATE 条目和本任务原则自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。原因要用真实数据验证过再写。架构师只读你的结论、不重跑测试，所以全量测试、离线完整场景、web 构建都由你跑并如实写结果。
+真实模型用管理员现有 DeepSeek Flash 预设（模拟工具真实模式 --live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 你不读、不显示、不保存）。按实际单价预留。
+同时在跑：56-MF01（MF-01，工位 server）结构核对分开“讲法”和“内容”，改 course/planner_agents.py 的资料结构提示与 app/plan_flow.py 的资料结构阶段；56-MF02（MF-02，工位 library）用户资料不再按发布者/档位筛，改 course/point_materials.py、question_bank.py、source_quality.py、source_filter.py（确需动 plan_flow.py 的只改关卡那几行并在回执写明）。冲突由架构师合并。两个都合入后，下一批重跑小测试。
+花钱规则：离线为主（¥0）；修完用真实模型对小测试那份资料（gcf-small.html）跑一次正式生成的备题，确认能备出题（≤ ¥0.5）。
+背景：小测试（55-MF02，D:\MentorFlow\.local\test-tmp\small55\report.md，P1-01）建出 3 模块 9 点、出处全对，但正式生成时第一模块备题失败：备题还沿用旧流程的“发布者/权威档位”关卡——上传的本地文章没有网址、发布者名只在文件标题里不在正文里，被判档位 0 过滤，随后误报 POINT_SOURCE_MISSING，最后 CLOZE_FAILED；为认发布者还调了 7 次模型。用户 2026-10-05 定（CURRENT_STATE [DIR-01]“资料”第一条）：用户自己选、自己上传的资料，以及用户自己贴的网址和 GitHub 仓库（哪怕是他自己的仓库、里面有他自己的错误理解），一律当可信资料——讲课、备题、使用资料自带的原题，都不再按发布者或档位筛；老师拿到资料照着教，不让 AI 自己判断资料对不对。档位只用于 AI 推荐资料时的排序。
+要做
+  1. 先查清：在整个 refactor/ 里找出所有按发布者、档位（source level、authority、tier、classify_source、identity 等）对资料或资料里的题做筛选、排序、拒收的地方，列一张表（文件、函数、行号、做什么、会挡住用户资料吗）。
+  2. 统一改：用户给的资料（上传文件、贴的网址、GitHub 仓库——用资料记录里已有的来源字段区分，例如 adopted 且来自用户导入）在上表每一处都不按发布者/档位筛：备题直接用、资料自带的带答案题照收（不再要求一、二档）、不再为认发布者调模型。只有 AI 推荐资料时的排序继续用档位。
+  3. 报错如实：资料被跳过与“没有关联原文”分开报，原因写清楚（例如“资料内容为空”），不再混成 POINT_SOURCE_MISSING。
+  4. 离线复现：用 small55 保存的 gcf-small.html 与那次的建计划记录（D:\MentorFlow\.local\test-tmp\small55\live\），修前备题被过滤、修后能备出题；同时测“资料自带的带答案题”在用户资料里能被收下。全量、离线完整场景（--to free）、web 构建通过。
+  5. 真实一次（≤ ¥0.5）：同一份资料跑到正式生成完成，记录第一模块备出几道题、有没有为认发布者调模型。
+完成标准：第 1 条的表完整；表里每一处都按第 2 条处理或写明为什么不用改；复现测试修前失败、修后通过；真实那次正式生成成功。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix56-trust\report.md（含第 1 条的表）。
+回执（尽量短，用表格）：【MF-02｜library｜第五十六批｜完成/部分完成/受阻】基线 ／ 提交 ／ 旧关卡共几处、改了几处、不改的理由 ／ 复现修前修后 ／ 真实正式生成是否成功、第一模块几道题、认发布者调用次数 ／ 全量、离线完整场景、web 构建 ／ 花费 ／ 本地最终占用
+~~~
 
 ## 第五十五批任务原文（2026-10-05，基线 934341c）
 
@@ -2887,6 +2952,8 @@ D 盘：freeze 中间目录用完即删，只留 payload 与未签名清单（�
 | 54-MF02 | MF-02 classroom | 课堂按块体验（重跑）：用一份小资料真实建计划，模拟时钟跑完课堂、模块检测与重测、最终检验、报告、自由检验，只找问题（¥4） | DIR-01、QA-01 | 9bed59a | 部分完成，已合入（c9f1000，仅工具）：只走 2 点，讲错 0、题 2/2、判分 2/2 |
 | 55-MF01 | MF-01 server | 资料结构阶段按编号删留模块；相邻知识点不出内容重复的题（¥0.3） | PLAN-06、DIR-01 | 934341c | 完成，已合入（23ef5c1）；全量仅 1 项文件占用偶发 |
 | 55-MF02 | MF-02 classroom | 小测试：一份小资料、真实模型、模拟时钟，从建计划一直跑到报告与自由检验，只找问题（¥6） | QA-01、DIR-01 | 64bb845 | 部分完成，工具已合入（ceb82af1）：9 点建好，正式生成时备题被旧权威关卡挡住，未进课堂 |
+| 56-MF01 | MF-01 server | 资料结构核对分开“讲法偏好”和“学习内容”：生活化例子等讲法不当成资料缺的章节（¥0.2） | PLAN-06、TEACH-01 | 24dbddd4 | 已起草，待用户转发 |
+| 56-MF02 | MF-02 library | 用户给的资料一律当可信：找出并去掉所有按发布者/档位筛资料的旧关卡（¥0.5） | DIR-01 | 24dbddd4 | 已起草，待用户转发 |
 
 ## 任务模板
 
