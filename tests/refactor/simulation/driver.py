@@ -100,7 +100,11 @@ class Driver:
             if hasattr(self.user,'gateway'):self.user.gateway=self.sim.gateway
             self.state['flags'].append('reopen');self.save()
         else:
-            if picked['method']=='classroom.state':time.sleep(.1)
+            if picked['method']=='classroom.state':
+                # Preparation is asynchronous: five fast state polls are not
+                # five failed attempts. Keep the existing bounded worker wait
+                # before reading its outcome; never skip a failed preparation.
+                self.sim.join_jobs()
             self.request(picked['method'],**picked['params'])
         if stage=='dialogue':self.state['rounds']+=1;self.save()
     def planning(self,to,rounds):
