@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-06）：59-MF05b 回执已回，未到备题（BUG-51 同类问题再次出现）；问题正在和用户讨论，下一份任务等用户定了再写。
+- **现在在做的事**（2026-10-06）：用户在源代码版亲测（软件由架构师从源代码启动，数据 D:\MentorFlowData\account-shell）。60-MF01 已起草，待用户转发：修 BUG-53（大资料结构超上限）。合入后重启软件让用户从这一步接着测。
 
 ## 协作方式
 
@@ -62,7 +62,7 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲（58 已合入） | — |
+| MF-01 | 60-MF01 已起草，待用户转发 | server |
 | MF-02 | 空闲（58 已合入） | — |
 | MF-03 | 空闲（58 已合入） | — |
 | MF-04 | 空闲（59-MF04 完成） | — |
@@ -75,6 +75,41 @@
 ## 待派队列
 
 - 无（第五十九批两份已起草，见上）。
+
+## 第六十批任务原文（2026-10-06，基线 e910c914）
+
+### [60-MF01] server｜大资料在“按资料调整结构”时输出超上限
+
+~~~text
+【MentorFlow 第六十批｜MF-01（工位 server）｜大资料在“按资料调整结构”时输出超上限：去掉我们自己加的多余负担，让这一步快速出大致模块】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有的资料结构这一步：app/plan_flow.py 的 _sections / material_structure、course/planner_agents.py 的 build_sections / material_structure_request / parse_material_structure / MATERIAL_STRUCTURE_SYSTEM。不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard e910c914
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。D:\MentorFlowApp 只读。用户正在用 D:\MentorFlowData\account-shell 亲测：只读，不改不删，要用的数据先复制到你的测试目录再用。先读 AGENTS.md（磁盘规则、功能先行不加安全加固）：所有产物在 D:\MentorFlow\.local\test-tmp\fix60-structure\ 下；中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+用户在等着接着测，尽快，目标半小时内交回。遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。全量测试、web 构建由你跑并如实写结果。
+背景（CURRENT_STATE [BUG-53]）：用户目标“Java 后端 + AI Agent 面试”，贴 JavaGuide 仓库（约 577 千字），点“按已提供的 1 份资料调整结构”，报“模型输出达到上限”。这一步只该给出大致模块（不含知识点），输出本来很少。用量记录：两次 outline 调用输入约 6.2 万 token，输出 12288、24576 全部用在思考上（思考 2.3 万字、4.2 万字），没写出答案。原因是我们自己给模型加的负担：
+  ① plan_flow._sections 调 build_sections 时把条目上限和层级上限都放开了（max_per_source=总块数、max_depth=None），整个仓库每一级标题都成了目录条目；
+  ② 输出格式要求每个模块逐字抄写全部章节名（chapters），parse_material_structure 又要求逐字相等、随后自己按编号重算——抄写纯属多余，还容易抄错被拒。
+证据：D:\MentorFlowData\account-shell\logs\mentorflow.log 与该账号 learning\accounts\*\model-usage.sqlite3 里 purpose=outline 的两条（2026-10-05T16:04、16:05 UTC）；用户这份草稿与 JavaGuide 已导入的块也在该目录的数据库里（复制后使用）。
+要做
+  1. 先用 git log -S 查清 max_depth=None、max_per_source 放开是哪一批、为什么加的，回执一句话写明；修改时保住它当时要解决的问题。
+  2. 给模型看的目录收拢：按层级收拢到不超过约 150 条（深层标题并进上一级，内容和块不丢，可按资料大小自动选层级）；模型只按收拢后的条目编号分模块，程序把编号展开到它下面的全部章节和块。用户删掉的模块/章节（removed_content、scope 的 include/exclude，58-MF01 刚改过）在收拢后仍然生效，不能被加回。
+  3. 去掉输出里的 chapters：不再要求模型抄章节名，章节名由程序按编号填。
+  4. 先不改思考档位（用户定过不靠降思考省钱，SYS-07）；做完 2、3 若真实仍超上限，回执写清输出用在哪，不自行降档。
+  5. 复现与验证：用复制出来的用户草稿和 JavaGuide 块，修前离线确认目录条目数与请求大小，修后对比；再用真实模型对这份草稿只跑这一步一次（管理员 DeepSeek 预设，Key 只经现有代码从 Windows 凭据读取），报告输入/输出/思考用量、耗时、给出的模块数和模块名。再用 small57 保存的资料跑一次离线结构请求，确认小资料不受影响。
+  6. 全量通过、web 构建通过。
+花费：上限 ¥0.5。
+完成标准：JavaGuide 这一步真实一次成功给出大致模块，不超上限；删掉的内容不被加回的测试仍通过；全量通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix60-structure\report.md。
+回执（尽量短，用表格）：【MF-01｜server｜第六十批｜完成/部分完成/受阻】基线 ／ 提交 ／ 放开上限是哪批为什么 ／ 怎么收拢、怎么展开、删掉的内容怎么保住 ／ 修前修后：目录条目数、输入 token、输出与思考、耗时、模块数与模块名 ／ 全量、web 构建 ／ 花费 ／ 本地最终占用
+~~~
 
 ## 第五十九批任务原文（2026-10-05，基线 2a2bbd0c）
 
@@ -203,6 +238,7 @@
 | 59-MF04 | MF-04 调研 | 别人怎么给知识点配题：从资料取题、上网找现成题、核对答案、出题规则（¥0） | DIR-01 | 2a2bbd0c | 完成：9 份指定文件、另 5 个项目 2 篇论文；结论见 .local/test-tmp/research59/report.md |
 | 59-MF05 | MF-05 library | 按块测找题：恢复上网找题、关 bank 挖空，从聊需求跑到生成计划（¥10） | DIR-01、QA-01 | 2a2bbd0c | 部分完成，代码已合入 110ef0c2（ca543cf5）；真实测试卡在模拟工具（BUG-51），未到备题 |
 | 59-MF05b | MF-05 library | 续跑按块测找题（¥9） | DIR-01、QA-01、BUG-51 | 110ef0c2 | 部分完成：生成 2 模块 163 点，第一个点上网找题截断又被模拟工具止损，未到备题；两轮合计约 ¥5.85 |
+| 60-MF01 | MF-01 server | 大资料“按资料调整结构”超上限：目录收拢、去掉抄章节名（¥0.5） | BUG-53、PLAN-04 | e910c914 | 已起草，待用户转发 |
 
 ## 任务模板
 
