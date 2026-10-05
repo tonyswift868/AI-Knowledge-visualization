@@ -1,0 +1,717 @@
+{
+  "user_text": "这轮范围再小一点，只学 A simple network、Domain names、Internet and the web、Intranets and Extranets 四节，仍合并成三个模块；不学 Summary 里的历史，也不学 A network of networks 的路由细节，其他章节都排除。确认这个范围，资料外的内容不补了。",
+  "ctx": {
+    "form": {
+      "daily_cap": 30,
+      "end": "2026-10-11",
+      "final_goal": "看懂一篇入门资料中的常见计算机概念，并用生活化例子区分它们",
+      "goal": "我不太懂计算机，想把各种术语概念都搞明白，不用上手操作，要生活化的例子",
+      "level": "zero",
+      "level_note": "零基础，只理解概念，不做上手操作",
+      "notes": "本次先学一篇小资料覆盖的范围，约三个模块；资料之外的目标以后再补。",
+      "special_days": [],
+      "start": "2026-10-05",
+      "weekday_weights": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "sections": [
+      {
+        "chars": 317,
+        "id": "s1.1",
+        "source": "How does the Internet work? - Learn web development | MDN",
+        "title": "How does the Internet work?"
+      },
+      {
+        "chars": 680,
+        "id": "s1.2",
+        "source": "How does the Internet work? - Learn web development | MDN",
+        "title": "How does the Internet work? / Summary"
+      },
+      {
+        "chars": 208,
+        "id": "s1.3",
+        "source": "How does the Internet work? - Learn web development | MDN",
+        "title": "How does the Internet work? / Videos about the Internet"
+      },
+      {
+        "chars": 7721,
+        "id": "s1.4",
+        "source": "How does the Internet work? - Learn web development | MDN",
+        "title": "How does the Internet work? / Deeper dive"
+      },
+      {
+        "chars": 151,
+        "id": "s1.5",
+        "source": "How does the Internet work? - Learn web development | MDN",
+        "title": "How does the Internet work? / Next steps"
+      },
+      {
+        "chars": 169,
+        "id": "s1.6",
+        "source": "How does the Internet work? - Learn web development | MDN",
+        "title": "How does the Internet work? / Help improve MDN"
+      }
+    ],
+    "modules": [],
+    "cards": [
+      {
+        "n": 1,
+        "site": "MDN-How-does-the-Internet-work.txt",
+        "status": "不要",
+        "summary": "",
+        "title": "MDN-How-does-the-Internet-work"
+      },
+      {
+        "n": 2,
+        "site": "mdn.html",
+        "status": "已采用",
+        "summary": "",
+        "title": "How does the Internet work? - Learn web development | MDN"
+      }
+    ],
+    "facts": {
+      "material_structure": {
+        "missing": [],
+        "missing_choice": "delete",
+        "modules": [
+          {
+            "chapters": [
+              "How does the Internet work?",
+              "How does the Internet work? / Summary",
+              "How does the Internet work? / Deeper dive",
+              "How does the Internet work? / Deeper dive / A simple network"
+            ],
+            "key": "m1",
+            "refs": [
+              "s1.1",
+              "s1.2",
+              "s1.4",
+              "s1.5"
+            ],
+            "summary": "用生活化例子认识互联网、简单网络等最基础术语。",
+            "title": "互联网基本概念"
+          },
+          {
+            "chapters": [
+              "How does the Internet work? / Deeper dive / A network of networks",
+              "How does the Internet work? / Deeper dive / Domain names"
+            ],
+            "key": "m2",
+            "refs": [
+              "s1.6",
+              "s1.7"
+            ],
+            "summary": "用生活化例子区分网络之网、域名等常见网络术语。",
+            "title": "网络互联与域名概念"
+          },
+          {
+            "chapters": [
+              "How does the Internet work? / Deeper dive / Internet and the web",
+              "How does the Internet work? / Deeper dive / Intranets and Extranets"
+            ],
+            "key": "m3",
+            "refs": [
+              "s1.8",
+              "s1.9"
+            ],
+            "summary": "用生活化例子区分为互联网与网页、内网与外网等容易混淆的说法。",
+            "title": "互联网、网页与内外网概念"
+          }
+        ],
+        "removed_goals": [
+          "计算机基础概念（所选资料只围绕互联网/网络，未覆盖常见计算机基础术语）",
+          "软硬件与系统概念（所选资料未覆盖硬件、软件、系统等区分）",
+          "数据相关概念（所选资料未覆盖入门资料中的数据术语）"
+        ],
+        "summary": "依据 MDN《How does the Internet work?》目录，仅保留与理解互联网/网络常见术语相关的章节，按目录顺序合并为三个概念模块；视频、下一步、帮助改进 MDN 等未纳入。资料未覆盖计算机基础、软硬件与系统、数据概念等目标部分。",
+        "version": 2
+      },
+      "outline": [
+        {
+          "modules": [
+            "互联网基本概念",
+            "网络互联与域名概念",
+            "互联网、网页与内外网概念"
+          ],
+          "stage": "在一周内每天30分钟，零基础读懂一篇入门计算机资料中约三个模块的常见术语概念，并能用生活化例子区分它们，不做上手操作。"
+        }
+      ],
+      "preview": {
+        "modules": [
+          {
+            "summary": "用生活化例子认识计算机里最常出现的基础术语和它们各自指什么。",
+            "title": "计算机基础概念"
+          },
+          {
+            "summary": "用生活化例子区分硬件、软件、系统这类容易混淆的常见说法。",
+            "title": "软硬件与系统概念"
+          },
+          {
+            "summary": "用生活化例子理解入门资料里常见的网络和数据相关术语之间的区别。",
+            "title": "网络与数据概念"
+          }
+        ],
+        "summary": "我理解你想在 2026-10-05 至 2026-10-11 这一周内，每天最多花 30 分钟、每天都可学，以零基础且不做上手操作的方式，把一篇入门小资料里出现的常见计算机术语概念搞明白，并能用生活化例子区分它们；本次只覆盖这篇小资料的范围，约三个模块，资料之外的目标以后再补。",
+        "version": 1
+      },
+      "ranges": {
+        "cap": 30,
+        "daily": [
+          45,
+          45
+        ],
+        "learning": 240,
+        "over_300": false,
+        "over_cap": true,
+        "points": 16,
+        "suggested_days": 11,
+        "suggested_end": "2026-10-15",
+        "total": [
+          314,
+          314
+        ]
+      }
+    },
+    "phase": "outline",
+    "recent": [
+      {
+        "role": "ai",
+        "text": "资料目录仅有 MDN-How-does-the-Internet-work 的“片段 1”，因此学习结构只保留与该资料直接相关的网络概念模块；原设想中的计算机基础、软硬件与系统、数据相关概念未在目录中出现，列入 missing。\n\n网络概念｜学习该资料中与互联网如何工作相关的入门术语概念。\n章节：片段 1\n\n所选资料没讲到：计算机基础概念、软硬件与系统概念、数据相关概念。可以再传一份资料、删掉这些部分，或就这样继续。\n\n请确认这份按资料调整的结构，确认后再填知识点。"
+      },
+      {
+        "role": "ai",
+        "text": "请再上传资料或贴网址，也可以让我推荐完整资料链接。"
+      },
+      {
+        "role": "ai",
+        "text": "已读取你上传的《How does the Internet work? - Learn web development | MDN》，默认采用。"
+      },
+      {
+        "role": "ai",
+        "text": "依据 MDN《How does the Internet work?》目录，仅保留与理解互联网/网络常见术语相关的章节，按目录顺序合并为三个概念模块；视频、下一步、帮助改进 MDN 等未纳入。资料未覆盖计算机基础、软硬件与系统、数据概念等目标部分。\n\n互联网基本概念｜用生活化例子认识互联网、简单网络等最基础术语。\n章节：How does the Internet work?；How does the Internet work? / Summary；How does the Internet work? / Deeper dive；How does the Internet work? / Deeper dive / A simple network\n网络互联与域名概念｜用生活化例子区分网络之网、域名等常见网络术语。\n章节：How does the Internet work? / Deeper dive / A network of networks；How does the Internet work? / Deeper dive / Domain names\n互联网、网页与内外网概念｜用生活化例子区分为互联网与网页、内网与外网等容易混淆的说法。\n章节：How does the Internet work? / Deeper dive / Internet and the web；How does the Internet work? / Deeper dive / Intranets and Extranets\n\n所选资料没讲到：计算机基础概念（所选资料只围绕互联网/网络，未覆盖常见计算机基础术语）、软硬件与系统概念（所选资料未覆盖硬件、软件、系统等区分）、数据相关概念（所选资料未覆盖入门资料中的数据术语）。可以再传一份资料、删掉这些部分，或就这样继续。\n\n请确认这份按资料调整的结构，确认后再填知识点。"
+      },
+      {
+        "role": "ai",
+        "text": "已按确认的资料结构逐模块填入知识点。"
+      },
+      {
+        "role": "user",
+        "text": "这轮范围再小一点，只学 A simple network、Domain names、Internet and the web、Intranets and Extranets 四节，仍合并成三个模块；不学 Summary 里的历史，也不学 A network of networks 的路由细节，其他章节都排除。确认这个范围，资料外的内容不补了。"
+      }
+    ],
+    "today": "2026-10-05"
+  },
+  "reply": "{\"intents\":[{\"kind\":\"limit_scope\",\"include\":[\"s1.4\",\"s1.7\",\"s1.8\",\"s1.9\"],\"exclude\":[\"s1.1\",\"s1.2\",\"s1.3\",\"s1.5\",\"s1.6\"]},{\"kind\":\"abandon_scope\",\"items\":[\"Summary 里的历史\",\"A network of networks 的路由细节\",\"资料外的计算机基础概念、软硬件与系统概念、数据相关概念\"]},{\"kind\":\"revise_outline\",\"instruction\":\"范围再小一点，只学 A simple network、Domain names、Internet and the web、Intranets and Extranets 四节，仍合并成三个模块；不学 Summary 里的历史，也不学 A network of networks 的路由细节，其他章节都排除。资料外的内容不补了。\"}],\"reply\":\"\"}",
+  "questions": [
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "cloze_subject": "the Internet",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010",
+          "contrast_quote": "The Internet is an infrastructure, whereas the Web is a service built on top of the infrastructure.",
+          "contrast_subject": "the Web",
+          "contrast_value": "a service built on top of the infrastructure"
+        },
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0011",
+          "contrast_quote": "Intranets are private networks that are restricted to members of a particular organization.",
+          "contrast_subject": "Intranets",
+          "contrast_value": "private networks that are restricted to members of a particular organization"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "at": "2026-10-05T01:00:00+00:00",
+        "checks": [
+          {
+            "index": 1,
+            "option": "a service built on top of the infrastructure",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          },
+          {
+            "index": 2,
+            "option": "private networks that are restricted to members of a particular organization",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          }
+        ],
+        "reason": "",
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-db8c1ca24bbf4233fa05099c78086490107ea4687c75f232324d19fb392aa175",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "288d346ef3aa4ef7",
+      "options": [
+        "a large network of computers which communicate all together",
+        "a service built on top of the infrastructure",
+        "private networks that are restricted to members of a particular organization"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "288d346ef3aa4ef7-01"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "source_level": 2,
+      "source_type": "education_platform",
+      "stem": "互联网最基本是什么？\nAt its most basic, the Internet is ____.",
+      "target": "互联网最基本是什么？",
+      "uses": []
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "cloze_subject": "The Internet",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010",
+          "contrast_quote": "The Internet is an infrastructure, whereas the Web is a service built on top of the infrastructure.",
+          "contrast_subject": "the Web",
+          "contrast_value": "a service built on top of the infrastructure"
+        },
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010",
+          "contrast_quote": "It is worth noting there are several other services built on top of the Internet, such as email and IRC.",
+          "contrast_subject": "email and IRC",
+          "contrast_value": "services built on top of the Internet"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "at": "2026-10-05T01:00:00+00:00",
+        "checks": [
+          {
+            "index": 0,
+            "option": "a service built on top of the infrastructure",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          },
+          {
+            "index": 1,
+            "option": "services built on top of the Internet",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          }
+        ],
+        "reason": "",
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-5a87385f7931bb8308a6cc09740f44d5579e1014520b619d008c02a42375b3ec",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "288d346ef3aa4ef7",
+      "options": [
+        "a service built on top of the infrastructure",
+        "services built on top of the Internet",
+        "the backbone of the Web, the technical infrastructure that makes the Web possible"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "288d346ef3aa4ef7-01"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "source_level": 2,
+      "source_type": "education_platform",
+      "stem": "互联网在Web中扮演什么角色？\nThe Internet is ____.",
+      "target": "互联网在Web中扮演什么角色？",
+      "uses": []
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "cloze_subject": "the Internet",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010",
+          "contrast_quote": "The Internet is an infrastructure, whereas the Web is a service built on top of the infrastructure.",
+          "contrast_subject": "the Web",
+          "contrast_value": "a service built on top of the infrastructure"
+        },
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0011",
+          "contrast_quote": "Intranets are private networks that are restricted to members of a particular organization.",
+          "contrast_subject": "Intranets",
+          "contrast_value": "private networks that are restricted to members of a particular organization"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "at": "2026-10-05T01:00:00+00:00",
+        "checks": [
+          {
+            "index": 1,
+            "option": "a service built on top of the infrastructure",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          },
+          {
+            "index": 2,
+            "option": "private networks that are restricted to members of a particular organization",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          }
+        ],
+        "reason": "",
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-f65f1fc91e5c45f39c960fe2bddeb112f0f211f4c193b0b8f58493c0cd019cab",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "288d346ef3aa4ef7",
+      "options": [
+        "a large network of computers which communicate all together",
+        "a service built on top of the infrastructure",
+        "private networks that are restricted to members of a particular organization"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "288d346ef3aa4ef7-01"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "source_level": 2,
+      "source_type": "education_platform",
+      "stem": "互联网最基本是什么？\nAt its most basic, the Internet is ____.",
+      "target": "互联网最基本是什么？",
+      "uses": [
+        {
+          "at": "2026-10-05T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "cloze_subject": "The Internet",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010",
+          "contrast_quote": "The Internet is an infrastructure, whereas the Web is a service built on top of the infrastructure.",
+          "contrast_subject": "the Web",
+          "contrast_value": "a service built on top of the infrastructure"
+        },
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010",
+          "contrast_quote": "It is worth noting there are several other services built on top of the Internet, such as email and IRC.",
+          "contrast_subject": "email and IRC",
+          "contrast_value": "other services built on top of the Internet"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "at": "2026-10-05T01:00:00+00:00",
+        "checks": [
+          {
+            "index": 0,
+            "option": "a service built on top of the infrastructure",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          },
+          {
+            "index": 1,
+            "option": "other services built on top of the Internet",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          }
+        ],
+        "reason": "",
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-4d67aa9d97c3af699a078eea6122e1351b3047e8ad8dfdd8ead1f9e876dca091",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "288d346ef3aa4ef7",
+      "options": [
+        "a service built on top of the infrastructure",
+        "other services built on top of the Internet",
+        "the backbone of the Web, the technical infrastructure that makes the Web possible"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "288d346ef3aa4ef7-02"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "source_level": 2,
+      "source_type": "education_platform",
+      "stem": "互联网在 Web 中扮演什么角色？\nThe Internet is ____.",
+      "target": "互联网在 Web 中扮演什么角色？",
+      "uses": []
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "cloze_subject": "the Internet",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010",
+          "contrast_quote": "The Internet is an infrastructure, whereas the Web is a service built on top of the infrastructure.",
+          "contrast_subject": "the Web",
+          "contrast_value": "a service built on top of the infrastructure"
+        },
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010",
+          "contrast_quote": "It is worth noting there are several other services built on top of the Internet, such as email and IRC.",
+          "contrast_subject": "email and IRC",
+          "contrast_value": "other services built on top of the Internet"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "at": "2026-10-05T01:00:00+00:00",
+        "checks": [
+          {
+            "index": 1,
+            "option": "a service built on top of the infrastructure",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          },
+          {
+            "index": 2,
+            "option": "other services built on top of the Internet",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          }
+        ],
+        "reason": "",
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-fd22dda90327f279a93e3b2bb92cb24296c049a41788110d6c3e6c79ab9702ba",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "288d346ef3aa4ef7",
+      "options": [
+        "a large network of computers which communicate all together",
+        "a service built on top of the infrastructure",
+        "other services built on top of the Internet"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "288d346ef3aa4ef7-02"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "source_level": 2,
+      "source_type": "education_platform",
+      "stem": "在最基本的层面上，互联网是什么？\nAt its most basic, the Internet is ____.",
+      "target": "在最基本的层面上，互联网是什么？",
+      "uses": []
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "cloze_subject": "The Internet",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010",
+          "contrast_quote": "The Internet is an infrastructure, whereas the Web is a service built on top of the infrastructure.",
+          "contrast_subject": "the Web",
+          "contrast_value": "a service built on top of the infrastructure"
+        },
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010",
+          "contrast_quote": "It is worth noting there are several other services built on top of the Internet, such as email and IRC.",
+          "contrast_subject": "email and IRC",
+          "contrast_value": "other services built on top of the Internet"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "at": "2026-10-05T01:00:00+00:00",
+        "checks": [
+          {
+            "index": 0,
+            "option": "a service built on top of the infrastructure",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          },
+          {
+            "index": 1,
+            "option": "other services built on top of the Internet",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          }
+        ],
+        "reason": "",
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-8bd3859bf16a2e5a82b9f257bc98857f0d62ad2a0e06e1e472b4d2f39e4ea58b",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "288d346ef3aa4ef7",
+      "options": [
+        "a service built on top of the infrastructure",
+        "other services built on top of the Internet",
+        "the backbone of the Web, the technical infrastructure that makes the Web possible"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "288d346ef3aa4ef7-02"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "How does the Internet work? / Summary；正文块 2 [file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002]",
+        "title": "How does the Internet work? - Learn web development | MDN",
+        "url": ""
+      },
+      "source_level": 2,
+      "source_type": "education_platform",
+      "stem": "互联网在 Web 中扮演什么角色？\nThe Internet is ____.",
+      "target": "互联网在 Web 中扮演什么角色？",
+      "uses": [
+        {
+          "at": "2026-10-05T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    }
+  ],
+  "points": [
+    {
+      "chunk_ids": [
+        "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002",
+        "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002",
+          "locator": "How does the Internet work? / Summary",
+          "quote": "At its most basic, the Internet is a large network of computers which communicate all together.",
+          "title": "How does the Internet work? - Learn web development | MDN",
+          "url": null
+        },
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002",
+          "locator": "How does the Internet work? / Summary",
+          "quote": "The Internet is the backbone of the Web, the technical infrastructure that makes the Web possible.",
+          "title": "How does the Internet work? - Learn web development | MDN",
+          "url": null
+        }
+      ],
+      "id": "288d346ef3aa4ef7-01",
+      "minutes": 15,
+      "module_id": "288d346ef3aa4ef7",
+      "position": 0,
+      "source_general": false,
+      "summary": "能用自己的生活比喻说明互联网是许多计算机连在一起、彼此通信的大型网络，并指出它是让网页(Web)得以运行的技术基础设施。",
+      "title": "互联网是什么"
+    },
+    {
+      "chunk_ids": [
+        "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0001",
+        "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002",
+        "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0010"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0001",
+          "locator": "How does the Internet work?",
+          "quote": "You will learn the basics of the technical infrastructure of the Web and the difference between Internet and the Web.",
+          "title": "How does the Internet work? - Learn web development | MDN",
+          "url": null
+        },
+        {
+          "chunk_id": "file-c1b8c043724de2a2362b52bb0ec0e247117cf6c44153e739673fd7bb6478cc86:c1b8c043724d:0002",
+          "locator": "How does the Internet work? / Summary",
+          "quote": "The Internet is the backbone of the Web, the technical infrastructure that makes the Web possible.",
+          "title": "How does the Internet work? - Learn web development | MDN",
+          "url": null
+        }
+      ],
+      "id": "288d346ef3aa4ef7-02",
+      "minutes": 15,
+      "module_id": "288d346ef3aa4ef7",
+      "position": 1,
+      "source_general": false,
+      "summary": "能说清这篇资料的目标之一就是把互联网和网页(Web)分开：互联网是底层的骨干和基础设施，网页建立在它之上，并各配一个生活比喻。",
+      "title": "互联网不等于网页(Web)"
+    }
+  ]
+}

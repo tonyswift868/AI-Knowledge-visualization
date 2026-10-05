@@ -669,6 +669,39 @@ def _stem_key(question):
     return original_text(text)
 
 
+def _adjacent_questions(store, plan_id, point):
+    points = [p for p in store.records('points', plan_id) if p['module_id'] == point['module_id']]
+    index = next(i for i, p in enumerate(points) if p['id'] == point['id'])
+    neighbors = {points[i]['id'] for i in (index - 1, index + 1) if 0 <= i < len(points)}
+    return [q for q in store.records('question_bank', plan_id)
+            if q['module_id'] == point['module_id']
+            and neighbors.intersection(q['point_ids']) and point['id'] not in q['point_ids']
+            and q.get('distractor_check', {}).get('state') != 'rejected']
+
+
+def _answer_key(question):
+    answer = question['answer']
+    if question['kind'] in ('choice', 'multi'):
+        return tuple(sorted(original_text(question['options'][i]) for i in answer))
+    if question['kind'] == 'fill':
+        return tuple(original_text(group[0]) for group in answer)
+    return (original_text(answer),)
+
+
+def _exclude_adjacent(rows, adjacent, rejected):
+    """Exact original-text comparison only; no similarity or extra model call."""
+    answers = {_answer_key(q) for q in adjacent}
+    stems = {_stem_key(q) for q in adjacent}
+    kept = []
+    for q in rows:
+        if _answer_key(q) in answers or _stem_key(q) in stems:
+            rejected.append(dict(reason='与相邻知识点已入库计分题的答案片段或题面重复，请换另一句重挖',
+                                 stem=q['stem'], answer=q['answer'], options=q.get('options', [])))
+        else:
+            kept.append(q)
+    return kept
+
+
 def prepare_point(store, plan_id, point, ctx):
     """Prepare two goal bank questions and one quick from original text.
 
@@ -700,6 +733,10 @@ def prepare_point(store, plan_id, point, ctx):
         # All cloze questions (bank and quick) must belong to the linked lesson.
         cloze,quick,rejected=_cloze_rows(located['cloze'],point,by_id,passages)
         rejected += [r for call in ctx['_cloze_calls'] for r in call['rejected']]
+        adjacent = _adjacent_questions(store, plan_id, point)
+        found = _exclude_adjacent(found, adjacent, rejected)
+        cloze = _exclude_adjacent(cloze, adjacent, rejected)
+        quick = _exclude_adjacent(quick, adjacent, rejected)
         bank_stems={_stem_key(q) for q in rows+found+cloze if q.get('role','bank')=='bank'}
         needs_quick=not quick and not any(q.get('role')=='quick' for q in rows)
         if needs_quick or len(bank_stems)<2:
@@ -709,6 +746,8 @@ def prepare_point(store, plan_id, point, ctx):
             located['cloze']+=retry['cloze']
             cloze,quick,final_rejected=_cloze_rows(located['cloze'],point,by_id,passages)
             rejected+=final_rejected+[r for call in ctx['_cloze_calls'] for r in call['rejected']]
+            cloze = _exclude_adjacent(cloze, adjacent, rejected)
+            quick = _exclude_adjacent(quick, adjacent, rejected)
         priorities={p['source']['url']:question_priority(p['source']['url'],p['source']['title'],authority=p['authority']) for p in passages}
         candidates=sorted(found,key=lambda q:priorities.get(q['source']['url'],(4,False)))+cloze
         # A new source can replace an unused fallback, never a recorded answer.
@@ -726,6 +765,8 @@ def prepare_point(store, plan_id, point, ctx):
         _check(ctx)
         with store.transaction():
             _check(ctx)
+            # Another point may finish while this point's locator is running.
+            additions = _exclude_adjacent(additions, _adjacent_questions(store, plan_id, point), rejected)
             store.link_point_sources(plan_id,point['id'],selected)
             for q in replace:store._delete('question_bank',plan_id,q['id'])
             store.add_bank_questions(plan_id,point['module_id'],additions)
@@ -760,6 +801,8 @@ def _recloze_after_check(store,plan_id,point,ctx):
         output=_locate_tier(point,passages,dict(ctx,cloze_rejections=reasons or [dict(reason='检查后不足两道bank或缺quick，请换目标原句')]),'cloze_retry')
         by_id={p['id']:p for p in passages if p['id'] in point['chunk_ids']}
         bank,quick,rejected=_cloze_rows(output['cloze'],point,by_id,passages)
+        bank = _exclude_adjacent(bank, _adjacent_questions(store, plan_id, point), rejected)
+        quick = _exclude_adjacent(quick, _adjacent_questions(store, plan_id, point), rejected)
         ids={q['id'] for q in rows};stems={_stem_key(q) for q in ready if q.get('role','bank')=='bank'}
         additions=[]
         for q in bank:
@@ -769,7 +812,9 @@ def _recloze_after_check(store,plan_id,point,ctx):
             q=next((q for q in quick if q['id'] not in ids),None)
             if q:additions.append(q)
         with store.transaction():
-            _check(ctx);store.add_bank_questions(plan_id,point['module_id'],additions)
+            _check(ctx)
+            additions = _exclude_adjacent(additions, _adjacent_questions(store, plan_id, point), rejected)
+            store.add_bank_questions(plan_id,point['module_id'],additions)
         return rejected
 
 

@@ -687,13 +687,31 @@ class PlanFlow:
         draft['material_version'] = value['version']
         draft['material_structure'] = value
         draft['phase'] = 'material_preview'
-        text = value['summary'] + '\n\n' + '\n'.join(m['title'] + '｜' + m['summary'] +
-            '\n章节：' + '；'.join(m['chapters']) for m in value['modules'])
+        text = value['summary'] + '\n\n' + '\n'.join(str(n) + '. ' + m['title'] + '｜' + m['summary'] +
+            '\n章节：' + '；'.join(m['chapters']) for n, m in enumerate(value['modules'], 1))
         if value['missing']:
             text += '\n\n所选资料没讲到：' + '、'.join(value['missing']) + '。可以再传一份资料、删掉这些部分，或就这样继续。'
         text += ('\n\n已按这次补充调整结构，按你同一句的确认继续填知识点。' if confirmed else
                  '\n\n请确认这份按资料调整的结构，确认后再填知识点。')
         draft['messages'].append(_msg('ai', 'material_preview', text, version=value['version']))
+        self.save(draft)
+
+    def _select_material_modules(self, draft, params):
+        structure = draft['material_structure']
+        modules = structure['modules']
+        included, excluded = set(params['include']), set(params['exclude'])
+        # An entirely invalid keep request must not silently delete everything.
+        structure['modules'] = [m for n, m in enumerate(modules, 1)
+                                if (not included or n in included) and n not in excluded]
+        structure['version'] += 1
+        draft['material_version'] = structure['version']
+        draft.pop('estimate', None)
+        text = '现在保留的模块：\n' + '\n'.join(f"{n}. {m['title']}｜{m['summary']}\n章节：" +
+            '；'.join(m['chapters']) for n, m in enumerate(structure['modules'], 1))
+        if params['ignored']:
+            text += '\n以下编号不存在、重复或冲突，已忽略：' + '、'.join(params['ignored']) + '。'
+        text += '\n请确认这份结构，确认后再填知识点。'
+        draft['messages'].append(_msg('ai', 'material_preview', text, version=structure['version']))
         self.save(draft)
 
     def resolve_missing(self, draft, ctx, action):
@@ -1125,9 +1143,8 @@ class PlanFlow:
                  for n, c in enumerate(draft["sources"], 1)]
         sections, modules, facts = [], [], {}
         if phase in ("sources", "material_preview", "outline"):
-            sources, chunks = self._adopted(draft)
             sections = [{"id": s.id, "source": s.source_title, "title": s.title, "chars": s.chars}
-                        for s in agents.build_sections(sources, chunks)]
+                        for s in self._sections(draft)[1]]
             if draft.get("scope"):
                 facts["scope"] = draft["scope"]
         if draft.get("outline"):
@@ -1140,6 +1157,9 @@ class PlanFlow:
             facts["preview"] = draft["preview"]
         if draft.get('material_structure'):
             facts['material_structure'] = draft['material_structure']
+            if phase == 'material_preview':
+                modules = [dict(n=n, title=m['title'], summary=m['summary'], chapters=m['chapters'])
+                           for n, m in enumerate(draft['material_structure']['modules'], 1)]
         if phase == "ready":
             store, plan_id = self.services.store, draft["plan_id"]
             rows = store.records("modules", plan_id)
@@ -1263,6 +1283,8 @@ class PlanFlow:
             return self._import_links(draft, ctx, params["urls"])
         if kind == "answer":
             return self._check_sufficiency(draft, ctx)
+        if kind == 'select_modules':
+            return self._select_material_modules(draft, params)
         if kind == 'supplement' and phase in ('sources', 'material_preview', 'outline'):
             draft.setdefault('requirements', []).append(params['instruction'])
             if any(c.get('status') == 'adopted' for c in draft['sources']):

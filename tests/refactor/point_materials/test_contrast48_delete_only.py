@@ -150,7 +150,14 @@ def test_contrast48_module_checks_all_points_and_quick_in_one_batch(tmp_path):
     with CourseStore('batch48',tmp_path) as store:
         i,second=create48(store,points=2);seen=[]
         def checker(packet,**kw):seen.append(packet);return approved48(packet)
-        ctx=dict(finder=lambda *a,**kw:dict(passages=['c'],found=[],cloze=[i,second]),search=lambda *a,**kw:[],
+        # Adjacent points must test distinct facts, while still sharing review.
+        stack=dict(i,target='栈按什么顺序处理？',subject='栈',sentence='栈按后进先出处理。',word='后进先出',
+            contrasts=[dict(chunk_id='c',contrast_quote='队列按先进先出处理。',contrast_subject='队列',contrast_value='先进先出'),
+                dict(chunk_id='c',contrast_quote='集合按任意顺序处理。',contrast_subject='集合',contrast_value='任意顺序')])
+        stack_second=dict(second,target='栈先取出哪一类元素？',subject='栈',sentence='栈中后加入的元素先取出。',word='后加入的元素先取出',
+            contrasts=[dict(chunk_id='c',contrast_quote='队列中先加入的元素先取出。',contrast_subject='队列',contrast_value='先加入的元素先取出'),
+                dict(chunk_id='c',contrast_quote='集合中随机取出元素。',contrast_subject='集合',contrast_value='随机取出元素')])
+        ctx=dict(finder=lambda p,*a,**kw:dict(passages=['c'],found=[],cloze=[i,second] if p['id']=='pt0' else [stack,stack_second]),search=lambda *a,**kw:[],
             distractor_checker=checker,fetcher=lambda *a,**kw:(_ for _ in ()).throw(OSError('offline')))
         result=pm.prepare_module(store,'p','m',ctx,lambda *a:None)
         assert result==dict(points=2,cloze_points=2,cloze_heavy=True)
