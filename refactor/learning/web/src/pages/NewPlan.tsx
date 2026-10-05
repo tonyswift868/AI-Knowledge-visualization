@@ -176,8 +176,11 @@ export function NewPlan() {
               {(draft.recommendations ?? []).filter(c => m.cards?.includes(c.card_id)).map(c => <div className="card" key={c.card_id}>
                 <strong>{c.title}</strong><span className="muted small"> · {c.type}</span>
                 <p>{c.why}</p><p className="small">大致覆盖：{c.modules.join("、")}</p>
-                <a className="btn ghost" href={c.url} target="_blank" rel="noreferrer"><ExternalLink />打开完整资料</a>
-                <div className="muted small">打开后下载并上传，也可主动贴网址导入。</div>
+                <div className="plan-actions">
+                  <a className="btn ghost" href={c.url} target="_blank" rel="noreferrer"><ExternalLink />打开完整资料</a>
+                  <Button kind="primary" disabled={busy} onClick={() => act("plan.say", { text: c.url })}>用这份资料</Button>
+                </div>
+                <div className="muted small">“用这份资料”直接按网址导入；也可以打开后下载上传。</div>
               </div>)}
             </div>
             if (m.kind === "material_preview") return <div key={m.id} className="plan-block">
