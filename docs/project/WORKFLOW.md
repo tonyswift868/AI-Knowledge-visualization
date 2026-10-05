@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-05）：没有在跑的任务。57-MF02 小测试第一次跑完全程（工具改动已合入 1c199962），P1 3、P2 5、P3 1，讨论中。
+- **现在在做的事**（2026-10-05）：第五十八批三个任务已起草，待用户转发（基线 39a42744）：58-MF01（server）删掉内容被加回、报告文案；58-MF02（library）干扰项检查带出处段落（¥0.3）；58-MF03（classroom）最终检验隔开重复、讲解不强制出处。合入后第五十九批重跑小测试。
 
 ## 协作方式
 
@@ -63,20 +63,120 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲 | — |
-| MF-02 | 空闲 | — |
-| MF-03 | 空闲 | — |
+| MF-01 | 58-MF01 已起草，待用户转发 | server |
+| MF-02 | 58-MF02 已起草，待用户转发 | library |
+| MF-03 | 58-MF03 已起草，待用户转发 | classroom |
 | MF-04 | 空闲 | — |
 | MF-05 | 空闲 | — |
 | MF-06 | 空闲 | — |
 | MF-07 | 空闲 | — |
 
-空闲工位：runtime、client、platform、tools、classroom。
+空闲工位：runtime、client、platform、tools。
 
 ## 待派队列
 
 - 53-MF01：已起草，待用户转发。
 - 53-MF02：已起草，等用户批预算（建议 ¥4）。
+
+## 第五十八批任务原文（2026-10-05，基线 39a42744）
+
+### [58-MF01] server｜删掉的内容不再被加回；报告不再误称讲稿核对失败
+
+~~~text
+【MentorFlow 第五十八批｜MF-01（工位 server）｜删掉的内容不再被加回；报告不再误称讲稿核对失败】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有的资料结构确认与按模块填点（app/plan_flow.py、course/planner_agents.py）和报告文案（app/plan_flow.py 报告 Markdown、course/report_pdf.py）。不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 39a42744
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。不打包、不发版（内测阶段）。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\fix58-plan\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师和用户定好，照“要做”逐条做，不自行换方案；走不通就写清证据交回。细节按 CURRENT_STATE 条目和本任务原则自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。原因要用真实数据验证过再写。架构师只读你的结论、不重跑测试，所以全量测试、离线完整场景、web 构建都由你跑并如实写结果。
+证据来源：第一次真实跑完全程的小测试 D:\MentorFlow\.local\test-tmp\small57\report.md（含 live\ 原始记录、human-reviewed.json、issue-evidence.json）；复现一律用这些保存的记录，不重新跑小测试。
+同时在跑（各改各的文件，冲突由架构师合并）：
+  58-MF01（MF-01，工位 server）删掉的内容被加回、报告错误文案：app/plan_flow.py、course/planner_agents.py、course/report_pdf.py。
+  58-MF02（MF-02，工位 library）错误选项其实成立：course/point_materials.py、course/question_bank.py。
+  58-MF03（MF-03，工位 classroom）最终检验隔开重复用题、讲解不强制出处：app/classroom.py、course/teacher_agent.py、course/mastery.py（如需）。
+三个合入后，下一批重跑小测试。
+花费：¥0（离线）。
+要做
+  1. 删掉的内容被加回（小测试 P2-01）：用户在资料结构阶段只留台式机、笔记本、平板、服务器，但保留的模块引用了资料里的“概述”一节（refs s1.4），填点时从概述里又抽出 ATM、超市扫描、计算器等独立知识点。改法：用户确认的结构里要记下“已删掉的内容”（被删的模块名/章节名）；按模块填点时，把已删内容作为“不要提炼”的清单交给模型，并且程序丢掉标题或出处只落在已删章节的点。用 small57 live\steps\step-00007.json、step-00008.json 与 structure-scope.json 做复现测试（修前出现 ATM 等点，修后没有）；保留模块里本来该有的点不能被误删。
+  2. 报告错误文案（P2-04）：新流程不再用讲稿，老师都是现场讲；报告 Markdown 与 PDF 里把“现场讲的知识点”说成“讲稿未通过核对”的文字删掉或改成如实说明（不提讲稿）。用 small57 live\learning-report.md 对照修前修后。
+  3. 全量、离线完整场景（--to free）、web 构建通过。
+完成标准：两处复现修前失败、修后通过；全量通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix58-plan\report.md。
+回执（尽量短，用表格）：【MF-01｜server｜第五十八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 两处怎么改、复现修前修后 ／ 全量、离线完整场景、web 构建 ／ 本地最终占用
+~~~
+
+### [58-MF02] library｜错误选项其实成立：检查干扰项时把它出自的原文段落一起给检查器
+
+~~~text
+【MentorFlow 第五十八批｜MF-02（工位 library）｜错误选项其实成立：检查干扰项时把它出自的原文段落一起给检查器】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有的方案 A 批量检查（course/point_materials.py 的 distractor_check 请求组装）与对照干扰项的记录；不新增检查环节、不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard 39a42744
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。不打包、不发版（内测阶段）。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\fix58-distractor\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师和用户定好，照“要做”逐条做，不自行换方案；走不通就写清证据交回。细节按 CURRENT_STATE 条目和本任务原则自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。原因要用真实数据验证过再写。架构师只读你的结论、不重跑测试，所以全量测试、离线完整场景、web 构建都由你跑并如实写结果。
+证据来源：第一次真实跑完全程的小测试 D:\MentorFlow\.local\test-tmp\small57\report.md（含 live\ 原始记录、human-reviewed.json、issue-evidence.json）；复现一律用这些保存的记录，不重新跑小测试。
+同时在跑（各改各的文件，冲突由架构师合并）：
+  58-MF01（MF-01，工位 server）删掉的内容被加回、报告错误文案：app/plan_flow.py、course/planner_agents.py、course/report_pdf.py。
+  58-MF02（MF-02，工位 library）错误选项其实成立：course/point_materials.py、course/question_bank.py。
+  58-MF03（MF-03，工位 classroom）最终检验隔开重复用题、讲解不强制出处：app/classroom.py、course/teacher_agent.py、course/mastery.py（如需）。
+三个合入后，下一批重跑小测试。
+花钱规则：离线为主；修完用真实模型对 small57 那道多选题和 3 道单选题重做一次检查（≤ ¥0.3）。
+背景：小测试 P1-01、P1-02：多选“计算机的用途”把 use a calculator / withdraw cash 当错误选项，原文另一段（chunk0004）明说它们也是计算机的用途；方案 A 检查只拿到本点那一段（chunk0002），看不到干扰项出自的段落，于是判“原文没说它成立”，结果学生选了也算错（实际两次放水）。另 3 道单选同样多个选项成立（笔记本可在 almost anywhere / at work / on a desk 用；硬件题把机箱、显示器等当错误选项）。用户已定：仍用方案 A，只删不加，不另加 AI 核查（CURRENT_STATE [DIR-01]“题型”）。
+要做
+  1. 方案 A 检查每个干扰项时，请求里除了本点原文，还要带上这个干扰项出自的原文段落（对照干扰项里已记录了 contrast 出处；没有记录的就用干扰项文字在本资料里出现的段落），让检查器能看到“它在原文里被说成什么”。只删不加的规则不变；检查结果存进题库。
+  2. 用 small57 的这 4 道题做复现：修前检查保留了这些成立的选项；修后离线（用保存的回复或假模型构造“检查器看到了出处段落”的情况）能删掉；再真实跑一次检查（≤ ¥0.3），报告每道题删了哪些选项、删完是否还够 2 个干扰项（不够按现有规则丢题重挖）。
+  3. 全量、离线完整场景（--to free）、web 构建通过。
+完成标准：检查请求带上干扰项出处段落；复现修前失败、修后通过；真实那次 4 道题里成立的选项都被删掉或题被丢。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix58-distractor\report.md。
+回执（尽量短，用表格）：【MF-02｜library｜第五十八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 怎么改 ／ 4 道题：修前、修后、真实检查结果 ／ 全量、离线完整场景、web 构建 ／ 花费 ／ 本地最终占用
+~~~
+
+### [58-MF03] classroom｜最终检验隔开重复用题；老师讲解不强制每段标出处、不再贴原文兜底
+
+~~~text
+【MentorFlow 第五十八批｜MF-03（工位 classroom）｜最终检验隔开重复用题；老师讲解不强制每段标出处、不再贴原文兜底】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有的最终检验选题（app/classroom.py、course/question_bank.py 的选题只读不改）与老师回复校验（course/teacher_agent.py 的 parse_teaching、app/classroom.py 的 _teacher）。“看原文”入口沿用课堂里已有的原文卡片显示。不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard 39a42744
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。用户装好的软件 D:\MentorFlowApp 及其数据只读，不改不删。不打包、不发版（内测阶段）。先读 AGENTS.md（磁盘规则、D 盘不膨胀、功能先行不加安全加固）：E 盘只读运行、不复制不写；所有产物在 D:\MentorFlow\.local\test-tmp\fix58-class\ 下；中间产物用完即删（被系统拦住就列路径，架构师来删），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+做法已由架构师和用户定好，照“要做”逐条做，不自行换方案；走不通就写清证据交回。细节按 CURRENT_STATE 条目和本任务原则自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。原因要用真实数据验证过再写。架构师只读你的结论、不重跑测试，所以全量测试、离线完整场景、web 构建都由你跑并如实写结果。
+证据来源：第一次真实跑完全程的小测试 D:\MentorFlow\.local\test-tmp\small57\report.md（含 live\ 原始记录、human-reviewed.json、issue-evidence.json）；复现一律用这些保存的记录，不重新跑小测试。
+同时在跑（各改各的文件，冲突由架构师合并）：
+  58-MF01（MF-01，工位 server）删掉的内容被加回、报告错误文案：app/plan_flow.py、course/planner_agents.py、course/report_pdf.py。
+  58-MF02（MF-02，工位 library）错误选项其实成立：course/point_materials.py、course/question_bank.py。
+  58-MF03（MF-03，工位 classroom）最终检验隔开重复用题、讲解不强制出处：app/classroom.py、course/teacher_agent.py、course/mastery.py（如需）。
+三个合入后，下一批重跑小测试。
+花费：¥0（离线）。
+背景：小测试 P2-05：最终检验同一道题（同 ID、同题面）连续出现 4 次，只是事件里的“角度”标签换了；P2-03：老师回复有一段没标 [c编号]，被整条打回，两次后程序把整段英文原文直接贴给零基础学生。用户 2026-10-05 定（CURRENT_STATE [DIR-01]）：最终检验可以重复用同一道题，但两次之间至少隔几道别的题；老师按本点原文当场讲，可以打比方、举例，不强制每段标出处，能标就标，标不出不打回、不贴原文兜底，原文由“看原文”入口提供；打比方不能变成原文没有的结论（只写进老师提示，不加检查）。
+要做
+  1. 最终检验选题：优先用这个点还没在最终检验里出过的题；只剩用过的题时允许重复，但与上一次出同一道题之间至少隔 3 道别的题（点不够多时尽量拉开），并去掉“只换角度标签”的假换角度。用 small57 live\steps\step-00103/00113/00116/00117 与 ledger-audit.json 做复现测试。
+  2. 老师回复校验：parse_teaching 不再因为某段没有 [c编号] 而拒绝；有编号的照常校验编号必须属于本点（编号写错的去掉那个编号，不拒整条）；没有任何编号的回复照常显示，并在消息上挂本点原文（现有原文卡片）。删掉“两次不合格就贴原文”的兜底。仍保留：不许现场出计分题、不许声称改了计划等现有限制、需要中文说明。老师提示里加一句“打比方、举例帮助理解，但不能借比方推出原文没有的结论”。用 small57 live\model\call-00061/00062 做复现测试（修前被拒并贴原文，修后正常显示中文讲解）。
+  3. 全量、离线完整场景（--to free）、web 构建通过。
+完成标准：两处复现修前失败、修后通过；全量通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix58-class\report.md。
+回执（尽量短，用表格）：【MF-03｜classroom｜第五十八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 两处怎么改、复现修前修后 ／ 全量、离线完整场景、web 构建 ／ 本地最终占用
+~~~
 
 ## 第五十七批任务原文（2026-10-05，基线 e7c68407）
 
@@ -2990,6 +3090,9 @@ D 盘：freeze 中间目录用完即删，只留 payload 与未签名清单（�
 | 56-MF01 | MF-01 server | 资料结构核对分开“讲法偏好”和“学习内容”：生活化例子等讲法不当成资料缺的章节（¥0.2） | PLAN-06、TEACH-01 | 24dbddd4 | 完成，已合入（a2664eae） |
 | 56-MF02 | MF-02 library | 用户给的资料一律当可信：找出并去掉所有按发布者/档位筛资料的旧关卡（¥0.5） | DIR-01 | 24dbddd4 | 部分完成，已合入（1724a2e1）：旧关卡 35 处改 20；真实生成卡在 distractor_check 60 秒超时（架构师已改后台时限） |
 | 57-MF02 | MF-02 classroom | 小测试（重跑）：一份小资料、真实模型、模拟时钟，从建计划一直跑到报告与自由检验，只找问题（¥6） | QA-01、DIR-01 | e7c68407 | 完成：第一次跑完全程，P1 3、P2 5、P3 1 |
+| 58-MF01 | MF-01 server | 删掉的内容不再被加回；报告不再误称讲稿核对失败 | PLAN-06、RPT-01 | 39a42744 | 已起草，待用户转发 |
+| 58-MF02 | MF-02 library | 错误选项其实成立：检查干扰项时把它出自的原文段落一起给检查器（¥0.3） | DIR-01 | 39a42744 | 已起草，待用户转发 |
+| 58-MF03 | MF-03 classroom | 最终检验隔开重复用题；老师讲解不强制每段标出处、不再贴原文兜底 | DIR-01、CHK-01、TEACH-06 | 39a42744 | 已起草，待用户转发 |
 
 ## 任务模板
 
