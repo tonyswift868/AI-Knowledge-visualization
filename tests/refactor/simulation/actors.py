@@ -1,5 +1,5 @@
 """Scripted users/offline agents and an independent, screen-only model user."""
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 import json
 import random
 from types import SimpleNamespace
@@ -138,6 +138,54 @@ class ModelUser:
                 if attempt:raise
                 messages += [{'role':'assistant','content':result.text},{'role':'user','content':
                     '上一次动作没有执行。原因：'+str(exc)+'。屏幕没有变化，请重新根据当前屏幕和 allowed_actions 自己选择有效动作；不要声称操作已成功。'}]
+
+
+class CompleteScenarioUser(ModelUser):
+    """Public controls ensure required coverage; answers remain model-generated.
+
+    No hidden bank/answer access. Persist flags via the existing checkpoint.
+    """
+    def __init__(self, gateway, persona):
+        super().__init__(gateway, persona)
+        self.flags = set()
+
+    def choose(self, view, actions, stage):
+        if stage not in ('classroom', 'final', 'free'):
+            return super().choose(view, actions, stage)
+        def action(method, **params): return dict(method=method, params=params)
+        names = {a['method'] for a in actions}
+        question = view.get('question')
+        if question:
+            purpose = question.get('purpose')
+            forced = purpose in ('quick', 'module') and purpose not in self.flags
+            old = self.persona
+            self.persona = replace(old, wrong_ratio=1 if forced else 0,
+                notes=old.notes + (' 本次有意答错，不看隐藏答案。' if forced else ' 本次认真按所学回答。'))
+            try: result = super().choose(view, actions, stage)
+            finally: self.persona = old
+            if result['method'] in ('classroom.answer', 'classroom.reply') and forced:
+                self.flags.add(purpose)
+            return result
+        if (view.get('conversation') or {}).get('interrupted') and 'classroom.back' in names:
+            return action('classroom.back')
+        step = view.get('step')
+        if step == 'teaching':
+            for flag, method, params in (
+                ('confused', 'classroom.confused', {}),
+                ('ask', 'classroom.ask', {'text': '刚才这个概念能再用一个生活里的例子解释吗？'}),
+                ('reopen', 'simulation.reopen', {}),
+            ):
+                if flag not in self.flags and method in names:
+                    self.flags.add(flag)
+                    return action(method, **params)
+        if step == 'opening': return action('classroom.choose', option=0)
+        if step == 'test_offer': return action('classroom.test', kind='module_test')
+        if step == 'test_done':
+            return action('classroom.test', kind='retest') if view.get('red') else action('classroom.next_module')
+        if step in ('check_offer', 'checking'): return action('classroom.check')
+        if step == 'preparing_materials': return action('classroom.state')
+        if 'classroom.next' in names: return action('classroom.next')
+        return super().choose(view, actions, stage)
 
 
 class OfflineGateway:

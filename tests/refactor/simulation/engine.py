@@ -157,9 +157,12 @@ class RecordedGateway:
                 # halves (BUG-15). Do not halt before that host path executes;
                 # every attempt still reserves/charges the same shared budget.
                 truncation=(record['error']['code']=='MODEL_OUTPUT_TRUNCATED' and purpose=='generate')
+                expected_cancel=(record['error']['code']=='MODEL_CANCELLED'
+                    and isinstance(kwargs.get('cancel'),threading.Event) and kwargs['cancel'].is_set())
                 if allow:self.protocol_retries.add(key)
-                elif not truncation:self.halt()
+                elif not truncation and not expected_cancel:self.halt()
             record['host_protocol_retry_allowed']=allow
+            if expected_cancel:record['expected_cancellation']=True
             if truncation:record['host_batch_split_allowed']=True
             if isinstance(getattr(exc,'diagnostics',None),dict):record['diagnostics']=exc.diagnostics
             raise

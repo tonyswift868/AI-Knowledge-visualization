@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import shutil
 
-from .actors import Persona,ScriptUser,ModelUser,OfflineGateway,offline_fetch
+from .actors import Persona,ScriptUser,ModelUser,CompleteScenarioUser,OfflineGateway,offline_fetch
 from .driver import Driver,STAGES
 from .engine import Clock,Simulation,SCRATCH
 
@@ -39,6 +39,7 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root',type=Path,required=True,help='D:/MentorFlow/.local/test-tmp/下独立运行目录')
     parser.add_argument('--live',action='store_true',help='只在已授权任务/预算内使用真实模型')
+    parser.add_argument('--complete-scenario',action='store_true',help='真实模式中确保没听懂/插话/重开/两次故意错答；答案仍由模型据公开屏幕生成')
     parser.add_argument('--persona',type=Path,help='Persona字段JSON；模型用户每次读实时屏幕')
     parser.add_argument('--script',type=Path,help='固定用户动作JSON数组；不读取隐藏答案')
     parser.add_argument('--account-id',default='simulation42')
@@ -74,6 +75,8 @@ def main(argv=None):
             budget=args.budget,to=args.to,from_stage=args.from_stage,day=args.day,dialogue_rounds=args.dialogue_rounds,
             clock=args.clock,stuck_limit=args.stuck_limit,timeout=args.timeout,reopen_before_adopt=args.reopen_before_adopt))
         user=ScriptUser(json.loads(args.script.read_text(encoding='utf-8')) if args.script else None) if not args.live or args.script else ModelUser(sim.gateway,persona)
+        if args.live and args.complete_scenario and not args.script:
+            user=CompleteScenarioUser(sim.gateway,persona)
         driver=Driver(sim,user,persona,stuck_limit=args.stuck_limit,reopen_before_adopt=args.reopen_before_adopt,
             material_url=args.material_url,material_file=args.material_file,pause_material=args.pause_material,
             first_module=args.first_module,skip_days=args.skip_study_day)
