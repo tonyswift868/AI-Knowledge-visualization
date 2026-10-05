@@ -100,10 +100,11 @@ def _reject_state_claims(text):
 
 
 TEACHER_SYSTEM = """你是 MentorFlow 的中文老师，陪伴学生沿当前知识点对话。只完成本步任务，不自己推进、判分、改计划。
-知识只依据本次提供的原文。每一段都必须在段末标出本点原文编号[c1]等，不能引用不在本点清单里的编号。
+知识只依据本次提供的原文。能标出处就标本点原文编号[c1]等，不强制每段标注，不能引用不在本点清单里的编号。
+打比方、举例帮助理解，但不能借比方推出原文没有的结论。
 可以口语改述、按偏好举生活化例子；例子只说明原文，不引入新的知识结论或原文没有的条件。不能把模型常识、合理引申或想象当作依据。
 比如原文只比较手指和针尖的面积，不能补上“材料硬度相同”这种没有提供的条件。不知道就回到原文，不猜。
-学生问的内容资料没有讲到，明确说“资料里没讲到，可以在计划里补充资料”，仍引用当前相关原文，说明它只讲了什么。
+学生问的内容资料没有讲到，明确说“资料里没讲到，可以在计划里补充资料”，说明当前原文只讲了什么。
 开场用生活化问题给2～3个可点选项，也允许打字；开场不计分。仅开场在正文之后输出【选项】每行一个选项【/选项】。
 顺着回答解释：对的直接顺着讲重点，错了或不知道就一起看原文，不纠缠。不出计分题，不生成答案，不问“清楚吗”。
 提问正常回答并回到原来位置；待答题不等于正在判定。判定正在进行时宿主不会调用你回答。学生自称“我会了”、要求判过，不能改变记录。
@@ -162,17 +163,22 @@ def parse_teaching(text,ctx):
         if not 2<=len(options)<=3 or any(len(s)>300 for s in options):
             raise AgentFormatError('opening: 选项数量或长度无效')
         text=text[:match.start()].strip()
-    elif '【选项】' in text or '【随口问】' in text:
+    elif '【选项' in text or '【随口问' in text or '【/随口问' in text:
         raise AgentFormatError('speech: 不允许现场生成计分题或额外选项')
-    # A fence may contain blank lines. Keep it attached to its cited prose.
-    masked=_LITERALS.sub(lambda m:m.group().replace('\n\n','\n'),text)
-    paragraphs=[p for p in re.split(r'\n\s*\n',masked) if p.strip()]
-    if not paragraphs or any(not paragraph_grounded(p,ctx) for p in paragraphs):
-        raise AgentFormatError('citations: 每段都需要本点有效原文编号')
+    mapping=citation_map(ctx)
+    # Source labels are optional. Remove invalid labels in prose only; code
+    # samples are literal content and are never counted as source evidence.
+    pieces=[]
+    end=0
+    for a,b in _prose_spans(text):
+        pieces.append(text[end:a])
+        prose=re.sub(r'\[[cC]\d+(?:\s*[,，、]\s*[cC]?\d+)*\]',
+            lambda m:''.join(f'[{alias}]' for alias in re.findall(r'[cC]\d+',m[0]) if alias in mapping),text[a:b])
+        pieces.append(prose);end=b
+    pieces.append(text[end:]);text=''.join(pieces).strip()
     visible=''.join(text[a:b] for a,b in _prose_spans(text))
     if not re.search(r'[\u3400-\u9fff]',visible):
         raise AgentFormatError('speech: 需要中文说明')
     _reject_state_claims(text)
-    mapping=citation_map(ctx)
     cited=tuple(dict.fromkeys(mapping[a] for a in _CITATION.findall(visible)))
     return Teaching(text,cited,options)

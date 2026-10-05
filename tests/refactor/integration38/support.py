@@ -64,10 +64,12 @@ class Agents:
             self.calls.append(purpose)
             self.requests.append(dict(purpose=purpose, system=system, messages=messages))
         if purpose == 'teacher':
-            task = block(messages, '【本步任务】')
+            # Append-only requests retain old tasks for caching. A fake teacher
+            # must follow the newest task, just as the real model is instructed.
+            task = block([m for m in reversed(messages) if m['content'].startswith('【本步任务】')][:1], '【本步任务】')
             if self.teacher_format_errors:
                 self.teacher_format_errors -= 1
-                text = '无合法引用的格式错误'
+                text = 'English only invalid teaching.'
             else:
                 text = ('这一章一起理解资料中的概念，你觉得哪种情况更接近？[c1]\n【选项】\n第一种\n第二种\n不知道\n【/选项】'
                         if task['opening'] else '我们一起看资料中的定义。[c1]')

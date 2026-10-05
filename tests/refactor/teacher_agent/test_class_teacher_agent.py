@@ -91,20 +91,21 @@ def test_presets_match_existing_app_settings_without_importing_qt():
         assert set(assignments[key]) == set(actual)
 
 
-def test_unknown_references_are_rejected_without_context_mutation():
+def test_unknown_references_are_removed_without_context_mutation():
     ctx=context();before=copy.deepcopy(ctx)
-    with pytest.raises(AgentFormatError):agent.parse_teaching("感知[c1]但另一句[c99]",ctx)
+    result=agent.parse_teaching("感知[c1]但另一句[c99]",ctx)
+    assert result.speech=='感知[c1]但另一句' and result.cited_chunks==('chunk-a',)
     assert ctx==before
 
 
 def test_citation_inside_literal_code_cannot_vouch_for_knowledge():
-    with pytest.raises(AgentFormatError):agent.parse_teaching('示例`[c1]`',context())
+    assert agent.parse_teaching('示例`[c1]`',context()).cited_chunks==()
     assert agent.parse_teaching('示例`[c99]`，原文解释。[c1]',context()).cited_chunks==('chunk-a',)
 
 
 @pytest.mark.parametrize("text", ["", "   ", "Only English explanation. [c1]", "正文【随口问】", "正文【/随口问】",
     "正文【随口问】第一题【/随口问】【随口问】第二题【/随口问】", "正文【随口问】外【随口问】内【/随口问】",
-    "正文【随口问】【/随口问】", "正文【随口问", "正文【随口问】Why?【/随口问】", "正文[c1,c2]",
+    "正文【随口问】【/随口问】", "正文【随口问", "正文【随口问】Why?【/随口问】",
     "正文\x00", "正文\ud800", "长" * 40001], ids=lambda value: str(value)[:50])
 def test_invalid_or_partial_stream_is_rejected(text):
     with pytest.raises(AgentFormatError):

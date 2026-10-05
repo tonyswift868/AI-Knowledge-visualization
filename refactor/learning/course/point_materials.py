@@ -525,12 +525,26 @@ def check_distractors(questions, points, passages, ctx):
     packets=[];visible=set()
     for q in pending:
         ids={cid for pid in q['point_ids'] for cid in point_ids.get(pid,{}).get('chunk_ids',[])}
-        # Check support in this point's original text, not in a contrast about
-        # another object. Found questions also retain their question/answer text.
+        # Found questions also retain their question/answer text. A contrast
+        # from elsewhere in the same material can also support this object;
+        # the checker needs that paragraph, not just the point's own paragraph.
         ids.update(p['id'] for p in passages if p['source']['locator'] in (q['source']['locator'],q['answer_source']['locator']))
-        ids &= set(originals);visible.update(ids)
+        ids &= set(originals)
+        source_ids={originals[cid]['source_id'] for cid in ids}
+        distractors=[]
+        for index,option in enumerate(q.get('options',[])):
+            if index in q['answer']:continue
+            refs={c['chunk_id'] for c in q.get('contrast_evidence',[])
+                if c.get('contrast_value')==option and c.get('chunk_id') in originals
+                and originals[c['chunk_id']]['source_id'] in source_ids}
+            if not refs:
+                refs={p['id'] for p in passages if p['source_id'] in source_ids and option in p['text']}
+            distractors.append(dict(index=index,passage_ids=sorted(refs)))
+            ids.update(refs)
+        visible.update(ids)
         packets.append(dict(id=q['id'],point_ids=q['point_ids'],
-            kind=q['kind'],stem=q['stem'],answer=q['answer'],options=q.get('options',[]),passage_ids=sorted(ids)))
+            kind=q['kind'],stem=q['stem'],answer=q['answer'],options=q.get('options',[]),passage_ids=sorted(ids),
+            distractor_passages=distractors))
     packet=dict(questions=packets,passages=[dict(id=cid,text=originals[cid]['text']) for cid in sorted(visible)])
     failure='';outputs=[]
     _check(ctx)

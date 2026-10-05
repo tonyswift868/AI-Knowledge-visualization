@@ -157,26 +157,29 @@ def test_model_failure_retry_and_idempotent_buttons(env):
     assert len([m for m in v['messages'] if m['role']=='user'])==1
     v=act(env,'choose',0,token='one');assert not v['failure'] and len([m for m in v['messages'] if m['role']=='user'])==1
 
-def test_invalid_citation_rewrite_then_literal_fallback(env):
-    env.gateway.replies=['不属于本点的知识。[c99]','仍然不合格。[c99]']
+def test_invalid_citation_removed_without_retry_or_literal_fallback(env):
+    env.gateway.replies=['中文讲解。[c99]\n【选项】\n先看看\n还不知道\n【/选项】']
     v=act(env,'next');assert v['step']=='opening'
-    assert PARAGRAPH in v['messages'][-1]['content'] and 'c99' not in v['messages'][-1]['content']
-    assert env.gateway.calls==['teacher','teacher'] and env.stream.count(RESET)==2
+    message=v['messages'][-1]
+    assert '中文讲解。' in message['content'] and 'c99' not in message['content']
+    assert PARAGRAPH not in message['content'] and message['sources']
+    assert env.gateway.calls==['teacher'] and RESET not in env.stream
 
-def test_valid_paragraph_streams_before_model_return(env,monkeypatch):
+def test_valid_reply_displays_after_format_check(env,monkeypatch):
     def generate(*args,**kw):
         text='压力与面积有关。[c1]\n\n面积变小会使压强增大。[c1]'
         kw['on_text'](text[:19]);kw['on_text'](text[19:])
-        assert env.stream,'A cited paragraph should be shown while generating'
+        assert not env.stream,'Unvalidated source labels must not be displayed'
         return SimpleNamespace(text=text)
-    act(env,'next');monkeypatch.setattr(env.gateway,'complete',generate)
-    act(env,'choose',0)
+    act(env,'next');env.stream.clear();monkeypatch.setattr(env.gateway,'complete',generate)
+    v=act(env,'choose',0)
+    assert not v['failure'] and any('面积变小会使压强增大' in text for text in env.stream)
 
 @pytest.mark.parametrize('text',['无引用知识。','结论[c99]。','结论[c1,c2]。'])
-def test_teacher_rejects_invalid_or_missing_citation(env,text):
+def test_teacher_keeps_explanation_with_optional_citations(env,text):
     co=env.room._course(PLAN);st=env.room._load(co);plan,module=env.room._skeleton(co,st,['p0'])
-    with pytest.raises(ValueError if False else teacher_agent.AgentFormatError):
-        teacher_agent.parse_teaching(text,dict(plan=plan,module=module,prefs=SETTINGS,excerpts=co.excerpts(['p0']),director='解释'))
+    result=teacher_agent.parse_teaching(text,dict(plan=plan,module=module,prefs=SETTINGS,excerpts=co.excerpts(['p0']),director='解释'))
+    assert 'c99' not in result.speech and result.speech
 
 def test_save_error_is_not_success_and_durable_grade_replays_once(env,monkeypatch):
     pending(env,'choice','quick');original=env.room._save

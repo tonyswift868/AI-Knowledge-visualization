@@ -1,0 +1,464 @@
+{
+  "provenance": "small57/issue-evidence.json and live/audited-records.json; immutable saved requests and material",
+  "questions": [
+    {
+      "answer": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "answer_source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "a computer",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+          "contrast_quote": "When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer.",
+          "contrast_subject": "ATM",
+          "contrast_value": "withdraw cash"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+          "contrast_quote": "When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer.",
+          "contrast_subject": "calculator",
+          "contrast_value": "use a calculator"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "at": "2026-10-05T01:00:00+00:00",
+        "checks": [
+          {
+            "index": 4,
+            "option": "use a calculator",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          },
+          {
+            "index": 5,
+            "option": "withdraw cash",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          }
+        ],
+        "reason": "",
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-cdb44437afdde8a8ce6aeffcf16fcf2ac603623f60bcedd52bb2627727ebe9b9",
+      "importance": "normal",
+      "kind": "multi",
+      "module_id": "2fab08d1282443d8",
+      "options": [
+        "browse the Web",
+        "play games",
+        "send email",
+        "type documents",
+        "use a calculator",
+        "withdraw cash"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "2fab08d1282443d8-03"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "计算机可以用来做哪些常见事情？\nYou may already know that you can use a computer to ____.",
+      "target": "计算机可以用来做哪些常见事情？",
+      "uses": [
+        {
+          "at": "2026-10-11T10:00:00+09:00",
+          "purpose": "final"
+        },
+        {
+          "at": "2026-10-11T10:00:00+09:00",
+          "purpose": "final"
+        },
+        {
+          "at": "2026-10-11T10:00:00+09:00",
+          "purpose": "final"
+        },
+        {
+          "at": "2026-10-11T10:00:00+09:00",
+          "purpose": "final"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "It",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Examples of software include web browsers, games, and word processors.",
+          "contrast_subject": "Examples of software",
+          "contrast_value": "web browsers, games, and word processors"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "the computer case, monitor, keyboard, and mouse"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "at": "2026-10-08T01:00:00+00:00",
+        "checks": [
+          {
+            "index": 1,
+            "option": "the computer case, monitor, keyboard, and mouse",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          },
+          {
+            "index": 2,
+            "option": "web browsers, games, and word processors",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          }
+        ],
+        "reason": "",
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-802811671a87867e158e6bab21398273ff8fd9f87bc661f68edab5d7268b4233",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "5bc2c16069e14233",
+      "options": [
+        "all of the computer's internal parts",
+        "the computer case, monitor, keyboard, and mouse",
+        "web browsers, games, and word processors"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "5bc2c16069e14233-01"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "硬件除了键盘、鼠标以外，还包括什么？\nIt also includes ____, which you can see in the image below.",
+      "target": "硬件除了键盘、鼠标以外，还包括什么？",
+      "uses": [
+        {
+          "at": "2026-10-11T10:00:00+09:00",
+          "purpose": "final"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Laptop computers；正文块 6 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Laptops",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Many people use desktop computers at work, home, and school.",
+          "contrast_subject": "desktop computers",
+          "contrast_value": "at work, home, and school"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "on a desk"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "at": "2026-10-09T01:00:00+00:00",
+        "checks": [
+          {
+            "index": 1,
+            "option": "at work, home, and school",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          },
+          {
+            "index": 2,
+            "option": "on a desk",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          }
+        ],
+        "reason": "",
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-6d438e3183e04b76749de7de2e8715617fc381b6c60e78d3213e3e4f7d6b360d",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "almost anywhere",
+        "at work, home, and school",
+        "on a desk"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-02"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What are the different types of computers? / Laptop computers；正文块 6 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "笔记本电脑几乎可以在哪里使用？\nLaptops are battery-powered computers that are more portable than desktops, allowing you to use them ____.",
+      "target": "笔记本电脑几乎可以在哪里使用？",
+      "uses": [
+        {
+          "at": "2026-10-10T10:00:00+09:00",
+          "purpose": "module"
+        },
+        {
+          "at": "2026-10-11T10:00:00+09:00",
+          "purpose": "free"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Laptop computers；正文块 6 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Laptops",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Many people use desktop computers at work, home, and school.",
+          "contrast_subject": "desktop computers",
+          "contrast_value": "at work, home, and school"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "on a desk"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "at": "2026-10-09T01:00:00+00:00",
+        "checks": [
+          {
+            "index": 1,
+            "option": "at work, home, and school",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          },
+          {
+            "index": 2,
+            "option": "on a desk",
+            "quote": "",
+            "removed": false,
+            "verdict": "not_supported"
+          }
+        ],
+        "reason": "",
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-30802925daa712dfe1722c69c3dd3c99a2836cc8c982fb6d4d1d1951d81d0afd",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "almost anywhere",
+        "at work, home, and school",
+        "on a desk"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-02"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "What are the different types of computers? / Laptop computers；正文块 6 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "笔记本电脑几乎可以在哪里使用？\nLaptops are battery-powered computers that are more portable than desktops, allowing you to use them ____.",
+      "target": "笔记本电脑几乎可以在哪里使用？",
+      "uses": [
+        {
+          "at": "2026-10-09T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    }
+  ],
+  "points": [
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "locator": "What is a computer?",
+          "paragraph_end": 347,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002@21:347",
+          "paragraph_start": 21,
+          "quote": "A computer is an electronic device that manipulates information, or data. It has the ability to store, retrieve, and process data. You may already know that you can use a computer to type documents, send email, play games, and browse the Web. You can also use it to edit or create spreadsheets, presentations, and even videos.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "2fab08d1282443d8-03",
+      "minutes": 15,
+      "module_id": "2fab08d1282443d8",
+      "position": 2,
+      "source_general": false,
+      "summary": "能列举计算机的常见用途（打字、邮件、游戏、上网、表格、演示、视频），并说明每种用途在处理哪类数据。",
+      "title": "计算机的常见用途"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "locator": "Hardware vs. software",
+          "paragraph_end": 348,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003@156:348",
+          "paragraph_start": 156,
+          "quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse. It also includes all of the computer's internal parts, which you can see in the image below.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "5bc2c16069e14233-01",
+      "minutes": 15,
+      "module_id": "5bc2c16069e14233",
+      "position": 0,
+      "source_general": false,
+      "summary": "能指出硬件是计算机中有物理结构的部分，包括键盘、鼠标和内部零件；能用“有无实体”判断哪些属于硬件。",
+      "title": "硬件是什么"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "locator": "What are the different types of computers? / Desktop computers",
+          "paragraph_end": 249,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005@19:249",
+          "paragraph_start": 19,
+          "quote": "Many people use desktop computers at work, home, and school. Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006",
+          "locator": "What are the different types of computers? / Laptop computers",
+          "paragraph_end": 236,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006@18:236",
+          "paragraph_start": 18,
+          "quote": "The second type of computer you may be familiar with is a laptop computer, commonly called a laptop. Laptops are battery-powered computers that are more portable than desktops, allowing you to use them almost anywhere.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "0cbd139479bb4558-02",
+      "minutes": 15,
+      "module_id": "0cbd139479bb4558",
+      "position": 1,
+      "source_general": false,
+      "summary": "能说出台式机通常放在桌面、由机箱显示器键盘鼠标等部分组成；笔记本靠电池供电、比台式机更便携，几乎可在任何地方使用，并能用生活场景区分二者。",
+      "title": "台式机与笔记本电脑"
+    }
+  ],
+  "passages": [
+    {
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "What is a computer?\n\nA computer is an electronic device that manipulates information, or data. It has the ability to store, retrieve, and process data. You may already know that you can use a computer to type documents, send email, play games, and browse the Web. You can also use it to edit or create spreadsheets, presentations, and even videos.\n\nWatch the video below to learn about different types of computers.",
+      "source": {
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": "",
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]"
+      }
+    },
+    {
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Hardware vs. software\n\nBefore we talk about different types of computers, let's talk about two things all computers have in common: hardware and software.\n\nHardware is any part of your computer that has a physical structure, such as the keyboard or mouse. It also includes all of the computer's internal parts, which you can see in the image below.\n\nSoftware is any set of instructions that tells the hardware what to do and how to do it. Examples of software include web browsers, games, and word processors.\n\nEverything you do on your computer will rely on both hardware and software. For example, right now you may be viewing this lesson in a web browser (software) and using your mouse (hardware) to click from page to page. As you learn about different types of computers, ask yourself about the differences in their hardware. As you progress through this tutorial, you'll see that different types of computers also often use different types of software.",
+      "source": {
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": "",
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]"
+      }
+    },
+    {
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "What are the different types of computers?\n\nWhen most people hear the word computer, they think of a personal computer such as a desktop or laptop. However, computers come in many shapes and sizes, and they perform many different functions in our daily lives. When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer.",
+      "source": {
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": "",
+        "locator": "What are the different types of computers?；正文块 4 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004]"
+      }
+    },
+    {
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Desktop computers\n\nMany people use desktop computers at work, home, and school. Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+      "source": {
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": "",
+        "locator": "What are the different types of computers? / Desktop computers；正文块 5 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005]"
+      }
+    },
+    {
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006",
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Laptop computers\n\nThe second type of computer you may be familiar with is a laptop computer, commonly called a laptop. Laptops are battery-powered computers that are more portable than desktops, allowing you to use them almost anywhere.",
+      "source": {
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": "",
+        "locator": "What are the different types of computers? / Laptop computers；正文块 6 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006]"
+      }
+    }
+  ]
+}

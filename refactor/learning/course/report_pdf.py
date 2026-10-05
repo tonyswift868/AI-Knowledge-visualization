@@ -108,7 +108,7 @@ def render_report_pdf(report, titles, views, path: Path):
             line('没有明显的薄弱点。')
         if report.get('live_points'):
             heading('老师现场讲的知识点')
-            line('以下知识点的讲稿没通过核对，是老师现场讲的：', size=9, color=muted)
+            line('以下知识点由老师结合资料现场讲解：', size=9, color=muted)
             for point in report['live_points']:
                 line(point['title'])
         heading('各知识点老师评语')

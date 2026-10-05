@@ -1,0 +1,3514 @@
+{
+  "teacher_context": {
+    "plan": {
+      "final_goal": "认识计算机、硬件与软件、常见计算机设备类型，用生活化例子区分，不做实际操作\n讲法偏好：只理解概念；不做任何实际操作；希望用生活化例子；不做操作",
+      "goal": "我不太懂计算机，想把各种术语概念都搞明白，不用上手操作，要生活化的例子",
+      "id": "de9537712a0e47f8b34c2aba79a52a3b",
+      "level": "零基础"
+    },
+    "module": {
+      "id": "5bc2c16069e14233",
+      "points": [
+        {
+          "id": "5bc2c16069e14233-01",
+          "summary": "能指出硬件是计算机中有物理结构的部分，包括键盘、鼠标和内部零件；能用“有无实体”判断哪些属于硬件。",
+          "title": "硬件是什么"
+        },
+        {
+          "id": "5bc2c16069e14233-02",
+          "summary": "能说明软件是一组指令，用来告诉硬件做什么、怎么做，并认出浏览器、游戏、文字处理器属于软件。",
+          "title": "软件是什么"
+        },
+        {
+          "id": "5bc2c16069e14233-03",
+          "summary": "能说明电脑使用同时依赖硬件和软件，用浏览器加鼠标的例子分清软硬件，并知道不同电脑的硬件软件可能不同。",
+          "title": "硬件和软件的关系"
+        }
+      ],
+      "title": "硬件与软件"
+    },
+    "excerpts": {
+      "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003": "Hardware vs. software\n\nBefore we talk about different types of computers, let's talk about two things all computers have in common: hardware and software.\n\nHardware is any part of your computer that has a physical structure, such as the keyboard or mouse. It also includes all of the computer's internal parts, which you can see in the image below.\n\nSoftware is any set of instructions that tells the hardware what to do and how to do it. Examples of software include web browsers, games, and word processors.\n\nEverything you do on your computer will rely on both hardware and software. For example, right now you may be viewing this lesson in a web browser (software) and using your mouse (hardware) to click from page to page. As you learn about different types of computers, ask yourself about the differences in their hardware. As you progress through this tutorial, you'll see that different types of computers also often use different types of software."
+    },
+    "current_points": [
+      {
+        "id": "5bc2c16069e14233-02",
+        "title": "软件是什么"
+      }
+    ],
+    "director": "用一个生活化问题开头，给2～3个不计分的可点选项，也允许打字。先不要讲完整结论。",
+    "opening": true,
+    "profile": "已讲3个知识点；另有0个点直接考通过、没有讲（全计划10个点）。已记录的作答事实：计算机是什么曾答错：选项不符合资料标准答案。",
+    "user": "",
+    "prefs": {
+      "teacher_style": "warm",
+      "detail": "brief",
+      "examples": "normal",
+      "analogy_domains": [
+        "life"
+      ]
+    },
+    "dialogue": []
+  },
+  "teacher_replies": [
+    "刚才我们摸到了键盘这类有实体的部分。顺着往下走，先别急，硬件和软件确实容易混：假设电脑里正在播放音乐，下面哪一项更像“看不见、但在指挥电脑做事”的部分？\n\n我们可以先凭感觉选，选完再一起对原文。\n\n【选项】\n音乐播放器这个程序\n电脑的扬声器\n桌上的电源线\n【/选项】",
+    "软件常常是最容易和硬件混在一起的地方，先别急，我们从一个画面慢慢拆。\n\n假设你刚打开电脑，屏幕上是能查网页的浏览器，旁边有个能点来点去的鼠标。这两样里，哪个更像“看不见、但在指挥电脑做事”的那一类？[c1]\n\n不用急着下结论，想想它有没有实体、是不是在告诉电脑该做什么就行。[c1]\n\n【选项】\n浏览器\n鼠标\n两个都是\n【/选项】"
+  ],
+  "mastery": {
+    "version": 1,
+    "points": [
+      {
+        "point_id": "2fab08d1282443d8-01",
+        "module_id": "2fab08d1282443d8"
+      },
+      {
+        "point_id": "2fab08d1282443d8-02",
+        "module_id": "2fab08d1282443d8"
+      },
+      {
+        "point_id": "2fab08d1282443d8-03",
+        "module_id": "2fab08d1282443d8"
+      },
+      {
+        "point_id": "5bc2c16069e14233-01",
+        "module_id": "5bc2c16069e14233"
+      },
+      {
+        "point_id": "5bc2c16069e14233-02",
+        "module_id": "5bc2c16069e14233"
+      },
+      {
+        "point_id": "5bc2c16069e14233-03",
+        "module_id": "5bc2c16069e14233"
+      },
+      {
+        "point_id": "0cbd139479bb4558-01",
+        "module_id": "0cbd139479bb4558"
+      },
+      {
+        "point_id": "0cbd139479bb4558-02",
+        "module_id": "0cbd139479bb4558"
+      },
+      {
+        "point_id": "0cbd139479bb4558-03",
+        "module_id": "0cbd139479bb4558"
+      },
+      {
+        "point_id": "0cbd139479bb4558-04",
+        "module_id": "0cbd139479bb4558"
+      }
+    ],
+    "events": [
+      {
+        "event_id": "59e4e0ad1a614c59b99b16372a2fa970",
+        "seq": 1791179963337845,
+        "at": "2026-10-05T10:00:00+09:00",
+        "context": "casual",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-01",
+            false
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "446efe0c4a554973987161e45169b63f",
+        "seq": 1791179975270414,
+        "at": "2026-10-05T10:00:00+09:00",
+        "context": "casual",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-02",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "229e222b2e7b4941a8098f7a7bd69dec",
+        "seq": 1791179985875161,
+        "at": "2026-10-06T10:00:00+09:00",
+        "context": "casual",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "b7e8b4a31d874ad2a50f1f19fbe72690",
+        "seq": 1791179987413510,
+        "at": "2026-10-06T10:00:00+09:00",
+        "context": "module_test",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": "49977e7d584a4534",
+        "results": [
+          [
+            "2fab08d1282443d8-01",
+            false
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "6764ad0c45a3434cac26411269ac7224",
+        "seq": 1791179988711706,
+        "at": "2026-10-06T10:00:00+09:00",
+        "context": "module_test",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": "49977e7d584a4534",
+        "results": [
+          [
+            "2fab08d1282443d8-02",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "ebb6a2c455ce4999a2979bfdf46f87c1",
+        "seq": 1791179990194316,
+        "at": "2026-10-06T10:00:00+09:00",
+        "context": "module_test",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": "49977e7d584a4534",
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "be78edaed19a4dc3af237c293c303ff4",
+        "seq": 1791179990195317,
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": "49977e7d584a4534",
+        "kind": "module_test",
+        "type": "attempt_closed"
+      },
+      {
+        "event_id": "56ffe1d328b04664a6ff1985638a826f",
+        "seq": 1791179991570229,
+        "at": "2026-10-06T10:00:00+09:00",
+        "context": "retest",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-01",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "2cca9d733bce4ae3b44f7eb7e257f571",
+        "seq": 1791180414632966,
+        "at": "2026-10-08T10:00:00+09:00",
+        "context": "casual",
+        "module_id": "5bc2c16069e14233",
+        "attempt_id": null,
+        "results": [
+          [
+            "5bc2c16069e14233-01",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "7de21d7b83f54f768891177e53dd62a5",
+        "seq": 1791180473687403,
+        "at": "2026-10-08T10:00:00+09:00",
+        "context": "casual",
+        "module_id": "5bc2c16069e14233",
+        "attempt_id": null,
+        "results": [
+          [
+            "5bc2c16069e14233-02",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "28d7ece00dda48ae8492d7fb536cee89",
+        "seq": 1791180482453396,
+        "at": "2026-10-08T10:00:00+09:00",
+        "context": "casual",
+        "module_id": "5bc2c16069e14233",
+        "attempt_id": null,
+        "results": [
+          [
+            "5bc2c16069e14233-03",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "7bf6658e2f79481e9b0cfda4e775f7e9",
+        "seq": 1791180484189453,
+        "at": "2026-10-08T10:00:00+09:00",
+        "context": "module_test",
+        "module_id": "5bc2c16069e14233",
+        "attempt_id": "56f1e96d93ec42d0",
+        "results": [
+          [
+            "5bc2c16069e14233-01",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "211a1ff2e985496b8fd55360ccf9b3dc",
+        "seq": 1791180485411919,
+        "at": "2026-10-08T10:00:00+09:00",
+        "context": "module_test",
+        "module_id": "5bc2c16069e14233",
+        "attempt_id": "56f1e96d93ec42d0",
+        "results": [
+          [
+            "5bc2c16069e14233-02",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "94ac284a163043ce94292ac46f04939d",
+        "seq": 1791180486824583,
+        "at": "2026-10-08T10:00:00+09:00",
+        "context": "module_test",
+        "module_id": "5bc2c16069e14233",
+        "attempt_id": "56f1e96d93ec42d0",
+        "results": [
+          [
+            "5bc2c16069e14233-03",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "5efbecf120c646cb994acee70492e7b5",
+        "seq": 1791180486828621,
+        "module_id": "5bc2c16069e14233",
+        "attempt_id": "56f1e96d93ec42d0",
+        "kind": "module_test",
+        "type": "attempt_closed"
+      },
+      {
+        "event_id": "e7428e1ee2b2443a9dac9152ae610488",
+        "seq": 1791180912421172,
+        "at": "2026-10-09T10:00:00+09:00",
+        "context": "casual",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": null,
+        "results": [
+          [
+            "0cbd139479bb4558-01",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "9413e50f842447b5991469f04c64b31f",
+        "seq": 1791180921044026,
+        "at": "2026-10-09T10:00:00+09:00",
+        "context": "casual",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": null,
+        "results": [
+          [
+            "0cbd139479bb4558-02",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "6e5805dba70f4f5b9508eda0d3e7e105",
+        "seq": 1791180926892260,
+        "at": "2026-10-09T10:00:00+09:00",
+        "context": "casual",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": null,
+        "results": [
+          [
+            "0cbd139479bb4558-03",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "2e1ae242f39649d59d8d5674b9cb105a",
+        "seq": 1791180934145576,
+        "at": "2026-10-10T10:00:00+09:00",
+        "context": "casual",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": null,
+        "results": [
+          [
+            "0cbd139479bb4558-04",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "928ac2dbb36b41808fe6de47bb399a06",
+        "seq": 1791180936211804,
+        "at": "2026-10-10T10:00:00+09:00",
+        "context": "module_test",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": "db0f29e04e0e4d41",
+        "results": [
+          [
+            "0cbd139479bb4558-01",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "3c95c81a7b4b444d923f9ac640791cb4",
+        "seq": 1791180937851975,
+        "at": "2026-10-10T10:00:00+09:00",
+        "context": "module_test",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": "db0f29e04e0e4d41",
+        "results": [
+          [
+            "0cbd139479bb4558-02",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "17602b837600497dab789c506901ad8a",
+        "seq": 1791180939081074,
+        "at": "2026-10-10T10:00:00+09:00",
+        "context": "module_test",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": "db0f29e04e0e4d41",
+        "results": [
+          [
+            "0cbd139479bb4558-03",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "b1bc0423762d42358af44361685b83c8",
+        "seq": 1791180940375884,
+        "at": "2026-10-10T10:00:00+09:00",
+        "context": "module_test",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": "db0f29e04e0e4d41",
+        "results": [
+          [
+            "0cbd139479bb4558-04",
+            true
+          ]
+        ],
+        "angle": null,
+        "type": "judgement"
+      },
+      {
+        "event_id": "0089d2dfcefa4e70856cd5207e7ea5d6",
+        "seq": 1791180940381554,
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": "db0f29e04e0e4d41",
+        "kind": "module_test",
+        "type": "attempt_closed"
+      },
+      {
+        "event_id": "4ed3888a95ed4a6a9f7cd8c1fc38ae7a",
+        "seq": 1791180941523203,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-01",
+            true
+          ]
+        ],
+        "angle": "recall",
+        "type": "judgement"
+      },
+      {
+        "event_id": "fedf611f5c424ef4ae471ae2fbd8e388",
+        "seq": 1791180942673153,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-02",
+            true
+          ]
+        ],
+        "angle": "recall",
+        "type": "judgement"
+      },
+      {
+        "event_id": "0488a6ea426c49b88982e05298df7f2a",
+        "seq": 1791180943586676,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            false
+          ]
+        ],
+        "angle": "recall",
+        "type": "judgement"
+      },
+      {
+        "event_id": "40d9e0df93954532a06e2443aabcfa2b",
+        "seq": 1791180944855094,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "5bc2c16069e14233",
+        "attempt_id": null,
+        "results": [
+          [
+            "5bc2c16069e14233-01",
+            true
+          ]
+        ],
+        "angle": "recall",
+        "type": "judgement"
+      },
+      {
+        "event_id": "7b62e56c01394fa28715f4a2b27794bc",
+        "seq": 1791180946563224,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "5bc2c16069e14233",
+        "attempt_id": null,
+        "results": [
+          [
+            "5bc2c16069e14233-02",
+            true
+          ]
+        ],
+        "angle": "recall",
+        "type": "judgement"
+      },
+      {
+        "event_id": "77a402739e4d4c0a83785199ee279c36",
+        "seq": 1791180948341248,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "5bc2c16069e14233",
+        "attempt_id": null,
+        "results": [
+          [
+            "5bc2c16069e14233-03",
+            true
+          ]
+        ],
+        "angle": "recall",
+        "type": "judgement"
+      },
+      {
+        "event_id": "b6af2059554c4049a8c634103584579a",
+        "seq": 1791180949397275,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": null,
+        "results": [
+          [
+            "0cbd139479bb4558-01",
+            true
+          ]
+        ],
+        "angle": "recall",
+        "type": "judgement"
+      },
+      {
+        "event_id": "fcd8ec2597524930913bf649cec7c513",
+        "seq": 1791180950396694,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": null,
+        "results": [
+          [
+            "0cbd139479bb4558-02",
+            true
+          ]
+        ],
+        "angle": "recall",
+        "type": "judgement"
+      },
+      {
+        "event_id": "839d86074bff4720841214cf1b45e7f6",
+        "seq": 1791180952274940,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": null,
+        "results": [
+          [
+            "0cbd139479bb4558-03",
+            true
+          ]
+        ],
+        "angle": "recall",
+        "type": "judgement"
+      },
+      {
+        "event_id": "950022bb87864aea8d25793e576505b7",
+        "seq": 1791180953868622,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "0cbd139479bb4558",
+        "attempt_id": null,
+        "results": [
+          [
+            "0cbd139479bb4558-04",
+            true
+          ]
+        ],
+        "angle": "recall",
+        "type": "judgement"
+      },
+      {
+        "event_id": "15753c8016a84690b57ebeeb67f5aea1",
+        "seq": 1791180955344705,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            false
+          ]
+        ],
+        "angle": "apply",
+        "type": "judgement"
+      },
+      {
+        "event_id": "4265a8f59722404f8c8a1e43fcf1e5c7",
+        "seq": 1791180956619841,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-01",
+            true
+          ]
+        ],
+        "angle": "apply",
+        "type": "judgement"
+      },
+      {
+        "event_id": "1a5936e570424300972208384c6cec62",
+        "seq": 1791180957898151,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            true
+          ]
+        ],
+        "angle": "contrast",
+        "type": "judgement"
+      },
+      {
+        "event_id": "10c3db54b2b44fdbb7395e1f6985e90a",
+        "seq": 1791180959210044,
+        "at": "2026-10-11T10:00:00+09:00",
+        "context": "check",
+        "module_id": "2fab08d1282443d8",
+        "attempt_id": null,
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            true
+          ]
+        ],
+        "angle": "fix_error",
+        "type": "judgement"
+      }
+    ]
+  },
+  "points": [
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+          "locator": "What are the different types of computers?",
+          "paragraph_end": 378,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004@44:378",
+          "paragraph_start": 44,
+          "quote": "When most people hear the word computer, they think of a personal computer such as a desktop or laptop. However, computers come in many shapes and sizes, and they perform many different functions in our daily lives. When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "0cbd139479bb4558-01",
+      "minutes": 15,
+      "module_id": "0cbd139479bb4558",
+      "position": 0,
+      "source_general": false,
+      "summary": "能举出生活中 ATM 取款、商店扫码、计算器等也是计算机的例子，说明计算机形状、大小和功能多样，不只有个人电脑。",
+      "title": "计算机类型不止台式机和笔记本"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "locator": "What is a computer?",
+          "paragraph_end": 347,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002@21:347",
+          "paragraph_start": 21,
+          "quote": "A computer is an electronic device that manipulates information, or data. It has the ability to store, retrieve, and process data. You may already know that you can use a computer to type documents, send email, play games, and browse the Web. You can also use it to edit or create spreadsheets, presentations, and even videos.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "2fab08d1282443d8-01",
+      "minutes": 15,
+      "module_id": "2fab08d1282443d8",
+      "position": 0,
+      "source_general": false,
+      "summary": "能用自己的话说出计算机是处理信息（数据）的电子设备，并各举一个生活化例子说明“信息”和“电子设备”。",
+      "title": "计算机是什么"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "locator": "Hardware vs. software",
+          "paragraph_end": 348,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003@156:348",
+          "paragraph_start": 156,
+          "quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse. It also includes all of the computer's internal parts, which you can see in the image below.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "5bc2c16069e14233-01",
+      "minutes": 15,
+      "module_id": "5bc2c16069e14233",
+      "position": 0,
+      "source_general": false,
+      "summary": "能指出硬件是计算机中有物理结构的部分，包括键盘、鼠标和内部零件；能用“有无实体”判断哪些属于硬件。",
+      "title": "硬件是什么"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "locator": "What are the different types of computers? / Desktop computers",
+          "paragraph_end": 249,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005@19:249",
+          "paragraph_start": 19,
+          "quote": "Many people use desktop computers at work, home, and school. Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006",
+          "locator": "What are the different types of computers? / Laptop computers",
+          "paragraph_end": 236,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006@18:236",
+          "paragraph_start": 18,
+          "quote": "The second type of computer you may be familiar with is a laptop computer, commonly called a laptop. Laptops are battery-powered computers that are more portable than desktops, allowing you to use them almost anywhere.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "0cbd139479bb4558-02",
+      "minutes": 15,
+      "module_id": "0cbd139479bb4558",
+      "position": 1,
+      "source_general": false,
+      "summary": "能说出台式机通常放在桌面、由机箱显示器键盘鼠标等部分组成；笔记本靠电池供电、比台式机更便携，几乎可在任何地方使用，并能用生活场景区分二者。",
+      "title": "台式机与笔记本电脑"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "locator": "What is a computer?",
+          "paragraph_end": 347,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002@21:347",
+          "paragraph_start": 21,
+          "quote": "A computer is an electronic device that manipulates information, or data. It has the ability to store, retrieve, and process data. You may already know that you can use a computer to type documents, send email, play games, and browse the Web. You can also use it to edit or create spreadsheets, presentations, and even videos.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "2fab08d1282443d8-02",
+      "minutes": 15,
+      "module_id": "2fab08d1282443d8",
+      "position": 1,
+      "source_general": false,
+      "summary": "能用生活比喻（如书柜、冰箱）区分存储、取回、处理数据三种能力，并判断给定动作属于哪一种。",
+      "title": "数据的存储、取回与处理"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "locator": "Hardware vs. software",
+          "paragraph_end": 509,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003@350:509",
+          "paragraph_start": 350,
+          "quote": "Software is any set of instructions that tells the hardware what to do and how to do it. Examples of software include web browsers, games, and word processors.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "5bc2c16069e14233-02",
+      "minutes": 15,
+      "module_id": "5bc2c16069e14233",
+      "position": 1,
+      "source_general": false,
+      "summary": "能说明软件是一组指令，用来告诉硬件做什么、怎么做，并认出浏览器、游戏、文字处理器属于软件。",
+      "title": "软件是什么"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007",
+          "locator": "What are the different types of computers? / Tablet computers",
+          "paragraph_end": 243,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007@18:243",
+          "paragraph_start": 18,
+          "quote": "Tablet computers—or tablets—are handheld computers that are even more portable than laptops. Instead of a keyboard and mouse, tablets use a touch-sensitive screen for typing and navigation. The iPad is an example of a tablet.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "0cbd139479bb4558-03",
+      "minutes": 15,
+      "module_id": "0cbd139479bb4558",
+      "position": 2,
+      "source_general": false,
+      "summary": "能说出平板是手持电脑，比笔记本更便携，用触摸屏代替键盘鼠标进行打字和导航，并能举出 iPad 作为例子。",
+      "title": "平板电脑"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "locator": "What is a computer?",
+          "paragraph_end": 347,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002@21:347",
+          "paragraph_start": 21,
+          "quote": "A computer is an electronic device that manipulates information, or data. It has the ability to store, retrieve, and process data. You may already know that you can use a computer to type documents, send email, play games, and browse the Web. You can also use it to edit or create spreadsheets, presentations, and even videos.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "2fab08d1282443d8-03",
+      "minutes": 15,
+      "module_id": "2fab08d1282443d8",
+      "position": 2,
+      "source_general": false,
+      "summary": "能列举计算机的常见用途（打字、邮件、游戏、上网、表格、演示、视频），并说明每种用途在处理哪类数据。",
+      "title": "计算机的常见用途"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "locator": "Hardware vs. software",
+          "paragraph_end": 154,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003@23:154",
+          "paragraph_start": 23,
+          "quote": "Before we talk about different types of computers, let's talk about two things all computers have in common: hardware and software.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "locator": "Hardware vs. software",
+          "paragraph_end": 959,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003@511:959",
+          "paragraph_start": 511,
+          "quote": "Everything you do on your computer will rely on both hardware and software. For example, right now you may be viewing this lesson in a web browser (software) and using your mouse (hardware) to click from page to page. As you learn about different types of computers, ask yourself about the differences in their hardware. As you progress through this tutorial, you'll see that different types of computers also often use different types of software.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "5bc2c16069e14233-03",
+      "minutes": 15,
+      "module_id": "5bc2c16069e14233",
+      "position": 2,
+      "source_general": false,
+      "summary": "能说明电脑使用同时依赖硬件和软件，用浏览器加鼠标的例子分清软硬件，并知道不同电脑的硬件软件可能不同。",
+      "title": "硬件和软件的关系"
+    },
+    {
+      "chunk_ids": [
+        "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008"
+      ],
+      "citations": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008",
+          "locator": "What are the different types of computers? / Servers",
+          "paragraph_end": 271,
+          "paragraph_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008@9:271",
+          "paragraph_start": 9,
+          "quote": "A server is a computer that serves up information to other computers on a network. For example, whenever you use the Internet, you're looking at something that's stored on a server. Many businesses also use local file servers to store and share files internally.",
+          "title": "GCFGlobal Computer Basics: What is a Computer?",
+          "url": null
+        }
+      ],
+      "id": "0cbd139479bb4558-04",
+      "minutes": 15,
+      "module_id": "0cbd139479bb4558",
+      "position": 3,
+      "source_general": false,
+      "summary": "能说明服务器是向网络上其他计算机提供信息的计算机；能举出上网内容存储在服务器、企业用本地文件服务器存储和共享文件的例子。",
+      "title": "服务器"
+    }
+  ],
+  "bank": [
+    {
+      "answer": [
+        1
+      ],
+      "answer_source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "It",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "You may already know that you can use a computer to type documents, send email, play games, and browse the Web.",
+          "contrast_subject": "You",
+          "contrast_value": "type documents, send email, play games, and browse the Web"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "You can also use it to edit or create spreadsheets, presentations, and even videos.",
+          "contrast_subject": "You",
+          "contrast_value": "edit or create spreadsheets, presentations, and even videos"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-03e00c58c48a55cfa14a69e8ef5df36c99a89452a06606a6736ef4a0d391e7ba",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "2fab08d1282443d8",
+      "options": [
+        "edit or create spreadsheets, presentations, and even videos",
+        "store, retrieve, and process data",
+        "type documents, send email, play games, and browse the Web"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "2fab08d1282443d8-02"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "计算机对数据具备哪三种能力？\nIt has the ability to ____.",
+      "target": "计算机对数据具备哪三种能力？",
+      "uses": [
+        {
+          "at": "2026-10-05T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "A computer",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Software is any set of instructions that tells the hardware what to do and how to do it.",
+          "contrast_subject": "Software",
+          "contrast_value": "any set of instructions that tells the hardware what to do and how to do it"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-136aef279770cf59a79948480b0215573465b73d2cd0b3ccd0460c4911234caf",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "2fab08d1282443d8",
+      "options": [
+        "any part of your computer that has a physical structure",
+        "any set of instructions that tells the hardware what to do and how to do it",
+        "electronic device that manipulates information, or data"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "2fab08d1282443d8-01"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "计算机是什么？\nA computer is an ____.",
+      "target": "计算机是什么？",
+      "uses": [
+        {
+          "at": "2026-10-06T10:00:00+09:00",
+          "purpose": "module"
+        }
+      ]
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Software",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "A computer is an electronic device that manipulates information, or data.",
+          "contrast_subject": "A computer",
+          "contrast_value": "an electronic device that manipulates information, or data"
+        }
+      ],
+      "created_at": "2026-10-08T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-218c571608c1451c47486f11638d4cd238ba410041c6c41bb98e2cd16b3ccedd",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "5bc2c16069e14233",
+      "options": [
+        "an electronic device that manipulates information, or data",
+        "any part of your computer that has a physical structure",
+        "any set of instructions that tells the hardware what to do and how to do it"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "5bc2c16069e14233-03"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "软件是什么？\nSoftware is ____.",
+      "target": "软件是什么？",
+      "uses": [
+        {
+          "at": "2026-10-08T10:00:00+09:00",
+          "purpose": "module"
+        }
+      ]
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Software",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure, such as the keyboard or mouse"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "A computer is an electronic device that manipulates information, or data.",
+          "contrast_subject": "A computer",
+          "contrast_value": "an electronic device that manipulates information, or data"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-2f5a0dd5ab563b094f927532c7455b125597e710f4fb2c1ad30176eb4cb66901",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "5bc2c16069e14233",
+      "options": [
+        "an electronic device that manipulates information, or data",
+        "any part of your computer that has a physical structure, such as the keyboard or mouse",
+        "instructions"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "5bc2c16069e14233-02"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "软件是一组什么？\nSoftware is any set of ____ that tells the hardware what to do and how to do it.",
+      "target": "软件是一组什么？",
+      "uses": [
+        {
+          "at": "2026-10-08T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Laptop computers；正文块 6 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Laptops",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Many people use desktop computers at work, home, and school.",
+          "contrast_subject": "desktop computers",
+          "contrast_value": "at work, home, and school"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "on a desk"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-30802925daa712dfe1722c69c3dd3c99a2836cc8c982fb6d4d1d1951d81d0afd",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "almost anywhere",
+        "at work, home, and school",
+        "on a desk"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-02"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "What are the different types of computers? / Laptop computers；正文块 6 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "笔记本电脑几乎可以在哪里使用？\nLaptops are battery-powered computers that are more portable than desktops, allowing you to use them ____.",
+      "target": "笔记本电脑几乎可以在哪里使用？",
+      "uses": [
+        {
+          "at": "2026-10-09T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "it",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+          "contrast_quote": "When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer.",
+          "contrast_subject": "ATM",
+          "contrast_value": "withdraw cash"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+          "contrast_quote": "When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer.",
+          "contrast_subject": "calculator",
+          "contrast_value": "use a calculator"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-34041fc3b46f3eaf787b50a6809b5b5c3f1e91b44ca21458cc39a2b3170eae3d",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "2fab08d1282443d8",
+      "options": [
+        "edit or create spreadsheets, presentations, and even videos",
+        "use a calculator",
+        "withdraw cash"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "2fab08d1282443d8-03"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "计算机还可以用来创建或编辑哪些内容？\nYou can also use it to ____.",
+      "target": "计算机还可以用来创建或编辑哪些内容？",
+      "uses": [
+        {
+          "at": "2026-10-06T10:00:00+09:00",
+          "purpose": "module"
+        }
+      ]
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers?；正文块 4 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "a type of computer",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006",
+          "contrast_quote": "Laptops are battery-powered computers that are more portable than desktops",
+          "contrast_subject": "Laptops",
+          "contrast_value": "battery-powered computers that are more portable than desktops"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "designed to be placed on a desk"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-3f0240256a1dcda5714828f698d89663ab6507357c7590f90de3a6408eaf7c5c",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "battery-powered computers that are more portable than desktops",
+        "designed to be placed on a desk",
+        "withdraw cash from an ATM, scan groceries at the store, or use a calculator"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-01"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What are the different types of computers?；正文块 4 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "原文举出哪三个日常操作，说明人们当时其实正在使用计算机？\nWhen you ____, you're using a type of computer.",
+      "target": "原文举出哪三个日常操作，说明人们当时其实正在使用计算机？",
+      "uses": [
+        {
+          "at": "2026-10-10T10:00:00+09:00",
+          "purpose": "module"
+        }
+      ]
+    },
+    {
+      "answer": [
+        1
+      ],
+      "answer_source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Hardware",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Software is any set of instructions that tells the hardware what to do and how to do it.",
+          "contrast_subject": "Software",
+          "contrast_value": "any set of instructions that tells the hardware what to do and how to do it"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "A computer is an electronic device that manipulates information, or data.",
+          "contrast_subject": "A computer",
+          "contrast_value": "an electronic device that manipulates information, or data"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-49f386f2005a75052415a28f5e6b09c1cc7dc64e63c264f2d82a1b30d6907a95",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "5bc2c16069e14233",
+      "options": [
+        "an electronic device that manipulates information, or data",
+        "any part of your computer that has a physical structure",
+        "any set of instructions that tells the hardware what to do and how to do it"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "5bc2c16069e14233-01"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "在原文中，硬件（hardware）被定义为什么？\nHardware is ____, such as the keyboard or mouse.",
+      "target": "在原文中，硬件（hardware）被定义为什么？",
+      "uses": [
+        {
+          "at": "2026-10-08T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "a computer",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+          "contrast_quote": "When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer.",
+          "contrast_subject": "ATM",
+          "contrast_value": "withdraw cash"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+          "contrast_quote": "When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer.",
+          "contrast_subject": "calculator",
+          "contrast_value": "use a calculator"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-4aa482e68763a8e71d3fe91f0be7ba4fb5689106e64f5a4d50a7d8b606a9fd09",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "2fab08d1282443d8",
+      "options": [
+        "type documents",
+        "use a calculator",
+        "withdraw cash"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "2fab08d1282443d8-03"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "补全原文空位：计算机可以用来做哪些常见事情？\nYou may already know that you can use a computer to ____, send email, play games, and browse the Web.",
+      "target": "补全原文空位：计算机可以用来做哪些常见事情？",
+      "uses": [
+        {
+          "at": "2026-10-06T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    },
+    {
+      "answer": [
+        1
+      ],
+      "answer_source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "It",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "You may already know that you can use a computer to type documents, send email, play games, and browse the Web.",
+          "contrast_subject": "You",
+          "contrast_value": "type documents, send email, play games, and browse the Web"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "You can also use it to edit or create spreadsheets, presentations, and even videos.",
+          "contrast_subject": "You",
+          "contrast_value": "edit or create spreadsheets, presentations, and even videos"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-52ae8026013aec9b081aaa45ac161d99f13f908ce5c12ae39c73f12d1dc911de",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "2fab08d1282443d8",
+      "options": [
+        "edit or create spreadsheets, presentations, and even videos",
+        "store, retrieve, and process data",
+        "type documents, send email, play games, and browse the Web"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "2fab08d1282443d8-02"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "计算机对数据具备哪三种能力？\nIt has the ability to ____.",
+      "target": "计算机对数据具备哪三种能力？",
+      "uses": [
+        {
+          "at": "2026-10-06T10:00:00+09:00",
+          "purpose": "module"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "A computer",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Software is any set of instructions that tells the hardware what to do and how to do it.",
+          "contrast_subject": "Software",
+          "contrast_value": "any set of instructions that tells the hardware what to do and how to do it"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-53fdf97fd5effcfbd6e224057c5d7fe13aa18e43249243f5fa6e0079a0972daa",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "2fab08d1282443d8",
+      "options": [
+        "an electronic device that manipulates information, or data",
+        "any part of your computer that has a physical structure",
+        "any set of instructions that tells the hardware what to do and how to do it"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "2fab08d1282443d8-01"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "计算机是什么？\nA computer is ____.",
+      "target": "计算机是什么？",
+      "uses": [
+        {
+          "at": "2026-10-06T10:00:00+09:00",
+          "purpose": "retest"
+        }
+      ]
+    },
+    {
+      "answer": [
+        1
+      ],
+      "answer_source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Hardware",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Software is any set of instructions that tells the hardware what to do and how to do it.",
+          "contrast_subject": "Software",
+          "contrast_value": "any set of instructions that tells the hardware what to do and how to do it"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "A computer is an electronic device that manipulates information, or data.",
+          "contrast_subject": "A computer",
+          "contrast_value": "an electronic device that manipulates information, or data"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-578d5781d3e0a6666bd946d158144d77728849255da2438f419245b4f1440d62",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "5bc2c16069e14233",
+      "options": [
+        "an electronic device that manipulates information, or data",
+        "any part of your computer that has a physical structure",
+        "any set of instructions that tells the hardware what to do and how to do it"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "5bc2c16069e14233-01"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "在原文中，硬件（hardware）被定义为什么？\nHardware is ____, such as the keyboard or mouse.",
+      "target": "在原文中，硬件（hardware）被定义为什么？",
+      "uses": [
+        {
+          "at": "2026-10-08T10:00:00+09:00",
+          "purpose": "module"
+        },
+        {
+          "at": "2026-10-11T10:00:00+09:00",
+          "purpose": "free"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Servers；正文块 8 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "A server",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure, such as the keyboard or mouse"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Software is any set of instructions that tells the hardware what to do and how to do it.",
+          "contrast_subject": "Software",
+          "contrast_value": "any set of instructions that tells the hardware what to do and how to do it"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-640dc7e40a5e86bbdf15346bd1da6e11868f2cee1181d32eebcdfe171c4f0eb8",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "a computer that serves up information to other computers on a network",
+        "any part of your computer that has a physical structure, such as the keyboard or mouse",
+        "any set of instructions that tells the hardware what to do and how to do it"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-04"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "What are the different types of computers? / Servers；正文块 8 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "A server 是什么类型的计算机？它向谁提供信息？\nA server is ____.",
+      "target": "A server 是什么类型的计算机？它向谁提供信息？",
+      "uses": [
+        {
+          "at": "2026-10-10T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Laptop computers；正文块 6 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Laptops",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Many people use desktop computers at work, home, and school.",
+          "contrast_subject": "desktop computers",
+          "contrast_value": "at work, home, and school"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "on a desk"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-6d438e3183e04b76749de7de2e8715617fc381b6c60e78d3213e3e4f7d6b360d",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "almost anywhere",
+        "at work, home, and school",
+        "on a desk"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-02"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What are the different types of computers? / Laptop computers；正文块 6 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "笔记本电脑几乎可以在哪里使用？\nLaptops are battery-powered computers that are more portable than desktops, allowing you to use them ____.",
+      "target": "笔记本电脑几乎可以在哪里使用？",
+      "uses": [
+        {
+          "at": "2026-10-10T10:00:00+09:00",
+          "purpose": "module"
+        },
+        {
+          "at": "2026-10-11T10:00:00+09:00",
+          "purpose": "free"
+        }
+      ]
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Servers；正文块 8 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "A server",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "designed to be placed on a desk"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Software is any set of instructions that tells the hardware what to do and how to do it.",
+          "contrast_subject": "Software",
+          "contrast_value": "any set of instructions that tells the hardware what to do and how to do it"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-7694324b1976fb73f7264acb6d4a25b1479784e4bce7fa7240102c4777770d57",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "any set of instructions that tells the hardware what to do and how to do it",
+        "designed to be placed on a desk",
+        "other computers on a network"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-04"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What are the different types of computers? / Servers；正文块 8 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "服务器向网络上的哪些对象提供信息？\nA server is a computer that serves up information to ____.",
+      "target": "服务器向网络上的哪些对象提供信息？",
+      "uses": [
+        {
+          "at": "2026-10-10T10:00:00+09:00",
+          "purpose": "module"
+        }
+      ]
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Software",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure, such as the keyboard or mouse"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "A computer is an electronic device that manipulates information, or data.",
+          "contrast_subject": "A computer",
+          "contrast_value": "an electronic device that manipulates information, or data"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-7fb6fec40c717537689a51bc4c46111a340e8b68beef05f498555947470a831c",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "5bc2c16069e14233",
+      "options": [
+        "an electronic device that manipulates information, or data",
+        "any part of your computer that has a physical structure, such as the keyboard or mouse",
+        "instructions"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "5bc2c16069e14233-02"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "软件是一组什么？\nSoftware is any set of ____ that tells the hardware what to do and how to do it.",
+      "target": "软件是一组什么？",
+      "uses": [
+        {
+          "at": "2026-10-08T10:00:00+09:00",
+          "purpose": "module"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "It",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Examples of software include web browsers, games, and word processors.",
+          "contrast_subject": "Examples of software",
+          "contrast_value": "web browsers, games, and word processors"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "the computer case, monitor, keyboard, and mouse"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-802811671a87867e158e6bab21398273ff8fd9f87bc661f68edab5d7268b4233",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "5bc2c16069e14233",
+      "options": [
+        "all of the computer's internal parts",
+        "the computer case, monitor, keyboard, and mouse",
+        "web browsers, games, and word processors"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "5bc2c16069e14233-01"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "硬件除了键盘、鼠标以外，还包括什么？\nIt also includes ____, which you can see in the image below.",
+      "target": "硬件除了键盘、鼠标以外，还包括什么？",
+      "uses": []
+    },
+    {
+      "answer": [
+        1
+      ],
+      "answer_source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Hardware",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Software is any set of instructions that tells the hardware what to do and how to do it.",
+          "contrast_subject": "Software",
+          "contrast_value": "any set of instructions that tells the hardware what to do and how to do it"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "A computer is an electronic device that manipulates information, or data.",
+          "contrast_subject": "A computer",
+          "contrast_value": "an electronic device that manipulates information, or data"
+        }
+      ],
+      "created_at": "2026-10-08T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-836a08c4e0f5f3a6521764e5c67ecb3c290e181b899e4d214ff06257ac2bffc1",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "5bc2c16069e14233",
+      "options": [
+        "an electronic device that manipulates information, or data",
+        "any part of your computer that has a physical structure",
+        "any set of instructions that tells the hardware what to do and how to do it"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "5bc2c16069e14233-03"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "硬件是什么？\nHardware is ____, such as the keyboard or mouse.",
+      "target": "硬件是什么？",
+      "uses": []
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers?；正文块 4 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "computers",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006",
+          "contrast_quote": "Laptops are battery-powered computers that are more portable than desktops",
+          "contrast_subject": "Laptops",
+          "contrast_value": "battery-powered computers that are more portable than desktops"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-8658c11c91080e8d2c4be66904a2745581a99e55244e21b4cef0998c04df55bd",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "any part of your computer that has a physical structure",
+        "battery-powered computers that are more portable than desktops",
+        "computers come in many shapes and sizes, and they perform many different functions in our daily lives"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-01"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What are the different types of computers?；正文块 4 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "计算机在形状、大小和功能方面有怎样的特点？\nHowever, ____.",
+      "target": "计算机在形状、大小和功能方面有怎样的特点？",
+      "uses": []
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "A computer",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure, such as the keyboard or mouse"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Software is any set of instructions that tells the hardware what to do and how to do it.",
+          "contrast_subject": "Software",
+          "contrast_value": "any set of instructions that tells the hardware what to do and how to do it"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-94be8308d96a6817b239fd99d8c75501fd479e19e1766bf248b6dc5a4ec51183",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "2fab08d1282443d8",
+      "options": [
+        "any part of your computer that has a physical structure, such as the keyboard or mouse",
+        "any set of instructions that tells the hardware what to do and how to do it",
+        "manipulates information, or data"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "2fab08d1282443d8-02"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "计算机对信息或数据执行什么动作？\nA computer is an electronic device that ____.",
+      "target": "计算机对信息或数据执行什么动作？",
+      "uses": []
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "A computer",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Software is any set of instructions that tells the hardware what to do and how to do it.",
+          "contrast_subject": "Software",
+          "contrast_value": "any set of instructions that tells the hardware what to do and how to do it"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-974e83dc59b630478bb898cd8725fc9ac3d10db3057ec4b58102886041f872f1",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "2fab08d1282443d8",
+      "options": [
+        "any part of your computer that has a physical structure",
+        "any set of instructions that tells the hardware what to do and how to do it",
+        "electronic device that manipulates information, or data"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "2fab08d1282443d8-01"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "计算机是什么？\nA computer is an ____.",
+      "target": "计算机是什么？",
+      "uses": [
+        {
+          "at": "2026-10-05T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Desktop computers；正文块 5 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Desktop computers",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006",
+          "contrast_quote": "Laptops are battery-powered computers that are more portable than desktops, allowing you to use them almost anywhere.",
+          "contrast_subject": "Laptops",
+          "contrast_value": "almost anywhere"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006",
+          "contrast_quote": "Laptops are battery-powered computers that are more portable than desktops, allowing you to use them almost anywhere.",
+          "contrast_subject": "Laptops",
+          "contrast_value": "more portable than desktops"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-974f18c7b553deea741987d4d4390f0790775ec6f5e2838048ada051e3dd925d",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "almost anywhere",
+        "more portable than desktops",
+        "placed on a desk"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-02"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What are the different types of computers? / Desktop computers；正文块 5 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "台式机通常被设计成放在哪里？\nDesktop computers are designed to be ____, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+      "target": "台式机通常被设计成放在哪里？",
+      "uses": [
+        {
+          "at": "2026-10-11T10:00:00+09:00",
+          "purpose": "free"
+        }
+      ]
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers?；正文块 4 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "a type of computer",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006",
+          "contrast_quote": "Laptops are battery-powered computers that are more portable than desktops",
+          "contrast_subject": "Laptops",
+          "contrast_value": "battery-powered computers that are more portable than desktops"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "designed to be placed on a desk"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-9a1ed011cdfd10164828f74ff3a9728d62b047da316011d069775f25938cb65b",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "battery-powered computers that are more portable than desktops",
+        "designed to be placed on a desk",
+        "withdraw cash from an ATM, scan groceries at the store, or use a calculator"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-01"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "What are the different types of computers?；正文块 4 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "原文举出哪三个日常操作，说明人们当时其实正在使用计算机？\nWhen you ____, you're using a type of computer.",
+      "target": "原文举出哪三个日常操作，说明人们当时其实正在使用计算机？",
+      "uses": [
+        {
+          "at": "2026-10-09T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Tablet computers；正文块 7 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Tablet computers—or tablets",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "designed to be placed on a desk"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "A computer is an electronic device that manipulates information, or data.",
+          "contrast_subject": "A computer",
+          "contrast_value": "an electronic device that manipulates information, or data"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-9ff235a79be2478c0f36ff2f00025ca76610f66bbeb945c0a9e947bf6ebbd62d",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "an electronic device that manipulates information, or data",
+        "designed to be placed on a desk",
+        "handheld computers that are even more portable than laptops"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-03"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What are the different types of computers? / Tablet computers；正文块 7 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "平板电脑是什么样的电脑，与笔记本相比如何？\nTablet computers—or tablets—are ____.",
+      "target": "平板电脑是什么样的电脑，与笔记本相比如何？",
+      "uses": [
+        {
+          "at": "2026-10-10T10:00:00+09:00",
+          "purpose": "module"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Servers；正文块 8 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "A server",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure, such as the keyboard or mouse"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Software is any set of instructions that tells the hardware what to do and how to do it.",
+          "contrast_subject": "Software",
+          "contrast_value": "any set of instructions that tells the hardware what to do and how to do it"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-a889edcd247bea35aba35034caa894a33a31bf7a4ed7f618bf764480aefac8aa",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "a computer that serves up information to other computers on a network",
+        "any part of your computer that has a physical structure, such as the keyboard or mouse",
+        "any set of instructions that tells the hardware what to do and how to do it"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-04"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What are the different types of computers? / Servers；正文块 8 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "A server 是什么类型的计算机？它向谁提供信息？\nA server is ____.",
+      "target": "A server 是什么类型的计算机？它向谁提供信息？",
+      "uses": []
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Software",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "any part of your computer that has a physical structure"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "A computer is an electronic device that manipulates information, or data.",
+          "contrast_subject": "A computer",
+          "contrast_value": "an electronic device that manipulates information, or data"
+        }
+      ],
+      "created_at": "2026-10-08T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-ab1a9e2cd4584b3987827ba434c8a3131cd1734f4cbb735a3de28aacaf22e43c",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "5bc2c16069e14233",
+      "options": [
+        "an electronic device that manipulates information, or data",
+        "any part of your computer that has a physical structure",
+        "any set of instructions that tells the hardware what to do and how to do it"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "5bc2c16069e14233-03"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "软件是什么？\nSoftware is ____.",
+      "target": "软件是什么？",
+      "uses": [
+        {
+          "at": "2026-10-08T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    },
+    {
+      "answer": [
+        0
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Tablet computers；正文块 7 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "tablets",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "keyboard, and mouse"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "keyboard or mouse"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-af751d66bebb47218e03e6d504902da0e2cab260988e7c7929503a5bfca08972",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "a touch-sensitive screen",
+        "keyboard or mouse",
+        "keyboard, and mouse"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-03"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What are the different types of computers? / Tablet computers；正文块 7 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "平板电脑用什么进行打字和导航？\nInstead of a keyboard and mouse, tablets use ____ for typing and navigation.",
+      "target": "平板电脑用什么进行打字和导航？",
+      "uses": []
+    },
+    {
+      "answer": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "answer_source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "a computer",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+          "contrast_quote": "When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer.",
+          "contrast_subject": "ATM",
+          "contrast_value": "withdraw cash"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+          "contrast_quote": "When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer.",
+          "contrast_subject": "calculator",
+          "contrast_value": "use a calculator"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-cdb44437afdde8a8ce6aeffcf16fcf2ac603623f60bcedd52bb2627727ebe9b9",
+      "importance": "normal",
+      "kind": "multi",
+      "module_id": "2fab08d1282443d8",
+      "options": [
+        "browse the Web",
+        "play games",
+        "send email",
+        "type documents",
+        "use a calculator",
+        "withdraw cash"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "2fab08d1282443d8-03"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "What is a computer?；正文块 2 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "计算机可以用来做哪些常见事情？\nYou may already know that you can use a computer to ____.",
+      "target": "计算机可以用来做哪些常见事情？",
+      "uses": []
+    },
+    {
+      "answer": [
+        3,
+        0,
+        4
+      ],
+      "answer_source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "software",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+          "contrast_quote": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse.",
+          "contrast_subject": "Hardware",
+          "contrast_value": "keyboard or mouse"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "the computer case, monitor, keyboard, and mouse"
+        }
+      ],
+      "created_at": "2026-10-05T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-d5710d6a2ca213cd9f93c199d615153567a12542322e1193c0ce572cab3cf4cc",
+      "importance": "normal",
+      "kind": "multi",
+      "module_id": "5bc2c16069e14233",
+      "options": [
+        "games",
+        "keyboard or mouse",
+        "the computer case, monitor, keyboard, and mouse",
+        "web browsers",
+        "word processors"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "5bc2c16069e14233-02"
+      ],
+      "role": "bank",
+      "source": {
+        "locator": "Hardware vs. software；正文块 3 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "哪些属于软件的例子？\nExamples of software include ____.",
+      "target": "哪些属于软件的例子？",
+      "uses": []
+    },
+    {
+      "answer": [
+        2
+      ],
+      "answer_source": {
+        "locator": "What are the different types of computers? / Tablet computers；正文块 7 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "cloze_subject": "Tablet computers—or tablets",
+      "contrast_evidence": [
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "contrast_quote": "Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse.",
+          "contrast_subject": "Desktop computers",
+          "contrast_value": "designed to be placed on a desk"
+        },
+        {
+          "chunk_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+          "contrast_quote": "A computer is an electronic device that manipulates information, or data.",
+          "contrast_subject": "A computer",
+          "contrast_value": "an electronic device that manipulates information, or data"
+        }
+      ],
+      "created_at": "2026-10-09T01:00:00+00:00",
+      "distractor_check": {
+        "state": "passed"
+      },
+      "explanation": "",
+      "id": "material-f646cfee9360e554a675213faaf5bac7b41665ebad3489c40bce2c3470ee1b97",
+      "importance": "normal",
+      "kind": "choice",
+      "module_id": "0cbd139479bb4558",
+      "options": [
+        "an electronic device that manipulates information, or data",
+        "designed to be placed on a desk",
+        "handheld computers that are even more portable than laptops"
+      ],
+      "origin": "cloze",
+      "point_ids": [
+        "0cbd139479bb4558-03"
+      ],
+      "role": "quick",
+      "source": {
+        "locator": "What are the different types of computers? / Tablet computers；正文块 7 [file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007]",
+        "title": "GCFGlobal Computer Basics: What is a Computer?",
+        "url": ""
+      },
+      "stem": "平板电脑是什么样的电脑，与笔记本相比如何？\nTablet computers—or tablets—are ____.",
+      "target": "平板电脑是什么样的电脑，与笔记本相比如何？",
+      "uses": [
+        {
+          "at": "2026-10-09T10:00:00+09:00",
+          "purpose": "quick"
+        }
+      ]
+    }
+  ],
+  "judgements": [
+    {
+      "details": {
+        "question_id": "material-974e83dc59b630478bb898cd8725fc9ac3d10db3057ec4b58102886041f872f1"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-05T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "casual",
+        "event_id": "59e4e0ad1a614c59b99b16372a2fa970",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-01",
+            false
+          ]
+        ],
+        "seq": 1791179963337845,
+        "type": "judgement"
+      },
+      "id": "59e4e0ad1a614c59b99b16372a2fa970"
+    },
+    {
+      "details": {
+        "question_id": "material-03e00c58c48a55cfa14a69e8ef5df36c99a89452a06606a6736ef4a0d391e7ba"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-05T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "casual",
+        "event_id": "446efe0c4a554973987161e45169b63f",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-02",
+            true
+          ]
+        ],
+        "seq": 1791179975270414,
+        "type": "judgement"
+      },
+      "id": "446efe0c4a554973987161e45169b63f"
+    },
+    {
+      "details": {
+        "question_id": "material-4aa482e68763a8e71d3fe91f0be7ba4fb5689106e64f5a4d50a7d8b606a9fd09"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-06T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "casual",
+        "event_id": "229e222b2e7b4941a8098f7a7bd69dec",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            true
+          ]
+        ],
+        "seq": 1791179985875161,
+        "type": "judgement"
+      },
+      "id": "229e222b2e7b4941a8098f7a7bd69dec"
+    },
+    {
+      "details": {
+        "question_id": "material-136aef279770cf59a79948480b0215573465b73d2cd0b3ccd0460c4911234caf"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-06T10:00:00+09:00",
+        "attempt_id": "49977e7d584a4534",
+        "context": "module_test",
+        "event_id": "b7e8b4a31d874ad2a50f1f19fbe72690",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-01",
+            false
+          ]
+        ],
+        "seq": 1791179987413510,
+        "type": "judgement"
+      },
+      "id": "b7e8b4a31d874ad2a50f1f19fbe72690"
+    },
+    {
+      "details": {
+        "question_id": "material-52ae8026013aec9b081aaa45ac161d99f13f908ce5c12ae39c73f12d1dc911de"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-06T10:00:00+09:00",
+        "attempt_id": "49977e7d584a4534",
+        "context": "module_test",
+        "event_id": "6764ad0c45a3434cac26411269ac7224",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-02",
+            true
+          ]
+        ],
+        "seq": 1791179988711706,
+        "type": "judgement"
+      },
+      "id": "6764ad0c45a3434cac26411269ac7224"
+    },
+    {
+      "details": {
+        "question_id": "material-34041fc3b46f3eaf787b50a6809b5b5c3f1e91b44ca21458cc39a2b3170eae3d"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-06T10:00:00+09:00",
+        "attempt_id": "49977e7d584a4534",
+        "context": "module_test",
+        "event_id": "ebb6a2c455ce4999a2979bfdf46f87c1",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            true
+          ]
+        ],
+        "seq": 1791179990194316,
+        "type": "judgement"
+      },
+      "id": "ebb6a2c455ce4999a2979bfdf46f87c1"
+    },
+    {
+      "details": {
+        "question_id": "material-53fdf97fd5effcfbd6e224057c5d7fe13aa18e43249243f5fa6e0079a0972daa"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-06T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "retest",
+        "event_id": "56ffe1d328b04664a6ff1985638a826f",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-01",
+            true
+          ]
+        ],
+        "seq": 1791179991570229,
+        "type": "judgement"
+      },
+      "id": "56ffe1d328b04664a6ff1985638a826f"
+    },
+    {
+      "details": {
+        "question_id": "material-49f386f2005a75052415a28f5e6b09c1cc7dc64e63c264f2d82a1b30d6907a95"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-08T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "casual",
+        "event_id": "2cca9d733bce4ae3b44f7eb7e257f571",
+        "module_id": "5bc2c16069e14233",
+        "results": [
+          [
+            "5bc2c16069e14233-01",
+            true
+          ]
+        ],
+        "seq": 1791180414632966,
+        "type": "judgement"
+      },
+      "id": "2cca9d733bce4ae3b44f7eb7e257f571"
+    },
+    {
+      "details": {
+        "question_id": "material-2f5a0dd5ab563b094f927532c7455b125597e710f4fb2c1ad30176eb4cb66901"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-08T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "casual",
+        "event_id": "7de21d7b83f54f768891177e53dd62a5",
+        "module_id": "5bc2c16069e14233",
+        "results": [
+          [
+            "5bc2c16069e14233-02",
+            true
+          ]
+        ],
+        "seq": 1791180473687403,
+        "type": "judgement"
+      },
+      "id": "7de21d7b83f54f768891177e53dd62a5"
+    },
+    {
+      "details": {
+        "question_id": "material-ab1a9e2cd4584b3987827ba434c8a3131cd1734f4cbb735a3de28aacaf22e43c"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-08T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "casual",
+        "event_id": "28d7ece00dda48ae8492d7fb536cee89",
+        "module_id": "5bc2c16069e14233",
+        "results": [
+          [
+            "5bc2c16069e14233-03",
+            true
+          ]
+        ],
+        "seq": 1791180482453396,
+        "type": "judgement"
+      },
+      "id": "28d7ece00dda48ae8492d7fb536cee89"
+    },
+    {
+      "details": {
+        "question_id": "material-578d5781d3e0a6666bd946d158144d77728849255da2438f419245b4f1440d62"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-08T10:00:00+09:00",
+        "attempt_id": "56f1e96d93ec42d0",
+        "context": "module_test",
+        "event_id": "7bf6658e2f79481e9b0cfda4e775f7e9",
+        "module_id": "5bc2c16069e14233",
+        "results": [
+          [
+            "5bc2c16069e14233-01",
+            true
+          ]
+        ],
+        "seq": 1791180484189453,
+        "type": "judgement"
+      },
+      "id": "7bf6658e2f79481e9b0cfda4e775f7e9"
+    },
+    {
+      "details": {
+        "question_id": "material-7fb6fec40c717537689a51bc4c46111a340e8b68beef05f498555947470a831c"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-08T10:00:00+09:00",
+        "attempt_id": "56f1e96d93ec42d0",
+        "context": "module_test",
+        "event_id": "211a1ff2e985496b8fd55360ccf9b3dc",
+        "module_id": "5bc2c16069e14233",
+        "results": [
+          [
+            "5bc2c16069e14233-02",
+            true
+          ]
+        ],
+        "seq": 1791180485411919,
+        "type": "judgement"
+      },
+      "id": "211a1ff2e985496b8fd55360ccf9b3dc"
+    },
+    {
+      "details": {
+        "question_id": "material-218c571608c1451c47486f11638d4cd238ba410041c6c41bb98e2cd16b3ccedd"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-08T10:00:00+09:00",
+        "attempt_id": "56f1e96d93ec42d0",
+        "context": "module_test",
+        "event_id": "94ac284a163043ce94292ac46f04939d",
+        "module_id": "5bc2c16069e14233",
+        "results": [
+          [
+            "5bc2c16069e14233-03",
+            true
+          ]
+        ],
+        "seq": 1791180486824583,
+        "type": "judgement"
+      },
+      "id": "94ac284a163043ce94292ac46f04939d"
+    },
+    {
+      "details": {
+        "question_id": "material-9a1ed011cdfd10164828f74ff3a9728d62b047da316011d069775f25938cb65b"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-09T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "casual",
+        "event_id": "e7428e1ee2b2443a9dac9152ae610488",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-01",
+            true
+          ]
+        ],
+        "seq": 1791180912421172,
+        "type": "judgement"
+      },
+      "id": "e7428e1ee2b2443a9dac9152ae610488"
+    },
+    {
+      "details": {
+        "question_id": "material-30802925daa712dfe1722c69c3dd3c99a2836cc8c982fb6d4d1d1951d81d0afd"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-09T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "casual",
+        "event_id": "9413e50f842447b5991469f04c64b31f",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-02",
+            true
+          ]
+        ],
+        "seq": 1791180921044026,
+        "type": "judgement"
+      },
+      "id": "9413e50f842447b5991469f04c64b31f"
+    },
+    {
+      "details": {
+        "question_id": "material-f646cfee9360e554a675213faaf5bac7b41665ebad3489c40bce2c3470ee1b97"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-09T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "casual",
+        "event_id": "6e5805dba70f4f5b9508eda0d3e7e105",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-03",
+            true
+          ]
+        ],
+        "seq": 1791180926892260,
+        "type": "judgement"
+      },
+      "id": "6e5805dba70f4f5b9508eda0d3e7e105"
+    },
+    {
+      "details": {
+        "question_id": "material-640dc7e40a5e86bbdf15346bd1da6e11868f2cee1181d32eebcdfe171c4f0eb8"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-10T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "casual",
+        "event_id": "2e1ae242f39649d59d8d5674b9cb105a",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-04",
+            true
+          ]
+        ],
+        "seq": 1791180934145576,
+        "type": "judgement"
+      },
+      "id": "2e1ae242f39649d59d8d5674b9cb105a"
+    },
+    {
+      "details": {
+        "question_id": "material-3f0240256a1dcda5714828f698d89663ab6507357c7590f90de3a6408eaf7c5c"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-10T10:00:00+09:00",
+        "attempt_id": "db0f29e04e0e4d41",
+        "context": "module_test",
+        "event_id": "928ac2dbb36b41808fe6de47bb399a06",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-01",
+            true
+          ]
+        ],
+        "seq": 1791180936211804,
+        "type": "judgement"
+      },
+      "id": "928ac2dbb36b41808fe6de47bb399a06"
+    },
+    {
+      "details": {
+        "question_id": "material-6d438e3183e04b76749de7de2e8715617fc381b6c60e78d3213e3e4f7d6b360d"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-10T10:00:00+09:00",
+        "attempt_id": "db0f29e04e0e4d41",
+        "context": "module_test",
+        "event_id": "3c95c81a7b4b444d923f9ac640791cb4",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-02",
+            true
+          ]
+        ],
+        "seq": 1791180937851975,
+        "type": "judgement"
+      },
+      "id": "3c95c81a7b4b444d923f9ac640791cb4"
+    },
+    {
+      "details": {
+        "question_id": "material-9ff235a79be2478c0f36ff2f00025ca76610f66bbeb945c0a9e947bf6ebbd62d"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-10T10:00:00+09:00",
+        "attempt_id": "db0f29e04e0e4d41",
+        "context": "module_test",
+        "event_id": "17602b837600497dab789c506901ad8a",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-03",
+            true
+          ]
+        ],
+        "seq": 1791180939081074,
+        "type": "judgement"
+      },
+      "id": "17602b837600497dab789c506901ad8a"
+    },
+    {
+      "details": {
+        "question_id": "material-7694324b1976fb73f7264acb6d4a25b1479784e4bce7fa7240102c4777770d57"
+      },
+      "event": {
+        "angle": null,
+        "at": "2026-10-10T10:00:00+09:00",
+        "attempt_id": "db0f29e04e0e4d41",
+        "context": "module_test",
+        "event_id": "b1bc0423762d42358af44361685b83c8",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-04",
+            true
+          ]
+        ],
+        "seq": 1791180940375884,
+        "type": "judgement"
+      },
+      "id": "b1bc0423762d42358af44361685b83c8"
+    },
+    {
+      "details": {
+        "question_id": "material-136aef279770cf59a79948480b0215573465b73d2cd0b3ccd0460c4911234caf"
+      },
+      "event": {
+        "angle": "recall",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "4ed3888a95ed4a6a9f7cd8c1fc38ae7a",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-01",
+            true
+          ]
+        ],
+        "seq": 1791180941523203,
+        "type": "judgement"
+      },
+      "id": "4ed3888a95ed4a6a9f7cd8c1fc38ae7a"
+    },
+    {
+      "details": {
+        "question_id": "material-94be8308d96a6817b239fd99d8c75501fd479e19e1766bf248b6dc5a4ec51183"
+      },
+      "event": {
+        "angle": "recall",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "fedf611f5c424ef4ae471ae2fbd8e388",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-02",
+            true
+          ]
+        ],
+        "seq": 1791180942673153,
+        "type": "judgement"
+      },
+      "id": "fedf611f5c424ef4ae471ae2fbd8e388"
+    },
+    {
+      "details": {
+        "question_id": "material-cdb44437afdde8a8ce6aeffcf16fcf2ac603623f60bcedd52bb2627727ebe9b9"
+      },
+      "event": {
+        "angle": "recall",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "0488a6ea426c49b88982e05298df7f2a",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            false
+          ]
+        ],
+        "seq": 1791180943586676,
+        "type": "judgement"
+      },
+      "id": "0488a6ea426c49b88982e05298df7f2a"
+    },
+    {
+      "details": {
+        "question_id": "material-802811671a87867e158e6bab21398273ff8fd9f87bc661f68edab5d7268b4233"
+      },
+      "event": {
+        "angle": "recall",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "40d9e0df93954532a06e2443aabcfa2b",
+        "module_id": "5bc2c16069e14233",
+        "results": [
+          [
+            "5bc2c16069e14233-01",
+            true
+          ]
+        ],
+        "seq": 1791180944855094,
+        "type": "judgement"
+      },
+      "id": "40d9e0df93954532a06e2443aabcfa2b"
+    },
+    {
+      "details": {
+        "question_id": "material-d5710d6a2ca213cd9f93c199d615153567a12542322e1193c0ce572cab3cf4cc"
+      },
+      "event": {
+        "angle": "recall",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "7b62e56c01394fa28715f4a2b27794bc",
+        "module_id": "5bc2c16069e14233",
+        "results": [
+          [
+            "5bc2c16069e14233-02",
+            true
+          ]
+        ],
+        "seq": 1791180946563224,
+        "type": "judgement"
+      },
+      "id": "7b62e56c01394fa28715f4a2b27794bc"
+    },
+    {
+      "details": {
+        "question_id": "material-836a08c4e0f5f3a6521764e5c67ecb3c290e181b899e4d214ff06257ac2bffc1"
+      },
+      "event": {
+        "angle": "recall",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "77a402739e4d4c0a83785199ee279c36",
+        "module_id": "5bc2c16069e14233",
+        "results": [
+          [
+            "5bc2c16069e14233-03",
+            true
+          ]
+        ],
+        "seq": 1791180948341248,
+        "type": "judgement"
+      },
+      "id": "77a402739e4d4c0a83785199ee279c36"
+    },
+    {
+      "details": {
+        "question_id": "material-8658c11c91080e8d2c4be66904a2745581a99e55244e21b4cef0998c04df55bd"
+      },
+      "event": {
+        "angle": "recall",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "b6af2059554c4049a8c634103584579a",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-01",
+            true
+          ]
+        ],
+        "seq": 1791180949397275,
+        "type": "judgement"
+      },
+      "id": "b6af2059554c4049a8c634103584579a"
+    },
+    {
+      "details": {
+        "question_id": "material-974f18c7b553deea741987d4d4390f0790775ec6f5e2838048ada051e3dd925d"
+      },
+      "event": {
+        "angle": "recall",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "fcd8ec2597524930913bf649cec7c513",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-02",
+            true
+          ]
+        ],
+        "seq": 1791180950396694,
+        "type": "judgement"
+      },
+      "id": "fcd8ec2597524930913bf649cec7c513"
+    },
+    {
+      "details": {
+        "question_id": "material-af751d66bebb47218e03e6d504902da0e2cab260988e7c7929503a5bfca08972"
+      },
+      "event": {
+        "angle": "recall",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "839d86074bff4720841214cf1b45e7f6",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-03",
+            true
+          ]
+        ],
+        "seq": 1791180952274940,
+        "type": "judgement"
+      },
+      "id": "839d86074bff4720841214cf1b45e7f6"
+    },
+    {
+      "details": {
+        "question_id": "material-a889edcd247bea35aba35034caa894a33a31bf7a4ed7f618bf764480aefac8aa"
+      },
+      "event": {
+        "angle": "recall",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "950022bb87864aea8d25793e576505b7",
+        "module_id": "0cbd139479bb4558",
+        "results": [
+          [
+            "0cbd139479bb4558-04",
+            true
+          ]
+        ],
+        "seq": 1791180953868622,
+        "type": "judgement"
+      },
+      "id": "950022bb87864aea8d25793e576505b7"
+    },
+    {
+      "details": {
+        "question_id": "material-cdb44437afdde8a8ce6aeffcf16fcf2ac603623f60bcedd52bb2627727ebe9b9"
+      },
+      "event": {
+        "angle": "apply",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "15753c8016a84690b57ebeeb67f5aea1",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            false
+          ]
+        ],
+        "seq": 1791180955344705,
+        "type": "judgement"
+      },
+      "id": "15753c8016a84690b57ebeeb67f5aea1"
+    },
+    {
+      "details": {
+        "question_id": "material-136aef279770cf59a79948480b0215573465b73d2cd0b3ccd0460c4911234caf"
+      },
+      "event": {
+        "angle": "apply",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "4265a8f59722404f8c8a1e43fcf1e5c7",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-01",
+            true
+          ]
+        ],
+        "seq": 1791180956619841,
+        "type": "judgement"
+      },
+      "id": "4265a8f59722404f8c8a1e43fcf1e5c7"
+    },
+    {
+      "details": {
+        "question_id": "material-cdb44437afdde8a8ce6aeffcf16fcf2ac603623f60bcedd52bb2627727ebe9b9"
+      },
+      "event": {
+        "angle": "contrast",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "1a5936e570424300972208384c6cec62",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            true
+          ]
+        ],
+        "seq": 1791180957898151,
+        "type": "judgement"
+      },
+      "id": "1a5936e570424300972208384c6cec62"
+    },
+    {
+      "details": {
+        "question_id": "material-cdb44437afdde8a8ce6aeffcf16fcf2ac603623f60bcedd52bb2627727ebe9b9"
+      },
+      "event": {
+        "angle": "fix_error",
+        "at": "2026-10-11T10:00:00+09:00",
+        "attempt_id": null,
+        "context": "check",
+        "event_id": "10c3db54b2b44fdbb7395e1f6985e90a",
+        "module_id": "2fab08d1282443d8",
+        "results": [
+          [
+            "2fab08d1282443d8-03",
+            true
+          ]
+        ],
+        "seq": 1791180959210044,
+        "type": "judgement"
+      },
+      "id": "10c3db54b2b44fdbb7395e1f6985e90a"
+    }
+  ],
+  "answers": [
+    {
+      "context": "practice",
+      "question_id": "material-974f18c7b553deea741987d4d4390f0790775ec6f5e2838048ada051e3dd925d",
+      "point_ids": [
+        "0cbd139479bb4558-02"
+      ]
+    },
+    {
+      "context": "module_test",
+      "question_id": "material-9ff235a79be2478c0f36ff2f00025ca76610f66bbeb945c0a9e947bf6ebbd62d",
+      "point_ids": [
+        "0cbd139479bb4558-03"
+      ]
+    },
+    {
+      "context": "module_test",
+      "question_id": "material-7fb6fec40c717537689a51bc4c46111a340e8b68beef05f498555947470a831c",
+      "point_ids": [
+        "5bc2c16069e14233-02"
+      ]
+    },
+    {
+      "context": "module_test",
+      "question_id": "material-6d438e3183e04b76749de7de2e8715617fc381b6c60e78d3213e3e4f7d6b360d",
+      "point_ids": [
+        "0cbd139479bb4558-02"
+      ]
+    },
+    {
+      "context": "retest",
+      "question_id": "material-53fdf97fd5effcfbd6e224057c5d7fe13aa18e43249243f5fa6e0079a0972daa",
+      "point_ids": [
+        "2fab08d1282443d8-01"
+      ]
+    },
+    {
+      "context": "module_test",
+      "question_id": "material-52ae8026013aec9b081aaa45ac161d99f13f908ce5c12ae39c73f12d1dc911de",
+      "point_ids": [
+        "2fab08d1282443d8-02"
+      ]
+    },
+    {
+      "context": "module_test",
+      "question_id": "material-578d5781d3e0a6666bd946d158144d77728849255da2438f419245b4f1440d62",
+      "point_ids": [
+        "5bc2c16069e14233-01"
+      ]
+    },
+    {
+      "context": "module_test",
+      "question_id": "material-3f0240256a1dcda5714828f698d89663ab6507357c7590f90de3a6408eaf7c5c",
+      "point_ids": [
+        "0cbd139479bb4558-01"
+      ]
+    },
+    {
+      "context": "module_test",
+      "question_id": "material-218c571608c1451c47486f11638d4cd238ba410041c6c41bb98e2cd16b3ccedd",
+      "point_ids": [
+        "5bc2c16069e14233-03"
+      ]
+    },
+    {
+      "context": "practice",
+      "question_id": "material-578d5781d3e0a6666bd946d158144d77728849255da2438f419245b4f1440d62",
+      "point_ids": [
+        "5bc2c16069e14233-01"
+      ]
+    },
+    {
+      "context": "module_test",
+      "question_id": "material-7694324b1976fb73f7264acb6d4a25b1479784e4bce7fa7240102c4777770d57",
+      "point_ids": [
+        "0cbd139479bb4558-04"
+      ]
+    },
+    {
+      "context": "module_test",
+      "question_id": "material-136aef279770cf59a79948480b0215573465b73d2cd0b3ccd0460c4911234caf",
+      "point_ids": [
+        "2fab08d1282443d8-01"
+      ]
+    },
+    {
+      "context": "module_test",
+      "question_id": "material-34041fc3b46f3eaf787b50a6809b5b5c3f1e91b44ca21458cc39a2b3170eae3d",
+      "point_ids": [
+        "2fab08d1282443d8-03"
+      ]
+    },
+    {
+      "context": "practice",
+      "question_id": "material-6d438e3183e04b76749de7de2e8715617fc381b6c60e78d3213e3e4f7d6b360d",
+      "point_ids": [
+        "0cbd139479bb4558-02"
+      ]
+    }
+  ]
+}

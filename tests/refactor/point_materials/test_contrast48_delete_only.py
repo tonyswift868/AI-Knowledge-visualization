@@ -201,8 +201,10 @@ def test_contrast48_cancel_during_review_never_persists_a_passed_check(tmp_path)
         assert pm.pick_question(store,'p','pt0','module') is None
 
 
-def test_contrast48_shared_batch_quote_cannot_be_borrowed_from_another_point():
-    p,c,q=review_question48();other=dict(c,id='other',text='另一对象支持C。',source=dict(c['source'],locator='other'))
+def test_contrast48_shared_batch_quote_cannot_be_borrowed_from_another_material():
+    # Same-material distractor origins are now intentionally visible (batch 58).
+    # A different material in the shared batch must still stay out of this scope.
+    p,c,q=review_question48();other=dict(c,id='other',source_id='other-material',text='另一对象支持C。',source=dict(c['source'],locator='other'))
     p['chunk_ids']=['c'];second=pm._base(dict(p,id='other-point'),'choice','另一对象支持什么？',[0],'found',other,other,options=['C','E','F'])
     def checker(packet,**kw):
         response=approved48(packet);response['questions'][0]['checks'][0].update(verdict='also_supported',quote='另一对象支持C。')

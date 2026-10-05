@@ -1,0 +1,651 @@
+{
+  "live_points": [
+    {
+      "point_id": "0cbd139479bb4558-01",
+      "title": "计算机类型不止台式机和笔记本"
+    },
+    {
+      "point_id": "2fab08d1282443d8-01",
+      "title": "计算机是什么"
+    },
+    {
+      "point_id": "5bc2c16069e14233-01",
+      "title": "硬件是什么"
+    },
+    {
+      "point_id": "0cbd139479bb4558-02",
+      "title": "台式机与笔记本电脑"
+    },
+    {
+      "point_id": "2fab08d1282443d8-02",
+      "title": "数据的存储、取回与处理"
+    },
+    {
+      "point_id": "5bc2c16069e14233-02",
+      "title": "软件是什么"
+    },
+    {
+      "point_id": "0cbd139479bb4558-03",
+      "title": "平板电脑"
+    },
+    {
+      "point_id": "2fab08d1282443d8-03",
+      "title": "计算机的常见用途"
+    },
+    {
+      "point_id": "5bc2c16069e14233-03",
+      "title": "硬件和软件的关系"
+    },
+    {
+      "point_id": "0cbd139479bb4558-04",
+      "title": "服务器"
+    }
+  ],
+  "modules": [
+    {
+      "first_test": {
+        "attempt_id": "49977e7d584a4534",
+        "event_id": "be78edaed19a4dc3af237c293c303ff4",
+        "kind": "module_test",
+        "mastered_points": 2,
+        "mastery_ratio": 0.6666666666666666,
+        "total_points": 3
+      },
+      "module_id": "2fab08d1282443d8",
+      "module_test_count": 1,
+      "position": 0,
+      "retest_count": 1,
+      "skip_test_count": 0,
+      "skip_test_passed": false,
+      "stage_id": "65222e602a264607",
+      "state": "passed",
+      "test_count": 1,
+      "title": "认识计算机"
+    },
+    {
+      "first_test": {
+        "attempt_id": "56f1e96d93ec42d0",
+        "event_id": "5efbecf120c646cb994acee70492e7b5",
+        "kind": "module_test",
+        "mastered_points": 3,
+        "mastery_ratio": 1.0,
+        "total_points": 3
+      },
+      "module_id": "5bc2c16069e14233",
+      "module_test_count": 1,
+      "position": 1,
+      "retest_count": 0,
+      "skip_test_count": 0,
+      "skip_test_passed": false,
+      "stage_id": "65222e602a264607",
+      "state": "passed",
+      "test_count": 1,
+      "title": "硬件与软件"
+    },
+    {
+      "first_test": {
+        "attempt_id": "db0f29e04e0e4d41",
+        "event_id": "0089d2dfcefa4e70856cd5207e7ea5d6",
+        "kind": "module_test",
+        "mastered_points": 4,
+        "mastery_ratio": 1.0,
+        "total_points": 4
+      },
+      "module_id": "0cbd139479bb4558",
+      "module_test_count": 1,
+      "position": 2,
+      "retest_count": 0,
+      "skip_test_count": 0,
+      "skip_test_passed": false,
+      "stage_id": "65222e602a264607",
+      "state": "passed",
+      "test_count": 1,
+      "title": "常见计算机设备类型"
+    }
+  ],
+  "plan": {
+    "actual_completion_date": "2026-10-11",
+    "actual_start_date": "2026-10-05",
+    "completion_date_basis": "recorded",
+    "confirmed_minutes": 194,
+    "credited_minutes": 194,
+    "early_days": 0,
+    "end_date": "2026-10-11",
+    "final_goal": "认识计算机、硬件与软件、常见计算机设备类型，用生活化例子区分，不做实际操作\n讲法偏好：只理解概念；不做任何实际操作；希望用生活化例子；不做操作",
+    "goal": "我不太懂计算机，想把各种术语概念都搞明白，不用上手操作，要生活化的例子",
+    "level": "zero",
+    "notes": "只学这份小资料覆盖的内容，三模块约8～10个点；结构偏大时用对话删到三个模块。不补资料，不扩展到操作。\n【认可的需求摘要】\n我理解你想在 2026-10-05 至 2026-10-11 期间，每天最多学 60 分钟、每天都可学，以零基础、只理解概念、不做任何实际操作的方式，认识计算机、硬件与软件、常见计算机设备类型，并希望用生活化例子把各种术语概念区分清楚；只学这份小资料覆盖的内容，不补资料、不扩展到操作，结构偏大时删到三个模块。\n【认可的大致模块，正式地图仍以资料为依据】\n认识计算机：用生活化例子说明计算机是什么、能做什么，以及相关基础术语的大致含义。\n硬件与软件：用生活化例子区分硬件和软件，并说明它们各自指什么、有什么关系。\n常见计算机设备类型：用生活化例子认识常见计算机设备类型，并区分它们各自的特点和用途。",
+    "original_end_date": "2026-10-11",
+    "original_start_date": "2026-10-05",
+    "overdue_days": 0,
+    "plan_id": "de9537712a0e47f8b34c2aba79a52a3b",
+    "planned_minutes": 196,
+    "replan_count": 3,
+    "replans": [
+      {
+        "cause": "module_generated",
+        "day": "2026-10-05",
+        "end_date": "2026-10-11",
+        "event_id": "ebac030f5f804e0c8590981eeae489b1",
+        "operation_seq": 1,
+        "planned_minutes": 164,
+        "reason": null,
+        "start_date": "2026-10-05"
+      },
+      {
+        "cause": "module_generated",
+        "day": "2026-10-05",
+        "end_date": "2026-10-11",
+        "event_id": "7ffde627851d4b569979e6bea6d910b9",
+        "operation_seq": 2,
+        "planned_minutes": 178,
+        "reason": null,
+        "start_date": "2026-10-05"
+      },
+      {
+        "cause": "module_generated",
+        "day": "2026-10-05",
+        "end_date": "2026-10-11",
+        "event_id": "6e0bf5d8b6de473c8751d0f4881b4a7a",
+        "operation_seq": 3,
+        "planned_minutes": 196,
+        "reason": null,
+        "start_date": "2026-10-05"
+      }
+    ],
+    "start_date": "2026-10-05",
+    "start_date_basis": "recorded",
+    "tentative_minutes": 0
+  },
+  "points": [
+    {
+      "casual_errors": 1,
+      "check_accuracy": 1.0,
+      "check_correct": 2,
+      "check_errors_before_pass": 0,
+      "check_passed_at": "2026-10-11T10:00:00+09:00",
+      "check_questions": 2,
+      "ever_red": true,
+      "ever_weak": false,
+      "level": 3,
+      "module_errors": 1,
+      "module_id": "2fab08d1282443d8",
+      "point_id": "2fab08d1282443d8-01",
+      "position": 0,
+      "state": "green",
+      "summary": "能用自己的话说出计算机是处理信息（数据）的电子设备，并各举一个生活化例子说明“信息”和“电子设备”。",
+      "weakness_score": 2
+    },
+    {
+      "casual_errors": 0,
+      "check_accuracy": 1.0,
+      "check_correct": 1,
+      "check_errors_before_pass": 0,
+      "check_passed_at": "2026-10-11T10:00:00+09:00",
+      "check_questions": 1,
+      "ever_red": false,
+      "ever_weak": false,
+      "level": 3,
+      "module_errors": 0,
+      "module_id": "2fab08d1282443d8",
+      "point_id": "2fab08d1282443d8-02",
+      "position": 1,
+      "state": "green",
+      "summary": "能用生活比喻（如书柜、冰箱）区分存储、取回、处理数据三种能力，并判断给定动作属于哪一种。",
+      "weakness_score": 0
+    },
+    {
+      "casual_errors": 0,
+      "check_accuracy": 0.5,
+      "check_correct": 2,
+      "check_errors_before_pass": 2,
+      "check_passed_at": "2026-10-11T10:00:00+09:00",
+      "check_questions": 4,
+      "ever_red": false,
+      "ever_weak": false,
+      "level": 3,
+      "module_errors": 0,
+      "module_id": "2fab08d1282443d8",
+      "point_id": "2fab08d1282443d8-03",
+      "position": 2,
+      "state": "green",
+      "summary": "能列举计算机的常见用途（打字、邮件、游戏、上网、表格、演示、视频），并说明每种用途在处理哪类数据。",
+      "weakness_score": 2
+    },
+    {
+      "casual_errors": 0,
+      "check_accuracy": 1.0,
+      "check_correct": 1,
+      "check_errors_before_pass": 0,
+      "check_passed_at": "2026-10-11T10:00:00+09:00",
+      "check_questions": 1,
+      "ever_red": false,
+      "ever_weak": false,
+      "level": 3,
+      "module_errors": 0,
+      "module_id": "5bc2c16069e14233",
+      "point_id": "5bc2c16069e14233-01",
+      "position": 3,
+      "state": "green",
+      "summary": "能指出硬件是计算机中有物理结构的部分，包括键盘、鼠标和内部零件；能用“有无实体”判断哪些属于硬件。",
+      "weakness_score": 0
+    },
+    {
+      "casual_errors": 0,
+      "check_accuracy": 1.0,
+      "check_correct": 1,
+      "check_errors_before_pass": 0,
+      "check_passed_at": "2026-10-11T10:00:00+09:00",
+      "check_questions": 1,
+      "ever_red": false,
+      "ever_weak": false,
+      "level": 3,
+      "module_errors": 0,
+      "module_id": "5bc2c16069e14233",
+      "point_id": "5bc2c16069e14233-02",
+      "position": 4,
+      "state": "green",
+      "summary": "能说明软件是一组指令，用来告诉硬件做什么、怎么做，并认出浏览器、游戏、文字处理器属于软件。",
+      "weakness_score": 0
+    },
+    {
+      "casual_errors": 0,
+      "check_accuracy": 1.0,
+      "check_correct": 1,
+      "check_errors_before_pass": 0,
+      "check_passed_at": "2026-10-11T10:00:00+09:00",
+      "check_questions": 1,
+      "ever_red": false,
+      "ever_weak": false,
+      "level": 3,
+      "module_errors": 0,
+      "module_id": "5bc2c16069e14233",
+      "point_id": "5bc2c16069e14233-03",
+      "position": 5,
+      "state": "green",
+      "summary": "能说明电脑使用同时依赖硬件和软件，用浏览器加鼠标的例子分清软硬件，并知道不同电脑的硬件软件可能不同。",
+      "weakness_score": 0
+    },
+    {
+      "casual_errors": 0,
+      "check_accuracy": 1.0,
+      "check_correct": 1,
+      "check_errors_before_pass": 0,
+      "check_passed_at": "2026-10-11T10:00:00+09:00",
+      "check_questions": 1,
+      "ever_red": false,
+      "ever_weak": false,
+      "level": 3,
+      "module_errors": 0,
+      "module_id": "0cbd139479bb4558",
+      "point_id": "0cbd139479bb4558-01",
+      "position": 6,
+      "state": "green",
+      "summary": "能举出生活中 ATM 取款、商店扫码、计算器等也是计算机的例子，说明计算机形状、大小和功能多样，不只有个人电脑。",
+      "weakness_score": 0
+    },
+    {
+      "casual_errors": 0,
+      "check_accuracy": 1.0,
+      "check_correct": 1,
+      "check_errors_before_pass": 0,
+      "check_passed_at": "2026-10-11T10:00:00+09:00",
+      "check_questions": 1,
+      "ever_red": false,
+      "ever_weak": false,
+      "level": 3,
+      "module_errors": 0,
+      "module_id": "0cbd139479bb4558",
+      "point_id": "0cbd139479bb4558-02",
+      "position": 7,
+      "state": "green",
+      "summary": "能说出台式机通常放在桌面、由机箱显示器键盘鼠标等部分组成；笔记本靠电池供电、比台式机更便携，几乎可在任何地方使用，并能用生活场景区分二者。",
+      "weakness_score": 0
+    },
+    {
+      "casual_errors": 0,
+      "check_accuracy": 1.0,
+      "check_correct": 1,
+      "check_errors_before_pass": 0,
+      "check_passed_at": "2026-10-11T10:00:00+09:00",
+      "check_questions": 1,
+      "ever_red": false,
+      "ever_weak": false,
+      "level": 3,
+      "module_errors": 0,
+      "module_id": "0cbd139479bb4558",
+      "point_id": "0cbd139479bb4558-03",
+      "position": 8,
+      "state": "green",
+      "summary": "能说出平板是手持电脑，比笔记本更便携，用触摸屏代替键盘鼠标进行打字和导航，并能举出 iPad 作为例子。",
+      "weakness_score": 0
+    },
+    {
+      "casual_errors": 0,
+      "check_accuracy": 1.0,
+      "check_correct": 1,
+      "check_errors_before_pass": 0,
+      "check_passed_at": "2026-10-11T10:00:00+09:00",
+      "check_questions": 1,
+      "ever_red": false,
+      "ever_weak": false,
+      "level": 3,
+      "module_errors": 0,
+      "module_id": "0cbd139479bb4558",
+      "point_id": "0cbd139479bb4558-04",
+      "position": 9,
+      "state": "green",
+      "summary": "能说明服务器是向网络上其他计算机提供信息的计算机；能举出上网内容存储在服务器、企业用本地文件服务器存储和共享文件的例子。",
+      "weakness_score": 0
+    }
+  ],
+  "schema": "mentorflow.course.report.v1",
+  "schema_version": 1,
+  "teacher_profile": {
+    "preferences": {
+      "analogy_domains": [
+        "life"
+      ],
+      "detail": "brief",
+      "examples": "normal",
+      "teacher_style": "warm"
+    },
+    "teaching_points": {
+      "0cbd139479bb4558-01": {
+        "at": "2026-10-09T10:00:00+09:00",
+        "chunk_ids": [
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004"
+        ],
+        "point_id": "0cbd139479bb4558-01",
+        "title": "计算机类型不止台式机和笔记本"
+      },
+      "0cbd139479bb4558-02": {
+        "at": "2026-10-09T10:00:00+09:00",
+        "chunk_ids": [
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006"
+        ],
+        "point_id": "0cbd139479bb4558-02",
+        "title": "台式机与笔记本电脑"
+      },
+      "0cbd139479bb4558-03": {
+        "at": "2026-10-09T10:00:00+09:00",
+        "chunk_ids": [
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007"
+        ],
+        "point_id": "0cbd139479bb4558-03",
+        "title": "平板电脑"
+      },
+      "0cbd139479bb4558-04": {
+        "at": "2026-10-10T10:00:00+09:00",
+        "chunk_ids": [
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008"
+        ],
+        "point_id": "0cbd139479bb4558-04",
+        "title": "服务器"
+      },
+      "2fab08d1282443d8-01": {
+        "at": "2026-10-05T10:00:00+09:00",
+        "chunk_ids": [
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002"
+        ],
+        "point_id": "2fab08d1282443d8-01",
+        "title": "计算机是什么"
+      },
+      "2fab08d1282443d8-02": {
+        "at": "2026-10-05T10:00:00+09:00",
+        "chunk_ids": [
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002"
+        ],
+        "point_id": "2fab08d1282443d8-02",
+        "title": "数据的存储、取回与处理"
+      },
+      "2fab08d1282443d8-03": {
+        "at": "2026-10-06T10:00:00+09:00",
+        "chunk_ids": [
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002"
+        ],
+        "point_id": "2fab08d1282443d8-03",
+        "title": "计算机的常见用途"
+      },
+      "5bc2c16069e14233-01": {
+        "at": "2026-10-08T10:00:00+09:00",
+        "chunk_ids": [
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003"
+        ],
+        "point_id": "5bc2c16069e14233-01",
+        "title": "硬件是什么"
+      },
+      "5bc2c16069e14233-02": {
+        "at": "2026-10-08T10:00:00+09:00",
+        "chunk_ids": [
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003"
+        ],
+        "point_id": "5bc2c16069e14233-02",
+        "title": "软件是什么"
+      },
+      "5bc2c16069e14233-03": {
+        "at": "2026-10-08T10:00:00+09:00",
+        "chunk_ids": [
+          "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003"
+        ],
+        "point_id": "5bc2c16069e14233-03",
+        "title": "硬件和软件的关系"
+      }
+    },
+    "text": "已讲10个知识点；另有0个点直接考通过、没有讲（全计划10个点）。已记录的作答事实：计算机是什么曾答错：选项不符合资料标准答案。",
+    "weak_points": [
+      {
+        "note": "选项不符合资料标准答案。",
+        "point_id": "2fab08d1282443d8-01"
+      }
+    ]
+  },
+  "time": {
+    "activity_dates": [
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-08",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-11"
+    ],
+    "ahead_peak_minutes": 7,
+    "backdated_operation_ids": [],
+    "check_minutes": {
+      "accounting": "split",
+      "final_actual": 24,
+      "final_difference": 2,
+      "final_estimated": 26,
+      "legacy_combined_estimated": 0,
+      "module_actual": 20,
+      "module_difference": 0,
+      "module_estimated": 20,
+      "released_minutes": 2
+    },
+    "days": [
+      {
+        "confirmed_minutes": 28,
+        "credited_confirmed_minutes": 15,
+        "credited_tentative_minutes": 0,
+        "day": "2026-10-05",
+        "frozen": false,
+        "judgement_count": 2,
+        "segment": 3,
+        "submitted_minutes": 30,
+        "target_minutes": 28,
+        "tentative_minutes": 0
+      },
+      {
+        "confirmed_minutes": 28,
+        "credited_confirmed_minutes": 36,
+        "credited_tentative_minutes": 0,
+        "day": "2026-10-06",
+        "frozen": false,
+        "judgement_count": 5,
+        "segment": 3,
+        "submitted_minutes": 36,
+        "target_minutes": 28,
+        "tentative_minutes": 0
+      },
+      {
+        "confirmed_minutes": 28,
+        "credited_confirmed_minutes": 0,
+        "credited_tentative_minutes": 0,
+        "day": "2026-10-07",
+        "frozen": false,
+        "judgement_count": 0,
+        "segment": 3,
+        "submitted_minutes": 0,
+        "target_minutes": 28,
+        "tentative_minutes": 0
+      },
+      {
+        "confirmed_minutes": 28,
+        "credited_confirmed_minutes": 51,
+        "credited_tentative_minutes": 0,
+        "day": "2026-10-08",
+        "frozen": false,
+        "judgement_count": 6,
+        "segment": 3,
+        "submitted_minutes": 51,
+        "target_minutes": 28,
+        "tentative_minutes": 0
+      },
+      {
+        "confirmed_minutes": 28,
+        "credited_confirmed_minutes": 45,
+        "credited_tentative_minutes": 0,
+        "day": "2026-10-09",
+        "frozen": false,
+        "judgement_count": 3,
+        "segment": 3,
+        "submitted_minutes": 45,
+        "target_minutes": 28,
+        "tentative_minutes": 0
+      },
+      {
+        "confirmed_minutes": 28,
+        "credited_confirmed_minutes": 23,
+        "credited_tentative_minutes": 0,
+        "day": "2026-10-10",
+        "frozen": false,
+        "judgement_count": 5,
+        "segment": 3,
+        "submitted_minutes": 23,
+        "target_minutes": 28,
+        "tentative_minutes": 0
+      },
+      {
+        "confirmed_minutes": 26,
+        "credited_confirmed_minutes": 24,
+        "credited_tentative_minutes": 0,
+        "day": "2026-10-11",
+        "frozen": false,
+        "judgement_count": 14,
+        "segment": 3,
+        "submitted_minutes": 24,
+        "target_minutes": 26,
+        "tentative_minutes": 0
+      }
+    ],
+    "debt_peak_minutes": 33,
+    "history_debt_minutes": 0,
+    "learning_day_basis": "original_credit_day_or_judgement_local_date",
+    "learning_days": 6,
+    "overflow_minutes": 0,
+    "peak_basis": "ledger_operation_boundaries_and_idle_days",
+    "peak_dates_exact": true,
+    "segments": [
+      {
+        "closed_on": "2026-10-05",
+        "history_debt_minutes": 0,
+        "relearning_filled_minutes": 0,
+        "relearning_minutes": 0,
+        "segment": 0
+      },
+      {
+        "closed_on": "2026-10-05",
+        "history_debt_minutes": 0,
+        "relearning_filled_minutes": 0,
+        "relearning_minutes": 0,
+        "segment": 1
+      },
+      {
+        "closed_on": "2026-10-05",
+        "history_debt_minutes": 0,
+        "relearning_filled_minutes": 0,
+        "relearning_minutes": 0,
+        "segment": 2
+      },
+      {
+        "closed_on": null,
+        "history_debt_minutes": 0,
+        "relearning_filled_minutes": 0,
+        "relearning_minutes": 0,
+        "segment": 3
+      }
+    ],
+    "through_date": "2026-10-11",
+    "undated_operation_ids": []
+  },
+  "weakest_points": [
+    {
+      "point_id": "2fab08d1282443d8-01",
+      "score": 2
+    },
+    {
+      "point_id": "2fab08d1282443d8-03",
+      "score": 2
+    },
+    {
+      "point_id": "2fab08d1282443d8-02",
+      "score": 0
+    },
+    {
+      "point_id": "5bc2c16069e14233-01",
+      "score": 0
+    },
+    {
+      "point_id": "5bc2c16069e14233-02",
+      "score": 0
+    },
+    {
+      "point_id": "5bc2c16069e14233-03",
+      "score": 0
+    },
+    {
+      "point_id": "0cbd139479bb4558-01",
+      "score": 0
+    },
+    {
+      "point_id": "0cbd139479bb4558-02",
+      "score": 0
+    },
+    {
+      "point_id": "0cbd139479bb4558-03",
+      "score": 0
+    },
+    {
+      "point_id": "0cbd139479bb4558-04",
+      "score": 0
+    }
+  ],
+  "weakness_rule": {
+    "limit": 10,
+    "score": "casual_errors + module_errors + check_errors_before_pass",
+    "tie_break": "plan_order"
+  },
+  "point_comments": {
+    "2fab08d1282443d8-01": "随口问错 1 次、模块检测错 1 次；当时的判定原因：选项不符合资料标准答案。；现已通过。",
+    "2fab08d1282443d8-02": "这个点没有答错记录；现已通过。",
+    "2fab08d1282443d8-03": "最终检验错 2 次；当时的判定原因：选项不符合资料标准答案。；现已通过。",
+    "5bc2c16069e14233-01": "这个点没有答错记录；现已通过。",
+    "5bc2c16069e14233-02": "这个点没有答错记录；现已通过。",
+    "5bc2c16069e14233-03": "这个点没有答错记录；现已通过。",
+    "0cbd139479bb4558-01": "这个点没有答错记录；现已通过。",
+    "0cbd139479bb4558-02": "这个点没有答错记录；现已通过。",
+    "0cbd139479bb4558-03": "这个点没有答错记录；现已通过。",
+    "0cbd139479bb4558-04": "这个点没有答错记录；现已通过。"
+  }
+}

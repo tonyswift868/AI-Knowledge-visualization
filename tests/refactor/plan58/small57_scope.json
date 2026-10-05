@@ -1,0 +1,710 @@
+{
+  "origin": "small57 step-00007/00008, structure-scope.json, model/call-00013.json",
+  "previous": {
+    "summary": "按目录核对后，资料覆盖认识计算机、硬件与软件、常见计算机设备类型三模块；将相关目录条目依次归入对应模块，未发现目标中资料未讲到的内容。",
+    "modules": [
+      {
+        "key": "m1",
+        "title": "认识计算机",
+        "summary": "认识计算机是什么、能做什么，以及相关基础概念。",
+        "refs": [
+          "s1.1",
+          "s1.2"
+        ],
+        "chapters": [
+          "Lesson 2: What is a Computer?",
+          "What is a computer?"
+        ]
+      },
+      {
+        "key": "m2",
+        "title": "硬件与软件",
+        "summary": "区分硬件和软件，理解它们各自指什么以及二者关系。",
+        "refs": [
+          "s1.3"
+        ],
+        "chapters": [
+          "Hardware vs. software"
+        ]
+      },
+      {
+        "key": "m3",
+        "title": "常见计算机设备类型",
+        "summary": "认识常见计算机设备类型，区分台式机、笔记本、平板、服务器、其他类型以及PC和Mac。",
+        "refs": [
+          "s1.4",
+          "s1.5",
+          "s1.6",
+          "s1.7",
+          "s1.8",
+          "s1.9",
+          "s1.10",
+          "s1.11",
+          "s1.12"
+        ],
+        "chapters": [
+          "What are the different types of computers?",
+          "What are the different types of computers? / Desktop computers",
+          "What are the different types of computers? / Laptop computers",
+          "What are the different types of computers? / Tablet computers",
+          "What are the different types of computers? / Servers",
+          "What are the different types of computers? / Other types of computers",
+          "PCs and Macs",
+          "PCs and Macs / PCs",
+          "PCs and Macs / Macs"
+        ]
+      }
+    ],
+    "missing": [],
+    "version": 1
+  },
+  "selected": {
+    "summary": "按最新要求保留第1、第2、第3模块；第3模块只保留四种设备相关目录，删除 Other types of computers、PCs and Macs 及其子小节，不纳入其他设备与 PC/Mac 分支。",
+    "modules": [
+      {
+        "key": "m1",
+        "title": "认识计算机",
+        "summary": "认识计算机是什么、能做什么，以及相关基础概念",
+        "refs": [
+          "s1.1",
+          "s1.2"
+        ],
+        "chapters": [
+          "Lesson 2: What is a Computer?",
+          "What is a computer?"
+        ]
+      },
+      {
+        "key": "m2",
+        "title": "硬件与软件",
+        "summary": "区分硬件和软件，理解它们各自指什么以及二者关系",
+        "refs": [
+          "s1.3"
+        ],
+        "chapters": [
+          "Hardware vs. software"
+        ]
+      },
+      {
+        "key": "m3",
+        "title": "常见计算机设备类型",
+        "summary": "认识常见计算机设备类型，重点区分台式机、笔记本、平板电脑和服务器",
+        "refs": [
+          "s1.4",
+          "s1.5",
+          "s1.6",
+          "s1.7",
+          "s1.8"
+        ],
+        "chapters": [
+          "What are the different types of computers?",
+          "What are the different types of computers? / Desktop computers",
+          "What are the different types of computers? / Laptop computers",
+          "What are the different types of computers? / Tablet computers",
+          "What are the different types of computers? / Servers"
+        ]
+      }
+    ],
+    "missing": [],
+    "version": 2
+  },
+  "instructions": [
+    "保留第1、第2、第3模块。第3模块只保留 Desktop computers、Laptop computers、Tablet computers、Servers 这四种设备，删除 Other types of computers、PCs and Macs 及其PCs、Macs小节，不学其他设备和PC/Mac分支。前两个模块保持不变。只学基础概念，不做操作，总共约8～10个知识点。请先更新结构让我确认，暂不填知识点。",
+    "可以，就按这个结构来。第3模块只留台式机、笔记本、平板、服务器这四种，其他设备和PC/Mac都不学。现在可以填知识点了。"
+  ],
+  "reply": "{\"points\":[{\"title\":\"计算机类型不止台式机和笔记本\",\"summary\":\"能举出生活中 ATM 取款、商店扫码、计算器等也是计算机的例子，说明计算机形状、大小和功能多样，不只有个人电脑。\",\"minutes\":15,\"chunks\":[\"c2\"]},{\"title\":\"台式机与笔记本电脑\",\"summary\":\"能说出台式机通常放在桌面、由机箱显示器键盘鼠标等部分组成；笔记本靠电池供电、比台式机更便携，几乎可在任何地方使用，并能用生活场景区分二者。\",\"minutes\":20,\"chunks\":[\"c4\",\"c6\"]},{\"title\":\"平板电脑\",\"summary\":\"能说出平板是手持电脑，比笔记本更便携，用触摸屏代替键盘鼠标进行打字和导航，并能举出 iPad 作为例子。\",\"minutes\":15,\"chunks\":[\"c8\"]},{\"title\":\"服务器\",\"summary\":\"能说明服务器是向网络上其他计算机提供信息的计算机；能举出上网内容存储在服务器、企业用本地文件服务器存储和共享文件的例子。\",\"minutes\":15,\"chunks\":[\"c10\"]}]}",
+  "chunks": [
+    {
+      "block_fragments": [
+        {
+          "index": 0,
+          "kind": "heading",
+          "length": 29,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "Lesson 2: What is a Computer?"
+          ],
+          "text": "Lesson 2: What is a Computer?"
+        },
+        {
+          "index": 1,
+          "kind": "paragraph",
+          "length": 47,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "Lesson 2: What is a Computer?"
+          ],
+          "text": "/en/computerbasics/about-this-tutorial/content/"
+        }
+      ],
+      "char_end": 78,
+      "char_start": 0,
+      "extract_chunk_id": "dc529326c374:0001",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0001",
+      "page_end": null,
+      "page_start": null,
+      "position": 0,
+      "section": [
+        "Lesson 2: What is a Computer?"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Lesson 2: What is a Computer?\n\n/en/computerbasics/about-this-tutorial/content/"
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 2,
+          "kind": "heading",
+          "length": 19,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What is a computer?"
+          ],
+          "text": "What is a computer?"
+        },
+        {
+          "index": 3,
+          "kind": "paragraph",
+          "length": 326,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What is a computer?"
+          ],
+          "text": "A computer is an electronic device that manipulates information, or data. It has the ability to store, retrieve, and process data. You may already know that you can use a computer to type documents, send email, play games, and browse the Web. You can also use it to edit or create spreadsheets, presentations, and even videos."
+        },
+        {
+          "index": 4,
+          "kind": "paragraph",
+          "length": 66,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What is a computer?"
+          ],
+          "text": "Watch the video below to learn about different types of computers."
+        }
+      ],
+      "char_end": 495,
+      "char_start": 80,
+      "extract_chunk_id": "dc529326c374:0002",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0002",
+      "page_end": null,
+      "page_start": null,
+      "position": 1,
+      "section": [
+        "What is a computer?"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "What is a computer?\n\nA computer is an electronic device that manipulates information, or data. It has the ability to store, retrieve, and process data. You may already know that you can use a computer to type documents, send email, play games, and browse the Web. You can also use it to edit or create spreadsheets, presentations, and even videos.\n\nWatch the video below to learn about different types of computers."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 5,
+          "kind": "heading",
+          "length": 21,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "Hardware vs. software"
+          ],
+          "text": "Hardware vs. software"
+        },
+        {
+          "index": 6,
+          "kind": "paragraph",
+          "length": 131,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "Hardware vs. software"
+          ],
+          "text": "Before we talk about different types of computers, let's talk about two things all computers have in common: hardware and software."
+        },
+        {
+          "index": 7,
+          "kind": "list",
+          "length": 192,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "Hardware vs. software"
+          ],
+          "text": "Hardware is any part of your computer that has a physical structure, such as the keyboard or mouse. It also includes all of the computer's internal parts, which you can see in the image below."
+        },
+        {
+          "index": 8,
+          "kind": "list",
+          "length": 159,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "Hardware vs. software"
+          ],
+          "text": "Software is any set of instructions that tells the hardware what to do and how to do it. Examples of software include web browsers, games, and word processors."
+        },
+        {
+          "index": 9,
+          "kind": "paragraph",
+          "length": 448,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "Hardware vs. software"
+          ],
+          "text": "Everything you do on your computer will rely on both hardware and software. For example, right now you may be viewing this lesson in a web browser (software) and using your mouse (hardware) to click from page to page. As you learn about different types of computers, ask yourself about the differences in their hardware. As you progress through this tutorial, you'll see that different types of computers also often use different types of software."
+        }
+      ],
+      "char_end": 1456,
+      "char_start": 497,
+      "extract_chunk_id": "dc529326c374:0003",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0003",
+      "page_end": null,
+      "page_start": null,
+      "position": 2,
+      "section": [
+        "Hardware vs. software"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Hardware vs. software\n\nBefore we talk about different types of computers, let's talk about two things all computers have in common: hardware and software.\n\nHardware is any part of your computer that has a physical structure, such as the keyboard or mouse. It also includes all of the computer's internal parts, which you can see in the image below.\n\nSoftware is any set of instructions that tells the hardware what to do and how to do it. Examples of software include web browsers, games, and word processors.\n\nEverything you do on your computer will rely on both hardware and software. For example, right now you may be viewing this lesson in a web browser (software) and using your mouse (hardware) to click from page to page. As you learn about different types of computers, ask yourself about the differences in their hardware. As you progress through this tutorial, you'll see that different types of computers also often use different types of software."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 10,
+          "kind": "heading",
+          "length": 42,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?"
+          ],
+          "text": "What are the different types of computers?"
+        },
+        {
+          "index": 11,
+          "kind": "paragraph",
+          "length": 334,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?"
+          ],
+          "text": "When most people hear the word computer, they think of a personal computer such as a desktop or laptop. However, computers come in many shapes and sizes, and they perform many different functions in our daily lives. When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer."
+        }
+      ],
+      "char_end": 1836,
+      "char_start": 1458,
+      "extract_chunk_id": "dc529326c374:0004",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0004",
+      "page_end": null,
+      "page_start": null,
+      "position": 3,
+      "section": [
+        "What are the different types of computers?"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "What are the different types of computers?\n\nWhen most people hear the word computer, they think of a personal computer such as a desktop or laptop. However, computers come in many shapes and sizes, and they perform many different functions in our daily lives. When you withdraw cash from an ATM, scan groceries at the store, or use a calculator, you're using a type of computer."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 12,
+          "kind": "heading",
+          "length": 17,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Desktop computers"
+          ],
+          "text": "Desktop computers"
+        },
+        {
+          "index": 13,
+          "kind": "paragraph",
+          "length": 230,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Desktop computers"
+          ],
+          "text": "Many people use desktop computers at work, home, and school. Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse."
+        }
+      ],
+      "char_end": 2087,
+      "char_start": 1838,
+      "extract_chunk_id": "dc529326c374:0005",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0005",
+      "page_end": null,
+      "page_start": null,
+      "position": 4,
+      "section": [
+        "What are the different types of computers?",
+        "Desktop computers"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Desktop computers\n\nMany people use desktop computers at work, home, and school. Desktop computers are designed to be placed on a desk, and they're typically made up of a few different parts, including the computer case, monitor, keyboard, and mouse."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 14,
+          "kind": "heading",
+          "length": 16,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Laptop computers"
+          ],
+          "text": "Laptop computers"
+        },
+        {
+          "index": 15,
+          "kind": "paragraph",
+          "length": 218,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Laptop computers"
+          ],
+          "text": "The second type of computer you may be familiar with is a laptop computer, commonly called a laptop. Laptops are battery-powered computers that are more portable than desktops, allowing you to use them almost anywhere."
+        }
+      ],
+      "char_end": 2325,
+      "char_start": 2089,
+      "extract_chunk_id": "dc529326c374:0006",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0006",
+      "page_end": null,
+      "page_start": null,
+      "position": 5,
+      "section": [
+        "What are the different types of computers?",
+        "Laptop computers"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Laptop computers\n\nThe second type of computer you may be familiar with is a laptop computer, commonly called a laptop. Laptops are battery-powered computers that are more portable than desktops, allowing you to use them almost anywhere."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 16,
+          "kind": "heading",
+          "length": 16,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Tablet computers"
+          ],
+          "text": "Tablet computers"
+        },
+        {
+          "index": 17,
+          "kind": "paragraph",
+          "length": 225,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Tablet computers"
+          ],
+          "text": "Tablet computers—or tablets—are handheld computers that are even more portable than laptops. Instead of a keyboard and mouse, tablets use a touch-sensitive screen for typing and navigation. The iPad is an example of a tablet."
+        }
+      ],
+      "char_end": 2570,
+      "char_start": 2327,
+      "extract_chunk_id": "dc529326c374:0007",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0007",
+      "page_end": null,
+      "page_start": null,
+      "position": 6,
+      "section": [
+        "What are the different types of computers?",
+        "Tablet computers"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Tablet computers\n\nTablet computers—or tablets—are handheld computers that are even more portable than laptops. Instead of a keyboard and mouse, tablets use a touch-sensitive screen for typing and navigation. The iPad is an example of a tablet."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 18,
+          "kind": "heading",
+          "length": 7,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Servers"
+          ],
+          "text": "Servers"
+        },
+        {
+          "index": 19,
+          "kind": "paragraph",
+          "length": 262,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Servers"
+          ],
+          "text": "A server is a computer that serves up information to other computers on a network. For example, whenever you use the Internet, you're looking at something that's stored on a server. Many businesses also use local file servers to store and share files internally."
+        }
+      ],
+      "char_end": 2843,
+      "char_start": 2572,
+      "extract_chunk_id": "dc529326c374:0008",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0008",
+      "page_end": null,
+      "page_start": null,
+      "position": 7,
+      "section": [
+        "What are the different types of computers?",
+        "Servers"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Servers\n\nA server is a computer that serves up information to other computers on a network. For example, whenever you use the Internet, you're looking at something that's stored on a server. Many businesses also use local file servers to store and share files internally."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 20,
+          "kind": "heading",
+          "length": 24,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Other types of computers"
+          ],
+          "text": "Other types of computers"
+        },
+        {
+          "index": 21,
+          "kind": "paragraph",
+          "length": 143,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Other types of computers"
+          ],
+          "text": "Many of today's electronics are basically specialized computers, though we don't always think of them that way. Here are a few common examples."
+        },
+        {
+          "index": 22,
+          "kind": "list",
+          "length": 156,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Other types of computers"
+          ],
+          "text": "Smartphones: Many cell phones can do a lot of things computers can do, including browsing the Internet and playing games. They are often called smartphones."
+        },
+        {
+          "index": 23,
+          "kind": "list",
+          "length": 216,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Other types of computers"
+          ],
+          "text": "Wearables: Wearable technology is a general term for a group of devices—including fitness trackers and smartwatches—that are designed to be worn throughout the day. These devices are often called wearables for short."
+        },
+        {
+          "index": 24,
+          "kind": "list",
+          "length": 112,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Other types of computers"
+          ],
+          "text": "Game consoles: A game console is a specialized type of computer that is used for playing video games on your TV."
+        },
+        {
+          "index": 25,
+          "kind": "list",
+          "length": 174,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "What are the different types of computers?",
+            "Other types of computers"
+          ],
+          "text": "TVs: Many TVs now include applications—or apps—that let you access various types of online content. For example, you can stream video from the Internet directly onto your TV."
+        }
+      ],
+      "char_end": 3680,
+      "char_start": 2845,
+      "extract_chunk_id": "dc529326c374:0009",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0009",
+      "page_end": null,
+      "page_start": null,
+      "position": 8,
+      "section": [
+        "What are the different types of computers?",
+        "Other types of computers"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Other types of computers\n\nMany of today's electronics are basically specialized computers, though we don't always think of them that way. Here are a few common examples.\n\nSmartphones: Many cell phones can do a lot of things computers can do, including browsing the Internet and playing games. They are often called smartphones.\n\nWearables: Wearable technology is a general term for a group of devices—including fitness trackers and smartwatches—that are designed to be worn throughout the day. These devices are often called wearables for short.\n\nGame consoles: A game console is a specialized type of computer that is used for playing video games on your TV.\n\nTVs: Many TVs now include applications—or apps—that let you access various types of online content. For example, you can stream video from the Internet directly onto your TV."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 26,
+          "kind": "heading",
+          "length": 12,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "PCs and Macs"
+          ],
+          "text": "PCs and Macs"
+        },
+        {
+          "index": 27,
+          "kind": "paragraph",
+          "length": 164,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "PCs and Macs"
+          ],
+          "text": "Personal computers come in two main styles: PC and Mac. Both are fully functional, but they have a different look and feel, and many people prefer one or the other."
+        }
+      ],
+      "char_end": 3860,
+      "char_start": 3682,
+      "extract_chunk_id": "dc529326c374:0010",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0010",
+      "page_end": null,
+      "page_start": null,
+      "position": 9,
+      "section": [
+        "PCs and Macs"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "PCs and Macs\n\nPersonal computers come in two main styles: PC and Mac. Both are fully functional, but they have a different look and feel, and many people prefer one or the other."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 28,
+          "kind": "heading",
+          "length": 3,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "PCs and Macs",
+            "PCs"
+          ],
+          "text": "PCs"
+        },
+        {
+          "index": 29,
+          "kind": "paragraph",
+          "length": 316,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "PCs and Macs",
+            "PCs"
+          ],
+          "text": "This type of computer began with the original IBM PC that was introduced in 1981. Other companies began creating similar computers, which were called IBM PC Compatible (often shortened to PC). Today, this is the most common type of personal computer, and it typically includes the Microsoft Windows operating system."
+        }
+      ],
+      "char_end": 4183,
+      "char_start": 3862,
+      "extract_chunk_id": "dc529326c374:0011",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0011",
+      "page_end": null,
+      "page_start": null,
+      "position": 10,
+      "section": [
+        "PCs and Macs",
+        "PCs"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "PCs\n\nThis type of computer began with the original IBM PC that was introduced in 1981. Other companies began creating similar computers, which were called IBM PC Compatible (often shortened to PC). Today, this is the most common type of personal computer, and it typically includes the Microsoft Windows operating system."
+    },
+    {
+      "block_fragments": [
+        {
+          "index": 30,
+          "kind": "heading",
+          "length": 4,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "PCs and Macs",
+            "Macs"
+          ],
+          "text": "Macs"
+        },
+        {
+          "index": 31,
+          "kind": "paragraph",
+          "length": 257,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "PCs and Macs",
+            "Macs"
+          ],
+          "text": "The Macintosh computer was introduced in 1984, and it was the first widely sold personal computer with a graphical user interface, or GUI (pronounced gooey). All Macs are made by one company (Apple), and they almost always use the Mac OS X operating system."
+        },
+        {
+          "index": 32,
+          "kind": "paragraph",
+          "length": 53,
+          "offset": 0,
+          "page": null,
+          "section": [
+            "PCs and Macs",
+            "Macs"
+          ],
+          "text": "/en/computerbasics/basic-parts-of-a-computer/content/"
+        }
+      ],
+      "char_end": 4503,
+      "char_start": 4185,
+      "extract_chunk_id": "dc529326c374:0012",
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f:dc529326c374:0012",
+      "page_end": null,
+      "page_start": null,
+      "position": 11,
+      "section": [
+        "PCs and Macs",
+        "Macs"
+      ],
+      "source_id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "text": "Macs\n\nThe Macintosh computer was introduced in 1984, and it was the first widely sold personal computer with a graphical user interface, or GUI (pronounced gooey). All Macs are made by one company (Apple), and they almost always use the Mac OS X operating system.\n\n/en/computerbasics/basic-parts-of-a-computer/content/"
+    }
+  ],
+  "sources": [
+    {
+      "id": "file-dc529326c37435b95807e1c9d48e125709ff97e78c2130e28a40a651fef5bb7f",
+      "title": "GCFGlobal Computer Basics: What is a Computer?"
+    }
+  ],
+  "module_replies": [
+    "{\"points\":[{\"title\":\"计算机是什么\",\"summary\":\"能用自己的话说出计算机是处理信息（数据）的电子设备，并各举一个生活化例子说明“信息”和“电子设备”。\",\"minutes\":15,\"chunks\":[\"c4\"]},{\"title\":\"数据的存储、取回与处理\",\"summary\":\"能用生活比喻（如书柜、冰箱）区分存储、取回、处理数据三种能力，并判断给定动作属于哪一种。\",\"minutes\":20,\"chunks\":[\"c4\"]},{\"title\":\"计算机的常见用途\",\"summary\":\"能列举计算机的常见用途（打字、邮件、游戏、上网、表格、演示、视频），并说明每种用途在处理哪类数据。\",\"minutes\":15,\"chunks\":[\"c4\"]}]}",
+    "{\"points\":[{\"title\":\"硬件是什么\",\"summary\":\"能指出硬件是计算机中有物理结构的部分，包括键盘、鼠标和内部零件；能用“有无实体”判断哪些属于硬件。\",\"chunks\":[\"c3\"],\"minutes\":15},{\"title\":\"软件是什么\",\"summary\":\"能说明软件是一组指令，用来告诉硬件做什么、怎么做，并认出浏览器、游戏、文字处理器属于软件。\",\"chunks\":[\"c4\"],\"minutes\":15},{\"title\":\"硬件和软件的关系\",\"summary\":\"能说明电脑使用同时依赖硬件和软件，用浏览器加鼠标的例子分清软硬件，并知道不同电脑的硬件软件可能不同。\",\"chunks\":[\"c2\",\"c5\"],\"minutes\":15}]}",
+    "{\"points\":[{\"title\":\"计算机类型不止台式机和笔记本\",\"summary\":\"能举出生活中 ATM 取款、商店扫码、计算器等也是计算机的例子，说明计算机形状、大小和功能多样，不只有个人电脑。\",\"minutes\":15,\"chunks\":[\"c2\"]},{\"title\":\"台式机与笔记本电脑\",\"summary\":\"能说出台式机通常放在桌面、由机箱显示器键盘鼠标等部分组成；笔记本靠电池供电、比台式机更便携，几乎可在任何地方使用，并能用生活场景区分二者。\",\"minutes\":20,\"chunks\":[\"c4\",\"c6\"]},{\"title\":\"平板电脑\",\"summary\":\"能说出平板是手持电脑，比笔记本更便携，用触摸屏代替键盘鼠标进行打字和导航，并能举出 iPad 作为例子。\",\"minutes\":15,\"chunks\":[\"c8\"]},{\"title\":\"服务器\",\"summary\":\"能说明服务器是向网络上其他计算机提供信息的计算机；能举出上网内容存储在服务器、企业用本地文件服务器存储和共享文件的例子。\",\"minutes\":15,\"chunks\":[\"c10\"]}]}"
+  ]
+}

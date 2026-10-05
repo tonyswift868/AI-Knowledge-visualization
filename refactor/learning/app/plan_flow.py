@@ -600,6 +600,8 @@ class PlanFlow:
         self.save(draft)
 
     def _invalidate_material_structure(self, draft):
+        if (draft.get('material_structure') or {}).get('removed_content'):
+            draft['removed_content'] = draft['material_structure']['removed_content']
         draft.pop('material_structure', None)
         draft['outline'] = None
         draft.pop('estimate', None)
@@ -680,10 +682,11 @@ class PlanFlow:
         self.status(draft['plan_id'], '正在按资料目录调整结构…')
         request = agents.material_structure_request(draft['goal'],
             self._effective_form(draft), draft.get('accepted_preview'), sections,
-            previous=previous, instruction=instruction)
+            previous=previous, instruction=instruction, removed_content=draft.get('removed_content', ()))
         value, _ = self._ask('outline', request,
             lambda text: agents.parse_material_structure(text, sections), ctx,
             plan_id=draft['plan_id'], max_tokens=12288)
+        self._remember_removed_content(draft, previous, value, sections)
         # Classroom already reads the plan's original goal/final_goal. Preserve
         # note/chat-only preferences there too, without changing account presets
         # or introducing another persisted preference schema.
@@ -706,6 +709,33 @@ class PlanFlow:
         draft['messages'].append(_msg('ai', 'material_preview', text, version=value['version']))
         self.save(draft)
 
+    @staticmethod
+    def _remember_removed_content(draft, previous, current, sections=()):
+        """Keep deletions in the local draft, independently of rebuilt outlines.
+
+        Directory IDs are request-local; persist chapter names and source IDs
+        instead, so adding a source cannot change the meaning of a deletion.
+        """
+        removed = list(draft.get('removed_content', ()))
+        if previous:
+            for row in previous.get('removed_content', ()):
+                if row not in removed: removed.append(row)
+            kept = {r for m in current['modules'] for r in m['refs']}
+            by_id = {s.id: s for s in sections}
+            for module in previous['modules']:
+                # A structure revision may renumber model keys; retained
+                # chapters, not those temporary keys, identify surviving scope.
+                if not kept.intersection(module['refs']):
+                    row = dict(kind='module', title=module['title'])
+                    if row not in removed: removed.append(row)
+                for ref, title in zip(module['refs'], module['chapters']):
+                    if ref in kept: continue
+                    row = dict(kind='chapter', title=title,
+                               source_id=by_id[ref].source_id if ref in by_id else None)
+                    if row not in removed: removed.append(row)
+        draft['removed_content'] = removed
+        current['removed_content'] = list(removed)
+
     def _select_material_modules(self, draft, params):
         structure = draft['material_structure']
         modules = structure['modules']
@@ -713,6 +743,8 @@ class PlanFlow:
         # An entirely invalid keep request must not silently delete everything.
         structure['modules'] = [m for n, m in enumerate(modules, 1)
                                 if (not included or n in included) and n not in excluded]
+        self._remember_removed_content(draft, dict(structure, modules=modules), structure,
+                                       self._sections(draft)[1])
         structure['version'] += 1
         draft['material_version'] = structure['version']
         draft.pop('estimate', None)
@@ -1103,14 +1135,19 @@ class PlanFlow:
         index, count = position or (None, None)
         request = agents.generate_request(draft["form"], draft["goal"], draft["outline"], module, batch,
                                           minutes_range=minutes, batch_index=index, batch_count=count, max_points=max_points,
-                                          material_map=bool(draft.get('material_map')))
+                                          material_map=bool(draft.get('material_map')),
+                                          removed_content=draft.get('removed_content', ()) if draft.get('material_map') else ())
         aliases = request[2]
         # Count constraints are checked after ALL batches are merged. Allow an
         # overlong first result through parsing so the dedicated adjustment can
         # see and revise it, rather than repeating the same request unchanged.
-        parse = lambda text: agents.parse_points(text, aliases, minutes_range=minutes,
-                                                 max_points=max_points, min_points=1,
-                                                 paragraph_chunks=batch if draft.get('material_map') else None)  # noqa: E731
+        def parse(text):
+            points = agents.parse_points(text, aliases, minutes_range=minutes,
+                max_points=max_points, min_points=1,
+                paragraph_chunks=batch if draft.get('material_map') else None)
+            if draft.get('material_map'):
+                points = agents.filter_removed_content(points, batch, draft.get('removed_content', ()))
+            return points
         try:
             return [self._ask("generate", request[:2], parse, ctx, plan_id=draft["plan_id"], max_tokens=8192)[0]]
         except ModelError as exc:
@@ -1140,6 +1177,7 @@ class PlanFlow:
     def _module_chunks(chunks, titles):
         return [{"id": c["id"], "text": c["text"], "section": c.get("section") or [],
                  "block_fragments": c.get("block_fragments") or [],
+                 "source_id": c['source_id'],
                  "source_title": titles.get(c["source_id"], "资料")} for c in chunks if c["text"].strip()]
 
     # ----------------------------------------------------------- chat box (ARCH-06 intents)
@@ -1951,7 +1989,7 @@ def report_markdown(report, titles):
               f"比当天目标少 {day['debt_minutes']} 分，多 {day['ahead_minutes']} 分"
               for day in views['history']]
     if report.get("live_points"):
-        lines += ["", "## 老师现场讲的知识点", "", "以下知识点的讲稿没通过核对，是老师现场讲的：", ""]
+        lines += ["", "## 老师现场讲的知识点", "", "以下知识点由老师结合资料现场讲解：", ""]
         lines += [f"- {p['title']}" for p in report["live_points"]]
     lines += ["", "## 最需要注意的知识点", ""]
     lines += [f"- {titles.get(w['point_id'], w['point_id'])}（出错 {w['score']} 次）" for w in report["weakest_points"] if w["score"]] \

@@ -363,27 +363,43 @@ class Classroom:
         if q['kind']=='fill':return '\n'.join(' / '.join(a) for a in q['answer'])
         return q['answer']
 
-    def _pick(self, course, point_id, purpose, exclude=(), *, state=None, ctx=None):
+    def _pick(self, course, point_id, purpose, exclude=(), *, state=None, ctx=None, prepare=True):
         from ..course.question_bank import objective_question
         history=self._test_questions(course,point_id) if purpose in ('retest','final') else []
         avoid=tuple(dict.fromkeys([*exclude,*history]))
-        def select():
-            q=self._materials().pick_question(course.store,course.plan_id,point_id,purpose,exclude_ids=avoid)
+        def select(avoiding=avoid):
+            q=self._materials().pick_question(course.store,course.plan_id,point_id,purpose,exclude_ids=avoiding)
             role='quick' if purpose=='quick' else 'bank'
-            seen=set(avoid)
+            seen=set(avoiding)
             while q and q.get('role','bank')==role:
                 if answer_compare.can_grade(q):return q
                 if q['id'] in seen:break
                 seen.add(q['id'])
                 q=self._materials().pick_question(course.store,course.plan_id,point_id,purpose,exclude_ids=tuple(seen))
             return None
-        q=select()
+        if purpose=='final':
+            final=[r['details'].get('question_id') for r in sorted(
+                course.store.records('judgements',course.plan_id),key=lambda r:r['event']['seq'])
+                if r['event']['context']=='check']
+            asked=set(final)
+            # Unasked in the final check wins, even if it appeared in a module test.
+            q=select(tuple(set(avoid)|asked)) or select(tuple(set(exclude)|asked))
+            if q is None:
+                # Once all are used, module-test use no longer matters. Choose
+                # by event sequence, so even equal/changed clocks keep the gap.
+                last={qid:i for i,qid in enumerate(final)}
+                pool=[];avoiding=set(exclude)
+                while candidate:=select(tuple(avoiding)):
+                    pool.append(candidate);avoiding.add(candidate['id'])
+                q=min(pool,key=lambda row:last.get(row['id'],-1)) if pool else None
+        else:q=select()
         if q is None and history:
             # Prefer another question, but a shortage is allowed to reuse the original test.
             bank={q['id']:q for q in course.store.records('question_bank',course.plan_id)}
             fallback=self._test_questions(course,point_id,include_retest=False) if purpose=='final' else history
             q=next((bank[qid] for qid in reversed(fallback) if qid in bank and qid not in exclude and bank[qid].get('role','bank')=='bank' and answer_compare.can_grade(bank[qid]) and objective_question(bank[qid])),None)
         if q is None:
+            if not prepare:return None
             reason=self._prepare_one(course,point_id,ctx)
             q=select()
             if q is None:
@@ -604,8 +620,6 @@ class Classroom:
         self._next_check(course,state,ctx)
 
     def _next_check(self, course, state, ctx):
-        check=state.get('check')
-        if check and check['index']<len(check['queue']):return self._ask_check(course,state)
         book=course.book()
         if book.check_complete():return self._complete(course,state,ctx)
         if state.get('check_used',0)>=CHECK_BATCH:
@@ -617,16 +631,29 @@ class Classroom:
             if pid in state.get('check_missing',[]):continue
             if pid not in seen:
                 selected.append(pid);seen.add(pid)
-            if len(selected)>=CHECK_BATCH-state.get('check_used',0):break
-        queue=[]
+        # Re-select after each answer. A pre-built queue can repeat a question
+        # too soon after its other points pass. Persisted events survive reopening.
+        history=[r['details'].get('question_id') for r in sorted(
+            course.store.records('judgements',course.plan_id),key=lambda r:r['event']['seq'])
+            if r['event']['context']=='check']
+        last={qid:i for i,qid in enumerate(history) if qid}
+        recent=tuple(history[-3:])
+        candidates=[]
         for pid in selected:
-            q=self._pick(course,pid,'final',state=state,ctx=ctx)
-            if q:queue.append(q)
-        if not queue:
+            q=self._pick(course,pid,'final',recent,ctx=ctx,prepare=False)
+            if q is None:q=self._pick(course,pid,'final',state=state,ctx=ctx)
+            if q:
+                gap=len(history)-last[q['id']]-1 if q['id'] in last else len(history)+3
+                candidates.append((q,gap))
+                if gap>=3:break
+        if not candidates:
             state['check']=None
             self._say(course,state,'本组没有可用题，出题失败的点未计分、未算通过；可以下课或继续学习其他点，稍后重试。')
             return
-        state['check']=dict(queue=queue,index=0)
+        eligible=[item for item in candidates if item[1]>=3]
+        # With fewer remaining questions, choose the longest available gap.
+        q=(eligible[0] if eligible else max(candidates,key=lambda item:item[1]))[0]
+        state['check']=dict(queue=[q],index=0)
         self._ask_check(course,state)
 
     def _ask_check(self, course, state):
@@ -673,47 +700,34 @@ class Classroom:
         request=teacher_agent.teacher_request(tctx)
         for attempt in range(2):
             if ctx and ctx.cancel.is_set():raise ModelCancelled()
-            # Paragraphs can stream only once their allowed citation appears.
-            buffer=[];emitted=[0]
-            def stream(delta):
-                buffer.append(delta);text=''.join(buffer)
-                while True:
-                    match=re.search(r'\[[cC]\d+\]',text[emitted[0]:])
-                    if not match:break
-                    end=emitted[0]+match.end();paragraph=text[emitted[0]:end]
-                    if '【选项】' in paragraph:break
-                    if teacher_agent.paragraph_grounded(paragraph,tctx):
-                        if ctx:ctx.stream(paragraph)
-                        emitted[0]=end
-                    else:break
-            result=self.services.gateway.complete('teacher',request[1],system=request[0],on_text=stream,
+            # Validate the full reply before displaying it, including removing
+            # invalid source labels. Uncited Chinese explanations are valid.
+            result=self.services.gateway.complete('teacher',request[1],system=request[0],on_text=lambda delta:None,
                 cancel=ctx.cancel if ctx else None,plan_id=course.plan_id,max_tokens=4096)
             try:
                 teaching=teacher_agent.parse_teaching(result.text,tctx)
                 self._teacher_request_page.accept(request[0],request[1],teacher_agent._dialogue(tctx['dialogue']),result.text)
                 if ctx:
-                    remaining=teaching.speech[emitted[0]:]
-                    if remaining:ctx.stream(remaining)
+                    ctx.stream(teaching.speech)
                 return teaching
-            except AgentFormatError:
+            except AgentFormatError as exc:
                 if ctx:ctx.stream(RESET)
                 if attempt==0:
-                    request=(request[0],request[1]+[dict(role='user',content='上一条回复引用不合格。只依据本点段落，每一段写独立[c编号]；开场才给选项。重新写一次。')])
-        mapping=teacher_agent.citation_map(tctx)
-        speech='\n\n'.join(f"{excerpts[cid]} [{alias}]" for alias,cid in mapping.items())
-        options=('我们一起看原文','我还不知道') if opening else ()
-        if ctx:ctx.stream(speech)
-        return teacher_agent.Teaching(speech,tuple(excerpts),options)
+                    request=(request[0],request[1]+[dict(role='user',content=f'上一条回复格式不合格：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])
+                else:raise
 
     def _deliver(self, course, state, teaching, user=None, explained=False):
         mapping={f'c{i}':cid for i,cid in enumerate(sorted(course.excerpts(self._focus(course,state))),1)}
         with course.store.transaction():
             if user is not None:self._user(course,state,user)
-            self._say(course,state,_link_citations(teaching.speech,mapping),role='assistant',kind='teach')
+            speech=_link_citations(teaching.speech,mapping)
+            if not teaching.cited_chunks:
+                speech+='\n\n看原文：'+' '.join(_link_citations(f'[{alias}]',mapping) for alias in mapping)
+            self._say(course,state,speech,role='assistant',kind='teach')
             if explained:
                 document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
                 points=dict(document.get('teaching_points',{}));pid=self._focus(course,state)[0]
-                points[pid]=dict(point_id=pid,title=course.point(pid)['title'],chunk_ids=list(teaching.cited_chunks),at=self.now().isoformat())
+                points[pid]=dict(point_id=pid,title=course.point(pid)['title'],chunk_ids=list(teaching.cited_chunks or mapping.values()),at=self.now().isoformat())
                 course.store.save_teacher_profile(course.plan_id,dict(document,teaching_points=points))
 
     def _user(self, course, state, text):
@@ -738,7 +752,8 @@ class Classroom:
         attempt=(state.get('test') or {}).get('attempt') if context in ('module_test','skip_test') else None
         angle=None
         if context=='check':
-            used=course.book().point(pending['point_ids'][0]).used_angles;angle=ANGLES[len(used)%len(ANGLES)]
+            # A reused question keeps its actual angle; no invented rotation.
+            angle=q.get('angle') if q.get('angle') in ANGLES else 'recall'
         event=Judgement(pending['answer_id'],course.next_seq(),self.now(),context,course.point(pending['point_ids'][0])['module_id'],attempt,tuple((pid,pid not in wrong) for pid in pending['point_ids']),angle)
         course.store.append_judgement(course.plan_id,event,details=dict(question=q['stem'],question_id=q['id'],question_type=q['kind'],answer=answer,reason=verdict.reason,point_checks=list(verdict.checks),source=q['source'],answer_source=q['answer_source']),credit_day=self._day(state) if context=='check' else None)
 
