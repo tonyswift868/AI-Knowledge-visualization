@@ -123,8 +123,8 @@ export function PlanGraph({ stages, mode = "outline" }: { stages: GraphStage[]; 
       if (selected) select(null)
       else if (fullscreen) { full(false); returnFocus.current?.focus() }
     }
-    document.addEventListener("keydown", esc)
-    return () => document.removeEventListener("keydown", esc)
+    document.addEventListener("keydown", esc, true)
+    return () => document.removeEventListener("keydown", esc, true)
   }, [selected, fullscreen])
   React.useEffect(() => { if (instance) requestAnimationFrame(() => instance.fitView({ padding: .12, duration: 220, minZoom: .025, maxZoom: 1 })) }, [instance, layout, fullscreen])
   const all = stages.flatMap(s => s.modules)
@@ -137,7 +137,7 @@ export function PlanGraph({ stages, mode = "outline" }: { stages: GraphStage[]; 
       <button className="pg-expand" ref={returnFocus} onClick={() => full(!fullscreen)}>{fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}{fullscreen ? "退出全屏" : "全屏查看"}</button></div>
     <div className={`pg-workspace ${detail ? "pg-has-details" : ""}`}>
       <div className="pg-canvas"><ReactFlow nodes={viewNodes} edges={edges} nodeTypes={nodeTypes} onInit={setInstance}
-        onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, n) => { if (n.type === "module") select(n.id) }}
+        onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, n) => { if (n.type === "module") select(n.id === selected ? null : n.id) }}
         onNodeMouseEnter={(_, n) => { if (n.type === "module") hover(n.id) }} onNodeMouseLeave={() => hover(null)}
         nodesConnectable={false} deleteKeyCode={null} fitView fitViewOptions={{ padding: .12, minZoom: .025, maxZoom: 1 }} minZoom={.025} maxZoom={2.5} onlyRenderVisibleElements>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="var(--border-strong)" />
@@ -147,6 +147,7 @@ export function PlanGraph({ stages, mode = "outline" }: { stages: GraphStage[]; 
     </div>
     <footer className="pg-legend"><MiniMap position="bottom-left" style={{ width: 110, height: 66 }} pannable zoomable nodeColor={n => n.type === "stage" ? "var(--accent-soft)" : "var(--accent)"} maskColor="var(--surface)" />
       <span><i />学习顺序</span><span><i className="pg-arrow" />先学关系</span><span>拖动画布 · 滚轮缩放 · 点模块看详情{selected ? " · Esc 关闭详情" : fullscreen ? " · Esc 退出" : ""}</span>
+      {selected && <button className="pg-expand" onClick={() => select(null)} aria-label="关闭模块详情"><X size={15} />关闭详情</button>}
       <select aria-label="定位模块" value={selected ?? ""} onChange={e => { const id = e.target.value; if (id) { select(id); instance?.fitView({ nodes: [{ id }], duration: 250, padding: .6, maxZoom: 1 }) } }}>
         <option value="">定位模块…</option>{all.map((m, i) => <option key={m.key} value={m.key}>{i + 1}. {m.title}</option>)}
       </select>
