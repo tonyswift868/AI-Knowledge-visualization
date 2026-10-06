@@ -46,7 +46,7 @@ def test_plan55_material_modules_displayed_and_selected_without_generation(flow,
     assert '2. ' in result['messages'][-1]['text']  # renumber after deletion
     # Duration estimates are a recalculated public projection, not generated content.
     assert f.load(pid)['material_structure']['modules'] == [
-        {k:v for k,v in m.items() if k not in ('estimated_points', 'chars')} for m in (before[0],before[2])]
+        {k:v for k,v in m.items() if k not in ('estimated_points', 'estimated_point_count', 'chars')} for m in (before[0],before[2])]
 
 
 def test_plan55_invalid_keep_does_not_erase_structure(flow):

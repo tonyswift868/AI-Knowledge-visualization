@@ -10,7 +10,7 @@ import "./plan-graph.css"
 export type GraphCitation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
 export type GraphModule = {
   key: string; title: string; summary: string; id?: string; chapters?: string[]; refs?: string[]; ref_titles?: string[]
-  prerequisites?: string[]; minutes?: [number, number]; estimated_points?: [number, number]
+  prerequisites?: string[]; minutes?: [number, number]; estimated_points?: [number, number]; estimated_point_count?: number
   points?: { title: string; summary: string; citations?: GraphCitation[]; source_general?: boolean }[]
 }
 export type GraphStage = { title: string; modules: GraphModule[] }
@@ -26,7 +26,7 @@ const ModuleCard = React.memo(function ModuleCard({ data }: NodeProps<ModuleNode
     <p className="pg-module-summary">{m.summary || "点开查看学习内容与原文依据"}</p>
     <div className="pg-tags">
       {m.minutes && <span><Clock3 size={12} />{m.minutes[0]}–{m.minutes[1]} 分钟</span>}
-      <span><BookOpen size={12} />{data.mode === "outline" ? `${m.points?.length ?? 0} 个点` : `${(m.chapters ?? m.ref_titles ?? m.refs ?? []).length} 处依据`}</span>
+      <span><BookOpen size={12} />{data.mode === "outline" ? `${m.points?.length ?? 0} 个点` : `${m.estimated_point_count !== undefined ? `约 ${m.estimated_point_count} 点 · ` : ""}${(m.chapters ?? m.ref_titles ?? m.refs ?? []).length} 处依据`}</span>
     </div>
     <Handle type="source" position={Position.Right} id="right" /><Handle type="source" position={Position.Bottom} id="bottom" />
   </div>
@@ -90,7 +90,7 @@ function ModuleDetails({ module: m, stages, mode, close }: { module: GraphModule
     {m.minutes && <p className="pg-meta">预计 {m.minutes[0]}–{m.minutes[1]} 分钟</p>}
     {!!m.prerequisites?.length && <p className="pg-meta">先学：{m.prerequisites.map(k => titleOf[k] ?? k).join("、")}</p>}
     {mode === "structure" && <p className="pg-meta">知识点将从这些资料章节生成，确认结构后会给你看完整知识地图。</p>}
-    {mode === "structure" && m.estimated_points && <p className="pg-meta">估计 {m.estimated_points[0]}–{m.estimated_points[1]} 个知识点 · 每点学习约 8 分钟</p>}
+    {mode === "structure" && m.estimated_points && <p className="pg-meta">估计 {m.estimated_point_count ?? `${m.estimated_points[0]}–${m.estimated_points[1]}`} 个知识点 · 每点学习约 8 分钟<br /><small>参考范围 {m.estimated_points[0]}–{m.estimated_points[1]} 个</small></p>}
     {!!chapters.length && <details className="pg-chapters" open={mode === "structure"}><summary><BookOpen size={14} />全部依据章节 · {chapters.length} 处</summary><ol>{chapters.map((t, i) => <li key={i}>{t}{m.refs?.[i] && <small>{m.refs[i]}</small>}</li>)}</ol></details>}
     {mode === "outline" && <ol className="pg-points">{m.points?.map((p, i) => <li key={i}>
       <div className="pg-point-title"><span>{i + 1}</span><b>{p.title}</b></div><p>{p.summary}</p>

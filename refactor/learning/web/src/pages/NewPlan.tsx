@@ -19,7 +19,7 @@ type Citation = { chunk_id: string; title: string; url: string | null; locator: 
 type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean }
 type OModule = { points?: MapPoint[]; id?: string; key: string; title: string; summary: string; refs: string[]; ref_titles: string[]; prerequisites: string[]; minutes: [number, number] }
 type TimeRanges = { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; points?: number; learning?: number; suggested_cap?: number; suggested_days?: number | null; suggested_end: string | null }
-type StructureRanges = Omit<TimeRanges, "points" | "learning"> & { points: [number, number]; learning: [number, number]; module_check: [number, number]; final_check: [number, number]; input_tokens: [number, number] }
+type StructureRanges = Omit<TimeRanges, "points" | "learning"> & { points: [number, number]; learning: [number, number]; module_check: [number, number]; final_check: [number, number]; input_tokens: [number, number]; typical?: TimeRanges; warning_level?: "none" | "possible" | "impossible" }
 type Outline = { stages: { title: string; modules: OModule[] }[]; ranges: TimeRanges; version: number }
 type Msg = { id: string; role: "ai" | "user"; kind: string; text: string; cards?: string[]; version?: number; options?: string[] }
 type Coverage = { covered: boolean; blocked?: boolean; missing: { content: string; why: string; points: number }[]; message: string; missing_points?: number }
@@ -52,6 +52,13 @@ const WEEK = "一二三四五六日"
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 const hours = (m: number) => (m >= 90 ? `${Math.round(m / 6) / 10} 小时` : `${m} 分钟`)
+
+// Presentation only: preserve the original requirement/history on disk.
+export function requirementWithoutDates(text: string) {
+  return text.replace(/(?:在\s*)?\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*(?:至|到|→|—|~|～|-)\s*\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s*的?\s*\d+\s*(?:个)?\s*天(?:内|里|期间)?)?\s*[，,：:]?\s*/g, "")
+    .replace(/(?:在|用|共)?\s*\d+\s*(?:个)?\s*天(?:内|里|期间)?\s*[，,]?/g, "")
+    .replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*[，,]?/g, "").trim()
+}
 
 // Error messages have no persisted phase field. A retry succeeds when it
 // produces the same result kind, or the next result of the current step.
@@ -159,7 +166,8 @@ export function NewPlan() {
         <div className="row between">
           <div style={{ minWidth: 0 }}>
             <b className="plan-title">{draft.name || draft.form?.goal || "新建计划"}</b>
-            <span className="muted small">{draft.goal && draft.goal !== draft.form?.goal ? draft.goal : "和 AI 一起把目标变成每天学得完的路线"}</span>
+            {draft.form && <div className="muted small plan-window">{draft.form.start} 至 {draft.form.end} · 每天最多 {draft.form.daily_cap} 分钟</div>}
+            <span className="muted small">{draft.goal && draft.goal !== draft.form?.goal ? requirementWithoutDates(draft.goal) : "和 AI 一起把目标变成每天学得完的路线"}</span>
           </div>
           {draft.phase !== "form" && (
             <Button small kind="ghost" className={confirmDiscard ? "danger" : ""} disabled={busy}
@@ -186,7 +194,7 @@ export function NewPlan() {
             if (m.kind === "form") return <FormCard key={m.id} draft={draft} text={m.text} busy={busy} onSubmit={(form) => act("plan.submit", { form })} />
             if (m.role === "user") return <div key={m.id} className="bubble user" data-selectable>{m.text}</div>
             if (m.kind === "preview") return <div key={m.id} className="plan-block">
-              <div className="bubble bot" data-selectable style={{ whiteSpace: "pre-wrap" }}>{m.text}</div>
+              <div className="bubble bot" data-selectable style={{ whiteSpace: "pre-wrap" }}>{requirementWithoutDates(m.text)}</div>
               {draft.phase === "preview" && m.version === draft.preview?.version && <div className="plan-actions">
                 <Button disabled={busy} onClick={() => setText("我想调整大致模块：")} >我想调整</Button>
                 <Button kind="primary" disabled={busy} onClick={() => act("plan.say", { text: "确认并找资料" })}>确认，开始找资料</Button>
@@ -455,29 +463,32 @@ function OutlineCard({ outline }: { outline: Outline }) {
 }
 
 // ------------------------------------------------------------------ estimate / progress / ready
-function TimeChoices({ ranges: r, busy, onChange, onAdjust }: { ranges: TimeRanges | StructureRanges; busy: boolean;
+function TimeChoices({ ranges: r, busy, onChange, onAdjust, secondary = false }: { ranges: TimeRanges | StructureRanges; busy: boolean; secondary?: boolean;
   onChange: (changes: {daily_cap?: number; end?: string}) => void; onAdjust: () => void }) {
   if (!r.over_cap) return null
   return <div className="plan-actions time-choices">
-    <Button disabled={busy} onClick={() => onChange({daily_cap: r.suggested_cap})}>把每天时长提高到 {r.suggested_cap} 分钟</Button>
-    {r.suggested_end && <Button disabled={busy} onClick={() => onChange({end: r.suggested_end!})}>把结束日期延到 {r.suggested_end}</Button>}
-    <Button disabled={busy} onClick={onAdjust}>调整内容</Button>
+    <Button kind={secondary ? "ghost" : undefined} disabled={busy} onClick={() => onChange({daily_cap: r.suggested_cap})}>把每天时长提高到 {r.suggested_cap} 分钟</Button>
+    {r.suggested_end && <Button kind={secondary ? "ghost" : undefined} disabled={busy} onClick={() => onChange({end: r.suggested_end!})}>把结束日期延到 {r.suggested_end}</Button>}
+    <Button kind={secondary ? "ghost" : undefined} disabled={busy} onClick={onAdjust}>调整内容</Button>
     {(r.suggested_cap ?? 0) > 1440 && <p className="sub">高估的每日负担已超过一天，建议延长周期或减少内容。</p>}
   </div>
 }
 function StructureEstimate({ranges: r, busy, active, onChange, onAdjust}: {ranges: StructureRanges; busy: boolean; active: boolean;
   onChange: (changes: {daily_cap?: number; end?: string}) => void; onAdjust: () => void}) {
+  const usual = r.typical ?? {...r, points: r.points[1], learning: r.learning[1]}
+  const warning = r.warning_level ?? (r.over_cap ? "impossible" : "none")
   return <div className="estimate-card structure-estimate">
     <h3>填知识点前的粗略时间预估</h3>
     <div className="outline-sum">
-      <div><span>估计知识点 · 每点学习约 8 分钟</span><b>{r.points[0]}–{r.points[1]} 个</b></div>
-      <div><span>学习、模块检测与最终检验合计</span><b>{hours(r.total[0])}–{hours(r.total[1])}</b></div>
-      <div><span>每天 / 你的时间上限</span><b>{r.daily[0]}–{r.daily[1]} / {r.cap} 分钟</b></div>
+      <div><span>一般情况知识点 · 每点学习约 8 分钟</span><b>约 {usual.points} 个</b></div>
+      <div><span>学习、模块检测与最终检验合计</span><b>约 {hours(usual.total[1])}</b></div>
+      <div><span>每天 / 你的时间上限</span><b>约 {usual.daily[1]} / {r.cap} 分钟</b></div>
     </div>
-    <p className="sub">学习 {r.learning[0]}–{r.learning[1]} 分钟；模块检测 {r.module_check[0]}–{r.module_check[1]} 分钟；最终检验 {r.final_check[0]}–{r.final_check[1]} 分钟。检测按每题 2 分钟，90% 的点一次答对、10% 需约 4 题。</p>
+    <p className="sub">参考范围：{r.points[0]}–{r.points[1]} 个点，合计 {hours(r.total[0])}–{hours(r.total[1])}，每天 {r.daily[0]}–{r.daily[1]} 分钟。学习每点 8 分钟；模块检测每点 2 分钟，最终检验每点约 2.6 分钟。</p>
     <p className="sub">填知识点的资料输入约 {r.input_tokens[0].toLocaleString()}–{r.input_tokens[1].toLocaleString()} token（按字数折算，不含请求提示与重试）。按资料字数估算，填完后会用实际点数重算。</p>
-    {r.over_cap && <p className="outline-warn">超过你填写的每日上限 {r.cap} 分钟；可以调整，也可以直接确认继续。</p>}
-    {active && <TimeChoices ranges={r} busy={busy} onChange={onChange} onAdjust={onAdjust} />}
+    {warning === "possible" && <p className="sub estimate-possible">可能会超出每日上限，填完知识点后会按实际点数再算一次（你的每日上限 {r.cap} 分钟）。</p>}
+    {warning === "impossible" && <p className="outline-warn estimate-impossible" style={{background:"color-mix(in srgb, var(--warn) 14%, transparent)", border:"1px solid var(--warn)"}}>按最乐观的估计也完成不了（你的每日上限 {r.cap} 分钟）；可以调整，也可以直接确认继续。</p>}
+    {active && warning !== "none" && <TimeChoices ranges={usual} secondary={warning === "possible"} busy={busy} onChange={onChange} onAdjust={onAdjust} />}
   </div>
 }
 function EstimateCard({ draft, text, busy, active, onGo, onChange, onShrink }:

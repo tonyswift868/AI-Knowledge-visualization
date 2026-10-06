@@ -18,6 +18,7 @@ import json
 import logging
 import math
 import sqlite3
+from statistics import median
 import re
 import threading
 import uuid
@@ -133,6 +134,10 @@ MINUTES_PER_POINT_GUESS = 8  # Duration estimate only; point granularity stays u
 # (its ML module has 162 points); fix54 computer 2434/8, math 43743/26
 # selected-section characters. Rounded outward; rough estimates, not a point quota.
 CHARS_PER_POINT_RANGE = (300, 1700)
+# 2026-10-06: same four samples above plus exp64 JavaGuide AI core
+# 28813 chars/62 points. Use the median of all five for the usual case;
+# retain the outward bounds only as uncertainty, not adjustment targets.
+CHARS_PER_POINT_TYPICAL = median((4481/10, 123846/163, 2434/8, 43743/26, 28813/62))
 
 
 def with_checks(learning_minutes: int) -> int:
@@ -705,20 +710,24 @@ class PlanFlow:
         by_id = {s.id: s for s in sections}
         _, chunks = self._adopted(draft)
         texts = {c['id']: c['text'] for rows in chunks.values() for c in rows}
-        modules, low_counts, high_counts, token_low, token_high = [], [], [], 0, 0
+        modules, low_counts, high_counts, usual_counts, token_low, token_high = [], [], [], [], 0, 0
         for module in draft['material_structure']['modules']:
             ids = dict.fromkeys(c for r in module['refs'] if r in by_id for c in by_id[r].chunk_ids)
             chars = sum(len(texts.get(c, '')) for c in ids)
             low = math.ceil(chars / CHARS_PER_POINT_RANGE[1])
             high = math.ceil(chars / CHARS_PER_POINT_RANGE[0])
-            modules.append(dict(module, estimated_points=[low, high], chars=chars))
+            usual = math.ceil(chars / CHARS_PER_POINT_TYPICAL)
+            modules.append(dict(module, estimated_points=[low, high], estimated_point_count=usual, chars=chars))
             low_counts.append(low); high_counts.append(high)
+            usual_counts.append(usual)
             a, b = _bounds('\n'.join(texts.get(c, '') for c in ids))
             token_low += a; token_high += b
         window = self._window(draft)
         low = map_ranges(window, sum(low_counts), module_counts=low_counts)
         high = map_ranges(window, sum(high_counts), module_counts=high_counts)
-        ranges = dict(high, total=[low['total'][0], high['total'][1]],
+        usual = map_ranges(window, sum(usual_counts), module_counts=usual_counts)
+        warning = 'none' if not usual['over_cap'] else 'possible' if not low['over_cap'] else 'impossible'
+        ranges = dict(usual, typical=usual, warning_level=warning, total=[low['total'][0], high['total'][1]],
             daily=[low['daily'][0], high['daily'][1]], points=[sum(low_counts), sum(high_counts)],
             learning=[low['learning'], high['learning']],
             module_check=[sum(low_counts)*2, sum(high_counts)*2],
