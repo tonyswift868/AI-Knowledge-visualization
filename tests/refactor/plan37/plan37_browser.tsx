@@ -31,9 +31,9 @@ async function run() {
   document.querySelector<HTMLDetailsElement>("details")!.open = true
   check(document.body.textContent?.includes("Pressure is the force"), "literal source quote")
   await click("查看时间预估")
-  check(button("确认，保存").disabled, "300-minute gate")
-  check(document.body.textContent?.includes("共 10 天"), "suggested days")
-  await click("延长到")
+  check(!button("确认，保存").disabled, "user may continue despite duration warning")
+  check(document.body.textContent?.includes("把结束日期延到"), "suggested end based on user cap")
+  await click("把结束日期延到")
   await click("确认，保存")
   check(draft.phase === "ready" && methods.includes("plan.generate"), "first module ready")
   await click("开始计划")

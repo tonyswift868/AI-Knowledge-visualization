@@ -90,7 +90,7 @@ def test_plan51_directory_preview_is_separate_confirmation_missing_choices(flow,
     result=f.run(pid,lambda d,c:f.resolve_missing(d,c,missing_action),c)['draft']
     if missing_action=='add': assert result['phase']=='sources' and result['outline'] is None
     else:
-        assert result['phase']=='outline' and result['outline']['ranges']['learning']==45
+        assert result['phase']=='outline' and result['outline']['ranges']['learning']==24
         assert bool(result['material_structure']['missing'])==(missing_action=='continue')
     assert 'coverage_check' not in model.calls
 

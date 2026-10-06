@@ -329,9 +329,9 @@ def test_a_github_repo_link_imports_its_docs(qapp, tmp_root):
 
 
 def test_outline_estimate_counts_real_check_time():
-    """PLAN-05: an outline estimates checks using the current ~15-minute points."""
+    """PLAN-05: estimate learning at eight minutes, without changing check rules."""
     from refactor.learning.app.plan_flow import minute_ranges, with_checks
     from refactor.learning.course.ledger import PlanWindow
-    assert with_checks(149) == 195  # roughly ten points, with module and final checks
+    assert with_checks(149) == 236  # roughly nineteen points, with module and final checks
     ranges = minute_ranges(PlanWindow(date(2026, 10, 5), date(2026, 10, 11), 20), 115, 155)
     assert ranges["daily"][1] >= 29 and ranges["over_cap"]  # 20 min/day remains insufficient

@@ -292,7 +292,7 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
     assert first["draft"]["plan_id"] == generated["draft"]["plan_id"]
     assert operations == ["sufficiency", "sufficiency", "outline", "generate", "point_materials"]
     assert len(generated["metrics"]["chapter_coverage"]) == 2
-    assert generated["metrics"]["point_minutes_sum"] == 30
+    assert generated["metrics"]["point_minutes_sum"] == 16  # two points at eight minutes
     assert exp.run_one("base", 1, generate=True)["formal_complete"]
     assert len(operations) == 5
     exp.budget.fail_outline = True

@@ -18,7 +18,9 @@ type Card = {
 type Citation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
 type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean }
 type OModule = { points?: MapPoint[]; id?: string; key: string; title: string; summary: string; refs: string[]; ref_titles: string[]; prerequisites: string[]; minutes: [number, number] }
-type Outline = { stages: { title: string; modules: OModule[] }[]; ranges: { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; over_300?: boolean; points?: number; learning?: number; suggested_days?: number | null; suggested_end: string | null }; version: number }
+type TimeRanges = { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; points?: number; learning?: number; suggested_cap?: number; suggested_days?: number | null; suggested_end: string | null }
+type StructureRanges = Omit<TimeRanges, "points" | "learning"> & { points: [number, number]; learning: [number, number]; module_check: [number, number]; final_check: [number, number]; input_tokens: [number, number] }
+type Outline = { stages: { title: string; modules: OModule[] }[]; ranges: TimeRanges; version: number }
 type Msg = { id: string; role: "ai" | "user"; kind: string; text: string; cards?: string[]; version?: number; options?: string[] }
 type Coverage = { covered: boolean; blocked?: boolean; missing: { content: string; why: string; points: number }[]; message: string; missing_points?: number }
 type FormData = {
@@ -31,7 +33,7 @@ export type Draft = {
   estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string; blocked?: boolean; points?: number }
   preview?: { summary: string; modules: { title: string; summary: string }[]; version: number }
   recommendations?: { card_id: string; title: string; type: string; url: string; why: string; modules: string[] }[]
-  material_structure?: { version: number; missing: string[]; modules?: GraphModule[] }
+  material_structure?: { version: number; missing: string[]; modules?: GraphModule[]; ranges?: StructureRanges }
   busy: string | null
 }
 type Detail = {
@@ -58,6 +60,9 @@ export function visiblePlanMessages(messages: Msg[]) {
   const nextStep: Record<string, string> = { form: "questions", questions: "preview", preview: "recommendations", recommendations: "sources", sources: "material_preview", material_preview: "outline", outline: "estimate", estimate: "progress", progress: "ready" }
   const successes = new Set([...Object.keys(nextStep), "ready"])
   return messages.filter((m, i) => {
+    // Duration adjustments preserve the map; show its latest estimate rather
+    // than mixing old warning text with recalculated numbers. History stays on disk.
+    if (m.kind === "estimate" && messages.slice(i + 1).some(x => x.kind === "estimate")) return false
     if (m.kind !== "error") return true
     const before = messages.slice(0, i).reverse().find(x => x.role === "ai" && successes.has(x.kind))
     const after = messages.slice(i + 1).find(x => x.role === "ai" && successes.has(x.kind))
@@ -80,6 +85,8 @@ export function NewPlan() {
   const [text, setText] = React.useState("")
   const [confirmDiscard, setConfirmDiscard] = React.useState(false)
   const scroller = React.useRef<HTMLDivElement>(null)
+  const chatInput = React.useRef<HTMLTextAreaElement>(null)
+  function adjustContent(value: string) { setText(value); chatInput.current?.focus() }
   const idRef = React.useRef<string | null>(null)
 
   const accept = React.useCallback((d: Draft) => { idRef.current = d.plan_id; setDraft(d); setStatus(d.busy) }, [])
@@ -205,6 +212,9 @@ export function NewPlan() {
               {draft.material_structure && m.version === draft.material_structure.version && draft.material_structure.modules?.length ? <>
                 <h3 className="material-graph-heading">按你的资料整理出 {draft.material_structure.modules.length} 个模块</h3>
                 <PlanGraph mode="structure" stages={[{title:"按资料整理的学习路线", modules:draft.material_structure.modules}]} />
+                {draft.material_structure.ranges && <StructureEstimate ranges={draft.material_structure.ranges} busy={busy}
+                  active={draft.phase === "material_preview"} onChange={(changes) => act("plan.window", {changes})}
+                  onAdjust={() => adjustContent("我想调整资料结构：")} />}
                 {!!draft.material_structure.missing.length && <div className="material-missing">资料没讲到：{draft.material_structure.missing.join("、")}</div>}
               </> : <div className="muted small outline-old">第 {m.version} 版资料结构（{m.version === draft.material_structure?.version ? "没有可显示的结构" : "已被新版替换"}）</div>}
               {draft.phase === "material_preview" && draft.material_structure && m.version === draft.material_structure.version && <div className="plan-actions">
@@ -240,7 +250,7 @@ export function NewPlan() {
               </div>
             )
             if (m.kind === "estimate") return <EstimateCard key={m.id} draft={draft} text={m.text} busy={busy} active={draft.phase === "outline"}
-                                                            onGo={() => act("plan.generate")} onExtend={(end) => act("plan.extend", { end })} onShrink={() => setText("暂时不学：")} />
+                                                            onGo={() => act("plan.generate")} onChange={(changes) => act("plan.window", {changes})} onShrink={() => setText("暂时不学：")} />
             if (m.kind === "progress") return <ProgressCard key={m.id} draft={draft} text={m.text} busy={busy} onRetry={() => act("plan.generate")} />
             if (m.kind === "ready") return <ReadyCard key={m.id} draft={draft} text={m.text} busy={busy} act={act}
                                                       onStarted={() => { toast("ok", "计划已开始！首页会显示今天要学多久。"); set({ planId: null }); go("home") }} />
@@ -259,7 +269,7 @@ export function NewPlan() {
           {status && <div className="plan-status fade-in"><Loader2 className="spin" size={16} />{status}</div>}
         </div>
         <div className="composer">
-          <textarea className="input" rows={1} value={text} disabled={!canType} placeholder={canType ? placeholder : draft.phase === "form" ? "先填好上面的表单" : "用上面的按钮继续"}
+          <textarea ref={chatInput} className="input" rows={1} value={text} disabled={!canType} placeholder={canType ? placeholder : draft.phase === "form" ? "先填好上面的表单" : "用上面的按钮继续"}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); if (!busy) say() } }} />
           <Button kind="primary" onClick={say} disabled={!canType || busy || !text.trim()}><SendHorizontal />发送</Button>
@@ -303,7 +313,7 @@ function FormCard({ draft, text, busy, onSubmit }: { draft: Draft; text: string;
           <Field label="结束日期"><input className="input" type="date" value={form.end} onChange={(e) => patch({ end: e.target.value })} /></Field>
           <Field label="每日任务时长上限（分钟）" tip={TASK_TIME_TIP}>
             <div className="row">
-              <input className="input" type="number" min={10} max={720} value={form.daily_cap} style={{ width: 96 }} onChange={(e) => patch({ daily_cap: Number(e.target.value) })} />
+              <input className="input" type="number" min={10} value={form.daily_cap} style={{ width: 96 }} onChange={(e) => patch({ daily_cap: Number(e.target.value) })} />
               {[30, 60, 90, 120, 300].map((m) => <button key={m} className={`tag-btn ${form.daily_cap === m ? "on" : ""}`} onClick={() => patch({ daily_cap: m })}>{m}</button>)}
             </div>
           </Field>
@@ -442,26 +452,48 @@ function OutlineCard({ outline }: { outline: Outline }) {
 }
 
 // ------------------------------------------------------------------ estimate / progress / ready
-function EstimateCard({ draft, text, busy, active, onGo, onExtend, onShrink }:
-  { draft: Draft; text: string; busy: boolean; active: boolean; onGo: () => void; onExtend: (end: string) => void; onShrink: () => void }) {
+function TimeChoices({ ranges: r, busy, onChange, onAdjust }: { ranges: TimeRanges | StructureRanges; busy: boolean;
+  onChange: (changes: {daily_cap?: number; end?: string}) => void; onAdjust: () => void }) {
+  if (!r.over_cap) return null
+  return <div className="plan-actions time-choices">
+    <Button disabled={busy} onClick={() => onChange({daily_cap: r.suggested_cap})}>把每天时长提高到 {r.suggested_cap} 分钟</Button>
+    {r.suggested_end && <Button disabled={busy} onClick={() => onChange({end: r.suggested_end!})}>把结束日期延到 {r.suggested_end}</Button>}
+    <Button disabled={busy} onClick={onAdjust}>调整内容</Button>
+    {(r.suggested_cap ?? 0) > 1440 && <p className="sub">高估的每日负担已超过一天，建议延长周期或减少内容。</p>}
+  </div>
+}
+function StructureEstimate({ranges: r, busy, active, onChange, onAdjust}: {ranges: StructureRanges; busy: boolean; active: boolean;
+  onChange: (changes: {daily_cap?: number; end?: string}) => void; onAdjust: () => void}) {
+  return <div className="estimate-card structure-estimate">
+    <h3>填知识点前的粗略时间预估</h3>
+    <div className="outline-sum">
+      <div><span>估计知识点 · 每点学习约 8 分钟</span><b>{r.points[0]}–{r.points[1]} 个</b></div>
+      <div><span>学习、模块检测与最终检验合计</span><b>{hours(r.total[0])}–{hours(r.total[1])}</b></div>
+      <div><span>每天 / 你的时间上限</span><b>{r.daily[0]}–{r.daily[1]} / {r.cap} 分钟</b></div>
+    </div>
+    <p className="sub">学习 {r.learning[0]}–{r.learning[1]} 分钟；模块检测 {r.module_check[0]}–{r.module_check[1]} 分钟；最终检验 {r.final_check[0]}–{r.final_check[1]} 分钟。检测按每题 2 分钟，90% 的点一次答对、10% 需约 4 题。</p>
+    <p className="sub">填知识点的资料输入约 {r.input_tokens[0].toLocaleString()}–{r.input_tokens[1].toLocaleString()} token（按字数折算，不含请求提示与重试）。按资料字数估算，填完后会用实际点数重算。</p>
+    {r.over_cap && <p className="outline-warn">超过你填写的每日上限 {r.cap} 分钟；可以调整，也可以直接确认继续。</p>}
+    {active && <TimeChoices ranges={r} busy={busy} onChange={onChange} onAdjust={onAdjust} />}
+  </div>
+}
+function EstimateCard({ draft, text, busy, active, onGo, onChange, onShrink }:
+  { draft: Draft; text: string; busy: boolean; active: boolean; onGo: () => void; onChange: (changes: {daily_cap?: number; end?: string}) => void; onShrink: () => void }) {
   const r = draft.outline?.ranges
   if (!draft.estimate || !r) return null
-  const blocked = !!r.over_300
   return <div className="plan-block fade-in">
     <div className="bubble bot">{text}</div>
     <div className="estimate-card">
       <div className="outline-sum">
-        <div><span>知识点 × 平均 15 分钟</span><b>{r.points} 个 · 学习 {hours(r.learning ?? 0)}</b></div>
+        <div><span>知识点 × 平均 8 分钟</span><b>{r.points} 个 · 学习 {hours(r.learning ?? 0)}</b></div>
         <div><span>含模块检测与最终检验</span><b>约 {hours(r.total[1])}</b></div>
         <div><span>每天 / 你的时间上限</span><b>{r.daily[1]} / {r.cap} 分钟</b></div>
       </div>
       <p className="sub">这是预估；检测仍计入总时间。备题采用现成带答案题，找不到时从原文挖空。</p>
       {r.over_cap && <p className="outline-warn">每天超过了你填写的时间上限，可以延长日期或缩小范围。</p>}
-      {blocked && <p className="outline-warn">每天超过 300 分钟，请先延长计划{r.suggested_days ? `到共 ${r.suggested_days} 天` : ""}或缩小范围。</p>}
+      {active && <TimeChoices ranges={r} busy={busy} onChange={onChange} onAdjust={onShrink} />}
       {active && <div className="plan-actions">
-        {(blocked || r.over_cap) && r.suggested_end && <Button disabled={busy} onClick={() => onExtend(r.suggested_end!)}>延长到 {r.suggested_end}</Button>}
-        {(blocked || r.over_cap) && <Button disabled={busy} onClick={onShrink}>缩小范围，在聊天里说明</Button>}
-        <Button kind="primary" disabled={busy || blocked} onClick={onGo}><Rocket />确认，保存并准备第 1 模块</Button>
+        <Button kind="primary" disabled={busy} onClick={onGo}><Rocket />确认，保存并准备第 1 模块</Button>
       </div>}
     </div>
   </div>

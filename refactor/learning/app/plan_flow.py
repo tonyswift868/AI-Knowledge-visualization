@@ -17,6 +17,7 @@ from datetime import date, timedelta
 import json
 import logging
 import math
+import sqlite3
 import re
 import threading
 import uuid
@@ -91,8 +92,8 @@ def validate_form(raw, today: date) -> tuple[dict, PlanWindow]:
     if (end - start).days > 3 * 366:
         raise BridgeError("FORM_INVALID", "计划最长三年，请缩短日期范围。")
     cap = raw.get("daily_cap")
-    if type(cap) is not int or not 10 <= cap <= 720:
-        raise BridgeError("FORM_INVALID", "每天最多学多久请填 10–720 分钟。")
+    if type(cap) is not int or cap < 10:
+        raise BridgeError("FORM_INVALID", "每天最多学多久请填至少 10 分钟的整数。")
     weights = raw.get("weekday_weights")
     if (not isinstance(weights, list) or len(weights) != 7
             or any(w not in (0, 0.5, 1) or type(w) is bool for w in weights)):
@@ -127,7 +128,11 @@ def window_note(window: PlanWindow) -> str:
             f"每天最多 {window.daily_cap_minutes} 分钟")
 
 
-MINUTES_PER_POINT_GUESS = 15  # PLAN-04: average planning estimate only; individual points have no limit
+MINUTES_PER_POINT_GUESS = 8  # Duration estimate only; point granularity stays unchanged.
+# 2026-10-06: small57 4481 chars/10 points; find59b 123846/163
+# (its ML module has 162 points); fix54 computer 2434/8, math 43743/26
+# selected-section characters. Rounded outward; rough estimates, not a point quota.
+CHARS_PER_POINT_RANGE = (300, 1700)
 
 
 def with_checks(learning_minutes: int) -> int:
@@ -171,11 +176,10 @@ def map_ranges(window, point_count, *, module_counts=None):
         cap = check_cap(window, total)
         ranges.update(total=[total,total],daily=[daily,daily],over_cap=daily>window.daily_cap_minutes,
                       suggested_end=cap.suggested_end.isoformat() if cap.suggested_end else None)
-    threshold = min(window.daily_cap_minutes, 300)
-    suggested = check_cap(PlanWindow(window.start, window.end, threshold,
-        window.weekday_weights, window.date_weights), ranges["total"][1])
+    suggested = check_cap(window, ranges["total"][1])
     end = suggested.suggested_end
-    ranges.update(points=point_count, learning=learning, over_300=ranges["daily"][1] > 300,
+    ranges.update(points=point_count, learning=learning,
+                  suggested_cap=math.ceil(ranges["daily"][1] / 10) * 10,
                   suggested_end=end.isoformat() if end else ranges["suggested_end"],
                   suggested_days=(end - window.start).days + 1 if end else None)
     return ranges
@@ -223,10 +227,28 @@ class PlanFlow:
     def public(self, draft):
         view = {k:v for k,v in draft.items() if k != '_verified_sources'}
         view['busy'] = self._status.get(draft["plan_id"])
+        if draft.get('material_structure') and draft.get('form'):
+            try:
+                modules, ranges = self.structure_ranges(draft)
+            except sqlite3.ProgrammingError as exc:
+                # A late preparation notification can arrive after account
+                # shutdown. It must not reopen the account DB to estimate.
+                if 'closed database' not in str(exc):
+                    raise
+            else:
+                view['material_structure'] = dict(draft['material_structure'], modules=modules, ranges=ranges)
         if draft.get("outline"):
             view["outline"] = {k: v for k, v in draft["outline"].items() if k != "agent"}
             view["outline"]["stages"] = [dict(s, modules=[{k: v for k, v in m.items() if k != "spans"} for m in s["modules"]])
                                          for s in draft["outline"]["stages"]]
+            if draft['outline'].get('grounded') and draft.get('form'):
+                # Old local drafts keep their generated content, while their
+                # displayed duration follows today's eight-minute estimate.
+                modules = agents.outline_modules(view['outline'])
+                for module in modules:
+                    module['minutes'] = [len(module['points']) * MINUTES_PER_POINT_GUESS] * 2
+                view['outline']['ranges'] = map_ranges(self._window(draft), sum(len(m['points']) for m in modules),
+                    module_counts=[len(m['points']) for m in modules])
         return view
 
     def status(self, plan_id, text):
@@ -676,6 +698,34 @@ class PlanFlow:
             sections = [s for s in sections if s.id in scope["include"]]
         return sources, [s for s in sections if s.id not in scope.get("exclude", [])]
 
+    def structure_ranges(self, draft):
+        """No model: estimate only expanded selected sections, counting each block once per module."""
+        from ..connections.pricing import _bounds
+        _, sections = self._sections(draft)
+        by_id = {s.id: s for s in sections}
+        _, chunks = self._adopted(draft)
+        texts = {c['id']: c['text'] for rows in chunks.values() for c in rows}
+        modules, low_counts, high_counts, token_low, token_high = [], [], [], 0, 0
+        for module in draft['material_structure']['modules']:
+            ids = dict.fromkeys(c for r in module['refs'] if r in by_id for c in by_id[r].chunk_ids)
+            chars = sum(len(texts.get(c, '')) for c in ids)
+            low = math.ceil(chars / CHARS_PER_POINT_RANGE[1])
+            high = math.ceil(chars / CHARS_PER_POINT_RANGE[0])
+            modules.append(dict(module, estimated_points=[low, high], chars=chars))
+            low_counts.append(low); high_counts.append(high)
+            a, b = _bounds('\n'.join(texts.get(c, '') for c in ids))
+            token_low += a; token_high += b
+        window = self._window(draft)
+        low = map_ranges(window, sum(low_counts), module_counts=low_counts)
+        high = map_ranges(window, sum(high_counts), module_counts=high_counts)
+        ranges = dict(high, total=[low['total'][0], high['total'][1]],
+            daily=[low['daily'][0], high['daily'][1]], points=[sum(low_counts), sum(high_counts)],
+            learning=[low['learning'], high['learning']],
+            module_check=[sum(low_counts)*2, sum(high_counts)*2],
+            final_check=[sum(estimate_check_minutes(n, minutes_per_question=2) for n in counts)
+                         for counts in (low_counts, high_counts)], input_tokens=[token_low, token_high])
+        return modules, ranges
+
     def material_structure(self, draft, ctx, instruction="", *, confirmed=False):
         sources, sections = self._sections(draft)
         if not sources or not sections:
@@ -823,7 +873,9 @@ class PlanFlow:
         by_id = {s.id: s for s in sections}
         modules = agents.outline_modules(outline)
         for module in modules:
+            module['minutes'] = [len(module['points']) * MINUTES_PER_POINT_GUESS] * 2
             for point in module['points']:
+                point['minutes'] = MINUTES_PER_POINT_GUESS
                 point['source_general']=source_quality.general_only(point['chunk_ids'],sources,chunks,lists=self._lists())
             # Compact spans (source + chunk positions) keep the draft small for big books.
             module["spans"] = [[by_id[r].source_id, by_id[r].first, by_id[r].last] for r in module["refs"]]
@@ -852,13 +904,13 @@ class PlanFlow:
         draft["estimate"] = {"modules": len(modules), "points": ranges["points"],
             "input_tokens": [0, 0], "output_tokens": [0, 0], "model": "",
             "note": "知识地图已核验；保存时不再生成知识点。备题依次取现成带答案题，找不到则从原文挖空。",
-            "blocked": ranges["over_300"]}
-        if ranges["over_300"]:
-            text = (f"按现在日期每天需要 {ranges['daily'][1]} 分钟，超过 300 分钟。"
+            "blocked": False}
+        if ranges["over_cap"]:
+            text = (f"按现在日期每天需要 {ranges['daily'][1]} 分钟，超过你填写的 {ranges['cap']} 分钟。"
                     f"建议延长到 {ranges['suggested_end']}（共 {ranges['suggested_days']} 天），或缩小学习范围。"
-                    "请先选择：修改结束日期，或告诉我哪些内容暂时不学。")
+                    "可以提高每天时长、延长周期或调整内容，也可以按当前安排继续。")
         else:
-            text = (f"共 {ranges['points']} 个知识点，按每点平均 15 分钟预估学习 {ranges['learning']} 分钟；"
+            text = (f"共 {ranges['points']} 个知识点，按每点平均 8 分钟预估学习 {ranges['learning']} 分钟；"
                     f"含检测约 {ranges['total'][1]} 分钟，每天约 {ranges['daily'][1]} 分钟。确认后保存计划并准备第 1 模块。")
         draft["messages"].append(_msg("ai", "estimate", text))
         self.save(draft)
@@ -877,7 +929,7 @@ class PlanFlow:
             for module in stage["modules"]:
                 modules.append({"id": module["id"], "stage_id": stage["id"], "title": module["title"],
                                 "summary": module["summary"], "prerequisites": [keys[p] for p in module["prerequisites"]],
-                                "learning_minutes": (module["minutes"][0] + module["minutes"][1]) // 2})
+                                "learning_minutes": len(module['points']) * MINUTES_PER_POINT_GUESS})
         chunks = store.records("source_chunks", plan_id)
         for module, source in zip(modules, [m for s in draft["outline"]["stages"] for m in s["modules"]]):
             module["chunk_ids"] = [c["id"] for c in self._span_chunks(source, chunks)]
@@ -897,9 +949,6 @@ class PlanFlow:
         modules = agents.outline_modules(outline)
         if draft["phase"] == "outline":
             if not draft.get("estimate"):
-                self.estimate(draft)
-                return
-            if map_ranges(self._window(draft), sum(len(m["points"]) for m in modules), module_counts=[len(m['points']) for m in modules])["over_300"]:
                 self.estimate(draft)
                 return
         errors = agents.scope_requirement_errors(modules + [p for m in modules for p in m["points"]], draft["form"])
@@ -928,7 +977,7 @@ class PlanFlow:
         if draft["phase"] == "outline":
             self._save_outline(draft)
             for module in modules:
-                payload = [dict(p, id=f"{module['id']}-{index:02d}") for index, p in enumerate(module["points"], 1)]
+                payload = [dict(p, minutes=MINUTES_PER_POINT_GUESS, id=f"{module['id']}-{index:02d}") for index, p in enumerate(module["points"], 1)]
                 store.save_generated_module(plan_id, module["id"], payload, today=self.study_day(),
                     check_minutes=len(payload) * 2,
                     final_check_minutes=estimate_check_minutes(len(payload), minutes_per_question=2), check_question_minutes=2)
@@ -1455,14 +1504,16 @@ class PlanFlow:
         draft.pop("coverage", None)
         if draft.get("outline"):
             modules = agents.outline_modules(draft["outline"])
-            draft["outline"]["ranges"] = map_ranges(window, sum(len(m.get("points", [])) for m in modules))
-            draft.pop("estimate", None)
+            draft["outline"]["ranges"] = map_ranges(window, sum(len(m.get("points", [])) for m in modules),
+                module_counts=[len(m.get('points', [])) for m in modules])
         shown = []
         for key in params:
             value = {"level": LEVEL_NAMES.get(form["level"]), "daily_cap": f"{form['daily_cap']} 分钟",
                      "start": form["start"], "end": form["end"]}.get(key)
             shown.append(f"{self._FORM_LABELS[key]}改为 {value}" if value else f"更新了{self._FORM_LABELS[key]}")
         self._say(draft, "已修改：" + "，".join(shown) + "。")
+        if phase == 'outline' and not any(form[k] != old[k] for k in about):
+            self.estimate(draft)
         if phase in ('questions', 'preview', 'sources', 'outline') and any(form[k] != old[k] for k in about):
             draft['outline'] = None
             draft.pop('preview', None)
@@ -1759,18 +1810,27 @@ class PlanFlow:
         self.save(draft)
 
     def extend_end(self, draft, end):
-        if draft["phase"] not in ("outline", "ready"):
+        if draft["phase"] not in ("material_preview", "outline", "ready"):
             raise BridgeError("PHASE_INVALID", "现在不能改日期。")
         new_end = _day(end, "结束日期")
         window = self._window(draft)
         if new_end <= window.end or (new_end - window.start).days > 3 * 366:
             raise BridgeError("FORM_INVALID", "新的结束日期要晚于原来的，且计划最长三年。")
-        window = PlanWindow(window.start, new_end, window.daily_cap_minutes, window.weekday_weights, dict(window.date_weights))
-        self.services.store.save_intake(draft["plan_id"], window=window, today=self.study_day(), reason="新建计划时延后结束日期")
-        draft["form"]["end"] = new_end.isoformat()
-        if draft["phase"] == "outline":
-            self.estimate(draft)
-        self.save(draft)
+        self._update_form(draft, None, {'end': new_end.isoformat()})
+
+    def adjust_window(self, draft, ctx, params):
+        """Estimate buttons use the existing intent validation and form-change path, without a model."""
+        if draft['phase'] not in ('material_preview', 'outline'):
+            raise BridgeError('PHASE_INVALID', '请先确认资料结构或知识地图。')
+        if not isinstance(params, dict) or not params or set(params) - {'daily_cap', 'end'}:
+            raise BridgeError('PARAM_INVALID', '只能修改每日时长或结束日期。')
+        context = self._intent_context(draft)
+        try:
+            intents = plan_intent.parse_intents(json.dumps({'intents': [
+                dict(kind='update_form', **params)], 'reply': ''}), context)
+        except agents.AgentFormatError:
+            raise BridgeError('FORM_INVALID', '请填写有效的每日时长或结束日期。') from None
+        self._carry_out(draft, ctx, intents[0], context)
 
     def start(self, draft):
         with self.services.store.transaction():
@@ -1860,6 +1920,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.missing": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().resolve_missing(d, x, text(p, 'action', 20)), c),
         "plan.outline": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().make_outline(d, x), c),
         "plan.estimate": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().estimate(d), c),
+        "plan.window": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().adjust_window(d, x, p.get('changes')), c),
         "plan.generate": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().generate(d, x), c),
         "plan.module": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().edit_module(
             d, "delete" if p.get("action") == "delete" else "move", text(p, "module_id", 40), p.get("direction", 0)), c),

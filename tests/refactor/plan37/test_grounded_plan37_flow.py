@@ -182,16 +182,14 @@ def test_plan37_reference_must_be_in_selected_obtained_original(bad):
 
 
 
-def test_plan37_300_minutes_blocks_until_user_extends(fixture):
+def test_plan37_user_cap_warns_without_blocking_generation(fixture):
     flow, model, ctx, *_ = fixture
     model.count = 30
     draft = adopt_and_map(fixture)
-    draft["form"].update(end=TODAY.isoformat(), daily_cap=720)
+    draft["form"].update(end=TODAY.isoformat(), daily_cap=300)
     flow.estimate(draft)
     r = draft["outline"]["ranges"]
-    assert r["over_300"] and r["suggested_days"] >= 2
-    flow.generate(draft, ctx)
-    assert draft["phase"] == "outline" and not flow.services.store.records("points", draft["plan_id"])
+    assert r["over_cap"] and r["suggested_days"] >= 2
     flow.extend_end(draft, r["suggested_end"])
     assert not draft["estimate"]["blocked"]
     flow.generate(draft, ctx)
@@ -201,7 +199,7 @@ def test_plan37_300_minutes_blocks_until_user_extends(fixture):
 def test_plan37_estimate_weights_and_no_model_minutes():
     w = PlanWindow(TODAY, TODAY+timedelta(days=1), 30, (1,)*7, {TODAY: .5})
     r = map_ranges(w, 4)
-    assert r["learning"] == 60 and r["total"][0] == r["total"][1] > 60
+    assert r["learning"] == 32 and r["total"][0] == r["total"][1] > 32
     assert r["over_cap"] and r["suggested_end"]
 
 

@@ -44,7 +44,9 @@ def test_plan55_material_modules_displayed_and_selected_without_generation(flow,
     assert result['material_structure']['modules'] == [before[0],before[2]]
     assert '3、99、1' in result['messages'][-1]['text']
     assert '2. ' in result['messages'][-1]['text']  # renumber after deletion
-    assert f.load(pid)['material_structure']['modules'] == [before[0],before[2]]
+    # Duration estimates are a recalculated public projection, not generated content.
+    assert f.load(pid)['material_structure']['modules'] == [
+        {k:v for k,v in m.items() if k not in ('estimated_points', 'chars')} for m in (before[0],before[2])]
 
 
 def test_plan55_invalid_keep_does_not_erase_structure(flow):

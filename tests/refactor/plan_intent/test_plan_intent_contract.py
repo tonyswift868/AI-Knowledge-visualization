@@ -58,7 +58,7 @@ def test_plan_intent_request_preserves_every_context_field_without_role_promotio
     assert payload == {"ctx": ctx, "text": "采用第一份资料"}
     assert injection not in system and ctx == before
     assert intent_request(context("ready"), "行")[0] == system
-    for rule in ("ask_user", "today", "10～720", "不修改状态", "宿主", "点按钮确认", "同一种 kind 只出现一次"):
+    for rule in ("ask_user", "today", "至少 10", "不修改状态", "宿主", "点按钮确认", "同一种 kind 只出现一次"):
         assert rule in system
 
 
@@ -139,7 +139,7 @@ def test_plan_intent_duplicate_kinds_are_rejected_not_merged():
 
 
 @pytest.mark.parametrize("params", [
-    {}, {"notes": "不是可写字段"}, {"daily_cap": 9}, {"daily_cap": 721},
+    {}, {"notes": "不是可写字段"}, {"daily_cap": 9}, {"daily_cap": 720.5},
     {"daily_cap": True}, {"daily_cap": 60.0}, {"daily_cap": "60"},
     {"level": "expert"}, {"level": []}, {"goal": " "}, {"final_goal": "字" * 301},
     {"start": "明天"}, {"start": "2026-9-29"}, {"start": "2026-02-30"},
@@ -159,7 +159,7 @@ def test_plan_intent_update_form_validation(params):
         parse_intents(answer(dict(kind="update_form", **params)), context())
 
 
-@pytest.mark.parametrize("cap", [10, 720])
+@pytest.mark.parametrize("cap", [10, 720, 1930])
 def test_plan_intent_update_boundaries_and_unchanged_fields(cap):
     params = {"daily_cap": cap, "level_note": "", "weekday_weights": [0, .5, 1, 1, 1, 0, 0],
               "special_days": [{"date": "2026-10-01", "weight": 0}, {"date": "2026-11-30", "weight": .5}]}
