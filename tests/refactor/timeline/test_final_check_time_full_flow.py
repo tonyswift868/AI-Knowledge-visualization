@@ -417,6 +417,7 @@ def test_module_detection_releases_unused_estimate_and_report(flow_env, audit):
         from tests.refactor.integration38.support import bank_question
         row=bank_question(mids[0],module['id'],kind='fill',ids=mids,answer='测试作答',chunk='k')
         row['id']='000-group-'+module['id']
+        row['stem']=module['title']+'综合题：'+row['stem']
         e.store.add_bank_questions(PLAN,module['id'],[row])
     for index in range(2):
         act(e, 'start_test', 'skip_test')

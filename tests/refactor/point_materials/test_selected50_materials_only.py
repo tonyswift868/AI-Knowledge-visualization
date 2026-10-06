@@ -46,7 +46,7 @@ def test_selected50_old_external_questions_not_selected_or_deleted(store,adopted
     point=store.records('points','p')[0]
     pm.prepare_point(store,'p',point,context)
     old=copy.deepcopy(store.records('question_bank','p')[0])
-    old.update(id='historic-external',source=dict(title='旧自动找到的题',url='https://www.pep.com.cn/external',locator='外部题'),
+    old.update(id='historic-external',stem='外部题：'+old['stem'],source=dict(title='旧自动找到的题',url='https://www.pep.com.cn/external',locator='外部题'),
                answer_source=dict(title='旧自动找到的题',url='https://www.pep.com.cn/external',locator='外部题'))
     store.add_sources('p',[dict(id='external',title='旧自动资料',url=old['source']['url'],adopted=adopted,excerpt=excerpt,
         chunks=[dict(chunk_id='external-c',text='外部题：'+TEXT,original_locator='外部题')])])

@@ -121,7 +121,8 @@ def test_report_comments_quote_only_stored_reasons_and_never_call_gateway():
     assert comments['q'] == '“后进先出”无错答记录；目前尚未通过。'
 
 def question(identifier,ids,chunk='k1'):
-    return bank_question(ids[0],'m0',kind='fill',ids=list(ids),answer='队列是先进先出的结构。',chunk=chunk)|{'id':identifier}
+    row=bank_question(ids[0],'m0',kind='fill',ids=list(ids),answer='队列是先进先出的结构。',chunk=chunk)
+    return row|{'id':identifier,'stem':identifier+'：'+row['stem']}
 
 def test_selector_uses_per_purpose_history_and_can_reuse_original_questions():
     bank=[question('a',['p0']),question('b',['p0'])]

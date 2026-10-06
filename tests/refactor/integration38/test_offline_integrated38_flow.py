@@ -25,9 +25,13 @@ NOW = lambda: datetime(2026, 10, 3, 10, tzinfo=timezone.utc)
 URL = 'https://docs.python.org/3/tutorial/datastructures.html'
 QUOTE = '队列按先进先出的顺序处理元素，栈按后进先出的顺序处理元素。'
 STEMS = ['队列按哪种顺序处理元素？', '队列的处理顺序是什么？', '请选择资料中队列的处理顺序。']
+MODULE_TITLES = ('队列基础', '顺序比较', '队列应用')
+# Each synthetic module has its own original exercises. Previously this
+# fixture reused the very same stems across modules, contrary to batch 66.
+MODULE_STEMS = {title: [title+'：'+stem for stem in STEMS] for title in MODULE_TITLES}
 BODY = ('<html><head><title>Python 数据结构</title></head><body><h1>队列与栈</h1>'
     + ''.join('<p>'+QUOTE+'</p>' for _ in range(50))
-    + ''.join(f'<p>{stem} A. 先进先出 B. 后进先出 C. 散列次序 答案：先进先出</p>' for stem in STEMS)
+    + ''.join(f'<p>{stem} A. 先进先出 B. 后进先出 C. 散列次序 答案：先进先出</p>' for rows in MODULE_STEMS.values() for stem in rows)
     + '<h1>其他数据结构</h1><p>哈希表按散列次序处理元素。栈按后进先出的顺序处理元素。其他数据结构有各自的存储和查找方法。</p>'
     + '</body></html>').encode()
 
@@ -72,7 +76,7 @@ class IntegratedModel(Agents):
         elif purpose == 'point_materials':
             packet=json.loads(messages[-1]['content']);passages=packet['passages']
             found=[]
-            for stem in STEMS:
+            for stem in MODULE_STEMS.get(packet['point']['title'], STEMS):
                 p=next(p for p in passages if stem in p['text'])
                 found.append(dict(kind='choice',stem=stem,options=['先进先出','后进先出','散列次序'],answer=[0],
                     explanation='',question_chunk=p['id'],answer_chunk=p['id'],answer_quote='先进先出',
@@ -83,7 +87,7 @@ class IntegratedModel(Agents):
                 # Keep the shared fixture's documented quick answer (队列).
                 # Here the queried object is a processing order and its value
                 # is the structure using it; contrast other orders/structures.
-                dict(target='哪种结构按先进先出的顺序处理元素？',subject='先进先出',chunk_id=p['id'],sentence=QUOTE,word='队列',importance='key',contrasts=[
+                dict(target=packet['point']['id']+'：哪种结构按先进先出的顺序处理元素？',subject='先进先出',chunk_id=p['id'],sentence=QUOTE,word='队列',importance='key',contrasts=[
                     dict(chunk_id=contrast['id'],contrast_quote='栈按后进先出的顺序处理元素。',contrast_subject='后进先出',contrast_value='栈'),
                     dict(chunk_id=contrast['id'],contrast_quote='哈希表按散列次序处理元素。',contrast_subject='散列次序',contrast_value='哈希表')])])
         elif purpose == 'distractor_check':
@@ -128,7 +132,8 @@ def build_plan(root, events):
     join_workers()
     assert store.get_plan(pid)['total_minutes']==estimate
     bank=store.records('question_bank',pid)
-    assert len(bank)==9 and sum(q.get('role')=='bank' for q in bank)==6
+    assert len(bank)==6 and sum(q.get('role')=='bank' for q in bank)==4
+    assert len({q['module_id'] for q in bank})==2  # Third module waits for entering the second.
     assert all(q['origin']=='found' and q['answer_source']['url']==URL for q in bank if q.get('role')=='bank')
     assert any(k=='plan_preparation' for k,_ in events)
     assert model.calls.count('generate') == 3
@@ -261,7 +266,8 @@ def test_integration44_real_roles_and_uses_survive_store_reopen(tmp_path):
     """No autouse material boundary: select/mark/prepare are real and durable."""
     services,flow,model,pid=build_plan(tmp_path,[])
     try:
-        point=services.store.records('points',pid)[0]
+        first=services.store.records('modules',pid)[0]['id']
+        point=next(p for p in services.store.records('points',pid) if p['module_id']==first)
         before=len(model.calls)
         point_materials.prepare_point(services.store,pid,point,dict(gateway=model,cancel=threading.Event()))
         assert len(model.calls)==before  # Stored complete rows avoid locating again.

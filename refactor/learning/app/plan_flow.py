@@ -191,6 +191,8 @@ def map_ranges(window, point_count, *, module_counts=None):
 
 
 class PlanFlow:
+    _material_guard = threading.Lock()
+
     def __init__(self, services, push, study_day, *, fetcher=None, prepare_module=None):
         self.services, self.push, self.study_day = services, push, study_day
         self.fetcher = fetcher  # injected by offline tests; None = real guarded web fetch
@@ -202,7 +204,16 @@ class PlanFlow:
         self._additions: dict[str, dict] = {}   # PLAN-10 sessions: the host holds state, the page only picks
         self._picked: dict[str, list] = {}      # files chosen in the dialog, by token
         self._prepare_module = prepare_module  # MF-04 contract; injected by offline tests
-        self._preparing: set[str] = set()
+        # Plan creation and classroom share account-local jobs. No model call
+        # holds this lock; at most one worker per plan writes/prepares at once.
+        with self._material_guard:
+            self._material_jobs = getattr(services, '_material_jobs', None)
+            if self._material_jobs is None:
+                self._material_jobs = dict(guard=threading.Lock(), jobs={}, active=set(), queued={}, execution_locks={})
+            if services is not None:  # Pure prompt helpers also construct a flow without services.
+                services._material_jobs = self._material_jobs
+                services._material_flow = self
+        self._preparing = self._material_jobs['active']
 
     # ----------------------------------------------------------- drafts
     def _file(self, plan_id):
@@ -1013,8 +1024,10 @@ class PlanFlow:
             raise
         draft["generation"][first["id"]] = "done"
         draft["phase"] = "ready"
-        draft["messages"].append(_msg("ai", "ready", "第 1 模块的资料与题目已备好，可以开始计划。其余模块正在后台准备。"))
+        draft["messages"].append(_msg("ai", "ready", "第 1 模块的资料与题目已备好，可以开始计划。第 2 模块会在后台准备，之后每次只提前准备下一个模块。"))
         self.save(draft)
+        row = next(m for m in store.records('modules', plan_id) if m['id'] == first['id'])
+        store.save_module_preparation(plan_id, first['id'], dict(row.get('material_preparation') or {}, state='done'))
         self._prepare_remaining(plan_id, modules[1:], prepare)
 
     def _material_context(self, ctx):
@@ -1044,36 +1057,106 @@ class PlanFlow:
             raise BridgeError('PREPARATION_FORMAT', '资料准备结果不完整，请重试。')
         self.services.store.save_module_preparation(plan_id, module_id, summary)
 
-    def _prepare_remaining(self, plan_id, modules, prepare):
-        with self._guard:
-            if not modules or plan_id in self._preparing:
-                return
-            self._preparing.add(plan_id)
-        def work():
-            ctx = CallContext("plan-materials", threading.Event(), lambda _: None)
+    def _prepare_remaining(self, plan_id, modules, prepare, *, retry=False, notify=None, fingerprint=None):
+        """Only the first requested module, never an automatic tail sweep.
+
+        A foreground request can queue its current module behind one running
+        job. There is no speculative queue of future modules.
+        """
+        if not modules or getattr(self.services, '_closed', False):
+            return None
+        module = modules[0]
+        key = (plan_id, module['id'])
+        state = self._material_jobs
+        with state['guard']:
+            job = state['jobs'].get(key)
+            if job and job['status'] in ('running', 'queued') and not job['cancel'].is_set():
+                if job['fingerprint'] is None: job['fingerprint'] = fingerprint
+                if notify and notify not in job['listeners']: job['listeners'].append(notify)
+                return job
+            if job and job['status'] == 'ready' and (fingerprint is None or job['fingerprint'] == fingerprint):
+                return job
+            if job and job['status'] == 'failed' and not retry:
+                if notify and notify not in job['listeners']: job['listeners'].append(notify)
+                return job
+            if job: job['cancel'].set()
+            job = dict(module_id=module['id'], status='queued', done=0,
+                total=len(module.get('points', [])), text='这个模块的题还在准备', error=None,
+                fingerprint=fingerprint, cancel=threading.Event(), listeners=[notify] if notify else [])
+            state['jobs'][key] = job
+            previous = state['queued'].get(plan_id)
+            if previous:
+                previous[2]['cancel'].set()
+                previous[2]['status'] = 'cancelled'
+            state['queued'][plan_id] = (module, prepare, job)
+            if plan_id not in state['active']:
+                state['active'].add(plan_id)
+                threading.Thread(target=self._prepare_worker, args=(plan_id,), name='plan-materials', daemon=True).start()
+            return job
+
+    def _prepare_worker(self, plan_id):
+        state = self._material_jobs
+        while True:
+            with state['guard']:
+                pending = state['queued'].pop(plan_id, None)
+                if pending is None:
+                    state['active'].discard(plan_id)
+                    return
+                module, prepare, job = pending
+                job['status'] = 'running'
+            mid = module['id']
+            def progress(done, total, text):
+                job.update(done=done, total=total, text='这个模块的题还在准备' + (f' · {text}' if text else ''))
+                self._notify_preparation(plan_id, job)
+            ctx = CallContext('plan-materials', job['cancel'], lambda _: None)
             try:
-                for module in modules:
-                    if getattr(self.services, "_closed", False):
-                        break
-                    def progress(done, total, text):
-                        self.push("plan_preparation", {"plan_id": plan_id, "module_id": module["id"],
-                            "done": done, "total": total, "text": text})
-                    preparation = prepare(self.services.store, plan_id, module["id"], self._material_context(ctx), progress)
-                    self._save_material_summary(plan_id, module["id"], preparation)
-                    if not self._module_ready(plan_id, module['id']):
-                        raise BridgeError('MATERIALS_INCOMPLETE', '后续模块的原文或题目不足。')
-                    self._record_preparation(plan_id, module["id"], "done")
+                if job['cancel'].is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
+                self._record_preparation(plan_id, mid, 'running')
+                with self._background_material_lock(plan_id):
+                    if job['cancel'].is_set(): raise ModelCancelled()
+                    result = prepare(self.services.store, plan_id, mid, self._material_context(ctx), progress)
+                if job['cancel'].is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
+                self._save_material_summary(plan_id, mid, result)
+                if not self._module_ready(plan_id, mid):
+                    raise BridgeError('MATERIALS_INCOMPLETE', '这个模块的原文或题目不足，进入模块时可重试。')
+                job['status'] = 'ready'
+                self._record_preparation(plan_id, mid, 'done')
+            except ModelCancelled:
+                job['status'] = 'cancelled'
             except Exception as exc:
-                log.warning("background material preparation stopped: %s", type(exc).__name__)
-                if not getattr(self.services, "_closed", False):
-                    self._record_preparation(plan_id, module["id"], "failed")
-                self.push("plan_preparation", {"plan_id": plan_id, "error": "后续模块准备未完成，进入课堂时可重试。"})
+                log.warning('module preparation failed: %s', type(exc).__name__)
+                job.update(status='failed', error=getattr(exc, 'message', '这个模块的题未备好，进入模块时可重试。'),
+                           code=getattr(exc, 'code', None))
+                if not getattr(self.services, '_closed', False):
+                    try: self._record_preparation(plan_id, mid, 'failed')
+                    except Exception: log.warning('could not persist module preparation failure', exc_info=True)
             finally:
-                with self._guard:
-                    self._preparing.discard(plan_id)
-        threading.Thread(target=work, name="plan-materials", daemon=True).start()
+                self._notify_preparation(plan_id, job)
+
+    def _background_material_lock(self, plan_id):
+        # Existing final-check replenishment shares the same IO slot. Only
+        # background workers acquire it; bridge operations never wait here.
+        with self._material_jobs['guard']:
+            return self._material_jobs['execution_locks'].setdefault(plan_id, threading.Lock())
+
+    def _notify_preparation(self, plan_id, job):
+        if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
+        data = {k: job[k] for k in ('module_id', 'done', 'total', 'text', 'error')}
+        data.update(plan_id=plan_id)
+        try: self.push('plan_preparation', data)
+        except Exception: log.info('preparation view closed', exc_info=True)
+        for notify in list(job['listeners']):
+            try: notify(data)
+            except Exception: log.info('preparation listener closed', exc_info=True)
 
     def _record_preparation(self, plan_id, module_id, state):
+        # The draft is removed when learning starts. Keep module state in the
+        # existing persisted summary as well, so reopen never loses completion.
+        for module in self.services.store.records('modules', plan_id):
+            if module['id'] == module_id:
+                summary = dict(module.get('material_preparation') or {}, state=state)
+                self.services.store.save_module_preparation(plan_id, module_id, summary)
+                break
         # Read the latest draft under the foreground operation's lock. Starting
         # or deleting a plan removes the draft; background work must not recreate it.
         with self._lock(plan_id):

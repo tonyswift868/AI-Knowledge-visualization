@@ -91,7 +91,9 @@ class Classroom:
                     self._finish_test(course, state, ctx)
                 else:
                     work(course, state, ctx)
-                    if not action or action[0]!='leave':self._resume_materials(course, state, ctx)
+                    if not action or action[0]!='leave':
+                        self._resume_materials(course, state, ctx)
+                        self._prepare_next_module(course, state, entering=bool(action and action[0]=='enter'))
                 state.pop("failure", None)
                 if action:
                     retried=getattr(self._local,'action',None)
@@ -165,11 +167,15 @@ class Classroom:
         if question and q['kind']=='fill':question['blanks']=len(q['answer'])
         if question:question.update(purpose=PURPOSE[pending['kind']],number=pending.get('number'),total=pending.get('total'))
         today = self._today(course,state)
+        preparing = self._jobs.get((course.plan_id, module['id']))
+        current_preparation = ({k:preparing[k] for k in ('module_id','done','total','text','error')}
+            if preparing and preparing['status'] in ('running','queued','failed') and not preparing['cancel'].is_set()
+            and state.get('phase')=='learning' else None)
         return dict(plan={k:course.plan.get(k) for k in ('id','goal','state')},
             module=dict(id=module['id'],title=module['title'],number=course.modules.index(module)+1,total=len(course.modules),state=book.module(module['id']).state),
             points=[dict(id=p['id'],title=p['title'],minutes=p['minutes'],taught=p['id'] in taught,state='weak' if book.point(p['id']).casual_errors and book.point(p['id']).state=='untested' else book.point(p['id']).state,current=i==state['index']) for i,p in enumerate(points)],
             step=state['step'],question=question,messages=messages,conversation=state.get('conversation'),
-            preparation=state.get('material_wait') or self._final_progress(course),failure=state.get('failure'),explanation=state.get('answer_explanation'),
+            preparation=state.get('material_wait') or current_preparation or self._final_progress(course),failure=state.get('failure'),explanation=state.get('answer_explanation'),
             can_skip=state['step']=='teach' and state['index']==0 and not any(p['id'] in taught for p in points),
             red=[p['title'] for p in points if book.point(p['id']).state=='red'],
             more_modules=any(book.module(m['id']).state=='untested' for m in course.modules if m['id']!=module['id']),
@@ -189,35 +195,37 @@ class Classroom:
         data=[{k:v for k,v in p.items() if k!='chunk_ids'} for p in course.points_of(module_id)]
         return hashlib.sha256(json.dumps(data,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
 
-    def _prepare(self, course, module_id):
+    def _preparation_flow(self):
+        flow = getattr(self.services, '_material_flow', None)
+        if flow is None:
+            from .plan_flow import PlanFlow
+            flow = PlanFlow(self.services, lambda *_: None, self.study_day)
+        return flow
+
+    def _prepare(self, course, module_id, *, retry=False):
         key=(course.plan_id,module_id);fingerprint=self._fingerprint(course,module_id)
-        job=self._jobs.get(key)
-        if job and job['fingerprint']==fingerprint:return job
-        if job:job['cancel'].set()
-        job=dict(fingerprint=fingerprint,status='running',done=0,total=len(course.points_of(module_id)),text='正在准备原文和带答案的题目',error=None,cancel=threading.Event())
+        job=self._preparation_flow()._prepare_remaining(course.plan_id,
+            [dict(course.module(module_id), points=course.points_of(module_id))], self._materials().prepare_module,
+            retry=retry, fingerprint=fingerprint, notify=self.material_event)
+        if job is None:raise BridgeError('ACCOUNT_CLOSED','账号已关闭，请重新进入。')
         self._jobs[key]=job
-        def progress(done,total,text):
-            if job['cancel'].is_set() or self._jobs.get(key) is not job:return
-            job.update(done=done,total=total,text=text)
-            self.material_event(dict(plan_id=course.plan_id,module_id=module_id))
-        def worker():
-            try:
-                ctx=dict(cancel=job['cancel'],gateway=self.services.gateway,
-                         on_status=lambda text: progress(job['done'],job['total'],text))
-                self._materials().prepare_module(course.store,course.plan_id,module_id,ctx,progress)
-                if not job['cancel'].is_set():
-                    fresh=self._course(course.plan_id)
-                    if self._fingerprint(fresh,module_id)!=fingerprint:
-                        job['status']='stale'
-                    else:job['status']='ready'  # Shortages are handled per point, not an endless module gate.
-            except Exception as exc:
-                log.info('material preparation failed',exc_info=True)
-                job.update(status='failed',error=getattr(exc,'message','资料准备没有完成，请重试。'))
-            finally:
-                if not job['cancel'].is_set() and self._jobs.get(key) is job:
-                    self.material_event(dict(plan_id=course.plan_id,module_id=module_id))
-        threading.Thread(target=worker,name='classroom-materials',daemon=True).start()
         return job
+
+    def _prepare_next_module(self, course, state, *, entering=False):
+        # Current-module transitions (including directly testing a module) are
+        # stable and persisted. Never prefetch from final/free practice focus.
+        if state.get('materials_paused') or state.get('phase')!='learning' or state.get('practice') or state['step'] in ('check_offer','completed'):
+            return
+        mid=state['module_id']
+        entered=entering or state.get('preparation_module_entered')!=mid
+        state['preparation_module_entered']=mid
+        if not self._ready(course,mid) and state.get('materials_attempted',{}).get(mid)!=self._fingerprint(course,mid):
+            self._prepare(course,mid,retry=entered)
+            return
+        index=next(i for i,m in enumerate(course.modules) if m['id']==mid)
+        if index+1<len(course.modules):
+            nxt=course.modules[index+1]['id']
+            if not self._ready(course,nxt):self._prepare(course,nxt,retry=entered)
 
     def _wait(self, course, state, action, args=()):
         mid=state['module_id'];job=self._prepare(course,mid)
@@ -229,17 +237,21 @@ class Classroom:
         if not wait:return
         job=self._jobs.get((course.plan_id,wait['module_id'])) or self._prepare(course,wait['module_id'])
         wait.update(done=job['done'],total=job['total'],text=job['text'],error=job['error'])
-        if job['status']=='ready':
+        # Preserve the existing per-point shortage fallback after a completed
+        # attempt. This task does not change the module readiness rules.
+        if job['status']=='ready' or (job['status']=='failed' and job.get('code')=='MATERIALS_INCOMPLETE'):
+            if self._fingerprint(self._course(course.plan_id),wait['module_id'])!=job['fingerprint']:
+                self._prepare(course,wait['module_id'],retry=True)
+                return
             state.setdefault('materials_attempted',{})[wait['module_id']]=job['fingerprint']
             state['step']=wait['previous_step'];state.pop('material_wait')
             getattr(self,wait['action'])(course,state,ctx,*wait['args'])
 
     def enter(self, course, state, ctx):
+        state.pop('materials_paused',None)
         if course.plan_id not in self._entered_plans or not state.get('in_session'):
             state['day']=self.study_day().isoformat()
         self._entered_plans.add(course.plan_id);state['in_session']=True
-        for m in course.modules:
-            if not self._ready(course,m['id']):self._prepare(course,m['id'])
 
     def leave(self, course, state, ctx):
         self._entered_plans.discard(course.plan_id)
@@ -248,6 +260,7 @@ class Classroom:
         self._profile(course)
 
     def retry(self, course, state, ctx):
+        state.pop('materials_paused',None)
         failure=state.pop('failure',None)
         if failure:
             self._local.action=(failure['action'],failure['args'],failure['request_id'])
@@ -256,14 +269,18 @@ class Classroom:
         if wait:
             job=self._jobs.pop((course.plan_id,wait['module_id']),None)
             if job:job['cancel'].set()
-            self._prepare(course,wait['module_id'])
+            self._prepare(course,wait['module_id'],retry=True)
+        elif (self._jobs.get((course.plan_id,state['module_id'])) or {}).get('status')=='failed':
+            self._prepare(course,state['module_id'],retry=True)
 
     def stop_preparation(self, course, state, ctx):
+        state['materials_paused']=True
         self.cancel_materials(course.plan_id)
         wait=state.pop('material_wait',None)
         if wait:state['step']=wait['previous_step']
 
     def next(self, course, state, ctx):
+        state.pop('materials_paused',None)
         if state['step']=='preparing_materials':return
         if state['step']=='closing':
             self._point_done(course,state)
@@ -499,7 +516,10 @@ class Classroom:
             try:
                 for i,p in enumerate(points):
                     if job['cancel'].is_set():return
-                    try:self._materials().prepare_point(course.store,course.plan_id,p,dict(gateway=self.services.gateway,cancel=job['cancel']))
+                    try:
+                        with self._preparation_flow()._background_material_lock(course.plan_id):
+                            if job['cancel'].is_set():return
+                            self._materials().prepare_point(course.store,course.plan_id,p,dict(gateway=self.services.gateway,cancel=job['cancel']))
                     except Exception:
                         if job['cancel'].is_set():return
                         log.info('final preparation shortage; retaining existing questions',exc_info=True)

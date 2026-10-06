@@ -542,18 +542,35 @@ class CourseStore:
 
     @_atomic
     def add_bank_questions(self, plan_id, module_id, questions):
+        from .question_bank import original_text
         self.require_material_plan(plan_id)
         self._get('modules', plan_id, module_id)
         valid_points = {p['id'] for p in self._rows('points', plan_id) if p['module_id'] == module_id}
         identifiers = []
+        existing_rows = self._rows('question_bank', plan_id)
+        stems = {}
+        for q in existing_rows: stems.setdefault(original_text(q['stem']), []).append(q)
+        skipped = 0
         for question in questions:
             row = dict(question)
             if row['module_id'] != module_id or not set(row['point_ids']) <= valid_points:
                 raise StoreError('POINT_MODULE_MISMATCH')
             # Content-addressed IDs make concurrent/background repeats idempotent.
-            existing = next((q for q in self._rows('question_bank', plan_id) if q['id'] == row['id']), None)
-            if existing is None: self._put('question_bank', plan_id, row)
+            existing = next((q for q in existing_rows if q['id'] == row['id']), None)
+            if existing is None:
+                stem = original_text(row['stem'])
+                # One point may retain the existing quick/bank roles of the
+                # same gap. That never permits another point/module to count it.
+                if any(not (
+                        q['point_ids'] == row['point_ids'] and q.get('role', 'bank') != row.get('role', 'bank'))
+                        for q in stems.get(stem, [])):
+                    skipped += 1
+                    continue  # Not admitted and not counted for this point.
+                self._put('question_bank', plan_id, row)
+                stems.setdefault(stem, []).append(row)
+                existing_rows.append(row)
             identifiers.append(row['id'])
+        if skipped: logging.getLogger(__name__).info('question admission skipped %s duplicate stem(s)', skipped)
         return identifiers
 
     @_atomic

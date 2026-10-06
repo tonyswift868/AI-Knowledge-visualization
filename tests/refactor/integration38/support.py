@@ -44,7 +44,7 @@ def seed_bank(store, plan_id, *, count=3):
         word=chunk['text'][:2]
         q=bank_question(p['id'],p['module_id'],kind='choice',chunk=chunk['id'])
         q.update(source=refs[chunk['id']],answer_source=refs[chunk['id']])
-        q.update(id=p['id']+'-quick42',role='quick',origin='cloze',stem=chunk['text'].replace(word,'____',1),
+        q.update(id=p['id']+'-quick42',role='quick',origin='cloze',stem=p['id']+'：'+chunk['text'].replace(word,'____',1),
                  options=[word,'另一概念','无关说法'],answer=[0],explanation=chunk['text'])
         q.update(cloze_subject=p['title'],contrast_evidence=[dict(chunk_id=chunk['id'],contrast_quote=value,
             contrast_subject='隔离夹具对象'+str(i),contrast_value=value) for i,value in enumerate(q['options'][1:])])
