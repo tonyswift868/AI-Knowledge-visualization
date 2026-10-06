@@ -85,11 +85,12 @@ function ModuleDetails({ module: m, stages, mode, close }: { module: GraphModule
   const titleOf = Object.fromEntries(stages.flatMap(s => s.modules).map(m => [m.key, m.title]))
   const chapters = m.chapters ?? m.ref_titles ?? m.refs ?? []
   return <aside className="pg-details nodrag nowheel" aria-label={`${m.title}详情`}>
-    <header><span className="pg-eyebrow">{mode === "structure" ? "模块内容与依据" : `${m.points?.length ?? 0} 个知识点`}</span><button className="pg-icon" onClick={close} aria-label="关闭模块详情"><X size={18} /></button></header>
+    <header><span className="pg-eyebrow">{mode === "structure" ? "模块内容与依据" : `${m.points?.length ?? 0} 个知识点`}</span><button className="pg-icon" onClick={close} aria-label="关闭模块详情"><X size={18} />关闭</button></header>
     <h3>{m.title}</h3><h4>学什么</h4><p>{m.summary}</p>
     {m.minutes && <p className="pg-meta">预计 {m.minutes[0]}–{m.minutes[1]} 分钟</p>}
     {!!m.prerequisites?.length && <p className="pg-meta">先学：{m.prerequisites.map(k => titleOf[k] ?? k).join("、")}</p>}
-    {!!chapters.length && <details className="pg-chapters"><summary><BookOpen size={14} />全部依据章节 · {chapters.length} 处</summary><ol>{chapters.map((t, i) => <li key={i}>{t}{m.refs?.[i] && <small>{m.refs[i]}</small>}</li>)}</ol></details>}
+    {mode === "structure" && <p className="pg-meta">知识点将从这些资料章节生成，确认结构后会给你看完整知识地图。</p>}
+    {!!chapters.length && <details className="pg-chapters" open={mode === "structure"}><summary><BookOpen size={14} />全部依据章节 · {chapters.length} 处</summary><ol>{chapters.map((t, i) => <li key={i}>{t}{m.refs?.[i] && <small>{m.refs[i]}</small>}</li>)}</ol></details>}
     {mode === "outline" && <ol className="pg-points">{m.points?.map((p, i) => <li key={i}>
       <div className="pg-point-title"><span>{i + 1}</span><b>{p.title}</b></div><p>{p.summary}</p>
       {p.source_general && <span className="pg-meta">来源一般</span>}
@@ -107,15 +108,24 @@ export function PlanGraph({ stages, mode = "outline" }: { stages: GraphStage[]; 
   const [fullscreen, full] = React.useState(false)
   const [instance, setInstance] = React.useState<ReactFlowInstance | null>(null)
   const returnFocus = React.useRef<HTMLButtonElement>(null)
-  React.useEffect(() => { setNodes(layout.nodes); select(null); hover(null) }, [layout])
+  // Host draft refreshes and parent input renders create a new stages array.
+  // Layout updates must not discard the module the user is reading.
+  React.useEffect(() => { setNodes(layout.nodes); hover(null) }, [layout])
   React.useEffect(() => {
     if (!fullscreen) return
     const old = document.body.style.overflow
     document.body.style.overflow = "hidden"
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { full(false); returnFocus.current?.focus() } }
-    document.addEventListener("keydown", esc)
-    return () => { document.body.style.overflow = old; document.removeEventListener("keydown", esc) }
+    return () => { document.body.style.overflow = old }
   }, [fullscreen])
+  React.useEffect(() => {
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      if (selected) select(null)
+      else if (fullscreen) { full(false); returnFocus.current?.focus() }
+    }
+    document.addEventListener("keydown", esc)
+    return () => document.removeEventListener("keydown", esc)
+  }, [selected, fullscreen])
   React.useEffect(() => { if (instance) requestAnimationFrame(() => instance.fitView({ padding: .12, duration: 220, minZoom: .025, maxZoom: 1 })) }, [instance, layout, fullscreen])
   const all = stages.flatMap(s => s.modules)
   const detail = all.find(m => m.key === selected)
@@ -128,7 +138,7 @@ export function PlanGraph({ stages, mode = "outline" }: { stages: GraphStage[]; 
     <div className={`pg-workspace ${detail ? "pg-has-details" : ""}`}>
       <div className="pg-canvas"><ReactFlow nodes={viewNodes} edges={edges} nodeTypes={nodeTypes} onInit={setInstance}
         onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, n) => { if (n.type === "module") select(n.id) }}
-        onNodeMouseEnter={(_, n) => { if (n.type === "module") hover(n.id) }} onNodeMouseLeave={() => hover(null)} onPaneClick={() => select(null)}
+        onNodeMouseEnter={(_, n) => { if (n.type === "module") hover(n.id) }} onNodeMouseLeave={() => hover(null)}
         nodesConnectable={false} deleteKeyCode={null} fitView fitViewOptions={{ padding: .12, minZoom: .025, maxZoom: 1 }} minZoom={.025} maxZoom={2.5} onlyRenderVisibleElements>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="var(--border-strong)" />
         <Controls position="bottom-right" showInteractive={false} aria-label="地图缩放与适配" />
@@ -136,8 +146,8 @@ export function PlanGraph({ stages, mode = "outline" }: { stages: GraphStage[]; 
       {detail && <ModuleDetails module={detail} stages={stages} mode={mode} close={() => select(null)} />}
     </div>
     <footer className="pg-legend"><MiniMap position="bottom-left" style={{ width: 110, height: 66 }} pannable zoomable nodeColor={n => n.type === "stage" ? "var(--accent-soft)" : "var(--accent)"} maskColor="var(--surface)" />
-      <span><i />学习顺序</span><span><i className="pg-arrow" />先学关系</span><span>拖动画布 · 滚轮缩放 · 点模块看详情{fullscreen ? " · Esc 退出" : ""}</span>
-      <select aria-label="定位模块" value={selected ?? ""} onChange={e => { const id = e.target.value; select(id || null); if (id) instance?.fitView({ nodes: [{ id }], duration: 250, padding: .6, maxZoom: 1 }) }}>
+      <span><i />学习顺序</span><span><i className="pg-arrow" />先学关系</span><span>拖动画布 · 滚轮缩放 · 点模块看详情{selected ? " · Esc 关闭详情" : fullscreen ? " · Esc 退出" : ""}</span>
+      <select aria-label="定位模块" value={selected ?? ""} onChange={e => { const id = e.target.value; if (id) { select(id); instance?.fitView({ nodes: [{ id }], duration: 250, padding: .6, maxZoom: 1 }) } }}>
         <option value="">定位模块…</option>{all.map((m, i) => <option key={m.key} value={m.key}>{i + 1}. {m.title}</option>)}
       </select>
     </footer>

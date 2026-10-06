@@ -56,6 +56,8 @@ MATERIAL_STRUCTURE_SYSTEM = """按用户提供的资料目录修改学习结构�
 讲法、例子、类比、语气、讲解深浅类要求不是学习内容：生活化例子、少用术语、不上手操作等由老师讲课时落实，不要求资料另有对应章节，不要列入missing。
 不要把“用例子区分硬件与软件”变成需要一章“生活化例子”；要核对的是硬件与软件。真正的内容（例如数据库）没有讲到时仍须列出，不因存在讲法偏好而漏掉。
 本步只快速给出大致模块，不展开知识点或逐小节安排。目录已按层级收拢，每个编号包含它下面的全部章节；只按编号分模块，程序会展开章节和正文，不需要逐章思考或抄写目录。
+每个条目的headings是下面的小标题名，按层级从上往下列；sources给出资料名称。分模块和判断覆盖必须同时看title与headings，不能因上层标题宽泛就漏掉整块相关内容。
+只有目标内容在整份目录（含所有条目的小标题）中都找不到才列入missing；例如小标题有Agent、ReAct、MCP、RAG或Java并发、JVM、Spring、MySQL时，不能再说这些内容没讲到。more表示另有小标题未展开，不是没有内容；仅因摘要未展开而无法确定的，不断言缺失，可在summary说明待核实。
 只纳入与用户目标相关的章节，按提供的资料顺序和章节顺序排。模块对应一个或多个目录条目，refs必须来自目录id。几份资料讲同一内容可合并，不纳入无关章节。模块说明一两句即可。
 目标里资料没讲到的内容单列missing，不编造资料、章节或知识点，不自动删目标、不自动补搜。
 用户在聊天里调整结构时遵从最新要求。removed_content是学习者已删的模块/章节，不得因目录或概述中还有这些内容就重新加入。
@@ -75,6 +77,45 @@ _TEACHING_REQUIREMENT = re.compile(
 
 def material_structure_request(goal, form, preview, sections, *, previous=None, instruction='', removed_content=()):
     directory = build_sections((), {}, directory_sections=sections, removed_content=removed_content)
+    # A folded title alone cannot establish coverage. Keep names from its
+    # canonical members (already scope-filtered), ordered breadth-first.
+    by_id = {s.id: s for s in sections}
+    source_ids = dict.fromkeys(getattr(s, 'source_id', s.source_title) for s in directory)
+    source_aliases = {sid: f'r{i}' for i, sid in enumerate(source_ids, 1)}
+    source_names = {source_aliases[getattr(s, 'source_id', s.source_title)]: s.source_title for s in directory}
+    child_names = {}
+    for section in directory:
+        paths = [tuple(by_id[r].title.split(' / ')) for r in (getattr(section, 'members', ()) or (section.id,))]
+        common = list(paths[0])
+        for path in paths[1:]:
+            common = common[:next((i for i, (a, b) in enumerate(zip(common, path)) if a != b), min(len(common), len(path)))]
+        names = {}
+        for path in paths:
+            for end in range(len(common)+1, len(path)+1):
+                names.setdefault(path[len(common):end], len(names))
+        child_names[section.id] = list(dict.fromkeys(path[-1] for path in sorted(names, key=lambda path: (len(path), names[path]))))
+    # Reuse the existing catalogue's conservative token bound, not a new
+    # tokenizer. Deduplicate source labels before spending space on headings.
+    from ..connections.pricing import _bounds
+    name_limit, label_limit = 30, 160
+    while True:
+        rows = []
+        for section in directory:
+            names = child_names[section.id]
+            shown = names[:name_limit]
+            row = dict(id=section.id, source=source_aliases[getattr(section, 'source_id', section.source_title)], title=section.title[:label_limit])
+            if shown: row['headings'] = shown
+            if len(names) > len(shown): row['more'] = f'等共{len(names)}个小标题（还有{len(names)-len(shown)}个未展开）'
+            rows.append(row)
+        material_directory = dict(sources={k: v[:label_limit] for k, v in source_names.items()}, directory=rows)
+        if _bounds(json.dumps(material_directory, ensure_ascii=False, separators=(',', ':')))[1] <= 15000:
+            break
+        if name_limit:
+            name_limit -= 1
+        elif label_limit > 8:
+            label_limit //= 2
+        else:
+            raise AgentFormatError('资料目录超过15000 token预算，请分次提供资料。')
     # Only explicit teaching phrases are removed; adjacent subject names remain.
     # This is a request projection, never a rewrite of the learner's saved text.
     preferences = []
@@ -105,7 +146,7 @@ def material_structure_request(goal, form, preview, sections, *, previous=None, 
         goal=learning_goal, form=learning_form, rough_structure=rough, previous=last, instruction=change,
         removed_content=list(removed_content),
         teaching_preferences=preferences,
-        directory=[dict(id=s.id, source=s.source_title, title=s.title) for s in directory]), ensure_ascii=False)}]
+        **material_directory), ensure_ascii=False, separators=(',', ':'))}]
 
 
 def parse_material_structure(text, sections, *, removed_content=()):

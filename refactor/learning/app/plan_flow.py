@@ -690,7 +690,7 @@ class PlanFlow:
         value, _ = self._ask('outline', request,
             lambda text: agents.parse_material_structure(text, sections,
                 removed_content=draft.get('removed_content', ())), ctx,
-            plan_id=draft['plan_id'], max_tokens=12288)
+            plan_id=draft['plan_id'], max_tokens=32768)
         self._remember_removed_content(draft, previous, value, sections)
         # Classroom already reads the plan's original goal/final_goal. Preserve
         # note/chat-only preferences there too, without changing account presets

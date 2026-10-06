@@ -25,7 +25,7 @@ async function run() {
   document.querySelector<HTMLElement>('.react-flow__node-module')!.click()
   await until(() => document.querySelector('.pg-details'), "open drawer")
   const chapters = document.querySelector<HTMLDetailsElement>('.pg-chapters')!
-  check(!chapters.open, "all chapter references collapsed by default")
+  check(chapters.open, "structure chapter references visible by default")
   chapters.open = true
   check(document.querySelectorAll('.pg-chapters li').length === data.structure.material_structure.modules[0].chapters.length, "all chapters retained")
   button("确认结构，开始填知识点").click()
@@ -42,6 +42,8 @@ async function run() {
   button("全屏查看").click()
   await until(() => document.querySelector('.pg-fullscreen'), "fullscreen")
   check(document.querySelector('.pg-fullscreen')?.parentElement === document.body, "portal fills window outside chat clipping")
+  document.dispatchEvent(new KeyboardEvent('keydown', {key: "Escape", bubbles: true}))
+  await until(() => !document.querySelector('.pg-details'), "Escape closes details first")
   document.dispatchEvent(new KeyboardEvent('keydown', {key: "Escape", bubbles: true}))
   await until(() => !document.querySelector('.pg-fullscreen'), "Escape closes fullscreen")
   const messages: any[] = [{id:'s',role:'ai',kind:'sources',text:''},{id:'e',role:'ai',kind:'error',text:'旧截断错误'}, {id:'ok',role:'ai',kind:'material_preview',text:''}]

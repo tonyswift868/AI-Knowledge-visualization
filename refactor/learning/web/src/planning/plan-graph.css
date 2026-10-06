@@ -28,8 +28,8 @@
 .plan-graph .react-flow__controls-button { background: var(--surface-solid); color: var(--text); fill: var(--text); border-color: var(--border); }
 .plan-graph .react-flow__controls-button:hover { background: var(--bg-2); }
 .plan-graph .react-flow__minimap { background: var(--surface-solid); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; width: 110px; height: 66px; margin: 10px; }
-.pg-details { width: 360px; max-width: 45%; padding: 18px 20px; overflow: auto; background: var(--surface-solid); border-left: 1px solid var(--border-strong); animation: pg-slide .2s ease-out; user-select: text; }
-.pg-details header { display: flex; justify-content: space-between; align-items: center; }
+.pg-details { width: 360px; max-width: 45%; min-height: 0; flex-shrink: 0; padding: 18px 20px; overflow: auto; overscroll-behavior: contain; background: var(--surface-solid); border-left: 1px solid var(--border-strong); animation: pg-slide .2s ease-out; user-select: text; }
+.pg-details header { display: flex; justify-content: space-between; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 1; background: var(--surface-solid); padding: 10px 0; }
 .pg-eyebrow { color: var(--accent); font-size: 12px; }
 .pg-details h3 { margin: 14px 0 16px; font-size: 20px; overflow-wrap: anywhere; line-height: 1.5; }
 .pg-details h4 { font-size: 12px; color: var(--text-3); margin: 12px 0 4px; }
