@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-06）：用户在源代码版亲测（软件由架构师从源代码启动，数据 D:\MentorFlowData\account-shell）。60-MF01、61-MF02 已合入，软件已重启，用户从“按资料确认结构”接着测；问题随测随记。
+- **现在在做的事**（2026-10-06）：用户在源代码版亲测（软件由架构师从源代码启动，数据 D:\MentorFlowData\account-shell）。62-MF01（“资料没讲到”误报）、62-MF02（详情面板自己消失）已起草，待用户转发，两人并行、文件不重叠。
 
 ## 协作方式
 
@@ -62,8 +62,8 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲（60-MF01 已合入） | — |
-| MF-02 | 空闲（61-MF02 已合入） | — |
+| MF-01 | 62-MF01 已起草，待用户转发 | server |
+| MF-02 | 62-MF02 已起草，待用户转发 | client |
 | MF-03 | 空闲（58 已合入） | — |
 | MF-04 | 空闲（59-MF04 完成） | — |
 | MF-05 | 空闲（59-MF05b 回执已回） | — |
@@ -75,6 +75,66 @@
 ## 待派队列
 
 - 无（第五十九批两份已起草，见上）。
+
+## 第六十二批任务原文（2026-10-06，基线 21c73e2f）
+
+### [62-MF01] server｜结构这一步收拢后的目录带上小标题，覆盖判断才准
+
+~~~text
+【MentorFlow 第六十二批｜MF-01（工位 server）｜结构这一步模型“没看清资料”：收拢后的目录条目要带上它下面的小标题，覆盖判断和分模块才准】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有的资料结构这一步：course/planner_agents.py（60-MF01 加的目录收拢、material_structure_request、MATERIAL_STRUCTURE_SYSTEM）、必要时 app/plan_flow.py 的 material_structure。不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard 21c73e2f
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。D:\MentorFlowApp 只读。用户正在用 D:\MentorFlowData\account-shell 亲测：只读，不改不删，要用的数据复制到测试目录再用。先读 AGENTS.md（磁盘规则、功能先行不加安全加固）：所有产物在 D:\MentorFlow\.local\test-tmp\fix62-coverage\ 下；中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+同时在跑：62-MF02（client，只改前端图的详情面板，不碰你的文件）。
+用户在等着接着测，尽快，目标半小时内交回。遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。全量测试、web 构建由你跑并如实写结果。
+背景（CURRENT_STATE [PLAN-04] 用户亲测）：60-MF01 把 JavaGuide 的目录从 906 条收拢到 69 条后，这一步不再超长，但“资料没讲到”列出了 AI Agent 核心概念、Java 并发/JVM/Spring/消息队列/缓存/MySQL 等——JavaGuide 明明都有（收拢前章节里有“大模型基础 / Agent / ReAct、MCP、RAG”等）。判断：模型只看到上层标题（如“大模型基础”“Java”），看不到下面讲了什么，就判成没讲到。后果：用户被误导去补资料，或点“删掉没讲到的部分并继续”把本来有的目标删掉；模型也可能因为看不清而把整块相关条目漏出所有模块，那一块就不会生成知识点。
+要做
+  1. 收拢后的每个目录条目附带它下面的小标题名（只带名字，不带正文），按层级从上往下取，每条最多约 30 个名字、超出写“等 N 个”；整份目录给模型的部分控制在约 1.5 万 token 以内（资料再大也不超，自动减少每条附带的名字数）。模型仍只回条目编号，程序展开，60-MF01 的其余做法不变。
+  2. 提示里写清：判断“资料没讲到”要看条目下面的小标题，只有目标里的内容在整份目录（含小标题）里都找不到才列入 missing。
+  3. 复现与验证：复制用户这份草稿（目标“Java 后端 + AI Agent 面试”，JavaGuide），修前离线确认请求里看不到 Agent、JVM 等小标题；修后用真实模型只跑这一步一次，报告：输入/输出/思考用量、耗时、模块数与模块名、missing 原文。完成标准里 missing 不能再出现 JavaGuide 有对应章节的内容（AI Agent、ReAct、MCP、RAG、Java 并发、JVM、Spring、消息队列、缓存、MySQL 等），逐条对照章节名写进报告。再离线回放 small57 删除范围，确认删掉的内容仍不被加回。
+  4. 全量通过、web 构建通过。
+花费：上限 ¥0.3。
+完成标准：真实一次成功、不超上限；missing 里没有资料其实有的内容；删除范围回放通过；全量通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix62-coverage\report.md。
+回执（尽量短，用表格）：【MF-01｜server｜第六十二批｜完成/部分完成/受阻】基线 ／ 提交 ／ 条目怎么带小标题、总量怎么控 ／ 修前修后：输入 token、输出与思考、耗时、模块数与模块名 ／ missing 修前修后原文与逐条对照 ／ 全量、web 构建 ／ 花费 ／ 本地最终占用
+~~~
+
+### [62-MF02] client｜结构图点模块后详情面板自己消失
+
+~~~text
+【MentorFlow 第六十二批｜MF-02（工位 client）｜结构图点模块后详情面板自己消失：面板要留住，并显示能看到的内容】
+
+现成项目与许可证（第一节）
+  - 只改你上一批写的 refactor/learning/web/src/planning/PlanGraph.tsx、plan-graph.css 与 NewPlan.tsx 里调用它的地方（React Flow @xyflow/react，MIT，已安装）。不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard 21c73e2f
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。D:\MentorFlowApp 只读。用户正在用 D:\MentorFlowData\account-shell 亲测：只读，不改不删。先读 AGENTS.md（磁盘规则）：所有产物在 D:\MentorFlow\.local\test-tmp\fix62-graph-panel\ 下；中间产物用完即删（被系统拦住就列路径），回执写明最终占用。
+同时在跑：62-MF01（server，只改后端结构请求，不碰你的文件）。
+用户在等着接着测，尽快，目标半小时内交回。遇到选择自己决定，回执写明理由，不停下来问。全量测试、web 构建由你跑并如实写结果。花费 ¥0。
+背景（CURRENT_STATE [PLAN-04] 用户亲测）：在真实软件（Qt WebEngine 里）的“按资料确认结构”图上点一个模块，右侧详情面板弹出来又立刻自己消失，用户以为是 bug。用户认可这一步不显示知识点，但点开后要能看到能看的内容，不能一点就没了。
+要做
+  1. 查清面板为什么自己消失（例如点节点的事件冒泡到画布、画布点击把选中清空，或重新渲染/自动适配全图时选中状态被重置），在回执里一句话写明原因，从根上修，不加延时之类的绕法。
+  2. 面板点开后一直留着，直到用户点面板上明显的“关闭”按钮、按 Esc、或点另一个模块（切换到那个模块）。点画布空白处不要关。
+  3. 面板内容：结构这一步显示模块名、“学什么”、依据的资料章节（全部列出，可滚动）、预计知识点会从这些章节生成的一句说明；知识地图这一步照上一批显示全部知识点。内容多时面板内部滚动，不撑破页面。
+  4. 用浏览器测试复现：修前点节点后面板消失、修后面板留住；结构步与知识地图步各测一次；再截两张图（亮色、暗色）放进报告。
+  5. 全量通过、web 构建通过。
+完成标准：两步里点模块后面板都稳定留住并显示内容；关闭方式按上面三种；全量、构建通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix62-graph-panel\report.md（附截图）。
+回执（尽量短，用表格）：【MF-02｜client｜第六十二批｜完成/部分完成/受阻】基线 ／ 提交 ／ 面板消失的原因 ／ 怎么修、关闭方式 ／ 面板显示什么 ／ 复现修前修后 ／ 全量、web 构建 ／ 截图路径 ／ 本地最终占用
+~~~
 
 ## 第六十一批任务原文（2026-10-06，基线 ca0208dd）
 
@@ -281,6 +341,8 @@
 | 59-MF05b | MF-05 library | 续跑按块测找题（¥9） | DIR-01、QA-01、BUG-51 | 110ef0c2 | 部分完成：生成 2 模块 163 点，第一个点上网找题截断又被模拟工具止损，未到备题；两轮合计约 ¥5.85 |
 | 60-MF01 | MF-01 server | 大资料“按资料调整结构”超上限：目录收拢、去掉抄章节名（¥0.5） | BUG-53、PLAN-04 | e910c914 | 完成，已合入（0ddbbc4d）：目录 906→69 条，真实一次 39.9 秒给出 4 个模块 |
 | 61-MF02 | MF-02 client | 结构树与知识地图改成可拖动缩放、可点开详情的好看图；结构步按钮说清下一步、清旧错误提示（¥0） | PLAN-04 | ca0208dd | 完成，已合入（8fb2273a），待用户亲测 |
+| 62-MF01 | MF-01 server | 收拢后的目录条目带小标题，“资料没讲到”不再误报（¥0.3） | PLAN-04、BUG-53 | 21c73e2f | 已起草，待用户转发 |
+| 62-MF02 | MF-02 client | 结构图详情面板不再自己消失、显示能看的内容（¥0） | PLAN-04 | 21c73e2f | 已起草，待用户转发 |
 
 ## 任务模板
 
