@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import dagre from "@dagrejs/dagre"
 import { Background, BackgroundVariant, Controls, Handle, MarkerType, MiniMap, Position,
   ReactFlow, ReactFlowProvider, applyNodeChanges, type BuiltInEdge, type Node, type NodeProps, type ReactFlowInstance } from "@xyflow/react"
-import { BookOpen, Clock3, GitBranch, Maximize2, Minimize2, X } from "lucide-react"
+import { BookOpen, Clock3, GitBranch, Maximize2, Minimize2, Trash2, X } from "lucide-react"
 import "@xyflow/react/dist/style.css"
 import "./plan-graph.css"
 
@@ -17,6 +17,7 @@ export type GraphModule = {
 export type GraphStage = { title: string; modules: GraphModule[] }
 type ModuleData = { module: GraphModule; number: number; mode: "structure" | "outline"; active?: boolean }
 type ModuleNode = Node<ModuleData, "module">
+type DeleteMap = (module: string, point?: number) => void
 const WIDTH = 294, HEIGHT = 204, GAP = 44, PAD = 26
 
 const ModuleCard = React.memo(function ModuleCard({ data }: NodeProps<ModuleNode>) {
@@ -83,12 +84,13 @@ export function graphLayout(stages: GraphStage[], mode: "structure" | "outline")
   return { nodes, edges }
 }
 
-function ModuleDetails({ module: m, stages, mode, close }: { module: GraphModule; stages: GraphStage[]; mode: "structure" | "outline"; close: () => void }) {
+function ModuleDetails({ module: m, stages, mode, close, onDelete, busy }: { module: GraphModule; stages: GraphStage[]; mode: "structure" | "outline"; close: () => void; onDelete?: DeleteMap; busy?: boolean }) {
   const titleOf = Object.fromEntries(stages.flatMap(s => s.modules).map(m => [m.key, m.title]))
   const chapters = m.chapters ?? m.ref_titles ?? m.refs ?? []
   return <aside className="pg-details nodrag nowheel" aria-label={`${m.title}详情`}>
     <header><span className="pg-eyebrow">{mode === "structure" ? "模块内容与依据" : `${m.points?.length ?? 0} 个知识点`}</span><button className="pg-icon" onClick={close} aria-label="关闭模块详情"><X size={18} />关闭</button></header>
     <h3>{m.title}</h3><h4>学什么</h4><p>{m.summary}</p>
+    {mode === "outline" && onDelete && <button className="pg-expand" disabled={busy} onClick={() => onDelete(m.key)}><Trash2 size={14} />删掉这个模块</button>}
     {m.minutes && <p className="pg-meta">预计 {m.minutes[0]}–{m.minutes[1]} 分钟</p>}
     {!!m.prerequisites?.length && <p className="pg-meta">先学：{m.prerequisites.map(k => titleOf[k] ?? k).join("、")}</p>}
     {mode === "structure" && <p className="pg-meta">知识点将从这些资料章节生成，确认结构后会给你看完整知识地图。</p>}
@@ -96,7 +98,7 @@ function ModuleDetails({ module: m, stages, mode, close }: { module: GraphModule
     {mode === "structure" && m.estimated_points && <p className="pg-meta">估计 {m.estimated_point_count ?? `${m.estimated_points[0]}–${m.estimated_points[1]}`} 个知识点 · 每点学习约 8 分钟<br /><small>参考范围 {m.estimated_points[0]}–{m.estimated_points[1]} 个</small></p>}
     {!!chapters.length && <details className="pg-chapters" open={mode === "structure"}><summary><BookOpen size={14} />全部依据章节 · {chapters.length} 处</summary><ol>{chapters.map((t, i) => <li key={i}>{t}{m.refs?.[i] && <small>{m.refs[i]}</small>}</li>)}</ol></details>}
     {mode === "outline" && <ol className="pg-points">{m.points?.map((p, i) => <li key={i}>
-      <div className="pg-point-title"><span>{i + 1}</span><b>{p.title}</b></div><p>{p.summary}</p>
+      <div className="pg-point-title"><span>{i + 1}</span><b>{p.title}</b>{onDelete && <button className="pg-icon" disabled={busy} aria-label={`删除知识点：${p.title}`} onClick={() => onDelete(m.key, i + 1)}><Trash2 size={14} /></button>}</div><p>{p.summary}</p>
       {p.source_general && <span className="pg-meta">来源一般</span>}
       {p.citations?.map((c, ci) => <details className="pg-citation" key={ci}><summary>依据：{c.title} · {c.locator}</summary>
         <blockquote>{c.quote}</blockquote><small>{c.chunk_id}</small>{c.url && <a href={c.url} target="_blank" rel="noreferrer">打开原文</a>}</details>)}
@@ -104,7 +106,7 @@ function ModuleDetails({ module: m, stages, mode, close }: { module: GraphModule
   </aside>
 }
 
-export function PlanGraph({ stages, mode = "outline" }: { stages: GraphStage[]; mode?: "structure" | "outline" }) {
+export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages: GraphStage[]; mode?: "structure" | "outline"; onDelete?: DeleteMap; busy?: boolean }) {
   const layout = React.useMemo(() => graphLayout(stages, mode), [stages, mode])
   const [nodes, setNodes] = React.useState(layout.nodes)
   const [selected, select] = React.useState<string | null>(null)
@@ -147,7 +149,7 @@ export function PlanGraph({ stages, mode = "outline" }: { stages: GraphStage[]; 
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="var(--border-strong)" />
         <Controls position="bottom-right" showInteractive={false} aria-label="地图缩放与适配" />
       </ReactFlow></div>
-      {detail && <ModuleDetails module={detail} stages={stages} mode={mode} close={() => select(null)} />}
+      {detail && <ModuleDetails module={detail} stages={stages} mode={mode} close={() => select(null)} onDelete={onDelete} busy={busy} />}
     </div>
     <footer className="pg-legend"><MiniMap position="bottom-left" style={{ width: 110, height: 66 }} pannable zoomable nodeColor={n => n.type === "stage" ? "var(--accent-soft)" : "var(--accent)"} maskColor="var(--surface)" />
       <span><i />学习顺序</span><span><i className="pg-arrow" />先学关系</span><span>拖动画布 · 滚轮缩放 · 点模块看详情{selected ? " · Esc 关闭详情" : fullscreen ? " · Esc 退出" : ""}</span>

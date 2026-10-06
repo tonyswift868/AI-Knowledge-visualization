@@ -49,6 +49,7 @@ intents 必须有 1～3 个；同一种 kind 只出现一次（同类要求合�
 - decide_sources {adopt:[n...],reject:[n...]}：按名称、序号或描述定位具体 cards，n 必须是 ctx.cards 的整数编号，两列表都给，至少一个非空，不能重复/相交。不存在或有多个匹配就 ask_user。“只用这一份”明确指到某卡时采用它、拒绝其他尚未拒绝的卡；不能擅自丢掉已采用资料。
 - limit_scope {include:[id...],exclude:[id...]}：只学前几章/不要某章。id 必须来自 ctx.sections；两个列表都给，至少一个非空，不重复/相交。“只学前4章”列出 include，不编造编号。目录有多份资料、重号或顺序/范围不明时 ask_user，不能猜是哪本书。只凭 title 无法推断未提供的正文。
 - select_modules {include:[n...],exclude:[n...]}：仅 material_preview 阶段删留已展示的资料结构模块。只返回 ctx.modules 中的整数编号，不返回名称、章节 id 或模块 key；用户说名称时，按编号与名称对照换成编号。“只留这些”给 include（其余删除），“删掉这些”给 exclude（其余保留），两个列表都给。不存在、重复或相交的编号由程序忽略并说明，其他有效编号照办。只做模块删留，不重写结构；要改模块内部章节或合并模块用 revise_outline。
+- delete_map {modules:[n...],points:[{"module":n,"n":知识点序号}...],unknown:[未找到的名称...]}：仅 outline（知识地图）阶段直接删除已填好的模块或单个知识点。按 ctx.modules 的编号、名称与 points 对照定位；只回编号。不存在或有歧义的名称放 unknown，不能猜。宿主会先确认，确认后本地删除并保留其他已生成内容，不重新填点。这里是“知识地图”，不要称作“轮廓阶段”或说尚无可删模块；纯删除不得用 supplement/limit_scope/revise_outline。
 - abandon_scope {items:[内容, ...]}：资料覆盖检查后，用户明确表示这部分暂时不学/放弃。items 是具体内容列表，至少一项；只记录范围，不把资料外内容换成新目标。
 - revise_outline {instruction}：改轮廓路线（拆细、合并、排序、加实战等），用最多 1000 字保留原要求，不自造模块。生成前的模块修改用它，生成后明确删除/移动用 edit_modules。
 - edit_modules {delete:[n...],move:[{"n":n,"to":位置}...]}：仅 ready 阶段。n 必须来自 modules，两个列表都给，至少一个动作；不能重复或一边删除一边移动同一模块。to 为删除完成后模块列表中 1 起的位置，不超过剩余模块数；move 按列表顺序执行。宿主仍需检查前置依赖。
@@ -74,6 +75,7 @@ _FIELDS = {
                     "weekday_weights", "special_days", "notes_append"},
     "find_sources": {"instruction"}, "decide_sources": {"adopt", "reject"},
     "limit_scope": {"include", "exclude"}, "select_modules": {"include", "exclude"},
+    "delete_map": {"modules", "points", "unknown"},
     "abandon_scope": {"items"}, "revise_outline": {"instruction"},
     "edit_modules": {"delete", "move"}, "proceed": {"step"},
     "question": {"answer"}, "ask_user": {"question"}, "refuse": {"reason"},
@@ -289,6 +291,25 @@ def parse_intents(answer: str, ctx: dict, *, user_text=None) -> list[Intent]:
                         used.add(n)
                 params[key] = accepted
             params.update(ignored=ignored)
+        elif kind == 'delete_map':
+            if ctx['phase'] != 'outline':
+                raise AgentFormatError('delete_map phase')
+            _list_ids(params['modules'], modules, 'modules', numeric=True)
+            if not isinstance(params['points'], list) or not isinstance(params['unknown'], list):
+                raise AgentFormatError('delete_map selections')
+            by_n = {m['n']: m for m in ctx['modules']}
+            seen_points = set()
+            for p in params['points']:
+                if (not isinstance(p, dict) or set(p) != {'module','n'}
+                        or type(p['module']) is not int or p['module'] not in by_n
+                        or type(p['n']) is not int or not 1 <= p['n'] <= len(by_n[p['module']].get('points', []))
+                        or (p['module'],p['n']) in seen_points):
+                    raise AgentFormatError('delete_map point')
+                seen_points.add((p['module'],p['n']))
+            for name in params['unknown']:
+                _string(name, 'unknown name', 300)
+            if not any(params.values()):
+                raise AgentFormatError('empty delete_map')
         elif kind == "edit_modules":
             if ctx["phase"] != "ready":
                 raise AgentFormatError("edit_modules phase")

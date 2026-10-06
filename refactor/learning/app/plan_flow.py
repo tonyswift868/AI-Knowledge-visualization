@@ -774,6 +774,11 @@ class PlanFlow:
             lambda text: agents.parse_material_structure(text, sections,
                 removed_content=draft.get('removed_content', ())), ctx,
             plan_id=draft['plan_id'], max_tokens=32768)
+        from ..course.question_bank import original_text
+        deleted_names = {original_text(r['title']).casefold() for r in draft.get('removed_content', ())
+                         if r['kind'] == 'module'}
+        value['modules'] = [m for m in value['modules']
+                            if original_text(m['title']).casefold() not in deleted_names]
         self._remember_removed_content(draft, previous, value, sections)
         # Classroom already reads the plan's original goal/final_goal. Preserve
         # note/chat-only preferences there too, without changing account presets
@@ -1360,6 +1365,10 @@ class PlanFlow:
             facts["ranges"] = draft["outline"]["ranges"]
             facts["outline"] = [{"stage": s["title"], "modules": [m["title"] for m in s["modules"]]}
                                 for s in draft["outline"]["stages"]]
+            if phase == 'outline':
+                modules = [dict(n=n, title=m['title'], key=m['key'],
+                    points=[dict(n=i, title=p['title']) for i,p in enumerate(m.get('points', []), 1)])
+                    for n,m in enumerate(agents.outline_modules(draft['outline']), 1)]
         if draft.get("estimate"):
             facts["estimate"] = draft["estimate"]
         if draft.get("preview"):
@@ -1388,6 +1397,13 @@ class PlanFlow:
         draft["messages"].append(_msg("user", "user_text", message))
         self.save(draft)
         compact = re.sub(r"[\s，,。！!？?]+", "", message)
+        if phase == 'outline' and draft.get('pending_map_delete'):
+            if compact in ('是', '是的', '确定', '确认', '确认删除', '确定删除', '好的'):
+                return self.confirm_map_delete(draft, True)
+            if compact in ('否', '不', '取消', '不删了', '不要删', '取消删除'):
+                return self.confirm_map_delete(draft, False)
+            # A new request supersedes the old confirmation; never apply stale selections.
+            draft.pop('pending_map_delete', None)
         if phase == 'questions' and compact in ('就这样吧', '就这样', '直接开始', '直接开始吧', '开始吧'):
             draft['goal'] = draft.get('goal') or draft['form']['goal']
             return self._show_preview(draft, ctx)
@@ -1404,8 +1420,17 @@ class PlanFlow:
                 return
         self.status(draft["plan_id"], "正在理解你的意思…")
         context = self._intent_context(draft)
+        if phase == 'outline' and re.search(r'删掉|删除|去掉', text):
+            # Map deletions only need the already generated names/numbers.
+            # Sending the book's full directory hides those targets and costs
+            # more than the local edit itself. Other intent contexts stay intact.
+            context = dict(context, sections=[], facts={k:v for k,v in context['facts'].items()
+                                                       if k in ('ranges', 'outline')})
         intents, _ = self._ask("plan_intent", plan_intent.intent_request(context, text),
                                lambda answer: plan_intent.parse_intents(answer, context, user_text=text), ctx, plan_id=draft["plan_id"])
+        deletions = [i for i in intents if i.kind == 'delete_map']
+        if deletions:
+            return self._carry_out(draft, ctx, deletions[0], context)
         supplements = [i for i in intents if i.kind == 'supplement']
         confirm_step = {'preview': 'sources', 'material_preview': 'outline'}.get(phase)
         confirms = [i for i in intents if i.kind == 'proceed' and i.params['step'] == confirm_step]
@@ -1487,6 +1512,12 @@ class PlanFlow:
 
     def _carry_out(self, draft, ctx, intent, context):
         kind, params, phase = intent.kind, intent.params, draft["phase"]
+        if kind == 'delete_map':
+            modules = agents.outline_modules(draft.get('outline') or {'stages': []})
+            return self.request_map_delete(draft,
+                [modules[n-1]['key'] for n in params['modules']],
+                [dict(module=modules[p['module']-1]['key'], n=p['n']) for p in params['points']],
+                params['unknown'])
         if kind == "import_sources":
             draft["phase"] = "sources"
             return self._import_links(draft, ctx, params["urls"])
@@ -1583,6 +1614,82 @@ class PlanFlow:
                 return self._say(draft, "计划还没生成完，暂时不能开始。")
             return self._say(draft, "开始后就不能再删模块、调顺序了。确认没问题就点下面的“开始计划”。")
         raise BridgeError("AGENT_FORMAT", "没能理解这句话，请换个说法。")
+
+    def request_map_delete(self, draft, module_keys, points, unknown=()):
+        """Queue a local map edit; neither this nor confirmation calls a model."""
+        if draft['phase'] != 'outline' or not draft.get('outline'):
+            raise BridgeError('PHASE_INVALID', '请先到知识地图这一步，再删除模块或知识点。')
+        modules = agents.outline_modules(draft['outline'])
+        by_key = {m['key']:m for m in modules}
+        if not isinstance(module_keys, list) or not isinstance(points, list):
+            raise BridgeError('PARAM_INVALID', '请选择要删除的模块或知识点。')
+        keys = list(dict.fromkeys(module_keys))
+        if any(k not in by_key for k in keys):
+            raise BridgeError('PARAM_INVALID', '模块已变化，请重新选择。')
+        selected, names = [], [by_key[k]['title'] for k in keys]
+        count = sum(len(by_key[k]['points']) for k in keys)
+        for p in points:
+            if (not isinstance(p, dict) or set(p) != {'module','n'} or p['module'] not in by_key
+                    or type(p['n']) is not int or not 1 <= p['n'] <= len(by_key[p['module']]['points'])):
+                raise BridgeError('PARAM_INVALID', '知识点已变化，请重新选择。')
+            if p['module'] in keys or p in selected: continue
+            selected.append(dict(p))
+            names.append(by_key[p['module']]['points'][p['n']-1]['title'])
+            count += 1
+        draft.pop('pending_map_delete', None)
+        if unknown:
+            self._say(draft, '没有找到：' + '、'.join(unknown) + '。现有模块：' +
+                '、'.join(f"{i}. {m['title']}" for i,m in enumerate(modules, 1)) + '。请选现有模块或知识点。')
+        if not names: return
+        prompt = '将删掉：' + '、'.join(names) + f'，共 {count} 个知识点，删除后不能恢复，确定吗？'
+        draft['pending_map_delete'] = dict(modules=keys, points=selected, text=prompt,
+                                           version=draft['outline'].get('version'))
+        return self._say(draft, prompt, 'map_delete_confirmation')
+
+    def confirm_map_delete(self, draft, confirm):
+        if type(confirm) is not bool:
+            raise BridgeError('PARAM_INVALID', '请选择确定或取消。')
+        pending = draft.get('pending_map_delete')
+        if draft['phase'] != 'outline' or not pending:
+            raise BridgeError('PHASE_INVALID', '现在没有待确认的知识地图删除。')
+        if pending.get('version') != draft['outline'].get('version'):
+            draft.pop('pending_map_delete', None)
+            return self._say(draft, '知识地图已变化，请重新选择要删除的内容。')
+        draft.pop('pending_map_delete')
+        if not confirm: return self._say(draft, '已取消删除，知识地图没有改动。')
+        removed_keys = set(pending['modules'])
+        removed = list(draft.get('removed_content', []))
+        for stage in draft['outline']['stages']:
+            for m in stage['modules']:
+                if m['key'] in removed_keys:
+                    row = dict(kind='module', title=m['title'])
+                    if row not in removed: removed.append(row)
+                else:
+                    deleted = {p['n'] for p in pending['points'] if p['module']==m['key']}
+                    for i,p in enumerate(m['points'], 1):
+                        if i in deleted:
+                            row = dict(kind='point', title=p['title'])
+                            if row not in removed: removed.append(row)
+                    m['points'] = [p for i,p in enumerate(m['points'], 1) if i not in deleted]
+                    m['minutes'] = [len(m['points'])*MINUTES_PER_POINT_GUESS]*2
+                    m['prerequisites'] = [k for k in m.get('prerequisites', []) if k not in removed_keys]
+            stage['modules'] = [m for m in stage['modules'] if m['key'] not in removed_keys]
+        draft['outline']['stages'] = [s for s in draft['outline']['stages'] if s['modules']]
+        draft['outline']['version'] = draft['outline'].get('version', 0) + 1
+        draft['outline'].pop('agent', None)
+        draft['messages'].append(_msg('ai', 'outline', '这是删减后的知识地图。', version=draft['outline']['version']))
+        draft['removed_content'] = removed
+        structure = draft.get('material_structure')
+        if structure:
+            previous = dict(structure, modules=list(structure['modules']))
+            structure['modules'] = [m for m in structure['modules'] if m['key'] not in removed_keys]
+            self._remember_removed_content(draft, previous, structure, self._sections(draft)[1])
+        modules = agents.outline_modules(draft['outline'])
+        draft['outline']['ranges'] = map_ranges(self._window(draft), sum(len(m['points']) for m in modules),
+                                               module_counts=[len(m['points']) for m in modules])
+        draft.pop('estimate', None)
+        self._say(draft, '已删除所选内容，其余知识点和已采用资料均已保留；时间预估已更新。')
+        if modules: self.estimate(draft)
 
     _FORM_LABELS = {"goal": "学习目标", "final_goal": "最终目标", "level": "当前水平", "level_note": "水平说明",
                     "start": "开始日期", "end": "结束日期", "daily_cap": "每天最多学习时长",
@@ -2024,6 +2131,8 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.delete": lambda p, c: flow().delete_started(plan_id(p)),
         "plan.submit": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().submit_form(d, x, p.get("form")), c),
         "plan.say": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().chat(d, x, text(p)), c),
+        "plan.map_delete": lambda p,c: flow().run(plan_id(p), lambda d,x: flow().request_map_delete(d, p.get('modules', []), p.get('points', [])), c),
+        "plan.map_delete_confirm": lambda p,c: flow().run(plan_id(p), lambda d,x: flow().confirm_map_delete(d, p.get('confirm')), c),
         "plan.more": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().more_sources(d, x), c),
         "plan.decide": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().decide(d, text(p, "card_id", 40), p.get("adopt") is True, ctx=x), c),
         "plan.missing": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().resolve_missing(d, x, text(p, 'action', 20)), c),

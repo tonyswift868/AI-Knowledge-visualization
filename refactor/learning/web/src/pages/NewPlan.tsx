@@ -30,6 +30,7 @@ type FormData = {
 export type Draft = {
   plan_id: string; phase: "form" | "questions" | "preview" | "sources" | "material_preview" | "outline" | "generating" | "ready"; form: FormData | null
   name?: string; goal: string; messages: Msg[]; sources: Card[]; outline: Outline | null; generation: Record<string, string>; coverage?: Coverage
+  pending_map_delete?: {text: string}
   estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string; blocked?: boolean; points?: number }
   preview?: { summary: string; modules: { title: string; summary: string }[]; version: number }
   recommendations?: { card_id: string; title: string; type: string; url: string; why: string; modules: string[] }[]
@@ -150,6 +151,7 @@ export function NewPlan() {
   const cards = Object.fromEntries(draft.sources.map((c) => [c.card_id, c]))
   const adopted = draft.sources.filter((c) => c.status === "adopted").length
   const lastOutline = [...draft.messages].reverse().find((m) => m.kind === "outline")?.id
+  const lastDeleteConfirmation = [...draft.messages].reverse().find((m) => m.kind === "map_delete_confirmation")?.id
   const canType = ["questions", "preview", "sources", "material_preview", "outline", "ready"].includes(draft.phase)
   const placeholder = {
     questions: "说说你的想法；也可以说“就这样吧”，先看大致模块…",
@@ -252,7 +254,7 @@ export function NewPlan() {
               <div key={m.id} className="plan-block fade-in">
                 <div className="bubble bot">{m.text}</div>
                 {m.id === lastOutline && draft.outline ? (
-                  <OutlineCard outline={draft.outline} />
+                  <OutlineCard outline={draft.outline} busy={busy} onDelete={draft.phase === "outline" ? (module, n) => act("plan.map_delete", n === undefined ? {modules:[module]} : {points:[{module,n}]}) : undefined} />
                 ) : <div className="muted small outline-old">第 {m.version} 版轮廓（已被新版替换）</div>}
                 {m.id === lastOutline && draft.phase === "outline" && (
                   <div className="plan-actions">
@@ -262,6 +264,10 @@ export function NewPlan() {
                 )}
               </div>
             )
+            if (m.kind === "map_delete_confirmation") return <div key={m.id} className="bubble bot" role="status"><p>{m.text}</p>{draft.phase === "outline" && draft.pending_map_delete && m.id === lastDeleteConfirmation && <div className="plan-actions">
+              <Button disabled={busy} onClick={() => act("plan.map_delete_confirm", {confirm:false})}>取消</Button>
+              <Button kind="primary" disabled={busy} onClick={() => act("plan.map_delete_confirm", {confirm:true})}>确定删除</Button>
+            </div>}</div>
             if (m.kind === "estimate") return <EstimateCard key={m.id} draft={draft} text={m.text} busy={busy} active={draft.phase === "outline"}
                                                             onGo={() => act("plan.generate")} onChange={(changes) => act("plan.window", {changes})} onShrink={() => setText("暂时不学：")} />
             if (m.kind === "progress") return <ProgressCard key={m.id} draft={draft} text={m.text} busy={busy} onRetry={() => act("plan.generate")} />
@@ -447,7 +453,7 @@ export function GroupedSources({cards,locked,onDecide}: {cards:Card[];locked:boo
 }
 
 // ------------------------------------------------------------------ outline
-function OutlineCard({ outline }: { outline: Outline }) {
+function OutlineCard({ outline, onDelete, busy }: { outline: Outline; onDelete?: (module:string, point?:number) => void; busy?:boolean }) {
   const r = outline.ranges
   const all = outline.stages.flatMap((s) => s.modules)
   return (
@@ -458,7 +464,7 @@ function OutlineCard({ outline }: { outline: Outline }) {
         <div><span>模块</span><b>{all.length} 个 · {outline.stages.length} 个阶段</b></div>
       </div>
       {r.over_cap && <div className="outline-warn"><CircleAlert size={16} />每日任务时长可能超过你设的上限（{r.cap} 分钟）。{r.suggested_end ? `可以考虑把结束日期延后到 ${r.suggested_end}，` : ""}或者让我精简路线。</div>}
-      <PlanGraph stages={outline.stages} />
+      <PlanGraph stages={outline.stages} onDelete={onDelete} busy={busy} />
       <p className="muted small" style={{ margin: "10px 2px 0" }}>每个点均已核验原文出处。想增删、合并或放弃哪部分，直接在下面告诉我。</p>
     </div>
   )
