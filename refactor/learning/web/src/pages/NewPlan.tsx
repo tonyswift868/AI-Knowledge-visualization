@@ -168,13 +168,16 @@ export function NewPlan() {
             </Button>
           )}
         </div>
-        <div className="stepper">
+        <div className="stepper" role="list" aria-label="建计划步骤">
           {STEPS.map(([, label], i) => (
-            <div key={label} className={`step-dot ${i < phaseIndex ? "done" : i === phaseIndex ? "on" : ""}`}>
+            <div key={label} role="listitem" tabIndex={0} title={`第 ${i + 1} 步：${label}`}
+                 aria-label={`第 ${i + 1} 步：${label}`} aria-current={i === phaseIndex ? "step" : undefined}
+                 className={`step-dot ${i < phaseIndex ? "done" : i === phaseIndex ? "on" : ""}`}>
               <span>{i < phaseIndex ? <Check size={13} /> : i + 1}</span><em>{label}</em>
             </div>
           ))}
         </div>
+        <p className="plan-step-current" aria-live="polite">第 {phaseIndex + 1} / {STEPS.length} 步 · {STEPS[phaseIndex]?.[1]}</p>
       </header>
 
       <section className="card plan-main">
