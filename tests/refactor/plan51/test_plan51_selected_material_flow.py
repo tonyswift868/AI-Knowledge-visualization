@@ -108,12 +108,11 @@ def test_plan51_local_upload_reopen_and_same_url_import_used_for_creation_and_ad
     assert len(reopened.load(pid)['sources'])==2
 
 
-def test_plan51_chapter_names_exact_and_map_cannot_change_structure():
+def test_plan51_host_fills_chapter_names_and_map_cannot_change_structure():
     section=agents.Section('s1.1','src','教材','第一章 / 方程',('c',),80,0,0)
     value=dict(summary='调整',modules=[dict(key='m1',title='方程',summary='学解法',refs=['s1.1'],chapters=['编的章节'])],missing=[])
-    with pytest.raises(agents.AgentFormatError):agents.parse_material_structure(json.dumps(value),[section])
-    value['modules'][0]['chapters']=[section.title]
     structure=agents.parse_material_structure(json.dumps(value),[section])
+    assert structure['modules'][0]['chapters']==[section.title]
     with pytest.raises(agents.AgentFormatError):agents.parse_material_map(json.dumps({'stages':[]}),[section],[],[],structure)
 
 

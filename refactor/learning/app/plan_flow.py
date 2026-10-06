@@ -661,7 +661,11 @@ class PlanFlow:
                           {date.fromisoformat(s["date"]): s["weight"] for s in draft["form"]["special_days"]})
 
     def _sections(self, draft):
-        """Sections of the adopted sources, limited to the chapters the learner chose."""
+        """Canonical sections within learner scope; only the model view is folded.
+
+        Keep the full hierarchy and stable IDs (PLAN-06); request construction
+        folds these to <=150 entries and parsing expands aliases back here.
+        """
         sources, chunks = self._adopted(draft)
         sections = agents.build_sections(sources, chunks,
             max_per_source=max(40, sum(map(len, chunks.values()))),
@@ -684,7 +688,8 @@ class PlanFlow:
             self._effective_form(draft), draft.get('accepted_preview'), sections,
             previous=previous, instruction=instruction, removed_content=draft.get('removed_content', ()))
         value, _ = self._ask('outline', request,
-            lambda text: agents.parse_material_structure(text, sections), ctx,
+            lambda text: agents.parse_material_structure(text, sections,
+                removed_content=draft.get('removed_content', ())), ctx,
             plan_id=draft['plan_id'], max_tokens=12288)
         self._remember_removed_content(draft, previous, value, sections)
         # Classroom already reads the plan's original goal/final_goal. Preserve
