@@ -8,7 +8,8 @@ import pytest
 
 from refactor.learning.connections import providers
 from refactor.learning.connections.errors import ModelError
-from refactor.learning.connections.gateway import BACKGROUND_PURPOSES, PURPOSE_EFFORT, PURPOSE_MIN_OUTPUT
+from refactor.learning.connections.gateway import (BACKGROUND_PURPOSES, BACKGROUND_TIMEOUT, MODEL_MAX_OUTPUT,
+                                                   PURPOSE_EFFORT, PURPOSE_MIN_OUTPUT)
 from refactor.learning.connections.usage import UsageLog
 from tests.refactor.gateway.test_gateway import configured, answer, MESSAGES, START, END, KEY
 from tests.refactor.providers.samples import anthro
@@ -21,12 +22,12 @@ _REAL_COMPLETE = providers.complete
 @pytest.mark.parametrize('purpose,minimum', list(PURPOSE_MIN_OUTPUT.items()))
 @pytest.mark.parametrize('requested', [1,4096,32768])
 def test_purpose_caps_raise_only_and_background_timeout(tmp_path,monkeypatch,purpose,minimum,requested):
-    g,_=configured(tmp_path)
+    g,p=configured(tmp_path)
     calls=[]
     monkeypatch.setattr(providers,'complete',lambda p,**kw:(calls.append(kw),answer())[1])
     g.complete(purpose,MESSAGES,max_tokens=requested)
-    assert calls[0]['max_tokens']==max(requested,minimum)
-    assert calls[0]['timeout']==(240 if purpose in BACKGROUND_PURPOSES else 120)
+    assert calls[0]['max_tokens']==MODEL_MAX_OUTPUT.get(p['model'],max(requested,minimum))
+    assert calls[0]['timeout']==(BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else 120)
     assert calls[0]['reasoning_effort']==(None if purpose=='profile' else 'high')
 
 
@@ -38,7 +39,7 @@ def test_timeout_keeps_larger_preset_and_foreground_unchanged(tmp_path,monkeypat
     calls=[]
     monkeypatch.setattr(providers,'complete',lambda p,**kw:(calls.append(kw),answer())[1])
     g.complete(purpose,MESSAGES)
-    assert calls[0]['timeout']==(max(240,timeout) if purpose in BACKGROUND_PURPOSES else timeout)
+    assert calls[0]['timeout']==(BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else timeout)
 
 
 @pytest.mark.parametrize('effort',['none','low','high','max'])
@@ -46,7 +47,7 @@ def test_timeout_keeps_larger_preset_and_foreground_unchanged(tmp_path,monkeypat
 def test_deepseek_wire_and_journal_show_actual_parameters(tmp_path,monkeypatch,effort,stream):
     from tests.refactor.providers.samples import anthro_frames,sse
     real=_REAL_COMPLETE
-    g,_=configured(tmp_path)
+    g,p=configured(tmp_path)
     bodies=[]
     def wire(request):
         bodies.append(json.loads(request.content))
@@ -75,7 +76,7 @@ def test_all_fixed_educational_efforts_high_except_three():
 
 @pytest.mark.parametrize('code',['MODEL_TIMEOUT','MODEL_CONNECTION_FAILED','MODEL_CANCELLED'])
 def test_missing_usage_is_unknown_not_zero(tmp_path,monkeypatch,code):
-    g,_=configured(tmp_path)
+    g,p=configured(tmp_path)
     def fail(*a,**kw):raise ModelError(code,'固定错误')
     monkeypatch.setattr(providers,'complete',fail)
     with pytest.raises(ModelError):g.complete('profile',MESSAGES)
@@ -111,7 +112,7 @@ def test_partial_stream_subtotals_and_unknown_count_survive_storage(tmp_path):
 @pytest.mark.parametrize('mode',['timeout','disconnect','cancel'])
 def test_real_interrupted_adapter_journals_partial_meters(tmp_path,monkeypatch,mode):
     from tests.refactor.providers.samples import frame
-    g,_=configured(tmp_path)
+    g,p=configured(tmp_path)
     cancel=threading.Event()
     class Interrupted(httpx.AsyncByteStream):
         async def __aiter__(self):

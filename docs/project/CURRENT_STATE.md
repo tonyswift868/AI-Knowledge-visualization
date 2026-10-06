@@ -1106,6 +1106,7 @@
 - 排查：D:\MentorFlowData\account-shell\logs\mentorflow.log 与该账号 model-usage.sqlite3 里 purpose=outline 的两条记录（2026-10-05T16:04、16:05 UTC）。
 - 解决（60-MF01）：给模型看的目录按层级收拢（JavaGuide 906 条 → 69 条），模型只回条目编号，程序展开到下面全部章节和块并填章节名；用户删掉的范围先过滤再收拢；去掉输出里的逐字章节名。思考档位不变（SYS-07）。放开上限原是第五十一批（936bd672）为不漏深层章节，收拢后章节和块仍全部保留。
 - 验证：60-MF01 用用户这份草稿真实跑一次：输入 62107 → 5353 token，输出 9205（思考 15668 字），39.9 秒成功，给出 4 个模块；small57 删除范围回放通过；全量 2963 通过（报告 .local/test-tmp/fix60-structure/report.md）。
+- 输出不设上限（用户 2026-10-06 定）：截断就是白花钱，必须生成完。模型网关对有公开最大输出的模型一律按最大值请求（deepseek-v4-flash / pro 官方 384K，api-docs.deepseek.com 价格页），按实际用量计费；只有“测试连接”保持很小。后台调用（含找题 research）总时限从 240–300 秒放宽到 1800 秒，长思考能跑完，用户仍可取消。思考档位不变（SYS-07）。实现 refactor/learning/connections/gateway.py 的 MODEL_MAX_OUTPUT、BACKGROUND_TIMEOUT；架构师全量 2970 通过（2026-10-06）。待用户在软件里重新生成结构验证。
 - 关联：[PLAN-04] [PLAN-06]
 - 更新：2026-10-06
 

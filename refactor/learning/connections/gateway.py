@@ -56,7 +56,13 @@ PURPOSE_MIN_OUTPUT = {
     'teacher': 8192, 'profile': 8192, 'check_profile': 8192, 'coverage_check': 8192,
     'point_materials': 24576, 'source_identity': 8192,
 }
-BACKGROUND_PURPOSES = frozenset({'point_materials', 'source_identity', 'profile', 'check_profile', 'coverage_check', 'outline', 'generate', 'distractor_check'})
+# User rule 2026-10-06: a truncated answer is wasted money, so models with a
+# published output maximum always get that maximum; billing follows actual use.
+# Source: api-docs.deepseek.com/quick_start/pricing ("MAXIMUM: 384K").
+MODEL_MAX_OUTPUT = {'deepseek-v4-flash': 384000, 'deepseek-v4-pro': 384000}
+# Total wall-clock limit for background calls; long thinking must be able to finish.
+BACKGROUND_TIMEOUT = 1800.
+BACKGROUND_PURPOSES = frozenset({'research', 'point_materials', 'source_identity', 'profile', 'check_profile', 'coverage_check', 'outline', 'generate', 'distractor_check'})
 
 
 def _storage_error():
@@ -480,7 +486,9 @@ class ModelGateway:
                 if not secret:
                     raise ModelError('MODEL_KEY_REQUIRED', '请为当前模型预设保存 API Key。')
                 attempted = True
-                timeout = (min(300., max(240., config['timeout'])) if purpose in BACKGROUND_PURPOSES else config['timeout'])
+                timeout = BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else config['timeout']
+                if purpose != 'connection_test':  # the explicit "Reply OK" probe stays tiny
+                    max_tokens = MODEL_MAX_OUTPUT.get(config['model'], max_tokens)
                 result = providers.complete(config['provider_id'], base_url=config['base_url'], model=config['model'],
                                             api_key=secret, messages=messages, system=system, enable_search=enable_search,
                                             temperature=config['temperature'], timeout=timeout,
