@@ -24,7 +24,7 @@ def build(directory):
         with patch.object(Classroom,'_materials',staticmethod(lambda:e.materials)):
             states={}
             for name,action,args in [('opening','next',()),('teaching','choose',(0,)),('confused','confused',()),
-                ('ask','ask',('硬度相同吗？',)),('back','back',()),('question','next',()),('closing','answer',([0],)),('why','why',())]:
+                ('ask','ask',('硬度相同吗？',)),('back','back',()),('test_offer','next',()),('question','start_test',('module_test',)),('closing','answer',([0],)),('why','why',())]:
                 states[name]=act(e,action,*args)
             numeric=make_environment(directory/'numeric')
             try:

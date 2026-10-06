@@ -20,38 +20,8 @@ from tests.refactor.app.test_app_classroom import ACCOUNT, PLAN, act, room
 
 
 
-def test_composite_wrong_has_no_point_event_then_splits_once(room):
-    classroom, agents, store = room
-    store.add_bank_questions(PLAN, 'm0', [question('00both', ('p0', 'p1')),
-                                           question('zero', ('p0',)), question('one', ('p1',))])
-    view = act(classroom, 'start_test', 'skip_test')
-    assert view['question']['total'] == 1
-    agents.verdicts = [('answer', False, ['p0']), ('answer', True, []), ('answer', True, [])]
-    view = act(classroom, 'reply', '不清楚')
-    assert view['step'] == 'testing'
-    assert store.records('judgements', PLAN) == []
-    assert view['question']['total'] == 3
-    act(classroom, 'reply', '答案一')
-    view = act(classroom, 'reply', '答案二')
-    assert view['module']['state'] == 'skipped'
-    rows = store.records('judgements', PLAN)
-    assert len(rows) == 2 and all(row['event']['results'][0][1] for row in rows)
-    assert len({row['event']['results'][0][0] for row in rows}) == 2
-    assert all(store.load_mastery(PLAN).point(pid).module_errors == 0 for pid in ('p0', 'p1'))
-    assert sum(len(q['uses']) for q in store.records('question_bank', PLAN)) == 3
 
 
-def test_overlapping_questions_both_count_for_the_point():
-    at = datetime(2026, 9, 29, tzinfo=timezone.utc)
-    book = MasteryBook([PointRef('p0', 'm0'), PointRef('p1', 'm0')])
-    book.apply(Judgement('first', 1, at, 'module_test', 'm0', 'attempt',
-                         (('p0', True), ('p1', True)), None))
-    book.apply(Judgement('second', 2, at, 'module_test', 'm0', 'attempt',
-                         (('p0', False),), None))
-    book.apply(AttemptClosed('close', 3, 'm0', 'attempt', 'module_test'))
-    assert book.point('p0').module_errors == 1
-    assert book.point('p0').state == 'red'
-    assert book.point('p1').state == 'green'
 
 
 def test_final_check_round_stops_after_four_questions(room):
@@ -81,7 +51,8 @@ def test_practice_is_separate_and_review_marker_follows_latest_answer(room):
     act(classroom, 'start_test', 'skip_test')
     agents.verdicts = [('answer', True, []), ('answer', True, [])]
     act(classroom, 'reply', '回答一')
-    act(classroom, 'reply', '回答二')
+    view=act(classroom, 'reply', '回答二')
+    while view['question']:view=act(classroom,'reply','正确')
     before_plan = store.get_plan(PLAN)
     before_book = store.load_mastery(PLAN).to_dict()
     view = classroom.run(PLAN, lambda course, state, ctx: classroom.start_practice(
@@ -92,7 +63,7 @@ def test_practice_is_separate_and_review_marker_follows_latest_answer(room):
     assert review_points(store.records('practice_results', PLAN)) == {'p0'}
     view = act(classroom, 'reply', '会了')
     assert view['step'] == 'test_done'
-    assert review_points(store.records('practice_results', PLAN)) == set()
+    assert review_points(store.records('practice_results', PLAN)) == set()  # The same wrong question is prioritized and then corrected.
     assert len(store.records('practice_results', PLAN)) == 2
     assert store.get_plan(PLAN) == before_plan
     assert store.load_mastery(PLAN).to_dict() == before_book

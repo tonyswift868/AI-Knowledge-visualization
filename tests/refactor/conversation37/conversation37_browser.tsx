@@ -1,6 +1,7 @@
 import * as React from "react"
 import { createRoot } from "react-dom/client"
 import { Classroom } from "../../../refactor/learning/web/src/pages/Classroom"
+import { QuestionInputs } from "../../../refactor/learning/web/src/classroom/Conversation"
 import { useApp } from "../../../refactor/learning/web/src/store"
 import "../../../refactor/learning/web/src/theme.css"
 import { calls, requests, showNumeric } from "./conversation37_bridge"
@@ -22,6 +23,11 @@ function fill(value: string) {
   input.dispatchEvent(new Event("change", { bubbles: true }))
 }
 async function run() {
+  root.render(<QuestionInputs question={{ id: "legacy-quick", kind: "choice", stem: "旧随口问", options: ["甲", "乙"],
+    source: { title: "旧题", url: "", locator: "" }, origin: "cloze", purpose: "quick" }} act={async () => { throw new Error("quick must not submit") }} busy={false} />)
+  await wait(50)
+  if (document.querySelector(".bank-question-controls")) throw new Error("Legacy quick card remains")
+  checks.push("旧随口问题卡无题目输入或提交入口")
   useApp.setState({ planId: "a".repeat(32), route: "classroom", settings: { theme: "sakura", font_scale: 1, reduce_motion: true } as never })
   document.documentElement.dataset.theme = "sakura"
   root.render(<main style={{ height: "100%", padding: 18 }}><Classroom /></main>)
@@ -41,7 +47,7 @@ async function run() {
   selected.click(); selected.click(); await until(() => content().includes("答对了"))
   if (calls.filter((m) => m === "classroom.answer").length !== 1) throw new Error("Double submit")
   checks.push("计分单选传下标，双击只提交一次")
-  button("为什么？").click(); await until(() => content().includes("刚讲的原文")); checks.push("为什么展开刚讲的原文")
+  button("为什么？").click(); await until(() => content().includes("参考答案原文")); checks.push("计分题为什么展开解析或答案出处")
   if (document.querySelector<HTMLTextAreaElement>("textarea")?.disabled) throw new Error("Input disabled")
   checks.push("输入框保持可用")
   showNumeric()

@@ -17,7 +17,7 @@ Time conventions (also exposed as machine-readable fields in the result):
 * All stored replans count, including automatic generation/reorder/delete calls.
 * First detection means the first closed module_test OR skip_test. One retest
   judgement counts once, even if it contains several points. Weakness is the two
-  error counters plus effective check errors before first reaching level 3;
+  error counters plus check errors before the associated questions pass;
   ties use plan order. The top ten include zero scores when fewer points exist.
 
 Exact start/finish dates use plans.started_on/completed_on. Without a recorded
@@ -191,7 +191,7 @@ def build_report(store, plan_id, *, today) -> dict:
         split_ids = {m['id'] for m in split_modules}
         split_points = {p['id'] for p in points if p['module_id'] in split_ids}
         final_estimate = sum(m['final_check_minutes'] for m in split_modules)
-        final_actual = sum(c['minutes'] for c in live if c['unit_id'] in {f'check:{pid}' for pid in split_points})
+        final_actual = sum(c['minutes'] for c in live if c['unit_id'].startswith('check:'))
         module_estimate = sum(m['check_minutes'] for m in split_modules)
         module_actual = sum(c['minutes'] for c in live if c['unit_id'] in {f'test:{mid}' for mid in split_ids})
         timing['check_minutes'] = dict(
@@ -215,7 +215,7 @@ def build_report(store, plan_id, *, today) -> dict:
         for module in modules:
             mid = module['id']
             module_rows.append(dict(module_id=mid, stage_id=module['stage_id'], title=module['title'],
-                                    position=module['position'], state=mastery.module(mid).state, **stats['modules'][mid]))
+                                    position=module['position'], **stats['modules'][mid]))
         module_order = {m['id']: i for i, m in enumerate(modules)}
         point_rows = []
         for position, point in enumerate(sorted(points, key=lambda p: (module_order[p['module_id']], p['position'], p['id']))):
@@ -239,6 +239,9 @@ def build_report(store, plan_id, *, today) -> dict:
             replan_count=len(replans), replans=replans, planned_minutes=ledger.total_minutes,
             credited_minutes=confirmed + tentative, confirmed_minutes=confirmed, tentative_minutes=tentative),
             time=timing, modules=module_rows, points=point_rows,
+            assessment='questions' if stats['questions'] else 'learning_only',
+            questions=[dict(question_id=qid, module_id=mastery.question(qid).module_id, **evidence)
+                       for qid,evidence in stats['questions'].items()],
             weakest_points=[dict(point_id=p['point_id'], score=p['weakness_score'])
                             for p in sorted(point_rows, key=lambda p: (-p['weakness_score'], p['position']))[:WEAKEST_LIMIT]],
             weakness_rule=dict(score='casual_errors + module_errors + check_errors_before_pass',

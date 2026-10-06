@@ -11,22 +11,24 @@ export type GraphCitation = { chunk_id: string; title: string; url: string | nul
 export type GraphModule = {
   key: string; title: string; summary: string; id?: string; chapters?: string[]; refs?: string[]; ref_titles?: string[]
   prerequisites?: string[]; minutes?: [number, number]; estimated_points?: [number, number]; estimated_point_count?: number
+  estimated_question_count?: number; has_material_questions?: boolean
   points?: { title: string; summary: string; citations?: GraphCitation[]; source_general?: boolean }[]
 }
 export type GraphStage = { title: string; modules: GraphModule[] }
 type ModuleData = { module: GraphModule; number: number; mode: "structure" | "outline"; active?: boolean }
 type ModuleNode = Node<ModuleData, "module">
-const WIDTH = 294, HEIGHT = 174, GAP = 44, PAD = 26
+const WIDTH = 294, HEIGHT = 204, GAP = 44, PAD = 26
 
 const ModuleCard = React.memo(function ModuleCard({ data }: NodeProps<ModuleNode>) {
   const m = data.module
-  return <div className={`pg-module ${data.active ? "pg-active" : ""}`} style={{ animationDelay: `${Math.min(data.number, 15) * 35}ms` }}>
+  return <div className={`pg-module ${data.active ? "pg-active" : ""}`} style={{ height: HEIGHT, animationDelay: `${Math.min(data.number, 15) * 35}ms` }}>
     <Handle type="target" position={Position.Left} id="left" /><Handle type="target" position={Position.Top} id="top" />
     <div className="pg-module-heading"><span className="pg-number">{String(data.number).padStart(2, "0")}</span><strong>{m.title}</strong></div>
     <p className="pg-module-summary">{m.summary || "点开查看学习内容与原文依据"}</p>
     <div className="pg-tags">
       {m.minutes && <span><Clock3 size={12} />{m.minutes[0]}–{m.minutes[1]} 分钟</span>}
       <span><BookOpen size={12} />{data.mode === "outline" ? `${m.points?.length ?? 0} 个点` : `${m.estimated_point_count !== undefined ? `约 ${m.estimated_point_count} 点 · ` : ""}${(m.chapters ?? m.ref_titles ?? m.refs ?? []).length} 处依据`}</span>
+      {data.mode === "structure" && m.estimated_question_count !== undefined && <span>{m.estimated_question_count ? `约 ${m.estimated_question_count} 道题` : "资料里没有题，这个模块只学不考"}</span>}
     </div>
     <Handle type="source" position={Position.Right} id="right" /><Handle type="source" position={Position.Bottom} id="bottom" />
   </div>
@@ -90,6 +92,7 @@ function ModuleDetails({ module: m, stages, mode, close }: { module: GraphModule
     {m.minutes && <p className="pg-meta">预计 {m.minutes[0]}–{m.minutes[1]} 分钟</p>}
     {!!m.prerequisites?.length && <p className="pg-meta">先学：{m.prerequisites.map(k => titleOf[k] ?? k).join("、")}</p>}
     {mode === "structure" && <p className="pg-meta">知识点将从这些资料章节生成，确认结构后会给你看完整知识地图。</p>}
+    {mode === "structure" && m.estimated_question_count !== undefined && <p className="pg-meta">{m.estimated_question_count ? `约 ${m.estimated_question_count} 道题 · 只考资料自带的题` : "资料里没有题，这个模块只学不考"}</p>}
     {mode === "structure" && m.estimated_points && <p className="pg-meta">估计 {m.estimated_point_count ?? `${m.estimated_points[0]}–${m.estimated_points[1]}`} 个知识点 · 每点学习约 8 分钟<br /><small>参考范围 {m.estimated_points[0]}–{m.estimated_points[1]} 个</small></p>}
     {!!chapters.length && <details className="pg-chapters" open={mode === "structure"}><summary><BookOpen size={14} />全部依据章节 · {chapters.length} 处</summary><ol>{chapters.map((t, i) => <li key={i}>{t}{m.refs?.[i] && <small>{m.refs[i]}</small>}</li>)}</ol></details>}
     {mode === "outline" && <ol className="pg-points">{m.points?.map((p, i) => <li key={i}>

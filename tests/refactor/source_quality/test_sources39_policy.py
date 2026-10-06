@@ -8,7 +8,7 @@ from refactor.learning.course import source_quality as quality, point_materials 
 from refactor.learning.course.source_filter import classify_source, load_lists, RawHit, screen, DomainRule
 from refactor.learning.course.research_pipeline import ResearchPipeline
 from refactor.learning.course.research import FetchedContent
-from tests.refactor.point_materials.test_point_materials37_contract import store, ctx, pointer, TEXT, CONTRAST37
+from tests.refactor.point_materials.test_point_materials37_contract import store
 
 
 @pytest.mark.parametrize('url,body,credibility',[
@@ -96,34 +96,44 @@ def change_source(store,url):
     store.add_sources('p',[dict(source,url=url,final_url=url)])
 
 
+def material70(store):
+    # Publisher classification does not exclude selected original material.
+    from tests.refactor.material_questions70.test_material_questions70_contract import TEXT70,split70
+    source=store.records('sources','p')[0]
+    store.add_sources('p',[dict(source,chunks=[dict(chunk_id='c',text=TEXT70,section=['定义'])])])
+    return dict(question_splitter=split70)
+
+
 def test_sources39_general_materials_and_original_answers_are_usable(store):
     change_source(store,'https://blog.csdn.net/teacher/article/details/1')
     point=store.records('points','p')[0]
-    assert pm.prepare_point(store,'p',point,ctx())['questions']==2
-    assert not pm.uncovered_points(store,'p',ctx())
-    assert not quality.general_only(['c'],store.records('sources','p'),store.records('source_chunks','p'))  # selected text is not publisher-graded
+    assert pm.prepare_point(store,'p',point,material70(store))['questions']==2
+    assert not pm.uncovered_points(store,'p',{})
+    assert not quality.general_only(['c'],store.records('sources','p'),store.records('source_chunks','p'))
     bank=store.records('question_bank','p')
-    assert all(q['origin']=='cloze' and q['answer_source']['url'].startswith('https://blog.csdn.net/') for q in bank)
-    bad=dict(kind='short',stem='压强单位是什么？',answer='公斤',answer_quote='公斤',question_chunk='c',answer_chunk='c',pairing='same_block')
-    passages=pm._passages(store,'p',dict(ctx(),store=store,plan_id='p',lists=load_lists()))
-    assert pm._found(bad,point,{p['id']:p for p in passages}) is None
+    assert all(q['origin']=='found' and q['kind']=='recall' and q['answer_source']['url'].startswith('https://blog.csdn.net/') for q in bank)
 
 
 def test_sources39_selected_sources_share_one_batch_without_authority_bands(store):
+    from tests.refactor.material_questions70.test_material_questions70_contract import TEXT70,split70
+    context=material70(store)
     store.add_sources('p',[dict(id='g',title='社区教学',url='https://www.zhihu.com/question/12',adopted=True,
-        chunks=[dict(chunk_id='gc',text=TEXT,section=['压强']),
-            dict(chunk_id='gother39',text=CONTRAST37,section=['运动学'])])])
+        chunks=[dict(chunk_id='gc',text=TEXT70,section=['定义'])])])
+    point=store.records('points','p')[0];point['chunk_ids'].append('gc')
+    with store.transaction():store._put('points','p',point)
     calls=[]
-    def finder(point,passages,**kwargs):
-        calls.append([p['id'] for p in passages])
-        assert all(p['authority']['type']=='user_provided' for p in passages)
-        return pointer()
-    context=ctx();context['finder']=finder
-    assert pm.prepare_point(store,'p',store.records('points','p')[0],context)['questions']==2
-    assert len(calls)==1 and {'c','gc'} <= set(calls[0])
+    def splitter(packet,**kwargs):
+        calls.append({cid for q in packet['candidates'] for cid in q['chunk_ids']})
+        return split70(packet)
+    context['question_splitter']=splitter
+    assert pm.prepare_point(store,'p',point,context)['questions']==2  # batch-66 stem dedup
+    assert not calls  # Short original answers need no AI key-point selection.
+    from refactor.learning.course.material_questions import candidates
+    rows=candidates(store.records('source_chunks','p'),store.records('sources','p'))
+    assert {'c','gc'} <= {cid for q in rows for cid in q['chunk_ids']}
 
 
 def test_sources39_selected_unknown_publisher_is_usable(store):
     change_source(store,'https://unknown.example/chapter')
-    assert pm.prepare_point(store,'p',store.records('points','p')[0],ctx())['questions']==2
-    assert not pm.uncovered_points(store,'p',ctx())
+    assert pm.prepare_point(store,'p',store.records('points','p')[0],material70(store))['questions']==2
+    assert not pm.uncovered_points(store,'p',{})

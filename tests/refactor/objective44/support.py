@@ -27,7 +27,12 @@ def objective_bank(store):
 
 def scripted_answer(room,plan,agents,text):
     pending=room._file(plan).read({}).get('pending')
-    if not pending:return 'reply',(text,)
+    if not pending:
+        # Historical timing scripts finish the explained point explicitly; no casual grade.
+        if room._file(plan).read({}).get('step')=='teaching':
+            if agents.verdicts:agents.verdicts.pop(0)
+            return 'next',()
+        return 'reply',(text,)
     q=pending['question']
     if q['kind'] not in ('choice','multi','fill','calc'):return 'reply',(text,)
     kind,good,wrong=agents.verdicts.pop(0) if agents.verdicts else ('answer',True,[])

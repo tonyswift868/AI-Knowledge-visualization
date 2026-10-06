@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from tests.refactor.mastery70.support import seed_assessment
 from refactor.learning.course.ledger import PlanWindow
 from refactor.learning.course.mastery import AttemptClosed, Judgement
 from refactor.learning.course.report import build_report, SCHEMA
@@ -48,6 +49,7 @@ class ReportTests(unittest.TestCase):
         for i, count in enumerate(counts):
             s.save_generated_module('p', f'm{i}', [dict(id=f'p{i}-{j:02}', summary=f'点 {i}-{j}',
                 minutes=10, chunk_ids=['c']) for j in range(count)], check_minutes=10, today=DAY)
+        seed_assessment(s, 'p')
         if start:
             s.start_plan('p', **({'today': DAY} if record_start else {}))
         return s
@@ -56,9 +58,13 @@ class ReportTests(unittest.TestCase):
         return [p['id'] for p in self.store.records('points', 'p') if p['module_id'] == module]
 
     def judge(self, context, results, *, module='m0', attempt=None, day=DAY, angle='recall'):
+        if len(results)>1:
+            for pid,correct in results:
+                self.judge(context, [(pid,correct)],module=module,attempt=attempt,day=day,angle=angle)
+            return
         self.seq += 1
         event = Judgement(f'j{self.seq:03}', self.seq, datetime.combine(day, time(12), TZ), context,
-                          module, attempt, tuple(results), angle if context == 'check' else None)
+                          module, attempt, tuple(results), question_id=results[0][0] if context not in ('casual','quick_confirm') else None)
         self.store.append_judgement('p', event)
         return event
 
@@ -77,7 +83,7 @@ class ReportTests(unittest.TestCase):
         s = self.store
         if s.get_plan('p')['state'] == 'active':
             s.start_checking('p')
-        # Batch questions remain one question even with multiple point results.
+        # Answer every pending question; past errors require two correct answers.
         while not s.load_mastery('p').check_complete():
             book = s.load_mastery('p')
             for module in s.records('modules', 'p'):
@@ -163,28 +169,6 @@ class ReportTests(unittest.TestCase):
         self.assertEqual([r['target_minutes'] for r in report['time']['days']], [10, 10, 10, 0, 0])
         self.assertEqual(report['time']['days'][-1]['credited_confirmed_minutes'], 20)
 
-    def test_multiple_retests_multi_point_question_and_checks_before_terminal_pass(self):
-        self.prepare((10,))
-        pids = self.pids()
-        self.judge('casual', [(pids[8], False)])
-        closed = self.detect(correct=[(p, True) for p in pids[:8]] + [(pids[8], False)])
-        self.judge('retest', [(pids[8], False), (pids[9], False)])
-        self.judge('retest', [(pids[8], False), (pids[9], True)])
-        self.judge('retest', [(pids[8], True)])
-        for correct in (False, True, False, True, True, True, False):
-            self.judge('check', [(pids[8], correct)])
-        report = self.finish()
-        module = report['modules'][0]
-        self.assertEqual((module['state'], module['test_count'], module['retest_count']), ('passed', 1, 3))
-        self.assertEqual(module['first_test'], dict(event_id=closed.event_id, attempt_id=closed.attempt_id,
-            kind='module_test', mastered_points=8, total_points=10, mastery_ratio=0.8))
-        point = report['points'][8]
-        self.assertEqual((point['casual_errors'], point['module_errors']), (1, 3))
-        self.assertEqual((point['check_questions'], point['check_correct'], point['check_accuracy']), (7, 4, 4 / 7))
-        self.assertEqual(point['check_errors_before_pass'], 2)
-        self.assertEqual((point['state'], point['level'], point['ever_red'], point['ever_weak']), ('green', 3, True, False))
-        self.assertEqual(report['weakest_points'][:2], [{'point_id': pids[8], 'score': 6}, {'point_id': pids[9], 'score': 1}])
-        self.assertEqual(report['weakness_rule']['tie_break'], 'plan_order')
 
     def test_direct_test_nine_of_ten_skips_with_weak_point_and_estimated_credit(self):
         self.prepare((10,))
@@ -199,21 +183,21 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(report['time']['ahead_peak_minutes'], 73)
         weak = report['points'][-1]
         self.assertTrue(weak['ever_weak'])
-        self.assertFalse(weak['ever_red'])
+        self.assertTrue(weak['ever_red'])
         self.assertEqual((weak['module_errors'], weak['check_questions'], weak['check_accuracy']), (1, 2, 1.0))
 
     def test_failed_direct_test_ten_of_twelve_keeps_first_ratio_and_errors(self):
         self.prepare((12,))
         pids = self.pids()
         self.detect(kind='skip_test', correct=[(p, i < 10) for i, p in enumerate(pids)])
-        self.assertEqual(self.store.load_mastery('p').module('m0').state, 'untested')
+        self.assertEqual(self.store.load_mastery('p').module('m0').state, 'failed')
         report = self.finish()
         module = report['modules'][0]
         self.assertEqual((module['state'], module['module_test_count'], module['skip_test_count'], module['test_count']), ('passed', 1, 1, 2))
         self.assertEqual(module['first_test']['mastery_ratio'], 10 / 12)
         self.assertFalse(module['skip_test_passed'])
         self.assertEqual([p['module_errors'] for p in report['points']], [0] * 10 + [1, 1])
-        self.assertFalse(any(p['ever_red'] or p['ever_weak'] for p in report['points']))
+        self.assertTrue(all(p['ever_red'] for p in report['points'][-2:]))
 
     def test_weak_history_survives_later_green_and_repeated_detects(self):
         self.prepare((10,))
@@ -366,18 +350,6 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(report['time']['days'][0]['credited_tentative_minutes'], 0)
         self.assertTrue(report['time']['peak_dates_exact'])
 
-    def test_all_results_for_point_must_be_correct_in_first_detection_ratio(self):
-        self.prepare()
-        a, b = self.pids()
-        self.judge('module_test', [(a, False)], attempt='first')
-        self.judge('module_test', [(a, True), (b, True)], attempt='first')
-        self.seq += 1
-        self.store.append_attempt_closed('p', AttemptClosed('closed', self.seq, 'm0', 'first', 'module_test'))
-        self.judge('retest', [(a, True)])
-        report = self.finish()
-        self.assertEqual(report['modules'][0]['first_test']['mastery_ratio'], 0.5)
-        self.assertTrue(report['points'][0]['ever_red'])
-        self.assertEqual(report['points'][0]['module_errors'], 1)
 
     def test_zero_remaining_replan_and_idle_weighted_days_are_kept(self):
         s = self.prepare(start=False)
@@ -422,6 +394,7 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(s.load_report('p'), previous)
         s.save_generated_module('p', 'm1', [dict(id='new', summary='新知识点', minutes=10, chunk_ids=['c'])],
                                 check_minutes=10, today=next_day)
+        seed_assessment(s, 'p')
         s.add_credit('p', 'extension', 'new', 20, next_day, 'confirmed')
         latest = self.finish(next_day, credit=False)
         self.assertEqual(latest['plan']['actual_start_date'], DAY.isoformat())

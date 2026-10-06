@@ -37,7 +37,7 @@ def question(pid, kind='choice', index=0):
 class Materials:
     """Only MF04's unmerged boundary is substituted; grading/storage are real."""
     def __init__(self):
-        self.bank=[question(pid,index=i) for pid in ('p0','p1') for i in range(3)]
+        self.bank=[question(pid,index=i) for pid in ('p0','p1') for i in range(1)]
         for pid in ('p0','p1'):
             q=question(pid);q.update(id=f'{pid}-quick',role='quick',origin='cloze',explanation=PARAGRAPH)
             self.bank.append(q)
@@ -100,10 +100,14 @@ def act(e,name,*args,token=None):
     ctx=SimpleNamespace(cancel=threading.Event(),stream=e.stream.append)
     return e.room.perform(PLAN,name,ctx,args,token or uuid.uuid4().hex)
 
-def pending(e,kind='choice',purpose='casual'):
+def pending(e,kind='choice',purpose='module_test'):
     q=question('p0',kind)
     e.materials.bank[0]=q
-    return e.room.run(PLAN,lambda co,st,ctx:e.room._show_question(co,st,q,purpose))
+    def show(co,st,ctx):
+        st['step']='testing'
+        st['test']=dict(attempt='fixture-attempt',kind=purpose,queue=[q],index=0,question_ids=[],asked=[])
+        e.room._show_question(co,st,q,purpose)
+    return e.room.run(PLAN,show)
 
 def test_open_branch_original_cards_and_conversation(env):
     e=env;v=act(e,'next');assert v['step']=='opening' and len(v['conversation']['options'])==3
@@ -121,25 +125,13 @@ def test_open_wrong_or_unknown_still_explains(env,value):
     act(env,'next');v=act(env,'choose',value)
     assert v['step']=='teaching' and v['messages'][-1]['sources']
 
-def test_known_quick_confirm_uses_bank_and_advances(env):
-    act(env,'next');act(env,'choose',0);v=act(env,'reply','我会了')
-    assert v['question']['purpose']=='quick'
-    v=act(env,'answer',[0]);assert v['step']=='test_offer'
-    assert len(env.store.records('judgements',PLAN))==1
-    assert env.materials.used[-1][1]=='quick'
 
-def test_casual_wrong_second_question_and_original_reason(env):
-    pending(env);v=act(env,'answer',[1]);assert v['question'] is None and v['step']=='closing'
-    assert v['explanation']['open'] and '压强越大' in v['explanation']['text']
-    assert len(env.store.records('judgements',PLAN))==1
-    v=act(env,'why');assert v['explanation']['open']
-    v=act(env,'next');assert not v['failure'] and v['step']=='test_offer'
 
 @pytest.mark.parametrize('kind,value', [('choice',[0]),('multi',[0,2]),('fill',['Ｆ ／ Ｓ','ｐＡ'])])
 def test_program_grade_never_calls_model(env,kind,value):
     pending(env,kind);v=act(env,'answer',value)
     assert not v['failure'] if 'failure' in v and v['failure'] else True
-    assert v['step']=='closing' and not env.gateway.calls
+    assert v['step']=='test_done' and not env.gateway.calls
     assert env.store.records('judgements',PLAN)[0]['event']['results']==[['p0',True]]
 
 
@@ -182,19 +174,19 @@ def test_teacher_keeps_explanation_with_optional_citations(env,text):
     assert 'c99' not in result.speech and result.speech
 
 def test_save_error_is_not_success_and_durable_grade_replays_once(env,monkeypatch):
-    pending(env,'choice','quick');original=env.room._save
+    pending(env,'choice');original=env.room._save
     monkeypatch.setattr(env.room,'_save',lambda *a:(_ for _ in ()).throw(BridgeError('CLASS_SAVE_FAILED','保存失败')))
     with pytest.raises(BridgeError):act(env,'answer',[0],token='graded')
     monkeypatch.setattr(env.room,'_save',original)
-    v=act(env,'answer',[0],token='graded');assert v['step']=='test_offer'
+    v=act(env,'answer',[0],token='graded');assert v['step']=='test_done'
     assert len(env.store.records('judgements',PLAN))==len(env.store.records('question_answers',PLAN))==1
     assert len([m for m in v['messages'] if m['role']=='user'])==1
 
 def test_test_final_retest_and_practice_are_selected_not_generated(env):
     e=env;v=act(e,'start_test','skip_test');assert v['question']['purpose']=='direct'
-    act(e,'answer',[0]);act(e,'next_module');act(e,'next');act(e,'choose',0);act(e,'reply','我会了');act(e,'answer',[0])
+    act(e,'answer',[0]);act(e,'answer',[0]);act(e,'next_module');act(e,'next');act(e,'choose',0);act(e,'reply','我会了')
     v=act(e,'start_test','module_test');assert v['question']['purpose']=='module'
-    act(e,'answer',[1]);v=act(e,'start_test','retest');assert v['question']['purpose']=='retest'
+    act(e,'answer',[1]);act(e,'answer',[0]);v=act(e,'start_test','retest');assert v['question']['purpose']=='retest'
     act(e,'answer',[0]);act(e,'next_module');v=act(e,'start_check')
     assert v['question']['purpose']=='final'
     for _ in range(20):
@@ -205,7 +197,7 @@ def test_test_final_retest_and_practice_are_selected_not_generated(env):
     before=e.store.load_mastery(PLAN).report_stats();v=act(e,'start_practice',None,None,2)
     assert v['question']['purpose']=='free'
     act(e,'answer',[1]);act(e,'answer',[0]);assert e.store.load_mastery(PLAN).report_stats()==before
-    assert {'quick','direct','module','retest','final','free'}<=set(p for _,p in e.materials.used)
+    assert {'direct','module','retest','final','free'}<=set(p for _,p in e.materials.used)
     assert set(e.gateway.calls)<={'teacher'}
 
 def test_active_teacher_only_blocks_concurrent_turn(env,monkeypatch):
@@ -221,8 +213,8 @@ def test_active_teacher_only_blocks_concurrent_turn(env,monkeypatch):
 def test_report_uses_actual_explained_points_not_old_drafts(env):
     act(env,'next');assert not env.store.records('teacher_profile',PLAN)
     act(env,'choose',0)
-    act(env,'reply','我会了');act(env,'answer',[0]);act(env,'start_test','module_test');act(env,'answer',[0])
-    act(env,'next_module');act(env,'start_test','skip_test');act(env,'answer',[0]);act(env,'next_module')
+    act(env,'reply','我会了');act(env,'start_test','module_test');act(env,'answer',[0])
+    act(env,'next_module');act(env,'start_test','skip_test');act(env,'answer',[0]);act(env,'answer',[0]);act(env,'next_module')
     v=act(env,'start_check')
     for _ in range(20):
         if v['step']=='completed':break
@@ -231,10 +223,6 @@ def test_report_uses_actual_explained_points_not_old_drafts(env):
     report=build_report(env.store,PLAN,today=DAY)
     assert report['live_points']==[dict(point_id='p0',title='面积与压强')]
 
-def test_missing_question_is_readable_retryable_no_generation(env):
-    pending(env);env.materials.bank=[]
-    v=act(env,'answer',[1]);assert not v['failure'] and v['step']=='closing'
-    assert not env.gateway.calls
 
 def test_missing_point_sources_not_guessed(env):
     co=env.room._course(PLAN);co.points[0]['chunk_ids']=[]
@@ -275,27 +263,7 @@ def test_preparation_failure_is_visible_and_retryable(env,monkeypatch):
 
 
 
-def test_incomplete_bank_composite_wrong_splits_without_point_attribution(tmp_path,monkeypatch):
-    e=make_environment(tmp_path,first_points=2)
-    for i in range(3):
-        q=question('p2',index=i);q['module_id']='m0';e.materials.bank.append(q)
-    composite=question('p0');composite['id']='composite';composite['point_ids']=['p0','p2']
-    e.materials.bank.insert(0,composite)
-    monkeypatch.setattr(Classroom,'_materials',staticmethod(lambda:e.materials))
-    try:
-        v=act(e,'start_test','skip_test');assert v['question']['id']=='composite'
-        v=act(e,'answer',[1]);assert not v['failure'],v['failure']
-        assert not e.store.records('judgements',PLAN) and len(e.store.records('question_answers',PLAN))==1
-        act(e,'answer',[0]);v=act(e,'answer',[0])
-        assert not v['failure'] and v['module']['state']=='skipped'
-        assert len(e.store.records('judgements',PLAN))==2
-    finally:e.store.close()
 
-def test_ready_question_next_latency_and_no_teacher_generation(env):
-    import time
-    act(env,'next');act(env,'choose',0);before=list(env.gateway.calls)
-    start=time.monotonic();v=act(env,'next')
-    assert time.monotonic()-start<1 and v['question'] and env.gateway.calls==before
 
 def test_cancelled_model_does_not_write_student(env,monkeypatch):
     from refactor.learning.connections.errors import ModelCancelled

@@ -12,6 +12,7 @@ import time
 
 import pytest
 
+from tests.refactor.mastery70.support import seed_assessment
 from refactor.learning.course.ledger import PlanWindow
 from refactor.learning.course.mastery import AttemptClosed, Judgement
 from refactor.learning.course.store import CourseStore
@@ -57,6 +58,7 @@ def build_plan(store):
     store.save_generated_module('plan', 'm1', [dict(id='p1', summary='思考-行动-观察循环', minutes=30, chunk_ids=['c1']),
                                                dict(id='p2', summary='与 CoT 的区别', minutes=30, chunk_ids=['c1'])],
                                 check_minutes=10, today=TODAY)
+    seed_assessment(store, 'plan')
     store.start_plan('plan')
 
 
@@ -81,8 +83,9 @@ def test_plan_and_progress_round_trip_between_two_devices(devices):
     assert b.load_mastery('plan').point('p1').casual_errors == 1
 
     # Device B continues: a module test on B must reach A without rewriting A's events.
-    b.append_judgement('plan', Judgement('j2', 2, NOW, 'module_test', 'm1', 'att1', (('p1', True), ('p2', True))))
-    b.append_attempt_closed('plan', AttemptClosed('ac1', 3, 'm1', 'att1', 'module_test'))
+    b.append_judgement('plan', Judgement('j2', 2, NOW, 'module_test', 'm1', 'att1', (('p1', True),),question_id='p1'))
+    b.append_judgement('plan', Judgement('j3', 3, NOW, 'module_test', 'm1', 'att1', (('p2', True),),question_id='p2'))
+    b.append_attempt_closed('plan', AttemptClosed('ac1', 4, 'm1', 'att1', 'module_test'))
     b.confirm_credits('plan', 'p1')
     CourseSync(b, transport).sync()
     CourseSync(a, transport).sync()

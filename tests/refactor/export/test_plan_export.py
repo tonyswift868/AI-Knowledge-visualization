@@ -10,6 +10,7 @@ import zipfile
 from lxml import html
 import pytest
 
+from tests.refactor.mastery70.support import seed_assessment
 from refactor.learning.course import export
 from refactor.learning.course.export import export_plan, ExportResult, ExportStatus, ExportCancellation
 from refactor.learning.course.ledger import PlanWindow
@@ -45,12 +46,13 @@ def course(tmp_path):
             minutes=20, chunk_ids=[chunk_id])], check_minutes=5, today=TODAY)
         store.save_teacher_profile('plan', {'progress': '熟悉基础'})
         store.append_message('plan', 'module', 'user', '如何理解？', message_id='message', at=NOW)
+        seed_assessment(store, 'plan')
         store.start_plan('plan')
-        store.append_judgement('plan', Judgement('j', 1, NOW, 'module_test', 'module', 'attempt', (('point', True),)),
+        store.append_judgement('plan', Judgement('j', 1, NOW, 'module_test', 'module', 'attempt', (('point', True),),question_id='point'),
                                details={'question': '问题', 'answer': '回答', 'chunk_ids': [chunk_id]})
         store.append_attempt_closed('plan', AttemptClosed('a', 2, 'module', 'attempt', 'module_test'))
         store.start_checking('plan')
-        store.append_judgement('plan', Judgement('check', 3, NOW, 'check', 'module', results=(('point', True),), angle='recall'))
+        store.append_judgement('plan', Judgement('check', 3, NOW, 'check', 'module', results=(('point', True),), question_id='point'))
         store.add_credit('plan', 'credit', 'module', 25, TODAY)
         store.confirm_credits('plan', 'module', event_id='confirm')
         store.complete_plan('plan', today=TODAY)

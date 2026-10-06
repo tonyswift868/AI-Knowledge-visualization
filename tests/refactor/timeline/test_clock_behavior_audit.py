@@ -160,7 +160,7 @@ def prepare(env, *, plan=PLAN, total=2130, end=END, weighted=True, active=True):
     store.save_generated_module(plan, "m1", [dict(id="p2", title="栈定义", summary="后进先出", minutes=total-60,
                                                      chunk_ids=["k2"])], check_minutes=10, today=START)
     from tests.refactor.integration38.support import seed_bank
-    seed_bank(store,plan)
+    seed_bank(store,plan,count=1)
     objective_bank(store)
     if active:
         store.start_plan(plan, today=START)
@@ -320,41 +320,32 @@ def test_audit_classroom_day_survives_backwards_calendar(env, audit, change):
 
 
 def test_audit_classroom_refresh_failure_retest_and_skip(env, audit):
-    prepare(env, total=180, weighted=False, end=START+timedelta(days=2))
-    env.clock.set("2026-10-05T23:50:00+08:00")
-    act(env, "enter")
-    act(env, "next")
-    env.agent.verdicts.extend([("answer", True, []), ("answer", True, [])])
-    act(env, "reply", "先进先出")
-    act(env, "reply", "入队出队")
-    env.clock.set("2026-10-06T04:01:00+08:00")
-    check_status(audit, "跨凌晨刷新：课堂仍是前一天、首页已是新一天", dict(today_target=60, today_tentative=40,
-                 progress_day="2026-10-05", study_day="2026-10-06", needs_rest=True), snapshot(env)["today"], rule="TEACH-05")
-    check_status(audit, "跨刷新后首页显示前一天还欠20分钟", dict(today_target=60, today_tentative=0, debt_minutes=20), home(env))
-    act(env, "start_test", "module_test")
-    queue = env.room._file(PLAN).read({})['test']['queue']
-    env.agent.verdicts.extend(("answer", q['point_ids'][0] != 'p1',
-                               ['p1'] if q['point_ids'][0] == 'p1' else []) for q in queue)
-    for _ in queue:
-        view = act(env, "reply", "检测作答")
-    assert view["module"]["state"] == "failed"
-    check_status(audit, "检测失败撤回20、检测记10：旧课堂正式30，首页欠30", dict(today_confirmed=30, today_tentative=0,
-                 debt_minutes=0), view["today"])
-    check_status(audit, "检测失败后新学习日欠30，退出不丢账", dict(today_confirmed=0, debt_minutes=30), act(env, "leave")["today"])
-    act(env, "enter")
-    act(env, "start_test", "retest")
-    env.agent.verdicts.append(("answer", True, []))
-    view = act(env, "reply", "入队在尾出队在头")
-    check_status(audit, "新一日重测补20，先还昨日欠账，仍欠10", dict(today_confirmed=0, debt_minutes=10), view["today"])
-    act(env, "next_module")
-    view = act(env, "start_test", "skip_test")
-    if not view['question']['options']:
-        env.agent.verdicts.append(("answer", True, []))  # mixed bank may select its reserved written question
-    view = act(env, "reply", "乙答案")
-    check_status(audit, "直接考跳过130分钟：补欠10、填今日60、超前60", dict(today_confirmed=60, debt_minutes=0,
-                 ahead_minutes=60, ahead_days=1, time_completed=True, completed=False), view["today"], rule="TEACH-07")
-    latest = max(env.store.records("credits", PLAN), key=lambda row: row["operation_seq"])
-    assert latest["credit"]["day"] == "2026-10-06"
+    prepare(env,total=180,weighted=False,end=START+timedelta(days=2))
+    env.clock.set('2026-10-05T23:50:00+08:00');act(env,'enter');act(env,'next')
+    env.agent.verdicts.extend([('answer',True,[]),('answer',True,[])])
+    act(env,'reply','先进先出');act(env,'reply','入队出队')
+    env.clock.set('2026-10-06T04:01:00+08:00')
+    check_status(audit,'跨刷新课堂仍归前一天',dict(today_target=60,today_tentative=40,progress_day='2026-10-05',study_day='2026-10-06',needs_rest=True),snapshot(env)['today'],rule='TEACH-05')
+    check_status(audit,'首页已换日，前日学习40/60还欠20',dict(today_target=60,today_tentative=0,debt_minutes=20),home(env))
+    act(env,'start_test','module_test');queue=env.room._file(PLAN).read({})['test']['queue']
+    env.agent.verdicts.extend(('answer',q['point_ids'][0]!='p1',['p1'] if q['point_ids'][0]=='p1' else []) for q in queue)
+    for _ in queue:view=act(env,'reply','检测作答')
+    assert view['module']['state']=='failed'
+    credits=env.store.load_ledger(PLAN).to_dict()['credits']
+    assert sum(c['minutes'] for c in credits)==50 and all(c['state']=='confirmed' for c in credits)
+    assert {c['day'] for c in credits}=={'2026-10-05'}
+    act(env,'leave');act(env,'enter');view=act(env,'start_test','retest')
+    assert view['question']['total']==1
+    env.agent.verdicts.append(('answer',True,[]));view=act(env,'reply','入队在尾出队在头')
+    assert view['module']['state']=='passed'
+    assert sum(c['minutes'] for c in env.store.load_ledger(PLAN).to_dict()['credits'])==60
+    act(env,'next_module');view=act(env,'start_test','skip_test')
+    if not view['question']['options']:env.agent.verdicts.append(('answer',True,[]))
+    view=act(env,'reply','乙答案');assert view['module']['state']=='skipped'
+    assert sum(c['minutes'] for c in env.store.load_ledger(PLAN).to_dict()['credits'])==190
+    latest=max(env.store.records('credits',PLAN),key=lambda r:r['operation_seq'])
+    assert latest['credit']['day']=='2026-10-06'
+    assert not any(r['id'].startswith('relearn:') for r in env.store.records('credits',PLAN))
 
 
 def make_reminder(env, *, at="2026-10-06T19:59:00+08:00"):
@@ -513,10 +504,15 @@ def test_audit_multi_plan_reminder_boundary_policy(env, qt_app, audit, case):
         scene = "逾期未学完、今天没有新安排：仍提醒（用户 2026-09-28 决定）"
     elif case == "checking":
         clock_at = "2026-10-08T19:59:00+08:00"
-        for module_id, points, seq in [("m0", ("p0", "p1"), 1), ("m1", ("p2",), 3)]:
-            env.store.append_judgement(PLAN, Judgement(f"j{seq}", seq, env.clock.now(), "module_test", module_id,
-                                        f"a{seq}", tuple((p, True) for p in points)))
-            env.store.append_attempt_closed(PLAN, AttemptClosed(f"c{seq}", seq+1, module_id, f"a{seq}", "module_test"))
+        seq=0
+        for module_id, points in [("m0", ("p0", "p1")), ("m1", ("p2",))]:
+            attempt='a'+module_id
+            for p in points:
+                seq+=1
+                env.store.append_judgement(PLAN,Judgement(f'j{seq}',seq,env.clock.now(),'module_test',module_id,
+                    attempt,((p,True),),question_id=p+'-0'))
+            seq+=1
+            env.store.append_attempt_closed(PLAN,AttemptClosed(f'c{seq}',seq,module_id,attempt,'module_test'))
         env.store.start_checking(PLAN)
         credit(env, 180)
         expected = [True, True]
@@ -600,4 +596,4 @@ def test_audit_wall_clock_rollback_reorders_mastery(env, monkeypatch, audit):
     assert retest["seq"] > closed and retest["results"] == [["p1", True]]  # order never goes backwards
     audit("回拨一小时后重测答对：事件顺序仍在检测之后，模块通过", "TEACH-02", "passed",
           view["module"]["state"], finding="原不合理，已修", before="seq 取系统时间，回拨后重测排到检测之前，模块仍不通过")
-    assert any(r["id"] == "relearn:p1" for r in env.store.records("credits", PLAN))
+    assert not any(r["id"] == "relearn:p1" for r in env.store.records("credits", PLAN))

@@ -55,13 +55,16 @@ class ScriptUser:
         if stage == 'generated': return action('plan.start')
         question = view.get('question')
         if question:
+            if question.get('kind')=='recall':
+                return (action('class.recall_submit',question_id=question['id'],ticked=list(range(len(question['key_points']))))
+                        if question.get('revealed') else action('class.recall_reveal',question_id=question['id'],answer='我按刚学的原文写下自己的理解。'))
             purpose = question['purpose']
             wrong = purpose in ('quick', 'module') and purpose not in self.flags
             if wrong: self.flags.add(purpose)
             # Public option labels of the documented synthetic fixture only;
             # real quick choices are sorted by the material layer, not index 0.
             word = '队列' if purpose == 'quick' else '先进先出'
-            correct = question['options'].index(word)
+            correct = next(i for i,o in enumerate(question['options']) if word in o)
             return action('classroom.answer', value=[(correct+1)%len(question['options']) if wrong else correct])
         if 'simulation.reopen' in names and 'exit' not in self.flags and view.get('step') == 'teaching':
             self.flags.add('exit'); return action('simulation.reopen')

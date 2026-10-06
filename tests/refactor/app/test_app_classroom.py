@@ -27,7 +27,7 @@ def room(tmp_path):
     store.save_generated_module(PLAN,'m0',[dict(id='p0',title='队列定义',summary='先进先出',minutes=10,chunk_ids=['k1']),
         dict(id='p1',title='队列操作',summary='入队出队',minutes=15,chunk_ids=['k1'])],check_minutes=5,today=DAY)
     store.save_generated_module(PLAN,'m1',[dict(id='p2',title='栈定义',summary='后进先出',minutes=10,chunk_ids=['k2'])],check_minutes=5,today=DAY)
-    seed_bank(store,PLAN)
+    seed_bank(store,PLAN,count=1)
     objective_bank(store)
     store.start_plan(PLAN,today=DAY)
     agents=Agents()
@@ -47,7 +47,7 @@ def act(classroom,name,*args,streamed=None):
 def credits(store):return {r['id']:r['credit']['state'] for r in store.records('credits',PLAN)}
 def contexts(store):return [(r['event']['context'],[tuple(v) for v in r['event']['results']]) for r in store.records('judgements',PLAN)]
 
-@pytest.mark.parametrize("context", ["casual", "quick_confirm", "module_test", "retest", "check"])
+@pytest.mark.parametrize("context", ["module_test", "retest", "check"])
 def test_answer_event_is_idempotent_after_interrupted_classroom_save(room, context):
     classroom, _, store = room
     course = classroom._course(PLAN)
@@ -110,19 +110,17 @@ def test_position_survives_a_restart(room):
     view = fresh.run(PLAN, lambda *a: None, ctx())
     assert view["points"][0]["current"] and view["step"] == "teach"       # unanswered point is taught again
 
-@pytest.mark.parametrize('practice',[False,True])
-def test_casual_and_practice_resume_saved_verdict_without_regrading(room,monkeypatch,practice):
+def test_practice_resume_saved_verdict_without_regrading(room,monkeypatch):
     classroom,agents,store=room
     act(classroom,'enter');act(classroom,'next')
-    if practice:
-        act(classroom,'reply','队列是先进先出的结构。')
-        operate(classroom,PLAN,'start_practice','m0','p0',1)
+    act(classroom,'reply','队列是先进先出的结构。')
+    operate(classroom,PLAN,'start_practice','m0','p0',1)
     original=classroom._save
     monkeypatch.setattr(classroom,'_save',lambda *args:(_ for _ in ()).throw(BridgeError('CLASS_SAVE_FAILED','保存失败')))
     with pytest.raises(BridgeError):
         classroom.perform(PLAN,'reply',ctx(),('A',),request_id='saved-grade')
     before=len(agents.calls)
-    entity='practice_results' if practice else 'judgements'
+    entity='practice_results'
     count=len(store.records(entity,PLAN))
     monkeypatch.setattr(classroom,'_save',original)
     classroom.now=lambda:datetime(2026,10,1,11,tzinfo=timezone.utc)
@@ -134,9 +132,10 @@ def test_steps_are_enforced(room):
     operate(classroom,PLAN,'next');operate(classroom,PLAN,'choose',0)
     v=operate(classroom,PLAN,'start_test','module_test')
     assert v['failure'] and v['step']=='teaching' and not store.records('judgements',PLAN)
-    operate(classroom,PLAN,'next')
+    operate(classroom,PLAN,'next');operate(classroom,PLAN,'choose',0);operate(classroom,PLAN,'next')
+    operate(classroom,PLAN,'start_test','module_test')
     v=operate(classroom,PLAN,'choose',0)
-    assert v['failure'] and v['question'] and v['step']=='answer'
+    assert v['failure'] and v['question'] and v['step']=='testing'
 
 def test_a_test_closed_before_a_crash_is_finished_not_closed_twice(room):
     classroom,agents,store=room

@@ -81,21 +81,27 @@ def render_report_pdf(report, titles, views, path: Path):
         line('最终目标：' + plan['final_goal'])
         line(f"计划日期：{plan['start_date']} → {plan['end_date']}；实际开始：{plan.get('actual_start_date') or '—'}；完成：{plan.get('actual_completion_date') or '—'}")
         line(f"学习时长：{plan['credited_minutes']} 分钟（计划 {plan['planned_minutes']} 分钟）；调整过计划 {plan['replan_count']} 次")
-        checks = sum(p['check_questions'] for p in report['points'])
-        correct = sum(p['check_correct'] for p in report['points'])
-        line(f'最终检验：{correct}/{checks} 题答对' if checks else '最终检验：—')
+        checks = sum(p['check_questions'] for p in report.get('questions',[]))
+        correct = sum(p['check_correct'] for p in report.get('questions',[]))
+        has_questions = bool(report.get('questions'))
+        line(f'最终检验：{correct}/{checks} 题答对' if checks else
+             '最终检验：尚未进行。' if has_questions else '资料没有题，本计划只学习，不考核。')
         if plan.get('early_days'):
             line(f"比截止日提前 {plan['early_days']} 天完成。")
         if plan.get('overdue_days'):
             line(f"比截止日晚了 {plan['overdue_days']} 天完成。")
-        heading('各模块掌握情况')
-        for module in views['modules']:
-            bar(module['title'], module['mastered'], module['total'])
-        heading('错误分布')
-        for label, key in (('随口问', 'casual'), ('模块检测', 'module'), ('最终检验', 'check')):
-            count = views['errors'][key]
-            bar(label, count, max(1, views['errors']['casual'], views['errors']['module'],
-                                  views['errors']['check']), rose, count=True)
+        if has_questions:
+            heading('各模块掌握情况')
+            for module in views['modules']:
+                if module['total']:
+                    bar(module['title'], module['mastered'], module['total'])
+                else:
+                    line(module['title'] + '：只学不考')
+            heading('错误分布')
+            for label, key in (('随口问', 'casual'), ('模块检测', 'module'), ('最终检验', 'check')):
+                count = views['errors'][key]
+                bar(label, count, max(1, views['errors']['casual'], views['errors']['module'],
+                                      views['errors']['check']), rose, count=True)
         heading('每日目标与实际时长 / 历史明细')
         line('蓝色为计划，红色为实际；每天单独比较当天目标与实际，不是累计欠账。', size=9, color=muted)
         for row in views['history']:

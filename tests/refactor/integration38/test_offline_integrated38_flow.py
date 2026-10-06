@@ -29,11 +29,12 @@ MODULE_TITLES = ('队列基础', '顺序比较', '队列应用')
 # Each synthetic module has its own original exercises. Previously this
 # fixture reused the very same stems across modules, contrary to batch 66.
 MODULE_STEMS = {title: [title+'：'+stem for stem in STEMS] for title in MODULE_TITLES}
-BODY = ('<html><head><title>Python 数据结构</title></head><body><h1>队列与栈</h1>'
-    + ''.join('<p>'+QUOTE+'</p>' for _ in range(50))
-    + ''.join(f'<p>{stem} A. 先进先出 B. 后进先出 C. 散列次序 答案：先进先出</p>' for rows in MODULE_STEMS.values() for stem in rows)
-    + '<h1>其他数据结构</h1><p>哈希表按散列次序处理元素。栈按后进先出的顺序处理元素。其他数据结构有各自的存储和查找方法。</p>'
-    + '</body></html>').encode()
+BODY = ('<html><head><title>Python 数据结构</title></head><body>'
+    + ''.join('<h1>'+title+'</h1><p>'+title+'：'+QUOTE+'</p>'
+        + (''.join(f'<p>{i+1}. {stem}</p><p>A. 先进先出</p><p>B. 后进先出</p><p>C. 散列次序</p><p>答案：A</p>'
+                   for i,stem in enumerate(MODULE_STEMS[title][:2])) + ('<h2>栈和队列有什么区别？</h2><p>栈遵循后进先出。队列遵循先进先出。删除元素的位置不同。</p>' if title=='顺序比较' else '') if title != '队列应用' else
+           '<p>该模块只有说明，没有原资料题。队列可以用于排队任务。</p>')
+        for title in MODULE_TITLES) + '</body></html>').encode()
 
 
 class IntegratedModel(Agents):
@@ -62,11 +63,14 @@ class IntegratedModel(Agents):
         elif purpose == 'outline' and kw.get('system') == __import__('refactor.learning.course.planner_agents',fromlist=['MATERIAL_STRUCTURE_SYSTEM']).MATERIAL_STRUCTURE_SYSTEM:
             packet=json.loads(messages[-1]['content']); section=packet['directory'][0]
             value=dict(summary='按资料目录理解处理顺序',modules=[dict(key=f'm{i}',title=title,summary='理解处理顺序',
-                refs=[section['id']],chapters=[section['title']]) for i,title in enumerate(('队列基础','顺序比较','队列应用'))],missing=[])
+                refs=[s['id'] for s in packet['directory'] if s['title']==title or title=='顺序比较' and s['title'].endswith(' / 栈和队列有什么区别？')],chapters=[title]) for i,title in enumerate(('队列基础','顺序比较','队列应用'))],missing=[])
         elif purpose == 'generate':
             title=re.search(r'【本模块】(.+?)：',messages[0]['content'])[1]
-            alias=next(a for a,t in re.findall(r'\[(c\d+)\] [^\n]*\n(.*?)(?=\n\n\[c|\n\n【本次生成约束】)',messages[0]['content'],re.S) if QUOTE in t)
-            value=dict(points=[dict(title=title,summary='理解处理顺序',chunks=[alias],minutes=15,citations=[dict(chunk_id=alias,quote=QUOTE)])])
+            alias=next(a for a,t in re.findall(r'\[(c\d+)\] [^\n]*\n(.*?)(?=\n\n\[c|\n\n【本次生成约束】)',messages[0]['content'],re.S) if QUOTE in t and title in t)
+            aliases=[alias]
+            if title=='顺序比较':
+                aliases.extend(a for a,t in re.findall(r'\[(c\d+)\] [^\n]*\n(.*?)(?=\n\n\[c|\n\n【本次生成约束】)',messages[0]['content'],re.S) if '栈遵循后进先出。队列遵循先进先出。' in t)
+            value=dict(points=[dict(title=title,summary='理解处理顺序',chunks=aliases,minutes=15,citations=[dict(chunk_id=alias,quote=QUOTE)])])
         elif purpose == 'outline':
             chunks=block(messages,'【已取得的原文段落】')
             cid=next(c['chunk_id'] for c in chunks if QUOTE in c['text'])
@@ -74,37 +78,11 @@ class IntegratedModel(Agents):
                 refs=['s1.1'],prerequisites=[],points=[dict(title=title,summary='理解处理顺序',
                 citations=[dict(chunk_id=cid,quote=QUOTE)])]) for i,title in enumerate(('队列基础','顺序比较','队列应用'))])],message='从原文理解顺序。')
         elif purpose == 'point_materials':
-            packet=json.loads(messages[-1]['content']);passages=packet['passages']
-            found=[]
-            if 'points' in packet:
-                # Batch 67: pair existing synthetic original exercises to the
-                # module's points; do not manufacture a ready question bank.
-                for point in packet['points']:
-                    for stem in MODULE_STEMS.get(point['title'],STEMS)[:2]:
-                        p=next(p for p in passages if stem in p['text'])
-                        found.append(dict(point_id=point['id'],kind='choice',stem=stem,
-                            options=['先进先出','后进先出','散列次序'],answer=[0],
-                            explanation='',question_chunk=p['id'],answer_chunk=p['id'],
-                            answer_quote='先进先出',pairing='same_block',question_number='',answer_number=''))
-                return SimpleNamespace(text=json.dumps(dict(found=found),ensure_ascii=False),search_hits=(),citations=())
-            for stem in MODULE_STEMS.get(packet['point']['title'], STEMS):
-                p=next(p for p in passages if stem in p['text'])
-                found.append(dict(kind='choice',stem=stem,options=['先进先出','后进先出','散列次序'],answer=[0],
-                    explanation='',question_chunk=p['id'],answer_chunk=p['id'],answer_quote='先进先出',
-                    pairing='same_block',question_number='',answer_number=''))
-            p=next(p for p in passages if QUOTE in p['text'])
-            contrast=next(v for v in passages if '哈希表按散列次序' in v['text'])
-            value=dict(passages=[p['id'] for p in passages],found=found,cloze=[
-                # Keep the shared fixture's documented quick answer (队列).
-                # Here the queried object is a processing order and its value
-                # is the structure using it; contrast other orders/structures.
-                dict(target=packet['point']['id']+'：哪种结构按先进先出的顺序处理元素？',subject='先进先出',chunk_id=p['id'],sentence=QUOTE,word='队列',importance='key',contrasts=[
-                    dict(chunk_id=contrast['id'],contrast_quote='栈按后进先出的顺序处理元素。',contrast_subject='后进先出',contrast_value='栈'),
-                    dict(chunk_id=contrast['id'],contrast_quote='哈希表按散列次序处理元素。',contrast_subject='散列次序',contrast_value='哈希表')])])
-        elif purpose == 'distractor_check':
+            # Locate only the program's already-cut original exercises.
+            from tests.refactor.material_questions70.test_material_questions70_contract import raw70
             packet=json.loads(messages[-1]['content'])
-            value=dict(questions=[dict(id=q['id'],checks=[dict(index=i,verdict='not_supported',quote='')
-                for i in range(len(q['options'])) if i not in q['answer']]) for q in packet['questions']])
+            assert 'candidates' in packet and kw.get('enable_search') is False
+            value=dict(questions=[raw70(candidate) for candidate in packet['candidates']])
         else: raise AssertionError('unexpected purpose '+purpose)
         return SimpleNamespace(text=json.dumps(value,ensure_ascii=False),search_hits=(),citations=())
 
@@ -141,9 +119,10 @@ def build_plan(root, events):
     d=run(lambda d,c:flow.estimate(d));estimate=d['outline']['ranges']['total'][1]
     d=run(lambda d,c:flow.generate(d,c));assert d['phase']=='ready'
     join_workers()
-    assert store.get_plan(pid)['total_minutes']==estimate
+    assert store.get_plan(pid)['total_minutes']==estimate+sum(m['check_minutes']+m['final_check_minutes'] for m in store.records('modules',pid))
     bank=store.records('question_bank',pid)
-    assert len(bank)==6 and sum(q.get('role')=='bank' for q in bank)==4
+    assert len(bank)==5 and all(q.get('role')=='bank' for q in bank)
+    assert sum(q['kind']=='recall' for q in bank)==1
     assert len({q['module_id'] for q in bank})==2  # Third module waits for entering the second.
     assert all(q['origin']=='found' and q['answer_source']['url']==URL for q in bank if q.get('role')=='bank')
     assert any(k=='plan_preparation' for k,_ in events)
@@ -172,23 +151,26 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
         v=act('choose',option=0);assert v['step']=='teaching'
         v=act('confused');assert v['messages'][-1]['sources']
         v=act('ask',text='我想问顺序。');assert v['conversation']['interrupted']
-        act('back');v=act('next');assert v['question']['purpose']=='quick'
-        v=act('answer',value=[1]);assert v['explanation']['open'] and not v['question'] and v['step']=='closing'
-        v=act('why');assert v['explanation']['open']
-        # Reopening retains the finished verdict/position, no duplicate grade.
+        act('back');v=act('reply',text='我以为队列是后进先出。')
+        assert v['step']=='teaching' and not v['question']
+        # Reopening retains ordinary dialogue, without a casual assessment.
         before=len(services.store.records('judgements',pid));v=act('state')
-        assert len(services.store.records('judgements',pid))==before
+        assert len(services.store.records('judgements',pid))==before==0
         v=act('next');assert v['step']=='test_offer'
-        v=act('test',kind='module_test');v=act('answer',value=[1]);assert v['module']['state']=='failed'
+        v=act('test',kind='module_test');v=act('answer',value=[1]);v=act('answer',value=[0]);assert v['module']['state']=='failed'
         v=act('test',kind='retest');v=act('answer',value=[0]);assert v['module']['state']=='passed'
         v=act('next_module');assert v['can_skip']
-        v=act('test',kind='skip_test');v=act('answer',value=[0]);assert v['module']['state']=='skipped'
+        v=act('test',kind='skip_test')
+        while v['question']:
+            if v['question']['kind']=='recall':
+                qid=v['question']['id'];v=registry.methods['class.recall_reveal'](dict(plan_id=pid,question_id=qid,answer='先进先出与后进先出'),ctx)
+                assert v['reference'] and len(v['key_points'])==3
+                v=registry.methods['class.recall_submit'](dict(plan_id=pid,question_id=qid,ticked=[0,1,2]),ctx)
+            else:v=act('answer',value=[0])
+        assert v['module']['state']=='skipped'
         act('next_module');act('next');act('choose',option=0)
-        known=act('reply',text='我会了');assert known['question']['purpose']=='quick'
-        quick=next(q for q in services.store.records('question_bank',pid) if q['id']==known['question']['id'])
-        v=act('answer',value=quick['answer']);assert v['step']=='test_offer'
-        act('test',kind='module_test');act('answer',value=[0])
-        v=act('next_module');assert v['step']=='check_offer'
+        v=act('reply',text='我会了');assert not v['question'] and v['step']=='check_offer'
+        assert any('只学不考' in m.get('content','') for m in v['messages'])
         v=act('check');steps=0
         while v['step']!='completed':
             steps+=1;assert steps<20
@@ -196,7 +178,10 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
             # fixture's correct option is not always index 0 once cloze options are sorted.
             if v['question']:
                 stored=next(q for q in services.store.records('question_bank',pid) if q['id']==v['question']['id'])
-                v=act('answer',value=stored['answer'])
+                if stored['kind']=='recall':
+                    registry.methods['class.recall_reveal'](dict(plan_id=pid,question_id=stored['id'],answer='自己的回答'),ctx)
+                    v=registry.methods['class.recall_submit'](dict(plan_id=pid,question_id=stored['id'],ticked=list(range(len(stored['key_points'])))),ctx)
+                else:v=act('answer',value=[0])
             else:v=act('check')
         report=flow.report(pid)['report'];views=report_views(report)
         titles={p['id']:p['title'] for p in services.store.records('points',pid)}
@@ -205,12 +190,19 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
         target=tmp_path/'report.pdf';render_report_pdf(report,titles,views,target)
         assert target.read_bytes().startswith(b'%PDF-')
         frozen=(services.store.load_mastery(pid).to_dict(),services.store.load_report(pid))
-        v=act('practice',count=2);v=act('answer',value=[1]);v=act('answer',value=[0])
+        v=act('practice',count=2)
+        for correct in (False,True):
+            if v['question']['kind']=='recall':
+                qid=v['question']['id']
+                v=registry.methods['class.recall_reveal'](dict(plan_id=pid,question_id=qid,answer='自己的回答'),ctx)
+                v=registry.methods['class.recall_submit'](dict(plan_id=pid,question_id=qid,
+                    ticked=list(range(len(v['key_points']))) if correct else []),ctx)
+            else:v=act('answer',value=[0 if correct else 1])
         assert v['step']=='completed'
         assert frozen==(services.store.load_mastery(pid).to_dict(),services.store.load_report(pid))
         assert len(services.store.records('practice_results',pid))==2
         uses={u['purpose'] for q in services.store.records('question_bank',pid) for u in q['uses']}
-        assert uses=={'quick','module','direct','retest','final','free'}
+        assert uses=={'module','direct','retest','final','free'}
     finally:
         join_workers()
         if services:services._closed=True;services.store.close()
@@ -240,64 +232,58 @@ def test_old_plan_opens_with_clear_unusable_state(tmp_path):
 def test_real_materials_wait_resumes_once_with_mapping_context(tmp_path):
     import time
     services,flow,model,pid=build_plan(tmp_path,[])
-    room=Classroom(services,lambda:DAY,now=NOW)
     started,release=threading.Event(),threading.Event()
-    events=[];room.material_event=events.append
     original=model.complete
     try:
-        mid=services.store.records('modules',pid)[0]['id']
-        # Only synthetic test rows: make the module cold, as on a new device.
+        module=services.store.records('modules',pid)[0];mid=module['id']
         with services.store.transaction():
+            module.pop('question_extraction',None)
+            services.store._put('modules',pid,module)
             for q in services.store.records('question_bank',pid):
                 if q['module_id']==mid:
                     services.store._db.execute('DELETE FROM question_bank WHERE plan_key=? AND id=?',(pid,q['id']))
         def complete(purpose,*args,**kwargs):
-            if purpose=='point_materials':
-                started.set();assert release.wait(5)
+            if purpose=='point_materials':started.set();assert release.wait(5)
             return original(purpose,*args,**kwargs)
         model.complete=complete
-        ctx=CallContext('cold38',threading.Event(),lambda _:None)
-        before=model.calls.count('point_materials')
-        then=time.monotonic();room.perform(pid,'enter',ctx)
-        assert started.wait(1)
-        v=room.perform(pid,'next',ctx)
-        assert v['step']=='preparing_materials' and time.monotonic()-then<1
-        room.perform(pid,'next',ctx)  # Waiting never prepares the same point again.
+        before=model.calls.count('point_materials');begin=time.monotonic()
+        flow._prepare_remaining(pid,[module],point_materials.prepare_module)
+        assert time.monotonic()-begin<1 and started.wait(1)
+        flow._prepare_remaining(pid,[module],point_materials.prepare_module)
         release.set();join_workers()
-        v=room.run(pid,lambda *args:None,ctx)
-        assert v['step']=='opening' and not v['failure'] and v['messages'][-1]['sources']
-        # One module-level bank mapping plus one point quick locator; waiting
-        # must never start another copy of either operation.
+        assert flow._module_ready(pid,mid)
         requests=[r for r in model.requests if r['purpose']=='point_materials'][before:]
-        assert model.calls.count('point_materials')==before+2 and events
-        assert sum('points' in json.loads(r['messages'][-1]['content']) for r in requests)==1
-        fresh=Classroom(services,lambda:DAY,now=NOW)
-        assert fresh.run(pid,lambda *args:None,ctx)['step']=='opening'
+        assert len(requests)==1
+        assert len(json.loads(requests[0]['messages'][-1]['content'])['candidates'])==2
+        assert PlanFlow(services,lambda *a:None,lambda:DAY)._module_ready(pid,mid)
     finally:
-        release.set();room.cancel_materials();join_workers();services._closed=True;services.store.close()
+        release.set();join_workers();services._closed=True;services.store.close()
 
 
 def test_integration44_real_roles_and_uses_survive_store_reopen(tmp_path):
-    """No autouse material boundary: select/mark/prepare are real and durable."""
+    """Real module extraction, use persistence, reopen; no quick generation."""
     services,flow,model,pid=build_plan(tmp_path,[])
     try:
         first=services.store.records('modules',pid)[0]['id']
         point=next(p for p in services.store.records('points',pid) if p['module_id']==first)
         before=len(model.calls)
         point_materials.prepare_point(services.store,pid,point,dict(gateway=model,cancel=threading.Event()))
-        assert len(model.calls)==before  # Stored complete rows avoid locating again.
-        quick=point_materials.pick_question(services.store,pid,point['id'],'quick')
-        bank=point_materials.pick_question(services.store,pid,point['id'],'module')
-        assert quick['role']=='quick' and bank['role']=='bank' and quick['id']!=bank['id']
-        point_materials.mark_used(services.store,pid,quick['id'],'quick')
+        assert len(model.calls)==before
+        rows=[q for q in services.store.records('question_bank',pid) if q['module_id']==first]
+        assert len(rows)==2 and all(q['role']=='bank' and q['kind']=='objective' for q in rows)
+        assert not any(q.get('role')=='quick' for q in services.store.records('question_bank',pid))
+        bank=rows[0]
         point_materials.mark_used(services.store,pid,bank['id'],'module')
+        # The third source chapter contains no original exercises. Its completed
+        # extraction is persisted without a model call or a fallback question.
+        third=services.store.records('modules',pid)[2]['id']
+        result=point_materials.prepare_module(services.store,pid,third,dict(gateway=model),lambda *a:None)
+        assert result['questions']==0 and flow._module_ready(pid,third)
+        assert len(model.calls)==before
     finally:
         join_workers();services._closed=True;services.store.close()
-    fresh=CourseStore('integration38',tmp_path)
-    try:
+    with CourseStore('integration38',tmp_path) as fresh:
         rows={q['id']:q for q in fresh.records('question_bank',pid)}
-        assert rows[quick['id']]['uses'][0]['purpose']=='quick'
         assert rows[bank['id']]['uses'][0]['purpose']=='module'
-        assert point_materials.pick_question(fresh,pid,point['id'],'quick')['id']==quick['id']
-        assert point_materials.pick_question(fresh,pid,point['id'],'module')['id']!=bank['id']
-    finally:fresh.close()
+        assert point_materials.preparation_done(fresh,pid,first)
+        assert point_materials.preparation_done(fresh,pid,third)

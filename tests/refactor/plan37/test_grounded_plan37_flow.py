@@ -94,11 +94,15 @@ def fixture(tmp_path):
         assert url == URL
         return FetchedContent(url, url, "text/html", body, "2026-10-03T00:00:00Z")
     def prepare(store, pid, mid, ctx, progress):
-        from tests.refactor.integration38.support import seed_bank
-        seed_bank(store,pid)
+        from refactor.learning.course.point_materials import prepare_module
+        from tests.refactor.material_questions70.test_material_questions70_contract import split70
+        # This plan-only fixture has no original exercises. Zero questions is
+        # a completed extraction, not an instruction to manufacture questions.
+        result=prepare_module(store,pid,mid,dict(question_splitter=split70,cancel=ctx['cancel']),lambda *a:None)
         assert store.records("points", pid)
         prepared.append(mid)
         progress(1, 1, "原文与备题完成")
+        return result
     services = SimpleNamespace(store=store, gateway=model, data_root=tmp_path, account_id=ACCOUNT,
                                catalog=SimpleNamespace(load_lists=load_lists), _closed=False)
     flow = PlanFlow(services, lambda kind, data: events.append((kind, data)), lambda: TODAY, fetcher=fetch, prepare_module=prepare)
@@ -140,21 +144,14 @@ def test_plan37_whole_offline_flow_and_reopen(fixture):
     flow.start_request(pid)
     assert flow.services.store.get_plan(pid)["state"] == "active"
 
-def test_plan38_incomplete_first_module_does_not_become_ready_and_retry_keeps_points(fixture):
+def test_plan70_zero_question_first_module_is_ready_and_keeps_points(fixture):
     flow,model,ctx,*_=fixture
     draft=adopt_and_map(fixture);pid=draft['plan_id']
     flow.estimate(draft)
-    prepare=flow._prepare_module
-    flow._prepare_module=lambda *args:None
-    with pytest.raises(BridgeError,match='题不足'):
-        flow.generate(draft,ctx)
-    assert flow.load(pid)['phase']=='generating' and flow.services.store.get_plan(pid)['state']!='active'
-    with pytest.raises(BridgeError,match='还没生成完'):
-        flow.start_request(pid)
-    points=flow.services.store.records('points',pid)
-    flow._prepare_module=prepare
     flow.generate(draft,ctx)
-    assert flow.load(pid)['phase']=='ready' and flow.services.store.records('points',pid)==points
+    assert flow.load(pid)['phase']=='ready' and flow.services.store.records('points',pid)
+    module=flow.services.store.records('modules',pid)[0]
+    assert module['check_minutes']==module['final_check_minutes']==module['question_count']==0
 
 
 def test_plan37_prunes_invalid_number_without_retrying_valid_points(fixture):
@@ -186,10 +183,10 @@ def test_plan37_user_cap_warns_without_blocking_generation(fixture):
     flow, model, ctx, *_ = fixture
     model.count = 30
     draft = adopt_and_map(fixture)
-    draft["form"].update(end=TODAY.isoformat(), daily_cap=300)
+    draft["form"].update(end=TODAY.isoformat(), daily_cap=100)
     flow.estimate(draft)
     r = draft["outline"]["ranges"]
-    assert r["over_cap"] and r["suggested_days"] >= 2
+    assert r['over_cap'] and r['suggested_days']>=2  # Even learning alone exceeds the user's cap.
     flow.extend_end(draft, r["suggested_end"])
     assert not draft["estimate"]["blocked"]
     flow.generate(draft, ctx)
@@ -199,8 +196,11 @@ def test_plan37_user_cap_warns_without_blocking_generation(fixture):
 def test_plan37_estimate_weights_and_no_model_minutes():
     w = PlanWindow(TODAY, TODAY+timedelta(days=1), 30, (1,)*7, {TODAY: .5})
     r = map_ranges(w, 4)
-    assert r["learning"] == 32 and r["total"][0] == r["total"][1] > 32
-    assert r["over_cap"] and r["suggested_end"]
+    assert r["learning"] == 32 and r["total"] == [32,32]
+    known=map_ranges(w,4,module_counts=[4],question_counts=[3])
+    assert known['total']==[46,46]  # 32 learned + 3x2 module + round(3x2.6) final.
+    assert not r['over_cap']
+    assert known['over_cap'] and known['suggested_end']
 
 
 @pytest.mark.parametrize("goal", ["初二物理：压强与浮力", "我想学习初二物理：压强与浮力，能够掌握不同环境的应用和计算方法", "想学非常非常长的一个知识主题然后把所有技巧全部掌握"])

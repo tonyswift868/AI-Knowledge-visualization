@@ -10,6 +10,7 @@ type Report = {
     planned_minutes: number; credited_minutes: number }
   modules: { module_id: string; title: string; state: string; retest_count?: number }[]
   points: { point_id: string; module_id: string; summary: string; state: string; casual_errors: number; module_errors: number; check_questions: number; check_correct: number }[]
+  questions?: { question_id: string; module_id: string; check_questions: number; check_correct: number; passed: boolean }[]
   weakest_points: { point_id: string; score: number }[]
   point_comments?: Record<string, string | null>
   teacher_profile: { text?: string; check?: string } | null
@@ -42,8 +43,9 @@ export function Report() {
   if (!data) return <div className="page"><div className="card"><Loader2 className="spin" /> 正在生成报告…</div></div>
   const { report: r, titles, views } = data
   const weak = r.weakest_points.filter((w) => w.score > 0)
-  const checks = r.points.reduce((a, p) => a + p.check_questions, 0)
-  const right = r.points.reduce((a, p) => a + p.check_correct, 0)
+  const checks = (r.questions ?? []).reduce((a, p) => a + p.check_questions, 0)
+  const right = (r.questions ?? []).reduce((a, p) => a + p.check_correct, 0)
+  const hasQuestions = !!r.questions?.length
   const dailyMax = Math.max(1, ...views.history.flatMap((d) => [d.target_minutes, d.actual_minutes]))
   async function save(method: "plan.report_export" | "plan.report_pdf") {
     try {
@@ -67,23 +69,23 @@ export function Report() {
             <div><span>学习时长</span><b>{hours(r.plan.credited_minutes)}</b></div>
             <div><span>日期</span><b>{r.plan.actual_start_date ?? r.plan.start_date} → {r.plan.actual_completion_date ?? "—"}</b></div>
             <div><span>完成情况</span><b>{r.plan.early_days ? `提前 ${r.plan.early_days} 天` : r.plan.overdue_days ? `晚了 ${r.plan.overdue_days} 天` : "按时完成"}</b></div>
-            <div><span>最终检验</span><b>{checks ? `${right}/${checks} 题答对` : "—"}</b></div>
+            <div><span>最终检验</span><b>{checks ? `${right}/${checks} 题答对` : hasQuestions ? "尚未进行" : "只学习，不考核"}</b></div>
           </div>
         </div>
       </div>
       {!!r.live_points?.length && <section className="card stack" aria-label="现场讲知识点" style={{ marginTop: 16 }}>
-        <b>以下知识点是老师现场讲的（讲稿没通过核对）</b>
+        <b>以下知识点由老师结合资料现场讲解</b>
         <ul style={{ margin: 0, paddingLeft: "1.4em", lineHeight: 1.8 }}>
           {r.live_points.map((point) => <li key={point.point_id}>{point.title}</li>)}
         </ul>
       </section>}
-      <div className="section-title"><h2>各模块掌握情况</h2><span>完成最终检验的知识点数</span></div>
+      {hasQuestions && <><div className="section-title"><h2>各模块掌握情况</h2><span>通过最终检验的题数</span></div>
       <div className="card stack" role="img" aria-label="各模块掌握情况柱状图">
         {views.modules.map((m) => <div key={m.module_id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ width: "38%" }}>{m.title}</span><Bar value={m.mastered} total={m.total} />
-          <b>{m.mastered}/{m.total}</b>
+          <b>{m.total ? `${m.mastered}/${m.total}` : "只学不考"}</b>
         </div>)}
-      </div>
+      </div></>}
       <div className="section-title"><h2>每日计划与实际时长</h2><span>按当天单独比较，不是累计欠账</span></div>
       <div className="card stack" role="img" aria-label="每天目标和实际分钟数分组柱状图">
         <p className="muted" style={{ margin: 0 }}>上条：目标 · 下条：实际；长度按全部日期的最大值比较。</p>
@@ -93,13 +95,13 @@ export function Report() {
           <span style={{ width: 100, textAlign: "right" }}>{d.target_minutes} / {d.actual_minutes} 分</span>
         </div>)}
       </div>
-      <div className="section-title"><h2>错误分布</h2><span>按判定场景统计，含最终检验通过后的错误</span></div>
+      {hasQuestions && <><div className="section-title"><h2>错误分布</h2><span>按判定场景统计，含最终检验通过后的错误</span></div>
       <div className="card stack" role="img" aria-label="随口问、模块检测、最终检验错误次数柱状图">
         {([["随口问", views.errors.casual], ["模块检测", views.errors.module], ["最终检验", views.errors.check]] as [string, number][]).map(([label, value]) =>
           <div key={label} style={{ display: "flex", gap: 12, alignItems: "center" }}><span style={{ width: 90 }}>{label}</span>
             <Bar value={value} total={Math.max(1, views.errors.casual, views.errors.module, views.errors.check)} color="var(--warn)" />
             <b>{value} 次</b></div>)}
-      </div>
+      </div></>}
       {(r.teacher_profile?.check || r.teacher_profile?.text) && <>
         <div className="section-title"><h2>老师的观察</h2><span>根据你的作答整理，不是打分</span></div>
         <div className="card stack">

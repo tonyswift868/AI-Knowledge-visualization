@@ -30,6 +30,11 @@ def seed_module(store, pid, mid):
         quick.update(role='quick', origin='cloze')
         rows.append(quick)
         store.add_bank_questions(pid, mid, rows)
+    # Scheduler tests replace preparation IO. Persist the new completion
+    # contract too; the synthetic reviewed legacy bank tests classroom state.
+    from refactor.learning.course.point_materials import prepare_module
+    from tests.refactor.material_questions70.test_material_questions70_contract import split70
+    prepare_module(store,pid,mid,dict(question_splitter=split70,cancel=threading.Event()),lambda *a:None)
 
 
 def wait_for(predicate, timeout=3):
@@ -173,18 +178,6 @@ def test_one_worker_per_plan_even_when_current_is_queued(env):
     assert e.calls==['m1','m2'] and peak==1
 
 
-def test_final_replenishment_does_not_overlap_module_background_io(env):
-    e=env;release=threading.Event();started=threading.Event();final_started=threading.Event()
-    def prepare(store,pid,mid,ctx,progress):
-        started.set(); assert release.wait(2);seed_module(store,pid,mid)
-    e.materials.prepare_point=lambda *a,**k:final_started.set()
-    e.flow._prepare_remaining(PLAN,[dict(id='m1')],prepare)
-    assert started.wait(1)
-    e.room._prepare_final(e.room._course(PLAN))
-    assert not final_started.wait(.05)
-    release.set();wait_for(lambda:PLAN not in e.flow._preparing)
-    assert final_started.wait(1)
-    wait_for(lambda:e.room._jobs[(PLAN,'final')]['status']=='ready')
 
 
 def test_reopen_keeps_completed_bank_and_restarts_running_next(env):

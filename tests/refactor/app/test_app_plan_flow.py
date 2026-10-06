@@ -332,6 +332,7 @@ def test_outline_estimate_counts_real_check_time():
     """PLAN-05: estimate learning at eight minutes, without changing check rules."""
     from refactor.learning.app.plan_flow import minute_ranges, with_checks
     from refactor.learning.course.ledger import PlanWindow
-    assert with_checks(149) == 236  # roughly nineteen points, with module and final checks
+    assert with_checks(149) == 149  # Unknown question count cannot be inferred from point count.
+    assert with_checks(149,19) == 236  # Nineteen actual material questions.
     ranges = minute_ranges(PlanWindow(date(2026, 10, 5), date(2026, 10, 11), 20), 115, 155)
-    assert ranges["daily"][1] >= 29 and ranges["over_cap"]  # 20 min/day remains insufficient
+    assert ranges["daily"][1] >= 23 and ranges["over_cap"]  # Learning alone exceeds 20 min/day.

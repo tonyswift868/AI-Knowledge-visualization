@@ -27,7 +27,10 @@ def controls(view,stage):
     if stage=='generated':return [a('plan.start','开始计划')]
     if stage in ('classroom','final','free'):
         step=view.get('step');q=view.get('question');result=[]
-        if q:return [a('classroom.answer','value: choice/multi下标数组; fill每空文本数组; 其他文本'),
+        if q and q.get('kind')=='recall':
+            return ([a('class.recall_submit','question_id: 当前题号, ticked: 从0开始的已勾要点下标数组')]
+                    if q.get('revealed') else [a('class.recall_reveal','question_id: 当前题号, answer: 学生自己的回答')])
+        if q:return [a('classroom.answer','value: 选择题下标数组; 填空/计算按资料标准作答'),
             a('classroom.reply','text: 作答或澄清'),a('classroom.ask','text: 追问'),a('simulation.reopen','中途退出再进')]
         if step=='preparing_materials':return [a('classroom.state','等待后台准备')]
         result=[a('classroom.ask','text: 随时提问'),a('simulation.reopen','退出再进')]
@@ -67,7 +70,7 @@ class Driver:
         if hasattr(self.user,'script'):self.state['user_script_remaining']=list(self.user.script)
         self.sim.evidence.save('checkpoint.json',self.state)
     def request(self,method,**params):
-        if method.startswith(('plan.','classroom.')) and method not in ('plan.current','plan.drafts'):
+        if method.startswith(('plan.','classroom.','class.')) and method not in ('plan.current','plan.drafts'):
             params.setdefault('plan_id',self.state['plan_id'])
         result=self.sim.call(method,**params)
         view=result.get('draft',result);self.state['view']=view

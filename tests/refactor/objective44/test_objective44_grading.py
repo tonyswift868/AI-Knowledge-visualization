@@ -88,12 +88,11 @@ def test_old_subjective_questions_filtered_for_every_purpose(e,purpose):
 def test_all_subjective_skips_without_grade_or_empty_close(e):
     e.materials.bank=[question('p0','short'),question('p0','essay')]
     v=act(e,'start_test','skip_test')
-    assert not v['failure'] and not v['question'] and v['step']=='test_done'
+    assert v['failure'] and not v['question'] and '先学完内容' in v['failure']['message']
     assert not e.gateway.calls and not e.store.records('judgements',PLAN)
     assert not e.store.records('attempt_closed',PLAN)
     assert e.store.load_mastery(PLAN).module('m0').state=='untested'
-    assert any('出题失败（程序问题，已记录）' in m['content'] for m in v['messages'])
-    assert e.room._load(e.room._course(PLAN))['question_gaps'][0]['kind']=='question_program_error'
+    assert not e.room._load(e.room._course(PLAN)).get('question_gaps')  # No questions means learning-only, not a preparation fault.
 
 
 def test_reopen_pending_old_subjective_changes_question_without_grading(e):

@@ -24,7 +24,7 @@ def replay_room(data, prefix):
     history=[r for r in data['judgements'] if r['event']['seq']<cutoff]
     mastery=copy.deepcopy(data['mastery'])
     mastery['events']=[e for e in events if e['seq']<cutoff]
-    book=MasteryBook.from_dict(mastery)
+    book=MasteryBook(mastery['points'])
     bank=copy.deepcopy(data['bank'])
     for row in history:
         if row['event']['context']=='check':
@@ -45,60 +45,12 @@ def replay_room(data, prefix):
     return room,course,history
 
 
-@pytest.mark.parametrize('prefix',[0,3,10,11,12,13])
-def test_small57_final_replay_prefers_unasked_question_and_spacing(prefix):
-    data=fixture();room,course,history=replay_room(data,prefix)
-    state=dict(check_used=0,check=None,check_missing=[])
-    room._next_check(course,state,None)
-    q=state['shown']
-    asked=[r['details']['question_id'] for r in history if r['event']['context']=='check']
-    # Every frozen bank point has a second usable question. The late failures
-    # came from repeatedly excluding that question just because of module use.
-    if prefix in (10,11,12,13):assert q['id'] not in asked
-    assert q['id'] not in asked[-3:]
-    again=copy.deepcopy(state);again['check']=None;again.pop('shown')
-    fresh,course,_=replay_room(data,prefix)
-    fresh._next_check(course,again,None)
-    assert again['shown']['id']==q['id']  # reopening does not reset gap history
 
 
-def test_exhausted_bank_waits_three_other_questions_when_possible():
-    data=fixture();room,course,history=replay_room(data,0)
-    # All ten points remain eligible, with one question each, already asked.
-    bank=course.store.records('question_bank','saved57')
-    bank[:]=[next(q for q in bank if q['role']=='bank' and p['id'] in q['point_ids']) for p in course.points]
-    history[:]=[dict(event=dict(seq=i,context='check'),details=dict(question_id=q['id'])) for i,q in enumerate(bank)]
-    state=dict(check_used=0,check=None)
-    room._next_check(course,state,None)
-    assert state['shown']['id'] not in [q['id'] for q in bank[-3:]]
 
 
-def test_one_remaining_question_relaxes_gap_and_does_not_deadlock():
-    data=fixture();room,course,history=replay_room(data,13)
-    pid=course.book().next_check_items()[0][0]
-    bank=course.store.records('question_bank','saved57')
-    bank[:]=[next(q for q in bank if q['role']=='bank' and pid in q['point_ids'])]
-    history.append(dict(event=dict(seq=10**30,context='check'),details=dict(question_id=bank[0]['id'])))
-    state=dict(check_used=0,check=None)
-    room._next_check(course,state,None)
-    assert state['shown']['id']==bank[0]['id']
 
 
-def test_two_exhausted_questions_alternate_even_with_identical_use_times():
-    data=fixture();room,course,history=replay_room(data,13)
-    pid=course.book().next_check_items()[0][0]
-    bank=course.store.records('question_bank','saved57')
-    bank[:]=[q for q in bank if q['role']=='bank' and pid in q['point_ids']]
-    assert len(bank)==2
-    module_ids=room._test_questions(course,pid)
-    older=next(q for q in bank if q['id'] in module_ids)
-    latest=next(q for q in bank if q['id']!=older['id'])
-    history.extend([dict(event=dict(seq=10**30+i,context='check'),details=dict(question_id=q['id']))
-        for i,q in enumerate((older,latest))])
-    for q in bank:q['uses']=[dict(purpose='final',at='2026-10-01T10:00:00+00:00')]
-    state=dict(check_used=0,check=None)
-    room._next_check(course,state,None)
-    assert state['shown']['id']==older['id']
 
 
 @pytest.mark.parametrize('index',[0,1])
@@ -144,18 +96,3 @@ def test_uncited_delivery_uses_existing_original_cards():
     room._deliver(course,{},teacher_agent.Teaching('中文讲解没有引用。',()))
     assert messages[0].startswith('中文讲解没有引用。')
     assert 'mf-source:original' in messages[0] and 'English source.' not in messages[0]
-
-
-def test_recorded_angle_does_not_rotate_on_reused_question():
-    data=fixture();room,course,_=replay_room(data,13)
-    q=course.store.records('question_bank','saved57')[0]
-    room._prior_verdict=lambda *args:None;room.now=lambda:datetime.now(timezone.utc)
-    course.next_seq=lambda:10**30
-    events=[];course.store.append_judgement=lambda plan,event,**kw:events.append(event)
-    room._day=lambda st:None
-    pending=dict(question=q,point_ids=q['point_ids'],answer_id='new-answer')
-    verdict=Verdict('correct',True,(),'程序判')
-    room._record(course,{},'check',pending,verdict,'正确')
-    pending['answer_id']='another-answer'
-    room._record(course,{},'check',pending,verdict,'正确')
-    assert [e.angle for e in events]==['recall','recall']

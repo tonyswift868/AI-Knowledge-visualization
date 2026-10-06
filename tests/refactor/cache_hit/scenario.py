@@ -13,8 +13,13 @@ def run_scenario(root,*,extended=False):
         def act(name,*args):
             pending=room._file(pid).read({}).get('pending') or {}
             q=pending.get('question') or {}
-            if name=='reply' and q.get('kind') in ('choice','multi'):
-                name,args='answer',(q['answer'],)  # scripted literal-cloze choice
+            if name=='reply' and q:
+                if q['kind']=='recall':
+                    room.perform(pid,'recall_reveal',context(),(q['id'],'学生自己的回答'))
+                    name,args='recall_submit',(q['id'],list(range(len(q['key_points']))))
+                else:
+                    from refactor.learning.course.question_bank import grading_question
+                    name,args='answer',(grading_question(q)['answer'],)
             v=room.perform(pid,name,context(),args)
             assert not v['failure'],v['failure']
             return v

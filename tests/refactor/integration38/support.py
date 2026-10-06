@@ -108,6 +108,9 @@ def to_question(room, plan_id, view, *, streamed=None):
     """Clock/accounting fixtures advance non-scored conversation explicitly."""
     for _ in range(5):
         if view.get('failure'): raise AssertionError(view['failure'])
+        today=view.get('today') or {}
+        if view['step']=='teach' and today.get('today_target',0)>0 and today.get('today_confirmed',0)+today.get('today_tentative',0)>=today['today_target']:
+            return view
         if view['step'] == 'closing':
             view = operate(room,plan_id,'next',streamed=streamed)
             today = view.get('today') or {}
@@ -115,7 +118,7 @@ def to_question(room, plan_id, view, *, streamed=None):
                 return view
         elif view['step'] == 'teach': view = operate(room,plan_id,'next',streamed=streamed)
         elif view['step'] == 'opening': view = operate(room,plan_id,'choose',0,streamed=streamed)
-        elif view['step'] == 'teaching': view = operate(room,plan_id,'next',streamed=streamed)
+        elif view['step'] == 'teaching': return view
         else: return view
     raise AssertionError('conversation did not reach a question')
 

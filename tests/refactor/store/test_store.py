@@ -11,6 +11,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
+from tests.refactor.mastery70.support import seed_assessment
 from refactor.learning.course.ledger import Ledger, PlanWindow
 from refactor.learning.course.mastery import MasteryBook, PointRef, Judgement, AttemptClosed
 from refactor.learning.course.store import CourseStore, StoreError, SCHEMA_VERSION, MAX_PAYLOAD
@@ -49,6 +50,7 @@ class StoreTests(unittest.TestCase):
                        [dict(id=f'm{i}', stage_id='stage', title=f'模块{i}', prerequisites=['m0'] if i else []) for i in range(modules)])
         for i in range(modules):
             s.save_generated_module(plan, f'm{i}', [dict(id=f'point{i}', summary=f'知识点{i}', minutes=40, chunk_ids=['chunk'])], check_minutes=10, today=TODAY)
+        seed_assessment(s, plan)
         return s
 
     def complete(self, store=None, plan='p'):
@@ -57,11 +59,11 @@ class StoreTests(unittest.TestCase):
         for i, module in enumerate(s.records('modules', plan)):
             seq = 10 * (i + 1)
             point = f'point{i}'
-            s.append_judgement(plan, Judgement(f'j{i}', seq, NOW, 'module_test', module['id'], f'a{i}', ((point, True),)))
+            s.append_judgement(plan, Judgement(f'j{i}', seq, NOW, 'module_test', module['id'], f'a{i}', ((point, True),), question_id=point))
             s.append_attempt_closed(plan, AttemptClosed(f'ac{i}', seq + 1, module['id'], f'a{i}', 'module_test'))
         s.start_checking(plan)
         for i, module in enumerate(s.records('modules', plan)):
-            s.append_judgement(plan, Judgement(f'check{i}', 100 + i, NOW, 'check', module['id'], results=((f'point{i}', True),), angle='recall'))
+            s.append_judgement(plan, Judgement(f'check{i}', 100 + i, NOW, 'check', module['id'], results=((f'point{i}', True),), question_id=f'point{i}'))
         s.add_credit(plan, 'done', 'all', s.get_plan(plan)['total_minutes'], TODAY, 'confirmed')
         s.complete_plan(plan, today=TODAY)
         return s
@@ -188,9 +190,9 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(StoreError): s.revoke_credits('p','u',event_id='confirm')
 
     def test_mastery_replay_preserves_original_events_and_details(self):
-        s = self.prepare(modules=1); expected = MasteryBook([PointRef('point0','m0')])
-        events = [Judgement('j',1,NOW,'module_test','m0','a',(('point0',True),)), AttemptClosed('close',2,'m0','a','module_test'),
-                  Judgement('check',3,NOW,'check','m0',results=(('point0',True),),angle='recall')]
+        s = self.prepare(modules=1); expected = MasteryBook([PointRef('point0','m0')], s.records('question_bank','p'))
+        events = [Judgement('j',1,NOW,'module_test','m0','a',(('point0',True),),question_id='point0'), AttemptClosed('close',2,'m0','a','module_test'),
+                  Judgement('check',3,NOW,'check','m0',results=(('point0',True),),question_id='point0')]
         for event in reversed(events):
             if isinstance(event,Judgement): s.append_judgement('p',event,details={'question':'问题','answer':'回答','chunk_ids':['chunk']})
             else: s.append_attempt_closed('p',event)
@@ -437,7 +439,7 @@ class StoreTests(unittest.TestCase):
         s=self.prepare(modules=1); s.start_plan('p'); before=self.snapshot()
         with self.assertRaises(StoreError): s.start_checking('p')
         self.assertEqual(self.snapshot(),before)
-        s.append_judgement('p',Judgement('pass',1,NOW,'module_test','m0','a',(('point0',True),)))
+        s.append_judgement('p',Judgement('pass',1,NOW,'module_test','m0','a',(('point0',True),),question_id='point0'))
         s.append_attempt_closed('p',AttemptClosed('closed',2,'m0','a','module_test'))
         before=self.snapshot()
         with self.assertRaises(RuntimeError):
@@ -446,7 +448,7 @@ class StoreTests(unittest.TestCase):
         s.start_checking('p'); before=self.snapshot()
         with self.assertRaises(StoreError): s.complete_plan('p',today=TODAY)
         self.assertEqual(self.snapshot(),before)
-        s.append_judgement('p',Judgement('check',3,NOW,'check','m0',results=(('point0',True),),angle='recall'))
+        s.append_judgement('p',Judgement('check',3,NOW,'check','m0',results=(('point0',True),),question_id='point0'))
         s.add_credit('p','all','u',50,TODAY,'confirmed'); before=self.snapshot()
         with self.assertRaises(RuntimeError):
             with s.transaction(): s.complete_plan('p',today=TODAY); raise RuntimeError('rollback')
@@ -465,7 +467,7 @@ class StoreTests(unittest.TestCase):
 
     def test_remote_mastery_event_ids_conflict_across_event_tables(self):
         s=self.prepare(modules=1)
-        s.append_judgement('p',Judgement('event',1,NOW,'casual','m0',results=(('point0',True),)))
+        s.append_judgement('p',Judgement('event',1,NOW,'casual','m0',results=(('point0',True),),question_id='point0'))
         source=next(r for r in s.pending_records(999) if r.entity=='judgements')
         incoming=replace(source,entity='attempt_closed',schema='mentorflow.course.attempt_closed.v1',payload={
             'id':'event','event':{'type':'attempt_closed','event_id':'event','seq':2,'module_id':'m0','attempt_id':'a','kind':'module_test'},'details':{}})
@@ -499,7 +501,7 @@ class StoreTests(unittest.TestCase):
 
     def test_pending_new_module_appends_and_blocks_checking(self):
         s=self.prepare(modules=1); s.start_plan('p')
-        s.append_judgement('p',Judgement('pass',1,NOW,'module_test','m0','a',(('point0',True),)))
+        s.append_judgement('p',Judgement('pass',1,NOW,'module_test','m0','a',(('point0',True),),question_id='point0'))
         s.append_attempt_closed('p',AttemptClosed('closed',2,'m0','a','module_test'))
         s.save_outline('p',[],[dict(id='new',stage_id='stage')])
         self.assertEqual([m['id'] for m in s.records('modules','p')],['m0','new'])

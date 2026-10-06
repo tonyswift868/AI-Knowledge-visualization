@@ -1,0 +1,27 @@
+.recall-question { min-width:0; padding:18px; border:1px solid var(--border); border-radius:18px; background:var(--surface-solid); line-height:1.65; overflow-wrap:anywhere; }
+.recall-heading { display:flex; align-items:center; gap:8px; color:var(--accent); }
+.recall-stem { margin:12px 0 18px; white-space:pre-wrap; }
+.recall-columns { display:grid; gap:20px; }
+.recall-columns.revealed { grid-template-columns: minmax(0,1fr) minmax(0,1.2fr); }
+.recall-own, .recall-review { min-width:0; }
+.recall-own > label { display:block; font-size:.88rem; font-weight:600; margin-bottom:8px; }
+.recall-own textarea { display:block; width:100%; box-sizing:border-box; resize:vertical; min-height:120px; max-height:260px; margin-bottom:12px; line-height:1.65; }
+.recall-own textarea[readonly] { background:var(--surface-2); }
+.recall-reference { border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
+.recall-reference summary { cursor:pointer; font-weight:600; }
+.recall-reference > div { margin-top:10px; white-space:pre-wrap; }
+.recall-review fieldset { padding:0; border:0; margin:16px 0; min-width:0; }
+.recall-review legend { padding:0; margin-bottom:10px; font-size:.88rem; color:var(--text-2); }
+.recall-point { display:flex; align-items:flex-start; gap:10px; padding:10px 12px; margin-bottom:8px; border:1px solid var(--border); border-radius:12px; cursor:pointer; }
+.recall-point input { flex:none; width:18px; height:18px; margin:4px 0 0; accent-color:var(--accent); }
+.recall-point span { min-width:0; white-space:pre-wrap; }
+.recall-point b { display:block; font-size:.76rem; color:var(--text-2); }
+.recall-point.missed { border-color:var(--warn); background:color-mix(in srgb,var(--warn) 10%,transparent); }
+.recall-point em { display:block; font-style:normal; color:var(--warn); font-size:.8rem; }
+.recall-result { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-top:16px; }
+.recall-result > span { display:flex; align-items:center; gap:8px; font-weight:600; }
+.recall-result.correct { color:var(--ok); }
+.recall-result.missed { color:var(--warn); }
+.recall-error { color:var(--danger); }
+.recall-chat { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:10px 18px; border-top:1px solid var(--border); }
+@media(max-width:800px) { .recall-columns.revealed { grid-template-columns:minmax(0,1fr); } .recall-question { padding:14px; } }

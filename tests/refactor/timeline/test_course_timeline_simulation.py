@@ -15,6 +15,7 @@ import pytest
 
 from refactor.learning.app import handlers
 from refactor.learning.app.settings import AppSettings
+from tests.refactor.mastery70.support import seed_assessment
 from refactor.learning.course.ledger import Ledger, PlanWindow
 from refactor.learning.course.mastery import AttemptClosed, Judgement
 from refactor.learning.course.store import CourseStore, StoreError
@@ -206,6 +207,7 @@ class Simulation:
         self.store.save_generated_module('plan', 'module', [dict(id=f'p{i}', summary=f'知识点 {i}',
             minutes=q + int(i < r), chunk_ids=['chunk']) for i in range(4)], check_minutes=10,
             today=generated or start)
+        seed_assessment(self.store, 'plan')
         self.store.start_plan('plan', today=generated or start)
         assert self.store.get_plan('plan')['total_minutes'] == total
         return self
@@ -248,15 +250,13 @@ class Simulation:
         assert result['settings'] == self.changed_settings[-1] == self.settings.load()
 
     def detect(self, *, correct=True):
+        attempt = f'attempt-{self.sequence+1}'
+        for i in range(4):
+            self.sequence += 1
+            self.store.append_judgement('plan', Judgement(f'judgement-{self.sequence}', self.sequence,self.clock.instant,
+                'module_test','module',attempt,((f'p{i}',correct or i!=0),),question_id=f'p{i}'))
         self.sequence += 1
-        attempt = f'attempt-{self.sequence}'
-        event = Judgement(f'judgement-{self.sequence}', self.sequence, self.clock.instant,
-                          'module_test', 'module', attempt,
-                          tuple((f'p{i}', correct or i != 0) for i in range(4)))
-        self.store.append_judgement('plan', event)
-        self.sequence += 1
-        self.store.append_attempt_closed('plan', AttemptClosed(f'closed-{self.sequence}', self.sequence,
-                                         'module', attempt, 'module_test'))
+        self.store.append_attempt_closed('plan',AttemptClosed(f'closed-{self.sequence}',self.sequence,'module',attempt,'module_test'))
         assert self.store.load_mastery('plan').module('module').state == ('passed' if correct else 'failed')
 
     def finish(self):
@@ -264,9 +264,13 @@ class Simulation:
             self.detect()
         if self.store.get_plan('plan')['state'] == 'active':
             self.store.start_checking('plan')
-        self.sequence += 1
-        self.store.append_judgement('plan', Judgement(f'check-{self.sequence}', self.sequence, self.clock.instant,
-            'check', 'module', results=tuple((f'p{i}', True) for i in range(4)), angle='recall'))
+        for _ in range(8):
+            if self.store.load_mastery('plan').check_complete():break
+            for i in range(4):
+                if self.store.load_mastery('plan').question(f'p{i}').passed:continue
+                self.sequence += 1
+                self.store.append_judgement('plan',Judgement(f'check-{self.sequence}',self.sequence,self.clock.instant,
+                    'check','module',results=((f'p{i}',True),),question_id=f'p{i}'))
         self.store.complete_plan('plan', today=date.fromisoformat(self.read()[1]))
 
 
@@ -469,15 +473,18 @@ def test_timeline_overdue_includes_unfinished_checks_until_full_completion(simul
     sim.clock.set(day)
     sim.sequence += 1
     sim.store.append_judgement('plan', Judgement('wrong-check', sim.sequence, sim.clock.instant, 'check',
-        'module', results=tuple((f'p{i}', i != 0) for i in range(4)), angle='recall'))
+        'module', results=(('p0', False),), question_id='p0'))
     sim.observe(day, target=0, time_completed=True, overdue=2, state='checking', note='再过一天且检验答错，仍逾期 2 天')
+    for i in range(1,4):
+        sim.sequence += 1
+        sim.store.append_judgement('plan',Judgement(f'other-{i}',sim.sequence,sim.clock.instant,'check','module',results=((f'p{i}',True),),question_id=f'p{i}'))
     sim.sequence += 1
     sim.store.append_judgement('plan', Judgement('final-check', sim.sequence, sim.clock.instant, 'check',
-        'module', results=tuple((f'p{i}', True) for i in range(4)), angle='apply'))
+        'module', results=(('p0', True),), question_id='p0'))
     sim.observe(day, target=0, time_completed=True, overdue=2, state='checking', note='答错点升到 2 级，尚未过关')
     sim.sequence += 1
     sim.store.append_judgement('plan', Judgement('passed-check', sim.sequence, sim.clock.instant, 'check',
-        'module', results=(('p0', True),), angle='contrast'))
+        'module', results=(('p0', True),), question_id='p0'))
     sim.observe(day, target=0, time_completed=True, completed=True, state='checking', note='全部检验通过，接口完成条件满足但不改生命周期')
     sim.store.complete_plan('plan', today=day)
     sim.observe(day, state='completed', note='检验全过后完成')

@@ -162,7 +162,7 @@ def classroom_room(evidence):
         settings = SimpleNamespace(load=lambda: dict(SETTINGS))
         services = SimpleNamespace(store=store, gateway=agent, account_id=ACCOUNT,
                                    data_root=Path(root), settings=settings)
-        seed_bank(store,PLAN)
+        seed_bank(store,PLAN,count=1)
         objective_bank(store)
         classroom = Classroom(services, clock.study_day, now=clock.now)
         trace = Trace("单课堂：暂记→检测失败→重测→直接考→跨刷新→重新进入")
@@ -206,89 +206,42 @@ def _assert_today(clock, trace, view, action, *, target, confirmed, tentative, d
 
 def test_classroom_cross_day_timeline_uses_real_today_status(classroom_room):
     classroom, clock, agent, store, trace = classroom_room
-
-    view = _act(classroom, "enter")
-    _assert_today(clock, trace, view, "DAY1 进入课堂", target=30, confirmed=0, tentative=0,
-                  debt=0, ahead=0, ahead_days=0)
-
-    # Teaching p0 and p1 creates tentative minutes on the pinned entry day.
-    view = _act(classroom, "next")
-    _assert_today(clock, trace, view, "DAY1 讲完队列定义，未答随口问前不记时长", target=30, confirmed=0, tentative=0, debt=0, ahead=0, ahead_days=0)
-    agent.verdicts.append(("answer", True, []))
-    view = _act(classroom, "reply", "先进先出，按顺序处理")
-    _assert_today(clock, trace, view, "DAY1 随口问答对，队列定义记暂记，继续讲队列操作", target=30, confirmed=0, tentative=20,
-                  debt=0, ahead=0, ahead_days=0)
-
-    # Batch42: one wrong casual answer marks weakness; no second casual question.
-    agent.verdicts.append(("answer", False, ["p1"]))
-    view = _act(classroom, "reply", "不会")
-    assert view["step"] == "test_offer"
-    _assert_today(clock, trace, view, "DAY1 随口问一次答错，原文解释后进入检测入口", target=30, confirmed=0, tentative=30,
-                  debt=0, ahead=10, ahead_days=0)
-
-    # 20 + 10 test minutes become formal; p1 is revoked and becomes red.
-    _act(classroom, "start_test", "module_test")
+    _act(classroom, 'enter'); _act(classroom, 'next')
+    agent.verdicts.extend([('answer', True, []), ('answer', False, ['p1'])])
+    _act(classroom, 'reply', '先进先出'); view = _act(classroom, 'reply', '不会')
+    assert view['today']['today_target'] == 30 and view['today']['ahead_minutes'] == 10
+    _act(classroom, 'start_test', 'module_test')
     queue = classroom._file(PLAN).read({})['test']['queue']
-    agent.verdicts.extend(("answer", q['point_ids'][0] != 'p1',
-                           ['p1'] if q['point_ids'][0] == 'p1' else []) for q in queue)
-    for _ in queue:
-        view = _act(classroom, "reply", "检测作答")
-    assert view["module"]["state"] == "failed" and view["red"] == ["队列操作"]
-    _assert_today(clock, trace, view, "DAY1 模块检测失败，p0与检测时长转正式、p1撤回", target=30,
-                  confirmed=30, tentative=0, debt=0, ahead=0, ahead_days=0)
-    assert store.load_ledger(PLAN).status(DAY1).remaining_confirmed_minutes == 60
-
-    # Cross the refresh while still in the same classroom session. The red point
-    # is retested at DAY2, but its credit remains recorded on DAY1.
-    clock.set("2026-10-02T03:59:00+08:00")
-    view = _act(classroom, "start_test", "retest")
-    _assert_today(clock, trace, view, "DAY1 开课日凌晨重测开始", target=30, confirmed=30, tentative=0,
-                  debt=0, ahead=0, ahead_days=0, progress_day=DAY1, late=True, rest=True)
-    clock.set("2026-10-02T04:01:00+08:00")
-    agent.verdicts.append(("answer", True, []))
-    view = _act(classroom, "reply", "入队在尾，出队在头")
-    assert view["module"]["state"] == "passed" and view["red"] == []
-    _assert_today(clock, trace, view, "DAY2 刷新后仍在课堂，重测补记仍归 DAY1", target=30, confirmed=30,
-                  tentative=0, debt=0, ahead=20, ahead_days=0, progress_day=DAY1,
-                  study_day_value=DAY2, rest=True)
-    assert store.records("credits", PLAN)[-1]["credit"]["day"] == DAY1.isoformat()
-    assert store.load_ledger(PLAN).status(DAY1).ahead_minutes == 20
-
-    # Switch module without leaving: skip test for m1 credits all 40 minutes on
-    # the same pinned day and therefore fills the remaining future target days.
-    view = _act(classroom, "next_module")
-    assert view["module"]["id"] == "m1" and view["step"] == "teach"
-    view = _act(classroom, "start_test", "skip_test")
-    written = not view['question']['options']
-    if written: agent.verdicts.append(('answer', True, []))
-    before_judge = len(agent.calls)
-    view = _act(classroom, "reply", "乙答案")
-    assert agent.calls[before_judge:].count('judge') == 0
-    assert view["module"]["state"] == "skipped"
-    _assert_today(clock, trace, view, "DAY2 课堂未退出，直接考跳过 m1，模块时长记开课日并超前", target=30,
-                  confirmed=30, tentative=0, debt=0, ahead=60, ahead_days=2, progress_day=DAY1,
-                  study_day_value=DAY2, rest=True, time_completed=True)
-
-    # End the session and enter again: no pinned day is carried over.
-    _act(classroom, "next_module")
-    assert store.load_mastery(PLAN).check_ready()
-    view = _act(classroom, "leave")
-    _assert_today(clock, trace, view, "DAY2 下课，清除开课日锁定", target=30, confirmed=30, tentative=0,
-                  debt=0, ahead=30, ahead_days=1, progress_day=DAY2, study_day_value=DAY2,
-                  time_completed=True)
-    view = _act(classroom, "enter")
-    _assert_today(clock, trace, view, "DAY2 重新进入课堂，使用新学习日", target=30, confirmed=30, tentative=0,
-                  debt=0, ahead=30, ahead_days=1, progress_day=DAY2, study_day_value=DAY2,
-                  time_completed=True)
-    assert view["today"]["completed"] is False  # final CHK-01 is not part of Classroom yet
-    _act(classroom, "leave")
-
-    trace.conclusion = "与时长和模块掌握需求一致：暂记、检测确认/撤回、重测补记、直接考跳过、跨刷新锁定和重新进入均通过。"
-    trace.notes.extend([
-        "DAY1 目标 30；讲完两点暂记 40；检测通过点与检测分钟正式 30，失败点撤回。",
-        "DAY2 04:01 已跨刷新但未退出，progress_day 仍为 DAY1；重测与直接考产生的记录 day 均为 DAY1，today_status 返回 needs_rest=true。",
-        "离开后再进入 progress_day 变为 DAY2，超前由 60 分降为剩余未来目标 30 分；最终检验未接入，所以 completed 保持 false。",
-    ])
+    assert len(queue)==2
+    agent.verdicts.extend(('answer', q['point_ids'][0]!='p1', ['p1'] if q['point_ids'][0]=='p1' else []) for q in queue)
+    for _ in queue: view=_act(classroom,'reply','检测作答')
+    assert view['module']['state']=='failed'
+    credits=store.load_ledger(PLAN).to_dict()['credits']
+    assert sum(c['minutes'] for c in credits)==50  # Learned 40 + legacy module reserve 10; no relearning/revocation.
+    assert all(c['state']=='confirmed' for c in credits)
+    assert not any(r['op']=='revoke' for r in store.records('ledger_events',PLAN))
+    clock.set('2026-10-02T03:59:00+08:00')
+    view=_act(classroom,'start_test','retest')
+    assert view['question']['total']==1 and view['today']['is_late_night']
+    clock.set('2026-10-02T04:01:00+08:00')
+    agent.verdicts.append(('answer',True,[]));view=_act(classroom,'reply','入队在尾出队在头')
+    assert view['module']['state']=='passed'
+    assert view['today']['progress_day']==DAY1.isoformat() and view['today']['study_day']==DAY2.isoformat()
+    assert sum(c['minutes'] for c in store.load_ledger(PLAN).to_dict()['credits'])==60
+    assert {c['credit']['day'] for c in store.records('credits',PLAN)}=={DAY1.isoformat()}
+    assert not any(r['id'].startswith('relearn:') for r in store.records('credits',PLAN))
+    _act(classroom,'next_module');view=_act(classroom,'start_test','skip_test')
+    assert view['question']['total']==1
+    if not view['question']['options']:agent.verdicts.append(('answer',True,[]))
+    view=_act(classroom,'reply','乙答案')
+    assert view['module']['state']=='skipped'
+    assert sum(c['minutes'] for c in store.load_ledger(PLAN).to_dict()['credits'])==100
+    assert {c['credit']['day'] for c in store.records('credits',PLAN)}=={DAY1.isoformat()}
+    _act(classroom,'next_module');assert store.load_mastery(PLAN).check_ready()
+    _act(classroom,'leave');view=_act(classroom,'enter')
+    assert view['today']['progress_day']==DAY2.isoformat() and not view['today']['completed']
+    _act(classroom,'leave')
+    trace.conclusion='按题重测不撤回已学内容；跨刷新记账仍归开课日，重进课堂切换学习日。'
 
 
 def test_classroom_module_test_pass_confirms_tentative_credits(classroom_room):

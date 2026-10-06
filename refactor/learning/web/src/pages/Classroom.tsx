@@ -15,6 +15,7 @@ import { MicButton, useVoiceInput } from "../voice"
 import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacherVoice"
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
 import { ConversationActions, MaterialsPreparing, OriginalCards, QuestionInputs, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
+import { RecallQuestion, type RecallRequest } from "../classroom/RecallQuestion"
 
 const TeacherStage = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherStage })))
 
@@ -56,6 +57,7 @@ export function Classroom() {
   const [text, setText] = React.useState("")
   const [source, setSource] = React.useState<Source | null>(null)
   const [askMode, setAskMode] = React.useState(false)
+  const [recallAttempt, setRecallAttempt] = React.useState(0)
   const input = React.useRef<HTMLTextAreaElement>(null)
   const generation = React.useRef(0)
   const [reading, setReading] = React.useState(() => { try { return localStorage.getItem("mf.classroom.read") === "on" } catch { return false } })
@@ -143,6 +145,21 @@ export function Classroom() {
     }
   }, [planId, room, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading])
 
+  const recallRequest: RecallRequest = async <T,>(method: string, params: Record<string, unknown>) => {
+    if (!planId || acting.current) throw new Error("请等当前操作完成。")
+    acting.current = true
+    const ownGeneration = generation.current
+    stopReading()
+    setBusy(method === "class.recall_reveal" ? "正在保存回答…" : "正在提交要点…")
+    try {
+      const result = await call<T>(method, { plan_id: planId, ...params })
+      if (ownGeneration !== generation.current) throw new Error("课堂已经切换。")
+      return result
+    } finally {
+      if (ownGeneration === generation.current) { acting.current = false; setBusy(null) }
+    }
+  }
+
   React.useEffect(() => {
     if (!planId) { go("home"); return }
     const ownGeneration = ++generation.current
@@ -224,10 +241,10 @@ export function Classroom() {
 
   async function send(value?: string) {
     const t = (value ?? text).trim()
-    if (!t || acting.current) return
+    if (!t || acting.current || (room?.question?.kind === "recall" && !askMode)) return
     stopReading()
     if (value === undefined) setText("")
-    const numericAnswer = !askMode && room?.question?.kind === "calc"
+    const numericAnswer = !askMode && (room?.question?.kind === "calc" || room?.question?.question_type === "calc")
     if (!(await act(askMode ? "classroom.ask" : numericAnswer ? "classroom.answer" : "classroom.reply",
       numericAnswer ? { value: t } : { text: t }, numericAnswer ? "正在核对数值…" : "老师在看你的回答…")) && value === undefined) {
       setText((draft) => draft || t)
@@ -314,6 +331,10 @@ export function Classroom() {
           {stream !== null && (live(stream)
             ? <div className="bubble bot streaming">{markdown(live(stream))}</div>
             : busy && <div className="plan-status"><Loader2 className="spin" size={16} />{busy}</div>)}
+          {q?.kind === "recall" && <RecallQuestion key={`${planId}:${q.id}:${q.purpose}:${q.number ?? ""}:${recallAttempt}`}
+            question={q} request={recallRequest} busy={!!busy} next={() => {
+              void act("classroom.state", {}, "正在读取下一题…").then((ok) => { if (ok) setRecallAttempt((value) => value + 1) })
+            }} />}
         </div>
 
         <Actions room={room} act={act} busy={!!busy} />
@@ -324,12 +345,16 @@ export function Classroom() {
             {room.explanation.label} · {room.explanation.source.title} · {room.explanation.source.locator}</small>
             {room.explanation.source.url && <a href={room.explanation.source.url} target="_blank" rel="noreferrer"> 查看答案出处</a>}</>}
         </div>}
-        {q && <QuestionInputs question={q} act={act} busy={!!busy} />}
-        <div className="composer">
+        {q && q.kind !== "recall" && <QuestionInputs question={q} act={act} busy={!!busy} />}
+        {q?.kind === "recall" && !askMode ? <div className="recall-chat">
+          <span className="muted small">对题目有疑问？可以先问老师。</span>
+          <Button small kind="ghost" disabled={!!busy} onClick={() => { setAskMode(true); input.current?.focus() }}>提问</Button>
+        </div> : <div className="composer">
           <Button small kind={askMode ? "primary" : "ghost"} className="ask-mode" disabled={!!busy}
             onClick={() => { setAskMode(!askMode); input.current?.focus() }}>{askMode ? "正在提问" : "提问"}</Button>
           <textarea ref={input} className="input" rows={1} value={text} aria-label="课堂输入"
-                    placeholder={askMode ? "想问什么？答完回到刚才" : q?.kind === "calc" ? "填写计算数值，可带单位" : q ? "请用上方选项或填空作答；想问问题可点“提问”" : "有问题随时问老师"}
+                    disabled={q?.kind === "recall" && !askMode}
+                    placeholder={askMode ? "想问什么？答完回到刚才" : q?.kind === "recall" ? "想问问题可点“提问”；作答请用上方问答卡片" : (q?.kind === "calc" || q?.question_type === "calc") ? "填写计算数值，可带单位" : q ? "请用上方选项或填空作答；想问问题可点“提问”" : "有问题随时问老师"}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.repeat) {
                       e.preventDefault()
@@ -338,8 +363,8 @@ export function Classroom() {
           <MicButton voice={mic} />
           {busy
             ? <Button onClick={() => { stopReading(); abort.current?.abort() }}><Square />停止</Button>
-            : <Button kind="primary" onClick={() => send()} disabled={!text.trim()}><SendHorizontal />发送</Button>}
-        </div>
+            : <Button kind="primary" onClick={() => send()} disabled={!text.trim() || (q?.kind === "recall" && !askMode)}><SendHorizontal />发送</Button>}
+        </div>}
       </section>
 
       <aside className="class-side">
@@ -396,7 +421,7 @@ function Actions({ room, act, busy }: { room: Room; busy: boolean; act: (m: stri
   )
   if (step === "test_done") return (
     <div className="plan-actions">
-      {room.red.length > 0 && <Button kind="primary" disabled={busy} onClick={() => act("classroom.test", { kind: "retest" }, "正在出题…")}><RotateCcw />重测没过的 {room.red.length} 个点</Button>}
+      {room.red.length > 0 && <Button kind="primary" disabled={busy} onClick={() => act("classroom.test", { kind: "retest" }, "正在出题…")}><RotateCcw />只重测答错的题</Button>}
       <Button kind={room.red.length ? undefined : "primary"} disabled={busy} onClick={() => act("classroom.next_module", {}, "正在准备…")}>
         <ChevronRight />{room.more_modules ? "学下一个模块" : "结束模块学习"}</Button>
     </div>

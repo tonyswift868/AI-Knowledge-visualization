@@ -1,0 +1,482 @@
+[
+  {
+    "candidate": {
+      "id": "material-question-dccde5e0e43a0c28cd25ed5b",
+      "candidate_type": "recall",
+      "stem": "什么是 RAG？",
+      "reference": "**RAG（Retrieval-Augmented Generation，检索增强生成）** 把信息检索接入大语言模型的生成过程。系统先从数据库、文档集合或企业内部系统中查找与问题相关的内容，再把检索结果和原始问题一起交给 LLM。模型由此获得参数知识之外的证据。\n\n![RAG 示意图](https://oss.javaguide.cn/github/javaguide/ai/rag/rag-simplified-architecture-diagram.jpeg)\n\nRAG 主要补充三类信息缺口：\n\n- **知识时效性**：预训练模型的参数知识停在训练数据截止时间点。RAG 可以在请求发生时检索新事件、政策和产品文档。\n- **私有数据访问**：企业产品文档、知识库和客户数据不在公开训练语料中。应用可以先按用户权限检索，再只提供回答所需的片段。\n- **答案依据**：检索证据能约束模型的回答范围，但不能彻底消除幻觉。检索错误、上下文噪声、引用错配和模型不遵循指令仍会产生错误答案，生产系统还要配合引用校验、答案评估、拒答和人工反馈。",
+      "chunk_ids": [
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0287"
+      ],
+      "block_ids": [
+        1401,
+        1402,
+        1403,
+        1404,
+        1405
+      ],
+      "source_id": "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278",
+      "source_title": "Snailclimb/JavaGuide：Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+      "source_url": "https://github.com/snailclimb/javaguide",
+      "point_ids": [
+        "module-m3-27"
+      ]
+    },
+    "old_response": {
+      "candidate_id": "material-question-dccde5e0e43a0c28cd25ed5b",
+      "kind": "recall",
+      "stem": "什么是 RAG？",
+      "options": [],
+      "answer": "",
+      "objective_kind": null,
+      "reference": {
+        "quote": "**RAG（Retrieval-Augmented Generation，检索增强生成）**",
+        "end_quote": "生产系统还要配合引用校验、答案评估、拒答和人工反馈。"
+      },
+      "key_points": [
+        "**RAG（Retrieval-Augmented Generation，检索增强生成）** 把信息检索接入大语言模型的生成过程。",
+        "系统先从数据库、文档集合或企业内部系统中查找与问题相关的内容，再把检索结果和原始问题一起交给 LLM。",
+        "模型由此获得参数知识之外的证据。",
+        "**知识时效性**：预训练模型的参数知识停在训练数据截止时间点。RAG 可以在请求发生时检索新事件、政策和产品文档。",
+        "**私有数据访问**：企业产品文档、知识库和客户数据不在公开训练语料中。应用可以先按用户权限检索，再只提供回答所需的片段。"
+      ]
+    },
+    "module_id": "module-m3"
+  },
+  {
+    "candidate": {
+      "id": "material-question-fef155cefae7f1d7b80d3d7e",
+      "candidate_type": "recall",
+      "stem": "你知道哪些类型的 DBMS？",
+      "reference": "关系型数据库\n\n除了我们最常用的关系型数据库（RDBMS），比如 MySQL（开源首选）、PostgreSQL（功能最全）、Oracle（企业级），它们基于严格的表结构和 SQL，非常适合结构化数据和需要事务保证的场景，例如银行交易、订单系统。\n\n近年来，为了应对互联网应用带来的海量数据、高并发和多样化数据结构的需求，涌现出了一大批 NoSQL 和 NewSQL 数据库。\n\nNoSQL 数据库\n\n它们的共同特点是为了极致的性能和水平扩展能力，在某些方面（通常是事务）做了妥协。\n\n**1. 键值数据库，代表是 Redis。**\n\n- **特点：** 数据模型极其简单，就是一个巨大的 Map，通过 Key 来存取 Value。内存操作，性能极高。\n- **适用场景：** 非常适合做缓存、会话存储、计数器等对读写性能要求极高的场景。\n\n**2. 文档数据库，代表是 MongoDB。**\n\n- **特点：** 它存储的是半结构化的文档（比如 JSON/BSON），结构灵活，不需要预先定义表结构。\n- **适用场景：** 特别适合那些数据结构多变、快速迭代的业务，比如用户画像、内容管理系统、日志存储等。\n\n**3. 列式数据库，代表是 HBase, Cassandra。**\n\n- **特点：** 数据是按列族而不是按行来存储的。这使得它在对大量行进行少量列的读取时，性能极高。\n- **适用场景：** 专为海量数据存储和分析设计，非常适合做大数据分析、监控数据存储、推荐系统等需要高吞吐量写入和范围扫描的场景。\n\n**4. 图形数据库，代表是 Neo4j。**\n\n- **特点：** 数据模型是节点（Nodes）和边（Edges），专门用来存储和查询实体之间的复杂关系。\n- **适用场景：** 在社交网络（好友关系）、推荐引擎（用户-商品关系）、知识图谱、欺诈检测（资金流动关系）等场景下，表现远超关系型数据库。\n\nNewSQL 数据库\n\n由于 NoSQL 不支持事务，很多对于数据安全要求非常高的系统（比如财务系统、订单系统、交易系统）就不太适合使用了。不过，这类系统往往有存储大量数据的需求。\n\n这些系统往往只能通过购买性能更强大的计算机，或者通过数据库中间件来提高存储能力。不过，前者的金钱成本太高，后者的开发成本太高。\n\n于是，**NewSQL** 就来了！\n\n简单来说，NewSQL 就是：**分布式存储+SQL+事务** 。NewSQL 不仅具有 NoSQL 对海量数据的存储管理能力，还保持了传统数据库支持 ACID 和 SQL 等特性。因此，NewSQL 也可以称为 **分布式关系型数据库**。\n\nNewSQL 数据库设计的一些目标：\n\n1. 横向扩展（Scale Out） ： 通过增加机器的方式来提高系统的负载能力。与之类似的是 Scale Up(纵向扩展)，升级硬件设备的方式来提高系统的负载能力。\n2. 强一致性（Strict Consistency）：在任意时刻，所有节点中的数据是一样的。\n3. 高可用（High Availability）：系统几乎可以一直提供服务。\n4. 支持标准 SQL（Structured Query Language） ：PostgreSQL、MySQL、Oracle 等关系型数据库都支持 SQL 。\n5. 事务（ACID） ： 原子性（Atomicity）、一致性（Consistency）、 隔离性（Isolation）; 持久性（Durability）。\n6. 兼容主流关系型数据库 ： 兼容 MySQL、Oracle、PostgreSQL 等常用关系型数据库。\n7. 云原生 （Cloud Native）：可在公有云、私有云、混合云中实现部署工具化、自动化。\n8. HTAP（Hybrid Transactional/Analytical Processing） ：支持 OLTP 和 OLAP 混合处理。\n\nNewSQL 数据库代表：Google 的 F1/Spanner、阿里的 [OceanBase](https://open.oceanbase.com/)、PingCAP 的 [TiDB](https://pingcap.com/zh/product-community/) 。",
+      "chunk_ids": [
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0367",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0368",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0369",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0370"
+      ],
+      "block_ids": [
+        1956,
+        1957,
+        1958,
+        1959,
+        1960,
+        1961,
+        1962,
+        1963,
+        1964,
+        1965,
+        1966,
+        1967,
+        1968,
+        1969,
+        1970,
+        1971,
+        1972,
+        1973,
+        1974,
+        1975,
+        1976,
+        1977
+      ],
+      "source_id": "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278",
+      "source_title": "Snailclimb/JavaGuide：Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+      "source_url": "https://github.com/snailclimb/javaguide",
+      "point_ids": [
+        "module-m5-27"
+      ]
+    },
+    "old_response": {
+      "candidate_id": "material-question-fef155cefae7f1d7b80d3d7e",
+      "kind": "recall",
+      "stem": "你知道哪些类型的 DBMS？",
+      "reference": {
+        "quote": "关系型数据库\n\n除了我们最常用的关系型数据库",
+        "end_quote": "PingCAP 的 [TiDB](https://pingcap.com/zh/product-community/) 。"
+      },
+      "key_points": [
+        "除了我们最常用的关系型数据库（RDBMS），比如 MySQL（开源首选）、PostgreSQL（功能最全）、Oracle（企业级），它们基于严格的表结构和 SQL，非常适合结构化数据和需要事务保证的场景，例如银行交易、订单系统。",
+        "它们的共同特点是为了极致的性能和水平扩展能力，在某些方面（通常是事务）做了妥协。",
+        "**1. 键值数据库，代表是 Redis。**",
+        "**2. 文档数据库，代表是 MongoDB。**",
+        "简单来说，NewSQL 就是：**分布式存储+SQL+事务** 。"
+      ]
+    },
+    "module_id": "module-m5"
+  },
+  {
+    "candidate": {
+      "id": "material-question-60fd2d4c9743b28743de2855",
+      "candidate_type": "recall",
+      "stem": "什么是 ER 图？",
+      "reference": "我们做一个项目的时候一定要试着画 ER 图来捋清数据库设计，这个也是面试官问你项目的时候经常会被问到的。\n\n**ER 图** 全称是 Entity Relationship Diagram（实体联系图），提供了表示实体类型、属性和联系的方法。\n\nER 图由下面 3 个要素组成：\n\n- **实体**：通常是现实世界的业务对象，当然使用一些逻辑对象也可以。比如对于一个校园管理系统，会涉及学生、教师、课程、班级等等实体。在 ER 图中，实体使用矩形框表示。\n- **属性**：即某个实体拥有的属性，属性用来描述组成实体的要素，对于产品设计来说可以理解为字段。在 ER 图中，属性使用椭圆形表示。\n- **联系**：即实体与实体之间的关系，在 ER 图中用菱形表示，这个关系不仅有业务关联关系，还能通过数字表示实体之间的数量对照关系。例如，一个班级会有多个学生就是一种实体间的联系。\n\n下图是一个学生选课的 ER 图，每个学生可以选若干门课程，同一门课程也可以被若干人选择，所以它们之间的关系是多对多（M: N）。另外，还有其他两种实体之间的关系是：1 对 1（1:1）、1 对多（1: N）。\n\nerDiagram\n    STUDENT {\n        string student_id PK \"学号\"\n        string name \"姓名\"\n        string gender \"性别\"\n        date birth_date \"出生日期\"\n        string department \"学院名称\"\n    }\n\n    COURSE {\n        string course_id PK \"课程编号\"\n        string course_name \"课程名称\"\n        string location \"课程地点\"\n        string instructor \"开课教师\"\n        float credits \"成绩\"\n    }\n\n    ENROLLMENT {\n        string student_id FK \"学号\"\n        string course_id FK \"课程编号\"\n        float grade \"成绩\"\n    }\n\n    STUDENT ||--o{ ENROLLMENT : \"选课\"\n    COURSE ||--o{ ENROLLMENT : \"被选\"\n\n    style STUDENT fill:#4CA497,stroke:#00838F,stroke-width:2px\n    style COURSE fill:#005D7B,stroke:#00838F,stroke-width:2px\n    style ENROLLMENT fill:#E99151,stroke:#C44545,stroke-width:2px",
+      "chunk_ids": [
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0375"
+      ],
+      "block_ids": [
+        1987,
+        1988,
+        1989,
+        1990,
+        1991,
+        1992,
+        1993
+      ],
+      "source_id": "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278",
+      "source_title": "Snailclimb/JavaGuide：Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+      "source_url": "https://github.com/snailclimb/javaguide",
+      "point_ids": [
+        "module-m5-29"
+      ]
+    },
+    "old_response": {
+      "candidate_id": "material-question-60fd2d4c9743b28743de2855",
+      "kind": "recall",
+      "stem": "什么是 ER 图？",
+      "options": [],
+      "answer": "",
+      "objective_kind": "",
+      "reference": {
+        "quote": "我们做一个项目的时候一定要试着画 ER 图来捋清数据库设计，这个也是面试官问你项目的时候经常会被问到的。",
+        "end_quote": "style ENROLLMENT fill:#E99151,stroke:#C44545,stroke-width:2px"
+      },
+      "key_points": [
+        "**ER 图** 全称是 Entity Relationship Diagram（实体联系图），提供了表示实体类型、属性和联系的方法。",
+        "ER 图由下面 3 个要素组成：",
+        "- **实体**：通常是现实世界的业务对象，当然使用一些逻辑对象也可以。比如对于一个校园管理系统，会涉及学生、教师、课程、班级等等实体。在 ER 图中，实体使用矩形框表示。",
+        "- **属性**：即某个实体拥有的属性，属性用来描述组成实体的要素，对于产品设计来说可以理解为字段。在 ER 图中，属性使用椭圆形表示。",
+        "- **联系**：即实体与实体之间的关系，在 ER 图中用菱形表示，这个关系不仅有业务关联关系，还能通过数字表示实体之间的数量对照关系。例如，一个班级会有多个学生就是一种实体间的联系。"
+      ]
+    },
+    "module_id": "module-m5"
+  },
+  {
+    "candidate": {
+      "id": "material-question-eb306d90eb008336db5d49b8",
+      "candidate_type": "recall",
+      "stem": "主键和外键有什么区别?",
+      "reference": "从定义和属性上看，它们的区别是：\n\n- **主键 (Primary Key):** 它的核心作用是唯一标识表中的每一行数据。因此，主键列的值必须是唯一的 (Unique) 且不能为空 (Not Null)。一张表只能有一个主键。主键保证了实体完整性。\n- **外键 (Foreign Key):** 它的核心作用是建立并强制两张表之间的关联关系。一张表中的外键列，其值必须对应另一张表中某行的候选键值（通常是主键，也可以是唯一键），或者是一个 NULL 值。因此，外键的值可以重复，也可以为空。一张表可以有多个外键，分别关联到不同的表。外键保证了引用完整性。\n\n用一个简单的电商例子来说明：假设我们有两张表：`users` (用户表) 和 `orders` (订单表)。\n\n- 在 `users` 表中，`user_id` 列是**主键**。每个用户的 `user_id` 都是独一无二的，我们用它来区分张三和李四。\n- 在 `orders` 表中，`order_id` 是它自己的**主键**。同时，它会有一个 `user_id` 列，这个列就是一个**外键**，它引用了 `users` 表的 `user_id` 主键。\n\n这个外键约束就保证了：\n\n1. 你不能创建一个不属于任何已知用户的订单（ `user_id` 在 `users` 表中不存在）。\n2. 你不能删除一个已经下了订单的用户（除非设置了级联删除等特殊规则）。",
+      "chunk_ids": [
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0380"
+      ],
+      "block_ids": [
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2011,
+        2012
+      ],
+      "source_id": "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278",
+      "source_title": "Snailclimb/JavaGuide：Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+      "source_url": "https://github.com/snailclimb/javaguide",
+      "point_ids": [
+        "module-m5-32"
+      ]
+    },
+    "old_response": {
+      "candidate_id": "material-question-eb306d90eb008336db5d49b8",
+      "kind": "recall",
+      "stem": "主键和外键有什么区别?",
+      "options": [],
+      "answer": "",
+      "objective_kind": "",
+      "reference": {
+        "quote": "从定义和属性上看，它们的区别是：",
+        "end_quote": "2. 你不能删除一个已经下了订单的用户（除非设置了级联删除等特殊规则）。"
+      },
+      "key_points": [
+        "**主键 (Primary Key):** 它的核心作用是唯一标识表中的每一行数据。因此，主键列的值必须是唯一的 (Unique) 且不能为空 (Not Null)。一张表只能有一个主键。主键保证了实体完整性。",
+        "**外键 (Foreign Key):** 它的核心作用是建立并强制两张表之间的关联关系。一张表中的外键列，其值必须对应另一张表中某行的候选键值（通常是主键，也可以是唯一键），或者是一个 NULL 值。因此，外键的值可以重复，也可以为空。一张表可以有多个外键，分别关联到不同的表。外键保证了引用完整性。",
+        "在 `users` 表中，`user_id` 列是**主键**。每个用户的 `user_id` 都是独一无二的，我们用它来区分张三和李四。",
+        "在 `orders` 表中，`order_id` 是它自己的**主键**。同时，它会有一个 `user_id` 列，这个列就是一个**外键**，它引用了 `users` 表的 `user_id` 主键。"
+      ]
+    },
+    "module_id": "module-m5"
+  },
+  {
+    "candidate": {
+      "id": "material-question-b02969e189ae2be59be952c7",
+      "candidate_type": "recall",
+      "stem": "为什么不推荐使用外键与级联？",
+      "reference": "对于外键和级联，阿里巴巴开发手册这样说到：\n\n> 【强制】不得使用外键与级联，一切外键概念必须在应用层解决。\n>\n> 说明: 以学生和成绩的关系为例，学生表中的 student_id 是主键，那么成绩表中的 student_id 则为外键。如果更新学生表中的 student_id，同时触发成绩表中的 student_id 更新，即为级联更新。外键与级联更新适用于单机低并发，不适合分布式、高并发集群；级联更新是强阻塞，存在数据库更新风暴的风险；外键影响数据库的插入速度\n\n为什么不要用外键呢？大部分人可能会这样回答：\n\n1. **增加了复杂性：** a. 每次做 DELETE 或者 UPDATE 都必须考虑外键约束，会导致开发的时候很痛苦, 测试数据极为不方便; b. 外键的主从关系是定的，假如哪天需求有变化，数据库中的这个字段根本不需要和其他表有关联的话就会增加很多麻烦。\n2. **增加了额外工作**：数据库需要增加维护外键的工作，比如当我们做一些涉及外键字段的增，删，更新操作之后，需要触发相关操作去检查，保证数据的一致性和正确性，这样会不得不消耗数据库资源。如果在应用层面去维护的话，可以减小数据库压力；\n3. **对分库分表不友好**：因为分库分表下外键是无法生效的。\n4. ……\n\n我个人觉得上面这种回答不是特别的全面，只是说了外键存在的一个常见的问题。实际上，我们知道外键也是有很多好处的，比如：\n\n1. 保证了数据库数据的一致性和完整性；\n2. 级联操作方便，减轻了程序代码量；\n3. ……\n\n所以说，不要一股脑的就抛弃了外键这个概念，既然它存在就有它存在的道理，如果系统不涉及分库分表，并发量不是很高的情况还是可以考虑使用外键的。",
+      "chunk_ids": [
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0381"
+      ],
+      "block_ids": [
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020
+      ],
+      "source_id": "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278",
+      "source_title": "Snailclimb/JavaGuide：Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+      "source_url": "https://github.com/snailclimb/javaguide",
+      "point_ids": [
+        "module-m5-33",
+        "module-m5-34"
+      ]
+    },
+    "old_response": {
+      "candidate_id": "material-question-b02969e189ae2be59be952c7",
+      "kind": "recall",
+      "stem": "为什么不推荐使用外键与级联？",
+      "options": [],
+      "answer": "",
+      "objective_kind": "",
+      "reference": {
+        "quote": "对于外键和级联，阿里巴巴开发手册这样说到：",
+        "end_quote": "如果系统不涉及分库分表，并发量不是很高的情况还是可以考虑使用外键的。"
+      },
+      "key_points": [
+        "【强制】不得使用外键与级联，一切外键概念必须在应用层解决。",
+        "说明: 以学生和成绩的关系为例，学生表中的 student_id 是主键，那么成绩表中的 student_id 则为外键。如果更新学生表中的 student_id，同时触发成绩表中的 student_id 更新，即为级联更新。外键与级联更新适用于单机低并发，不适合分布式、高并发集群；级联更新是强阻塞，存在数据库更新风暴的风险；外键影响数据库的插入速度",
+        "1. **增加了复杂性：** a. 每次做 DELETE 或者 UPDATE 都必须考虑外键约束，会导致开发的时候很痛苦, 测试数据极为不方便; b. 外键的主从关系是定的，假如哪天需求有变化，数据库中的这个字段根本不需要和其他表有关联的话就会增加很多麻烦。",
+        "2. **增加了额外工作**：数据库需要增加维护外键的工作，比如当我们做一些涉及外键字段的增，删，更新操作之后，需要触发相关操作去检查，保证数据的一致性和正确性，这样会不得不消耗数据库资源。如果在应用层面去维护的话，可以减小数据库压力；",
+        "3. **对分库分表不友好**：因为分库分表下外键是无法生效的。"
+      ]
+    },
+    "module_id": "module-m5"
+  },
+  {
+    "candidate": {
+      "id": "material-question-318ce77e27e122465e986d97",
+      "candidate_type": "recall",
+      "stem": "什么是存储过程?",
+      "reference": "graph LR\n    A[存储过程] --> B[定义特征]\n    A --> C[优势]\n    A --> D[劣势]\n    A --> E[应用现状]\n\n    B --> B1[SQL语句集合]\n    B --> B2[包含逻辑控制]\n    B --> B3[预编译机制]\n\n    C --> C1[执行速度快]\n    C --> C2[运行稳定]\n    C --> C3[简化复杂操作]\n\n    D --> D1[调试困难]\n    D --> D2[扩展性差]\n    D --> D3[无移植性]\n    D --> D4[占用数据库资源]\n\n    E --> E1[传统企业<br/>使用较多]\n    E --> E2[互联网公司<br/>很少使用]\n    E --> E3[阿里规范<br/>明确禁用]\n\n    style A fill:#4CA497,stroke:#00838F,stroke-width:3px,color:#fff\n    style B fill:#00838F,stroke:#005D7B,stroke-width:2px,color:#fff\n    style C fill:#E99151,stroke:#C44545,stroke-width:2px,color:#fff\n    style D fill:#C44545,stroke:#005D7B,stroke-width:2px,color:#fff\n    style E fill:#005D7B,stroke:#00838F,stroke-width:2px,color:#fff\n\n    style B1 fill:#E4C189,stroke:#00838F,stroke-width:1px\n    style B2 fill:#E4C189,stroke:#00838F,stroke-width:1px\n    style B3 fill:#E4C189,stroke:#00838F,stroke-width:1px\n\n    style C1 fill:#E4C189,stroke:#E99151,stroke-width:1px\n    style C2 fill:#E4C189,stroke:#E99151,stroke-width:1px\n    style C3 fill:#E4C189,stroke:#E99151,stroke-width:1px\n\n    style D1 fill:#E4C189,stroke:#C44545,stroke-width:1px\n    style D2 fill:#E4C189,stroke:#C44545,stroke-width:1px\n    style D3 fill:#E4C189,stroke:#C44545,stroke-width:1px\n    style D4 fill:#E4C189,stroke:#C44545,stroke-width:1px\n\n    style E1 fill:#E4C189,stroke:#005D7B,stroke-width:1px\n    style E2 fill:#E4C189,stroke:#005D7B,stroke-width:1px\n    style E3 fill:#E4C189,stroke:#005D7B,stroke-width:1px\n\n存储过程是数据库中预编译的SQL语句集合，它将多条SQL语句和程序逻辑控制语句（如IF-ELSE、WHILE循环等）封装在一起，形成一个可重复调用的数据库对象。\n\n**存储过程的优势：**\n\n在传统企业级应用中，存储过程具有一定的实用价值。当业务逻辑复杂时，需要执行大量SQL语句才能完成一个业务操作，此时可以将这些语句封装成存储过程，简化调用过程。由于存储过程在创建时就已经编译并存储在数据库中，执行时无需重新编译，因此相比动态SQL语句具有更好的执行性能。同时，一旦存储过程调试完成，其运行相对稳定可靠。\n\n**存储过程的局限性：**\n\n然而，在现代互联网架构中，存储过程的使用越来越少。主要原因包括：调试困难，缺乏成熟的调试工具；扩展性差，修改业务逻辑需要直接修改数据库对象；移植性差，不同数据库系统的存储过程语法差异较大；占用数据库资源，增加数据库服务器负担；版本管理困难，不便于进行代码版本控制。\n\n**行业规范：**\n\n基于以上原因，许多互联网公司的开发规范中明确限制或禁止使用存储过程。例如，《阿里巴巴Java开发手册》中明确规定禁止使用存储过程，推荐将业务逻辑放在应用层实现，保持数据库的简单和高效。\n\n![阿里巴巴Java开发手册: 禁止存储过程](https://oss.javaguide.cn/github/javaguide/csdn/0fa082bc4d4f919065767476a41b2156.png)",
+      "chunk_ids": [
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0382",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0383"
+      ],
+      "block_ids": [
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026,
+        2027,
+        2028,
+        2029,
+        2030
+      ],
+      "source_id": "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278",
+      "source_title": "Snailclimb/JavaGuide：Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+      "source_url": "https://github.com/snailclimb/javaguide",
+      "point_ids": [
+        "module-m5-35"
+      ]
+    },
+    "old_response": {
+      "candidate_id": "material-question-318ce77e27e122465e986d97",
+      "kind": "recall",
+      "stem": "什么是存储过程?",
+      "reference": {
+        "quote": "graph LR",
+        "end_quote": "![阿里巴巴Java开发手册: 禁止存储过程](https://oss.javaguide.cn/github/javaguide/csdn/0fa082bc4d4f919065767476a41b2156.png)"
+      },
+      "key_points": [
+        "存储过程是数据库中预编译的SQL语句集合，它将多条SQL语句和程序逻辑控制语句（如IF-ELSE、WHILE循环等）封装在一起，形成一个可重复调用的数据库对象。",
+        "在传统企业级应用中，存储过程具有一定的实用价值。",
+        "由于存储过程在创建时就已经编译并存储在数据库中，执行时无需重新编译，因此相比动态SQL语句具有更好的执行性能。",
+        "然而，在现代互联网架构中，存储过程的使用越来越少。主要原因包括：调试困难，缺乏成熟的调试工具；扩展性差，修改业务逻辑需要直接修改数据库对象；移植性差，不同数据库系统的存储过程语法差异较大；占用数据库资源，增加数据库服务器负担；版本管理困难，不便于进行代码版本控制。",
+        "例如，《阿里巴巴Java开发手册》中明确规定禁止使用存储过程，推荐将业务逻辑放在应用层实现，保持数据库的简单和高效。"
+      ]
+    },
+    "module_id": "module-m5"
+  },
+  {
+    "candidate": {
+      "id": "material-question-dab6428d95977d0ab06c4526",
+      "candidate_type": "recall",
+      "stem": "数据库设计通常分为哪几步?",
+      "reference": "graph TD\n    A[数据库设计流程] --> B[1.需求分析]\n    B --> C[2.概念结构设计]\n    C --> D[3.逻辑结构设计]\n    D --> E[4.物理结构设计]\n    E --> F[5.数据库实施]\n    F --> G[6.运行和维护]\n\n    B --> B1[数据需求<br/>功能需求<br/>性能需求]\n    C --> C1[E-R建模<br/>实体关系图]\n    D --> D1[关系模型<br/>表结构设计<br/>规范化]\n    E --> E1[存储结构<br/>索引设计<br/>分区策略]\n    F --> F1[编程开发<br/>测试部署<br/>数据迁移]\n    G --> G1[性能监控<br/>备份恢复<br/>优化调整]\n\n    G -.反馈.-> B\n\n    style A fill:#4CA497,stroke:#00838F,stroke-width:3px,color:#fff\n    style B fill:#00838F,stroke:#005D7B,stroke-width:2px,color:#fff\n    style C fill:#E99151,stroke:#005D7B,stroke-width:2px,color:#fff\n    style D fill:#005D7B,stroke:#00838F,stroke-width:2px,color:#fff\n    style E fill:#C44545,stroke:#005D7B,stroke-width:2px,color:#fff\n    style F fill:#E99151,stroke:#005D7B,stroke-width:2px,color:#fff\n    style G fill:#00838F,stroke:#005D7B,stroke-width:2px,color:#fff\n\n    style B1 fill:#E4C189,stroke:#00838F,stroke-width:1px\n    style C1 fill:#E4C189,stroke:#E99151,stroke-width:1px\n    style D1 fill:#E4C189,stroke:#005D7B,stroke-width:1px\n    style E1 fill:#E4C189,stroke:#C44545,stroke-width:1px\n    style F1 fill:#E4C189,stroke:#E99151,stroke-width:1px\n    style G1 fill:#E4C189,stroke:#00838F,stroke-width:1px\n\n1. 需求分析阶段\n\n**目标：** 深入了解和分析用户需求，明确系统边界\n**主要工作：**\n\n- 收集和分析数据需求：确定需要存储哪些数据，数据量大小，数据更新频率\n- 明确功能需求：系统需要支持哪些业务操作，各操作的优先级\n- 定义性能需求：响应时间要求，并发用户数，数据吞吐量\n- 确定安全需求：数据访问权限，加密要求，审计要求\n\n**产出物：** 需求规格说明书、数据字典初稿\n\n2. 概念结构设计阶段\n\n**目标：** 将需求转化为信息世界的概念模型\n**主要工作：**\n\n- 识别实体：确定系统中的主要对象\n- 定义属性：明确每个实体的特征\n- 建立联系：确定实体之间的关系（一对一、一对多、多对多）\n- 绘制E-R图（实体-关系图）\n\n**产出物：** E-R图、概念数据模型文档\n\n3. 逻辑结构设计阶段\n\n**目标：** 将概念模型转换为特定DBMS支持的逻辑模型\n**主要工作：**\n\n- E-R图向关系模型转换：将实体转换为表，属性转换为字段\n- 规范化处理：通过范式化消除数据冗余和更新异常（通常达到3NF）\n- 定义完整性约束：主键、外键、唯一性约束、检查约束\n- 优化模型：根据性能需求进行适当的反规范化\n\n**产出物：** 逻辑数据模型、表结构设计文档\n\n4. 物理结构设计阶段\n\n**目标：** 确定数据的物理存储方案和访问方法\n**主要工作：**\n\n- 选择存储引擎：如MySQL的InnoDB、MyISAM等\n- 设计索引策略：确定需要建立的索引类型和字段\n- 分区设计：对大表进行分区以提高性能\n- 确定存储参数：表空间大小、数据文件位置、缓冲区配置\n- 制定备份策略：全量备份、增量备份的频率和方式\n\n**产出物：** 物理设计文档、索引设计方案\n\n5. 数据库实施阶段\n\n**目标：** 将设计转化为实际运行的数据库系统\n**主要工作：**\n\n- 创建数据库和表结构：编写和执行DDL语句\n- 开发存储过程和触发器（如需要）\n- 编写应用程序接口\n- 导入初始数据\n- 系统集成测试：功能测试、性能测试、压力测试\n- 用户培训和文档编写\n\n**产出物：** 数据库脚本、测试报告、用户手册\n\n6. 运行和维护阶段\n\n**目标：** 确保数据库系统稳定高效运行\n**主要工作：**\n\n- 日常监控：性能监控、空间监控、错误日志分析\n- 性能优化：查询优化、索引调整、参数调优\n- 数据备份和恢复：定期备份、恢复演练\n- 安全管理：权限管理、安全补丁更新、审计\n- 容量规划：预测数据增长，提前扩容\n- 变更管理：需求变更的评估和实施\n\n**产出物：** 运维报告、优化方案、变更记录\n\n设计原则\n\n在整个设计过程中应遵循：数据独立性原则、完整性原则、安全性原则、可扩展性原则和标准化原则。",
+      "chunk_ids": [
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0390",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0391",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0392",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0393",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0394",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0395",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0396",
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0397"
+      ],
+      "block_ids": [
+        2053,
+        2054,
+        2055,
+        2056,
+        2057,
+        2058,
+        2059,
+        2060,
+        2061,
+        2062,
+        2063,
+        2064,
+        2065,
+        2066,
+        2067,
+        2068,
+        2069,
+        2070,
+        2071,
+        2072,
+        2073,
+        2074,
+        2075,
+        2076,
+        2077,
+        2078,
+        2079,
+        2080
+      ],
+      "source_id": "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278",
+      "source_title": "Snailclimb/JavaGuide：Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+      "source_url": "https://github.com/snailclimb/javaguide",
+      "point_ids": [
+        "module-m5-38"
+      ]
+    },
+    "old_response": {
+      "candidate_id": "material-question-dab6428d95977d0ab06c4526",
+      "kind": "recall",
+      "stem": "数据库设计通常分为哪几步?",
+      "reference": {
+        "quote": "graph TD",
+        "end_quote": "在整个设计过程中应遵循：数据独立性原则、完整性原则、安全性原则、可扩展性原则和标准化原则。"
+      },
+      "key_points": [
+        "1. 需求分析阶段",
+        "2. 概念结构设计阶段",
+        "3. 逻辑结构设计阶段",
+        "4. 物理结构设计阶段",
+        "5. 数据库实施阶段"
+      ]
+    },
+    "module_id": "module-m5"
+  },
+  {
+    "candidate": {
+      "id": "material-question-e3451e9d98db0a61fb621b04",
+      "candidate_type": "recall",
+      "stem": "SQL 和 NoSQL 有什么区别？",
+      "reference": "|              | SQL 数据库                                                                 | NoSQL 数据库                                                                                                                            |\n| :----------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |\n| 数据存储模型 | 结构化存储，具有固定行和列的表格                                           | 非结构化存储。文档：JSON 文档，键值：键值对，宽列：包含行和动态列的表，图：节点和边                                                     |\n| 发展历程     | 开发于 1970 年代，重点是减少数据重复                                       | 开发于 2000 年代后期，重点是提升可扩展性，减少大规模数据的存储成本                                                                      |\n| 例子         | Oracle、MySQL、Microsoft SQL Server、PostgreSQL                            | 文档：MongoDB、CouchDB，键值：Redis、DynamoDB，宽列：Cassandra、 HBase，图表：Neo4j、 Amazon Neptune、Giraph                            |\n| ACID 属性    | 提供原子性、一致性、隔离性和持久性 (ACID) 属性                             | 通常不支持 ACID 事务，为了可扩展、高性能进行了权衡，少部分支持比如 MongoDB 。不过，MongoDB 对 ACID 事务 的支持和 MySQL 还是有所区别的。 |\n| 性能         | 性能通常取决于磁盘子系统。要获得最佳性能，通常需要优化查询、索引和表结构。 | 性能通常由底层硬件集群大小、网络延迟以及调用应用程序来决定。                                                                            |\n| 扩展         | 垂直（使用性能更强大的服务器进行扩展）、读写分离、分库分表                 | 横向（增加服务器的方式横向扩展，通常是基于分片机制）                                                                                    |\n| 用途         | 普通企业级的项目的数据存储                                                 | 用途广泛比如图数据库支持分析和遍历连接数据之间的关系、键值数据库可以处理大量数据扩展和极高的状态变化                                    |\n| 查询语法     | 结构化查询语言 (SQL)                                                       | 数据访问语法可能因数据库而异                                                                                                            |",
+      "chunk_ids": [
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0418"
+      ],
+      "block_ids": [
+        2219,
+        2220
+      ],
+      "source_id": "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278",
+      "source_title": "Snailclimb/JavaGuide：Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+      "source_url": "https://github.com/snailclimb/javaguide",
+      "point_ids": [
+        "module-m5-49"
+      ]
+    },
+    "old_response": {
+      "candidate_id": "material-question-e3451e9d98db0a61fb621b04",
+      "kind": "recall",
+      "stem": "SQL 和 NoSQL 有什么区别？",
+      "reference": {
+        "quote": "|              | SQL 数据库",
+        "end_quote": "| 查询语法     | 结构化查询语言 (SQL)                                                       | 数据访问语法可能因数据库而异                                                                                                            |"
+      },
+      "key_points": [
+        "结构化存储，具有固定行和列的表格",
+        "非结构化存储。文档：JSON 文档，键值：键值对，宽列：包含行和动态列的表，图：节点和边",
+        "提供原子性、一致性、隔离性和持久性 (ACID) 属性",
+        "通常不支持 ACID 事务，为了可扩展、高性能进行了权衡，少部分支持比如 MongoDB 。不过，MongoDB 对 ACID 事务 的支持和 MySQL 还是有所区别的。",
+        "数据访问语法可能因数据库而异"
+      ]
+    },
+    "module_id": "module-m5"
+  },
+  {
+    "candidate": {
+      "id": "material-question-45db974be4ea37ab1d8ccf7b",
+      "candidate_type": "recall",
+      "stem": "NoSQL 数据库有什么优势？",
+      "reference": "NoSQL 数据库非常适合许多现代应用程序，例如移动、Web 和游戏等应用程序，它们需要灵活、可扩展、高性能和功能强大的数据库以提供卓越的用户体验。\n\n- **灵活性：** NoSQL 数据库通常提供灵活的架构，以实现更快速、更多的迭代开发。灵活的数据模型使 NoSQL 数据库成为半结构化和非结构化数据的理想之选。\n- **可扩展性：** NoSQL 数据库通常被设计为通过使用分布式硬件集群来横向扩展，而不是通过添加昂贵和强大的服务器来纵向扩展。\n- **高性能：** NoSQL 数据库针对特定的数据模型和访问模式进行了优化，这与尝试使用关系数据库完成类似功能相比可实现更高的性能。\n- **强大的功能：** NoSQL 数据库提供功能强大的 API 和数据类型，专门针对其各自的数据模型而构建。",
+      "chunk_ids": [
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0419"
+      ],
+      "block_ids": [
+        2221,
+        2222,
+        2223
+      ],
+      "source_id": "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278",
+      "source_title": "Snailclimb/JavaGuide：Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+      "source_url": "https://github.com/snailclimb/javaguide",
+      "point_ids": [
+        "module-m5-50"
+      ]
+    },
+    "old_response": {
+      "candidate_id": "material-question-45db974be4ea37ab1d8ccf7b",
+      "kind": "recall",
+      "stem": "NoSQL 数据库有什么优势？",
+      "reference": {
+        "quote": "NoSQL 数据库非常适合许多现代应用程序",
+        "end_quote": "- **强大的功能：** NoSQL 数据库提供功能强大的 API 和数据类型，专门针对其各自的数据模型而构建。"
+      },
+      "key_points": [
+        "NoSQL 数据库非常适合许多现代应用程序，例如移动、Web 和游戏等应用程序，它们需要灵活、可扩展、高性能和功能强大的数据库以提供卓越的用户体验。",
+        "- **灵活性：** NoSQL 数据库通常提供灵活的架构，以实现更快速、更多的迭代开发。灵活的数据模型使 NoSQL 数据库成为半结构化和非结构化数据的理想之选。",
+        "- **可扩展性：** NoSQL 数据库通常被设计为通过使用分布式硬件集群来横向扩展，而不是通过添加昂贵和强大的服务器来纵向扩展。",
+        "- **高性能：** NoSQL 数据库针对特定的数据模型和访问模式进行了优化，这与尝试使用关系数据库完成类似功能相比可实现更高的性能。",
+        "- **强大的功能：** NoSQL 数据库提供功能强大的 API 和数据类型，专门针对其各自的数据模型而构建。"
+      ]
+    },
+    "module_id": "module-m5"
+  },
+  {
+    "candidate": {
+      "id": "material-question-00ffef4777bd011b23d9e50f",
+      "candidate_type": "recall",
+      "stem": "NoSQL 数据库有哪些类型？",
+      "reference": "NoSQL 数据库主要可以分为下面四种类型：\n\n- **键值**：键值数据库是一种较简单的数据库，其中每个项目都包含键和值。这是极为灵活的 NoSQL 数据库类型，因为应用可以完全控制 value 字段中存储的内容，没有任何限制。Redis 和 DynanoDB 是两款非常流行的键值数据库。\n- **文档**：文档数据库中的数据被存储在类似于 JSON（JavaScript 对象表示法）对象的文档中，非常清晰直观。每个文档包含成对的字段和值。这些值通常可以是各种类型，包括字符串、数字、布尔值、数组或对象等，并且它们的结构通常与开发者在代码中使用的对象保持一致。MongoDB 就是一款非常流行的文档数据库。\n- **图形**：图形数据库旨在轻松构建和运行与高度连接的数据集一起使用的应用程序。图形数据库的典型使用案例包括社交网络、推荐引擎、欺诈检测和知识图形。Neo4j 和 Giraph 是两款非常流行的图形数据库。\n- **宽列**：宽列存储数据库非常适合需要存储大量的数据。Cassandra 和 HBase 是两款非常流行的宽列存储数据库。\n\n下面这张图片来源于 [微软的官方文档 | 关系数据与 NoSQL 数据](https://learn.microsoft.com/en-us/dotnet/architecture/cloud-native/relational-vs-nosql-data)。\n\n![NoSQL 数据模型](https://oss.javaguide.cn/github/javaguide/database/mongodb/types-of-nosql-datastores.png)",
+      "chunk_ids": [
+        "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278:c74da540cb4f:0420"
+      ],
+      "block_ids": [
+        2224,
+        2225,
+        2226,
+        2227,
+        2228
+      ],
+      "source_id": "url-d01fbb4bfe1f798c685334389a0d639a03903f87daf902d1645b96ef2bb72278",
+      "source_title": "Snailclimb/JavaGuide：Java 面试 & 后端通用面试指南，覆盖计算机基础、数据库、分布式、高并发、系统设计与 AI 应用开发",
+      "source_url": "https://github.com/snailclimb/javaguide",
+      "point_ids": [
+        "module-m5-51"
+      ]
+    },
+    "old_response": {
+      "candidate_id": "material-question-00ffef4777bd011b23d9e50f",
+      "kind": "recall",
+      "stem": "NoSQL 数据库有哪些类型？",
+      "reference": {
+        "quote": "NoSQL 数据库主要可以分为下面四种类型：",
+        "end_quote": "![NoSQL 数据模型](https://oss.javaguide.cn/github/javaguide/database/mongodb/types-of-nosql-datastores.png)"
+      },
+      "key_points": [
+        "NoSQL 数据库主要可以分为下面四种类型：",
+        "- **键值**：键值数据库是一种较简单的数据库，其中每个项目都包含键和值。这是极为灵活的 NoSQL 数据库类型，因为应用可以完全控制 value 字段中存储的内容，没有任何限制。Redis 和 DynanoDB 是两款非常流行的键值数据库。",
+        "- **文档**：文档数据库中的数据被存储在类似于 JSON（JavaScript 对象表示法）对象的文档中，非常清晰直观。每个文档包含成对的字段和值。这些值通常可以是各种类型，包括字符串、数字、布尔值、数组或对象等，并且它们的结构通常与开发者在代码中使用的对象保持一致。MongoDB 就是一款非常流行的文档数据库。",
+        "- **图形**：图形数据库旨在轻松构建和运行与高度连接的数据集一起使用的应用程序。图形数据库的典型使用案例包括社交网络、推荐引擎、欺诈检测和知识图形。Neo4j 和 Giraph 是两款非常流行的图形数据库。",
+        "- **宽列**：宽列存储数据库非常适合需要存储大量的数据。Cassandra 和 HBase 是两款非常流行的宽列存储数据库。"
+      ]
+    },
+    "module_id": "module-m5"
+  }
+]

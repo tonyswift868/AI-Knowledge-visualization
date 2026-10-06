@@ -13,7 +13,7 @@ def javaguide(flow, draft, monkeypatch, cap=600, end='2026-10-30'):
     draft['form'].update(start='2026-10-06',end=end,daily_cap=cap,weekday_weights=[1]*7,special_days=[])
     draft['material_structure']['modules']=[dict(key=f'm{i}',title=f'模块{i}',summary='目标',refs=[f's{i}'],chapters=[f'章节{i}']) for i in range(8)]
     sections=[SimpleNamespace(id=f's{i}',chunk_ids=[f'c{i}'],source_title='JavaGuide',title=f'章节{i}',chars=n) for i,n in enumerate(CHARS)]
-    chunks=[dict(id=f'c{i}',text='文'*n) for i,n in enumerate(CHARS)]
+    chunks=[dict(id=f'c{i}',source_id='source',position=i,text='文'*n) for i,n in enumerate(CHARS)]
     monkeypatch.setattr(flow,'_sections',lambda _: ([],sections))
     monkeypatch.setattr(flow,'_adopted',lambda _: ([],{'source':chunks}))
     return flow.structure_ranges(draft)
@@ -24,20 +24,21 @@ def test_plan65_five_real_records_use_median():
     assert '不要写具体日期和天数' in agents.SUFFICIENCY_SYSTEM
 
 @pytest.mark.parametrize('cap,end,warning,daily,suggestion',[
-    (600,'2026-10-30','none',498,None),
-    (450,'2026-10-30','possible',498,'2026-11-02'),
-    (200,'2026-10-30','possible',498,'2026-12-07'),
-    (200,'2026-10-20','impossible',830,'2026-12-07'),
+    (600,'2026-10-30','none',316,None),
+    (450,'2026-10-30','none',316,None),
+    (300,'2026-10-30','possible',316,'2026-11-01'),
+    (200,'2026-10-30','possible',316,'2026-11-14'),
+    (200,'2026-10-10','impossible',1580,'2026-11-14'),
 ])
 def test_plan65_warning_uses_usual_and_optimistic_cases(fixture,monkeypatch,cap,end,warning,daily,suggestion):
     flow,model,*_=fixture;draft=adopt_and_map(fixture);calls=list(model.calls)
     modules,r=javaguide(flow,draft,monkeypatch,cap,end)
     assert r['warning_level']==warning and r['typical']['points']==987
     assert [m['estimated_point_count'] for m in modules]==[48,28,62,22,120,436,188,83]
-    assert r['typical']['total']==[12437]*2 and r['typical']['daily']==[daily]*2
-    assert r['suggested_cap']==(500 if daily==498 else 830)
+    assert r['typical']['total']==[7896]*2 and r['typical']['daily']==[daily]*2
+    assert r['suggested_cap']==(320 if daily==316 else 1580)
     assert r['suggested_end']==suggestion
-    assert r['points']==[272,1530] and r['total']==[3428,19278]
+    assert r['points']==[272,1530] and r['total']==[2176,12240]
     assert model.calls==calls
 
 def test_plan65_cap_boundary_and_form_changes_preserve_structure(fixture,monkeypatch):

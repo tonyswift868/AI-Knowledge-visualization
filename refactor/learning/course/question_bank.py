@@ -148,6 +148,8 @@ def contains_original(quote, text):
 
 
 def validate_question(row):
+    if row.get('kind') in ('objective', 'recall'):
+        return _validate_material_question(row)
     # Previously saved B-line questions remain bank questions; no invented
     # quick questions are inferred from their old usage history.
     keys = set(row) - {'_field_versions', 'role', 'source_level', 'source_type', 'target',
@@ -225,6 +227,49 @@ def validate_question(row):
     return row
 
 
+def _validate_material_question(row):
+    """Batch-70 admission schema only; selection is owned by assessment."""
+    required = FIELDS | {'options', 'reference', 'key_points', 'objective_kind'}
+    keys = set(row) - {'_field_versions', 'role'}
+    if keys != required: raise ValueError('资料原题字段不符合契约')
+    if row.get('origin') != 'found' or row.get('role', 'bank') != 'bank': raise ValueError('只接收资料自带题')
+    for key in ('id', 'module_id', 'stem'):
+        if not isinstance(row[key], str) or not row[key].strip(): raise ValueError(key+' 不能为空')
+    if (not isinstance(row['point_ids'], list) or not row['point_ids']
+            or any(not isinstance(p, str) or not p for p in row['point_ids'])
+            or len(set(row['point_ids'])) != len(row['point_ids'])): raise ValueError('知识点编号无效')
+    for key in ('source', 'answer_source'):
+        source = row[key]
+        if (not isinstance(source, dict) or set(source) != {'title','url','locator','chunk_ids','block_ids'}
+                or any(not isinstance(source[k], str) for k in ('title','url','locator'))
+                or not source['title'].strip() or not source['locator'].strip()
+                or not isinstance(source['chunk_ids'], list) or not source['chunk_ids']
+                or any(not isinstance(cid, str) or not cid for cid in source['chunk_ids'])
+                or not isinstance(source['block_ids'], list) or not source['block_ids']): raise ValueError('原题缺少原文块出处')
+    if not isinstance(row['options'], list) or any(not isinstance(v, str) or not v for v in row['options']): raise ValueError('原文选项无效')
+    if not isinstance(row['answer'], str) or not isinstance(row['reference'], str): raise ValueError('原文答案无效')
+    if row['kind'] == 'recall':
+        from .material_questions import answer_units
+        points = row['key_points']
+        if (not row['reference'].strip() or row['answer'] or row['options'] or row['objective_kind'] is not None
+                or not isinstance(points, list) or not 1 <= len(points) <= 5
+                or any(not isinstance(p, str) or not p or p not in row['reference'] for p in points)
+                or any(p not in answer_units(row['reference']) for p in points)
+                or len(set(points)) != len(points)): raise ValueError('问答题要点必须逐字在参考答案里')
+    else:
+        if (not row['answer'].strip() or row['reference'] or row['key_points']
+                or row['objective_kind'] not in OBJECTIVE_KINDS): raise ValueError('客观题原答案或类型无效')
+        if row['objective_kind'] in ('choice','multi') and len(row['options']) < 2: raise ValueError('选择题缺少原文选项')
+        if row['objective_kind'] not in ('choice','multi') and row['options']: raise ValueError('非选择题不应附选项')
+    if row['importance'] not in ('key','normal') or not isinstance(row['explanation'], str): raise ValueError('题目元数据无效')
+    if not isinstance(row['uses'], list): raise ValueError('使用记录无效')
+    for use in row['uses']:
+        if not isinstance(use, dict) or set(use) != {'purpose','at'} or use['purpose'] not in PURPOSES: raise ValueError('使用记录无效')
+        _time(use['at'])
+    _time(row['created_at'])
+    return row
+
+
 def _time(at):
     if not isinstance(at,str): raise ValueError('时间无效')
     parsed=datetime.fromisoformat(at.replace('Z','+00:00'))
@@ -237,7 +282,7 @@ def select_question(rows, point_id, purpose, exclude_ids=()):
     excluded=set(exclude_ids)
     role = 'quick' if purpose == 'quick' else 'bank'
     pool=[q for q in rows if point_id in q['point_ids'] and q['id'] not in excluded
-          and q.get('role', 'bank') == role and objective_question(q) and checked_question(q)]
+          and q.get('role', 'bank') == role and (assessment_question(q) if purpose!='quick' else objective_question(q) and checked_question(q))]
     def rank(q):
         times=[_time(u['at']) for u in q['uses'] if u['purpose']==purpose]
         # Selected original exercises first; then web exercises by authority.
@@ -245,6 +290,46 @@ def select_question(rows, point_id, purpose, exclude_ids=()):
         return (q.get('question_origin')=='web',q.get('source_level',3) if q.get('question_origin')=='web' else 0,
                 bool(times),max(times,default=0),q['created_at'],q['id'])
     return min(pool,key=rank) if pool else None
+
+
+def assessment_question(row):
+    """Only material-provided questions participate in question-based assessment."""
+    return (row.get('kind') in ('objective','recall','choice','multi','fill','calc') and row.get('role','bank')=='bank'
+            and row.get('origin')!='cloze' and row.get('question_origin')!='web'
+            and (row.get('kind') in ('objective','recall') or answer_compare.can_grade(row))
+            and row.get('distractor_check',{}).get('state')!='rejected')
+
+
+def assessment_questions(rows, module_id=None):
+    return [q for q in rows if assessment_question(q) and (module_id is None or q['module_id']==module_id)]
+
+
+def grading_question(row):
+    """Adapt literal objective answers to the existing deterministic grader."""
+    if row.get('kind')!='objective':return row
+    q=dict(row);answer=q.get('answer');options=q.get('options') or []
+    if options:
+        if isinstance(answer,list) and all(type(i) is int for i in answer):indices=answer
+        elif isinstance(answer,str):
+            # Grading must preserve signs and decimal points; provenance's
+            # punctuation-free comparison would equate -2/2 and 1.5/15.
+            indices=[i for i,text in enumerate(options) if answer_compare.normalize(text)==answer_compare.normalize(answer)]
+            if not indices:
+                proxy=dict(q,kind='multi');indices=answer_compare.choice_text(proxy,answer)
+        else:indices=None
+        if not indices:raise ValueError('标准答案无法对应资料选项。')
+        q.update(kind='choice' if len(indices)==1 else 'multi',answer=indices)
+    elif isinstance(answer,str) and answer_compare.can_grade(dict(q,kind='calc')):q['kind']='calc'
+    elif isinstance(answer,str) and answer.strip():q.update(kind='fill',answer=[[answer]])
+    else:raise ValueError('客观题缺少原文标准答案。')
+    return q
+
+
+def review_questions(practice_results):
+    latest={}
+    for row in sorted(practice_results,key=lambda r:(r['at'],r.get('sequence',0),r['id'])):
+        latest[row['question_id']]=not row['correct']
+    return {qid for qid,wrong in latest.items() if wrong}
 
 
 def checked_question(row):
@@ -258,9 +343,8 @@ def checked_question(row):
 
 
 def review_points(practice_results):
-    """Latest free-practice outcome; used by the report/plan summary too."""
+    """A point needs review while any associated question's latest answer is wrong."""
     latest={}
     for row in sorted(practice_results,key=lambda r:(r['at'],r.get('sequence',0),r['id'])):
-        for pid in row['point_ids']:
-            latest[pid]=pid in row.get('wrong_points',[] if row['correct'] else row['point_ids'])
-    return {pid for pid,needs_review in latest.items() if needs_review}
+        latest[row['question_id']]=row
+    return {pid for row in latest.values() if not row['correct'] for pid in row['point_ids']}

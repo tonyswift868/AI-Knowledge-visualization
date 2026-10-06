@@ -475,7 +475,7 @@ class CourseStore:
         configuration = _window_json(window) if window is not None else None
         self._put('plans', plan_id, dict(id=plan_id, goal=goal, final_goal=final_goal, level=level, notes=notes,
             window=configuration, initial_window=configuration, total_minutes=total_minutes,
-            initial_total_minutes=total_minutes, module_count=0, state='creating', archived=False, material_version=2))
+            initial_total_minutes=total_minutes, module_count=0, state='creating', archived=False, material_version=3))
         return plan_id
 
     @_atomic
@@ -517,7 +517,8 @@ class CourseStore:
             return sorted(self._rows(entity, plan_id), key=lambda p: (p.get('position', 0), p['id']))
 
     def _plan_availability(self, plan):
-        old = plan.get('material_version') != 2 or any('kind' not in q for q in self._rows('question_bank', plan['id']))
+        old = plan.get('material_version') != 3 or any('kind' not in q or q.get('origin')=='cloze' and q.get('role','bank')=='bank'
+                                                     for q in self._rows('question_bank', plan['id']))
         if old: plan.update(unusable=True, unusable_reason='旧版计划，已不可用')
         return plan
 
@@ -584,8 +585,9 @@ class CourseStore:
 
     @_atomic
     def append_question_answer(self, plan_id, answer_id, *, module_id, context, attempt_id,
-                               question_id, point_ids, angle, correct, wrong_points=(), reason='', checks=(), at=None):
-        """Persist a question answer once even when a composite yields no point verdict.
+                               question_id, point_ids, angle, correct, wrong_points=(), reason='', checks=(), at=None,
+                               answer=None, ticked=None):
+        """Persist a question answer and optional recall self-check exactly once.
 
         It is an append-only sync event, not an authoritative mastery state.
         Existing same-ID facts survive classroom replay without changing their time.
@@ -593,6 +595,8 @@ class CourseStore:
         row = dict(id=_id(answer_id), module_id=_id(module_id), context=context, attempt_id=attempt_id,
                    question_id=question_id, point_ids=list(point_ids), angle=angle, correct=correct,
                    wrong_points=list(wrong_points), reason=str(reason)[:400], checks=list(checks), at=_at(at))
+        if answer is not None:row['answer']=answer
+        if ticked is not None:row['ticked']=list(ticked)
         existing = next((r for r in self._rows('question_answers', plan_id) if r['id'] == answer_id), None)
         if existing:
             if any(existing.get(k) != v for k, v in row.items() if k != 'at'):
@@ -999,7 +1003,11 @@ class CourseStore:
             modules = sorted(self._rows('modules', plan_id), key=lambda m: (m['position'], m['id']))
             positions = {m['id']: i for i, m in enumerate(modules)}
             points = sorted(self._rows('points', plan_id), key=lambda p: (positions[p['module_id']], p['position'], p['id']))
-            book = MasteryBook(PointRef(p['id'], p['module_id']) for p in points)
+            from .question_bank import assessment_questions
+            taught = [r['credit']['unit_id'] for r in self._rows('credits',plan_id)
+                      if r['id'].startswith(('learn:','relearn:'))]
+            book = MasteryBook((PointRef(p['id'], p['module_id']) for p in points),
+                               assessment_questions(self.records('question_bank',plan_id)), taught)
             events = [p['event'] for entity in ('judgements', 'attempt_closed') for p in self._rows(entity, plan_id)]
             for event in events: book.apply(event_from_dict(event))
             return book
@@ -1049,9 +1057,9 @@ class CourseStore:
     def append_judgement(self, plan_id, event: Judgement, *, details=None, credit_day=None):
         """Atomically record a judgement and earned final-check time.
 
-        Classroom supplies its pinned study day. Each still-unpassed point
-        answered correctly earns its module's per-question estimate. Wrong
-        answers, already-passed points and legacy modules earn no final time.
+        Classroom supplies its pinned study day. Each actual question answer
+        earns two minutes, whether correct or wrong, including separator
+        questions. Old events without a question ID earn no new final time.
         Retries of the same event cannot earn twice. Remote sync merges the
         resulting immutable judgement and credit events without regenerating them.
         """
@@ -1064,12 +1072,9 @@ class CourseStore:
             prior['events'] = [row for row in prior['events']
                                if (row['seq'], row['event_id']) < (event.seq, event.event_id)]
             book = MasteryBook.from_dict(prior)
-            for pid, correct in event.results:
-                point = self._get('points', plan_id, pid)
-                module = self._get('modules', plan_id, point['module_id'])
-                minutes = module.get('check_question_minutes')
-                if correct and minutes and book.check_ready() and book.point(pid).level != 3:
-                    earned.append((pid, minutes))
+            if event.question_id and book.check_ready():
+                # Every answered question consumes time, including incorrect answers.
+                earned.append((event.question_id,2))
         self._append_mastery(plan_id, event, 'judgements', details)
         for pid, minutes in earned:
             self.add_credit(plan_id, f'check:{event.event_id}:{pid}', f'check:{pid}', minutes, credit_day, 'confirmed')
@@ -1077,6 +1082,20 @@ class CourseStore:
     @_atomic
     def append_attempt_closed(self, plan_id, event: AttemptClosed):
         self._append_mastery(plan_id, event, 'attempt_closed')
+
+    @_atomic
+    def set_question_estimate(self, plan_id, module_id, count, *, today):
+        """Replace the module's question reserve without changing generated content."""
+        from .ledger import estimate_check_minutes
+        _number(count)
+        module=self._get('modules',plan_id,module_id)
+        module.update(check_minutes=count*2,final_check_minutes=estimate_check_minutes(count,minutes_per_question=2),
+                      check_question_minutes=2,question_count=count)
+        self._put('modules',plan_id,module)
+        plan=self._get('plans',plan_id,plan_id)
+        if plan['window'] and plan['state']!='completed':
+            self._replan(plan,_day(today),_window(plan['window']),self._total(plan_id),cause='question_estimate')
+            self._put('plans',plan_id,plan)
 
     def _release_estimate(self, plan_id, key, minutes, today):
         identifier = f'release:{key}'
@@ -1090,7 +1109,7 @@ class CourseStore:
         """Settle a closed detection once; old modules keep their old estimate.
 
         A detection question counts whether right or wrong. Final checks have
-        their separate correct-point rule. Only the first closed attempt can
+        their separate per-question rule. Only the first closed attempt can
         release the module's reserve; additional attempts record actual work.
         """
         module = self._get('modules', plan_id, module_id)

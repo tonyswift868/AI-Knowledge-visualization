@@ -18,8 +18,8 @@ type Card = {
 type Citation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
 type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean }
 type OModule = { points?: MapPoint[]; id?: string; key: string; title: string; summary: string; refs: string[]; ref_titles: string[]; prerequisites: string[]; minutes: [number, number] }
-type TimeRanges = { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; points?: number; learning?: number; suggested_cap?: number; suggested_days?: number | null; suggested_end: string | null }
-type StructureRanges = Omit<TimeRanges, "points" | "learning"> & { points: [number, number]; learning: [number, number]; module_check: [number, number]; final_check: [number, number]; input_tokens: [number, number]; typical?: TimeRanges; warning_level?: "none" | "possible" | "impossible" }
+type TimeRanges = { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; points?: number; learning?: number; checks_pending?: boolean; suggested_cap?: number; suggested_days?: number | null; suggested_end: string | null }
+type StructureRanges = Omit<TimeRanges, "points" | "learning"> & { points: [number, number]; learning: [number, number]; module_check: [number, number]; final_check: [number, number]; input_tokens: [number, number]; typical?: TimeRanges; warning_level?: "none" | "possible" | "impossible"; estimated_question_count?: number; modules_with_questions?: number }
 type Outline = { stages: { title: string; modules: OModule[] }[]; ranges: TimeRanges; version: number }
 type Msg = { id: string; role: "ai" | "user"; kind: string; text: string; cards?: string[]; version?: number; options?: string[] }
 type Coverage = { covered: boolean; blocked?: boolean; missing: { content: string; why: string; points: number }[]; message: string; missing_points?: number }
@@ -222,6 +222,7 @@ export function NewPlan() {
             if (m.kind === "material_preview") return <div key={m.id} className="plan-block">
               {draft.material_structure && m.version === draft.material_structure.version && draft.material_structure.modules?.length ? <>
                 <h3 className="material-graph-heading">按你的资料整理出 {draft.material_structure.modules.length} 个模块</h3>
+                {draft.material_structure.ranges?.estimated_question_count !== undefined && <p className="muted small">全计划约 {draft.material_structure.ranges.estimated_question_count} 道资料自带题，{draft.material_structure.ranges.modules_with_questions ?? 0} 个模块有题。没有题的模块只学不考；拆题时会按原文核对实际可用题数。</p>}
                 <PlanGraph mode="structure" stages={[{title:"按资料整理的学习路线", modules:draft.material_structure.modules}]} />
                 {!!draft.material_structure.excluded?.length && <p className="muted small material-excluded">这些内容不是知识，未放进计划：{draft.material_structure.excluded.map((r, i) => <span key={r.name} title={r.reason}>{i ? "、" : ""}{r.name}</span>)}。需要时可在对话里说“把××也加进来”。</p>}
                 {draft.material_structure.ranges && <StructureEstimate ranges={draft.material_structure.ranges} busy={busy}
@@ -482,10 +483,10 @@ function StructureEstimate({ranges: r, busy, active, onChange, onAdjust}: {range
     <h3>填知识点前的粗略时间预估</h3>
     <div className="outline-sum">
       <div><span>一般情况知识点 · 每点学习约 8 分钟</span><b>约 {usual.points} 个</b></div>
-      <div><span>学习、模块检测与最终检验合计</span><b>约 {hours(usual.total[1])}</b></div>
+      <div><span>学习时长（检测待实际题数确定）</span><b>约 {hours(usual.total[1])}</b></div>
       <div><span>每天 / 你的时间上限</span><b>约 {usual.daily[1]} / {r.cap} 分钟</b></div>
     </div>
-    <p className="sub">参考范围：{r.points[0]}–{r.points[1]} 个点，合计 {hours(r.total[0])}–{hours(r.total[1])}，每天 {r.daily[0]}–{r.daily[1]} 分钟。学习每点 8 分钟；模块检测每点 2 分钟，最终检验每点约 2.6 分钟。</p>
+    <p className="sub">参考范围：{r.points[0]}–{r.points[1]} 个点，学习 {hours(r.total[0])}–{hours(r.total[1])}，每天 {r.daily[0]}–{r.daily[1]} 分钟。学习每点 8 分钟；检测按资料实际题数算，模块检测每题 2 分钟、最终检验每题约 2.6 分钟；没有题只学不考。</p>
     <p className="sub">填知识点的资料输入约 {r.input_tokens[0].toLocaleString()}–{r.input_tokens[1].toLocaleString()} token（按字数折算，不含请求提示与重试）。按资料字数估算，填完后会用实际点数重算。</p>
     {warning === "possible" && <p className="sub estimate-possible">可能会超出每日上限，填完知识点后会按实际点数再算一次（你的每日上限 {r.cap} 分钟）。</p>}
     {warning === "impossible" && <p className="outline-warn estimate-impossible" style={{background:"color-mix(in srgb, var(--warn) 14%, transparent)", border:"1px solid var(--warn)"}}>按最乐观的估计也完成不了（你的每日上限 {r.cap} 分钟）；可以调整，也可以直接确认继续。</p>}
@@ -501,10 +502,10 @@ function EstimateCard({ draft, text, busy, active, onGo, onChange, onShrink }:
     <div className="estimate-card">
       <div className="outline-sum">
         <div><span>知识点 × 平均 8 分钟</span><b>{r.points} 个 · 学习 {hours(r.learning ?? 0)}</b></div>
-        <div><span>含模块检测与最终检验</span><b>约 {hours(r.total[1])}</b></div>
+        <div><span>{r.checks_pending ? "学习与已备好题的检测时长" : "含模块检测与最终检验"}</span><b>约 {hours(r.total[1])}</b></div>
         <div><span>每天 / 你的时间上限</span><b>{r.daily[1]} / {r.cap} 分钟</b></div>
       </div>
-      <p className="sub">这是预估；检测仍计入总时间。备题采用现成带答案题，找不到时从原文挖空。</p>
+      <p className="sub">只采用资料自带的题，不挖空或上网补题。检测按实际题数计入总时间；{r.checks_pending ? "其余检测时长待题数确定。" : "没有题的模块只学不考。"}</p>
       {r.over_cap && <p className="outline-warn">每天超过了你填写的时间上限，可以延长日期或缩小范围。</p>}
       {active && <TimeChoices ranges={r} busy={busy} onChange={onChange} onAdjust={onShrink} />}
       {active && <div className="plan-actions">

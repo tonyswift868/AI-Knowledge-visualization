@@ -10,11 +10,11 @@ from tests.refactor.plan37.test_grounded_plan37_flow import fixture, adopt_and_m
 
 
 def test_plan63_actual_cap_and_eight_minutes_with_weighted_days():
-    r = map_ranges(PlanWindow(TODAY, TODAY, 400), 30, module_counts=[10, 20])
+    r = map_ranges(PlanWindow(TODAY, TODAY, 400), 30, module_counts=[10, 20], question_counts=[10,20])
     assert r['learning'] == 240
     assert r['total'] == [240 + 60 + 26 + 52] * 2
     assert not r['over_cap'] and not r['suggested_end']
-    high = map_ranges(PlanWindow(TODAY, TODAY, 300), 30, module_counts=[10, 20])
+    high = map_ranges(PlanWindow(TODAY, TODAY, 300), 30, module_counts=[10, 20], question_counts=[10,20])
     assert high['over_cap'] and high['suggested_cap'] == 380
     assert high['suggested_end'] == (TODAY + timedelta(days=1)).isoformat()
 
@@ -56,8 +56,7 @@ def test_plan63_structure_estimate_counts_expanded_blocks_once_and_needs_no_mode
     counts = [math.ceil(chars/v) for v in reversed(CHARS_PER_POINT_RANGE)]
     assert modules[0]['estimated_points'] == counts and r['points'] == counts
     assert r['learning'] == [n*8 for n in counts]
-    assert r['module_check'] == [n*2 for n in counts]
-    assert r['final_check'] == [estimate_check_minutes(n, minutes_per_question=2) for n in counts]
+    assert r['module_check'] == r['final_check'] == [0,0] and not r['checks_pending']
     assert model.calls == calls and r['input_tokens'][1] >= r['input_tokens'][0] > 0
 
 
@@ -102,4 +101,5 @@ def test_plan63_warning_does_not_block_user_confirming(fixture):
     assert draft['phase'] == 'ready'
     points = flow.services.store.records('points', draft['plan_id'])
     assert len(points) == 30 and all(p['minutes'] == 8 for p in points)
-    assert flow.services.store.get_plan(draft['plan_id'])['total_minutes'] == draft['outline']['ranges']['total'][1]
+    assert draft['outline']['ranges']['total'][1]==240  # Prior to preparation: learning only.
+    assert flow.services.store.get_plan(draft['plan_id'])['total_minutes'] == flow.public(draft)['outline']['ranges']['total'][1]

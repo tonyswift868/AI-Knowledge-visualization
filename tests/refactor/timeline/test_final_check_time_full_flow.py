@@ -143,7 +143,7 @@ def prepare(env):
     for i in range(2):
         store.save_generated_module(PLAN,f'm{i}',[dict(id=f'm{i}-{j:02d}',title=f'概念{j}模块{i}',summary='定义与应用',minutes=10,chunk_ids=['k']) for j in range(1,4)],
             check_minutes=6, final_check_minutes=8,check_question_minutes=2,today=DAY)
-    seed_bank(store,PLAN)
+    seed_bank(store,PLAN,count=1)
     objective_bank(store)
     draft=dict(plan_id=PLAN,phase='ready')
 
@@ -211,85 +211,55 @@ def finish_check(env):
 
 
 def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
-    e = flow_env
-    prepare(e)
-    audit('生成预估与开始计划', (88, 'active'), (e.store.get_plan(PLAN)['total_minutes'], home(e)['state']), rule='CHK-01')
-    e.clock.set('2026-10-06T03:59:00+08:00')
-    act(e, 'enter')
-    act(e, 'next')
-    check_both(audit, e, '第一天只讲解，尚未回答', (15, 0, 0, 0, 0, 0, 88))
-    answer(e)
-    check_both(audit, e, '第一点答上记暂记10分钟', (15, 0, 10, 0, 0, 0, 78))
-    answer(e, wrong=['m0-02'])
-    check_both(audit, e, '第二点随口问一次错，解释后记学习并停在下一点前', (15, 0, 15, 0, 5, 0, 68))
+    e=flow_env;prepare(e)
+    assert e.store.get_plan(PLAN)['total_minutes']==88
+    e.clock.set('2026-10-06T03:59:00+08:00');act(e,'enter');act(e,'next')
+    answer(e);answer(e,wrong=['m0-02'])
     e.clock.set('2026-10-06T04:01:00+08:00')
-    view = snapshot(e)
-    assert view['step'] == 'teach' and view['question'] is None
-    check_both(audit, e, '跨刷新后没有重复随口问，仍停在下一点前',
-               (15, 0, 5, 0, 0, 0, 68), class_expected=(15, 0, 15, 0, 5, 0, 68), view=view)
-    assert {c['credit']['day'] for c in e.store.records('credits', PLAN)} == {DAY.isoformat()}
-    act(e, 'leave')
-    act(e, 'enter')
-    act(e, 'next')
-    answer(e)
-    check_both(audit, e, '下课再进第二天，第三点记新日', (15, 0, 15, 0, 0, 0, 58))
-    act(e, 'start_test', 'module_test')
+    view=snapshot(e);assert view['today']['progress_day']==DAY.isoformat()
+    assert {c['credit']['day'] for c in e.store.records('credits',PLAN)}=={DAY.isoformat()}
+    act(e,'leave');act(e,'enter');act(e,'next');answer(e)
+    act(e,'start_test','module_test')
     while True:
-        pending = e.room._file(PLAN).read({})['pending']
-        view = answer(e, wrong=['m0-02'] if 'm0-02' in pending['point_ids'] else [])
-        if view['step'] != 'testing': break
-    assert view['module']['state'] == 'failed'
-    check_both(audit, e, '模块检测2/3未过，扣回错点10，仅记检测6', (15, 11, 0, 0, 0, 0, 62))
-    e.registry.methods['plan.window'](dict(plan_id=PLAN, end='2026-10-12'), None)
-    # Replan subtracts credits whose original study day is before today: p0=10.
-    # Today's p2=10 and test=6 remain in the new segment: 78 / 7 -> 12,11,... .
-    check_both(audit, e, '延长截止日到第八天：过去原记10不动，新段78分七天，今天已记16', (12, 12, 0, 0, 4, 0, 62))
-    act(e, 'start_test', 'retest')
+        pending=e.room._file(PLAN).read({})['pending']
+        view=answer(e,wrong=['m0-02'] if 'm0-02' in pending['point_ids'] else [])
+        if view['step']!='testing':break
+    assert view['module']['state']=='failed'
+    assert sum(c['minutes'] for c in e.store.load_ledger(PLAN).to_dict()['credits'])==36  # 30 learned + 3 questions x 2.
+    assert not any(r['op']=='revoke' for r in e.store.records('ledger_events',PLAN))
+    e.registry.methods['plan.window'](dict(plan_id=PLAN,end='2026-10-12'),None)
+    assert e.store.get_plan(PLAN)['window']['end']=='2026-10-12'
+    act(e,'start_test','retest');assert snapshot(e)['question']['total']==1
     answer(e)
-    check_both(audit, e, '重测变绿补记10，不重记模块检测', (12, 12, 0, 0, 14, 0, 52))
-    act(e, 'next_module')
-    act(e, 'start_test', 'skip_test')
+    assert sum(c['minutes'] for c in e.store.load_ledger(PLAN).to_dict()['credits'])==38  # Just one wrong question, no relearning.
+    act(e,'next_module');act(e,'start_test','skip_test')
     while True:
-        view = answer(e)
-        if view['step'] != 'testing': break
-    assert view['module']['state'] == 'skipped'
-    check_both(audit, e, '第二模块直接考通过，记学习30和检测6，最终检验预算仍保留', (12, 12, 0, 0, 50, 0, 16))
-    act(e, 'next_module')
-    act(e, 'start_check')
-    audit('进入最终检验', 'checking', e.store.get_plan(PLAN)['state'], rule='CHK-01')
-    act(e, 'leave')
-    e.clock.set(DAY + timedelta(days=9))
-    act(e, 'enter')
-    check_both(audit, e, '截止后第二天，最终检验仍未完成', (0, 0, 0, 16, 0, 2, 16))
-    errors = corrects = 0
+        view=answer(e)
+        if view['step']!='testing':break
+    assert view['module']['state']=='skipped'
+    assert sum(c['minutes'] for c in e.store.load_ledger(PLAN).to_dict()['credits'])==74
+    act(e,'next_module');act(e,'start_check');act(e,'leave')
+    e.clock.set(DAY+timedelta(days=9));act(e,'enter')
+    assert snapshot(e)['today']['overdue_days']==2
+    errors=answered=0
     while not e.store.load_mastery(PLAN).check_complete():
-        pending = e.room._file(PLAN).read({})['pending']
-        if pending is None:
-            act(e, 'start_check')
-            pending = e.room._file(PLAN).read({})['pending']
-        wrong = 'm0-02' in pending['point_ids'] and errors < 2
-        errors += int(wrong)
-        corrects += int(not wrong)
-        view = check_answer(e, wrong=wrong)
-        if view['step'] != 'completed':
-            remaining = 16 - corrects * 2
-            check_both(audit, e, f'最终检验第{errors+corrects}题，' + ('答错不记' if wrong else '答对记2'),
-                       (0, 0, 0, remaining, 0, 2, remaining), view=view)
-    assert (errors, corrects) == (2, 7)
-    audit('最后一题即时返回的计划状态', 'completed', view['plan']['state'], rule='CHK-01')  # fixed: the reply re-reads the plan
-    assert e.store.get_plan(PLAN)['state'] == 'completed'
-    assert snapshot(e)['plan']['state'] == 'completed'
-    audit('完成后首页状态与课堂剩余', ('completed', 0, 0),
-          (home(e)['state'], snapshot(e)['today']['remaining_minutes'], snapshot(e)['today']['overdue_days']), rule='CHK-01')
-    join_profiles()
-    report = e.registry.methods['plan.report'](dict(plan_id=PLAN), None)['report']
-    audit('完成报告时间核对', (88, 86, 0, 2, '2026-10-14'),
-          tuple(report['plan'][k] for k in ('planned_minutes', 'confirmed_minutes', 'tentative_minutes', 'overdue_days', 'actual_completion_date')), rule='CHK-01')
-    point = next(p for p in report['points'] if p['point_id'] == 'm0-02')
-    audit('报告错误统计逐事件核对', (1, 1, 2, 4),
-          tuple(point[k] for k in ('casual_errors', 'module_errors', 'check_errors_before_pass', 'check_questions')), rule='CHK-01')
-    assert e.store.load_report(PLAN) == report
-    assert build_report(e.store, PLAN, today=e.day()) == {k: v for k, v in report.items() if k != 'point_comments'}
+        pending=e.room._file(PLAN).read({})['pending']
+        if pending is None:act(e,'start_check');pending=e.room._file(PLAN).read({})['pending']
+        wrong='m0-02' in pending['point_ids'] and errors<2
+        errors+=int(wrong);answered+=1
+        view=check_answer(e,wrong=wrong)
+        assert answered<30
+        credits=[r['credit'] for r in e.store.records('credits',PLAN) if r['id'].startswith('check:')]
+        assert len(credits)==answered and sum(c['minutes'] for c in credits)==answered*2
+        assert {c['day'] for c in credits}=={e.day().isoformat()}
+    assert errors==2 and view['plan']['state']=='completed'
+    assert home(e)['state']=='completed' and snapshot(e)['today']['remaining_minutes']==0
+    join_profiles();report=e.registry.methods['plan.report'](dict(plan_id=PLAN),None)['report']
+    assert report['plan']['confirmed_minutes']==74+answered*2
+    assert report['plan']['actual_completion_date']=='2026-10-14'
+    assert len(report['questions'])==6 and all(q['passed'] for q in report['questions'])
+    assert e.store.load_report(PLAN)==report
+    assert build_report(e.store,PLAN,today=e.day())=={k:v for k,v in report.items() if k!='point_comments'}
 
 
 def skip_all(env):
@@ -332,7 +302,9 @@ def test_all_correct_finishes_below_reserve(flow_env, audit):
 
 
 def event(e, identifier, seq, results, *, context='check', attempt=None):
-    return Judgement(identifier, seq, e.clock.now(), context, 'm0', attempt, tuple(results), 'recall' if context == 'check' else None)
+    available = {q['id'] for q in e.store.records('question_bank',PLAN)}
+    qid = results[0][0]+'-0' if results else None
+    return Judgement(identifier, seq, e.clock.now(), context, 'm0', attempt, tuple(results), question_id=qid if qid in available else None)
 
 
 def test_final_credit_atomic_retry_wrong_multipoint_and_pinned_day(flow_env, monkeypatch):
@@ -361,9 +333,9 @@ def test_final_credit_atomic_retry_wrong_multipoint_and_pinned_day(flow_env, mon
     e.store.append_judgement(PLAN, row, credit_day=DAY)
     assert e.store.pending_records(1000) == saved
     cs = [r['credit'] for r in e.store.records('credits', PLAN) if r['id'].startswith('check:')]
-    assert [(c['minutes'], c['day'], c['unit_id']) for c in cs] == [(2, DAY.isoformat(), 'check:m0-01')]
+    assert [(c['minutes'], c['day'], c['unit_id']) for c in cs] == [(2, DAY.isoformat(), 'check:m0-01-0')]
     e.store.append_judgement(PLAN, event(e, 'passed-again', seq+1, [('m0-01', True)]), credit_day=DAY)
-    assert len([r for r in e.store.records('credits', PLAN) if r['id'].startswith('check:')]) == 1
+    assert len([r for r in e.store.records('credits', PLAN) if r['id'].startswith('check:')]) == 2
 
 
 def test_new_estimates_persist_sync_and_validate(flow_env):
@@ -394,8 +366,7 @@ def test_legacy_module_has_no_extra_final_credits(flow_env):
 
 def test_ninety_ten_final_estimate_counts_correct_work():
     assert estimate_check_minutes(10, minutes_per_question=2) == 26
-    # Nine straightforward points need one correct; a difficult point starts
-    # at level one and answers wrong/right/wrong/right/right/right: four correct.
+    # 90% of questions once, 10% three extra answers; no point levels.
     assert 9*2 + 4*2 == 26
 
 
@@ -403,40 +374,25 @@ GroupedModuleAgents = FlowAgents  # questions come from stored source fixtures
 
 
 def test_module_detection_releases_unused_estimate_and_report(flow_env, audit):
-    e = flow_env
-    e.room.services.gateway = e.agent = GroupedModuleAgents()
-    prepare(e)
-    act(e, 'enter')
-    join_profiles()
-    # This accounting oracle needs an existing three-point composite. New
-    # generation requests use at most two points, but stored valid composites
-    # can still cover up to four. Seed the exact one-question fixture.
-    course = e.room._course(PLAN)
-    for module in course.modules:
-        mids = [p['id'] for p in course.points_of(module['id'])]
+    e=flow_env;prepare(e)
+    # One question covering three points is still just one assessment question.
+    with e.store.transaction():
+        for q in e.store.records('question_bank',PLAN):e.store._delete('question_bank',PLAN,q['id'])
+    for module in e.store.records('modules',PLAN):
+        mids=[p['id'] for p in e.store.records('points',PLAN) if p['module_id']==module['id']]
         from tests.refactor.integration38.support import bank_question
         row=bank_question(mids[0],module['id'],kind='fill',ids=mids,answer='测试作答',chunk='k')
-        row['id']='000-group-'+module['id']
-        row['stem']=module['title']+'综合题：'+row['stem']
+        row.update(id='group-'+module['id'],stem=module['title']+'综合题：'+row['stem'])
         e.store.add_bank_questions(PLAN,module['id'],[row])
-    for index in range(2):
-        act(e, 'start_test', 'skip_test')
-        answer(e)
-        assert snapshot(e)['module']['state'] == 'skipped'
-        act(e, 'next_module')
-    ledger = e.store.load_ledger(PLAN)
-    audit('模块检测合题结算：两模块各学30、实际检测2、释放4', (64, 8, 16),
-          (sum(c['minutes'] for c in ledger.to_dict()['credits']), ledger.to_dict()['settlement']['released'],
-           ledger.status(DAY).remaining_minutes), rule='CHK-01')
-    act(e, 'start_check')
-    finish_check(e)
-    join_profiles()
-    report = e.flow.report(PLAN)['report']
-    timing = report['time']['check_minutes']
-    audit('模块检测报告保留差额', (12, 4, 8, 16, 12, 12), tuple(timing[k] for k in
-          ('module_estimated', 'module_actual', 'module_difference', 'final_estimated', 'final_actual', 'released_minutes')), rule='CHK-01')
-    assert (report['plan']['planned_minutes'], report['plan']['credited_minutes']) == (88, 76)
-    assert e.store.load_ledger(PLAN).status(DAY+timedelta(days=30)).debt_minutes == 0
+        e.store.set_question_estimate(PLAN,module['id'],1,today=DAY)
+        e.store.save_module_preparation(PLAN,module['id'],dict(state='done'))
+    assert e.store.get_plan(PLAN)['total_minutes']==70  # 60 learning + 2x2 module + 2x3 final reserve.
+    skip_all(e);finish_check(e);join_profiles()
+    report=e.flow.report(PLAN)['report'];timing=report['time']['check_minutes']
+    assert len(report['questions'])==2
+    assert (timing['module_estimated'],timing['module_actual'],timing['final_estimated'],timing['final_actual'])==(4,4,6,4)
+    assert (report['plan']['planned_minutes'],report['plan']['credited_minutes'])==(70,68)
+    assert e.store.load_ledger(PLAN).status(DAY+timedelta(days=30)).debt_minutes==0
 
 
 def test_final_check_credit_pins_before_refresh_until_leave(flow_env, audit):

@@ -140,15 +140,9 @@ CHARS_PER_POINT_RANGE = (300, 1700)
 CHARS_PER_POINT_TYPICAL = median((4481/10, 123846/163, 2434/8, 43743/26, 28813/62))
 
 
-def with_checks(learning_minutes: int) -> int:
-    """Learning plus the same module-test and final-check estimate generation uses (PLAN-05).
-
-    Checks take close to half of a plan (end-to-end 2026-09-29: 149 learning + 54 module
-    test + 71 final check); a small flat reserve made users plan far too little time.
-    """
-    points = max(1, round(learning_minutes / MINUTES_PER_POINT_GUESS))
-    question = max(1, round(CHECK_MINUTES_PER_QUESTION))
-    return learning_minutes + points * question + estimate_check_minutes(points, minutes_per_question=question)
+def with_checks(learning_minutes: int, question_count=0) -> int:
+    """Question reserves use material question counts, never inferred point counts."""
+    return learning_minutes + question_count * 2 + estimate_check_minutes(question_count, minutes_per_question=2)
 
 
 def minute_ranges(window: PlanWindow, low: int, high: int) -> dict:
@@ -170,13 +164,13 @@ def short_plan_name(goal):
     return (text or "学习计划")[:20].rstrip(" ：:、与和")
 
 
-def map_ranges(window, point_count, *, module_counts=None):
+def map_ranges(window, point_count, *, module_counts=None, question_counts=()):
     learning = point_count * MINUTES_PER_POINT_GUESS
     ranges = minute_ranges(window, learning, learning)
-    if module_counts is not None:
+    if module_counts is not None or question_counts:
         # Generation persists each module's integer reserve separately.
         # Round at that same boundary, rather than once for the whole map.
-        total = learning + point_count * 2 + sum(estimate_check_minutes(n, minutes_per_question=2) for n in module_counts)
+        total = learning + sum(question_counts)*2 + sum(estimate_check_minutes(n,minutes_per_question=2) for n in question_counts)
         daily = full_day_minutes(distribute(window, total), window)
         cap = check_cap(window, total)
         ranges.update(total=[total,total],daily=[daily,daily],over_cap=daily>window.daily_cap_minutes,
@@ -184,6 +178,7 @@ def map_ranges(window, point_count, *, module_counts=None):
     suggested = check_cap(window, ranges["total"][1])
     end = suggested.suggested_end
     ranges.update(points=point_count, learning=learning,
+                  checks_pending=not bool(question_counts),
                   suggested_cap=math.ceil(ranges["daily"][1] / 10) * 10,
                   suggested_end=end.isoformat() if end else ranges["suggested_end"],
                   suggested_days=(end - window.start).days + 1 if end else None)
@@ -263,8 +258,18 @@ class PlanFlow:
                 modules = agents.outline_modules(view['outline'])
                 for module in modules:
                     module['minutes'] = [len(module['points']) * MINUTES_PER_POINT_GUESS] * 2
+                try:
+                    saved = {m['id']: m.get('question_count')
+                             for m in self.services.store.records('modules', draft['plan_id'])}
+                except sqlite3.ProgrammingError as exc:
+                    if 'closed database' not in str(exc):
+                        raise
+                    # Late background notifications must not reopen an account.
+                    saved = {}
+                known=[saved.get(m.get('id')) for m in modules]
                 view['outline']['ranges'] = map_ranges(self._window(draft), sum(len(m['points']) for m in modules),
-                    module_counts=[len(m['points']) for m in modules])
+                    module_counts=[len(m['points']) for m in modules],question_counts=[n or 0 for n in known] if saved else ())
+                view['outline']['ranges']['checks_pending']=any(n is None for n in known)
         return view
 
     def status(self, plan_id, text):
@@ -721,6 +726,9 @@ class PlanFlow:
         by_id = {s.id: s for s in sections}
         _, chunks = self._adopted(draft)
         texts = {c['id']: c['text'] for rows in chunks.values() for c in rows}
+        from ..course.material_questions import candidates, for_module
+        question_candidates = candidates([c for rows in chunks.values() for c in rows], self._adopted(draft)[0])
+        question_ids = set()
         modules, low_counts, high_counts, usual_counts, token_low, token_high = [], [], [], [], 0, 0
         for module in draft['material_structure']['modules']:
             ids = dict.fromkeys(c for r in module['refs'] if r in by_id for c in by_id[r].chunk_ids)
@@ -728,22 +736,27 @@ class PlanFlow:
             low = math.ceil(chars / CHARS_PER_POINT_RANGE[1])
             high = math.ceil(chars / CHARS_PER_POINT_RANGE[0])
             usual = math.ceil(chars / CHARS_PER_POINT_TYPICAL)
-            modules.append(dict(module, estimated_points=[low, high], estimated_point_count=usual, chars=chars))
+            module_questions = for_module(question_candidates, chunk_ids=ids)
+            question_count = len(module_questions)
+            question_ids.update(q['id'] for q in module_questions)
+            modules.append(dict(module, estimated_points=[low, high], estimated_point_count=usual, chars=chars,
+                                estimated_question_count=question_count, has_material_questions=question_count > 0))
             low_counts.append(low); high_counts.append(high)
             usual_counts.append(usual)
             a, b = _bounds('\n'.join(texts.get(c, '') for c in ids))
             token_low += a; token_high += b
         window = self._window(draft)
-        low = map_ranges(window, sum(low_counts), module_counts=low_counts)
-        high = map_ranges(window, sum(high_counts), module_counts=high_counts)
-        usual = map_ranges(window, sum(usual_counts), module_counts=usual_counts)
+        low = map_ranges(window, sum(low_counts), module_counts=low_counts, question_counts=[m['estimated_question_count'] for m in modules])
+        high = map_ranges(window, sum(high_counts), module_counts=high_counts, question_counts=[m['estimated_question_count'] for m in modules])
+        usual = map_ranges(window, sum(usual_counts), module_counts=usual_counts, question_counts=[m['estimated_question_count'] for m in modules])
         warning = 'none' if not usual['over_cap'] else 'possible' if not low['over_cap'] else 'impossible'
         ranges = dict(usual, typical=usual, warning_level=warning, total=[low['total'][0], high['total'][1]],
             daily=[low['daily'][0], high['daily'][1]], points=[sum(low_counts), sum(high_counts)],
             learning=[low['learning'], high['learning']],
-            module_check=[sum(low_counts)*2, sum(high_counts)*2],
-            final_check=[sum(estimate_check_minutes(n, minutes_per_question=2) for n in counts)
-                         for counts in (low_counts, high_counts)], input_tokens=[token_low, token_high])
+            module_check=[sum(m['estimated_question_count'] for m in modules)*2]*2,
+            final_check=[sum(estimate_check_minutes(m['estimated_question_count'],minutes_per_question=2) for m in modules)]*2, input_tokens=[token_low, token_high],
+            estimated_question_count=len(question_ids),
+            modules_with_questions=sum(m['has_material_questions'] for m in modules))
         return modules, ranges
 
     def material_structure(self, draft, ctx, instruction="", *, confirmed=False):
@@ -926,7 +939,7 @@ class PlanFlow:
         draft["outline"]["ranges"] = ranges
         draft["estimate"] = {"modules": len(modules), "points": ranges["points"],
             "input_tokens": [0, 0], "output_tokens": [0, 0], "model": "",
-            "note": "知识地图已核验；保存时不再生成知识点。备题依次取现成带答案题，找不到则从原文挖空。",
+            "note": "知识地图已核验；保存时不再生成知识点。只采用资料自带的题，检测时长按备好的实际题数计算。",
             "blocked": False}
         if ranges["over_cap"]:
             text = (f"按现在日期每天需要 {ranges['daily'][1]} 分钟，超过你填写的 {ranges['cap']} 分钟。"
@@ -934,7 +947,7 @@ class PlanFlow:
                     "可以提高每天时长、延长周期或调整内容，也可以按当前安排继续。")
         else:
             text = (f"共 {ranges['points']} 个知识点，按每点平均 8 分钟预估学习 {ranges['learning']} 分钟；"
-                    f"含检测约 {ranges['total'][1]} 分钟，每天约 {ranges['daily'][1]} 分钟。确认后保存计划并准备第 1 模块。")
+                    f"目前学习约 {ranges['total'][1]} 分钟，每天约 {ranges['daily'][1]} 分钟；检测时长待实际题数确定。确认后保存计划并准备第 1 模块。")
         draft["messages"].append(_msg("ai", "estimate", text))
         self.save(draft)
 
@@ -1002,8 +1015,7 @@ class PlanFlow:
             for module in modules:
                 payload = [dict(p, minutes=MINUTES_PER_POINT_GUESS, id=f"{module['id']}-{index:02d}") for index, p in enumerate(module["points"], 1)]
                 store.save_generated_module(plan_id, module["id"], payload, today=self.study_day(),
-                    check_minutes=len(payload) * 2,
-                    final_check_minutes=estimate_check_minutes(len(payload), minutes_per_question=2), check_question_minutes=2)
+                    check_minutes=0, final_check_minutes=0, check_question_minutes=2)
             draft["generation"] = {m["id"]: "pending" for m in modules}
             draft["phase"] = "generating"
             draft["messages"].append(_msg("ai", "progress", "计划已保存，正在准备第 1 模块的资料与题目。"))
@@ -1040,16 +1052,14 @@ class PlanFlow:
                     on_status=lambda text: ctx.stream(text))
 
     def _module_ready(self, plan_id, module_id):
-        store = self.services.store
-        points = [p for p in store.records('points', plan_id) if p['module_id'] == module_id]
-        bank = store.records('question_bank', plan_id)
-        from ..course.point_materials import uncovered_points
-        uncovered = set(uncovered_points(store, plan_id, self._material_context(
-            CallContext('material-check', threading.Event(), lambda _: None))))
-        return bool(points) and all(p['id'] not in uncovered and
-            sum(p['id'] in q['point_ids'] for q in bank if q.get('role', 'bank') == 'bank') >= 2 for p in points)
+        from ..course.point_materials import preparation_done
+        return preparation_done(self.services.store, plan_id, module_id)
 
     def _save_material_summary(self, plan_id, module_id, result):
+        from ..course.question_bank import assessment_questions
+        count = len(assessment_questions(self.services.store.records('question_bank', plan_id), module_id))
+        if any(m['id']==module_id for m in self.services.store.records('modules', plan_id)):
+            self.services.store.set_question_estimate(plan_id, module_id, count, today=self.study_day())
         if not isinstance(result, dict) or not any(k in result for k in ('points', 'cloze_points', 'cloze_heavy')):
             # The integrated baseline still returns aggregate question counts.
             # MF-02's new summary will be exercised through the agreed test stub.
@@ -1077,7 +1087,7 @@ class PlanFlow:
                 if job['fingerprint'] is None: job['fingerprint'] = fingerprint
                 if notify and notify not in job['listeners']: job['listeners'].append(notify)
                 return job
-            if job and job['status'] == 'ready' and (fingerprint is None or job['fingerprint'] == fingerprint):
+            if job and job['status'] == 'ready' and self._module_ready(plan_id, module['id']) and (fingerprint is None or job['fingerprint'] == fingerprint):
                 return job
             if job and job['status'] == 'failed' and not retry:
                 if notify and notify not in job['listeners']: job['listeners'].append(notify)
@@ -1157,6 +1167,10 @@ class PlanFlow:
         # existing persisted summary as well, so reopen never loses completion.
         for module in self.services.store.records('modules', plan_id):
             if module['id'] == module_id:
+                if state=='done':
+                    from ..course.question_bank import assessment_questions
+                    count=len(assessment_questions(self.services.store.records('question_bank',plan_id),module_id))
+                    self.services.store.set_question_estimate(plan_id,module_id,count,today=self.study_day())
                 summary = dict(module.get('material_preparation') or {}, state=state)
                 self.services.store.save_module_preparation(plan_id, module_id, summary)
                 break
@@ -2127,9 +2141,11 @@ def report_markdown(report, titles):
              f"- 实际开始：{plan.get('actual_start_date') or '—'}；完成：{plan.get('actual_completion_date') or '—'}",
              f"- 学习时长：{plan['credited_minutes']} 分钟（计划 {plan['planned_minutes']} 分钟）",
              f"- 调整过计划 {plan['replan_count']} 次", ""]
-    checks = sum(p['check_questions'] for p in report['points'])
-    correct = sum(p['check_correct'] for p in report['points'])
-    lines.insert(-1, f"- 最终检验：{correct}/{checks} 题答对" if checks else "- 最终检验：—")
+    checks = sum(p['check_questions'] for p in report.get('questions',[]))
+    correct = sum(p['check_correct'] for p in report.get('questions',[]))
+    has_questions = bool(report.get('questions'))
+    lines.insert(-1, f"- 最终检验：{correct}/{checks} 题答对" if checks else
+                 "- 最终检验：尚未进行。" if has_questions else "- 资料没有题，本计划只学习，不考核。")
     if plan.get("early_days"):
         lines.append(f"比截止日提前 {plan['early_days']} 天完成。")
     if plan.get("overdue_days"):
@@ -2137,11 +2153,12 @@ def report_markdown(report, titles):
     lines += ["", "## 模块", ""]
     lines += [f"- {m['title']}：{ {'passed': '通过', 'skipped': '直接考通过', 'failed': '未通过'}.get(m['state'], m['state']) }"
               for m in report["modules"]]
-    lines += ["", "## 各模块掌握情况", ""]
-    lines += [f"- {m['title']}：{m['mastered']}/{m['total']} 个知识点通过最终检验"
-              for m in views['modules']]
-    lines += ["", "## 错误分布", "",
-              f"- 随口问：{views['errors']['casual']} 次；模块检测：{views['errors']['module']} 次；最终检验：{views['errors']['check']} 次"]
+    if has_questions:
+        lines += ["", "## 各模块掌握情况", ""]
+        lines += [f"- {m['title']}：{m['mastered']}/{m['total']} 道题通过最终检验" if m['total'] else f"- {m['title']}：只学不考"
+                  for m in views['modules']]
+        lines += ["", "## 错误分布", "",
+                  f"- 随口问：{views['errors']['casual']} 次；模块检测：{views['errors']['module']} 次；最终检验：{views['errors']['check']} 次"]
     lines += ["", "## 每日目标与实际 / 历史明细", "",
               "按原始学习日统计实际完成；每天单独比较当天目标与实际，不是累计欠账。", ""]
     lines += [f"- {day['day']}：目标 {day['target_minutes']} 分，实际 {day['actual_minutes']} 分，"

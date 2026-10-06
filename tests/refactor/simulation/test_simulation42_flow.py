@@ -53,7 +53,7 @@ def test_simulation42_full_bridge_flow_from_dialogue_to_pdf_and_free(simulation)
     assert 'classroom.ask' in methods and 'classroom.reply' in methods
     assert 'classroom.leave' in methods and 'reopen' in driver.state['flags']
     purposes={u['purpose'] for q in store.records('question_bank',pid) for u in q['uses']}
-    assert purposes=={'quick','module','direct','retest','final','free'}
+    assert purposes=={'module','direct','retest','final','free'}
     dates={r['credit']['day'] for r in store.records('credits',pid)}
     assert len(dates)>=2
     at=[datetime.fromisoformat(r['at']) for r in store.records('messages',pid)]
@@ -61,8 +61,8 @@ def test_simulation42_full_bridge_flow_from_dialogue_to_pdf_and_free(simulation)
     assert 'quality' in summary and '不自动' in summary['quality']
     assert any(c['purpose']=='research' for c in simulation.evidence.calls)
     assert not any(c['purpose'] in ('questions','question_review','question_solve') for c in simulation.evidence.calls)
-    assert all(q['kind'] in ('choice','fill') for q in store.records('question_bank',pid))
-    assert {q['role'] for q in store.records('question_bank',pid)}=={'quick','bank'}
+    assert all(q['kind'] in ('objective','recall') for q in store.records('question_bank',pid))
+    assert {q['role'] for q in store.records('question_bank',pid)}=={'bank'}
     assert all(u['purpose']=='quick' for q in store.records('question_bank',pid) if q['role']=='quick' for u in q['uses'])
 
 
