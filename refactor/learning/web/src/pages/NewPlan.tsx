@@ -6,6 +6,7 @@ import {
 import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
 import { Button, Field, Segmented, TASK_TIME_TIP, Tip } from "../ui"
+import { PlanGraph, type GraphModule } from "../planning/PlanGraph"
 
 // ------------------------------------------------------------------ types
 type Card = {
@@ -30,7 +31,7 @@ export type Draft = {
   estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string; blocked?: boolean; points?: number }
   preview?: { summary: string; modules: { title: string; summary: string }[]; version: number }
   recommendations?: { card_id: string; title: string; type: string; url: string; why: string; modules: string[] }[]
-  material_structure?: { version: number; missing: string[] }
+  material_structure?: { version: number; missing: string[]; modules?: GraphModule[] }
   busy: string | null
 }
 type Detail = {
@@ -49,6 +50,23 @@ const WEEK = "一二三四五六日"
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 const hours = (m: number) => (m >= 90 ? `${Math.round(m / 6) / 10} 小时` : `${m} 分钟`)
+
+// Error messages have no persisted phase field. A retry succeeds when it
+// produces the same result kind, or the next result of the current step.
+// Keep errors across unrelated steps/import failures; never alter history.
+export function visiblePlanMessages(messages: Msg[]) {
+  const nextStep: Record<string, string> = { form: "questions", questions: "preview", preview: "recommendations", recommendations: "sources", sources: "material_preview", material_preview: "outline", outline: "estimate", estimate: "progress", progress: "ready" }
+  const successes = new Set([...Object.keys(nextStep), "ready"])
+  return messages.filter((m, i) => {
+    if (m.kind !== "error") return true
+    const before = messages.slice(0, i).reverse().find(x => x.role === "ai" && successes.has(x.kind))
+    const after = messages.slice(i + 1).find(x => x.role === "ai" && successes.has(x.kind))
+    if (!before || !after) return true
+    // A URL/file-specific import error is not resolved by a different import.
+    if (/https?:\/\/|没能导入|未能导入/.test(m.text)) return true
+    return after.kind !== before.kind && after.kind !== nextStep[before.kind]
+  })
+}
 
 // ------------------------------------------------------------------ page
 export function NewPlan() {
@@ -154,7 +172,7 @@ export function NewPlan() {
 
       <section className="card plan-main">
         <div className="chat-scroll" ref={scroller}>
-          {draft.messages.map((m) => {
+          {visiblePlanMessages(draft.messages).map((m) => {
             if (m.kind === "form") return <FormCard key={m.id} draft={draft} text={m.text} busy={busy} onSubmit={(form) => act("plan.submit", { form })} />
             if (m.role === "user") return <div key={m.id} className="bubble user" data-selectable>{m.text}</div>
             if (m.kind === "preview") return <div key={m.id} className="plan-block">
@@ -184,15 +202,20 @@ export function NewPlan() {
               </div>)}
             </div>
             if (m.kind === "material_preview") return <div key={m.id} className="plan-block">
-              <div className="bubble bot" style={{whiteSpace:"pre-wrap"}} data-selectable>{m.text}</div>
-              {draft.phase === "material_preview" && m.version === draft.material_structure?.version && <div className="plan-actions">
+              {draft.material_structure && m.version === draft.material_structure.version && draft.material_structure.modules?.length ? <>
+                <h3 className="material-graph-heading">按你的资料整理出 {draft.material_structure.modules.length} 个模块</h3>
+                <PlanGraph mode="structure" stages={[{title:"按资料整理的学习路线", modules:draft.material_structure.modules}]} />
+                {!!draft.material_structure.missing.length && <div className="material-missing">资料没讲到：{draft.material_structure.missing.join("、")}</div>}
+              </> : <div className="muted small outline-old">第 {m.version} 版资料结构（{m.version === draft.material_structure?.version ? "没有可显示的结构" : "已被新版替换"}）</div>}
+              {draft.phase === "material_preview" && draft.material_structure && m.version === draft.material_structure.version && <div className="plan-actions">
                 <Button disabled={busy} onClick={() => setText("我想调整资料结构：")}>调整结构</Button>
                 {(draft.material_structure?.missing.length ?? 0) > 0 && <>
                   <Button disabled={busy} onClick={() => act("plan.missing", {action:"add"})}>再传一份资料</Button>
                   <Button disabled={busy} onClick={() => act("plan.missing", {action:"delete"})}>删掉没讲到的部分并继续</Button>
                 </>}
-                <Button kind="primary" disabled={busy} onClick={() => act("plan.missing", {action:"continue"})}>确认结构，就这样继续</Button>
+                <Button kind="primary" disabled={busy} onClick={() => act("plan.missing", {action:"continue"})}>确认结构，开始填知识点</Button>
               </div>}
+              {draft.phase === "material_preview" && draft.material_structure && m.version === draft.material_structure.version && <p className="material-next-hint">确认后按每个模块的资料生成知识点，生成完会给你看完整知识地图再确认</p>}
             </div>
             if (m.kind === "sources") return (
               <div key={m.id} className="plan-block fade-in">
@@ -404,8 +427,6 @@ export function GroupedSources({cards,locked,onDecide}: {cards:Card[];locked:boo
 function OutlineCard({ outline }: { outline: Outline }) {
   const r = outline.ranges
   const all = outline.stages.flatMap((s) => s.modules)
-  const titleOf = Object.fromEntries(all.map((m) => [m.key, m.title]))
-  let n = 0
   return (
     <div className="outline-card">
       <div className="outline-sum">
@@ -414,27 +435,7 @@ function OutlineCard({ outline }: { outline: Outline }) {
         <div><span>模块</span><b>{all.length} 个 · {outline.stages.length} 个阶段</b></div>
       </div>
       {r.over_cap && <div className="outline-warn"><CircleAlert size={16} />每日任务时长可能超过你设的上限（{r.cap} 分钟）。{r.suggested_end ? `可以考虑把结束日期延后到 ${r.suggested_end}，` : ""}或者让我精简路线。</div>}
-      <div className="outline-tree">
-        {outline.stages.map((stage, si) => (
-          <div key={si} className="stage">
-            <div className="stage-label"><span>阶段 {si + 1}</span><b>{stage.title}</b></div>
-            <div className="stage-modules">
-              {stage.modules.map((m) => {
-                n += 1
-                return (
-                  <div key={m.key} className="module-node" style={{ animationDelay: `${n * 0.04}s` }}>
-                    <div className="row between"><b><em>{n}</em>{m.title}</b><span className="pill muted">{m.minutes[0]}–{m.minutes[1]} 分钟</span></div>
-                    <p>{m.summary}</p>
-                    <ol className="point-list">{m.points?.map((p, i) => <li key={i}><b>{p.title}</b><span>{p.summary}</span>{p.source_general && <small className="muted">来源一般</small>}<PointCitations citations={p.citations} /></li>)}</ol>
-                    {m.prerequisites.length > 0 && <span className="small muted">先学：{m.prerequisites.map((p) => titleOf[p]).join("、")}</span>}
-                    <span className="small refs" title={m.ref_titles.join("\n")}><BookOpen size={12} />依据：{m.ref_titles.slice(0, 2).join("；")}{m.ref_titles.length > 2 ? ` 等 ${m.ref_titles.length} 处` : ""}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
+      <PlanGraph stages={outline.stages} />
       <p className="muted small" style={{ margin: "10px 2px 0" }}>每个点均已核验原文出处。想增删、合并或放弃哪部分，直接在下面告诉我。</p>
     </div>
   )

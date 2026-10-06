@@ -705,12 +705,10 @@ class PlanFlow:
         draft['material_version'] = value['version']
         draft['material_structure'] = value
         draft['phase'] = 'material_preview'
-        text = value['summary'] + '\n\n' + '\n'.join(str(n) + '. ' + m['title'] + '｜' + m['summary'] +
-            '\n章节：' + '；'.join(m['chapters']) for n, m in enumerate(value['modules'], 1))
+        text = '已按资料整理出 ' + str(len(value['modules'])) + ' 个模块：' + '；'.join(
+            str(n) + '. ' + m['title'] for n, m in enumerate(value['modules'], 1)) + '。'
         if value['missing']:
             text += '\n\n所选资料没讲到：' + '、'.join(value['missing']) + '。可以再传一份资料、删掉这些部分，或就这样继续。'
-        text += ('\n\n已按这次补充调整结构，按你同一句的确认继续填知识点。' if confirmed else
-                 '\n\n请确认这份按资料调整的结构，确认后再填知识点。')
         draft['messages'].append(_msg('ai', 'material_preview', text, version=value['version']))
         self.save(draft)
 

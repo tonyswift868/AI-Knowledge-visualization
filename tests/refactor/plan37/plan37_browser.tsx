@@ -20,8 +20,12 @@ async function run() {
   check(document.body.textContent?.includes("下载后点‘上传资料’"),"textbook instruction in chat")
   document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click(); await wait()
   await click("调整结构")
-  check(document.body.textContent?.includes("按资料调整"), "material directory preview")
+  check(document.body.textContent?.includes("按你的资料整理出 1 个模块"), "material directory preview")
   await click("确认结构")
+  // Knowledge points are in the module drawer, not all spread across the page.
+  const moduleNode = document.querySelector<HTMLElement>('.outline-card .react-flow__node-module')!
+  check(moduleNode, "module graph")
+  moduleNode.click(); await wait()
   check(document.body.textContent?.includes("单位面积上的压力"), "point before generation")
   check(document.body.textContent?.includes("来源一般"),"general-only map label")
   document.querySelector<HTMLDetailsElement>("details")!.open = true

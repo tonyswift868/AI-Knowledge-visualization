@@ -25,7 +25,7 @@ export async function call<T = unknown>(method: string, params: Record<string, a
   if (method === "plan.detail") return structuredClone(detail) as T
   if (method === "plan.decide") draft.sources[0].status = params.adopt ? "adopted" : "rejected"
   if (method === "plan.outline") {
-    draft.phase="material_preview";draft.material_structure={version:1,missing:[]}
+    draft.phase="material_preview";draft.material_structure={version:1,missing:[],modules:[{key:"m1",title:"压强的定义",summary:"理解压强",chapters:["OpenStax · Pressure"]}]}
     draft.messages.push({id:"material",role:"ai",kind:"material_preview",text:"按资料调整的结构：压强",version:1})
     return {draft:{...draft,messages:[...draft.messages]}}
   }
