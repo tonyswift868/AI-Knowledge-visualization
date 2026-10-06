@@ -21,7 +21,8 @@ from .question_bank import (contains_original, original_text, validate_question,
     overlapping_options, blank_rejection, parallel_answer_parts, checked_question)
 from .source_filter import classify_source, load_lists
 from .research_pipeline import ResearchPipeline
-from .research import ResearchCancelled, directory_candidates
+from .research import ResearchCancelled, ResearchError, ResearchService, directory_candidates
+from .research_questions import question_blocks, bounded_questions
 from .store import StoreError
 from .source_quality import terms, question_priority
 from ..connections.errors import ModelError
@@ -186,10 +187,14 @@ def _locate_tier(point, passages, ctx, mode):
     if not passages:return dict(passages=[],found=[],cloze=[])
     for attempt in range(2):
         packet=dict(point=point,mode=mode,passages=passages)
+        if ctx.get('_module_bank_prepared'):
+            packet['point']={k:point[k] for k in ('id','title','summary','chunk_ids') if k in point}
         if ctx.get('excluded_stems'):packet['excluded_stems']=ctx['excluded_stems']
         system=_SYSTEM
         if not ctx.get('allow_bank_cloze',False):
             system+='\n本次计分题只允许 found：资料原有且附原文答案的客观题，禁止改写、出题、解题。cloze 只供不计分的 quick 随口问。'
+        if ctx.get('_module_bank_prepared'):
+            system+='\n本模块的bank已另行配对，本次 found 必须为空，只定位一项 cloze 给不计分的 quick，保留原文对照指针，不要找更多题。'
         if mode=='supplementary_answered_exercises':
             system+='\n只定位这个知识点掌握目标的现成带答案客观题。不要返回 cloze；不要重复 excluded_stems 中已经用过的题。'
         if ctx.get('cloze_rejections'):packet['cloze_rejections']=ctx['cloze_rejections']
@@ -658,6 +663,8 @@ def _discover_questions(point, ctx, round_index=0):
     hits=directory_candidates(query,stage=ctx.get('stage',''),lists=ctx['lists'],limit=3)
     if ctx.get('search'):
         hits+=list(ctx['search'](query,cancel=ctx.get('cancel')))
+    elif not ctx.get('allow_bank_cloze',False):
+        hits+=ResearchService().search(query,cancel=ctx.get('cancel'))
     elif ctx.get('gateway'):
         result=ctx['gateway'].complete('research',[{'role':'user','content':query}],
             system='找现成带答案的练习。优先政府教育、正规教材出版社、大学、OpenStax、官方文档或成熟教育题库平台；高档找不到时可用发布者可辨认的一般网站或社区。拒绝转载、采集、盗版与无答案资料。不要出题或解题。',
@@ -688,11 +695,156 @@ def _discover_questions(point, ctx, round_index=0):
                     evidence=dict(type=identity['type'],publisher=identity['publisher'],quote=identity['evidence'])
                 identity=dict(identity, evidence=evidence)
                 passages.extend(dict(p,question_origin='web') for p in _excerpt_candidates(source, identity))
+        if not ctx.get('allow_bank_cloze',False):passages=question_blocks(passages)
         output=_locate_discovered(point, passages, ctx, 'supplementary_answered_exercises')
         output['cloze']=[]
         return _save_excerpts(point, passages, output, ctx)
     finally:
         if owned: pipeline.close()
+
+
+_MODULE_SYSTEM = '''你是原题配对员，不出题、不解题、不改写。输入已由程序筛成题目/选项/答案块。
+返回严格 JSON {"found":[...]}。每项只配给一个最直接考到掌握目标的 point_id，每点至多两道不同原题。
+每项字段：point_id、kind(choice/multi/fill/calc)、question_chunk、answer_chunk、pairing(same_block/numbered)、question_number、answer_number、stem、options、answer、answer_quote、explanation。
+stem、options、answer_quote、explanation 和非选择题 answer 必须逐字来自对应输入块；可用字符串或 {"quote":"唯一原文短片段","end_quote":"末尾短片段"} 指针。
+选择题 answer 是从0起的原选项下标，只能按原页明确的答案标记配对，不自行计算；答案没有明确给出就不返回。fill answer 为每空的可接受原文写法列表；calc 必须原页给了标准数值，不能推算。
+same_block 的答案必须紧接同块原题；分离答案表用 numbered，原题号与原答案号相同。题面要完整保留条件、原选项、单选/多选类型及否定词。简答、论述不计分，不改成填空或选择。
+优先用户资料原题；网搜块已按教材/考试院/大学/官方、成熟平台、其他排序，高档够用就不取低档。excluded_stems 中用过的题不要再配。没有题如实返回空数组；不要返回 cloze。'''
+
+
+def _navigation_point(point):
+    """Skip only explicit material-navigation goals, not technical roadmaps."""
+    text=point.get('title','')+' '+point.get('summary','')
+    return bool(re.search(r'资料入口|学习路线|延伸资料|资料导航|资料取舍|教材与动手实践|先读顺序|阅读顺序|精选文章|内容板块地图',text)
+                and re.search(r'定位|找到|列出|了解|区分|取舍|先读|入口|导航|阅读|保留|暂缓',text))
+
+
+def _bank_rows(store, plan_id, point, ctx):
+    return [q for q in _selected_rows(store.records('question_bank',plan_id),point,_passages(store,plan_id,ctx))
+            if q.get('role','bank')=='bank' and checked_question(q) and q['id'] not in ctx.get('exclude_ids',())]
+
+
+def _match_module_questions(points, passages, ctx, mode):
+    """One shared pairing call; existing literal compiler decides admission."""
+    _check(ctx)
+    passages=bounded_questions(question_blocks(passages),points)
+    if not passages or not points:return 0
+    compact=[{k:p[k] for k in ('id','text','source','authority','question_origin') if k in p} for p in passages]
+    point_ids={p['id'] for p in points}
+    packet=dict(mode=mode,points=[dict(id=p['id'],title=p['title'],summary=p.get('summary','')) for p in points],
+                passages=compact,excluded_stems=[q['stem'] for q in ctx['store'].records('question_bank',ctx['plan_id'])
+                    if q.get('role','bank')=='bank' and point_ids.intersection(q['point_ids'])])
+    if ctx.get('module_finder'):
+        output=ctx['module_finder'](packet,cancel=ctx.get('cancel'))
+    elif ctx.get('finder'):
+        # Preserve the injectable offline locator, with an explicit batch point.
+        batch=dict(id=points[0]['module_id'],module_id=points[0]['module_id'],title=ctx.get('module_title',''),points=points)
+        output=ctx['finder'](batch,passages,mode=mode,cancel=ctx.get('cancel'))
+    else:
+        result=ctx['gateway'].complete('point_materials',[dict(role='user',content=json.dumps(packet,ensure_ascii=False))],
+            system=_MODULE_SYSTEM,cancel=ctx.get('cancel'),plan_id=ctx['plan_id'],max_tokens=24576)
+        if ctx.get('on_call'):ctx['on_call']('point_materials',result)
+        output=_json(result.text)
+    _check(ctx)
+    if not isinstance(output,dict) or not isinstance(output.get('found',[]),list):raise ValueError('模块原题配对结果无效')
+    by_point={p['id']:p for p in points};by_id={p['id']:p for p in passages};accepted=[]
+    for raw in output.get('found',[])[:max(8,len(points)*3)]:
+        if not isinstance(raw,dict):continue
+        point=by_point.get(raw.get('point_id',points[0]['id'] if len(points)==1 else ''))
+        if point is None:continue
+        expanded=_expand_output(dict(found=[raw]),passages)['found']
+        for item in expanded:
+            try:
+                row=_found(item,point,by_id)
+                if row:accepted.append((point,item,row))
+            except (ValueError,KeyError,TypeError,IndexError):continue
+    def priority(entry):
+        p=by_id[entry[1]['question_chunk']]
+        return ((0,False) if p.get('question_origin')!='web' else
+                question_priority(p['source']['url'],p['source']['title'],authority=p['authority']))
+    added=0
+    for point,item,row in sorted(accepted,key=priority):
+        _check(ctx)
+        if len(_bank_rows(ctx['store'],ctx['plan_id'],point,ctx))>=2:continue
+        if not _exclude_adjacent([row],_adjacent_questions(ctx['store'],ctx['plan_id'],point),[]):continue
+        ids=[item['question_chunk'],item['answer_chunk']]
+        own=[by_id[cid] for cid in dict.fromkeys(ids)]
+        with ctx['store'].transaction():
+            _check(ctx)
+            if row.get('question_origin')=='web':
+                _save_excerpts(point,own,dict(passages=ids,found=[item],cloze=[]),ctx)
+                linked=ids
+            else:linked=[p.get('original_id',p['id']) for p in own]
+            before={q['id'] for q in ctx['store'].records('question_bank',ctx['plan_id'])}
+            ctx['store'].add_bank_questions(ctx['plan_id'],point['module_id'],[row])
+            saved=ctx['store'].records('question_bank',ctx['plan_id'])
+            if any(q['id']==row['id'] for q in saved):
+                ctx['store'].link_point_sources(ctx['plan_id'],point['id'],list(dict.fromkeys(point['chunk_ids']+linked)))
+            added+=sum(q['id'] not in before for q in saved)
+            _check(ctx)
+    return added
+
+
+def _question_sources(query, points, ctx):
+    """Search URLs with the existing program transport, then fetch/filter.
+
+    Unlike vendor browsing, no fetched page is fed back into a search model.
+    The installed ddgs/SearXNG primitive and ResearchPipeline remain unchanged.
+    """
+    _check(ctx)
+    hits=directory_candidates(query,stage=ctx.get('stage',''),lists=ctx['lists'],limit=2)
+    search=ctx.get('search') or ResearchService().search
+    hits+=list(search(query,cancel=ctx.get('cancel')))
+    _check(ctx)
+    if not hits:return []
+    pipeline=ctx.get('pipeline');owned=pipeline is None
+    pipeline=pipeline or ResearchPipeline(fetcher=ctx.get('fetcher'),max_sources=8,ocr=ctx.get('ocr'))
+    try:
+        result=pipeline.run(hits,include_low=True,lists=ctx['lists'],cancel=ctx.get('cancel'),goal=ctx.get('module_title','') or points[0]['title'],
+            accepted_urls=[s.get('url') for s in ctx['store'].records('sources',ctx['plan_id']) if not s.get('excerpt')])
+        _check(ctx)
+        passages=[]
+        for source in result.verified:
+            identity=_identity(dict(url=source.url,final_url=source.final_url,title=source.title),[dict(text=b.text) for b in source.document.blocks],ctx)
+            if identity['level'] not in (1,2,3):identity=dict(identity,level=3,type='general_site')
+            passages.extend(dict(p,question_origin='web') for p in _excerpt_candidates(source,identity))
+        if ctx.get('on_status'):
+            ctx['on_status'](f'题源已抓取 {len(result.verified)} 份，程序筛出 {len(question_blocks(passages))} 个题目/答案块。')
+            for rejected in result.rejected:
+                if rejected.code=='material_upload_required':ctx['on_status'](rejected.message)
+        return passages
+    finally:
+        if owned:pipeline.close()
+
+
+def _prepare_module_bank(store, plan_id, module, points, ctx):
+    ctx=dict(ctx,module_title=module['title'])
+    def missing():return [p for p in points if len(_bank_rows(store,plan_id,p,ctx))<2]
+    short=missing()
+    if not short:return
+    materials=[p for p in _passages(store,plan_id,ctx) if p.get('question_origin')!='web']
+    _match_module_questions(short,materials,ctx,'module_adopted_exercises')
+    for round_index in range(2):
+        short=missing()
+        if not short:break
+        titles='；'.join(p['title'] for p in short)
+        suffix='客观题 选择题 试卷 答案' if round_index==0 else '教材习题 真题题库 标准答案'
+        query=f'{module["title"]} {suffix} {titles}'
+        try:
+            passages=_question_sources(query,short,ctx)
+            _match_module_questions(short,passages,ctx,'module_web_exercises')
+        except (ModelError,ResearchError,ValueError,OSError) as exc:
+            _check(ctx)
+            if ctx.get('on_status'):ctx['on_status']('模块找题未完成：'+getattr(exc,'code',type(exc).__name__))
+    for point in missing():
+        _check(ctx)
+        if ctx.get('on_status'):ctx['on_status']('仅给缺题点补搜一轮：'+point['title'])
+        try:
+            passages=_question_sources(question_queries(point)[0],[point],ctx)
+            _match_module_questions([point],passages,ctx,'point_web_exercises')
+        except (ModelError,ResearchError,ValueError,OSError) as exc:
+            _check(ctx)
+            if ctx.get('on_status'):ctx['on_status']('单点补搜未完成：'+getattr(exc,'code',type(exc).__name__))
 
 
 _DISTRACTOR_SYSTEM = '''你是原文检查员，只检查给出的题目干扰项，不出题、不解题、不改任何题目。
@@ -876,6 +1028,13 @@ def prepare_point(store, plan_id, point, ctx, *, allow_bank_cloze=None):
         _check(ctx)
         point=next((p for p in store.records('points',plan_id) if p['id']==point['id']),None)
         if point is None: raise StoreError('NOT_FOUND','知识点尚未保存。')
+        if not ctx.get('allow_bank_cloze',False) and _navigation_point(point):
+            if ctx.get('on_status'):ctx['on_status']('非知识点，跳过找题：'+point['title'])
+            with store.transaction():
+                _check(ctx)
+                point['question_preparation']=dict(state='skipped',reason='非知识点，跳过找题')
+                store._put('points',plan_id,point)
+            return dict(passages=len(point['chunk_ids']),questions=0,cloze=0,skipped=True)
         if not ctx.get('_defer_distractor_check'):_check_pending(store,plan_id,point['module_id'],ctx)
         passages=_passages(store,plan_id,ctx)
         rows=[q for q in _selected_rows(store.records('question_bank',plan_id),point,passages) if objective_question(q)
@@ -905,7 +1064,11 @@ def prepare_point(store, plan_id, point, ctx, *, allow_bank_cloze=None):
         # Newly discovered exercises remain eligible, but the selected materials
         # are always searched for unused original questions before another fetch.
         material_passages=[p for p in passages if p.get('question_origin')!='web']
-        located=_locate(point,material_passages,ctx,'adopted') if material_passages else dict(passages=[],found=[],cloze=[])
+        if ctx.get('_module_bank_prepared') and any(q.get('role')=='quick' for q in rows):
+            located=dict(passages=linked,found=[],cloze=[])
+        else:
+            located=_locate(point,material_passages,ctx,'adopted') if material_passages else dict(passages=[],found=[],cloze=[])
+        if ctx.get('_module_bank_prepared'):located['found']=[]
         selected=list(dict.fromkeys(linked+located['passages']))
         found=[q for q in _collect(located['found'],_found,point,passages) if _stem_key(q) not in excluded_stems]
         previous_found=[q for q in rows if q.get('role','bank')=='bank' and q['origin']=='found']
@@ -920,7 +1083,10 @@ def prepare_point(store, plan_id, point, ctx, *, allow_bank_cloze=None):
         cloze = _exclude_adjacent(cloze, adjacent, rejected)
         quick = _exclude_adjacent(quick, adjacent, rejected)
         bank_stems={_stem_key(q) for q in available+found+cloze if q.get('role','bank')=='bank'}
-        for round_index in ((3,) if ctx.get('extra_search') and not ctx.get('allow_bank_cloze') else range(3)):
+        rounds=(() if ctx.get('_module_bank_prepared') else
+                (3,) if ctx.get('extra_search') and not ctx.get('allow_bank_cloze') else
+                range(3) if ctx.get('allow_bank_cloze') else (0,))
+        for round_index in rounds:
             if len(bank_stems)>=2:break
             try:
                 extra=_discover_questions(point,dict(ctx,needed_questions=2-len(bank_stems),
@@ -1017,10 +1183,24 @@ def _recloze_after_check(store,plan_id,point,ctx):
 def prepare_module(store,plan_id,module_id,ctx,progress):
     ctx=dict(ctx,store=store,plan_id=plan_id,lists=ctx.get('lists') or load_lists(),_cloze_calls=[],_defer_distractor_check=True)
     store.require_material_plan(plan_id)
-    if not any(m['id']==module_id for m in store.records('modules',plan_id)):
+    module=next((m for m in store.records('modules',plan_id) if m['id']==module_id),None)
+    if module is None:
         raise StoreError('NOT_FOUND','找不到当前计划的模块。')
     points=[p for p in store.records('points',plan_id) if p['module_id']==module_id]
     if not points: raise StoreError('NO_POINTS','该模块还没有已保存的知识点，不能报告资料准备完成。')
+    skipped=[]
+    if not ctx.get('allow_bank_cloze',False):
+        skipped=[p for p in points if _navigation_point(p)]
+        with store.transaction():
+            _check(ctx)
+            for point in skipped:
+                point['question_preparation']=dict(state='skipped',reason='非知识点，跳过找题')
+                store._put('points',plan_id,point)
+                if ctx.get('on_status'):ctx['on_status']('非知识点，跳过找题：'+point['title'])
+        points=[p for p in points if p not in skipped]
+        with _lock(store,plan_id,'module-bank:'+module_id):
+            _prepare_module_bank(store,plan_id,module,points,ctx)
+        ctx=dict(ctx,_module_bank_prepared=True)
     source_failures={}
     for index,point in enumerate(points):
         _check(ctx)
@@ -1053,7 +1233,9 @@ def prepare_module(store,plan_id,module_id,ctx,progress):
         if not ready(point):_cloze_failure(point,ctx,[dict(reason='对照挖空及批量检查后仍不足两道bank或缺quick')])
     missing=fallback_points()
     _log.info('module cloze statistics: points=%s cloze_points=%s',len(points),len(missing))
-    return dict(points=len(points),cloze_points=len(missing),cloze_heavy=len(missing)/len(points)>.2)
+    result=dict(points=len(points)+len(skipped),cloze_points=len(missing),cloze_heavy=bool(points) and len(missing)/len(points)>.2)
+    if skipped:result['skipped_points']=[p['id'] for p in skipped]
+    return result
 
 
 def pick_question(store,plan_id,point_id,purpose,exclude_ids=()):

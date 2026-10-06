@@ -33,7 +33,7 @@ export type Draft = {
   estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string; blocked?: boolean; points?: number }
   preview?: { summary: string; modules: { title: string; summary: string }[]; version: number }
   recommendations?: { card_id: string; title: string; type: string; url: string; why: string; modules: string[] }[]
-  material_structure?: { version: number; missing: string[]; modules?: GraphModule[]; ranges?: StructureRanges }
+  material_structure?: { version: number; missing: string[]; excluded?: {name: string; reason: string; refs: string[]}[]; modules?: GraphModule[]; ranges?: StructureRanges }
   busy: string | null
 }
 type Detail = {
@@ -223,6 +223,7 @@ export function NewPlan() {
               {draft.material_structure && m.version === draft.material_structure.version && draft.material_structure.modules?.length ? <>
                 <h3 className="material-graph-heading">按你的资料整理出 {draft.material_structure.modules.length} 个模块</h3>
                 <PlanGraph mode="structure" stages={[{title:"按资料整理的学习路线", modules:draft.material_structure.modules}]} />
+                {!!draft.material_structure.excluded?.length && <p className="muted small material-excluded">这些内容不是知识，未放进计划：{draft.material_structure.excluded.map((r, i) => <span key={r.name} title={r.reason}>{i ? "、" : ""}{r.name}</span>)}。需要时可在对话里说“把××也加进来”。</p>}
                 {draft.material_structure.ranges && <StructureEstimate ranges={draft.material_structure.ranges} busy={busy}
                   active={draft.phase === "material_preview"} onChange={(changes) => act("plan.window", {changes})}
                   onAdjust={() => adjustContent("我想调整资料结构：")} />}

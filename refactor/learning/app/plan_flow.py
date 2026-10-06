@@ -779,6 +779,8 @@ class PlanFlow:
             str(n) + '. ' + m['title'] for n, m in enumerate(value['modules'], 1)) + '。'
         if value['missing']:
             text += '\n\n所选资料没讲到：' + '、'.join(value['missing']) + '。可以再传一份资料、删掉这些部分，或就这样继续。'
+        if value.get('excluded'):
+            text += '\n\n这些内容不是知识，未放进计划：' + '、'.join(r['name'] for r in value['excluded']) + '。需要时可在对话里说“把××也加进来”。'
         draft['messages'].append(_msg('ai', 'material_preview', text, version=value['version']))
         self.save(draft)
 
@@ -794,15 +796,16 @@ class PlanFlow:
             for row in previous.get('removed_content', ()):
                 if row not in removed: removed.append(row)
             kept = {r for m in current['modules'] for r in m['refs']}
+            automatic = {r for row in current.get('excluded', []) for r in row['refs']}
             by_id = {s.id: s for s in sections}
             for module in previous['modules']:
                 # A structure revision may renumber model keys; retained
                 # chapters, not those temporary keys, identify surviving scope.
-                if not kept.intersection(module['refs']):
+                if not kept.intersection(module['refs']) and not set(module['refs']) <= automatic:
                     row = dict(kind='module', title=module['title'])
                     if row not in removed: removed.append(row)
                 for ref, title in zip(module['refs'], module['chapters']):
-                    if ref in kept: continue
+                    if ref in kept or ref in automatic: continue
                     row = dict(kind='chapter', title=title,
                                source_id=by_id[ref].source_id if ref in by_id else None)
                     if row not in removed: removed.append(row)

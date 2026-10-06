@@ -76,6 +76,17 @@ class IntegratedModel(Agents):
         elif purpose == 'point_materials':
             packet=json.loads(messages[-1]['content']);passages=packet['passages']
             found=[]
+            if 'points' in packet:
+                # Batch 67: pair existing synthetic original exercises to the
+                # module's points; do not manufacture a ready question bank.
+                for point in packet['points']:
+                    for stem in MODULE_STEMS.get(point['title'],STEMS)[:2]:
+                        p=next(p for p in passages if stem in p['text'])
+                        found.append(dict(point_id=point['id'],kind='choice',stem=stem,
+                            options=['先进先出','后进先出','散列次序'],answer=[0],
+                            explanation='',question_chunk=p['id'],answer_chunk=p['id'],
+                            answer_quote='先进先出',pairing='same_block',question_number='',answer_number=''))
+                return SimpleNamespace(text=json.dumps(dict(found=found),ensure_ascii=False),search_hits=(),citations=())
             for stem in MODULE_STEMS.get(packet['point']['title'], STEMS):
                 p=next(p for p in passages if stem in p['text'])
                 found.append(dict(kind='choice',stem=stem,options=['先进先出','后进先出','散列次序'],answer=[0],
@@ -255,7 +266,11 @@ def test_real_materials_wait_resumes_once_with_mapping_context(tmp_path):
         release.set();join_workers()
         v=room.run(pid,lambda *args:None,ctx)
         assert v['step']=='opening' and not v['failure'] and v['messages'][-1]['sources']
-        assert model.calls.count('point_materials')==before+1 and events
+        # One module-level bank mapping plus one point quick locator; waiting
+        # must never start another copy of either operation.
+        requests=[r for r in model.requests if r['purpose']=='point_materials'][before:]
+        assert model.calls.count('point_materials')==before+2 and events
+        assert sum('points' in json.loads(r['messages'][-1]['content']) for r in requests)==1
         fresh=Classroom(services,lambda:DAY,now=NOW)
         assert fresh.run(pid,lambda *args:None,ctx)['step']=='opening'
     finally:
