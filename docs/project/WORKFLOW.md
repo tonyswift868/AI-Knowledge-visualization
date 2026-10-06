@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-06）：中测试停，在定“没题怎么考”。69-MF05 结果已回（填空 7/20、要点回想 10/20），正在和用户讨论。用户草稿停在知识地图，不点“保存与准备”。
+- **现在在做的事**（2026-10-06）：第七十批四份已起草，待用户转发（题从资料来、按题考核、问答题勾要点界面、随口问改对话），四人并行；70-MF01 与 70-MF03 都改 app/classroom.py 的不同部分，合并时注意。四份合入后联调，然后用户从草稿“ai-agent学习”的“保存与准备”接着测（中测试）；上传题目自测等这四份合入后再派。
 
 ## 协作方式
 
@@ -62,11 +62,11 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲（67-MF01 已合入） | — |
-| MF-02 | 空闲（64-MF02 已合入） | — |
-| MF-03 | 空闲（58 已合入） | — |
+| MF-01 | 70-MF01 已起草，待用户转发 | server |
+| MF-02 | 70-MF02 已起草，待用户转发 | client |
+| MF-03 | 70-MF03 已起草，待用户转发 | classroom |
 | MF-04 | 空闲（68-MF04 完成） | — |
-| MF-05 | 空闲（69-MF05 完成） | — |
+| MF-05 | 70-MF05 已起草，待用户转发 | library |
 | MF-06 | 空闲 | — |
 | MF-07 | 空闲 | — |
 
@@ -75,6 +75,162 @@
 ## 待派队列
 
 - 无（第五十九批两份已起草，见上）。
+
+## 第七十批任务原文（2026-10-06，基线 c95b0032）
+
+### [70-MF05] library｜题从资料里来：拆资料自带题、去掉挖空与上网找题、结构步显示每模块有没有题
+
+~~~text
+【MentorFlow 第七十批｜MF-05（工位 library）｜题从资料里来：建计划时把资料自带的题按原文拆出来、对到模块；去掉挖空出题和上网找题；结构这一步显示每个模块有没有题】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有代码：course/point_materials.py（prepare_module，去掉挖空出计分题、随口问挖空、上网找题这几条路）、course/research*.py（去掉找题用途，找资料推荐不动）、新建 course/material_questions.py（拆题），题库入库沿用 course/question_bank.py 现有的入库接口与 66 批去重（不改它的挑题函数，挑题归 70-MF01）；结构这一步的显示改 app/plan_flow.py 的 structure_ranges 与 web/src/pages/NewPlan.tsx、planning/PlanGraph.tsx。识别“问题式标题”的规则用 69-MF05 实验里已验证的那套（D:\MentorFlow\.local\test-tmp\exp69-questions\）。不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard c95b0032
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。D:\MentorFlowApp 只读。用户的 D:\MentorFlowData\account-shell 只读：要用的数据复制到测试目录，只在副本上跑。先读 AGENTS.md（磁盘规则、功能先行不加安全加固）：所有产物在 D:\MentorFlow\.local\test-tmp\fix70-questions\ 下；中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+同时在跑：70-MF01（server，按题考核）、70-MF02（client，问答题勾要点界面）、70-MF03（classroom，随口问改对话）。你不改挑题、课堂、检测的代码。
+目标两小时内交回。遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。全量测试、web 构建、离线完整场景由你跑并如实写结果。
+背景：CURRENT_STATE [DIR-01] 开头“题目来源与考核”及其细则（用户 2026-10-06 定）。
+共用约定（四份任务一致，照这个对接，冲突由架构师合并）
+  题目记录（存进现有题库，question_bank）新增或沿用这些字段：
+    kind: "objective"（有标准答案：选择、填空、计算）或 "recall"（问答题）
+    stem: 题干（逐字取自资料）；options: 选择题选项（逐字）；answer: 客观题标准答案（逐字）
+    reference: 问答题的原文参考答案（逐字，资料里这道题下面的回答）
+    key_points: 问答题要点，3–5 条，每条是 reference 里逐字的一句
+    module_id、point_ids、source（出处：原文块编号）
+  判对规则：objective 由程序判（沿用 course/answer_compare.py）；recall 学生先写回答、再看参考答案，逐条勾 key_points，全部勾到算对。
+  课堂桥接动作（62 批后的现有桥接方式）：
+    class.recall_reveal {question_id, answer} → 保存学生回答，返回 {reference, key_points}（没提交回答前不返回参考答案）
+    class.recall_submit {question_id, ticked: [要点下标]} → 返回 {correct, missed: [没勾的下标]}
+  不再自己出题：不挖空出计分题、不上网找题、随口问不再出题。题只来自资料自带的题（以后还有用户上传）。
+要做
+  1. 拆题：备一个模块时，先用程序在这个模块引用的原文里找出资料自带的题（问题式标题及其下面的回答；带选项、带“答案”标记的习题），再让 AI 只把它们按原文拆成上面的题目记录（kind、stem、options、answer 或 reference、key_points），一律逐字取自原文；程序逐字核对每个字段都在原文里，对不上的丢掉并记录。非知识问题（“有没有 PDF 版”“没项目经验怎么办”这类）不收。每道题按原文块重叠对到模块和知识点。
+  2. 去掉三条路：计分题挖空、随口问挖空、上网找题（相关代码删掉，连同只测它们的测试；不留开关）。模块“备好”的判断改成“这个模块的拆题做完了”（题可以是 0 道），不再要求每点 2 道（改 app/plan_flow.py 的 _module_ready，只改这一个判断）。
+  3. 结构这一步（确认前）：程序（不调模型）按问题式标题统计每个模块大约有几道资料自带题，节点和详情里显示“约 N 道题”或“资料里没有题，这个模块只学不考”；卡片上写全计划约多少道题、多少个模块有题。
+  4. 在用户草稿副本（“ai-agent学习”，JavaGuide）上真实跑两个模块的拆题（选一个题多的、一个题少的），报告：每模块拆出几道（objective / recall 各几道）、丢掉几道及原因、每道题人工核对（题干和答案是否对应、key_points 是否是关键、有没有错配到别的模块）、每道题与每个模块的花费和用时。
+  5. 全量通过、web 构建通过、离线完整场景（--to free）通过（离线场景里的假资料要带几道题，没题的模块要能走通“只学不考”，这一部分如果依赖 70-MF01 还没有的考核改动，写清楚等合入后联调）。
+花费：上限 ¥1.5（价格按高峰折算）。
+完成标准：拆题按原文逐字、对到模块；三条出题路删掉；结构这一步能看到每模块有没有题；两个模块真实拆题有人工核对结论；全量、构建通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix70-questions\report.md，附逐题核对表。
+回执（尽量短，用表格）：【MF-05｜library｜第七十批｜完成/部分完成/受阻】基线 ／ 提交 ／ 拆题怎么做、怎么核对 ／ 删掉了哪些代码 ／ 结构这一步显示什么 ／ 两个模块真实拆题：道数、丢弃原因、人工核对合格率、花费与用时 ／ 全量、web 构建、离线完整场景 ／ 本地最终占用
+~~~
+
+### [70-MF01] server｜按题考核：90% 的题算过，答错的题连对两遍，同题隔开，没题只学不考
+
+~~~text
+【MentorFlow 第七十批｜MF-01（工位 server）｜按题考核：模块检测和最终检验以题为单位，答错的题连续答对两遍才过，同一道题隔开出；没题的模块只学不考】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有代码：course/question_bank.py 的挑题部分（不改入库，入库与拆题归 70-MF05）、course/mastery.py、app/classroom.py 里模块检测、重测、最终检验、报告与自由检验的部分（随口问那部分归 70-MF03，别动）、课堂桥接里新增 class.recall_reveal 与 class.recall_submit。不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard c95b0032
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。D:\MentorFlowApp 只读。D:\MentorFlowData\account-shell 只读。先读 AGENTS.md（磁盘规则、功能先行不加安全加固）：所有产物在 D:\MentorFlow\.local\test-tmp\fix70-mastery\ 下；中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+同时在跑：70-MF05（library，拆题入库）、70-MF02（client，勾要点界面）、70-MF03（classroom，随口问改对话，也改 app/classroom.py 的随口问部分——你们改同一个文件的不同部分，各自只动自己那块）。
+目标三小时内交回。遇到选择自己决定，回执写明理由，不停下来问。全量测试、web 构建、离线完整场景由你跑并如实写结果。花费 ¥0（不调用真实模型，用假题）。
+背景：CURRENT_STATE [DIR-01] 开头“题目来源与考核”及其细则（用户 2026-10-06 定）。旧的“每点 2 道、按知识点升三级”（CURRENT_STATE 里“过关等级”“学习回路确认”）被按题考核取代。
+共用约定（四份任务一致，照这个对接，冲突由架构师合并）
+  题目记录（存进现有题库，question_bank）新增或沿用这些字段：
+    kind: "objective"（有标准答案：选择、填空、计算）或 "recall"（问答题）
+    stem: 题干（逐字取自资料）；options: 选择题选项（逐字）；answer: 客观题标准答案（逐字）
+    reference: 问答题的原文参考答案（逐字，资料里这道题下面的回答）
+    key_points: 问答题要点，3–5 条，每条是 reference 里逐字的一句
+    module_id、point_ids、source（出处：原文块编号）
+  判对规则：objective 由程序判（沿用 course/answer_compare.py）；recall 学生先写回答、再看参考答案，逐条勾 key_points，全部勾到算对。
+  课堂桥接动作（62 批后的现有桥接方式）：
+    class.recall_reveal {question_id, answer} → 保存学生回答，返回 {reference, key_points}（没提交回答前不返回参考答案）
+    class.recall_submit {question_id, ticked: [要点下标]} → 返回 {correct, missed: [没勾的下标]}
+  不再自己出题：不挖空出计分题、不上网找题、随口问不再出题。题只来自资料自带的题（以后还有用户上传）。
+要做
+  1. 模块检测：出这个模块的全部题（有几道出几道）；答对 ≥90% 的题算过；没过时只重测答错的题（不重讲）；这个模块 0 道题就不做模块检测，学完直接进下一模块。
+  2. 最终检验：全计划所有模块都过了才进；出全计划的题。每道题的过关：模块检测第一次就答对的题，最终检验里再答对一次就过；在模块检测或最终检验里答错过的题，要连续答对两遍才过；同一道题不紧挨着连考，中间至少隔 3 道别的题（题不够时尽量拉开）。全部题过关出报告。整份计划 0 道题：不开模块检测和最终检验，学完全部内容就算完成，报告只写学习部分。
+  3. recall 题：实现 class.recall_reveal / class.recall_submit；全部勾到算对，否则算错，按第 2 条规则继续；记录学生回答原文和勾选。objective 题照旧程序判。
+  4. 旧数据：旧计划（按知识点出题、带挖空题的）不迁移，按现有“旧版计划，已不可用”的处理方式。删掉旧的按知识点升级与换角度挑题代码及只测它们的测试。
+  5. 报告、自由检验、模拟工具（tests/refactor/simulation）跟着改到按题；时长预估里检测时间改成按题数估（每题 2 分钟；最终检验按“90% 的题一次过、10% 的题要多答 3 次”估），没题的模块检测时间为 0。
+  6. 离线测试：三模块假计划（一个模块 5 道题含 recall、一个模块 0 道、一个模块 2 道），覆盖：模块检测过与不过、只重测错题、0 道模块直接跳过、最终检验里“首次对的题再对一次”“错过的题连对两遍”“同题隔开”、recall 勾全与漏勾、整份 0 道题的计划。
+  7. 全量通过、web 构建通过、离线完整场景（--to free）通过。
+完成标准：上面六种情况离线测试通过；旧的按知识点升级代码删掉；全量、构建、离线完整场景通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix70-mastery\report.md。
+回执（尽量短，用表格）：【MF-01｜server｜第七十批｜完成/部分完成/受阻】基线 ／ 提交 ／ 模块检测规则 ／ 最终检验规则与同题间隔 ／ recall 两个桥接动作 ／ 0 道题的模块与计划怎么走 ／ 删掉了什么 ／ 全量、web 构建、离线完整场景 ／ 本地最终占用
+~~~
+
+### [70-MF02] client｜问答题界面：先写回答、再看答案、逐条勾要点
+
+~~~text
+【MentorFlow 第七十批｜MF-02（工位 client）｜问答题界面：先写回答、再看参考答案、逐条勾要点，全部勾到算对】
+
+现成项目与许可证（第一节）
+  - 只改前端课堂里出题、作答的组件（refactor/learning/web/src/pages/Classroom.tsx、web/src/classroom/ 下相关组件与样式），对接上面约定的 class.recall_reveal / class.recall_submit。勾选清单的交互参考 eXeLearning Checklist（CC BY-SA 4.0，只借做法不抄文件，68-MF04 调研）。不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard c95b0032
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。D:\MentorFlowApp 只读。D:\MentorFlowData\account-shell 只读。先读 AGENTS.md（磁盘规则）：所有产物在 D:\MentorFlow\.local\test-tmp\fix70-recall-ui\ 下；中间产物用完即删（被系统拦住就列路径），回执写明最终占用。
+同时在跑：70-MF01（实现两个桥接动作，你用假桥接开发）、70-MF05、70-MF03。你只改前端。
+目标一个半小时内交回。遇到选择自己决定，回执写明理由，不停下来问。全量测试、web 构建由你跑并如实写结果。花费 ¥0。
+背景：CURRENT_STATE [DIR-01] 开头“题目来源与考核”细则①（用户 2026-10-06 定）。
+共用约定（四份任务一致，照这个对接，冲突由架构师合并）
+  题目记录（存进现有题库，question_bank）新增或沿用这些字段：
+    kind: "objective"（有标准答案：选择、填空、计算）或 "recall"（问答题）
+    stem: 题干（逐字取自资料）；options: 选择题选项（逐字）；answer: 客观题标准答案（逐字）
+    reference: 问答题的原文参考答案（逐字，资料里这道题下面的回答）
+    key_points: 问答题要点，3–5 条，每条是 reference 里逐字的一句
+    module_id、point_ids、source（出处：原文块编号）
+  判对规则：objective 由程序判（沿用 course/answer_compare.py）；recall 学生先写回答、再看参考答案，逐条勾 key_points，全部勾到算对。
+  课堂桥接动作（62 批后的现有桥接方式）：
+    class.recall_reveal {question_id, answer} → 保存学生回答，返回 {reference, key_points}（没提交回答前不返回参考答案）
+    class.recall_submit {question_id, ticked: [要点下标]} → 返回 {correct, missed: [没勾的下标]}
+  不再自己出题：不挖空出计分题、不上网找题、随口问不再出题。题只来自资料自带的题（以后还有用户上传）。
+要做
+  1. recall 题卡片：题干 → 多行输入框“先写下你的回答”（空着不能看答案）→ 按钮“写好了，看参考答案”（调 class.recall_reveal）→ 显示原文参考答案（可折叠）和 3–5 条要点，每条前面一个勾选框，提示“对照你的回答，勾出你答到的要点”→ 按钮“提交”（调 class.recall_submit）→ 显示“全部答到，算对”或“漏了 N 条”，漏掉的要点高亮。
+  2. 学生的回答在看答案后不能再改（只读显示在旁边），防止看完答案再补写。
+  3. objective 题界面不变。手机宽度、窄窗口、亮暗主题都正常，不溢出。
+  4. 用假桥接写浏览器测试：写回答前不能看答案、看答案后回答只读、全勾算对、漏勾显示漏了哪几条；亮暗各截一张图放进报告。
+  5. 全量通过、web 构建通过。
+完成标准：上面流程在浏览器测试里走通；截图无溢出；全量、构建通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix70-recall-ui\report.md（附截图）。
+回执（尽量短，用表格）：【MF-02｜client｜第七十批｜完成/部分完成/受阻】基线 ／ 提交 ／ 界面流程 ／ 防偷看与防改答 ／ 全量、web 构建 ／ 截图路径 ／ 本地最终占用
+~~~
+
+### [70-MF03] classroom｜随口问改成老师对话直接问，不出题不记分
+
+~~~text
+【MentorFlow 第七十批｜MF-03（工位 classroom）｜随口问改成老师在对话里直接问：不出题、不记分、不进程序记录】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有代码：course/teacher_agent.py（老师提示）、app/classroom.py 里随口问（role=quick）相关的部分（模块检测、最终检验那部分归 70-MF01，别动）、前端课堂里随口问的显示（web/src/classroom/ 下对应组件，只删随口问题卡）。随口问题的生成在 course/point_materials.py，归 70-MF05 删除，你不动。不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard c95b0032
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。D:\MentorFlowApp 只读。D:\MentorFlowData\account-shell 只读。先读 AGENTS.md（磁盘规则、功能先行不加安全加固）：所有产物在 D:\MentorFlow\.local\test-tmp\fix70-quick\ 下；中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+同时在跑：70-MF01（也改 app/classroom.py 的检测部分——你们改同一个文件的不同部分，各自只动自己那块）、70-MF05、70-MF02。
+目标一个半小时内交回。遇到选择自己决定，回执写明理由，不停下来问。全量测试、web 构建、离线完整场景由你跑并如实写结果。花费上限 ¥0.3（只为第 3 条真实跑一次）。
+背景：CURRENT_STATE [DIR-01] 开头“题目来源与考核”细则⑤（用户 2026-10-06 定）：随口问不再挖空出选择题（抽查 6 道里 2 道答案范围重叠），改成老师在对话里直接问，不记分、不进程序记录；学生借此知道自己理解对不对，想问就问，口误不追究。
+要做
+  1. 课堂里不再弹随口问题卡、不再取 role=quick 的题、不再按随口问结果记“薄弱”；删掉相关代码与只测它们的测试。
+  2. 老师提示加上：讲完一段后，可以用一句话问学生一个理解性的问题（例如“你能用自己的话说说它和 X 的区别吗？”），学生回答后老师就事论事地回应：理解对了简单肯定，理解偏了指出偏在哪、对照原文讲清；只是口误或表达不完整就不纠缠；不打分、不说“答对/答错”、不写进任何记录；不要每段都问，学生说“继续”就往下讲。
+  3. 真实跑一次（管理员 DeepSeek 预设，Key 只经现有代码从 Windows 凭据读取）：用离线场景里的小资料讲 2 个点，学生分别答对、答偏、口误各一次，报告老师的原话，人工看是否符合第 2 条。
+  4. 全量通过、web 构建通过、离线完整场景（--to free）通过。
+完成标准：课堂不再出随口问题卡、不记薄弱；老师对话式提问符合第 2 条；全量、构建、离线完整场景通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix70-quick\report.md。
+回执（尽量短，用表格）：【MF-03｜classroom｜第七十批｜完成/部分完成/受阻】基线 ／ 提交 ／ 删掉了什么 ／ 老师提示怎么改 ／ 真实一次的三种回应原话与人工结论 ／ 全量、web 构建、离线完整场景 ／ 花费 ／ 本地最终占用
+~~~
 
 ## 第六十九批任务原文（2026-10-06，基线 06df6250）
 
@@ -676,6 +832,10 @@
 | 67-MF05 | MF-05 library | 找题先按模块整体找、程序先切题块、单点只补 1 轮；Java 核心 10 点新老对比（¥3） | DIR-01 | 2653eb65 | 部分完成，已合入（5a77e5ad）：每点 ¥0.605→¥0.182、184→105 秒、输入 39 万→2.8 万 token；但 7 个点仍 0 道计分题 |
 | 68-MF04 | MF-04 调研 | 挖空怎么挖到关键处、要点回想自评、两道题升三级要不要换（¥0） | DIR-01、CHK-01 | — | 完成：三个链接已核实；挖空先选目标句再选核心短答案（Becker 2012）、入库查回拼与泄露（Jiang & Lee 2017）；逐项自评减少高估但仍会误判（Lipko 2009）；没找到“固定两题升三级”的依据 |
 | 69-MF05 | MF-05 实验 | JavaGuide 资料自带题覆盖率；20 个点试要点回想与对准目标的填空，逐题人工核对（¥1） | DIR-01 | 06df6250 | 完成：自带题覆盖 39.9%（题少）；要点回想 10/20、填空 7/20 合格；每点 ¥0.025 |
+| 70-MF05 | MF-05 library | 拆资料自带题入库、去掉挖空与上网找题、结构步显示每模块有没有题（¥1.5） | DIR-01 | c95b0032 | 已起草，待用户转发 |
+| 70-MF01 | MF-01 server | 按题考核：模块检测 90% 的题、答错连对两遍、同题隔开、没题只学不考（¥0） | DIR-01、CHK-01 | c95b0032 | 已起草，待用户转发 |
+| 70-MF02 | MF-02 client | 问答题先写回答、再看答案、逐条勾要点（¥0） | DIR-01 | c95b0032 | 已起草，待用户转发 |
+| 70-MF03 | MF-03 classroom | 随口问改成老师对话直接问，不出题不记分（¥0.3） | DIR-01、TEACH-06 | c95b0032 | 已起草，待用户转发 |
 
 ## 任务模板
 
