@@ -517,8 +517,12 @@ class CourseStore:
             return sorted(self._rows(entity, plan_id), key=lambda p: (p.get('position', 0), p['id']))
 
     def _plan_availability(self, plan):
-        old = plan.get('material_version') != 3 or any('kind' not in q or q.get('origin')=='cloze' and q.get('role','bank')=='bank'
-                                                     for q in self._rows('question_bank', plan['id']))
+        # A version-2 plan (material flow) saved before version 3 but with no
+        # questions yet is still being prepared, not old; version 1 or none is old.
+        bank = self._rows('question_bank', plan['id'])
+        version = plan.get('material_version')
+        old = any('kind' not in q or q.get('origin')=='cloze' and q.get('role','bank')=='bank' for q in bank) \
+            or version not in (2, 3) or (version == 2 and bool(bank))
         if old: plan.update(unusable=True, unusable_reason='旧版计划，已不可用')
         return plan
 

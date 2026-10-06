@@ -312,3 +312,14 @@ def test_previous_point_based_plan_is_not_migrated(env):
     with pytest.raises(BridgeError, match='旧版计划，已不可用'):
         e.room._course(PLAN)
     assert e.store.get_plan(PLAN)['material_version'] == 2
+
+
+def test_version_two_plan_without_questions_is_not_old(tmp_path):
+    # User test 2026-10-07: a draft saved before version 3, still preparing with no
+    # questions, was refused as an old plan and module 1 preparation failed.
+    store=CourseStore('question70-empty',tmp_path)
+    store.create_plan('p-empty',goal='合成知识',final_goal='理解',level='beginner',window=PlanWindow(DAY,DAY+timedelta(days=5),100))
+    with store.transaction():
+        plan=store._get('plans','p-empty','p-empty');plan['material_version']=2;store._put('plans','p-empty',plan)
+    assert not store.get_plan('p-empty').get('unusable')
+    store.require_material_plan('p-empty')
