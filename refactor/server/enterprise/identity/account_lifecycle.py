@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import hashlib
 import re
 from collections.abc import Awaitable, Callable
 from urllib.parse import urlsplit
@@ -62,7 +63,7 @@ class KeycloakAccountAdmin:
         await self.http.aclose()
 
     async def _call(self, method, path, *, payload=None, params=None, expected=204,
-                    conflict_code=None):
+                    conflict_code=None, missing_code=None):
         headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
         raw = bytearray()
         try:
@@ -74,6 +75,8 @@ class KeycloakAccountAdmin:
                 token = None
                 async with self.http.stream(method, self.base + path, headers=headers,
                                             json=payload, params=params) as response:
+                    if response.status_code == 404 and missing_code:
+                        raise LifecycleError(missing_code)
                     if response.status_code == 409:
                         # A Keycloak conflict is only an account-creation
                         # conflict when the caller explicitly opts into that
@@ -184,6 +187,37 @@ class KeycloakAccountAdmin:
                 or len(value['username']) > 255 or value.get('enabled') is not True):
             raise LifecycleError('KEYCLOAK_RESPONSE_INVALID')
         return value['username']
+
+    async def native_session_state(self, subject: str) -> str:
+        """Account status without an expiring SPI verification handle.
+
+        Keycloak 26.7.3 replaces password createdDate on password changes and
+        retains it on rehash. Only public credential metadata is read here.
+        HTTP 404/disabled are explicit revocations; admin/network failures are
+        unavailable, never evidence that the user's session was revoked.
+        """
+        path = '/users/' + _identifier(subject)
+        user, _ = await self._call('GET', path, expected=200,
+                                   missing_code='NATIVE_ACCOUNT_REVOKED')
+        if not isinstance(user, dict) or user.get('id') != subject:
+            raise LifecycleError('KEYCLOAK_RESPONSE_INVALID')
+        if user.get('enabled') is False:
+            raise LifecycleError('NATIVE_ACCOUNT_REVOKED')
+        if user.get('enabled') is not True:
+            raise LifecycleError('KEYCLOAK_RESPONSE_INVALID')
+        credentials, _ = await self._call('GET', path + '/credentials', expected=200,
+                                          missing_code='NATIVE_ACCOUNT_REVOKED')
+        if not isinstance(credentials, list) or any(not isinstance(c, dict) for c in credentials):
+            raise LifecycleError('KEYCLOAK_RESPONSE_INVALID')
+        passwords = [c for c in credentials if isinstance(c, dict) and c.get('type') == 'password']
+        if not passwords:
+            raise LifecycleError('NATIVE_ACCOUNT_REVOKED')
+        if (len(passwords) != 1 or not isinstance(passwords[0].get('id'), str)
+                or type(passwords[0].get('createdDate')) is not int
+                or type(user.get('notBefore', 0)) is not int):
+            raise LifecycleError('KEYCLOAK_RESPONSE_INVALID')
+        binding = [passwords[0]['id'], passwords[0]['createdDate'], user.get('notBefore', 0)]
+        return hashlib.sha256(json.dumps(binding).encode()).hexdigest()
 
     async def find_username(self, username: str) -> str | None:
         """Exact private lookup; public callers may expose only its boolean result."""

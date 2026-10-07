@@ -136,6 +136,7 @@ async def guard_native_result(runtime, result):
         principal = SimpleNamespace(issuer=identity["issuer"], subject=identity["subject"])
         try:
             await assert_principal_open(runtime, principal)
-        except IdentityError:
-            runtime.native_sessions.revoke_subject(principal.subject)
+        except IdentityError as exc:
+            if exc.status in (401, 403):
+                runtime.native_sessions.revoke_subject(principal.subject)
             raise

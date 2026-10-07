@@ -425,13 +425,35 @@ def build_enterprise_identity_runtime(
         config,
         client=KeycloakOidcClient(config),
         directory=directory,
-        native_sessions=native_sessions_from_env(env, config.keycloak.canonical_identity_issuer),
+        native_sessions=native_sessions_from_env(env, config.keycloak.canonical_identity_issuer,
+            engine=engine, session_ttl_seconds=config.session_ttl_seconds),
         application_roles=ApplicationRolePolicy.from_env(env),
     )
     from .lifecycle_api import from_env as lifecycle_from_env
     runtime.lifecycle = lifecycle_from_env(env)
     from refactor.server.account.closure_api import install_store
     install_store(runtime, engine, config.keycloak.canonical_identity_issuer)
+    if runtime.native_sessions is not None:
+        from refactor.server.account.closure_api import assert_principal_open
+        from .account_lifecycle import LifecycleError
+        from .native import expired, unavailable
+
+        async def account_check(principal):
+            try:
+                await assert_principal_open(runtime, principal)
+                if runtime.lifecycle is None or not runtime.lifecycle.active:
+                    raise unavailable()
+                return await runtime.lifecycle.admin.native_session_state(principal.subject)
+            except LifecycleError as exc:
+                if exc.code == 'NATIVE_ACCOUNT_REVOKED':
+                    raise expired() from None
+                raise unavailable() from None
+            except IdentityError as exc:
+                if exc.status == 403:  # Durable account closure is an explicit revocation.
+                    raise expired() from None
+                raise
+
+        runtime.native_sessions.account_check = account_check
     return runtime
 
 

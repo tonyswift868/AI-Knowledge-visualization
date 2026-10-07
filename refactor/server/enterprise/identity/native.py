@@ -14,12 +14,13 @@ import ssl
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 from urllib.parse import urlsplit
 
 import httpx
+import sqlalchemy as sa
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -50,6 +51,18 @@ def expired():
 
 def superseded():
     return IdentityError('NATIVE_SESSION_SUPERSEDED', '账号已在另一台设备登录', status=401)
+
+
+def unavailable():
+    return IdentityError('NATIVE_AUTH_UNAVAILABLE', '账号服务暂不可用，请稍后重试。', status=503)
+
+
+NATIVE_FAMILIES = sa.Table('native_session_families', sa.MetaData(),
+    sa.Column('family_id', sa.String(64), primary_key=True),
+    sa.Column('issuer', sa.String(500)), sa.Column('subject', sa.String(300)),
+    sa.Column('refresh_digest', sa.String(64)), sa.Column('used_digests', sa.JSON()),
+    sa.Column('principal', sa.JSON()), sa.Column('account_binding', sa.String(64)),
+    sa.Column('deadline', sa.Float()), sa.Column('revoked_reason', sa.String(64)))
 
 
 class MtlsIdentityVerifier:
@@ -175,16 +188,19 @@ class _Family:
     access_deadline: float = 0
     refresh_hash: str = ''
     used_refreshes: set[str] = field(default_factory=set)
+    account_binding: str = ''
 
 
 class NativeSessions:
-    """Bounded single-process opaque session store; restart fails closed.
+    """Durable families; short-lived access tokens remain process-local.
 
-    Only token hashes are retained server-side. Rotation is atomic; replay
-    revokes the family. Multi-replica persistence is a separate deployment gate.
+    Password verification occurs only at login. Refresh checks account state
+    before committing rotation; outages leave the current digest usable.
+    The no-engine mode is the isolated in-memory test adapter only.
     """
     def __init__(self, verifier, issuer, *, clock=time.time, capacity=4096,
-                 superseded_capacity=16384, superseded_ttl=8 * 3600):
+                 superseded_capacity=16384, superseded_ttl=8 * 3600,
+                 engine=None, session_ttl_seconds=0, account_check=None):
         if superseded_capacity < 1 or not 0 < superseded_ttl <= 8 * 3600:
             raise ValueError('superseded reasons require a positive capacity and at most eight hours TTL')
         self.verifier, self.issuer, self.clock, self.capacity = verifier, issuer, clock, capacity
@@ -197,12 +213,97 @@ class NativeSessions:
         self.pending_logins = {}
         self.superseded = OrderedDict()
         self.superseded_capacity, self.superseded_ttl = superseded_capacity, superseded_ttl
+        self.engine, self.session_ttl_seconds, self.account_check = engine, session_ttl_seconds, account_check
+        self.inflight = set()
+
+    def _sync(self):
+        """Load committed family state; never persist access tokens or SPI handles."""
+        if self.engine is None:
+            return
+        try:
+            with self.engine.connect() as conn:
+                records = conn.execute(sa.select(NATIVE_FAMILIES).where(
+                    NATIVE_FAMILIES.c.issuer == self.issuer)).mappings().all()
+            families, refreshes, access = {}, {}, {}
+            for record in records:
+                fid = record['family_id']
+                hashes = set(record['used_digests']) | {record['refresh_digest']}
+                if record['revoked_reason']:
+                    if record['revoked_reason'] == 'NATIVE_SESSION_SUPERSEDED':
+                        for digest in hashes:
+                            self.superseded[digest] = (record['revoked_reason'], self.clock() + self.superseded_ttl)
+                    continue
+                old = self.families.get(fid)
+                row = _Family(AuthenticatedPrincipal.model_validate(record['principal']),
+                    record['deadline'] if record['deadline'] is not None else float('inf'),
+                    refresh_hash=record['refresh_digest'], used_refreshes=set(record['used_digests']),
+                    account_binding=record['account_binding'])
+                if old and old.refresh_hash == row.refresh_hash:
+                    row.access_hash, row.access_deadline = old.access_hash, old.access_deadline
+                    if row.access_hash:
+                        access[row.access_hash] = fid
+                families[fid] = row
+                refreshes.update((digest, fid) for digest in hashes)
+            while len(self.superseded) > self.superseded_capacity:
+                self.superseded.popitem(last=False)
+            self.families, self.refreshes, self.access = families, refreshes, access
+        except Exception:
+            raise unavailable() from None
+
+    def _persist(self, fid, row, *, expected=None):
+        if self.engine is None:
+            return
+        principal = row.principal.model_copy(update={'identity_provider_session_id': None})
+        values = dict(issuer=self.issuer, subject=principal.subject,
+            refresh_digest=row.refresh_hash, used_digests=sorted(row.used_refreshes),
+            principal=principal.model_dump(mode='json'), account_binding=row.account_binding,
+            deadline=None if row.deadline == float('inf') else row.deadline, revoked_reason=None)
+        try:
+            with self.engine.begin() as conn:
+                if expected is None:
+                    conn.execute(sa.update(NATIVE_FAMILIES).where(
+                        NATIVE_FAMILIES.c.issuer == self.issuer,
+                        NATIVE_FAMILIES.c.subject == principal.subject,
+                        NATIVE_FAMILIES.c.revoked_reason.is_(None)).values(revoked_reason='NATIVE_SESSION_SUPERSEDED'))
+                    conn.execute(sa.insert(NATIVE_FAMILIES).values(family_id=fid, **values))
+                else:
+                    result = conn.execute(sa.update(NATIVE_FAMILIES).where(
+                        NATIVE_FAMILIES.c.family_id == fid,
+                        NATIVE_FAMILIES.c.refresh_digest == expected,
+                        NATIVE_FAMILIES.c.revoked_reason.is_(None)).values(**values))
+                    if result.rowcount != 1:
+                        raise expired()
+        except IdentityError:
+            raise
+        except Exception:
+            raise unavailable() from None
+
+    async def _check_account(self, principal):
+        # Production installs the existing administrative account/closure check.
+        if self.account_check is None:
+            if self.engine is not None:
+                raise unavailable()
+            return ''
+        try:
+            return await self.account_check(principal)
+        except IdentityError:
+            raise
+        except Exception:
+            raise unavailable() from None
 
     @staticmethod
     def digest(value):
         return hashlib.sha256(value.encode('utf-8')).hexdigest()
 
-    def _drop(self, fid, *, superseding=False):
+    def _drop(self, fid, *, superseding=False, persisted=False):
+        if self.engine is not None and not persisted:
+            try:
+                with self.engine.begin() as conn:
+                    conn.execute(sa.update(NATIVE_FAMILIES).where(
+                        NATIVE_FAMILIES.c.family_id == fid).values(
+                            revoked_reason='NATIVE_SESSION_SUPERSEDED' if superseding else 'REVOKED'))
+            except Exception:
+                raise unavailable() from None
         row = self.families.pop(fid, None)
         if row:
             if superseding:
@@ -261,12 +362,16 @@ class NativeSessions:
                 or principal.expires_at.timestamp() <= self.clock()):
             raise denied()
 
-    def _rotate(self, fid, row):
-        self.access.pop(row.access_hash, None)
+    def _rotate(self, fid, row, *, expected=None):
+        old_access = row.access_hash
+        row = replace(row, used_refreshes=set(row.used_refreshes))
         access = ACCESS_PREFIX + secrets.token_urlsafe(32)
         refresh = REFRESH_PREFIX + secrets.token_urlsafe(32)
         row.access_hash, row.refresh_hash = self.digest(access), self.digest(refresh)
         row.access_deadline = min(self.clock() + 300, row.deadline, row.principal.expires_at.timestamp())
+        self._persist(fid, row, expected=expected)
+        self.access.pop(old_access, None)
+        self.families[fid] = row
         self.access[row.access_hash] = fid
         self.refreshes[row.refresh_hash] = fid
         return {'schema': 'mentorflow.native-session.v1', 'access_token': access, 'refresh_token': refresh,
@@ -284,19 +389,21 @@ class NativeSessions:
         try:
             principal = await self.verifier.authenticate(username, password)
             self._principal(principal)
+            binding = await self._check_account(principal)
             with self.lock:
                 if principal.subject in revoked_subjects:
                     raise expired()
+                self._sync()
                 self._prune()
                 previous = [fid for fid, row in self.families.items() if row.principal.subject == principal.subject]
                 if len(self.families) - len(previous) >= self.capacity:
                     raise IdentityError('NATIVE_SESSION_CAPACITY', '账号服务暂不可用。', status=503)
                 fid = secrets.token_hex(32)
-                row = _Family(principal, self.clock() + 8 * 3600)
-                self.families[fid] = row
+                deadline = self.clock() + self.session_ttl_seconds if self.session_ttl_seconds else float('inf')
+                row = _Family(principal, deadline, account_binding=binding)
                 result = self._rotate(fid, row)
                 for previous_fid in previous:
-                    self._drop(previous_fid, superseding=True)
+                    self._drop(previous_fid, superseding=True, persisted=True)
                 return result
         finally:
             with self.lock:
@@ -306,6 +413,7 @@ class NativeSessions:
         if not token.startswith(ACCESS_PREFIX) or len(token) > 128:
             raise expired()
         with self.lock:
+            self._sync()
             self._prune()
             digest = self.digest(token)
             self._raise_if_superseded(digest)
@@ -319,41 +427,51 @@ class NativeSessions:
             raise expired()
         digest = self.digest(token)
         with self.lock:
+            self._sync()
             self._prune()
             self._raise_if_superseded(digest)
             fid = self.refreshes.get(digest)
             row = self.families.get(fid)
             if row is None:
                 raise expired()
-            if digest != row.refresh_hash or len(row.used_refreshes) >= 128:
+            if digest != row.refresh_hash or digest in self.inflight:
                 self._drop(fid)
                 raise expired()
-            # Claim before await: concurrent/replayed refresh cannot mint a pair.
-            row.used_refreshes.add(digest)
-            row.refresh_hash = ''
+            self.inflight.add(digest)
         try:
-            principal = await self.verifier.revalidate(row.principal)
-            self._principal(principal)
-            if (principal.issuer, principal.subject) != (row.principal.issuer, row.principal.subject):
-                raise expired()
-        except Exception:
+            try:
+                binding = await self._check_account(row.principal)
+                if binding != row.account_binding:
+                    raise expired()
+            except IdentityError as exc:
+                with self.lock:
+                    self._sync()
+                    self._raise_if_superseded(digest)
+                    if exc.status == 401:
+                        self._drop(fid)
+                raise
             with self.lock:
-                self._drop(fid)
+                self._sync()
                 self._prune()
                 self._raise_if_superseded(digest)
-            raise expired() from None
-        with self.lock:
-            self._prune()
-            self._raise_if_superseded(digest)
-            if self.families.get(fid) is not row or row.deadline <= self.clock():
-                self._drop(fid)
-                raise expired()
-            # Refresh is not a fresh password/MFA event.
-            row.principal = principal.model_copy(update={'authentication_time': row.principal.authentication_time})
-            return self._rotate(fid, row)
+                current = self.families.get(fid)
+                if current is None:
+                    raise expired()
+                if current.refresh_hash != digest:
+                    self._drop(fid)
+                    raise expired()
+                now = datetime.fromtimestamp(int(self.clock()), timezone.utc)
+                principal = current.principal.model_copy(update={'issued_at': now,
+                    'expires_at': now + timedelta(minutes=5), 'token_id': secrets.token_urlsafe(32)})
+                updated = replace(current, principal=principal, used_refreshes=current.used_refreshes | {digest})
+                return self._rotate(fid, updated, expected=digest)
+        finally:
+            with self.lock:
+                self.inflight.discard(digest)
 
     def logout(self, token):
         with self.lock:
+            self._sync()
             fid = self.refreshes.get(self.digest(token))
             if fid:
                 self._drop(fid)
@@ -364,30 +482,34 @@ class NativeSessions:
             self.revocation_epoch += 1
             for revoked_subjects in self.pending_logins.values():
                 revoked_subjects.add(subject)
+            self._sync()
             for fid, row in list(self.families.items()):
                 if row.principal.subject == subject:
                     self._drop(fid)
 
     async def aclose(self):
         with self.lock:
-            for fid in list(self.families):
-                self._drop(fid)
+            self.families.clear()
+            self.access.clear()
+            self.refreshes.clear()
             self.attempts.clear()
             self.superseded.clear()
         await self.verifier.aclose()
 
 
-def from_env(env, issuer):
+def from_env(env, issuer, *, engine=None, session_ttl_seconds=0):
     endpoint = env.get('MENTORFLOW_NATIVE_IDENTITY_ENDPOINT', '')
     if not endpoint:
         return None
     if env.get('MENTORFLOW_NATIVE_AUTH_SINGLE_PROCESS') != '1' or env.get('WEB_CONCURRENCY', '1') != '1':
         raise ValueError('Native sessions require explicitly approved single-process deployment')
+    if engine is None:
+        raise ValueError('Native sessions require the backend database')
     context = ssl.create_default_context(cafile=env['MENTORFLOW_NATIVE_IDENTITY_CA_FILE'])
     context.load_cert_chain(env['MENTORFLOW_NATIVE_IDENTITY_CERT_FILE'], env['MENTORFLOW_NATIVE_IDENTITY_KEY_FILE'])
     return NativeSessions(MtlsIdentityVerifier(endpoint, issuer, context=context,
         external_issuer=env.get('MENTORFLOW_NATIVE_EXTERNAL_ISSUER') or issuer,
-        continuity=continuity_from_env(env)), issuer)
+        continuity=continuity_from_env(env)), issuer, engine=engine, session_ttl_seconds=session_ttl_seconds)
 
 
 router = APIRouter()
@@ -425,7 +547,7 @@ async def _operation(request, operation):
             else:
                 service.logout(body['refresh_token'])
                 result = {'logged_out': True}
-            if operation != 'logout':
+            if operation != 'logout' and getattr(service, 'account_check', None) is None:
                 from refactor.server.account.closure_api import guard_native_result
                 await guard_native_result(request.app.state.enterprise_identity_runtime, result)
         finally:

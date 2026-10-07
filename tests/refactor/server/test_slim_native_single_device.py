@@ -96,10 +96,11 @@ def test_inflight_refresh_cannot_resurrect_superseded_family(revalidation_fails)
             await release.wait()
             if revalidation_fails:
                 raise denied()
-            return store.verifier.principal(principal.subject)
-        store.verifier.revalidate = slow
+            return ''
+        store.account_check = slow
         pending = asyncio.create_task(store.refresh(first['refresh_token']))
         await entered.wait()
+        store.account_check = None  # Only the in-flight refresh is deliberately paused.
         newest = await login(store)
         release.set()
         with pytest.raises(IdentityError) as exc:

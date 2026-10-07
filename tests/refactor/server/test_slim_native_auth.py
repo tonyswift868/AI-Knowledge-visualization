@@ -172,7 +172,7 @@ def test_rotation_replay_expiry_and_logout_revoke_access():
         service.clock = lambda: datetime.now(timezone.utc).timestamp() + 301
         with pytest.raises(IdentityError): service.authenticate(fourth['access_token'])
         service.clock = lambda: datetime.now(timezone.utc).timestamp() + 8 * 3600 + 1
-        with pytest.raises(IdentityError): await service.refresh(fourth['refresh_token'])
+        assert (await service.refresh(fourth['refresh_token']))['expires_in'] > 0
     asyncio.run(run())
 
 
@@ -187,8 +187,8 @@ def test_concurrent_refresh_fails_closed_and_preserves_authentication_time():
         async def delayed(previous):
             entered.set()
             await release.wait()
-            return principal(previous.subject)
-        service.verifier.revalidate = delayed
+            return ''
+        service.account_check = delayed
         first = asyncio.create_task(service.refresh(rotated['refresh_token']))
         await entered.wait()
         with pytest.raises(IdentityError): await service.refresh(rotated['refresh_token'])
@@ -203,7 +203,7 @@ def test_disabled_identity_on_refresh_revokes_family():
         service = NativeSessions(Verifier(), ISSUER)
         pair = await service.login('known', 'synthetic-test-only', 'peer')
         async def disabled(previous): raise denied()
-        service.verifier.revalidate = disabled
+        service.account_check = disabled
         with pytest.raises(IdentityError): await service.refresh(pair['refresh_token'])
         with pytest.raises(IdentityError): service.authenticate(pair['access_token'])
     asyncio.run(run())
@@ -246,33 +246,21 @@ def test_unconfigured_is_off_and_bridge_requires_verified_mtls_and_single_proces
     with pytest.raises(ValueError): MtlsIdentityVerifier('http://identity.internal/mentorflow-native-identity/v1', ISSUER)
 
 
-@pytest.mark.parametrize('failure', ['timeout', 'connection', 'malformed', 'oversized', 'missing-handle', 'wrong-handle', 'wrong-subject'])
-def test_real_bridge_refresh_contract_fails_closed_and_revokes_family(failure):
+@pytest.mark.parametrize('failure', ['timeout', 'connection', 'malformed'])
+def test_identity_check_transient_failure_retains_refresh_family(failure):
     async def run():
-        def handler(request):
-            body = json.loads(request.content)
-            value = {'schema': 'mentorflow.native-identity.v1', 'outcome': 'authenticated',
-                     'issuer': ISSUER, 'subject': 'user-a', 'display_name': 'A',
-                     'authentication_strength': 'password_verified', 'verification_handle': 'v' * 43}
-            if body['operation'] == 'revalidate':
-                assert body == {'operation': 'revalidate', 'issuer': ISSUER, 'subject': 'user-a', 'verification_handle': 'v' * 43}
-                if failure == 'timeout': raise httpx.ReadTimeout('private detail')
-                if failure == 'connection': raise httpx.ConnectError('private detail')
-                if failure == 'malformed': return httpx.Response(200, text='invalid JSON')
-                if failure == 'oversized': return httpx.Response(200, content=b'x' * 8193)
-                if failure == 'missing-handle': value.pop('verification_handle')
-                if failure == 'wrong-handle': value['verification_handle'] = 'z' * 43
-                if failure == 'wrong-subject': value['subject'] = 'other'
-            return httpx.Response(200, json=value)
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-            verifier = MtlsIdentityVerifier(ISSUER + '/mentorflow-native-identity/v1', ISSUER, http_client=http)
-            service = NativeSessions(verifier, ISSUER)
-            pair = await service.login('known', 'synthetic-test-only', 'peer')
-            assert 'verification_handle' not in json.dumps(pair)
-            with pytest.raises(IdentityError) as error: await service.refresh(pair['refresh_token'])
-            assert 'private detail' not in str(error.value)
-            with pytest.raises(IdentityError): service.authenticate(pair['access_token'])
-            assert not service.families
+        service = NativeSessions(Verifier(), ISSUER)
+        pair = await service.login('known', 'synthetic-test-only', 'peer')
+        async def check(previous):
+            if failure == 'timeout': raise httpx.ReadTimeout('private detail')
+            if failure == 'connection': raise httpx.ConnectError('private detail')
+            raise ValueError('private detail')
+        service.account_check = check
+        with pytest.raises(IdentityError) as error: await service.refresh(pair['refresh_token'])
+        assert error.value.status == 503 and 'private detail' not in str(error.value)
+        assert service.authenticate(pair['access_token']).subject == 'user-a'
+        service.account_check = None
+        assert (await service.refresh(pair['refresh_token']))['refresh_token']
     asyncio.run(run())
 
 
