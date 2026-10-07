@@ -13,8 +13,8 @@ from tests.refactor.plan37.test_plan37_browser_contract import browser
 def data():
     value=fixtures()
     value['structure']['material_structure']['excluded']=[
-        dict(name='导航/学习路线',reason='学习安排不是知识',refs=['s1.90']),
-        dict(name='求职/简历',reason='求职流程不是知识',refs=['s1.91'])]
+        dict(name='关于作者',reason='作者介绍与学习无关',refs=['s1.90']),
+        dict(name='资料常见问答/有没有 PDF',reason='资料获取说明与学习无关',refs=['s1.91'])]
     return value
 
 

@@ -1,9 +1,5 @@
 import * as React from "react"
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown"
-import remarkGfm from "remark-gfm"
-import remarkMath from "remark-math"
-import rehypeKatex from "rehype-katex"
-import "katex/dist/katex.min.css"
+import { ClassroomMarkdown } from "../classroom/Markdown"
 import {
   ArrowLeft, BookOpen, CheckCircle2, ChevronRight, CircleAlert, ClipboardCheck, ExternalLink, Loader2, RotateCcw,
   SendHorizontal, SkipForward, Square, Volume2, VolumeX, X,
@@ -57,6 +53,7 @@ export function Classroom() {
   const [text, setText] = React.useState("")
   const [source, setSource] = React.useState<Source | null>(null)
   const [askMode, setAskMode] = React.useState(false)
+  const [pointsExpanded, setPointsExpanded] = React.useState(false)
   const [recallAttempt, setRecallAttempt] = React.useState(0)
   const input = React.useRef<HTMLTextAreaElement>(null)
   const generation = React.useRef(0)
@@ -79,6 +76,10 @@ export function Classroom() {
     if (turn) { turn.cancelled = true; if (turn.reader) { void turn.reader.stop(); return } }
     void voice.stop()
   }, [voice.stop])
+
+  React.useEffect(() => { if (askMode) input.current?.focus() }, [askMode])
+  React.useEffect(() => { setAskMode(false) }, [room?.question?.id, room?.module.id])
+  React.useEffect(() => { setPointsExpanded(false) }, [room?.module.id])
 
   const act = React.useCallback(async (method: string, params: Record<string, unknown> = {}, label = "老师在想…") => {
     // A ref locks immediately, including two clicks before React has rendered.
@@ -164,7 +165,7 @@ export function Classroom() {
   React.useEffect(() => {
     if (!planId) { go("home"); return }
     const ownGeneration = ++generation.current
-    setRoom(null); acting.current = false; setAskMode(false)
+    setRoom(null); acting.current = false; setAskMode(false); setPointsExpanded(false)
     call<Room>("classroom.enter", { plan_id: planId }).then((r) => {
       if (ownGeneration !== generation.current) return
       spoken.current = r.messages.at(-1)?.id ?? null   // do not read old messages aloud on entry
@@ -246,10 +247,12 @@ export function Classroom() {
     stopReading()
     if (value === undefined) setText("")
     const numericAnswer = !askMode && (room?.question?.kind === "calc" || room?.question?.question_type === "calc")
-    if (!(await act(askMode ? "classroom.ask" : numericAnswer ? "classroom.answer" : "classroom.reply",
+    const questionMessage = askMode
+    setAskMode(false) // The tag belongs to this send only, including a failed send.
+    if (!(await act(questionMessage ? "classroom.ask" : numericAnswer ? "classroom.answer" : "classroom.reply",
       numericAnswer ? { value: t } : { text: t }, numericAnswer ? "正在核对数值…" : "老师在看你的回答…")) && value === undefined) {
       setText((draft) => draft || t)
-    } else setAskMode(false)
+    }
   }
 
   async function openSource(chunk: string) {
@@ -260,20 +263,14 @@ export function Classroom() {
     } catch (e) { if (ownGeneration === generation.current) toast("error", (e as Error).message) }
   }
 
-  if (!room) return <div className="page"><div className="card"><Loader2 className="spin" /> 正在进入课堂…</div></div>
+  if (!room) return <div className="page"><div className="card" role="status"><Loader2 className="spin" aria-hidden="true" /> 正在进入课堂…</div></div>
   // An active lesson interaction is authoritative; a saved casual question may
   // still be in the snapshot while an interjection waits for "回到刚才".
   const q = room.question
   const done = room.points.filter((p) => p.taught).length
   const t = room.today
   const markdown = (content: string, showSource: (id: string) => void = openSource) => (
-    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}
-      urlTransform={(url) => (url.startsWith("mf-source:") ? url : defaultUrlTransform(url))}
-      components={{
-        a: ({ href, children }) => href?.startsWith("mf-source:")
-          ? <button className="cite" title="看原文" onClick={() => showSource(href.slice(10))}>{children}</button>
-          : <a href={href} target="_blank" rel="noreferrer">{children}</a>,
-      }}>{content}</ReactMarkdown>
+    <ClassroomMarkdown content={content} onSource={showSource} />
   )
 
   return (
@@ -293,14 +290,20 @@ export function Classroom() {
             <div className="class-check-bar"><i style={{ width: `${(room.check.passed / Math.max(1, room.check.total)) * 100}%` }} /></div>
             <span className="muted small">已通过 {room.check.passed}/{room.check.total} 个知识点</span>
           </div>
-        ) : <div className="class-points">
+        ) : <div className="class-module-progress">
+          <div className="row between"><span className="small">第 {room.module.number} 个模块 · 本模块 {done} / {room.points.length} 个点已讲</span>
+            <Button small kind="ghost" aria-expanded={pointsExpanded} aria-controls="classroom-points"
+              onClick={() => setPointsExpanded(value => !value)}>{pointsExpanded ? "收起知识点" : "展开知识点"}</Button></div>
+          <div className="class-check-bar" role="progressbar" aria-label="本模块讲解进度" aria-valuenow={done} aria-valuemin={0} aria-valuemax={room.points.length}>
+            <i style={{ width: `${100 * done / Math.max(1, room.points.length)}%` }} /></div>
+          {pointsExpanded && <div className="class-points" id="classroom-points">
           {room.points.map((p, i) => (
             <span key={p.id} className={`class-point ${p.current && ["teach", "opening", "teaching", "closing", "answer", "preparing_materials"].includes(room.step) ? "current" : ""} ${p.taught ? "taught" : ""} ${POINT_TONE[p.state] ?? ""}`}
                   title={`${p.title} · ${p.minutes} 分钟${POINT_LABEL[p.state] ? " · " + POINT_LABEL[p.state] : ""}`}>
-              {POINT_TONE[p.state] === "ok" ? <CheckCircle2 size={13} /> : <i>{i + 1}</i>}{p.title}
+              {p.taught ? <CheckCircle2 size={13} /> : <i>{i + 1}</i>}{p.title}
             </span>
           ))}
-          <span className="muted small">{done}/{room.points.length} 已讲</span>
+          </div>}
         </div>}
         {room.preparation && <MaterialsPreparing preparation={room.preparation} busy={!!busy} act={act} />}
         {room.failure && <div className="banner" role="alert">{room.failure.message} <Button small disabled={!!busy}
@@ -343,22 +346,18 @@ export function Classroom() {
 
         <Actions room={room} act={act} busy={!!busy} />
         <ConversationActions step={room.step} conversation={room.conversation} busy={!!busy} act={act}
-          ask={() => { setAskMode(true); input.current?.focus() }} />
+          ask={() => { setAskMode(!!q); input.current?.focus() }} />
         {room.explanation && <div className="answer-explanation">
           {room.explanation.open && <><div>{markdown(room.explanation.text)}</div><small className="muted">
             {room.explanation.label} · {room.explanation.source.title} · {room.explanation.source.locator}</small>
             {room.explanation.source.url && <a href={room.explanation.source.url} target="_blank" rel="noreferrer"> 查看答案出处</a>}</>}
         </div>}
         {q && q.kind !== "recall" && <QuestionInputs question={q} act={act} busy={!!busy} />}
-        {q?.kind === "recall" && !askMode ? <div className="recall-chat">
-          <span className="muted small">对题目有疑问？可以先问老师。</span>
-          <Button small kind="ghost" disabled={!!busy} onClick={() => { setAskMode(true); input.current?.focus() }}>提问</Button>
-        </div> : <div className="composer">
-          <Button small kind={askMode ? "primary" : "ghost"} className="ask-mode" disabled={!!busy}
-            onClick={() => { setAskMode(!askMode); input.current?.focus() }}>{askMode ? "正在提问" : "提问"}</Button>
+        {askMode && <div className="class-question-tag" role="status">这句是提问 · <button onClick={() => setAskMode(false)}>取消</button></div>}
+        <div className="composer">
           <textarea ref={input} className="input" rows={1} value={text} aria-label="课堂输入"
                     disabled={q?.kind === "recall" && !askMode}
-                    placeholder={askMode ? "想问什么？答完回到刚才" : q?.kind === "recall" ? "想问问题可点“提问”；作答请用上方问答卡片" : (q?.kind === "calc" || q?.question_type === "calc") ? "填写计算数值，可带单位" : q ? "请用上方选项或填空作答；想问问题可点“提问”" : "有问题随时问老师"}
+                    placeholder={askMode ? "想问什么？答完回到刚才" : q?.kind === "recall" ? "作答请用上方问答卡片；提问可点“我想问…”" : (q?.kind === "calc" || q?.question_type === "calc") ? "填写计算数值，可带单位" : q ? "输入作答，或点上方选项；提问可点“我想问…”" : "回答老师或提问，都可以直接说"}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.repeat) {
                       e.preventDefault()
@@ -368,7 +367,7 @@ export function Classroom() {
           {busy
             ? <Button onClick={() => { stopReading(); abort.current?.abort() }}><Square />停止</Button>
             : <Button kind="primary" onClick={() => send()} disabled={!text.trim() || (q?.kind === "recall" && !askMode)}><SendHorizontal />发送</Button>}
-        </div>}
+        </div>
       </section>
 
       <React.Suspense fallback={null}>
@@ -399,7 +398,7 @@ export function Classroom() {
             <b>{source.title}{source.section.length ? ` · ${source.section.join(" / ")}` : ""}</b>
             <button className="icon-btn" onClick={() => setSource(null)} aria-label="关闭"><X /></button>
           </div>
-          <div className="class-source-text" data-selectable>{source.text}</div>
+          <div className="class-source-text" data-selectable>{markdown(source.text)}</div>
           {source.url && <a href={source.url} target="_blank" rel="noreferrer" className="small"><ExternalLink size={13} /> 打开原网页</a>}
         </div>
       )}

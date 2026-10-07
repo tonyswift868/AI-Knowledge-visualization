@@ -58,7 +58,7 @@ from .ledger import Ledger, PlanWindow, Credit
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
 _REPORT_PART_PREFIX = 'report-part:'
@@ -71,6 +71,7 @@ PARENTS = {
     'judgements': (), 'attempt_closed': (), 'credits': (), 'ledger_events': (),
     'teacher_profile': (), 'messages': (('module_id', 'modules'),), 'reports': (), 'usage': (),
     'chat_sessions': (), 'chat_messages': (('session_id', 'chat_sessions'),),
+    'account_settings': (),
     'question_bank': (('module_id', 'modules'),), 'practice_results': (),
     'question_answers': (),  # immutable answered-question facts, independent of point judgements
 }
@@ -251,7 +252,7 @@ class CourseStore:
                 PRIMARY KEY(entity,entity_id))''')
             self._db.execute('CREATE TABLE plans(id TEXT PRIMARY KEY, payload TEXT NOT NULL CHECK(json_valid(payload)), revision INTEGER NOT NULL)')
             for entity, parents in PARENTS.items():
-                if entity in ('plans', 'question_bank', 'practice_results', 'question_answers'): continue
+                if entity in ('plans', 'question_bank', 'practice_results', 'question_answers', 'account_settings'): continue
                 fields = [f'{name} TEXT' for name, _ in parents]
                 constraints = [f'FOREIGN KEY(plan_key,{name}) REFERENCES {parent}(plan_key,id) DEFERRABLE INITIALLY DEFERRED'
                                for name, parent in parents]
@@ -290,6 +291,11 @@ class CourseStore:
                 FOREIGN KEY(plan_key) REFERENCES plans(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
                 PRIMARY KEY(plan_key,id))''')
             self._db.execute('UPDATE schema_version SET version=5')
+            version = 5
+        if version == 5:
+            self._db.execute('''CREATE TABLE IF NOT EXISTS account_settings(plan_key TEXT NOT NULL,id TEXT NOT NULL,
+                payload TEXT NOT NULL CHECK(json_valid(payload)),revision INTEGER NOT NULL,PRIMARY KEY(plan_key,id))''')
+            self._db.execute('UPDATE schema_version SET version=6')
         owner = self._db.execute("SELECT value FROM _meta WHERE key='account_id'").fetchone()
         if owner is None or owner[0] != self.account_id: raise StoreError('ACCOUNT_MISMATCH')
 
@@ -317,8 +323,15 @@ class CourseStore:
                 if payload[key] is not None: _window(payload[key])
             _number(payload['total_minutes']); _number(payload['initial_total_minutes'])
             _number(payload['module_count'])
+            if payload.get('teacher_preset_id') is not None: _id(payload['teacher_preset_id'])
             for key in ('started_on', 'completed_on'):
                 if payload.get(key) is not None: _day(payload[key])
+        elif entity == 'account_settings':
+            if plan or payload['id'] != 'teacher_presets': raise StoreError('INVALID_SETTING')
+            from ..app.settings import validate_presets
+            from ..app.bridge import BridgeError
+            try: validate_presets(payload['value']['presets'], payload['value']['default_id'])
+            except (BridgeError, KeyError, TypeError): raise StoreError('INVALID_SETTING') from None
         elif entity == 'sources':
             if payload['kind'] not in ('url', 'file') or type(payload['adopted']) is not bool: raise StoreError('INVALID_SOURCE')
             if payload['kind'] == 'file' and not re.fullmatch('[0-9a-f]{64}', payload['sha256'] or ''): raise StoreError('INVALID_SHA')
@@ -468,15 +481,33 @@ class CourseStore:
         self._changed('local', entity)
 
     @_atomic
-    def create_plan(self, plan_id=None, *, goal='', final_goal='', level='', notes='', window=None, total_minutes=0):
+    def create_plan(self, plan_id=None, *, goal='', final_goal='', level='', notes='', window=None, total_minutes=0, teacher_preset_id=None):
         plan_id = _id(plan_id or uuid.uuid4().hex)
         wire = self._db.execute("SELECT 1 FROM _records WHERE entity='plans' AND entity_id=?", (plan_id,)).fetchone()
         if wire: raise StoreError('PLAN_EXISTS')
         configuration = _window_json(window) if window is not None else None
         self._put('plans', plan_id, dict(id=plan_id, goal=goal, final_goal=final_goal, level=level, notes=notes,
             window=configuration, initial_window=configuration, total_minutes=total_minutes,
-            initial_total_minutes=total_minutes, module_count=0, state='creating', archived=False, material_version=3))
+            initial_total_minutes=total_minutes, module_count=0, state='creating', archived=False, material_version=3,
+            **({'teacher_preset_id': teacher_preset_id} if teacher_preset_id is not None else {})))
         return plan_id
+
+    @_atomic
+    def set_teacher_preset(self, plan_id, preset_id):
+        plan = self._get('plans', plan_id, plan_id)
+        plan['teacher_preset_id'] = _id(preset_id)
+        return self._put('plans', plan_id, plan)
+
+    @_atomic
+    def save_account_setting(self, identifier, value):
+        return self._put('account_settings', '', dict(id=identifier, value=value))
+
+    def load_account_setting(self, identifier):
+        with self._lock:
+            try: return self._get('account_settings', '', identifier)['value']
+            except StoreError as exc:
+                if exc.code != 'NOT_FOUND': raise
+                return None
 
     @_atomic
     def save_intake(self, plan_id, *, goal=None, final_goal=None, level=None, notes=None, window=None, today=None, reason=None):
@@ -980,7 +1011,7 @@ class CourseStore:
         # Tombstone every structural row; progress journal entries survive even
         # though SQLite cascades their business rows when the plan is removed.
         for entity in reversed(tuple(PARENTS)):
-            if entity in PROGRESS or entity in ('plans', 'chat_sessions', 'chat_messages'): continue
+            if entity in PROGRESS or entity in ('plans', 'chat_sessions', 'chat_messages', 'account_settings'): continue
             for payload in self._rows(entity, plan_id): self._delete(entity, plan_id, payload['id'])
         self._delete('plans', plan_id, plan_id)
 
@@ -1506,7 +1537,7 @@ class CourseStore:
             for row in pending:
                 entity, plan = row['entity'], row['plan_key']
                 payload = json.loads(row['payload'])
-                if entity not in ('plans', 'chat_sessions', 'chat_messages'):
+                if entity not in ('plans', 'chat_sessions', 'chat_messages', 'account_settings'):
                     if not self._db.execute('SELECT 1 FROM plans WHERE id=?', (plan,)).fetchone():
                         deferred.append(row); continue
                 missing = False
@@ -1529,8 +1560,8 @@ class CourseStore:
             if type(record.deleted) is not bool or not isinstance(record.plan_key, str) or not isinstance(record.payload, dict): raise StoreError('INVALID_RECORD')
             payload = json.loads(_json(record.payload))
             if record.entity_id != _wire_id(record.entity, record.plan_key, _id(payload['id'])): raise StoreError('INVALID_RECORD_ID')
-            if record.entity in ('chat_sessions', 'chat_messages') and record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
-            if record.entity not in ('chat_sessions', 'chat_messages'): _id(record.plan_key)
+            if record.entity in ('chat_sessions', 'chat_messages', 'account_settings') and record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
+            if record.entity not in ('chat_sessions', 'chat_messages', 'account_settings'): _id(record.plan_key)
             old = self._db.execute('SELECT * FROM _records WHERE entity=? AND entity_id=?', (record.entity, record.entity_id)).fetchone()
             if record.entity in PROGRESS:
                 if record.deleted: continue  # Never erase even an already-synced event.

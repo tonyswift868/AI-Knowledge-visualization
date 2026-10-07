@@ -103,7 +103,8 @@ def test_bind_immediate_sync_local_debounce_manual_and_fresh_token(window, qapp)
     win._sync.service._tick()
     assert len(requests) == calls and len(win.services.store.pending_records(100)) == 3
     clock.value = 3
-    spin(qapp, win, lambda: len(server.rows) == 3 and win._sync.service._future is None)
+    # Account teacher presets now share the real outbox, alongside these 3 chat records.
+    spin(qapp, win, lambda: len(server.rows) == 4 and win._sync.service._future is None)
     assert not win.services.store.pending_records(100)
     assert not [m for m in sent if m.get('name') == 'chat_changed']  # no remote-change echo for local writes
     login.access_token = 'fresh-token-after-refresh'

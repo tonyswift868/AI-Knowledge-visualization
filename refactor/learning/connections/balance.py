@@ -27,13 +27,15 @@ GLM: https://docs.bigmodel.cn/cn/guide/platform/equity-explain
 from __future__ import annotations
 
 import asyncio
+from contextlib import closing
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 import hashlib
 import json
 import threading
 import time
+import sqlite3
 from urllib.parse import urlsplit
 
 import httpx
@@ -225,3 +227,216 @@ class BalanceClient:
             return value
         except Exception:
             return None
+
+
+class BalanceHistory:
+    """Small account-local journal, separated by preset and currency.
+
+    Only observed decreases count. Attribute the whole interval to the later
+    observation's local calendar day; offline intervals cannot be apportioned
+    reliably. Weeks start Monday. No exchange-rate conversion is guessed.
+    A changed key/endpoint starts a new series, rather than inventing spend.
+    """
+
+    def __init__(self, account_id, data_root):
+        from ..preferences.storage import account_directory
+        self.path = account_directory(account_id, data_root) / 'model-balances.sqlite3'
+        self._lock = threading.RLock()
+
+    def _connect(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        db = sqlite3.connect(self.path, timeout=5)
+        db.execute('''CREATE TABLE IF NOT EXISTS observations (
+            preset_id TEXT NOT NULL, at TEXT NOT NULL, currency TEXT NOT NULL,
+            amount TEXT NOT NULL, series TEXT NOT NULL,
+            PRIMARY KEY (preset_id, at, currency, series))''')
+        return db
+
+    def record(self, preset_id, value, *, series='default'):
+        """Cached duplicate observations and failed queries add no rows."""
+        if not value:
+            return False
+        try:
+            instant = datetime.fromisoformat(value['updated_at'].replace('Z', '+00:00'))
+            if instant.tzinfo is None:
+                return False
+            at = instant.astimezone(timezone.utc).isoformat()
+            entries = [_entry(v['amount'], v['currency']) for v in value['balances']]
+            with self._lock, closing(self._connect()) as db, db:
+                db.executemany('INSERT OR IGNORE INTO observations VALUES (?, ?, ?, ?, ?)',
+                               [(preset_id, at, e['currency'], e['amount'], series) for e in entries])
+            return True
+        except Exception:
+            return False  # optional accounting never interrupts the caller
+
+    def summary(self, preset_id, *, now=None, tz=None):
+        instant = now or datetime.now(timezone.utc)
+        local = instant.astimezone(tz)
+        today = local.date()
+        first = today - timedelta(days=13)
+        monday = today - timedelta(days=today.weekday())
+        month = today.replace(day=1)
+        result = dict(preset_id=preset_id, ready=False, observations=0, currencies=[], balance=None)
+        try:
+            if not self.path.exists():
+                return result
+            with self._lock, closing(self._connect()) as db:
+                rows = db.execute('SELECT at, currency, amount, series FROM observations '
+                                  'WHERE preset_id=? AND at<=? ORDER BY at',
+                                  (preset_id, instant.astimezone(timezone.utc).isoformat())).fetchall()
+            result['observations'] = len({r[0] for r in rows})
+            currencies = sorted({r[1] for r in rows})
+            balances = []
+            for currency in currencies:
+                previous = None
+                daily = {}
+                ready = False
+                for at, _, amount, series in (r for r in rows if r[1] == currency):
+                    amount = Decimal(amount)
+                    if previous and previous[1] == series:
+                        ready = True
+                        day = datetime.fromisoformat(at).astimezone(tz).date()
+                        daily[day] = daily.get(day, Decimal(0)) + max(Decimal(0), previous[0] - amount)
+                    previous = (amount, series)
+                money = lambda n: format(n, 'f')
+                result['currencies'].append(dict(currency=currency, ready=ready,
+                    today=money(daily.get(today, Decimal(0))),
+                    week=money(sum((v for d, v in daily.items() if monday <= d <= today), Decimal(0))),
+                    month=money(sum((v for d, v in daily.items() if month <= d <= today), Decimal(0))),
+                    days=[dict(date=(first + timedelta(days=i)).isoformat(),
+                               amount=money(daily.get(first + timedelta(days=i), Decimal(0)))) for i in range(14)]))
+                result['ready'] |= ready
+                balances.append(_entry(previous[0], currency))
+            if rows:
+                result['balance'] = dict(label='账户余额', balances=balances, updated_at=rows[-1][0])
+            return result
+        except Exception:
+            result['unavailable'] = True
+            return result
+
+
+def register(bridge, services):
+    """Window-lifetime hourly polling + operation completion hooks.
+
+    Balance IO runs on its own worker, never Qt's UI thread or the classroom
+    worker. Existing preparation notifications cover background module jobs.
+    """
+    from PySide6.QtCore import QObject, QTimer, Slot
+    from ..app.bridge import BridgeError
+
+    class Tracker(QObject):
+        def __init__(self):
+            super().__init__(bridge)
+            self.cancel = threading.Event()
+            self.lock = threading.Lock()
+            self.busy = False
+            self.pending = False
+            self.bound = None
+            self.next_poll = 0
+            self.preparation = {}
+            self.timer = QTimer(self)
+            self.timer.setInterval(30_000)
+            self.timer.timeout.connect(self.tick)
+            self.timer.start()
+            bridge.closing.connect(self.close)
+            bridge.request_completed.connect(self.completed)
+            bridge.event.connect(self.on_event)
+            QTimer.singleShot(0, self.tick)
+
+        @Slot()
+        def close(self):
+            self.cancel.set()
+            self.timer.stop()
+
+        @Slot()
+        def tick(self):
+            if self.cancel.is_set():
+                return
+            try:
+                current = services()
+                # Lightweight stand-ins without an account have no background IO.
+                if not hasattr(current, 'account_id') or getattr(current, '_closed', False):
+                    return
+                if current is not self.bound:
+                    self.bound, self.next_poll = current, 0
+                    self.preparation.clear()
+                if time.monotonic() >= self.next_poll:
+                    self.next_poll = time.monotonic() + 3600
+                    self.request()
+            except Exception:
+                pass
+
+        @Slot(str)
+        def completed(self, method):
+            if method in {'classroom.leave', 'plan.generate', 'plan.add_generate', 'models.save', 'models.select'}:
+                self.request()
+
+        @Slot(str)
+        def on_event(self, text):
+            try:
+                event = json.loads(text)
+                if event.get('type') != 'event':
+                    return
+                if event.get('name') in {'ready', 'scope_changed', 'session_recovered'}:
+                    self.next_poll = 0
+                    self.tick()
+                if event.get('name') in {'plan_preparation', 'classroom.materials_ready'}:
+                    data = event['data']
+                    key = (data['plan_id'], data.get('module_id'))
+                    state = data.get('status')
+                    previous = self.preparation.get(key)
+                    self.preparation[key] = state
+                    if state in {'ready', 'failed'} and state != previous:
+                        self.request()
+            except Exception:
+                pass
+
+        def request(self):
+            if self.cancel.is_set():
+                return
+            with self.lock:
+                if self.busy:
+                    self.pending = True
+                    return
+                self.busy = True
+            threading.Thread(target=self.work, name='mf-balance', daemon=True).start()
+
+        def work(self):
+            while True:
+                try:
+                    current = services()
+                    if not self.cancel.is_set() and not getattr(current, '_closed', False) and hasattr(current, 'account_id'):
+                        gateway = current.gateway
+                        preset = gateway.get_configuration()
+                        if preset and preset['has_api_key']:
+                            gateway.balance(preset['id'], refresh=True, cancel=self.cancel)
+                            if not self.cancel.is_set() and current is services():
+                                bridge.push('balance_spend', {'preset_id': preset['id']})
+                except Exception:
+                    pass
+                with self.lock:
+                    if self.pending and not self.cancel.is_set():
+                        self.pending = False
+                        continue
+                    self.busy = False
+                    return
+
+    def summary(params, ctx):
+        refresh = params.get('refresh', False)
+        identifier = params.get('preset_id')
+        if type(refresh) is not bool or (identifier is not None and
+                (not isinstance(identifier, str) or not identifier or len(identifier) > 128)):
+            raise BridgeError('PARAM_INVALID', '花费统计参数无效。')
+        gateway = services().gateway
+        preset = next((p for p in gateway.list_presets() if p['id'] == identifier), None) if identifier else gateway.get_configuration()
+        if preset is None:
+            return {'preset': None, 'spend': None}
+        if refresh:
+            value = gateway.balance(preset['id'], refresh=True, cancel=ctx.cancel)
+        spend = gateway.balance_history.summary(preset['id'])
+        spend['supported'] = supported(preset['provider_id'], preset['base_url']) and preset['has_api_key']
+        spend['query_failed'] = refresh and spend['supported'] and value is None
+        return {'preset': preset, 'spend': spend}
+
+    bridge.register('usage.spend', summary)
+    return Tracker() if isinstance(bridge, QObject) else None

@@ -1,6 +1,7 @@
 import * as React from "react"
 import { BookOpen, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { Button } from "../ui"
+import { ClassroomMarkdown } from "./Markdown"
 import "./conversation.css"
 
 export type SourceCard = { id: string; text: string; title: string; url: string | null; locator: string }
@@ -58,7 +59,7 @@ export const OriginalCards = React.forwardRef<OriginalCardsHandle, { cards: Sour
             <button className="original-card" aria-expanded={full} aria-controls={textId} onClick={() => setExpanded(previous => {
               const next = new Set(previous); if (next.has(s.id)) next.delete(s.id); else next.add(s.id); return next
             })}>{full ? <ChevronDown size={14} /> : <ChevronRight size={14} />}<span>{s.locator || "原文段落"}</span><small>{full ? "收起全文" : "展开全文"}</small></button>
-            {full && <div className="original-fulltext" id={textId} data-selectable>{s.text}</div>}
+            {full && <div className="original-fulltext" id={textId} data-selectable><ClassroomMarkdown content={s.text} /></div>}
           </div>
         })}
       </section>)}</div>}
@@ -82,6 +83,7 @@ export function ConversationActions({ step, conversation, act, busy, ask }: {
       <Button kind="primary" disabled={busy} onClick={() => act("classroom.next", {}, "老师在接着讲…")}>没有，下一个</Button>
       <Button disabled={busy} onClick={ask}>我想问…</Button>
     </>}
+    {["testing", "checking", "practice"].includes(step) && <Button disabled={busy} onClick={ask}>我想问…</Button>}
   </div>
 }
 

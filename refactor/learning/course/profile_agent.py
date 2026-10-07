@@ -58,7 +58,9 @@ def _preference_text(prefs):
     styles = dict(warm="温和", strict="严厉", humorous="幽默", calm="沉稳")
     detail = dict(brief="精简", normal="适中", detailed="详细")
     examples = dict(few="少", normal="适量", many="多")
-    return f"风格{styles[prefs['teacher_style']]}；详略{detail[prefs['detail']]}；例子{examples[prefs['examples']]}；类比领域" + "、".join(DOMAINS[d] for d in prefs["analogy_domains"])
+    return (f"风格{styles[prefs['teacher_style']]}；详略{detail[prefs['detail']]}；例子{examples[prefs['examples']]}；类比领域" +
+            "、".join(DOMAINS[d] for d in prefs["analogy_domains"]) +
+            ("；老师人设：" + prefs['persona'] if prefs.get('persona') else ""))
 
 
 _CONTEXT_LABELS = {

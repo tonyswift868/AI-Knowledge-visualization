@@ -4,6 +4,12 @@ import type { VoiceInputController } from "./useVoiceInput"
 import "./voice.css"
 
 const size = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
+const source = (url: string) => {
+  try {
+    const host = new URL(url).hostname
+    return host === "ghfast.top" ? "GHFast（第三方加速）" : host === "github.com" ? "GitHub" : host
+  } catch { return "正在连接" }
+}
 
 function ModelDialog({ voice }: { voice: VoiceInputController }) {
   const ref = React.useRef<HTMLDialogElement>(null)
@@ -24,8 +30,9 @@ function ModelDialog({ voice }: { voice: VoiceInputController }) {
     <h2 id={title}>{voice.model?.invalid ? "重新准备语音模型" : "开启本机语音输入"}</h2>
     <p id={description}>下载 SenseVoice 语音模型和语音检测模型后，就可以边说边出字。识别在本机完成，录音不会上传，也不会自动发送文字。</p>
     <div className="mf-voice-model-size"><span>首次下载</span><strong>{voice.model ? size(voice.model.size_bytes) : "正在读取大小…"}</strong></div>
-    <p className="mf-voice-fine">仅下载时连接官方模型来源；之后识别可离线使用。</p>
+    <p className="mf-voice-fine">仅下载模型时联网；之后识别可离线使用。</p>
     {downloading && <div className="mf-voice-progress" role="status" aria-live="polite">
+      <span>来源：{source(voice.model?.download_url || "")}</span>
       <progress aria-label="语音模型下载进度" max={total || 1} value={done} />
       <span>{cancelling ? "正在取消并清理临时文件…" : done >= total && total > 0 ? "正在校验模型…" : `${size(done)} / ${size(total)}`}</span>
       {!voice.ownsDownload && <span>下载已在另一个语音组件中启动。</span>}

@@ -20,7 +20,7 @@ export async function call(method:string,params:any={}) {
     return {draft:{...d,messages:[...d.messages]}}
   }
   if(method==='plan.detail')return {plan:{id:'plan42',title:'计算机术语',goal:'理解术语',state:'ready',total_minutes:30,window:null},
-    sources:[],stages:[{id:'s1',title:'基础',modules:[{id:'m1',title:'网络',summary:'理解概念',learning_minutes:15,check_minutes:2,cloze_heavy:true,points:[]},
-    {id:'m2',title:'硬件',summary:'理解概念',learning_minutes:15,check_minutes:2,cloze_heavy:false,points:[]}]}]}
+    sources:[],stages:[{id:'s1',title:'基础',modules:[{id:'m1',title:'网络',summary:'理解概念',learning_minutes:15,check_minutes:2,state:'passed',question_count:3,passed_questions:2,cloze_heavy:true,points:[]},
+    {id:'m2',title:'硬件',summary:'理解概念',learning_minutes:15,check_minutes:2,question_count:0,passed_questions:0,cloze_heavy:false,points:[]}]}]}
   return {}
 }

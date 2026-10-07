@@ -111,6 +111,33 @@ def register(bridge, window):
     bridge.register("settings.get", settings_get)
     bridge.register("settings.save", settings_save)
 
+    def teacher_presets(params, ctx):
+        current = services()
+        current.settings.bind_store(current.store)
+        return current.settings.teacher_presets()
+
+    def save_teacher_presets(params, ctx):
+        current = services()
+        result = current.settings.save_teacher_presets(params.get('presets'), params.get('default_id'), current.store,
+                                                      confirm_delete=params.get('confirm_delete', False))
+        if not result.get('confirmation_required'):
+            window.settings_changed(current.settings.load())
+        return result
+
+    def set_teacher_preset(params, ctx):
+        current = services()
+        current.settings.bind_store(current.store)
+        group = current.settings.teacher_presets()
+        preset_id = _text(params, 'preset_id', limit=80)
+        preset = next((row for row in group['presets'] if row['id'] == preset_id), None)
+        if preset is None: raise BridgeError('TEACHER_PRESET_NOT_FOUND', '这个老师预设已不存在，请重新选择。')
+        current.store.set_teacher_preset(_text(params, 'plan_id', limit=240), preset_id)
+        return {'teacher_preset': {k: preset[k] for k in ('id', 'name')}}
+
+    bridge.register('settings.teacher_presets', teacher_presets)
+    bridge.register('settings.save_teacher_presets', save_teacher_presets)
+    bridge.register('plan.set_teacher_preset', set_teacher_preset)
+
     # ------------------------------------------------------------- models
     def providers(params, ctx):
         from ..connections.providers import REGISTRY
@@ -230,6 +257,8 @@ def register(bridge, window):
 
     from . import chat
     chat.register(bridge, services)
+    from ..course import self_test
+    self_test.register(bridge, services, window)
 
     from . import plan_flow
     plan_flow.register(bridge, services, window, _local_study_day, fetcher=getattr(window, "research_fetcher", None))
@@ -242,3 +271,5 @@ def register(bridge, window):
     # Classroom calls study_day() with no arguments (as the simulator wires it);
     # passing the settings-taking helper itself made entering a class fail.
     classroom.register(bridge, services, lambda: _local_study_day(services().settings.load()), presence=presence)
+    from ..connections.balance import register as register_balance
+    register_balance(bridge, services)

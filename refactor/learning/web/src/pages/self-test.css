@@ -1,0 +1,25 @@
+.self-test-page { max-width: 1080px; }
+.self-test-title,.self-test-actions,.self-test-progress { display:flex;align-items:center;gap:14px;flex-wrap:wrap; }
+.self-test-title h2 { display:flex;align-items:center;gap:10px;margin:10px 0;font-size:1.5rem; }
+.self-test-page .card { margin-top:18px; }
+.self-test-import-result label,.self-test-import label,.self-test-missing label,.self-test-objective label { display:block; }
+.self-test-page label>.input { margin-top:8px; }
+.self-test-page .input { max-width:100%;box-sizing:border-box; }
+.self-test-page h3,.self-test-page summary { overflow-wrap:anywhere; }
+.self-test-page details { padding:14px 0;border-bottom:1px solid var(--border); }
+.self-test-page summary { cursor:pointer;line-height:1.6; }
+.self-test-original { white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;margin-top:12px; }
+.self-test-progress { justify-content:space-between; }
+.self-test-actions { margin-top:16px; }
+.self-test-objective h3 { white-space:pre-wrap; }
+.self-test-objective fieldset { border:0;padding:0;margin-bottom:20px; }
+.self-test-objective fieldset label { padding:12px;border:1px solid var(--border);border-radius:12px;margin-top:10px; }
+.self-test-objective input[type=radio],.self-test-objective input[type=checkbox] { margin-right:12px; }
+.self-test-objective>label { margin-bottom:14px; }
+.self-test-error { color:var(--danger,#c54353);line-height:1.6; }
+.self-test-complete>svg { color:var(--accent); }
+.self-test-results>div { display:flex;flex-direction:column;gap:8px;padding:14px 0;border-bottom:1px solid var(--border); }
+.self-test-empty { padding:36px;text-align:center; }
+.self-test-import textarea,.self-test-missing textarea { width:100%; }
+.self-test-verdict p { overflow-wrap:anywhere; }
+@media(max-width:600px) { .self-test-progress { align-items:flex-start;flex-direction:column; }.self-test-page { padding-bottom:20px; } }

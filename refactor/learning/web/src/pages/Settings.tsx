@@ -4,14 +4,14 @@ import {
   BellRing, BookOpenText, Bot, CheckCircle2, Clock3, Coins, GraduationCap, HeartHandshake, KeyRound, Laugh, LogOut, Palette, PlugZap, RefreshCw,
   ShieldCheck, Target, Trash2, UserRound, Users, Waypoints,
 } from "lucide-react"
-import { call, BridgeFailure } from "../bridge"
-import { useApp, type Settings as S, type SettingsTab } from "../store"
+import { call, on, BridgeFailure } from "../bridge"
+import { useApp, type Settings as S, type SettingsTab, type TeacherPreset } from "../store"
 import { Button, Field, Segmented, Skeleton, Toggle } from "../ui"
 
 const TABS: { id: SettingsTab; label: string; icon: any }[] = [
   { id: "models", label: "模型连接", icon: PlugZap },
   { id: "usage", label: "模型用量", icon: Coins },
-  { id: "learning", label: "学习偏好", icon: GraduationCap },
+  { id: "learning", label: "老师预设", icon: GraduationCap },
   { id: "time", label: "时间与提醒", icon: Clock3 },
   { id: "appearance", label: "外观", icon: Palette },
   { id: "account", label: "账号与安全", icon: ShieldCheck },
@@ -86,33 +86,42 @@ type Preset = { id: string; provider_id: string; display_name: string; base_url:
 const isRelay = (id: string) => id.startsWith("relay_")
 
 type VendorBalance = { label: string; balances: { amount: string; currency: string }[]; updated_at: string }
+type SpendCurrency = { currency: string; ready: boolean; today: string; week: string; month: string; days: { date: string; amount: string }[] }
+type Spend = { ready: boolean; observations: number; currencies: SpendCurrency[]; balance: VendorBalance | null;
+  supported: boolean; query_failed?: boolean; unavailable?: boolean }
+const money = (amount: string, currency: string) => `${currency === "CNY" ? "¥" : currency === "USD" ? "$" : currency + " "}${Number(amount).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
+const spendHint = (value: Spend) => value.unavailable ? "花费记录暂时无法读取" : !value.supported ? "此预设暂不支持查询账户余额" : value.observations > 0
+  ? "刚开始记录，下次查询后显示花费" : "尚未查到余额，下次查询后开始记录"
 
 function ApiBalance({ preset, reload }: { preset: Preset; reload: number }) {
-  const [value, setValue] = React.useState<VendorBalance | null>(null)
+  const [value, setValue] = React.useState<Spend | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [revision, setRevision] = React.useState(0)
   const [now, setNow] = React.useState(Date.now())
-  React.useEffect(() => {
-    let current = true
-    setValue(null)
-    if (!preset.has_api_key) return
+  const request = React.useRef(0)
+  const load = React.useCallback(async (refresh: boolean) => {
+    const sequence = ++request.current
+    if (!preset.has_api_key) { setValue(null); setBusy(false); return }
     setBusy(true)
-    call<{ balance: VendorBalance | null }>("models.balance", { preset_id: preset.id, refresh: reload > 0 || revision > 0 })
-      .then((r) => { if (current) setValue(r.balance) })
-      .catch(() => { if (current) setValue(null) })
-      .finally(() => { if (current) setBusy(false) })
-    return () => { current = false }
-  }, [preset, reload, revision])
+    try {
+      const result = await call<{ spend: Spend | null }>("usage.spend", { preset_id: preset.id, refresh })
+      if (sequence === request.current) setValue(result.spend)
+    } catch { /* keep the last successful amounts while the bridge reconnects */ }
+    finally { if (sequence === request.current) setBusy(false) }
+  }, [preset.id, preset.has_api_key, preset.base_url])
+  React.useEffect(() => { void load(true) }, [load, reload, revision])
   React.useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30000)
-    return () => clearInterval(timer)
-  }, [])
-  if (!value) return null
-  const minutes = Math.max(0, Math.floor((now - Date.parse(value.updated_at)) / 60000))
-  return <div style={{ textAlign: "right" }}>
-    <div>{value.label}：{value.balances.map((b) => `${b.currency} ${b.amount}`).join(" · ")}</div>
+    const off = on("balance_spend", (data) => { if (data?.preset_id === preset.id) void load(false) })
+    const timer = setInterval(() => { setNow(Date.now()); void load(false) }, 30000)
+    return () => { ++request.current; off(); clearInterval(timer) }
+  }, [load, preset.id])
+  if (!value) return <span className="small muted">{busy ? "正在读取…" : "暂未查到花费"}</span>
+  const minutes = value.balance ? Math.max(0, Math.floor((now - Date.parse(value.balance.updated_at)) / 60000)) : null
+  const tooltip = value.balance ? `${value.balance.label}：${value.balance.balances.map((b) => money(b.amount, b.currency)).join(" · ")}` : "暂无余额记录"
+  return <div style={{ textAlign: "right" }} title={tooltip}>
+    <div>{value.ready ? value.currencies.map((c) => c.ready ? `今天花了 ${money(c.today, c.currency)}` : `${c.currency} 刚开始记录`).join(" · ") : <span className="small muted">{spendHint(value)}</span>}</div>
     <div className="row small muted" style={{ justifyContent: "flex-end" }}>
-      <span>{minutes < 1 ? "更新于刚刚" : `更新于 ${minutes} 分钟前`}</span>
+      <span>{minutes == null ? "" : minutes < 1 ? "更新于刚刚" : `更新于 ${minutes} 分钟前`}</span>
       <Button small busy={busy} onClick={() => setRevision((r) => r + 1)}><RefreshCw size={13} />刷新</Button>
     </div>
   </div>
@@ -250,7 +259,7 @@ function Models() {
         <div className="card stack">
           <div className="row between"><h2>已保存的预设</h2><Button small onClick={() => setBalanceReload((n) => n + 1)}><RefreshCw />刷新余额</Button></div>
           <table className="table">
-            <thead><tr><th>名称</th><th>模型</th><th>Key</th><th>厂商余额</th><th /></tr></thead>
+            <thead><tr><th>名称</th><th>模型</th><th>Key</th><th>今天花费</th><th /></tr></thead>
             <tbody>
               {presets.map((p) => (
                 <tr key={p.id}>
@@ -322,6 +331,7 @@ function Usage() {
     ["缓存未命中 token", t?.uncached_input_tokens], ["输出 token", t?.output_tokens], ["搜索次数", t?.search_requests]] as const
   return (
     <div className="stack">
+      <BalanceSpend />
       <div className="row between">
         <Segmented value={days} onChange={setDays} options={[{ value: 1, label: "今天" }, { value: 7, label: "近 7 天" }, { value: 30, label: "近 30 天" }]} />
         <Segmented value={groupBy} onChange={setGroupBy} options={[{ value: "purpose", label: "按用途" }, { value: "model", label: "按模型" }, { value: "day", label: "按日期（UTC）" }]} />
@@ -348,6 +358,59 @@ function Usage() {
   )
 }
 
+function BalanceSpend() {
+  const [value, setValue] = React.useState<Spend | null>(null)
+  const [preset, setPreset] = React.useState<Preset | null>(null)
+  const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState("")
+  const request = React.useRef(0)
+  const load = React.useCallback(async (refresh = false) => {
+    const sequence = ++request.current
+    setBusy(true)
+    try {
+      const result = await call<{ preset: Preset | null; spend: Spend | null }>("usage.spend", { refresh })
+      if (sequence === request.current) { setPreset(result.preset); setValue(result.spend); setError("") }
+    } catch { if (sequence === request.current) setError("花费暂时无法读取，请稍后刷新。") }
+    finally { if (sequence === request.current) setBusy(false) }
+  }, [])
+  React.useEffect(() => {
+    void load(true)
+    const off = on("balance_spend", () => void load())
+    // Refresh local date buckets at midnight even when no new observation arrives.
+    const timer = setInterval(() => void load(), 30000)
+    return () => { ++request.current; off(); clearInterval(timer) }
+  }, [load])
+  const currencies = value?.currencies.length ? value.currencies : [{ currency: "CNY", ready: false, today: "0", week: "0", month: "0", days: [] }]
+  return <section className="stack" aria-label="账户余额变化花费">
+    <div className="row between"><h3>花费{preset ? ` · ${preset.display_name}` : ""}</h3><Button small busy={busy} onClick={() => void load(true)}><RefreshCw />刷新花费</Button></div>
+    {currencies.map((currency) => <React.Fragment key={currency.currency}>
+      <div className="grid three">
+        {([["今天花了", currency.today], ["本周", currency.week], ["本月", currency.month]] as const).map(([label, amount]) => <div className="card stat" key={label}>
+          <div className="label">{label}</div><div className="value">{currency.ready ? money(amount, currency.currency) : "—"}</div>
+        </div>)}
+      </div>
+      <p className="small muted">按账户余额变化计算；如果这把 Key 也在别处使用，那部分也会算进来</p>
+      {!currency.ready && <p className="sub" role="status">{value ? spendHint(value) : busy ? "正在读取花费…" : "尚未选择可查询余额的模型预设"}</p>}
+      {value?.query_failed && <p className="small muted" role="status">本次余额查询未成功，已保留原有记录，下次再查。</p>}
+      <div className="card" aria-label={`最近 14 天花费（${currency.currency}）`} style={{ padding: 20 }}>
+        <h3>最近 14 天</h3>
+        {currency.days.length ? <div role="list" style={{ display: "flex", gap: 6, marginTop: 16, alignItems: "flex-end", height: 152 }}>
+          {currency.days.map((day, index) => {
+            const max = Math.max(...currency.days.map((d) => Number(d.amount)), 0.0001)
+            const label = `${day.date}：${currency.ready ? money(day.amount, currency.currency) : "尚未开始统计"}`
+            return <div role="listitem" aria-label={label} title={label} key={day.date} style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
+              <div style={{ height: Math.max(2, Number(day.amount) / max * 112), background: "var(--accent)", borderRadius: "5px 5px 0 0", opacity: Number(day.amount) > 0 ? 0.85 : 0.18 }} />
+              <div className="small muted" style={{ marginTop: 6, fontSize: "0.65rem", whiteSpace: "nowrap" }}>{index % 2 === 0 || index === 13 ? day.date.slice(5) : "\u00a0"}</div>
+            </div>
+          })}
+        </div> : <p className="sub">查询余额后开始记录。</p>}
+      </div>
+    </React.Fragment>)}
+    {error && <p className="sub" role="status">{error}</p>}
+    <h3>Token 与缓存统计</h3>
+  </section>
+}
+
 // ---------------------------------------------------------------- learning
 const STYLE_ICON: Record<string, any> = { warm: HeartHandshake, strict: Target, humorous: Laugh, calm: BookOpenText }
 const STYLE = {
@@ -358,48 +421,71 @@ const STYLE = {
 } as Record<string, [string, string]>
 const DOMAIN: Record<string, string> = { life: "生活", games: "游戏", programming: "编程", sports: "体育", music: "音乐", cooking: "烹饪", film: "影视", business: "商业", nature: "自然" }
 
+type PresetGroup = { presets: TeacherPreset[]; default_id: string }
+
 function Learning() {
   const settings = useApp((s) => s.settings)!
-  const save = useSaveSettings()
-  const toggleDomain = (d: string) => {
-    const has = settings.analogy_domains.includes(d)
-    const next = has ? settings.analogy_domains.filter((x) => x !== d) : [...settings.analogy_domains, d]
-    if (next.length) save({ analogy_domains: next })
+  const toast = useApp((s) => s.toast)
+  const [group, setGroup] = React.useState<PresetGroup>({ presets: [], default_id: "" })
+  const [edit, setEdit] = React.useState<TeacherPreset | null>(null)
+  const [busy, setBusy] = React.useState(false)
+  const [confirm, setConfirm] = React.useState<{ group: PresetGroup; message: string } | null>(null)
+  React.useEffect(() => {
+    if (settings.teacher_presets) setGroup({ presets: settings.teacher_presets, default_id: settings.default_teacher_preset_id! })
+  }, [settings.teacher_presets, settings.default_teacher_preset_id])
+  React.useEffect(() => {
+    let live = true
+    call<PresetGroup>("settings.teacher_presets").then((r) => { if (live) setGroup(r) }).catch((e) => toast("error", e.message))
+    return () => { live = false }
+  }, [toast])
+  const save = async (next: PresetGroup, confirmed = false) => {
+    setBusy(true)
+    try {
+      const r = await call<PresetGroup & { confirmation_required?: boolean; message?: string }>("settings.save_teacher_presets", { ...next, confirm_delete: confirmed })
+      if (r.confirmation_required) { setConfirm({ group: next, message: r.message! }); return }
+      setGroup({ presets: r.presets, default_id: r.default_id }); setConfirm(null); setEdit(null)
+      toast("ok", "老师预设已保存，下次讲课立即使用。")
+    } catch (e) { toast("error", (e as Error).message) } finally { setBusy(false) }
   }
+  const create = () => {
+    const name = ["预设一", "预设二", "预设三", "预设四"].find((n) => !group.presets.some((p) => p.name === n)) ?? "新老师"
+    setEdit({ id: `teacher-${crypto.randomUUID()}`, name, persona: "", style: "warm", detail: "brief", examples: "normal", analogies: ["life"] })
+  }
+  const change = (patch: Partial<TeacherPreset>) => setEdit((p) => p ? { ...p, ...patch } : p)
   return (
-    <div className="stack">
-      <div className="card stack">
-        <h2>老师的风格</h2>
-        <p className="sub">所有计划共用。老师永远是同一位，只是说话方式不同。</p>
-        <div className="grid two">
-          {Object.entries(STYLE).map(([id, [name, text]]) => (
-            <button key={id} className={`choice ${settings.teacher_style === id ? "on" : ""}`} onClick={() => save({ teacher_style: id })}>
-              <div className="ico">{React.createElement(STYLE_ICON[id] ?? UserRound)}</div><div><b>{name}</b><p>{text}</p></div>
-            </button>
-          ))}
+    <div className="stack" data-teacher-presets>
+      <div className="row between"><div><h2>老师预设</h2><p className="sub">新计划使用默认预设；每个计划可以随时换老师。人设只影响讲课措辞，教学规则优先。</p></div>
+        <Button onClick={create} disabled={busy || !!edit || group.presets.length >= 4}>新建预设</Button></div>
+      {group.presets.length >= 4 && <p className="muted">最多 4 个预设</p>}
+      {group.presets.map((p) => (
+        <div key={p.id} className="card stack" data-preset-id={p.id}>
+          <div className="row between"><h3>{p.name} {p.id === group.default_id && <span className="badge">默认</span>}</h3>
+            <div className="row"><Button kind="ghost" disabled={busy || !!edit} onClick={() => setEdit({ ...p, analogies: [...p.analogies] })}>编辑 {p.name}</Button>
+              {p.id !== group.default_id && <Button kind="ghost" disabled={busy || !!edit} onClick={() => save({ ...group, default_id: p.id })}>设为默认</Button>}
+              <Button kind="ghost" disabled={busy || !!edit || p.id === group.default_id} title={p.id === group.default_id ? "默认预设不能删，请先改默认" : "删除预设"}
+                onClick={() => save({ ...group, presets: group.presets.filter((r) => r.id !== p.id) })}><Trash2 size={15} />删除</Button></div></div>
+          <p style={{ whiteSpace: "pre-wrap" }}>{p.persona ? p.persona.slice(0, 140) + (p.persona.length > 140 ? "…" : "") : "未设置手写人设"}</p>
+          <p className="sub">{STYLE[p.style]?.[0]} · 讲解{({ brief: "精简", normal: "适中", detailed: "详细" } as Record<string, string>)[p.detail]} · 例子{({ few: "少一些", normal: "适中", many: "多一些" } as Record<string, string>)[p.examples]} · 类比：{p.analogies.map((d) => DOMAIN[d]).join("、")}</p>
         </div>
-      </div>
-      <div className="card stack">
-        <div className="row between">
-          <div><h2>讲解详略</h2><p className="sub">一个知识点讲多深。需要时老师仍会把该讲的讲完。</p></div>
-          <Segmented value={settings.detail} onChange={(v) => save({ detail: v })}
-                     options={[{ value: "brief", label: "精简" }, { value: "normal", label: "适中" }, { value: "detailed", label: "详细" }]} />
-        </div>
-        <div className="row between">
-          <div><h2>举例多少</h2><p className="sub">多用生活中的例子来解释，而不是照念资料。</p></div>
-          <Segmented value={settings.examples} onChange={(v) => save({ examples: v })}
-                     options={[{ value: "few", label: "少一些" }, { value: "normal", label: "适中" }, { value: "many", label: "多一些" }]} />
-        </div>
-      </div>
-      <div className="card stack">
-        <h2>喜欢的类比领域</h2>
-        <p className="sub">老师会优先用这些领域打比方；实在套不上就不硬套。至少选一个。</p>
-        <div className="row wrap">
-          {Object.entries(DOMAIN).map(([id, name]) => (
-            <button key={id} className={`tag-btn ${settings.analogy_domains.includes(id) ? "on" : ""}`} onClick={() => toggleDomain(id)}>{name}</button>
-          ))}
-        </div>
-      </div>
+      ))}
+      {edit && <section className="card stack" aria-label="编辑老师预设">
+        <h3>编辑老师预设</h3>
+        <Field label="名称"><input className="input" aria-label="预设名称" value={edit.name} onChange={(e) => change({ name: e.target.value })} /></Field>
+        <Field label="老师人设（可空，最多 2000 字）"><textarea className="input" aria-label="老师人设" rows={5} maxLength={2000} value={edit.persona} onChange={(e) => change({ persona: e.target.value })} /><span className="sub">{edit.persona.length} / 2000</span></Field>
+        <h3>老师风格</h3><div className="grid two">{Object.entries(STYLE).map(([id, [name, text]]) => (
+          <button key={id} className={`choice ${edit.style === id ? "on" : ""}`} onClick={() => change({ style: id })}><div className="ico">{React.createElement(STYLE_ICON[id] ?? UserRound)}</div><div><b>{name}</b><p>{text}</p></div></button>
+        ))}</div>
+        <div className="row between"><span>讲解详略</span><Segmented value={edit.detail} onChange={(v) => change({ detail: v })} options={[{ value: "brief", label: "精简" }, { value: "normal", label: "适中" }, { value: "detailed", label: "详细" }]} /></div>
+        <div className="row between"><span>举例多少</span><Segmented value={edit.examples} onChange={(v) => change({ examples: v })} options={[{ value: "few", label: "少一些" }, { value: "normal", label: "适中" }, { value: "many", label: "多一些" }]} /></div>
+        <h3>类比领域（至少一个）</h3><div className="row wrap">{Object.entries(DOMAIN).map(([id, name]) => (
+          <button key={id} className={`tag-btn ${edit.analogies.includes(id) ? "on" : ""}`} onClick={() => {
+            const next = edit.analogies.includes(id) ? edit.analogies.filter((d) => d !== id) : [...edit.analogies, id]
+            if (next.length) change({ analogies: next })
+          }}>{name}</button>
+        ))}</div>
+        <div className="row"><Button disabled={busy || !edit.name.trim()} onClick={() => save({ ...group, presets: group.presets.some((p) => p.id === edit.id) ? group.presets.map((p) => p.id === edit.id ? edit : p) : [...group.presets, edit] })}>保存预设</Button><Button kind="ghost" disabled={busy} onClick={() => setEdit(null)}>取消编辑</Button></div>
+      </section>}
+      {confirm && <section className="card stack" role="dialog" aria-modal="true" aria-label="确认删除预设"><h3>删除预设</h3><p>{confirm.message}</p><div className="row"><Button disabled={busy} onClick={() => save(confirm.group, true)}>确认删除</Button><Button kind="ghost" disabled={busy} onClick={() => setConfirm(null)}>取消</Button></div></section>}
     </div>
   )
 }

@@ -2,13 +2,15 @@ import * as React from "react"
 import { ArrowLeft, BookOpen, CalendarClock, ExternalLink, FilePlus2, FileText, Loader2, PlayCircle } from "lucide-react"
 import { call } from "../bridge"
 import { useApp } from "../store"
-import { Button, Skeleton, TASK_TIME_TIP, Tip } from "../ui"
-import { PlanTree } from "./NewPlan"
+import { Button, TASK_TIME_TIP, Tip } from "../ui"
+import { PointCitations, requirementWithoutDates } from "./NewPlan"
+import type { PlanTree } from "./NewPlan"
 
 type Detail = React.ComponentProps<typeof PlanTree>["detail"] & {
   unusable?: boolean; message?: string
   progress?: { remaining: number; overdue_days: number }; has_report?: boolean
   plan: { weekday_weights?: number[] }
+  teacher_preset?: { id: string; name: string }
 }
 type Window = { start: string; end: string; daily_cap_minutes: number; weekday_weights: number[] }
 const WEEK = "一二三四五六日"
@@ -16,18 +18,29 @@ const WEEK = "一二三四五六日"
 export function PlanDetail() {
   const planId = useApp((s) => s.planId)
   const go = useApp((s) => s.go)
-  const toast = useApp((s) => s.toast)
   const [detail, setDetail] = React.useState<Detail | null>(null)
   const [gaps, setGaps] = React.useState<{ point_id: string; title: string; purpose: string; reason: string }[]>([])
+  const [loadError, setLoadError] = React.useState("")
+  const [attempt, retry] = React.useReducer(n => n + 1, 0)
 
   React.useEffect(() => {
     if (!planId) { go("plans"); return }
-    call<Detail>("plan.detail", { plan_id: planId }).then(setDetail).catch((e) => { toast("error", e.message); go("plans") })
+    let live = true
+    setDetail(null); setLoadError("")
+    const timer = setTimeout(() => { if (live) { live = false; setLoadError("读取超时") } }, 15000)
+    call<Detail>("plan.detail", { plan_id: planId }).then(d => {
+      if (!live) return
+      clearTimeout(timer); setDetail(d)
+      call<typeof gaps>("classroom.gaps", { plan_id: planId }).then(rows => { if (live) setGaps(rows) }).catch(() => {})
+    }).catch(e => { if (live) { clearTimeout(timer); setLoadError(e.message || "读取计划失败") } })
     setGaps([])
-    call<typeof gaps>("classroom.gaps", { plan_id: planId }).then(setGaps).catch(() => {})
-  }, [planId, go, toast])
+    return () => { live = false; clearTimeout(timer) }
+  }, [planId, go, attempt])
 
-  if (!detail) return <div className="page"><div className="card stack"><Skeleton h={26} w="40%" /><Skeleton h={120} /></div></div>
+  if (!detail) return <div className="page"><div className="card stack" role={loadError ? "alert" : "status"}>
+    {loadError ? <><b>{loadError}</b><div className="row"><Button data-testid="detail-retry" onClick={retry}>重试</Button><Button kind="ghost" onClick={() => go("plans")}>返回我的计划</Button></div></>
+      : <span className="row"><Loader2 className="spin" size={18} />正在读取计划…</span>}
+  </div></div>
   if (detail.unusable) return <div className="page"><Button small kind="ghost" onClick={() => go("plans")}><ArrowLeft />我的计划</Button><div className="card stack" style={{ marginTop: 12 }}><h1>{detail.plan.title || detail.plan.goal}</h1><p role="status">{detail.message || "旧版计划，已不可用"}</p></div></div>
   const points = detail.stages.reduce((a, s) => a + s.modules.reduce((b, m) => b + m.points.length, 0), 0)
   return (
@@ -38,6 +51,7 @@ export function PlanDetail() {
           <div className="eyebrow">{detail.plan.window ? `${detail.plan.window.start} → ${detail.plan.window.end}` : "学习路线"}</div>
           <h1 style={{ fontSize: "1.6rem" }}>{detail.plan.title || detail.plan.goal}</h1>
           <p style={{ overflowWrap: "anywhere" }} data-selectable>学习目标：{detail.plan.goal}</p>
+          <TeacherPresetPicker detail={detail} onChanged={teacher_preset => setDetail(d => d && {...d, teacher_preset})} />
           <div className="outline-sum" style={{ marginTop: 14 }}>
             <div><span>模块</span><b>{detail.stages.reduce((a, s) => a + s.modules.length, 0)} 个 · {points} 个知识点</b></div>
             <div><span>总时长（含检验）</span><b>{Math.round(detail.plan.total_minutes / 6) / 10} 小时</b></div>
@@ -55,8 +69,8 @@ export function PlanDetail() {
         <WindowCard planId={detail.plan.id} window={detail.plan.window as unknown as Window} onSaved={setDetail} />}
       {detail.plan.state === "active" && <AddMaterialCard detail={detail} onApplied={() =>
         call<Detail>("plan.detail", { plan_id: detail.plan.id }).then(setDetail)} />}
-      <div className="section-title"><h2>路线</h2><span>点模块名展开知识点；绿色已掌握、黄色有瑕疵、红色没过</span></div>
-      <div className="card"><PlanTree detail={detail} /></div>
+      <div className="section-title"><h2>知识地图</h2><span>点模块展开知识点；掌握情况按题统计</span></div>
+      <div className="card"><QuestionMap detail={detail} /></div>
       {gaps.length > 0 && <div className="card stack" style={{ marginTop: 12 }} role="status">
         <b>资料缺失，已跳过</b>
         {gaps.map((g, i) => <span key={`${g.point_id}:${g.purpose}:${i}`}>{g.title}：{g.reason}。本次跳过不代表已掌握。</span>)}
@@ -74,6 +88,75 @@ export function PlanDetail() {
       </div>
     </div>
   )
+}
+
+type DetailModule = Detail["stages"][number]["modules"][number] & { question_count?: number; passed_questions?: number }
+function moduleStatus(m: DetailModule) {
+  if (m.question_count === 0) return ["只学不考", "muted"]
+  if (m.state === "passed" || m.state === "skipped") return ["检测通过", "ok"]
+  if (m.state === "failed") return ["未通过", "warn"]
+  if (m.points.some(p => p.taught)) return ["学习中", ""]
+  return ["未学", "muted"]
+}
+function QuestionMap({detail}: {detail: Detail}) {
+  let n = 0
+  return <div className="outline-tree" data-testid="detail-route">{detail.stages.map((s, i) => <section key={s.id} className="stage">
+    <div className="stage-label"><span>阶段 {i + 1}</span><b>{detail.stages.length === 1 ? "全部模块" : requirementWithoutDates(s.title)}</b></div>
+    <div className="stage-modules">{s.modules.map((m: DetailModule) => {
+      const [label,tone] = moduleStatus(m); n++
+      return <details key={m.id} className="module-node">
+        <summary className="module-toggle" style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <b style={{flex:"1 1 220px",overflowWrap:"anywhere"}}><em>{n}</em>{m.title}</b>
+          <span className={`pill ${tone}`}>{label}</span><span className="pill muted">{m.question_count === undefined ? "题目统计暂不可用" : `题目 ${m.question_count} 道，已过 ${m.passed_questions ?? 0} 道`}</span>
+          <span className="pill muted">{m.points.length} 个点 · {m.learning_minutes + m.check_minutes} 分钟</span>
+        </summary><p>{m.summary}</p>
+        <ModulePoints module={m} />
+      </details>
+    })}</div>
+  </section>)}</div>
+}
+// Native details keeps expansion local; only mount the long point list when opened.
+function ModulePoints({module:m}:{module:DetailModule}) {
+  const ref = React.useRef<HTMLDivElement>(null)
+  const [open,setOpen] = React.useState(false)
+  React.useEffect(() => {
+    const details = ref.current!.parentElement as HTMLDetailsElement
+    const toggle = () => setOpen(details.open)
+    details.addEventListener("toggle",toggle)
+    return () => details.removeEventListener("toggle",toggle)
+  },[])
+  return <div ref={ref}>{open && <ol className="point-list">{m.points.map(p => <li key={p.id}>
+    <b>{p.title}</b><span>{p.summary}</span><em>{p.minutes} 分钟{p.taught ? " · 已学" : ""}{p.needs_review ? " · 需要复习" : ""}</em>
+    <PointCitations citations={p.citations} />
+  </li>)}</ol>}</div>
+}
+function TeacherPresetPicker({detail,onChanged}:{detail:Detail;onChanged:(p:{id:string;name:string})=>void}) {
+  const [open,setOpen] = React.useState(false)
+  const [presets,setPresets] = React.useState<{id:string;name:string}[] | null>(null)
+  const [error,setError] = React.useState("")
+  const [busy,setBusy] = React.useState(false)
+  async function show() {
+    setOpen(!open)
+    if (open) return
+    setError("");setPresets(null)
+    try { const r = await call<{presets:{id:string;name:string}[]}>("settings.teacher_presets");setPresets(r.presets.slice(0,4)) }
+    catch(e) { setError((e as Error).message) }
+  }
+  async function choose(p:{id:string;name:string}) {
+    setBusy(true);setError("")
+    try {const r = await call<{teacher_preset?:typeof p} & Partial<typeof p>>("plan.set_teacher_preset",{plan_id:detail.plan.id,preset_id:p.id});
+      const selected = r.teacher_preset ?? (r.id && r.name ? {id:r.id,name:r.name} : null)
+      if (!selected) throw new Error("老师预设保存结果不完整，请重试")
+      onChanged(selected);setOpen(false)
+    } catch(e) {setError((e as Error).message)} finally {setBusy(false)}
+  }
+  return <div className="stack" style={{gap:8,marginTop:12,alignItems:"flex-start"}}>
+    <Button small data-testid="teacher-picker" aria-expanded={open} onClick={show}>老师：{detail.teacher_preset?.name ?? "默认老师"}</Button>
+    {open && <div className="stack" style={{gap:8}}>{presets ? <div className="row wrap">{presets.map(p => <Button small data-preset-id={p.id} key={p.id} disabled={busy} kind={p.id===detail.teacher_preset?.id?"primary":"ghost"} onClick={()=>choose(p)}>{p.name}</Button>)}</div> : !error && <span className="muted small">正在读取老师预设…</span>}
+      {presets?.length === 0 && <span>还没有保存的老师预设，请先在设置中添加。</span>}
+      <span className="muted small">更换老师预设不用重新备课，下一句老师回复开始使用。</span></div>}
+    {error && <span role="alert">{error}</span>}
+  </div>
 }
 
 function PracticeCard({ detail, onOpen }: { detail: Detail; onOpen: () => void }) {

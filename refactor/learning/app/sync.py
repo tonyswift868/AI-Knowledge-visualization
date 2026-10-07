@@ -14,10 +14,12 @@ from ..sync_source import TRANSIENT_SESSION_CODES, CONNECTION_UNSTABLE
 
 class WindowSync(QObject):
     _remote_chat = Signal()
+    _remote_settings = Signal()
 
     def __init__(self, window, services, *, http_transport=None, sync_options=None):
         super().__init__(window)
         self.window, self.bridge = window, window.bridge
+        self.settings = services.settings
         self._closed = self._paused = False
         store = services.store
         context = dict(account_id=services.account_id, session_provider=services.session_provider,
@@ -30,6 +32,7 @@ class WindowSync(QObject):
         self.service.state_changed.connect(self._status_changed)
         self.bridge.request_failed.connect(self.note_error)
         self._remote_chat.connect(self._chat_changed, Qt.ConnectionType.QueuedConnection)
+        self._remote_settings.connect(self._settings_changed, Qt.ConnectionType.QueuedConnection)
 
     def start(self):
         if self._closed: return
@@ -75,8 +78,14 @@ class WindowSync(QObject):
         if self._closed: return
         if origin == 'local':
             self.service.notify_local_change()
-        elif entities & {'chat_sessions', 'chat_messages'}:
-            self._remote_chat.emit()
+        else:
+            if entities & {'chat_sessions', 'chat_messages'}: self._remote_chat.emit()
+            if 'account_settings' in entities: self._remote_settings.emit()
+
+    @Slot()
+    def _settings_changed(self):
+        if not self._closed and not self._paused:
+            self.window.settings_changed(self.settings.load())
 
     @Slot()
     def _chat_changed(self):

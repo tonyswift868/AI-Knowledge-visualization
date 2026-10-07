@@ -29,8 +29,9 @@ async function run(){
   button('确认，开始找资料').click();await wait()
   assert(button('让 AI 推荐 / 换一批'),'确认后资料操作')
   root.render(<PlanDetail />);await wait(200)
-  const warnings=document.body.textContent?.match(/这个模块有较多知识点用的是原文填空题/g)||[]
-  assert(warnings.length===1,'只对cloze_heavy模块显示说明')
-  window.result={ok:true,passed:['选项回答','预览确认与修改','确认后搜索','cloze_heavy详情提示']}
+  assert(document.body.textContent?.includes('题目 3 道，已过 2 道'),'按题显示掌握情况')
+  assert(document.body.textContent?.includes('只学不考'),'无题模块只学不考')
+  assert(!document.body.textContent?.includes('原文填空题'),'不再显示旧挖空比例提示')
+  window.result={ok:true,passed:['选项回答','预览确认与修改','确认后搜索','按题统计与只学不考']}
 }
 run().catch(e=>{window.result={ok:false,error:String(e),body:document.body.textContent}})

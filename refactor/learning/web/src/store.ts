@@ -3,6 +3,7 @@ import { create } from "zustand"
 export type Route = "home" | "plans" | "plan" | "new-plan" | "classroom" | "report" | "tools" | "chat" | "settings"
 export type SettingsTab = "models" | "usage" | "learning" | "time" | "appearance" | "account"
 
+export type TeacherPreset = { id: string; name: string; persona: string; style: string; detail: string; examples: string; analogies: string[] }
 export type Settings = {
   version: number
   theme: "sakura" | "aurora"
@@ -16,6 +17,8 @@ export type Settings = {
   reminder_enabled: boolean
   reminder_time: string
   chat_persona: string
+  teacher_presets?: TeacherPreset[]
+  default_teacher_preset_id?: string
 }
 
 export type Account = { name: string; role_label: string; settings_available?: boolean }

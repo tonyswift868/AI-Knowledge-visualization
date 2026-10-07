@@ -421,7 +421,9 @@ class PlanFlow:
             if exc.code != "NOT_FOUND":
                 raise
             store.create_plan(plan_id, goal=form["goal"], final_goal=form["final_goal"], level=form["level"],
-                              notes=form["notes"], window=window)
+                              notes=form["notes"], window=window,
+                              teacher_preset_id=(self.services.settings.load().get('default_teacher_preset_id', 'teacher-1')
+                                                 if getattr(self.services, 'settings', None) is not None else 'teacher-1'))
         draft["form"] = form
         draft["name"] = short_plan_name(form["goal"])
         store.rename_plan(plan_id, draft["name"])
@@ -1195,7 +1197,7 @@ class PlanFlow:
     def _notify_preparation(self, plan_id, job):
         if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
         data = {k: job[k] for k in ('module_id', 'done', 'total', 'text', 'error')}
-        data.update(plan_id=plan_id)
+        data.update(plan_id=plan_id, status=job['status'])
         try: self.push('plan_preparation', data)
         except Exception: log.info('preparation view closed', exc_info=True)
         for notify in list(job['listeners']):
@@ -1808,40 +1810,55 @@ class PlanFlow:
     def detail(self, plan_id):
         store = self.services.store
         plan = store.get_plan(plan_id)
+        from .settings import resolve_teacher_preset
+        preset = resolve_teacher_preset(getattr(self.services, 'settings', None), plan)
         if plan.get('unusable'):
             return dict(plan=dict(plan, state='unusable'), stages=[], sources=[], has_report=False,
+                        teacher_preset={k: preset[k] for k in ('id', 'name')},
                         unusable=True, message='旧版计划，已不可用')
         stages = store.records("stages", plan_id)
         modules = store.records("modules", plan_id)
         points = store.records("points", plan_id)
         started = plan.get("state") in ("active", "checking", "completed")
         book = store.load_mastery(plan_id) if started else None
-        mastery = {}
         taught = {row['credit']['unit_id'] for row in store.records('credits', plan_id)
                   if row['id'].startswith(('learn:', 'relearn:'))} if started else set()
         from ..course.question_bank import review_points
         review = review_points(store.records('practice_results', plan_id)) if started else set()
-        if book is not None:  # MAP-01: what the learner has shown so far, point by point
-            for point in points:
-                state = book.point(point["id"])
-                mastery[point["id"]] = {"state": state.state, "level": state.level,
-                                        "errors": state.casual_errors + state.module_errors,
-                                        "needs_review": point['id'] in review,
-                                        "taught": point['id'] in taught}
         by_module: dict[str, list] = {}
         sources=store.records('sources',plan_id)
         chunks=store.records('source_chunks',plan_id)
+        # Detail is a read projection. Classify each source once, rather than
+        # rebuilding and hashing an entire book for every knowledge point.
+        source_chunks: dict[str, list] = {}
+        chunk_source = {}
+        for chunk in chunks:
+            source_chunks.setdefault(chunk['source_id'], []).append(chunk)
+            chunk_source[chunk['id']] = chunk['source_id']
+        lists = self._lists()
+        general = {s['id']: source_quality.assess_stored(s, source_chunks.get(s['id'], []), '', lists=lists)['credibility'] == 3
+                   for s in sources if not (s.get('adopted') or s.get('user_provided'))}
+        bank_counts: dict[str, list[int]] = {}
+        from ..course.question_bank import assessment_questions
+        for question in assessment_questions(store.records('question_bank', plan_id)):
+            counts = bank_counts.setdefault(question['module_id'], [0, 0])
+            counts[0] += 1
+            counts[1] += int(bool(book and book.question(question['id']).passed))
         for point in points:
+            cids = point['chunk_ids']
             by_module.setdefault(point["module_id"], []).append(
                 {"id": point["id"], "title": point.get("title", ""), "summary": point["summary"], "minutes": point["minutes"],
                  "citations": point.get("citations", []),
-                 "source_general":source_quality.general_only(point['chunk_ids'],sources,chunks,lists=self._lists()),
-                 **mastery.get(point["id"], {})})
+                 "source_general": bool(cids) and all(cid in chunk_source and general.get(chunk_source[cid], False) for cid in cids),
+                 "needs_review": point['id'] in review, "taught": point['id'] in taught})
         result = {"plan": {k: plan.get(k) for k in ("id", "title", "goal", "final_goal", "state", "window", "total_minutes", "module_count")},
+                  "teacher_preset": {k: preset[k] for k in ('id', 'name')},
                   "stages": [{"id": s["id"], "title": s.get("title", ""), "modules": [
                       {"id": m["id"], "title": m["title"], "summary": m.get("summary", ""), "learning_minutes": m["learning_minutes"],
                        "check_minutes": m["check_minutes"], "points": by_module.get(m["id"], []),
                        "state": book.module(m["id"]).state if book else None,
+                       "question_count": bank_counts.get(m['id'], [0, 0])[0],
+                       "passed_questions": bank_counts.get(m['id'], [0, 0])[1],
                        "cloze_heavy": bool((m.get('material_preparation') or {}).get('cloze_heavy'))}
                       for m in modules if m["stage_id"] == s["id"]]} for s in stages],
                   "sources": [{"id": s["id"], "title": s.get("title") or s.get("url") or s.get("filename"), "url": s.get("url"),

@@ -204,12 +204,13 @@ class Classroom:
         try:return importlib.import_module('refactor.learning.course.point_materials')
         except ImportError as exc:raise BridgeError('MATERIAL_COMPONENT_MISSING','资料与题库组件尚未接入，请稍后重试。') from exc
 
-    def _ready(self, course, module_id):
+    def _ready(self, course, module_id, *, questions=None):
         module=course.module(module_id);status=module.get('material_preparation',{}).get('state')
         passages=all(course.passages([p['id']]) for p in course.points_of(module_id))
-        if module.get('question_count') is not None and module['question_count']!=len(self._questions(course,module_id)):
+        questions = self._questions(course,module_id) if questions is None else questions
+        if module.get('question_count') is not None and module['question_count']!=len(questions):
             return False
-        return passages and (status=='done' or status is None and bool(self._questions(course,module_id)))
+        return passages and (status=='done' or status is None and bool(questions))
 
     def _fingerprint(self, course, module_id):
         data=[{k:v for k,v in p.items() if k!='chunk_ids'} for p in course.points_of(module_id)]
@@ -239,10 +240,16 @@ class Classroom:
         mid=state['module_id']
         entered=entering or state.get('preparation_module_entered')!=mid
         state['preparation_module_entered']=mid
-        if not self._ready(course,mid) and state.get('materials_attempted',{}).get(mid)!=self._fingerprint(course,mid):
+        # One bank read per readiness pass; no persistent cache across actions.
+        by_module={m['id']:[] for m in course.modules}
+        for question in self._questions(course):
+            by_module.setdefault(question['module_id'],[]).append(question)
+        remaining=[m for m in course.modules if not self._ready(course,m['id'],questions=by_module[m['id']])]
+        if not remaining:return
+        if any(m['id']==mid for m in remaining) and state.get('materials_attempted',{}).get(mid)!=self._fingerprint(course,mid):
             self._prepare(course,mid,retry=entered)
         self._preparation_flow()._prepare_remaining(course.plan_id,
-            [dict(m, points=course.points_of(m['id'])) for m in course.modules if not self._ready(course,m['id'])], self._materials().prepare_module)
+            [dict(m, points=course.points_of(m['id'])) for m in remaining], self._materials().prepare_module)
 
     def _wait(self, course, state, action, args=()):
         mid=state['module_id'];job=self._prepare(course,mid)
@@ -340,25 +347,47 @@ class Classroom:
         self._deliver(course,state,teaching,user=text)
 
     def ask(self, course, state, ctx, text):
+        if not state.get('pending') and state['step'] in ('opening','teaching','closing'):
+            self._student_message(course,state,ctx,text)
+            if state.get('conversation'):state['conversation']['interrupted']=True
+            return
         # A pending answer is not an active grading request. The explicit ask
         # action never goes through the grader and never changes the position.
         point_ids=self._focus(course,state)
-        teaching=self._teacher(course,state,ctx,'正常回答学生追问，依据本点和本计划已采用资料；没有依据就直说“资料里没讲到”，可在计划里补充资料。回答完回到原来的位置，不出题、不判分。',point_ids,user=text,allow_plan=True)
+        director='正常回答学生追问，依据本点和本计划已采用资料；没有依据就直说“资料里没讲到”，可在计划里补充资料。回答完回到原来的位置，不出题、不判分。'
+        if state.get('pending'):
+            director+='当前屏幕上正在检测，学生这句明确是提问，不是作答。只解答这个疑问，不继续讲课、不讲当前题的答案或必答要点、不提示如何答题。题目与检测仍保留。'
+            director+='软件操作事实：客观题在选项或输入框作答、程序判；问答题用上方卡片先写自己的回答，再点看答案，逐条勾自己答到的要点并提交，全部勾到才算对。你只回答提问，不代替卡片、不改变软件的判法。'
+            director+='说“继续”不会跳过检测题，也不会退回讲课；不要建议这样跳题，不编造操作。回答完请学生回到当前卡片作答。'
+        teaching=self._teacher(course,state,ctx,director,point_ids,user=text,allow_plan=True)
         self._deliver(course,state,teaching,user=text)
         if state.get('conversation'):state['conversation']['interrupted']=True
+
+    def _student_message(self, course, state, ctx, text):
+        # One teacher call handles replies and questions without grading or
+        # moving the teaching position. The same sources serve both routes.
+        teaching=self._teacher(course,state,ctx,
+            '根据刚才对话自行辨别学生这句话是在回答理解性问题，还是新问题或没懂的地方。'
+            '是回答：理解一致就简单肯定，偏了对照原文说明；口误或表达不完整不纠缠。'
+            '是提问：依据本点和本计划已采用资料解答，没有依据直说资料里没讲到。'
+            '一条回复完成，不另作分类；答完仍在当前讲解位置，不打分、不说答对或答错，不出题卡。',
+            self._focus(course,state),user=text,allow_plan=True)
+        self._deliver(course,state,teaching,user=text,explained=state['step']=='opening')
+        if state['step']=='opening':
+            state['step']='teaching'
+            if state.get('conversation'):state['conversation']['options']=[]
 
     def back(self, course, state, ctx):
         if state.get('conversation'):state['conversation']['interrupted']=False
 
     def reply(self, course, state, ctx, text):
-        if state['step']=='opening':return self._explain(course,state,ctx,text)
+        if state['step']=='opening':return self._student_message(course,state,ctx,text)
         pending=state.get('pending')
         if not pending:
             if text.strip() in ('继续','懂了，继续','懂了继续','下一个','我会了','我已经会了') and state['step'] in ('teaching','closing'):
                 return self.next(course,state,ctx)
             if state['step'] in ('teaching','closing'):
-                teaching=self._teacher(course,state,ctx,'回应学生对刚才讲解或理解性问题的回答：理解一致就简单肯定，理解偏了对照原文说明偏在哪；口误或表达不完整不纠缠。不打分、不说答对或答错，不出题卡。',self._focus(course,state),user=text)
-                return self._deliver(course,state,teaching,user=text)
+                return self._student_message(course,state,ctx,text)
             return self.ask(course,state,ctx,text)
         q=pending['question']
         prior=self._prior_verdict(course,state,pending)
@@ -370,7 +399,7 @@ class Classroom:
             value=answer_compare.choice_text(q,text)
             if value is None:
                 self._user(course,state,text)
-                return self._say(course,state,'请点题目选项作答；想问老师可以点“提问”，当前题目保留。',role='system')
+                return self._say(course,state,'请点题目选项作答；想问老师可以点“我想问…”，当前题目保留。',role='system')
         elif q['kind']=='fill':
             value=[text] if len(q['answer'])==1 else re.split(r'[；;\n]+',text)
         else:value=text
@@ -633,7 +662,7 @@ class Classroom:
         excerpts=course.excerpts(point_ids)
         available=self._related_passages(course,excerpts,user) if allow_plan else excerpts
         document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
-        tctx=dict(plan=plan,module=module,prefs=self._prefs(),profile=document.get('text','')[:6000],dialogue=self._dialogue(course,state),
+        tctx=dict(plan=plan,module=module,prefs=self._prefs(course),profile=document.get('text','')[:6000],dialogue=self._dialogue(course,state),
             current_points=[dict(id=pid,title=course.point(pid)['title']) for pid in point_ids],
             director=director,user=user,excerpts=excerpts,plan_passages=available,opening=opening)
         tctx['request_page']=self._teacher_request_page
@@ -738,7 +767,7 @@ class Classroom:
         facts='；'.join(course.point(pid)['title']+'曾答错：'+reason for pid,reason in latest.items())
         text=f"已讲{len(taught)}个知识点；另有{len(skipped)}个点直接考通过、没有讲（全计划{len(course.points)}个点）。"
         if facts:text+='已记录的作答事实：'+facts
-        course.store.save_teacher_profile(course.plan_id,dict(document,text=text,preferences=self._prefs(),
+        course.store.save_teacher_profile(course.plan_id,dict(document,text=text,preferences=self._prefs(course),
             weak_points=[dict(point_id=pid,note=reason) for pid,reason in latest.items()]))
 
     def _file(self, plan_id):
@@ -833,9 +862,9 @@ class Classroom:
         self._say(course, state, "这份计划已完成！可以在「我的计划」里查看学习报告。")
 
 
-    def _prefs(self):
-        settings = self.services.settings.load()
-        return {key: settings[key] for key in PREF_KEYS}
+    def _prefs(self, course):
+        from .settings import teaching_preferences
+        return teaching_preferences(self.services.settings, course.store, course.plan_id)
 
 
     def _skeleton(self, course, state, point_ids):
@@ -908,6 +937,8 @@ class _Course:
         for point in self.points:
             point.setdefault("title", (point.get("summary") or "知识点")[:40])
         self._points_by_id={p['id']:p for p in self.points}
+        self._points_by_module={m['id']:[] for m in self.modules}
+        for point in self.points:self._points_by_module[point['module_id']].append(point)
         self._chunks = None
         self._sources = None
         if not self.modules or not self.points:
@@ -917,7 +948,7 @@ class _Course:
         return next(m for m in self.modules if m["id"] == module_id)
 
     def points_of(self, module_id):
-        return [p for p in self.points if p["module_id"] == module_id]
+        return self._points_by_module.get(module_id,[])
 
     def point(self, point_id):
         try:return self._points_by_id[point_id]

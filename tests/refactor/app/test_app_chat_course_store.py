@@ -37,7 +37,8 @@ def test_same_instant_turn_order_title_and_reopen(qapp, tmp_root, monkeypatch):
         assert [m['role'] for m in saved['messages']] == ['user', 'assistant'] * 3
         assert [m['seq'] for m in saved['messages']] == list(range(1, 7))
         assert services.store.get_chat_session(sid)['title'] == saved['title'] == '问题0'
-        assert len(services.store.pending_records(100)) == 7
+        # 7 chat records plus the account's migrated teacher-preset settings.
+        assert len(services.store.pending_records(100)) == 8
         assert not list(services.store.root.glob('tools/chat/sessions/*.json'))
         with CourseStore(ACCOUNT, tmp_root) as reopened:
             again = CourseChatStore(reopened).get(sid)
@@ -80,6 +81,7 @@ def test_failed_model_stream_keeps_outbox_unchanged(qapp, tmp_root):
     services, bridge, sent = setup(qapp, tmp_root)
     try:
         sid = ask(qapp, bridge, sent, 'create', 'chat.create')['result']['session']['id']
+        services.settings.load()  # normal app bootstrap migrates account settings before chat
         pending = services.store.pending_records(100)
         def fail(*args, **kwargs):
             kwargs['on_text']('不完整回复')

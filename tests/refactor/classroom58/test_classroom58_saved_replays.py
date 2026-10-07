@@ -76,7 +76,7 @@ def test_teacher_replay_never_retries_or_pastes_english_source():
     course=SimpleNamespace(store=store,plan_id='saved57',points=ctx['module']['points'],excerpts=lambda ids:ctx['excerpts'],point=lambda pid:next(p for p in ctx['module']['points'] if p['id']==pid))
     room=Classroom(SimpleNamespace(gateway=SimpleNamespace(complete=complete)),lambda:None)
     room._skeleton=lambda *a:(ctx['plan'],ctx['module'])
-    room._prefs=lambda:ctx['prefs'];room._dialogue=lambda *a:[]
+    room._prefs=lambda course:ctx['prefs'];room._dialogue=lambda *a:[]
     result=room._teacher(course,{},None,ctx['director'],[ctx['current_points'][0]['id']],opening=True)
     assert len(calls)==1 and result.speech.startswith('刚才我们摸到了键盘')
     # Repeated genuine format failure is surfaced, never replaced by raw source.

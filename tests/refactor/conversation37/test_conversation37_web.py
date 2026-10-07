@@ -14,7 +14,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[3]))
 from tests.refactor.conversation37.test_grounded_conversation37 import make_environment, act, question
 from refactor.learning.app.classroom import Classroom
 
-def build(directory):
+def build(directory, browser_fixture=None):
     repo=Path(__file__).resolve().parents[3];fixture=Path(__file__).parent
     node=Path(r'D:\MentorFlow\.local\node\node.exe');deps=Path(r'D:\MentorFlow\.local\web-deps')
     if not node.is_file():pytest.skip('共享前端工具不存在')
@@ -40,7 +40,7 @@ def build(directory):
         ('../bridge','conversation37_bridge.ts'),('../teacher/TeacherStage','conversation37_optional.tsx'),('../voice','conversation37_optional.tsx')]]
     aliases.append(dict(find='./states.json',replacement=(directory/'states.json').as_posix()))
     (directory/'index.html').write_text('<div id="root"></div><script type="module" src="/entry.tsx"></script>',encoding='utf-8')
-    (directory/'entry.tsx').write_text(f'import {json.dumps((fixture/"conversation37_browser.tsx").as_posix())}',encoding='utf-8')
+    (directory/'entry.tsx').write_text(f'import {json.dumps((browser_fixture or fixture/"conversation37_browser.tsx").as_posix())}',encoding='utf-8')
     config=f'''
 import path from 'node:path'
 import {{pathToFileURL}} from 'node:url'

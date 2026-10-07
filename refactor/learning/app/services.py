@@ -22,7 +22,7 @@ class AppServices:
         self.session_provider = session_provider
         self.api_base_url = api_base_url
         self.ca_bundle = ca_bundle
-        self.settings = AppSettings(account_id, data_root)
+        self.settings = AppSettings(account_id, data_root, store_provider=lambda: self.store)
         self._lock = threading.RLock()
         self._gateway = None
         self._store = None

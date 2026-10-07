@@ -144,13 +144,16 @@ def _linked(path: Path) -> bool:
 
 class AssetDownloader:
     def __init__(self, path: Path, assets: tuple[DownloadAsset, ...], *,
-                 keep_partial_on_network_error: bool = False, timeout: float = 15):
+                 keep_partial_on_network_error: bool = False, timeout: float = 15,
+                 fallback_on_network_error: bool = False):
         self.path = Path(path).absolute()
         self.assets = tuple(assets)
         self.staging = self.path.with_name("." + self.path.name + ".download")
         self.backup = self.path.with_name("." + self.path.name + ".previous")
         self.keep_partial_on_network_error = keep_partial_on_network_error
         self.timeout = timeout
+        self.fallback_on_network_error = fallback_on_network_error
+        self.current_download_url: str | None = None
         self.last_download_urls: dict[str, str] = {}
         self.last_resolved_urls: dict[str, str] = {}
         self.required: dict[str, tuple[int, str]] = {}
@@ -247,14 +250,19 @@ class AssetDownloader:
             verified.unlink()
         last_error = None
         for url in asset.urls:
-            for _ in range(3):
+            for attempt in range(3):
                 check_cancel(cancel)
                 offset = partial.stat().st_size if partial.exists() else 0
                 if offset > asset.size:
                     partial.unlink()
                     offset = 0
+                resumed = offset > 0
                 try:
                     if offset < asset.size or not partial.exists():
+                        # Notify before connecting, so a stalled source is visible too.
+                        self.current_download_url = url
+                        progress(base + offset, self.size_bytes)
+                        check_cancel(cancel)
                         headers = {"User-Agent": "MentorFlow/VOICE-01", "Accept-Encoding": "identity"}
                         if offset:
                             headers["Range"] = f"bytes={offset}-"
@@ -267,6 +275,7 @@ class AssetDownloader:
                                     raise DownloadError("网络失败", "资源下载的续传范围无效，请重试。")
                             elif response.status == 200:
                                 offset = 0  # A server may ignore Range. Never append its full response.
+                                resumed = False
                             else:
                                 raise DownloadError("网络失败", "资源下载服务器返回了无效响应。")
                             self.last_download_urls[asset.name] = url
@@ -275,7 +284,11 @@ class AssetDownloader:
                             with partial.open("ab" if offset else "wb") as writer:
                                 while True:
                                     check_cancel(cancel)
-                                    chunk = response.read(min(CHUNK_SIZE, asset.size - offset + 1))
+                                    # read1 returns received bytes without waiting to fill
+                                    # a whole chunk; socket timeout is an idle timeout,
+                                    # not a total transfer deadline.
+                                    read = getattr(response, "read1", response.read)
+                                    chunk = read(min(CHUNK_SIZE, asset.size - offset + 1))
                                     if not chunk:
                                         break
                                     if offset + len(chunk) > asset.size:
@@ -299,7 +312,14 @@ class AssetDownloader:
                     last_error = exc
                     if exc.code == "校验失败":
                         partial.unlink(missing_ok=True)
+                        if resumed and url == asset.urls[-1] and attempt < 2:
+                            # An interrupted mirror may have supplied a bad prefix.
+                            # Give the origin a clean bounded attempt before
+                            # attributing that mixed-file checksum to the origin.
+                            continue
                         break  # Do not download known bad bytes again from the same mirror.
+                    if self.fallback_on_network_error and url != asset.urls[-1]:
+                        break
                 except (OSError, http.client.HTTPException) as exc:
                     if _disk_full(exc):
                         raise DownloadError("磁盘不足", "磁盘空间不足，资源未安装。") from exc
@@ -307,6 +327,8 @@ class AssetDownloader:
                         partial.unlink(missing_ok=True)
                     last_error = DownloadError("网络失败", "资源下载失败，请检查网络后重试。")
                     last_error.__cause__ = exc
+                    if self.fallback_on_network_error and url != asset.urls[-1]:
+                        break
         check_cancel(cancel)
         raise last_error or DownloadError("网络失败", "资源下载失败。")
 

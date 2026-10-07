@@ -54,6 +54,7 @@ class CallContext:
 class _Handler:
     function: Callable[[dict, CallContext], Any]
     ui: bool
+    method: str = ""
 
 
 def _json_default(value):
@@ -73,6 +74,8 @@ class AppBridge(QObject):
 
     event = Signal(str)
     request_failed = Signal(str)
+    request_completed = Signal(str)
+    closing = Signal()
     _deliver = Signal(str)
 
     def __init__(self, parent=None, *, workers: int = 4):
@@ -102,7 +105,7 @@ class AppBridge(QObject):
     def register(self, method: str, function, *, ui: bool = False):
         if not _METHOD.fullmatch(method) or method in self._handlers:
             raise ValueError(f"invalid or duplicate bridge method: {method}")
-        self._handlers[method] = _Handler(function, ui)
+        self._handlers[method] = _Handler(function, ui, method)
 
     def push(self, name: str, data=None):
         """Python-initiated notification (thread-safe)."""
@@ -204,6 +207,10 @@ class AppBridge(QObject):
         if context.cancel.is_set() and not response["ok"]:
             response["error"] = {"code": "CANCELLED", "message": "已取消。"}
         self._send(response)
+        # A failed generation can still have consumed paid tokens. Optional
+        # observers run after either outcome, never after session cancellation.
+        if not context.cancel.is_set() and not self._closed:
+            self.request_completed.emit(handler.method)
 
     def cancel_pending(self):
         """Cancel account work while retaining the bridge for re-verification."""
@@ -213,6 +220,7 @@ class AppBridge(QObject):
 
     def close(self):
         self._closed = True
+        self.closing.emit()
         self.cancel_pending()
         with self._lock:
             self._pending.clear()

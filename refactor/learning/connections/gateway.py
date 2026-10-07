@@ -18,6 +18,7 @@ from __future__ import annotations
 import copy
 from dataclasses import replace
 import math
+import hashlib
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -32,7 +33,7 @@ from .errors import ModelCancelled, ModelError
 from . import providers, transport
 from .pricing import PriceCatalog, timestamp
 from .usage import UsageLog
-from .balance import BalanceClient, supported as balance_supported
+from .balance import BalanceClient, BalanceHistory, supported as balance_supported
 from .providers._failure_evidence import FailureEvidence
 from refactor.runtime_logging import trace_model_call
 
@@ -100,6 +101,7 @@ class ModelGateway:
             self._closed = False
             self._requests = set()
             self._balance_client = BalanceClient()
+            self.balance_history = BalanceHistory(account_id, data_root)
             self._balance_revision = 0
             # Lock ordering is always gateway then legacy.
             with self._lock, self._legacy.lock:
@@ -337,7 +339,7 @@ class ModelGateway:
         return bool(spec and spec.search is not None)
 
     def balance(self, preset_id, *, refresh=False, cancel=None):
-        """Optional read-only vendor lookup; never selects a preset or logs usage."""
+        """Optional GET-only lookup; records balances without selecting a preset."""
         token = _Cancellation(cancel)
         secret = None
         try:
@@ -354,7 +356,13 @@ class ModelGateway:
             with self._lock:
                 self._ensure_open()
                 current = next((p for p in self._load()['presets'] if p['id'] == preset_id), None)
-                return result if current == config and revision == self._balance_revision and not token.is_set() else None
+                if current != config or revision != self._balance_revision or token.is_set():
+                    return None
+                # Optional journal failure must never hide a successful balance lookup.
+                if result:
+                    self.balance_history.record(preset_id, result, series=hashlib.sha256(
+                        (config['provider_id'] + config['base_url'] + secret).encode()).hexdigest())
+                return result
         except Exception:
             return None
         finally:

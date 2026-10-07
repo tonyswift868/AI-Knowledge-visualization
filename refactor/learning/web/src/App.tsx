@@ -18,6 +18,19 @@ import { TeacherStagePreview } from "./teacher/TeacherStagePreview"
 import { VoiceInputPreview } from "./voice/VoiceInputPreview"
 
 type NavItem = { id: Route; label: string; icon: any; also?: Route[] }
+/** Keep a failed page inside the content area; navigation stays usable. */
+export class PageErrorBoundary extends React.Component<{children:React.ReactNode;back:()=>void}, {error:Error|null;attempt:number}> {
+  state = {error:null as Error|null,attempt:0}
+  static getDerivedStateFromError(error:unknown) { return {error:error instanceof Error ? error : new Error(String(error ?? "页面无法显示"))} }
+  render() {
+    const e = this.state.error
+    if (e) return <div className="page"><div className="card stack" role="alert">
+      <h2>这一页出错了</h2><p className="muted" style={{overflowWrap:"anywhere"}}>{e.message.startsWith("Minified React error") ? `页面渲染失败（React ${e.message.match(/#\d+/)?.[0] ?? "错误"}）` : e.message.slice(0,240)}</p>
+      <div className="row"><Button data-testid="page-error-back" onClick={this.props.back}>返回</Button><Button data-testid="page-error-retry" onClick={()=>this.setState(s=>({error:null,attempt:s.attempt+1}))}>重试</Button></div>
+    </div></div>
+    return <React.Fragment key={this.state.attempt}>{this.props.children}</React.Fragment>
+  }
+}
 const NAV: { label: string; items: NavItem[] }[] = [
   { label: "学习", items: [
     { id: "home", label: "首页", icon: House },
@@ -154,7 +167,9 @@ export function App() {
             </div>
           )}
           <div className="content">
-            {s.settings ? <Page key={s.route} /> : null}
+            <PageErrorBoundary key={`${s.route}:${s.planId}:${s.settingsTab}`} back={()=>s.go(s.route === "plan" || s.route === "home" ? "plans" : "home")}>
+              {s.settings ? <Page key={s.route} /> : null}
+            </PageErrorBoundary>
           </div>
         </main>
       </div>

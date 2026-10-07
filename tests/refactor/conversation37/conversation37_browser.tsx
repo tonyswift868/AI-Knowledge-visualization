@@ -41,8 +41,8 @@ async function run() {
   document.querySelector<HTMLButtonElement>(".original-toggle")!.click(); checks.push("原文卡默认折叠，展开真实段落与位置")
   button("没太懂").click(); await until(() => calls.includes("classroom.confused") && !button("我想问…").disabled); checks.push("没太懂独立桥方法")
   await until(() => document.querySelectorAll('.bubble.user').length === 2)
-  button("我想问…").click(); await until(() => content().includes("正在提问")); fill("硬度相同吗？"); await wait(); button("发送").click()
-  await until(() => content().includes("资料里没讲到")); button("回到刚才").click(); await until(() => calls.includes("classroom.back") && !content().includes("回到刚才") && !button("懂了，继续").disabled); checks.push("提问单独ask，回答后回到刚才")
+  button("我想问…").click(); fill("硬度相同吗？"); await wait(); button("发送").click()
+  await until(() => content().includes("资料里没讲到") && !button("懂了，继续").disabled); checks.push("讲课提问走统一reply，保留原位置")
   button("懂了，继续").click(); await until(() => !!document.querySelector(".class-options")); checks.push("题目卡显示题库来源")
   const selected = [...document.querySelectorAll<HTMLButtonElement>(".class-options button")][0]
   selected.click(); selected.click(); await until(() => content().includes("答对了"))
