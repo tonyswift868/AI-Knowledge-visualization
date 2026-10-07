@@ -1,5 +1,5 @@
 import * as React from "react"
-import { BookOpen, Loader2 } from "lucide-react"
+import { BookOpen, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
 import { Button } from "../ui"
 import "./conversation.css"
 
@@ -12,10 +12,59 @@ export type BankQuestion = { id: string; kind: "choice" | "multi" | "fill" | "sh
   purpose: string; blanks?: number; number?: number; total?: number }
 export type Act = (method: string, params?: Record<string, unknown>, label?: string) => Promise<boolean>
 
-export function OriginalCards({ cards, open }: { cards: SourceCard[]; open: (id: string) => void }) {
-  return <div className="original-cards">{cards.map((s) => <button className="original-card" key={s.id} onClick={() => open(s.id)}>
-    <BookOpen size={15} /><span><b>原文 · {s.title}</b><small>{s.locator}</small></span></button>)}</div>
-}
+export type OriginalCardsHandle = { reveal: (id: string) => boolean }
+export const OriginalCards = React.forwardRef<OriginalCardsHandle, { cards: SourceCard[]; reducedMotion?: boolean }>(
+  function OriginalCards({ cards, reducedMotion }, ref) {
+    const [shown, setShown] = React.useState(false)
+    const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set())
+    const [jump, setJump] = React.useState<{ id: string } | null>(null)
+    const entries = React.useRef(new Map<string, HTMLDivElement>())
+    const listId = React.useId()
+    const unique = React.useMemo(() => [...new Map(cards.map(s => [s.id, s])).values()], [cards])
+    const groups = React.useMemo(() => {
+      const result = new Map<string, { title: string; cards: SourceCard[] }>()
+      for (const card of unique) {
+        // The current card contract identifies material by its title and URL.
+        const key = JSON.stringify([card.title, (card.url || "").split("#")[0]])
+        if (!result.has(key)) result.set(key, { title: card.title, cards: [] })
+        result.get(key)!.cards.push(card)
+      }
+      for (const group of result.values()) group.cards.sort((a, b) => a.locator.localeCompare(b.locator, "zh-CN", { numeric: true }))
+      return [...result.values()]
+    }, [unique])
+    React.useImperativeHandle(ref, () => ({ reveal(id) {
+      if (!unique.some(s => s.id === id)) return false
+      setShown(true); setExpanded(previous => new Set(previous).add(id)); setJump({ id })
+      return true
+    } }), [unique])
+    React.useLayoutEffect(() => {
+      if (!jump || !shown) return
+      const entry = entries.current.get(jump.id)
+      entry?.scrollIntoView({ block: "nearest", behavior: reducedMotion || matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })
+      entry?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true })
+    }, [jump, shown, reducedMotion])
+    if (!unique.length) return null
+    return <section className="original-cards" aria-label="原文出处">
+      <button className="original-toggle" aria-expanded={shown} aria-controls={listId} onClick={() => setShown(value => !value)}>
+        <BookOpen size={15} /><span>原文出处（{unique.length} 处）</span>{shown ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+      {shown && <div className="original-groups" id={listId}>{groups.map((group, index) => <section className="original-group" key={index}>
+        <h4>{group.title}</h4>
+        {group.cards.map(s => {
+          const full = expanded.has(s.id)
+          const textId = `${listId}-${unique.findIndex(card => card.id === s.id)}`
+          return <div className="original-entry" key={s.id} data-source-id={s.id} data-source-target={jump?.id === s.id || undefined}
+            ref={element => { if (element) entries.current.set(s.id, element); else entries.current.delete(s.id) }}>
+            <button className="original-card" aria-expanded={full} aria-controls={textId} onClick={() => setExpanded(previous => {
+              const next = new Set(previous); if (next.has(s.id)) next.delete(s.id); else next.add(s.id); return next
+            })}>{full ? <ChevronDown size={14} /> : <ChevronRight size={14} />}<span>{s.locator || "原文段落"}</span><small>{full ? "收起全文" : "展开全文"}</small></button>
+            {full && <div className="original-fulltext" id={textId} data-selectable>{s.text}</div>}
+          </div>
+        })}
+      </section>)}</div>}
+    </section>
+  }
+)
 
 export function ConversationActions({ step, conversation, act, busy, ask }: {
   step: string; conversation?: Conversation | null; act: Act; busy: boolean; ask: () => void;

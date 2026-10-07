@@ -1,7 +1,19 @@
 .conversation-actions { display:flex; gap:8px; flex-wrap:wrap; padding:10px 20px; }
-.original-cards { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
-.original-card { display:flex; gap:8px; align-items:center; border:1px solid var(--line); border-radius:10px; padding:10px; background:var(--surface); color:inherit; text-align:left; cursor:pointer; }
-.original-card small { display:block; opacity:.7; margin-top:4px; }
+.original-cards { margin-top:12px; min-width:0; }
+.original-toggle { display:flex; align-items:center; gap:7px; border:0; padding:5px 0; background:transparent; color:var(--text-2); font:inherit; font-size:.8rem; cursor:pointer; }
+.original-toggle:hover { color:var(--accent); }
+.original-toggle:focus-visible,.original-card:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.original-groups { display:grid; gap:12px; margin-top:8px; padding:12px; background:var(--accent-soft); border:1px solid var(--border); border-radius:12px; }
+.original-group { min-width:0; }
+.original-group h4 { margin:0 0 7px; color:var(--text); font-size:.82rem; overflow-wrap:anywhere; }
+.original-entry { min-width:0; border:1px solid var(--border); border-radius:9px; margin-top:6px; scroll-margin:12px; }
+.original-entry[data-source-target="true"] { border-color:var(--accent); }
+.original-card { display:flex; width:100%; gap:7px; align-items:center; border:0; border-radius:9px; padding:9px; background:var(--surface); color:var(--text-2); text-align:left; font:inherit; font-size:.78rem; cursor:pointer; }
+.original-card > svg { flex-shrink:0; }
+.original-card > span { flex:1; min-width:0; overflow-wrap:anywhere; }
+.original-card small { flex-shrink:0; color:var(--text-3); font-size:.7rem; }
+.original-fulltext { max-height:320px; overflow:auto; overflow-wrap:anywhere; white-space:pre-wrap; padding:12px; border-top:1px solid var(--border); line-height:1.75; font-size:.82rem; color:var(--text); background:var(--surface); border-radius:0 0 9px 9px; }
+@media (max-width:600px) { .original-groups { padding:8px; } .original-card { flex-wrap:wrap; } }
 .bank-question-controls { padding:8px 20px; }
 .bank-question-controls .class-options { padding:8px 0; }
 .fill-answer { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }

@@ -274,10 +274,10 @@ export const TeacherWindow = React.forwardRef<TeacherStageHandle, {
     style={{ "--drawer-width": `${shownWidth}px` } as React.CSSProperties}>
     {!state.open && <button className="teacher-edge" aria-label="展开老师" title={hint || "展开老师"} disabled={!ready}
       onClick={() => change({...desired.current,open:true})}>
-      <PanelRightOpen size={18} /><span>展开老师</span><ChevronLeft size={14} />
+      <PanelRightClose size={18} /><span>展开老师</span><ChevronRight size={14} />
     </button>}
     <section className="teacher-panel" aria-label="老师抽屉" aria-hidden={!state.open} inert={!state.open ? true : undefined}>
-      <header className="teacher-panel-head"><b>椿老师</b><button className="icon-btn" aria-label="收起老师" onClick={() => change({...desired.current,open:false})}><PanelRightClose size={18} /></button></header>
+      <header className="teacher-panel-head"><b>椿老师</b><button className="icon-btn" aria-label="收起老师" title="收起老师" onClick={() => change({...desired.current,open:false})}><PanelRightOpen size={18} /></button></header>
       <div className="teacher-panel-scene"><TeacherBackdrop /><TeacherStage ref={ref} paused={!state.open} visible={state.open} interactive
         reducedMotion={reducedMotion} speaking={speaking} pointKey={pointKey}
         view={state.view} onViewChange={(view) => change({...desired.current,view})} /></div>

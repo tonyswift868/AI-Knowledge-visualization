@@ -14,7 +14,7 @@ import { Button } from "../ui"
 import { MicButton, useVoiceInput } from "../voice"
 import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacherVoice"
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
-import { ConversationActions, MaterialsPreparing, OriginalCards, QuestionInputs, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
+import { ConversationActions, MaterialsPreparing, OriginalCards, QuestionInputs, type OriginalCardsHandle, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
 import { RecallQuestion, type RecallRequest } from "../classroom/RecallQuestion"
 
 const TeacherWindow = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherWindow })))
@@ -70,6 +70,7 @@ export function Classroom() {
   const lessonRefresh = React.useRef<(() => void) | null>(null)
   const lessonChanged = React.useRef(false)
   const scroller = React.useRef<HTMLDivElement>(null)
+  const sourceCards = React.useRef(new Map<string, OriginalCardsHandle>())
   const spoken = React.useRef<string | null>(null)
   const streamedMessages = React.useRef(new Set<string>())
   const voiceTurn = React.useRef<{ reader: ReturnType<typeof createTeacherVoiceStream> | null; streamed: boolean; cancelled: boolean } | null>(null)
@@ -265,12 +266,12 @@ export function Classroom() {
   const q = room.question
   const done = room.points.filter((p) => p.taught).length
   const t = room.today
-  const markdown = (content: string) => (
+  const markdown = (content: string, showSource: (id: string) => void = openSource) => (
     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}
       urlTransform={(url) => (url.startsWith("mf-source:") ? url : defaultUrlTransform(url))}
       components={{
         a: ({ href, children }) => href?.startsWith("mf-source:")
-          ? <button className="cite" title="看原文" onClick={() => openSource(href.slice(10))}>{children}</button>
+          ? <button className="cite" title="看原文" onClick={() => showSource(href.slice(10))}>{children}</button>
           : <a href={href} target="_blank" rel="noreferrer">{children}</a>,
       }}>{content}</ReactMarkdown>
   )
@@ -323,8 +324,11 @@ export function Classroom() {
               {m.kind === "error" && <CircleAlert size={15} />}{m.content}</div>
             return <div key={m.id} className={`bubble bot ${m.kind === "step" ? "class-step" : m.kind === "step_reply" ? "class-step-reply" : ""}`} data-selectable>
               {m.kind === "step" && <span className="class-message-label">老师讲解</span>}
-              {m.kind === "step_reply" && <span className="class-message-label">老师回应</span>}{markdown(m.content)}
-              <OriginalCards cards={m.sources ?? []} open={openSource} />
+              {m.kind === "step_reply" && <span className="class-message-label">老师回应</span>}{markdown(m.content, id => {
+                if (!sourceCards.current.get(m.id)?.reveal(id)) void openSource(id)
+              })}
+              <OriginalCards cards={m.sources ?? []} reducedMotion={reduceMotion}
+                ref={handle => { if (handle) sourceCards.current.set(m.id, handle); else sourceCards.current.delete(m.id) }} />
               <button className="icon-btn listen" title="听这段" onClick={() => listen(m.content)}><Volume2 size={15} /></button></div>
           })}
           {verdictPreview && <div className={`class-verdict ${verdictPreview.correct ? "ok" : "bad"}`}>{verdictPreview.text}</div>}
