@@ -237,4 +237,6 @@ def register(bridge, window):
         reminder = getattr(window, "reminder", None)  # no reminder is due while in class (SYS-04)
         if reminder is not None:
             reminder.class_started(plan_id) if active else reminder.class_ended()
-    classroom.register(bridge, services, _local_study_day, presence=presence)
+    # Classroom calls study_day() with no arguments (as the simulator wires it);
+    # passing the settings-taking helper itself made entering a class fail.
+    classroom.register(bridge, services, lambda: _local_study_day(services().settings.load()), presence=presence)
