@@ -982,6 +982,11 @@ class PlanFlow:
                 store.set_source_adopted(plan_id, source["id"], False)
 
     def generate(self, draft, ctx):
+        if draft['phase'] == 'ready':
+            modules = agents.outline_modules(draft['outline'])
+            failed = [m for m in modules if draft.get('generation', {}).get(m['id']) == 'failed']
+            self._prepare_remaining(draft['plan_id'], failed, self._prepare_callable(), retry=True)
+            return
         if draft["phase"] not in ("outline", "generating"):
             raise BridgeError("PHASE_INVALID", "现在不能生成。")
         outline = draft.get("outline") or {}
@@ -996,13 +1001,7 @@ class PlanFlow:
         if errors:
             self._say(draft, "地图涉及已排除内容，请先调整：" + "；".join(errors), "error")
             return
-        prepare = self._prepare_module
-        if prepare is None:
-            try:
-                from ..course.point_materials import prepare_module
-                prepare = prepare_module
-            except ImportError:
-                raise BridgeError("PREPARATION_UNAVAILABLE", "资料与题目准备组件尚未接入，暂时不能开始计划。") from None
+        prepare = self._prepare_callable()
         store, plan_id = self.services.store, draft["plan_id"]
         chunks = {c["id"]: c for c in store.records("source_chunks", plan_id)}
         adopted, _ = self._adopted(draft)
@@ -1038,17 +1037,50 @@ class PlanFlow:
                 raise ModelCancelled()
             if not self._module_ready(plan_id, first['id']):
                 raise BridgeError('MATERIALS_INCOMPLETE', '第 1 模块的原文或带答案题不足，请补充资料后重试；计划尚未就绪。')
-        except Exception:
+        except Exception as exc:
             draft["generation"][first["id"]] = "failed"
+            reason = getattr(exc, 'message', '这个模块的题未备好，请重试。')
+            draft.setdefault('generation_errors', {})[first['id']] = reason
+            store.save_module_preparation(plan_id, first['id'], dict(state='failed', error=reason))
             self.save(draft)
             raise
         draft["generation"][first["id"]] = "done"
+        draft.setdefault('generation_errors', {}).pop(first['id'], None)
         draft["phase"] = "ready"
-        draft["messages"].append(_msg("ai", "ready", "第 1 模块的资料与题目已备好，可以开始计划。第 2 模块会在后台准备，之后每次只提前准备下一个模块。"))
+        draft["messages"].append(_msg("ai", "ready", "第 1 模块的资料与题目已备好，可以开始计划。其余模块会在后台依次全部准备，某个模块失败不影响其他模块。"))
         self.save(draft)
         row = next(m for m in store.records('modules', plan_id) if m['id'] == first['id'])
         store.save_module_preparation(plan_id, first['id'], dict(row.get('material_preparation') or {}, state='done'))
         self._prepare_remaining(plan_id, modules[1:], prepare)
+
+    def _prepare_callable(self):
+        if self._prepare_module is not None:
+            return self._prepare_module
+        try:
+            from ..course.point_materials import prepare_module
+            return prepare_module
+        except ImportError:
+            raise BridgeError('PREPARATION_UNAVAILABLE', '资料与题目准备组件尚未接入，暂时不能开始计划。') from None
+
+    def get_draft(self, plan_id):
+        draft = self.load(plan_id)
+        if draft['phase'] == 'ready':
+            modules = agents.outline_modules(draft['outline'])
+            self._prepare_remaining(plan_id, modules, self._prepare_callable())
+            draft = self.load(plan_id)
+            persisted = {m['id']:m.get('material_preparation') or {} for m in self.services.store.records('modules', plan_id)}
+            # A process can exit after the module write but before the draft
+            # write. Restore visible completion/errors before resuming the tail.
+            for m in modules:
+                summary = persisted.get(m['id'], {})
+                state = 'done' if self._module_ready(plan_id,m['id']) else summary.get('state')
+                if state in ('done', 'failed'):
+                    draft['generation'][m['id']] = state
+                    errors = draft.setdefault('generation_errors', {})
+                    if state=='failed' and summary.get('error'): errors[m['id']] = summary['error']
+                    else: errors.pop(m['id'], None)
+            # This is a read-only view; never overwrite a worker's newer draft.
+        return self.public(draft)
 
     def _material_context(self, ctx):
         # Preserve the bridge cancellation/stream contract and expose the
@@ -1075,52 +1107,54 @@ class PlanFlow:
             raise BridgeError('PREPARATION_FORMAT', '资料准备结果不完整，请重试。')
         self.services.store.save_module_preparation(plan_id, module_id, summary)
 
-    def _prepare_remaining(self, plan_id, modules, prepare, *, retry=False, notify=None, fingerprint=None):
-        """Only the first requested module, never an automatic tail sweep.
-
-        A foreground request can queue its current module behind one running
-        job. There is no speculative queue of future modules.
-        """
+    def _prepare_remaining(self, plan_id, modules, prepare, *, retry=False, notify=None, fingerprint=None, priority=False):
+        """One sequential queue per plan; classroom demand moves a job to its head."""
         if not modules or getattr(self.services, '_closed', False):
             return None
-        module = modules[0]
-        key = (plan_id, module['id'])
         state = self._material_jobs
         with state['guard']:
-            job = state['jobs'].get(key)
-            if job and job['status'] in ('running', 'queued') and not job['cancel'].is_set():
+            queue = state['queued'].setdefault(plan_id, [])
+            persisted = {m['id']: m.get('material_preparation') or {} for m in self.services.store.records('modules', plan_id)}
+            first_job = None
+            for module in modules:
+                mid = module['id']; key = (plan_id, mid)
+                job = state['jobs'].get(key)
+                if job and job['status'] in ('running', 'queued') and not job['cancel'].is_set():
+                    if job['fingerprint'] is None: job['fingerprint'] = fingerprint
+                else:
+                    ready = self._module_ready(plan_id, mid) and (not job or fingerprint is None or job['fingerprint'] in (None, fingerprint))
+                    failed = (job and job['status']=='failed') or persisted.get(mid, {}).get('state')=='failed'
+                    if not job or not (ready or failed and not retry):
+                        if job: job['cancel'].set()
+                        job = dict(module_id=mid, status='ready' if ready else 'failed' if failed and not retry else 'queued',
+                            done=0, total=len(module.get('points', [])), text='这个模块的题还在准备',
+                            error=persisted.get(mid, {}).get('error') if failed and not retry else None,
+                            fingerprint=fingerprint, cancel=threading.Event(), listeners=[])
+                        state['jobs'][key] = job
+                    if job['status']=='queued':
+                        queue[:] = [entry for entry in queue if entry[0]['id']!=mid]
+                        queue.append((module, prepare, job))
                 if job['fingerprint'] is None: job['fingerprint'] = fingerprint
                 if notify and notify not in job['listeners']: job['listeners'].append(notify)
-                return job
-            if job and job['status'] == 'ready' and self._module_ready(plan_id, module['id']) and (fingerprint is None or job['fingerprint'] == fingerprint):
-                return job
-            if job and job['status'] == 'failed' and not retry:
-                if notify and notify not in job['listeners']: job['listeners'].append(notify)
-                return job
-            if job: job['cancel'].set()
-            job = dict(module_id=module['id'], status='queued', done=0,
-                total=len(module.get('points', [])), text='这个模块的题还在准备', error=None,
-                fingerprint=fingerprint, cancel=threading.Event(), listeners=[notify] if notify else [])
-            state['jobs'][key] = job
-            previous = state['queued'].get(plan_id)
-            if previous:
-                previous[2]['cancel'].set()
-                previous[2]['status'] = 'cancelled'
-            state['queued'][plan_id] = (module, prepare, job)
-            if plan_id not in state['active']:
+                if priority and job['status']=='queued':
+                    entries = [entry for entry in queue if entry[2] is job]
+                    queue[:] = entries + [entry for entry in queue if entry[2] is not job]
+                if first_job is None: first_job = job
+            if queue and plan_id not in state['active']:
                 state['active'].add(plan_id)
                 threading.Thread(target=self._prepare_worker, args=(plan_id,), name='plan-materials', daemon=True).start()
-            return job
+            return first_job
 
     def _prepare_worker(self, plan_id):
         state = self._material_jobs
         while True:
             with state['guard']:
-                pending = state['queued'].pop(plan_id, None)
-                if pending is None:
+                queue = state['queued'].get(plan_id, [])
+                if not queue:
+                    state['queued'].pop(plan_id, None)
                     state['active'].discard(plan_id)
                     return
-                module, prepare, job = pending
+                module, prepare, job = queue.pop(0)
                 job['status'] = 'running'
             mid = module['id']
             def progress(done, total, text):
@@ -1146,7 +1180,7 @@ class PlanFlow:
                 job.update(status='failed', error=getattr(exc, 'message', '这个模块的题未备好，进入模块时可重试。'),
                            code=getattr(exc, 'code', None))
                 if not getattr(self.services, '_closed', False):
-                    try: self._record_preparation(plan_id, mid, 'failed')
+                    try: self._record_preparation(plan_id, mid, 'failed', error=job['error'])
                     except Exception: log.warning('could not persist module preparation failure', exc_info=True)
             finally:
                 self._notify_preparation(plan_id, job)
@@ -1167,7 +1201,7 @@ class PlanFlow:
             try: notify(data)
             except Exception: log.info('preparation listener closed', exc_info=True)
 
-    def _record_preparation(self, plan_id, module_id, state):
+    def _record_preparation(self, plan_id, module_id, state, *, error=None):
         # The draft is removed when learning starts. Keep module state in the
         # existing persisted summary as well, so reopen never loses completion.
         for module in self.services.store.records('modules', plan_id):
@@ -1176,7 +1210,7 @@ class PlanFlow:
                     from ..course.question_bank import assessment_questions
                     count=len(assessment_questions(self.services.store.records('question_bank',plan_id),module_id))
                     self.services.store.set_question_estimate(plan_id,module_id,count,today=self.study_day())
-                summary = dict(module.get('material_preparation') or {}, state=state)
+                summary = dict(module.get('material_preparation') or {}, state=state, error=error)
                 self.services.store.save_module_preparation(plan_id, module_id, summary)
                 break
         # Read the latest draft under the foreground operation's lock. Starting
@@ -1187,6 +1221,9 @@ class PlanFlow:
             draft = self.load(plan_id)
             if module_id in draft.get("generation", {}):
                 draft["generation"][module_id] = state
+                errors = draft.setdefault('generation_errors', {})
+                if error: errors[module_id] = error
+                else: errors.pop(module_id, None)
                 self.save(draft)
 
     def _generate_module(self, draft, module, chunks, ctx):
@@ -2125,7 +2162,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
 
     handlers = {
         "plan.current": lambda p, c: {"draft": flow().public(flow().current())},
-        "plan.get": lambda p, c: {"draft": flow().public(flow().load(plan_id(p)))},
+        "plan.get": lambda p, c: {"draft": flow().get_draft(plan_id(p))},
         "plan.drafts": lambda p, c: {"drafts": flow().drafts()},
         "plan.discard": lambda p, c: flow().discard(plan_id(p)),
         "plan.delete": lambda p, c: flow().delete_started(plan_id(p)),

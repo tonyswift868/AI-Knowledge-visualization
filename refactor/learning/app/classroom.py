@@ -222,26 +222,23 @@ class Classroom:
         key=(course.plan_id,module_id);fingerprint=self._fingerprint(course,module_id)
         job=self._preparation_flow()._prepare_remaining(course.plan_id,
             [dict(course.module(module_id), points=course.points_of(module_id))], self._materials().prepare_module,
-            retry=retry, fingerprint=fingerprint, notify=self.material_event)
+            retry=retry, fingerprint=fingerprint, notify=self.material_event, priority=True)
         if job is None:raise BridgeError('ACCOUNT_CLOSED','账号已关闭，请重新进入。')
         self._jobs[key]=job
         return job
 
     def _prepare_next_module(self, course, state, *, entering=False):
-        # Current-module transitions (including directly testing a module) are
-        # stable and persisted. Never prefetch from final/free practice focus.
-        if state.get('materials_paused') or state.get('phase')!='learning' or state.get('practice') or state['step'] in ('check_offer','completed'):
+        # Resume the whole persisted tail; current classroom demand only changes
+        # its position in the existing queue, never cancels another module.
+        if state.get('materials_paused') or course.plan.get('state')=='completed':
             return
         mid=state['module_id']
         entered=entering or state.get('preparation_module_entered')!=mid
         state['preparation_module_entered']=mid
         if not self._ready(course,mid) and state.get('materials_attempted',{}).get(mid)!=self._fingerprint(course,mid):
             self._prepare(course,mid,retry=entered)
-            return
-        index=next(i for i,m in enumerate(course.modules) if m['id']==mid)
-        if index+1<len(course.modules):
-            nxt=course.modules[index+1]['id']
-            if not self._ready(course,nxt):self._prepare(course,nxt,retry=entered)
+        self._preparation_flow()._prepare_remaining(course.plan_id,
+            [dict(m, points=course.points_of(m['id'])) for m in course.modules if not self._ready(course,m['id'])], self._materials().prepare_module)
 
     def _wait(self, course, state, action, args=()):
         mid=state['module_id'];job=self._prepare(course,mid)

@@ -49,8 +49,8 @@ def env(tmp_path):
     store.create_plan(PLAN, goal='资料备题节奏', final_goal='理解定义', level='beginner', window=PlanWindow(DAY, DAY+timedelta(days=10), 120))
     store.add_sources(PLAN, [dict(id='s', kind='url', url='https://docs.python.org/3/tutorial/', title='Python官方资料', adopted=True,
         chunks=[dict(chunk_id='k1', text='队列先进先出，栈后进先出。', section=['定义'])])])
-    store.save_outline(PLAN, [dict(id='st', title='阶段')], [dict(id=f'm{i}', stage_id='st', title=f'模块{i}', position=i) for i in range(3)])
-    for i in range(3):
+    store.save_outline(PLAN, [dict(id='st', title='阶段')], [dict(id=f'm{i}', stage_id='st', title=f'模块{i}', position=i) for i in range(4)])
+    for i in range(4):
         store.save_generated_module(PLAN, f'm{i}', [dict(id=f'p{i}', title=f'概念{i}', summary='掌握定义', minutes=8, chunk_ids=['k1'])], check_minutes=2, today=DAY)
     store.start_plan(PLAN, today=DAY)
     services = SimpleNamespace(store=store, gateway=None, account_id=ACCOUNT, data_root=tmp_path, _closed=False,
@@ -73,73 +73,8 @@ def env(tmp_path):
     store.close()
 
 
-def test_generate_prepares_first_and_second_only(fixture):
-    flow, _, ctx, _, _ = fixture
-    draft = adopt_and_map(fixture)
-    original = draft['outline']['stages'][0]['modules'][0]
-    modules = []
-    for i in range(3):
-        m = copy.deepcopy(original)
-        m.update(id=f'm{i}', key=f'm{i}', title=f'压强模块{i}')
-        modules.append(m)
-    draft['outline']['stages'][0]['modules'] = modules
-    flow.estimate(draft)
-    calls = []
-    def prepare(store, pid, mid, ctx, progress):
-        calls.append(mid); seed_module(store, pid, mid)
-    flow._prepare_module = prepare
-    flow.generate(draft, ctx)
-    wait_for(lambda: draft['plan_id'] not in flow._preparing)
-    assert calls == ['m0', 'm1']
-    assert not [q for q in flow.services.store.records('question_bank', draft['plan_id']) if q['module_id']=='m2']
-    assert flow.load(draft['plan_id'])['generation'] == dict(m0='done', m1='done', m2='pending')
 
 
-def test_enter_second_prefetches_third_and_ready_does_not_repeat(env):
-    e = env
-    e.room.perform(PLAN, 'enter', context())
-    wait_for(lambda: PLAN not in e.flow._preparing)
-    assert e.calls == ['m1']
-    e.room.perform(PLAN, 'enter', context())
-    assert e.calls == ['m1']
-    e.room.run(PLAN, lambda co, st, cx: st.update(module_id='m1', index=0, step='teach'), context())
-    wait_for(lambda: PLAN not in e.flow._preparing)
-    assert e.calls == ['m1', 'm2']
-    e.room.perform(PLAN, 'enter', context())
-    assert e.calls == ['m1', 'm2']
-
-
-def test_failed_second_retries_on_entry_without_losing_first(env):
-    e = env
-    def prepare(store, pid, mid, ctx, progress):
-        e.calls.append(mid)
-        if len(e.calls)==1: raise RuntimeError('offline failure')
-        seed_module(store, pid, mid)
-    e.materials.prepare_module = prepare
-    e.room.perform(PLAN, 'enter', context())
-    wait_for(lambda: PLAN not in e.flow._preparing)
-    assert e.store.records('modules', PLAN)[1]['material_preparation']['state']=='failed'
-    assert e.room._ready(e.room._course(PLAN), 'm0')
-    e.room.run(PLAN, lambda co, st, cx: st.update(module_id='m1', index=0, step='teach'), context())
-    wait_for(lambda: PLAN not in e.flow._preparing)
-    assert e.calls == ['m1', 'm1']
-    assert e.store.records('modules', PLAN)[1]['material_preparation']['state']=='done'
-
-
-def test_failed_next_is_not_polled_forever_and_retries_on_preceding_entry(env):
-    e=env
-    def prepare(store,pid,mid,ctx,progress):
-        e.calls.append(mid)
-        if len(e.calls)==1:raise RuntimeError('offline failure')
-        seed_module(store,pid,mid)
-    e.materials.prepare_module=prepare
-    e.room.perform(PLAN,'enter',context())
-    wait_for(lambda:PLAN not in e.flow._preparing)
-    e.room.run(PLAN,lambda *args:None,context())
-    assert e.calls==['m1']
-    e.room.perform(PLAN,'enter',context())
-    wait_for(lambda:PLAN not in e.flow._preparing)
-    assert e.calls==['m1','m1']
 
 
 def test_foreground_wait_is_nonblocking_and_deduplicates_generation_job(env):
@@ -160,7 +95,7 @@ def test_foreground_wait_is_nonblocking_and_deduplicates_generation_job(env):
     assert '这个模块的题还在准备' in view['preparation']['text']
     assert e.calls == ['m1']
     release.set(); wait_for(lambda: PLAN not in e.flow._preparing)
-    assert events and e.calls == ['m1']
+    assert events and e.calls == ['m1', 'm2', 'm3']
 
 
 def test_one_worker_per_plan_even_when_current_is_queued(env):
@@ -179,23 +114,6 @@ def test_one_worker_per_plan_even_when_current_is_queued(env):
 
 
 
-
-def test_reopen_keeps_completed_bank_and_restarts_running_next(env):
-    e=env
-    e.store.save_module_preparation(PLAN,'m0',dict(state='done'))
-    e.store.save_module_preparation(PLAN,'m1',dict(state='running'))
-    fresh=CourseStore(ACCOUNT,e.services.data_root)
-    services=SimpleNamespace(**vars(e.services)); services.store=fresh
-    for key in ('_material_flow','_material_jobs'): delattr(services,key)
-    room=Classroom(services,lambda:DAY); room._materials=lambda:e.materials
-    try:
-        room.perform(PLAN,'enter',context())
-        wait_for(lambda: PLAN not in services._material_flow._preparing)
-        assert e.calls==['m1'] and room._ready(room._course(PLAN),'m0')
-        assert fresh.records('modules',PLAN)[1]['material_preparation']['state']=='done'
-        assert not [q for q in fresh.records('question_bank',PLAN) if q['module_id']=='m2']
-    finally:
-        room.cancel_materials();fresh.close()
 
 
 def test_cross_module_stem_dedup_normalizes_width_whitespace_punctuation(env):

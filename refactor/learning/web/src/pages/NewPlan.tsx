@@ -29,7 +29,7 @@ type FormData = {
 }
 export type Draft = {
   plan_id: string; phase: "form" | "questions" | "preview" | "sources" | "material_preview" | "outline" | "generating" | "ready"; form: FormData | null
-  name?: string; goal: string; messages: Msg[]; sources: Card[]; outline: Outline | null; generation: Record<string, string>; coverage?: Coverage
+  name?: string; goal: string; messages: Msg[]; sources: Card[]; outline: Outline | null; generation: Record<string, string>; generation_errors?: Record<string,string>; coverage?: Coverage
   pending_map_delete?: {text: string}
   estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string; blocked?: boolean; points?: number }
   preview?: { summary: string; modules: { title: string; summary: string }[]; version: number }
@@ -548,10 +548,11 @@ function ProgressCard({ draft, text, busy, onRetry }: { draft: Draft; text: stri
             <span key={m.key} className={`gen-item ${states[i]}`}>
               {states[i] === "done" ? <Check size={13} /> : states[i] === "running" ? <Loader2 size={13} className="spin" /> : states[i] === "failed" ? <X size={13} /> : <i />}
               {m.title}
+              {states[i] === "failed" && <small role="alert">：{draft.generation_errors?.[m.id ?? ""] ?? "这个模块的题未备好，请重试。"}</small>}
             </span>
           ))}
         </div>
-        {draft.phase === "generating" && !busy && (failed > 0 || done < modules.length) &&
+        {!busy && (draft.phase === "generating" && (failed > 0 || done < modules.length) || draft.phase === "ready" && failed > 0) &&
           <div className="plan-actions"><Button kind="primary" onClick={onRetry}><RefreshCw />{failed > 0 ? "重试失败的模块" : "继续生成"}</Button></div>}
       </div>
     </div>

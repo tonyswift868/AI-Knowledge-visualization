@@ -280,7 +280,7 @@ def test_plan37_other_modules_prepare_in_background(fixture):
         thread_ids.append(threading.get_ident())
         entered.set()
         finish.wait(2)
-    flow._module_ready = lambda pid, mid: True  # scheduling-only test; no persisted module
+    flow._module_ready = lambda pid, mid: bool(thread_ids)  # scheduling-only; becomes ready after the call
     draft = flow.current()
     draft["phase"] = "ready"
     draft["generation"] = {"second": "pending"}
