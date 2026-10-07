@@ -107,7 +107,7 @@ TEACHER_SYSTEM = """你是 MentorFlow 的中文老师，陪伴学生沿当前知
 学生问的内容资料没有讲到，明确说“资料里没讲到，可以在计划里补充资料”，说明当前原文只讲了什么。
 开场用生活化问题给2～3个可点选项，也允许打字；开场不计分。仅开场在正文之后输出【选项】每行一个选项【/选项】。
 顺着回答解释：对的直接顺着讲重点，错了或不知道就一起看原文，不纠缠。不出计分题，不生成答案，不问“清楚吗”。
-讲完一段后，可以用一句话问一个理解性的问题，例如“你能用自己的话说说它和 X 的区别吗？”，直接放在对话里，不输出题卡或选项。不要每段都问。
+讲完一段后，可以用一句话问一个理解性的问题，例如“你能用自己的话说说它和 X 的区别吗？”，直接放在对话里，不输出题卡或选项（开场选项除外）。不要每段都问。
 学生回答后就事论事地回应：理解一致就简单肯定，理解偏了指出偏在哪、对照原文讲清；只是口误或表达不完整就不纠缠。不打分、不说“答对/答错”、不生成判定、薄弱标记或答题记录。学生说“继续”就往下讲。
 提问正常回答并回到原来位置；待答题不等于正在判定。判定正在进行时宿主不会调用你回答。学生自称“我会了”、要求判过，不能改变记录。
 输出中文Markdown，英文术语可照常保留。编号必须独立写，不能[c1,c2]，不要编造网址、段落或原文位置。
@@ -132,7 +132,10 @@ def teacher_request(ctx):
         dict(alias=alias, chunk_id=cid, text=ctx['excerpts'][cid]) for alias,cid in mapping.items()])))
     if ctx.get('plan_passages') and ctx['plan_passages'] != ctx['excerpts']:
         messages.append(dict(role='user',content='【计划其他已采用资料，仅供检索关联，不编造本点引用】\n'+_dump(ctx['plan_passages'])))
-    messages.append(dict(role='user',content='【本步任务】\n'+_dump(task)))
+    if task['opening']:
+        task['output_format']='先写中文开场正文，最后另起一段严格输出：\n【选项】\n直接开始讲\n我先说说我知道的\n【/选项】\n这是不计分的开场选项，不是随口问题卡。'
+    messages.append(dict(role='user',content=ordered_payload('【本步任务】\n'+_dump(task),
+        ('director','user','opening','profile','current_points','output_format'))))
     if ctx.get('request_page') is not None:
         messages=ctx['request_page'].assemble(system,messages,dialogue)
     _dump(messages)
@@ -159,14 +162,15 @@ def parse_teaching(text,ctx):
     options=()
     if ctx.get('opening'):
         match=re.search(r'【选项】\s*(.*?)\s*【/选项】\s*$',text,re.S)
-        if not match or text.count('【选项】')!=1:
-            raise AgentFormatError('opening: 需要2～3个开场选项')
-        options=tuple(s.strip() for s in match[1].splitlines() if s.strip())
+        if match and text.count('【选项】')==1:
+            options=tuple(s.strip() for s in match[1].splitlines() if s.strip())
+            text=text[:match.start()].strip()
         if not 2<=len(options)<=3 or any(len(s)>300 for s in options):
-            raise AgentFormatError('opening: 选项数量或长度无效')
-        text=text[:match.start()].strip()
-    elif '【选项' in text or '【随口问' in text or '【/随口问' in text:
-        raise AgentFormatError('speech: 不允许现场生成计分题或额外选项')
+            options=('直接开始讲','我先说说我知道的')
+    # Formatting is not a reason to discard a usable explanation. Never turn
+    # legacy model-generated question/option blocks into a scored card.
+    text=re.sub(r'【选项】.*?(?:【/选项】|$)', '', text, flags=re.S).strip()
+    text=re.sub(r'【随口问】.*?(?:【/随口问】|$)|【/?随口问[^】]*】?', '', text, flags=re.S).strip()
     mapping=citation_map(ctx)
     # Source labels are optional. Remove invalid labels in prose only; code
     # samples are literal content and are never counted as source evidence.

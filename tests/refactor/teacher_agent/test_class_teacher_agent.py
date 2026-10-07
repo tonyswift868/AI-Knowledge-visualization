@@ -103,9 +103,7 @@ def test_citation_inside_literal_code_cannot_vouch_for_knowledge():
     assert agent.parse_teaching('示例`[c99]`，原文解释。[c1]',context()).cited_chunks==('chunk-a',)
 
 
-@pytest.mark.parametrize("text", ["", "   ", "Only English explanation. [c1]", "正文【随口问】", "正文【/随口问】",
-    "正文【随口问】第一题【/随口问】【随口问】第二题【/随口问】", "正文【随口问】外【随口问】内【/随口问】",
-    "正文【随口问】【/随口问】", "正文【随口问", "正文【随口问】Why?【/随口问】",
+@pytest.mark.parametrize("text", ["", "   ", "Only English explanation. [c1]",
     "正文\x00", "正文\ud800", "长" * 40001], ids=lambda value: str(value)[:50])
 def test_invalid_or_partial_stream_is_rejected(text):
     with pytest.raises(AgentFormatError):

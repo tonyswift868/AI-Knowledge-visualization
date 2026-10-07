@@ -164,10 +164,14 @@ class Classroom:
         module = course.module(state['module_id']);points = course.points_of(module['id'])
         pending = state.get('pending');q = pending['question'] if pending else None
         messages = []
+        passages=course.passages([p['id'] for p in course.points])
+        cards_by_id={}
         for m in course.store.messages(course.plan_id,self._channel(state)):
             cards=[]
             for cid in dict.fromkeys(re.findall(r'mf-source:([^\s)]+)',m['content'])):
-                if cid in course.passages([p['id'] for p in course.points]):cards.append(course.passage_card(cid))
+                if cid in passages:
+                    if cid not in cards_by_id:cards_by_id[cid]=course.passage_card(cid)
+                    cards.append(cards_by_id[cid])
             messages.append(dict(id=m['id'],role=m['role'],kind=m.get('kind','text'),content=m['content'],sources=cards))
         question = {k:q.get(k, []) if k=='options' else q.get(k) for k in ('id','kind','stem','options','source')} if q else None
         if question and q['kind']=='objective':
@@ -627,7 +631,7 @@ class Classroom:
     def _teacher(self, course, state, ctx, director, point_ids, *, user='',opening=False,allow_plan=False):
         plan,module=self._skeleton(course,state,point_ids)
         excerpts=course.excerpts(point_ids)
-        available=course.excerpts([p['id'] for p in course.points]) if allow_plan else excerpts
+        available=self._related_passages(course,excerpts,user) if allow_plan else excerpts
         document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
         tctx=dict(plan=plan,module=module,prefs=self._prefs(),profile=document.get('text','')[:6000],dialogue=self._dialogue(course,state),
             current_points=[dict(id=pid,title=course.point(pid)['title']) for pid in point_ids],
@@ -651,6 +655,24 @@ class Classroom:
                 if attempt==0:
                     request=(request[0],request[1]+[dict(role='user',content=f'上一条回复格式不合格：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])
                 else:raise
+
+    @staticmethod
+    def _related_passages(course, excerpts, user):
+        """Retrieve bounded source text for an interruption, not the whole book."""
+        words=set(re.findall(r'[a-zA-Z][a-zA-Z0-9_-]{1,}',user.lower()))
+        for part in re.findall(r'[\u3400-\u9fff]+',user):
+            words.update(part[i:i+n] for n in (2,3,4) for i in range(len(part)-n+1))
+        ranked=[]
+        for cid,row in course.passages([p['id'] for p in course.points]).items():
+            if cid in excerpts:continue
+            text=row['text'];lower=text.lower()
+            score=sum(len(word) for word in words if word in lower)
+            if score:ranked.append((-score,cid,text))
+        result=dict(excerpts);remaining=16000
+        for _,cid,text in sorted(ranked):
+            if remaining<=0 or len(result)-len(excerpts)>=12:break
+            result[cid]=text[:min(4000,remaining)];remaining-=len(result[cid])
+        return result
 
     def _deliver(self, course, state, teaching, user=None, explained=False):
         mapping={f'c{i}':cid for i,cid in enumerate(sorted(course.excerpts(self._focus(course,state))),1)}
@@ -885,7 +907,9 @@ class _Course:
                              key=lambda p: (position.get(p["module_id"], 0), p["position"], p["id"]))
         for point in self.points:
             point.setdefault("title", (point.get("summary") or "知识点")[:40])
+        self._points_by_id={p['id']:p for p in self.points}
         self._chunks = None
+        self._sources = None
         if not self.modules or not self.points:
             raise BridgeError("PLAN_EMPTY", "这份计划还没有可学的内容。")
 
@@ -896,7 +920,8 @@ class _Course:
         return [p for p in self.points if p["module_id"] == module_id]
 
     def point(self, point_id):
-        return next(p for p in self.points if p["id"] == point_id)
+        try:return self._points_by_id[point_id]
+        except KeyError:raise StopIteration from None
 
     def book(self):
         return self.store.load_mastery(self.plan_id)
@@ -913,8 +938,7 @@ class _Course:
 
     def passages(self, point_ids):
         """Point chunk_ids are the projection of point_sources, never a guessed source."""
-        chunks={c['id']:c for c in self.store.records('source_chunks',self.plan_id)}
-        sources={s['id']:s for s in self.store.records('sources',self.plan_id)}
+        chunks,sources=self._source_rows()
         wanted=list(dict.fromkeys(cid for pid in point_ids for cid in self.point(pid).get('chunk_ids',[])))
         return {cid:chunks[cid] for cid in wanted if cid in chunks and chunks[cid].get('text','').strip()
                 and sources.get(chunks[cid]['source_id'],{}).get('adopted')}
@@ -925,10 +949,19 @@ class _Course:
         return result
 
     def passage_card(self, chunk_id):
-        chunk=next(c for c in self.store.records('source_chunks',self.plan_id) if c['id']==chunk_id)
-        source=next(s for s in self.store.records('sources',self.plan_id) if s['id']==chunk['source_id'])
+        chunks,sources=self._source_rows()
+        try:chunk=chunks[chunk_id];source=sources[chunk['source_id']]
+        except KeyError:raise StopIteration from None
         return dict(id=chunk_id,text=chunk['text'],title=source.get('title') or source.get('filename') or '资料',
                     url=source.get('url'),locator=' / '.join(chunk.get('section') or []) or f"段落 {chunk.get('position',0)+1}")
+
+    def _source_rows(self):
+        # This course instance lives for one operation. Reopening or a material
+        # preparation reload creates a fresh instance, so later edits are seen.
+        if self._chunks is None:
+            self._chunks={c['id']:c for c in self.store.records('source_chunks',self.plan_id)}
+            self._sources={s['id']:s for s in self.store.records('sources',self.plan_id)}
+        return self._chunks,self._sources
 
 
 def _link_citations(text, mapping):
