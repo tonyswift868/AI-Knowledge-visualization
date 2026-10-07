@@ -21,12 +21,13 @@ def package(tmp_path):
     (model / "椿.moc3").write_bytes(b"explicit fake moc")
     (model / "textures/椿.png").write_bytes(b"explicit fake texture")
     (model / "physics.json").write_text("{}")
+    (model / "idle.motion3.json").write_text('{"Version":3,"Meta":{"Duration":6}}')
     (model / "unrelated.json").write_text('{"private": true}')
     (model / "unrelated.js").write_text("window.doNotRun = true")
     (model / "manifest.json").write_text(json.dumps({"id": "tsubaki-live2d", "renderer": "live2d2d",
         "skeleton": "/teacher2d/tsubaki-live2d/model.model3.json"}), encoding="utf-8")
     settings = {"Version": 3, "FileReferences": {"Moc": "椿.moc3", "Textures": ["textures/椿.png"],
-                 "Physics": "physics.json", "Motions": {"Idle": [{"File": "old-shake.motion3.json"}]}}}
+                 "Physics": "physics.json", "Motions": {"Idle": [{"File": "idle.motion3.json"}]}}}
     (model / "model.model3.json").write_text(json.dumps(settings), encoding="utf-8")
     core = tmp_path / "vendor/core.js"
     core.parent.mkdir()
@@ -39,20 +40,57 @@ def catalog(package):
     return TeacherAssetCatalog(root, core=core)
 
 
-def test_teacher_v2_ready_manifest_only_referenced_files_and_no_old_motion(package):
+def test_teacher_v2_ready_manifest_only_referenced_files_and_registered_motion(package):
     assets = catalog(package)
     result = assets.status()
     assert result["ready"] and result["manifest"]["id"] == "tsubaki-live2d"
     url = QUrl(result["manifest"]["skeleton"])
     resource = assets.resolve(url)
     settings = json.loads(resource.content)
-    assert "Motions" not in settings["FileReferences"]
+    assert settings["FileReferences"]["Motions"] == {"Idle": [{"File": "idle.motion3.json"}]}
+    assert assets.resolve(url.resolved(QUrl("idle.motion3.json"))).mime == "application/json"
+    assert assets.resolve(url.resolved(QUrl("physics.json"))).mime == "application/json"
     assert assets.resolve(url.resolved(QUrl("textures/%E6%A4%BF.png"))).mime == "image/png"
     assert assets.resolve(url.resolved(QUrl("椿.moc3"))).mime == "application/octet-stream"
     assert assets.resolve(QUrl(result["manifest"]["live2d"]["coreScript"])).mime == "text/javascript"
     for tail in ("unrelated.json", "unrelated.js", "old-shake.motion3.json", "manifest.json"):
         assert assets.resolve(url.resolved(QUrl(tail))) is None
     assert "D:" not in json.dumps(result)
+
+
+def test_teacher_v2_keeps_existing_idle_cry_and_physics_references(package):
+    _, model, _ = package
+    path = model / "model.model3.json"
+    settings = json.loads(path.read_text())
+    settings["FileReferences"]["Motions"]["Cry"] = [{"File": "idle.motion3.json"}]
+    path.write_text(json.dumps(settings))
+    assets = catalog(package)
+    result = assets.status()
+    assert result["ready"]
+    url = QUrl(result["manifest"]["skeleton"])
+    refs = json.loads(assets.resolve(url).content)["FileReferences"]
+    assert refs == settings["FileReferences"]
+    assert assets.resolve(url.resolved(QUrl(refs["Physics"])))
+    assert assets.resolve(url.resolved(QUrl(refs["Motions"]["Cry"][0]["File"])))
+
+
+@pytest.mark.parametrize("motions", [
+    {"Unexpected": [{"File": "idle.motion3.json"}]},
+    {"Idle": [{"File": "../outside.json"}]},
+    {"Cry": [{"File": "https://example.invalid/motion.json"}]},
+    {"Idle": [{"File": "missing.motion3.json"}]},
+    {"Idle": [None]}, {"Idle": {}}, [],
+])
+def test_teacher_v2_motion_registration_uses_existing_reference_checks(package, motions):
+    _, model, _ = package
+    path = model / "model.model3.json"
+    settings = json.loads(path.read_text())
+    settings["FileReferences"]["Motions"] = motions
+    path.write_text(json.dumps(settings))
+    assets = catalog(package)
+    result = assets.status()
+    assert not result["ready"] and result["code"] == "LIVE2D_ASSET_INVALID"
+    assert not assets._files
 
 
 @pytest.mark.parametrize("attack", ["../outside.json", "%2e%2e/outside.json", "%252e%252e/outside.json",

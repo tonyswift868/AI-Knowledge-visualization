@@ -103,9 +103,7 @@ class TeacherAssetCatalog:
                 refs = settings.get("FileReferences")
                 if settings.get("Version") != 3 or not isinstance(refs, dict):
                     raise ValueError("invalid model3 metadata")
-                # Do not expose or replay the old generated idle/shake preset.
-                refs.pop("Motions", None)
-                allowed_refs = {"Moc", "Textures", "Physics", "DisplayInfo", "Expressions", "Pose"}
+                allowed_refs = {"Moc", "Textures", "Physics", "DisplayInfo", "Expressions", "Pose", "Motions"}
                 if set(refs) - allowed_refs:
                     raise ValueError("unsupported model reference")
                 requested = [(refs.get("Moc"), {".moc3"})]
@@ -123,6 +121,16 @@ class TeacherAssetCatalog:
                     if not isinstance(entry, dict):
                         raise ValueError("invalid expression")
                     requested.append((entry.get("File"), {".json"}))
+                motions = refs.get("Motions", {})
+                if not isinstance(motions, dict) or set(motions) - {"Idle", "Cry"}:
+                    raise ValueError("unsupported motion group")
+                for entries in motions.values():
+                    if not isinstance(entries, list) or len(entries) > 64:
+                        raise ValueError("invalid motions")
+                    for entry in entries:
+                        if not isinstance(entry, dict):
+                            raise ValueError("invalid motion")
+                        requested.append((entry.get("File"), {".json"}))
                 fingerprint = hashlib.sha256((str(package) + str(manifest_path.stat().st_mtime_ns)
                                               + str(skeleton.stat().st_mtime_ns)).encode()).hexdigest()[:20]
                 prefix = f"/live2d/{fingerprint}/"

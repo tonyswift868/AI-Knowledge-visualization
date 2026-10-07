@@ -276,7 +276,7 @@ export function Classroom() {
   )
 
   return (
-    <div className="class-page" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
+    <div className="class-page class-with-teacher" style={{ gridTemplateColumns: "minmax(0, 1fr) var(--teacher-width, 32px)" }}>
       <section className="class-main">
         <header className="class-head">
           <Button small kind="ghost" onClick={() => go("home")}><ArrowLeft />下课</Button>
@@ -368,7 +368,8 @@ export function Classroom() {
       </section>
 
       <React.Suspense fallback={null}>
-        <TeacherWindow ref={teacher}>
+        <TeacherWindow ref={teacher} reducedMotion={reduceMotion} speaking={voice.state === "playing"}
+          pointKey={room?.points.find((point) => point.current)?.id}>
         <div className="class-voice">
           <button className="icon-btn" onClick={toggleReading} title={reading ? "关闭朗读" : "打开朗读"}>
             {reading ? <Volume2 /> : <VolumeX />}

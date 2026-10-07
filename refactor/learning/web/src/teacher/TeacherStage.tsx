@@ -1,6 +1,5 @@
 import * as React from "react"
-import { GripHorizontal, ImageOff, LoaderCircle, Minimize2, MoveDiagonal2 } from "lucide-react"
-import { createPortal } from "react-dom"
+import { ChevronLeft, ChevronRight, ImageOff, LoaderCircle, PanelRightClose, PanelRightOpen } from "lucide-react"
 import { call } from "../bridge"
 import { TeacherRuntime, type Capabilities, type ModelView, type ReactionEvent, type StageSnapshot, type TeacherManifest } from "./teacherRuntime"
 import "./teacher-stage.css"
@@ -27,7 +26,9 @@ export type TeacherStageProps = {
   interactive?: boolean
   view?: ModelView
   onViewChange?: (view: ModelView) => void
-  onThumbnail?: (image: string) => void
+  reducedMotion?: boolean
+  speaking?: boolean
+  pointKey?: string
 }
 
 export const TeacherStage = React.forwardRef<TeacherStageHandle, TeacherStageProps>(function TeacherStage(props, ref) {
@@ -58,9 +59,11 @@ export const TeacherStage = React.forwardRef<TeacherStageHandle, TeacherStagePro
   React.useEffect(() => {
     const visibility = () => setPageVisible(!document.hidden)
     document.addEventListener("visibilitychange", visibility)
+    const pointer = (e: PointerEvent) => renderer.current?.lookAt(e.clientX, e.clientY)
+    window.addEventListener("pointermove", pointer)
     const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting && entry.intersectionRect.width > 0 && entry.intersectionRect.height > 0))
     if (host.current) observer.observe(host.current)
-    return () => { document.removeEventListener("visibilitychange", visibility); observer.disconnect() }
+    return () => { document.removeEventListener("visibilitychange", visibility); window.removeEventListener("pointermove", pointer); observer.disconnect() }
   }, [])
 
   React.useEffect(() => {
@@ -84,8 +87,9 @@ export const TeacherStage = React.forwardRef<TeacherStageHandle, TeacherStagePro
       runtime.setActive(activeRef.current)
       runtime.setView(latest.current.view ?? { scale: 1, panX: 0, panY: 0 })
       if (latest.current.mouthLevel !== undefined) runtime.setMouthLevel(latest.current.mouthLevel, false)
-      const thumbnail = runtime.thumbnail()
-      if (thumbnail) latest.current.onThumbnail?.(thumbnail)
+      runtime.setReducedMotion(!!latest.current.reducedMotion)
+      runtime.setSpeaking(!!latest.current.speaking)
+      if (latest.current.pointKey) runtime.greet()
       report("ready", "椿老师已就绪")
       latest.current.onReady?.(runtime.capabilities)
     }).catch((error) => {
@@ -99,6 +103,9 @@ export const TeacherStage = React.forwardRef<TeacherStageHandle, TeacherStagePro
 
   React.useEffect(() => { renderer.current?.setActive(active) }, [active])
   React.useEffect(() => { if (props.view) renderer.current?.setView(props.view) }, [props.view])
+  React.useEffect(() => { renderer.current?.setReducedMotion(!!props.reducedMotion) }, [props.reducedMotion])
+  React.useEffect(() => { renderer.current?.setSpeaking(!!props.speaking) }, [props.speaking])
+  React.useEffect(() => { if (props.pointKey) renderer.current?.greet() }, [props.pointKey])
   React.useEffect(() => {
     if (props.mouthLevel !== undefined) renderer.current?.setMouthLevel(props.mouthLevel, false)
   }, [props.mouthLevel, active])
@@ -156,90 +163,63 @@ export const TeacherStage = React.forwardRef<TeacherStageHandle, TeacherStagePro
   </section>
 })
 
-const WINDOW_KEY = "mf.classroom.teacher-window.v1"
-type WindowState = { open: boolean; x: number; y: number; width: number; height: number; view: ModelView }
-const sameBox = (a: WindowState, b: WindowState) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
-function windowBounds() {
-  const input = document.querySelector(".class-main .composer, .class-main .recall-chat")?.getBoundingClientRect()
-  return { width: Math.max(1, window.innerWidth - 16), bottom: Math.max(9, Math.min(window.innerHeight - 8, input ? input.top - 8 : window.innerHeight - 100)) }
-}
-const avatarBottom = () => Math.max(8, Math.min(window.innerHeight - 64, window.innerHeight - windowBounds().bottom + 8))
-function fitWindow(value: WindowState): WindowState {
-  const bounds = windowBounds()
-  const width = Math.max(Math.min(220, bounds.width), Math.min(value.width, 560, bounds.width))
-  const availableHeight = Math.max(1, bounds.bottom - 8)
-  const height = Math.max(Math.min(280, availableHeight), Math.min(value.height, 720, availableHeight))
-  return { ...value, width, height, x: Math.max(8, Math.min(value.x, window.innerWidth - width - 8)),
-    y: Math.max(8, Math.min(value.y, bounds.bottom - height)) }
-}
-function savedWindow(): WindowState {
-  const fallback: WindowState = { open: false, x: window.innerWidth - 300, y: window.innerHeight - 530,
-    width: 280, height: 400, view: { scale: 1, panX: 0, panY: 0 } }
-  try {
-    const saved = JSON.parse(localStorage.getItem(WINDOW_KEY) || "null")
-    if (saved && typeof saved.open === "boolean" && [saved.x, saved.y, saved.width, saved.height, saved.view?.scale, saved.view?.panX, saved.view?.panY].every(Number.isFinite)) {
-      return fitWindow({ ...fallback, ...saved, view: { scale: Math.max(.5, Math.min(2.5, saved.view.scale)), panX: Math.max(-1, Math.min(1, saved.view.panX)), panY: Math.max(-1, Math.min(1, saved.view.panY)) } })
-    }
-  } catch { /* Optional UI preferences must not block a lesson. */ }
-  return fitWindow(fallback)
-}
 
-export const TeacherWindow = React.forwardRef<TeacherStageHandle, { children: React.ReactNode }>(function TeacherWindow({ children }, ref) {
-  const [state, setState] = React.useState(savedWindow)
-  const [avatar, setAvatar] = React.useState(() => { try { return localStorage.getItem(WINDOW_KEY + ".avatar") || "" } catch { return "" } })
-  const [bottom, setBottom] = React.useState(avatarBottom)
-  const drag = React.useRef<{ id: number; x: number; y: number; resize: boolean; start: WindowState } | null>(null)
-  React.useEffect(() => {
-    try { localStorage.setItem(WINDOW_KEY, JSON.stringify(state)) } catch { /* optional preference */ }
-  }, [state])
+const DRAWER_KEY = "mf.classroom.teacher-drawer.v1"
+type DrawerState = { open: boolean; width: number; view: ModelView }
+function drawerWidth(value: number) {
+  const page = document.querySelector(".class-page")
+  const max = Math.max(32, Math.min(520, (page?.clientWidth || innerWidth) * .45))
+  return Math.max(Math.min(240, max), Math.min(value, max))
+}
+function savedDrawer(): DrawerState {
+  const fallback: DrawerState = { open: false, width: 320, view: { scale: 1, panX: 0, panY: 0 } }
+  try {
+    const saved = JSON.parse(localStorage.getItem(DRAWER_KEY) || "null")
+    if (saved && typeof saved.open === "boolean" && [saved.width, saved.view?.scale, saved.view?.panX, saved.view?.panY].every(Number.isFinite))
+      return { open: saved.open, width: saved.width, view: saved.view }
+  } catch { /* Optional UI preferences never block a lesson. */ }
+  return fallback
+}
+/** In-flow right rail, never an overlay over classroom controls. */
+export const TeacherWindow = React.forwardRef<TeacherStageHandle, {
+  children: React.ReactNode; reducedMotion?: boolean; speaking?: boolean; pointKey?: string;
+}>(function TeacherWindow({ children, reducedMotion, speaking, pointKey }, ref) {
+  const [state, setState] = React.useState(savedDrawer)
+  const drag = React.useRef<{ id: number; x: number; width: number } | null>(null)
+  React.useEffect(() => { try { localStorage.setItem(DRAWER_KEY, JSON.stringify(state)) } catch { /* optional */ } }, [state])
   React.useLayoutEffect(() => {
-    const measure = () => {
-      setBottom(avatarBottom())
-      setState((old) => { const fitted = fitWindow(old); return sameBox(old, fitted) ? old : fitted })
-    }
-    measure()
-    window.addEventListener("resize", measure)
-    window.visualViewport?.addEventListener("resize", measure)
+    const page = document.querySelector<HTMLElement>(".class-page")
+    if (!page) return
+    const measure = () => setState((old) => { const width = drawerWidth(old.width); return width === old.width ? old : { ...old, width } })
     const observer = new ResizeObserver(measure)
-    const changes = new MutationObserver(measure)
-    const main = document.querySelector(".class-main")
-    if (main) { observer.observe(main); changes.observe(main, { childList: true, subtree: true }) }
-    return () => { window.removeEventListener("resize", measure); window.visualViewport?.removeEventListener("resize", measure); observer.disconnect(); changes.disconnect() }
+    observer.observe(page); measure()
+    return () => observer.disconnect()
   }, [])
-  const start = (e: React.PointerEvent<HTMLElement>, resize: boolean) => {
-    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return
-    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, resize, start: state }
-    e.currentTarget.setPointerCapture(e.pointerId)
-    e.preventDefault()
-  }
-  const move = (e: React.PointerEvent<HTMLElement>) => {
-    const d = drag.current
-    if (!d || d.id !== e.pointerId) return
-    const dx = e.clientX - d.x, dy = e.clientY - d.y
-    setState(fitWindow(d.resize ? { ...d.start, width: d.start.width + dx, height: d.start.height + dy }
-      : { ...d.start, x: d.start.x + dx, y: d.start.y + dy }))
-  }
+  React.useLayoutEffect(() => {
+    const page = document.querySelector<HTMLElement>(".class-page")
+    page?.style.setProperty("--teacher-width", `${state.open ? state.width : 32}px`)
+    return () => { page?.style.removeProperty("--teacher-width") }
+  }, [state.open, state.width])
   const end = () => { drag.current = null }
-  return createPortal(<>
-    <section className="teacher-window" aria-label="浮动老师" hidden={!state.open}
-      style={{ left: state.x, top: state.y, width: state.width, height: state.height }}>
-      <header className="teacher-window-handle" onPointerDown={(e) => start(e, false)} onPointerMove={move}
-        onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end} title="按住这里拖动老师窗口">
-        <GripHorizontal size={18} /><b>椿老师</b>
-        <button className="icon-btn" aria-label="收起老师" onClick={() => setState((s) => ({ ...s, open: false }))}><Minimize2 /></button>
-      </header>
-      <div className="teacher-window-scene"><TeacherStage ref={ref} paused={!state.open} visible={state.open} interactive
-        view={state.view} onViewChange={(view) => setState((s) => ({ ...s, view }))}
-        onThumbnail={(image) => { setAvatar(image); try { localStorage.setItem(WINDOW_KEY + ".avatar", image) } catch { /* optional */ } }} /></div>
-      <div className="teacher-window-controls">{children}<small className="teacher-window-tip">拖动老师 · 滚轮缩放 · 双击恢复</small></div>
-      <span role="slider" tabIndex={0} aria-label="调整老师窗口大小" aria-valuemin={220} aria-valuemax={560} aria-valuenow={Math.round(state.width)}
-        className="teacher-window-resize" onPointerDown={(e) => start(e, true)} onPointerMove={move}
-        onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
-        onKeyDown={(e) => { const delta = { ArrowRight: [20, 0], ArrowLeft: [-20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] }[e.key];
-          if (delta) { e.preventDefault(); setState((s) => fitWindow({ ...s, width: s.width + delta[0], height: s.height + delta[1] })) } }}><MoveDiagonal2 size={17} /></span>
-    </section>
-    {!state.open && <button className="teacher-avatar" style={{ bottom }} aria-label="展开老师" title="展开椿老师" onClick={() => setState((s) => ({ ...fitWindow(s), open: true }))}>
-      {avatar ? <img src={avatar} alt="椿老师头像" /> : <span>椿</span>}<i aria-hidden>＋</i>
+  return <aside className={`teacher-rail ${state.open ? "open" : "closed"}`} aria-label="课堂老师"
+    style={{ "--drawer-width": `${state.width}px` } as React.CSSProperties}>
+    {!state.open && <button className="teacher-edge" aria-label="展开老师" title="展开老师" onClick={() => setState((s) => ({ ...s, width: drawerWidth(s.width), open: true }))}>
+      <PanelRightOpen size={18} /><span>展开老师</span><ChevronLeft size={14} />
     </button>}
-  </>, document.body)
+    <section className="teacher-panel" aria-label="老师抽屉" aria-hidden={!state.open} inert={!state.open ? true : undefined}>
+      <header className="teacher-panel-head"><b>椿老师</b><button className="icon-btn" aria-label="收起老师" onClick={() => setState((s) => ({ ...s, open: false }))}><PanelRightClose size={18} /></button></header>
+      <div className="teacher-panel-scene"><TeacherStage ref={ref} paused={!state.open} visible={state.open} interactive
+        reducedMotion={reducedMotion} speaking={speaking} pointKey={pointKey}
+        view={state.view} onViewChange={(view) => setState((s) => ({ ...s, view }))} /></div>
+      <div className="teacher-panel-controls">{children}<small>拖动模型 · 滚轮缩放 · 双击恢复</small></div>
+      {state.open && <span role="slider" tabIndex={0} aria-label="调整老师栏宽度" aria-valuemin={Math.min(240,drawerWidth(0))} aria-valuemax={drawerWidth(520)} aria-valuenow={Math.round(state.width)}
+        className="teacher-panel-resize" title="拖动调整老师栏宽度"
+        onPointerDown={(e) => { if (e.button !== 0) return; drag.current = {id:e.pointerId,x:e.clientX,width:state.width};e.currentTarget.setPointerCapture(e.pointerId);e.preventDefault() }}
+        onPointerMove={(e) => { const d = drag.current;if (d && d.id === e.pointerId) setState((s) => ({ ...s,width:drawerWidth(d.width + d.x - e.clientX) })) }}
+        onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
+        onKeyDown={(e) => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") {e.preventDefault();setState((s) => ({ ...s,width:drawerWidth(s.width + (e.key === "ArrowLeft" ? 20 : -20)) }))} }}>
+        <ChevronLeft size={12} /><ChevronRight size={12} />
+      </span>}
+    </section>
+  </aside>
 })

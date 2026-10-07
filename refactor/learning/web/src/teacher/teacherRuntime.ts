@@ -12,7 +12,7 @@ export type TeacherManifest = { id: "tsubaki-live2d"; displayName: string; skele
 export type Capabilities = { mouth: boolean; blink: boolean; breath: boolean; reactions: Record<Reaction, boolean> }
 export type ModelView = { scale: number; panX: number; panY: number }
 export type StageSnapshot = { frames: number; fps: number; active: boolean; mouth: number;
-  reaction: Reaction | null; parameters: Record<string, number>; width: number; height: number; view: ModelView }
+  reaction: Reaction | null; parameters: Record<string, number>; width: number; height: number; view: ModelView; physicsEnabled: boolean; physicsEvaluations: number; physicsValues: Record<string,number>; expression: string | null; playback: {kind:string;name:string}[]; reducedMotion: boolean; focus: {x:number;y:number} }
 
 let coreLoading: Promise<void> | null = null
 let engineLoading: Promise<typeof import("untitled-pixi-live2d-engine/cubism")> | null = null
@@ -75,6 +75,16 @@ export class TeacherRuntime {
   private fpsFrames = 0
   private fpsAt = 0
   private applied: Record<string, number> = {}
+  private physics: any = null
+  private physicsEvaluations = 0
+  private lastPhysicsValues: Record<string,number> = {}
+  private reducedMotion = false
+  private speaking = false
+  private expressionName: string | null = null
+  private expressionUntil = 0
+  private expressionGeneration = 0
+  private playback: {kind:string;name:string}[] = []
+  private idleGroup: string | undefined
   private view: ModelView = { scale: 1, panX: 0, panY: 0 }
   capabilities: Capabilities = { mouth: false, blink: false, breath: false,
     reactions: { nod: false, shake: false, think: false, happy: false } }
@@ -95,8 +105,7 @@ export class TeacherRuntime {
     app.canvas.setAttribute("aria-label", "椿老师形象")
     const model = await runtime.Live2DModel.from(manifest.skeleton, {
       autoUpdate: true, autoHitTest: false, autoFocus: false, ticker: app.ticker,
-      // SDK default breathing also turns the head. Only animate breath/eyes
-      // below; idle never selects a gesture or generates a fake mouth movement.
+      // Keep explicit TTS lip sync; SDK focus/physics and referenced idle can coexist.
       breathDepth: 0, eyeBlink: false, motionPreload: runtime.MotionPreloadStrategy.NONE,
       // Use Chromium's image loader for the private scheme; no Blob Worker or
       // relaxed worker-src policy is needed for the three model textures.
@@ -127,7 +136,13 @@ export class TeacherRuntime {
         think: has("ParamAngleZ"), happy: has("ParamMouthForm") } }
     model.anchor.set(.5, .5)
     model.eventMode = "none"
-    internal.motionManager.stopAllMotions()
+    this.physics = internal.physics ?? null
+    if (this.physics) {
+      const evaluate = this.physics.evaluate.bind(this.physics)
+      this.physics.evaluate = (model: any, dt: number) => { this.physicsEvaluations++; evaluate(model, dt) }
+    }
+    this.idleGroup = Object.keys(internal.settings.motions ?? {}).find((name) => /^idle$/i.test(name))
+    this.setReducedMotion(this.reducedMotion)
     internal.on("beforeModelUpdate", this.beforeModelUpdate)
     app.stage.addChild(model)
     app.ticker.add(this.tick, undefined, PIXI.UPDATE_PRIORITY.HIGH)
@@ -146,10 +161,11 @@ export class TeacherRuntime {
   }
 
   react(name: Reaction): boolean {
-    if (!this.active || !this.capabilities.reactions[name]) return false
+    if (!this.active || this.reducedMotion || !this.capabilities.reactions[name]) return false
     this.stopReaction()
-    this.action = { name, elapsed: 0 }
-    this.onReaction?.({ reaction: name, phase: "started", source: "parameters" })
+    this.action = { name: name === "think" ? "nod" : name, elapsed: 0 }
+    if (name === "nod" || name === "happy") this.playExpression("heart-eyes")
+    this.onReaction?.({ reaction: this.action.name, phase: "started", source: "parameters" })
     return true
   }
 
@@ -165,6 +181,9 @@ export class TeacherRuntime {
     if (this.active) {
       this.fpsAt = performance.now(); this.fpsFrames = 0
       this.app?.start()
+      if (!this.reducedMotion && this.idleGroup && !this.model.internalModel.motionManager.playing) {
+        void this.model.motion(this.idleGroup, undefined, 1, {loop:true}).then((ok: boolean) => { if (ok && !this.disposed) this.record("motion", this.idleGroup!) }).catch(() => {})
+      }
     } else {
       this.app?.stop()
       this.mouth = this.mouthTarget = 0
@@ -177,21 +196,44 @@ export class TeacherRuntime {
     this.resize()
   }
 
-  /** One static head crop; a collapsed stage never needs a running ticker. */
-  thumbnail(): string | null {
-    if (!this.app || !this.model || this.disposed) return null
-    const view = this.view
-    try {
-      this.setView({ scale: 1, panX: 0, panY: 0 })
-      this.app.render()
-      const source = this.app.canvas
-      const canvas = document.createElement("canvas")
-      canvas.width = canvas.height = 96
-      const edge = Math.min(source.width * .55, source.height * .4)
-      canvas.getContext("2d")!.drawImage(source, (source.width - edge) / 2, source.height * .07, edge, edge, 0, 0, 96, 96)
-      return canvas.toDataURL("image/png")
-    } catch { return null }
-    finally { this.setView(view) }
+  setReducedMotion(value: boolean) {
+    this.reducedMotion = value
+    if (!this.model) return
+    const internal = this.model.internalModel
+    internal.physics = value ? undefined : this.physics
+    if (value) {
+      internal.motionManager.stopAllMotions()
+      this.stopReaction(); this.clearExpression()
+      internal.focusController.focus(0, 0, true)
+    }
+  }
+
+  setSpeaking(value: boolean) { this.speaking = value }
+  lookAt(x: number, y: number) {
+    if (!this.active || this.reducedMotion || this.speaking || !this.model) return
+    const rect = this.host.getBoundingClientRect()
+    this.model.internalModel.focusController.focus(clamp((x - rect.x - rect.width/2) / Math.max(1, rect.width*2), -.18, .18),
+      clamp(-(y - rect.y - rect.height/2) / Math.max(1, rect.height*2), -.12, .12))
+  }
+  greet() {
+    if (this.reducedMotion || !this.model) return false
+    this.playExpression("blush"); return true
+  }
+  private record(kind: string, name: string) { this.playback = [...this.playback.slice(-15), {kind,name}] }
+  private playExpression(name: string) {
+    if (!this.model || this.reducedMotion) return
+    const expressions = this.model.internalModel.settings.expressions ?? []
+    if (!expressions.some((entry: any) => entry.Name === name || entry.name === name)) return
+    const generation = ++this.expressionGeneration
+    void this.model.expression(name).then((ok: boolean) => {
+      if (ok && generation === this.expressionGeneration && !this.disposed && !this.reducedMotion) {
+        this.expressionName = name; this.expressionUntil = this.elapsed + 3.5; this.record("expression",name)
+      }
+    }).catch(() => {})
+  }
+  private clearExpression() {
+    this.expressionGeneration++; this.expressionName = null
+    this.model?.internalModel.motionManager.expressionManager?.resetExpression()
   }
 
   private resize = () => {
@@ -208,6 +250,8 @@ export class TeacherRuntime {
     this.dt = clamp(ticker.deltaMS / 1000, 0, .06)
     this.elapsed += this.dt
     this.frames++; this.fpsFrames++
+    if (this.expressionName && this.elapsed > this.expressionUntil) this.clearExpression()
+    if (!this.reducedMotion && this.speaking) this.model?.internalModel.focusController.focus(-.16, .015)
     const now = performance.now()
     if (now - this.fpsAt >= 1000) {
       this.fps = this.fpsFrames * 1000 / (now - this.fpsAt)
@@ -243,18 +287,32 @@ export class TeacherRuntime {
     const smile = action?.name === "happy" ? .7 * envelope : 0
     const blinkPhase = this.elapsed % 4.3
     const blink = blinkPhase < .17 ? Math.abs(blinkPhase - .085) / .085 : 1
-    this.write("ParamAngleX", x); this.write("ParamAngleY", y); this.write("ParamAngleZ", z)
+    // Focus and physics have already run. Preserve their head/body pose;
+    // add only a short reaction, while explicit TTS still owns the mouth.
+    const add = (name: string, value: number) => { const p = this.parameters.get(name); if (p && value) this.write(name, this.model.internalModel.coreModel.getParameterValueById(p.id) + value) }
+    add("ParamAngleX", x); add("ParamAngleY", y); add("ParamAngleZ", z)
     this.write("ParamEyeLOpen", blink * (1 - smile * .13)); this.write("ParamEyeROpen", blink * (1 - smile * .13))
     this.write("ParamMouthOpenY", this.mouth); this.write("ParamMouthForm", smile)
     this.write("ParamBrowLY", action?.name === "think" ? .1 * envelope : 0)
     this.write("ParamBrowRY", action?.name === "think" ? .1 * envelope : 0)
     this.write("ParamBreath", .45 + .18 * Math.sin(this.elapsed * 1.4))
+    this.lastPhysicsValues = this.physicsValues()
   }
 
   snapshot(): StageSnapshot {
     return { frames: this.frames, fps: this.fps, active: this.active, mouth: this.mouth,
       reaction: this.action?.name ?? null, parameters: { ...this.applied },
-      width: this.host.clientWidth, height: this.host.clientHeight, view: { ...this.view } }
+      width: this.host.clientWidth, height: this.host.clientHeight, view: { ...this.view },
+      physicsEnabled: !!this.model?.internalModel.physics, physicsEvaluations: this.physicsEvaluations,
+      physicsValues: { ...this.lastPhysicsValues }, expression: this.expressionName, playback: [...this.playback], reducedMotion: this.reducedMotion,
+      focus: { x: this.model?.internalModel.focusController.x ?? 0, y: this.model?.internalModel.focusController.y ?? 0 } }
+  }
+
+  private physicsValues(): Record<string,number> {
+    const core = this.model?.internalModel.coreModel
+    if (!core) return {}
+    const raw = core.getModel().parameters
+    return Object.fromEntries(Array.from(raw.ids as string[]).flatMap((id, i) => /hair|ribbon|cloth|sleeve|skirt|physics/i.test(id) ? [[id,raw.values[i]]] : []))
   }
 
   dispose() {
@@ -262,6 +320,7 @@ export class TeacherRuntime {
     this.setActive(false)
     this.resizeObserver?.disconnect()
     if (this.model) {
+      this.model.internalModel.physics = this.physics
       this.model.internalModel.off("beforeModelUpdate", this.beforeModelUpdate)
       releaseModel(this.model)
       this.model = null
