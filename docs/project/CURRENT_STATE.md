@@ -1145,7 +1145,7 @@
 - 状态：已修（2026-10-07，架构师），相关 170 项测试通过；待用户在软件里重试确认
 - 现象：用户 2026-10-07 中测试开始计划后进课堂，顶部黄条“这一步没有完成，请重试；原来的题目和位置保留”。日志：classroom.py enter 第 268 行 TypeError。
 - 原因：课堂按“不带参数”调用取今天日期的函数（self.study_day()，模拟工具也是这么接的），但正式软件 app/handlers.py 给课堂传的是要带设置参数的 _local_study_day(settings)；建计划那边包了一层传入设置，课堂这边没包。课堂相关测试都用模拟日期，从没走过正式接法，所以一直没发现（第三十七批起就是这样）。
-- 排查：读 D:\MentorFlowDataccount-shell\logs\mentorflow.log 的 ERROR；对照 plan_flow.register（lambda: study_day(current.settings.load())）与 classroom.register 的接法。
+- 排查：读 D:\MentorFlowData\account-shell\logs\mentorflow.log 的 ERROR；对照 plan_flow.register（lambda: study_day(current.settings.load())）与 classroom.register 的接法。
 - 解决：handlers.py 改为传 lambda: _local_study_day(services().settings.load())。
 - 验证：tests/refactor/app、mastery70、simulation 共 170 项通过；正式软件里待用户重试。
 - 经验：正式接线和测试接线要一致；至少要有一条测试走正式的 handlers 注册。
