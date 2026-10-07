@@ -61,6 +61,11 @@ export function requirementWithoutDates(text: string) {
     .replace(/\d{4}[-/]\d{1,2}[-/]\d{1,2}\s*[，,]?/g, "").trim()
 }
 
+// Older plans stored the goal sentence (with its dates) as the only stage title.
+function stageLabel(title: string, count: number) {
+  return count === 1 ? "全部模块" : requirementWithoutDates(title)
+}
+
 // Error messages have no persisted phase field. A retry succeeds when it
 // produces the same result kind, or the next result of the current step.
 // Keep errors across unrelated steps/import failures; never alter history.
@@ -464,7 +469,7 @@ function OutlineCard({ outline, onDelete, busy }: { outline: Outline; onDelete?:
         <div><span>模块</span><b>{all.length} 个 · {outline.stages.length} 个阶段</b></div>
       </div>
       {r.over_cap && <div className="outline-warn"><CircleAlert size={16} />每日任务时长可能超过你设的上限（{r.cap} 分钟）。{r.suggested_end ? `可以考虑把结束日期延后到 ${r.suggested_end}，` : ""}或者让我精简路线。</div>}
-      <PlanGraph stages={outline.stages} onDelete={onDelete} busy={busy} />
+      <PlanGraph stages={outline.stages.map(s => ({ ...s, title: stageLabel(s.title, outline.stages.length) }))} onDelete={onDelete} busy={busy} />
       <p className="muted small" style={{ margin: "10px 2px 0" }}>每个点均已核验原文出处。想增删、合并或放弃哪部分，直接在下面告诉我。</p>
     </div>
   )
@@ -571,7 +576,7 @@ export function PlanTree({ detail, editable, busy, onDelete, onMove }:
     <div className="outline-tree">
       {detail.stages.map((stage, si) => (
         <div key={stage.id} className="stage">
-          <div className="stage-label"><span>阶段 {si + 1}</span><b>{stage.title}</b></div>
+          <div className="stage-label"><span>阶段 {si + 1}</span><b>{stageLabel(stage.title, detail.stages.length)}</b></div>
           <div className="stage-modules">
             {stage.modules.map((m) => {
               n += 1

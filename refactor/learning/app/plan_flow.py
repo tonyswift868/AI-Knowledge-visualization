@@ -889,7 +889,8 @@ class PlanFlow:
         # batches and truncation splitting; never ask a model for a whole map.
         modules = [dict(m, id=m['key'], prerequisites=[], minutes=[15, 15], points=[])
                    for m in structure['modules']]
-        skeleton = {'stages': [{'title': draft['goal'][:60], 'modules': modules}]}
+        # One stage; its label is not the goal sentence (that carried stale dates).
+        skeleton = {'stages': [{'title': '全部模块', 'modules': modules}]}
         working = dict(draft, form=self._effective_form(draft), outline=skeleton, material_map=True)
         by_section = {s.id: s for s in sections}
         for module in modules:
