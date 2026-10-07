@@ -303,12 +303,17 @@ def test_idempotent_events_and_late_outcomes_do_not_reopen_closed_attempt():
     assert b.question('q0-0').module_correct is True and not b.question('q0-0').ever_wrong
 
 
-def test_previous_point_based_plan_is_not_migrated(env):
+def test_previous_point_based_plan_is_not_migrated(env, monkeypatch):
     e = env
     with e.store.transaction():
         plan = e.store._get('plans', PLAN, PLAN)
         plan['material_version'] = 2
         e.store._put('plans', PLAN, plan)
+    # A real pre-batch-70 plan holds old-format questions (kind choice/fill/...),
+    # which the store no longer accepts as new writes; simulate reading them.
+    rows = e.store._rows
+    monkeypatch.setattr(e.store, '_rows', lambda entity, plan_id='': [dict(q, kind='choice') for q in rows(entity, plan_id)]
+                        if entity == 'question_bank' else rows(entity, plan_id))
     with pytest.raises(BridgeError, match='旧版计划，已不可用'):
         e.room._course(PLAN)
     assert e.store.get_plan(PLAN)['material_version'] == 2
@@ -323,3 +328,13 @@ def test_version_two_plan_without_questions_is_not_old(tmp_path):
         plan=store._get('plans','p-empty','p-empty');plan['material_version']=2;store._put('plans','p-empty',plan)
     assert not store.get_plan('p-empty').get('unusable')
     store.require_material_plan('p-empty')
+
+
+def test_version_two_plan_with_new_questions_is_not_old(env):
+    # BUG-54 second round: after one module got new-format questions, the
+    # version-2 draft was refused for every later module.
+    e = env
+    with e.store.transaction():
+        plan = e.store._get('plans', PLAN, PLAN); plan['material_version'] = 2; e.store._put('plans', PLAN, plan)
+    assert all(q['kind'] in ('objective', 'recall') for q in e.store.records('question_bank', PLAN))
+    assert not e.store.get_plan(PLAN).get('unusable')
