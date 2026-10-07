@@ -73,6 +73,8 @@ def register(bridge, window):
 
     def window_action(params, ctx):
         action = params.get("action")
+        if action in {"teacher_open", "teacher_close"}:
+            return {"teacher": window.window_action(action, **{k: v for k, v in params.items() if k != "action"})}
         if action not in {"toggle_fullscreen", "exit_fullscreen"}:
             raise BridgeError("PARAM_INVALID", "未知的窗口操作。")
         return {"fullscreen": window.window_action(action)}

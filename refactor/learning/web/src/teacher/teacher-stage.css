@@ -55,7 +55,18 @@
 .teacher-panel { position:absolute; right:0; top:0; height:100%; width:var(--drawer-width); display:flex; flex-direction:column; border:1px solid var(--border-strong); border-radius:20px; background:var(--surface); transform:translateX(0); transition:transform .22s ease-out; }
 .teacher-rail.closed .teacher-panel { transform:translateX(100%); visibility:hidden; pointer-events:none; }
 .teacher-panel-head { flex:none; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 15px; color:var(--text); background:var(--accent-soft); border-radius:20px 20px 0 0; }
-.teacher-panel-scene { flex:1; min-height:0; position:relative; background:radial-gradient(ellipse at 50% 45%,var(--accent-soft),transparent 75%); }
+.teacher-panel-scene { flex:1; min-height:0; position:relative; isolation:isolate; overflow:hidden; background:linear-gradient(155deg,#f7e8ee 0%,#fcf8fa 48%,#f4e8f0 100%); }
+.teacher-panel-scene .teacher-stage { z-index:1; }
+.teacher-backdrop { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+.teacher-backdrop > svg { position:absolute; width:100%; height:100%; inset:0; }
+.teacher-sakura-scene { color:#ac718c; opacity:.22; }
+.teacher-aurora-scene { display:none; }
+.teacher-ground { position:absolute; left:15%; width:70%; height:9%; bottom:2%; border-radius:50%; background:radial-gradient(ellipse at center,rgba(102,52,88,.18) 0%,rgba(229,177,206,.25) 34%,transparent 72%); }
+[data-theme="aurora"] .teacher-panel-scene { background:radial-gradient(ellipse at 10% 8%,rgba(92,159,154,.16),transparent 56%),linear-gradient(155deg,#26253e 0%,#171c30 48%,#29253e 100%); }
+[data-theme="aurora"] .teacher-sakura-scene { display:none; }
+[data-theme="aurora"] .teacher-aurora-scene { display:block; opacity:.65; }
+[data-theme="aurora"] .teacher-ground { background:radial-gradient(ellipse at center,rgba(8,8,24,.4) 0%,rgba(141,126,198,.2) 30%,rgba(122,194,186,.09) 48%,transparent 73%); }
+.teacher-window-notice { padding:5px 12px; color:var(--text-2); }
 .teacher-panel .teacher-stage { min-height:0; }
 .teacher-panel-controls { flex:none; max-height:35%; overflow:auto; padding:12px 12px 15px; border-top:1px solid var(--border); color:var(--text); }
 .teacher-panel-controls > small { display:block; font-size:.7rem; color:var(--text-3); margin-top:8px; }

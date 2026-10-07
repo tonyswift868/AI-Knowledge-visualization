@@ -2,6 +2,7 @@ export class BridgeFailure extends Error {}
 export const settings={version:1,theme:'sakura',font_scale:1,reduce_motion:false}
 export const log:any[]=[]
 const listeners=new Map<string,Set<(data:any)=>void>>()
+let teacherPreference:any=null
 export function on(name:string,fn:(data:any)=>void) { if(!listeners.has(name))listeners.set(name,new Set());listeners.get(name)!.add(fn);return()=>{listeners.get(name)?.delete(fn)} }
 export function emit(name:string,data:any) { listeners.get(name)?.forEach(fn=>fn(data)) }
 const room={plan:{id:'teacher77',goal:'用生活化例子理解计算机'},module:{id:'m1',title:'信息如何流动',number:1,total:3,state:'learning'},
@@ -10,6 +11,12 @@ const room={plan:{id:'teacher77',goal:'用生活化例子理解计算机'},modul
   can_skip:false,red:[],more_modules:true,check:null,today:{today_target:30,today_confirmed:10,today_tentative:0}}
 export async function call(method:string,params:any={}) {
   log.push({method,params})
+  if(method==='app.window') {
+    const previous=teacherPreference || {open:false,width:320,view:{scale:1,panX:0,panY:0}}
+    const state=params.restore ? (teacherPreference || {...previous,...params}) : {...previous,...params,open:params.action==='teacher_open'}
+    teacherPreference={...state,open:params.preserve?previous.open:state.open}
+    return {teacher:{...state,mode:'internal'}} // Browser-only fixture cannot grow a native window.
+  }
   if(method==='app.bootstrap')return {account:{name:'离线界面测试',role_label:'学习者'},settings,options:{},notice:null,ready:true}
   if(method.startsWith('update.'))return {available:false,busy:false,state:'UP_TO_DATE',version:'test',current:'test'}
   if(method==='sync.status')return {state:'synced',at:null,message:''}

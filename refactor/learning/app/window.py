@@ -11,7 +11,7 @@ from pathlib import Path
 import threading
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import QTimer, Qt, QUrl, Signal
+from PySide6.QtCore import QEvent, QObject, QRect, QTimer, Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEngineProfile, QWebEngineSettings,
@@ -19,7 +19,8 @@ from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEngineProfile, QWebEngi
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QFileDialog, QVBoxLayout, QWidget
 
-from .bridge import AppBridge
+from .bridge import AppBridge, BridgeError
+from ..preferences.storage import AccountJSON, StorageError
 from . import handlers
 from .services import AppServices
 from .sync import WindowSync
@@ -34,6 +35,140 @@ WEB_ROOT = Path(__file__).resolve().parents[1] / "web" / "dist"
 # Same values as --bg in web/src/theme.css.
 THEME_BACKGROUNDS = {"sakura": "#fbf4f7", "aurora": "#0c0e1c"}
 _ROLE_LABELS = {"SUPER_ADMIN": "管理员", "LEARNER": "学习者"}
+
+
+class _TeacherDrawer(QObject):
+    """Reserve native window space for the classroom rail; all calls are on Qt's UI thread."""
+    EDGE = 32
+
+    def __init__(self, top, preferences, notify):
+        super().__init__(top)
+        self.top, self.preferences, self.notify = top, preferences, notify
+        self.open, self.width, self.mode = False, 320, 'internal'
+        self.view = dict(scale=1, panX=0, panY=0)
+        self.extension, self.base, self.last, self.pending = 0, None, None, None
+        self.suspended = None
+        try:
+            self.saved = preferences.read({})
+        except StorageError:
+            self.saved = {}
+        self.remembered_open = bool(self.saved.get('open', False))
+        geometry = self.saved.get('geometry')
+        if isinstance(geometry, list) and len(geometry) == 4 and all(type(n) is int for n in geometry):
+            rect = QRect(*geometry)
+            if rect.width() >= top.minimumWidth() and rect.height() >= top.minimumHeight():
+                screen = self.available()
+                rect.moveLeft(max(screen.left(), min(rect.x(), screen.right() - rect.width() + 1)))
+                rect.moveTop(max(screen.top(), min(rect.y(), screen.bottom() - rect.height() + 1)))
+                top.setGeometry(rect)
+        top.installEventFilter(self)
+
+    def available(self):
+        return self.top.screen().availableGeometry()
+
+    def special(self):
+        return self.top.isMaximized() or self.top.isFullScreen()
+
+    def collapsed_geometry(self, current):
+        rect = QRect(current)
+        rect.setWidth(max(self.top.minimumWidth(), rect.width() - self.extension))
+        if self.last is not None and self.base is not None:
+            rect.moveTopLeft(self.base.topLeft())
+        return rect
+
+    def extend(self):
+        current = self.top.geometry()
+        self.base = self.collapsed_geometry(current)
+        if self.special():
+            self.mode = 'internal'
+            return
+        extra = self.width - self.EDGE
+        frame = self.top.frameGeometry()
+        left, right = current.x() - frame.x(), frame.right() - current.right()
+        screen = self.available()
+        target = QRect(self.base)
+        target.setWidth(self.base.width() + extra)
+        if target.width() + left + right > screen.width():
+            self.top.setGeometry(self.base)
+            self.extension, self.mode = 0, 'internal'
+        else:
+            target.moveLeft(max(screen.left() + left, min(target.x(), screen.right() - right - target.width() + 1)))
+            self.top.setGeometry(target)
+            self.extension, self.mode = extra, 'external'
+        self.last = QRect(self.top.geometry())
+
+    def snapshot(self):
+        return dict(open=self.open, width=self.width, view=dict(self.view), mode=self.mode,
+                    reason='window_state' if self.special() else ('screen_too_small' if self.open and self.mode == 'internal' else None))
+
+    def save(self, *, keep_open=None):
+        current = self.top.normalGeometry() if self.special() else self.top.geometry()
+        rect = self.pending if self.pending is not None else self.collapsed_geometry(current)
+        self.saved = dict(open=self.remembered_open if keep_open is None else keep_open, width=self.width,
+                          view=dict(self.view), geometry=[rect.x(), rect.y(), rect.width(), rect.height()])
+        try:
+            self.preferences.write(self.saved)
+        except StorageError:
+            log.warning('teacher drawer preferences could not be saved')
+
+    def action(self, action, params):
+        restored = bool(params.get('restore'))
+        values = self.saved if restored and self.saved else params
+        width = values.get('width', self.width)
+        if type(width) not in (int, float) or not 32 <= width <= 520:
+            raise BridgeError('PARAM_INVALID', '老师栏宽度无效。')
+        view = values.get('view', self.view)
+        if (not isinstance(view, dict) or any(type(view.get(k)) not in (int, float) for k in ('scale', 'panX', 'panY'))
+                or not .5 <= view['scale'] <= 2.5 or not -1 <= view['panX'] <= 1 or not -1 <= view['panY'] <= 1):
+            raise BridgeError('PARAM_INVALID', '老师显示位置无效。')
+        self.width, self.view = round(width), dict(view)
+        opening = values.get('open', False) if restored else action == 'teacher_open'
+        keep_open = self.open if params.get('preserve') else None
+        if not params.get('preserve'):
+            self.remembered_open = bool(opening)
+        if opening:
+            self.open = True
+            if self.special():
+                self.mode = 'internal'
+            else:
+                self.extend()
+        else:
+            if self.open:
+                current = self.top.normalGeometry() if self.special() else self.top.geometry()
+                target = self.suspended if self.special() and self.suspended is not None else self.collapsed_geometry(current)
+                if self.special():
+                    self.pending = target
+                else:
+                    self.top.setGeometry(target)
+                self.base, self.last = target, None
+            self.open, self.extension, self.mode = False, 0, 'internal'
+        self.save(keep_open=keep_open)
+        return self.snapshot()
+
+    def eventFilter(self, watched, event):  # noqa: N802
+        if event.type() == QEvent.Type.WindowStateChange:
+            QTimer.singleShot(0, self.top, self.state_changed)
+        return False
+
+    def state_changed(self):
+        if self.special():
+            if self.suspended is None:
+                self.suspended = self.collapsed_geometry(self.top.normalGeometry())
+            self.mode = 'internal'
+        else:
+            if self.pending is not None:
+                self.top.setGeometry(self.pending)
+                self.pending = None
+            elif self.suspended is not None:
+                self.top.setGeometry(self.suspended)
+            elif self.extension:
+                self.top.setGeometry(self.collapsed_geometry(self.top.geometry()))
+            self.suspended = None
+            self.extension, self.last = 0, None
+            if self.open:
+                self.extend()
+        self.save()
+        self.notify(self.snapshot())
 
 
 class _LocalOnly(QWebEngineUrlRequestInterceptor):
@@ -119,6 +254,9 @@ class LearningWindow(QWidget):
         self.setWindowTitle("MentorFlow")
         self.resize(1480, 940)
         self.setMinimumSize(1100, 720)
+        self._teacher_drawer = _TeacherDrawer(self.window(),
+            AccountJSON(account_id, self._data_root, 'teacher-drawer.json'),
+            lambda state: self.bridge.push('teacher_window', state) if hasattr(self, 'bridge') and not self._disposed else None)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -177,8 +315,10 @@ class LearningWindow(QWidget):
         # Leave the bridge call first; the shell may dispose this window.
         QTimer.singleShot(0, signal.emit)
 
-    def window_action(self, action):
+    def window_action(self, action, **params):
         top = self.window()
+        if action in {'teacher_open', 'teacher_close'}:
+            return self._teacher_drawer.action(action, params)
         if action == "toggle_fullscreen" and not top.isFullScreen():
             top.showFullScreen()
         elif top.isFullScreen():
@@ -361,6 +501,7 @@ class LearningWindow(QWidget):
     def dispose(self) -> None:
         if self._disposed:
             return
+        self._teacher_drawer.save()
         self._disposed = True
         self.voice_input.dispose()
         self.reminder.dispose()
