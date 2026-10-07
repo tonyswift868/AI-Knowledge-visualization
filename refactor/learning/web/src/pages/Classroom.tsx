@@ -17,7 +17,7 @@ import type { TeacherStageHandle } from "../teacher/TeacherStage"
 import { ConversationActions, MaterialsPreparing, OriginalCards, QuestionInputs, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
 import { RecallQuestion, type RecallRequest } from "../classroom/RecallQuestion"
 
-const TeacherStage = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherStage })))
+const TeacherWindow = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherWindow })))
 
 type Msg = { id: string; role: "user" | "assistant" | "system"; kind: string; content: string; sources: SourceCard[] }
 type Point = { id: string; title: string; minutes: number; taught: boolean; state: string; current: boolean }
@@ -276,7 +276,7 @@ export function Classroom() {
   )
 
   return (
-    <div className="class-page">
+    <div className="class-page" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
       <section className="class-main">
         <header className="class-head">
           <Button small kind="ghost" onClick={() => go("home")}><ArrowLeft />下课</Button>
@@ -367,12 +367,8 @@ export function Classroom() {
         </div>}
       </section>
 
-      <aside className="class-side">
-        <div className="class-stage">
-          <React.Suspense fallback={<p className="muted">正在准备老师形象…</p>}>
-            <TeacherStage ref={teacher} />
-          </React.Suspense>
-        </div>
+      <React.Suspense fallback={null}>
+        <TeacherWindow ref={teacher}>
         <div className="class-voice">
           <button className="icon-btn" onClick={toggleReading} title={reading ? "关闭朗读" : "打开朗读"}>
             {reading ? <Volume2 /> : <VolumeX />}
@@ -389,7 +385,8 @@ export function Classroom() {
           {voice.downloadState?.state === "error" && <span className="small" role="alert">{voice.downloadState.message}</span>}
           {voice.busy && <Button small kind="ghost" onClick={stopReading}><Square />停</Button>}
         </div>
-      </aside>
+        </TeacherWindow>
+      </React.Suspense>
 
       {source && (
         <div className="class-source fade-in" role="dialog">

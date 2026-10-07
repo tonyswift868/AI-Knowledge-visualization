@@ -29,6 +29,7 @@ export const TeacherStage = React.forwardRef((props, ref) => {
   React.useImperativeHandle(ref, () => ({ setMouthLevel() {}, nod() {}, think() {} }))
   return <div>Explicit fake Live2D renderer</div>
 })
+export const TeacherWindow = React.forwardRef((props, ref) => <><TeacherStage ref={ref} />{props.children}</>)
 export const useVoiceInput = () => ({})
 export const MicButton = () => null
 ''', encoding="utf-8")

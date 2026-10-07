@@ -10,8 +10,9 @@ export type ReactionEvent = { reaction: Reaction; phase: "started" | "finished" 
 export type TeacherManifest = { id: "tsubaki-live2d"; displayName: string; skeleton: string;
   live2d: { coreScript: string; textureLod: "single-auto" } }
 export type Capabilities = { mouth: boolean; blink: boolean; breath: boolean; reactions: Record<Reaction, boolean> }
+export type ModelView = { scale: number; panX: number; panY: number }
 export type StageSnapshot = { frames: number; fps: number; active: boolean; mouth: number;
-  reaction: Reaction | null; parameters: Record<string, number>; width: number; height: number }
+  reaction: Reaction | null; parameters: Record<string, number>; width: number; height: number; view: ModelView }
 
 let coreLoading: Promise<void> | null = null
 let engineLoading: Promise<typeof import("untitled-pixi-live2d-engine/cubism")> | null = null
@@ -74,6 +75,7 @@ export class TeacherRuntime {
   private fpsFrames = 0
   private fpsAt = 0
   private applied: Record<string, number> = {}
+  private view: ModelView = { scale: 1, panX: 0, panY: 0 }
   capabilities: Capabilities = { mouth: false, blink: false, breath: false,
     reactions: { nod: false, shake: false, think: false, happy: false } }
 
@@ -170,14 +172,36 @@ export class TeacherRuntime {
     }
   }
 
+  setView(view: ModelView) {
+    this.view = { scale: clamp(view.scale, .5, 2.5), panX: clamp(view.panX, -1, 1), panY: clamp(view.panY, -1, 1) }
+    this.resize()
+  }
+
+  /** One static head crop; a collapsed stage never needs a running ticker. */
+  thumbnail(): string | null {
+    if (!this.app || !this.model || this.disposed) return null
+    const view = this.view
+    try {
+      this.setView({ scale: 1, panX: 0, panY: 0 })
+      this.app.render()
+      const source = this.app.canvas
+      const canvas = document.createElement("canvas")
+      canvas.width = canvas.height = 96
+      const edge = Math.min(source.width * .55, source.height * .4)
+      canvas.getContext("2d")!.drawImage(source, (source.width - edge) / 2, source.height * .07, edge, edge, 0, 0, 96, 96)
+      return canvas.toDataURL("image/png")
+    } catch { return null }
+    finally { this.setView(view) }
+  }
+
   private resize = () => {
     if (!this.app || !this.model || this.disposed) return
     const w = Math.max(1, this.host.clientWidth), h = Math.max(1, this.host.clientHeight)
     const internal = this.model.internalModel
     const scale = Math.min(w / internal.originalWidth, h / internal.originalHeight) * .94
     this.app.renderer.resize(w, h)
-    this.model.scale.set(scale)
-    this.model.position.set(w / 2, h / 2)
+    this.model.scale.set(scale * this.view.scale)
+    this.model.position.set(w / 2 + this.view.panX * w, h / 2 + this.view.panY * h)
   }
 
   private tick = (ticker: PIXI.Ticker) => {
@@ -230,7 +254,7 @@ export class TeacherRuntime {
   snapshot(): StageSnapshot {
     return { frames: this.frames, fps: this.fps, active: this.active, mouth: this.mouth,
       reaction: this.action?.name ?? null, parameters: { ...this.applied },
-      width: this.host.clientWidth, height: this.host.clientHeight }
+      width: this.host.clientWidth, height: this.host.clientHeight, view: { ...this.view } }
   }
 
   dispose() {

@@ -1,4 +1,7 @@
 import * as React from "react"
+export const TeacherWindow = React.forwardRef(function WindowFixture(props: { children: React.ReactNode }, ref) {
+  return <><TeacherStage ref={ref} />{props.children}</>
+})
 export const TeacherStage = React.forwardRef(function Fixture(_props, ref) {
   React.useImperativeHandle(ref, () => ({ setMouthLevel() {}, nod() {}, think() {} }))
   return <p className="muted">老师形象 · 离线占位</p>
