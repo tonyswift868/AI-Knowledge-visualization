@@ -135,7 +135,7 @@
 | BUG-52 | 推荐资料卡片上“打开完整资料”等链接点了没反应，不弹浏览器 | 已修未验证（2026-10-06） | 2026-10-06 |
 | BUG-53 | 大资料（JavaGuide，约 577 千字）在“按资料调整结构”这一步输出超上限，翻倍重试仍失败 | 已验证（2026-10-06 用户在软件里亲测） | 2026-10-06 |
 | BUG-54 | 中测试点“保存与准备”后第 1 模块备题失败，计划被误判为旧版 | 已修，全量通过；待用户重试确认 | 2026-10-07 |
-| BUG-55 | 用户反复被要求重新登录 | 原因已查清；用户定改成永久，74-MF01 写代码与上线脚本，线上执行待定 | 2026-10-07 |
+| BUG-55 | 用户反复被要求重新登录 | 已修并上线（MF-75，2026-10-07），待用户登录后验证不再掉线 | 2026-10-07 |
 
 ## 编号前缀
 
@@ -1132,7 +1132,7 @@
 - 现象：用户 2026-10-07 中测试时多次“登录状态被关闭”，要重新输密码。本机日志 2026-10-06～07 共 22 次 refresh FAILED ENTERPRISE_SESSION_REAUTH_REQUIRED，间隔 1～3 小时；另外架构师每次重启源代码版软件后也要重新登录。
 - 原因：不是这几天新加的。服务器的登录配置（refactor/server/keycloak/keycloak-realm.json，第十四批 b58e0daf 2026-09-29 带过来的）设定：访问令牌 5 分钟、闲置 30 分钟会话就失效（ssoSessionIdleTimeout 1800）、最长 8 小时必须重新登录（ssoSessionMaxLifespan 28800）；服务器身份层默认会话也是 8 小时（enterprise/identity/config.py session_ttl_seconds 28800）。电脑睡眠或软件闲置超过 30 分钟，后台刷新时服务器返回 401，客户端（account_protocol.py）就要求重新登录。第三十六批记录的“登录约 8 个半小时后失效”是同一原因。线上服务器实际生效的值还没上去核对。
 - 排查：读本机日志的 refresh 事件；查客户端 requires_reauthentication 与 account_protocol 的 401 处理；查 keycloak-realm.json 与 identity 配置。
-- 解决（用户 2026-10-07 定）：全部改成永久——用户不自己退出就一直保持登录。代码与上线脚本交 74-MF01；线上要用 Keycloak 管理接口改 realm 并重启后端，用户已同意改服务器，但架构师只读查看服务器被本机权限审查拦下，用户 2026-10-07 定由架构师执行，需用户在 Claude Code 权限里放开这一条 ssh。74-MF01 已合入（77a45e6f）：身份层会话默认永久、realm 改用最大值（2147483647 秒，约 68 年）并关闭刷新轮换作废、上线脚本 keycloak/session_policy.py（--dry-run/--execute/--rollback，未执行）、客户端遇网络错误、5xx、睡眠后不踢人。仍未永久：桌面实际用的原生会话（identity/native.py）写死 8 小时、128 次刷新作废、存在内存里后端重启全掉线、验证器任何故障都当吊销；Keycloak 自定义验证器里也写死 8 小时租期——交 75-MF01。75-MF01 已合入（2026-10-07，9862ce86）：原生会话默认不过期、去掉 128 次上限（重放检测保留）、会话族存进新表 native_session_families（迁移 0043_native_sessions，只存摘要）后端重启不丢、刷新不再调验证器而是用现有管理接口核对账号与密码状态、临时故障返回 503；退出、改密、重置、注销、停用、挤下线、重放仍会作废；离线验证 10 年、1000 次刷新、重启恢复，全量 2912 通过。未上线：上线时旧的内存会话会掉一次。
+- 解决（用户 2026-10-07 定）：全部改成永久——用户不自己退出就一直保持登录。代码与上线脚本交 74-MF01；线上要用 Keycloak 管理接口改 realm 并重启后端，用户已同意改服务器，但架构师只读查看服务器被本机权限审查拦下，用户 2026-10-07 定由架构师执行，需用户在 Claude Code 权限里放开这一条 ssh。74-MF01 已合入（77a45e6f）：身份层会话默认永久、realm 改用最大值（2147483647 秒，约 68 年）并关闭刷新轮换作废、上线脚本 keycloak/session_policy.py（--dry-run/--execute/--rollback，未执行）、客户端遇网络错误、5xx、睡眠后不踢人。仍未永久：桌面实际用的原生会话（identity/native.py）写死 8 小时、128 次刷新作废、存在内存里后端重启全掉线、验证器任何故障都当吊销；Keycloak 自定义验证器里也写死 8 小时租期——交 75-MF01。75-MF01 已合入（2026-10-07，9862ce86）：原生会话默认不过期、去掉 128 次上限（重放检测保留）、会话族存进新表 native_session_families（迁移 0043_native_sessions，只存摘要）后端重启不丢、刷新不再调验证器而是用现有管理接口核对账号与密码状态、临时故障返回 503；退出、改密、重置、注销、停用、挤下线、重放仍会作废；离线验证 10 年、1000 次刷新、重启恢复，全量 2912 通过。已上线（2026-10-07，架构师，用户逐条批准）：先备份业务库 mentorflow 到服务器 /opt/mentorflow/state/mf75/mentorflow-before-mf75.dump（3.9 MB）；服务器代码取主线 93face98 的 refactor/server 放在 /opt/mentorflow/state/mf75/src；构建 mentorflow-slim-backend:MF-75 与迁移镜像；用超级用户连接、切到所有者 mentorflow_migrator 跑迁移 0042→0043，新表 native_session_families 归 mentorflow_migrator、mentorflow_app 有增删改查；用 /opt/mentorflow/state/mf75/switch.sh 切换后端（覆盖文件 session75.override.yml 设 MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS=0），三项健康检查 200、会话时长 0、登录代理重建后健康、后端两分钟内无错误日志。Keycloak realm 没改（刷新已不走它）。回退：sudo bash /opt/mentorflow/state/mf75/switch.sh rollback（回到 MF-14；新表留着无害）。上线时所有人掉线一次；“之后不再掉线”待用户登录后验证（含重启后端仍保持登录）。
 - 验证：未验证。
 - 经验：短会话属于安全加固，与“功能先行”冲突；改之前它在内测里反复打断测试。
 - 关联：[ACC-01]
