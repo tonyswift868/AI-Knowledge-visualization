@@ -69,7 +69,7 @@ def enterprise_request_context(
     """Resolve every enterprise request against current trusted membership state."""
 
     current = now or datetime.now(timezone.utc)
-    if session.revoked or session.session_expires_at <= current:
+    if session.revoked or (session.session_expires_at is not None and session.session_expires_at <= current):
         raise IdentityContextError(
             "ENTERPRISE_SESSION_INVALID",
             "Enterprise session is revoked or expired",

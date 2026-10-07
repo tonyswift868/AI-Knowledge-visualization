@@ -47,10 +47,10 @@ class NativeCredentialClient(AccountStateClient):
             if response.status_code != 200:
                 code = ('NATIVE_CREDENTIALS_INVALID' if operation == 'login'
                         else 'ENTERPRISE_SESSION_REAUTH_REQUIRED') if response.status_code == 401 else ''
-                if not code and len(response.content) <= 8192:
+                if not code and response.status_code < 500 and len(response.content) <= 8192:
                     try:
                         candidate = response.json().get('code')
-                        code = candidate if candidate in MESSAGES else ''
+                        code = candidate if candidate in MESSAGES and candidate != 'ENTERPRISE_SESSION_REAUTH_REQUIRED' else ''
                     except Exception:
                         pass
                 raise AccountError(code or 'NATIVE_AUTH_UNAVAILABLE',

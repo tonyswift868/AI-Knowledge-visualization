@@ -131,7 +131,7 @@ class InMemoryEnterpriseSessionStore:
             self._sessions = {
                 key: value
                 for key, value in self._sessions.items()
-                if not value.public.revoked and value.public.session_expires_at > current
+                if not value.public.revoked and (value.public.session_expires_at is None or value.public.session_expires_at > current)
             }
             existing = self._sessions.get(public.session_id)
             if expected_generation is not None and (
@@ -162,7 +162,7 @@ class InMemoryEnterpriseSessionStore:
         if (
             stored is None
             or stored.public.revoked
-            or stored.public.session_expires_at <= current
+            or (stored.public.session_expires_at is not None and stored.public.session_expires_at <= current)
         ):
             if stored is not None and not stored.public.revoked:
                 self.revoke(session_id)
@@ -417,6 +417,8 @@ class KeycloakOidcClient(IdentityProviderPort):
             )
         except httpx.HTTPError as exc:
             raise IdentityError("KEYCLOAK_UNAVAILABLE", "Keycloak is unavailable", status=503) from exc
+        if response.status_code >= 500:
+            raise IdentityError("KEYCLOAK_UNAVAILABLE", "Keycloak is temporarily unavailable", status=503)
         if len(response.content) > 1_048_576:
             raise IdentityError("KEYCLOAK_RESPONSE_INVALID", "Keycloak response is too large", status=502)
         try:
@@ -496,7 +498,9 @@ class KeycloakOidcClient(IdentityProviderPort):
                     "Keycloak refresh expiry is invalid",
                     status=502,
                 )
-            refresh_expiry = current + timedelta(seconds=float(refresh_expires_in))
+            # Keycloak returns zero for refresh tokens with no exp claim.
+            refresh_expiry = (current + timedelta(seconds=float(refresh_expires_in))
+                              if refresh_expires_in > 0 else None)
         created_at = existing_session.created_at if existing_session else current
         session = EnterpriseSession(
             session_id=existing_session.session_id if existing_session else _token_urlsafe(),
@@ -506,7 +510,8 @@ class KeycloakOidcClient(IdentityProviderPort):
             session_expires_at=(
                 existing_session.session_expires_at
                 if existing_session
-                else current + timedelta(seconds=self.identity_config.session_ttl_seconds)
+                else (current + timedelta(seconds=self.identity_config.session_ttl_seconds)
+                      if self.identity_config.session_ttl_seconds else None)
             ),
             access_token_expires_at=principal.expires_at,
             refresh_token_expires_at=refresh_expiry,

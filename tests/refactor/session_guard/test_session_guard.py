@@ -74,8 +74,6 @@ def test_active_60_second_schedule_and_fresh_token(app, make_guard):
 @pytest.mark.parametrize('body,event', [
     ({'code': 'NATIVE_SESSION_SUPERSEDED'}, 'superseded'),
     ({'error': {'code': 'NATIVE_SESSION_SUPERSEDED'}}, 'superseded'),
-    ({'code': 'ENTERPRISE_SESSION_REAUTH_REQUIRED'}, 'reauth'),
-    ({'code': 'unknown'}, 'reauth'),
 ])
 def test_401_results_stop_checks(app, make_guard, body, event):
     guard, _, calls, events = make_guard(lambda request: httpx.Response(401, json=body))
@@ -86,11 +84,12 @@ def test_401_results_stop_checks(app, make_guard, body, event):
     assert SUPERSEDED_MESSAGE == '账号已在另一台设备登录'
 
 
-def test_malformed_401_still_requests_reauthentication(app, make_guard):
-    guard, _, _, events = make_guard(lambda request: httpx.Response(401, content=b'not json'))
+@pytest.mark.parametrize('body', [b'not json', b'{"code":"ENTERPRISE_SESSION_REAUTH_REQUIRED"}'])
+def test_access401_after_sleep_waits_for_shell_refresh(app, make_guard, body):
+    guard, _, _, events = make_guard(lambda request: httpx.Response(401, content=body))
     guard.start()
-    pump(app, lambda: bool(events))
-    assert events == ['reauth']
+    pump(app, lambda: guard._future is None)
+    assert not events and guard._active and guard._timer.isActive()
 
 
 def test_network_failure_exponential_backoff_and_success_reset(app, make_guard):

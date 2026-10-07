@@ -306,12 +306,6 @@ class LoginSession:
     def restore(self, profile, cancelled: threading.Event):
         if self.closure_blocks_login(profile) or self.requires_reauthentication(profile):
             raise AccountError('ENTERPRISE_SESSION_REAUTH_REQUIRED', '请使用密码重新登录。')
-        row=self.registry.get(profile.account_id)
-        if row and row['remember_password']:
-            age=time.time()-row.get('last_authenticated',0)
-            if age < 0 or age >= 30*24*60*60:
-                self.forget_password(profile)
-                raise AccountError('SAVED_PASSWORD_EXPIRED','已超过30天未登录，请重新输入密码。')
         try:
             return self._restore_session(profile,cancelled)
         except Exception as exc:
@@ -362,8 +356,7 @@ class LoginSession:
                     return restore_native_account_from_env(profile, self.credentials)
                 raise AccountError('ENTERPRISE_SESSION_REAUTH_REQUIRED', '请使用账号密码重新登录。')
             except AccountError as exc:
-                if exc.code in {'ENTERPRISE_SESSION_REAUTH_REQUIRED', 'ENTERPRISE_OIDC_TOKEN_INVALID',
-                                'ENTERPRISE_ACCOUNT_RESTORE_MISMATCH'}:
+                if exc.code == 'ENTERPRISE_SESSION_REAUTH_REQUIRED':
                     self.credentials.logout(profile)
                 raise
 

@@ -33,16 +33,17 @@ def _bounded_int(
     default: int,
     *,
     minimum: int,
-    maximum: int,
+    maximum: int | None,
 ) -> int:
     raw = str(env.get(name) or default).strip()
     try:
         value = int(raw)
     except ValueError as exc:
         raise IdentityConfigurationError(f"{name} must be an integer") from exc
-    if not minimum <= value <= maximum:
+    if value < minimum or (maximum is not None and value > maximum):
         raise IdentityConfigurationError(
-            f"{name} must be between {minimum} and {maximum}"
+            f"{name} must be at least {minimum}" if maximum is None
+            else f"{name} must be between {minimum} and {maximum}"
         )
     return value
 
@@ -219,7 +220,7 @@ class EnterpriseIdentityConfig:
     keycloak: KeycloakOidcConfig | None
     session_cookie_name: str = "__Host-mentorflow_enterprise_session"
     session_cookie_secure: bool = True
-    session_ttl_seconds: int = 28_800
+    session_ttl_seconds: int = 0  # Zero means no application-session deadline.
     pending_login_ttl_seconds: int = 300
     browser_allowed_origins: tuple[str, ...] = ()
     default_organization_id: str | None = None
@@ -235,8 +236,8 @@ class EnterpriseIdentityConfig:
             raise IdentityConfigurationError("session cookie name must not be blank")
         if self.session_cookie_name.startswith("__Host-") and not self.session_cookie_secure:
             raise IdentityConfigurationError("__Host- session cookies must be Secure")
-        if not 60 <= self.session_ttl_seconds <= 604_800:
-            raise IdentityConfigurationError("session TTL must be between 60 seconds and 7 days")
+        if self.session_ttl_seconds != 0 and self.session_ttl_seconds < 60:
+            raise IdentityConfigurationError("session TTL must be zero (unlimited) or at least 60 seconds")
         if not 30 <= self.pending_login_ttl_seconds <= 900:
             raise IdentityConfigurationError("pending-login TTL must be between 30 and 900 seconds")
         if self.mode is TenantMode.ENTERPRISE_SERVER and not self.session_cookie_secure:
@@ -408,9 +409,9 @@ class EnterpriseIdentityConfig:
             session_ttl_seconds=_bounded_int(
                 env,
                 "MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS",
-                28_800,
-                minimum=60,
-                maximum=604_800,
+                0,
+                minimum=0,
+                maximum=None,
             ),
             pending_login_ttl_seconds=_bounded_int(
                 env,

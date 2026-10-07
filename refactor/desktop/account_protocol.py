@@ -148,7 +148,7 @@ class AccountStateClient:
                 'POST' if initialize else 'GET', self.config.api_base_url + path,
                 headers=headers, **({'json': {}} if initialize else {}), follow_redirects=False,
             )
-            if response.status_code in (401, 403):
+            if response.status_code == 401:
                 raise AccountError('ENTERPRISE_SESSION_REAUTH_REQUIRED', '登录已失效或账号无权访问，请重新登录。')
             response.raise_for_status()
         except httpx.HTTPError:

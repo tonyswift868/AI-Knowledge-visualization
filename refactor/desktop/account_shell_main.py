@@ -419,11 +419,7 @@ class AccountShell:
                 code = getattr(exc, "code", "")
                 expired = code in {
                     "ENTERPRISE_SESSION_REAUTH_REQUIRED",
-                    "ENTERPRISE_OIDC_TOKEN_INVALID",
-                    "ENTERPRISE_ACCOUNT_RESTORE_MISMATCH",
-                    "ENTERPRISE_ACCOUNT_ISSUER_CHANGED",
-                    "CREDENTIAL_NOT_FOUND",
-                    "SAVED_PASSWORD_EXPIRED",
+                    "NATIVE_SESSION_SUPERSEDED",
                     "SAVED_PASSWORD_REJECTED",
                 }
                 message = (
@@ -433,7 +429,7 @@ class AccountShell:
                     if expired
                     else "暂时无法恢复登录，请检查网络或账号权限后重试。"
                 )
-                job = "restore_expired" if expired else "restore"
+                job = "restore_expired" if expired else "restore_retry"
                 diagnostic_event('login', state=job, code=code, exc_info=True)
                 self.gate.background_failed.emit(f"{generation}:{job}", message)
 
@@ -1030,7 +1026,7 @@ class AccountShell:
             if not remember and credentials is None:
                 credentials = self._session_credentials = self._EphemeralCredentials(source)
         except Exception:
-            self._expire_active_session(source)
+            self._retry_session_refresh()
             return
 
         self._session_refresh_busy = True
@@ -1055,19 +1051,8 @@ class AccountShell:
                 code = getattr(exc, "code", "")
                 expired = code in {
                     "ENTERPRISE_SESSION_REAUTH_REQUIRED",
-                    "ENTERPRISE_OIDC_TOKEN_INVALID",
-                    "ENTERPRISE_ACCOUNT_RESTORE_MISMATCH",
-                    "ENTERPRISE_ACCOUNT_ISSUER_CHANGED",
-                    "ENTERPRISE_WORKSPACE_INITIALIZATION_REQUIRED",
-                    "ENTERPRISE_ACCOUNT_STATE_MISMATCH",
-                    "CREDENTIAL_NOT_FOUND",
+                    "NATIVE_SESSION_SUPERSEDED",
                 }
-                # A refresh token is consumed by the server before the new
-                # pair is stored locally.  If the credential vault cannot
-                # persist/read that pair, retrying the old refresh token can
-                # revoke the whole family; require a password login instead.
-                if isinstance(code, str) and code.startswith("CREDENTIAL_"):
-                    expired = True
                 job = "session_expired" if expired else "session_retry"
                 self.gate.background_failed.emit(
                     f"{session_epoch}:{job}", str(exc) if not expired else ""
@@ -1092,8 +1077,8 @@ class AccountShell:
             )
             return
         if refreshed.identity.profile().account_id != source.identity.profile().account_id:
-            self._discard_login_result(refreshed, revoke_remote=True)
-            self._expire_active_session(source)
+            self._discard_login_result(refreshed, revoke_remote=False)
+            self._retry_session_refresh()
             return
         try:
             row = self.session.registry.get(source.identity.profile().account_id)
@@ -1108,11 +1093,9 @@ class AccountShell:
                     username=row.get("username"),
                 )
         except Exception:
-            self._discard_login_result(
-                refreshed,
-                revoke_remote=self._should_revoke_discarded_result(refreshed),
-            )
-            self._expire_active_session(source)
+            # A settings/vault failure is not server revocation. Rotation was
+            # already saved by the restorer; retry without ending that session.
+            self._retry_session_refresh()
             return
         scope_changed = (
             (
@@ -1363,6 +1346,17 @@ class AccountShell:
             self.gate.set_state(LoginGateState.LOGIN_READY, detail=message)
             self.gate.remember_password_box.setChecked(False)
             self.gate.notice_label.setText(message)
+            return
+        if job == "restore_retry":
+            from PySide6.QtCore import QTimer
+
+            # Keep the selected profile and tokens after an outage. The generation
+            # fence prevents a delayed retry from overriding logout/manual login.
+            self.gate.set_state(LoginGateState.AUTHENTICATING, detail="正在恢复连接…")
+            def retry():
+                if not self._closing and generation_number == self._generation:
+                    self._begin_remembered_login()
+            QTimer.singleShot(30_000, retry)
             return
         self._invalidate_login_jobs()
         self._remembered_profile = None

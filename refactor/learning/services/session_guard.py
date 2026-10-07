@@ -90,8 +90,12 @@ class SessionGuard(QObject):
                               transport=self._source._transport) as client:
                 with client.stream("GET", self._source._base_url + SESSION_PATH, headers=headers) as response:
                     self._source.require_current()
-                    if response.status_code in (401, 403):
-                        return sync_auth_error(response, "登录已失效，请重新登录。").code
+                    if response.status_code == 401:
+                        code = sync_auth_error(response, "登录已失效，请重新登录。").code
+                        # This endpoint checks the five-minute access token,
+                        # which may expire during sleep. Only explicit eviction
+                        # stops the guard; shell refresh decides session revocation.
+                        return code if code == 'NATIVE_SESSION_SUPERSEDED' else 'retry'
                     if response.status_code != 200:
                         return "retry"
                     raw = bytearray()

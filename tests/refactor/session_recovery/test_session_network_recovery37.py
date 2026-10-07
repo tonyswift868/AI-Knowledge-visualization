@@ -161,7 +161,7 @@ def test_transient_backoff_caps_at_five_minutes(qapp):
         service.dispose()
 
 
-@pytest.mark.parametrize('status,expected', [(200, 'active'), (401, 'REAUTH_REQUIRED'), (403, 'REAUTH_REQUIRED'), (503, 'retry')])
+@pytest.mark.parametrize('status,expected', [(200, 'active'), (401, 'retry'), (403, 'retry'), (503, 'retry')])
 def test_guard_missing_session_retry_then_real_server_status(qapp, status, expected):
     state = {'login': None}
     guard = SessionGuard(dict(account_id=ACCOUNT, session_provider=lambda: state['login'],

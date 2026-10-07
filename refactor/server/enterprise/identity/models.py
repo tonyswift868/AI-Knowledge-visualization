@@ -133,7 +133,7 @@ class EnterpriseSession(_IdentityModel):
     principal: AuthenticatedPrincipal
     created_at: datetime
     refreshed_at: datetime
-    session_expires_at: datetime
+    session_expires_at: datetime | None = None
     access_token_expires_at: datetime
     refresh_token_expires_at: datetime | None = None
     selected_organization_id: str | None = Field(default=None, max_length=240)
@@ -157,7 +157,7 @@ class EnterpriseSession(_IdentityModel):
 
     @model_validator(mode="after")
     def validate_selected_scope(self) -> "EnterpriseSession":
-        if self.session_expires_at <= self.created_at:
+        if self.session_expires_at is not None and self.session_expires_at <= self.created_at:
             raise ValueError("session expiry must be after creation")
         if self.selected_workspace_id is not None and self.selected_organization_id is None:
             raise ValueError("selected workspace requires selected organization")
