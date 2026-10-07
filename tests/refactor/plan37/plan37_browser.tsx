@@ -42,6 +42,7 @@ async function run() {
   root.render(<PlanDetail />); await wait(150)
   check(document.querySelector("h1")?.textContent === draft.name, "short detail title")
   check(document.body.textContent?.includes("学习目标：初二物理"), "full goal in details")
+  button("列表").click(); await wait()
   const persistedModule = document.querySelector<HTMLDetailsElement>('[data-testid="detail-route"] .module-node')!
   check(persistedModule?.querySelector('summary')?.textContent?.includes('压强的定义'), "persisted module toggle")
   persistedModule.querySelector<HTMLElement>('summary')!.click(); await wait()

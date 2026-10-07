@@ -4,6 +4,14 @@ export type Route = "home" | "plans" | "plan" | "new-plan" | "classroom" | "repo
 export type SettingsTab = "models" | "usage" | "learning" | "time" | "appearance" | "account"
 
 export type TeacherPreset = { id: string; name: string; persona: string; style: string; detail: string; examples: string; analogies: string[] }
+export type PointLink = { from: string; to: string; kind: "prerequisite" | "related" }
+export type PointLinksStatus = "none" | "running" | "ready" | "partial" | "failed"
+export type KnowledgePoint = { id: string; title: string; summary: string; minutes: number; state?: string; taught?: boolean; needs_review?: boolean;
+  citations?: { chunk_id: string; title: string; url: string | null; locator: string; quote: string }[] }
+export type KnowledgeModule = { id: string; title: string; summary: string; prerequisites?: string[]; state?: string | null;
+  question_count?: number; passed_questions?: number; learning_minutes: number; check_minutes: number; points: KnowledgePoint[] }
+export type KnowledgeDetail = { plan: { id: string; goal: string }; stages: {id: string; title: string; modules: KnowledgeModule[]}[];
+  point_links?: PointLink[]; point_links_status?: PointLinksStatus }
 export type Settings = {
   version: number
   theme: "sakura" | "aurora"

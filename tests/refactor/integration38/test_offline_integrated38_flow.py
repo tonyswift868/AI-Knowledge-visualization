@@ -39,7 +39,7 @@ BODY = ('<html><head><title>Python 数据结构</title></head><body>'
 
 class IntegratedModel(Agents):
     def complete(self, purpose, messages, **kw):
-        if purpose in ('teacher','judge','profile','check_profile'):
+        if purpose in ('teacher','judge','profile','check_profile','point_links'):
             return super().complete(purpose,messages,**kw)
         self.calls.append(purpose)
         self.requests.append(dict(purpose=purpose,system=kw.get('system'),messages=messages))

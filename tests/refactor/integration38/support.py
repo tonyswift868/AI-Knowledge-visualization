@@ -63,7 +63,9 @@ class Agents:
         with self.lock:
             self.calls.append(purpose)
             self.requests.append(dict(purpose=purpose, system=system, messages=messages))
-        if purpose == 'teacher':
+        if purpose == 'point_links':
+            text = '[]'  # No reliable relationships in this tiny synthetic fixture.
+        elif purpose == 'teacher':
             # Append-only requests retain old tasks for caching. A fake teacher
             # must follow the newest task, just as the real model is instructed.
             task = block([m for m in reversed(messages) if m['content'].startswith('【本步任务】')][:1], '【本步任务】')
@@ -125,6 +127,6 @@ def to_question(room, plan_id, view, *, streamed=None):
 
 def join_workers():
     for worker in list(threading.enumerate()):
-        if worker.name.startswith(('classroom-', 'plan-materials')):
+        if worker.name.startswith(('classroom-', 'plan-materials', 'plan-point-links')):
             worker.join(5)
             assert not worker.is_alive()

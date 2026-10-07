@@ -1,0 +1,42 @@
+.knowledge-map { margin-top: 10px; }
+.km-workspace { height: 520px; }
+.km-node { height: 150px; padding: 14px 16px; border-radius: 17px; border: 1px solid var(--border-strong); background: var(--surface-solid); box-shadow: 0 5px 18px var(--accent-glow); color: var(--text); cursor: pointer; overflow: hidden; }
+.km-node strong { display: flex; gap: 7px; font-size: 14px; line-height: 1.35; min-height: 19px; max-height: 38px; overflow: hidden; overflow-wrap: anywhere; }
+.km-node em { font-size: 11px; border-radius: 6px; padding: 2px 4px; background: var(--accent-soft); color: var(--accent); font-style: normal; height: 20px; flex-shrink: 0; }
+.km-stage { display: block; color: var(--text-3); font-size: 10px; height: 16px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.km-node p { font-size: 11px; line-height: 17px; height: 34px; margin: 6px 0; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.km-node small { display: block; font-size: 10px; line-height: 14px; color: var(--text-2); }
+.km-node-label { font-size: 10px; font-weight: 700; }
+.km-green { border-color: var(--ok); background: color-mix(in srgb,var(--ok) 10%,var(--surface-solid)); }
+.km-yellow { border-color: var(--warn); }
+.km-red { border-color: var(--danger); background: color-mix(in srgb,var(--danger) 8%,var(--surface-solid)); }
+.km-quiet { box-shadow: none; background: color-mix(in srgb,var(--text-3) 5%,var(--surface-solid)); }
+.km-goal { background: var(--accent-soft); border-color: var(--accent); }
+.km-goal strong { max-height: 88px; font-size: 16px; }
+.km-external { border-style: dashed; background: var(--accent-soft); }
+.km-current { animation: km-glow 3s ease-in-out infinite; border-color: var(--accent); }
+.km-node:hover { border-color: var(--accent); }
+.knowledge-map .km-prerequisite .react-flow__edge-path { opacity: .65; }
+.knowledge-map .km-related .react-flow__edge-path { stroke-dasharray: 6 5; opacity: .5; }
+.knowledge-map .react-flow__edge { animation: km-edge-in .45s ease-out; }
+.km-footer { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-2); }
+.km-footer > span { display: flex; gap: 5px; align-items: center; }
+.km-line { width: 18px; border-top: 2px solid var(--accent); }
+.km-line.dashed { border-top-style: dashed; }
+.km-footer select { max-width: 220px; margin-left: auto; background: var(--surface-solid); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; padding: 5px; }
+.km-cross-modules { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; background: var(--accent-soft); border-bottom: 1px solid var(--border); }
+.km-cross-modules button { white-space: normal; max-width: 100%; text-align: left; }
+.km-markdown { overflow: auto; max-width: 100%; padding: 8px; background: var(--bg-2); border-radius: 9px; line-height: 1.75; }
+.km-markdown table { border-collapse: collapse; font-size: 12px; width: max-content; min-width: 100%; }
+.km-markdown th,.km-markdown td { border: 1px solid var(--border-strong); padding: 6px 9px; }
+.km-markdown th { background: var(--accent-soft); }
+.km-markdown pre { overflow: auto; padding: 10px; background: var(--surface-solid); border: 1px solid var(--border); border-radius: 7px; }
+.km-markdown pre code { white-space: pre; }
+.km-markdown p { white-space: normal; }
+.km-markdown img { max-width: 100%; }
+.km-markdown h1,.km-markdown h2,.km-markdown h3 { font-size: 15px; }
+.km-reduced .km-current,.km-reduced .react-flow__edge,.km-reduced .pg-details { animation: none; }
+@keyframes km-glow { 50% { box-shadow: 0 0 22px var(--accent-glow); } }
+@keyframes km-edge-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .km-current,.knowledge-map .react-flow__edge { animation: none; } }
+@media (max-width:720px) { .knowledge-map .pg-toolbar { align-items: flex-start; flex-wrap: wrap; } .km-workspace { height: 470px; } .km-footer select { margin-left: 0; max-width: 100%; } .knowledge-map .pg-toolbar > div { gap: 6px; } }

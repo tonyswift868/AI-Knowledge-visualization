@@ -58,7 +58,7 @@ from .ledger import Ledger, PlanWindow, Credit
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
 _REPORT_PART_PREFIX = 'report-part:'
@@ -74,6 +74,7 @@ PARENTS = {
     'account_settings': (),
     'question_bank': (('module_id', 'modules'),), 'practice_results': (),
     'question_answers': (),  # immutable answered-question facts, independent of point judgements
+    'point_links': (('module_id', 'modules'),),
 }
 STATES = ('creating', 'ready', 'active', 'checking', 'completed')
 
@@ -296,6 +297,14 @@ class CourseStore:
             self._db.execute('''CREATE TABLE IF NOT EXISTS account_settings(plan_key TEXT NOT NULL,id TEXT NOT NULL,
                 payload TEXT NOT NULL CHECK(json_valid(payload)),revision INTEGER NOT NULL,PRIMARY KEY(plan_key,id))''')
             self._db.execute('UPDATE schema_version SET version=6')
+            version = 6
+        if version == 6:
+            self._db.execute('''CREATE TABLE IF NOT EXISTS point_links(plan_key TEXT NOT NULL,id TEXT NOT NULL,
+                payload TEXT NOT NULL CHECK(json_valid(payload)),revision INTEGER NOT NULL,module_id TEXT,
+                FOREIGN KEY(plan_key) REFERENCES plans(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+                FOREIGN KEY(plan_key,module_id) REFERENCES modules(plan_key,id) DEFERRABLE INITIALLY DEFERRED,
+                PRIMARY KEY(plan_key,id))''')
+            self._db.execute('UPDATE schema_version SET version=7')
         owner = self._db.execute("SELECT value FROM _meta WHERE key='account_id'").fetchone()
         if owner is None or owner[0] != self.account_id: raise StoreError('ACCOUNT_MISMATCH')
 
@@ -315,7 +324,16 @@ class CourseStore:
 
     def _validate(self, entity, plan, payload):
         _id(payload['id'])
-        if entity == 'plans':
+        if entity == 'point_links':
+            if (payload['id'] != payload.get('module_id') or payload.get('status') not in ('ready', 'failed', 'pending')
+                    or not isinstance(payload.get('fingerprint'), str) or not isinstance(payload.get('links'), list)
+                    or not isinstance(payload.get('dropped', {}), dict)):
+                raise StoreError('INVALID_POINT_LINKS')
+            for edge in payload['links']:
+                if not isinstance(edge, dict) or edge.get('kind') not in ('prerequisite', 'related'):
+                    raise StoreError('INVALID_POINT_LINKS')
+                _id(edge.get('from')); _id(edge.get('to'))
+        elif entity == 'plans':
             if payload['id'] != plan or payload['state'] not in STATES or type(payload['archived']) is not bool: raise StoreError('INVALID_PLAN')
             for key in ('goal', 'final_goal', 'level', 'notes'):
                 if not isinstance(payload[key], str): raise StoreError('INVALID_PLAN')
@@ -474,6 +492,14 @@ class CourseStore:
         wire = _wire_id(entity, plan, identifier)
         old = self._db.execute('SELECT deleted FROM _records WHERE entity=? AND entity_id=?', (entity, wire)).fetchone()
         if not old or old[0]: return
+        if entity == 'modules':
+            self._delete('point_links', plan, identifier)
+        if entity == 'points':
+            for row in self._rows('point_links', plan):
+                kept = [e for e in row['links'] if identifier not in (e['from'], e['to'])]
+                if kept != row['links']:
+                    row.update(links=kept, status='pending')
+                    self._put('point_links', plan, row)
         self._db.execute('UPDATE _records SET payload=?,deleted=1,local_revision=?,pending=1 WHERE entity=? AND entity_id=?',
                          (_json({'id': identifier}), self._revision(), entity, wire))
         if entity == 'plans': self._db.execute('DELETE FROM plans WHERE id=?', (identifier,))
@@ -546,6 +572,74 @@ class CourseStore:
         if entity not in PARENTS or entity == 'plans': raise StoreError('UNKNOWN_ENTITY')
         with self._lock:
             return sorted(self._rows(entity, plan_id), key=lambda p: (p.get('position', 0), p['id']))
+
+    def point_links_state(self, plan_id):
+        """Read-only projection and invalidation, including edits received by sync.
+
+        Fingerprints exclude preparation/ledger fields. Adding a predecessor's
+        point invalidates its dependent modules as well as its own module.
+        """
+        from .planner_agents import validate_point_links
+        with self._lock:
+            self._get('plans', plan_id, plan_id)
+            points = self._rows('points', plan_id)
+            modules = sorted(self._rows('modules', plan_id), key=lambda m: (m['position'], m['id']))
+            modules = [m for m in modules if any(p['module_id'] == m['id'] for p in points)]
+            rows = {r['module_id']: r for r in self._rows('point_links', plan_id)}
+            fingerprints, dirty, failed, links, ready = {}, [], [], [], 0
+            for module in modules:
+                content = dict(prerequisites=sorted(module['prerequisites']), points=[
+                    {k: p.get(k) for k in ('id', 'title', 'summary') if k != 'summary' or p['module_id'] == module['id']}
+                    for p in sorted(points, key=lambda p: p['id'])
+                    if p['module_id'] in [module['id'], *module['prerequisites']]])
+                fingerprint = hashlib.sha256(_json(content).encode('utf-8')).hexdigest()
+                fingerprints[module['id']] = fingerprint
+                row = rows.get(module['id'])
+                if row is None or row['fingerprint'] != fingerprint or row['status'] == 'pending':
+                    dirty.append(module['id'])
+                elif row['status'] == 'failed':
+                    failed.append(module['id'])
+                else:
+                    ready += 1
+                if row:
+                    clean, _ = validate_point_links(row['links'], {p['id']: p['id'] for p in points}, module, points, links)
+                    links.extend(clean)
+            status = ('none' if dirty or not modules else 'partial' if failed and ready
+                      else 'failed' if failed else 'ready')
+            return dict(modules=modules, points=points, fingerprints=fingerprints, dirty=dirty, failed=failed,
+                        links=links, status=status)
+
+    @_atomic
+    def save_point_links(self, plan_id, module_id, fingerprint, links, *, dropped=None, error=None):
+        state = self.point_links_state(plan_id)
+        # A model reply about an older map may not overwrite a newer map.
+        if state['fingerprints'].get(module_id) != fingerprint:
+            return False
+        from .planner_agents import validate_point_links
+        module = next(m for m in state['modules'] if m['id'] == module_id)
+        others = []
+        for row in self._rows('point_links', plan_id):
+            if row['module_id'] != module_id: others.extend(row['links'])
+        clean, removed = validate_point_links(links, {p['id']: p['id'] for p in state['points']}, module, state['points'], others)
+        counts = {k: removed[k] + (dropped or {}).get(k, 0) for k in removed}
+        self._put('point_links', plan_id, dict(id=module_id, module_id=module_id, fingerprint=fingerprint,
+            status='failed' if error else 'ready', links=clean, dropped=counts, error=error))
+        logging.getLogger(__name__).info('point_links plan=%s module=%s kept=%d dropped=%s error=%s', plan_id, module_id, len(clean), counts, error)
+        return True
+
+    def _prune_point_links(self):
+        """Repair stale remote endpoint references in the same sync transaction."""
+        # An orphan does not appear in the FK projection; tombstone its journal
+        # too, so a delayed link result cannot resurrect a remotely deleted module.
+        for row in self._db.execute("SELECT plan_key,payload FROM _records WHERE entity='modules' AND deleted=1").fetchall():
+            self._delete('point_links', row['plan_key'], json.loads(row['payload'])['id'])
+        for plan_id, in self._db.execute('SELECT id FROM plans').fetchall():
+            points = {p['id'] for p in self._rows('points', plan_id)}
+            for row in self._rows('point_links', plan_id):
+                kept = [e for e in row['links'] if e['from'] in points and e['to'] in points]
+                if kept != row['links']:
+                    row.update(links=kept, status='pending')
+                    self._put('point_links', plan_id, row)
 
     def _plan_availability(self, plan):
         # A version-2 plan (material flow) saved before version 3 is old only if it
@@ -1639,3 +1733,4 @@ class CourseStore:
             if old is None or old['deleted'] != int(deleted) or old['payload'] != _json(payload):
                 self._changed('remote', record.entity)
         self._project_records()
+        self._prune_point_links()

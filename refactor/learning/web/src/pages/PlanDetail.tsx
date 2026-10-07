@@ -1,12 +1,13 @@
 import * as React from "react"
 import { ArrowLeft, BookOpen, CalendarClock, ExternalLink, FilePlus2, FileText, Loader2, PlayCircle } from "lucide-react"
-import { call } from "../bridge"
-import { useApp } from "../store"
+import { call, on } from "../bridge"
+import { useApp, type KnowledgeDetail } from "../store"
+import { KnowledgeMap, PointSources } from "../planning/KnowledgeMap"
 import { Button, TASK_TIME_TIP, Tip } from "../ui"
-import { PointCitations, requirementWithoutDates } from "./NewPlan"
+import { requirementWithoutDates } from "./NewPlan"
 import type { PlanTree } from "./NewPlan"
 
-type Detail = React.ComponentProps<typeof PlanTree>["detail"] & {
+type Detail = React.ComponentProps<typeof PlanTree>["detail"] & KnowledgeDetail & {
   unusable?: boolean; message?: string
   progress?: { remaining: number; overdue_days: number }; has_report?: boolean
   plan: { weekday_weights?: number[] }
@@ -22,6 +23,27 @@ export function PlanDetail() {
   const [gaps, setGaps] = React.useState<{ point_id: string; title: string; purpose: string; reason: string }[]>([])
   const [loadError, setLoadError] = React.useState("")
   const [attempt, retry] = React.useReducer(n => n + 1, 0)
+  const [mapMode,setMapMode] = React.useState<"graph"|"list">("graph")
+  const [linksBusy,setLinksBusy] = React.useState(false)
+  const [linksError,setLinksError] = React.useState("")
+  const linksRead = React.useRef(0)
+  React.useEffect(() => {
+    let live = true
+    const off = on("plan.point_links_changed", (event: {plan_id: string; status: string}) => {
+      if (event.plan_id !== planId) return
+      const revision = ++linksRead.current
+      call<Detail>("plan.detail",{plan_id:planId}).then(d=>{if(live&&revision===linksRead.current){setDetail(d);setLinksError("")}})
+        .catch(e=>{if(live)setLinksError(e.message||"读取知识点关系失败")})
+    })
+    return ()=>{live=false;linksRead.current++;off()}
+  },[planId])
+  async function retryLinks() {
+    if (!planId) return
+    setLinksBusy(true);setLinksError("")
+    try { const result = await call<{status: KnowledgeDetail["point_links_status"]}>("plan.retry_point_links",{plan_id:planId})
+      setDetail(d=>d&&{...d,point_links_status:result.status})
+    } catch(e) {setLinksError((e as Error).message)} finally {setLinksBusy(false)}
+  }
 
   React.useEffect(() => {
     if (!planId) { go("plans"); return }
@@ -69,8 +91,11 @@ export function PlanDetail() {
         <WindowCard planId={detail.plan.id} window={detail.plan.window as unknown as Window} onSaved={setDetail} />}
       {detail.plan.state === "active" && <AddMaterialCard detail={detail} onApplied={() =>
         call<Detail>("plan.detail", { plan_id: detail.plan.id }).then(setDetail)} />}
-      <div className="section-title"><h2>知识地图</h2><span>点模块展开知识点；掌握情况按题统计</span></div>
-      <div className="card"><QuestionMap detail={detail} /></div>
+      <div className="section-title"><h2>知识地图</h2><div className="row" role="tablist" aria-label="知识地图视图">
+        <Button small role="tab" aria-selected={mapMode==="graph"} kind={mapMode==="graph"?"primary":"ghost"} onClick={()=>setMapMode("graph")}>图</Button>
+        <Button small role="tab" aria-selected={mapMode==="list"} kind={mapMode==="list"?"primary":"ghost"} onClick={()=>setMapMode("list")}>列表</Button></div></div>
+      {mapMode === "graph" ? <KnowledgeMap detail={detail} onRetry={retryLinks} busy={linksBusy}/> : <div className="card"><QuestionMap detail={detail} /></div>}
+      {linksError && <p role="alert">{linksError}</p>}
       {gaps.length > 0 && <div className="card stack" style={{ marginTop: 12 }} role="status">
         <b>资料缺失，已跳过</b>
         {gaps.map((g, i) => <span key={`${g.point_id}:${g.purpose}:${i}`}>{g.title}：{g.reason}。本次跳过不代表已掌握。</span>)}
@@ -127,7 +152,7 @@ function ModulePoints({module:m}:{module:DetailModule}) {
   },[])
   return <div ref={ref}>{open && <ol className="point-list">{m.points.map(p => <li key={p.id}>
     <b>{p.title}</b><span>{p.summary}</span><em>{p.minutes} 分钟{p.taught ? " · 已学" : ""}{p.needs_review ? " · 需要复习" : ""}</em>
-    <PointCitations citations={p.citations} />
+    <PointSources point={p} />
   </li>)}</ol>}</div>
 }
 function TeacherPresetPicker({detail,onChanged}:{detail:Detail;onChanged:(p:{id:string;name:string})=>void}) {

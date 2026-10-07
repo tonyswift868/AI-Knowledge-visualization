@@ -10,13 +10,13 @@ from tests.refactor.integration38.support import block
 
 def test_real_host_capture_uses_only_current_purposes_and_new_question_reference(tmp_path):
     from .scenario import run_scenario
-    from refactor.learning.connections.gateway import PURPOSE_EFFORT
+    from refactor.learning.connections.gateway import PURPOSE_EFFORT, BACKGROUND_PURPOSES
     capture=run_scenario(tmp_path)
     assert capture['status']=='completed'
     assert {'teacher','point_materials'} <= {r['purpose'] for r in capture['requests']}
     assert not {'profile','check_profile'} & {r['purpose'] for r in capture['requests']}  # New host writes factual archives locally.
     assert not {'questions','question_solve','question_review','lesson_prep','lesson_review'} & {r['purpose'] for r in capture['requests']}
-    assert all(r['purpose'] in PURPOSE_EFFORT for r in capture['requests'])
+    assert all(r['purpose'] in PURPOSE_EFFORT or r['purpose'] in BACKGROUND_PURPOSES for r in capture['requests'])
     rows=[r for r in capture['requests'] if r['purpose']=='judge']
     assert rows==[]
     assert analyze(capture,block=64)['requests']

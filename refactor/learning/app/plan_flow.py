@@ -208,6 +208,11 @@ class PlanFlow:
             if services is not None:  # Pure prompt helpers also construct a flow without services.
                 services._material_jobs = self._material_jobs
                 services._material_flow = self
+            self._point_link_jobs = getattr(services, '_point_link_jobs', None)
+            if self._point_link_jobs is None:
+                self._point_link_jobs = dict(guard=threading.Lock(), jobs={})
+            if services is not None:
+                services._point_link_jobs = self._point_link_jobs
         self._preparing = self._material_jobs['active']
 
     # ----------------------------------------------------------- drafts
@@ -1027,6 +1032,7 @@ class PlanFlow:
             draft["phase"] = "generating"
             draft["messages"].append(_msg("ai", "progress", "计划已保存，正在准备第 1 模块的资料与题目。"))
             self.save(draft)
+            self.ensure_point_links(plan_id)
         first = modules[0]
         def progress(done, total, text):
             self.status(plan_id, f"正在准备第 1 模块的资料与题目 {done}/{total}" + (f" · {text}" if text else ""))
@@ -1807,6 +1813,75 @@ class PlanFlow:
         self._say(draft, "已" + "，".join(parts) + "。")
 
     # ----------------------------------------------------------- 5 review + start
+    def _point_links_event(self, plan_id, status):
+        if getattr(self.services, '_closed', False): return
+        try: self.push('plan.point_links_changed', dict(plan_id=plan_id, status=status))
+        except Exception: log.info('point links view closed', exc_info=True)
+
+    def ensure_point_links(self, plan_id, *, retry=False):
+        """Background only; detail/retry never wait for model IO. Shared per account."""
+        if getattr(self.services, '_closed', False): return 'none'
+        shared = self._point_link_jobs
+        with shared['guard']:
+            if plan_id in shared['jobs']:
+                if retry: shared['jobs'][plan_id]['retry'] = True
+                return 'running'
+            state = self.services.store.point_links_state(plan_id)
+            targets = state['dirty'] + (state['failed'] if retry else [])
+            if not targets: return state['status']
+            cancel = threading.Event()
+            job = dict(cancel=cancel, retry=retry)
+            shared['jobs'][plan_id] = job
+            worker = threading.Thread(target=self._point_links_worker, args=(plan_id, job),
+                                      name='plan-point-links', daemon=True)
+            job['thread'] = worker
+        self._point_links_event(plan_id, 'running')
+        worker.start()
+        return 'running'
+
+    def _point_links_worker(self, plan_id, job):
+        store, tried = self.services.store, set()
+        try:
+            while not job['cancel'].is_set() and not getattr(self.services, '_closed', False):
+                state = store.point_links_state(plan_id)
+                targets = set(state['dirty'] + (state['failed'] if job['retry'] else []))
+                module = next((m for m in state['modules'] if m['id'] in targets and
+                    (m['id'], state['fingerprints'][m['id']]) not in tried), None)
+                if module is None: break
+                fingerprint = state['fingerprints'][module['id']]
+                tried.add((module['id'], fingerprint))
+                messages, aliases = agents.point_links_request(module, state['points'])
+                links, dropped, error = [], {}, None
+                for attempt in range(2):
+                    try:
+                        reply = self.services.gateway.complete('point_links', messages, system=agents.POINT_LINKS_SYSTEM,
+                            cancel=job['cancel'], plan_id=plan_id, max_tokens=4096)
+                        text = reply if isinstance(reply, str) else reply.text
+                        links, dropped = agents.validate_point_links(json.loads(text), aliases, module, state['points'])
+                        error = None
+                        break
+                    except ModelCancelled:
+                        return
+                    except Exception as exc:
+                        if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
+                        error = getattr(exc, 'code', type(exc).__name__)
+                        log.warning('point links module=%s attempt=%d error=%s', module['id'], attempt + 1, error)
+                if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
+                store.save_point_links(plan_id, module['id'], fingerprint, links, dropped=dropped, error=error)
+                # Notify after each committed module, including partial failures.
+                self._point_links_event(plan_id, 'running')
+        except Exception:
+            if not getattr(self.services, '_closed', False): log.exception('point links worker failed plan=%s', plan_id)
+        finally:
+            with self._point_link_jobs['guard']:
+                self._point_link_jobs['jobs'].pop(plan_id, None)
+            if not getattr(self.services, '_closed', False):
+                try: self._point_links_event(plan_id, store.point_links_state(plan_id)['status'])
+                except Exception: log.info('point links store closed', exc_info=True)
+
+    def retry_point_links(self, plan_id):
+        return dict(status=self.ensure_point_links(plan_id, retry=True))
+
     def detail(self, plan_id):
         store = self.services.store
         plan = store.get_plan(plan_id)
@@ -1815,6 +1890,7 @@ class PlanFlow:
         if plan.get('unusable'):
             return dict(plan=dict(plan, state='unusable'), stages=[], sources=[], has_report=False,
                         teacher_preset={k: preset[k] for k in ('id', 'name')},
+                        point_links=[], point_links_status='none',
                         unusable=True, message='旧版计划，已不可用')
         stages = store.records("stages", plan_id)
         modules = store.records("modules", plan_id)
@@ -1856,6 +1932,7 @@ class PlanFlow:
                   "stages": [{"id": s["id"], "title": s.get("title", ""), "modules": [
                       {"id": m["id"], "title": m["title"], "summary": m.get("summary", ""), "learning_minutes": m["learning_minutes"],
                        "check_minutes": m["check_minutes"], "points": by_module.get(m["id"], []),
+                       "prerequisites": m.get("prerequisites", []),
                        "state": book.module(m["id"]).state if book else None,
                        "question_count": bank_counts.get(m['id'], [0, 0])[0],
                        "passed_questions": bank_counts.get(m['id'], [0, 0])[1],
@@ -1874,6 +1951,8 @@ class PlanFlow:
             status = store.load_ledger(plan_id).status(self.study_day())
             result["progress"] = {"remaining": status.remaining_minutes, "overdue_days": getattr(status, "overdue_days", 0)}
         result["has_report"] = plan.get("state") == "completed"
+        result['point_links'] = store.point_links_state(plan_id)['links']
+        result['point_links_status'] = self.ensure_point_links(plan_id)
         return result
 
     def change_window(self, plan_id, raw):
@@ -2200,6 +2279,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.extend": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().extend_end(d, p.get("end")), c),
         "plan.start": lambda p, c: flow().start_request(plan_id(p)),
         "plan.detail": lambda p, c: flow().detail(plan_id(p)),
+        "plan.retry_point_links": lambda p, c: flow().retry_point_links(plan_id(p)),
         "plan.window": lambda p, c: flow().change_window(plan_id(p), p),
         "plan.rename": lambda p, c: services().store.rename_plan(plan_id(p), text(p, "title", 80)) or {"ok": True},
         "plan.archive": lambda p, c: (services().store.archive_plan(plan_id(p)) if p.get("archived") is True
