@@ -1132,7 +1132,7 @@
 - 现象：用户 2026-10-07 中测试时多次“登录状态被关闭”，要重新输密码。本机日志 2026-10-06～07 共 22 次 refresh FAILED ENTERPRISE_SESSION_REAUTH_REQUIRED，间隔 1～3 小时；另外架构师每次重启源代码版软件后也要重新登录。
 - 原因：不是这几天新加的。服务器的登录配置（refactor/server/keycloak/keycloak-realm.json，第十四批 b58e0daf 2026-09-29 带过来的）设定：访问令牌 5 分钟、闲置 30 分钟会话就失效（ssoSessionIdleTimeout 1800）、最长 8 小时必须重新登录（ssoSessionMaxLifespan 28800）；服务器身份层默认会话也是 8 小时（enterprise/identity/config.py session_ttl_seconds 28800）。电脑睡眠或软件闲置超过 30 分钟，后台刷新时服务器返回 401，客户端（account_protocol.py）就要求重新登录。第三十六批记录的“登录约 8 个半小时后失效”是同一原因。线上服务器实际生效的值还没上去核对。
 - 排查：读本机日志的 refresh 事件；查客户端 requires_reauthentication 与 account_protocol 的 401 处理；查 keycloak-realm.json 与 identity 配置。
-- 解决（用户 2026-10-07 定）：全部改成永久——用户不自己退出就一直保持登录。代码与上线脚本交 74-MF01；线上要用 Keycloak 管理接口改 realm 并重启后端，用户已同意改服务器，但架构师只读查看服务器被本机权限审查拦下，等用户决定执行方式。
+- 解决（用户 2026-10-07 定）：全部改成永久——用户不自己退出就一直保持登录。代码与上线脚本交 74-MF01；线上要用 Keycloak 管理接口改 realm 并重启后端，用户已同意改服务器，但架构师只读查看服务器被本机权限审查拦下，用户 2026-10-07 定由架构师执行，需用户在 Claude Code 权限里放开这一条 ssh。74-MF01 已合入（77a45e6f）：身份层会话默认永久、realm 改用最大值（2147483647 秒，约 68 年）并关闭刷新轮换作废、上线脚本 keycloak/session_policy.py（--dry-run/--execute/--rollback，未执行）、客户端遇网络错误、5xx、睡眠后不踢人。仍未永久：桌面实际用的原生会话（identity/native.py）写死 8 小时、128 次刷新作废、存在内存里后端重启全掉线、验证器任何故障都当吊销；Keycloak 自定义验证器里也写死 8 小时租期——交 75-MF01。
 - 验证：未验证。
 - 经验：短会话属于安全加固，与“功能先行”冲突；改之前它在内测里反复打断测试。
 - 关联：[ACC-01]
