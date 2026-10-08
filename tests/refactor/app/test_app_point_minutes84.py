@@ -61,12 +61,13 @@ def test_minutes_atomic_total_frozen_ledger_and_sync(store,tmp_path):
     before = {entity: store.records(entity,PLAN) for entity in ('credits','ledger_events')}
     assert store.save_point_minutes(PLAN,state['fingerprint'],labels(state))
     after = store.point_minutes_snapshot(PLAN)
-    assert after['ready'] and sum(p['minutes'] for p in after['points']) == 180
+    assert after['ready'] and sum(p['minutes'] for p in after['points']) < 180
     assert {p['id']:p['minutes'] for p in after['points'] if p['id'] in ('m00','m01')} == {'m00':15,'m01':15}
-    assert after['plan']['total_minutes'] == state['plan']['total_minutes']
+    assert after['plan']['total_minutes'] == sum(p['minutes'] for p in after['points'])
     assert after['plan']['window'] == state['plan']['window']
     for key in ('initial_total_minutes','initial_window'): assert after['plan'][key] == state['plan'][key]
-    assert all(store.records(e,PLAN) == v for e,v in before.items())
+    assert store.records('credits',PLAN) == before['credits']
+    assert len(store.records('ledger_events',PLAN)) == len(before['ledger_events']) + 1
     assert [m['check_minutes'] for m in after['modules']] == [m['check_minutes'] for m in state['modules']]
     other = CourseStore('account',tmp_path/'other')
     try:
@@ -162,7 +163,7 @@ def test_minutes_late_question_bank_reweights_without_repeating_ai(store,monkeyp
     points=store.records('points',PLAN)
     p=next(p for p in points if p['id']=='m00')
     assert p['minute_estimate']['questions']==10 and p['minutes']>before['m00']
-    assert sum(p['minutes'] for p in points)==180
+    assert sum(p['minutes'] for p in points)==sum(p['minute_estimate']['unconstrained'] for p in points)
 
 
 def test_minutes_account_exit_drops_reply(store):
@@ -188,11 +189,11 @@ def test_minutes_new_generation_initial_weights_before_preparation(store):
     def prepare(*args,**kwargs):
         points=store.records('points',PLAN)
         assert len({p['minutes'] for p in points})>1
-        assert sum(p['minutes'] for p in points)==24
+        assert sum(p['minutes'] for p in points)==19
         raise RuntimeError('materials stub')
     f=flow(store,model,events); f._prepare_module=prepare
     f.save=lambda draft:None; f._save_outline=lambda draft:None
-    draft=dict(plan_id=PLAN,phase='outline',estimate={'total':24},form={},sources=[],messages=[],outline=dict(grounded=True,
+    draft=dict(plan_id=PLAN,phase='outline',estimate={'total':19},form=dict(start=DAY.isoformat(),end='2026-10-18',daily_cap=180,weekday_weights=[1]*7,special_days=[]),sources=[],messages=[],outline=dict(grounded=True,
         stages=[dict(id='stage',modules=[dict(id='m0',key='m0',title='模块',points=[
             dict(title='短点',summary='短说明',chunk_ids=['c'],citations=[]),
             dict(title='长点',summary='长说明',chunk_ids=['c'],citations=[]),

@@ -46,7 +46,9 @@ class Model:
     def complete(self, purpose, messages, **kwargs):
         self.calls.append(purpose)
         text = messages[-1]["content"]
-        if purpose == "sufficiency":
+        if purpose == 'point_difficulty':
+            result = [dict(id=p['id'],difficulty='中') for p in json.loads(messages[0]['content'])['points']]
+        elif purpose == "sufficiency":
             from refactor.learning.course.planner_agents import PREVIEW_SYSTEM
             result = ({"summary": "理解压强与浮力", "modules": [{"title": "压强", "summary": "理解生活应用"}]}
                 if kwargs.get('system') == PREVIEW_SYSTEM else
@@ -183,7 +185,7 @@ def test_plan37_user_cap_warns_without_blocking_generation(fixture):
     flow, model, ctx, *_ = fixture
     model.count = 30
     draft = adopt_and_map(fixture)
-    draft["form"].update(end=TODAY.isoformat(), daily_cap=100)
+    draft["form"].update(end=TODAY.isoformat(), daily_cap=50)
     flow.estimate(draft)
     r = draft["outline"]["ranges"]
     assert r['over_cap'] and r['suggested_days']>=2  # Even learning alone exceeds the user's cap.

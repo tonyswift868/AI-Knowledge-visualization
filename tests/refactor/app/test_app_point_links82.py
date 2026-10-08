@@ -235,6 +235,8 @@ def test_new_plan_links_start_after_point_finalization_without_waiting_for_mater
     entered = threading.Event()
     model = Model()
     def pair(*a, **k):
+        if a[0] == 'point_difficulty':
+            return SimpleNamespace(text=json.dumps([dict(id=p['id'],difficulty='中') for p in json.loads(a[1][0]['content'])['points']]))
         entered.set()
         return SimpleNamespace(text='[]')
     model.complete = pair
@@ -244,7 +246,7 @@ def test_new_plan_links_start_after_point_finalization_without_waiting_for_mater
     flow = PlanFlow(services(store, model), lambda *a: None, lambda: DAY, prepare_module=prepare)
     flow.save = lambda draft: None  # creation draft IO is unrelated to this contract
     flow._save_outline = lambda draft: None  # seed already persisted the confirmed outline
-    draft = dict(plan_id=PLAN, phase='outline', estimate={'total': 30}, form={}, sources=[], messages=[],
+    draft = dict(plan_id=PLAN, phase='outline', estimate={'total': 30}, form=dict(start=DAY.isoformat(),end='2026-10-18',daily_cap=180,weekday_weights=[1]*7,special_days=[]), sources=[], messages=[],
         outline=dict(grounded=True, stages=[dict(id='stage', modules=[dict(id=m, key=m, title=m,
             points=[dict(title='定稿点', summary='定稿说明', chunk_ids=['c'], citations=[])]) for m in ('m0', 'm1')])]))
     with pytest.raises(RuntimeError, match='materials unavailable'):

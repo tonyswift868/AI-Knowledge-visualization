@@ -56,7 +56,9 @@ class ScriptedModel:
             self.calls.append((purpose, enable_search, max_tokens))
         user = messages[-1]["content"]
         hits = ()
-        if purpose == "coverage_check":
+        if purpose == 'point_difficulty':
+            text = json.dumps([dict(id=p['id'], difficulty='中') for p in json.loads(messages[0]['content'])['points']])
+        elif purpose == "coverage_check":
             text = json.dumps({"covered": True, "missing": [], "message": ""}, ensure_ascii=False)
         elif purpose == "sufficiency":
             from refactor.learning.course.planner_agents import PREVIEW_SYSTEM

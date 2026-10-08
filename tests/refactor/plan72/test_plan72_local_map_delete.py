@@ -48,7 +48,7 @@ def test_plan72_chat_delete_confirm_keeps_generated_content(fixture, monkeypatch
     assert [m['key'] for m in agents.outline_modules(after['outline'])]==['m2']
     assert agents.outline_modules(after['outline'])[0]['points']==keep
     assert after['sources']==sources and after['phase']=='outline'
-    assert after['outline']['ranges']['points']==2 and after['outline']['ranges']['learning']==16
+    assert after['outline']['ranges']['points']==2 and after['outline']['ranges']['learning']==6
     assert [r['title'] for r in after['removed_content'] if r['kind']=='module']==['资料导航与学习路线','面试计划、项目表达与求职准备']
     assert f.public(f.load(pid))['outline']['stages']==after['outline']['stages']
 

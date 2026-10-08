@@ -59,6 +59,7 @@ from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_d
 from .sync_contract import SyncRecord
 
 SCHEMA_VERSION = 7
+POINT_MINUTES_VERSION = 2  # Content totals, replacing v1's fixed-budget allocation.
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
 _REPORT_PART_PREFIX = 'report-part:'
@@ -1127,7 +1128,7 @@ class CourseStore:
 
     def point_minutes_snapshot(self, plan_id):
         """One coherent input snapshot, excluding minutes/credits from content identity."""
-        from .planner_agents import MINUTE_RULE_VERSION, point_minute_metrics
+        from .planner_agents import point_minute_metrics
         import hashlib
         with self.transaction():
             plan = self._get('plans', plan_id, plan_id)
@@ -1140,15 +1141,15 @@ class CourseStore:
             point_fingerprints = {row[0]: hashlib.sha256(json.dumps(row, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
                                   for row in content}
             signature = hashlib.sha256(json.dumps([fingerprint, metrics], sort_keys=True).encode()).hexdigest()
-            ready = (plan.get('point_minutes_version') == MINUTE_RULE_VERSION and
+            ready = (plan.get('point_minutes_version') == POINT_MINUTES_VERSION and
                      plan.get('point_minutes_signature') == signature)
             return dict(plan=plan, points=points, modules=modules, metrics=metrics, fingerprint=fingerprint,
                         signature=signature, point_fingerprints=point_fingerprints, ready=ready)
 
     @_atomic
-    def save_point_minutes(self, plan_id, fingerprint, difficulties, *, provisional=False):
-        """Atomic reweight; never replan or rewrite historical credits/daily targets."""
-        from .planner_agents import MINUTE_RULE_VERSION, estimate_point_minutes, allocate_point_minutes
+    def save_point_minutes(self, plan_id, fingerprint, difficulties, *, today=None):
+        """Commit content estimates and the ordinary replan together; preserve credits."""
+        from .planner_agents import estimate_point_minutes
         state = self.point_minutes_snapshot(plan_id)
         if state['ready']: return True
         if state['fingerprint'] != fingerprint: return False
@@ -1158,28 +1159,23 @@ class CourseStore:
                   if r['id'].startswith(('learn:', 'relearn:'))}
         weights = {p['id']: estimate_point_minutes(**state['metrics'][p['id']], difficulty=difficulties[p['id']])
                    for p in points}
-        learning = sum(m['learning_minutes'] for m in modules)
-        available = learning - sum(p['minutes'] for p in points if p['id'] in frozen)
-        editable = [p for p in points if p['id'] not in frozen]
-        allocation = dict(zip((p['id'] for p in editable),
-                              allocate_point_minutes([weights[p['id']] for p in editable], available)))
         for p in points:
             p.update(difficulty=difficulties[p['id']],
                      minute_estimate=dict(**state['metrics'][p['id']], unconstrained=weights[p['id']]))
-            if not provisional:
-                p.update(point_minutes_version=MINUTE_RULE_VERSION,
-                         difficulty_fingerprint=state['point_fingerprints'][p['id']])
-            if p['id'] in allocation: p['minutes'] = allocation[p['id']]
+            p.update(point_minutes_version=POINT_MINUTES_VERSION,
+                     difficulty_fingerprint=state['point_fingerprints'][p['id']])
+            if p['id'] not in frozen: p['minutes'] = weights[p['id']]
             self._put('points', plan_id, p)
         for m in modules:
             m['learning_minutes'] = sum(p['minutes'] for p in points if p['module_id'] == m['id'])
             self._put('modules', plan_id, m)
-        if provisional:
-            plan['point_minutes_provisional'] = True
-        else:
-            plan.pop('point_minutes_provisional', None)
-            plan.update(point_minutes_version=MINUTE_RULE_VERSION, point_minutes_signature=state['signature'],
-                        point_minutes_unconstrained_total=sum(weights.values()))
+        plan.pop('point_minutes_provisional', None)
+        plan.update(point_minutes_version=POINT_MINUTES_VERSION, point_minutes_signature=state['signature'],
+                    point_minutes_unconstrained_total=sum(weights.values()))
+        total = self._total(plan_id)
+        if total != plan['total_minutes']:
+            self._replan(plan, _day(today or date.today()), _window(plan['window']), total,
+                         cause='point_minutes', reason='按原文分量、题量与难度重算')
         self._put('plans', plan_id, plan)
         return True
 

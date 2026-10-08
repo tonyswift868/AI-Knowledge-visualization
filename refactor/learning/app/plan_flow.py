@@ -14,6 +14,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import date, timedelta
+import hashlib
 import json
 import logging
 import math
@@ -164,8 +165,8 @@ def short_plan_name(goal):
     return (text or "学习计划")[:20].rstrip(" ：:、与和")
 
 
-def map_ranges(window, point_count, *, module_counts=None, question_counts=()):
-    learning = point_count * MINUTES_PER_POINT_GUESS
+def map_ranges(window, point_count, *, module_counts=None, question_counts=(), learning_minutes=None):
+    learning = point_count * MINUTES_PER_POINT_GUESS if learning_minutes is None else learning_minutes
     ranges = minute_ranges(window, learning, learning)
     if module_counts is not None or question_counts:
         # Generation persists each module's integer reserve separately.
@@ -195,6 +196,7 @@ class PlanFlow:
         self.repo_fetch = github_repo.default_fetch  # replaced by offline tests
         self._locks: dict[str, threading.Lock] = {}
         self._guard = threading.Lock()
+        self._call_context = threading.local()
         self._status: dict[str, str] = {}
         self._additions: dict[str, dict] = {}   # PLAN-10 sessions: the host holds state, the page only picks
         self._picked: dict[str, list] = {}      # files chosen in the dialog, by token
@@ -260,14 +262,13 @@ class PlanFlow:
                 view['material_structure'] = dict(draft['material_structure'], modules=modules, ranges=ranges)
         if draft.get("outline"):
             view["outline"] = {k: v for k, v in draft["outline"].items() if k != "agent"}
-            view["outline"]["stages"] = [dict(s, modules=[{k: v for k, v in m.items() if k != "spans"} for m in s["modules"]])
+            view["outline"]["stages"] = [dict(s, modules=[dict(
+                {k: v for k, v in m.items() if k not in ("spans", "points")},
+                points=[dict(p) for p in m['points']]) for m in s["modules"]])
                                          for s in draft["outline"]["stages"]]
             if draft['outline'].get('grounded') and draft.get('form'):
-                # Old local drafts keep their generated content, while their
-                # displayed duration follows today's eight-minute estimate.
+                # Display content totals, including preparation's actual reserves.
                 modules = agents.outline_modules(view['outline'])
-                for module in modules:
-                    module['minutes'] = [len(module['points']) * MINUTES_PER_POINT_GUESS] * 2
                 try:
                     saved = {m['id']: m.get('question_count')
                              for m in self.services.store.records('modules', draft['plan_id'])}
@@ -275,10 +276,10 @@ class PlanFlow:
                     if 'closed database' not in str(exc):
                         raise
                     # Late background notifications must not reopen an account.
-                    saved = {}
+                    return view  # Keep the last preview; don't query the closed account again.
                 known=[saved.get(m.get('id')) for m in modules]
-                view['outline']['ranges'] = map_ranges(self._window(draft), sum(len(m['points']) for m in modules),
-                    module_counts=[len(m['points']) for m in modules],question_counts=[n or 0 for n in known] if saved else ())
+                view['outline']['ranges'] = self._content_ranges(draft, modules,
+                    question_counts=[n or 0 for n in known] if saved else ())
                 view['outline']['ranges']['checks_pending']=any(n is None for n in known)
         return view
 
@@ -298,6 +299,7 @@ class PlanFlow:
         lock = self._lock(plan_id)
         if not lock.acquire(blocking=False):
             raise BridgeError("PLAN_BUSY", "上一步还在进行，请稍等。")
+        self._call_context.cancel = ctx.cancel
         try:
             draft = self.load(plan_id)
             try:
@@ -308,6 +310,7 @@ class PlanFlow:
                 draft["messages"].append(_msg("ai", "error", f"{exc.message} 可以稍后重试。"))
                 self.save(draft)
         finally:
+            del self._call_context.cancel
             self.status(plan_id, "")
             lock.release()
         return {"draft": self.public(draft)}
@@ -927,9 +930,7 @@ class PlanFlow:
         by_id = {s.id: s for s in sections}
         modules = agents.outline_modules(outline)
         for module in modules:
-            module['minutes'] = [len(module['points']) * MINUTES_PER_POINT_GUESS] * 2
             for point in module['points']:
-                point['minutes'] = MINUTES_PER_POINT_GUESS
                 point['source_general']=source_quality.general_only(point['chunk_ids'],sources,chunks,lists=self._lists())
             # Compact spans (source + chunk positions) keep the draft small for big books.
             module["spans"] = [[by_id[r].source_id, by_id[r].first, by_id[r].last] for r in module["refs"]]
@@ -937,7 +938,7 @@ class PlanFlow:
         draft["outline"] = {"agent": {"stages": [{"title": s["title"], "modules": [
             {k: m[k] for k in ("key", "title", "summary", "refs", "prerequisites", "points") if k in m} for m in s["modules"]]}
             for s in outline["stages"]]}, "stages": outline["stages"],
-            "ranges": map_ranges(window, sum(len(m["points"]) for m in modules), module_counts=[len(m['points']) for m in modules]),
+            "ranges": self._content_ranges(draft, modules),
             "version": (draft["outline"] or {}).get("version", 0) + 1, 'constraint_errors': constraint_errors,
             "grounded": True, "dropped": outline["dropped"]}
         draft.pop("estimate", None)
@@ -949,11 +950,47 @@ class PlanFlow:
         self.save(draft)
 
     # ----------------------------------------------------------- 4 estimate + generate
-    def estimate(self, draft):
+    def _content_ranges(self, draft, modules, *, annotate=False, question_counts=()):
+        """Preview and persisted points use the same estimates and cached labels.
+
+        Annotating runs only in the bridge's estimate worker, never in a view.
+        Content edits invalidate labels; date/cap edits and deleting points don't.
+        """
+        chunks = self.services.store.records('source_chunks', draft['plan_id'])
+        cancel = getattr(self._call_context, 'cancel', None) or threading.Event()
+        rows = [dict(p, id=f'{i}:{j}', module_id=str(i))
+                for i,m in enumerate(modules) for j,p in enumerate(m['points'])]
+        metrics = agents.point_minute_metrics(rows, chunks, [])
+        saved = {p['id']: p for p in self.services.store.records('points', draft['plan_id'])}
+        for i, module in enumerate(modules):
+            points = [p for p in rows if p['module_id'] == str(i)]
+            keys = [hashlib.sha256(json.dumps(
+                [p['title'], p.get('summary'), p.get('citations'), metrics[p['id']]['characters']],
+                ensure_ascii=False, sort_keys=True).encode()).hexdigest() for p in points]
+            originals = module['points']
+            if annotate and any(p.get('_difficulty_key') != key or p.get('difficulty') not in agents.MINUTE_RULE['difficulty']
+                                for p,key in zip(originals, keys)):
+                if cancel.is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
+                messages, aliases = agents.point_difficulty_request(dict(module, id=str(i)), points)
+                reply = self.services.gateway.complete('point_difficulty', messages, system=agents.POINT_DIFFICULTY_SYSTEM,
+                    cancel=cancel, plan_id=draft['plan_id'], max_tokens=4096)
+                if cancel.is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
+                labels = agents.parse_point_difficulty(reply if isinstance(reply, str) else reply.text, aliases)
+                for p,row,key in zip(originals, points, keys):
+                    p.update(difficulty=labels[row['id']], _difficulty_key=key)
+            for j,(p,row) in enumerate(zip(originals, points), 1):
+                persisted = saved.get(f"{module.get('id')}-{j:02d}") if draft['phase'] in ('generating','ready') else None
+                p['minutes'] = (persisted['minutes'] if persisted else agents.estimate_point_minutes(
+                    **metrics[row['id']], difficulty=p.get('difficulty', '中')))
+            module['minutes'] = [sum(p['minutes'] for p in originals)] * 2
+        return map_ranges(self._window(draft), len(rows), module_counts=[len(m['points']) for m in modules],
+                          question_counts=question_counts, learning_minutes=sum(m['minutes'][0] for m in modules))
+
+    def estimate(self, draft, *, annotate=True):
         if draft["phase"] != "outline" or not draft.get("outline"):
             raise BridgeError("PHASE_INVALID", "请先生成路线轮廓。")
         modules = agents.outline_modules(draft["outline"])
-        ranges = map_ranges(self._window(draft), sum(len(m.get("points", [])) for m in modules), module_counts=[len(m['points']) for m in modules])
+        ranges = self._content_ranges(draft, modules, annotate=annotate)
         draft["outline"]["ranges"] = ranges
         draft["estimate"] = {"modules": len(modules), "points": ranges["points"],
             "input_tokens": [0, 0], "output_tokens": [0, 0], "model": "",
@@ -964,7 +1001,7 @@ class PlanFlow:
                     f"建议延长到 {ranges['suggested_end']}（共 {ranges['suggested_days']} 天），或缩小学习范围。"
                     "可以提高每天时长、延长周期或调整内容，也可以按当前安排继续。")
         else:
-            text = (f"共 {ranges['points']} 个知识点，按每点平均 8 分钟预估学习 {ranges['learning']} 分钟；"
+            text = (f"共 {ranges['points']} 个知识点，按原文分量和难度预估学习 {ranges['learning']} 分钟；"
                     f"目前学习约 {ranges['total'][1]} 分钟，每天约 {ranges['daily'][1]} 分钟；检测时长待实际题数确定。确认后保存计划并准备第 1 模块。")
         draft["messages"].append(_msg("ai", "estimate", text))
         self.save(draft)
@@ -983,7 +1020,7 @@ class PlanFlow:
             for module in stage["modules"]:
                 modules.append({"id": module["id"], "stage_id": stage["id"], "title": module["title"],
                                 "summary": module["summary"], "prerequisites": [keys[p] for p in module["prerequisites"]],
-                                "learning_minutes": len(module['points']) * MINUTES_PER_POINT_GUESS})
+                                "learning_minutes": sum(p['minutes'] for p in module['points'])})
         chunks = store.records("source_chunks", plan_id)
         for module, source in zip(modules, [m for s in draft["outline"]["stages"] for m in s["modules"]]):
             module["chunk_ids"] = [c["id"] for c in self._span_chunks(source, chunks)]
@@ -1028,14 +1065,23 @@ class PlanFlow:
                         raise BridgeError("MAP_SOURCE_CHANGED", "地图引用的资料已变化，请重新整理知识地图。")
                     citation['quote'] = original
         if draft["phase"] == "outline":
+            shown_learning = (draft['outline'].get('ranges') or {}).get('learning')
+            ranges = self._content_ranges(draft, modules, annotate=True)
+            if shown_learning is not None and shown_learning != ranges['learning']:
+                # A local edit of an older, unlabelled draft used a provisional
+                # medium estimate. Show the refined preview before saving it.
+                self.estimate(draft)
+                return
             self._save_outline(draft)
             for module in modules:
-                payload = [dict(p, minutes=MINUTES_PER_POINT_GUESS, id=f"{module['id']}-{index:02d}") for index, p in enumerate(module["points"], 1)]
+                payload = [dict({k:v for k,v in p.items() if k != '_difficulty_key'}, id=f"{module['id']}-{index:02d}")
+                           for index, p in enumerate(module["points"], 1)]
                 store.save_generated_module(plan_id, module["id"], payload, today=self.study_day(),
                     check_minutes=0, final_check_minutes=0, check_question_minutes=2)
-            # Original-length weights apply immediately; difficulty is refined off-thread.
+            # Reuse preview labels: saving must not rescale or ask the model again.
             initial = store.point_minutes_snapshot(plan_id)
-            store.save_point_minutes(plan_id, initial['fingerprint'], {p['id']: '中' for p in initial['points']}, provisional=True)
+            store.save_point_minutes(plan_id, initial['fingerprint'],
+                {p['id']: p['difficulty'] for p in initial['points']}, today=self.study_day())
             draft["generation"] = {m["id"]: "pending" for m in modules}
             draft["phase"] = "generating"
             draft["messages"].append(_msg("ai", "progress", "计划已保存，正在准备第 1 模块的资料与题目。"))
@@ -1741,7 +1787,7 @@ class PlanFlow:
                             row = dict(kind='point', title=p['title'])
                             if row not in removed: removed.append(row)
                     m['points'] = [p for i,p in enumerate(m['points'], 1) if i not in deleted]
-                    m['minutes'] = [len(m['points'])*MINUTES_PER_POINT_GUESS]*2
+                    m['minutes'] = [sum(p['minutes'] for p in m['points'])]*2
                     m['prerequisites'] = [k for k in m.get('prerequisites', []) if k not in removed_keys]
             stage['modules'] = [m for m in stage['modules'] if m['key'] not in removed_keys]
         draft['outline']['stages'] = [s for s in draft['outline']['stages'] if s['modules']]
@@ -1755,11 +1801,10 @@ class PlanFlow:
             structure['modules'] = [m for m in structure['modules'] if m['key'] not in removed_keys]
             self._remember_removed_content(draft, previous, structure, self._sections(draft)[1])
         modules = agents.outline_modules(draft['outline'])
-        draft['outline']['ranges'] = map_ranges(self._window(draft), sum(len(m['points']) for m in modules),
-                                               module_counts=[len(m['points']) for m in modules])
+        draft['outline']['ranges'] = self._content_ranges(draft, modules)
         draft.pop('estimate', None)
         self._say(draft, '已删除所选内容，其余知识点和已采用资料均已保留；时间预估已更新。')
-        if modules: self.estimate(draft)
+        if modules: self.estimate(draft, annotate=False)
 
     _FORM_LABELS = {"goal": "学习目标", "final_goal": "最终目标", "level": "当前水平", "level_note": "水平说明",
                     "start": "开始日期", "end": "结束日期", "daily_cap": "每天最多学习时长",
@@ -1790,8 +1835,7 @@ class PlanFlow:
         draft.pop("coverage", None)
         if draft.get("outline"):
             modules = agents.outline_modules(draft["outline"])
-            draft["outline"]["ranges"] = map_ranges(window, sum(len(m.get("points", [])) for m in modules),
-                module_counts=[len(m.get('points', [])) for m in modules])
+            draft["outline"]["ranges"] = self._content_ranges(draft, modules)
         shown = []
         for key in params:
             value = {"level": LEVEL_NAMES.get(form["level"]), "daily_cap": f"{form['daily_cap']} 分钟",
@@ -1799,7 +1843,7 @@ class PlanFlow:
             shown.append(f"{self._FORM_LABELS[key]}改为 {value}" if value else f"更新了{self._FORM_LABELS[key]}")
         self._say(draft, "已修改：" + "，".join(shown) + "。")
         if phase == 'outline' and not any(form[k] != old[k] for k in about):
-            self.estimate(draft)
+            self.estimate(draft, annotate=False)
         if phase in ('questions', 'preview', 'sources', 'outline') and any(form[k] != old[k] for k in about):
             draft['outline'] = None
             draft.pop('preview', None)
@@ -1879,7 +1923,7 @@ class PlanFlow:
                     cancel=job['cancel'], plan_id=plan_id, max_tokens=4096)
                 difficulties.update(agents.parse_point_difficulty(reply if isinstance(reply, str) else reply.text, aliases))
             if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
-            if store.save_point_minutes(plan_id, state['fingerprint'], difficulties): status = 'ready'
+            if store.save_point_minutes(plan_id, state['fingerprint'], difficulties, today=self.study_day()): status = 'ready'
         except Exception:
             if not getattr(self.services, '_closed', False): log.exception('point minutes failed plan=%s; original minutes retained', plan_id)
         finally:
@@ -1891,6 +1935,9 @@ class PlanFlow:
                 # Its relationship status remains truthful; no frontend changes needed.
                 try: self._point_links_event(plan_id, store.point_links_state(plan_id)['status'])
                 except Exception: log.info('point minutes store closed', exc_info=True)
+                # Classroom's existing snapshot refresh also reloads its ledger projection.
+                try: self.push('classroom.materials_ready', dict(plan_id=plan_id, reason='point_minutes'))
+                except Exception: log.info('point minutes classroom closed', exc_info=True)
 
     def _point_links_event(self, plan_id, status):
         if getattr(self.services, '_closed', False): return

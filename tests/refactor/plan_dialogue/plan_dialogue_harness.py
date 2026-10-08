@@ -251,6 +251,8 @@ class ScriptedGateway:
     def complete(self, purpose, messages, **kwargs):
         self.calls.append({"purpose": purpose, "enable_search": kwargs.get("enable_search", False)})
         prompt = messages[-1]["content"]
+        if purpose == 'point_difficulty':
+            return SimpleNamespace(text=json.dumps([dict(id=p['id'],difficulty='中') for p in json.loads(messages[0]['content'])['points']]), search_hits=(), citations=())
         if purpose == "coverage_check":
             return SimpleNamespace(text=json.dumps({"covered": True, "missing": [], "message": ""}, ensure_ascii=False), search_hits=(), citations=())
         if purpose == "sufficiency":

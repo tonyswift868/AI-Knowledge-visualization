@@ -76,8 +76,8 @@ def test_plan63_legacy_local_map_reestimates_without_discarding_content(fixture)
     draft['outline']['ranges']['learning'] = 15
     before = copy.deepcopy(draft)
     view = flow.public(draft)
-    assert view['outline']['ranges']['learning'] == 8
-    assert view['outline']['stages'][0]['modules'][0]['minutes'] == [8,8]
+    assert view['outline']['ranges']['learning'] == 3
+    assert view['outline']['stages'][0]['modules'][0]['minutes'] == [3,3]
     assert draft == before
 
 
@@ -87,7 +87,7 @@ def test_plan63_late_preparation_view_after_account_db_closes_does_not_reopen(fi
     flow.services.store.close()
     view = flow.public(draft)
     assert view['material_structure'] == draft['material_structure']
-    assert view['outline']['ranges']['learning'] == 8
+    assert view['outline']['ranges']['learning'] == 3
 
 
 def test_plan63_warning_does_not_block_user_confirming(fixture):
@@ -100,6 +100,6 @@ def test_plan63_warning_does_not_block_user_confirming(fixture):
     flow.generate(draft, ctx)
     assert draft['phase'] == 'ready'
     points = flow.services.store.records('points', draft['plan_id'])
-    assert len(points) == 30 and all(p['minutes'] == 8 for p in points)
-    assert draft['outline']['ranges']['total'][1]==240  # Prior to preparation: learning only.
+    assert len(points) == 30 and all(p['minutes'] == 3 for p in points)
+    assert draft['outline']['ranges']['total'][1]==90  # Prior to preparation: learning only.
     assert flow.services.store.get_plan(draft['plan_id'])['total_minutes'] == flow.public(draft)['outline']['ranges']['total'][1]

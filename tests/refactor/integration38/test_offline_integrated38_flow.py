@@ -119,7 +119,11 @@ def build_plan(root, events):
     d=run(lambda d,c:flow.estimate(d));estimate=d['outline']['ranges']['total'][1]
     d=run(lambda d,c:flow.generate(d,c));assert d['phase']=='ready'
     join_workers()
-    assert store.get_plan(pid)['total_minutes']==estimate+sum(m['check_minutes']+m['final_check_minutes'] for m in store.records('modules',pid))
+    # Prepared question associations refine the same content formula, rather than preserving the initial preview budget.
+    learning=sum(p['minutes'] for p in store.records('points',pid))
+    assert learning>=estimate
+    assert store.get_plan(pid)['total_minutes']==learning+sum(m['check_minutes']+m['final_check_minutes'] for m in store.records('modules',pid))
+    assert flow.public(flow.load(pid))['outline']['ranges']['total'][1] == store.get_plan(pid)['total_minutes']
     bank=store.records('question_bank',pid)
     assert len(bank)==5 and all(q.get('role')=='bank' for q in bank)
     assert sum(q['kind']=='recall' for q in bank)==1
