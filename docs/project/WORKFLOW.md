@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-08）：第八十三至八十五批已全部合入（主线 197bc861，全量 3104 通过、0 失败），14:04 用新启动脚本重启，用户在新版上测。从源代码启动：Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden（无控制台、退出原因和崩溃栈写进日志）；重启前先问用户。86-MF03 模型连接自动重试已合入（ec2ffe7e，未重启）；86-MF02 统一加载过场进行中；87-MF04 内存（语音引擎在朗读关着时也预热，占约 7.2 GB，架构师已应用户要求手动结束该进程）已起草待转发。番茄钟、自习室暂不做。81-MF06 排除规则留到以后测新建计划时再看；81-MF04 镜像保留。
+- **现在在做的事**（2026-10-08）：第八十六批已全部合入（主线 56251799，全量 3133 通过、0 失败；未重启，用户软件已关）。进行中：87-MF04 语音引擎内存（朗读默认关、开着有明显开关、关掉即释放）。待转发：88-MF05 原生登录加载过场、88-MF06 后台任务初始状态。从源代码启动：Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden；重启前先问用户。用户机器上另有 Kristina 的语音引擎（D:\Kristina_Runtime，kristina.bridge.launcher 启动）约 8 GB，不是本项目的，不碰。番茄钟、自习室暂不做。81-MF06 排除规则留到以后测新建计划时再看；81-MF04 镜像保留。
 
 ## 协作方式
 
@@ -63,24 +63,89 @@
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
 | MF-01 | 空闲（81-MF01 已合入） | server |
-| MF-02 | 86-MF02 进行中 | client |
+| MF-02 | 空闲（86-MF02 已合入） | client |
 | MF-03 | 空闲（86-MF03 已合入） | classroom |
-| MF-04 | 87-MF04 已起草，待用户转发 | runtime |
-| MF-05 | 空闲（83-MF05 已合入） | platform |
+| MF-04 | 87-MF04 进行中 | runtime |
+| 88-MF05 | MF-05 platform | 原生登录与启动窗口加载过场，与网页一致（¥0） | UI-00 | 56251799 | 已起草，待用户转发 |
+| 88-MF06 | MF-06 tools | 后台任务初始状态：detail 补分钟重算等状态字段，打开页面即显示过场（¥0） | UI-00、MAP-01 | 56251799 | 已起草，待用户转发 |
+| MF-05 | 88-MF05 已起草，待用户转发 | platform |
 | 84-MF06 | MF-06 tools | 知识点分钟数按内容分量重算：程序按原文长度和题量算、AI 只标难度，老计划自动重算（¥1） | PLAN-04、PLAN-05 | 95fa4107 | 已合入（f3fed92d，完成；守住原总量 4328，不受约束估算 3118，用户选按内容算→85-MF06） |
 | 84-MF03 | MF-03 classroom | 学习进度状态：逾期待还/已还、今天进度、超前，一次一种、按严重程度配色（¥0） | PLAN-05、UI-00 | 95fa4107 | 已合入（04264b1b，完成；用户副本上应显示逾期待还 331 分、今天已还 24 分） |
 | 85-MF06 | MF-06 tools | 计划总时长改按内容算、老计划自动重排日程（¥0.5） | PLAN-04、PLAN-05 | bf18799b | 已合入（91b636fc，主线 197bc861；副本总量 4967→3750，10-07 未学的 331 分摊进后面每天，顶部变“今天 24 / 289”） |
-| 86-MF02 | MF-02 client | 统一加载过场：盘点所有等待处、三档（不显示/骨架/过场＋文字）、老师正在想（¥0.3） | UI-00 | 197bc861 | 已转发，进行中 |
+| 86-MF02 | MF-02 client | 统一加载过场：盘点所有等待处、三档（不显示/骨架/过场＋文字）、老师正在想（¥0.3） | UI-00 | 197bc861 | 已合入（ebb1d0d0，主线 56251799；39 类等待 38 类统一，原生登录与分钟重算初始状态未覆盖→88） |
 | 86-MF03 | MF-03 classroom | 模型连接一断自动重试：未出字前最多重试 2 次，用户无感（¥0.3） | UI-00、BUG-58 | 197bc861 | 已合入（007ea156，主线 ec2ffe7e；未发出的连接失败最多重试 2 次，间隔 1、3 秒） |
-| 87-MF04 | MF-04 runtime | 内存：朗读关着不启动语音引擎、关朗读和空闲释放；查清主程序线程（¥0.3） | VOICE-01、BUG-58 | ec2ffe7e | 已起草，待用户转发 |
-| MF-06 | 空闲（85-MF06 已合入） | tools |
+| 87-MF04 | MF-04 runtime | 内存：朗读关着不启动语音引擎、关朗读和空闲释放；查清主程序线程（¥0.3） | VOICE-01、BUG-58 | ec2ffe7e | 已转发，进行中 |
+| MF-06 | 88-MF06 已起草，待用户转发 | tools |
 | MF-07 | 空闲（81-MF07 已合入） | library |
 
-空闲工位：server、platform、classroom、tools、library。
+空闲工位：server、client、classroom、library。
 
 ## 待派队列
 
 - 无（第五十九批两份已起草，见上）。
+
+## 第八十八批任务原文（2026-10-08，基线 56251799）
+
+### [88-MF05] platform｜原生登录与启动窗口加载过场，与网页一致（¥0）
+
+~~~text
+【MentorFlow 第八十八批｜MF-05（工位 platform）｜原生登录与启动窗口也用同样的加载过场：不让用户对着空白或干转圈】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有代码，不新增依赖：refactor/desktop/ 下的登录与启动界面（login_shell.py、account_shell_main.py 里显示等待的地方）；用 PySide6 自带能力（QPropertyAnimation、QTimer、样式表）做动画，配色和文案跟 86-MF02 网页里的过场一致（读它的 CSS 取色值和文案风格）。不嵌网页、不引动画库。
+
+开工同步
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard 56251799
+提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。D:\MentorFlowApp 只读。用户正在用 D:\MentorFlowData\account-shell：只读，不改不删，要用的数据复制到测试目录再用。E 盘只读运行、不复制不写。先读 AGENTS.md（磁盘规则、功能先行不加安全加固）：中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node（不提交 dist）。遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。全量测试、web 构建由你跑并如实写结果。不要结束或重启用户正在用的那个软件进程（从 D:\MentorFlow 主目录启动的）；你自己的测试进程从工位目录启动、用复制的数据。
+同时在跑（各改各的，冲突由架构师合并）：87-MF04 语音引擎内存（speech.py、voice/tts、useTeacherVoice.ts、老师栏朗读开关）；88-MF05 原生登录窗口加载过场（desktop/ 下登录与启动界面）；88-MF06 后台任务初始状态（plan_flow.py 的 detail 字段、PlanDetail/KnowledgeMap 读取）。
+主线已含 86-MF02 的统一加载组件（web/src，三档：＜300ms 不显示、0.3～3s 骨架、＞3s 过场＋文字、＞15s 慢提示与重试/取消），报告见 D:\MentorFlow\.local\test-tmp\fix86-loading\report.md，先读它的盘点表和组件说明。
+产物目录：D:\MentorFlow\.local\test-tmp\fix88-login\。目标两小时内交回。花费上限 ¥0。
+背景（用户 2026-10-08 定，CURRENT_STATE [UI-00]“加载规则”）：86-MF02 把网页里 38 类等待统一成加载过场，但启动时的登录窗口是 Qt 原生界面，不在网页里，没覆盖。用户要求补上。
+要做
+  1. 盘点原生界面里所有等待：软件启动到登录窗出现、点登录到进入主界面、自动登录与恢复会话、切换账号、退出登录、登录失败重试、会话恢复失败等；列表写进报告（现在显示什么、实测多久）。
+  2. 按 86-MF02 的同一套三档规则做：很短不显示；中等显示轻量动画；较长显示与网页一致的过场（主题色、动效风格）＋一句说清正在做什么（例如“正在连接账号服务…”“正在恢复上次的登录…”）；超过 15 秒提示“比平时慢，可能是网络问题”并给重试（能取消的给取消）。系统开了减少动态效果就只保留静态文字。
+  3. 主界面网页加载出来之前的空窗（登录成功到网页第一帧）也不能空白：显示同样的过场直到网页准备好。
+  4. 不改登录逻辑、令牌、密码处理；83-MF05 的“只有用户明确退出才退出”和退出诊断保持不变。
+  5. 实测：从工位启动（用复制的数据）走启动、登录、进入主界面，记录每段耗时和显示了什么；截图亮暗各一套（启动过场、登录中、慢提示）。离线测试覆盖三档切换和慢提示；全量通过、web 构建通过。
+完成标准：原生界面里每处等待都有和网页一致的过场与文字；登录成功到网页第一帧不空白；登录逻辑不变；全量通过。
+验收：报告和截图写到 D:\MentorFlow\.local\test-tmp\fix88-login\report.md。
+回执（尽量短，用表格）：【MF-05｜platform｜第八十八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 盘点处数 ／ 已覆盖 ／ 实测耗时 ／ 截图 ／ 全量与构建 ／ 本地最终占用
+~~~
+
+### [88-MF06] tools｜后台任务初始状态：detail 补分钟重算等状态字段，打开页面即显示过场（¥0）
+
+~~~text
+【MentorFlow 第八十八批｜MF-06（工位 tools）｜后台任务初始状态：打开页面时就知道知识点连线、分钟重算、后台备题是否还在跑】
+
+现成项目与许可证（第一节）
+  - 只改本项目现有代码，不新增依赖：app/plan_flow.py（detail 返回字段，照 82-MF06 的 point_links_status 写法）、你 84/85 写的分钟重算流程、后台备题（_prepare_worker）现有状态；前端只改读取这些字段的地方（web/src/pages/PlanDetail.tsx、planning/KnowledgeMap.tsx 及 86-MF02 的加载组件调用处）。
+
+开工同步
+  cd D:\MentorFlow-office\tools\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/tools
+  git reset --hard 56251799
+提交：git -c user.name="MentorFlow Worker tools" -c user.email="worker-tools@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。D:\MentorFlowApp 只读。用户正在用 D:\MentorFlowData\account-shell：只读，不改不删，要用的数据复制到测试目录再用。E 盘只读运行、不复制不写。先读 AGENTS.md（磁盘规则、功能先行不加安全加固）：中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node（不提交 dist）。遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。全量测试、web 构建由你跑并如实写结果。不要结束或重启用户正在用的那个软件进程（从 D:\MentorFlow 主目录启动的）；你自己的测试进程从工位目录启动、用复制的数据。
+同时在跑（各改各的，冲突由架构师合并）：87-MF04 语音引擎内存（speech.py、voice/tts、useTeacherVoice.ts、老师栏朗读开关）；88-MF05 原生登录窗口加载过场（desktop/ 下登录与启动界面）；88-MF06 后台任务初始状态（plan_flow.py 的 detail 字段、PlanDetail/KnowledgeMap 读取）。
+主线已含 86-MF02 的统一加载组件（web/src，三档：＜300ms 不显示、0.3～3s 骨架、＞3s 过场＋文字、＞15s 慢提示与重试/取消），报告见 D:\MentorFlow\.local\test-tmp\fix86-loading\report.md，先读它的盘点表和组件说明。
+产物目录：D:\MentorFlow\.local\test-tmp\fix88-status\。目标一个半小时内交回。花费上限 ¥0。
+背景（86-MF02 报告“部分完成”第 2 条）：分钟重算只有状态变化事件（plan.point_minutes_changed），没有初始状态字段；页面打开前已经开始的重算，前端不知道它还在跑，没法显示过场。知识点连线已有 point_links_status，可以照着做。
+要做
+  1. plan.detail 增加 point_minutes_status（none/running/ready/failed，和 point_links_status 同一套值），反映打开页面那一刻分钟重算的真实状态；检查后台备题等其他会在计划页面体现的后台任务，凡是界面需要显示进度而 detail 里没有初始状态的，一并补上同风格字段（列清楚补了哪些、没补的为什么不需要）。
+  2. 前端在打开计划详情时就读这些初始状态，用 86-MF02 的加载组件显示（例如“正在按内容重算知识点时长…”），收到现有事件后照常刷新；完成后自然消失。
+  3. 不让 detail 变慢（只读内存或已存状态，不调模型、不做重计算）。
+  4. 离线测试覆盖：页面打开前已在跑 → 打开即显示；跑完 → 消失并刷新；失败 → 显示重试（有重试动作的）；全量通过、web 构建通过。截图：重算进行中、连线进行中，亮暗各一张。
+完成标准：所有需要显示的后台任务打开页面就有正确初始状态并有过场；detail 不变慢；全量通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix88-status\report.md。
+回执（尽量短，用表格）：【MF-06｜tools｜第八十八批｜完成/部分完成/受阻】基线 ／ 提交 ／ 新增字段 ／ 前端显示 ／ detail 耗时前后 ／ 截图 ／ 全量与构建 ／ 本地最终占用
+~~~
 
 ## 第八十七批任务原文（2026-10-08，基线 ec2ffe7e）
 
