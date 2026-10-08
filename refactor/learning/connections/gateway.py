@@ -493,15 +493,66 @@ class ModelGateway:
                     secret = self._secret(config)
                 if not secret:
                     raise ModelError('MODEL_KEY_REQUIRED', '请为当前模型预设保存 API Key。')
-                attempted = True
                 timeout = BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else config['timeout']
                 if purpose != 'connection_test':  # the explicit "Reply OK" probe stays tiny
                     max_tokens = MODEL_MAX_OUTPUT.get(config['model'], max_tokens)
-                result = providers.complete(config['provider_id'], base_url=config['base_url'], model=config['model'],
-                                            api_key=secret, messages=messages, system=system, enable_search=enable_search,
-                                            temperature=config['temperature'], timeout=timeout,
-                                            cancel=token, on_text=on_text, max_tokens=max_tokens,
-                                            reasoning_effort=effort)
+                deadline = time.monotonic() + timeout
+                emitted = False
+                def receive(text):
+                    nonlocal emitted
+                    emitted = True  # Even an empty callback makes replay unsafe.
+                    on_text(text)
+                for retry in range(3):
+                    if token.is_set():
+                        exc = ModelCancelled()
+                        exc.request_attempted = attempted
+                        raise exc
+                    try:
+                        attempted = True
+                        result = providers.complete(config['provider_id'], base_url=config['base_url'], model=config['model'],
+                                                    api_key=secret, messages=messages, system=system, enable_search=enable_search,
+                                                    temperature=config['temperature'], timeout=max(.001, deadline-time.monotonic()),
+                                                    cancel=token, on_text=receive if on_text is not None else None,
+                                                    max_tokens=max_tokens, reasoning_effort=effort)
+                        break
+                    except ModelError as exc:
+                        safe = (getattr(exc, 'safe_to_retry', False) is True
+                                and exc.code in {'MODEL_CONNECTION_FAILED', 'MODEL_TIMEOUT'}
+                                and not emitted and not getattr(exc, 'response_received', False)
+                                and getattr(exc, 'usage', None) is None)
+                        if safe:
+                            attempted = False
+                            if token.is_set():
+                                cancelled = ModelCancelled()
+                                cancelled.request_attempted = False
+                                raise cancelled
+                        delay = (1., 3.)[retry] if retry < 2 else 0
+                        if (not safe or purpose == 'connection_test' or retry == 2
+                                or time.monotonic() + delay >= deadline):
+                            raise
+                        if token.is_set():
+                            cancelled = ModelCancelled()
+                            cancelled.request_attempted = False
+                            raise cancelled
+                        # Only machine metadata, never vendor exception text/key.
+                        record = dict(at=timestamp().isoformat(), request_id=identifier,
+                                      purpose=purpose, retry=retry+1, delay_seconds=delay, code=exc.code,
+                                      reason=getattr(exc, 'diagnostics', {}).get('exception_type'))
+                        try:
+                            with self._lock:
+                                handler = RotatingFileHandler(self.usage_log.path.with_name('model-retries.log'),
+                                                              maxBytes=1024*1024, backupCount=2, encoding='utf-8')
+                                try:
+                                    handler.emit(logging.LogRecord(__name__, logging.INFO, '', 0,
+                                                 json.dumps(record, ensure_ascii=False), (), None))
+                                finally:
+                                    handler.close()
+                        except (OSError, ValueError):
+                            pass  # Logging cannot turn a recovered connection into a failure.
+                        if token.wait(delay):
+                            cancelled = ModelCancelled()
+                            cancelled.request_attempted = False
+                            raise cancelled
                 if not isinstance(result, providers.ModelResult) or result.provider_id != config['provider_id']:
                     raise ModelError('MODEL_RESPONSE_INVALID', '模型响应厂商与当前预设不一致。')
                 observed = self._billable_usage(result.usage, config, effort)
@@ -519,10 +570,11 @@ class ModelGateway:
                 if observed is None and exc.code in {'MODEL_TIMEOUT', 'MODEL_CONNECTION_FAILED', 'MODEL_CANCELLED'}:
                     # A missing receipt is unknown, not zero. Preserve whether
                     # the provider was attempted; a pre-send cancel cannot bill.
+                    sent = getattr(exc, 'request_attempted', attempted)
                     unknown = providers.Usage(0, 0, 0, 0, 0, 0, {'_mentorflow': {
                         'unreported_fields': ['input_tokens', 'cached_input_tokens', 'uncached_input_tokens',
-                                              'output_tokens', 'reasoning_tokens', 'search_requests'],
-                        'request_attempted': getattr(exc, 'request_attempted', attempted),
+                                              'output_tokens', 'reasoning_tokens', 'search_requests'] if sent else [],
+                        'request_attempted': sent,
                         'sent_reasoning_parameters': getattr(exc, 'sent_reasoning_parameters', {}),
                     }})
                     observed = self._billable_usage(unknown, config, effort) if config else unknown

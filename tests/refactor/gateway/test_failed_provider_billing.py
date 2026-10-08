@@ -137,7 +137,8 @@ def test_missing_receipt_is_explicitly_unknown_and_never_priced_zero(tmp_path, m
     g = gateway(tmp_path)
     def handle(*_):
         if mode == 'no_headers':
-            raise httpx.ConnectError(KEY)
+            # A read failure before headers may have reached/billed the server.
+            raise httpx.ReadError(KEY)
         data = anthro(provider='deepseek')
         if mode == 'no_meter':
             del data['usage']

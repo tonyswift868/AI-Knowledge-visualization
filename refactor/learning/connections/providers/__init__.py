@@ -93,6 +93,12 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
 
     def failure(error, cause=None):
         error = accounting.attach(error)
+        # Connect/TLS establishment failed before HTTP sent a model request.
+        # Never replay an invocation with an earlier tool-roundtrip receipt.
+        error.safe_to_retry = (isinstance(cause, (httpx.ConnectError, httpx.ConnectTimeout))
+                               and not error.response_received and len(accounting.receipts) == 1)
+        if error.safe_to_retry:
+            error.request_attempted = False
         error.diagnostics = evidence.snapshot(cause)
         # Model names are vendor-controlled too; never journal an echoed key.
         if isinstance(error.model, str) and api_key in error.model:
