@@ -104,6 +104,12 @@ def _make_pipeline(config):
     # Chinese G2PW has a hardcoded relative model directory; bind existing assets.
     import text.g2pw as g2pw
     original = g2pw.G2PWPinyin.__init__
+    # G2PW is used sentence by sentence. Do not retain its largest temporary CPU
+    # buffers for the entire time that the teacher voice is resident.
+    adapted = _load_source("text.g2pw.onnx_api", engine / "GPT_SoVITS/text/g2pw/onnx_api.py", [
+        ("sess_options = onnxruntime.SessionOptions()",
+         "sess_options = onnxruntime.SessionOptions()\n        sess_options.enable_cpu_mem_arena = False\n        sess_options.enable_mem_pattern = False")])
+    original.__globals__["G2PWOnnxConverter"] = adapted.G2PWOnnxConverter
     def initialize(self, *args, **kwargs):
         kwargs["model_dir"] = assets["g2pw_root"]
         return original(self, *args, **kwargs)
@@ -119,7 +125,11 @@ def _make_pipeline(config):
     # though its existing slice expression handles that case. Apply the one-line
     # correction in memory, keeping the shared engine file untouched.
     _load_source("TTS_infer_pack.TTS", engine / "GPT_SoVITS/TTS_infer_pack/TTS.py", [
-        ("elif not is_first_chunk and not is_final:", "elif not is_first_chunk:")])
+        ("elif not is_first_chunk and not is_final:", "elif not is_first_chunk:"),
+        # The old route created FP32 BERT on CPU and GPU, then converted it to
+        # the already-selected FP16. Load at the final precision from the start.
+        ("AutoModelForMaskedLM.from_pretrained(base_path)",
+         "AutoModelForMaskedLM.from_pretrained(base_path, torch_dtype=torch.float16 if self.configs.is_half else torch.float32)")])
     from TTS_infer_pack.TTS import TTS, TTS_Config
     _use_bundled_language_model()
     print("Loading resident voice weights", flush=True)

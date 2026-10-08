@@ -15,7 +15,7 @@ import threading
 import time
 from uuid import uuid4
 
-from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtCore import QObject, QTimer, Qt, Signal, Slot
 
 from .bridge import BridgeError
 from ..voice.download import DownloadError
@@ -124,7 +124,8 @@ class TeacherSpeech(QObject):
     """Register once per LearningWindow, then reset on account scope changes."""
     _result = Signal(object)
 
-    def __init__(self, bridge, data_root, parent=None, *, resources=None, service_factory=None):
+    def __init__(self, bridge, data_root, parent=None, *, resources=None, service_factory=None,
+                 idle_seconds=600):
         super().__init__(parent)
         self.bridge = bridge
         self.resources = resources or SpeechResources(data_root)
@@ -143,6 +144,12 @@ class TeacherSpeech(QObject):
         self._volume, self._speed = 1.0, 1.0
         self._download = None
         self._download_state = None
+        # Keep a voice resident across ordinary gaps between replies, not across
+        # a long break. This timer owns no thread and never expires mid-utterance.
+        self._idle_timer = QTimer(self)
+        self._idle_timer.setSingleShot(True)
+        self._idle_timer.setInterval(round(idle_seconds * 1000))
+        self._idle_timer.timeout.connect(self._idle_release)
         for name, fn, ui in (
             ("status", self.status, False), ("download", self.download, True),
             ("choose_download", self.choose_download, True),
@@ -169,7 +176,17 @@ class TeacherSpeech(QObject):
 
     def _state_changed(self, state):
         self._state = state
+        if self.service and state in {"idle", "ready", "stopped", "error"}:
+            self._idle_timer.start()
+        else:
+            self._idle_timer.stop()
         self._push("state", {**self._scope(), "state": state})
+
+    def _idle_release(self):
+        if self._state in {"idle", "ready", "stopped", "error"}:
+            self._halt()
+            self._release_service()
+            self._state_changed("idle")
 
     def status(self, params, ctx):
         _params(params, ())
@@ -197,6 +214,7 @@ class TeacherSpeech(QObject):
         if self._closed:
             raise BridgeError("CLOSED", "朗读组件已关闭。")
         self._halt()
+        self._idle_timer.stop()
         self._owner, self._utterance = owner, utterance
         generation = self._generation
         cancel = self._prepare_cancel = threading.Event()
@@ -306,11 +324,15 @@ class TeacherSpeech(QObject):
                 self.service.end_stream()
 
     def stop(self, params, ctx):
-        _params(params, ("owner", "utterance_id"))
+        _params(params, ("owner", "utterance_id", "release"))
+        if "release" in params and type(params["release"]) is not bool:
+            raise BridgeError("INVALID_PARAMS", "朗读释放参数无效。")
         owner, utterance = _id(params, "owner"), _id(params, "utterance_id", optional=True)
         if owner != self._owner or utterance is not None and utterance != self._utterance:
             return {"stopped": False}
         self._halt()
+        if params.get("release"):
+            self._release_service()
         self._state_changed("stopped")
         return {"stopped": True}
 
@@ -458,6 +480,7 @@ class TeacherSpeech(QObject):
         self._push("error", {**self._scope(), "code": code, "message": message})
 
     def _release_service(self):
+        self._idle_timer.stop()
         service, self.service = self.service, None
         if service:
             for signal, slot in ((service.state_changed, self._state_changed), (service.mouth_level, self._mouth),

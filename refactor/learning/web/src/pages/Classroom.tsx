@@ -62,7 +62,7 @@ export function Classroom() {
   const generation = React.useRef(0)
   const [reading, setReading] = React.useState(() => { try { return localStorage.getItem("mf.classroom.read") === "on" } catch { return false } })
   const teacher = React.useRef<TeacherStageHandle>(null)
-  const voice = useTeacherVoice(teacher)
+  const voice = useTeacherVoice(teacher, { autoWarm: reading })
   const terms = React.useMemo(() => (room?.points ?? []).map((p) => p.title).slice(0, 60), [room?.points])
   const mic = useVoiceInput({ value: text, onChange: setText, terms, scopeKey: room ? `${planId}:${room.module.id}` : undefined, disabled: !!busy })
   const abort = React.useRef<AbortController | null>(null)
@@ -382,8 +382,8 @@ export function Classroom() {
         <TeacherWindow ref={teacher} reducedMotion={reduceMotion} speaking={voice.state === "playing"}
           pointKey={room?.points.find((point) => point.current)?.id}>
         <div className="class-voice">
-          <button className="icon-btn" onClick={toggleReading} title={reading ? "关闭朗读" : "打开朗读"}>
-            {reading ? <Volume2 /> : <VolumeX />}
+          <button className={`btn small ${reading ? "primary" : ""}`} onClick={toggleReading} aria-pressed={reading} title={reading ? "关闭朗读并释放语音引擎" : "打开朗读"}>
+            {reading ? <Volume2 size={16} /> : <VolumeX size={16} />} 朗读：{reading ? "开" : "关"}
           </button>
           <span className="small muted">{reading ? voice.message : "朗读已关闭"}</span>
           <Loading active={reading && ['checking','warming','synthesizing'].includes(voice.state)} label={voice.message} onCancel={stopReading}/>

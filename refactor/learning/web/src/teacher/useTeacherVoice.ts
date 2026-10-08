@@ -63,7 +63,7 @@ export function createTeacherVoiceStream(voice: StreamVoice) {
 }
 
 /** Owns one consumer scope. Unmount/stop cannot cancel a newer page's speech. */
-export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | null>, { autoWarm = true } = {}) {
+export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | null>, { autoWarm = false } = {}) {
   const [owner] = React.useState(identifier)
   const current = React.useRef<string | null>(null)
   const streamCurrent = React.useRef<string | null>(null)
@@ -103,13 +103,13 @@ export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | nu
     catch { /* An unavailable optional reader must not interrupt text learning. */ }
   }, [owner])
 
-  const stop = React.useCallback(async () => {
+  const stop = React.useCallback(async ({ release = false } = {}) => {
     const utterance_id = current.current
     current.current = null
     streamCurrent.current = null
     mouth(0)
     if (alive.current) { setState("stopped"); setSentence(null) }
-    try { await call("speech.stop", { owner, ...(utterance_id ? { utterance_id } : {}) }) }
+    try { await call("speech.stop", { owner, ...(utterance_id ? { utterance_id } : {}), ...(release ? { release: true } : {}) }) }
     catch { /* Window may already be closing. */ }
   }, [owner, mouth])
 
@@ -210,19 +210,22 @@ export function useTeacherVoice(teacher: React.RefObject<TeacherStageHandle | nu
       }),
     ]
     void refresh()
-    // Silent warm-up is useful in the background. Only actual utterances need
-    // cancellation on visibility loss; cancelling preparation loses its ready event.
+    // A manual play works while automatic reading is off. A hidden page stops
+    // its current utterance; the backend retires unused engines independently.
     const hidden = () => { if (document.hidden && current.current !== null) void stop() }
     document.addEventListener("visibilitychange", hidden)
     return () => {
       alive.current = false; revision.current++
       offs.forEach((off) => off())
       document.removeEventListener("visibilitychange", hidden)
-      void stop(); void cancelDownload()
+      void stop({ release: true }); void cancelDownload()
     }
   }, [owner, mouth, refresh, stop, cancelDownload])
 
-  React.useEffect(() => { if (autoWarm && availability?.ready) void warmUp() }, [autoWarm, availability?.ready, warmUp])
+  React.useEffect(() => {
+    if (autoWarm && availability?.ready) void warmUp()
+    if (!autoWarm) void stop({ release: true })
+  }, [autoWarm, availability?.ready, warmUp, stop])
 
   const busy = ["checking", "warming", "synthesizing", "playing"].includes(state)
   const message = !availability?.ready ? "朗读未启用" : ({ checking: "正在检查朗读资源", warming: "正在预热老师声音",
