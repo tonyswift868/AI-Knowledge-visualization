@@ -13,6 +13,9 @@ type Detail = React.ComponentProps<typeof PlanTree>["detail"] & KnowledgeDetail 
   progress?: { remaining: number; overdue_days: number }; has_report?: boolean
   plan: { weekday_weights?: number[] }
   teacher_preset?: { id: string; name: string }
+  point_minutes_status?: 'none'|'running'|'ready'|'failed'
+  preparation_status?: 'none'|'running'|'ready'|'partial'|'failed'
+  preparation?: {done: number; failed: number; total: number}
 }
 type Window = { start: string; end: string; daily_cap_minutes: number; weekday_weights: number[] }
 const WEEK = "一二三四五六日"
@@ -28,38 +31,50 @@ export function PlanDetail() {
   const [linksBusy,setLinksBusy] = React.useState(false)
   const [linksError,setLinksError] = React.useState("")
   const linksRead = React.useRef(0)
-  const [minuteStatus,setMinuteStatus]=React.useState('')
+  const currentPlan = React.useRef(planId)
+  currentPlan.current = planId
+  const [minutesError,setMinutesError]=React.useState('')
   React.useEffect(() => {
     let live = true
-    const off = on("plan.point_links_changed", (event: {plan_id: string; status: string}) => {
+    const refresh = (event: {plan_id: string; status: string}) => {
       if (event.plan_id !== planId) return
       const revision = ++linksRead.current
       call<Detail>("plan.detail",{plan_id:planId}).then(d=>{if(live&&revision===linksRead.current){setDetail(d);setLinksError("")}})
         .catch(e=>{if(live)setLinksError(e.message||"读取知识点关系失败")})
-    })
-    const offMinutes=on('plan.point_minutes_changed',(event:{plan_id:string;status:string})=>{
-      if(event.plan_id!==planId)return
-      setMinuteStatus(event.status)
-      if(event.status==='ready')call<Detail>('plan.detail',{plan_id:planId}).then(d=>{if(live)setDetail(d)}).catch(e=>{if(live)setLinksError(e.message)})
-    })
-    return ()=>{live=false;linksRead.current++;off();offMinutes()}
+    }
+    const off = on('plan.point_links_changed', refresh)
+    const offMinutes = on('plan.point_minutes_changed', refresh)
+    const offPreparation = on('plan_preparation', refresh)
+    return ()=>{live=false;linksRead.current++;off();offMinutes();offPreparation()}
   },[planId])
   async function retryLinks() {
     if (!planId) return
     setLinksBusy(true);setLinksError("")
-    try { const result = await call<{status: KnowledgeDetail["point_links_status"]}>("plan.retry_point_links",{plan_id:planId})
-      setDetail(d=>d&&{...d,point_links_status:result.status})
+    try { await call("plan.retry_point_links",{plan_id:planId})
+      const revision=++linksRead.current
+      const d=await call<Detail>('plan.detail',{plan_id:planId})
+      if(currentPlan.current===planId&&revision===linksRead.current)setDetail(d)
     } catch(e) {setLinksError((e as Error).message)} finally {setLinksBusy(false)}
+  }
+  async function retryMinutes() {
+    if (!planId) return
+    setMinutesError('')
+    try { await call('plan.retry_point_minutes',{plan_id:planId})
+      const revision=++linksRead.current
+      const d=await call<Detail>('plan.detail',{plan_id:planId})
+      if(currentPlan.current===planId&&revision===linksRead.current)setDetail(d)
+    } catch(e) {setMinutesError((e as Error).message)}
   }
 
   React.useEffect(() => {
     if (!planId) { go("plans"); return }
     let live = true
-    setDetail(null); setLoadError("")
+    const revision = ++linksRead.current
+    setDetail(null); setLoadError(""); setMinutesError('')
     const timer = setTimeout(() => { if (live) { live = false; setLoadError("读取超时") } }, 15000)
     call<Detail>("plan.detail", { plan_id: planId }).then(d => {
       if (!live) return
-      clearTimeout(timer); setDetail(d)
+      clearTimeout(timer); if(revision===linksRead.current)setDetail(d)
       call<typeof gaps>("classroom.gaps", { plan_id: planId }).then(rows => { if (live) setGaps(rows) }).catch(() => {})
     }).catch(e => { if (live) { clearTimeout(timer); setLoadError(e.message || "读取计划失败") } })
     setGaps([])
@@ -75,8 +90,12 @@ export function PlanDetail() {
   return (
     <div className="page">
       <Button small kind="ghost" onClick={() => go("plans")}><ArrowLeft />我的计划</Button>
-      <Loading active={minuteStatus==='running'} label="正在按知识点重新计算学习分钟…"/>
-      {minuteStatus==='failed' && <p className="muted" role="status">学习分钟重算未完成，原有时长仍可查看。</p>}
+      <Loading active={detail.point_minutes_status==='running'} label="正在按内容重算知识点时长…" onRetry={retryMinutes}/>
+      {detail.point_minutes_status==='failed' && <div className="row" role="status"><span>学习分钟重算未完成，原有时长仍可查看。</span><Button small onClick={retryMinutes}>重试时长重算</Button></div>}
+      {minutesError && <p role="alert">{minutesError}</p>}
+      <Loading active={detail.preparation_status==='running'} label="正在后台准备模块题目…"
+        detail={detail.preparation ? `已准备 ${detail.preparation.done}/${detail.preparation.total} 个模块` : undefined}/>
+      {(detail.preparation_status==='failed'||detail.preparation_status==='partial') && <p role="status">部分模块题目未备好，进入对应模块可重试。</p>}
       <div className="card hero" style={{ marginTop: 10, gridTemplateColumns: "1fr" }}>
         <div>
           <div className="eyebrow">{detail.plan.window ? `${detail.plan.window.start} → ${detail.plan.window.end}` : "学习路线"}</div>

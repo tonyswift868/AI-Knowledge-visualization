@@ -175,7 +175,8 @@ export function KnowledgeMap({detail,onRetry,busy}:{detail:KnowledgeDetail;onRet
         <h3>{point.title}</h3><p>{point.summary}</p><p className="pg-meta">{point.minutes} 分钟 · {pointProgress(point)[0]}</p><h4>出处原文 · 点开查看</h4><PointSources key={point.id} point={point}/></aside>}
     </div>
     <footer className="km-footer"><span><i className="km-line"/>前置关系（箭头）</span><span><i className="km-line dashed"/>相关关系</span>
-      {status==='none'||status==='running' ? <Loading label="正在整理知识点之间的关系…" onRetry={onRetry}/>
+      {status==='running' ? <Loading label="正在整理知识点之间的关系…" onRetry={onRetry}/>
+        : status==='none' ? <span className="km-links-status" role="status">知识点关系尚未整理</span>
         : <span className="km-links-status" role="status">{status==="partial"?"部分模块关系整理失败":status==="failed"?"知识点关系整理失败":"知识点关系已整理"}</span>}
       {(status==="partial"||status==="failed") && <button className="pg-expand" disabled={busy} onClick={onRetry}>{busy?"正在重试…":"重试"}</button>}
       <select aria-label="选择地图模块" value={moduleId??""} onChange={e=>{showModule(e.target.value||null);showPoint(null)}}><option value="">路线总览</option>{view.modules.map(m=><option key={m.id} value={m.id}>{m.title}</option>)}</select>

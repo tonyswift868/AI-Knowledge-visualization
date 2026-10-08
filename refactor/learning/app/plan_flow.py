@@ -217,7 +217,19 @@ class PlanFlow:
                 services._point_link_jobs = self._point_link_jobs
             self._point_minute_jobs = getattr(services, '_point_minute_jobs', None)
             if self._point_minute_jobs is None:
-                self._point_minute_jobs = dict(guard=threading.Lock(), jobs={})
+                self._point_minute_jobs = dict(guard=threading.Lock(), jobs={}, statuses={}, epoch=0)
+                store = getattr(services, 'store', None)
+                if store is not None and hasattr(store, 'subscribe'):
+                    shared = self._point_minute_jobs
+                    def invalidate_minutes(origin, entities):
+                        if not entities.intersection({'plans', 'points', 'modules', 'source_chunks', 'question_bank', 'credits'}): return
+                        with shared['guard']:
+                            shared['epoch'] += 1
+                            shared['statuses'].clear()
+                            for job in shared['jobs'].values():
+                                if job.get('writer') == threading.get_ident():
+                                    job['write_epoch'] = shared['epoch']
+                    store.subscribe(invalidate_minutes)
             if services is not None:
                 services._point_minute_jobs = self._point_minute_jobs
         self._preparing = self._material_jobs['active']
@@ -1886,17 +1898,22 @@ class PlanFlow:
         try: self.push('plan.point_minutes_changed', dict(plan_id=plan_id, status=status))
         except Exception: log.info('point minutes view closed', exc_info=True)
 
-    def ensure_point_minutes(self, plan_id):
+    def ensure_point_minutes(self, plan_id, *, background_check=False):
         """Start once per unchanged input/version; no model IO on the caller thread."""
         if getattr(self.services, '_closed', False): return 'none'
         shared = self._point_minute_jobs
         with shared['guard']:
             if plan_id in shared['jobs']: return 'running'
-            state = self.services.store.point_minutes_snapshot(plan_id)
-            if state['ready']: return 'ready'
-            if not state['points'] or sum(m.get('point_count', 0) for m in state['modules']) != len(state['points']):
-                return 'none'
-            job = dict(cancel=threading.Event())
+            if background_check and plan_id in shared['statuses']:
+                return shared['statuses'][plan_id]
+            state = None if background_check else self.services.store.point_minutes_snapshot(plan_id)
+            if state is not None:
+                if state['ready']:
+                    shared['statuses'][plan_id] = 'ready'
+                    return 'ready'
+                if not state['points'] or sum(m.get('point_count', 0) for m in state['modules']) != len(state['points']):
+                    return 'none'
+            job = dict(cancel=threading.Event(), epoch=shared['epoch'])
             worker = threading.Thread(target=self._point_minutes_worker, args=(plan_id, job, state),
                                       name='plan-point-minutes', daemon=True)
             job['thread'] = worker
@@ -1909,6 +1926,14 @@ class PlanFlow:
         status = 'failed'
         store = self.services.store
         try:
+            if state is None:
+                state = store.point_minutes_snapshot(plan_id)
+                if state['ready']:
+                    status = 'ready'
+                    return
+                if not state['points'] or sum(m.get('point_count', 0) for m in state['modules']) != len(state['points']):
+                    status = 'none'
+                    return
             difficulties = {}
             for module in state['modules']:
                 points = [p for p in state['points'] if p['module_id'] == module['id']]
@@ -1923,18 +1948,17 @@ class PlanFlow:
                     cancel=job['cancel'], plan_id=plan_id, max_tokens=4096)
                 difficulties.update(agents.parse_point_difficulty(reply if isinstance(reply, str) else reply.text, aliases))
             if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
+            job['writer'] = threading.get_ident()
             if store.save_point_minutes(plan_id, state['fingerprint'], difficulties, today=self.study_day()): status = 'ready'
         except Exception:
             if not getattr(self.services, '_closed', False): log.exception('point minutes failed plan=%s; original minutes retained', plan_id)
         finally:
             with self._point_minute_jobs['guard']:
                 self._point_minute_jobs['jobs'].pop(plan_id, None)
+                if self._point_minute_jobs['epoch'] == job.get('write_epoch', job['epoch']):
+                    self._point_minute_jobs['statuses'][plan_id] = status
             self._point_minutes_event(plan_id, status)
             if status == 'ready' and not getattr(self.services, '_closed', False):
-                # The existing knowledge-map subscriber reloads the whole detail.
-                # Its relationship status remains truthful; no frontend changes needed.
-                try: self._point_links_event(plan_id, store.point_links_state(plan_id)['status'])
-                except Exception: log.info('point minutes store closed', exc_info=True)
                 # Classroom's existing snapshot refresh also reloads its ledger projection.
                 try: self.push('classroom.materials_ready', dict(plan_id=plan_id, reason='point_minutes'))
                 except Exception: log.info('point minutes classroom closed', exc_info=True)
@@ -2008,6 +2032,27 @@ class PlanFlow:
     def retry_point_links(self, plan_id):
         return dict(status=self.ensure_point_links(plan_id, retry=True))
 
+    def retry_point_minutes(self, plan_id):
+        with self._point_minute_jobs['guard']:
+            self._point_minute_jobs['statuses'].pop(plan_id, None)
+        return dict(status=self.ensure_point_minutes(plan_id, background_check=True))
+
+    def preparation_status(self, plan_id, modules):
+        """Project persisted completion/errors and this account's live queue only."""
+        with self._material_jobs['guard']:
+            states = []
+            for module in modules:
+                job = self._material_jobs['jobs'].get((plan_id, module['id']))
+                saved = (module.get('material_preparation') or {}).get('state')
+                state = job['status'] if job and not job['cancel'].is_set() else (
+                    'ready' if saved == 'done' else 'failed' if saved == 'failed' else 'none')
+                states.append(state)
+        done, failed = states.count('ready'), states.count('failed')
+        status = ('running' if any(s in ('running', 'queued') for s in states) else
+                  'ready' if states and done == len(states) else
+                  'failed' if states and failed == len(states) else 'partial' if failed else 'none')
+        return dict(status=status, done=done, failed=failed, total=len(states))
+
     def detail(self, plan_id):
         store = self.services.store
         plan = store.get_plan(plan_id)
@@ -2017,6 +2062,8 @@ class PlanFlow:
             return dict(plan=dict(plan, state='unusable'), stages=[], sources=[], has_report=False,
                         teacher_preset={k: preset[k] for k in ('id', 'name')},
                         point_links=[], point_links_status='none',
+                        point_minutes_status='none', preparation_status='none',
+                        preparation=dict(status='none', done=0, failed=0, total=0),
                         unusable=True, message='旧版计划，已不可用')
         stages = store.records("stages", plan_id)
         modules = store.records("modules", plan_id)
@@ -2079,7 +2126,9 @@ class PlanFlow:
         result["has_report"] = plan.get("state") == "completed"
         result['point_links'] = store.point_links_state(plan_id)['links']
         result['point_links_status'] = self.ensure_point_links(plan_id)
-        self.ensure_point_minutes(plan_id)
+        result['point_minutes_status'] = self.ensure_point_minutes(plan_id, background_check=True)
+        result['preparation'] = self.preparation_status(plan_id, modules)
+        result['preparation_status'] = result['preparation']['status']
         return result
 
     def change_window(self, plan_id, raw):
@@ -2407,6 +2456,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.start": lambda p, c: flow().start_request(plan_id(p)),
         "plan.detail": lambda p, c: flow().detail(plan_id(p)),
         "plan.retry_point_links": lambda p, c: flow().retry_point_links(plan_id(p)),
+        "plan.retry_point_minutes": lambda p, c: flow().retry_point_minutes(plan_id(p)),
         "plan.window": lambda p, c: flow().change_window(plan_id(p), p),
         "plan.rename": lambda p, c: services().store.rename_plan(plan_id(p), text(p, "title", 80)) or {"ok": True},
         "plan.archive": lambda p, c: (services().store.archive_plan(plan_id(p)) if p.get("archived") is True
