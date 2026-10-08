@@ -1,5 +1,6 @@
 import * as React from "react"
-import { BookOpen, ChevronDown, ChevronRight, Loader2 } from "lucide-react"
+import { Loading } from '../loading/Loading'
+import { BookOpen, ChevronDown, ChevronRight } from "lucide-react"
 import { Button } from "../ui"
 import { ClassroomMarkdown } from "./Markdown"
 import "./conversation.css"
@@ -89,7 +90,7 @@ export function ConversationActions({ step, conversation, act, busy, ask }: {
 
 export function MaterialsPreparing({ preparation, act, busy }: { preparation: Preparation; act: Act; busy: boolean }) {
   return <div className="class-note" role="status">
-    <Loader2 size={15} className="spin" />{preparation.text} · {preparation.done}/{preparation.total}
+    <Loading label={`${preparation.text} · ${preparation.done}/${preparation.total}`} resetKey={preparation.total}/>
     {preparation.error && <><span role="alert">{preparation.error}</span><Button small disabled={busy}
       onClick={() => act("classroom.retry", {}, "重新准备…")}>重试</Button></>}
     <Button small disabled={busy} onClick={() => act("classroom.cancel_preparation", {}, "取消准备…")}>取消准备</Button>

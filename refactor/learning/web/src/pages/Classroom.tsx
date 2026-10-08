@@ -2,7 +2,7 @@ import * as React from "react"
 import { ClassroomMarkdown } from "../classroom/Markdown"
 import { ProgressStatus, type StudyProgress } from "../ProgressStatus"
 import {
-  ArrowLeft, BookOpen, CheckCircle2, ChevronRight, CircleAlert, ClipboardCheck, ExternalLink, Loader2, RotateCcw,
+  ArrowLeft, BookOpen, CheckCircle2, ChevronRight, CircleAlert, ClipboardCheck, ExternalLink, RotateCcw,
   SendHorizontal, SkipForward, Square, Volume2, VolumeX, X,
 } from "lucide-react"
 import { BridgeFailure, call, on } from "../bridge"
@@ -13,6 +13,7 @@ import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacher
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
 import { ConversationActions, MaterialsPreparing, OriginalCards, QuestionInputs, type OriginalCardsHandle, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
 import { RecallQuestion, type RecallRequest } from "../classroom/RecallQuestion"
+import { Loading } from '../loading/Loading'
 
 const TeacherWindow = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherWindow })))
 
@@ -269,7 +270,7 @@ export function Classroom() {
     } catch (e) { if (ownGeneration === generation.current) toast("error", (e as Error).message) }
   }
 
-  if (!room) return <div className="page"><div className="card" role="status"><Loader2 className="spin" aria-hidden="true" /> 正在进入课堂…</div></div>
+  if (!room) return <div className="page"><Loading shape="conversation" label="正在进入课堂…" onCancel={()=>go('home')}/></div>
   // An active lesson interaction is authoritative; a saved casual question may
   // still be in the snapshot while an interjection waits for "回到刚才".
   const q = room.question
@@ -341,8 +342,10 @@ export function Classroom() {
           })}
           {verdictPreview && <div className={`class-verdict ${verdictPreview.correct ? "ok" : "bad"}`}>{verdictPreview.text}</div>}
           {stream !== null && (live(stream)
-            ? <div className="bubble bot streaming">{markdown(live(stream))}</div>
-            : busy && <div className="plan-status"><Loader2 className="spin" size={16} />{busy}</div>)}
+            ? <div className="bubble bot streaming wait-content">{markdown(live(stream))}</div>
+            : <Loading active={!!busy} label={busy?.includes('判')||busy?.includes('核对') ? busy : `老师正在想…${busy && !busy.includes('老师') ? ` · ${busy}` : ''}`}
+                shape="conversation" onCancel={abort.current ? ()=>abort.current?.abort() : undefined}/>)}
+          {stream === null && <Loading active={!!busy} label={busy ?? '正在记录回答…'}/>}
           {q?.kind === "recall" && <RecallQuestion key={`${planId}:${q.id}:${q.purpose}:${q.number ?? ""}:${recallAttempt}`}
             question={q} request={recallRequest} busy={!!busy} next={() => {
               void act("classroom.state", {}, "正在读取下一题…").then((ok) => { if (ok) setRecallAttempt((value) => value + 1) })
@@ -375,7 +378,7 @@ export function Classroom() {
         </div>
       </section>
 
-      <React.Suspense fallback={null}>
+      <React.Suspense fallback={<Loading label="正在准备老师栏…"/>}>
         <TeacherWindow ref={teacher} reducedMotion={reduceMotion} speaking={voice.state === "playing"}
           pointKey={room?.points.find((point) => point.current)?.id}>
         <div className="class-voice">
@@ -383,10 +386,12 @@ export function Classroom() {
             {reading ? <Volume2 /> : <VolumeX />}
           </button>
           <span className="small muted">{reading ? voice.message : "朗读已关闭"}</span>
+          <Loading active={reading && ['checking','warming','synthesizing'].includes(voice.state)} label={voice.message} onCancel={stopReading}/>
           {voice.availability && !voice.availability.ready && voice.availability.download && (
             <Button small disabled={voice.downloadState?.state === "downloading"} onClick={() => voice.download()}>下载朗读组件</Button>
           )}
           {voice.downloadState?.state === "downloading" && <>
+            <Loading label="正在下载朗读组件…" detail={`${Math.round(100 * voice.downloadState.received_bytes / Math.max(1, voice.downloadState.total_bytes))}%`} onCancel={()=>void voice.cancelDownload()}/>
             <span className="small muted">下载 {Math.round(100 * voice.downloadState.received_bytes / Math.max(1, voice.downloadState.total_bytes))}%</span>
             <Button small kind="ghost" onClick={() => voice.cancelDownload()}>取消下载</Button>
           </>}

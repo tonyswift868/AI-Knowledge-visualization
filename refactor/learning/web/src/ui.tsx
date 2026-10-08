@@ -1,5 +1,5 @@
 import * as React from "react"
-import { CheckCircle2, CircleHelp, Info, Loader2, XCircle } from "lucide-react"
+import { CheckCircle2, CircleHelp, Info, XCircle } from "lucide-react"
 import { createPortal } from "react-dom"
 import { useApp } from "./store"
 
@@ -116,7 +116,7 @@ export function Button({ kind, small, busy, children, ...rest }:
   React.ButtonHTMLAttributes<HTMLButtonElement> & { kind?: "primary" | "ghost" | "danger"; small?: boolean; busy?: boolean }) {
   return (
     <button {...rest} className={`btn ${kind ?? ""} ${small ? "small" : ""} ${rest.className ?? ""}`} disabled={rest.disabled || busy}>
-      {busy && <Loader2 className="spin" />}
+      {busy && <span className="wait-dot" aria-hidden="true" />}
       {children}
     </button>
   )

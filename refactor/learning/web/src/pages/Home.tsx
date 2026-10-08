@@ -2,10 +2,11 @@ import * as React from "react"
 import { CalendarClock, PlayCircle, Plus, Sparkles } from "lucide-react"
 import { call, on } from "../bridge"
 import { useApp } from "../store"
-import { Button, SakuraArt, Skeleton } from "../ui"
+import { Button, SakuraArt } from "../ui"
 import { ProgressStatus, aggregateProgress } from "../ProgressStatus"
 import type { PlanItem } from "./Plans"
 import "./home.css"
+import { Loading } from '../loading/Loading'
 
 function greeting(): string {
   const h = new Date().getHours()
@@ -30,13 +31,18 @@ export function Home() {
   const [plans, setPlans] = React.useState<PlanItem[] | null>(null)
   const [loadError, setLoadError] = React.useState(false)
   const [studyDay, setStudyDay] = React.useState("")
+  const [loading, setLoading] = React.useState(true)
+  const loadRevision = React.useRef(0)
 
   const load = React.useCallback(() => {
+    const revision = ++loadRevision.current
+    setLoading(true)
     call<{ plans: PlanItem[]; study_day: string }>("plans.list").then((r) => {
+      if (revision !== loadRevision.current) return
       setPlans(r.plans.filter((p) => !p.archived))
       setStudyDay(r.study_day)
       setLoadError(false)
-    }).catch(() => setLoadError(true))
+    }).catch(() => {if(revision===loadRevision.current)setLoadError(true)}).finally(() => {if(revision===loadRevision.current)setLoading(false)})
   }, [])
   React.useEffect(() => { if (ready) load() }, [ready, load])
   React.useEffect(() => on("study_day", () => load()), [load])   // the refresh time passed while open
@@ -77,9 +83,7 @@ export function Home() {
       </div>}
 
       {plans === null && loadError ? null : plans === null ? (
-        <div className="grid three">
-          {[0, 1, 2].map((i) => <div key={i} className="card stack"><Skeleton h={22} w="60%" /><Skeleton h={90} /><Skeleton h={16} w="40%" /></div>)}
-        </div>
+        <Loading shape="cards" label={ready ? "正在读取今天的学习安排…" : "正在连接账号服务…"} onRetry={load}/>
       ) : running.length === 0 ? (
         <div className="card empty fade-in">
           <SakuraArt />
@@ -95,6 +99,7 @@ export function Home() {
           {running.map((p) => <TodayCard key={p.id} plan={p} />)}
         </div>
       )}
+      {plans !== null && <Loading active={loading} label="正在更新今天的学习安排…"/>}
     </div>
   )
 }

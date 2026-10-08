@@ -1,12 +1,12 @@
 import * as React from "react"
 import {
-  ArrowDown, ArrowUp, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, ExternalLink, FileUp, GitBranch, Loader2,
-  RefreshCw, Rocket, Search, SendHorizontal, Sparkles, Trash2, Wand2, X,
+  ArrowDown, ArrowUp, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, ExternalLink, FileUp, GitBranch, RefreshCw, Rocket, Search, SendHorizontal, Sparkles, Trash2, Wand2, X,
 } from "lucide-react"
 import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
 import { Button, Field, Segmented, TASK_TIME_TIP, Tip } from "../ui"
 import { PlanGraph, type GraphModule } from "../planning/PlanGraph"
+import { Loading } from '../loading/Loading'
 
 // ------------------------------------------------------------------ types
 type Card = {
@@ -101,18 +101,23 @@ export function NewPlan() {
   const chatInput = React.useRef<HTMLTextAreaElement>(null)
   function adjustContent(value: string) { setText(value); chatInput.current?.focus() }
   const idRef = React.useRef<string | null>(null)
+  const abort = React.useRef<AbortController | null>(null)
+  const [loadError,setLoadError] = React.useState('')
+  const [loadAttempt,retryLoad] = React.useReducer(n=>n+1,0)
 
   const accept = React.useCallback((d: Draft) => { idRef.current = d.plan_id; setDraft(d); setStatus(d.busy) }, [])
 
   React.useEffect(() => {
     const load = planId ? call<{ draft: Draft }>("plan.get", { plan_id: planId }) : call<{ draft: Draft }>("plan.current")
-    load.then((r) => accept(r.draft)).catch((e) => { toast("error", e.message); set({ planId: null }) })
+    let alive=true
+    setLoadError('')
+    load.then((r) => {if(alive)accept(r.draft)}).catch((e) => {if(alive)setLoadError(e.message)})
     const offs = [
       on("plan_draft", (d: Draft) => { if (d.plan_id === idRef.current) accept(d) }),
       on("plan_status", (d: { plan_id: string; text: string }) => { if (d.plan_id === idRef.current) setStatus(d.text || null) }),
     ]
-    return () => offs.forEach((off) => off())
-  }, [planId, accept, toast, set])
+    return () => {alive=false;offs.forEach((off) => off());abort.current?.abort()}
+  }, [planId, accept, toast, set,loadAttempt])
 
   React.useLayoutEffect(() => {
     const el = scroller.current
@@ -122,14 +127,15 @@ export function NewPlan() {
   async function act(method: string, params: Record<string, unknown> = {}) {
     if (!draft) return
     setPending(true)
+    abort.current=new AbortController()
     try {
-      const r = await call<{ draft?: Draft }>(method, { plan_id: draft.plan_id, ...params })
+      const r = await call<{ draft?: Draft }>(method, { plan_id: draft.plan_id, ...params }, {signal:abort.current.signal})
       if (r?.draft) accept(r.draft)
       return true
     } catch (e) {
       toast("error", (e as BridgeFailure).message)
       return false
-    } finally { setPending(false) }
+    } finally { setPending(false);abort.current=null }
   }
 
   async function say() {
@@ -149,7 +155,8 @@ export function NewPlan() {
     } catch (e) { toast("error", (e as Error).message) }
   }
 
-  if (!draft) return <div className="page"><div className="card"><Loader2 className="spin" /> 正在打开…</div></div>
+  if (!draft) return <div className="page">{loadError ? <div className="card" role="alert">{loadError}<Button onClick={retryLoad}>重试</Button></div>
+    : <Loading shape="conversation" label="正在打开新建计划…" resetKey={loadAttempt} onRetry={retryLoad}/>}</div>
 
   const busy = pending || !!status
   const phaseIndex = STEPS.findIndex(([phases]) => phases.includes(draft.phase))
@@ -290,7 +297,8 @@ export function NewPlan() {
               </Button>
             </div>
           )}
-          {status && <div className="plan-status fade-in"><Loader2 className="spin" size={16} />{status}</div>}
+          <Loading active={busy} label={status || ({sources:"正在找资料…",material_preview:"正在按资料整理结构…",outline:"正在填知识点…",generating:"正在保存与准备题目…"}[draft.phase] ?? "正在理解你的需求…")}
+            shape="conversation" resetKey={draft.phase} onCancel={pending ? ()=>abort.current?.abort() : undefined}/>
         </div>
         <div className="composer">
           <textarea ref={chatInput} className="input" rows={1} value={text} disabled={!canType} placeholder={canType ? placeholder : draft.phase === "form" ? "先填好上面的表单" : "用上面的按钮继续"}
@@ -551,7 +559,7 @@ function ProgressCard({ draft, text, busy, onRetry }: { draft: Draft; text: stri
         <div className="gen-list">
           {modules.map((m, i) => (
             <span key={m.key} className={`gen-item ${states[i]}`}>
-              {states[i] === "done" ? <Check size={13} /> : states[i] === "running" ? <Loader2 size={13} className="spin" /> : states[i] === "failed" ? <X size={13} /> : <i />}
+              {states[i] === "done" ? <Check size={13} /> : states[i] === "running" ? <span className="wait-dot"/> : states[i] === "failed" ? <X size={13} /> : <i />}
               {m.title}
               {states[i] === "failed" && <small role="alert">：{draft.generation_errors?.[m.id ?? ""] ?? "这个模块的题未备好，请重试。"}</small>}
             </span>

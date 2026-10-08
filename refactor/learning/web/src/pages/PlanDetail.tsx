@@ -1,11 +1,12 @@
 import * as React from "react"
-import { ArrowLeft, BookOpen, CalendarClock, ExternalLink, FilePlus2, FileText, Loader2, PlayCircle } from "lucide-react"
+import { ArrowLeft, BookOpen, CalendarClock, ExternalLink, FilePlus2, FileText, PlayCircle } from "lucide-react"
 import { call, on } from "../bridge"
 import { useApp, type KnowledgeDetail } from "../store"
 import { KnowledgeMap, PointSources } from "../planning/KnowledgeMap"
 import { Button, TASK_TIME_TIP, Tip } from "../ui"
 import { requirementWithoutDates } from "./NewPlan"
 import type { PlanTree } from "./NewPlan"
+import { Loading } from '../loading/Loading'
 
 type Detail = React.ComponentProps<typeof PlanTree>["detail"] & KnowledgeDetail & {
   unusable?: boolean; message?: string
@@ -27,6 +28,7 @@ export function PlanDetail() {
   const [linksBusy,setLinksBusy] = React.useState(false)
   const [linksError,setLinksError] = React.useState("")
   const linksRead = React.useRef(0)
+  const [minuteStatus,setMinuteStatus]=React.useState('')
   React.useEffect(() => {
     let live = true
     const off = on("plan.point_links_changed", (event: {plan_id: string; status: string}) => {
@@ -35,7 +37,12 @@ export function PlanDetail() {
       call<Detail>("plan.detail",{plan_id:planId}).then(d=>{if(live&&revision===linksRead.current){setDetail(d);setLinksError("")}})
         .catch(e=>{if(live)setLinksError(e.message||"读取知识点关系失败")})
     })
-    return ()=>{live=false;linksRead.current++;off()}
+    const offMinutes=on('plan.point_minutes_changed',(event:{plan_id:string;status:string})=>{
+      if(event.plan_id!==planId)return
+      setMinuteStatus(event.status)
+      if(event.status==='ready')call<Detail>('plan.detail',{plan_id:planId}).then(d=>{if(live)setDetail(d)}).catch(e=>{if(live)setLinksError(e.message)})
+    })
+    return ()=>{live=false;linksRead.current++;off();offMinutes()}
   },[planId])
   async function retryLinks() {
     if (!planId) return
@@ -60,14 +67,16 @@ export function PlanDetail() {
   }, [planId, go, attempt])
 
   if (!detail) return <div className="page"><div className="card stack" role={loadError ? "alert" : "status"}>
-    {loadError ? <><b>{loadError}</b><div className="row"><Button data-testid="detail-retry" onClick={retry}>重试</Button><Button kind="ghost" onClick={() => go("plans")}>返回我的计划</Button></div></>
-      : <span className="row"><Loader2 className="spin" size={18} />正在读取计划…</span>}
+    {loadError ? <><b>{loadError}</b>{loadError==='读取超时' && <p className="muted">比平时慢，可能是网络问题。</p>}<div className="row"><Button data-testid="detail-retry" onClick={retry}>重试</Button><Button kind="ghost" onClick={() => go("plans")}>返回我的计划</Button></div></>
+      : <Loading shape="page" label="正在读取计划…" resetKey={attempt} onRetry={retry}/>}
   </div></div>
   if (detail.unusable) return <div className="page"><Button small kind="ghost" onClick={() => go("plans")}><ArrowLeft />我的计划</Button><div className="card stack" style={{ marginTop: 12 }}><h1>{detail.plan.title || detail.plan.goal}</h1><p role="status">{detail.message || "旧版计划，已不可用"}</p></div></div>
   const points = detail.stages.reduce((a, s) => a + s.modules.reduce((b, m) => b + m.points.length, 0), 0)
   return (
     <div className="page">
       <Button small kind="ghost" onClick={() => go("plans")}><ArrowLeft />我的计划</Button>
+      <Loading active={minuteStatus==='running'} label="正在按知识点重新计算学习分钟…"/>
+      {minuteStatus==='failed' && <p className="muted" role="status">学习分钟重算未完成，原有时长仍可查看。</p>}
       <div className="card hero" style={{ marginTop: 10, gridTemplateColumns: "1fr" }}>
         <div>
           <div className="eyebrow">{detail.plan.window ? `${detail.plan.window.start} → ${detail.plan.window.end}` : "学习路线"}</div>
@@ -177,7 +186,7 @@ function TeacherPresetPicker({detail,onChanged}:{detail:Detail;onChanged:(p:{id:
   }
   return <div className="stack" style={{gap:8,marginTop:12,alignItems:"flex-start"}}>
     <Button small data-testid="teacher-picker" aria-expanded={open} onClick={show}>老师：{detail.teacher_preset?.name ?? "默认老师"}</Button>
-    {open && <div className="stack" style={{gap:8}}>{presets ? <div className="row wrap">{presets.map(p => <Button small data-preset-id={p.id} key={p.id} disabled={busy} kind={p.id===detail.teacher_preset?.id?"primary":"ghost"} onClick={()=>choose(p)}>{p.name}</Button>)}</div> : !error && <span className="muted small">正在读取老师预设…</span>}
+    {open && <div className="stack" style={{gap:8}}>{presets ? <div className="row wrap">{presets.map(p => <Button small data-preset-id={p.id} key={p.id} disabled={busy} kind={p.id===detail.teacher_preset?.id?"primary":"ghost"} onClick={()=>choose(p)}>{p.name}</Button>)}</div> : !error && <Loading label="正在读取老师预设…"/>}
       {presets?.length === 0 && <span>还没有保存的老师预设，请先在设置中添加。</span>}
       <span className="muted small">更换老师预设不用重新备课，下一句老师回复开始使用。</span></div>}
     {error && <span role="alert">{error}</span>}
@@ -350,7 +359,7 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
         <textarea className="input" rows={2} value={links} onChange={(e) => setLinks(e.target.value)}
                   placeholder="https://docs.python.org/zh-cn/3/tutorial/…" />
       </>}
-      {busy && <div className="plan-status"><Loader2 className="spin" size={16} />{busy}</div>}
+      <Loading active={!!busy} label={busy ?? "正在处理资料…"} shape="form"/>
       {!first && !busy && <div className="plan-actions">
         <Button small kind="ghost" onClick={cancelAddition}>取消</Button>
         <Button small kind="primary" disabled={!token && !/https?:\/\//.test(links)} onClick={analyze}>开始分析</Button>

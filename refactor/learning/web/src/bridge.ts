@@ -1,4 +1,5 @@
 // Page side of the Qt bridge (see refactor/learning/app/bridge.py for the wire format).
+import { beginActivity, endActivity, streamActivity } from './loading/activity'
 
 type Pending = { resolve: (v: any) => void; reject: (e: BridgeFailure) => void; onStream?: (d: string) => void }
 type Listener = (data: any) => void
@@ -35,9 +36,11 @@ function handle(text: string) {
     const p = pending.get(msg.id)
     if (!p) return
     pending.delete(msg.id)
+    endActivity(msg.id)
     if (msg.ok) p.resolve(msg.result)
     else p.reject(new BridgeFailure(msg.error?.code ?? "ERROR", msg.error?.message ?? "操作没有完成。"))
   } else if (msg.type === "stream") {
+    streamActivity(msg.id, msg.delta ?? '')
     pending.get(msg.id)?.onStream?.(msg.delta)
   } else if (msg.type === "event") {
     listeners.get(msg.name)?.forEach((fn) => fn(msg.data))
@@ -68,9 +71,13 @@ export function call<T = any>(method: string, params: Record<string, unknown> = 
   const text = JSON.stringify({ id, method, params })
   return new Promise<T>((resolve, reject) => {
     pending.set(id, { resolve, reject, onStream: opts.onStream })
-    opts.signal?.addEventListener("abort", () => {
+    const cancelRequest = () => {
       const cancel = JSON.stringify({ id: `${id}c`, method: "cancel", params: { target: id } })
       send ? send(cancel) : queue.push(cancel)
+    }
+    beginActivity(id, method, opts.signal ? cancelRequest : undefined)
+    opts.signal?.addEventListener("abort", () => {
+      cancelRequest()
     })
     send ? send(text) : queue.push(text)
   })

@@ -2,6 +2,7 @@ import * as React from "react"
 import { Download, Mic, Square, Undo2, X } from "lucide-react"
 import type { VoiceInputController } from "./useVoiceInput"
 import "./voice.css"
+import { Loading } from '../loading/Loading'
 
 const size = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`
 const source = (url: string) => {
@@ -32,6 +33,7 @@ function ModelDialog({ voice }: { voice: VoiceInputController }) {
     <div className="mf-voice-model-size"><span>首次下载</span><strong>{voice.model ? size(voice.model.size_bytes) : "正在读取大小…"}</strong></div>
     <p className="mf-voice-fine">仅下载模型时联网；之后识别可离线使用。</p>
     {downloading && <div className="mf-voice-progress" role="status" aria-live="polite">
+      <Loading label={cancelling ? '正在取消并清理临时文件…' : '正在下载并准备语音模型…'}/>
       <span>来源：{source(voice.model?.download_url || "")}</span>
       <progress aria-label="语音模型下载进度" max={total || 1} value={done} />
       <span>{cancelling ? "正在取消并清理临时文件…" : done >= total && total > 0 ? "正在校验模型…" : `${size(done)} / ${size(total)}`}</span>
@@ -61,6 +63,7 @@ export function MicButton({ voice, compact = false }: { voice: VoiceInputControl
   }, [recording])
   const label = recording ? "结束录音" : finishing ? "正在识别最后一句…" : preparing ? "正在准备…" : "开始录音"
   return <div className="mf-voice" data-voice-state={voice.state}>
+    <Loading active={preparing || finishing} label={label} onCancel={voice.cancel}/>
     <div className="mf-voice-controls">
       <button type="button" className={`mf-voice-mic ${recording ? "is-recording" : ""} ${compact ? "is-compact" : ""}`}
         aria-label={label} aria-pressed={recording} title={voice.supported ? label : "请在 MentorFlow 桌面端使用语音输入"}

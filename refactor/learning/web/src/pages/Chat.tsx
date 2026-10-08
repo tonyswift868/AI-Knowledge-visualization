@@ -7,7 +7,8 @@ import "katex/dist/katex.min.css"
 import { ArrowLeft, MessageSquarePlus, SendHorizontal, Square, Trash2, UserRoundPen } from "lucide-react"
 import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
-import { Button, SakuraArt, Skeleton } from "../ui"
+import { Button, SakuraArt } from "../ui"
+import { Loading } from '../loading/Loading'
 
 type Msg = { role: "user" | "assistant"; content: string; seq?: number }
 type Summary = { id: string; title: string; updated_at: string; count: number }
@@ -24,6 +25,8 @@ export function Chat() {
   const toast = useApp((s) => s.toast)
   const go = useApp((s) => s.go)
   const [list, setList] = React.useState<Summary[] | null>(null)
+  const [loadError,setLoadError]=React.useState('')
+  const [listLoading,setListLoading]=React.useState(true)
   const [current, setCurrent] = React.useState<Session | null>(null)
   const [draft, setDraft] = React.useState("")
   const [pending, setPending] = React.useState<{ user: string; reply: string } | null>(null)
@@ -33,9 +36,12 @@ export function Chat() {
   const input = React.useRef<HTMLTextAreaElement>(null)
 
   const refresh = React.useCallback(async () => {
-    const r = await call<{ sessions: Summary[] }>("chat.list")
-    setList(r.sessions)
-    return r.sessions
+    setListLoading(true)
+    try {
+      const r = await call<{ sessions: Summary[] }>("chat.list")
+      setLoadError('');setList(r.sessions)
+      return r.sessions
+    } finally {setListLoading(false)}
   }, [])
 
   const open = React.useCallback(async (id: string) => {
@@ -46,7 +52,7 @@ export function Chat() {
   }, [toast])
 
   React.useEffect(() => {
-    refresh().then((sessions) => { if (sessions[0]) open(sessions[0].id) }).catch((e) => { setList([]); toast("error", e.message) })
+    refresh().then((sessions) => { if (sessions[0]) open(sessions[0].id) }).catch((e) => { setLoadError(e.message); toast("error", e.message) })
     const off = on("chat_changed", () => { refresh().catch(() => {}) })
     return () => { off(); abort.current?.abort() }
   }, [refresh, open, toast])
@@ -121,7 +127,8 @@ export function Chat() {
         </div>
         <Button kind="primary" onClick={fresh} disabled={!!pending}><MessageSquarePlus />新对话</Button>
         <div className="chat-sessions">
-          {list === null ? [0, 1, 2].map((i) => <Skeleton key={i} h={44} />)
+          {list!==null && <Loading active={listLoading} label="正在更新对话列表…"/>}
+          {list === null ? loadError ? <div role="alert">{loadError}<Button small onClick={()=>void refresh().catch(e=>setLoadError(e.message))}>重试</Button></div> : <Loading shape="cards" label="正在读取对话…" onRetry={()=>void refresh().catch(e=>setLoadError(e.message))}/>
             : list.length === 0 ? <p className="muted small" style={{ padding: "4px 6px" }}>还没有对话。</p>
             : list.map((s) => (
               <SessionRow key={s.id} s={s} on={current?.id === s.id} disabled={!!pending}
@@ -153,7 +160,7 @@ export function Chat() {
               {messages.map((m) => <Bubble key={m.seq} m={m} />)}
               {pending && <>
                 <Bubble m={{ role: "user", content: pending.user }} />
-                <Bubble m={{ role: "assistant", content: pending.reply }} streaming />
+                <Bubble m={{ role: "assistant", content: pending.reply }} streaming cancel={()=>abort.current?.abort()} />
               </>}
             </>
           )}
@@ -194,13 +201,13 @@ function SessionRow({ s, on, disabled, onOpen, onDelete }:
   )
 }
 
-function Bubble({ m, streaming }: { m: Msg; streaming?: boolean }) {
+function Bubble({ m, streaming, cancel }: { m: Msg; streaming?: boolean; cancel?:()=>void }) {
   if (m.role === "user") return <div className="bubble user" data-selectable>{m.content}</div>
   return (
-    <div className={`bubble bot ${streaming ? "streaming" : ""}`} data-selectable>
+    <div className={`bubble bot ${streaming ? "streaming wait-content" : ""}`} data-selectable>
       {m.content
         ? <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{m.content}</ReactMarkdown>
-        : <span className="typing"><i /><i /><i /></span>}
+        : <Loading shape="conversation" label="老师正在想…" onCancel={cancel}/>}
     </div>
   )
 }

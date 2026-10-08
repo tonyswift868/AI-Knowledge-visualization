@@ -4,6 +4,7 @@ import type { TeacherStageHandle } from "./TeacherStage"
 import type { Capabilities, Reaction, ReactionEvent, StageSnapshot } from "./teacherRuntime"
 import { useTeacherVoice } from "./useTeacherVoice"
 import "./teacher-stage.css"
+import { Loading } from '../loading/Loading'
 
 const TeacherStage = React.lazy(() => import("./TeacherStage").then((m) => ({ default: m.TeacherStage })))
 
@@ -48,7 +49,7 @@ export function TeacherStagePreview() {
     <div className="teacher-preview-grid">
       <div className="teacher-preview-scene">
         {mounted && <div style={{ width: "100%", height: "100%", visibility: visible ? "visible" : "hidden" }}>
-          <React.Suspense fallback={<p>正在准备老师形象…</p>}><TeacherStage ref={teacher} mouthLevel={mouth} paused={paused} visible={visible} onReady={setCaps}
+          <React.Suspense fallback={<Loading label="正在准备老师形象…"/>}><TeacherStage ref={teacher} mouthLevel={mouth} paused={paused} visible={visible} onReady={setCaps}
             onStatus={statusChanged} onReaction={reacting} /></React.Suspense>
         </div>}
         <span className="teacher-preview-name">椿 · {paused ? "已暂停" : "本地 Live2D"}</span>
@@ -56,6 +57,7 @@ export function TeacherStagePreview() {
       <section className="teacher-preview-panel"><h2>老师的声音与表情</h2><p>待机只保留轻微呼吸与眨眼。反应由你触发，结束后回到自然站姿。</p>
         <fieldset className="teacher-voice"><legend>老师朗读</legend>
           <p data-voice-state>{voice.message}</p>
+          <Loading active={['checking','warming','synthesizing'].includes(voice.state)} label={voice.message} onCancel={()=>void voice.stop()}/>
           <div className="teacher-preview-row">
             <button data-voice="speak" disabled={!voice.availability?.ready || voice.busy || paused || !visible || !mounted}
               onClick={() => { setMouth(0); void voice.speak(READING) }}>读一段话</button>
@@ -79,7 +81,8 @@ export function TeacherStagePreview() {
             <button onClick={() => void voice.refresh()}>重新检查</button>
           </details>}
           {voice.downloadState && <div role="status" className="teacher-voice-download">
-            <p>{({ downloading: "正在下载并校验", cancelling: "正在取消", completed: "下载完成", cancelled: "已取消", error: "下载失败" } as Record<string, string>)[voice.downloadState.state]}</p>
+            <Loading active={['downloading','cancelling'].includes(voice.downloadState.state)} label={voice.downloadState.state==='cancelling'?'正在取消朗读资源下载…':'正在下载并校验朗读资源…'} onCancel={()=>void voice.cancelDownload()}/>
+            {!['downloading','cancelling'].includes(voice.downloadState.state) && <p>{({completed: "下载完成", cancelled: "已取消", error: "下载失败" } as Record<string,string>)[voice.downloadState.state]}</p>}
             <progress max={voice.downloadState.total_bytes} value={voice.downloadState.received_bytes} />
             {voice.downloadState.state === "downloading" && <button onClick={() => void voice.cancelDownload()}>取消下载</button>}
           </div>}

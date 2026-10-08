@@ -2,8 +2,9 @@ import * as React from "react"
 import { Archive, ArchiveRestore, BookOpenCheck, Check, PencilLine, PlayCircle, Plus, Trash2, X } from "lucide-react"
 import { call } from "../bridge"
 import { useApp } from "../store"
-import { Button, SakuraArt, Segmented, Skeleton } from "../ui"
+import { Button, SakuraArt, Segmented } from "../ui"
 import type { StudyProgress } from "../ProgressStatus"
+import { Loading } from '../loading/Loading'
 
 export type LedgerToday = StudyProgress & {
   today_target: number; today_confirmed: number; today_tentative: number; debt_minutes: number; needs_negotiation: boolean
@@ -25,10 +26,15 @@ export function Plans() {
   const [filter, setFilter] = React.useState<"current" | "all" | "archived">("current")
   const [plans, setPlans] = React.useState<PlanItem[] | null>(null)
   const [loadError, setLoadError] = React.useState(false)
+  const [loading, setLoading] = React.useState(true)
+  const revision = React.useRef(0)
   const reload = React.useCallback(() => {
+    const own = ++revision.current
+    setLoading(true)
     call<{ plans: PlanItem[] }>("plans.list", { include_archived: true }).then((r) => {
+      if(own!==revision.current)return
       setPlans(r.plans); setLoadError(false)
-    }).catch(() => setLoadError(true))
+    }).catch(() => {if(own===revision.current)setLoadError(true)}).finally(()=>{if(own===revision.current)setLoading(false)})
   }, [])
 
   React.useEffect(() => { if (ready) reload() }, [ready, reload])
@@ -56,7 +62,7 @@ export function Plans() {
           <Button small onClick={reload}>重试</Button>
         </div>}
         {plans === null && loadError ? null : plans === null ? (
-          <div className="grid two">{[0, 1].map((i) => <div key={i} className="card stack"><Skeleton h={22} w="50%" /><Skeleton h={14} /><Skeleton h={14} w="70%" /></div>)}</div>
+          <Loading shape="cards" label="正在读取我的计划…" onRetry={reload}/>
         ) : shown.length === 0 ? (
           <div className="card empty fade-in">
             <SakuraArt />
@@ -96,6 +102,7 @@ export function Plans() {
           </div>
         )}
       </div>
+      {plans !== null && <Loading active={loading} label="正在更新我的计划…"/>}
     </div>
   )
 }

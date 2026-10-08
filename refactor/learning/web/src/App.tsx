@@ -1,6 +1,6 @@
 import * as React from "react"
 import { ChevronsUpDown, CirclePlus, Cloud, CloudOff, House, LayoutGrid, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen,
-  RefreshCw, Repeat2, Route as RouteIcon, Settings2, ShieldCheck } from "lucide-react"
+  Repeat2, Route as RouteIcon, Settings2, ShieldCheck } from "lucide-react"
 import { call, on } from "./bridge"
 import { useApp, type Route } from "./store"
 import { Ambient, BrandMark, Button, Toasts } from "./ui"
@@ -16,6 +16,7 @@ import { Settings } from "./pages/Settings"
 import { UpdateNotice, useUpdates } from "./updates/UpdateNotice"
 import { TeacherStagePreview } from "./teacher/TeacherStagePreview"
 import { VoiceInputPreview } from "./voice/VoiceInputPreview"
+import { Loading, RequestLoading } from './loading/Loading'
 
 type NavItem = { id: Route; label: string; icon: any; also?: Route[] }
 /** Keep a failed page inside the content area; navigation stays usable. */
@@ -77,6 +78,8 @@ export function App() {
   const s = useApp()
   const update = useUpdates()
   const theme = s.settings?.theme ?? "sakura"
+  const [bootstrapError, setBootstrapError] = React.useState('')
+  const [bootstrapAttempt, bootstrapRetry] = React.useReducer(n => n+1, 0)
   const [previewHash, setPreviewHash] = React.useState(window.location.hash)
   React.useEffect(() => {
     const changed = () => setPreviewHash(window.location.hash)
@@ -85,8 +88,9 @@ export function App() {
   }, [])
 
   React.useEffect(() => {
-    const load = () => call("app.bootstrap").then((r) => s.set({ account: r.account, settings: r.settings, options: r.options,
-                                                                  notice: r.notice, ready: r.ready }))
+    let alive = true
+    const load = () => call("app.bootstrap").then((r) => {if(alive){s.set({ account: r.account, settings: r.settings, options: r.options,
+                                                                  notice: r.notice, ready: r.ready });setBootstrapError('')}}).catch(e => {if(alive)setBootstrapError(e.message)})
     load()
     call("sync.status").then((d) => s.set({ sync: d })).catch(() => {})
     const offs = [
@@ -100,9 +104,9 @@ export function App() {
       on("sync_status", (d) => s.set({ sync: d })),
       on("sync_conflict", (d) => s.toast("info", d.message)),
     ]
-    return () => offs.forEach((off) => off())
+    return () => {alive=false;offs.forEach((off) => off())}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [bootstrapAttempt])
 
   React.useEffect(() => {
     const root = document.documentElement
@@ -150,7 +154,7 @@ export function App() {
             {s.ready && s.sync && (
               <button className={`chip sync ${s.sync.state}`} title={s.sync.state === "failed" ? "点一下重试" : "点一下立即同步"}
                       onClick={() => call("sync.now").then((d) => s.set({ sync: d })).catch(() => {})}>
-                {s.sync.state === "syncing" ? <RefreshCw className="spin" /> : s.sync.state === "synced" ? <Cloud /> : <CloudOff />}
+                {s.sync.state === "syncing" || s.sync.state === "synced" ? <Cloud /> : <CloudOff />}
                 {s.sync.state === "synced" && s.sync.at ? `已同步 ${new Date(s.sync.at).toTimeString().slice(0, 5)}`
                   : { syncing: "同步中…", failed: "同步失败", reauth: "需要重新登录", superseded: "已在别处登录", synced: "已同步" }[s.sync.state]}
               </button>
@@ -167,13 +171,17 @@ export function App() {
             </div>
           )}
           <div className="content">
+            {s.settings && !s.ready && s.route !== 'home' && <Loading label="正在连接账号服务…"/>}
+            <Loading active={s.sync?.state==='syncing'} label="正在同步学习记录…"/>
             <PageErrorBoundary key={`${s.route}:${s.planId}:${s.settingsTab}`} back={()=>s.go(s.route === "plan" || s.route === "home" ? "plans" : "home")}>
-              {s.settings ? <Page key={s.route} /> : null}
+              {s.settings ? <Page key={s.route} /> : <div className="page">{bootstrapError ? <div className="card" role="alert">{bootstrapError}<Button onClick={bootstrapRetry}>重试</Button></div>
+                : <Loading shape="page" label="正在准备学习空间…" resetKey={bootstrapAttempt} onRetry={bootstrapRetry}/>}</div>}
             </PageErrorBoundary>
           </div>
         </main>
       </div>
       <Toasts />
+      <RequestLoading />
       <UpdateNotice />
     </>
   )

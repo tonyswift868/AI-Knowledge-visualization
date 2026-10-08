@@ -1,4 +1,5 @@
 import * as React from "react"
+import { Loading } from '../loading/Loading'
 import { create } from "zustand"
 import { call } from "../bridge"
 import { useApp } from "../store"
@@ -112,7 +113,7 @@ export function UpdateNotice() {
       <p>更新完成后会自动重启，并继续当前登录（仅这一次）。</p>
       {mandatory(status) && <p>版本 {status?.mandatory_floor || status?.min_supported_version || status?.latest} 必须安装：{({security:"安全修复",protocol:"更新协议兼容要求",data_compatibility:"数据兼容要求",support_floor:"版本兼容要求"} as Record<string,string>)[status?.mandatory_reason || "support_floor"] || status?.mandatory_reason}</p>}
       <p role="status">{notice.error || status?.message}</p>
-      {downloading && <div aria-label="下载进度"><progress max={Math.max(1, total)} value={Math.min(total, received)} style={{ width: "100%" }} /><p>{bytes(received)} / {bytes(total)}</p></div>}
+      {downloading && <div aria-label="下载进度"><Loading label={status?.message || '正在下载并准备更新…'}/><progress max={Math.max(1, total)} value={Math.min(total, received)} style={{ width: "100%" }} /><p>{bytes(received)} / {bytes(total)}</p></div>}
       <div className="row">
         <Button kind="primary" busy={!!status?.busy} disabled={downloading || status?.state === "FAILED_SECURITY"} onClick={() => void installUpdate()}>
           {status?.state === "DOWNLOAD_PAUSED_OR_INTERRUPTED" ? "继续" : mandatory(status) ? "立即更新" : "立即更新并重启"}

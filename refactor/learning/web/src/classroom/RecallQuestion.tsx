@@ -1,8 +1,9 @@
 import * as React from "react"
-import { CheckCircle2, ChevronRight, ClipboardCheck, Loader2 } from "lucide-react"
+import { CheckCircle2, ChevronRight, ClipboardCheck } from "lucide-react"
 import { Button } from "../ui"
 import type { BankQuestion } from "./Conversation"
 import "./recall.css"
+import { Loading } from '../loading/Loading'
 
 type Reference = { reference: string; key_points: string[] }
 type Verdict = { correct: boolean; missed: number[] }
@@ -57,7 +58,7 @@ export function RecallQuestion({ question, request, busy, next }: {
           value={answer} readOnly={saved} disabled={pending || busy} placeholder="先凭记忆回答，再对照原文检查要点。"
           onChange={(e) => { if (!saved) setAnswer(e.target.value) }} />
         {!reference && <Button kind="primary" disabled={!answer.trim() || pending || busy} onClick={() => run(false)}>
-          {pending && <Loader2 className="spin" size={16} />}写好了，看参考答案</Button>}
+          写好了，看参考答案</Button>}
       </div>
       {reference && <div className="recall-review">
         <details open className="recall-reference"><summary>原文参考答案</summary><div data-selectable>{reference.reference}</div></details>
@@ -70,9 +71,10 @@ export function RecallQuestion({ question, request, busy, next }: {
           </label>)}
         </fieldset>
         {!verdict && <Button kind="primary" disabled={pending || busy} onClick={() => run(true)}>
-          {pending && <Loader2 className="spin" size={16} />}提交</Button>}
+          提交</Button>}
       </div>}
     </div>
+    <Loading active={pending} label={reference ? '正在记录答到的要点…' : '正在保存回答并展开参考答案…'}/>
     {error && <p className="recall-error" role="alert">{error}</p>}
     {verdict && <div className={`recall-result ${verdict.correct ? "correct" : "missed"}`} role="status">
       <span>{verdict.correct && <CheckCircle2 size={18} />}{verdict.correct ? "全部答到，算对" : `漏了 ${verdict.missed.length} 条`}</span>

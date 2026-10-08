@@ -1,8 +1,9 @@
 import * as React from "react"
-import { ChevronLeft, ChevronRight, ImageOff, LoaderCircle, PanelRightClose, PanelRightOpen } from "lucide-react"
+import { ChevronLeft, ChevronRight, ImageOff, PanelRightClose, PanelRightOpen } from "lucide-react"
 import { call, on } from "../bridge"
 import { TeacherRuntime, type Capabilities, type ModelView, type ReactionEvent, type StageSnapshot, type TeacherManifest } from "./teacherRuntime"
 import "./teacher-stage.css"
+import { Loading } from '../loading/Loading'
 
 export type TeacherAssetStatus = { ready: boolean; code: string; message: string; manifest: TeacherManifest | null;
   installation: { method: string; message: string } }
@@ -153,9 +154,9 @@ export const TeacherStage = React.forwardRef<TeacherStageHandle, TeacherStagePro
       onLostPointerCapture={() => { modelDrag.current = null }}
       onDoubleClick={() => { if (props.interactive) changeView({ scale: 1, panX: 0, panY: 0 }) }} />
     {status !== "ready" && <div className="teacher-stage-notice" role="status">
-      {status === "loading" ? <LoaderCircle className="spin" /> : <ImageOff />}
-      <h3>{status === "missing" ? "老师形象未安装" : status === "loading" ? "正在准备老师形象" : "老师形象暂不可用"}</h3>
-      {message !== "老师形象未安装" && <p>{message}</p>}
+      {status === "loading" ? <Loading label="正在准备老师形象…" onRetry={refresh}/> : <ImageOff />}
+      {status !== 'loading' && <><h3>{status === "missing" ? "老师形象未安装" : "老师形象暂不可用"}</h3>
+      {message !== "老师形象未安装" && <p>{message}</p>}</>}
       {status !== "loading" && <><p>{installHelp}</p><div className="teacher-stage-actions">
         <button onClick={install}>选择已安装的模型</button><button onClick={refresh}>重新检查</button>
       </div><small>你可以继续文字学习。</small></>}

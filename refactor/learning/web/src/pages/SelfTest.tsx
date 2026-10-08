@@ -1,10 +1,11 @@
 import * as React from "react"
-import { ArrowLeft, CheckCircle2, ClipboardList, FileUp, Loader2, Plus, Trash2 } from "lucide-react"
+import { ArrowLeft, CheckCircle2, ClipboardList, FileUp, Plus, Trash2 } from "lucide-react"
 import { call } from "../bridge"
 import { Button } from "../ui"
 import { RecallQuestion } from "../classroom/RecallQuestion"
 import type { BankQuestion } from "../classroom/Conversation"
 import "./self-test.css"
+import { Loading } from '../loading/Loading'
 
 type SourceQuestion = { id: string; stem: string; kind: string; options: string[]; reference?: string; answer?: string; key_points?: string[]; reason?: string; warning?: string }
 type SetSummary = { id: string; name: string; count: number; missing: number; draft: boolean; state: string }
@@ -30,18 +31,22 @@ export function SelfTest({ back, request = call }: {back: () => void; request?: 
   const [values, setValues] = React.useState<string[]>([])
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState("")
+  const [loading,setLoading]=React.useState(true)
   const locked = React.useRef(false)
   const cancel = React.useRef<AbortController | null>(null)
   const activeSet = React.useRef<string | null>(null)
   const live = React.useRef(true)
 
   const refresh = React.useCallback(async () => {
-    const data = await request<{sets: SetSummary[]}>("selftest.list")
-    if (live.current) setSets(data.sets)
+    setLoading(true)
+    try {
+      const data = await request<{sets: SetSummary[]}>("selftest.list")
+      if (live.current) setSets(data.sets)
+    } finally {if(live.current)setLoading(false)}
   }, [request])
   React.useEffect(() => {
     live.current = true
-    refresh().catch(e => setError(e.message))
+    refresh().catch(e => {setError(e.message);setLoading(false)})
     return () => {
       live.current = false; cancel.current?.abort()
       if (activeSet.current) request("selftest.pause", {set_id: activeSet.current}).catch(() => {})
@@ -100,12 +105,13 @@ export function SelfTest({ back, request = call }: {back: () => void; request?: 
   const verdict = view?.run.current?.verdict
 
   return <div className="page self-test-page">
+    <Loading active={loading || busy} shape={importing ? 'form' : 'inline'} label={importing ? '正在识别资料中的题目与答案…' : '正在读取或保存题目自测…'} onCancel={cancel.current ? ()=>cancel.current?.abort() : undefined}/>
     <div className="self-test-title"><Button small disabled={busy} onClick={() => run(async () => {
       if (view || selected || importing) await leave(); else back()
     })}><ArrowLeft size={16} />{view || selected || importing ? "返回题集" : "更多工具"}</Button>
       <h2><ClipboardList size={24} />上传题目自测</h2></div>
     <p className="muted">只测你提供的题与答案。客观题由程序判，问答题由你对照参考答案逐条勾要点。</p>
-    {error && <p role="alert" className="self-test-error">{error}</p>}
+    {error && <p role="alert" className="self-test-error">{error}{!busy && <Button small onClick={()=>void refresh().then(()=>setError('')).catch(e=>{setError(e.message);setLoading(false)})}>重试读取题集</Button>}</p>}
     {view ? <>
       <div className="card self-test-progress"><b>{view.name}</b><span>已达标 {view.passed} / {view.total} · 每题连续答对 {view.run.required} 遍</span></div>
       {view.run.completed ? <section className="card self-test-complete" aria-label="自测完成">
@@ -166,11 +172,11 @@ export function SelfTest({ back, request = call }: {back: () => void; request?: 
         cancel.current = new AbortController()
         const data = await request<{set: QuestionSet}>("selftest.import", file ? {file_token: file.token} : {text}, {signal: cancel.current.signal})
         if (live.current) {setSelected(data.set); setName(data.set.name); setImporting(false); await refresh()}
-      })}>{busy && <Loader2 size={16} className="spin" />}拆出原题</Button>
+      })}>拆出原题</Button>
         {busy && <Button onClick={() => cancel.current?.abort()}>取消拆题</Button>}</div>
     </section> : <>
       <Button kind="primary" disabled={busy} onClick={() => {setImporting(true); setText(""); setFile(null)}}><Plus size={17} />上传或粘贴题目</Button>
-      {!sets.length && <div className="card self-test-empty">还没有题集。先导入一份带答案的题吧。</div>}
+      {!loading && !error && !sets.length && <div className="card self-test-empty">还没有题集。先导入一份带答案的题吧。</div>}
       <div className="grid two self-test-sets">{sets.map(item => <div className="card" key={item.id}>
         <h3>{item.name}</h3><p>{item.count} 道可测 · {item.missing} 道缺答案{item.draft ? " · 尚未确认保存" : ""}</p>
         <div className="self-test-actions"><Button disabled={busy} onClick={() => open(item.id)}>{item.state === "in_progress" ? "接着做" : item.state === "completed" ? "查看 / 再测" : "打开题集"}</Button>

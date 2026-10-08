@@ -6,7 +6,8 @@ import {
 } from "lucide-react"
 import { call, on, BridgeFailure } from "../bridge"
 import { useApp, type Settings as S, type SettingsTab, type TeacherPreset } from "../store"
-import { Button, Field, Segmented, Skeleton, Toggle } from "../ui"
+import { Button, Field, Segmented, Toggle } from "../ui"
+import { Loading } from '../loading/Loading'
 
 const TABS: { id: SettingsTab; label: string; icon: any }[] = [
   { id: "models", label: "模型连接", icon: PlugZap },
@@ -70,6 +71,7 @@ function AboutUpdates() {
   return <section className="card" aria-label="关于 MentorFlow" style={{ marginTop: 20, padding: 20 }}>
     <h3>关于 MentorFlow {later && <span aria-label="有新版本" style={{ color: "#f24b63" }}>●</span>}</h3>
     <p>版本 {status?.version ?? "…"}</p>
+    <Loading active={!status || !!status.busy} label={message || '正在读取版本…'}/>
     <p className="small muted" role="status">{logError || error || message}</p>
     <div className="row">
       <Button small disabled={!status?.available || status.busy} onClick={() => void checkUpdate()}><RefreshCw />检查更新</Button>
@@ -115,7 +117,7 @@ function ApiBalance({ preset, reload }: { preset: Preset; reload: number }) {
     const timer = setInterval(() => { setNow(Date.now()); void load(false) }, 30000)
     return () => { ++request.current; off(); clearInterval(timer) }
   }, [load, preset.id])
-  if (!value) return <span className="small muted">{busy ? "正在读取…" : "暂未查到花费"}</span>
+  if (!value) return busy ? <Loading label="正在查询厂商余额与花费…"/> : <span className="small muted">暂未查到花费</span>
   const minutes = value.balance ? Math.max(0, Math.floor((now - Date.parse(value.balance.updated_at)) / 60000)) : null
   const tooltip = value.balance ? `${value.balance.label}：${value.balance.balances.map((b) => money(b.amount, b.currency)).join(" · ")}` : "暂无余额记录"
   return <div style={{ textAlign: "right" }} title={tooltip}>
@@ -135,7 +137,10 @@ function Models() {
   const [form, setForm] = React.useState({ provider_id: "deepseek", preset_id: "" as string | null, display_name: "", base_url: "", model: "", api_key: "", timeout: 120 })
   const [saving, setSaving] = React.useState(false)
   const [testing, setTesting] = React.useState(false)
+  const testCancel=React.useRef<AbortController|null>(null)
+  React.useEffect(()=>()=>testCancel.current?.abort(),[])
   const [balanceReload, setBalanceReload] = React.useState(0)
+  const [loadError,setLoadError]=React.useState('')
 
   const fill = React.useCallback((providerId: string, list: Preset[], all: Provider[]) => {
     const existing = list.find((p) => p.provider_id === providerId)
@@ -150,6 +155,7 @@ function Models() {
   }, [])
 
   const load = React.useCallback(async () => {
+    setLoadError('')
     const [p, l] = await Promise.all([call<{ providers: Provider[] }>("models.providers"),
       call<{ presets: Preset[]; active_id: string | null }>("models.list")])
     setProviders(p.providers)
@@ -158,7 +164,7 @@ function Models() {
     const active = l.presets.find((x) => x.id === l.active_id)
     fill(active?.provider_id ?? "deepseek", l.presets, p.providers)
   }, [fill])
-  React.useEffect(() => { load().catch((e) => toast("error", e.message)) }, [load, toast])
+  React.useEffect(() => { load().catch((e) => setLoadError(e.message)) }, [load, toast])
 
   const active = presets.find((p) => p.id === activeId)
   const selected = providers?.find((p) => p.id === form.provider_id)
@@ -183,12 +189,13 @@ function Models() {
 
   async function test() {
     setTesting(true)
+    testCancel.current=new AbortController()
     try {
-      const r = await call<{ latency_ms: number; model: string }>("models.test")
+      const r = await call<{ latency_ms: number; model: string }>("models.test",{}, {signal:testCancel.current.signal})
       toast("ok", `连接正常：${r.model || "模型"} 在 ${(r.latency_ms / 1000).toFixed(1)} 秒内回复。`)
     } catch (e) {
       toast("error", `连接失败：${(e as BridgeFailure).message}`)
-    } finally { setTesting(false) }
+    } finally { testCancel.current=null;setTesting(false) }
   }
 
   async function action(method: "models.select" | "models.delete", id: string) {
@@ -200,10 +207,12 @@ function Models() {
     } catch (e) { toast("error", (e as Error).message) }
   }
 
-  if (!providers) return <div className="card stack"><Skeleton h={24} w="40%" /><Skeleton h={120} /><Skeleton h={200} /></div>
+  if (!providers) return loadError ? <div className="card" role="alert">{loadError}<Button onClick={()=>load().catch(e=>setLoadError(e.message))}>重试</Button></div>
+    : <Loading shape="form" label="正在读取模型预设…" onRetry={()=>load().catch(e=>setLoadError(e.message))}/>
 
   return (
     <div className="stack">
+      <Loading active={testing || saving} label={testing ? '正在验证模型连接…' : '正在保存模型预设…'} onCancel={testing ? ()=>testCancel.current?.abort() : undefined}/>
       <div className="card">
         <div className="row between">
           <div>
@@ -319,13 +328,16 @@ function Usage() {
   const [days, setDays] = React.useState(7)
   const [groupBy, setGroupBy] = React.useState<"purpose" | "model" | "day">("purpose")
   const [data, setData] = React.useState<{ total: Agg; groups: (Agg & { key: string })[] } | null>(null)
+  const [error,setError]=React.useState('')
+  const [attempt,retry]=React.useReducer(n=>n+1,0)
   React.useEffect(() => {
     let current = true
     setData(null)
+    setError('')
     call("usage.summary", { days, group_by: groupBy }).then((r: any) => { if (current) setData(r) })
-      .catch((e) => { if (current) toast("error", e.message) })
+      .catch((e) => { if (current) setError(e.message) })
     return () => { current = false }
-  }, [days, groupBy, toast])
+  }, [days, groupBy, toast,attempt])
   const t = data?.total
   const meters = [["模型调用（含失败）", t?.calls], ["输入 token", t?.input_tokens], ["缓存命中 token", t?.cached_input_tokens],
     ["缓存未命中 token", t?.uncached_input_tokens], ["输出 token", t?.output_tokens], ["搜索次数", t?.search_requests]] as const
@@ -342,7 +354,7 @@ function Usage() {
       </div>
       {t && <><p className="sub">失败 {fmt(t.failed)} 次 · 取消 {fmt(t.cancelled)} 次 · 尚未结束 {fmt(t.in_progress)} 次；均计入调用次数。</p><UsageGap value={t} /></>}
       <div className="card" style={{ overflowX: "auto" }}>
-        {!data ? <Skeleton h={120} /> : data.groups.length === 0 ? <p className="sub">这段时间还没有模型调用。</p> : (
+        {!data ? error ? <div role="alert">{error}<Button onClick={retry}>重试</Button></div> : <Loading shape="cards" label="正在读取模型用量…" resetKey={`${days}:${groupBy}:${attempt}`} onRetry={retry}/> : data.groups.length === 0 ? <p className="sub">这段时间还没有模型调用。</p> : (
           <table className="table">
             <thead><tr><th>{groupBy === "purpose" ? "用途" : groupBy === "model" ? "模型" : "日期（UTC）"}</th><th>次数</th><th>输入 token</th><th>缓存命中</th><th>缓存未命中</th><th>输出 token</th><th>搜索次数</th><th>命中率</th></tr></thead>
             <tbody>{data.groups.map((g) => <React.Fragment key={String(g.key)}>
@@ -383,6 +395,7 @@ function BalanceSpend() {
   const currencies = value?.currencies.length ? value.currencies : [{ currency: "CNY", ready: false, today: "0", week: "0", month: "0", days: [] }]
   return <section className="stack" aria-label="账户余额变化花费">
     <div className="row between"><h3>花费{preset ? ` · ${preset.display_name}` : ""}</h3><Button small busy={busy} onClick={() => void load(true)}><RefreshCw />刷新花费</Button></div>
+    <Loading active={busy} label="正在查询账户余额与花费…"/>
     {currencies.map((currency) => <React.Fragment key={currency.currency}>
       <div className="grid three">
         {([["今天花了", currency.today], ["本周", currency.week], ["本月", currency.month]] as const).map(([label, amount]) => <div className="card stat" key={label}>
@@ -390,7 +403,7 @@ function BalanceSpend() {
         </div>)}
       </div>
       <p className="small muted">按账户余额变化计算；如果这把 Key 也在别处使用，那部分也会算进来</p>
-      {!currency.ready && <p className="sub" role="status">{value ? spendHint(value) : busy ? "正在读取花费…" : "尚未选择可查询余额的模型预设"}</p>}
+      {!currency.ready && (value ? <p className="sub" role="status">{spendHint(value)}</p> : busy ? null : <p className="sub">尚未选择可查询余额的模型预设</p>)}
       {value?.query_failed && <p className="small muted" role="status">本次余额查询未成功，已保留原有记录，下次再查。</p>}
       <div className="card" aria-label={`最近 14 天花费（${currency.currency}）`} style={{ padding: 20 }}>
         <h3>最近 14 天</h3>

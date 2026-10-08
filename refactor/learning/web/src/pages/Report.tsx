@@ -1,8 +1,9 @@
 import * as React from "react"
-import { ArrowLeft, Download, Loader2 } from "lucide-react"
+import { ArrowLeft, Download } from "lucide-react"
 import { call } from "../bridge"
 import { useApp } from "../store"
 import { Button } from "../ui"
+import { Loading } from '../loading/Loading'
 
 type Report = {
   plan: { goal: string; final_goal: string; start_date: string; end_date: string; actual_start_date: string | null
@@ -40,7 +41,7 @@ export function Report() {
     call<ReportData>("plan.report", { plan_id: planId }).then(setData)
       .catch((e) => { toast("error", e.message); go("plan") })
   }, [planId, go, toast])
-  if (!data) return <div className="page"><div className="card"><Loader2 className="spin" /> 正在生成报告…</div></div>
+  if (!data) return <div className="page"><Loading shape="page" label="正在整理学习报告…" onCancel={()=>go('plan')}/></div>
   const { report: r, titles, views } = data
   const weak = r.weakest_points.filter((w) => w.score > 0)
   const checks = (r.questions ?? []).reduce((a, p) => a + p.check_questions, 0)
