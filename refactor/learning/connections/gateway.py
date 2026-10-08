@@ -63,7 +63,7 @@ PURPOSE_MIN_OUTPUT = {
 MODEL_MAX_OUTPUT = {'deepseek-v4-flash': 384000, 'deepseek-v4-pro': 384000}
 # Total wall-clock limit for background calls; long thinking must be able to finish.
 BACKGROUND_TIMEOUT = 1800.
-BACKGROUND_PURPOSES = frozenset({'research', 'point_materials', 'source_identity', 'profile', 'check_profile', 'coverage_check', 'outline', 'generate', 'distractor_check', 'point_links'})
+BACKGROUND_PURPOSES = frozenset({'research', 'point_materials', 'source_identity', 'profile', 'check_profile', 'coverage_check', 'outline', 'generate', 'distractor_check', 'point_links', 'point_difficulty'})
 
 
 def _storage_error():

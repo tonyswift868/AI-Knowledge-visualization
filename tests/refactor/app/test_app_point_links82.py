@@ -143,6 +143,8 @@ class Model:
         self.failures, self.gate, self.calls = failures, gate, []
     def complete(self, purpose, messages, **kwargs):
         packet = json.loads(messages[0]['content'])
+        if purpose == 'point_difficulty':
+            return SimpleNamespace(text=json.dumps([dict(id=p['id'], difficulty='中') for p in packet['points']]))
         self.calls.append(packet['module'])
         if self.gate: self.gate.wait(3)
         if packet['module'] == 'm1' and self.failures:
@@ -157,6 +159,7 @@ def services(store, model):
 
 def finish(flow):
     for job in list(flow._point_link_jobs['jobs'].values()): job['thread'].join(5)
+    for job in list(flow._point_minute_jobs['jobs'].values()): job['thread'].join(5)
     assert not flow._point_link_jobs['jobs']
 
 
@@ -164,7 +167,7 @@ def test_old_plan_detail_nonblocking_shared_worker_events_partial_retry(store):
     gate, model, events = threading.Event(), Model(failures=2), []
     model.gate = gate
     svc = services(store, model)
-    flow = PlanFlow(svc, lambda n, d: events.append((n, d)), lambda: DAY)
+    flow = PlanFlow(svc, lambda n, d: events.append((n, d)) if n == 'plan.point_links_changed' else None, lambda: DAY)
     other = PlanFlow(svc, lambda *args: None, lambda: DAY)
     try:
         detail = flow.detail(PLAN)

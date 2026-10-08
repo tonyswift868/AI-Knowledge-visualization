@@ -213,6 +213,11 @@ class PlanFlow:
                 self._point_link_jobs = dict(guard=threading.Lock(), jobs={})
             if services is not None:
                 services._point_link_jobs = self._point_link_jobs
+            self._point_minute_jobs = getattr(services, '_point_minute_jobs', None)
+            if self._point_minute_jobs is None:
+                self._point_minute_jobs = dict(guard=threading.Lock(), jobs={})
+            if services is not None:
+                services._point_minute_jobs = self._point_minute_jobs
         self._preparing = self._material_jobs['active']
 
     # ----------------------------------------------------------- drafts
@@ -1028,11 +1033,15 @@ class PlanFlow:
                 payload = [dict(p, minutes=MINUTES_PER_POINT_GUESS, id=f"{module['id']}-{index:02d}") for index, p in enumerate(module["points"], 1)]
                 store.save_generated_module(plan_id, module["id"], payload, today=self.study_day(),
                     check_minutes=0, final_check_minutes=0, check_question_minutes=2)
+            # Original-length weights apply immediately; difficulty is refined off-thread.
+            initial = store.point_minutes_snapshot(plan_id)
+            store.save_point_minutes(plan_id, initial['fingerprint'], {p['id']: '中' for p in initial['points']}, provisional=True)
             draft["generation"] = {m["id"]: "pending" for m in modules}
             draft["phase"] = "generating"
             draft["messages"].append(_msg("ai", "progress", "计划已保存，正在准备第 1 模块的资料与题目。"))
             self.save(draft)
             self.ensure_point_links(plan_id)
+            self.ensure_point_minutes(plan_id)
         first = modules[0]
         def progress(done, total, text):
             self.status(plan_id, f"正在准备第 1 模块的资料与题目 {done}/{total}" + (f" · {text}" if text else ""))
@@ -1162,6 +1171,21 @@ class PlanFlow:
                 if not queue:
                     state['queued'].pop(plan_id, None)
                     state['active'].discard(plan_id)
+                    # Questions prepared after finalization change host weights;
+                    # persisted difficulty labels are reused without another AI call.
+                    if not getattr(self.services, '_closed', False):
+                        store = self.services.store
+                        try:
+                            plan = {}
+                            if store is not None:
+                                with store.transaction(): plan = store.get_plan(plan_id)
+                            # Old courses start on detail, never as a side effect of grading.
+                            if plan.get('point_minutes_version') or plan.get('point_minutes_provisional'):
+                                self.ensure_point_minutes(plan_id)
+                        except StoreError as exc:
+                            if exc.code != 'STORE_CLOSED':
+                                log.exception('point minutes preparation hook failed plan=%s', plan_id)
+                                self._point_minutes_event(plan_id, 'failed')
                     return
                 module, prepare, job = queue.pop(0)
                 job['status'] = 'running'
@@ -1813,6 +1837,61 @@ class PlanFlow:
         self._say(draft, "已" + "，".join(parts) + "。")
 
     # ----------------------------------------------------------- 5 review + start
+    def _point_minutes_event(self, plan_id, status):
+        if getattr(self.services, '_closed', False): return
+        try: self.push('plan.point_minutes_changed', dict(plan_id=plan_id, status=status))
+        except Exception: log.info('point minutes view closed', exc_info=True)
+
+    def ensure_point_minutes(self, plan_id):
+        """Start once per unchanged input/version; no model IO on the caller thread."""
+        if getattr(self.services, '_closed', False): return 'none'
+        shared = self._point_minute_jobs
+        with shared['guard']:
+            if plan_id in shared['jobs']: return 'running'
+            state = self.services.store.point_minutes_snapshot(plan_id)
+            if state['ready']: return 'ready'
+            if not state['points'] or sum(m.get('point_count', 0) for m in state['modules']) != len(state['points']):
+                return 'none'
+            job = dict(cancel=threading.Event())
+            worker = threading.Thread(target=self._point_minutes_worker, args=(plan_id, job, state),
+                                      name='plan-point-minutes', daemon=True)
+            job['thread'] = worker
+            shared['jobs'][plan_id] = job
+        self._point_minutes_event(plan_id, 'running')
+        worker.start()
+        return 'running'
+
+    def _point_minutes_worker(self, plan_id, job, state):
+        status = 'failed'
+        store = self.services.store
+        try:
+            difficulties = {}
+            for module in state['modules']:
+                points = [p for p in state['points'] if p['module_id'] == module['id']]
+                if not points: continue
+                if all(p.get('difficulty_fingerprint') == state['point_fingerprints'][p['id']]
+                       and p.get('difficulty') in agents.MINUTE_RULE['difficulty'] for p in points):
+                    difficulties.update({p['id']: p['difficulty'] for p in points})
+                    continue
+                if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
+                messages, aliases = agents.point_difficulty_request(module, state['points'])
+                reply = self.services.gateway.complete('point_difficulty', messages, system=agents.POINT_DIFFICULTY_SYSTEM,
+                    cancel=job['cancel'], plan_id=plan_id, max_tokens=4096)
+                difficulties.update(agents.parse_point_difficulty(reply if isinstance(reply, str) else reply.text, aliases))
+            if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
+            if store.save_point_minutes(plan_id, state['fingerprint'], difficulties): status = 'ready'
+        except Exception:
+            if not getattr(self.services, '_closed', False): log.exception('point minutes failed plan=%s; original minutes retained', plan_id)
+        finally:
+            with self._point_minute_jobs['guard']:
+                self._point_minute_jobs['jobs'].pop(plan_id, None)
+            self._point_minutes_event(plan_id, status)
+            if status == 'ready' and not getattr(self.services, '_closed', False):
+                # The existing knowledge-map subscriber reloads the whole detail.
+                # Its relationship status remains truthful; no frontend changes needed.
+                try: self._point_links_event(plan_id, store.point_links_state(plan_id)['status'])
+                except Exception: log.info('point minutes store closed', exc_info=True)
+
     def _point_links_event(self, plan_id, status):
         if getattr(self.services, '_closed', False): return
         try: self.push('plan.point_links_changed', dict(plan_id=plan_id, status=status))
@@ -1953,6 +2032,7 @@ class PlanFlow:
         result["has_report"] = plan.get("state") == "completed"
         result['point_links'] = store.point_links_state(plan_id)['links']
         result['point_links_status'] = self.ensure_point_links(plan_id)
+        self.ensure_point_minutes(plan_id)
         return result
 
     def change_window(self, plan_id, raw):

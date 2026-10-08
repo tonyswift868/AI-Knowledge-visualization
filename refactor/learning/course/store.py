@@ -1125,6 +1125,64 @@ class CourseStore:
             elif op == 'release': ledger.release_unused(payload['minutes'])
         return ledger
 
+    def point_minutes_snapshot(self, plan_id):
+        """One coherent input snapshot, excluding minutes/credits from content identity."""
+        from .planner_agents import MINUTE_RULE_VERSION, point_minute_metrics
+        import hashlib
+        with self.transaction():
+            plan = self._get('plans', plan_id, plan_id)
+            points, modules = self.records('points', plan_id), self.records('modules', plan_id)
+            metrics = point_minute_metrics(points, self.records('source_chunks', plan_id),
+                                           self.records('question_bank', plan_id))
+            content = [(p['id'], p['module_id'], p['title'], p.get('summary'), p.get('citations'),
+                        metrics[p['id']]['characters']) for p in points]
+            fingerprint = hashlib.sha256(json.dumps(content, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+            point_fingerprints = {row[0]: hashlib.sha256(json.dumps(row, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+                                  for row in content}
+            signature = hashlib.sha256(json.dumps([fingerprint, metrics], sort_keys=True).encode()).hexdigest()
+            ready = (plan.get('point_minutes_version') == MINUTE_RULE_VERSION and
+                     plan.get('point_minutes_signature') == signature)
+            return dict(plan=plan, points=points, modules=modules, metrics=metrics, fingerprint=fingerprint,
+                        signature=signature, point_fingerprints=point_fingerprints, ready=ready)
+
+    @_atomic
+    def save_point_minutes(self, plan_id, fingerprint, difficulties, *, provisional=False):
+        """Atomic reweight; never replan or rewrite historical credits/daily targets."""
+        from .planner_agents import MINUTE_RULE_VERSION, estimate_point_minutes, allocate_point_minutes
+        state = self.point_minutes_snapshot(plan_id)
+        if state['ready']: return True
+        if state['fingerprint'] != fingerprint: return False
+        points, modules, plan = state['points'], state['modules'], state['plan']
+        if set(difficulties) != {p['id'] for p in points}: raise StoreError('MINUTE_POINTS_CHANGED')
+        frozen = {r['credit']['unit_id'] for r in self._rows('credits', plan_id)
+                  if r['id'].startswith(('learn:', 'relearn:'))}
+        weights = {p['id']: estimate_point_minutes(**state['metrics'][p['id']], difficulty=difficulties[p['id']])
+                   for p in points}
+        learning = sum(m['learning_minutes'] for m in modules)
+        available = learning - sum(p['minutes'] for p in points if p['id'] in frozen)
+        editable = [p for p in points if p['id'] not in frozen]
+        allocation = dict(zip((p['id'] for p in editable),
+                              allocate_point_minutes([weights[p['id']] for p in editable], available)))
+        for p in points:
+            p.update(difficulty=difficulties[p['id']],
+                     minute_estimate=dict(**state['metrics'][p['id']], unconstrained=weights[p['id']]))
+            if not provisional:
+                p.update(point_minutes_version=MINUTE_RULE_VERSION,
+                         difficulty_fingerprint=state['point_fingerprints'][p['id']])
+            if p['id'] in allocation: p['minutes'] = allocation[p['id']]
+            self._put('points', plan_id, p)
+        for m in modules:
+            m['learning_minutes'] = sum(p['minutes'] for p in points if p['module_id'] == m['id'])
+            self._put('modules', plan_id, m)
+        if provisional:
+            plan['point_minutes_provisional'] = True
+        else:
+            plan.pop('point_minutes_provisional', None)
+            plan.update(point_minutes_version=MINUTE_RULE_VERSION, point_minutes_signature=state['signature'],
+                        point_minutes_unconstrained_total=sum(weights.values()))
+        self._put('plans', plan_id, plan)
+        return True
+
     def load_ledger(self, plan_id) -> Ledger:
         with self.transaction(): return self._load_ledger(self._get('plans', plan_id, plan_id))
 
