@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-08）：第八十六批已全部合入（主线 56251799，全量 3133 通过、0 失败；未重启，用户软件已关）。进行中：87-MF04 语音引擎内存（朗读默认关、开着有明显开关、关掉即释放）。待转发：88-MF05 原生登录加载过场、88-MF06 后台任务初始状态。从源代码启动：Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden；重启前先问用户。用户机器上另有 Kristina 的语音引擎（D:\Kristina_Runtime，kristina.bridge.launcher 启动）约 8 GB，不是本项目的，不碰。番茄钟、自习室暂不做。81-MF06 排除规则留到以后测新建计划时再看；81-MF04 镜像保留。
+- **现在在做的事**（2026-10-08）：第八十六批已全部合入（主线 56251799，全量 3133 通过、0 失败；未重启，用户软件已关）。87-MF04 语音引擎内存已合入（主线 98e52ca1，全量 3143 通过）。待做：88-MF05 合入时把 OpenBLAS 限线程接进启动入口（87-MF04 报告有实验参数）。待转发：88-MF05 原生登录加载过场、88-MF06 后台任务初始状态。从源代码启动：Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden；重启前先问用户。用户机器上另有 Kristina 的语音引擎（D:\Kristina_Runtime，kristina.bridge.launcher 启动）约 8 GB，不是本项目的，不碰。番茄钟、自习室暂不做。81-MF06 排除规则留到以后测新建计划时再看；81-MF04 镜像保留。
 
 ## 协作方式
 
@@ -65,7 +65,7 @@
 | MF-01 | 空闲（81-MF01 已合入） | server |
 | MF-02 | 空闲（86-MF02 已合入） | client |
 | MF-03 | 空闲（86-MF03 已合入） | classroom |
-| MF-04 | 87-MF04 进行中 | runtime |
+| MF-04 | 空闲（87-MF04 已合入） | runtime |
 | 88-MF05 | MF-05 platform | 原生登录与启动窗口加载过场，与网页一致（¥0） | UI-00 | 56251799 | 已起草，待用户转发 |
 | 88-MF06 | MF-06 tools | 后台任务初始状态：detail 补分钟重算等状态字段，打开页面即显示过场（¥0） | UI-00、MAP-01 | 56251799 | 已起草，待用户转发 |
 | MF-05 | 88-MF05 已起草，待用户转发 | platform |
@@ -74,11 +74,11 @@
 | 85-MF06 | MF-06 tools | 计划总时长改按内容算、老计划自动重排日程（¥0.5） | PLAN-04、PLAN-05 | bf18799b | 已合入（91b636fc，主线 197bc861；副本总量 4967→3750，10-07 未学的 331 分摊进后面每天，顶部变“今天 24 / 289”） |
 | 86-MF02 | MF-02 client | 统一加载过场：盘点所有等待处、三档（不显示/骨架/过场＋文字）、老师正在想（¥0.3） | UI-00 | 197bc861 | 已合入（ebb1d0d0，主线 56251799；39 类等待 38 类统一，原生登录与分钟重算初始状态未覆盖→88） |
 | 86-MF03 | MF-03 classroom | 模型连接一断自动重试：未出字前最多重试 2 次，用户无感（¥0.3） | UI-00、BUG-58 | 197bc861 | 已合入（007ea156，主线 ec2ffe7e；未发出的连接失败最多重试 2 次，间隔 1、3 秒） |
-| 87-MF04 | MF-04 runtime | 内存：朗读关着不启动语音引擎、关朗读和空闲释放；查清主程序线程（¥0.3） | VOICE-01、BUG-58 | ec2ffe7e | 已转发，进行中 |
+| 87-MF04 | MF-04 runtime | 内存：朗读关着不启动语音引擎、关朗读和空闲释放；查清主程序线程（¥0.3） | VOICE-01、BUG-58 | ec2ffe7e | 已合入（5ac8a789，主线 98e52ca1；朗读默认关、原位显示“朗读：开/关”，关即释放、空闲约 10 分钟释放；进程树朗读关 1.7 GB、开 8.2 GB；引擎 7.58→6.56 GB；主程序线程约 200 个是 NVIDIA 驱动，OpenBLAS 限线程可减 20 余个，未接入启动入口） |
 | MF-06 | 88-MF06 已起草，待用户转发 | tools |
 | MF-07 | 空闲（81-MF07 已合入） | library |
 
-空闲工位：server、client、classroom、library。
+空闲工位：server、client、classroom、runtime、library。
 
 ## 待派队列
 
