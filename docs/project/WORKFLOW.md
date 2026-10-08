@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-08）：第八十一、八十二批已全部合入（主线 f072d3a0，全量 3046 通过、28 跳过、0 失败），软件已重启到新版，用户在测。用户的计划第一次打开详情会在后台补知识点连线（副本实测约 10 分钟、约 ¥0.65）。之后要派：统一的加载过场动画。番茄钟、自习室暂不做。81-MF06 排除规则留到以后测新建计划时再看；81-MF04 镜像保留。
+- **现在在做的事**（2026-10-08）：第八十一、八十二批已全部合入（主线 f072d3a0，全量通过），用户在新版上测。用户反馈课堂最小化静置后软件无声退出（BUG-58），83-MF05 已起草待转发；软件已改为隐藏控制台、错误输出写到 .local\test-tmp\app-run\ 重新启动。之后要派：统一的加载过场动画（可顺带课堂网络一断就自动重试一次）。番茄钟、自习室暂不做。81-MF06 排除规则留到以后测新建计划时再看；81-MF04 镜像保留。
 
 ## 协作方式
 
@@ -66,15 +66,61 @@
 | MF-02 | 空闲（82-MF02 已合入） | client |
 | MF-03 | 空闲（81-MF03 已合入） | classroom |
 | MF-04 | 空闲（81-MF04 已合入） | runtime |
-| MF-05 | 空闲（81-MF05 已合入） | platform |
+| MF-05 | 83-MF05 已起草，待用户转发 | platform |
 | MF-06 | 空闲（82-MF06 已合入） | tools |
 | MF-07 | 空闲（81-MF07 已合入） | library |
 
-空闲工位：全部七个。
+空闲工位：server、client、classroom、runtime、tools、library。
 
 ## 待派队列
 
 - 无（第五十九批两份已起草，见上）。
+
+## 第八十三批任务原文（2026-10-08，基线 fdc1d9ea）
+
+### [83-MF05] platform｜软件静置时无声退出：查清原因、修掉、以后退出都留原因（¥0.5）
+
+~~~text
+【MentorFlow 第八十三批｜MF-05（工位 platform）｜软件静置时无声退出：查清原因、修掉，并让以后任何退出都留下原因】
+
+现成项目与许可证（第一节）
+  - 只用本项目现有代码和 Python 标准库、PySide6 自带能力，不新增依赖：faulthandler、atexit、signal 是标准库；Qt 的 qInstallMessageHandler、QApplication.aboutToQuit/lastWindowClosed、QWebEnginePage.renderProcessTerminated 是 PySide6 自带；Windows 控制台关闭事件用 ctypes 调 SetConsoleCtrlHandler（标准库 ctypes）。
+  - 先看本项目现有日志写法 refactor/runtime_logging.py（diagnostic_event、uncaught 钩子），新诊断一律走它，写进同一个 mentorflow.log。
+
+开工同步
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard fdc1d9ea
+提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不碰 D:\Kristina* 下任何东西。D:\MentorFlowApp 只读。用户正在用 D:\MentorFlowData\account-shell：只读，不改不删，要用的数据复制到测试目录再用。E 盘只读运行、不复制不写。先读 AGENTS.md（磁盘规则、功能先行不加安全加固）：中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node（不提交 dist）。遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据才停。全量测试、web 构建由你跑并如实写结果。
+不要结束或重启用户正在用的那个软件进程（它从 D:\MentorFlow 主目录启动）；你自己的测试进程从工位目录启动、用复制的数据。
+产物目录：D:\MentorFlow\.local\test-tmp\fix83-exit\。目标三小时内交回（含至少 60 分钟的静置复现）。花费上限 ¥0.5（只为进课堂开场的真实模型调用）。
+背景（用户 2026-10-08 亲测，CURRENT_STATE [BUG-58]）：用户在课堂里把软件最小化静置，过一会儿软件整个没了。用户说“以后不能再犯”。架构师已查到的事实：
+  - 软件 03:31 由架构师用 Start-Process 从源代码启动（python.exe，带控制台窗口），之前稳定跑了 8 小时。11:40 前后用户进课堂、计划详情触发了 82-MF06 的知识点连线（8 个模块调用 11:43:19 全部完成，之后软件仍在写日志）。
+  - mentorflow.log 最后一条是 11:46:34 的后台会话刷新成功（login CONNECTED、refresh RECOVERED），此后再无任何记录；下一次同步本该在约 11:49:52。也就是说 11:46:34～11:50 之间进程消失。
+  - 日志里没有任何未捕获异常（runtime_logging 已挂 sys.excepthook 和 threading.excepthook）。
+  - Windows 应用日志在这段时间没有 python.exe 的崩溃记录（事件 1000/1001）；而本机崩溃是会被记录的（同一天 05:26、05:41 有别的程序的崩溃记录，异常码 0xc0000006）。所以大概率不是原生崩溃，而是被正常退出路径关掉或被外部结束。
+  - 架构师那段时间没有运行任何命令，排除了架构师操作。
+  - account_shell_main.py 设了 setQuitOnLastWindowClosed(True)；会话刷新成功时 _hide_login_windows 会隐藏登录相关窗口；第七十八批老师栏有 teacher_open/teacher_close 窗口动作；启动时带了一个控制台窗口，关掉它会直接结束进程且不留记录。
+  - 现在软件已改为隐藏控制台、stderr 写到 D:\MentorFlow\.local\test-tmp\app-run\ 重新启动（只读参考，别动）。
+要做
+  1. 永久诊断（产品代码里，默认开启，写进 mentorflow.log）：
+     - 启动时打开 faulthandler，输出到日志目录下单独的 crash 文件（文件一直开着），原生崩溃能留下 Python 栈；
+     - 每一条退出路径都记一条“退出”事件并写明原因：aboutToQuit、lastWindowClosed（写明是哪个窗口最后关闭）、主窗口 closeEvent（用户点关闭还是程序关闭）、atexit、Windows 控制台关闭/注销/关机事件（SetConsoleCtrlHandler）；
+     - Qt 自身的 warning/critical/fatal 消息接到日志（qInstallMessageHandler）；
+     - 每个 QWebEngine 页面（主界面、老师窗口）的渲染进程意外结束要记下状态码；
+     - 每 5 分钟记一次本进程内存占用和线程数（一行），用来发现泄漏。
+  2. 查原因：读 account_shell_main.py、learning/app/window.py（老师窗口）和所有会关窗口、隐藏窗口、换主窗口的路径，判断哪条路径会在“主窗口最小化、在课堂里、后台会话刷新/同步/连线在跑”时让最后一个窗口关闭或让程序退出。重点看 quitOnLastWindowClosed 与老师窗口、登录窗口、主窗口替换（_replace_learning_home_for_scope、_expire_active_session）之间的关系。
+  3. 复现：复制用户数据到产物目录，从工位启动软件（正式接线），进同一份计划的课堂，最小化，静置至少 60 分钟；期间把会话刷新间隔调短（测试参数，不改产品默认）让刷新多跑几十次，并模拟网络时断时续（服务器和模型都断一会儿再恢复）。记录进程是否还活着、日志里的诊断记录。能复现就定位到具体代码行；复现不出来也要把第 2 条里判断“可能”的路径用单元测试或脚本逐条触发，写清每条是否会让程序退出。
+  4. 修：不管第 3 条是否复现，都要做到“只有用户明确关闭主窗口（或在菜单里退出）时程序才退出”：其他窗口（老师窗口、登录窗口、设置等）关闭或隐藏都不能让程序退出；主窗口在后台换新时先显示新的再关旧的。找到的具体原因一并修掉。
+  5. 架构师和用户以后从源代码启动的方式：给一个仓库里的启动脚本（例如 scripts 下或 refactor/desktop 下现有入口旁），无控制台窗口启动、stderr 写到日志目录，并在回执里写出一行启动命令。
+  6. 离线测试覆盖：各退出路径都留下退出原因；其他窗口关闭不退出；主窗口最小化时会话刷新、换主窗口不退出；全量通过、web 构建通过。
+完成标准：静置复现跑满 60 分钟并如实报告；第 4 条做到；以后任何一次退出日志里都有原因；全量通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\fix83-exit\report.md，写清：原因（确定的写“确定”并给证据，推断的写“推断”）、复现过程与结果、修了什么、启动命令。
+回执（尽量短，用表格）：【MF-05｜platform｜第八十三批｜完成/部分完成/受阻】基线 ／ 提交 ／ 原因（确定或推断＋证据） ／ 复现（时长、结果） ／ 修复 ／ 永久诊断 ／ 启动命令 ／ 全量 ／ 花费 ／ 本地最终占用
+~~~
 
 ## 第八十二批任务原文（2026-10-08，基线 52138de0）
 
@@ -1484,6 +1530,7 @@
 | 81-MF07 | MF-07 library | 上传题目自测新功能（¥0.5） | DIR-01 | 5801844c | 已合入（9654fe0a，完成） |
 | 82-MF06 | MF-06 tools | 知识点连线：DeepSeek 配对前置/相关、程序校验、新老计划自动补（¥1.5） | MAP-01、DIR-01 | 52138de0 | 已合入（43c1ebe9，完成；真实 541 点 647 前置＋129 相关，抽检 16/20 合理，4 条前置偏强） |
 | 82-MF02 | MF-02 client | 知识地图图形化：路线总览、拉近看知识点网、出处排版（¥0） | MAP-01、UI-00 | 52138de0 | 已合入（329f2cbc，部分完成：缺模块前置字段，架构师合并时补一行；逐点掌握按 DIR-01 本就不存在） |
+| 83-MF05 | MF-05 platform | 软件静置时无声退出：查清原因、修掉、以后退出都留原因（¥0.5） | BUG-58 | fdc1d9ea | 已起草，待用户转发 |
 
 ## 任务模板
 
