@@ -96,7 +96,11 @@ class AccountShell:
         self.gate.login_requested.connect(self._begin_interactive_login)
         self.gate.retry_requested.connect(self._begin_interactive_login)
         self.gate.cancel_requested.connect(self._cancel_login)
-        self.gate.closed.connect(self.close)
+        self.gate.closed.connect(self._gate_closed)
+        # The frameless close button uses QWidget.close(), whose Qt event is
+        # not spontaneous. Mark this explicit user action before closing.
+        self.gate.close_button.clicked.disconnect(self.gate.close)
+        self.gate.close_button.clicked.connect(self._close_login_window)
         self.gate.background_succeeded.connect(self._background_succeeded)
         self.gate.background_failed.connect(self._background_failed)
         self.gate.capabilities_received.connect(self._capabilities_received)
@@ -108,7 +112,32 @@ class AccountShell:
         self.gate.username_field.textChanged.connect(self._refresh_remembered_password_hint)
         self.gate.remember_password_box.toggled.connect(self._refresh_remembered_password_hint)
         self.app.aboutToQuit.connect(self.close)
-        self.app.setQuitOnLastWindowClosed(True)
+        self.app.setQuitOnLastWindowClosed(False)
+        self._set_primary(self.gate, 'LOGIN_MAIN')
+
+    def _set_primary(self, window, role):
+        diagnostics = getattr(self.app, '_mentorflow_diagnostics', None)
+        if diagnostics is not None:
+            diagnostics.set_primary(window, role)
+
+    def _show_gate_before_retiring_home(self):
+        AccountShell._set_primary(self, self.gate, 'LOGIN_MAIN')
+        self.gate.show()
+
+    def _close_login_window(self):
+        if self.home is None or not self.home.isVisible():
+            diagnostics = getattr(self.app, '_mentorflow_diagnostics', None)
+            if diagnostics is not None:
+                diagnostics.request_exit('USER_MAIN_CLOSE')
+            else:
+                diagnostic_event('exit', reason='USER_MAIN_CLOSE', window='LOGIN_MAIN')
+                self.app.quit()
+        self.gate.close()
+
+    def _gate_closed(self):
+        # A hidden login surface is still used to deliver refresh callbacks.
+        # Closing it must never dispose the signed-in home/session.
+        diagnostic_event('window', state='CLOSED', window='LOGIN_MAIN')
 
     def _settings(self, settings_type):
         from PySide6.QtCore import QSettings
@@ -566,17 +595,26 @@ class AccountShell:
         home.logout_requested.connect(self._logout_account)
         home.verify_requested.connect(self._refresh_active_session)
         home.bind_account_settings(self._open_account_settings)
+        old_home = self.home
         self.home = home
         self._session_epoch += 1
         self._session_refresh_busy = False
         self._feature_session_confirmed = True
-        self._hide_login_windows()
         # Bind the account services (and let LearningWindow prewarm its
         # WebEngine-backed planning page) before the signed-in window becomes
         # visible.  The first native Chromium surface can otherwise make the
         # Windows top-level window briefly hide and show on first navigation.
         self._bind_learning_features(home)
-        home.showNormal()
+        self._set_primary(home, 'LEARNING_MAIN')
+        if old_home is not None and old_home.isMinimized():
+            home.showMinimized()
+        else:
+            home.showNormal()
+        self._hide_login_windows()
+        if old_home is not None:
+            old_home.dispose()
+            old_home.close()
+            old_home.deleteLater()
         home.raise_()
         home.activateWindow()
         self._session_timer.setInterval(240_000)
@@ -765,6 +803,7 @@ class AccountShell:
             self._logout_pending = self._switch_pending = False
             self._session_credentials = None
             if self.home is not None:
+                self._show_gate_before_retiring_home()
                 self.home.dispose()
                 self.home.hide()
             self._cancel_login()
@@ -867,6 +906,7 @@ class AccountShell:
         if current is None or current.identity.account_id != profile.account_id:
             return
         if self.home is not None:
+            self._show_gate_before_retiring_home()
             self.home.dispose()
             self.home.hide()
         self._close_account_settings()
@@ -1181,6 +1221,7 @@ class AccountShell:
         self._confirmed_role_account_id = None
         self._remembered_profile = profile
         if self.home is not None:
+            self._show_gate_before_retiring_home()
             self.home.dispose()
             self.home.hide()
         self.gate.username_field.setText(row.get("username", "") if row else "")
@@ -1475,6 +1516,7 @@ class AccountShell:
         self._session_credentials = None
         self._remembered_profile = None
         if self.home is not None:
+            self._show_gate_before_retiring_home()
             self.home.dispose()
             self.home.hide()
         self._cancel_login()
@@ -1512,6 +1554,7 @@ class AccountShell:
         self._logout_pending = False
         self._switch_pending = False
         if self.home is not None:
+            self._show_gate_before_retiring_home()
             self.home.dispose()
             self.home.hide()
         generation, _cancelled = self._new_request()
@@ -1597,6 +1640,7 @@ class AccountShell:
     def close(self) -> None:
         if self._closing:
             return
+        diagnostic_event('exit', reason='ACCOUNT_SHELL_CLEANUP')
         self._close_account_closure()
         self._close_account_settings()
         self._closing = True
@@ -1677,9 +1721,12 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         from .shell_paths import prepare_shell_runtime
 
         shell_runtime = prepare_shell_runtime()
-        from refactor.runtime_logging import configure, install_exception_hooks
+        from refactor.runtime_logging import configure, install_exception_hooks, enable_crash_dump
         configure(shell_runtime.data_root)
+        enable_crash_dump(shell_runtime.data_root)
         install_exception_hooks()
+        from .process_diagnostics import ProcessDiagnostics
+        diagnostics = ProcessDiagnostics(shell_runtime.data_root)
         from .web_schemes import register_teacher_stage_scheme
 
         register_teacher_stage_scheme()
@@ -1690,6 +1737,7 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         app.setApplicationName("MentorFlow")
         instance_lock = _acquire_instance_lock(shell_runtime)
         if instance_lock is None:
+            diagnostic_event('exit', reason='SECOND_INSTANCE')
             from PySide6.QtWidgets import QMessageBox
 
             QMessageBox.information(
@@ -1703,6 +1751,7 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         # it on QApplication avoids accidental garbage collection while also
         # leaving the lock cleanup to QLockFile/process exit.
         app._mentorflow_instance_lock = instance_lock
+        diagnostics.attach(app)
         shell = AccountShell(app, shell_runtime)
         shell.show()
         if install_root is not None:
@@ -1718,9 +1767,12 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
 
                 QTimer.singleShot(250, lambda: shell.notify_update_health(
                     install_root, update_attempt, update_nonce))
-        return app.exec()
+        result = app.exec()
+        diagnostic_event('exit', reason='EVENT_LOOP_RETURNED', exit_code=result)
+        return result
     except Exception as exc:
         diagnostic_event('startup', state='FAILED', exc_info=True)
+        diagnostic_event('exit', reason='STARTUP_FAILED')
         _show_launch_error(str(exc) or "账号外壳运行环境暂不可用。")
         return 1
 

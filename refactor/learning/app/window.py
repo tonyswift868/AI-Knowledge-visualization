@@ -28,6 +28,8 @@ from .teacher_assets import TeacherAssets
 from .reminder import register as register_reminder
 from .voice_input import register as register_voice_input
 from .speech import TeacherSpeech
+from refactor.runtime_logging import event as diagnostic_event
+from refactor.desktop.process_diagnostics import watch_renderer
 
 log = logging.getLogger(__name__)
 
@@ -200,6 +202,7 @@ class _LocalOnly(QWebEngineUrlRequestInterceptor):
 class _AppPage(QWebEnginePage):
     def __init__(self, profile, parent, entry: Path):
         super().__init__(profile, parent)
+        watch_renderer(self, 'LEARNING_PAGE')
         self.entry = entry.resolve()
 
     def acceptNavigationRequest(self, url, kind, is_main_frame):  # noqa: N802 - Qt API
@@ -219,6 +222,10 @@ class _AppPage(QWebEnginePage):
 
 class _ExternalLinkPage(QWebEnginePage):
     """Throwaway page for a new-window request: hands its https URL to the system browser."""
+
+    def __init__(self, profile, parent):
+        super().__init__(profile, parent)
+        watch_renderer(self, 'EXTERNAL_LINK_PAGE')
 
     def acceptNavigationRequest(self, url, kind, is_main_frame):  # noqa: N802 - Qt API
         if url.scheme() == "https":
@@ -317,6 +324,13 @@ class LearningWindow(QWidget):
 
     def window_action(self, action, **params):
         top = self.window()
+        if action == 'quit':
+            from PySide6.QtWidgets import QApplication
+            diagnostics = getattr(QApplication.instance(), '_mentorflow_diagnostics', None)
+            if diagnostics is not None:
+                diagnostics.request_exit('USER_MENU_EXIT')
+                top.close()
+            return True
         if action in {'teacher_open', 'teacher_close'}:
             return self._teacher_drawer.action(action, params)
         if action == "toggle_fullscreen" and not top.isFullScreen():
@@ -516,5 +530,7 @@ class LearningWindow(QWidget):
         self.setEnabled(False)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
+        diagnostic_event('exit', reason='MAIN_CLOSE_EVENT', window='LEARNING_MAIN',
+                         code='USER' if event.spontaneous() else 'PROGRAMMATIC')
         self.dispose()
         super().closeEvent(event)

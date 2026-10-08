@@ -35,6 +35,8 @@ class LocalOnly(QWebEngineUrlRequestInterceptor):
 class LocalPage(QWebEnginePage):
     def __init__(self, profile, parent, root):
         super().__init__(profile, parent)
+        from .process_diagnostics import watch_renderer
+        watch_renderer(self, 'LOGIN_AUTH_PAGE')
         self.entry = (root / 'lifecycle.html').resolve()
 
     def acceptNavigationRequest(self,url,kind,is_main):
