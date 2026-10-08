@@ -9,6 +9,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urlsplit
+
+# NumPy's OpenBLAS otherwise starts one thread per core; 87-MF04 measured 22 fewer threads, ~0.7 GB less.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
 from refactor.runtime_logging import event as diagnostic_event
 
 
@@ -28,6 +31,7 @@ class AccountShell:
         security_client_factory: Callable | None = None,
         closure_client_factory: Callable | None = None,
         closure_cleanup_factory: Callable | None = None,
+        gate_window=None,
     ) -> None:
         from PySide6.QtCore import QSettings
         from refactor.desktop.account_identity import AccountPreferenceStore
@@ -51,7 +55,8 @@ class AccountShell:
         self.session = login_session or LoginSession(
             AccountPreferenceStore(self._settings(QSettings))
         )
-        self.gate = LoginGateWindow()
+        self.gate = gate_window if gate_window is not None else LoginGateWindow()
+        self._loading_action = 'login'
         self.home = None
         self._pane = None
         self._remembered_profile = None
@@ -95,6 +100,7 @@ class AccountShell:
 
         self.gate.login_requested.connect(self._begin_interactive_login)
         self.gate.retry_requested.connect(self._begin_interactive_login)
+        self.gate.loading_retry_requested.connect(self._retry_native_loading)
         self.gate.cancel_requested.connect(self._cancel_login)
         self.gate.closed.connect(self._gate_closed)
         # The frameless close button uses QWidget.close(), whose Qt event is
@@ -120,8 +126,30 @@ class AccountShell:
         if diagnostics is not None:
             diagnostics.set_primary(window, role)
 
+    def _retry_native_loading(self):
+        if self._loading_action == 'restore':
+            self._begin_remembered_login()
+        elif self._loading_action == 'login':
+            # take_credentials already cleared the password. Never retain it
+            # for an animation; reuse the existing cancel/form retry path.
+            self._cancel_login()
+            self.gate.notice_label.setText('请重新输入账号和密码后登录。')
+        elif self._loading_action == 'account_service' and self._pane is not None:
+            view = getattr(self._pane, 'view', None)
+            if view is not None:
+                view.reload()
+
+    def _loading_appearance(self, account_id):
+        from .native_loading import account_appearance
+        theme, reduced = account_appearance(self.runtime.data_root, account_id)
+        self.gate.set_loading_appearance(theme, reduced)
+        return theme, reduced
+
     def _show_gate_before_retiring_home(self):
         AccountShell._set_primary(self, self.gate, 'LOGIN_MAIN')
+        loading = getattr(self.gate, 'loading', None)
+        if loading is not None:
+            loading.begin('正在返回登录入口…')
         self.gate.show()
 
     def _close_login_window(self):
@@ -196,6 +224,7 @@ class AccountShell:
                     self._update_login_token = token
                     self._update_restore_pending = True
         if profile is not None:
+            self._loading_appearance(profile.account_id)
             row = self.session.registry.get(profile.account_id)
             self.gate.username_field.setText(row.get("username", "") if row else "")
             self.gate.remember_password_box.setChecked(bool(row and row["remember_password"]))
@@ -218,6 +247,9 @@ class AccountShell:
             self.gate.username_field.setFocus()
         self._refresh_remembered_password_hint()
         self._refresh_closure_recovery()
+        if self._capabilities_loading and self.gate.state is LoginGateState.LOGIN_READY:
+            self._loading_action = 'capabilities'
+            self.gate.loading.begin('正在检查账号服务可用功能，不影响登录…')
 
     def _load_capabilities(self) -> None:
         if (
@@ -230,6 +262,10 @@ class AccountShell:
             return
         gate = self.gate
         self._capabilities_loading = True
+        from .login_shell import LoginGateState
+        if self.gate.state is LoginGateState.LOGIN_READY:
+            self._loading_action = 'capabilities'
+            self.gate.loading.begin('正在检查账号服务可用功能，不影响登录…')
         fetch = self._capability_fetcher or self._fetch_capabilities
 
         def work():
@@ -249,6 +285,8 @@ class AccountShell:
 
     def _capabilities_received(self, capabilities) -> None:
         self._capabilities_loading = False
+        if self._loading_action == 'capabilities':
+            self.gate.loading.finish()
         if self._closing:
             return
         succeeded = self._capabilities_result_succeeded
@@ -324,6 +362,7 @@ class AccountShell:
             self.gate.notice_label.setText("无法选择此本机账号，请重试。")
             return
         self._remembered_profile = self.session.registry.profile(row)
+        self._loading_appearance(self._remembered_profile.account_id)
         self.gate.clear_password()
         self.gate.username_field.setText(row.get("username", ""))
         self.gate.remember_box.setChecked(row["remember_session"])
@@ -430,7 +469,9 @@ class AccountShell:
         generation, cancelled = self._new_request()
         update_token = getattr(self, '_update_login_token', None)
         self._update_login_token = None
-        self.gate.set_state(LoginGateState.AUTHENTICATING, detail="正在安全恢复已记住的会话…")
+        self._loading_action = 'restore'
+        self.gate.set_state(LoginGateState.AUTHENTICATING, detail="正在恢复上次的登录…")
+        self.gate.loading.begin('正在恢复上次的登录…', retry=True, cancel=True)
 
         def work():
             try:
@@ -496,6 +537,7 @@ class AccountShell:
         save_password = self.gate.remember_password_box.isChecked()
         remember = self.gate.remember_box.isChecked()
         automatic = self.gate.auto_box.isChecked()
+        self._loading_action = 'login'
         self.gate.set_state(LoginGateState.AUTHENTICATING)
 
         def work():
@@ -579,6 +621,9 @@ class AccountShell:
         )
         self._session_refresh_degraded = False
         self._refresh_local_accounts()
+        appearance = self._loading_appearance(account_id)
+        self.gate.loading.begin('正在准备学习空间…', retry=False, cancel=False, restart=False)
+        self.gate.repaint()
         from refactor.learning.app.window import LearningWindow
 
         api_base_url = os.environ.get("MENTORFLOW_ENTERPRISE_API_BASE_URL", "")
@@ -591,6 +636,10 @@ class AccountShell:
             account_id=result.identity.profile().account_id,
             data_root=self.runtime.data_root,
         )
+        from .native_loading import WebFirstFrame
+        from PySide6.QtWidgets import QWidget
+        if isinstance(home, QWidget) and hasattr(home, 'page') and hasattr(home, 'view'):
+            home._native_first_frame = WebFirstFrame(home, theme=appearance[0], reduced=appearance[1])
         home.switch_requested.connect(self._switch_account)
         home.logout_requested.connect(self._logout_account)
         home.verify_requested.connect(self._refresh_active_session)
@@ -628,6 +677,7 @@ class AccountShell:
         """
         from refactor.desktop.login_shell import LoginGateWindow
         self.gate.clear_password()
+        self.gate.loading.finish()
         self.gate.hide()
         for window in self.app.topLevelWidgets():
             if isinstance(window, LoginGateWindow):
@@ -1417,6 +1467,7 @@ class AccountShell:
         self._remembered_profile = None
         self.gate.clear_password()
         self.gate.set_state(LoginGateState.AUTHENTICATING, detail="正在打开账号服务…")
+        self._loading_action = 'account_service'
         try:
             if self._lifecycle_pane_factory is None:
                 from refactor.desktop.lifecycle_pane import AccountLifecyclePane
@@ -1434,6 +1485,12 @@ class AccountShell:
                 )
             )
             self.gate.set_auth_content(pane)
+            from PySide6.QtWidgets import QWidget
+            if isinstance(pane, QWidget) and hasattr(pane, 'page') and hasattr(pane, 'view'):
+                from .native_loading import WebFirstFrame
+                pane._native_first_frame = WebFirstFrame(pane, theme=self.gate.current_theme,
+                    reduced=self.gate.loading.reduced, selector='body', label='正在打开账号服务…',
+                    cancel=self._cancel_login)
         except Exception:
             self._return_from_account_action(generation)
             self.gate.notice_label.setText("账号操作页面暂不可用，请稍后重试。")
@@ -1560,6 +1617,8 @@ class AccountShell:
         generation, _cancelled = self._new_request()
         self.gate.set_auth_content(None)
         self.gate.set_state(LoginGateState.AUTHENTICATING, detail="正在安全退出账号…")
+        self._loading_action = 'logout'
+        self.gate.loading.begin('正在安全退出账号…', retry=False, cancel=False)
         self.gate.cancel_button.hide()
         self.gate.show()
 
@@ -1752,7 +1811,18 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         # leaving the lock cleanup to QLockFile/process exit.
         app._mentorflow_instance_lock = instance_lock
         diagnostics.attach(app)
-        shell = AccountShell(app, shell_runtime)
+        from .login_shell import LoginGateWindow, LoginGateState
+        gate = LoginGateWindow()
+        diagnostics.set_primary(gate, 'LOGIN_MAIN')
+        gate.set_state(LoginGateState.AUTHENTICATING, detail='正在启动 MentorFlow…')
+        gate.loading.begin('正在启动 MentorFlow…')
+        gate.cancel_button.hide()
+        startup_close = lambda: diagnostics.request_exit('USER_MAIN_CLOSE')
+        gate.close_button.clicked.connect(startup_close)
+        gate.showNormal()
+        app.processEvents()
+        gate.close_button.clicked.disconnect(startup_close)
+        shell = AccountShell(app, shell_runtime, gate_window=gate)
         shell.show()
         if install_root is not None:
             from .updates import DesktopUpdates

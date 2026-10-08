@@ -130,6 +130,7 @@ class LoginGateWindow(QWidget):
     first_paint_completed = Signal()
     login_requested = Signal()
     retry_requested = Signal()
+    loading_retry_requested = Signal()
     background_succeeded = Signal(str, object)
     background_failed = Signal(str, str)
     cancel_requested = Signal()
@@ -159,7 +160,10 @@ class LoginGateWindow(QWidget):
         self._first_paint_scheduled = False
         self._login_enabled = True
         self.account_capabilities = {}
+        self.current_theme = ('aurora' if QApplication.styleHints().colorScheme() is Qt.ColorScheme.Dark
+                              else 'sakura')
         self._build()
+        self.set_loading_appearance(self.current_theme)
         self.capabilities_received.connect(self.set_account_capabilities)
         self.set_state(LoginGateState.LOGIN_READY)
 
@@ -226,6 +230,11 @@ class LoginGateWindow(QWidget):
         self.state_detail.setWordWrap(True)
         self.state_detail.setMinimumHeight(40)
         card_layout.addWidget(self.state_detail)
+        from .native_loading import NativeLoading
+        self.loading = NativeLoading(card)
+        self.loading.retry_requested.connect(self.loading_retry_requested)
+        self.loading.cancel_requested.connect(self.cancel_requested)
+        card_layout.addWidget(self.loading)
         account_row = QHBoxLayout()
         self.username_field = QLineEdit()
         self.username_field.setObjectName('nativeUsername')
@@ -381,6 +390,7 @@ class LoginGateWindow(QWidget):
         )
         self.notice_label.setVisible(content is None)
         if content is not None:
+            self.loading.finish()
             self.content_layout.addWidget(content, 1)
             content.setEnabled(True)
             content.show()
@@ -395,6 +405,7 @@ class LoginGateWindow(QWidget):
 
 
     def closeEvent(self, event) -> None:
+        self.loading.finish()
         self.clear_password()
         self.closed.emit()
         super().closeEvent(event)
@@ -416,7 +427,13 @@ class LoginGateWindow(QWidget):
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        paint_night_sakura(painter, self.width(), self.height())
+        if self.current_theme == 'aurora':
+            sky = QLinearGradient(0, 0, self.width(), self.height())
+            sky.setColorAt(0, QColor('#0c0e1c'))
+            sky.setColorAt(1, QColor('#222541'))
+            painter.fillRect(self.rect(), sky)
+        else:
+            paint_night_sakura(painter, self.width(), self.height())
         painter.end()
         super().paintEvent(event)
         if not self._first_paint_scheduled:
@@ -456,6 +473,7 @@ class LoginGateWindow(QWidget):
         *,
         detail: str = "",
     ) -> None:
+        previous = self.state
         self.state = state
         if state is LoginGateState.LOGIN_READY:
             title = "登录你的账号"
@@ -463,8 +481,11 @@ class LoginGateWindow(QWidget):
             button = "登录 MentorFlow"
             enabled = True
         elif state is LoginGateState.AUTHENTICATING:
-            title = "正在验证身份"
-            message = detail or "请在 MentorFlow 登录页面中完成验证。"
+            title = ('正在启动 MentorFlow' if '启动' in detail else
+                     '正在恢复登录' if '恢复' in detail else
+                     '正在退出账号' if '退出' in detail else
+                     '正在打开账号服务' if '打开账号' in detail else '正在登录')
+            message = detail or "正在连接账号服务…"
             button = "正在登录…"
             enabled = False
         else:
@@ -474,6 +495,13 @@ class LoginGateWindow(QWidget):
             enabled = True
         self.state_title.setText(title)
         self.state_detail.setText(message)
+        if state is LoginGateState.AUTHENTICATING:
+            self.loading.begin(detail or '正在连接账号服务…', retry=True, cancel=True,
+                               restart=previous is not LoginGateState.AUTHENTICATING)
+            self.state_detail.hide()
+        else:
+            self.loading.finish()
+            self.state_detail.setVisible(self.auth_content is None)
         self.primary_button.setText(button)
         self._login_enabled = enabled
         self.primary_button.setEnabled(enabled)
@@ -487,3 +515,23 @@ class LoginGateWindow(QWidget):
         self._sync_account_actions()
         if enabled:
             self.primary_button.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def set_loading_appearance(self, theme='sakura', reduced=False):
+        self.current_theme = theme if theme in {'sakura', 'aurora'} else 'sakura'
+        self.loading.configure(self.current_theme, reduced)
+        style = login_qss()
+        if self.current_theme == 'aurora':
+            style += '''
+QFrame#loginCard {background:#181b34;border:1px solid #343956;}
+QLabel#loginStateTitle {color:#eef0ff;}
+QLabel#loginStateDetail {color:#b3b7de;}
+QLineEdit,QComboBox,QCheckBox {color:#eef0ff;background:#222541;}
+QLineEdit:disabled,QComboBox:disabled {color:#7a7fab;background:#222541;border-color:#343956;}
+QCheckBox::indicator {background:#222541;border-color:#343956;}
+QPushButton#loginPrimaryButton {background:#9b8cff;color:#0c0e1c;}
+QPushButton#loginPrimaryButton:disabled {background:#343956;color:#7a7fab;}
+QPushButton#loginSmallButton,QPushButton#loginAccountAction {color:#b3b7de;}
+QPushButton#loginSmallButton:disabled {background:#222541;color:#7a7fab;border-color:#343956;}
+'''
+        self.setStyleSheet(style)
+        self.update()
