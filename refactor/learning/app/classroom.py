@@ -29,6 +29,7 @@ PREF_KEYS = ("teacher_style", "detail", "examples", "analogy_domains")
 DIALOGUE_ROWS, DIALOGUE_CHARS, CHECK_BATCH = 40, 60000, 4
 RESET, VERDICT_EVENT = "\x00", "\x01VERDICT:"
 MATERIAL_EVENT = "\x01MATERIAL:"
+TODAY_EVENT = "\x01TODAY:"
 PURPOSE = {"module_test": "module", "skip_test": "direct",
            "retest": "retest", "check": "final", "practice": "free"}
 
@@ -310,6 +311,7 @@ class Classroom:
         if state['step']=='preparing_materials':return
         if state['step'] in ('teaching','closing'):
             self._point_done(course,state)
+            self._publish_today(course,state,ctx)
             if state['step']!='teach':return
             if self._target_met(course,state):return
         if state['step']!='teach':raise BridgeError('STEP_INVALID','请先完成当前的对话或题目。')
@@ -799,6 +801,8 @@ class Classroom:
 
 
     def _today(self, course, state):
+        # The same ledger projection feeds home and classroom, including the
+        # portion of this pinned study day's credits used to repay earlier days.
         from datetime import time as clock
         settings = self.services.settings.load()
         hour, minute = map(int, settings["refresh_time"].split(":"))
@@ -807,6 +811,16 @@ class Classroom:
         from datetime import date
         return course.store.today_status(course.plan_id, now=now, refresh=clock(hour, minute), tz=now.tzinfo,
                                          classroom_day=date.fromisoformat(day) if day else None)
+
+    def _publish_today(self, course, state, ctx):
+        # Publish committed credits before a potentially slow next teacher turn.
+        # This is UI data, not speech or another model request.
+        if not ctx:return
+        try:today=self._today(course,state)
+        except Exception:
+            log.warning('classroom progress projection unavailable',exc_info=True)
+            return
+        ctx.stream(TODAY_EVENT+json.dumps(today,ensure_ascii=False))
 
 
     @staticmethod
@@ -923,6 +937,7 @@ class Classroom:
         correct=sum(book.question(q['id']).module_correct is True for q in self._questions(course,mid));total=len(self._questions(course,mid))
         state.update(step='test_done',pending=None,test=None)
         self._say(course,state,f'本模块答对 {correct}/{total} 道题。'+('已达到90%，模块通过。' if passed else '尚未达到90%，只重测答错的题，不重讲。'))
+        self._publish_today(course,state,ctx)
         self._profile(course)
 
 class _Course:

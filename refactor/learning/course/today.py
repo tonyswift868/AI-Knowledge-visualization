@@ -48,7 +48,8 @@ def build_today_status(ledger: Ledger, *, now: datetime, refresh: time, tz: tzin
     result['completed'] = running and check_complete
     if result['completed']:
         result.update(remaining_minutes=0, remaining_confirmed_minutes=0,
-                      debt_minutes=0, needs_negotiation=False)
+                      debt_minutes=0, needs_negotiation=False, ahead_minutes=0,
+                      ahead_tentative=0, oldest_debt_day=None)
     result['overdue_days'] = max(0, (current - ledger.window.end).days) if running and not result['completed'] else 0
     late = now.astimezone(tz).time() < refresh
     result.update(study_day=current.isoformat(), progress_day=progress_day.isoformat(),

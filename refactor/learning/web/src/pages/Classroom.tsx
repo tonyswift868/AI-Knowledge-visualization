@@ -1,5 +1,6 @@
 import * as React from "react"
 import { ClassroomMarkdown } from "../classroom/Markdown"
+import { ProgressStatus, type StudyProgress } from "../ProgressStatus"
 import {
   ArrowLeft, BookOpen, CheckCircle2, ChevronRight, CircleAlert, ClipboardCheck, ExternalLink, Loader2, RotateCcw,
   SendHorizontal, SkipForward, Square, Volume2, VolumeX, X,
@@ -26,13 +27,14 @@ type Room = {
   preparation?: Preparation | null
   failure?: { message: string } | null
   explanation?: { text: string; source: { title: string; url: string; locator: string }; label: string; open: boolean; message_id: string } | null
-  today: { today_target: number; today_confirmed: number; today_tentative: number; needs_rest?: boolean; is_late_night?: boolean } | null
+  today: (StudyProgress & { needs_rest?: boolean; is_late_night?: boolean }) | null
 }
 type Source = { text: string; title: string; url: string | null; section: string[] }
 
 const RESET = "\u0000"
 const VERDICT_EVENT = "\u0001VERDICT:"
 const MATERIAL_EVENT = "\u0001MATERIAL:"
+const TODAY_EVENT = "\u0001TODAY:"
 const POINT_TONE: Record<string, string> = { green: "ok", weak: "warn", red: "danger" }
 const POINT_LABEL: Record<string, string> = { green: "已掌握", weak: "有瑕疵", red: "没过" }
 
@@ -100,6 +102,10 @@ export function Classroom() {
         signal: abort.current.signal,
         onStream: (d) => {
           if (ownGeneration !== generation.current) return
+          if (d.startsWith(TODAY_EVENT)) {
+            try { const today = JSON.parse(d.slice(TODAY_EVENT.length)) as Room["today"]; setRoom(previous => previous ? { ...previous, today } : previous) } catch { /* final snapshot remains authoritative */ }
+            return
+          }
           if (d.startsWith(MATERIAL_EVENT)) {
             try { const p = JSON.parse(d.slice(MATERIAL_EVENT.length)) as Preparation; setBusy(`${p.text} ${p.done}/${p.total}`) } catch { /* keep the current progress */ }
             return
@@ -282,8 +288,7 @@ export function Classroom() {
             <span className="eyebrow">{room.check ? "全部模块已学完" : `模块 ${room.module.number}/${room.module.total}`} · {room.plan.goal}</span>
             <b>{room.check ? "最终检验" : room.module.title}</b>
           </div>
-          {t && <span className="pill" title="今天已确认 / 今天的任务（暂记的时长通过模块检测后转正）">
-            今天 {t.today_confirmed}{t.today_tentative ? `+${t.today_tentative}` : ""} / {t.today_target} 分</span>}
+          {t && <ProgressStatus value={t} />}
         </header>
         {room.check ? (
           <div className="class-points">

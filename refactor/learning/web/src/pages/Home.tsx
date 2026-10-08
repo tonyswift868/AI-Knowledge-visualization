@@ -1,8 +1,9 @@
 import * as React from "react"
-import { CalendarClock, Flame, PlayCircle, Plus, Sparkles, TrendingUp } from "lucide-react"
+import { CalendarClock, PlayCircle, Plus, Sparkles } from "lucide-react"
 import { call, on } from "../bridge"
 import { useApp } from "../store"
-import { Button, Ring, SakuraArt, Skeleton } from "../ui"
+import { Button, SakuraArt, Skeleton } from "../ui"
+import { ProgressStatus, aggregateProgress } from "../ProgressStatus"
 import type { PlanItem } from "./Plans"
 import "./home.css"
 
@@ -41,9 +42,7 @@ export function Home() {
   React.useEffect(() => on("study_day", () => load()), [load])   // the refresh time passed while open
 
   const running = (plans ?? []).filter((p) => p.today)
-  const target = running.reduce((a, p) => a + (p.today?.today_target ?? 0), 0)
-  const done = running.reduce((a, p) => a + (p.today?.today_confirmed ?? 0), 0)
-  const tentative = running.reduce((a, p) => a + (p.today?.today_tentative ?? 0), 0)
+  const total = aggregateProgress(running.map(p => p.today!))
   const date = new Date()
   const dateText = `${date.getMonth() + 1} 月 ${date.getDate()} 日 · 周${"日一二三四五六"[date.getDay()]}`
 
@@ -63,9 +62,7 @@ export function Home() {
         </div>
         <div className="home-total">
           <span className="small muted">今天全部计划</span>
-          <Ring value={done} total={target || 1} tentative={tentative} size={150} stroke={13}>
-            {target ? <><b>{done}</b><span>/ {target} 分钟</span></> : <><b>—</b><span>今日目标</span></>}
-          </Ring>
+          <ProgressStatus value={total} />
         </div>
       </div>
 
@@ -111,16 +108,10 @@ function TodayCard({ plan }: { plan: PlanItem }) {
     <div className="card hover today-plan">
       <div className="today-plan-header">
         <b className="today-plan-title" title={title}>{title}</b>
-        {t.overdue_days ? <span className="pill warn">逾期 {t.overdue_days} 天</span> : plan.state === "checking" ? <span className="pill">检验中</span> : null}
+        {plan.state === "checking" ? <span className="pill">检验中</span> : null}
       </div>
       <div className="today-plan-progress">
-        <p className="today-plan-minutes">今天 <b>{t.today_confirmed}/{t.today_target} 分钟</b></p>
-        <div className="row wrap">
-          {t.debt_minutes > 0 && <span className="pill warn"><Flame size={13} />欠 {minutes(t.debt_minutes)}</span>}
-          {t.ahead_minutes > 0 && <span className="pill ok"><TrendingUp size={13} />超前 {t.ahead_days ? `${t.ahead_days} 天` : minutes(t.ahead_minutes)}</span>}
-          {!t.debt_minutes && !t.ahead_minutes && <span className="muted small">{t.today_target ? "按计划进行" : "今天是休息日，不用学"}</span>}
-        </div>
-        {t.today_tentative > 0 && <p className="today-plan-tentative small">已学 {t.today_tentative} 分<span>（模块检测通过后计入完成）</span></p>}
+        <ProgressStatus value={t} />
       </div>
       {t.needs_negotiation && (
         <div className="negotiate small">

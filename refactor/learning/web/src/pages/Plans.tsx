@@ -3,8 +3,9 @@ import { Archive, ArchiveRestore, BookOpenCheck, Check, PencilLine, PlayCircle, 
 import { call } from "../bridge"
 import { useApp } from "../store"
 import { Button, SakuraArt, Segmented, Skeleton } from "../ui"
+import type { StudyProgress } from "../ProgressStatus"
 
-export type LedgerToday = {
+export type LedgerToday = StudyProgress & {
   today_target: number; today_confirmed: number; today_tentative: number; debt_minutes: number; needs_negotiation: boolean
   ahead_minutes: number; ahead_days: number; remaining_minutes: number; overdue_days: number; completed: boolean
 }

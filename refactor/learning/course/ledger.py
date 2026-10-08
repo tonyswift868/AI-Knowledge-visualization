@@ -203,6 +203,10 @@ class LedgerStatus:
     completed: bool
     history_debt_minutes: int
     overflow_minutes: int
+    today_repaid_confirmed: int = 0
+    today_repaid_tentative: int = 0
+    ahead_tentative: int = 0
+    oldest_debt_day: str | None = None
 
 
 @dataclass(frozen=True)
@@ -339,6 +343,28 @@ class Ledger:
         return _fill(self._targets, [c for key, c in self._credits.items()
                                      if self._segments[key] == len(self._history)], self._relearning_minutes)
 
+    def _today_repayment(self, today: date) -> tuple[int, int]:
+        """Read-only attribution of today's credits to the FIFO past prefix.
+
+        Uses precisely the allocator's confirmed-first, then seq order. The
+        relearning target precedes all dates. Historical segments are frozen
+        and cannot receive current credits. Release only removes unfilled tail
+        targets, so it never changes these credited overlaps.
+        """
+        past = sum(value for day, value in self._targets.items() if day < today)
+        if today >= self._active_start:
+            past += self._relearning_minutes
+        offset = confirmed = tentative = 0
+        credits = [c for key, c in self._credits.items()
+                   if self._segments[key] == len(self._history)]
+        for credit in sorted(credits, key=lambda c: (c.state != "confirmed", c.seq)):
+            if credit.day == today:
+                amount = max(0, min(offset + credit.minutes, past) - offset)
+                if credit.state == "confirmed": confirmed += amount
+                else: tentative += amount
+            offset += credit.minutes
+        return confirmed, tentative
+
     def status(self, today: date) -> LedgerStatus:
         _date(today)
         allocation = self._allocation()
@@ -358,12 +384,17 @@ class Ledger:
             ahead_days += 1
         remaining = self.total_minutes - self._released_minutes - sum(c.minutes for c in self._credits.values())
         remaining_confirmed = self.total_minutes - self._released_minutes - sum(c.minutes for c in self._credits.values() if c.state == "confirmed")
+        repaid_confirmed, repaid_tentative = self._today_repayment(today)
+        oldest_debt = next((day.isoformat() for day in sorted(targets)
+                            if day < today and filled[day] < targets[day]), None)
         return LedgerStatus(
             targets.get(today, 0), confirmed.get(today, 0), tentative.get(today, 0),
             debt, debt > 0 and debt >= 2 * full_day_minutes(targets, self.window), ahead, ahead_days,
             remaining, remaining_confirmed,
             (today - self.window.end).days if today > self.window.end and remaining_confirmed > 0 else 0,
             remaining_confirmed <= 0, sum(h.debt_minutes for h in self._history), allocation.overflow,
+            repaid_confirmed, repaid_tentative,
+            sum(minutes for day, minutes in tentative.items() if day > today), oldest_debt,
         )
 
     def replan(self, today: date, new_window: PlanWindow, new_total_minutes: int) -> None:

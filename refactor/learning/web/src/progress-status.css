@@ -1,0 +1,12 @@
+.progress-status { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .7rem; min-width: 0; max-width: 100%; padding: .4rem .7rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface-2); color: var(--text-2); font-size: .85rem; line-height: 1.5; overflow-wrap: anywhere; }
+.progress-status b { font-variant-numeric: tabular-nums; }
+.progress-debt { color: #875007; background: #fff3d9; border-color: #d5a450; }
+.progress-severe { color: #a22138; background: #ffe5ea; border-color: #df7789; font-weight: 600; }
+.progress-ahead { color: #176548; background: #e5f6ed; border-color: #72b798; }
+.progress-tentative { opacity: .72; font-size: .8em; font-weight: 400; }
+[data-theme="aurora"] .progress-debt { color: #ffd68a; background: #352918; border-color: #8e692b; }
+[data-theme="aurora"] .progress-severe { color: #ffb6c2; background: #3b1e2a; border-color: #b55468; }
+[data-theme="aurora"] .progress-ahead { color: #9bf0c8; background: #163429; border-color: #348569; }
+.home-total .progress-status { justify-content: center; }
+.class-head .progress-status { flex-shrink: 1; }
+@media (max-width: 650px) { .class-head { flex-wrap: wrap; } .class-head .progress-status { margin-left: auto; } }

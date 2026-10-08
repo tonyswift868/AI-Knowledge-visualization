@@ -4,6 +4,12 @@ export const calls: string[] = []
 export const requests: { method: string; params: Record<string, unknown> }[] = []
 let room = states.opening
 let numeric = false
+let delayedNext: { today: object; release: () => void; wait: Promise<void> } | null = null
+export function holdNext(today: object) {
+  let release = () => {}; const wait = new Promise<void>(resolve => { release = resolve })
+  delayedNext = { today, release, wait }
+}
+export function releaseNext() { delayedNext?.release() }
 export function showNumeric() { numeric = true; room = states.calc }
 export function showRecall() {
   room = { ...states.question, question: { ...states.question.question!, id: "recall81", kind: "recall",
@@ -11,9 +17,13 @@ export function showRecall() {
 }
 export class BridgeFailure extends Error { constructor(public code: string, message: string) { super(message) } }
 export const on = () => () => undefined
-export async function call(method: string, params: Record<string, unknown> = {}) {
+export async function call(method: string, params: Record<string, unknown> = {}, opts: { onStream?: (delta: string) => void } = {}) {
   calls.push(method)
   requests.push({ method, params })
+  if (method === "classroom.next" && delayedNext) {
+    opts.onStream?.("\u0001TODAY:" + JSON.stringify(delayedNext.today))
+    await delayedNext.wait; delayedNext = null
+  }
   if (method === "speech.status") return { ready: false, message: "离线测试，未启用朗读", components: [], download: null }
   if (method === "classroom.source") return { ...states.opening.messages[0].sources[0], section: ["压强 / 第1段"] }
   if (method === "classroom.choose") room = states.teaching

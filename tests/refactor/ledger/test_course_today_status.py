@@ -28,7 +28,8 @@ def test_today_projection_preserves_fifo_numbers_is_json_ready_and_does_not_muta
         remaining_minutes=150, remaining_confirmed_minutes=210, overdue_days=0,
         completed=False, history_debt_minutes=0, overflow_minutes=0, time_completed=False,
         study_day='2024-03-01', progress_day='2024-03-01', is_late_night=False,
-        needs_rest=False, check_complete=False)
+        needs_rest=False, check_complete=False, today_repaid_confirmed=0,
+        today_repaid_tentative=0, ahead_tentative=0, oldest_debt_day='2024-02-29')
     assert project(ledger, check_complete=False) == json.loads(json.dumps(result))
     assert ledger.to_dict() == before
 
