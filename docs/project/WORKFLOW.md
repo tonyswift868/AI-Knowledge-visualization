@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-08）：第八十六批已全部合入（主线 56251799，全量 3133 通过、0 失败；未重启，用户软件已关）。87-MF04 语音引擎内存已合入（主线 98e52ca1，全量 3143 通过）。待做：88-MF05 合入时把 OpenBLAS 限线程接进启动入口（87-MF04 报告有实验参数）。待转发：88-MF05 原生登录加载过场、88-MF06 后台任务初始状态。从源代码启动：Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden；重启前先问用户。用户机器上另有 Kristina 的语音引擎（D:\Kristina_Runtime，kristina.bridge.launcher 启动）约 8 GB，不是本项目的，不碰。番茄钟、自习室暂不做。81-MF06 排除规则留到以后测新建计划时再看；81-MF04 镜像保留。
+- **现在在做的事**（2026-10-08）：第八十六批已全部合入（主线 56251799，全量 3133 通过、0 失败；未重启，用户软件已关）。87-MF04 语音引擎内存已合入（主线 98e52ca1，全量 3143 通过）。88-MF05 已合入，架构师在 account_shell_main.py 加 OPENBLAS_NUM_THREADS=2（87-MF04 实测少 22 线程、主程序私有内存约 1.07→0.33 GB），主线 992376b5，全量 3162 通过。待回：88-MF06 后台任务初始状态。从源代码启动：Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden；重启前先问用户。用户机器上另有 Kristina 的语音引擎（D:\Kristina_Runtime，kristina.bridge.launcher 启动）约 8 GB，不是本项目的，不碰。番茄钟、自习室暂不做。81-MF06 排除规则留到以后测新建计划时再看；81-MF04 镜像保留。
 
 ## 协作方式
 
@@ -66,9 +66,9 @@
 | MF-02 | 空闲（86-MF02 已合入） | client |
 | MF-03 | 空闲（86-MF03 已合入） | classroom |
 | MF-04 | 空闲（87-MF04 已合入） | runtime |
-| 88-MF05 | MF-05 platform | 原生登录与启动窗口加载过场，与网页一致（¥0） | UI-00 | 56251799 | 已起草，待用户转发 |
+| 88-MF05 | MF-05 platform | 原生登录与启动窗口加载过场，与网页一致（¥0） | UI-00 | 56251799 | 已合入（77d73527，主线 992376b5；12 类原生等待接入过场与首帧遮罩；初始化与建窗会短暂阻塞主线程、动画停顿，实测均在 1 秒内，暂不再派） |
 | 88-MF06 | MF-06 tools | 后台任务初始状态：detail 补分钟重算等状态字段，打开页面即显示过场（¥0） | UI-00、MAP-01 | 56251799 | 已起草，待用户转发 |
-| MF-05 | 88-MF05 已起草，待用户转发 | platform |
+| MF-05 | 空闲（88-MF05 已合入） | platform |
 | 84-MF06 | MF-06 tools | 知识点分钟数按内容分量重算：程序按原文长度和题量算、AI 只标难度，老计划自动重算（¥1） | PLAN-04、PLAN-05 | 95fa4107 | 已合入（f3fed92d，完成；守住原总量 4328，不受约束估算 3118，用户选按内容算→85-MF06） |
 | 84-MF03 | MF-03 classroom | 学习进度状态：逾期待还/已还、今天进度、超前，一次一种、按严重程度配色（¥0） | PLAN-05、UI-00 | 95fa4107 | 已合入（04264b1b，完成；用户副本上应显示逾期待还 331 分、今天已还 24 分） |
 | 85-MF06 | MF-06 tools | 计划总时长改按内容算、老计划自动重排日程（¥0.5） | PLAN-04、PLAN-05 | bf18799b | 已合入（91b636fc，主线 197bc861；副本总量 4967→3750，10-07 未学的 331 分摊进后面每天，顶部变“今天 24 / 289”） |
@@ -78,7 +78,7 @@
 | MF-06 | 88-MF06 已起草，待用户转发 | tools |
 | MF-07 | 空闲（81-MF07 已合入） | library |
 
-空闲工位：server、client、classroom、runtime、library。
+空闲工位：server、client、classroom、runtime、platform、library。
 
 ## 待派队列
 
