@@ -68,16 +68,49 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 空闲 | runtime |
+| MF-04 | 93-MF04（已起草，待转发） | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
-空闲工位：全部七个。
+空闲工位：除 runtime 外六个。
 
 ## 待派队列
 
-- 无。91-MF04（部分完成：actionlint 不认识 concurrency.queue，其余全过）与 92-MF07（完成）已于 2026-10-10 合入 main（b5336649）。下一步：用户在 GitHub 填 MF_SSH_KEY、确认 Billing 超额上限 0 → 架构师依次手动运行 mf-installer 2.0.2、mf-installer 2.0.3（latest）、mf-build 2.0.3（只构建），共 3 次，失败即停；之后用流水线发 2.0.4（含迁移）。每次运行记在这里。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+- 无。91-MF04（部分完成：actionlint 不认识 concurrency.queue，其余全过）与 92-MF07（完成）已于 2026-10-10 合入 main（b5336649）。下一步：用户在 GitHub 填 MF_SSH_KEY、确认 Billing 超额上限 0 → 架构师依次手动运行 mf-installer 2.0.2、mf-installer 2.0.3（latest）、mf-build 2.0.3（只构建），共 3 次，失败即停；之后用流水线发 2.0.4（含迁移）。每次运行记在这里：
+  - 运行 1（2026-10-10）mf-installer 2.0.2：成功，约 10 分钟，releases/2.0.2/ 已有安装程序与清单。
+  - 运行 2 mf-installer 2.0.3（latest）：进行中。
+  - 运行 3 mf-build 2.0.4（上传到 staging，非强制，基线 2.0.3）：已排队（用户同意改为直接构建 2.0.4，不再空跑 2.0.3）。
+- 93-MF04：已起草（2026-10-10），待用户转发。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+
+## 第九十三批任务原文（2026-10-10，基线 d3693cc6）
+
+### [93-MF04] runtime｜安装程序只留最近 3 版（¥0）
+
+~~~text
+【MentorFlow 第九十三批｜MF-04（工位 runtime）｜下载服务器只保留最近 3 个版本的安装程序】
+
+现成项目与许可证（第一节）
+  - 不新增依赖，只改你写的 scripts/release/server_ops.py（发布安装程序的那段）和对应测试；做法与常见软件的“只保留最近 N 个发布产物”一致。
+
+开工同步
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard d3693cc6
+提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push、禁止在 GitHub 上触发工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp、D:\MentorFlowData\account-shell 只读；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md：中间产物用完即删，回执写明最终占用。测试用 D:\MentorFlow\.venv\Scripts\python.exe。遇到选择自己决定，回执写明理由，不停下来问。
+同时在跑：只有本任务（架构师正在 GitHub 上用现有流水线发 2.0.4，你的改动下一次发版才生效）。
+产物目录：D:\MentorFlow\.local\test-tmp\retain93\。目标一小时内交回。花费上限 ¥0。
+背景（用户 2026-10-10 定，CURRENT_STATE [SYS-06]）：每版安装程序约 370 MB，服务器根分区剩约 36 GB。规则：releases/ 下只保留版本号最大的 3 个版本的安装程序 exe；更早版本的 exe 删除，但它们目录里的 stable.json 永远保留（需要时可用 mf-installer 从 objects 重新编出来）；latest 指向的版本永远不删；objects/ 不动。
+要做
+  1. 在 server_ops.py 发布安装程序成功（含切换 latest）之后执行清理：按版本号排序 releases/<版本>/，只对排名第 4 及以后的版本删除 MentorFlow-Setup-<版本>.exe，保留目录和 stable.json；跳过 latest 当前指向的版本（核对 latest/MentorFlow-Setup.exe 与哪个版本的 exe 是同一个文件）；删除前后写日志（删了哪些、释放多少），返回结果里带上这些信息。保留数做成常量 3，集中一处。
+  2. 测试：5 个版本时删最早 2 个的 exe、stable.json 都在；latest 指向旧版本时不删它；不足 3 个时什么都不删；重复执行结果一样。mf-installer 对一个 exe 已被清理、只剩 stable.json 的旧版本再编一次时，能正常重新放回（写一条测试或本机模拟）。全量通过。
+  3. scripts/release/README.md 加一段“保留规则”。
+完成标准：上面测试全过；全量通过；提交在工位。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\retain93\report.md。
+回执（尽量短，用表格）：【MF-04｜runtime｜第九十三批｜完成/部分完成/受阻】基线 ／ 提交 ／ 清理规则 ／ 测试 ／ 全量 ／ 本地最终占用
+~~~
 
 ## 第九十二批任务原文（2026-10-10，基线 c88a6dfa）
 
