@@ -68,17 +68,16 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 91-MF04（已起草，待转发） | runtime |
+| MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
-| MF-07 | 92-MF07（已起草，待转发） | library |
+| MF-07 | 空闲 | library |
 
-空闲工位：除 runtime、library 外五个。
+空闲工位：全部七个。
 
 ## 待派队列
 
-- 91-MF04：进行中（用户已转发；补充：nginx 由架构师上线，latest 用硬链接）。
-- 92-MF07：已起草（2026-10-10），待用户转发。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+- 无。91-MF04（部分完成：actionlint 不认识 concurrency.queue，其余全过）与 92-MF07（完成）已于 2026-10-10 合入 main（b5336649）。下一步：用户在 GitHub 填 MF_SSH_KEY、确认 Billing 超额上限 0 → 架构师依次手动运行 mf-installer 2.0.2、mf-installer 2.0.3（latest）、mf-build 2.0.3（只构建），共 3 次，失败即停；之后用流水线发 2.0.4（含迁移）。每次运行记在这里。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
 
 ## 第九十二批任务原文（2026-10-10，基线 c88a6dfa）
 
