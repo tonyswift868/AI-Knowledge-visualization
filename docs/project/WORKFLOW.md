@@ -67,20 +67,72 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 空闲 | runtime |
+| MF-04 | 91-MF04（已起草，待转发） | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
-空闲工位：全部七个。
+空闲工位：除 runtime 外六个。
 
 ## 待派队列
 
-- 无。90-MF04 作废未发（用户 2026-10-09 改为按行业标准做构建与发布流水线，先调研，见 CURRENT_STATE [SYS-06]）。
+- 91-MF04：已起草（2026-10-10），待用户转发。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+
+## 第九十一批任务原文（2026-10-10，基线 office/runtime fcff74bc）
+
+### [91-MF04] runtime｜发版流水线 + 下载地址（¥0）
+
+~~~text
+【MentorFlow 第九十一批｜MF-04（工位 runtime）｜发版流水线：GitHub Actions 手动触发的构建与发布 + 下载地址 aiteacher.clannad.win/download】
+
+现成项目与许可证（第一节）
+  - CI/CD：GitHub Actions（windows-latest 托管机器），官方 actions/checkout、actions/setup-python、actions/setup-node、actions/upload-artifact（均 MIT）。工作流语法检查用 actionlint（MIT）。
+  - 编安装程序：Inno Setup 7.1.0 官方安装包（下载地址与 SHA256 写死，你上一轮已核对过），在 Windows 机器上直接跑，不用 Wine/Docker。
+  - 复用本项目现有：scripts/build_learning_installer.py（freeze、release、installer）、你上一轮的 scripts/server_installer/assemble_payload.py（按签名清单从 objects 拼出安装目录）、D:\MentorFlow\.local\release-tools\build_release.py（打包总控，目前不在仓库里）。
+  - 下载页做法参照常见软件（如 VS Code 的 code.visualstudio.com/download）：固定地址 302 跳到当前最新版的安装程序。
+  - 要自己写的只有：把现有本机打包步骤搬进工作流的胶水脚本、上传/上线脚本、nginx 一个 server 块。
+
+开工同步
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard fcff74bc         # 你上一轮的提交，在它上面继续
+提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push、禁止在 GitHub 上触发任何工作流（推送和触发只由架构师在用户同意后做）；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp 及注册表安装记录只读，不运行安装程序；D:\MentorFlowData\account-shell 只读；E 盘只读运行；不碰 D:\Kristina*。本机不装 Docker/WSL。先读 AGENTS.md（磁盘规则、功能先行）：中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。测试用 D:\MentorFlow\.venv\Scripts\python.exe。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+同时在跑：只有本任务。
+产物目录：D:\MentorFlow\.local\test-tmp\release-ci91\（里面已有 edge.conf.reference：服务器入口 nginx 的现行配置，只读参考）。目标四小时内交回。花费上限 ¥0。
+
+背景（用户 2026-10-09～10 定，CURRENT_STATE [SYS-06]）：
+  - 发版改成行业通行的流水线，不再在用户电脑上打包、不再从用户家里上传（用户上行到服务器约 0.15 MB/s）。签名仍在用户电脑上由架构师做，私钥绝不进 GitHub。
+  - 额度红线（用户被坑过：以前一天把 GitHub Actions 跑了几千次、额度用光、账号受限一个月）：工作流只能 workflow_dispatch 手动触发，不许 push/pull_request/schedule 等任何自动触发；同一时间只跑一个（concurrency 组，排队不并发）；每个 job 设 timeout-minutes（构建 ≤60，发布/安装程序 ≤40）；GitHub 上不跑测试（测试照旧在本机）；不用矩阵。
+  - 服务器访问：仓库 Secrets 里放现有管理员账号 mentorflow-admin 的 SSH 私钥（由用户自己填，名字定为 MF_SSH_KEY）；主机公钥是公开信息，直接写进工作流：89.45.45.28 ssh-ed25519 用 D:\MentorFlow\.local\server\ssh_config 里 UserKnownHostsFile 中 89.45.45.28 那一行（只读取公钥行）。服务器上 sudo 免密。
+  - 下载地址：https://aiteacher.clannad.win/download，点了直接下载当前最新版安装程序；子域名根地址以后放官网，现在返回简单占位（一个标题 + 下载按钮即可，正式页面以后做）。每个版本的安装程序都保留：releases/<版本>/MentorFlow-Setup-<版本>.exe，同目录放该版签名清单 stable.json；releases/latest 是指向当前最新版本目录的软链接。2.0.3 是第一个正式版，先把 2.0.2、2.0.3 两个版本的安装程序放进去，latest 指向 2.0.3；旧的 installer/MentorFlow-Setup.exe（9-29 老版本）由发布脚本挪到 /opt/mentorflow/state/ 备份。
+  - 服务器现状：更新文件目录 /opt/mentorflow/update-static/e108/app/（objects/、stable/stable.json、installer/、voice/），由容器 mentorflow-e108-update-static（容器内 8081）提供，入口 nginx 容器 mentorflow-e1-preview-edge-1 的配置文件在宿主机 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf（挂到 /etc/nginx/nginx.conf），证书在 docker 卷 mentorflow-e1-preview_edge_secrets（容器内 /run/secrets）。auth.clannad.win 已经按“Cloudflare 代理 + Cloudflare Origin 证书 + 只放行 Cloudflare 来源”接在这台服务器上（见参考配置 240 行起），aiteacher 照抄这个模式。2.0.2 的签名清单在服务器 /opt/mentorflow/state/stable-2.0.2-before-2.0.3.json，2.0.3 的就是线上 stable/stable.json。
+
+要做
+  1. 清理上一轮：删掉只为“服务器上用 Wine 编”写的部分（Dockerfile、build_on_server.sh、run_build.py、make_bundle.py 及对应测试、build_learning_installer.py 里只为 Wine 加的分支），保留 assemble_payload.py 及其测试。把 .local\release-tools\build_release.py 搬进仓库 scripts/release/（去掉写死的本机路径，改成参数或环境变量，本机用法不变）。
+  2. 依赖锁定：新增 scripts/release/requirements-build.txt（Python 3.12.10，版本全部写死，和本机 .venv 与 .local\test-tmp\installer\build-tools 里实际打包用的版本一致）；前端用 refactor/learning/web/package-lock.json + npm ci，Node 版本写死与本机一致。
+  3. 三个工作流（.github/workflows/，都只有 workflow_dispatch）：
+     a. mf-installer.yml（输入：版本号；是否设为 latest）：从服务器取 releases/<版本>/stable.json（2.0.2、2.0.3 第一次没有时，按上面给的两个位置取）→ 用包里的信任公钥验签 → 按清单从服务器公网 https://89.45.45.28/mentorflow/updates/app/objects/ 下载全部文件（证书是自签的，靠清单签名和逐文件 SHA256 保证正确）→ assemble_payload.py 拼目录 → Inno 7.1.0 编安装程序 → 通过 SSH 传到服务器 releases/<版本>/ 的临时文件名，核对 SHA256 后原子改名 → 需要时原子切换 releases/latest 软链接。2.0.2、2.0.3 现在就用它。
+     b. mf-build.yml（输入：版本号、更新说明、是否必须更新及原因、基线版本；另有“只构建不上传”开关）：本机 build_release.py 的 freeze + release 那一段搬到这里 → 产出未签名清单（作为小 artifact，保留 3 天）→ 不是“只构建”时，把服务器缺的文件传到服务器 .staging-<版本>/objects/（逐个核对 SHA256）。payload 本身不做 artifact（太大，占存储额度）。
+     c. mf-publish.yml（输入：版本号）：前提是架构师已把签好名的 stable.json 放到服务器 .staging-<版本>/stable/stable.json → 验签 → 把 staging 里的文件挪进 objects（已有的不覆盖）→ 备份线上 stable.json 到 /opt/mentorflow/state/ → 原子替换 stable.json → 调 mf-installer 的同一套步骤编并上传这个版本的安装程序、切 latest（用可复用工作流或复合 action，不复制粘贴）→ 删 staging。
+     所有工作流：开头写清用途和额度红线的注释；concurrency 组 mentorflow-release；timeout-minutes 按上面；缓存 pip 与 npm。
+  4. 签名衔接：写一个本机小脚本 scripts/release/sign_and_stage.py（架构师用）：从 GitHub 下载的 artifact 里取未签名清单 → 用 build_learning_installer.py sign 签名（私钥路径作参数，脚本不保存、不打印私钥）→ 用 scp 把签好的 stable.json（约 2 MB）传到服务器 .staging-<版本>/stable/。
+  5. 服务器 nginx：写一个 aiteacher.clannad.win 的 server 块（照抄 auth.clannad.win 的写法：listen 8443 ssl、证书放 /run/secrets/e110-aiteacher-origin/cert.pem 与 key.pem、只放行 Cloudflare 来源）：location = /download 302 到 /releases/latest/MentorFlow-Setup-<版本>.exe 的方式要能自动跟随 latest（例如 latest 目录里放一个不带版本号的同名文件或用 try_files，选最简单可靠的，写明理由）；location ^~ /releases/ 只允许 GET/HEAD，转发到 update-static 容器；location = / 返回占位页；其余 404。下载响应带 Content-Disposition: attachment。确认 update-static 容器的 nginx 能跟随软链接（看它的配置能看到的部分，看不到就写成架构师上线时要检查的一项）。写一份 deploy-nginx.md：架构师改配置、nginx -t、reload、回退的完整命令。
+  6. 本机验证（完成标准以这些为准）：
+     a. actionlint 检查三个工作流无错误；用脚本确认每个工作流只有 workflow_dispatch、都有 concurrency 和 timeout-minutes。
+     b. 工作流里调用的每个脚本都能在本机单独跑：在测试目录里模拟服务器目录（objects/、stable/、releases/、.staging-*/），用 2.0.3m 的清单和 payload 走一遍“拼包 → 编安装程序 → 放进 releases/2.0.3/ → 切 latest”，以及“staging → 上线”的整套文件操作（把 SSH 换成本地文件操作的开关），结果目录结构写进报告。
+     c. mf-build 的 freeze + release 在本机用新的 requirements 和 npm ci 跑通一次（只构建不上传），和上一轮 release-2.0.3m 的文件数量一致。
+     d. 全量测试通过。
+  7. 写 docs-ready 的说明 scripts/release/README.md：以后发一个版本的完整步骤（谁在哪一步做什么、点哪个工作流、输入什么、预计各用多少分钟额度），以及第一次启用要做的事：用户在 GitHub 填 MF_SSH_KEY、确认 Billing 超额上限为 0；用户在 Cloudflare 加 aiteacher 的 DNS 记录（代理开启）并生成 Origin 证书；架构师上线 nginx；然后依次手动运行 mf-installer（2.0.2）、mf-installer（2.0.3，设为 latest）、mf-build（2.0.3 代码，只构建不上传，验证构建能跑通）——总共 3 次，失败就停下查原因，不重试第 4 次。
+完成标准：6 的 a～d 全部通过；三个工作流和脚本、nginx 片段、两份说明齐全；所有改动提交在工位。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\release-ci91\report.md。
+回执（尽量短，用表格）：【MF-04｜runtime｜第九十一批｜完成/部分完成/受阻】基线 ／ 提交 ／ 清理了什么 ／ 依赖锁定 ／ 三个工作流（触发方式、并发、时限） ／ actionlint ／ 本机模拟发布结果 ／ 本机构建对比 ／ 全量 ／ 每次运行预计额度 ／ 用户要做的事 ／ 架构师要做的事 ／ 本地最终占用
+~~~
 
 ## 第九十批任务原文（2026-10-09，基线 2bc131a0）
 
-### [90-MF04] runtime｜服务器自己编安装程序（¥0）——作废，未发出
+### [90-MF04] runtime｜服务器自己编安装程序（¥0）——用户已转发并完成（fcff74bc），方案改为 91-MF04，未单独合入
 
 ~~~text
 【MentorFlow 第九十批｜MF-04（工位 runtime）｜服务器自己编安装程序：按发布清单从已有更新文件拼出完整版，不再从本机上传几百 MB】
