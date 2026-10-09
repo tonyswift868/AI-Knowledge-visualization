@@ -93,6 +93,9 @@ python -B scripts/release/sign_and_stage.py --artifact '<下载的ZIP或解压�
    脚本只调用原 signer，核对私钥与固定公钥匹配；不打印私钥，不把私钥复制
    到工作目录或上传。只传签好的 stable.json 到 `.staging-<v>/stable/`。
    本机工作目录保留签好的清单，便于人工核对。
+   Windows 本机和 Actions 共用 SSHServer：远程命令固定为 `sudo -n python3 -`，
+   server_ops 源码和请求经标准输入传入，不在远程命令行内联整段源码；
+   清单仍由 SCP 传输，私钥不进入标准输入或上传内容。传输或远端执行失败照常报错。
 4. 架构师手动点 **mf-publish**，只填 version。先验签、禁止版本/metadata/floor
    回退、检查全部对象，再移入 objects（已有不覆盖）、备份旧 stable 到 state、
    原子替换在线 stable。随后调用与 mf-installer 相同的复合 action：下载对象，
@@ -100,7 +103,7 @@ python -B scripts/release/sign_and_stage.py --artifact '<下载的ZIP或解压�
    服务端核对 SHA256 后原子发布版本目录；在普通 latest 目录里建立临时硬链接，
    再核对 SHA256 后原子覆盖 MentorFlow-Setup.exe。成功才删除 staging。
 5. 架构师核对 `/download`、带版本的安装程序、版本目录 stable.json 和客户端
-   检查更新。旧版本安装程序保留；旧 installer/MentorFlow-Setup.exe 在首次
+   检查更新。旧版安装程序按下面的保留规则清理；旧 installer/MentorFlow-Setup.exe 在首次
    latest 发布成功后复制、核对并移到 state 备份。
 
 在线 stable 的替换与安装程序编译是两个阶段：后者失败时 stable 可能已经
@@ -127,6 +130,24 @@ latest 是普通目录，不使用软链接或 junction。切换时在 latest/ �
 硬链接，核对大小和 SHA256，然后 os.replace 原子覆盖固定文件；硬链接
 失败就停止，不降级成软链接或复制。版本目录与 latest 必须在同一文件系统。
 下载重定向保持：`/download` → `/releases/latest/MentorFlow-Setup.exe`。
+
+## 安装程序保留规则
+
+每次安装程序发布成功（包括需要时切换 latest）后，按数值版本号保留最大的
+3 个版本的 exe，数量集中在 server_ops.INSTALLER_KEEP_COUNT。更早版本只删除
+`MentorFlow-Setup-<版本>.exe`；目录与 stable.json 永远保留，objects 不变。
+与 latest/MentorFlow-Setup.exe 为同一文件的版本额外保护，因此 latest 指向
+旧版时可以保留 4 个版本。不是按日期、文件名字符串或“现有 exe 数量”排序。
+
+清理前后逐文件记录日志，发布返回值的 retention 包含 deleted、removed_bytes、
+released_bytes、protected_latest 和 events。removed_bytes 是删掉路径的内容字节；
+released_bytes 只计最后一个硬链接被删除的内容字节，不代表磁盘块的精确释放量。
+重复执行不再删除额外文件。清理失败会报错，已发布的安装程序和 latest 不回滚，
+staging 保留以便架构师核对失败位置。
+
+需要旧版时仍可手动运行 mf-installer：保留的 stable.json 用于验签、从 objects
+重编，exe 在原目录中校验后原子放回，清单不变。如果它仍排在前三之外且不设为
+latest，本轮清理仍会删除它；需要保留并提供旧版下载时，将该版设为 latest。
 
 `pipeline.py` 的 installer/promote/stage/build/cleanup 都接受 `--local-server-root`，
 此模式不创建 SSH 客户端、不联网取对象，真实编译仍要指定现有 `--compiler`。

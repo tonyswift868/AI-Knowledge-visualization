@@ -19,6 +19,60 @@ import tarfile
 import tempfile
 import uuid
 
+INSTALLER_KEEP_COUNT = 3
+
+
+def retain_installers(releases):
+    """Keep numeric top releases plus every installer hard-linked by latest.
+
+    Counts are file-content bytes, not filesystem block/allocation estimates.
+    Events go to stderr AND the result: SSH's stdout remains one JSON response.
+    """
+    directories = []
+    for directory in releases.iterdir():
+        if (not directory.is_dir() or directory.is_symlink()
+                or (os.name == 'nt' and directory.is_junction())):
+            continue
+        try:
+            key = tuple(map(int, version(directory.name).split('.')))
+        except ValueError:
+            continue
+        directories.append((key, directory))
+    directories.sort(reverse=True)
+    latest = releases / 'latest/MentorFlow-Setup.exe'
+    protected = [directory.name for _, directory in directories
+                 if latest.is_file()
+                 and (directory / ('MentorFlow-Setup-' + directory.name + '.exe')).is_file()
+                 and os.path.samefile(latest, directory / ('MentorFlow-Setup-' + directory.name + '.exe'))]
+    result = dict(keep_count=INSTALLER_KEEP_COUNT, protected_latest=protected,
+                  deleted=[], removed_bytes=0, released_bytes=0, events=[])
+
+    def log(event, **values):
+        entry = dict(event=event, **values)
+        result['events'].append(entry)
+        print(json.dumps(entry, ensure_ascii=True), file=sys.stderr, flush=True)
+
+    for _, directory in directories[INSTALLER_KEEP_COUNT:]:
+        exe = directory / ('MentorFlow-Setup-' + directory.name + '.exe')
+        if directory.name in protected or not exe.is_file():
+            continue
+        stat = exe.stat()
+        row = dict(version=directory.name, path=exe.relative_to(releases).as_posix(),
+                   bytes=stat.st_size, released_bytes=stat.st_size if stat.st_nlink == 1 else 0)
+        log('installer_retention_before_delete', **row)
+        try:
+            exe.unlink()
+        except OSError as error:
+            log('installer_retention_delete_failed', **row, error=str(error))
+            raise
+        result['deleted'].append(row)
+        result['removed_bytes'] += row['bytes']
+        result['released_bytes'] += row['released_bytes']
+        log('installer_retention_after_delete', **row)
+    log('installer_retention_complete', deleted_versions=[r['version'] for r in result['deleted']],
+        removed_bytes=result['removed_bytes'], released_bytes=result['released_bytes'])
+    return result
+
 
 def sha(path):
     value=hashlib.sha256()
@@ -129,10 +183,20 @@ def dispatch(request):
             releases.mkdir(parents=True, exist_ok=True)
             destination = releases / v
             if destination.exists():
-                # Published versions are immutable. Re-running the same release is safe.
-                checked(destination / ('MentorFlow-Setup-' + v + '.exe'), request['installer'])
+                # Metadata stays immutable even when retention removed the exe.
                 if (destination / 'stable.json').read_bytes() != raw:
                     raise ValueError('published version has different signed metadata')
+                exe = destination / ('MentorFlow-Setup-' + v + '.exe')
+                if exe.exists():
+                    checked(exe, request['installer'])
+                else:
+                    restored = destination / ('.MentorFlow-Setup-' + uuid.uuid4().hex + '.exe')
+                    try:
+                        shutil.copyfile(transfer, restored)
+                        checked(restored, request['installer'])
+                        os.replace(restored, exe)
+                    finally:
+                        restored.unlink(missing_ok=True)
             else:
                 temp = Path(tempfile.mkdtemp(prefix='.' + v + '-', dir=releases))
                 try:
@@ -169,7 +233,9 @@ def dispatch(request):
                     if sha(old) != sha(backup):
                         raise ValueError('old installer backup mismatch')
                     old.unlink()
-            return dict(status='INSTALLER_PUBLISHED', version=v, latest=bool(request.get('latest')))
+            retention = retain_installers(releases)
+            return dict(status='INSTALLER_PUBLISHED', version=v, latest=bool(request.get('latest')),
+                        retention=retention)
         finally:
             transfer.unlink(missing_ok=True)
     if action == 'promote':
