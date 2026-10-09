@@ -1,0 +1,74 @@
+# Manual unsigned build only. Quota red lines: dispatch only, one global queue,
+# <=60 minutes, no tests/matrix; small 3-day artifact only, never upload payload.
+name: MF build
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Target numeric version
+        type: string
+        required: true
+      notes:
+        description: User-facing release notes
+        type: string
+        required: true
+      mandatory:
+        description: Mandatory update
+        type: boolean
+        default: false
+      mandatory_reason:
+        description: Required only for mandatory updates
+        type: choice
+        options: [none, security, protocol, data_compatibility]
+        default: none
+      base_versions:
+        description: Space-separated baseline versions
+        type: string
+        default: '2.0.2'
+      build_only:
+        description: Build without uploading objects
+        type: boolean
+        default: true
+concurrency:
+  group: mentorflow-release
+  queue: max
+  cancel-in-progress: false
+permissions:
+  contents: read
+env:
+  MF_SSH_KNOWN_HOSTS: '89.45.45.28 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICJMlf3cA3DHteuBGx2K1IR+oJbkLSsIjKo4UXC8z5oZ'
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/release-env
+        with:
+          requirements: scripts/release/requirements-build.txt
+      - name: Freeze and unsigned release; upload only missing objects if requested
+        shell: pwsh
+        env:
+          MF_SSH_KEY: ${{ secrets.MF_SSH_KEY }}
+          MF_VERSION: ${{ inputs.version }}
+          MF_NOTES: ${{ inputs.notes }}
+          MF_MANDATORY: ${{ inputs.mandatory }}
+          MF_REASON: ${{ inputs.mandatory_reason }}
+          MF_BASES: ${{ inputs.base_versions }}
+          MF_BUILD_ONLY: ${{ inputs.build_only }}
+        run: |
+          $argsList = @('scripts/release/pipeline.py', 'build', '--version', $env:MF_VERSION, '--notes', $env:MF_NOTES, '--base-versions', $env:MF_BASES, '--work', "$env:RUNNER_TEMP/release")
+          if ($env:MF_BUILD_ONLY -eq 'true') { $argsList += '--build-only' }
+          if ($env:MF_MANDATORY -eq 'true') { $argsList += @('--mandatory', '--mandatory-reason', $env:MF_REASON) }
+          python -B @argsList
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-${{ inputs.version }}
+          path: |
+            ${{ runner.temp }}/release/build/unsigned-release.json
+            ${{ runner.temp }}/release/build/build-evidence.json
+          retention-days: 3
+          if-no-files-found: error

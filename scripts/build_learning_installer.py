@@ -308,7 +308,8 @@ def installer(args):
                "RequiredBytes": sum(size for _, size in files) + 256 * 1024 ** 2,
                "ProductAppId": authority["APP_ID"], "ShortcutName": "MentorFlow 预览版" if ".UAT." in authority["APP_ID"] else "MentorFlow",
                "SignedRelease": args.release.resolve()}
-    run([args.compiler, "--no-ide-signtools", *[f"/D{k}={v}" for k, v in options.items()], ROOT / "refactor/desktop/packaging/inno/MentorFlow.iss"],
+    run([args.compiler, "--no-ide-signtools", *[f"/D{k}={v}" for k, v in options.items()],
+        ROOT / "refactor/desktop/packaging/inno/MentorFlow.iss"],
         args.work.resolve(), args.work / "inno.log")
     print(json.dumps([{ "path": str(p), "size": p.stat().st_size, "sha256": digest(p)} for p in args.output.glob("*.exe")]))
 

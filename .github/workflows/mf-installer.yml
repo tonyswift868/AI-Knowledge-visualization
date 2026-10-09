@@ -1,0 +1,36 @@
+# Manual installer only. Quota red lines: dispatch only, one global queue,
+# <=40 minutes, no tests/matrix/automatic retries; never use release private keys.
+name: MF installer
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Signed version (bootstrap 2.0.2 or 2.0.3)
+        type: string
+        required: true
+      latest:
+        description: Set this version as latest
+        type: boolean
+        default: false
+concurrency:
+  group: mentorflow-release
+  queue: max
+  cancel-in-progress: false
+permissions:
+  contents: read
+env:
+  MF_SSH_KNOWN_HOSTS: '89.45.45.28 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICJMlf3cA3DHteuBGx2K1IR+oJbkLSsIjKo4UXC8z5oZ'
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/release-env
+      - uses: ./.github/actions/mf-installer
+        with:
+          version: ${{ inputs.version }}
+          latest: ${{ inputs.latest }}
+          ssh-key: ${{ secrets.MF_SSH_KEY }}

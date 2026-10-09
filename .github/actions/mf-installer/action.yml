@@ -1,0 +1,26 @@
+name: Assemble, compile and publish one installer
+description: Shared by manual installer and publish workflows, without another workflow trigger
+inputs:
+  version:
+    description: Signed release version
+    required: true
+  latest:
+    description: Atomically replace latest/MentorFlow-Setup.exe with a verified hard link
+    default: 'false'
+  ssh-key:
+    description: Admin SSH key, never the release signing key
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Signed objects to Windows Inno installer to version directory
+      shell: pwsh
+      env:
+        MF_SSH_KEY: ${{ inputs.ssh-key }}
+        MF_VERSION: ${{ inputs.version }}
+        MF_LATEST: ${{ inputs.latest }}
+      run: |
+        $argsList = @('scripts/release/pipeline.py', 'installer', '--version', $env:MF_VERSION, '--work', "$env:RUNNER_TEMP/installer")
+        if ($env:MF_LATEST -eq 'true') { $argsList += '--latest' }
+        python -B @argsList
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
