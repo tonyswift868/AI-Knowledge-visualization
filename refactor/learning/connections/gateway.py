@@ -260,7 +260,7 @@ class ModelGateway:
             changed = api_key is not None and api_key != ''
             if old and old['has_api_key'] and not changed and (
                     old['provider_id'] != provider_id or old['base_url'] != fields['base_url']):
-                raise ModelError('API_KEY_CONFIRM_REQUIRED', '模型厂商或地址已改变，请重新输入该地址的 API Key。')
+                raise ModelError('API_KEY_CONFIRM_REQUIRED', '模型厂商或地址已改变，请到 设置 → 模型连接 重新输入该地址的 API Key 并保存。')
             identifier = old['id'] if old else uuid.uuid4().hex
             ref = old['credential_id'] if old else identifier
             owner = old['credential_owner'] if old else 'owned'
@@ -327,9 +327,9 @@ class ModelGateway:
             with self._legacy.lock:
                 old = next((p for p in self._read_legacy()['presets'] if p['id'] == config['id']), None)
                 if old is None or not old['has_api_key']:
-                    raise ModelError('MODEL_KEY_REQUIRED', '原预设凭据已移除，请保存当前模型的 API Key。')
+                    raise ModelError('MODEL_KEY_REQUIRED', '当前模型还没有 API Key：请到 设置 → 模型连接 填入 API Key 并保存。')
                 if transport.completions_url(old['base_url']) != config['legacy_endpoint']:
-                    raise ModelError('API_KEY_CONFIRM_REQUIRED', '原预设地址已改变，请为当前地址重新保存 API Key。')
+                    raise ModelError('API_KEY_CONFIRM_REQUIRED', '原预设地址已改变，请到 设置 → 模型连接 为当前地址重新保存 API Key。')
                 return self._credentials.get(config['credential_id'])
         return self._credentials.get(config['credential_id'])
 
@@ -483,7 +483,7 @@ class ModelGateway:
                 if token.is_set():
                     raise ModelCancelled()
                 if not config:
-                    raise ModelError('MODEL_NOT_CONFIGURED', '请先保存并选择模型预设。')
+                    raise ModelError('MODEL_NOT_CONFIGURED', '还没有可用的模型：请到 设置 → 模型连接 选择厂商、填入 API Key 并保存。')
                 spec = providers.REGISTRY.get(config['provider_id'])
                 if spec is None:
                     raise ModelError('MODEL_CONFIG_INVALID', '旧预设厂商未识别，请选择对应厂商后保存。')
@@ -492,7 +492,7 @@ class ModelGateway:
                 with self._lock:
                     secret = self._secret(config)
                 if not secret:
-                    raise ModelError('MODEL_KEY_REQUIRED', '请为当前模型预设保存 API Key。')
+                    raise ModelError('MODEL_KEY_REQUIRED', '当前模型还没有 API Key：请到 设置 → 模型连接 填入 API Key 并保存。')
                 timeout = BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else config['timeout']
                 if purpose != 'connection_test':  # the explicit "Reply OK" probe stays tiny
                     max_tokens = MODEL_MAX_OUTPUT.get(config['model'], max_tokens)

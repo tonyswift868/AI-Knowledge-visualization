@@ -217,7 +217,7 @@ function Models() {
         <div className="row between">
           <div>
             <h2>当前使用</h2>
-            <p className="sub">{active ? `${active.display_name} · ${active.model}` : "还没有可用的模型。选择厂商、粘贴 API Key 即可。"}</p>
+            <p className="sub">{active ? `${active.display_name} · ${active.model}` : "还没有可用的模型：请到 设置 → 模型连接 选择厂商、填入 API Key 并保存。"}</p>
           </div>
           <div className="row">
             {active && (active.has_api_key ? <span className="pill ok"><CheckCircle2 size={13} />Key 已保存</span> : <span className="pill warn"><KeyRound size={13} />缺少 Key</span>)}
