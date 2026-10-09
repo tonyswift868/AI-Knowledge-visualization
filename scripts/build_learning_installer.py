@@ -44,10 +44,9 @@ def run(command, work, log):
     # PyInstaller resolves transitive DLLs through PATH. Unrelated tools may
     # provide same-named ICU/CRT DLLs with incompatible exports; never bundle
     # those ambient dependencies into the signed application.
-    if os.name == "nt":
-        windows = Path(os.environ.get("SystemRoot", r"C:\Windows"))
-        env["PATH"] = os.pathsep.join(map(str, (Path(sys.executable).parent,
-                                               Path(sys.base_prefix), windows / "System32", windows)))
+    windows = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    env["PATH"] = os.pathsep.join(map(str, (Path(sys.executable).parent,
+                                           Path(sys.base_prefix), windows / "System32", windows)))
     with Path(log).open("w", encoding="utf-8") as output:
         subprocess.run(list(map(str, command)), cwd=ROOT, env=env, stdout=output,
                        stderr=subprocess.STDOUT, check=True)
@@ -277,21 +276,6 @@ def sign(args):
     args.output.write_bytes(raw)
 
 
-def wine_path(path):
-    """Wine's default Z: drive maps the POSIX root; no shell escaping involved."""
-    return "Z:" + Path(path).resolve().as_posix().replace("/", "\\")
-
-
-def installer_command(compiler, options, script, *, wine=None):
-    if wine:
-        converted = {key: wine_path(value) if isinstance(value, Path) else value
-                     for key, value in options.items()}
-        return [wine, wine_path(compiler), "--no-ide-signtools",
-                *[f"/D{key}={value}" for key, value in converted.items()], wine_path(script)]
-    return [compiler, "--no-ide-signtools",
-            *[f"/D{key}={value}" for key, value in options.items()], script]
-
-
 def installer(args):
     from PyInstaller.archive.readers import CArchiveReader
     from refactor.desktop.packaging.authority import literal_authority
@@ -324,8 +308,8 @@ def installer(args):
                "RequiredBytes": sum(size for _, size in files) + 256 * 1024 ** 2,
                "ProductAppId": authority["APP_ID"], "ShortcutName": "MentorFlow 预览版" if ".UAT." in authority["APP_ID"] else "MentorFlow",
                "SignedRelease": args.release.resolve()}
-    run(installer_command(args.compiler, options,
-        ROOT / "refactor/desktop/packaging/inno/MentorFlow.iss", wine=getattr(args, "wine", None)),
+    run([args.compiler, "--no-ide-signtools", *[f"/D{k}={v}" for k, v in options.items()],
+        ROOT / "refactor/desktop/packaging/inno/MentorFlow.iss"],
         args.work.resolve(), args.work / "inno.log")
     print(json.dumps([{ "path": str(p), "size": p.stat().st_size, "sha256": digest(p)} for p in args.output.glob("*.exe")]))
 
@@ -357,7 +341,6 @@ def main():
     p = sub.add_parser("installer")
     for name in ("payload", "release", "work", "output", "compiler"):
         p.add_argument("--" + name, type=Path, required=True)
-    p.add_argument("--wine", type=Path, help="Linux only: Wine executable; uses its default Z: mapping")
     args = parser.parse_args()
     globals()[args.action](args)
 

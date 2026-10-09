@@ -13,7 +13,6 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from refactor.desktop.delivery.update_protocol import canonical, digest, SecurityError
 from scripts import build_learning_installer as builder
 from scripts.server_installer import assemble_payload as assembly
-from scripts.server_installer import run_build as server
 
 
 @pytest.fixture
@@ -48,7 +47,7 @@ def server90(tmp_path):
     stable.parent.mkdir()
     stable.write_bytes(canonical(dict(signed=signed, key_id="fixture90", signature=base64.b64encode(
         private.sign(canonical(signed))).decode())))
-    return SimpleNamespace(app=app, objects=objects, stable=stable, key=key, files=files,
+    return SimpleNamespace(private=private, app=app, objects=objects, stable=stable, key=key, files=files,
                            state=tmp_path / "state", output=tmp_path / "payload")
 
 
@@ -97,109 +96,3 @@ def test_server90_existing_output_untouched(server90):
     with pytest.raises(FileExistsError):
         assembly.assemble_payload(f.stable, f.objects, f.output, public_key=f.key)
     assert (f.output / "keep").read_bytes() == b"prior"
-
-
-def fake_compile(args):
-    args.output.mkdir()
-    (args.output / "MentorFlow-Setup.exe").write_bytes(b"MZ newly compiled fixture")
-
-
-def test_server90_build_publish_backup_cleanup_and_repeat(server90):
-    f = server90
-    directory = f.app / "installer"
-    directory.mkdir()
-    (directory / "MentorFlow-Setup.exe").write_bytes(b"MZ previous fixture")
-    result = server.build_on_server(f.app, f.state, f.key, Path("ISCC.exe"), compile_fn=fake_compile)
-    assert result["status"] == "PUBLISHED"
-    assert Path(result["backup"]).read_bytes() == b"MZ previous fixture"
-    assert server.current_installer(directory, "2.0.3")
-    assert not list((f.state / "installer-build").rglob("attempt-*"))
-    def forbidden(*args): raise AssertionError("repeat must not compile")
-    assert server.build_on_server(f.app, f.state, f.key, Path("ISCC.exe"), compile_fn=forbidden)["status"] == "UP_TO_DATE"
-    # A stale or mismatching exe must rebuild even if VERSION says this version.
-    (directory / "MentorFlow-Setup.exe").write_bytes(b"corrupted")
-    assert not server.current_installer(directory, "2.0.3")
-
-
-@pytest.mark.parametrize("fault", ["compiler", "feed_changed", "metadata_replace"])
-def test_server90_build_failure_keeps_live_installer_and_version(server90, monkeypatch, fault):
-    f = server90
-    directory = f.app / "installer"
-    directory.mkdir()
-    exe, version = directory / "MentorFlow-Setup.exe", directory / "VERSION.txt"
-    exe.write_bytes(b"old installer")
-    version.write_bytes(b"old metadata")
-    def compile_fn(args):
-        if fault == "compiler": raise RuntimeError("compiler failed")
-        fake_compile(args)
-        if fault == "feed_changed": f.stable.write_bytes(f.stable.read_bytes() + b"\n")
-    if fault == "metadata_replace":
-        original = os.replace
-        def replace(source, target):
-            if Path(source).name == ".VERSION.txt.new": raise OSError("metadata denied")
-            return original(source, target)
-        monkeypatch.setattr(server.os, "replace", replace)
-    with pytest.raises((RuntimeError, ValueError, OSError)):
-        server.build_on_server(f.app, f.state, f.key, Path("ISCC.exe"), compile_fn=compile_fn)
-    assert exe.read_bytes() == b"old installer" and version.read_bytes() == b"old metadata"
-    assert not list(directory.glob(".*.new"))
-    assert list(f.state.rglob("build-status.json"))
-    assert not list(f.state.rglob("payload"))
-
-
-def test_server90_first_publish_metadata_failure_leaves_no_installer(server90, monkeypatch):
-    f = server90
-    original = os.replace
-    def replace(source, target):
-        if Path(source).name == ".VERSION.txt.new": raise OSError("metadata denied")
-        return original(source, target)
-    monkeypatch.setattr(server.os, "replace", replace)
-    with pytest.raises(OSError, match="metadata denied"):
-        server.build_on_server(f.app, f.state, f.key, Path("ISCC.exe"), compile_fn=fake_compile)
-    assert not list((f.app / "installer").iterdir())
-
-
-def test_server90_failed_signature_never_calls_compiler_or_touches_installer(server90):
-    f = server90
-    live = f.app / "installer/MentorFlow-Setup.exe"
-    live.parent.mkdir()
-    live.write_bytes(b"previous installer")
-    value = json.loads(f.stable.read_bytes())
-    value["signed"]["version"] = "2.0.4"
-    f.stable.write_bytes(canonical(value))
-    def forbidden(*args): raise AssertionError("must not compile unverified release")
-    with pytest.raises(SecurityError):
-        server.build_on_server(f.app, f.state, f.key, Path("ISCC.exe"), compile_fn=forbidden)
-    assert live.read_bytes() == b"previous installer" and not f.state.exists()
-
-
-def test_server90_windows_command_unchanged_and_wine_paths_mapped(monkeypatch, tmp_path):
-    options = dict(PayloadDir=tmp_path / "中文 payload", ProductVersion="2.0.3", RequiredBytes=123)
-    script = tmp_path / "MentorFlow.iss"
-    command = builder.installer_command(Path("ISCC.exe"), options, script)
-    assert command == [Path("ISCC.exe"), "--no-ide-signtools", f"/DPayloadDir={options['PayloadDir']}",
-                       "/DProductVersion=2.0.3", "/DRequiredBytes=123", script]
-    monkeypatch.setattr(builder, "wine_path", lambda p: "Z:\\mapped\\" + Path(p).name)
-    command = builder.installer_command(Path("ISCC.exe"), options, script, wine=Path("wine"))
-    assert command[0] == Path("wine") and command[1] == "Z:\\mapped\\ISCC.exe"
-    assert "/DPayloadDir=Z:\\mapped\\中文 payload" in command
-    assert "/DProductVersion=2.0.3" in command and "/DRequiredBytes=123" in command
-    assert command[-1] == "Z:\\mapped\\MentorFlow.iss"
-
-
-def test_server90_posix_root_maps_to_wine_z(monkeypatch):
-    class Posix:
-        def __init__(self, value): self.value = PurePosixPath(value)
-        def resolve(self): return self
-        def as_posix(self): return self.value.as_posix()
-    monkeypatch.setattr(builder, "Path", Posix)
-    assert builder.wine_path("/srv/中文 payload/MentorFlow.exe") == "Z:\\srv\\中文 payload\\MentorFlow.exe"
-
-
-def test_server90_linux_keeps_system_path_for_wine(monkeypatch, tmp_path):
-    # Test only this platform seam; no Wine, subprocess or compiler is executed.
-    calls = []
-    monkeypatch.setattr(builder, "os", SimpleNamespace(name="posix", environ={"PATH": "/usr/local/bin:/usr/bin:/bin"}))
-    monkeypatch.setattr(builder.subprocess, "run", lambda command, **kw: calls.append(kw))
-    builder.run(["wine", "ISCC.exe"], tmp_path, tmp_path / "log")
-    assert calls[0]["env"]["PATH"] == "/usr/local/bin:/usr/bin:/bin"

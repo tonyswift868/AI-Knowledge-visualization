@@ -1,0 +1,29 @@
+{
+  "version": "2.0.1",
+  "app_id": "MentorFlow",
+  "public_keys": {
+    "mentorflow-app-2026": "odkXdB5+/kfYltUSWLbBD98YoF+GqsxC7A11rGSPfK8="
+  },
+  "inputs": {
+    "runtime": {
+      "filename": "public-runtime.json",
+      "sha256": "b500df3c4ae76255c8065eef4bd3abb5a492f55edcb91c16758938cd0fc29979",
+      "bytes": 357
+    },
+    "ca": {
+      "filename": "account-api.pem",
+      "sha256": "8cd316ff762706eafa9be23413ca6bacdfc96a5f56ec3e85faf141466e31c201",
+      "bytes": 1526
+    },
+    "seven": {
+      "filename": "7zr.exe",
+      "sha256": "ad4c82fadcbdf93c03b4fc440f300509c7d60c5c2f4d183e35d9d70d6957037d",
+      "bytes": 602624
+    },
+    "voices": {
+      "filename": "component-catalog.json",
+      "sha256": "552d8754213658a113e7eec1fa1dddd047234f03aa40281a2b7155fe66bc7373",
+      "bytes": 12593076
+    }
+  }
+}
