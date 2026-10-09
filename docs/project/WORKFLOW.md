@@ -68,12 +68,12 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 93-MF04（已起草，待转发） | runtime |
+| MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
-空闲工位：除 runtime 外六个。
+空闲工位：全部七个。
 
 ## 待派队列
 
@@ -83,7 +83,7 @@
   - 运行 3 mf-build 2.0.4（上传 staging，非强制，基线 2.0.3）：成功，约 7 分钟，14 个新文件。
   - 签名：本机 sign_and_stage.py 签名成功，但它的 ssh 上传在 Windows 本机失败（退出码 2，内联整段 server_ops 源码的引号问题）；架构师手动把签名清单传到 .staging-2.0.4/stable/ 并核对 SHA256。修复补进 93-MF04。
   - 运行 4 mf-publish 2.0.4：成功，约 11 分钟；公网 stable.json 对 2.0.2、2.0.3 客户端验签均通过 → 2.0.4；releases/2.0.4/ 与 latest 已更新，服务器剩 35 GB。
-- 93-MF04：已起草（2026-10-10），待用户转发；追加：修 sign_and_stage.py 在 Windows 本机的 ssh 上传。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+- 93-MF04：完成并合入 main（c5768d44，2026-10-10）：安装程序只留最近 3 版、本机签名上传修好。没有在途任务。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
 
 ## 第九十三批任务原文（2026-10-10，基线 d3693cc6）
 
