@@ -1,5 +1,6 @@
 """Question-based assessment with real room/store; MF05 admission is outside this task."""
 import copy
+import json
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -303,20 +304,19 @@ def test_idempotent_events_and_late_outcomes_do_not_reopen_closed_attempt():
     assert b.question('q0-0').module_correct is True and not b.question('q0-0').ever_wrong
 
 
-def test_previous_point_based_plan_is_not_migrated(env, monkeypatch):
+def test_previous_point_based_plan_is_migrated_without_blocking(env):
     e = env
     with e.store.transaction():
         plan = e.store._get('plans', PLAN, PLAN)
         plan['material_version'] = 2
         e.store._put('plans', PLAN, plan)
-    # A real pre-batch-70 plan holds old-format questions (kind choice/fill/...),
-    # which the store no longer accepts as new writes; simulate reading them.
-    rows = e.store._rows
-    monkeypatch.setattr(e.store, '_rows', lambda entity, plan_id='': [dict(q, kind='choice') for q in rows(entity, plan_id)]
-                        if entity == 'question_bank' else rows(entity, plan_id))
-    with pytest.raises(BridgeError, match='旧版计划，已不可用'):
-        e.room._course(PLAN)
-    assert e.store.get_plan(PLAN)['material_version'] == 2
+        # Simulate the persisted legacy kind while retaining the whole payload.
+        for q in e.store._rows('question_bank',PLAN):
+            q['kind']='choice'
+            e.store._db.execute('UPDATE question_bank SET payload=? WHERE plan_key=? AND id=?',
+                                (json.dumps(q),PLAN,q['id']))
+    assert e.room._course(PLAN).plan['material_version']==3
+    assert all(q['role']=='retired' for q in e.store.records('question_bank',PLAN))
 
 
 def test_version_two_plan_without_questions_is_not_old(tmp_path):

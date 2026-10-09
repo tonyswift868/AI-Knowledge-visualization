@@ -9,7 +9,7 @@ import type { PlanTree } from "./NewPlan"
 import { Loading } from '../loading/Loading'
 
 type Detail = React.ComponentProps<typeof PlanTree>["detail"] & KnowledgeDetail & {
-  unusable?: boolean; message?: string
+  migration_message?: string
   progress?: { remaining: number; overdue_days: number }; has_report?: boolean
   plan: { weekday_weights?: number[] }
   teacher_preset?: { id: string; name: string }
@@ -85,11 +85,11 @@ export function PlanDetail() {
     {loadError ? <><b>{loadError}</b>{loadError==='读取超时' && <p className="muted">比平时慢，可能是网络问题。</p>}<div className="row"><Button data-testid="detail-retry" onClick={retry}>重试</Button><Button kind="ghost" onClick={() => go("plans")}>返回我的计划</Button></div></>
       : <Loading shape="page" label="正在读取计划…" resetKey={attempt} onRetry={retry}/>}
   </div></div>
-  if (detail.unusable) return <div className="page"><Button small kind="ghost" onClick={() => go("plans")}><ArrowLeft />我的计划</Button><div className="card stack" style={{ marginTop: 12 }}><h1>{detail.plan.title || detail.plan.goal}</h1><p role="status">{detail.message || "旧版计划，已不可用"}</p></div></div>
   const points = detail.stages.reduce((a, s) => a + s.modules.reduce((b, m) => b + m.points.length, 0), 0)
   return (
     <div className="page">
       <Button small kind="ghost" onClick={() => go("plans")}><ArrowLeft />我的计划</Button>
+      {detail.migration_message && <p role="status">{detail.migration_message}</p>}
       <Loading active={detail.point_minutes_status==='running'} label="正在按内容重算知识点时长…" onRetry={retryMinutes}/>
       {detail.point_minutes_status==='failed' && <div className="row" role="status"><span>学习分钟重算未完成，原有时长仍可查看。</span><Button small onClick={retryMinutes}>重试时长重算</Button></div>}
       {minutesError && <p role="alert">{minutesError}</p>}

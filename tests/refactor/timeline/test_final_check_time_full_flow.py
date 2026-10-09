@@ -348,7 +348,14 @@ def test_new_estimates_persist_sync_and_validate(flow_env):
         assert reopened.load_ledger(PLAN).total_minutes == 88
     with CourseStore('replica', e.root) as replica:
         replica.apply_remote([(record, i+1) for i, record in enumerate(e.store.pending_records(1000))])
-        assert replica.records('modules', PLAN) == e.store.records('modules', PLAN)
+        # This historical fixture seeds pre-70 questions. Sync now retires
+        # those cards and marks preparation pending, without changing any of
+        # the module's estimates or immutable accounting under test here.
+        modules = replica.records('modules', PLAN)
+        assert [{k:v for k,v in m.items() if k not in ('material_preparation','question_extraction')}
+                for m in modules] == e.store.records('modules', PLAN)
+        assert all(m['material_preparation']['state']=='pending' for m in modules)
+        assert all(q['role']=='retired' for q in replica.records('question_bank',PLAN))
         assert replica.load_ledger(PLAN).to_dict() == e.store.load_ledger(PLAN).to_dict()
 
 

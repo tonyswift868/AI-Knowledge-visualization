@@ -67,6 +67,7 @@ def point_minute_metrics(points, chunks, questions):
     by_chunk = {c['id']: c for c in chunks}
     counts = {p['id']: set() for p in points}
     for q in questions:
+        if q.get('role') == 'retired': continue
         for identifier in q.get('point_ids', []):
             if identifier in counts: counts[identifier].add(q['id'])
     result = {}

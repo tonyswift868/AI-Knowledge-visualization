@@ -131,6 +131,23 @@ class Classroom:
         if state.get('version') != 2 or state.get('module_id') not in modules:
             state = self._rebuild(course)
         room = (state.get('practice') or {}).get('resume', state)
+        bank = course.store.records('question_bank',course.plan_id)
+        bank_ids = {q['id'] for q in bank}
+        retired = {q['id'] for q in bank if q.get('role')=='retired'}
+        pending = room.get('pending') or {}
+        # Old unscored casual/quick cards already have a dialogue-only reopen
+        # path below; they must not reset the current teaching scene.
+        cached = [] if pending.get('kind') in ('casual','quick') else [pending.get('question', {})]
+        for key in ('test','check','practice'):
+            cached.extend((room.get(key) or {}).get('queue', []))
+        if any(isinstance(q,dict) and (q.get('id') in retired or q and 'kind' not in q
+               or q and q.get('kind') not in ('objective','recall') and q.get('id') not in bank_ids
+               and (q.get('kind') not in ('short','essay') or course.plan.get('material_migration')==8)) for q in cached):
+            # The scene can cache full legacy cards independently of SQLite.
+            # Rebuild only the pending scene from immutable progress; don't
+            # change answers, taught credits or closed attempts to retire it.
+            state = self._rebuild(course)
+            room = state
         if (room.get('pending') or {}).get('kind') in ('casual','quick'):
             # Reopen an old unscored card as conversation, without grading it
             # or deleting any previously saved learning history.
@@ -273,7 +290,8 @@ class Classroom:
             getattr(self,wait['action'])(course,state,ctx,*wait['args'])
 
     def enter(self, course, state, ctx):
-        if course.book().check_complete() and not self._questions(course) and course.plan['state']!='completed':
+        if (course.book().check_complete() and not self._questions(course) and course.plan['state']!='completed'
+                and all(self._ready(course,m['id']) for m in course.modules)):
             return self._complete(course,state,ctx)
         state.pop('materials_paused',None)
         if course.plan_id not in self._entered_plans or not state.get('in_session'):
@@ -583,7 +601,7 @@ class Classroom:
         self._credit_learning(course,state,point)
         state['index']+=1;state['pending']=None;state.pop('conversation',None)
         state['step']='teach' if state['index']<len(course.points_of(state['module_id'])) else 'test_offer'
-        if state['step']=='test_offer' and not self._questions(course,state['module_id']):
+        if state['step']=='test_offer' and not self._questions(course,state['module_id']) and self._ready(course,state['module_id']):
             for p in course.points_of(state['module_id']):course.store.confirm_credits(course.plan_id,p['id'],event_id=f"learn-only:{p['id']}",today=self._day(state))
             state['step']='test_done'
             self._say(course,state,'这个模块没有题，只学不考。')
@@ -594,6 +612,8 @@ class Classroom:
         if kind=='skip_test' and (state['step']!='teach' or state['index']!=0 or any(p['id'] in course.taught() for p in points)):
             raise BridgeError('STEP_INVALID','只有模块开始前才能直接考。')
         if kind=='module_test' and state['step']!='test_offer':raise BridgeError('STEP_INVALID','模块还没讲完。')
+        if course.module(mid).get('material_preparation',{}).get('state') is not None and not self._ready(course,mid):
+            return self._wait(course,state,'start_test',(kind,))
         queue=self._questions(course,mid)
         if kind=='retest':
             if state['step']!='test_done' or book.module(mid).state!='failed':raise BridgeError('STEP_INVALID','现在没有待重测的题。')
@@ -614,6 +634,13 @@ class Classroom:
 
     def start_check(self, course, state, ctx):
         if state['step'] not in ('check_offer','checking') or state.get('pending'):raise BridgeError('STEP_INVALID','请先完成当前步骤。')
+        pending = next((m['id'] for m in course.modules if not self._ready(course,m['id'])),None)
+        if pending is not None:
+            job=self._prepare(course,pending)
+            state['material_wait']=dict(module_id=pending,action='start_check',args=[],previous_step=state['step'],
+                done=job['done'],total=job['total'],text=job['text'],error=job['error'])
+            state['step']='preparing_materials'
+            return
         if course.plan['state']=='active':
             course.store.start_checking(course.plan_id);course.plan=course.store.get_plan(course.plan_id)
         state.update(phase='check',step='checking',pending=None,check=None,check_used=0,check_missing=[])
@@ -790,11 +817,9 @@ class Classroom:
             raise BridgeError("PARAM_INVALID", "计划编号无效。")
         store = self.services.store
         try:
-            plan = store.get_plan(plan_id)
+            plan = store.require_material_plan(plan_id)
         except StoreError:
             raise BridgeError("PLAN_NOT_FOUND", "找不到这份计划。") from None
-        if plan.get('unusable'):
-            raise BridgeError('OLD_PLAN', '旧版计划，已不可用')
         if plan.get("state") not in ("active", "checking", "completed"):
             raise BridgeError("PLAN_NOT_STARTED", "这份计划还没开始，请先在新建计划里点“开始计划”。")
         return _Course(store, plan)
@@ -860,7 +885,7 @@ class Classroom:
             self._say(course, state, '本次可学模块已结束。出题失败的点未算通过，稍后重试检测；可以继续学习其他模块。', role='system')
             return
         state.update(step="check_offer", pending=None, test=None)
-        if not self._questions(course):return self._complete(course,state,ctx)
+        if not self._questions(course) and all(self._ready(course,m['id']) for m in course.modules):return self._complete(course,state,ctx)
         self._say(course,state,'全部模块都学完或通过了。最终检验会考全部题；答错过的题需连续答对两遍。',role='system')
 
 

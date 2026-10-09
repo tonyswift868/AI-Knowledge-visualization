@@ -50,11 +50,15 @@ def test_pick_unused_then_lru_and_never_calls_model(store):
 
 
 
-def test_old_plans_unusable_no_migration(store):
+def test_old_plans_upgrade_and_continue_preparation(store):
     with store.transaction():
         plan=store._get('plans','p','p');plan.pop('material_version');store._put('plans','p',plan)
-    assert store.get_plan('p')['unusable_reason']=='旧版计划，已不可用'
-    with pytest.raises(StoreError,match='旧版计划'):pm.prepare_point(store,'p',store.records('points','p')[0],{})
+    store.require_material_plan('p')
+    assert store.get_plan('p')['material_version']==3
+    assert not store.get_plan('p').get('unusable')
+    # A legacy plan reaches the normal splitter path instead of being refused.
+    with pytest.raises(StoreError,match='拆题模型尚未接入'):
+        pm.prepare_point(store,'p',store.records('points','p')[0],{})
 
 
 

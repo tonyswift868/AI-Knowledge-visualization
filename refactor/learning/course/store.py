@@ -1,4 +1,4 @@
-"""Account-owned SQLite course data and an atomic record outbox, schema v5.
+"""Account-owned SQLite course data and an atomic record outbox, schema v8.
 
 Each business table stores a canonical, versioned JSON payload plus indexed FK
 columns and a local revision. Payload fields (also validated below):
@@ -7,7 +7,8 @@ optional started_on/completed_on (explicit caller-supplied study dates);
 sources: kind, url, sha256, title, site, tier, credibility, adopted;
 source_chunks: extract chunk_id as id, source_id, position, text, pages, section;
 stages/modules/points: title/summary, position, prerequisites, minute estimates,
-and nonempty chunk_ids for every point; teacher_profile/reports: document;
+and chunk_ids (legacy missing provenance is explicitly queued for repair);
+teacher_profile/reports: document;
 messages/chat_messages: role, content, kind, at, compressed, summary_of.
 question_bank: original-source question payload (question_bank.validate_question),
 source/answer_source locators and append-only purpose/time uses.
@@ -58,7 +59,7 @@ from .ledger import Ledger, PlanWindow, Credit
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 POINT_MINUTES_VERSION = 2  # Content totals, replacing v1's fixed-budget allocation.
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
@@ -306,8 +307,13 @@ class CourseStore:
                 FOREIGN KEY(plan_key,module_id) REFERENCES modules(plan_key,id) DEFERRABLE INITIALLY DEFERRED,
                 PRIMARY KEY(plan_key,id))''')
             self._db.execute('UPDATE schema_version SET version=7')
+            version = 7
         owner = self._db.execute("SELECT value FROM _meta WHERE key='account_id'").fetchone()
         if owner is None or owner[0] != self.account_id: raise StoreError('ACCOUNT_MISMATCH')
+        if version == 7:
+            for plan_id, in self._db.execute('SELECT id FROM plans').fetchall():
+                self._upgrade_material_plan(plan_id)
+            self._db.execute('UPDATE schema_version SET version=8')
 
     def _revision(self):
         self._db.execute("UPDATE _meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
@@ -375,7 +381,10 @@ class CourseStore:
             if entity == 'points':
                 _id(payload['module_id']); _number(payload['minutes'], True)
                 if not isinstance(payload['summary'], str) or not payload['summary'].strip(): raise StoreError('INVALID_POINT')
-                if not isinstance(payload['chunk_ids'], list) or not payload['chunk_ids'] or len(set(payload['chunk_ids'])) != len(payload['chunk_ids']): raise StoreError('MISSING_PROVENANCE')
+                ids = payload['chunk_ids']
+                if (not isinstance(ids, list) or len(set(ids)) != len(ids)
+                        or not ids and payload.get('material_repair') != 'missing_provenance'):
+                    raise StoreError('MISSING_PROVENANCE')
         elif entity in ('judgements', 'attempt_closed'):
             event = event_from_dict(payload['event'])
             expected = Judgement if entity == 'judgements' else AttemptClosed
@@ -554,12 +563,12 @@ class CourseStore:
         return self._put('plans', plan_id, plan)
 
     def get_plan(self, plan_id):
-        with self._lock: return self._plan_availability(self._get('plans', plan_id, plan_id))
+        with self._lock: return self._get('plans', plan_id, plan_id)
 
     def list_plans(self, *, include_archived=False):
         with self._lock:
             values = [json.loads(r[0]) for r in self._db.execute('SELECT payload FROM plans ORDER BY id')]
-            return [self._plan_availability(p) for p in values if include_archived or not p['archived']]
+            return [p for p in values if include_archived or not p['archived']]
 
     @_atomic
     def save_module_preparation(self, plan_id, module_id, summary):
@@ -642,21 +651,90 @@ class CourseStore:
                     row.update(links=kept, status='pending')
                     self._put('point_links', plan_id, row)
 
-    def _plan_availability(self, plan):
-        # A version-2 plan (material flow) saved before version 3 is old only if it
-        # holds pre-batch-70 questions; questions prepared since then are
-        # objective/recall (BUG-54). Version 1 or none is old.
-        bank = self._rows('question_bank', plan['id'])
-        version = plan.get('material_version')
-        old = any('kind' not in q or q.get('origin')=='cloze' and q.get('role','bank')=='bank' for q in bank) \
-            or version not in (2, 3) \
-            or (version == 2 and any(q.get('kind') not in ('objective', 'recall') for q in bank))
-        if old: plan.update(unusable=True, unusable_reason='旧版计划，已不可用')
+    @staticmethod
+    def _retire_legacy_question(question):
+        """Preserve the complete historical payload; never upgrade an invented Q."""
+        from .question_bank import retire_legacy_question
+        return retire_legacy_question(question)
+
+    def _upgrade_material_plan(self, plan_id):
+        """v8 material-format upgrade, also used after old-device sync ingestion.
+
+        Called inside the existing store transaction. All changes go through the
+        normal journal/outbox, so a subsequent projection cannot undo migration.
+        Immutable progress/events and the plan state are never rewritten.
+        """
+        plan = self._get('plans', plan_id, plan_id)
+        legacy = plan.get('material_version') not in (2, 3)
+        upgrade_fields = plan.get('material_version') != 3 or plan.get('material_migration') == 8
+        changed_modules, changed_points = set(), set()
+        for question in self._rows('question_bank', plan_id):
+            retired = self._retire_legacy_question(question)
+            if retired.get('role') == 'retired' and not retired['retirement'].get('preparation_reset'):
+                retired = dict(retired, retirement=dict(retired['retirement'], preparation_reset=True))
+            if retired != question:
+                self._put('question_bank', plan_id, retired)
+                changed_modules.add(question['module_id'])
+                changed_points.update(question.get('point_ids', ()))
+        chunks = {c['id']: c for c in self._rows('source_chunks', plan_id)}
+        sources = {s['id']: s for s in self._rows('sources', plan_id)}
+        modules = self._rows('modules', plan_id)
+        points = self._rows('points', plan_id)
+        for point in points:
+            if not upgrade_fields and point['id'] not in changed_points: continue
+            original = dict(point)
+            # Use only recorded point/relational provenance or literal citation
+            # references; never guess a point's source from its neighbouring text.
+            ids = list(point.get('chunk_ids') or ())
+            if not ids:
+                ids = [r[0] for r in self._db.execute('SELECT chunk_id FROM point_sources WHERE plan_key=? AND point_id=?', (plan_id, point['id']))]
+                ids += [c['chunk_id'] for c in point.get('citations', ()) if c.get('chunk_id')]
+                ids = list(dict.fromkeys(cid for cid in ids if cid in chunks))
+                if ids: point['chunk_ids'] = ids
+            if not point.get('citations') and ids:
+                point['citations'] = [dict(chunk_id=cid, title=sources.get(chunks[cid]['source_id'], {}).get('title', '资料'),
+                    quote=chunks[cid]['text'], locator=' / '.join(chunks[cid].get('section') or [])) for cid in ids if cid in chunks]
+            if not point.get('summary') and point.get('title'): point['summary'] = point['title']
+            if not point.get('title') and point.get('summary'): point['title'] = point['summary'][:80]
+            if legacy or point['id'] in changed_points:
+                point['question_preparation'] = 'pending'
+            if not ids:
+                # Keep a source-less old point readable; the existing classroom
+                # prepare_one path asks for/relinks material before teaching it.
+                point['material_repair'] = 'missing_provenance'
+                point['chunk_ids'] = []
+                changed_modules.add(point['module_id'])
+            if point != original:
+                self._put('points', plan_id, point)
+        for module in modules:
+            before = dict(module)
+            if upgrade_fields:
+                owned = [p for p in points if p['module_id'] == module['id']]
+                module.setdefault('point_count', len(owned))
+                module.setdefault('learning_minutes', sum(p['minutes'] for p in owned))
+                module.setdefault('check_minutes', 0)
+                module.setdefault('prerequisites', [])
+                module.setdefault('chunk_ids', list(dict.fromkeys(cid for p in owned for cid in p.get('chunk_ids', ()))))
+            if (legacy or module['id'] in changed_modules
+                    or upgrade_fields and not (module.get('question_extraction') or {}).get('state')):
+                module['question_extraction'] = dict(state='pending', reason='material_format_upgrade')
+                module['material_preparation'] = dict(module.get('material_preparation') or {}, state='pending',
+                    error=None, message='这个模块的题需要按资料重新准备，学习进度已保留。')
+            if module != before: self._put('modules', plan_id, module)
+        original = dict(plan)
+        plan.pop('unusable', None); plan.pop('unusable_reason', None)
+        plan['material_version'] = 3
+        if legacy or changed_modules:
+            plan['material_migration'] = 8
+        if plan != original: self._put('plans', plan_id, plan)
         return plan
 
+    @_atomic
     def require_material_plan(self, plan_id):
         plan = self.get_plan(plan_id)
-        if plan.get('unusable'): raise StoreError('OLD_PLAN', '旧版计划，已不可用')
+        # Also accept an old locally restored plan without requiring app restart.
+        if plan.get('material_version') != 3 or plan.get('unusable'):
+            return self._upgrade_material_plan(plan_id)
         return plan
 
     @_atomic
@@ -671,6 +749,7 @@ class CourseStore:
             source = self._get('sources', plan_id, chunk['source_id'])
             if not source['adopted']: raise StoreError('MISSING_PROVENANCE')
         point['chunk_ids'] = ids
+        point.pop('material_repair', None)
         self._put('points', plan_id, point)
 
     @_atomic
@@ -680,12 +759,17 @@ class CourseStore:
         self._get('modules', plan_id, module_id)
         valid_points = {p['id'] for p in self._rows('points', plan_id) if p['module_id'] == module_id}
         identifiers = []
-        existing_rows = self._rows('question_bank', plan_id)
+        bank = self._rows('question_bank', plan_id)
+        retired_ids = {q['id'] for q in bank if q.get('role')=='retired'}
+        existing_rows = [q for q in bank if q.get('role') != 'retired']
         stems = {}
         for q in existing_rows: stems.setdefault(original_text(q['stem']), []).append(q)
         skipped = 0
         for question in questions:
             row = dict(question)
+            if row['id'] in retired_ids:
+                skipped += 1
+                continue  # a reused ID must never overwrite historical evidence
             if row['module_id'] != module_id or not set(row['point_ids']) <= valid_points:
                 raise StoreError('POINT_MODULE_MISMATCH')
             # Content-addressed IDs make concurrent/background repeats idempotent.
@@ -712,6 +796,7 @@ class CourseStore:
         self.require_material_plan(plan_id)
         if purpose not in PURPOSES: raise StoreError('INVALID_QUESTION_USE')
         row = self._get('question_bank', plan_id, question_id)
+        if row.get('role') == 'retired': raise StoreError('QUESTION_RETIRED', '这道旧题已退出考核，历史作答仍保留。')
         row['uses'].append(dict(purpose=purpose, at=_at(at)))
         self._put('question_bank', plan_id, row)
 
@@ -734,6 +819,8 @@ class CourseStore:
             if any(existing.get(k) != v for k, v in row.items() if k != 'at'):
                 raise StoreError('EVENT_CONFLICT')
             return answer_id
+        if any(q['id']==question_id and q.get('role')=='retired' for q in self._rows('question_bank',plan_id)):
+            raise StoreError('QUESTION_RETIRED','这道旧题已退出考核，历史作答仍保留。')
         if context not in ('module_test', 'skip_test', 'retest', 'check', 'practice', 'quick_confirm') or type(correct) is not bool:
             raise StoreError('INVALID_ANSWER')
         self._get('modules', plan_id, module_id)
@@ -746,6 +833,8 @@ class CourseStore:
     @_atomic
     def append_practice_result(self, plan_id, question_id, module_id, point_ids, correct, *, reason='', at=None, result_id=None, wrong_points=None):
         self._get('plans', plan_id, plan_id)
+        if any(q['id']==question_id and q.get('role')=='retired' for q in self._rows('question_bank',plan_id)):
+            raise StoreError('QUESTION_RETIRED','这道旧题已退出考核，历史作答仍保留。')
         identifier = _id(result_id or uuid.uuid4().hex)
         sequence = int(self._db.execute("SELECT value FROM _meta WHERE key='revision'").fetchone()[0]) + 1
         wrong = list(wrong_points) if wrong_points is not None else ([] if correct else list(point_ids))
@@ -1191,10 +1280,24 @@ class CourseStore:
             from .question_bank import assessment_questions
             taught = [r['credit']['unit_id'] for r in self._rows('credits',plan_id)
                       if r['id'].startswith(('learn:','relearn:'))]
-            book = MasteryBook((PointRef(p['id'], p['module_id']) for p in points),
-                               assessment_questions(self.records('question_bank',plan_id)), taught)
-            events = [p['event'] for entity in ('judgements', 'attempt_closed') for p in self._rows(entity, plan_id)]
-            for event in events: book.apply(event_from_dict(event))
+            bank = self.records('question_bank',plan_id)
+            active = assessment_questions(bank)
+            active_ids = {q['id'] for q in active}
+            historical_ids = {q['id'] for q in bank if q.get('role')=='retired'}
+            historical_ids.update(json.loads(r[0])['id'] for r in self._db.execute(
+                "SELECT payload FROM _records WHERE entity='question_bank' AND plan_key=? AND deleted=1",(plan_id,)))
+            # Some old clients already dropped legacy bank rows during sync.
+            # Immutable saved answers still identify those historical questions.
+            historical_ids.update(a['question_id'] for a in self._rows('question_answers',plan_id)
+                                  if a.get('question_id') not in active_ids)
+            events = [event_from_dict(p['event']) for entity in ('judgements', 'attempt_closed') for p in self._rows(entity, plan_id)]
+            historic = [e for e in events if isinstance(e,Judgement) and (e.question_id is None or e.question_id in historical_ids)]
+            attempts = {(e.module_id,e.attempt_id) for e in historic if e.context in ('module_test','skip_test','retest')}
+            historical_events = {e.event_id for e in historic}
+            historical_events.update(e.event_id for e in events if isinstance(e,AttemptClosed) and (e.module_id,e.attempt_id) in attempts)
+            book = MasteryBook((PointRef(p['id'], p['module_id']) for p in points),active,taught,
+                              historical_event_ids=historical_events)
+            for event in events: book.apply(event)
             return book
 
     def today_status(self, plan_id, *, now, refresh, tz, classroom_day=None) -> dict:
@@ -1725,23 +1828,19 @@ class CourseStore:
                     continue  # A remote echo is not an upload acknowledgement.
             elif old and server_revision <= old['server_revision']:
                 continue
-            if not record.deleted and record.entity == 'question_bank' and 'kind' not in payload:
-                try: plan = self._get('plans', record.plan_key, record.plan_key)
-                except StoreError: plan = None
-                if plan is not None:
-                    plan.update(unusable=True, unusable_reason='旧版计划，已不可用', material_version=1)
-                    self._put('plans', record.plan_key, plan)
-                continue
+            if not record.deleted and record.entity == 'question_bank':
+                payload = self._retire_legacy_question(payload)
             if not record.deleted:
                 # Validate the actual remote record before choosing local fields;
                 # otherwise a malformed remote edit could be silently hidden.
                 self._validate(record.entity, record.plan_key, payload)
             repair_answered = False
             uses_union = None
-            if record.entity == 'question_bank' and not record.deleted and old is not None and not old['deleted']:
+            if (record.entity == 'question_bank' and not record.deleted and old is not None and not old['deleted']
+                    and payload.get('role')!='retired' and json.loads(old['payload']).get('role')!='retired'):
                 local_uses = json.loads(old['payload']).get('uses', [])
                 uses_union = [dict(purpose=purpose, at=at) for purpose, at in sorted(
-                    {(u['purpose'], u['at']) for u in local_uses + payload['uses']})]
+                    {(u['purpose'], u['at']) for u in local_uses + payload.get('uses', [])})]
             merged = False
             if old is not None and old['pending'] and record.entity not in PROGRESS and not record.deleted:
                 local = json.loads(old['payload'])
@@ -1777,6 +1876,8 @@ class CourseStore:
             if uses_union is not None and uses_union != payload.get('uses'):
                 payload['uses'] = uses_union
                 repair_answered = True
+            if not deleted and record.entity == 'question_bank':
+                payload = self._retire_legacy_question(payload)
             if not deleted: self._validate(record.entity, record.plan_key, payload)
             if record.entity == 'plans' and payload['id'] != record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
             self._db.execute('''INSERT INTO _records VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(entity,entity_id)
@@ -1788,3 +1889,5 @@ class CourseStore:
                 self._changed('remote', record.entity)
         self._project_records()
         self._prune_point_links()
+        for plan_id, in self._db.execute('SELECT id FROM plans').fetchall():
+            self._upgrade_material_plan(plan_id)

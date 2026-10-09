@@ -218,7 +218,7 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-def test_old_plan_opens_with_clear_unusable_state(tmp_path):
+def test_old_plan_detail_remains_readable_after_upgrade(tmp_path):
     from refactor.learning.course.ledger import PlanWindow
     store=CourseStore('old38',tmp_path);pid='a'*32
     try:
@@ -228,9 +228,11 @@ def test_old_plan_opens_with_clear_unusable_state(tmp_path):
         with store.transaction():store._put('plans',pid,row)
         services=SimpleNamespace(store=store)
         detail=PlanFlow(services,lambda *a:None,lambda:DAY).detail(pid)
-        assert detail['unusable'] and detail['message']=='旧版计划，已不可用'
-        with pytest.raises(BridgeError,match='旧版计划，已不可用'):
+        assert not detail.get('unusable') and detail['plan']['id']==pid
+        # This empty fixture was never started; its normal state error remains.
+        with pytest.raises(BridgeError,match='这份计划还没开始'):
             Classroom(services,lambda:DAY,now=NOW)._course(pid)
+        assert store.get_plan(pid)['material_version']==3
     finally:store.close()
 
 def test_real_materials_wait_resumes_once_with_mapping_context(tmp_path):
