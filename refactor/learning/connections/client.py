@@ -113,7 +113,7 @@ class ModelClient:
                 raise ModelError("PRESET_LIMIT", "最多保存 32 个模型预设。")
             secret_changed = api_key is not None and api_key != ""
             if old and old["has_api_key"] and not secret_changed and transport.completions_url(old["base_url"]) != transport.completions_url(fields["base_url"]):
-                raise ModelError("API_KEY_CONFIRM_REQUIRED", "模型地址已改变，请重新输入该地址的 API Key。")
+                raise ModelError("API_KEY_CONFIRM_REQUIRED", "模型地址已改变，请到 设置 → 模型连接 重新输入该地址的 API Key 并保存。")
             identifier = old["id"] if old else uuid.uuid4().hex
             saved = dict(fields, id=identifier, has_api_key=secret_changed or bool(old and old["has_api_key"]))
             previous_secret = self._credentials.get(identifier) if secret_changed else None
@@ -182,10 +182,10 @@ class ModelClient:
             self._ensure_open()
             config = self.get_configuration()
             if config is None:
-                raise ModelError("MODEL_NOT_CONFIGURED", "请先在模型连接中保存一个预设。")
+                raise ModelError("MODEL_NOT_CONFIGURED", "还没有可用的模型：请到 设置 → 模型连接 选择厂商、填入 API Key 并保存。")
             secret = self._credentials.get(config["id"])
             if not secret:
-                raise ModelError("MODEL_KEY_REQUIRED", "请为当前模型预设保存 API Key。")
+                raise ModelError("MODEL_KEY_REQUIRED", "当前模型还没有 API Key：请到 设置 → 模型连接 填入 API Key 并保存。")
             self._requests.add(stopped)
         request_id, started_at, started_event = begin_model_call(
             account_id=self.account_id, metadata=metadata,

@@ -46,7 +46,7 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
             or any(ord(c) < 32 for c in model)):
         raise ModelError('MODEL_CONFIG_INVALID', '请填写有效的模型名称。')
     if not isinstance(api_key, str) or not api_key.strip():
-        raise ModelError('MODEL_KEY_REQUIRED', '请填写 API Key。')
+        raise ModelError('MODEL_KEY_REQUIRED', '当前模型还没有 API Key：请到 设置 → 模型连接 填入 API Key 并保存。')
     if len(api_key) > 16384 or not api_key.isascii() or any(c.isspace() or ord(c) < 32 for c in api_key):
         raise ModelError('MODEL_CONFIG_INVALID', 'API Key 格式无效。')
     if (not isinstance(messages, (list, tuple)) or not messages or any(
