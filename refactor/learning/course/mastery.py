@@ -154,7 +154,7 @@ class ModuleState:
 
 class MasteryBook:
     """Replay immutable question outcomes. Free practice never changes completion."""
-    def __init__(self, points, questions=(), taught=()):
+    def __init__(self, points, questions=(), taught=(), *, historical_event_ids=()):
         self._points = tuple(p if isinstance(p, PointRef) else PointRef(**p) for p in points)
         self._refs = {p.point_id:p for p in self._points}
         if len(self._refs)!=len(self._points):raise MasteryError('DUPLICATE_POINT')
@@ -162,6 +162,7 @@ class MasteryBook:
         self._questions = {q['id']:{k:copy.deepcopy(q[k]) for k in ('id','module_id','point_ids')} for q in questions}
         self._taught = set(taught)
         self._events = {}
+        self._historical_event_ids = set(historical_event_ids)
         self._cache = None
 
     def apply(self, event):
@@ -177,7 +178,8 @@ class MasteryBook:
                 if pid not in self._refs or self._refs[pid].module_id!=event.module_id:raise MasteryError('POINT_MODULE_MISMATCH')
             if event.question_id is not None:
                 q=self._questions.get(event.question_id)
-                if not q or q['module_id']!=event.module_id:raise MasteryError('UNKNOWN_QUESTION')
+                if (not q or q['module_id']!=event.module_id) and event.event_id not in self._historical_event_ids:
+                    raise MasteryError('UNKNOWN_QUESTION')
         if isinstance(event,AttemptClosed) and self.attempt_closed(event.module_id,event.attempt_id):
             raise MasteryError('ATTEMPT_ALREADY_CLOSED')
         self._events[event.event_id]=event;self._cache=None
@@ -191,11 +193,16 @@ class MasteryBook:
             check_correct=0,last_question=None,module_errors=0,check_errors_before_pass=0,check_passed_at=None) for qid in self._questions}
         modules={mid:dict(state='untested',module_test_count=0,skip_test_count=0,retest_count=0,first_test=None,
             skip_test_passed=False) for mid in self._modules}
+        old_points, old_modules = _historical_progress(self._points,
+            [e for e in self._events.values() if e.event_id in self._historical_event_ids])
+        self._historical_points = old_points
+        for mid, prior in old_modules.items(): modules[mid].update(prior)
         for mid,m in modules.items():
-            if not any(q['module_id']==mid for q in self._questions.values()) and all(p.point_id in self._taught for p in self._points if p.module_id==mid):
+            if mid not in old_modules and not any(q['module_id']==mid for q in self._questions.values()) and all(p.point_id in self._taught for p in self._points if p.module_id==mid):
                 m['state']='passed'
         attempts={};closed=set();history=[]
         for event in sorted(self._events.values(),key=lambda e:(e.seq,e.event_id)):
+            if event.event_id in self._historical_event_ids: continue
             m=modules[event.module_id];key=(event.module_id,event.attempt_id)
             if isinstance(event,AttemptClosed):
                 answers=attempts.get(key,{})
@@ -246,6 +253,12 @@ class MasteryBook:
         if not rows and point_id in self._taught:state='green'
         casual_errors=sum(not correct for event in self._events.values() if isinstance(event,Judgement)
                           and event.context in ('casual','quick_confirm') for pid,correct in event.results if pid==point_id)
+        prior = self._historical_points.get(point_id)
+        if prior and not any(q['module_correct'] is not None or q['check_questions'] for q in rows):
+            # Keep attained mastery visible, without turning old questions into
+            # current assessment/statistics or manufacturing correct answers.
+            return PointState(point_id,mid,prior['state'],casual_errors=casual_errors,
+                module_errors=prior['module_errors'],level=prior['level'])
         return PointState(point_id,mid,state,casual_errors=casual_errors,module_errors=sum(q['module_errors'] for q in rows),
             level=3 if rows and all(q['passed'] for q in rows) or not rows and point_id in self._taught else 1,
             check_questions=sum(q['check_questions'] for q in rows),check_correct=sum(q['check_correct'] for q in rows),
@@ -300,14 +313,68 @@ class MasteryBook:
         return result
 
     def to_dict(self):
-        return dict(version=2,points=[asdict(p) for p in self._points],questions=list(self._questions.values()),taught=sorted(self._taught),
+        data = dict(version=2,points=[asdict(p) for p in self._points],questions=list(self._questions.values()),taught=sorted(self._taught),
             events=[event_to_dict(e) for e in sorted(self._events.values(),key=lambda e:(e.seq,e.event_id))])
+        if self._historical_event_ids: data['historical_event_ids'] = sorted(self._historical_event_ids)
+        return data
 
     @classmethod
     def from_dict(cls,data):
         try:
             if data['version']!=2:raise ValueError()
-            book=cls(data['points'],data['questions'],data['taught'])
+            book=cls(data['points'],data['questions'],data['taught'],historical_event_ids=data.get('historical_event_ids',()))
             for event in data['events']:book.apply(event)
             return book
         except (ValueError,TypeError,KeyError):raise MasteryError('INVALID_DATA') from None
+
+
+def _historical_progress(refs, events):
+    """Replay pre-70 point outcomes for attained progress, not new assessment.
+
+    The prior point-based projection (eb4d40a6) is retained here only for its
+    states/pass counts/levels. Original immutable events remain the authority;
+    no snapshot table or replacement answers are created by migration.
+    """
+    if not events: return {}, {}
+    points={p.point_id:dict(state='untested',module_errors=0,level=None) for p in refs}
+    modules={mid:dict(state='untested',module_test_count=0,skip_test_count=0,retest_count=0,
+        first_test=None,skip_test_passed=False) for mid in {p.module_id for p in refs}}
+    grouped={mid:[p.point_id for p in refs if p.module_id==mid] for mid in modules}
+    touched_points,touched_modules=set(),set()
+    attempts,closed={},set()
+    for e in sorted(events,key=lambda e:(e.seq,e.event_id)):
+        m=modules[e.module_id];pids=grouped[e.module_id];key=(e.module_id,e.attempt_id)
+        touched_modules.add(e.module_id)
+        if isinstance(e,AttemptClosed):
+            answers=attempts.get(key,{})
+            mastered={pid for pid,values in answers.items() if values and all(values)}
+            passed=len(mastered)*10>=len(pids)*9
+            m[e.kind+'_count']+=1
+            if m['first_test'] is None:
+                m['first_test']=dict(event_id=e.event_id,attempt_id=e.attempt_id,kind=e.kind,
+                    mastered_points=len(mastered),total_points=len(pids),mastery_ratio=len(mastered)/len(pids))
+            if e.kind=='skip_test' and passed: m['skip_test_passed']=True
+            if e.kind=='skip_test' and not passed:
+                m['state']='untested'
+                for pid in pids: points[pid]['state']='untested'
+            else:
+                m['state']=('skipped' if e.kind=='skip_test' else 'passed') if passed else 'failed'
+                for pid in pids: points[pid]['state']='green' if pid in mastered else 'weak' if passed else 'red'
+            touched_points.update(pids);closed.add(key);continue
+        touched_points.update(pid for pid,_ in e.results)
+        if e.context in ('module_test','skip_test','retest'):
+            for pid,correct in e.results: points[pid]['module_errors']+=int(not correct)
+        if e.context in ('module_test','skip_test') and key not in closed:
+            for pid,correct in e.results: attempts.setdefault(key,{}).setdefault(pid,[]).append(correct)
+        elif e.context=='retest':
+            m['retest_count']+=1
+            for pid,correct in e.results:
+                if points[pid]['state']=='red' and correct: points[pid]['state']='green'
+            if m['state']=='failed' and all(points[pid]['state']!='red' for pid in pids): m['state']='passed'
+        elif e.context=='check' and all(m['state'] in ('passed','skipped') for m in modules.values()):
+            for pid,correct in e.results:
+                p=points[pid];level=p['level'] if p['level'] is not None else 1 if p['module_errors'] else 2
+                p['level']=3 if level==3 else min(3,level+1) if correct else 1
+    for p in points.values():
+        if p['level'] is None: p['level']=1 if p['module_errors'] else 2
+    return ({pid:points[pid] for pid in touched_points},{mid:modules[mid] for mid in touched_modules})

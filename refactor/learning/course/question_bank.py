@@ -147,7 +147,24 @@ def contains_original(quote, text):
     return bool(needle) and needle in original_text(text)
 
 
+def retire_legacy_question(row):
+    if row.get('role') == 'retired': return row
+    if row.get('kind') in ('objective', 'recall') and row.get('origin') == 'found': return row
+    return dict(row, role='retired', retirement=dict(version=8, preparation_reset=False, previous_role=row.get('role', 'bank'),
+        reason='旧格式题已退出考核，历史作答保留；新题只从资料原文准备。'))
+
+
 def validate_question(row):
+    if row.get('role') == 'retired':
+        # Historical schemas (including type/angle instead of kind) are kept
+        # verbatim. They are evidence, never a grading/selection input.
+        for key in ('id', 'module_id', 'stem'):
+            if not isinstance(row.get(key), str) or not row[key].strip(): raise ValueError('旧题记录无法读取')
+        if not isinstance(row.get('point_ids'), list) or any(not isinstance(p,str) or not p for p in row['point_ids']):
+            raise ValueError('旧题知识点记录无法读取')
+        if not isinstance(row.get('retirement'), dict) or row['retirement'].get('version') != 8:
+            raise ValueError('旧题退出记录无法读取')
+        return row
     if row.get('kind') in ('objective', 'recall'):
         return _validate_material_question(row)
     # Previously saved B-line questions remain bank questions; no invented

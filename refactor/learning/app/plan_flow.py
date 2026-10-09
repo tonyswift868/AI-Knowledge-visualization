@@ -2058,13 +2058,6 @@ class PlanFlow:
         plan = store.get_plan(plan_id)
         from .settings import resolve_teacher_preset
         preset = resolve_teacher_preset(getattr(self.services, 'settings', None), plan)
-        if plan.get('unusable'):
-            return dict(plan=dict(plan, state='unusable'), stages=[], sources=[], has_report=False,
-                        teacher_preset={k: preset[k] for k in ('id', 'name')},
-                        point_links=[], point_links_status='none',
-                        point_minutes_status='none', preparation_status='none',
-                        preparation=dict(status='none', done=0, failed=0, total=0),
-                        unusable=True, message='旧版计划，已不可用')
         stages = store.records("stages", plan_id)
         modules = store.records("modules", plan_id)
         points = store.records("points", plan_id)
@@ -2073,7 +2066,10 @@ class PlanFlow:
         taught = {row['credit']['unit_id'] for row in store.records('credits', plan_id)
                   if row['id'].startswith(('learn:', 'relearn:'))} if started else set()
         from ..course.question_bank import review_points
-        review = review_points(store.records('practice_results', plan_id)) if started else set()
+        bank = store.records('question_bank', plan_id)
+        retired = {q['id'] for q in bank if q.get('role')=='retired'}
+        review = review_points([r for r in store.records('practice_results', plan_id)
+                                if r['question_id'] not in retired]) if started else set()
         by_module: dict[str, list] = {}
         sources=store.records('sources',plan_id)
         chunks=store.records('source_chunks',plan_id)
@@ -2089,7 +2085,7 @@ class PlanFlow:
                    for s in sources if not (s.get('adopted') or s.get('user_provided'))}
         bank_counts: dict[str, list[int]] = {}
         from ..course.question_bank import assessment_questions
-        for question in assessment_questions(store.records('question_bank', plan_id)):
+        for question in assessment_questions(bank):
             counts = bank_counts.setdefault(question['module_id'], [0, 0])
             counts[0] += 1
             counts[1] += int(bool(book and book.question(question['id']).passed))
@@ -2114,6 +2110,9 @@ class PlanFlow:
                   "sources": [{"id": s["id"], "title": s.get("title") or s.get("url") or s.get("filename"), "url": s.get("url"),
                                "kind": s["kind"]} for s in store.records("sources", plan_id) if s.get("adopted")]}
         result["stages"] = [s for s in result["stages"] if s["modules"]]
+        if any((m.get('question_extraction') or {}).get('reason')=='material_format_upgrade'
+               and (m.get('material_preparation') or {}).get('state')!='done' for m in modules):
+            result['migration_message']='旧题已退出考核，学习进度已保留；相关模块的题会按资料重新准备。'
         if plan.get("window") and plan.get("total_minutes"):
             from ..course.store import _window
             window = _window(plan["window"])
