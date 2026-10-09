@@ -662,7 +662,7 @@
 
 ### [SYS-06] 安装程序与自动更新
 - 状态：2.0.3 已发布（2026-10-09，代码 8747eeb8，必须更新、原因 data_compatibility，公网验签通过，有效到 2029-10-09，metadata_version 4；89-MF04/89-MF04b 本机离线排练 2.0.2→2.0.3 通过）；用户用新账号实走“装 2.0.2 → 注册 → 强制更新”待做。
-- 待换（2026-10-09 发现）：公网 installer/MentorFlow-Setup.exe 还是 2026-09-29 的旧版（2.0.0 时期），它只接受 31 天内的签名，装了也更新不到 2.0.2/2.0.3。2.0.2、2.0.3 安装程序已在本机编好：.local/test-tmp/release-2.0.2/installer/（337 MB，sha256 f2f1230c…，用 4430aae 的 Inno 脚本 + 10-03 签名清单编）与 .local/test-tmp/release-2.0.3m/installer/（368 MB，sha256 f2b24751…）。线路慢，用户自己用 scp 传 2.0.3 安装程序到 /home/mentorflow-admin/，传完由架构师核对指纹、备份旧的再替换。
+- 待换（2026-10-09 发现）：公网 installer/MentorFlow-Setup.exe 还是 2026-09-29 的旧版（2.0.0 时期），它只接受 31 天内的签名，装了也更新不到 2.0.2/2.0.3。2.0.2、2.0.3 安装程序已在本机编好：.local/test-tmp/release-2.0.2/installer/（337 MB，sha256 f2f1230c…，用 4430aae 的 Inno 脚本 + 10-03 签名清单编）与 .local/test-tmp/release-2.0.3m/installer/（368 MB，sha256 f2b24751…）。线路慢，不再从本机上传安装程序（用户 2026-10-09 定：服务器上已有新版全部更新文件，由服务器按 stable.json 从 objects 拼出完整安装目录、用 Docker+Wine 跑 Inno Setup 自己编安装程序并替换旧的；以后每次发版本机只传改动的文件）。实现见 90-MF04（scripts/server_installer/）。
 - 2.0.2 的强制更新行为（89-MF04b 读 4430aae 代码确认）：新装第一次启动登录前只看本地已存签名信息，可先注册登录；登录后弹全屏、只有“立即更新”的框（课堂页例外不弹）；缓存到强制策略后，旧版登录前就被拦，需从“修复与更新”入口更新。更新后可能要重新登录一次（2.0.2 没有自动登录交接）。
 - 回退：线上旧清单备份在服务器 /opt/mentorflow/state/stable-2.0.2-before-2.0.3.json；上传脚本在 .local/test-tmp/release-2.0.3m/publish/。
 - 需求（2026-09-28～29 用户定）：

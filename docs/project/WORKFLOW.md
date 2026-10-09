@@ -67,16 +67,56 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 空闲 | runtime |
+| MF-04 | 90-MF04（已起草，待转发） | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
-空闲工位：全部七个。
+空闲工位：除 runtime 外六个。
 
 ## 待派队列
 
-- 无。
+- 90-MF04：已起草（2026-10-09），待用户转发。回执合格后架构师在服务器上跑 build_on_server.sh 替换旧安装程序（用户已同意服务器自己编安装程序）。
+
+## 第九十批任务原文（2026-10-09，基线 2bc131a0）
+
+### [90-MF04] runtime｜服务器自己编安装程序（¥0）
+
+~~~text
+【MentorFlow 第九十批｜MF-04（工位 runtime）｜服务器自己编安装程序：按发布清单从已有更新文件拼出完整版，不再从本机上传几百 MB】
+
+现成项目与许可证（第一节）
+  - 编安装程序：Inno Setup（自由许可，可商用），与本机现用版本一致（E:\Codex\App\InnoSetup-7.1.0），在 Linux 上用 Wine（LGPL）运行；容器做法参照开源镜像 amake/innosetup（MIT，GitHub amake/innosetup-docker）的 Dockerfile 写法，但 Inno 版本要换成 7.1.0（官方安装包，写死下载地址和 SHA256）。
+  - 读包内信任信息沿用现有 scripts/build_learning_installer.py 的 installer 步骤（PyInstaller 的 CArchiveReader，版本与 .local/test-tmp/installer/build-tools 里的一致；Pillow；cryptography）。不新写一套校验和打包逻辑，只把它改成能在 Linux 容器里跑。
+  - 不用自己写的理由：没有现成工具能“从按内容存放的更新文件 + 签名清单”还原出我们的安装目录，这一小段（拼文件）只能自己写，其余全部复用。
+
+开工同步
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 2bc131a0
+提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署（服务器上的运行由架构师做）；不碰正式签名私钥。D:\MentorFlowApp 及其注册表安装记录只读，不在本机运行任何安装程序；D:\MentorFlowData\account-shell 只读；E 盘只读运行（ISCC 只读调用）；不碰 D:\Kristina*。本机没有 Docker/WSL，也不要安装（属于改系统设置）。先读 AGENTS.md（磁盘规则、功能先行）：中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。测试用 D:\MentorFlow\.venv\Scripts\python.exe。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+同时在跑：只有本任务。
+产物目录：D:\MentorFlow\.local\test-tmp\server-installer90\。目标三小时内交回。花费上限 ¥0。
+背景（用户 2026-10-09 定，CURRENT_STATE [SYS-06]）：每发一版，更新文件只传改动的部分（按 SHA256 存在服务器 /opt/mentorflow/update-static/e108/app/objects/<sha256>，清单 stable/stable.json 的 signed.full_release.assets 列出每个文件的 path、sha256、size）。但安装程序 installer/MentorFlow-Setup.exe 一直是本机编好后整个上传（368 MB，用户线路约 0.15 MB/s），现在服务器上的还是 9-29 的旧版。用户要求：服务器上已经有新版的全部文件，就让服务器自己拼出完整安装目录、自己编安装程序、自己替换旧的，以后每次发版都这样，本机不再上传安装程序。
+服务器情况（架构师已查）：Ubuntu，Docker 29.7，4 核 7 GB 内存，根分区剩 36 GB；更新目录在 /opt/mentorflow/update-static/e108/app/（installer、objects、stable、voice），备份放 /opt/mentorflow/state/。
+
+要做（脚本放 scripts/server_installer/，测试放 tests/refactor/installer/，文件名全 tests/ 唯一）
+  1. assemble_payload.py：输入 已验签的 stable.json + objects 目录 + 输出目录；按 assets 把每个 objects/<sha256> 复制（能硬链接就硬链接）成 payload/<path>，逐个核对 SHA256 和大小；最后用现有 per_user_install.verify_tree 对拼好的目录做整体校验。缺文件、哈希不对就报错退出，不出半成品。
+  2. 让 installer 步骤能在 Linux 容器里跑：把 build_learning_installer.py 的 installer 步骤里只能在 Windows 跑的部分（路径、调用 ISCC 的方式）改成同时支持“通过 Wine 调 ISCC”（Linux 路径转 Wine 的 Z:\ 路径），Windows 上的现有行为不变、现有测试照过。Inno 脚本 refactor/desktop/packaging/inno/* 如有 Windows 专属写法要调整，改动最小并写明。
+  3. Dockerfile：基础镜像固定版本；装 Wine、Inno Setup 7.1.0（官方安装包静默安装，下载地址与 SHA256 写死）、需要的 ChineseSimplified.isl（Inno 7 自带就用自带，没有就说明来源与许可）、Python 与 PyInstaller/Pillow/cryptography（版本写死，PyInstaller 与本机 build-tools 一致）。镜像只编安装程序，不联网下载别的。
+  4. build_on_server.sh（架构师在服务器上跑）：读线上 stable/stable.json 并验签（用包里的信任公钥）；若 installer/VERSION.txt 已是这个版本就直接退出；否则在 /opt/mentorflow/state/installer-build/<版本>/ 下拼 payload、在容器里编安装程序；成功后：旧安装程序备份到 /opt/mentorflow/state/installer-<旧版本或日期>.exe → 新的先写 installer/.MentorFlow-Setup.exe.new → 原子替换 installer/MentorFlow-Setup.exe → 写 installer/VERSION.txt（版本、SHA256、大小、时间）→ 删掉 installer-build 下的中间产物。任何一步失败都不碰线上安装程序。一条命令、可重复运行；第一次运行顺带构建镜像。
+  5. 本机能做的验证（完成标准以这些为准）：
+     a. 用 D:\MentorFlow\.local\test-tmp\release-2.0.3m\payload 和 stable\stable.json 在测试目录里模拟一个按 SHA256 存放的 objects 目录，跑 assemble_payload.py 拼出 payload，与原 payload 逐文件比对完全一致（文件数、路径、内容）。
+     b. 用拼出的 payload 在本机按现有方式（Windows ISCC）编出 2.0.3 安装程序，编译成功（不运行安装）。
+     c. 离线测试：缺文件、哈希错、清单验签失败各有一条，确认都不出半成品；Windows 现有 installer 测试照过；全量通过。
+     d. Linux/Docker 部分本机跑不了：写清楚架构师在服务器上的完整步骤（把 scripts/server_installer/ 与运行所需的仓库文件打成一个小包放到哪、执行哪条命令、预期每一步输出什么、常见失败怎么判断），以及第一次运行大约要下载多少、占多少盘、跑多久的估计。
+  6. 写 scripts/server_installer/README.md：以后每次发版的顺序 = 本机打包签名 → 只传缺的更新文件 → 换 stable.json → 服务器上跑 build_on_server.sh。
+完成标准：a、b、c 全部通过；d 的服务器步骤写清楚到架构师能照着一次跑通；所有改动提交在工位。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\server-installer90\report.md。
+回执（尽量短，用表格）：【MF-04｜runtime｜第九十批｜完成/部分完成/受阻】基线 ／ 提交 ／ 拼包比对结果 ／ 本机编译 ／ 离线测试与全量 ／ 服务器上要跑的命令 ／ 镜像与 Inno 版本、来源与许可 ／ 预计下载、占盘、耗时 ／ 本地最终占用
+~~~
 
 ## 第八十九批任务原文（2026-10-09，基线 81461194）
 
