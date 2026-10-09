@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务；两位架构师（都是 Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。架构师之间不直接对话，交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：先读 AGENTS.md、CURRENT_STATE「当前阶段」和索引、本文件；看 `git log` 里上次基线之后的提交；确认 7 个工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。与用户讨论到一半的事，看「当前阶段」的“等用户决定的事”和各条目里标了“讨论中”的待修。
 - **交班**（每次停手前都做，不等用户说换人）：用户定下的事当场写进对应编号条目并标日期；自己查到但还没讨论完的问题写进对应条目的“待修”，标明“讨论中”；更新「当前阶段」、任务索引、待派队列；本地提交。不把事情只留在对话或个人记忆里。
-- **现在在做的事**（2026-10-09）：用户要把软件发给第一个外部新用户试用（对方装 2.0.2 安装程序 → 注册 → 点更新到 2.0.3）。三段：①89-MF04 打包 2.0.3（main 81461194，非强制）+ 本机排练新用户首启与 2.0.2→2.0.3（进行中，2026-10-09 已转发）；②回执合格后架构师签名、上传（服务器命令逐条问用户）；③用户在已装的 2.0.2 上退出登录、用微软邮箱注册新账号、点更新到 2.0.3、填 Key 新建计划，走通后再发给对方。对方用自己的 DeepSeek Key。收到回执时，回复里列出本批还差谁的回执。
+- **现在在做的事**（2026-10-09）：用户要把软件发给第一个外部新用户试用（对方装 2.0.2 安装程序 → 注册 → 点更新到 2.0.3）。三段：①89-MF04 打包 2.0.3（main 81461194，非强制）+ 本机排练新用户首启与 2.0.2→2.0.3（部分完成：未签名包、兼容核对、离线更新排练通过；发现 2.0.2 旧题库计划升级后作废、没 Key 提示不指路）→ 用户定 2.0.3 改为必须更新、改提示，89-MF04b 重打（已起草，待转发）；②回执合格后架构师签名、上传（服务器命令逐条问用户）；③用户在已装的 2.0.2 上退出登录、用微软邮箱注册新账号、点更新到 2.0.3、填 Key 新建计划，走通后再发给对方。对方用自己的 DeepSeek Key。收到回执时，回复里列出本批还差谁的回执。
 
 ## 协作方式
 
@@ -67,7 +67,7 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 89-MF04（进行中） | runtime |
+| MF-04 | 89-MF04b（已起草，待转发） | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
@@ -76,9 +76,41 @@
 
 ## 待派队列
 
-- 无（89-MF04 进行中）。
+- 89-MF04b：已起草（2026-10-09），待用户转发。
 
 ## 第八十九批任务原文（2026-10-09，基线 81461194）
+
+### [89-MF04b] runtime｜改没 Key 提示，重打 2.0.3 为必须更新（¥0）
+
+~~~text
+【MentorFlow 第八十九批｜MF-04（工位 runtime）｜89-MF04b：改一句没 Key 的提示，重打 2.0.3 为“必须更新”版】
+
+现成项目与许可证（第一节）
+  - 只用本项目现有工具，不新增依赖：打包同上一轮 D:\MentorFlow\.local\release-tools\build_release.py（README.txt 写了强制版本参数）；提示文字在 refactor/learning/connections/gateway.py、client.py。
+
+开工同步
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 153c41fd
+提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push；禁止改主目录；禁止 ssh、连接服务器、部署；不碰正式签名私钥（.local/release-keys 不读）。D:\MentorFlowApp 及其注册表安装记录只读；D:\MentorFlowData\account-shell 只读；E 盘只读运行（ISCC 只读调用）；不碰 D:\Kristina*。先读 AGENTS.md（磁盘规则、功能先行）：中间产物用完即删（被系统拦住就列路径），回执写明最终占用。含反斜杠的内容写成脚本文件再运行（BUG-10）。测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+同时在跑：只有本任务。
+产物目录：新建 D:\MentorFlow\.local\test-tmp\release-2.0.3m\（不要覆盖上一轮的 release-2.0.3，上一轮目录在本任务成功后删除，被拦就列路径）。目标一个半小时内交回。花费上限 ¥0。
+背景：你上一轮（89-MF04）的报告发现两点。用户 2026-10-09 定：2.0.3 改成“必须更新”（2.0.2 里建的旧计划升级后按设计作废，强制更新让外部新用户登录后只能先更新，碰不到这种情况）；没 Key 的提示要说清去哪里填。
+
+要做
+  1. 改提示文字（只改文字，错误码不变）：
+     - refactor/learning/connections/gateway.py 的 MODEL_NOT_CONFIGURED：改为“还没有可用的模型：请到 设置 → 模型连接 选择厂商、填入 API Key 并保存。”
+     - gateway.py 与 client.py 的 MODEL_KEY_REQUIRED：改为“当前模型还没有 API Key：请到 设置 → 模型连接 填入 API Key 并保存。”
+     - 搜一遍 refactor/ 下前端与后端有没有别处显示同类“没配模型/没 Key”的提示，一并改成指向 设置 → 模型连接（列在回执里）。补一个离线测试断言这两条提示含“设置 → 模型连接”（测试文件名全 tests/ 唯一，例如 tests/refactor/connections/test_model_key_hint89.py）。全量测试与 web 构建通过后提交，记下提交号 <C>。
+  2. 用 <C> 重打强制版：
+     & 'D:\MentorFlow\.venv\Scripts\python.exe' -B 'D:\MentorFlow\.local\release-tools\build_release.py' --version 2.0.3 --baseline <C> --valid-days 1096 --base-versions 2.0.2 --mandatory --mandatory-reason data_compatibility --notes '必须更新：学习方式大改，2.0.2 里建的计划在新版不能继续用。题目只来自资料或你上传的题；新课堂与知识地图；可选老师人设；用量按天/周/月显示；加载过场；稳定性修复' --output-dir 'D:\MentorFlow\.local\test-tmp\release-2.0.3m'
+  3. 核对：unsigned-release.json 里 mandatory 为真、原因 data_compatibility、mandatory_floor 为 2.0.3；按上一轮 B 路线（测试密钥、per_user_install.transact）把“2.0.2 → 2.0.3m”离线再走一遍；读 4430aae 的 refactor/desktop/updates.py 与 web/src/updates/UpdateNotice.tsx，用 2.0.2 的代码确认：①新装 2.0.2 第一次启动时登录前检查只用本地已存的签名信息（check_feed=False），因此先能注册登录；②登录后检查到 2.0.3 必须更新时，弹出的是全屏、不能关闭、只有“立即更新”的框；③更新后再启动，登录前检查是否就会拦住旧版。三条各写结论和依据（代码行）。
+完成标准：两条提示改好且有测试；全量通过、web 构建通过；强制版 2.0.3 未签名包打出且字段核对正确；离线更新排练通过；2.0.2 行为三条有结论。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\release-2.0.3m\report.md。
+回执（尽量短，用表格）：【MF-04｜runtime｜第八十九批 b｜完成/部分完成/受阻】基线 ／ 提交 <C> ／ 改了哪些提示 ／ 全量与构建 ／ 打包与字段核对 ／ 离线更新排练 ／ 2.0.2 行为三条 ／ 架构师签名与编安装程序命令（脚本打印的那份） ／ 本地最终占用
+~~~
 
 ### [89-MF04] runtime｜打包 2.0.3 并排练新用户装 2.0.2 → 点更新到 2.0.3（¥0）
 
