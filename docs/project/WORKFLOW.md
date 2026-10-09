@@ -55,7 +55,7 @@
 | 项目 | 值 |
 | --- | --- |
 | main | d33ca8a4（含第八十八批；2026-10-08 全量 3167 通过、28 跳过、0 失败）；派新任务前 `git rev-parse --short HEAD` 取 |
-| 已发布 | 2.0.3 = 8747eeb8（必须更新，3 年签名，2026-10-09）；本机另有 2.0.2/2.0.3 安装程序（SYS-06）；内测阶段不打包；打包脚本 D:\MentorFlow\.local\release-tools\build_release.py |
+| 已发布 | 2.0.4 = d3693cc6（流水线发布，非强制，2026-10-10）；强制线 2.0.3；本机另有 2.0.2/2.0.3 安装程序（SYS-06）；内测阶段不打包；打包脚本 D:\MentorFlow\.local\release-tools\build_release.py |
 | 未推送 | 2026-10-09 已推送到 GitHub（私有仓库）；以后推送仍要用户说 |
 | 工位分支 | office/* 只在本地，永不推送；每条任务第一步把工位 reset 到基线 |
 
@@ -79,9 +79,11 @@
 
 - 无。91-MF04（部分完成：actionlint 不认识 concurrency.queue，其余全过）与 92-MF07（完成）已于 2026-10-10 合入 main（b5336649）。下一步：用户在 GitHub 填 MF_SSH_KEY、确认 Billing 超额上限 0 → 架构师依次手动运行 mf-installer 2.0.2、mf-installer 2.0.3（latest）、mf-build 2.0.3（只构建），共 3 次，失败即停；之后用流水线发 2.0.4（含迁移）。每次运行记在这里：
   - 运行 1（2026-10-10）mf-installer 2.0.2：成功，约 10 分钟，releases/2.0.2/ 已有安装程序与清单。
-  - 运行 2 mf-installer 2.0.3（latest）：进行中。
-  - 运行 3 mf-build 2.0.4（上传到 staging，非强制，基线 2.0.3）：已排队（用户同意改为直接构建 2.0.4，不再空跑 2.0.3）。
-- 93-MF04：已起草（2026-10-10），待用户转发。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+  - 运行 2 mf-installer 2.0.3（latest）：成功，约 10 分钟；旧 installer/ 下 9-29 安装程序已备份到 state 并撤下。
+  - 运行 3 mf-build 2.0.4（上传 staging，非强制，基线 2.0.3）：成功，约 7 分钟，14 个新文件。
+  - 签名：本机 sign_and_stage.py 签名成功，但它的 ssh 上传在 Windows 本机失败（退出码 2，内联整段 server_ops 源码的引号问题）；架构师手动把签名清单传到 .staging-2.0.4/stable/ 并核对 SHA256。修复补进 93-MF04。
+  - 运行 4 mf-publish 2.0.4：成功，约 11 分钟；公网 stable.json 对 2.0.2、2.0.3 客户端验签均通过 → 2.0.4；releases/2.0.4/ 与 latest 已更新，服务器剩 35 GB。
+- 93-MF04：已起草（2026-10-10），待用户转发；追加：修 sign_and_stage.py 在 Windows 本机的 ssh 上传。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
 
 ## 第九十三批任务原文（2026-10-10，基线 d3693cc6）
 
