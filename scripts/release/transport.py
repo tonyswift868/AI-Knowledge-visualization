@@ -5,7 +5,6 @@ import base64
 import json
 import os
 from pathlib import Path
-import shlex
 import shutil
 import subprocess
 import uuid
@@ -60,9 +59,18 @@ class SSHServer:
         request = dict(action=action, version=version,
                        app='/opt/mentorflow/update-static/e108/app', state='/opt/mentorflow/state', **values)
         source = Path(server_ops.__file__).read_text(encoding='utf-8')
-        command = 'sudo -n python3 -c ' + shlex.quote(source)
+        # Windows OpenSSH reconstructs its remote command line. Do not place
+        # multiline Python (or JSON) in shell arguments: quoting it with POSIX
+        # shlex.quote does not protect it from Windows argument reconstruction.
+        # Python reads this wrapper from stdin; the existing server_ops entry
+        # point then reads the request from an in-memory stream, unchanged.
+        program = ('import io, sys\n'
+                   f'sys.stdin = io.StringIO({json.dumps(request)!r})\n'
+                   f'exec(compile({source!r}, "server_ops.py", "exec"), '
+                   '{"__name__": "__main__"})\n')
+        command = 'sudo -n python3 -'
         result = subprocess.run(['ssh', *self.options, HOST, command],
-            input=json.dumps(request), capture_output=True, text=True, encoding='utf-8', check=True)
+            input=program, capture_output=True, text=True, encoding='utf-8', check=True)
         return json.loads(result.stdout)
 
     def upload(self, source):
