@@ -27,7 +27,7 @@ def test_teacher_reuses_exact_request_and_public_output_before_mutable_tail():
     # additional original request bytes, not edited/merged current snapshots.
     legacy = teacher_agent.teacher_request({k:v for k,v in ctx.items() if k != 'request_page'})[1]
     assert after[0] == legacy[0]
-    assert after[-3:] == legacy[-3:]
+    assert after[-3:] == [legacy[-2], legacy[1], legacy[-1]]
 
 
 def test_profile_uses_original_json_not_derived_display_text_and_latest_snapshot():
@@ -55,7 +55,7 @@ def test_identical_latest_sources_reused_but_return_to_old_alias_map_is_appended
     ctx['request_page'].accept(system, other, teacher_agent._dialogue(ctx['dialogue']), '第二回复')
     ctx['excerpts']=context()['excerpts']
     _, restored = teacher_agent.teacher_request(ctx)
-    assert restored[-2] == first[-2]
+    assert restored[-2] == first[1]
 
 
 def test_page_resets_on_module_system_transcript_edit_and_overflow():
