@@ -39,7 +39,7 @@ def _startup_result(state, **details):
                                    if state == 'MANDATORY_UPDATE' else '')
     messages = {
         'HEALTHY': '可以正常登录。',
-        'OPTIONAL_UPDATE': '有新版本可用，您可以继续登录。',
+        'OPTIONAL_UPDATE': '有新版本可用，可以现在更新，或稍后在 设置 → 关于 更新。',
         'MANDATORY_UPDATE': '当前版本需要更新后才能继续',
         'REPAIR_REQUIRED': '安装需要修复，您可以修复安装或更新到最新版本。',
         'FATAL_UNRECOVERABLE': '修复运行时也无法安全加载。请使用可信的 MentorFlow 安装包修复，学习资料不会被删除。',

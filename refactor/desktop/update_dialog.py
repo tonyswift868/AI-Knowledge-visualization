@@ -61,6 +61,7 @@ class UpdateDialog(QDialog):
         self.reason.setText(mandatory_text(status) if self._mandatory else '')
         self.message.setText(status.get('message', ''))
         self.later.setEnabled(not self._mandatory and not self._busy)
+        self.later.setVisible(not (self._mandatory and status.get('hide_later')))
         self.install.setText('修复安装' if repair else '继续' if status.get('state') == 'DOWNLOAD_PAUSED_OR_INTERRUPTED' else '立即更新' if self._mandatory else '立即更新并重启')
         self.install.setEnabled(not self._busy and status.get('state') not in ('FAILED_SECURITY', 'FATAL_UNRECOVERABLE'))
         total = status.get('expected_download_bytes', 0) or 0

@@ -94,6 +94,9 @@ class DesktopUpdates(QObject):
         def work():
             try:
                 if action == "startup":
+                    cached = self.core.get_startup_update_state(self.root, full=False, check_feed=False,
+                                                               cancel=self._cancel.is_set)
+                    self._send({'cached': cached})
                     result = self.core.get_startup_update_state(self.root, full=False, check_feed=True,
                                                                cancel=self._cancel.is_set)
                 elif action == "check":
@@ -170,6 +173,14 @@ class DesktopUpdates(QObject):
     def _receive(self, value):
         if self._closed:
             return
+        if 'cached' in value:
+            result = value['cached']
+            self._login_blocked = not result.get('login_allowed', False)
+            self.gate.setEnabled(not self._login_blocked)
+            self._publish({**self.state, **result,
+                           'mandatory': result.get('state') == 'MANDATORY_UPDATE'})
+            if self._login_blocked: self._show_prompt()
+            return
         if "progress" in value:
             self._publish({**self.state, **value["progress"]})
             self._update_prompt()
@@ -178,12 +189,16 @@ class DesktopUpdates(QObject):
         result = value["result"]
         if value['action'] == 'startup':
             result = {**result, 'mandatory': result.get('state') == 'MANDATORY_UPDATE'}
+            if 'login_allowed' not in result:
+                # A transport exception cannot erase a verified cached gate.
+                result['login_allowed'] = self.state.get('login_allowed', False)
+                result['mandatory'] = self.state.get('mandatory', False)
         self._publish({**self.state, **result})
         if value["action"] == "startup":
             if result.get('feed') == 'VERIFIED': self._next_automatic = time.monotonic() + 86400
             self._login_blocked = not result.get("login_allowed", False)
             self.gate.setEnabled(not self._login_blocked)
-            if self._login_blocked:
+            if self._login_blocked or result.get('state') == 'OPTIONAL_UPDATE':
                 self._show_prompt()
             if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE'):
                 # Wait for the startup classifier before touching its runtime:
@@ -205,16 +220,39 @@ class DesktopUpdates(QObject):
 
     def _show_prompt(self):
         from .update_dialog import UpdateDialog
+        target = self._prompt_parent()
+        if target is not self.gate:
+            # The main React window already presents update.status. Do not
+            # place a second native modal over its existing UpdateNotice.
+            if self._prompt is not None: self._prompt.hide()
+            return
         if self._prompt is None:
-            self._prompt = UpdateDialog(self.gate)
-            self._prompt.install_requested.connect(lambda: self.run('install', self.gate))
+            self._prompt = UpdateDialog(target)
+            self._prompt.install_requested.connect(lambda: self.run('install', self._prompt_parent()))
             self._prompt.defer_requested.connect(lambda: self.run('defer'))
+        elif self._prompt.parentWidget() is not target:
+            self._prompt.setParent(target, self._prompt.windowFlags())
         self._update_prompt()
         self._prompt.show(); self._prompt.raise_(); self._prompt.activateWindow()
 
     def _update_prompt(self):
         if self._prompt is not None:
-            self._prompt.update_status(self.snapshot())
+            status = self.snapshot()
+            status['hide_later'] = bool(status.get('mandatory'))
+            if status.get('state') in ('OPTIONAL_UPDATE', 'UPDATE_AVAILABLE'):
+                status['message'] = ('有新版本可用，可以现在更新，或点“稍后”继续登录。'
+                    if self._prompt_parent() is self.gate else
+                    '有新版本可用，可以现在更新，或稍后在 设置 → 关于 更新。')
+            self._prompt.update_status(status)
+
+    def _prompt_parent(self):
+        from shiboken6 import isValid
+        home = getattr(self._login_handoff, 'home', None)
+        if home is not None and isValid(home) and home.isVisible(): return home
+        if self.gate.isVisible(): return self.gate
+        window = self._window
+        if window is not None and isValid(window) and window.isVisible(): return window
+        return self.gate
 
     def close(self):
         if self._closed:

@@ -276,7 +276,7 @@ def test_learning_delivery_update_worker_uses_existing_core_and_real_window(tmp_
     class Core:
         def attach_shutdown_guard(self, _app): pass
         def get_startup_update_state(self, root, full, check_feed, cancel=None):
-            assert check_feed  # discover mandatory floors before permitting login
+            # Signed local policy permits login while the feed refresh runs.
             calls.append(("startup", threading.get_ident()))
             return dict(state="HEALTHY", login_allowed=True)
         def check_latest(self, root, cancel=None): return dict(state="UP_TO_DATE")
