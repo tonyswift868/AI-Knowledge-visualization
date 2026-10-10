@@ -18,7 +18,7 @@ begin
 end;
 
 function InstallThroughCore(Target: String): String;
-var Runtime, Parameters: String; Code: Integer; Timer: UINT_PTR;
+var Runtime, Parameters, Problem: String; Code: Integer; Timer: UINT_PTR;
   CancelWasEnabled: Boolean;
 begin
   Result := '';
@@ -53,7 +53,11 @@ begin
     if not Exec(Runtime, Parameters, '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then begin
       { Raw core diagnostics remain in core-result.json, not ordinary UI. }
       if CoreCancelRequested then Result := '安装已取消。您可以返回重试或关闭安装器。'
-      else Result := '安装未完成，请稍后重试。学习资料不会被删除。';
+      else begin
+        Problem := GetIniString('install', 'error', '', CoreStatus);
+        if Pos('请先关闭 MentorFlow', Problem) > 0 then Result := Problem
+        else Result := '安装未完成，请稍后重试。学习资料不会被删除。';
+      end;
     end;
   finally
     if Timer <> 0 then KillCoreTimer(0, Timer);

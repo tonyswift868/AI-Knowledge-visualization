@@ -262,8 +262,28 @@ def repair_installation(root, progress=None, cancel=None, *, service=None, pid=N
         if bool(pid) != bool(hwnd_hex): raise ValueError('complete App identity required')
         def bridge(root, stage, envelope):
             if unsafe_teardown(): raise RecoverableError('repair deferred during session teardown')
-            return install.transact(root, stage, envelope, repair=True,
-                before_swap=(lambda:install.request_app_shutdown(root,pid,hwnd_hex)) if pid else lambda:install.require_app_stopped(root))
+            critical = False
+            def copied(_):
+                if not critical and cancel is not None and cancel():
+                    raise RecoverableError('修复已取消；安装文件未替换。')
+            def before_swap():
+                nonlocal critical
+                copied(0)
+                critical = True
+                if progress is not None:
+                    progress(dict(state='APPLYING', critical=True, message='正在处理，请稍候…'))
+                # The window's shared cancellation event may change while the
+                # queued UI signal is pending. Check it again before mutation.
+                if cancel is not None and cancel():
+                    raise RecoverableError('修复已取消；安装文件未替换。')
+                if pid: install.request_app_shutdown(root, pid, hwnd_hex)
+                else: install.require_app_stopped(root)
+            try:
+                return install.transact(root, stage, envelope, repair=True,
+                                        progress=copied, before_swap=before_swap)
+            finally:
+                if progress is not None and critical:
+                    progress(dict(critical=False))
         service.apply_bridge = bridge
         result = service.apply_and_restart()
         return {**result, 'state':'CURRENT_HEALTHY', 'repair':True}

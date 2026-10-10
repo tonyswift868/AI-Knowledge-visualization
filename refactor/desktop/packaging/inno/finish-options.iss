@@ -17,6 +17,13 @@ begin
   Result := ValidatedTargetKind = tkNew;
 end;
 
+function CanonicalShortcutNeeded: Boolean;
+begin
+  Result := NewInstallationShortcuts or
+    (((ValidatedTargetKind = tkRepair) or (ValidatedTargetKind = tkUpgrade)) and
+     not FileExists(ExpandConstant('{autoprograms}\{#ShortcutName}.lnk')));
+end;
+
 function DesktopShortcutPath: String;
 begin
   Result := ExpandConstant('{userdesktop}\{#ShortcutName}.lnk');
@@ -83,8 +90,8 @@ function ApplyFinishOptions: String;
 var SourceLink, LinkHash, ExistingCommand: String;
 begin
   Result := '';
-  { Updates and repairs preserve the user's shortcuts and startup preferences. }
-  if not NewInstallationShortcuts then Exit;
+  { Explicit finish choices also apply on upgrade/repair. Unchecked choices
+    leave existing shortcuts/startup preferences untouched. }
   if not WizardIsTaskSelected('desktopicon') and not WizardIsTaskSelected('startup') then Exit;
   if IsAdminInstallMode or IsAdmin then begin
     Result := '可选设置需要普通用户权限，请取消勾选后继续。'; Exit;

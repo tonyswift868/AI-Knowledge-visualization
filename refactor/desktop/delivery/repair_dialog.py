@@ -7,7 +7,7 @@ def show_repair(message):
     app = QApplication.instance() or QApplication([])
     dialog = UpdateDialog()
     dialog.update_status(dict(state='FATAL_UNRECOVERABLE',
-        message='MentorFlow 暂时无法安全启动。请使用可信安装包修复；学习资料不会被删除。'))
+        message='MentorFlow 暂时无法安全启动。请到 https://aiteacher.clannad.win/download 下载最新安装程序覆盖安装；学习资料不会被删除。'))
     dialog.later.setText('关闭')
     dialog.later.clicked.disconnect(); dialog.later.clicked.connect(dialog.accept)
     dialog.exec()

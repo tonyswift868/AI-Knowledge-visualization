@@ -169,7 +169,7 @@ def test_update41_repair_window_cancel_and_same_theme(tmp_path):
     finally: window.pool.shutdown(wait=False);window.hide();app.processEvents()
 
 
-def test_update41_installer_shortcuts_new_only_and_checked():
+def test_update41_installer_shortcuts_preserve_existing_and_honor_finish_choice():
     root=Path(__file__).resolve().parents[3]/'refactor/desktop/packaging/inno'
     script=(root/'MentorFlow.iss').read_text(encoding='utf-8')
     finish=(root/'finish-options.iss').read_text(encoding='utf-8')
@@ -180,8 +180,9 @@ def test_update41_installer_shortcuts_new_only_and_checked():
     assert 'Updater\\UserRuntime.exe' in root_link and 'launch --root' in root_link
     assert 'Check: NewInstallationShortcuts' in root_link
     icons=script.split('[Icons]')[1].split('[Tasks]')[0]
-    assert all('Check: NewInstallationShortcuts' in l for l in icons.splitlines() if l.startswith('Name:'))
-    assert 'if not NewInstallationShortcuts then Exit;' in finish
+    assert all('Check: NewInstallationShortcuts' in l or 'Check: CanonicalShortcutNeeded' in l
+               for l in icons.splitlines() if l.startswith('Name:'))
+    assert 'if not NewInstallationShortcuts then Exit;' not in finish
     assert "WizardSelectTasks('desktopicon')" in pages
 
 

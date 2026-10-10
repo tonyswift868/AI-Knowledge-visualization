@@ -77,7 +77,7 @@ Source: "{#SignedRelease}"; DestDir: "{tmp}"; DestName: "base-release.json"; Fla
 Source: "{#BuildInput}\shell.ini"; DestDir: "{app}\Maintenance"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#ShortcutName}"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"; Check: NewInstallationShortcuts
+Name: "{autoprograms}\{#ShortcutName}"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"; Check: CanonicalShortcutNeeded
 Name: "{autoprograms}\{#ShortcutName} 修复与更新"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "repair-update --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"; Check: NewInstallationShortcuts
 Name: "{autoprograms}\卸载 {#ShortcutName}"; Filename: "{uninstallexe}"; Check: NewInstallationShortcuts
 Name: "{app}\{#ShortcutName}"; Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; WorkingDir: "{app}"; IconFilename: "{app}\App\MentorFlow.exe"; Check: NewInstallationShortcuts
