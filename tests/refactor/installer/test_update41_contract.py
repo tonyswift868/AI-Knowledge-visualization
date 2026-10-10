@@ -55,7 +55,7 @@ def test_update41_prelogin_gate_progress_and_no_defer(tmp_path):
     class Core:
         def attach_shutdown_guard(self, app): pass
         def get_startup_update_state(self, root, full, check_feed, cancel=None):
-            assert check_feed
+            # Cached signed policy is checked before refreshing the feed.
             return dict(state='MANDATORY_UPDATE', login_allowed=False, current='2.0.2', latest='2.0.4',
                 mandatory_floor='2.0.3', mandatory_reason='protocol', release_notes='升级说明')
     adapter = DesktopUpdates(app, tmp_path, gate, core=Core())

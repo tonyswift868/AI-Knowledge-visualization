@@ -24,17 +24,22 @@ def _recovery_health(root):
     return proof
 
 
-def launch(root):
+class _NeedsRepair(Exception):
+    pass
+
+
+def _launch_checked(root, mark=lambda phase: None):
     from refactor.desktop.delivery.update_download import InstallUpdateLock
     root = install.target(root)
     if not install.is_install(root):
         try: core.bootstrap_legacy_identity(root)
         except (OSError, RuntimeError, ValueError, ImportError):
-            return repair_update_shell(root)
+            raise _NeedsRepair from None
     try:
         install.verify_recovery_runtime(root)
     except (OSError, RuntimeError, ValueError):
-        return repair_update_shell(root)
+        raise _NeedsRepair from None
+    mark('recovery_runtime_verified')
     with InstallUpdateLock(root):
         install.require_app_stopped(root)
         if core.unsafe_teardown('next_launch'):
@@ -42,11 +47,13 @@ def launch(root):
         # Recovery shares the core's writer mutex. Release it before calling
         # apply, which acquires the same non-reentrant mutex itself.
         install.recover(root)
+    mark('recovered')
     # A crash may leave App temporarily missing between the owned swaps.
     # Restore the verified previous generation BEFORE classifying its GUI.
     state = core.get_startup_update_state(root, check_feed=False, full=False)
+    mark('startup_verified')
     if state['state'] in ('REPAIR_REQUIRED', 'FATAL_UNRECOVERABLE'):
-        return repair_update_shell(root)
+        raise _NeedsRepair
     if (root / core.PENDING).exists():
         pending = core.read_pending(root)
         if pending['state'] not in ('CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'):
@@ -65,7 +72,78 @@ def launch(root):
         if core.unsafe_teardown('next_launch'):
             raise RecoverableError('session ending: launch and update deferred')
         install.require_app_stopped(root)
-        return dict(status='HEALTHY', health=install.launch_health(root, install.installed(root)))
+        mark('app_launch_begin')
+        result = dict(status='HEALTHY', health=install.launch_health(root, install.installed(root)))
+        mark('app_visible_healthy')
+        return result
+
+
+def launch(root):
+    """Paint before checking; keep the Qt loop responsive during signed launch.
+
+    The existing native health handshake confirms the App's visible window.
+    No timer, cache receipt or splash window is accepted as App health.
+    """
+    import json
+    from contextvars import copy_context
+    import threading
+    import time
+    from datetime import datetime, timezone
+    from PySide6.QtCore import QEventLoop, QTimer, Qt
+    from PySide6.QtWidgets import QApplication, QDialog, QLabel, QVBoxLayout, QProgressBar
+    from refactor.desktop.dialog_theme import apply
+
+    started = time.perf_counter()
+    timings = []
+    def mark(phase):
+        timings.append(dict(phase=phase, seconds=round(time.perf_counter() - started, 6)))
+
+    app = QApplication.instance() or QApplication([])
+    previous_quit = app.quitOnLastWindowClosed()
+    app.setQuitOnLastWindowClosed(False)
+    splash = QDialog(None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+    splash.setWindowTitle('MentorFlow')
+    splash.setFixedSize(420, 220)
+    layout = QVBoxLayout(splash); layout.setContentsMargins(32, 28, 32, 28)
+    heading = QLabel('MentorFlow'); heading.setObjectName('pageHeading')
+    layout.addWidget(heading); layout.addWidget(QLabel('正在启动…'))
+    progress = QProgressBar(); progress.setRange(0, 0); progress.setTextVisible(False)
+    layout.addWidget(progress)
+    apply(splash, 'sakura')
+    splash.reject = lambda: None  # Esc cannot hide the only startup feedback.
+    splash.showNormal(); splash.raise_(); splash.activateWindow()
+    app.processEvents()
+    mark('startup_window_visible')
+
+    outcome = {}
+    done = threading.Event()
+    def work():
+        try: outcome['result'] = _launch_checked(root, mark)
+        except BaseException as error: outcome['error'] = error
+        finally: done.set()
+    loop = QEventLoop()
+    timer = QTimer(); timer.setInterval(20)
+    timer.timeout.connect(lambda: loop.quit() if done.is_set() else None)
+    # Keep the caller's runtime_session guard in the launch worker.
+    context = copy_context()
+    worker = threading.Thread(target=lambda: context.run(work), name='mf-startup', daemon=True)
+    try:
+        worker.start(); timer.start(); loop.exec()
+    finally:
+        timer.stop(); splash.hide(); splash.deleteLater()
+        app.setQuitOnLastWindowClosed(previous_quit)
+        try:
+            path = install.target(root) / 'Data/logs/launcher-startup.jsonl'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open('a', encoding='utf-8') as stream:
+                stream.write(json.dumps(dict(at=datetime.now(timezone.utc).isoformat(),
+                    phases=timings, error=type(outcome['error']).__name__ if 'error' in outcome else None)) + '\n')
+        except (OSError, RuntimeError, ValueError):
+            pass  # Diagnostics never change the signed launch decision.
+    if isinstance(outcome.get('error'), _NeedsRepair):
+        return repair_update_shell(root)
+    if 'error' in outcome: raise outcome['error']
+    return outcome['result']
 
 
 def repair_update_shell(root):
