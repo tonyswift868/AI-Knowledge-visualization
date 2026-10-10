@@ -69,11 +69,11 @@
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
-| MF-05 | 空闲 | platform |
+| MF-05 | 95-MF05（已起草，待转发） | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
-空闲工位：全部七个。
+空闲工位：除 platform 外六个。
 
 ## 待派队列
 
@@ -85,7 +85,43 @@
   - 运行 4 mf-publish 2.0.4：成功，约 11 分钟；公网 stable.json 对 2.0.2、2.0.3 客户端验签均通过 → 2.0.4；releases/2.0.4/ 与 latest 已更新，服务器剩 35 GB。
   - 2.0.5（2026-10-10）：mf-build 成功约 5 分钟 → 本机 sign_and_stage 一次成功 → mf-publish 成功约 10 分钟；保留规则生效（2.0.2 只剩 stable.json，2.0.3～2.0.5 有安装程序），公网对 2.0.3/2.0.4 验签均通过。
 - 93-MF04：完成并合入 main（c5768d44，2026-10-10）。
-- 94-MF04：完成并合入（d6be6e29）；2.0.5 已用流水线发布。没有在途任务。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+- 94-MF04：完成并合入（d6be6e29）；2.0.5 已用流水线发布。
+- 95-MF05：已起草（2026-10-10），待用户转发：注册页没法输入（P0）+ 预热。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+
+## 第九十五批任务原文（2026-10-10，基线 9208720a）
+
+### [95-MF05] platform｜注册页没法输入 + 预热（¥0）
+
+~~~text
+【MentorFlow 第九十五批｜MF-05（工位 platform）｜注册页：点了没法输入（P0）+ 打开要等 10 秒（预热）】
+
+现成项目与许可证（第一节）
+  - 不新增依赖。只改本项目现有代码：refactor/desktop/lifecycle_pane.py（注册/找回密码的本地网页，QWebEngineView 加载 resources/account-lifecycle/lifecycle.html）、refactor/desktop/account_shell_main.py 的 _begin_account_action（约 1455 行）、refactor/desktop/native_loading.py 的 WebFirstFrame（88-MF05 加的原生加载遮罩）、resources/account-lifecycle 下的 js。预热用 Qt 官方做法：提前创建 QWebEngineProfile/QWebEnginePage 并加载页面、隐藏待用（Qt WebEngine 文档的 warm-up 思路），不引新库。
+
+开工同步
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard 9208720a
+提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
+禁止 push、禁止在 GitHub 上触发工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp 只读（可以读 Data\logs\mentorflow.log 做对照）；D:\MentorFlowData\account-shell 只读；E 盘只读运行；不碰 D:\Kristina*。不在线上真注册账号（注册由用户做）：测试时页面可以填表，但不点提交，或把服务器地址指向本机假服务。先读 AGENTS.md：中间产物用完即删，回执写明最终占用。测试用 D:\MentorFlow\.venv\Scripts\python.exe。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程（从 D:\MentorFlow 启动的 source_start 与 D:\MentorFlowApp 里的 MentorFlow.exe）；你自己的测试进程从工位目录启动、用复制的数据。
+同时在跑：只有本任务。
+产物目录：D:\MentorFlow\.local\test-tmp\register95\。目标三小时内交回。花费上限 ¥0。
+背景（用户 2026-10-10 在装好的 2.0.5 上实测，CURRENT_STATE [ACC-02] 待修）：
+  1. P0：登录窗口点“注册账号”后，注册页显示出来了（账号、邮箱、密码、确认密码、“注册账号”按钮灰色、“返回登录”），但用户“连点击都出问题，根本没法输入东西”。原因未知。可疑点（自己核实，不要只按这里猜）：WebFirstFrame 的遮罩 cover 是否在页面画出来后真的隐藏且不再拦截鼠标/键盘、焦点是否还停在遮罩或原生登录控件上、QWebEngineView 是否拿到焦点、页面 js 是否在等某个本机或服务器调用返回前把输入框禁用、frameless 窗口里 QWebEngine 的输入法/焦点问题。
+  2. 打开注册页约 10 秒（第一次启动 Chromium 内核；刚装完新版时杀毒扫描更慢）。用户选预热：登录窗口出现后，在后台空闲时预先建好注册页（网页内核与页面），点“注册账号”/“忘记密码”时直接显示，目标点击后 1 秒内能输入。预热不能拖慢登录窗口出现和正常登录；用户直接登录、从不点注册时，预热的东西在进入主界面时释放。
+要做
+  1. 先复现第 1 条：在工位用源代码按安装版方式启动（复制的数据目录、Windows 正常窗口，不用 offscreen），点注册，逐项确认能否点击、输入、切换焦点、用中文输入法输入；同时用打包后的 exe 再试一次（可以用 scripts/release 里的本机构建只构建不安装，或用现成 payload）。写清复现结果和根因（附证据：日志、截图、必要时加临时诊断日志）。
+  2. 修根因；“找回密码”页同一套也要验。
+  3. 做预热（第 2 条），找回密码页共用。
+  4. 验证（完成标准以这些为准）：
+     a. 源代码与打包 exe 两种启动方式下，注册页和找回密码页都能点击、输入（含中文输入法）、Tab 切换、显示密码、返回登录；截图。
+     b. 冷启动后第一次点“注册账号”到能输入的时间，修前 / 修后各测 3 次写进报告，目标 ≤1 秒；登录窗口出现时间与登录耗时不变慢（修前后对比）。
+     c. 离线测试覆盖遮罩隐藏后不拦截输入、预热页面复用与释放；全量通过；web 构建通过（如有改动）。
+完成标准：a、b、c 全部达到（b 达不到 1 秒时写清实测值与卡在哪，算部分完成）；提交在工位。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\register95\report.md。
+回执（尽量短，用表格）：【MF-05｜platform｜第九十五批｜完成/部分完成/受阻】基线 ／ 提交 ／ 没法输入的根因 ／ 修法 ／ 两种启动方式实测 ／ 打开耗时修前修后 ／ 全量 ／ 本地最终占用
+~~~
 
 ## 第九十四批任务原文（2026-10-10，基线 6b40eb33）
 
