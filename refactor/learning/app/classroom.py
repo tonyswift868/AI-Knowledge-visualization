@@ -206,7 +206,7 @@ class Classroom:
             question['revealed']=bool(pending.get('revealed'))
             if isinstance(question.get('source'),dict):
                 question['source']={k:v for k,v in question['source'].items() if k!='text'}
-            if pending.get('revealed'):question.update(reference=q['reference'],key_points=q['key_points'],answer=pending['learner_answer'])
+            if pending.get('revealed'):question.update(reference=q['reference'],key_points=q['key_points'],answer=pending['learner_answer'],ticked=pending.get('ticked',[]))
         if question:question.update(purpose=PURPOSE[pending['kind']],number=pending.get('number'),total=pending.get('total'))
         today = self._today(course,state)
         preparing = self._jobs.get((course.plan_id, module['id']))
@@ -452,6 +452,7 @@ class Classroom:
         except ValueError as exc:raise BridgeError('PARAM_INVALID',str(exc)) from None
         verdict=judge_agent.Verdict('answer',good,() if good else tuple(q['point_ids']),
             '作答'+('符合资料标准答案。' if good else '不符合资料标准答案。'))
+        pending['learner_answer']=copy.deepcopy(value)
         return self._settle(course,state,ctx,pending,self._prior_verdict(course,state,pending) or verdict,text)
 
     def recall_reveal(self, course, state, ctx, question_id, answer):
@@ -464,22 +465,28 @@ class Classroom:
             pending.update(learner_answer=answer,revealed=True)
             self._user(course,state,answer)
 
-    def recall_submit(self, course, state, ctx, question_id, ticked):
+    def recall_draft(self, course, state, ctx, question_id, ticked):
         pending=state.get('pending')
-        if not pending or pending['question']['id']!=question_id or not pending.get('revealed'):
+        if not pending or pending['question']['id']!=question_id or pending['question']['kind']!='recall' or not pending.get('revealed'):
             raise BridgeError('STEP_INVALID','先提交自己的回答、查看参考答案，再勾选要点。')
-        q=pending['question'];count=len(q['key_points'])
+        count=len(pending['question']['key_points'])
         if not isinstance(ticked,list) or any(type(i) is not int or not 0<=i<count for i in ticked) or len(set(ticked))!=len(ticked):
             raise BridgeError('PARAM_INVALID','勾选的要点下标无效。')
+        pending['ticked']=sorted(ticked)
+
+    def recall_submit(self, course, state, ctx, question_id, ticked, correct):
+        self.recall_draft(course,state,ctx,question_id,ticked)
+        if type(correct) is not bool:raise BridgeError('PARAM_INVALID','请自己选择算对或算错。')
+        pending=state['pending'];q=pending['question']
         prior=self._prior_verdict(course,state,pending)
         if prior is not None:
             fact=next((r for r in course.store.records('question_answers',course.plan_id)
-                       if r['id']==self._answer_id(course,state,pending)),None)
-            if fact is not None:ticked=fact.get('ticked',ticked)
-        missed=[i for i in range(count) if i not in ticked];correct=not missed
-        pending['ticked']=sorted(ticked)
+                       if r['id']==pending['answer_id']),{})
+            ticked=fact.get('ticked',ticked);correct=prior.correct
+        missed=[i for i in range(len(q['key_points'])) if i not in ticked]
+        pending.update(ticked=sorted(ticked),self_correct=correct)
         verdict=judge_agent.Verdict('answer',correct,() if correct else tuple(q['point_ids']),
-            '全部要点已勾到。' if correct else '未勾到要点：'+ '、'.join(str(i+1) for i in missed))
+            '学生自己选择：'+('算我答对。' if correct else '算我答错。'))
         state['recall_result']=dict(question_id=question_id,correct=correct,missed=missed)
         self._settle(course,state,ctx,pending,prior or verdict,pending['learner_answer'])
 
@@ -571,7 +578,7 @@ class Classroom:
         self._materials().mark_used(course.store,course.plan_id,q['id'],PURPOSE[kind])
         state['pending']=dict(kind=kind,answer_id=uuid.uuid4().hex,point_ids=q['point_ids'],question=q,asks=asks,number=number,total=total)
         # Retain the previous verdict's explanation while showing the next card.
-        self._say(course,state,q['stem'],kind='question')
+        state['pending']['question_message_id']=self._say(course,state,q['stem'],kind='question')
 
     def _explanation(self, course, q):
         source=q.get('answer_source',q['source']);text=q.get('explanation') or self._reference(q)
@@ -743,6 +750,7 @@ class Classroom:
             return
         if course.plan['state']=='active':
             course.store.start_checking(course.plan_id);course.plan=course.store.get_plan(course.plan_id)
+        state.setdefault('check_session',uuid.uuid4().hex)
         state.update(phase='check',step='checking',pending=None,check=None,check_used=0,check_missing=[])
         self._next_check(course,state,ctx)
 
@@ -770,6 +778,7 @@ class Classroom:
         if point_id and point_id not in {p['id'] for p in course.points}:raise BridgeError('PARAM_INVALID','知识点不存在。')
         targets=[p['id'] for p in course.points if (not module_id or p['module_id']==module_id) and (not point_id or p['id']==point_id) and (course.plan['state']=='completed' or p['id'] in course.taught())]
         if not targets:raise BridgeError('STEP_INVALID','所选范围还没有学过。')
+        state['practice_session']=uuid.uuid4().hex
         state['practice']=dict(resume=copy.deepcopy(state),targets=targets,index=0,count=count,asked=[])
         state.update(step='practicing',phase='practice',pending=None)
         self._ask_practice(course,state,ctx)
@@ -870,17 +879,24 @@ class Classroom:
             attempt,tuple((pid,pid not in wrong) for pid in pending['point_ids']),question_id=q['id'] if context not in ('casual','quick_confirm') else None)
         details=dict(question=q['stem'],question_id=q['id'],question_type=q['kind'],answer=answer,reason=verdict.reason,
             point_checks=list(verdict.checks),source=q['source'],answer_source=q.get('answer_source',q['source']))
-        if q['kind']=='recall':details.update(ticked=pending.get('ticked',[]),reference=q['reference'],key_points=q['key_points'])
+        if q['kind']=='recall':details.update(ticked=pending.get('ticked',[]),reference=q['reference'],key_points=q['key_points'],self_correct=pending.get('self_correct'))
         course.store.append_judgement(course.plan_id,event,details=details,credit_day=self._day(state) if context=='check' else None)
 
     def _answer_id(self, course, state, pending):return pending['answer_id']
 
     def _answer_fact(self, course, state, context, pending, verdict):
         q=pending['question']
+        # An already committed answer survives a later scene-save interruption.
+        if any(r['id']==pending['answer_id'] for r in course.store.records('question_answers',course.plan_id)):return
+        snapshot={k:copy.deepcopy(q[k]) for k in ('id','kind','objective_kind','stem','options','answer','accepted','tolerance','reference','key_points','explanation','source','answer_source') if k in q}
+        if q.get('options'):snapshot['correct_options']=question_bank.grading_question(q)['answer']
+        missed=[i for i in range(len(q.get('key_points',[]))) if i not in pending.get('ticked',[])]
+        attempt=(state.get('test') or {}).get('attempt') if context in ('module_test','skip_test','retest') else state.setdefault(context+'_session',uuid.uuid4().hex)
         course.store.append_question_answer(course.plan_id,pending['answer_id'],module_id=course.point(pending['point_ids'][0])['module_id'],context=context,
-            attempt_id=(state.get('test') or {}).get('attempt'),question_id=q['id'],point_ids=pending['point_ids'],angle=None,
+            attempt_id=attempt,question_id=q['id'],point_ids=pending['point_ids'],angle=None,
             correct=verdict.correct,wrong_points=verdict.wrong_points,reason=verdict.reason,checks=verdict.checks,at=self.now(),
-            answer=pending.get('learner_answer'),ticked=pending.get('ticked'))
+            answer=pending.get('learner_answer'),ticked=pending.get('ticked'),missed=missed if q['kind']=='recall' else None,
+            self_correct=pending.get('self_correct'),question=snapshot,dialogue_channel=self._channel(state),question_message_id=pending.get('question_message_id'))
 
     def _credit_learning(self, course, state, point):
         course.store.add_credit(course.plan_id,f"learn:{point['id']}",point['id'],point['minutes'],self._day(state),'tentative')
@@ -1195,11 +1211,13 @@ def register(bridge, services, study_day, *, presence=lambda active,plan_id=None
         q=result.get('question') or {}
         return dict(result,reference=q.get('reference'),key_points=q.get('key_points'))
     def submit(p,c):
-        result=invoke('recall_submit',p,c,p.get('question_id'),p.get('ticked'))
+        result=invoke('recall_submit',p,c,p.get('question_id'),p.get('ticked'),p.get('correct'))
         if result.get('failure'):return result
         return dict(result,**(result.get('recall_result') or {}))
     methods={
         'class.recall_reveal':reveal,'class.recall_submit':submit,
+        'class.recall_draft':lambda p,c:invoke('recall_draft',p,c,p.get('question_id'),p.get('ticked')),
+        'classroom.wrong_answers':lambda p,c:room().services.store.wrong_answers(p.get('plan_id')),
         'classroom.enter':enter,'classroom.leave':leave,'classroom.source':source,
         'classroom.state':lambda p,c:room().run(p.get('plan_id'),lambda *args:None,c),
         'classroom.next':lambda p,c:invoke('next',p,c),

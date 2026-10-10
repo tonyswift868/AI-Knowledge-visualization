@@ -1,3 +1,4 @@
+import { WrongAnswers } from "../classroom/WrongAnswers"
 import * as React from "react"
 import { ArrowLeft, BookOpen, CalendarClock, ExternalLink, FilePlus2, FileText, PlayCircle } from "lucide-react"
 import { call, on } from "../bridge"
@@ -22,6 +23,7 @@ const WEEK = "一二三四五六日"
 
 export function PlanDetail() {
   const planId = useApp((s) => s.planId)
+  const [wrongAnswers, setWrongAnswers] = React.useState(false)
   const go = useApp((s) => s.go)
   const [detail, setDetail] = React.useState<Detail | null>(null)
   const [gaps, setGaps] = React.useState<{ point_id: string; title: string; purpose: string; reason: string }[]>([])
@@ -112,6 +114,7 @@ export function PlanDetail() {
       <div className="row" style={{ marginTop: 12, gap: 10 }}>
         {(detail.plan.state === "active" || detail.plan.state === "checking") &&
           <Button kind="primary" onClick={() => go("classroom")}><PlayCircle />开课</Button>}
+        {detail.plan.state === "completed" && <Button onClick={() => setWrongAnswers(true)}>错题集</Button>}
         {detail.has_report && <Button kind="primary" onClick={() => go("report")}><FileText />学习报告</Button>}
         {detail.progress && <span className="muted small">还剩 {detail.progress.remaining} 分钟{detail.progress.overdue_days ? `，已逾期 ${detail.progress.overdue_days} 天` : ""}</span>}
       </div>
@@ -130,6 +133,7 @@ export function PlanDetail() {
       </div>}
       {(detail.plan.state === "active" || detail.plan.state === "checking" || detail.plan.state === "completed") &&
         <PracticeCard detail={detail} onOpen={() => go("classroom")} />}
+      {wrongAnswers && <WrongAnswers planId={detail.plan.id} onClose={() => setWrongAnswers(false)} />}
       <div className="section-title"><h2>资料</h2><span>{detail.sources.length} 份</span></div>
       <div className="card stack">
         {detail.sources.map((s) => (

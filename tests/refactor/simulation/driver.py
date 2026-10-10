@@ -28,7 +28,7 @@ def controls(view,stage):
     if stage in ('classroom','final','free'):
         step=view.get('step');q=view.get('question');result=[]
         if q and q.get('kind')=='recall':
-            return ([a('class.recall_submit','question_id: 当前题号, ticked: 从0开始的已勾要点下标数组')]
+            return ([a('class.recall_submit','question_id: 当前题号, ticked: 从0开始的已勾要点下标数组, correct: 学生自己选择的布尔对错')]
                     if q.get('revealed') else [a('class.recall_reveal','question_id: 当前题号, answer: 学生自己的回答')])
         if q:return [a('classroom.answer','value: 选择题下标数组; 填空/计算按资料标准作答'),
             a('classroom.reply','text: 作答或澄清'),a('classroom.ask','text: 追问'),a('simulation.reopen','中途退出再进')]

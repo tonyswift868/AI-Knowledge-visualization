@@ -118,7 +118,7 @@ def position(e,mid,step='test_offer'):
 def answer(e,v,good=True):
     if v['question']['kind']=='recall':
         qid=v['question']['id'];act(e,'recall_reveal',qid,'学生自己的原文回答')
-        return act(e,'recall_submit',qid,[0,1,2] if good else [0,1])
+        return act(e,'recall_submit',qid,[0,1,2] if good else [0,1],good)
     return act(e,'answer',[0] if good else [1])
 
 
@@ -137,10 +137,10 @@ def test_recall_bridge_contract_and_interrupted_submit_are_idempotent(env,monkey
     assert not e.store.records('judgements',PLAN)
     original=e.room._save
     monkeypatch.setattr(e.room,'_save',lambda *a:(_ for _ in ()).throw(RuntimeError('interrupted save')))
-    with pytest.raises(RuntimeError):act(e,'recall_submit',qid,[0,1],token='submit70')
+    with pytest.raises(RuntimeError):act(e,'recall_submit',qid,[0,1],False,token='submit70')
     monkeypatch.setattr(e.room,'_save',original)
     # A changed retry cannot replace a judgement that already committed.
-    v=act(e,'recall_submit',qid,[0,1,2],token='submit70')
+    v=act(e,'recall_submit',qid,[0,1,2],True,token='submit70')
     assert v['recall_result']==dict(question_id=qid,correct=False,missed=[2])
     rows=e.store.records('question_answers',PLAN)
     assert len(rows)==1 and rows[0]['answer']=='我的答案原文' and rows[0]['ticked']==[0,1]
@@ -167,11 +167,11 @@ def test_question_estimate_zero_module_and_every_answer_time(env):
 def test_real_room_recall_reveal_missing_ticks_restart_and_retest(env):
     e=env;position(e,'m0');v=act(e,'start_test','module_test');qid=v['question']['id']
     assert v['question']['kind']=='recall' and 'reference' not in v['question'] and 'key_points' not in v['question']
-    bad=e.room.perform(PLAN,'recall_submit',None,(qid,[0,1,2]))
+    bad=e.room.perform(PLAN,'recall_submit',None,(qid,[0,1,2],True))
     assert bad['failure'] and not e.store.records('judgements',PLAN)
     v=act(e,'recall_reveal',qid,'第一条，第二条');assert v['question']['reference'] and v['question']['answer']=='第一条，第二条'
     e.room=Classroom(e.services,lambda:DAY,now=lambda:NOW);e.room._prepare_next_module=lambda *a,**k:None
-    v=act(e,'recall_submit',qid,[0,1]);assert v['recall_result']==dict(question_id=qid,correct=False,missed=[2])
+    v=act(e,'recall_submit',qid,[0,1],False);assert v['recall_result']==dict(question_id=qid,correct=False,missed=[2])
     while v['question']:v=answer(e,v)
     assert v['module']['state']=='failed'
     v=act(e,'start_test','retest');assert v['question']['id']==qid and v['question']['total']==1

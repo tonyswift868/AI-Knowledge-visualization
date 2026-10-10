@@ -9,7 +9,7 @@ export type SourceCard = { id: string; text: string; title: string; url: string 
 export type Conversation = { point_id: string; options: string[]; interrupted: boolean }
 export type Preparation = { done: number; total: number; text: string; error?: string | null }
 export type BankQuestion = { id: string; kind: "choice" | "multi" | "fill" | "short" | "essay" | "calc" | "recall" | "objective";
-  question_type?: "choice" | "multi" | "fill" | "calc"; revealed?: boolean; reference?: string; key_points?: string[]; answer?: string;
+  question_type?: "choice" | "multi" | "fill" | "calc"; revealed?: boolean; ticked?: number[]; reference?: string; key_points?: string[]; answer?: string;
   stem: string; options: string[]; source: { title: string; url: string | null; locator: string }; origin: string;
   purpose: string; blanks?: number; number?: number; total?: number }
 export type Act = (method: string, params?: Record<string, unknown>, label?: string) => Promise<boolean>

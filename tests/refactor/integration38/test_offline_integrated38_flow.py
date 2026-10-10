@@ -169,7 +169,7 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
             if v['question']['kind']=='recall':
                 qid=v['question']['id'];v=registry.methods['class.recall_reveal'](dict(plan_id=pid,question_id=qid,answer='先进先出与后进先出'),ctx)
                 assert v['reference'] and len(v['key_points'])==3
-                v=registry.methods['class.recall_submit'](dict(plan_id=pid,question_id=qid,ticked=[0,1,2]),ctx)
+                v=registry.methods['class.recall_submit'](dict(plan_id=pid,question_id=qid,ticked=[0,1,2],correct=True),ctx)
             else:v=act('answer',value=[0])
         assert v['module']['state']=='skipped'
         act('next_module');act('next');act('choose',option=0)
@@ -184,7 +184,7 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
                 stored=next(q for q in services.store.records('question_bank',pid) if q['id']==v['question']['id'])
                 if stored['kind']=='recall':
                     registry.methods['class.recall_reveal'](dict(plan_id=pid,question_id=stored['id'],answer='自己的回答'),ctx)
-                    v=registry.methods['class.recall_submit'](dict(plan_id=pid,question_id=stored['id'],ticked=list(range(len(stored['key_points'])))),ctx)
+                    v=registry.methods['class.recall_submit'](dict(plan_id=pid,question_id=stored['id'],ticked=list(range(len(stored['key_points']))),correct=True),ctx)
                 else:v=act('answer',value=[0])
             else:v=act('check')
         report=flow.report(pid)['report'];views=report_views(report)
@@ -200,7 +200,7 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
                 qid=v['question']['id']
                 v=registry.methods['class.recall_reveal'](dict(plan_id=pid,question_id=qid,answer='自己的回答'),ctx)
                 v=registry.methods['class.recall_submit'](dict(plan_id=pid,question_id=qid,
-                    ticked=list(range(len(v['key_points']))) if correct else []),ctx)
+                    ticked=list(range(len(v['key_points']))) if correct else [],correct=correct),ctx)
             else:v=act('answer',value=[0 if correct else 1])
         assert v['step']=='completed'
         assert frozen==(services.store.load_mastery(pid).to_dict(),services.store.load_report(pid))

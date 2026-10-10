@@ -33,10 +33,11 @@ export async function call(method:string,params:any={}) {
     if(control.failReveal)throw new Error('测试：保存失败，请重试')
     return {reference,key_points}
   }
+  if(method==='class.recall_draft')return {}
   if(method==='class.recall_submit') {
     submitted=true
     const missed=key_points.map((_,i)=>i).filter(i=>!params.ticked.includes(i))
-    return {correct:missed.length===0,missed}
+    return {correct:params.correct,missed}
   }
   if(method==='classroom.answer')return {...room,messages:[{id:'verdict70',role:'assistant',kind:'verdict',content:'✓ 答对了',sources:[]}],question:null}
   throw new Error('Unexpected offline bridge call: '+method)

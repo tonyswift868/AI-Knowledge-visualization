@@ -16,7 +16,7 @@ def run_scenario(root,*,extended=False):
             if name=='reply' and q:
                 if q['kind']=='recall':
                     room.perform(pid,'recall_reveal',context(),(q['id'],'学生自己的回答'))
-                    name,args='recall_submit',(q['id'],list(range(len(q['key_points']))))
+                    name,args='recall_submit',(q['id'],list(range(len(q['key_points']))),True)
                 else:
                     from refactor.learning.course.question_bank import grading_question
                     name,args='answer',(grading_question(q)['answer'],)
