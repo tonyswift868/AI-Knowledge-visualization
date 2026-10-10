@@ -29,6 +29,17 @@ from refactor.desktop.delivery.update_protocol import MANIFEST_PATH
 _trace = ContextVar('update_io_trace', default=None)
 _directory_guard = ContextVar('update_directory_guard', default=None)
 
+PRIMARY_UPDATE_ROOT = 'https://aiteacher.clannad.win/updates/app/'
+FALLBACK_UPDATE_ROOT = 'https://89.45.45.28/mentorflow/updates/app/'
+
+
+def update_sources(url):
+    for root in (PRIMARY_UPDATE_ROOT, FALLBACK_UPDATE_ROOT):
+        if url.startswith(root):
+            suffix = url[len(root):]
+            return [PRIMARY_UPDATE_ROOT + suffix, FALLBACK_UPDATE_ROOT + suffix]
+    return [url]
+
 
 class UpdateTelemetry:
     """Per-operation diagnostic counters; never an integrity authority."""
@@ -125,8 +136,9 @@ class HTTPTransport:
     """Idle-bounded transfers; metadata alone also has a total deadline.
 
     A daemon network worker owns HTTPX. The caller's deadline is authoritative
-    even if OS DNS has not returned. At most one worker per transport is allowed;
-    subsequent requests fail recoverably while a timed-out worker is finishing.
+    even if OS DNS has not returned. One worker per origin is allowed; the two
+    fixed mirrors have independent slots so stalled domain DNS cannot block IP.
+    Subsequent requests to that origin fail while its old worker is finishing.
     """
     def __init__(self, origin: str, *, fixture_http=False, signed_static_http=False,
                  connect=15.0, read=30.0, total=None, metadata_total=300.0):
@@ -138,16 +150,25 @@ class HTTPTransport:
         if not all(0 < n <= 300 for n in (connect, read, metadata_total)) or (total is not None and not 0 < total <= 300):
             raise ValueError('invalid HTTP timeout')
         self._active = threading.BoundedSemaphore(1)
-        self._tls_context = None
+        key = (self.origin.scheme, self.origin.hostname, self.origin.port)
+        self._network_slots = {key:self._active}
+        if len(update_sources(origin)) == 2:
+            for root in update_sources(origin):
+                endpoint = urlsplit(root)
+                endpoint_key = (endpoint.scheme, endpoint.hostname, endpoint.port)
+                if endpoint_key not in self._network_slots:
+                    self._network_slots[endpoint_key] = threading.BoundedSemaphore(1)
+        self._tls_contexts = {}
         self.bytes_received = 0
         self.validate_url(origin)
 
     @property
     def busy(self):
         """Read-only UI scheduling seam; cancellation can precede socket exit."""
-        if not self._active.acquire(blocking=False):
-            return True
-        self._active.release()
+        for slot in self._network_slots.values():
+            if not slot.acquire(blocking=False):
+                return True
+            slot.release()
         return False
 
     def validate_url(self, url):
@@ -158,11 +179,18 @@ class HTTPTransport:
         if parsed.username or parsed.password or parsed.fragment or parsed.query or not parsed.hostname:
             raise SecurityError('invalid update URL')
         if (parsed.scheme, parsed.hostname, parsed.port) != (self.origin.scheme, self.origin.hostname, self.origin.port):
-            raise SecurityError('update origin mismatch')
+            if (len(update_sources(self.origin.geturl())) != 2 or len(update_sources(url)) != 2):
+                raise SecurityError('update origin mismatch')
 
-    def stream(self, url, *, offset=0, cancel=lambda: False, _total=None):
+    def source_urls(self, url):
         self.validate_url(url)
-        if not self._active.acquire(blocking=False):
+        return update_sources(url) if len(update_sources(self.origin.geturl())) == 2 else [url]
+
+    def stream(self, url, *, offset=0, cancel=lambda: False, _total=None, _metadata=False):
+        self.validate_url(url)
+        endpoint = urlsplit(url)
+        slot = self._network_slots[(endpoint.scheme, endpoint.hostname, endpoint.port)]
+        if not slot.acquire(blocking=False):
             raise RecoverableError('previous network request is still finishing')
         events = queue.Queue(maxsize=4)
         stop = threading.Event()
@@ -180,33 +208,46 @@ class HTTPTransport:
             nonlocal last_received
             failure = None
             try:
-                if self._tls_context is None:
-                    # Preserve HTTPX's trust_env=False / certifi trust exactly.
-                    # Initialize once on the network worker, not once per asset
-                    # or on Qt's thread. The existing semaphore serializes use.
+                host = urlsplit(url).hostname
+                if host not in self._tls_contexts:
+                    # Resolve trust on the worker, once per host. Domain uses
+                    # system roots; the legacy IP also trusts the bundled fixed CA.
                     import ssl
                     import certifi
-                    self._tls_context = ssl.create_default_context(cafile=certifi.where())
-                headers = {'Accept-Encoding': 'identity', 'User-Agent': 'MentorFlow-updater/1'}
+                    if host == 'aiteacher.clannad.win':
+                        tls = ssl.create_default_context()  # Public certificate, system roots.
+                    else:
+                        tls = ssl.create_default_context(cafile=certifi.where())
+                        if url.startswith(FALLBACK_UPDATE_ROOT):
+                            from refactor.desktop.shell_paths import ACCOUNT_API_TRUST
+                            tls.load_verify_locations(cafile=str(ACCOUNT_API_TRUST))
+                    self._tls_contexts[host] = tls
+                headers = {'Accept-Encoding': 'gzip' if _metadata else 'identity', 'User-Agent': 'MentorFlow-updater/1'}
                 if offset:
                     headers['Range'] = f'bytes={offset}-'
                 with httpx.Client(timeout=httpx.Timeout(self.read, connect=self.connect),
-                                  follow_redirects=False, trust_env=False, verify=self._tls_context) as client:
+                                  follow_redirects=False, trust_env=False, verify=self._tls_contexts[host]) as client:
                     with client.stream('GET', url, headers=headers) as response:
                         put(('headers', (response.status_code, dict(response.headers))))
                         # Do not wait for a 64 KiB buffer to fill: even a small
                         # arriving socket block means the connection is alive.
                         last_received = time.monotonic()
-                        for block in response.iter_raw():
-                            last_received = time.monotonic()
-                            self.bytes_received += len(block)
-                            if stop.is_set():
-                                break
-                            put(('bytes', block))
+                        received = 0
+                        try:
+                            blocks = response.iter_bytes() if _metadata else response.iter_raw()
+                            for block in blocks:
+                                last_received = time.monotonic()
+                                self.bytes_received += response.num_bytes_downloaded - received
+                                received = response.num_bytes_downloaded
+                                if stop.is_set():
+                                    break
+                                put(('bytes', block))
+                        finally:
+                            self.bytes_received += response.num_bytes_downloaded - received
             except Exception as exc:
                 failure = type(exc).__name__
             finally:
-                self._active.release()
+                slot.release()
                 put(('error', failure) if failure else ('done', None))
 
         threading.Thread(target=network, daemon=True, name='mentorflow-update-http').start()
@@ -231,15 +272,36 @@ class HTTPTransport:
         finally:
             stop.set()
 
-    def fetch_metadata(self, url, maximum, *, cancel=lambda: False):
+    def fetch_metadata(self, url, maximum, *, cancel=lambda: False, validate=None, deadline=None):
+        import logging
+        sources = self.source_urls(url)
+        for index, source in enumerate(sources):
+            if cancel():
+                raise DownloadCancelled('update check cancelled')
+            try:
+                raw = self._fetch_metadata_once(source, maximum, cancel=cancel, deadline=deadline)
+                if validate is not None:
+                    validate(raw)
+                self.last_metadata_source = source
+                return raw
+            except DownloadCancelled:
+                raise
+            except (RecoverableError, SecurityError):
+                if index == len(sources) - 1:
+                    raise
+                logging.getLogger(__name__).warning('update metadata source failed; falling back to IP: %s', source)
+
+    def _fetch_metadata_once(self, url, maximum, *, cancel, deadline):
         result = bytearray()
         total = min(self.total, self.metadata_total) if self.total is not None else self.metadata_total
-        for kind, value in self.stream(url, cancel=cancel, _total=total):
+        if deadline is not None:
+            total = min(total, deadline)
+        for kind, value in self.stream(url, cancel=cancel, _total=total, _metadata=True):
             if kind == 'headers':
                 status, headers = value
                 if status != 200:
                     raise RecoverableError('metadata HTTP status ' + str(status))
-                if headers.get('content-encoding', 'identity') != 'identity':
+                if headers.get('content-encoding', 'identity').lower() not in ('identity', 'gzip'):
                     raise SecurityError('encoded metadata refused')
             else:
                 result.extend(value)
@@ -289,15 +351,31 @@ class ObjectCache:
         raise SecurityError('completed cache object was modified')
 
     def download(self, asset, *, cancel=lambda: False, progress=lambda n: None):
-        for attempt in range(6):  # original attempt + five automatic resumes
-            try:
-                return self._download_once(asset, cancel=cancel, progress=progress)
-            except DownloadCancelled:
-                raise
-            except RecoverableError:
-                if attempt == 5:
+        import logging
+        sources = self.transport.source_urls(asset['url']) if isinstance(self.transport, HTTPTransport) else [asset['url']]
+        remote_content_errors = {'asset SHA-256 mismatch', 'encoded asset refused',
+                                 'invalid range response', 'asset response size mismatch'}
+        for index, source in enumerate(sources):
+            for attempt in range(6):  # original attempt + five automatic resumes on last source
+                try:
+                    return self._download_once({**asset, 'url':source}, cancel=cancel, progress=progress)
+                except DownloadCancelled:
                     raise
-                retry_wait((2, 4, 8, 16, 30)[attempt], cancel)
+                except SecurityError as exc:
+                    if index == len(sources)-1 or str(exc) not in remote_content_errors:
+                        raise
+                    partial = self.objects / (asset['sha256'] + '.part')
+                    safe_entry(partial, self.root)
+                    partial.unlink(missing_ok=True)  # Restart bad remote bytes, never a completed object.
+                    logging.getLogger(__name__).warning('update asset content failed; falling back to IP: %s', source)
+                    break
+                except RecoverableError:
+                    if index < len(sources)-1:
+                        logging.getLogger(__name__).warning('update asset source failed; falling back to IP: %s', source)
+                        break
+                    if attempt == 5:
+                        raise
+                    retry_wait((2, 4, 8, 16, 30)[attempt], cancel)
 
     def downloaded_bytes(self, assets):
         """Presentation only; completion still requires the existing SHA check."""

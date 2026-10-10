@@ -268,6 +268,13 @@ def dispatch(request):
         if not archived.exists():
             atomic_bytes(archived, raw)
         atomic_bytes(live, raw)
+        signed = json.loads(raw)['signed']
+        pointer = dict(version=v, metadata_version=signed['metadata_version'],
+                       sha256=hashlib.sha256(raw).hexdigest(), size=len(raw))
+        # The manifest is authoritative. Publish the hint AFTER it, atomically;
+        # readers spanning the two renames may see a mismatch and use the signed manifest.
+        atomic_bytes(live.with_name('latest.json'),
+                     (json.dumps(pointer, separators=(',', ':')) + '\n').encode('utf-8'))
         return dict(status='STABLE_PUBLISHED', version=v, files=len(rows),
                     time=datetime.now(timezone.utc).isoformat())
     raise ValueError('unknown server operation: ' + action)

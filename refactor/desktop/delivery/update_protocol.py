@@ -58,6 +58,28 @@ def version_key(value: str):
     return int(major), int(minor), int(patch), not bool(pre), tuple(identifiers)
 
 
+def release_pointer(raw: bytes) -> dict:
+    """Unsigned download hint only; never authorizes a version or mandatory floor."""
+    if len(raw) > 2048:
+        raise SecurityError('release pointer too large')
+    value = strict_json(raw)
+    if not isinstance(value, dict) or set(value) != {'version', 'metadata_version', 'sha256', 'size'}:
+        raise SecurityError('invalid release pointer fields')
+    version_key(value['version'])
+    if (type(value['metadata_version']) is not int or value['metadata_version'] < 1
+            or type(value['size']) is not int or not 0 < value['size'] <= MAX_METADATA
+            or not isinstance(value['sha256'], str) or not HASH.fullmatch(value['sha256'])):
+        raise SecurityError('invalid release pointer values')
+    return value
+
+
+def pointer_matches(pointer: dict, release) -> bool:
+    return (pointer['version'] == release.version
+            and pointer['metadata_version'] == release.signed['metadata_version']
+            and pointer['sha256'] == digest(release.envelope)
+            and pointer['size'] == len(release.envelope))
+
+
 def safe_path(value: str) -> str:
     if not isinstance(value, str) or not value or len(value) > 220:
         raise SecurityError('invalid target path')
