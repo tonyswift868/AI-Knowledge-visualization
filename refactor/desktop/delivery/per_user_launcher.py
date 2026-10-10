@@ -28,6 +28,19 @@ class _NeedsRepair(Exception):
     pass
 
 
+def _log_pending_install_failure(root, pending, error):
+    """Record a deferred-install failure without hiding the recovery path."""
+    from refactor.desktop.delivery.update_protocol import SecurityError
+    if isinstance(error, SecurityError) and 'outside the approved cache' in str(error):
+        code = 'PENDING_STAGE_OUTSIDE_CACHE'
+    elif isinstance(error, RecoverableError):
+        code = 'PENDING_INSTALL_DEFERRED'
+    else:
+        code = 'PENDING_INSTALL_FAILED'
+    install.maintenance_log(root, 'pending_install_failed', target=pending.get('target', ''),
+                            error_type=type(error).__name__, error_code=code, detail=str(error))
+
+
 def _launch_checked(root, mark=lambda phase: None):
     from refactor.desktop.delivery.update_download import InstallUpdateLock
     root = install.target(root)
@@ -49,19 +62,31 @@ def _launch_checked(root, mark=lambda phase: None):
     mark('startup_verified')
     if state['state'] in ('REPAIR_REQUIRED', 'FATAL_UNRECOVERABLE'):
         raise _NeedsRepair
-    if (root / core.PENDING).exists():
-        pending = core.read_pending(root)
+    pending = None
+    try:
+        core.discard_stale_pending(root)
+        if (root / core.PENDING).exists():
+            pending = core.read_pending(root)
+    except (OSError, RuntimeError, ValueError) as error:
+        _log_pending_install_failure(root, {}, error)
+    if pending is not None:
         if pending['state'] not in ('CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'):
             try:
                 # A successful apply already launches/health-checks TARGET.
                 result = core.resume_pending_on_normal_launch(root, reason='next_launch')
                 if result.get('state') == 'CURRENT_HEALTHY':
                     return result
-            except (OSError, RuntimeError, ValueError):
+            except (OSError, RuntimeError, ValueError) as error:
+                _log_pending_install_failure(root, pending, error)
                 # Offline/withdrawn/invalid pending content cannot block the
                 # signed current App. A rolled-back App is already running;
                 # validate its live identity instead of launching a duplicate.
-                if core.read_pending(root)['state'] == 'PREVIOUS_HEALTHY':
+                try:
+                    rolled_back = core.read_pending(root)['state'] == 'PREVIOUS_HEALTHY'
+                except (OSError, RuntimeError, ValueError) as pending_error:
+                    _log_pending_install_failure(root, pending, pending_error)
+                    rolled_back = False
+                if rolled_back:
                     return dict(status='PREVIOUS_HEALTHY', health=_recovery_health(root))
     with InstallUpdateLock(root):
         if core.unsafe_teardown('next_launch'):

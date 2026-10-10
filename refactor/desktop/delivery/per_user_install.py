@@ -324,6 +324,112 @@ def schedule_updater_refresh(root):
     return thread
 
 
+def schedule_program_cleanup(root):
+    """Housekeeping must not wait for a slow/offline update-feed request."""
+    import threading
+    if not (Path(root) / STATE).is_file(): return None
+    def work():
+        time.sleep(2)
+        try: cleanup_program_files(root)
+        except (OSError, RuntimeError, ValueError) as error:
+            maintenance_log(root, 'cleanup_deferred', error=str(error))
+    thread = threading.Thread(target=work, daemon=True, name='program-cleanup')
+    thread.start()
+    return thread
+
+
+def maintenance_log(root, phase, **fields):
+    """Short-lived appenders: never retain a file handle in the launch process."""
+    from refactor.desktop.delivery.startup_window import log_phase
+    import json
+    try:
+        log_phase(root, phase, **fields)
+        log = Path(root) / 'Data/logs/mentorflow.log'
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open('a', encoding='utf-8') as stream:
+            stream.write(json.dumps(dict(event='update', phase=phase, **fields),
+                                    ensure_ascii=False) + '\n')
+    except OSError:
+        pass
+
+
+def _program_cache_roots(root):
+    identity = digest((configured().app_id + '\0' + os.path.normcase(str(root))).encode())[:12]
+    roots = [root.parent / '.MentorFlow-runtime' / '.mfu']
+    if os.environ.get('LOCALAPPDATA'):
+        roots.append(Path(os.environ['LOCALAPPDATA']) / '.mfu' / identity)
+    return roots
+
+
+def _remove_program_tree(root, path):
+    """Only call for owned transaction/cache trees, never Data or unknown files."""
+    try:
+        plain(path)
+        # Preserve any unexpectedly embedded learning data rather than guessing.
+        # Product resources include course/data and tzdata. Only the install
+        # data namespace is learning data; do not mistake resources for it.
+        if (path / 'Data').exists() or (path / 'App/Data').exists():
+            maintenance_log(root, 'cleanup_skipped', path=str(path), reason='contains_Data')
+            return False
+        size = sum(p.stat().st_size for p in path.rglob('*') if p.is_file())
+        shutil.rmtree(path)
+        maintenance_log(root, 'cleanup_removed', path=str(path), bytes=size)
+        return True
+    except (OSError, RuntimeError, ValueError) as error:
+        maintenance_log(root, 'cleanup_deferred', path=str(path), error=str(error))
+        return False
+
+
+def cleanup_program_files(root):
+    """Keep current, rollback and the one still-pending download; retry locked junk."""
+    from refactor.desktop.delivery.update_download import InstallUpdateLock
+    from refactor.desktop.delivery import per_user_update_core as core
+    root = target(root)
+    removed = []
+    try:
+        from contextlib import ExitStack
+        from refactor.desktop.delivery.update_service import install_cache_identity
+        with ExitStack() as locks:
+            # Download/reconstruction holds the metadata cache lock, not the
+            # installation lock. Take both existing namespaces before deleting
+            # any staged tree, including an as-yet-unpublished pending download.
+            locals_ = [root.parent / '.MentorFlow-runtime']
+            if os.environ.get('LOCALAPPDATA'):
+                locals_.append(Path(os.environ['LOCALAPPDATA']))
+            caches = {local / configured().app_id / 'Updates' / install_cache_identity(root)
+                      for local in locals_}
+            for cache in sorted(caches):
+                if cache.is_dir(): locks.enter_context(InstallUpdateLock(cache))
+            locks.enter_context(InstallUpdateLock(root))
+            if (root / JOURNAL).exists():
+                phase = strict_json(read(root / JOURNAL)).get('phase')
+                if phase not in ('HEALTHY', 'ROLLED_BACK', 'INITIAL_FAILED'):
+                    return removed
+            core.discard_stale_pending(root)
+            protected = None
+            if (root / core.PENDING).exists():
+                pending = core.read_pending(root)
+                if pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING'):
+                    protected = plain(pending['stage'])
+            candidates = [p for p in root.iterdir() if p.is_dir() and
+                          re.fullmatch(r'(?:staging|retired|failed)-[0-9a-f]{32}', p.name)]
+            for cache in _program_cache_roots(root):
+                if not cache.exists(): continue
+                plain(cache)
+                # Existing downloader layout: <release>/App, or <install>/<release>/App.
+                for directory in (*cache.iterdir(), *cache.glob('*/*')):
+                    if directory.is_dir() and re.fullmatch('[0-9a-f]{12}', directory.name):
+                        candidates.append(directory)
+            for path in candidates:
+                if not path.exists(): continue
+                if protected is not None and (protected == path or protected.is_relative_to(path)):
+                    continue
+                if _remove_program_tree(root, path): removed.append(str(path))
+    except (OSError, RuntimeError, ValueError) as error:
+        maintenance_log(root, 'cleanup_deferred', error=str(error))
+    return removed
+
+
 def verify_payload(root, release=None):
     """Separate signed payload from the observed Inno v1 install namespace.
 
@@ -467,7 +573,27 @@ def request_app_shutdown(root, pid, hwnd_hex):
         if not user.PostMessageW(int(hwnd_hex, 16), 0x10, 0, 0): raise c.WinError()
         deadline = time.monotonic() + 15
         while peer.alive() and time.monotonic() < deadline: time.sleep(.05)
-        if peer.alive(): raise RecoverableError('current app did not close; not replaced')
+        if peer.alive(): raise AppShutdownTimeout('current app did not close; not replaced')
+
+
+class AppShutdownTimeout(RecoverableError):
+    """The legacy close request could not stop an older App instance."""
+
+
+def wait_for_app_exit(root, pid, hwnd_hex, *, timeout=30, ready=lambda: None):
+    """Wait for a new App to exit itself; never send it a window close message."""
+    from refactor.desktop.delivery.windows_process_peer import ProcessPeer
+    with ProcessPeer(pid) as peer:
+        peer.require(executable=app_path(root) / 'MentorFlow.exe', integrity_rid=8192)
+        peer.visible_responsive_window(hwnd_hex)
+        # Keep this native handle open across the acknowledgement and wait.
+        # Opening it after the App quits would race PID reuse/process removal.
+        ready()
+        deadline = time.monotonic() + timeout
+        while peer.alive() and time.monotonic() < deadline:
+            time.sleep(.05)
+        if peer.alive():
+            raise AppShutdownTimeout('app self-exit timed out; update remains pending')
 
 
 def uninstall_per_user(root):
@@ -796,6 +922,12 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
                 atomic(root / JOURNAL, canonical({**journal, 'phase': 'INITIAL_FAILED'}))
             raise
 
+        finally:
+            # This attempt's copy is never needed for resume; the independently
+            # verified download remains outside the installation until applied.
+            if stage.exists() and not (stage / 'previous-updater').exists():
+                _remove_program_tree(root, stage)
+
 
 # Health means a visible responsive App window, not background inventory or feed.
 STARTUP_HEALTH_TIMEOUT = 180
@@ -905,12 +1037,26 @@ def handoff_pending(root, *, hwnd_hex, reason='normal'):
         peer.visible_responsive_window(hwnd_hex)
     runtime = verify_recovery_runtime(root)
     result = root / ('one-click-' + uuid.uuid4().hex + '.json')
+    ready = result.with_suffix('.ready.json')
+    refreshed = refresh_updater(root)
+    if refreshed['status'] not in ('UPDATED', 'UP_TO_DATE'):
+        raise RecoverableError('cannot refresh the update coordinator before handoff')
+    runtime = verify_recovery_runtime(root)
     process = subprocess.Popen([str(runtime), 'apply-latest',
         '--root', str(root), '--pid', str(os.getpid()), '--hwnd-hex', hwnd_hex,
-        '--result', str(result)], cwd=root, close_fds=True,
+        '--result', str(result), '--app-self-exit', '--ready-file', str(ready)], cwd=root, close_fds=True,
         creationflags=subprocess.CREATE_NO_WINDOW)
+    deadline = time.monotonic() + 30
+    while not ready.exists():
+        if process.poll() is not None or time.monotonic() >= deadline:
+            raise RecoverableError('update coordinator did not acknowledge the App')
+        time.sleep(.05)
+    acknowledgement = strict_json(read(ready))
+    ready.unlink(missing_ok=True)
+    if acknowledgement != dict(app_pid=os.getpid(), coordinator_pid=process.pid):
+        raise RecoverableError('unexpected update coordinator acknowledgement')
     return dict(state='APPLYING', coordinator_started=True, coordinator_pid=process.pid,
-                result_path=str(result), update_uac_count=0)
+                result_path=str(result), update_uac_count=0, app_exit='self')
 
 
 def handoff_repair(root, *, hwnd_hex=None, shell=False):
@@ -934,16 +1080,9 @@ def coordinate(root, intent_path):
     stage = plain(intent['stage']); envelope = read(stage.parent / 'release.json')
     if digest(envelope) != intent['release_sha256']: raise SecurityError('prepared release changed')
     def close_base():
-        import ctypes as c
-        from ctypes import wintypes as w
-        with ProcessPeer(intent['pid']) as peer:
-            peer.require(executable=root / 'App/MentorFlow.exe', integrity_rid=8192)
-            peer.visible_responsive_window(intent['hwnd_hex'])
-            user = c.WinDLL('user32'); user.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
-            user.PostMessageW(int(intent['hwnd_hex'], 16), 0x10, 0, 0)
-            deadline = time.monotonic() + 15
-            while peer.alive() and time.monotonic() < deadline: time.sleep(.05)
-            if peer.alive(): raise RecoverableError('current app did not close; not replaced')
+        # Compatibility for pre-self-exit Apps only. New Apps use apply-latest
+        # with a native-handle acknowledgement before exiting themselves.
+        request_app_shutdown(root, intent['pid'], intent['hwnd_hex'])
     result_path = Path(intent_path).with_suffix('.result.json')
     try:
         result = transact(root, stage, envelope, before_swap=close_base)
@@ -975,7 +1114,30 @@ def _execute(args, parser, progress):
         if args.action == 'check-latest': return core.check_latest(args.root)
         if args.action == 'download-latest': return core.download_latest(args.root, cancel=cancelled)
         if args.action == 'apply-latest':
-            return core.apply_and_relaunch(args.root, pid=args.pid, hwnd_hex=args.hwnd_hex, reason=args.exit_reason)
+            if args.app_self_exit:
+                ready = plain(args.ready_file)
+                if ready.parent != target(args.root) or not ready.name.startswith('one-click-'):
+                    raise SecurityError('unexpected handoff acknowledgement path')
+                try:
+                    wait_for_app_exit(args.root, args.pid, args.hwnd_hex,
+                        ready=lambda: atomic(ready, canonical(dict(
+                            app_pid=args.pid, coordinator_pid=os.getpid()))))
+                except AppShutdownTimeout:
+                    pending = core.read_pending(args.root)
+                    atomic(Path(args.root) / core.PENDING,
+                           canonical({**pending, 'state': 'PENDING_INSTALL'}))
+                    return dict(state='PENDING_INSTALL', message=core.PENDING_MESSAGE)
+                try:
+                    return core.apply_and_relaunch(args.root, reason='next_launch')
+                except (OSError, RuntimeError, ValueError) as error:
+                    maintenance_log(args.root, 'handoff_install_deferred', detail=str(error))
+                    # The App has already closed. Bring back the signed current
+                    # version; keep the downloaded update for normal startup.
+                    if core.read_pending(args.root)['state'] != 'PREVIOUS_HEALTHY':
+                        launch_health(args.root, installed(args.root))
+                    return dict(state='PENDING_INSTALL', message=core.PENDING_MESSAGE)
+            return core.apply_and_relaunch(args.root, pid=args.pid, hwnd_hex=args.hwnd_hex,
+                                           reason=args.exit_reason, wait_for_exit=args.app_self_exit)
         return core.update_to_latest(args.root, cancel=cancelled, pid=args.pid,
                                      hwnd_hex=args.hwnd_hex, reason=args.exit_reason)
     if args.action == 'prepare-update':
@@ -1040,6 +1202,8 @@ def main():
     parser.add_argument('--status-file', type=Path)
     parser.add_argument('--cancel-file', type=Path)
     parser.add_argument('--close-after-health', action='store_true')
+    parser.add_argument('--app-self-exit', action='store_true')
+    parser.add_argument('--ready-file', type=Path)
     parser.add_argument('--pid', type=int); parser.add_argument('--hwnd-hex')
     parser.add_argument('--exit-reason', choices=('normal', 'next_launch', 'shutdown', 'logoff', 'unsafe'), default='normal')
     args = parser.parse_args()
@@ -1068,6 +1232,9 @@ def main():
         if args.result: atomic(args.result, canonical(result))
         return result
     except Exception as error:
+        if args.root is not None:
+            maintenance_log(args.root, 'runtime_operation_failed', action=args.action,
+                            error_type=type(error).__name__, detail=str(error))
         if args.status_file:
             atomic(args.status_file, ('[install]\r\nstage=安装未完成\r\npercent=0\r\nerror='+str(error).replace('\n',' ')+'\r\n').encode('utf-16'))
         if args.result: atomic(args.result, canonical(dict(status='FAILED', error=type(error).__name__, detail=str(error))))

@@ -16,6 +16,7 @@ from refactor.desktop.delivery import per_user_install as install
 
 PENDING = 'pending-update.json'
 SCHEMA = 'mentorflow.per-user-pending.v1'
+PENDING_MESSAGE = '更新已下载好，关闭软件后下次打开时自动安装。'
 STATES = frozenset(('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING', 'CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'))
 _ending = threading.Event()
 
@@ -412,9 +413,12 @@ def check_latest(root, *, service=None, cancel=None):
         service = service if service is not None else one_click_service(root)
         return service.check(manual=True, cancel=cancel) if cancel is not None else service.check(manual=True)
     except NoFeedConfigured: return _no_feed_result()
-    except SecurityError as error: return dict(state='FAILED_SECURITY', message=str(error))
+    except SecurityError as error:
+        install.maintenance_log(root, 'check_latest_failed', detail=str(error))
+        return dict(state='FAILED_SECURITY', message='更新清单未通过安全校验，未继续应用。')
     except (OSError, RuntimeError, ValueError) as error:
-        return dict(state='FAILED_RECOVERABLE', message=str(error), no_feed=service is None)
+        install.maintenance_log(root, 'check_latest_failed', detail=str(error))
+        return dict(state='FAILED_RECOVERABLE', message='暂时无法检查更新，请稍后重试。', no_feed=service is None)
     finally:
         if owned and service is not None: service.close()
 
@@ -425,14 +429,18 @@ def download_latest(root, progress=None, cancel=None, *, service=None):
         service = service if service is not None else one_click_service(root)
         return prepare_update(root, service=service, progress=progress, cancel=cancel)
     except NoFeedConfigured: return _no_feed_result()
-    except SecurityError as error: return dict(state='FAILED_SECURITY', message=str(error))
+    except SecurityError as error:
+        install.maintenance_log(root, 'download_latest_failed', detail=str(error))
+        return dict(state='FAILED_SECURITY', message='更新文件未通过安全校验，未继续应用。')
     except (OSError, RuntimeError, ValueError) as error:
-        return dict(state='FAILED_RECOVERABLE', message=str(error), no_feed=service is None)
+        install.maintenance_log(root, 'download_latest_failed', detail=str(error))
+        return dict(state='FAILED_RECOVERABLE', message='更新下载暂时无法完成，请稍后重试。', no_feed=service is None)
     finally:
         if owned and service is not None: service.close()
 
 
-def apply_and_relaunch(root, *, pid=None, hwnd_hex=None, reason='normal', service=None):
+def apply_and_relaunch(root, *, pid=None, hwnd_hex=None, reason='normal', service=None,
+                       wait_for_exit=False):
     """In-App calls hand off before closing their own process; native callers wait.
 
     The caller captures HWND on the GUI thread. An in-App result of APPLYING is
@@ -442,7 +450,7 @@ def apply_and_relaunch(root, *, pid=None, hwnd_hex=None, reason='normal', servic
     if pid == os.getpid():
         return install.handoff_pending(root, hwnd_hex=hwnd_hex, reason=reason)
     return apply_update(root, pid=pid, hwnd_hex=hwnd_hex, reason=reason, service=service,
-                        service_factory=one_click_service)
+                        service_factory=one_click_service, wait_for_exit=wait_for_exit)
 
 
 def update_to_latest(root, progress=None, cancel=None, *, pid=None, hwnd_hex=None,
@@ -467,9 +475,18 @@ def update_to_latest(root, progress=None, cancel=None, *, pid=None, hwnd_hex=Non
     except NoFeedConfigured:
         return _no_feed_result()
     except SecurityError as error:
-        return dict(state='FAILED_SECURITY', error=type(error).__name__, message=str(error))
+        install.maintenance_log(root, 'update_to_latest_failed', detail=str(error))
+        return dict(state='FAILED_SECURITY', error=type(error).__name__, message='更新文件未通过安全校验，未继续应用。')
     except (OSError, RuntimeError, ValueError) as error:
-        return dict(state='FAILED_RECOVERABLE', error=type(error).__name__, message=str(error))
+        install.maintenance_log(root, 'update_to_latest_deferred', detail=str(error))
+        try:
+            pending = read_pending(root)
+            if pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING'):
+                install.atomic(Path(root) / PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))
+                return dict(state='PENDING_INSTALL', destructive_apply=False, message=PENDING_MESSAGE)
+        except (OSError, RuntimeError, ValueError):
+            pass
+        return dict(state='FAILED_RECOVERABLE', error=type(error).__name__, message='更新暂时无法完成，请稍后重试。')
     finally:
         if owned and service is not None: service.close()
 
@@ -490,6 +507,39 @@ def read_pending(root):
     if set(doc) != {'schema', 'state', 'stage', 'target', 'release_sha256'} or doc['schema'] != SCHEMA or doc['state'] not in STATES:
         raise SecurityError('unknown pending update state')
     return doc
+
+
+def discard_stale_pending(root):
+    """An installed/equal version cannot be pending; do this before any network."""
+    from refactor.desktop.delivery.update_protocol import version_key
+    root = install.target(root)
+    if not (root / PENDING).exists(): return False
+    pending = read_pending(root)
+    current = install.installed(root)
+    if version_key(pending['target']) > version_key(current.version): return False
+    (root / PENDING).unlink()
+    install.maintenance_log(root, 'pending_obsolete', target=pending['target'], current=current.version)
+    # The following background cleanup owns cache deletion. Invalidating this
+    # hint must not perform a gigabyte walk on the foreground launch path.
+    return True
+
+
+def _pending_stage(root, pending, service):
+    """Rebind verification to the fixed legacy staging root when resuming it.
+
+    The UI and old launcher used different staging roots.  Do not relocate or
+    trust the pending bytes: the existing guarded tree verifier still hashes
+    every file against freshly verified metadata before any swap.
+    """
+    root = install.target(root)
+    stage = install.plain(pending['stage'])
+    if stage.is_relative_to(install.plain(service.cache.runtime_root)):
+        return stage
+    legacy_root = install.plain(root.parent / '.MentorFlow-runtime' / '.mfu')
+    if not stage.is_relative_to(legacy_root) or stage.name != 'App':
+        raise SecurityError('pending staging path is outside the approved cache')
+    service.cache.runtime_root = legacy_root
+    return stage
 
 
 def status(root):
@@ -527,7 +577,7 @@ def prepare_update(root, *, service=None, progress=None, cancel=None):
 
 
 def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None,
-                 service_factory=None):
+                 service_factory=None, wait_for_exit=False):
     """Fresh discovery + cache validation, then the existing real transaction.
 
     next_launch is called by the stable launcher BEFORE starting App. Normal
@@ -550,7 +600,8 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
             raise RecoverableError('pending target is no longer available; check update again')
         if digest(service.release.envelope) != pending['release_sha256']:
             raise SecurityError('pending release changed; download the current signed release')
-        stage = install.plain(pending['stage'])
+        stage = _pending_stage(root, pending, service)
+        pending = {**pending, 'stage': str(stage)}
         if digest(install.read(stage.parent/'release.json')) != pending['release_sha256']:
             raise SecurityError('cached release changed')
         service.cache.verify_tree(stage, service.release)
@@ -560,12 +611,21 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
             if unsafe_teardown(reason): raise RecoverableError('teardown: update remains pending')
             install.atomic(root/PENDING, canonical({**pending, 'state': 'APPLYING'}))
             applied = True
-            return install.transact(root, stage, envelope,
-                before_swap=(lambda: install.request_app_shutdown(root, pid, hwnd_hex)) if pid else lambda: install.require_app_stopped(root))
+            if pid:
+                close = (lambda: install.wait_for_app_exit(root, pid, hwnd_hex)
+                         if wait_for_exit else
+                         install.request_app_shutdown(root, pid, hwnd_hex))
+            else:
+                close = lambda: install.require_app_stopped(root)
+            return install.transact(root, stage, envelope, before_swap=close)
         service.apply_bridge = bridge
         result = service.apply_and_restart()  # independently refreshes metadata again
         install.atomic(root/PENDING, canonical({**pending, 'state': 'CURRENT_HEALTHY'}))
         return {**result, 'state': 'CURRENT_HEALTHY'}
+    except install.AppShutdownTimeout:
+        install.atomic(root/PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))
+        return dict(state='PENDING_INSTALL', destructive_apply=False, relaunched=False,
+                    message='更新已下载好，关闭软件后下次打开时自动安装。')
     except Exception:
         journal = strict_json(install.read(root/install.JOURNAL)) if (root/install.JOURNAL).exists() else {}
         # A prior transaction's ROLLED_BACK journal must not consume a newly
@@ -583,6 +643,8 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
 
 
 def resume_pending_on_normal_launch(root, *, service=None, **options):
+    if discard_stale_pending(root):
+        return dict(state='NO_PENDING_UPDATE', obsolete=True)
     options.setdefault('reason', 'next_launch')
     return apply_update(root, service=service, service_factory=one_click_service, **options)
 launch_updated_app = install.launch_health

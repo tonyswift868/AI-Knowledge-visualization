@@ -18,6 +18,7 @@ def mandatory_text(status):
 class UpdateDialog(QDialog):
     install_requested = Signal()
     defer_requested = Signal()
+    close_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
@@ -37,9 +38,9 @@ class UpdateDialog(QDialog):
         row = QHBoxLayout(); body.addLayout(row)
         self.install = QPushButton('立即更新并重启'); self.later = QPushButton('稍后')
         row.addWidget(self.install); row.addWidget(self.later)
-        self.install.clicked.connect(self.install_requested.emit)
+        self.install.clicked.connect(self._install_or_close)
         self.later.clicked.connect(self._later)
-        self._mandatory = False; self._busy = False
+        self._mandatory = False; self._busy = False; self._pending_install = False
         apply(self, theme_of(parent), {self.install: 'primary', self.later: 'ghost'})
         colors = PALETTES.get(theme_of(parent), PALETTES['sakura'])
         self.setStyleSheet(self.styleSheet() + f"QPushButton[variant=\"ghost\"]:disabled {{color:{colors['text3']}; background:transparent}} QProgressBar {{border:0; border-radius:6px; background:{colors['soft']}; text-align:center; color:{colors['text2']}; min-height:12px}} QProgressBar::chunk {{border-radius:6px; background:{colors['accent']}}}")
@@ -48,12 +49,19 @@ class UpdateDialog(QDialog):
         if not self._mandatory and not self._busy:
             self.defer_requested.emit(); self.hide()
 
+    def _install_or_close(self):
+        if self._pending_install:
+            self.close_requested.emit()
+        else:
+            self.install_requested.emit()
+
     def reject(self):
         self._later()  # Esc must never unlock a mandatory login gate.
 
     def update_status(self, status):
         self._mandatory = bool(status.get('mandatory') or status.get('state') == 'MANDATORY_UPDATE')
         self._busy = bool(status.get('busy'))
+        self._pending_install = status.get('state') == 'PENDING_INSTALL'
         repair = status.get('state') in ('REPAIR_REQUIRED', 'FATAL_UNRECOVERABLE')
         self.heading.setText('MentorFlow 安装检查' if repair else 'MentorFlow 更新')
         self.versions.setText(f"当前版本 {status.get('current', '')} → 新版本 {status.get('latest') or status.get('target', '')}")
@@ -62,7 +70,10 @@ class UpdateDialog(QDialog):
         self.message.setText(status.get('message', ''))
         self.later.setEnabled(not self._mandatory and not self._busy)
         self.later.setVisible(not (self._mandatory and status.get('hide_later')))
-        self.install.setText('修复安装' if repair else '继续' if status.get('state') == 'DOWNLOAD_PAUSED_OR_INTERRUPTED' else '立即更新' if self._mandatory else '立即更新并重启')
+        self.install.setText('关闭软件' if self._pending_install else
+                             '修复安装' if repair else
+                             '继续' if status.get('state') == 'DOWNLOAD_PAUSED_OR_INTERRUPTED' else
+                             '立即更新' if self._mandatory else '立即更新并重启')
         self.install.setEnabled(not self._busy and status.get('state') not in ('FAILED_SECURITY', 'FATAL_UNRECOVERABLE'))
         total = status.get('expected_download_bytes', 0) or 0
         done = status.get('downloaded_bytes', status.get('actual_downloaded_bytes', 0)) or 0
