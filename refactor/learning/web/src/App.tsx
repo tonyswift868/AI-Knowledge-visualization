@@ -156,7 +156,8 @@ export function App() {
                       onClick={() => call("sync.now").then((d) => s.set({ sync: d })).catch(() => {})}>
                 {s.sync.state === "syncing" || s.sync.state === "synced" ? <Cloud /> : <CloudOff />}
                 {s.sync.state === "synced" && s.sync.at ? `已同步 ${new Date(s.sync.at).toTimeString().slice(0, 5)}`
-                  : { syncing: "同步中…", failed: "同步失败", reauth: "需要重新登录", superseded: "已在别处登录", synced: "已同步" }[s.sync.state]}
+                  : s.sync.state === 'syncing' ? s.sync.message
+                  : { failed: "同步失败", reauth: "需要重新登录", superseded: "已在别处登录", synced: "已同步" }[s.sync.state]}
               </button>
             )}
             <button className="icon-btn" aria-label={s.fullscreen ? "退出全屏" : "全屏"} title="全屏（F11）"
@@ -172,7 +173,7 @@ export function App() {
           )}
           <div className="content">
             {s.settings && !s.ready && s.route !== 'home' && <Loading label="正在连接账号服务…"/>}
-            <Loading active={s.sync?.state==='syncing'} label="正在同步学习记录…"/>
+            <Loading active={s.sync?.state==='syncing'} label={s.sync?.message || '正在读取云端学习记录…'} slowHint={false}/>
             <PageErrorBoundary key={`${s.route}:${s.planId}:${s.settingsTab}`} back={()=>s.go(s.route === "plan" || s.route === "home" ? "plans" : "home")}>
               {s.settings ? <Page key={s.route} /> : <div className="page">{bootstrapError ? <div className="card" role="alert">{bootstrapError}<Button onClick={bootstrapRetry}>重试</Button></div>
                 : <Loading shape="page" label="正在准备学习空间…" resetKey={bootstrapAttempt} onRetry={bootstrapRetry}/>}</div>}

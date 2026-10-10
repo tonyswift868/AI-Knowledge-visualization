@@ -79,11 +79,72 @@ def states(sent):
 
 def test_merged_field_conflict_pushes_one_user_notice(window, qapp):
     win, _, _, _, _, _, _, sent = window
-    win._sync._status_changed(dict(state='synced', at=None, message='已同步', merged_conflicts=1))
+    message = '计划「同步测试」的计划信息有两端修改：按字段更新时间保留本机 1 项、云端 0 项。'
+    win._sync._status_changed(dict(state='synced', at=None, message='已同步', merged_conflicts=1,
+                                  merge_messages=[message]))
     spin(qapp, win, lambda: any(item.get('name') == 'sync_conflict' for item in sent))
     notices = [item for item in sent if item.get('name') == 'sync_conflict']
     assert len(notices) == 1
-    assert notices[0]['data']['message'] == '另一台设备也改过，已按最新的保留。'
+    assert notices[0]['data']['message'] == message
+
+
+def test_sync95_pulled_plan_notifies_before_upload_finishes(window, qapp, tmp_root):
+    win, server, transport, login, clock, mode, requests, sent = window
+    assert not any(p['id'] == 'cloud-plan' for p in win.services.store.list_plans())
+    with CourseStore(login.identity.account_id, tmp_root / 'second-device') as remote:
+        remote.create_plan('cloud-plan', goal='云端新计划')
+        assert CourseSync(remote, transport).sync()['ok']
+    win.services.store.create_chat_session('待上传', session_id='blocked', created_at=NOW)
+    entered, release = Event(), Event()
+    def block(request):
+        if request.method == 'PUT':
+            entered.set()
+            assert release.wait(10)
+    server.before = block
+    sent.clear()
+    try:
+        win.sync_now()
+        spin(qapp, win, lambda: entered.is_set() and any(m.get('name') == 'plans_changed' for m in sent))
+        assert win._sync.service._future is not None and not win._sync.service._future[0].done()
+        response = ask(qapp, win.bridge, sent, 'pulled-plan', 'plans.list')
+        assert any(p['id'] == 'cloud-plan' for p in response['result']['plans'])
+    finally:
+        release.set()
+    spin(qapp, win, lambda: win._sync.service._future is None)
+
+
+def test_sync95_partial_failure_backoff_and_progress_are_not_round_failure(window, qapp):
+    import json
+    win, server, _, _, clock, _, _, sent = window
+    win.services.store.create_chat_session('成功记录', session_id='good', created_at=NOW)
+    win.services.store.create_chat_session('重试记录', session_id='bad', created_at=NOW)
+    def reject(request):
+        if request.method == 'PUT' and json.loads(request.content)['payload']['values']['payload']['id'] == 'bad':
+            return httpx.Response(503)
+    server.before = reject
+    sent.clear(); win.sync_now()
+    spin(qapp, win, lambda: win._sync.service._future is None and '待重试' in win.sync_status()['message'])
+    spin(qapp, win, lambda: any(s.get('completed') == 1 and s.get('total') == 2 for s in states(sent)))
+    assert win.sync_status()['state'] == 'syncing'
+    assert not any(s['state'] == 'failed' for s in states(sent))
+    assert any(s.get('completed') == 1 and s.get('total') == 2 for s in states(sent)), states(sent)
+    assert len(win.services.store.pending_records(100)) == 1
+    assert win._sync.service._retry_at == 30
+    calls = len(server.calls); clock.value = 29; win._sync.service._tick()
+    assert len(server.calls) == calls
+    server.before = None; clock.value = 30
+    spin(qapp, win, lambda: win.sync_status()['state'] == 'synced')
+    assert not win.services.store.pending_records(100)
+
+
+def test_sync95_stale_progress_cannot_revive_stopped_session(window, qapp):
+    win, _, _, _, _, _, _, sent = window
+    service = win._sync.service
+    cancel = service._cancel
+    service.stop(); service.start()
+    sent.clear()
+    service._show_progress(dict(phase='upload', completed=7, total=10, failed=0), cancel)
+    assert not any(s.get('completed') == 7 for s in states(sent))
 
 
 def test_bind_immediate_sync_local_debounce_manual_and_fresh_token(window, qapp):

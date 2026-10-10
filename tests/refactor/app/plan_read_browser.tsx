@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { Home } from '../../../refactor/learning/web/src/pages/Home'
 import { Plans } from '../../../refactor/learning/web/src/pages/Plans'
 import { useApp } from '../../../refactor/learning/web/src/store'
-import { emit, setFail } from './plan_read_browser_bridge'
+import { Loading } from '../../../refactor/learning/web/src/loading/Loading'
+import { emit, setFail, setSynced } from './plan_read_browser_bridge'
 
 declare global { interface Window { result?: { ok: boolean; checks: string[]; error?: string } } }
 const checks: string[] = []
@@ -35,11 +36,18 @@ async function main() {
   root.render(<Home />)
   await waitForText('读取失败'); await retry()
   setFail(false); await retry(); await waitForText('学习日 2026-09-30')
+  setSynced(true); emit('plans_changed'); await waitForText('云端新计划'); checks.push('首页拉取后自动刷新')
+  setSynced(false)
   setFail(true); emit('study_day'); await waitForText('可能不是最新')
   root.render(<Plans />); await waitForText('读取失败')
   setFail(false); await retry(); await waitForText('旧计划')
+  setSynced(true); emit('plans_changed'); await waitForText('云端新计划'); checks.push('我的计划拉取后自动刷新')
   useApp.getState().set({ready: false}); await wait()
   setFail(true); useApp.getState().set({ready: true}); await waitForText('可能不是最新')
+  root.render(<Loading label="正在同步 已完成 1 / 共 2 条" started={Date.now()-16000} slowHint={false}/>)
+  await waitForText('正在同步 已完成 1 / 共 2 条')
+  if(document.body.textContent?.includes('比平时慢'))throw new Error('同步进度不应猜测网络原因')
+  checks.push('同步超过15秒仍显示真实进度，不猜测网络问题')
   window.result = {ok: true, checks}
 }
 main().catch((error) => { window.result = {ok: false, checks, error: String(error)} })
