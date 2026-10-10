@@ -155,10 +155,9 @@ def prepare_module(store, plan_id, module_id, ctx, progress):
             accepted.append(mq.compile_question(dict(kind='recall', stem=candidate['stem']), candidate, module_id))
         remaining = [c for c in candidates if c not in direct]
         for group in mq.batches(remaining):
-            group = [dict(c, units=[dict(id=i+1, text=t) for i,t in enumerate(mq.answer_units(c['reference']))])
-                     if c['candidate_type']=='recall' else c for c in group]
             _check(ctx)
-            packet = dict(module_id=module_id, module_title=module['title'], candidates=group)
+            packet = dict(module_id=module_id, module_title=module['title'],
+                          candidates=[mq.request_candidate(c) for c in group])
             splitter = ctx.get('question_splitter')
             if splitter is not None:
                 output = splitter(packet, cancel=ctx.get('cancel'))

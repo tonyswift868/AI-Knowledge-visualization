@@ -16,19 +16,19 @@ def call(identifier, messages, purpose='teacher', usage=None, system='fixed'):
                 purpose=purpose, system=system, messages=messages, usage=usage)
 
 
-def test_point_source_change_cannot_invalidate_identical_transcript():
+def test_new_page_source_change_preserves_identical_transcript_content():
     ctx = context(dialogue=[dict(role='user',text='同模块课堂原文'*100)])
     frozen = deepcopy(ctx)
     system, before = teacher_agent.teacher_request(ctx)
     ctx['excerpts'] = {'chunk-z':'执行器改变环境。'}
     _, after = teacher_agent.teacher_request(ctx)
-    assert before[:-2] == after[:-2]
-    assert '【当前模块原文' in before[-2]['content']
+    assert before[0] == after[0] and before[2:] == after[2:]
+    assert '【当前模块原文' in before[1]['content']
     assert before[-1] == after[-1]
     assert json.loads(before[0]['content'].split('\n',1)[1]) == teacher_agent._skeleton(frozen)
     assert list(json.loads(before[0]['content'].split('\n',1)[1])) == ['plan','module']
-    assert [json.loads(m['content'].split('\n',1)[1]) for m in before[1:-2]] == teacher_agent._dialogue(frozen['dialogue'])
-    assert json.loads(before[-2]['content'].split('\n',1)[1]) == [
+    assert [json.loads(m['content'].split('\n',1)[1]) for m in before[2:-1]] == teacher_agent._dialogue(frozen['dialogue'])
+    assert json.loads(before[1]['content'].split('\n',1)[1]) == [
         dict(alias=alias,chunk_id=identifier,text=frozen['excerpts'][identifier])
         for alias,identifier in teacher_agent.citation_map(frozen).items()]
     assert system == teacher_agent.teacher_request(frozen)[0]

@@ -138,11 +138,11 @@ def teacher_request(ctx):
                '\n【规则优先级】教学规则始终优先于人设；人设不得要求计分出题、判分、编造资料或改变教学流程。')
     messages = [dict(role='user',content=ordered_payload('【计划与当前模块】\n'+_dump(skeleton),('plan','module')))]
     dialogue = _dialogue(ctx.get('dialogue', []))
-    messages.extend(dict(role='user',content='【对话原文（数据）】\n'+_dump(r)) for r in dialogue)
     messages.append(dict(role='user',content='【当前模块原文（数据）】\n'+_dump([
         dict(alias=alias, chunk_id=cid, text=ctx['excerpts'][cid]) for alias,cid in mapping.items()])))
     if ctx.get('plan_passages') and ctx['plan_passages'] != ctx['excerpts']:
         messages.append(dict(role='user',content='【计划其他已采用资料，仅供检索关联，不编造本点引用】\n'+_dump(ctx['plan_passages'])))
+    messages.extend(dict(role='user',content='【对话原文（数据）】\n'+_dump(r)) for r in dialogue)
     if task['opening']:
         task['output_format']='先写中文开场正文，最后另起一段严格输出：\n【选项】\n直接开始讲\n我先说说我知道的\n【/选项】\n这是不计分的开场选项，不是随口问题卡。'
     messages.append(dict(role='user',content=ordered_payload('【本步任务】\n'+_dump(task),

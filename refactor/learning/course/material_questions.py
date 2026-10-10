@@ -247,6 +247,22 @@ def selected_units(reference, ids):
     return [units[i-1] for i in ids]
 
 
+def request_candidate(candidate):
+    """Wire-only copy: omit reference only when units preserve every nonspace.
+
+    Headings, code fences, duplicate lines and punctuation are significant.
+    The original candidate remains the authority for compilation and storage.
+    """
+    packet = dict(candidate)
+    if candidate['candidate_type'] == 'recall':
+        units = answer_units(candidate['reference'])
+        packet['units'] = [dict(id=i+1, text=text) for i, text in enumerate(units)]
+        compact = lambda text: re.sub(r'\s', '', text)
+        if compact(candidate['reference']) == compact(''.join(units)):
+            packet.pop('reference')
+    return packet
+
+
 def compile_question(raw, candidate, module_id):
     """Only locator fields can become content; module/point links are program owned."""
     kind = raw.get('kind')
@@ -284,6 +300,7 @@ SYSTEM = '''你只按原文拆题，不出题、不改写、不补答案、不�
 "options":["完整原选项"],"answer":"原标准答案","objective_kind":"choice/multi/fill/calc",
 "key_point_ids":[1,2,3]}]}。
 问答题的完整题干与参考答案由程序保留，不要抄参考答案或要点。units是程序从参考答案切出的原文单位（句子、列表项、表格行）；只选3–5个编号作为直接回答题干、覆盖核心结论的要点。不能选题外细节凑数。
+若未附reference，units按编号拼接就是完整参考答案（仅空白可能不同）；若附reference，保留其中未切成单位的标题、代码等上下文。要点仍只选择units编号。
 客观题kind=objective，stem/options/answer逐字照输入，原来没答案不补。
 长stem可用唯一原文指针 {"quote":"开头短片段","end_quote":"末尾短片段"}，程序展开完整原文。
 不得改变候选归属、原题型、选项或答案。只返回上述短JSON，不写解释或新增练习。'''

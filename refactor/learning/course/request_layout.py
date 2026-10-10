@@ -19,6 +19,13 @@ class AppendOnlyPage:
         self._accepted = None
 
     def assemble(self, system, messages, dialogue):
+        # Sections are identified by their contract labels, not by an offset
+        # into the request. Teacher pages put sources before history; profile
+        # pages have no source section. Both append only new history + task.
+        history = [m for m in messages[1:]
+                   if m['content'].startswith('【对话原文（数据）】\n')]
+        current = [m for m in messages[1:]
+                   if not m['content'].startswith('【对话原文（数据）】\n')]
         previous = self._accepted
         if previous:
             old_system, old_messages, old_dialogue, reply = previous
@@ -26,7 +33,7 @@ class AppendOnlyPage:
                     and dialogue[:len(old_dialogue)] == old_dialogue):
                 # The original request's task/source bytes remain unedited.
                 # The current source subset and latest host snapshot stay last.
-                tail = messages[1 + len(old_dialogue):]
+                tail = [*history[len(old_dialogue):], *current]
                 source_label = "【当前模块原文（数据）】\n"
                 last_source = next((m for m in reversed(old_messages)
                                     if m['content'].startswith(source_label)), None)

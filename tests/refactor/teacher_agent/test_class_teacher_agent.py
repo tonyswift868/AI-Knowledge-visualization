@@ -46,8 +46,8 @@ def test_same_module_first_four_parts_are_byte_stable_when_only_fifth_changes():
     assert encoded((sys1, messages1[:-1])) == encoded((sys2, messages2[:-1]))
     assert messages1[-1] != messages2[-1]
     assert first == original
-    assert "计划与当前模块" in messages1[0]["content"] and "当前模块原文" in messages1[-2]["content"]
-    assert all("对话原文" in row["content"] for row in messages1[1:-2])
+    assert "计划与当前模块" in messages1[0]["content"] and "当前模块原文" in messages1[1]["content"]
+    assert all("对话原文" in row["content"] for row in messages1[2:-1])
     assert json.loads(messages2[-1]["content"].split("\n", 1)[1])["director"] == other["director"]
 
 
@@ -56,9 +56,9 @@ def test_appending_dialogue_does_not_rewrite_any_previous_turn():
     ctx["dialogue"].append(dict(role="user", content="刚追加的新问题。"))
     other_system, after = agent.teacher_request(ctx)
     assert system == other_system
-    assert encoded(before[:-2]) == encoded(after[:len(before)-2])
-    assert before[-2:] == after[-2:]
-    assert "刚追加" in after[-3]["content"]
+    assert encoded(before[:-1]) == encoded(after[:len(before)-1])
+    assert before[-1] == after[-1]
+    assert "刚追加" in after[-2]["content"]
 
 
 def test_map_reordering_and_domain_selection_order_do_not_change_request():
