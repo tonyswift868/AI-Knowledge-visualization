@@ -26,7 +26,7 @@
 - **状态如实**：写好的任务在索引里标“已起草，待用户转发”；用户说“发了”才改“进行中”；回执回来后改“已合入/已完成（部分）”。
 - **员工自主**：每条任务写清决策原则，员工遇到选择自己决定、在回执写明理由，不停下来问；只有超出花费上限、要动服务器或正式密钥、要删用户数据这三类才停。
 - **防止无穷无尽地改**（2026-10-01 用户担心“一直跑没有进步、改个无穷无尽”）：每个问题最多两轮——第一轮按现方法修，没解决就第二轮换方法（先查开源项目和论文）；第二轮还不行，带数据找用户定（接受现状、调整目标或换方案），不再自行反复调。每条任务只做一轮“实现 → 测 → 报告”，写明完成标准；没达标不在任务里继续微调，回执写清没过的样本、原因判断和建议换的方法。不追求把测试做大，看的是发现的问题有没有解决。
-- **内测阶段不打包、不发版**（用户 2026-10-04 定，替换 2026-10-02 的“每合入一批就发新版本”）：功能还没跑通前不打包；测试在源代码上用模拟工具跑（DIR-01“测试”）；等用户说可以发了再打包、签名、上传。员工负责打包（不签名），签名、上传由架构师做（私钥与服务器不给员工）。
+- **发版（用户 2026-10-09～10 定，替换 10-04 的“内测阶段不打包”）**：用 GitHub Actions 流水线发版（mf-build → 本机签名 → mf-publish，操作手册“发布新版”）；修好就发，让用户在装好的软件上点更新亲测。只手动触发，不随推送自动跑；签名私钥只在本机；服务器操作仍按“部署”一条先说明。
 - **派任务前的检查**（2026-10-03，复盘“部分完成”太多后定）：①每条完成标准都必须是这个员工凭自己的权限能做到的，不依赖别的并行任务、外部网站或用户操作；取决于外部的写成“查清后二选一”，两种结果都算完成；②互相依赖的工作不拆成并行任务各自要求全量通过——要么一个人做，要么并行任务只要求本块测试通过、全量放到联调任务；③写“怎么做”之前先读相关链路的代码（例如更新程序自身怎么升级），并检查环境（服务器、已装软件、路径）。
 - **方案由架构师出**（2026-10-02 用户定）：发现的问题由架构师查证据、找开源项目和论文、想清楚做法，在任务里写明“怎么做”，员工照着做；不写“你去解决”让员工自己想方案（员工对项目的理解没有架构师深，容易偏，效率低）。测试剧本也要想仔细，不能把测试里的人为限制当成用户需求（第 30–34 批的“每模块 3 点”就是例子）。
 - **先跑真实流程，再看记录定修什么**（2026-10-02，回顾第二十五到三十批后定）：找问题靠完整的真实流程（小测试脚本）和对真实记录的逐条错误分析，不靠给单个组件自定目标；修复任务只针对真实记录里找到的失败，完成标准写成“这个失败不再出现”的二元判断，用同一个脚本或保存的记录复测。一个任务只做一件事：要么实现修复，要么做评测，不把两者和小预算捆在一起。固定评测集长期保留并在每次相关改动后回放：判定考卷（.local/test-tmp/judge-holdout，MF-06 保管）、出题回归集（tests/refactor 下 28-MF04 的回放）、讲稿埋错集（.local/test-tmp/prep-cost）、完整流程脚本（tests/refactor/acceptance/test_math_complete_flow_real.py）。
@@ -48,7 +48,7 @@
 - **写脚本**：含 Windows 路径或反斜杠的内容不要用 bash heredoc（会被吃掉，BUG-10），写成文件再运行，或用编辑工具。
 - **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，用户 mentorflow-admin，用 sudo -n）。线上后端是 mentorflow-slim-backend:MF-75（2026-10-07 上线，永久登录，数据库 0043），切换脚本 /opt/mentorflow/state/mf75/switch.sh；回到 MF-14 用 `sudo bash /opt/mentorflow/state/mf75/switch.sh rollback`；上线前数据库备份 /opt/mentorflow/state/mf75/mentorflow-before-mf75.dump。更早的 MF-14 切换脚本与备份仍在 /opt/mentorflow/state/mf14/。业务库 mentorflow 所有者是 mentorflow_migrator，迁移用超级用户连接加 options=-c role=mentorflow_migrator。架构师上服务器需要用户把会话切到“每条命令都询问”并逐条批准（自动模式会拦生产读写）。服务器上只有管理员一个账号。
 - **资料白名单目录**：服务器 /opt/mentorflow/state/mentorflow-e1-preview/catalog/（source-whitelist.json 129 条、model-prices.json；旧版备份 *.bak-20260929）；本机待发布副本在 .local/catalog-release/。发布前用客户端同一套格式检查，下发的文件不能带 "candidates" 键。
-- **发布新版**（SYS-06）：打包用 D:\MentorFlow\.local\release-tools\build_release.py（README.txt 有用法，员工或架构师都能跑，不碰私钥）；签名后上传可参考 .local\test-tmp\release-2.0.2\ 里的 stage_missing.py（只传服务器缺的对象）、upload_each.sh（逐个传、逐个校验）、verify_public.py（公网验签）。原流程：用 scripts/build_learning_installer.py 的 freeze → release（签名清单，--valid-days）→ sign（私钥 .local/release-keys/mentorflow-app-2026.private.key，说明见同目录 README.txt）→ installer。上传到服务器 /opt/mentorflow/update-static/e108/app/ 的 .staging，逐个按 SHA256 校验后放入，最后原子替换 stable/stable.json；公网地址 https://89.45.45.28/mentorflow/updates/app/。给已装的 2.0.0 推的第一版必须 --valid-days 30；线上 stable.json 2026-10-28 过期。发布要用户同意。
+- **发布新版**（SYS-06）：①合入并推送 main；②在 GitHub 手动运行 mf-build（输入版本号、更新说明、是否必须、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机运行 `scripts/release/sign_and_stage.py --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity E:/Codex/Secrets/MentorFlow/ssh/mentorflow-e1-ops-ed25519` 签名并放到服务器 staging；④手动运行 mf-publish（输入版本号），约 10 分钟；⑤用客户端代码对公网 stable.json 验签、看 aiteacher.clannad.win/download。触发与查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（见 .local/tmp/watch_run.sh）。每次运行记在“现在在做的事”。旧的本机打包脚本 .local/release-tools/build_release.py 已搬进 scripts/release/，不再从本机上传。
 - **磁盘**：测试与验收产物都在 .local/test-tmp/ 下。员工的临时目录架构师不删（用户 2026-10-05 定，员工可能还要用）；要清理先问用户。必须保留：installer/build-tools（打包工具）、release-2.0.1/payload（发版脚本的对照包）、已发布版本的构建目录（现为 release-2.0.2）、acceptance/（cache_hit/acceptance_replay.py 读它）。
 
 ## 当前基线
@@ -56,7 +56,7 @@
 | 项目 | 值 |
 | --- | --- |
 | main | d33ca8a4（含第八十八批；2026-10-08 全量 3167 通过、28 跳过、0 失败）；派新任务前 `git rev-parse --short HEAD` 取 |
-| 已发布 | 2.0.6 = c77aaf07（流水线发布，非强制，2026-10-10）；强制线 2.0.3；本机另有 2.0.2/2.0.3 安装程序（SYS-06）；内测阶段不打包；打包脚本 D:\MentorFlow\.local\release-tools\build_release.py |
+| 已发布 | 2.0.6 = c77aaf07（流水线发布，非强制，2026-10-10）；强制线 2.0.3；发版步骤见操作手册“发布新版”与 scripts/release/README.md |
 | 未推送 | 2026-10-09 已推送到 GitHub（私有仓库）；以后推送仍要用户说 |
 | 工位分支 | office/* 只在本地，永不推送；每条任务第一步把工位 reset 到基线 |
 
