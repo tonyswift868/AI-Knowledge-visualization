@@ -74,6 +74,102 @@
 - 102-MF05c（platform）：真安装程序（预览版通道）全新安装与覆盖升级实测，可与 102-MF04b 并行（只改 packaging/ 与打包脚本，delivery 的问题交架构师）。已起草，待转发。
 - 两条都过 → 发 2.0.13（含安装程序，基线版本 2.0.9 2.0.11 2.0.12）→ 验证公网清单与老客户端能下载 → 用户用安装程序覆盖一次 → 再发给外部用户。
 
+## 第一百零二批补做任务原文（2026-10-11，基线 26cff723）
+
+### [102-MF04b] runtime｜用真打包程序把软件内更新完整走通（¥0）
+
+~~~text
+【MentorFlow 第一百零二批补做｜MF-04（工位 runtime）｜用真打包程序把软件内更新完整走通：登录窗口和主界面两个入口、退不掉转下次启动、下次启动安装、用户那台的升级路径；全程不占用用户的鼠标键盘】
+
+现成项目与许可证（第一节）
+  - 操作界面用 Windows 自带的 UI Automation（System.Windows.Automation 或 UIAutomationCore，系统组件）：按钮用 InvokePattern 点，文字读 Name。Qt 6 在 Windows 上自带 UIA 支持，Inno 向导是标准 Win32 窗口。想用 pywinauto（BSD-3）就在任务目录里建独立 venv 装，不装进 D:\MentorFlow\.venv。
+  - 更新流程沿用你 102-MF04 实现的 Squirrel/Velopack ApplyUpdatesAndRestart 做法。本轮只做真打包验证和修 bug，不重新设计。
+  - 打包、测试签名、本机离线更新源沿用你上一轮的办法。测试签名密钥自己生成，用完删。
+
+开工同步
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 26cff723         # 主线：已合入你的 d3a811e1 和 102-MF05b 的登录窗口改动
+提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp、D:\MentorFlowData\account-shell 只读（需要的状态文件复制到任务目录再用）；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+不占用户的鼠标键盘（硬规定）：不用 computer-use，不模拟鼠标或键盘，不靠抢前台去操作窗口。上一轮用户按 Esc 中止，就是因为屏幕被占了。测试窗口出现在屏幕上可以；不能关或操作用户自己的任何窗口。
+测试程序的 LOCALAPPDATA、TEMP、TMP 一律指到任务目录，不能再落到 C 盘（上一轮误落了 1 GB）。删除被拦住就列出路径交架构师，不换工具绕过。
+测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次，同一套测试不重复跑。冻结构建、安装副本、下载源用完立刻自己删，只留 report.md 和截图。
+同时在跑：102-MF05c（platform）：用真安装程序做全新安装和覆盖升级，只改 refactor/desktop/packaging/ 和 scripts/build_learning_installer.py。它发现 refactor/desktop/delivery/ 里的问题会经架构师转给你，不改你的文件。两边都会冻结构建、弹测试窗口，互不影响。
+产物目录：D:\MentorFlow\.local\test-tmp\inapp102b\。目标三小时内交回。花费上限 ¥0。
+背景（CURRENT_STATE [BUG-71] [BUG-73]，「当前阶段」里“发给外部新用户”的放行标准）：你的 102-MF04 代码已合入主线（13032a9f），与 102-MF05b 合并后全量 3463 通过。但真打包只跑了两样：基线上复现老错误，和用官方 2.0.12 恢复用户目录副本。改后的软件内更新、退不掉、下次启动安装都没跑。2.0.13 要等这些全过才发。发出后用户用 2.0.13 安装程序覆盖一次，以后所有更新都走这条路，然后才发给第一个外部用户。到今天还没给他发过任何版本，就卡在这里。
+
+要做
+  全部用基线代码冻结的真打包程序，做两个测试版本 X → Y（测试签名、本机离线更新源）。安装用安装程序调用的同一个安装核心（UserRuntime install）。启动一律走桌面图标实际指向的启动器，不直接起 MentorFlow.exe。启动器的 LOCALAPPDATA 和 App 运行时的 .MentorFlow-runtime 要像真实环境一样不同。
+  1. 登录窗口入口：X 启动后弹更新框 → UIA 点“立即更新并重启” → App 自己退出 → 换文件 → Y 的登录窗口出来。检查：版本是 Y；per-user-transaction 为 HEALTHY；pending 已消失；Updater 是 Y；新窗口在最前面，不是最小化。记录分段时间：点击 → 下载完 → App 退出 → 新窗口可见。记录 App 实际自己退出用了几秒，看 30 秒上限合不合适。
+  2. 主界面入口：登录进主界面后点更新，检查同第 1 条。
+     登录：优先用本机账号服务。MENTORFLOW_ENTERPRISE_API_BASE_URL 指向 localhost 上的替身或本机起的 refactor/server。不碰正式服务器，不注册真实账号。打包版没法指向本机服务的话，只把账号层换成测试注入，更新链路保持真实，回执写明。
+     更新前在主界面留一点能核对的学习数据（例如建一个计划或改一项设置），更新后核对还在。重启后按设计应该进主界面还是登录窗口，如实记录。
+  3. 中间不能空白：App 退出到新窗口出来之间，屏幕上要有东西告诉用户在更新。用 101 的原生启动窗（startup_window），显示“正在更新 MentorFlow…”，新窗口出来后消失。这段时间里用户再点桌面图标：不能装坏，不能开出两个。结果写进报告。
+  4. 退不掉：做一个只在测试构建里生效的故障开关，让 X 的保存或退出卡住超过 30 秒。之后应当：
+     - 旧 App 留着；
+     - 更新框显示中文“更新已下载好，关闭软件后下次打开时自动安装。”和“关闭软件”按钮；
+     - UIA 点“关闭软件” → App 退出 → 从桌面图标启动 → 启动器装上 Y → Y 的窗口出来。
+     全程界面上不能出现英文原因。
+  5. 下次启动安装（用户机器上失败过的那条）：App 下载好 Y 后正常关掉，再从桌面图标启动 → 装上 Y。第 4 条已经覆盖的话写明即可。
+  6. 用户那台的路径：
+     - 照 D:\MentorFlowApp\MentorFlow 的状态做一个副本：App、Updater、各 state 文件、指向旧版本的 pending-update.json、ROLLED_BACK 的 per-user-transaction.json、几个只放少量文件的 staging-/retired- 目录，不用复制 11 GB；
+     - 用 X 的安装核心覆盖 → HEALTHY，过期 pending 作废；
+     - 从桌面图标启动两次 → staging、retired 和旧缓存被清掉，Data 逐字节不变；
+     - 接着在这个副本上做第 1 条（X → Y 软件内更新）。
+  7. 发现问题当场修，只改 refactor/desktop/delivery/、updates.py、update_dialog.py、startup_window.py 和相关测试。每个问题写进报告：现象、数据、原因、修法。改完重新冻结，把受影响的场景重跑到通过。
+完成标准：用修完后的最终代码，1～6 全部在真打包程序上跑通，每条都有日志片段、时间和截图；最后全量跑一次并通过。loading86、self_test81、status88 是已知偶发，失败时单独重跑那一项并写明。达不到就写“部分完成”，不能用离线测试或替身代替。
+回执：写到 D:\MentorFlow\.local\receipts\102-MF04b.md。表格列：基线 ／ 提交 ／ 场景 1～6 结果与分段耗时 ／ App 自己退出实际秒数 ／ 新发现的问题与修法 ／ 截图 ／ 全量 ／ 本地最终占用（含 C 盘有无残留）。给用户只回一行“102-MF04b 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\inapp102b\report.md。
+~~~
+
+### [102-MF05c] platform｜用真安装程序走一遍全新安装和覆盖升级（¥0）
+
+~~~text
+【MentorFlow 第一百零二批补做｜MF-05（工位 platform）｜用真安装程序（预览版通道）在这台电脑上走一遍：全新安装（第一个外部用户的路径）和覆盖升级（用户那台的路径）；全程不占用用户的鼠标键盘】
+
+现成项目与许可证（第一节）
+  - 用项目现有的 Inno Setup 7 脚本（refactor/desktop/packaging/inno/）和 scripts/build_learning_installer.py。
+  - 预览版通道：APP_ID 含“.UAT.”时，安装程序用另一个 AppId，快捷方式叫“MentorFlow 预览版”，不碰用户装的正式版。测试签名密钥自己生成，用完删。
+  - 操作界面用 Windows 自带的 UI Automation（System.Windows.Automation 或 UIAutomationCore）：按钮用 InvokePattern 点，文字读 Name。Inno 向导是标准 Win32 窗口，Qt 6 自带 UIA 支持。想用 pywinauto（BSD-3）就在任务目录里建独立 venv，不装进 .venv。
+
+开工同步
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard 26cff723
+提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp、D:\MentorFlowData\account-shell 只读；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+不占用户的鼠标键盘（硬规定）：不用 computer-use，不模拟鼠标或键盘，不靠抢前台去操作窗口。测试窗口出现在屏幕上可以；不能关或操作用户自己的任何窗口。
+不碰正式版：不运行正式通道（正式 APP_ID）的安装程序；不改用户的 MentorFlow 快捷方式、开始菜单和注册表项；不读写 Windows 凭据里正式版的条目。开工前和结束后各记一份对比：HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall 下与 MentorFlow 相关的项、桌面和开始菜单里的 MentorFlow 快捷方式，以及这次在 C 盘新出现的目录。结束时预览版的东西全部清干净，正式版的一项没变。
+测试要求：没改代码就不跑全量；改了代码，工作中只跑相关测试，最后全量一次。冻结构建、安装包、安装目录用完立刻自己删，只留 report.md 和截图。删除被拦住就列出路径交架构师，不换工具绕过。
+同时在跑：102-MF04b（runtime）：真打包软件内更新，会改 refactor/desktop/delivery/、updates.py、update_dialog.py、startup_window.py。你发现这些文件里的问题，写清现象、日志、复现步骤交架构师，不要自己改。Inno 脚本和打包脚本里的问题你自己修。
+产物目录：D:\MentorFlow\.local\test-tmp\setup102c\。目标两个半小时内交回。花费上限 ¥0。
+背景（CURRENT_STATE「当前阶段」里“发给外部新用户”的放行标准，[SYS-06] [BUG-59] [BUG-71] [BUG-72]）：到今天还没给第一个外部用户发过任何版本，因为安装与更新没走通。安装程序整条路上一次真跑，是用户自己用 2.0.9 原地升级，当时出了 BUG-59（假报失败）。101-MF04 修了，但只用安装核心离线验证过。101、102 又改了启动、安装核心和登录窗口，所以新安装程序从向导到登录窗口这整条路还没人真跑过。你的登录窗口改动（102-MF05b）已合入基线。
+要做
+  1. 用代码编两个预览版安装程序：
+     - 旧版 O：用 2.0.12 发布时的代码 5d7c211e；编不出来就用本批之前任何能编的提交，写明是哪个；
+     - 新版 N：用基线代码。
+  2. 全新安装（朋友的路径）：
+     - 安装位置指定到任务目录；
+     - 用 UIA 走完向导的每一页，包括选位置，以及完成页的“创建桌面快捷方式”和“立即启动”；
+     - 全程不报错；预览版桌面图标存在，指向正确；
+     - 登录窗口出来、在最前面、不闪（mentorflow.log 里 LOGIN_MAIN 只 SHOWN 一次）；记录从点“完成”到登录窗口可见的时间；
+     - 打开注册页能输入；
+     - 关掉后从桌面图标再启动一次，记录时间。
+  3. 覆盖升级（用户那台的路径）：
+     - 先用 O 装好并启动一次；
+     - 参照 D:\MentorFlowApp\MentorFlow 的只读状态，把这个安装目录做成像用户那台的样子：指向旧版本的 pending-update.json、ROLLED_BACK 的 per-user-transaction.json、几个 staging-/retired- 目录；在 Data 里留几份文件；
+     - 运行 N 的安装程序覆盖。不能假报“安装未完成”（BUG-59）；结果应为版本 N、HEALTHY、Updater 已换、桌面图标还在；
+     - 登录窗口出来；
+     - 两次启动后垃圾目录被清掉，Data 逐字节不变。
+  4. O 的软件正开着时运行 N 的安装程序：看提示是不是中文、用户能不能关掉软件后继续装。如实记录；不要求修，除非是 Inno 脚本里的明显问题。
+  5. 卸载：用预览版的卸载程序卸掉。看 Inno 脚本的设计，如实记录 Data 是保留还是删除。核对开头的对比：预览版的快捷方式、注册表项、C 盘目录清干净，正式版的没变。
+  6. 问题：Inno 脚本和打包脚本里的当场修，修完把受影响的场景重跑到通过；delivery 等文件里的交架构师（见上）。
+完成标准：第 2、3 条在真安装程序上通过，截图包括向导每一页、桌面图标、登录窗口；第 5 条清干净、正式版不变。改了代码的话，最后全量一次通过：loading86、self_test81、status88 是已知偶发，失败时单独重跑那一项并写明。达不到就写“部分完成”。
+回执：写到 D:\MentorFlow\.local\receipts\102-MF05c.md。表格列：基线 ／ 提交（没改代码写“无”） ／ 全新安装结果与耗时 ／ 覆盖升级结果 ／ 开着软件时安装 ／ 卸载与清理（前后对比） ／ 交给架构师的问题 ／ 截图 ／ 全量 ／ 本地最终占用。给用户只回一行“102-MF05c 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\setup102c\report.md。
+~~~
+
 ## 回执格式
 
 - **回执写文件（用户 2026-10-10 定）**：员工把回执表格写到 `D:\MentorFlow\.local\receipts\<批次>-<员工>.md`（例如 98-MF03.md），给用户只回一行“98-MF03 完成/部分完成/受阻，回执已写入”。用户只告诉架构师哪些做完了，架构师去读回执文件。每份任务的“回执”一节都写明这条。
