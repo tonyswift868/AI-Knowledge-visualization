@@ -9,7 +9,7 @@ from PySide6.QtCore import QByteArray
 from PySide6.QtGui import QColor, QCursor, QLinearGradient, QPainter, QPainterPath, QRadialGradient
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox,
-                               QLineEdit, QComboBox, QGraphicsDropShadowEffect, QToolButton)
+                               QLineEdit, QComboBox, QGraphicsDropShadowEffect, QToolButton, QSizePolicy)
 
 LOGIN_GATE_OBJECT_NAME = "mentorflowLoginGateWindow"
 _ICONS = (Path(__file__).resolve().parent / "resources" / "login").as_posix()
@@ -95,7 +95,8 @@ QComboBox QAbstractItemView {{ background: #ffffff; border: 1px solid rgba(185, 
   selection-background-color: rgba(214, 90, 134, 0.12); selection-color: #b8457a; outline: 0; }}
 QCheckBox {{ color: #75596a; font-size: 13px; spacing: 7px; }}
 QCheckBox:hover {{ color: #d65a86; }}
-QCheckBox::indicator {{ width: 17px; height: 17px; border-radius: 5px; border: 1.5px solid rgba(185, 96, 136, 0.45); background: #ffffff; }}
+QCheckBox::indicator {{ width: 18px; height: 18px; border-radius: 5px; border: 1px solid #ba809b; background: #ffffff; }}
+QCheckBox::indicator:unchecked {{ image: none; border: 1px solid #ba809b; border-radius: 5px; background: #ffffff; }}
 QCheckBox::indicator:hover {{ border-color: #d65a86; }}
 QCheckBox::indicator:checked {{ border: 0; image: url({_ICONS}/check.svg);
   background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f07aa2, stop:1 #b8457a); }}
@@ -276,7 +277,7 @@ class LoginGateWindow(QWidget):
         card_layout.addWidget(self.password_field)
         # Options on one row inside the card (show password, remember password, auto login).
         options = QHBoxLayout()
-        options.setSpacing(18)
+        options.setSpacing(10)
         self.options_row = options
         options.addWidget(self.show_password)
         card_layout.addLayout(options)
@@ -292,6 +293,7 @@ class LoginGateWindow(QWidget):
         shadow.setOffset(0, 16)
         shadow.setColor(QColor(40, 10, 32, 110))
         card.setGraphicsEffect(shadow)
+        self.card_shadow = shadow
         outer.addWidget(card, 1)
         self.remember_box = QCheckBox("保存会话")
         self.remember_box.setObjectName("rememberLoginCheckBox")
@@ -306,6 +308,8 @@ class LoginGateWindow(QWidget):
         self.auto_box.setToolTip('打开软件时自动登录这个账号')
         options.addWidget(self.remember_password_box)
         options.addWidget(self.auto_box)
+        for box in (self.show_password,self.remember_password_box,self.auto_box):
+            box.setSizePolicy(QSizePolicy.Policy.Minimum,QSizePolicy.Policy.Fixed)
         options.addStretch(1)
         def synchronize_consent():
             self.remember_box.setChecked(self.remember_password_box.isChecked() or self.auto_box.isChecked())
@@ -376,6 +380,10 @@ class LoginGateWindow(QWidget):
             self.content_layout.removeWidget(self.auth_content)
             self.auth_content.hide()
         self.auth_content = content
+        # Qt does not support ancestor graphics effects on QQuickWidget, which
+        # WebEngine uses for its surface. Keep the native card's shadow only
+        # while it contains native controls (not a cached/offscreen web image).
+        self.card_shadow.setEnabled(content is None)
         # Keep the brand title; registration needs the extra room for its form.
         for index, widget in enumerate(self.brand_widgets):
             widget.setVisible(content is None or index == 1)
@@ -528,6 +536,7 @@ QLabel#loginStateDetail {color:#b3b7de;}
 QLineEdit,QComboBox,QCheckBox {color:#eef0ff;background:#222541;}
 QLineEdit:disabled,QComboBox:disabled {color:#7a7fab;background:#222541;border-color:#343956;}
 QCheckBox::indicator {background:#222541;border-color:#343956;}
+QCheckBox::indicator:unchecked {background:#222541;border-color:#7a7fab;}
 QPushButton#loginPrimaryButton {background:#9b8cff;color:#0c0e1c;}
 QPushButton#loginPrimaryButton:disabled {background:#343956;color:#7a7fab;}
 QPushButton#loginSmallButton,QPushButton#loginAccountAction {color:#b3b7de;}

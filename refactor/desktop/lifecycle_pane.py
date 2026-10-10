@@ -85,6 +85,7 @@ class _RegistrationResults(QObject):
 class Bridge(QObject):
     result=Signal(str)
     back=Signal(bool)
+    presentation_ready=Signal()
     def __init__(self,parent):
         super().__init__(parent)
         self.cancelled=threading.Event(); self.busy=False
@@ -112,6 +113,9 @@ class Bridge(QObject):
 
     @Slot()
     def returnLogin(self): self.cancel(); self.back.emit(False)
+
+    @Slot()
+    def presentationReady(self): self.presentation_ready.emit()
 
     @Slot(str,str,int)
     def checkRegistration(self, field, value, request_id):
@@ -336,9 +340,11 @@ class Bridge(QObject):
 
 class AccountLifecyclePane(QWidget):
     finished=Signal(bool)
+    prepared=Signal()
     def __init__(self,intent,parent=None,*,shell_runtime=None):
         super().__init__(parent)
         if intent not in ('register','forgot_password'):raise ValueError('Invalid account action')
+        self.intent=intent; self.theme='sakura'; self.ready=False; self._disposed=False
         root=shell_runtime.lifecycle_root if shell_runtime is not None else assets()
         if not (root/'lifecycle.html').is_file():
             raise FileNotFoundError('Bundled account lifecycle page is unavailable')
@@ -346,6 +352,8 @@ class AccountLifecyclePane(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
         self.view=QWebEngineView(self); layout.addWidget(self.view, 1)
+        self.view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocusProxy(self.view)
         self.profile=QWebEngineProfile(self)
         self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
         self.profile.setPersistentCookiesPolicy(QWebEngineProfile.PersistentCookiesPolicy.NoPersistentCookies)
@@ -356,7 +364,8 @@ class AccountLifecyclePane(QWidget):
         self.channel=QWebChannel(self.page);self.bridge=Bridge(self)
         self.channel.registerObject('lifecycle',self.bridge);self.page.setWebChannel(self.channel)
         self.bridge.back.connect(self.finished.emit)
-        self.view.loadFinished.connect(lambda ok:self.page.runJavaScript('window.mfNativeIntent='+json.dumps(intent)+';window.mfStartNative?.();') if ok else None)
+        self.bridge.presentation_ready.connect(self._prepared)
+        self.view.loadFinished.connect(lambda ok:self._present() if ok and not self._disposed else None)
         self.view.setUrl(QUrl.fromLocalFile(str(root/'lifecycle.html')))
         self.back_button=QPushButton('返回登录')
         self.back_button.setObjectName('lifecycleBackButton')
@@ -370,6 +379,34 @@ class AccountLifecyclePane(QWidget):
         )
         self.back_button.clicked.connect(self.bridge.returnLogin)
         layout.addWidget(self.back_button)
+
+    def _present(self):
+        self.page.runJavaScript('window.mfNativeIntent='+json.dumps(self.intent)+
+            ';window.mfNativeTheme='+json.dumps(self.theme)+';window.mfStartNative?.();')
+
+    def _prepared(self):
+        if self._disposed:return
+        self.ready=True;self.prepared.emit()
+
+    def activate(self,intent,theme='sakura'):
+        if intent not in ('register','forgot_password'):raise ValueError('Invalid account action')
+        self.intent=intent;self.theme=theme
+        self._present()
+        from .native_loading import PALETTES
+        c=PALETTES.get(theme,PALETTES['sakura'])
+        self.back_button.setStyleSheet(f"QPushButton{{min-height:40px;border:1px solid {c['soft']};"
+            f"border-radius:10px;background:{c['surface']};color:{c['accent']};font-size:14px}}"
+            f"QPushButton:focus{{border:2px solid {c['accent']}}}")
+
+    def focus_form(self):
+        if self._disposed or not self.isVisible():return
+        self.view.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.page.runJavaScript("window.mfFocusNative?.()")
+
+    def showEvent(self,event):
+        super().showEvent(event)
+        if self.ready:QTimer.singleShot(0,self.focus_form)
+
     def cancel(self):self.bridge.cancel();self.view.stop()
-    def dispose(self):self.cancel();self.hide();self.deleteLater()
+    def dispose(self):self._disposed=True;self.cancel();self.hide();self.deleteLater()
     def closeEvent(self,event):self.cancel();super().closeEvent(event)
