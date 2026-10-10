@@ -66,14 +66,14 @@
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
-| MF-02 | 空闲 | client |
+| MF-02 | 95-MF02（已起草，待转发） | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 95-MF05（已起草，待转发） | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
-空闲工位：除 platform 外六个。
+空闲工位：除 platform、client 外五个。
 
 ## 待派队列
 
@@ -86,14 +86,14 @@
   - 2.0.5（2026-10-10）：mf-build 成功约 5 分钟 → 本机 sign_and_stage 一次成功 → mf-publish 成功约 10 分钟；保留规则生效（2.0.2 只剩 stable.json，2.0.3～2.0.5 有安装程序），公网对 2.0.3/2.0.4 验签均通过。
 - 93-MF04：完成并合入 main（c5768d44，2026-10-10）。
 - 94-MF04：完成并合入（d6be6e29）；2.0.5 已用流水线发布。
-- 95-MF05：已起草（2026-10-10），待用户转发：注册页没法输入（P0）+ 预热。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+- 95-MF05、95-MF02：已起草（2026-10-10），待用户转发：登录窗口与注册页（没法输入 P0、预热、复选框、返回登录）；同步（连接复用、单条失败不拖垮、先拉后传并刷新、进度）。两个都合入后发 2.0.6。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
 
-## 第九十五批任务原文（2026-10-10，基线 9208720a）
+## 第九十五批任务原文（2026-10-10）
 
-### [95-MF05] platform｜注册页没法输入 + 预热（¥0）
+### [95-MF05] platform｜登录窗口与注册页（¥0）
 
 ~~~text
-【MentorFlow 第九十五批｜MF-05（工位 platform）｜注册页：点了没法输入（P0）+ 打开要等 10 秒（预热）】
+【MentorFlow 第九十五批｜MF-05（工位 platform）｜登录窗口与注册页：注册页没法输入（P0）、打开要等 10 秒（预热）、复选框显示成方括号、从注册返回后提示看不懂】
 
 现成项目与许可证（第一节）
   - 不新增依赖。只改本项目现有代码：refactor/desktop/lifecycle_pane.py（注册/找回密码的本地网页，QWebEngineView 加载 resources/account-lifecycle/lifecycle.html）、refactor/desktop/account_shell_main.py 的 _begin_account_action（约 1455 行）、refactor/desktop/native_loading.py 的 WebFirstFrame（88-MF05 加的原生加载遮罩）、resources/account-lifecycle 下的 js。预热用 Qt 官方做法：提前创建 QWebEngineProfile/QWebEnginePage 并加载页面、隐藏待用（Qt WebEngine 文档的 warm-up 思路），不引新库。
@@ -105,22 +105,63 @@
   git reset --hard 9208720a
 提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
 禁止 push、禁止在 GitHub 上触发工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp 只读（可以读 Data\logs\mentorflow.log 做对照）；D:\MentorFlowData\account-shell 只读；E 盘只读运行；不碰 D:\Kristina*。不在线上真注册账号（注册由用户做）：测试时页面可以填表，但不点提交，或把服务器地址指向本机假服务。先读 AGENTS.md：中间产物用完即删，回执写明最终占用。测试用 D:\MentorFlow\.venv\Scripts\python.exe。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程（从 D:\MentorFlow 启动的 source_start 与 D:\MentorFlowApp 里的 MentorFlow.exe）；你自己的测试进程从工位目录启动、用复制的数据。
-同时在跑：只有本任务。
+同时在跑：MF-02（client）改同步（refactor/learning/ 下同步相关文件），和你不冲突。
 产物目录：D:\MentorFlow\.local\test-tmp\register95\。目标三小时内交回。花费上限 ¥0。
 背景（用户 2026-10-10 在装好的 2.0.5 上实测，CURRENT_STATE [ACC-02] 待修）：
   1. P0：登录窗口点“注册账号”后，注册页显示出来了（账号、邮箱、密码、确认密码、“注册账号”按钮灰色、“返回登录”），但用户“连点击都出问题，根本没法输入东西”。原因未知。可疑点（自己核实，不要只按这里猜）：WebFirstFrame 的遮罩 cover 是否在页面画出来后真的隐藏且不再拦截鼠标/键盘、焦点是否还停在遮罩或原生登录控件上、QWebEngineView 是否拿到焦点、页面 js 是否在等某个本机或服务器调用返回前把输入框禁用、frameless 窗口里 QWebEngine 的输入法/焦点问题。
   2. 打开注册页约 10 秒（第一次启动 Chromium 内核；刚装完新版时杀毒扫描更慢）。用户选预热：登录窗口出现后，在后台空闲时预先建好注册页（网页内核与页面），点“注册账号”/“忘记密码”时直接显示，目标点击后 1 秒内能输入。预热不能拖慢登录窗口出现和正常登录；用户直接登录、从不点注册时，预热的东西在进入主界面时释放。
+  3. 登录窗口“记住密码”的复选框没勾时显示成一对方括号“[ ]”，而且文字被挤得只剩“记住密”；“显示密码”“自动登录”是正常的方框。要求三个复选框外观一致（圆角方框），文字完整显示。
+  4. 点“注册账号”再点“返回登录”后：标题变成“登录你的账号”，提示“注册页面已关闭；请确认页面提示提交成功后再使用新账号登录。”，原来保存的密码被清空（_begin_account_action 里 gate.clear_password()），“记住密码”被取消；用户再点登录，标题变成“暂时无法继续”、提示“请输入账号和密码。”、按钮变成“重试”。用户完全不知道发生了什么。要求：没有注册就返回时，登录窗口恢复到点注册之前的样子（保存的密码、记住密码都还在，不出现那句提示）；密码为空时直接提示“请输入密码”，标题和按钮保持“登录”，不用“暂时无法继续 / 重试”这种出错样式。
 要做
   1. 先复现第 1 条：在工位用源代码按安装版方式启动（复制的数据目录、Windows 正常窗口，不用 offscreen），点注册，逐项确认能否点击、输入、切换焦点、用中文输入法输入；同时用打包后的 exe 再试一次（可以用 scripts/release 里的本机构建只构建不安装，或用现成 payload）。写清复现结果和根因（附证据：日志、截图、必要时加临时诊断日志）。
   2. 修根因；“找回密码”页同一套也要验。
   3. 做预热（第 2 条），找回密码页共用。
+  3b. 修第 3、4 条，截图对比修前修后（亮暗两套主题）。
   4. 验证（完成标准以这些为准）：
      a. 源代码与打包 exe 两种启动方式下，注册页和找回密码页都能点击、输入（含中文输入法）、Tab 切换、显示密码、返回登录；截图。
      b. 冷启动后第一次点“注册账号”到能输入的时间，修前 / 修后各测 3 次写进报告，目标 ≤1 秒；登录窗口出现时间与登录耗时不变慢（修前后对比）。
      c. 离线测试覆盖遮罩隐藏后不拦截输入、预热页面复用与释放；全量通过；web 构建通过（如有改动）。
 完成标准：a、b、c 全部达到（b 达不到 1 秒时写清实测值与卡在哪，算部分完成）；提交在工位。
 验收：报告写到 D:\MentorFlow\.local\test-tmp\register95\report.md。
-回执（尽量短，用表格）：【MF-05｜platform｜第九十五批｜完成/部分完成/受阻】基线 ／ 提交 ／ 没法输入的根因 ／ 修法 ／ 两种启动方式实测 ／ 打开耗时修前修后 ／ 全量 ／ 本地最终占用
+回执（尽量短，用表格）：【MF-05｜platform｜第九十五批｜完成/部分完成/受阻】基线 ／ 提交 ／ 没法输入的根因 ／ 修法 ／ 两种启动方式实测 ／ 打开耗时修前修后 ／ 复选框与返回登录 ／ 全量 ／ 本地最终占用
+~~~
+
+### [95-MF02] client｜同步提速与刷新（¥0）
+
+~~~text
+【MentorFlow 第九十五批｜MF-02（工位 client）｜同步：新设备第一次同步太慢易失败、同步完计划列表不刷新】
+
+现成项目与许可证（第一节）
+  - 不新增依赖。HTTP 连接复用用项目已在用的 httpx（BSD）自带的连接池（一个长期存在的 httpx.Client，keep-alive），这是 httpx 官方文档推荐的用法；不改服务器接口（本轮不加批量接口）。只改 refactor/learning/sync_transport.py、refactor/learning/course/sync_course.py、refactor/learning/app/sync.py 及前端读取同步事件刷新页面的地方（web/src 里计划列表、首页）。
+
+开工同步
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard <主目录 git rev-parse --short HEAD，写在回执>
+提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
+禁止 push、禁止在 GitHub 上触发工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不连线上服务器做同步测试（用 tests 里现有的本机假服务器/服务器测试夹具）。D:\MentorFlowApp 只读（可读 Data\logs\mentorflow.log、复制 course.sqlite3 到测试目录分析）；D:\MentorFlowData\account-shell 只读；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md：中间产物用完即删，回执写明最终占用。测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node（不提交 dist）。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+同时在跑：MF-05（platform）改登录窗口与注册页（refactor/desktop/ 下登录相关文件），和你不冲突。
+产物目录：D:\MentorFlow\.local\test-tmp\sync95\。目标三小时内交回。花费上限 ¥0。
+背景（用户 2026-10-10 在装好的 2.0.5 上用同一账号登录，等于第二台设备，CURRENT_STATE [ARCH-05]/[DATA-02]）：
+  - 登录后显示“正在同步学习记录…比平时慢，可能是网络问题”，约 1.5 分钟后“同步失败 / 账号连接不稳，正在重试”，再过一会儿“已同步 13:18”。日志：Data\logs\mentorflow.log 13:16:11 开始，13:17:48 SYNC_UNAVAILABLE（sync_course.py _send → sync_transport.py write/_mutate）。服务器日志同一时间是一条一条的 PUT /api/enterprise/sync/v1/entities/learning_run/...，全部 200。
+  - 架构师读代码：sync_transport.py 的 _mutate、read_changes 等每次请求都 `with httpx.Client(...)` 新建客户端，即每条记录一次新的 TLS 握手；这台机器有约 2000 条记录要传（安装版课程库里 source_chunks 1038、points 553、messages 178、question_bank 165 …），用户线路到服务器慢，所以极慢；中途任意一条失败整轮报“同步失败”。
+  - 同步完成后，本地库里已经有了从服务器拉下来的“ai-agent学习”计划（plans 表 2 条、都未归档），但“我的计划”页面仍只显示旧的那份——页面是登录时读的，同步拉到新计划后没有刷新。用户以为“我的计划没了”。
+  - 中途还提示过“另一台设备也改过，已按最新的保留”（app/sync.py 109 行），用户看不懂发生了什么。
+要做
+  1. 连接复用：sync_transport 用一个长期存在的 httpx.Client（随同步服务创建、退出时关闭），所有同步请求共用；超时、证书、重定向策略保持原样。
+  2. 一条失败不拖垮整轮：单条记录失败按现有规则重试，仍失败就留在待同步、继续传下一条；整轮结束时再汇总报告（全部失败、网络断了才显示“同步失败”）。
+  3. 先拉后传、拉完就刷新：新设备登录时先把服务器上的计划拉下来并立刻通知前端刷新“我的计划”和首页（推现有同步事件或新增 plans_changed 事件，前端收到就重新读 plans.list），再慢慢上传本机待同步的记录。
+  4. 进度可见：同步时显示“正在同步 已完成 x / 共 y 条”，代替“比平时慢，可能是网络问题”这种猜测；“另一台设备也改过”改成说清楚是哪份计划、按哪边保留了什么（一句话）。
+  5. 查一件事写进报告：用户这台装好的软件第一次同步要传约 2000 条，其中 source_chunks 1038 条——这些是不是本来就该上传（DATA-02 说大文件不上服务器），还是 92-MF07 的迁移把不该改的记录也标成了待同步。如果是迁移多标了，说明原因与影响，给出修法写在报告里（不在本任务改迁移）。
+  6. 验证（完成标准以这些为准）：
+     a. 用本机假服务器、按用户这份库的规模（复制 D:\MentorFlowApp\...\course.sqlite3 到测试目录用）测：修前 / 修后完整同步耗时（同一模拟延迟，例如每请求加 300 ms 往返），写进报告；修后应明显缩短（目标至少快 3 倍）。
+     b. 模拟中途几条失败：整轮不报失败、失败的留在待同步、下轮补上。
+     c. 新设备登录：服务器上有计划、本机没有 → 同步拉下来后“我的计划”自动出现，不用重启；有测试。
+     d. 全量通过；web 构建通过。
+完成标准：a～d 全部通过；第 5 条有结论；提交在工位。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\sync95\report.md。
+回执（尽量短，用表格）：【MF-02｜client｜第九十五批｜完成/部分完成/受阻】基线 ／ 提交 ／ 连接复用 ／ 单条失败处理 ／ 先拉后传与刷新 ／ 进度与冲突提示 ／ 第5条结论 ／ 修前修后耗时 ／ 全量与构建 ／ 本地最终占用
 ~~~
 
 ## 第九十四批任务原文（2026-10-10，基线 6b40eb33）
