@@ -49,7 +49,7 @@ class DesktopUpdates(QObject):
         core.attach_shutdown_guard(app)
 
     def start(self):
-        self.gate.setEnabled(False)
+        getattr(self.gate, 'set_login_available', self.gate.setEnabled)(False)
         QTimer.singleShot(0, lambda: self.run("startup"))
 
     def snapshot(self):
@@ -176,7 +176,7 @@ class DesktopUpdates(QObject):
         if 'cached' in value:
             result = value['cached']
             self._login_blocked = not result.get('login_allowed', False)
-            self.gate.setEnabled(not self._login_blocked)
+            getattr(self.gate, 'set_login_available', self.gate.setEnabled)(not self._login_blocked)
             self._publish({**self.state, **result,
                            'mandatory': result.get('state') == 'MANDATORY_UPDATE'})
             if self._login_blocked: self._show_prompt()
@@ -197,7 +197,7 @@ class DesktopUpdates(QObject):
         if value["action"] == "startup":
             if result.get('feed') == 'VERIFIED': self._next_automatic = time.monotonic() + 86400
             self._login_blocked = not result.get("login_allowed", False)
-            self.gate.setEnabled(not self._login_blocked)
+            getattr(self.gate, 'set_login_available', self.gate.setEnabled)(not self._login_blocked)
             if self._login_blocked or result.get('state') == 'OPTIONAL_UPDATE':
                 self._show_prompt()
             if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE'):
