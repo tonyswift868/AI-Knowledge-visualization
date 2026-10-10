@@ -211,12 +211,12 @@ def test_corrupt_asset_never_ready_or_apply(feed):
     assert service.staged is None
 
 
-def test_full_fallback_without_delta_base(feed):
+def test_file_reuse_without_delta_base(feed):
     feed.signed['base_versions']=[]; feed.sign(feed.signed)
-    service=feed.service(); assert service.check()['update_path']=='FULL_FALLBACK'
+    service=feed.service(); assert service.check()['update_path']=='FILE_LEVEL_INCREMENTAL'
     result=service.download()
     assert result['state']=='READY_TO_APPLY'
-    assert result['actual_downloaded_bytes']==result['full_bytes']
+    assert 0 < result['actual_downloaded_bytes'] < result['full_bytes']/100
     assert not any('Setup' in path for path,_ in feed.requests)
 
 
@@ -422,9 +422,9 @@ def test_uneconomic_incremental_selects_full(feed):
     assert plan['expected_download_bytes']==plan['full_bytes']
 
 
-def test_missing_incremental_object_selects_full(feed):
+def test_missing_incremental_hint_still_uses_signed_full_assets(feed):
     feed.signed['incremental_assets']=[]; feed.sign(feed.signed)
-    assert feed.service().check()['update_path']=='FULL_FALLBACK'
+    assert feed.service().check()['update_path']=='FILE_LEVEL_INCREMENTAL'
 
 
 def test_beta_advanced_channel_and_stable_prerelease_refusal(feed):

@@ -447,6 +447,31 @@ class ObjectCache:
         partial.replace(target)
         return target
 
+    def local_file_plan(self, release, old_app, current, *, cancel=lambda: False, telemetry=None):
+        """Hash actual local bytes at download time, never on the login check path."""
+        from refactor.desktop.delivery.update_protocol import make_plan
+        old_app = Path(old_app)
+        reusable = {}
+        token = _trace.set(telemetry) if telemetry is not None else None
+        try:
+            for path, row in release.rows.items():
+                if cancel():
+                    raise DownloadCancelled('local file verification cancelled')
+                candidate = old_app / path
+                if not safe_entry(candidate, old_app):
+                    continue
+                try:
+                    if candidate.stat().st_size == row['size'] and hash_file(candidate) == row['sha256']:
+                        reusable[path] = row
+                except OSError:
+                    # A missing/unreadable/changed local file is obtained from
+                    # its signed object. Path alias violations still fail closed.
+                    continue
+            return make_plan(release, reusable, current)
+        finally:
+            if token is not None:
+                _trace.reset(token)
+
     def disk_preflight(self, release: Release, plan: dict, *, free=None):
         missing = sum(release.rows[p]['size'] for p in plan['download_paths'] if not self.complete(release.rows[p]))
         # Additional reconstruction, two metadata copies and conservative reserve.

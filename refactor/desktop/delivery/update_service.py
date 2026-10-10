@@ -291,7 +291,11 @@ class MatureUpdateService:
                 release = verify_release(self.release.envelope, self.keys, current=self.current, channel=self.channel,
                                          highest_seen=self._witness()[0])
                 self._remember_release(release)
-                self._state('DOWNLOADING', '正在下载变化文件…', actual_downloaded_bytes=0)
+                # Any installed version can reuse equal content. Check-time
+                # manifest rows are an estimate only; hash actual App files now.
+                self.plan.update(self.cache.local_file_plan(release, self.install_root/'App', self.current,
+                    cancel=cancelled, telemetry=getattr(self, 'telemetry', None)))
+                self._state('DOWNLOADING', '正在下载变化文件…', actual_downloaded_bytes=0, **self.plan)
                 assets = [self.release.assets[p] for p in self.plan['download_paths']]
                 import time
                 last_report = 0

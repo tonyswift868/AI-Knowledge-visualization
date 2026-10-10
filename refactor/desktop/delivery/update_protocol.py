@@ -311,9 +311,9 @@ def make_plan(release: Release, local_rows: dict | None, current: str) -> dict:
                if not local_rows or local_rows.get(path, {}).get('sha256') != row['sha256']
                or local_rows.get(path, {}).get('size') != row['size']]
     size = sum(release.rows[p]['size'] for p in changed)
-    supported = (current in release.signed['base_versions']
-                 and set(changed).issubset(release.signed['incremental_assets']))
-    fallback = not local_rows or not supported or size >= full
+    # Every signed full-release asset is independently addressable by SHA256.
+    # Publisher delta hints must not force older versions to download equal bytes.
+    fallback = not local_rows or size >= full
     paths = list(release.rows) if fallback else changed
     return dict(update=version_key(release.version) > version_key(current), current=current,
                 latest=release.version, channel=release.signed['channel'],
