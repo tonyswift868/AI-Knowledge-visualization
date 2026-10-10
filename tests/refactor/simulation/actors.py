@@ -56,7 +56,7 @@ class ScriptUser:
         question = view.get('question')
         if question:
             if question.get('kind')=='recall':
-                return (action('class.recall_submit',question_id=question['id'],ticked=list(range(len(question['key_points']))))
+                return (action('class.recall_submit',question_id=question['id'],ticked=list(range(len(question['key_points']))),correct=True)
                         if question.get('revealed') else action('class.recall_reveal',question_id=question['id'],answer='我按刚学的原文写下自己的理解。'))
             purpose = question['purpose']
             wrong = purpose in ('quick', 'module') and purpose not in self.flags

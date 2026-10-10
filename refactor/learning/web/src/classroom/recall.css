@@ -16,12 +16,12 @@
 .recall-point input { flex:none; width:18px; height:18px; margin:4px 0 0; accent-color:var(--accent); }
 .recall-point span { min-width:0; white-space:pre-wrap; }
 .recall-point b { display:block; font-size:.76rem; color:var(--text-2); }
-.recall-point.missed { border-color:var(--warn); background:color-mix(in srgb,var(--warn) 10%,transparent); }
-.recall-point em { display:block; font-style:normal; color:var(--warn); font-size:.8rem; }
+.recall-point.missed { border-color:var(--danger); background:color-mix(in srgb,var(--danger) 10%,transparent); }
+.recall-point em { display:block; font-style:normal; color:var(--danger); font-size:.8rem; }
 .recall-result { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-top:16px; }
 .recall-result > span { display:flex; align-items:center; gap:8px; font-weight:600; }
 .recall-result.correct { color:var(--ok); }
-.recall-result.missed { color:var(--warn); }
+.recall-result.missed { color:var(--danger); }
 .recall-error { color:var(--danger); }
 .recall-chat { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:10px 18px; border-top:1px solid var(--border); }
 @media(max-width:800px) { .recall-columns.revealed { grid-template-columns:minmax(0,1fr); } .recall-question { padding:14px; } }

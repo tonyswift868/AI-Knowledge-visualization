@@ -1,4 +1,4 @@
-"""Account-owned SQLite course data and an atomic record outbox, schema v8.
+"""Account-owned SQLite course data and an atomic record outbox, schema v9.
 
 Each business table stores a canonical, versioned JSON payload plus indexed FK
 columns and a local revision. Payload fields (also validated below):
@@ -13,7 +13,9 @@ messages/chat_messages: role, content, kind, at, compressed, summary_of.
 question_bank: original-source question payload (question_bank.validate_question),
 source/answer_source locators and append-only purpose/time uses.
 question_answers: immutable answer ID, question/point IDs, context, attempt,
-angle, verdict and time; composites count for detection without mastery events.
+angle, verdict and time; v9 adds literal answer, question snapshot, ticked/missed,
+optional self_correct and dialogue anchor. Missing self_correct means historical
+verdict, never an inferred student choice. All fields travel in the same sync fact.
 Module positions are global within a plan; point positions are within a module.
 Plan module_count and module point_count prevent a partially downloaded course
 from becoming runnable/complete before all its structural records arrive.
@@ -59,7 +61,7 @@ from .ledger import Ledger, PlanWindow, Credit
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 POINT_MINUTES_VERSION = 2  # Content totals, replacing v1's fixed-budget allocation.
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
@@ -314,6 +316,11 @@ class CourseStore:
             for plan_id, in self._db.execute('SELECT id FROM plans').fetchall():
                 self._upgrade_material_plan(plan_id)
             self._db.execute('UPDATE schema_version SET version=8')
+            version = 8
+        if version == 8:
+            # v9 extends append-only JSON answer facts. Keep old events byte-for-byte
+            # (including their sync IDs/verdict); missing fields project as historical.
+            self._db.execute('UPDATE schema_version SET version=9')
 
     def _revision(self):
         self._db.execute("UPDATE _meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
@@ -803,7 +810,8 @@ class CourseStore:
     @_atomic
     def append_question_answer(self, plan_id, answer_id, *, module_id, context, attempt_id,
                                question_id, point_ids, angle, correct, wrong_points=(), reason='', checks=(), at=None,
-                               answer=None, ticked=None):
+                               answer=None, ticked=None, missed=None, self_correct=None, question=None,
+                               dialogue_channel=None, question_message_id=None):
         """Persist a question answer and optional recall self-check exactly once.
 
         It is an append-only sync event, not an authoritative mastery state.
@@ -814,6 +822,12 @@ class CourseStore:
                    wrong_points=list(wrong_points), reason=str(reason)[:400], checks=list(checks), at=_at(at))
         if answer is not None:row['answer']=answer
         if ticked is not None:row['ticked']=list(ticked)
+        if missed is not None:row['missed']=list(missed)
+        if self_correct is not None:
+            if type(self_correct) is not bool or self_correct != correct:raise StoreError('INVALID_ANSWER')
+            row['self_correct']=self_correct
+        if question is not None:
+            row.update(question=question,dialogue_channel=dialogue_channel,question_message_id=question_message_id)
         existing = next((r for r in self._rows('question_answers', plan_id) if r['id'] == answer_id), None)
         if existing:
             if any(existing.get(k) != v for k, v in row.items() if k != 'at'):
@@ -829,6 +843,55 @@ class CourseStore:
             raise StoreError('POINT_MODULE_MISMATCH')
         self._put('question_answers', plan_id, row)
         return answer_id
+
+    def wrong_answers(self, plan_id):
+        """Read-only wrong-ever groups; immutable snapshots, all attempts and dialogue.
+
+        v8 facts retain their original verdict. No self-verdict is inferred. Bank
+        and judgement details only supply missing display fields of old records.
+        Messages remain separate sync entities, linked by question message ID.
+        """
+        with self._lock:
+            self._get('plans',plan_id,plan_id)
+            bank={q['id']:q for q in self.records('question_bank',plan_id)}
+            judgements=self.records('judgements',plan_id)
+            details={j['id']:j.get('details',{}) for j in judgements}
+            messages=sorted(self.records('messages',plan_id),key=lambda m:(m['at'],m['id']))
+            groups={}
+            facts=self.records('question_answers',plan_id)
+            known={f['id'] for f in facts}
+            # Pre-answer-fact versions may only have the judgement event. Project
+            # those too without rewriting or re-uploading immutable history.
+            for j in judgements:
+                e=j['event'];d=j.get('details',{});qid=e.get('question_id') or d.get('question_id')
+                if j['id'] in known or not qid:continue
+                facts.append(dict(id=j['id'],question_id=qid,module_id=e['module_id'],context=e['context'],
+                    attempt_id=e.get('attempt_id'),at=e['at'],correct=all(good for _,good in e['results'])))
+            for fact in sorted(facts,key=lambda a:(a['at'],a['id'])):
+                row=dict(fact);qid=row['question_id'];old=details.get(row['id'],{})
+                q=dict(row.get('question') or bank.get(qid) or {})
+                for key in ('reference','key_points','source','answer_source'):
+                    if key not in q and key in old:q[key]=old[key]
+                q.setdefault('stem',old.get('question','历史题目（题面未保存）'))
+                q.setdefault('kind','recall' if 'key_points' in q else old.get('question_type','objective'))
+                row['question']=q
+                row.setdefault('answer',old.get('answer'))
+                row.setdefault('ticked',old.get('ticked',[]))
+                row.setdefault('missed',[i for i in range(len(q.get('key_points',[]))) if i not in row['ticked']])
+                row.setdefault('self_correct',None)
+                channel=row.get('dialogue_channel',None if row['context']=='check' else row['module_id'])
+                dialogue=[m for m in messages if m['module_id']==channel]
+                anchor=next((i for i,m in enumerate(dialogue) if m['id']==row.get('question_message_id')),None)
+                if anchor is None:
+                    anchor=next((i for i,m in reversed(list(enumerate(dialogue))) if m['at']<=row['at']),None)
+                if anchor is not None:
+                    end=next((i for i in range(anchor+1,len(dialogue)) if dialogue[i]['kind']=='question'),len(dialogue))
+                    row['dialogue']=dialogue[max(0,anchor-2):end]
+                else:row['dialogue']=[]
+                group=groups.setdefault(qid,dict(question_id=qid,question=q,wrong_count=0,attempts=[]))
+                group['attempts'].append(row)
+                group['wrong_count']+=int(not row['correct'])
+            return sorted((g for g in groups.values() if g['wrong_count']),key=lambda g:(-g['wrong_count'],g['question_id']))
 
     @_atomic
     def append_practice_result(self, plan_id, question_id, module_id, point_ids, correct, *, reason='', at=None, result_id=None, wrong_points=None):

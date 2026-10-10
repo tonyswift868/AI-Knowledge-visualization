@@ -1,0 +1,13 @@
+.wrong-answers { color:var(--text); background:var(--surface-solid); width:min(850px,92vw); max-height:86vh; overflow-y:auto; box-sizing:border-box; border:1px solid var(--border); padding:20px; overflow-wrap:anywhere; }
+.wrong-answers::backdrop { background:rgb(0 0 0 / 40%); }
+.wrong-answers h2 { margin:0; }
+.wrong-answers summary { cursor:pointer; }
+.wrong-question { min-width:0; padding:14px; }
+.wrong-attempt { border-top:1px solid var(--border); margin-top:14px; padding-top:12px; }
+.wrong-attempt h3 { font-size:1rem; margin:0 0 8px; }
+.wrong-points, .wrong-options { list-style:none; padding:0; }
+.wrong-points li, .wrong-options li { padding:6px 8px; border-bottom:1px solid var(--border); white-space:pre-wrap; }
+.wrong-answers .not-hit { color:var(--danger); }
+.wrong-answers .hit { color:var(--ok); }
+.wrong-own { white-space:pre-wrap; }
+.wrong-dialogue { border-left:2px solid var(--border); padding:8px 12px; margin:8px 0; }

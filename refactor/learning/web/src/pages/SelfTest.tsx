@@ -126,7 +126,7 @@ export function SelfTest({ back, request = call }: {back: () => void; request?: 
           <p>你的回答：{q.answer}</p><details open><summary>原文参考答案</summary><div className="self-test-original">{q.reference}</div></details>
           {q.key_points?.map((point, i) => <p key={i} className={verdict.missed.includes(i) ? "self-test-error" : ""}>要点 {i+1}：{point}{verdict.missed.includes(i) ? "（未勾选）" : ""}</p>)}
           <Button kind="primary" disabled={busy} onClick={next}>继续</Button>
-        </div> : q.kind === "recall" ? <RecallQuestion key={view.run.current!.attempt_id} question={q} request={recall} busy={busy} next={next} />
+        </div> : q.kind === "recall" ? <RecallQuestion key={view.run.current!.attempt_id} question={q} request={recall} busy={busy} next={next} selfJudge={false} />
           : <div className="card self-test-objective"><h3>{q.stem}</h3>
             {q.options.length ? <fieldset disabled={busy}><legend>{q.question_type === "multi" ? "选择所有正确选项" : "选择一个选项"}</legend>
               {q.options.map((option, i) => <label key={i}><input type={q.question_type === "multi" ? "checkbox" : "radio"} name="self-test-choice"

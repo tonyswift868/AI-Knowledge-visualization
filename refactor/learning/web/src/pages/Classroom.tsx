@@ -1,3 +1,4 @@
+import { WrongAnswers } from "../classroom/WrongAnswers"
 import * as React from "react"
 import { ClassroomMarkdown } from "../classroom/Markdown"
 import { ProgressStatus, type StudyProgress } from "../ProgressStatus"
@@ -47,6 +48,7 @@ function live(text: string) {
 
 export function Classroom() {
   const planId = useApp((s) => s.planId)
+  const [wrongAnswers, setWrongAnswers] = React.useState(false)
   const go = useApp((s) => s.go)
   const toast = useApp((s) => s.toast)
   const reduceMotion = useApp((s) => s.settings?.reduce_motion ?? false)
@@ -290,6 +292,7 @@ export function Classroom() {
             <span className="eyebrow">{room.check ? "全部模块已学完" : `模块 ${room.module.number}/${room.module.total}`} · {room.plan.goal}</span>
             <b>{room.check ? "最终检验" : room.module.title}</b>
           </div>
+          {room.plan.state === "checking" && <Button small onClick={() => setWrongAnswers(true)}>错题集</Button>}
           {t && <ProgressStatus value={t} />}
         </header>
         {room.check ? (
@@ -418,6 +421,7 @@ export function Classroom() {
         </TeacherWindow>
       </React.Suspense>
 
+      {wrongAnswers && <WrongAnswers planId={planId!} onClose={() => setWrongAnswers(false)} />}
       {source && (
         <div className="class-source fade-in" role="dialog">
           <div className="row between">
