@@ -53,7 +53,13 @@ def test_in_app_call_dispatches_before_own_shutdown(case, monkeypatch):
     monkeypatch.setattr(ProcessPeer, 'require', lambda *a, **kw: {})
     monkeypatch.setattr(ProcessPeer, 'visible_responsive_window', lambda *a: None)
     commands = []
-    monkeypatch.setattr(install.subprocess, 'Popen', lambda args, **kw: (commands.append((args,kw)) or SimpleNamespace(pid=54321)))
+    monkeypatch.setattr(install, 'refresh_updater', lambda *_: {'status': 'UP_TO_DATE'})
+    def started(args, **kw):
+        commands.append((args, kw))
+        Path(args[args.index('--ready-file') + 1]).write_bytes(canonical(
+            dict(app_pid=os.getpid(), coordinator_pid=54321)))
+        return SimpleNamespace(pid=54321, poll=lambda: None)
+    monkeypatch.setattr(install.subprocess, 'Popen', started)
     monkeypatch.setattr(install, 'request_app_shutdown', lambda *a: pytest.fail('caller must survive dispatch'))
     result = core.update_to_latest(root, hwnd_hex='0001', service=service)
     assert result['state'] == 'APPLYING' and result['coordinator_started']

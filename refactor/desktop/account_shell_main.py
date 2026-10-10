@@ -71,6 +71,7 @@ class AccountShell:
         self._generation = 0
         self._cancelled = threading.Event()
         self._closing = False
+        self._update_exit_pending = False
         self._session_epoch = 0
         self._feature_session_confirmed = False
         # Keep the last server-confirmed product role separate from the
@@ -1776,6 +1777,17 @@ class AccountShell:
             self.clear_update_login()
             raise RuntimeError('无法准备更新后的登录，请稍后重试。') from None
 
+    def prepare_update_shutdown(self):
+        """Close visible account windows without logging out the handoff token."""
+        self._release_account_prewarm()
+        self._close_account_closure()
+        self._close_account_settings()
+        if self.home is not None:
+            self.home.dispose()
+            self.home.hide()
+        self.gate.hide()
+        self._update_exit_pending = True
+
     def clear_update_login(self):
         if getattr(self, '_update_handoff_account', None) is None:
             return
@@ -1794,6 +1806,15 @@ class AccountShell:
 
     def close(self) -> None:
         if self._closing:
+            return
+        if self._update_exit_pending:
+            self._closing = True
+            self._session_timer.stop()
+            self._capabilities_retry_timer.stop()
+            self._invalidate_login_jobs()
+            if self.home is not None:
+                self.home.hide()
+            self.gate.hide()
             return
         self._release_account_prewarm()
         diagnostic_event('exit', reason='ACCOUNT_SHELL_CLEANUP')
@@ -1955,6 +1976,13 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
                     install_root, update_attempt, update_nonce))
         result = app.exec()
         diagnostic_event('exit', reason='EVENT_LOOP_RETURNED', exit_code=result)
+        if getattr(shell, '_update_exit_pending', False) and getattr(sys, 'frozen', False):
+            # All synchronous saves and service disposal completed before quit.
+            # Python's executor atexit joins must not keep a windowless frozen
+            # App alive after the acknowledged updater handoff.
+            import logging
+            logging.shutdown()
+            os._exit(result)
         return result
     except Exception as exc:
         diagnostic_event('startup', state='FAILED', exc_info=True)

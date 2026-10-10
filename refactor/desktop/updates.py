@@ -23,6 +23,7 @@ class DesktopUpdates(QObject):
         self.core, self.root, self.gate = core, Path(root), gate
         self._login_handoff = login_handoff
         self._handoff_armed = False
+        self._cleanup_started = False
         self.state = {"state": "IDLE", "message": "尚未检查更新。"}
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mf-app-update")
         self._busy = self._closed = False
@@ -107,14 +108,31 @@ class DesktopUpdates(QObject):
                     result = operation(
                         self.root, progress=self._install_progress,
                         cancel=self._cancel.is_set, pid=os.getpid(), hwnd_hex=hwnd)
-                    if result.get("coordinator_started"):
-                        self._send({"progress": {**result, "message": "正在安装更新，完成后将自动重启…"}})
+                    if result.get("coordinator_started") and result.get('app_exit') == 'self':
+                        # The coordinator has the signed staged update. New
+                        # Apps exit themselves after this acknowledgement; the
+                        # updater waits for the PID instead of sending WM_CLOSE.
+                        self._send({"handoff": {**result,
+                                                "message": "正在安装更新，完成后自动重启…"}})
+                        return
+                    if result.get('coordinator_started'):
+                        # Legacy repair coordinators have no self-exit ACK.
+                        # Never interpret process creation alone as permission
+                        # to close the App and abandon an unacknowledged task.
                         result = self._coordinator_result(result)
-                    if not result.get('coordinator_started') or result.get('state') == 'FAILED_RECOVERABLE' or result.get('cancelled'):
+                    if not result.get('coordinator_started') or result.get('state') in ('FAILED_RECOVERABLE', 'PENDING_INSTALL') or result.get('cancelled'):
                         self._clear_login_handoff()
             except Exception as exc:
+                from .delivery.per_user_install import maintenance_log
+                maintenance_log(self.root, 'in_app_update_deferred', error_type=type(exc).__name__, detail=str(exc))
                 self._clear_login_handoff()
-                result = {"state": "FAILED_RECOVERABLE", "message": "更新失败：" + str(exc)}
+                from .delivery.per_user_update_core import PENDING
+                pending = self.root / PENDING
+                if action == 'install' and pending.exists():
+                    result = {"state": "PENDING_INSTALL", "destructive_apply": False,
+                              "message": "更新已下载好，关闭软件后下次打开时自动安装。"}
+                else:
+                    result = {"state": "FAILED_RECOVERABLE", "message": "更新暂时无法完成，请稍后重试。"}
             self._send({"action": action, "result": result})
 
         self._pool.submit(work)
@@ -130,6 +148,8 @@ class DesktopUpdates(QObject):
             if self._cancel.is_set():
                 self._clear_login_handoff()
                 raise RuntimeError('更新已取消。')
+        if value.get('state') == 'APPLYING':
+            value = {**value, 'message': '正在安装更新，完成后自动重启…'}
         self._send({'progress': value})
 
     def _clear_login_handoff(self):
@@ -150,11 +170,14 @@ class DesktopUpdates(QObject):
         while not self._cancel.wait(.2):
             if path.is_file() and path.stat().st_size < 65536:
                 outcome = json.loads(path.read_text(encoding="utf-8"))
-                if outcome.get("status") == "FAILED":
-                    return {"state": "FAILED_RECOVERABLE", "message": "更新没有完成：" + str(outcome.get("detail", "请重试。"))}
+                if outcome.get("status") == "FAILED" or outcome.get('state') == 'PENDING_INSTALL':
+                    from .delivery.per_user_update_core import PENDING
+                    if (self.root / PENDING).is_file():
+                        return {"state": "PENDING_INSTALL", "message": "更新已下载好，关闭软件后下次打开时自动安装。"}
+                    return {"state": "FAILED_RECOVERABLE", "message": "更新暂时无法完成，请稍后重试。"}
                 return {**result, **outcome}
             if time.monotonic() >= deadline:
-                return {"state": "FAILED_RECOVERABLE", "message": "更新确认超时，请重新检查更新。"}
+                return {"state": "PENDING_INSTALL", "message": "更新已下载好，关闭软件后下次打开时自动安装。"}
         return result
 
     def _defer_session(self, _manager=None):
@@ -179,7 +202,21 @@ class DesktopUpdates(QObject):
             getattr(self.gate, 'set_login_available', self.gate.setEnabled)(not self._login_blocked)
             self._publish({**self.state, **result,
                            'mandatory': result.get('state') == 'MANDATORY_UPDATE'})
+            if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE') and not self._cleanup_started:
+                self._cleanup_started = True
+                from .delivery.per_user_install import schedule_program_cleanup
+                schedule_program_cleanup(self.root)
             if self._login_blocked: self._show_prompt()
+            return
+        if 'handoff' in value:
+            self._busy = False
+            self._publish({**self.state, **value['handoff'],
+                           'state': 'APPLYING', 'message': '正在安装更新，完成后自动重启…'})
+            QTimer.singleShot(120, self._finish_handoff)
+            # If saving/closing the UI cannot finish, observe the coordinator's
+            # bounded wait and display the deferred path instead of retrying.
+            self._pool.submit(lambda: self._send({'action': 'install',
+                'result': self._coordinator_result(value['handoff'])}))
             return
         if "progress" in value:
             self._publish({**self.state, **value["progress"]})
@@ -206,6 +243,8 @@ class DesktopUpdates(QObject):
                 from .delivery.per_user_install import schedule_updater_refresh
                 schedule_updater_refresh(self.root)
         elif value["action"] == "install":
+            if result.get('state') in ('PENDING_INSTALL', 'FAILED_RECOVERABLE') or result.get('cancelled'):
+                self._clear_login_handoff()
             # User already consented. Retain the .part files and try again later;
             # security failures and explicit cancellation never auto-retry.
             paused = result.get("state") == "DOWNLOAD_PAUSED_OR_INTERRUPTED" and not result.get("cancelled")
@@ -217,6 +256,28 @@ class DesktopUpdates(QObject):
                                "message": f"网络不稳，已下载 {done}/{total} 字节，稍后会自动继续。"})
             if self._continuing_download: self._retry.start()
         self._update_prompt()
+
+    def _finish_handoff(self):
+        """Close our UI only after the updater process has been launched."""
+        if self._closed:
+            return
+        if self._prompt is not None:
+            self._prompt.hide()
+        shell = self._login_handoff
+        try:
+            if shell is not None and hasattr(shell, 'prepare_update_shutdown'):
+                shell.prepare_update_shutdown()
+            else:
+                QApplication.closeAllWindows()
+            QApplication.instance().quit()
+        except Exception as error:
+            from .delivery.per_user_install import maintenance_log
+            maintenance_log(self.root, 'app_self_exit_deferred', detail=str(error))
+            self._busy = False
+            self._clear_login_handoff()
+            self._publish({**self.state, 'state': 'PENDING_INSTALL',
+                           'message': '更新已下载好，关闭软件后下次打开时自动安装。'})
+            self._show_prompt()
 
     def _show_prompt(self):
         from .update_dialog import UpdateDialog
@@ -230,10 +291,20 @@ class DesktopUpdates(QObject):
             self._prompt = UpdateDialog(target)
             self._prompt.install_requested.connect(lambda: self.run('install', self._prompt_parent()))
             self._prompt.defer_requested.connect(lambda: self.run('defer'))
+            self._prompt.close_requested.connect(self._close_for_pending)
         elif self._prompt.parentWidget() is not target:
             self._prompt.setParent(target, self._prompt.windowFlags())
         self._update_prompt()
         self._prompt.show(); self._prompt.raise_(); self._prompt.activateWindow()
+
+    def _close_for_pending(self):
+        """Let the user close the App so the signed pending update can apply."""
+        if self._prompt is not None:
+            self._prompt.hide()
+        shell = self._login_handoff
+        if shell is not None and hasattr(shell, 'prepare_update_shutdown'):
+            shell.prepare_update_shutdown()
+        QApplication.instance().quit()
 
     def _update_prompt(self):
         if self._prompt is not None:

@@ -77,7 +77,11 @@ def test_initial_retry_keeps_all_prior_evidence_and_user_files(case, monkeypatch
     assert engine.install_per_user(base, source, raw, health=ready)['status'] == 'HEALTHY'
     after = file_snapshot(root)
     for name, value in retained.items():
-        if name != engine.JOURNAL: assert after[name] == value
+        # Housekeeping now appends its own evidence; user files and previous
+        # failure payloads still stay byte-for-byte unchanged until startup.
+        if name not in (engine.JOURNAL, 'Data/logs/mentorflow.log',
+                        'Data/logs/launcher-startup.jsonl'):
+            assert after[name] == value
 
 
 def test_initial_retry_can_fail_again_then_repair(case, monkeypatch):
@@ -100,6 +104,9 @@ def test_verified_interrupted_initial_tree_without_state_can_retry(case, monkeyp
     journal = strict_json((root / engine.JOURNAL).read_bytes())
     # Model process interruption instead of the caught-error quarantine branch.
     destination = root / 'App' if location == 'App' else root / ('staging-' + journal['attempt']) / 'App'
+    # Caught failures now delete this attempt's staging. Recreate the parent
+    # to model an interruption which bypasses the finally cleanup entirely.
+    destination.parent.mkdir(parents=True, exist_ok=True)
     next(root.glob('failed-*')).rename(destination)
     (root / engine.JOURNAL).write_bytes(canonical({**journal, 'phase': 'VERIFIED'}))
     if location == 'App': (root / engine.CURRENT).write_bytes(raw)
