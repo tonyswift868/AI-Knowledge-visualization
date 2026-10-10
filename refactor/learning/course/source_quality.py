@@ -12,12 +12,51 @@ import hashlib
 import unicodedata
 from urllib.parse import urlsplit, unquote
 
-from .source_filter import RawHit, screen, load_lists, github_repo, normalize_url, classify_source
+from .source_filter import RawHit, screen, load_lists, github_repo, normalize_url, classify_source, VIDEO_HOSTS
 from .source_follow import is_document_preview
 from .extract import clean_page_text, useful_title
 
 MIN_CREDIBILITY = 3
 MIN_RELEVANCE = 4
+
+VIDEO_NOTE = '视频，难以生成知识点'
+
+
+def is_video_source(url, title='', page_text=''):
+    """Identify playback resources, without mistaking course notes for video."""
+    parsed = urlsplit(url)
+    host, path = (parsed.hostname or '').lower(), unquote(parsed.path).lower()
+    # Text resources accompanying a video course remain first-class material.
+    if re.search(r'\.(?:pdf|epub|txt|md|rst)(?:$)', path) and not re.search(r'/(?:videos?|watch)/', path):
+        if not any(_host_is(host, h) for h in VIDEO_HOSTS):
+            return False
+    if re.search(r'/(?:lecture-notes|readings?|transcripts?|textbooks?|notes|articles?|docs)(?:/|$)', path):
+        return False
+    if _host_is(host, 'bilibili.com') and re.match(r'/(?:read|opus)(?:/|$)', path):
+        return False
+    if any(_host_is(host, h) for h in VIDEO_HOSTS):
+        return True
+    if re.search(r'/(?:videos?|watch|playlists?|video-lectures|player)(?:[/.\-]|$)', path) or re.search(r'\.(?:mp4|webm|m3u8)$', path):
+        return True
+    if re.search(r'(?:配套|课程|课堂|文字).*(?:笔记|讲义)|(?:lecture|course) notes', title, re.I):
+        return False
+    if re.search(r'视频(?:课|教|合|讲)|播放列表|video (?:course|tutorial|lectures?)', title, re.I):
+        return True
+    # The link check already reads an HTML prefix. No extra fetch/body import.
+    playback = bool(re.search(r'<(?:video|meta[^>]+(?:property|name)=[\"\']og:type[\"\'][^>]+content=[\"\']video)', page_text, re.I))
+    visible = re.sub(r'<(head|script|style)\b[^>]*>.*?</\1\s*>', '', page_text, flags=re.I | re.S)
+    visible = re.sub(r'<[^>]*>|\s+', '', visible)
+    return playback and len(visible) < 500
+
+
+def recommendation_key(row, *, lists=None):
+    """Text before video; publisher bands stay intact, stars only break ties."""
+    identity = classify_source(row.get('final_url') or row['url'], lists=lists)
+    band = identity.get('level') or 4
+    community = identity.get('type') == 'community'
+    stars = row.get('github_stars')
+    return (bool(row.get('is_video')), band, community,
+            -(stars if type(stars) is int and stars >= 0 else 0))
 MIN_SOURCES = 1  # Search display only. Readiness is point_sources coverage, not source count.
 MAX_SEARCH_ROUNDS = 3
 _STOP = set('learn learning study understand explain introduction basics basic tutorial course guide official documentation '
@@ -481,13 +520,17 @@ def source_group(credibility):
 
 
 def rank_key(row):
-    """Credibility first, then relevance; an exact tie favours non-community."""
+    """Text first, then credibility/relevance; stars cannot change authority."""
     quality = row.get('quality') or row
     if quality.get('user_provided') or row.get('user_provided'):
-        return (0, 0, False, False)
-    return (-(quality.get('credibility') or 0), -(quality.get('relevance') or 0),
+        return (False, 0, 0, False, False, 0)
+    stars = row.get('github_stars', quality.get('github_stars'))
+    video = quality.get('is_video', is_video_source(quality.get('url') or row.get('url', ''),
+                row.get('title', '')))
+    return (bool(video), -(quality.get('credibility') or 0), -(quality.get('relevance') or 0),
             bool(quality.get('community') or quality.get('source_type')=='community'),
-            quality.get('level_fit') in {'too_advanced', 'review_only'})
+            quality.get('level_fit') in {'too_advanced', 'review_only'},
+            -(stars if type(stars) is int and stars >= 0 else 0))
 
 
 def question_priority(url, title='', *, authority=None, lists=None):

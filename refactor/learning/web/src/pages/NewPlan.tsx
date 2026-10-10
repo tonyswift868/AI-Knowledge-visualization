@@ -27,13 +27,40 @@ type FormData = {
   goal: string; final_goal: string; level: string; level_note: string; notes: string; start: string; end: string
   daily_cap: number; weekday_weights: number[]; special_days: { date: string; weight: number }[]; only_mine: boolean
 }
+export type Recommendation = {
+  card_id: string; title: string; type: string; url: string; why: string; modules: string[]
+  github_stars?: number; is_video?: boolean; video_note?: string
+}
+
+export function formatStars(stars: number): string {
+  if (stars >= 1000000) return `${(stars / 1000000).toFixed(1).replace(/\.0$/, "")}m`
+  if (stars >= 1000) return `${(stars / 1000).toFixed(1).replace(/\.0$/, "")}k`
+  return String(stars)
+}
+
+export function RecommendationCards({cards, busy = false, onUse}: {
+  cards: Recommendation[]; busy?: boolean; onUse: (url: string) => void
+}) {
+  return <>{cards.map(c => <div className="card" key={c.card_id}>
+    <strong>{c.title}</strong><span className="muted small"> · {c.type}</span>
+    {typeof c.github_stars === "number" && <span className="muted small" title={`${c.github_stars} GitHub stars`}> · ★ {formatStars(c.github_stars)}</span>}
+    {c.is_video && <p className="small">视频，难以生成知识点</p>}
+    <p>{c.why}</p><p className="small">大致覆盖：{c.modules.join("、")}</p>
+    <div className="plan-actions">
+      <a className="btn ghost" href={c.url} target="_blank" rel="noreferrer"><ExternalLink />打开完整资料</a>
+      <Button kind="primary" disabled={busy} onClick={() => onUse(c.url)}>用这份资料</Button>
+    </div>
+    <div className="muted small">“用这份资料”直接按网址导入；也可以打开后下载上传。</div>
+  </div>)}</>
+}
+
 export type Draft = {
   plan_id: string; phase: "form" | "questions" | "preview" | "sources" | "material_preview" | "outline" | "generating" | "ready"; form: FormData | null
   name?: string; goal: string; messages: Msg[]; sources: Card[]; outline: Outline | null; generation: Record<string, string>; generation_errors?: Record<string,string>; coverage?: Coverage
   pending_map_delete?: {text: string}
   estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string; blocked?: boolean; points?: number }
   preview?: { summary: string; modules: { title: string; summary: string }[]; version: number }
-  recommendations?: { card_id: string; title: string; type: string; url: string; why: string; modules: string[] }[]
+  recommendations?: Recommendation[]
   material_structure?: { version: number; missing: string[]; excluded?: {name: string; reason: string; refs: string[]}[]; modules?: GraphModule[]; ranges?: StructureRanges }
   busy: string | null
 }
@@ -223,15 +250,8 @@ export function NewPlan() {
             </div>
             if (m.kind === "recommendations") return <div key={m.id} className="plan-block">
               <div className="bubble bot">{m.text}</div>
-              {(draft.recommendations ?? []).filter(c => m.cards?.includes(c.card_id)).map(c => <div className="card" key={c.card_id}>
-                <strong>{c.title}</strong><span className="muted small"> · {c.type}</span>
-                <p>{c.why}</p><p className="small">大致覆盖：{c.modules.join("、")}</p>
-                <div className="plan-actions">
-                  <a className="btn ghost" href={c.url} target="_blank" rel="noreferrer"><ExternalLink />打开完整资料</a>
-                  <Button kind="primary" disabled={busy} onClick={() => act("plan.say", { text: c.url })}>用这份资料</Button>
-                </div>
-                <div className="muted small">“用这份资料”直接按网址导入；也可以打开后下载上传。</div>
-              </div>)}
+              <RecommendationCards cards={(draft.recommendations ?? []).filter(c => m.cards?.includes(c.card_id))}
+                busy={busy} onUse={url => act("plan.say", {text: url})} />
             </div>
             if (m.kind === "material_preview") return <div key={m.id} className="plan-block">
               {draft.material_structure && m.version === draft.material_structure.version && draft.material_structure.modules?.length ? <>

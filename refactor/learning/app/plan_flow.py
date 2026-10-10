@@ -189,9 +189,10 @@ def map_ranges(window, point_count, *, module_counts=None, question_counts=(), l
 class PlanFlow:
     _material_guard = threading.Lock()
 
-    def __init__(self, services, push, study_day, *, fetcher=None, prepare_module=None):
+    def __init__(self, services, push, study_day, *, fetcher=None, prepare_module=None, stars=None):
         self.services, self.push, self.study_day = services, push, study_day
         self.fetcher = fetcher  # injected by offline tests; None = real guarded web fetch
+        self._stars = stars  # Optional metadata transport can be replaced in offline tests.
         from ..course import github_repo
         self.repo_fetch = github_repo.default_fetch  # replaced by offline tests
         self._locks: dict[str, threading.Lock] = {}
@@ -543,34 +544,46 @@ class PlanFlow:
         cards = []
         for row in rows:
             if ctx.cancel.is_set(): raise ModelCancelled()
+            evidence = {}
             if self.fetcher is not None:
                 # Offline adapters replace HTTP only, not extraction or scoring.
                 try:
                     response = self.fetcher(row['url'], cancel=ctx.cancel, timeout=15)
                     ok, final, reason = True, response.final_url, ''
                     body = response.body[:16384].decode('utf-8', errors='ignore').lower()
+                    evidence['prefix'] = body
                     if 'this book has been removed' in body:
                         ok, reason = False, '资料已下架'
                 except Exception as exc:
                     ok, final, reason = False, row['url'], type(exc).__name__
             else:
-                ok, final, reason = self._link_available(row['url'], ctx.cancel)
+                ok, final, reason = self._link_available(row['url'], ctx.cancel, evidence=evidence)
             if ok:
                 from ..course.source_filter import recommendation_rejection
-                reason = recommendation_rejection(final, lists=self._lists())
+                reason = recommendation_rejection(final, lists=self._lists(), allow_video=True)
                 ok = not reason
             if not ok:
                 log.info('recommended link unavailable: %s (%s)', row['url'], reason)
                 continue
-            cards.append(dict(row, final_url=final, card_id=_new_id()[:12]))
+            cards.append(dict(row, final_url=final, card_id=_new_id()[:12], _page_prefix=evidence.get('prefix', '')))
+        from ..course.research_pipeline import GithubStars, prepare_recommendations
+        from ..course.research import ResearchCancelled
+        if self._stars is None and self.fetcher is None:
+            self._stars = GithubStars(self.services.account_id, self.services.data_root)
+        try:
+            cards = prepare_recommendations(cards, lists=self._lists(), stars=self._stars,
+                                            cancel=ctx.cancel, previous=draft.get('recommendations', []))
+        except ResearchCancelled:
+            raise ModelCancelled() from None
+        if ctx.cancel.is_set(): raise ModelCancelled()
         draft.setdefault('recommendations', []).extend(cards)
         draft['messages'].append(_msg('ai', 'recommendations',
             '看中哪份，打开后下载下来传给我；也可以直接贴网址或 GitHub 仓库。推荐链接只检查能否打开，还没有读取正文。'
-            if cards else '这次推荐的链接暂时打不开。可以上传自己的资料，或让我换一批推荐。',
+            if cards else '这次没有找到更多可用文字资料：候选链接暂时打不开，或只有视频。可以上传自己的资料，或让我换一批推荐。',
             cards=[c['card_id'] for c in cards]))
         self.save(draft)
 
-    def _link_available(self, url, cancel):
+    def _link_available(self, url, cancel, *, evidence=None):
         # Existing httpx transport only; no extraction, scoring or body import.
         from ..course.research import ResearchService
         try:
@@ -579,7 +592,7 @@ class PlanFlow:
                 with client.stream('GET', url, follow_redirects=True, timeout=15,
                                    headers={'Range': 'bytes=0-16383'}) as response:
                     from ..course.source_filter import recommendation_rejection
-                    rejected = recommendation_rejection(str(response.url), lists=self._lists())
+                    rejected = recommendation_rejection(str(response.url), lists=self._lists(), allow_video=True)
                     if rejected:
                         return False, str(response.url), rejected
                     if response.status_code not in (200, 206):
@@ -590,6 +603,8 @@ class PlanFlow:
                             if cancel.is_set(): raise ModelCancelled()
                             prefix += part
                             if len(prefix) >= 16384: break
+                    if evidence is not None:
+                        evidence['prefix'] = prefix.decode('utf-8', errors='ignore')
                     text = prefix.decode('utf-8', errors='ignore').lower()
                     if any(v in text for v in ('this book has been removed', 'this page has been removed',
                             '<title>404', '<title>page not found', '该资源已下架')):
