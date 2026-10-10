@@ -61,14 +61,74 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 空闲 | runtime |
-| MF-05 | 空闲 | platform |
+| MF-04 | 100-MF04（已起草，待转发） | runtime |
+| MF-05 | 100-MF05（已起草，待转发） | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
 ## 待派队列
 
-- 无。
+- 第一百批 2 个任务：已起草（2026-10-10），待用户转发：100-MF04 检查更新提速（走域名、gzip、指针文件）、100-MF05 标题栏按钮效果与点 × 没反应。
+
+## 第一百批任务原文（2026-10-10，基线 099451de）
+
+### [100-MF04] runtime｜检查更新提速：走域名、清单压缩、先看小指针文件（¥0）
+
+~~~text
+【MentorFlow 第一百批｜MF-04（工位 runtime）｜检查更新提速：更新地址改走 aiteacher.clannad.win（IP 直连作备用）；版本清单压缩传输；先下几百字节的“最新版本指针”，有新版才下完整清单】
+
+现成项目与许可证（第一节）
+  - 做法参照成熟更新框架：Squirrel/Velopack（MIT）先读很小的 RELEASES / releases.json 判断有没有新版，再下大文件；HTTP 内容压缩用标准 Content-Encoding: gzip（httpx 自带解压）。不新增依赖。
+  - 改 refactor/desktop/delivery/（update_service.py、update_download.py、update_protocol.py 中读清单的部分）、scripts/release/（build_release.py 的 MF_FEED 默认值、server_ops.py 发布时写指针文件、README.md）。
+
+开工同步
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 099451de
+提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp、D:\MentorFlowData\account-shell 只读；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。可以只读访问公网下载站做测速。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次，同一套测试不重复跑。中间文件用完立刻自己删，只留 report.md。
+同时在跑：100-MF05（登录窗口标题栏按钮，refactor/desktop/login_shell.py 一带），不碰你的文件。
+产物目录：D:\MentorFlow\.local\test-tmp\feed100\。目标两小时内交回。花费上限 ¥0。
+背景（用户 2026-10-10 实测，CURRENT_STATE [SYS-06]）：每次检查更新都要从 https://89.45.45.28/mentorflow/updates/app/stable/stable.json 下载约 2.1 MB 的签名清单，用户线路 0.15～0.6 MB/s，一次检查 9～61 秒，有时等三分钟还没出结果。架构师已在服务器上加好新地址（2026-10-10）：https://aiteacher.clannad.win/updates/app/ 下与旧地址同样的文件（stable/stable.json、objects/<sha256>、releases/），经 Cloudflare，清单支持 gzip（约 2.1 MB → 0.46 MB）。服务器出口带宽本身也慢，所以光换地址不够，要让“检查”本身只下很少的字节。
+要做
+  1. 更新地址：新打包的版本默认用 https://aiteacher.clannad.win/updates/app/（清单、文件、指针都走这里），连不上或证书/内容不对时自动退回旧的 IP 地址（https://89.45.45.28/mentorflow/updates/app/），回执写清退回的条件。域名证书用系统信任根（Cloudflare 的公开证书）；IP 地址照旧用现有的固定证书。签名校验一项不减。
+  2. 清单压缩：下载 stable.json 时接受 gzip，解压后的原始字节照旧验签；下载更新文件（objects）仍按现有方式（identity、按字节续传、逐个 SHA256 核对）。
+  3. 小指针文件：发布时在 stable/ 下多写一个 latest.json（几百字节：版本号、metadata_version、stable.json 的 SHA256 和大小），由 server_ops.py 发布 stable.json 的同一步原子写入（mf-publish 两种模式都要写）。客户端检查更新时先下 latest.json：和本机已缓存的、已验签的清单对比，版本和指纹都没变就直接判“已是最新”，不下完整清单；有变化才下 stable.json 并照旧验签，验签后再核对指纹和指针一致。指针本身不签名，只用来决定要不要下清单，任何最终判断都以验签后的清单为准；指针拿不到时退回直接下清单。
+  4. 旧版本兼容：老客户端还会读旧 IP 地址和 stable.json，不受影响；服务器两条地址都保留。
+  5. 测试：离线覆盖——域名成功、域名失败退回 IP、gzip 清单验签、指针相同不下清单、指针变化下清单、指针与清单不一致时以清单为准并记录、指针缺失退回；mf-publish 本机模拟两种模式都写出 latest.json。实测（只读）：从本机对新地址测“指针”和“压缩清单”各 3 次耗时，写进报告。
+完成标准：上面测试通过；最后全量一次通过；提交在工位。
+回执：写到 D:\MentorFlow\.local\receipts\100-MF04.md（表格：基线 ／ 提交 ／ 地址与退回条件 ／ 压缩 ／ 指针文件 ／ 实测耗时 ／ 全量 ／ 本地最终占用）；给用户只回一行“100-MF04 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\feed100\report.md。
+~~~
+
+### [100-MF05] platform｜登录窗口标题栏按钮：鼠标悬停效果、点了立刻有反应（¥0）
+
+~~~text
+【MentorFlow 第一百批｜MF-05（工位 platform）｜登录窗口（及同样无边框的账号窗口）右上角“最小化 / 关闭”按钮：要有正常软件那样的悬停和按下效果；点关闭要立刻有反应】
+
+现成项目与许可证（第一节）
+  - 不新增依赖，只改本项目现有代码：refactor/desktop/login_shell.py（无边框自绘标题栏）及同一套无边框窗口用到的样式（dialog_theme.py 等）。效果参照 Windows 11 原生标题栏：悬停时按钮背景变浅灰（关闭按钮变红底白叉），按下时再深一点，有约 100 毫秒的过渡；键盘焦点可见。
+
+开工同步
+  cd D:\MentorFlow-office\platform\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/platform
+  git reset --hard 099451de
+提交：git -c user.name="MentorFlow Worker platform" -c user.email="worker-platform@mentorflow.local" commit ...
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp、D:\MentorFlowData\account-shell 只读；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次，同一套测试不重复跑。中间文件用完立刻自己删，只留 report.md 和截图。
+同时在跑：100-MF04（更新检查，refactor/desktop/delivery/ 与 scripts/release/），不碰你的文件。
+产物目录：D:\MentorFlow\.local\test-tmp\titlebar100\。目标一个半小时内交回。花费上限 ¥0。
+背景（用户 2026-10-10 在 2.0.5 上实测）：登录窗口右上角的“—”和“×”鼠标移上去没有任何变化，“没有操作感、没有掌控感”；有一次点“×”没反应，要点下面的按钮才能关，后来又有反应了。
+要做
+  1. 两个按钮加悬停、按下效果（见上），两套主题（樱花、极光夜）都要协调；开了“减少动态效果”时只保留颜色变化、去掉过渡动画。
+  2. 查清“点 × 没反应”的原因：例如启动或登录过程中窗口被设成不可用、遮罩/加载层盖住了标题栏、点击区域太小、或正在后台检查更新时关闭被延后。修成任何时候点 × 都立刻有反应（正在写文件等关键步骤不能关时，也要立刻显示“正在处理，请稍候”，而不是没反应）。
+  3. 同一套无边框标题栏在别的账号窗口（注册/找回、账号设置、注销等）也用到的话一并改。
+  4. 测试与截图：悬停、按下、关闭在启动中/登录中/空闲三种时机都能立刻响应（离线测试 + 本机实测）；截图亮暗各一套（普通、悬停、关闭按钮悬停）。
+完成标准：上面测试通过；最后全量一次通过；提交在工位。
+回执：写到 D:\MentorFlow\.local\receipts\100-MF05.md（表格：基线 ／ 提交 ／ 悬停与按下效果 ／ 点 × 没反应的原因与修法 ／ 涉及的窗口 ／ 测试 ／ 截图 ／ 本地最终占用）；给用户只回一行“100-MF05 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\titlebar100\report.md。
+~~~
 
 ## 回执格式
 
