@@ -386,9 +386,10 @@ class AccountLifecyclePane(QWidget):
     def prewarm(self):
         """Start the local page after the host window has been prepared.
 
-        Creating the WebEngine view before the login top-level is shown avoids
-        Qt rebuilding that top-level's OpenGL surface later.  URL loading is
-        still deferred until the normal capability-gated prewarm moment.
+        A dormant QWebEngineView alone does not reserve a render surface: its
+        internal QQuickWidget appears when loading starts. LoginGate keeps a
+        permanent OpenGL child from its first show, so this deferred loading
+        and subsequent page switches cannot convert its native surface.
         """
         if self._disposed or self._document_started:
             return

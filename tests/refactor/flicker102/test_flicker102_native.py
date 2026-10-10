@@ -74,6 +74,7 @@ def shell(app, tmp_path, monkeypatch):
         AccountPreferenceStore(QSettings(str(tmp_path / 'account.ini'), QSettings.IniFormat)),
         credentials=NS(), passwords=NS())
     session.remembered = lambda: (None, False)
+    session.take_update_login = lambda: (False, None, None)
     gate = TracedGate()
     result = AccountShell(
         app, NS(data_root=tmp_path), login_session=session, gate_window=gate,
@@ -88,7 +89,9 @@ def test_flicker102_surface_is_created_before_login_window_and_reused(shell, app
     gate = shell.gate
     warm = shell._warm_pane
     assert warm is not None
-    assert warm.parentWidget() is not gate
+    assert warm.parentWidget() is gate
+    assert gate._composition_anchor.parentWidget() is gate
+    assert not gate._composition_anchor.isHidden()
     assert not warm._document_started
     assert not gate.isVisible()
 
@@ -111,6 +114,16 @@ def test_flicker102_surface_is_created_before_login_window_and_reused(shell, app
     assert shell._warm_pane is None
     assert warm.parentWidget() is gate.login_card
     assert gate.isVisible()
+    assert gate.lifecycle == ['shown']
+    shell._return_from_account_action(shell._generation)
+    app.processEvents()
+    shell._prewarm_account_page()
+    shell._begin_account_action('forgot_password')
+    assert shell._pane.intent == 'forgot_password'
+    shell._return_from_account_action(shell._generation)
+    app.processEvents()
+    assert gate.isVisible()
+    assert gate.lifecycle == ['shown']
 
 
 def test_flicker102_prewarm_waits_for_capabilities_without_hiding_gate(shell, app):
