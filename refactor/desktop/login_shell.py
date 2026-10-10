@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from enum import Enum
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QVariantAnimation, QRectF, QLineF
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray
-from PySide6.QtGui import QColor, QCursor, QLinearGradient, QPainter, QPainterPath, QRadialGradient
+from PySide6.QtGui import QColor, QCursor, QLinearGradient, QPainter, QPainterPath, QRadialGradient, QPen
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox,
                                QLineEdit, QComboBox, QGraphicsDropShadowEffect, QToolButton, QSizePolicy)
@@ -67,12 +67,6 @@ QWidget#mentorflowLoginGateWindow {{
 QLabel {{ background: transparent; }}
 QLabel#loginTitle {{ color: #ffffff; font-size: 28px; font-weight: 800; letter-spacing: 0.3px; }}
 QLabel#loginSubtitle {{ color: rgba(255, 228, 238, 0.82); font-size: 13px; }}
-QToolButton#loginChrome {{ border: 0; border-radius: 10px; background: transparent; color: rgba(255, 240, 246, 0.85);
-  font-size: 15px; min-width: 34px; min-height: 30px; }}
-QToolButton#loginChrome:hover {{ background: rgba(255, 255, 255, 0.14); color: #ffffff; }}
-QToolButton#loginChromeClose:hover {{ background: #e0556c; color: #ffffff; }}
-QToolButton#loginChromeClose {{ border: 0; border-radius: 10px; background: transparent; color: rgba(255, 240, 246, 0.85);
-  font-size: 15px; min-width: 34px; min-height: 30px; }}
 QLabel#loginStateTitle {{ color: #35202f; font-size: 19px; font-weight: 800; }}
 QLabel#loginStateDetail {{ color: #75596a; font-size: 13px; }}
 QLabel#loginSessionNotice {{ color: #ffe3ee; font-size: 13px; }}
@@ -126,6 +120,113 @@ class LoginGateState(str, Enum):
     AUTH_FAILED = "AUTH_FAILED"
 
 
+class CaptionButton(QToolButton):
+    """Native-sized caption hit area; animate paint, not the whole window QSS."""
+    def __init__(self, action, parent=None):
+        super().__init__(parent)
+        self.action = action
+        self._hovered = False
+        self._level = 0.0
+        self.theme, self.reduced = 'sakura', False
+        self.setFixedSize(46, 32)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMouseTracking(True)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self.setAccessibleName('关闭' if action == 'close' else '最小化')
+        self.animation = QVariantAnimation(self)
+        self.animation.setDuration(100)
+        self.animation.valueChanged.connect(self._paint_level)
+
+    def _paint_level(self, value):
+        self._level = float(value)
+        self.update()
+
+    def configure(self, theme, reduced):
+        self.theme, self.reduced = theme, bool(reduced)
+        self._transition()
+
+    def _transition(self):
+        target = 2.0 if self.isDown() else 1.0 if self._hovered else 0.0
+        self.animation.stop()
+        if self.reduced or not self.isVisible():
+            self._paint_level(target)
+        else:
+            self.animation.setStartValue(self._level)
+            self.animation.setEndValue(target)
+            self.animation.start()
+
+    def enterEvent(self, event):
+        self._hovered = True
+        super().enterEvent(event)
+        self._transition()
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        super().leaveEvent(event)
+        self._transition()
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        self._transition()
+
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        self._transition()
+
+    def mouseMoveEvent(self, event):
+        down, hovered = self.isDown(), self._hovered
+        super().mouseMoveEvent(event)
+        self._hovered = self.rect().contains(event.position().toPoint())
+        if down != self.isDown() or hovered != self._hovered:
+            self._transition()
+
+    def keyPressEvent(self, event):
+        super().keyPressEvent(event)
+        self._transition()
+
+    def keyReleaseEvent(self, event):
+        super().keyReleaseEvent(event)
+        self._transition()
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.update()
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.update()
+
+    def hitButton(self, point):
+        return self.rect().contains(point)
+
+    @staticmethod
+    def _blend(first, second, fraction):
+        return QColor.fromRgbF(*(a + (b - a) * fraction for a, b in zip(first.getRgbF(), second.getRgbF())))
+
+    def paintEvent(self, event):
+        close = self.action == 'close'
+        hover = QColor('#c42b1c' if close else '#343956' if self.theme == 'aurora' else '#e5e5e5')
+        pressed = QColor('#a62317' if close else '#272c46' if self.theme == 'aurora' else '#cccccc')
+        normal = QColor(hover); normal.setAlpha(0)
+        level = min(2.0, max(0.0, self._level))
+        background = self._blend(normal, hover, level) if level <= 1 else self._blend(hover, pressed, level - 1)
+        foreground = self._blend(QColor('#ffffff'), QColor('#202020'), min(1.0, level)) if not close and self.theme == 'sakura' else QColor('#ffffff')
+        p = QPainter(self); p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen); p.setBrush(background)
+        p.drawRoundedRect(QRectF(self.rect()), 5, 5)
+        p.setPen(QPen(foreground, 1.5))
+        x, y = self.width() / 2, self.height() / 2
+        if close:
+            p.drawLine(QLineF(x-4.5, y-4.5, x+4.5, y+4.5))
+            p.drawLine(QLineF(x+4.5, y-4.5, x-4.5, y+4.5))
+        else:
+            p.drawLine(QLineF(x-5, y+3, x+5, y+3))
+        if self.hasFocus():
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(foreground, 1, Qt.PenStyle.DotLine))
+            p.drawRoundedRect(QRectF(self.rect()).adjusted(3, 3, -3, -3), 3, 3)
+
+
 class LoginGateWindow(QWidget):
     capabilities_received = Signal(object)
     first_paint_completed = Signal()
@@ -160,6 +261,7 @@ class LoginGateWindow(QWidget):
         self._centered = False
         self._first_paint_scheduled = False
         self._login_enabled = True
+        self._update_login_available = True
         self.account_capabilities = {}
         self.current_theme = ('aurora' if QApplication.styleHints().colorScheme() is Qt.ColorScheme.Dark
                               else 'sakura')
@@ -174,14 +276,15 @@ class LoginGateWindow(QWidget):
         outer.setContentsMargins(28, 10, 28, 18)
         outer.setSpacing(8)
         chrome = QHBoxLayout()
-        chrome.setContentsMargins(0, 0, -16, 0)
+        chrome.setContentsMargins(0, 0, 0, 0)
+        chrome.setSpacing(2)
         chrome.addStretch(1)
-        self.minimize_button = QToolButton()
+        self.minimize_button = CaptionButton('minimize', self)
         self.minimize_button.setObjectName("loginChrome")
         self.minimize_button.setText("—")
         self.minimize_button.setToolTip("最小化")
         self.minimize_button.clicked.connect(self.showMinimized)
-        self.close_button = QToolButton()
+        self.close_button = CaptionButton('close', self)
         self.close_button.setObjectName("loginChromeClose")
         self.close_button.setText("✕")
         self.close_button.setToolTip("关闭")
@@ -366,7 +469,7 @@ class LoginGateWindow(QWidget):
         self.forgot_password_button.setVisible(visible)
 
     def _account_action(self, action):
-        if self.account_capabilities.get(action) is not True:
+        if not self._update_login_available or self.account_capabilities.get(action) is not True:
             return
         (self.register_requested if action == 'register' else self.forgot_password_requested).emit()
 
@@ -459,7 +562,7 @@ class LoginGateWindow(QWidget):
         super().mousePressEvent(event)
 
     def _activate(self) -> None:
-        if not self._login_enabled:
+        if not self._login_enabled or not self._update_login_available:
             return
         if self.state is LoginGateState.AUTH_FAILED:
             self.retry_requested.emit()
@@ -527,6 +630,8 @@ class LoginGateWindow(QWidget):
     def set_loading_appearance(self, theme='sakura', reduced=False):
         self.current_theme = theme if theme in {'sakura', 'aurora'} else 'sakura'
         self.loading.configure(self.current_theme, reduced)
+        for button in (self.minimize_button, self.close_button):
+            button.configure(self.current_theme, self.loading.reduced)
         style = login_qss()
         if self.current_theme == 'aurora':
             style += '''
@@ -544,3 +649,9 @@ QPushButton#loginSmallButton:disabled {background:#222541;color:#7a7fab;border-c
 '''
         self.setStyleSheet(style)
         self.update()
+
+    def set_login_available(self, available):
+        """Update policy gates credentials, never the window's system controls."""
+        self._update_login_available = bool(available)
+        self.login_card.setEnabled(available)
+        self.cancel_button.setEnabled(available)
