@@ -243,6 +243,9 @@ def dispatch(request):
         if (stage / 'stable/stable.json').read_bytes() != raw:
             raise ValueError('staged manifest changed after verification')
         rows = request['rows']
+        archived = app / 'releases' / v / 'stable.json'
+        if archived.exists() and archived.read_bytes() != raw:
+            raise ValueError('published version has different signed metadata')
         # No stable replacement until ALL objects have been checked.
         for row in rows:
             existing = app / 'objects' / row['sha256']
@@ -260,6 +263,10 @@ def dispatch(request):
             old_version = version(json.loads(live.read_bytes())['signed']['version'])
             backup = state / ('stable-' + old_version + '-before-' + v + '-' + uuid.uuid4().hex + '.json')
             atomic_bytes(backup, live.read_bytes())
+        # Keep every signed version available for a later mf-installer run,
+        # including daily publications that deliberately do not build an exe.
+        if not archived.exists():
+            atomic_bytes(archived, raw)
         atomic_bytes(live, raw)
         return dict(status='STABLE_PUBLISHED', version=v, files=len(rows),
                     time=datetime.now(timezone.utc).isoformat())

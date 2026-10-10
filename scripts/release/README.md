@@ -37,7 +37,7 @@ GitHub 不跑测试。三个工作流共享 `mentorflow-release`、`queue: max`�
 |---|---|---|---|
 |mf-installer|version、latest|40|10–25|
 |mf-build|version、notes、mandatory、mandatory_reason、base_versions（空格分隔）、build_only|60|15–40|
-|mf-publish|version|40（含编安装程序）|10–30|
+|mf-publish|version、build_installer（同时编安装程序，默认 false）|40（含可选安装程序）|日常 1–3；编安装程序 10–30|
 
 \* 估计，不是 GitHub 实测；冷缓存、网络会影响耗时，额度与计费以
 [当前官方说明](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
@@ -96,14 +96,25 @@ python -B scripts/release/sign_and_stage.py --artifact '<下载的ZIP或解压�
    Windows 本机和 Actions 共用 SSHServer：远程命令固定为 `sudo -n python3 -`，
    server_ops 源码和请求经标准输入传入，不在远程命令行内联整段源码；
    清单仍由 SCP 传输，私钥不进入标准输入或上传内容。传输或远端执行失败照常报错。
-4. 架构师手动点 **mf-publish**，只填 version。先验签、禁止版本/metadata/floor
+4. 架构师手动点 **mf-publish**，填 version；日常保留“同时编安装程序”关闭
+   （build_installer=false，默认值）。先验签、禁止版本/metadata/floor
    回退、检查全部对象，再移入 objects（已有不覆盖）、备份旧 stable 到 state、
-   原子替换在线 stable。随后调用与 mf-installer 相同的复合 action：下载对象，
+   保存 `releases/<版本>/stable.json`，原子替换在线 stable，然后删除 staging。
+   日常不下载完整对象、不拼 payload、不编安装程序，不安装 Inno/PyInstaller 或 Node，
+   latest 保持上一个编过的安装程序；新用户安装后通过客户端更新到当前版本。
+   mf-publish 预计 1–3 分钟（不含前置 mf-build 与人工签名；未在 GitHub 实测，
+   包含 runner 启动、验签依赖、远程对象校验；
+   大包、冷缓存与服务器磁盘慢时可能更长）。
+   需要新安装程序时勾选“同时编安装程序”（true），额外调用与 mf-installer
+   相同的复合 action：下载对象，
    原 verifier 验签，原 verify_tree 拼包校验，原 Inno 步骤编译，SCP 临时文件，
    服务端核对 SHA256 后原子发布版本目录；在普通 latest 目录里建立临时硬链接，
    再核对 SHA256 后原子覆盖 MentorFlow-Setup.exe。成功才删除 staging。
-5. 架构师核对 `/download`、带版本的安装程序、版本目录 stable.json 和客户端
-   检查更新。旧版安装程序按下面的保留规则清理；旧 installer/MentorFlow-Setup.exe 在首次
+   也可之后单独手动运行 **mf-installer**，填只有清单的版本号、latest=true：
+   从该版本目录的 stable.json 验签后补编并切换 latest，不更改在线 stable。
+5. 架构师核对版本目录 stable.json 和客户端检查更新；编了安装程序时再核对
+   `/download` 与带版本的安装程序。只有安装程序发布后才执行下面的保留规则，
+   日常只发清单不会清理安装程序；旧 installer/MentorFlow-Setup.exe 在首次
    latest 发布成功后复制、核对并移到 state 备份。
 
 在线 stable 的替换与安装程序编译是两个阶段：后者失败时 stable 可能已经
@@ -120,7 +131,7 @@ python -B scripts/release/sign_and_stage.py --artifact '<下载的ZIP或解压�
   .staging-<version>/objects/<sha256>
   .staging-<version>/stable/stable.json
   releases/<version>/stable.json
-  releases/<version>/MentorFlow-Setup-<version>.exe
+  releases/<version>/MentorFlow-Setup-<version>.exe  # 可选，补编后才有
   releases/latest/MentorFlow-Setup.exe  # 普通目录里的最新版安装程序硬链接
 /opt/mentorflow/state/stable-<旧版本>-before-<新版本>-<随机标识>.json
 /opt/mentorflow/state/installer-before-releases-<随机标识>.exe

@@ -8,6 +8,10 @@ on:
         description: Version already signed and staged by the architect
         type: string
         required: true
+      build_installer:
+        description: 同时编安装程序
+        type: boolean
+        default: false
 concurrency:
   group: mentorflow-release
   queue: max
@@ -25,6 +29,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/release-env
+        with:
+          installer-tools: ${{ inputs.build_installer }}
       - name: Verify staged signature, promote objects, backup and atomically replace stable
         shell: pwsh
         env:
@@ -32,11 +38,12 @@ jobs:
           MF_VERSION: ${{ inputs.version }}
         run: python -B scripts/release/pipeline.py promote --version "$env:MF_VERSION" --work "$env:RUNNER_TEMP/promote"
       - uses: ./.github/actions/mf-installer
+        if: ${{ inputs.build_installer }}
         with:
           version: ${{ inputs.version }}
           latest: 'true'
           ssh-key: ${{ secrets.MF_SSH_KEY }}
-      - name: Remove this staging directory only after successful installer publication
+      - name: Remove staging after successful publication (and optional installer)
         shell: pwsh
         env:
           MF_SSH_KEY: ${{ secrets.MF_SSH_KEY }}

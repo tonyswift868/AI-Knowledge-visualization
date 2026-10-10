@@ -1,6 +1,9 @@
 name: Pinned Windows release tools
 description: Official setup actions with pip/npm caches; no tests, no signing keys
 inputs:
+  installer-tools:
+    description: Install compiler dependencies and Node (false needs only signature verification)
+    default: 'true'
   requirements:
     description: Exact pinned Python dependencies
     default: scripts/release/requirements-installer.txt
@@ -13,12 +16,18 @@ runs:
         cache: pip
         cache-dependency-path: ${{ inputs.requirements }}
     - uses: actions/setup-node@v7
+      if: ${{ inputs.installer-tools == 'true' }}
       with:
         node-version: '24.13.0'
         cache: npm
         cache-dependency-path: refactor/learning/web/package-lock.json
     - name: Install exact release dependencies
+      if: ${{ inputs.installer-tools == 'true' }}
       shell: pwsh
       env:
         REQUIREMENTS: ${{ inputs.requirements }}
       run: python -m pip install --requirement "$env:REQUIREMENTS"
+    - name: Install signature verification dependencies only
+      if: ${{ inputs.installer-tools != 'true' }}
+      shell: pwsh
+      run: python -m pip install cryptography==46.0.7 cffi==2.1.1 pycparser==3.0
