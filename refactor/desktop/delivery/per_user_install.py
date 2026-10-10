@@ -33,6 +33,7 @@ UPDATER_RELEASE = 'updater-release.json'
 HIGHEST = 'highest-release.json'
 STATE = 'per-user-install.json'
 JOURNAL = 'per-user-transaction.json'
+UPDATER_SWAP = 'updater-swap'
 SCHEMA = 'mentorflow.per-user-install.v1'
 
 
@@ -151,8 +152,11 @@ def resolve_launch_root(executable, selected=None):
 
 def verify_recovery_runtime(root, release=None):
     release = release or installed(root)
-    # Updater is a stable independent runtime, not the new App's bundled copy.
-    # Its existing signed envelope stays pinned across App generations.
+    # The runtime is independently bound while replacement waits for its
+    # process to exit. A healthy App/installer refreshes this binding below.
+    if (Path(root) / UPDATER_SWAP).exists():
+        require_updater_stopped(root)
+        _recover_updater_swap(root, keys())
     binding = Path(root) / UPDATER_RELEASE
     if (Path(root) / 'Updater').exists() and binding.exists():
         plain(binding)
@@ -163,6 +167,135 @@ def verify_recovery_runtime(root, release=None):
     if not runtime.exists(): runtime = app_path(root) / 'UserRuntime'
     verify_tree(runtime, replace(release, rows=rows))
     return runtime / 'UserRuntime.exe'
+
+
+def _runtime_release(release):
+    rows = {name[len('UserRuntime/'):]: row for name, row in release.rows.items()
+            if name.startswith('UserRuntime/')}
+    if 'UserRuntime.exe' not in rows:
+        raise SecurityError('signed repair runtime missing')
+    return replace(release, rows=rows)
+
+
+def _recover_updater_swap(root, public_keys, *, snapshot=None):
+    """Resume/roll back only fixed paths, with independently signed bindings."""
+    root = Path(root); work = plain(root / UPDATER_SWAP)
+    if not work.exists(): return
+    state = snapshot if snapshot is not None else strict_json(read(plain(work / 'state.json')))
+    if (set(state) != {'phase', 'had_updater', 'had_binding'} or
+            state['phase'] not in ('COPYING', 'PREPARED', 'COMMITTED') or
+            type(state['had_updater']) is not bool or type(state['had_binding']) is not bool):
+        raise SecurityError('invalid updater swap state')
+    active, binding, backup = plain(root / 'Updater'), plain(root / UPDATER_RELEASE), plain(work / 'old')
+    if state['phase'] == 'COMMITTED':
+        new = historical(read(work / 'new-release.json'), public_keys)
+        verify_tree(active, _runtime_release(new))
+        if read(binding) != new.envelope: raise SecurityError('updater binding mismatch')
+    elif state['phase'] == 'PREPARED':
+        if state['had_updater']:
+            if snapshot is None:
+                old = historical(read(work / 'old-release.json'), public_keys)
+                verify_tree(backup if backup.exists() else active, _runtime_release(old))
+            if backup.exists():
+                if active.exists(): os.replace(active, work / 'discarded')
+                os.replace(backup, active)
+        elif active.exists():
+            if snapshot is None:
+                new = historical(read(work / 'new-release.json'), public_keys)
+                verify_tree(active, _runtime_release(new))
+            os.replace(active, work / 'discarded')
+        if state['had_binding']:
+            atomic(binding, read(work / 'old-release.json'))
+        else:
+            binding.unlink(missing_ok=True)
+    # COPYING has not touched the live pair. COMMITTED keeps the new pair.
+    shutil.rmtree(work)
+
+
+def replace_updater(root, release, *, public_keys=None, fault=lambda phase: None):
+    """Caller holds InstallUpdateLock. Stage/hash, rename, bind; roll back on failure."""
+    root = target(root); public_keys = public_keys if public_keys is not None else keys()
+    require_updater_stopped(root)
+    _recover_updater_swap(root, public_keys)
+    # Do not admit a caller-supplied row set as authority.
+    release = historical(release.envelope, public_keys)
+    incoming = _runtime_release(release)
+    active, binding = plain(root / 'Updater'), plain(root / UPDATER_RELEASE)
+    if active.exists() and binding.exists() and read(binding) == release.envelope:
+        try:
+            verify_tree(active, incoming)
+            return dict(status='UP_TO_DATE', version=release.version)
+        except SecurityError:
+            pass  # An explicit installer repair must repair corrupt runtime bytes.
+    source = plain(app_path(root) / 'UserRuntime')
+    verify_tree(source, incoming)
+    work = plain(root / UPDATER_SWAP); work.mkdir()
+    state = dict(phase='COPYING', had_updater=active.exists(), had_binding=binding.exists())
+    atomic(work / 'state.json', canonical(state))
+    try:
+        atomic(work / 'new-release.json', release.envelope)
+        if state['had_updater']:
+            atomic(work / 'old-release.json', read(binding) if binding.exists() else installed(root, public_keys).envelope)
+        elif state['had_binding']:
+            atomic(work / 'old-release.json', read(binding))
+        shutil.copytree(source, work / 'next')
+        verify_tree(work / 'next', incoming); fault('VERIFIED')
+        state['phase'] = 'PREPARED'; atomic(work / 'state.json', canonical(state))
+        # Recheck just before the swap, in case an independent shortcut started.
+        require_updater_stopped(root)
+        if active.exists(): os.replace(active, work / 'old')
+        fault('OLD_MOVED')
+        os.replace(work / 'next', active); fault('NEW_ACTIVE')
+        atomic(binding, release.envelope); fault('BOUND')
+        verify_tree(active, incoming)
+        state['phase'] = 'COMMITTED'; atomic(work / 'state.json', canonical(state))
+    except BaseException:
+        # An in-process repair failure restores the exact original bytes,
+        # including an already corrupt runtime. Recovery after process death
+        # has no such trusted in-memory snapshot and verifies signed bindings.
+        _recover_updater_swap(root, public_keys, snapshot=state)
+        raise
+    # Cleanup cannot undo a committed runtime pair; a later startup retries it.
+    try: _recover_updater_swap(root, public_keys)
+    except OSError: pass
+    return dict(status='UPDATED', version=release.version)
+
+
+def refresh_updater(root):
+    """One background attempt after healthy App startup; failure leaves old runtime."""
+    import logging
+    from refactor.desktop.delivery.update_download import InstallUpdateLock
+    destination = None
+    try:
+        root = target(root)
+        destination = root
+        with InstallUpdateLock(root):
+            release = installed(root)
+            if (root / JOURNAL).exists() and strict_json(read(root / JOURNAL)).get('phase') not in ('HEALTHY', 'ROLLED_BACK'):
+                raise RecoverableError('App health transaction not finished; retry next startup')
+            verify_payload(root, release)
+            result = replace_updater(root, release)
+    except RecoverableError as error:
+        result = dict(status='DEFERRED', detail=str(error))
+    except Exception as error:
+        result = dict(status='FAILED', detail=str(error), error=type(error).__name__)
+    logging.getLogger(__name__).info('Updater refresh: %s', result)
+    if destination is not None:
+        try: atomic(destination / 'updater-refresh.json', canonical(result))
+        except OSError: logging.getLogger(__name__).exception('Cannot write updater refresh result')
+    return result
+
+
+def schedule_updater_refresh(root):
+    import threading
+    def work():
+        # Give the health-acknowledged parent coordinator time to exit. If it
+        # still runs, replace_updater defers until the next App startup.
+        time.sleep(2)
+        refresh_updater(root)
+    thread = threading.Thread(target=work, daemon=True, name='updater-refresh')
+    thread.start()
+    return thread
 
 
 def verify_payload(root, release=None):
@@ -257,7 +390,7 @@ def install_per_user(parent, source, envelope, **options):
     return transact(root, source, envelope, repair=is_install(root), **options)
 
 
-def require_app_stopped(root):
+def _require_image_stopped(image, message):
     """Native process enumeration. Unknown/inaccessible matching image fails closed."""
     import ctypes as c
     from ctypes import wintypes as w
@@ -277,15 +410,24 @@ def require_app_stopped(root):
         entry = Entry(); entry.dwSize = c.sizeof(entry)
         present = kernel.Process32FirstW(handle, c.byref(entry))
         while present:
-            if entry.exe.casefold() == 'mentorflow.exe':
+            if entry.exe.casefold() == image.name.casefold():
                 try:
                     with ProcessPeer(entry.pid) as peer:
-                        if Path(peer.inspect()['executable']) == app_path(root)/'MentorFlow.exe':
-                            raise RecoverableError('close the current App before continuing')
+                        if Path(peer.inspect()['executable']) == image:
+                            raise RecoverableError(message)
                 except OSError as error:
                     if error.winerror != 87: raise  # exited PID is harmless
             present = kernel.Process32NextW(handle, c.byref(entry))
     finally: kernel.CloseHandle(handle)
+
+
+def require_app_stopped(root):
+    _require_image_stopped(app_path(root) / 'MentorFlow.exe', 'close the current App before continuing')
+
+
+def require_updater_stopped(root):
+    _require_image_stopped(Path(root) / 'Updater/UserRuntime.exe',
+                          '请先关闭 MentorFlow 修复与更新窗口或正在运行的更新程序，再重试。')
 
 
 def request_app_shutdown(root, pid, hwnd_hex):
@@ -485,7 +627,7 @@ def recover(root, public_keys=None):
 
 
 def transact(root, source, envelope, *, public_keys=None, health=None, progress=lambda value: None,
-             repair=False, before_swap=lambda: None, fault=lambda phase: None):
+             repair=False, before_swap=lambda: None, fault=lambda phase: None, refresh_runtime=False):
     """Stage -> verify -> swap -> real health; previous remains recoverable."""
     public_keys = public_keys if public_keys is not None else keys()
     root = target(root, probe=True); source = plain(source)
@@ -505,6 +647,7 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
     root.mkdir(exist_ok=True)  # parent exists; only the MentorFlow level is created
     from refactor.desktop.delivery.update_download import InstallUpdateLock
     with InstallUpdateLock(root):
+        if refresh_runtime: require_updater_stopped(root)
         current, release = admit(root, envelope, public_keys, repair=repair)
         if initial_repair: _initial_repair_release(root, public_keys, release)
         if not initial_repair and (root / JOURNAL).exists() and strict_json(read(root / JOURNAL)).get('phase') not in ('HEALTHY', 'ROLLED_BACK'):
@@ -564,9 +707,10 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             proof = (health or launch_health)(root, release)
             if not isinstance(proof, dict) or proof.get('ready') is not True:
                 raise RecoverableError('new version did not become ready')
+            runtime = replace_updater(root, release, public_keys=public_keys) if refresh_runtime else None
             mark('HEALTHY'); progress(100)
             return dict(status='HEALTHY', version=release.version, health=proof,
-                        install_uac_count=0, update_uac_count=0)
+                        install_uac_count=0, update_uac_count=0, **({'updater': runtime} if runtime else {}))
         except BaseException:
             if current and moved:
                 recover(root, public_keys)
@@ -805,11 +949,12 @@ def _execute(args, parser, progress):
         verify_tree(args.source, release, subset=list(release.rows))
         from refactor.desktop.delivery.update_download import InstallUpdateLock
         with InstallUpdateLock(root):
+            require_updater_stopped(root)
             require_app_stopped(root)
             from refactor.desktop.delivery.per_user_update_core import unsafe_teardown
             if unsafe_teardown(): raise RecoverableError('session ending: repair deferred')
             recover(root, public_keys)
-    result = transact(root, args.source, envelope, repair=is_install(root), progress=progress,
+    result = transact(root, args.source, envelope, repair=is_install(root), progress=progress, refresh_runtime=True,
                       before_swap=lambda: require_app_stopped(root))
     if args.close_after_health:
         # The branded shell owns the explicit Finish/Launch action. Close only

@@ -185,6 +185,11 @@ class DesktopUpdates(QObject):
             self.gate.setEnabled(not self._login_blocked)
             if self._login_blocked:
                 self._show_prompt()
+            if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE'):
+                # Wait for the startup classifier before touching its runtime:
+                # replacing while it hashes Updater can manufacture a failure.
+                from .delivery.per_user_install import schedule_updater_refresh
+                schedule_updater_refresh(self.root)
         elif value["action"] == "install":
             # User already consented. Retain the .part files and try again later;
             # security failures and explicit cancellation never auto-retry.
