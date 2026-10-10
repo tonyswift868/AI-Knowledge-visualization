@@ -161,12 +161,17 @@ class Migration:
         save(self.state/'inventory.json', dict(networks=networks, containers=selected))
         sources = set(configs) | set(env_files)
         compose = []
+        missing = []  # Compose provenance whose release directory was removed later; recorded, not fatal.
         for c in selected:
             labels = c['Config'].get('Labels') or {}
             files = labels.get('com.docker.compose.project.config_files', '').split(',')
             wd = labels.get('com.docker.compose.project.working_dir', '')
             if files != ['']:
                 paths = [str((Path(wd)/f).resolve()) for f in files]
+                gone = [f for f in paths if not Path(f).is_file()]
+                if gone:
+                    missing.append(dict(container=c['Name'], files=gone))
+                    continue
                 sources.update(paths)
                 envs = [f for f in labels.get('com.docker.compose.project.environment_file', '').split(',') if f]
                 envs = list(dict.fromkeys([*envs, *env_files])); sources.update(envs)
@@ -186,6 +191,7 @@ class Migration:
             shutil.copy2(path, target); copies.append(dict(source=source, backup=target.name))
         save(self.state/'config-files.json', copies)
         save(self.state/'compose.json', compose)
+        save(self.state/'missing-compose-sources.json', missing)
         self.preflight()
 
     def check_compose(self, overlay):
@@ -198,12 +204,17 @@ class Migration:
         for i, args in enumerate(compose):
             command = args+['-f', str(target)]
             config = json.loads(self.command(command+['config','--format','json']))
+            if 'edge' not in config.get('services', {}):
+                # e.g. the worker-only Compose set: nothing here owns the fixed addresses.
+                save(self.state/f'compose-effective-{i}.json', config)
+                commands.append(shlex.join(command+['config','--quiet'])); future.append(command)
+                continue
             for n,(_,pool,ip) in NETWORKS.items():
                 logical = n.rsplit('_',1)[1]
                 if (config['services']['edge']['networks'][logical]['ipv4_address'] != ip
                         or config['networks'][logical]['ipam']['config'][0]['ip_range'] != pool):
                     raise RuntimeError('Compose override did not win; do not cut over.')
-            if config['services']['keycloak']['environment']['KC_PROXY_TRUSTED_ADDRESSES'] != '172.18.0.5':
+            if 'keycloak' in config['services'] and config['services']['keycloak']['environment'].get('KC_PROXY_TRUSTED_ADDRESSES') != '172.18.0.5':
                 raise RuntimeError('Compose proxy trust changed; do not cut over.')
             save(self.state/f'compose-effective-{i}.json', config)
             commands.append(shlex.join(command+['config','--quiet']))
