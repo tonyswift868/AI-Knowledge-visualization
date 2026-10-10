@@ -32,6 +32,7 @@ class AccountShell:
         closure_client_factory: Callable | None = None,
         closure_cleanup_factory: Callable | None = None,
         gate_window=None,
+        prepare_account_surface=False,
     ) -> None:
         from PySide6.QtCore import QSettings
         from refactor.desktop.account_identity import AccountPreferenceStore
@@ -60,6 +61,7 @@ class AccountShell:
         self.home = None
         self._pane = None
         self._warm_pane = None
+        self._warm_host = None
         self._account_form_state = None
         self._remembered_profile = None
         self._login_result = None
@@ -127,6 +129,8 @@ class AccountShell:
         self.app.aboutToQuit.connect(self.close)
         self.app.setQuitOnLastWindowClosed(False)
         self._set_primary(self.gate, 'LOGIN_MAIN')
+        if prepare_account_surface:
+            self._prepare_account_surface()
 
     def _set_primary(self, window, role):
         diagnostics = getattr(self.app, '_mentorflow_diagnostics', None)
@@ -157,10 +161,33 @@ class AccountShell:
         if timer is not None and self.gate._first_paint_scheduled and not self._closing:
             timer.start()
 
+    def _prepare_account_surface(self):
+        """Reserve the WebEngine child while the login top-level is hidden.
+
+        Qt may recreate a visible top-level window when its first OpenGL-backed
+        child is added.  Construct only the dormant view here; URL loading is
+        deferred to ``_prewarm_account_page`` after capabilities are known.
+        """
+        if self._closing or self._warm_pane is not None or self._lifecycle_pane_factory is not None:
+            return
+        try:
+            from PySide6.QtCore import Qt
+            from PySide6.QtWidgets import QWidget
+            from .lifecycle_pane import AccountLifecyclePane
+            host = QWidget(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
+            host.resize(1, 1)
+            host.hide()
+            self._warm_host = host
+            self._warm_pane = AccountLifecyclePane(
+                'register', parent=host, shell_runtime=self.runtime, load=False)
+        except Exception:
+            diagnostic_event('login', state='ACCOUNT_PAGE_SURFACE_PREPARE_FAILED', exc_info=True)
+
     def _prewarm_account_page(self):
         from .login_shell import LoginGateState
         if (self._closing or self._login_result is not None or self._pane is not None
-                or self._warm_pane is not None or self._lifecycle_pane_factory is not None
+                or (self._warm_pane is not None and getattr(self._warm_pane, '_document_started', True))
+                or self._lifecycle_pane_factory is not None
                 or not self.gate.isVisible() or self.gate.state is LoginGateState.AUTHENTICATING
                 or not any(self.gate.account_capabilities.values())):
             return
@@ -168,8 +195,19 @@ class AccountShell:
             # QWidget/Profile/Page belong to the GUI thread. Loading Chromium
             # and the local document then proceeds asynchronously, hidden.
             from .lifecycle_pane import AccountLifecyclePane
-            pane = AccountLifecyclePane('register', parent=self.gate, shell_runtime=self.runtime)
+            pane = self._warm_pane
+            if pane is None:
+                from PySide6.QtCore import Qt
+                from PySide6.QtWidgets import QWidget
+                host = QWidget(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint)
+                host.resize(1, 1)
+                host.hide()
+                self._warm_host = host
+                pane = AccountLifecyclePane('register', parent=host, shell_runtime=self.runtime)
             self._warm_pane = pane
+            start = getattr(pane, 'prewarm', None)
+            if callable(start):
+                start()
             pane.hide()
             pane.prepared.connect(lambda: diagnostic_event('login', state='ACCOUNT_PAGE_PREWARM_READY'))
             diagnostic_event('login', state='ACCOUNT_PAGE_PREWARM_STARTED')
@@ -241,7 +279,8 @@ class AccountShell:
 
     def show(self) -> None:
         self._refresh_local_accounts()
-        self.gate.showNormal()
+        if not self.gate.isVisible():
+            self.gate.showNormal()
         self.gate.raise_()
         self.gate.activateWindow()
         self._load_capabilities()
@@ -1535,6 +1574,16 @@ class AccountShell:
             pane, self._warm_pane = self._warm_pane, None
             if pane is None:
                 pane = factory(intent, parent=self.gate, shell_runtime=self.runtime)
+            elif pane.parentWidget() is not self.gate:
+                # The warmed page lived in an independent hidden top-level, so
+                # its WebEngine surface never touched the visible login gate.
+                # Reparent while the gate is hidden, then show it once as the
+                # account form; this keeps the initial login surface stable.
+                self.gate.hide()
+                pane.setParent(self.gate)
+                host, self._warm_host = self._warm_host, None
+                if host is not None:
+                    host.deleteLater()
             activate = getattr(pane, 'activate', None)
             if callable(activate): activate(intent, self.gate.current_theme)
             self._pane = pane
@@ -1546,6 +1595,8 @@ class AccountShell:
                 )
             )
             self.gate.set_auth_content(pane)
+            if not self.gate.isVisible():
+                self.gate.showNormal()
             from PySide6.QtWidgets import QWidget
             if isinstance(pane, QWidget) and hasattr(pane, 'page') and hasattr(pane, 'view'):
                 from .native_loading import WebFirstFrame
@@ -1774,6 +1825,11 @@ class AccountShell:
         if self._closing:
             return
         self._release_account_prewarm()
+        host = self._warm_host
+        self._warm_host = None
+        if host is not None:
+            host.close()
+            host.deleteLater()
         diagnostic_event('exit', reason='ACCOUNT_SHELL_CLEANUP')
         self._close_account_closure()
         self._close_account_settings()
@@ -1897,6 +1953,10 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         gate.cancel_button.hide()
         startup_close = lambda: diagnostics.request_exit('USER_MAIN_CLOSE')
         gate.close_button.clicked.connect(startup_close)
+        # Build the dormant WebEngine child while the top-level is still
+        # hidden.  Adding it after show() can make Qt recreate the OpenGL
+        # surface and produce the login-window flicker (BUG-72).
+        shell = AccountShell(app, shell_runtime, gate_window=gate, prepare_account_surface=True)
         if install_root is not None:
             foreground(gate)
         else:
@@ -1905,10 +1965,8 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         if install_root is not None:
             log_phase(install_root, 'login_window_visible', **window_state(gate))
         gate.close_button.clicked.disconnect(startup_close)
-        shell = AccountShell(app, shell_runtime, gate_window=gate)
         shell.show()
         if install_root is not None:
-            foreground(gate)
             from .updates import DesktopUpdates
 
             app._mentorflow_updates = DesktopUpdates(app, install_root, shell.gate, login_handoff=shell)

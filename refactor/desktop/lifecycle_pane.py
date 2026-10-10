@@ -341,10 +341,11 @@ class Bridge(QObject):
 class AccountLifecyclePane(QWidget):
     finished=Signal(bool)
     prepared=Signal()
-    def __init__(self,intent,parent=None,*,shell_runtime=None):
+    def __init__(self,intent,parent=None,*,shell_runtime=None,load=True):
         super().__init__(parent)
         if intent not in ('register','forgot_password'):raise ValueError('Invalid account action')
         self.intent=intent; self.theme='sakura'; self.ready=False; self._disposed=False
+        self._document_started=False
         root=shell_runtime.lifecycle_root if shell_runtime is not None else assets()
         if not (root/'lifecycle.html').is_file():
             raise FileNotFoundError('Bundled account lifecycle page is unavailable')
@@ -366,7 +367,9 @@ class AccountLifecyclePane(QWidget):
         self.bridge.back.connect(self.finished.emit)
         self.bridge.presentation_ready.connect(self._prepared)
         self.view.loadFinished.connect(lambda ok:self._present() if ok and not self._disposed else None)
-        self.view.setUrl(QUrl.fromLocalFile(str(root/'lifecycle.html')))
+        self._document_url = QUrl.fromLocalFile(str(root/'lifecycle.html'))
+        if load:
+            self.prewarm()
         self.back_button=QPushButton('返回登录')
         self.back_button.setObjectName('lifecycleBackButton')
         self.back_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -380,6 +383,18 @@ class AccountLifecyclePane(QWidget):
         self.back_button.clicked.connect(self.bridge.returnLogin)
         layout.addWidget(self.back_button)
 
+    def prewarm(self):
+        """Start the local page after the host window has been prepared.
+
+        Creating the WebEngine view before the login top-level is shown avoids
+        Qt rebuilding that top-level's OpenGL surface later.  URL loading is
+        still deferred until the normal capability-gated prewarm moment.
+        """
+        if self._disposed or self._document_started:
+            return
+        self._document_started = True
+        self.view.setUrl(self._document_url)
+
     def _present(self):
         self.page.runJavaScript('window.mfNativeIntent='+json.dumps(self.intent)+
             ';window.mfNativeTheme='+json.dumps(self.theme)+';window.mfStartNative?.();')
@@ -391,6 +406,7 @@ class AccountLifecyclePane(QWidget):
     def activate(self,intent,theme='sakura'):
         if intent not in ('register','forgot_password'):raise ValueError('Invalid account action')
         self.intent=intent;self.theme=theme
+        self.prewarm()
         self._present()
         from .native_loading import PALETTES
         c=PALETTES.get(theme,PALETTES['sakura'])
