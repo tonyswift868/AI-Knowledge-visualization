@@ -143,7 +143,7 @@ def intent_request(ctx: dict, text: str) -> tuple[str, list[dict]]:
         # Keep the JSON schema and every value exactly as before.
         ordered = json.loads(json.dumps({key: ctx[key] for key in _CONTEXT_FIELDS},
                                         ensure_ascii=False, allow_nan=False, sort_keys=True))
-        keys = ('form', 'sections', 'modules', 'cards', 'facts', 'phase', 'recent', 'today')
+        keys = ('sections', 'modules', 'cards', 'phase', 'facts', 'form', 'recent', 'today')
         payload = json.dumps({"ctx": {key: ordered[key] for key in keys}, "text": text},
                              ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError, RecursionError):
