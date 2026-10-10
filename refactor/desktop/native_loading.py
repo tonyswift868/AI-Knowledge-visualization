@@ -184,13 +184,15 @@ class WebFirstFrame(QObject):
     JavaScript only observes the local DOM; it sends no credentials or actions.
     """
     def __init__(self, home, *, theme='sakura', reduced=False,
-                 selector='#root', label='正在准备学习空间…', cancel=None):
+                 selector='#root', label='正在准备学习空间…', cancel=None, fallback_body=True):
         super().__init__(home)
         self.home = home
         self.selector = selector
+        self.fallback_body = fallback_body
         self.operation_label = label
         self.cancel_available = cancel is not None
         self.cover = QWidget(home)
+        self.cover.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.cover.setObjectName('nativeFirstFrameCover')
         self.cover.setStyleSheet(f"#nativeFirstFrameCover{{background:{PALETTES[theme]['bg']}}}")
         layout = QVBoxLayout(self.cover)
@@ -229,8 +231,7 @@ class WebFirstFrame(QObject):
             self.cover.raise_()
         elif event.type() == QEvent.Type.Close:
             self._done = True
-            self.poll.stop()
-            self.loading.finish()
+            self.release_cover()
         return False
 
     def loaded(self, success):
@@ -247,15 +248,15 @@ class WebFirstFrame(QObject):
     def probe(self):
         if getattr(self.home, '_disposed', False):
             self._done = True
-            self.poll.stop()
-            self.loading.finish()
+            self.release_cover()
         if self._done or self._inflight:
             return
         self._inflight = True
         epoch = self._epoch
         import json
-        self.home.page.runJavaScript("(()=>{const r=document.querySelector(" + json.dumps(self.selector) + ") || document.body;" + """
-            if(!r || !r.innerText.trim()) return false;
+        fallback = ' || document.body' if self.fallback_body else ''
+        self.home.page.runJavaScript("(()=>{const r=document.querySelector(" + json.dumps(self.selector) + ")" + fallback + ";" + """
+            if(!r || !r.getClientRects().length || !r.innerText.trim()) return false;
             if(!window.__mfNativePaint){window.__mfNativePaint=1;
               requestAnimationFrame(()=>requestAnimationFrame(()=>window.__mfNativePaint=2));}
             return window.__mfNativePaint===2;})()""", lambda ready: self.observed(ready, epoch))
@@ -266,10 +267,22 @@ class WebFirstFrame(QObject):
         self._inflight = False
         if ready:
             self._done = True
-            self.poll.stop()
-            self.loading.finish()
-            self.cover.hide()
+            self.release_cover()
             self.home.removeEventFilter(self)
+            view = getattr(self.home, 'view', None)
+            if isinstance(view, QWidget) and self.home.isVisible():
+                view.setFocus(Qt.FocusReason.OtherFocusReason)
+                focus_form = getattr(self.home, 'focus_form', None)
+                if callable(focus_form):
+                    focus_form()
+
+    def release_cover(self):
+        """A retired cover cannot receive input even during native compositing."""
+        self.poll.stop()
+        self.loading.finish()
+        self.cover.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.cover.setEnabled(False)
+        self.cover.hide()
 
 
 def account_appearance(data_root, account_id):
