@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QByteArray
 from PySide6.QtGui import QColor, QCursor, QLinearGradient, QPainter, QPainterPath, QRadialGradient, QPen
 from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QCheckBox,
                                QLineEdit, QComboBox, QGraphicsDropShadowEffect, QToolButton, QSizePolicy)
 
@@ -250,6 +251,14 @@ class LoginGateWindow(QWidget):
         # painted background replaces the plain system caption and frame.
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        # Qt recreates a raster top-level when its first OpenGL child arrives.
+        # A visible, permanent 1px anchor makes this window use OpenGL from
+        # birth, before WebEngine is warmed or an account page is attached.
+        # Hiding the anchor would defer the surface conversion until later.
+        self._composition_anchor = QOpenGLWidget(self)
+        self._composition_anchor.setFixedSize(1, 1)
+        self._composition_anchor.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._composition_anchor.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         # Reserve the native form viewport from first paint, including the
         # native consent controls. Loading/form/refresh never resize the shell.
         area = self.screen().availableGeometry()

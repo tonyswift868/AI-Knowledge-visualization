@@ -32,6 +32,7 @@ class AccountShell:
         closure_client_factory: Callable | None = None,
         closure_cleanup_factory: Callable | None = None,
         gate_window=None,
+        prepare_account_surface=False,
     ) -> None:
         from PySide6.QtCore import QSettings
         from refactor.desktop.account_identity import AccountPreferenceStore
@@ -127,6 +128,8 @@ class AccountShell:
         self.app.aboutToQuit.connect(self.close)
         self.app.setQuitOnLastWindowClosed(False)
         self._set_primary(self.gate, 'LOGIN_MAIN')
+        if prepare_account_surface:
+            self._prepare_account_surface()
 
     def _set_primary(self, window, role):
         diagnostics = getattr(self.app, '_mentorflow_diagnostics', None)
@@ -157,10 +160,23 @@ class AccountShell:
         if timer is not None and self.gate._first_paint_scheduled and not self._closing:
             timer.start()
 
+    def _prepare_account_surface(self):
+        """Create the dormant account page in the OpenGL-ready login gate."""
+        if self._closing or self._warm_pane is not None or self._lifecycle_pane_factory is not None:
+            return
+        try:
+            from .lifecycle_pane import AccountLifecyclePane
+            self._warm_pane = AccountLifecyclePane(
+                'register', parent=self.gate, shell_runtime=self.runtime, load=False)
+            self._warm_pane.hide()
+        except Exception:
+            diagnostic_event('login', state='ACCOUNT_PAGE_SURFACE_PREPARE_FAILED', exc_info=True)
+
     def _prewarm_account_page(self):
         from .login_shell import LoginGateState
         if (self._closing or self._login_result is not None or self._pane is not None
-                or self._warm_pane is not None or self._lifecycle_pane_factory is not None
+                or (self._warm_pane is not None and getattr(self._warm_pane, '_document_started', True))
+                or self._lifecycle_pane_factory is not None
                 or not self.gate.isVisible() or self.gate.state is LoginGateState.AUTHENTICATING
                 or not any(self.gate.account_capabilities.values())):
             return
@@ -168,8 +184,13 @@ class AccountShell:
             # QWidget/Profile/Page belong to the GUI thread. Loading Chromium
             # and the local document then proceeds asynchronously, hidden.
             from .lifecycle_pane import AccountLifecyclePane
-            pane = AccountLifecyclePane('register', parent=self.gate, shell_runtime=self.runtime)
+            pane = self._warm_pane
+            if pane is None:
+                pane = AccountLifecyclePane('register', parent=self.gate, shell_runtime=self.runtime)
             self._warm_pane = pane
+            start = getattr(pane, 'prewarm', None)
+            if callable(start):
+                start()
             pane.hide()
             pane.prepared.connect(lambda: diagnostic_event('login', state='ACCOUNT_PAGE_PREWARM_READY'))
             diagnostic_event('login', state='ACCOUNT_PAGE_PREWARM_STARTED')
@@ -241,7 +262,8 @@ class AccountShell:
 
     def show(self) -> None:
         self._refresh_local_accounts()
-        self.gate.showNormal()
+        if not self.gate.isVisible():
+            self.gate.showNormal()
         self.gate.raise_()
         self.gate.activateWindow()
         self._load_capabilities()
@@ -1897,6 +1919,9 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         gate.cancel_button.hide()
         startup_close = lambda: diagnostics.request_exit('USER_MAIN_CLOSE')
         gate.close_button.clicked.connect(startup_close)
+        # The gate's permanent OpenGL anchor exists before its first show.
+        # Warm and switch account pages without changing that native surface.
+        shell = AccountShell(app, shell_runtime, gate_window=gate, prepare_account_surface=True)
         if install_root is not None:
             foreground(gate)
         else:
@@ -1905,10 +1930,8 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         if install_root is not None:
             log_phase(install_root, 'login_window_visible', **window_state(gate))
         gate.close_button.clicked.disconnect(startup_close)
-        shell = AccountShell(app, shell_runtime, gate_window=gate)
         shell.show()
         if install_root is not None:
-            foreground(gate)
             from .updates import DesktopUpdates
 
             app._mentorflow_updates = DesktopUpdates(app, install_root, shell.gate, login_handoff=shell)
