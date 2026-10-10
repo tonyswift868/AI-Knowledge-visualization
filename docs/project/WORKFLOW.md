@@ -61,14 +61,15 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 空闲 | runtime |
-| MF-05 | 空闲 | platform |
+| MF-04 | 102-MF04 软件内更新（已起草，待转发） | runtime |
+| MF-05 | 102-MF05 登录窗口闪烁（已起草，待转发） | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
 ## 待派队列
 
-- 无。101-MF04 已随 2.0.12 发布。
+- 102-MF04（runtime）：软件内更新关不掉 App（BUG-71）。已起草，待转发（基线 5cbde067）。
+- 102-MF05（platform）：登录窗口闪一下（BUG-72）。已起草，待转发（基线 5cbde067）。两个任务可并行。
 
 ## 回执格式
 
