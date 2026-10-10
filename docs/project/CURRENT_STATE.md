@@ -76,7 +76,7 @@
 | SYS-03 | 用量显示 | 已实现（显示花了多少钱） | 2026-10-10 |
 | SYS-04 | 学习提醒 | 已实现 | 2026-10-10 |
 | SYS-05 | 缓存命中率 | 改法①～④已实现（随 2.0.9），实机复查待做 | 2026-10-10 |
-| SYS-06 | 安装、启动与自动更新 | 线上与下载站都是 2.0.9；检查更新提速、老版本只下差异、标题栏按钮由第一百批做 | 2026-10-10 |
+| SYS-06 | 安装、启动与自动更新 | 2.0.10 发版中（检查更新提速、只下差异、标题栏按钮）；下载站 2.0.9 | 2026-10-10 |
 | SYS-07 | 按用途设定思考强度 | 已实现 | 2026-10-10 |
 | UI-00 | 前端整体 | 已实现 | 2026-10-10 |
 | UI-01 | 首页 | 已实现 | 2026-10-10 |
@@ -483,9 +483,9 @@
   7. 更新后已有计划照常可用（[ARCH-03]）。
   8. 朗读引擎与语音识别模型不进安装包，用到时说明大小、征得同意、可选路径再下载。
   9. “修复与更新”窗口任何时候都能关闭（写文件的关键步骤显示“正在处理”）。
-  10. 检查更新要快（用户 2026-10-10）：实测 2.0.5 每次检查要下 2.1 MB 清单、走 IP 慢线路，一次 9～61 秒。改法（100-MF04）：更新地址改走 aiteacher.clannad.win/updates/app/（2026-10-10 服务器已加好，清单 gzip 约 0.46 MB），IP 作备用；先下几百字节的 latest.json 指针，有新版才下完整清单。注意服务器出口带宽本身也慢（同时测得 Cloudflare 0.3～1.3 MB/s），Cloudflare 对 objects 不缓存（cf-cache-status DYNAMIC）。
-  11. 登录窗口等无边框窗口右上角“—”“×”要有悬停、按下效果，点 × 任何时候立刻有反应（用户 2026-10-10，100-MF05）。
-  12. 从任何老版本更新都只下真正变了的文件（用户 2026-10-10 发现）：2.0.5 → 2.0.9 实际只变 17 个文件、24.5 MiB，软件却下了 1025.97 MiB——现在只有清单 base_versions 里的上一版走增量，其余整包下。改成逐个比对 SHA256、复用本机现有 App 里相同的文件（补进 100-MF04）。
+  10. 检查更新要快（100-MF04，随 2.0.10）：更新地址走 aiteacher.clannad.win/updates/app/（服务器 2026-10-10 已加），连不上、证书或校验不对时退回 IP；清单 gzip（2.1 MB → 0.46 MB）；先下几百字节的 stable/latest.json，没有新版就不下完整清单。只对 2.0.10 及以后的客户端生效。服务器出口带宽本身慢且不稳（Cloudflare 0.3～1.3 MB/s），objects 在 Cloudflare 不缓存。
+  11. 无边框窗口右上角“—”“×”有悬停、按下效果，点 × 任何时候立刻有反应（100-MF05，随 2.0.10）：原因是启动检查更新时整个登录窗口被设成不可用，现在只锁表单。
+  12. 从任何老版本更新都只下真正变了的文件（100-MF04，随 2.0.10）：逐个比对 SHA256、复用本机现有 App 里相同的文件；用真实清单模拟 2.0.5 → 2.0.9 从 1025.97 MiB 降到 24.5 MiB。只对 2.0.10 及以后的客户端生效。
 - 发版方式（日常发版算内部版本，用户 2026-10-10 定：默认只发更新文件和版本清单、不编安装程序，需要给新用户或攒够改动时再编；mf-publish 的 build_installer 默认 false，只发更新约 1～3 分钟，99-MF04 已实现）：GitHub Actions 手动触发 mf-build → 本机签名（私钥只在本机）→ mf-publish（WORKFLOW 操作手册、scripts/release/README.md）。版本号发出去就不改内容；服务器 releases/ 只留版本号最大的 3 个安装程序，更早的只留清单，需要时用 mf-installer 从已存的文件重新编；更新文件按内容只存一份，每版只传改动的文件。
 - 服务器与下载站：更新目录 /opt/mentorflow/update-static/e108/app/（objects、stable/stable.json、releases/）；客户端更新走 https://89.45.45.28/mentorflow/updates/app/；aiteacher.clannad.win 经 Cloudflare 代理 + Origin 证书（/download、/releases/、/updates/app/ 三个入口；/updates/app/ 2026-10-10 加，改前备份 /opt/mentorflow/state/edge.conf.bak-20261010-updates），入口 nginx 配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf（改前备份 /opt/mentorflow/state/edge.conf.bak-20261010）。clannad.win 还有 auth 子域名与 Brevo 发信记录，改 DNS 时不要动。实测速度：Cloudflare 约 1.3 MB/s，旧 IP 直连 0.15～0.6 MB/s。
 - 当前实现：scripts/build_learning_installer.py、scripts/release/、.github/workflows/mf-*.yml；客户端 refactor/desktop/delivery/、updates.py、update_dialog.py；Inno 脚本 refactor/desktop/packaging/inno/。签名密钥 key_id mentorflow-app-2026（Ed25519）。
