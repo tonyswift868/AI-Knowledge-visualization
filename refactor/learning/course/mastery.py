@@ -207,6 +207,13 @@ class MasteryBook:
             if isinstance(event,AttemptClosed):
                 answers=attempts.get(key,{})
                 ids=[qid for qid,q in self._questions.items() if q['module_id']==event.module_id]
+                # No-question direct review is a learner's skip decision, not
+                # an assessment. Credits and this close are committed together;
+                # retain the existing skipped projection without fake answers.
+                if not ids and event.kind=='skip_test' and all(p.point_id in self._taught for p in self._points if p.module_id==event.module_id):
+                    m.update(state='skipped',skip_test_passed=True)
+                    closed.add(key)
+                    continue
                 passed=bool(ids) and sum(questions[qid]['module_correct'] is True for qid in ids)*10>=len(ids)*9
                 if event.kind=='retest':m['retest_count']+=1
                 else:m[event.kind+'_count']+=1

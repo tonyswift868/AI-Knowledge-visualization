@@ -88,8 +88,10 @@ def test_old_subjective_questions_filtered_for_every_purpose(e,purpose):
 def test_all_subjective_skips_without_grade_or_empty_close(e):
     e.materials.bank=[question('p0','short'),question('p0','essay')]
     v=act(e,'start_test','skip_test')
-    assert v['failure'] and not v['question'] and '先学完内容' in v['failure']['message']
-    assert not e.gateway.calls and not e.store.records('judgements',PLAN)
+    # Batch97: no scored questions enters unscored source-grounded dialogue.
+    assert not v['failure'] and not v['question'] and v['step']=='direct_review'
+    assert v['direct_review'] and not v['direct_review']['answered']
+    assert e.gateway.calls==['teacher'] and not e.store.records('judgements',PLAN)
     assert not e.store.records('attempt_closed',PLAN)
     assert e.store.load_mastery(PLAN).module('m0').state=='untested'
     assert not e.room._load(e.room._course(PLAN)).get('question_gaps')  # No questions means learning-only, not a preparation fault.
