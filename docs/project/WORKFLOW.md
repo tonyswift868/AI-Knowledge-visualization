@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 开头三节和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-10）：线上 2.0.8（直接考、资料推荐文字优先与 stars）。BUG-45 已根治上线。第九十八批（缓存改法①～④）已合入，发 2.0.9。全量里 loading86、self_test81 两个浏览器测试满载时偶发失败（单独跑通过），记为已知不稳定测试。
+- **现在在做的事**（2026-10-10）：线上 2.0.8（直接考、资料推荐文字优先与 stars）。BUG-45 已根治上线。第九十八批（缓存改法①～④）已合入、全量通过，等第九十九批一起发 2.0.9。全量里 loading86、self_test81 两个浏览器测试满载时偶发失败（单独跑通过），记为已知不稳定测试。
 
 ## 协作方式
 
@@ -60,15 +60,81 @@
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 空闲 | classroom |
-| MF-04 | 空闲 | runtime |
+| MF-03 | 99-MF03（已起草，待转发） | classroom |
+| MF-04 | 99-MF04（已起草，待转发） | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
 ## 待派队列
 
-- 无。第九十八批两份已合入 a2e64862，合并后全量复跑中，通过后发 2.0.9。
+- 第九十九批 2 个任务：已起草（2026-10-10），待用户转发：99-MF03 问答题自己判与错题集（TEACH-04）、99-MF04 发版默认不编安装程序（SYS-06）。两个都合入后一起发 2.0.9（含第九十八批缓存改动，合并后全量 3375 通过）。
+
+## 第九十九批任务原文（2026-10-10，基线 38bbe094）
+
+### [99-MF03] classroom｜问答题自己判 + 作答记录与错题集（¥0）
+
+~~~text
+【MentorFlow 第九十九批｜MF-03（工位 classroom）｜问答题勾完要点后自己点“算我答对/算我答错”；每次作答如实记录，没答到的要点标红叉；错题集在最终检验中和计划结束后都能看】
+
+现成项目与许可证（第一节）
+  - 不新增依赖，只改本项目现有代码：refactor/learning/app/classroom.py（recall_reveal / recall_submit，约 457～480 行；作答结算 _settle）、course/mastery.py（等级照旧按“对/错”走）、作答记录所在的 course/store.py 实体（judgements / attempt_closed 等，按现有结构扩展）、web/src/pages/Classroom.tsx（勾要点卡片、错题集面板）、web/src/pages/PlanDetail.tsx（计划结束后的错题集入口）。错题集的列表展示沿用项目现有组件，不引新 UI 库。
+
+开工同步
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard 38bbe094
+提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp、D:\MentorFlowData\account-shell 只读（要用数据就复制到测试目录）；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次，同一套测试不重复跑。冒烟、构建、中间文件用完立刻自己删，只留 report.md 和截图。
+同时在跑：99-MF04（发版流水线，只改 .github/ 与 scripts/release/），不碰你的文件。
+产物目录：D:\MentorFlow\.local\test-tmp\essay99\。目标三小时内交回。花费上限 ¥0。
+规则（用户 2026-10-10 定，CURRENT_STATE [TEACH-04]、[TEACH-02]）：
+  1. 问答题：学生先写或说自己的回答 → 显示原文参考答案的要点（程序切分、AI 选编号，现有逻辑不变）→ 学生逐条勾自己答到的要点 → 勾完由学生自己点〔算我答对〕或〔算我答错〕。不再按“全部勾到才算对”自动判；勾了几条都可以自己选对或错。等级按学生的选择照常升降（模块检测：对升 2 级、错留 1 级；最终检验：2 级对一次过、1 级连续对两次过、答错退回 1 级）。
+  2. 作答记录：每道题的每次作答都如实存下并随同步——客观题：选/填了什么、程序判的对错；问答题：学生的回答原文、勾到哪些要点、没勾到哪些、学生自己判的结果；以及发生在模块检测/重测/最终检验/自由检验的哪一次、时间。改了存储格式就按 [ARCH-03] 带迁移，老记录照常能读（老的问答题记录没有“自己判”字段时按原来的结果显示）。
+  3. 红叉：回看一道题的作答时，没答到的要点标红叉、答到的打勾，客观题标出选错的选项和正确答案。
+  4. 错题集：
+     - 最终检验进行中，课堂里有一个“错题集”入口，随时打开看：列出答错过的题（按答错次数从多到少），点开看这道题每次的作答记录（含红叉）和参考答案，以及当时那道题前后的对话记录；看完关掉回到检验原位置，不影响检验进度。
+     - 计划结束后（含逾期完成），计划详情里有“错题集”入口，内容同上，可以反复看。
+     - 模块检测阶段先不放入口（用户说最终检验还远，入口先做在这两处）；记录从现在起就存。
+要做
+  1. 按上面 4 条改后端与界面；课堂中断恢复要覆盖“勾完要点还没点对错就关软件”。
+  2. 测试：问答题勾 7/10 点算对 → 升级正确；勾满但点算错 → 按错走；客观题作答记录正确；同步后另一台能看到同样的记录；老记录迁移后能读；错题集在最终检验中打开再关闭不影响进度；计划结束后入口可用。截图（亮暗各一套）：勾要点卡片带〔算我答对〕〔算我答错〕、红叉回看、两个错题集入口与列表。
+完成标准：上面测试通过；最后全量一次通过；web 构建通过；提交在工位。
+回执：写到 D:\MentorFlow\.local\receipts\99-MF03.md（表格：基线 ／ 提交 ／ 自己判 ／ 作答记录与迁移 ／ 红叉 ／ 错题集两处入口 ／ 测试与构建 ／ 截图 ／ 本地最终占用）；给用户只回一行“99-MF03 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\essay99\report.md。
+~~~
+
+### [99-MF04] runtime｜发版默认不编安装程序（¥0）
+
+~~~text
+【MentorFlow 第九十九批｜MF-04（工位 runtime）｜流水线：日常发版只发更新文件和版本清单，默认不编安装程序；需要时再单独编】
+
+现成项目与许可证（第一节）
+  - 只改你写的流水线：.github/workflows/mf-publish.yml、.github/actions/*、scripts/release/（server_ops.py、pipeline.py、README.md）；GitHub Actions 的 workflow_dispatch 布尔输入是官方用法。不新增依赖。
+
+开工同步
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 38bbe094
+提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push、禁止在 GitHub 上触发任何工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp、D:\MentorFlowData\account-shell 只读；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。遇到选择自己决定，回执写明理由，不停下来问。
+测试要求：只跑与改动相关的测试，全量只在最后跑一次。中间文件用完立刻自己删，只留 report.md。
+同时在跑：99-MF03（课堂问答题与错题集），不碰你的文件。
+产物目录：D:\MentorFlow\.local\test-tmp\publish99\。目标一小时内交回。花费上限 ¥0。
+背景（用户 2026-10-10 定，CURRENT_STATE [SYS-06]）：现在每次 mf-publish 都会下载全部文件并重新编一个约 380 MB 的安装程序，占了一次发版的大部分时间（发布 10～13 分钟，Windows 机器按两倍计费）。日常发版大多是给已装用户的小更新，算内部版本，不需要新安装程序。
+要做
+  1. mf-publish 加一个输入“同时编安装程序”（布尔，默认 false）：
+     - false：只做验签 → 把 staging 文件挪进 objects → 备份并原子替换 stable.json → 删 staging；不下载全部文件、不编安装程序，releases/<版本>/ 里只放这一版的 stable.json（以后需要时可用 mf-installer 补编），latest 不动（下载站仍给上一个编过的安装程序，新用户装上后会自动更新到最新）。
+     - true：和现在一样，额外编安装程序、放进 releases/<版本>/、切 latest、执行“只留最近 3 个安装程序”。
+  2. 确认 mf-installer 能给“只有 stable.json、还没有安装程序”的版本补编并设为 latest（93 批的保留规则照旧）。
+  3. 本机模拟（把 SSH 换成本地文件操作的开关，沿用你 91 批的做法）：false 一次、true 一次、之后对 false 的那个版本跑 mf-installer 补编一次，目录结构与 latest 指向写进报告；actionlint/自检脚本照旧通过（只手动触发、并发组、时限）。
+  4. scripts/release/README.md 与预计耗时更新：日常发版（不编安装程序）预计多少分钟。
+完成标准：上面模拟与测试通过；最后全量一次通过；提交在工位。
+回执：写到 D:\MentorFlow\.local\receipts\99-MF04.md（表格：基线 ／ 提交 ／ 新输入与默认值 ／ 本机模拟结果 ／ 补编 ／ 预计日常发版耗时 ／ 全量 ／ 本地最终占用）；给用户只回一行“99-MF04 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\publish99\report.md。
+~~~
+
 
 ## 回执格式
 

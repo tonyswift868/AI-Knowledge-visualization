@@ -483,7 +483,7 @@
   7. 更新后已有计划照常可用（[ARCH-03]）。
   8. 朗读引擎与语音识别模型不进安装包，用到时说明大小、征得同意、可选路径再下载。
   9. “修复与更新”窗口任何时候都能关闭（写文件的关键步骤显示“正在处理”）。
-- 发版方式：GitHub Actions 手动触发 mf-build → 本机签名（私钥只在本机）→ mf-publish（WORKFLOW 操作手册、scripts/release/README.md）。版本号发出去就不改内容；服务器 releases/ 只留版本号最大的 3 个安装程序，更早的只留清单，需要时用 mf-installer 从已存的文件重新编；更新文件按内容只存一份，每版只传改动的文件。
+- 发版方式（日常发版算内部版本，用户 2026-10-10 定：默认只发更新文件和版本清单、不编安装程序，需要给新用户或攒够改动时再编，99-MF04）：GitHub Actions 手动触发 mf-build → 本机签名（私钥只在本机）→ mf-publish（WORKFLOW 操作手册、scripts/release/README.md）。版本号发出去就不改内容；服务器 releases/ 只留版本号最大的 3 个安装程序，更早的只留清单，需要时用 mf-installer 从已存的文件重新编；更新文件按内容只存一份，每版只传改动的文件。
 - 服务器与下载站：更新目录 /opt/mentorflow/update-static/e108/app/（objects、stable/stable.json、releases/）；客户端更新走 https://89.45.45.28/mentorflow/updates/app/；aiteacher.clannad.win 经 Cloudflare 代理 + Origin 证书，入口 nginx 配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf（改前备份 /opt/mentorflow/state/edge.conf.bak-20261010）。clannad.win 还有 auth 子域名与 Brevo 发信记录，改 DNS 时不要动。实测速度：Cloudflare 约 1.3 MB/s，旧 IP 直连 0.15～0.6 MB/s。
 - 当前实现：scripts/build_learning_installer.py、scripts/release/、.github/workflows/mf-*.yml；客户端 refactor/desktop/delivery/、updates.py、update_dialog.py；Inno 脚本 refactor/desktop/packaging/inno/。签名密钥 key_id mentorflow-app-2026（Ed25519）。
 - 关联：[ARCH-03] [ENV-01]
