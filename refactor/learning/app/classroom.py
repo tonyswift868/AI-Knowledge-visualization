@@ -90,6 +90,8 @@ class Classroom:
                     self._replace_subjective(course,state,ctx)
                 elif self._test_already_closed(course, state):
                     self._finish_test(course, state, ctx)
+                elif state.get('direct_review') and course.book().attempt_closed(state['module_id'],state['direct_review']['attempt']):
+                    self._finish_direct_choice(course,state,ctx)
                 else:
                     work(course, state, ctx)
                     if not action or action[0]!='leave':
@@ -155,6 +157,11 @@ class Classroom:
             room.pop('answer_explanation',None);room.pop('failure',None)
         if (room['step'] == 'completed') != (course.plan['state'] == 'completed'):
             state = self._rebuild(course)
+        review=state.get('direct_review')
+        if review and (any(pid not in {p['id'] for p in course.points_of(state['module_id'])} for pid in review['points'])
+                       or self._questions(course,state['module_id'])):
+            # A bank/source edit must not leave an obsolete unscored scene open.
+            self._restore_direct(state,review['resume'])
         return state
 
     def _save(self, course, state):
@@ -211,7 +218,8 @@ class Classroom:
             points=[dict(id=p['id'],title=p['title'],minutes=p['minutes'],taught=p['id'] in taught,state=book.point(p['id']).state,current=i==state['index']) for i,p in enumerate(points)],
             step=state['step'],question=question,messages=messages,conversation=state.get('conversation'),
             preparation=state.get('material_wait') or current_preparation,failure=state.get('failure'),explanation=state.get('answer_explanation'),
-            can_skip=state['step']=='teach' and state['index']==0 and not any(p['id'] in taught for p in points),
+            can_skip=self._can_direct(course,state),
+            direct_review=self._direct_view(course,state),
             red=[p['title'] for p in points if book.point(p['id']).state=='red'],
             more_modules=any(book.module(m['id']).state=='untested' for m in course.modules if m['id']!=module['id']),
             recall_result=state.get('recall_result'),
@@ -401,6 +409,13 @@ class Classroom:
         if state.get('conversation'):state['conversation']['interrupted']=False
 
     def reply(self, course, state, ctx, text):
+        if state['step']=='direct_review':
+            review=state['direct_review']
+            if not review['answered']:
+                # Deliberately no answer, message, judgement or profile write.
+                review['answered']=True
+                if review['index']+1==len(review['points']):state['step']='direct_choice'
+            return
         if state['step']=='opening':return self._student_message(course,state,ctx,text)
         pending=state.get('pending')
         if not pending:
@@ -609,8 +624,8 @@ class Classroom:
 
     def start_test(self, course, state, ctx, kind):
         mid=state['module_id'];book=course.book();points=course.points_of(mid)
-        if kind=='skip_test' and (state['step']!='teach' or state['index']!=0 or any(p['id'] in course.taught() for p in points)):
-            raise BridgeError('STEP_INVALID','只有模块开始前才能直接考。')
+        if kind=='skip_test' and not self._can_direct(course,state):
+            raise BridgeError('STEP_INVALID','请先完成当前答题，再直接考这个模块。')
         if kind=='module_test' and state['step']!='test_offer':raise BridgeError('STEP_INVALID','模块还没讲完。')
         if course.module(mid).get('material_preparation',{}).get('state') is not None and not self._ready(course,mid):
             return self._wait(course,state,'start_test',(kind,))
@@ -619,12 +634,97 @@ class Classroom:
             if state['step']!='test_done' or book.module(mid).state!='failed':raise BridgeError('STEP_INVALID','现在没有待重测的题。')
             queue=[q for q in queue if book.question(q['id']).module_correct is False]
         if not queue:
+            if kind=='skip_test':
+                untaught=[p for p in points if p['id'] not in course.taught()]
+                pool=untaught if len(untaught)>=3 else points
+                selected=self._rng.sample(pool,min(3,len(pool)))
+                state['direct_review']=dict(attempt=uuid.uuid4().hex[:16],resume=self._direct_position(state),
+                    points=[p['id'] for p in selected],index=0,question='',answered=False)
+                state.update(step='direct_review',pending=None,test=None)
+                state.pop('conversation',None)
+                return self._ask_direct(course,state,ctx)
             if any(p['id'] not in course.taught() for p in points):raise BridgeError('STEP_INVALID','这个模块没有题，请先学完内容。')
             state.update(step='test_done',pending=None,test=None)
             return self.next_module(course,state,ctx)
+        resume=self._direct_position(state) if kind=='skip_test' else None
+        if resume:state.pop('conversation',None)
         state.update(step='retesting' if kind=='retest' else 'testing',
-            test=dict(kind=kind,attempt=uuid.uuid4().hex[:16],queue=queue,index=0,targets=[q['id'] for q in queue]))
+            test=dict(kind=kind,attempt=uuid.uuid4().hex[:16],queue=queue,index=0,targets=[q['id'] for q in queue],resume=resume))
         self._ask_next(course,state,ctx)
+
+    @staticmethod
+    def _direct_position(state):
+        return {key:copy.deepcopy(state.get(key)) for key in ('module_id','index','step','phase','conversation')}
+
+    @staticmethod
+    def _restore_direct(state,resume):
+        state.update(copy.deepcopy(resume),pending=None,test=None)
+        state.pop('direct_review',None)
+        state.pop('answer_explanation',None)
+        state.pop('recall_result',None)
+
+    @staticmethod
+    def _can_direct(course,state):
+        return (state.get('phase','learning')=='learning' and not state.get('pending')
+            and state['step'] in ('teach','opening','teaching','closing','test_offer','test_done')
+            and course.book().module(state['module_id']).state not in ('passed','skipped'))
+
+    def _ask_direct(self,course,state,ctx):
+        review=state['direct_review'];pid=review['points'][review['index']]
+        review['answered']=False
+        if not course.passages([pid]):
+            review.update(question='这个点的原文暂时缺失，无法随口问。请自行决定接着学还是跳过。',answered=True)
+            if review['index']+1==len(review['points']):state['step']='direct_choice'
+            return
+        teaching=self._teacher(course,state,ctx,teacher_agent.DIRECT_REVIEW,[pid])
+        review['question']=_link_citations(teaching.speech,{f'c{i}':cid for i,cid in enumerate(sorted(course.excerpts([pid])),1)})
+
+    def _direct_view(self,course,state):
+        review=state.get('direct_review')
+        if not review:return None
+        pid=review['points'][review['index']]
+        return dict(point_id=pid,title=course.point(pid)['title'],number=review['index']+1,total=len(review['points']),
+            question=review['question'],answered=review['answered'],
+            sources=[course.passage_card(cid) for cid in course.passages([pid])] if review['answered'] else [])
+
+    def direct_next(self,course,state,ctx):
+        review=state.get('direct_review')
+        if state['step']!='direct_review' or not review or not review['answered']:
+            raise BridgeError('STEP_INVALID','先回答这句，再对照原文。')
+        review['index']+=1
+        self._ask_direct(course,state,ctx)
+
+    def direct_choice(self,course,state,ctx,skip):
+        if type(skip) is not bool or state['step']!='direct_choice' or not state.get('direct_review'):
+            raise BridgeError('STEP_INVALID','随口聊完后，再选择跳过还是接着学。')
+        if not skip:return self._restore_direct(state,state['direct_review']['resume'])
+        self._finish_direct_choice(course,state,ctx)
+
+    def _finish_direct_choice(self,course,state,ctx):
+        review=state['direct_review'];mid=state['module_id']
+        with course.store.transaction():
+            self._direct_credits(course,state,review['attempt'])
+            if not course.book().attempt_closed(mid,review['attempt']):
+                # This is only the explicit skip decision. No scored answer is
+                # invented from the preceding unrecorded conversation.
+                course.store.append_attempt_closed(course.plan_id,AttemptClosed(
+                    f"direct-choice:{review['attempt']}",course.next_seq(),mid,review['attempt'],'skip_test'))
+        state.pop('direct_review',None)
+        state.update(step='test_done',pending=None,test=None)
+        self._say(course,state,'你选择跳过这个模块，已记入整模块学习时长；随口问不计分。',message_id=f"direct-choice:{review['attempt']}:message")
+        self._publish_today(course,state,ctx)
+        self._profile(course)
+
+    def _direct_credits(self,course,state,attempt):
+        live=course.store.load_ledger(course.plan_id).to_dict()['credits']
+        existing={r['id'] for r in course.store.records('credits',course.plan_id)}
+        for point in course.points_of(state['module_id']):
+            credited=sum(c['minutes'] for c in live if c['unit_id']==point['id'])
+            course.store.confirm_credits(course.plan_id,point['id'],event_id=f"confirm-direct:{attempt}:{point['id']}",today=self._day(state))
+            missing=max(0,point['minutes']-credited)
+            if missing:
+                credit_id=f"learn:{point['id']}" if f"learn:{point['id']}" not in existing else f"relearn:direct:{attempt}:{point['id']}"
+                course.store.add_credit(course.plan_id,credit_id,point['id'],missing,self._day(state),'confirmed')
 
     def _ask_next(self, course, state, ctx=None):
         test=state['test']
@@ -787,8 +887,8 @@ class Classroom:
 
     def _profile(self, course):
         document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
-        skipped={p['id'] for m in course.modules if course.book().module(m['id']).state=='skipped' for p in course.points_of(m['id'])}
-        taught=set(document.get('teaching_points',{}))-skipped
+        taught=set(document.get('teaching_points',{}))
+        skipped={p['id'] for m in course.modules if course.book().module(m['id']).state=='skipped' for p in course.points_of(m['id']) if p['id'] not in taught}
         latest={}
         for row in sorted(course.store.records('judgements',course.plan_id),key=lambda r:r['event']['seq']):
             for pid,correct in row['event']['results']:
@@ -955,13 +1055,18 @@ class Classroom:
             store.append_attempt_closed(course.plan_id,AttemptClosed(uuid.uuid4().hex,course.next_seq(),mid,test['attempt'],test['kind']))
         store.settle_module_test(course.plan_id,mid,test['attempt'],today=day)
         book=course.book();passed=book.module(mid).state in ('passed','skipped')
-        if passed or test['kind']=='module_test':
+        if passed and book.module(mid).state=='skipped':
+            self._direct_credits(course,state,test['attempt'])
+        elif passed or test['kind']=='module_test':
             for p in course.points_of(mid):
-                if passed and book.module(mid).state=='skipped':store.add_credit(course.plan_id,f"learn:{p['id']}",p['id'],p['minutes'],day,'confirmed')
-                else:store.confirm_credits(course.plan_id,p['id'],event_id=f"confirm:{test['attempt']}:{p['id']}",today=day)
+                store.confirm_credits(course.plan_id,p['id'],event_id=f"confirm:{test['attempt']}:{p['id']}",today=day)
         correct=sum(book.question(q['id']).module_correct is True for q in self._questions(course,mid));total=len(self._questions(course,mid))
         state.update(step='test_done',pending=None,test=None)
-        self._say(course,state,f'本模块答对 {correct}/{total} 道题。'+('已达到90%，模块通过。' if passed else '尚未达到90%，只重测答错的题，不重讲。'))
+        if not passed and test['kind']=='skip_test' and test.get('resume'):
+            explanation=state.get('answer_explanation')
+            self._restore_direct(state,test['resume'])
+            if explanation:state['answer_explanation']=explanation
+        self._say(course,state,f'本模块答对 {correct}/{total} 道题。'+('已达到90%，模块通过。' if passed else '尚未达到90%，回到直接考之前的位置接着学。' if test['kind']=='skip_test' else '尚未达到90%，只重测答错的题，不重讲。'))
         self._publish_today(course,state,ctx)
         self._profile(course)
 
@@ -1109,6 +1214,8 @@ def register(bridge, services, study_day, *, presence=lambda active,plan_id=None
         'classroom.cancel_preparation':lambda p,c:invoke('stop_preparation',p,c),
         'classroom.gaps':lambda p,c:room()._file(p.get('plan_id')).read({}).get('question_gaps',[]),
         'classroom.test':test,
+        'classroom.direct_next':lambda p,c:invoke('direct_next',p,c),
+        'classroom.direct_choice':lambda p,c:invoke('direct_choice',p,c,p.get('skip')),
         'classroom.next_module':lambda p,c:invoke('next_module',p,c),
         'classroom.check':lambda p,c:invoke('start_check',p,c),
         'classroom.practice':lambda p,c:invoke('start_practice',p,c,p.get('module_id'),p.get('point_id'),p.get('count',5)),

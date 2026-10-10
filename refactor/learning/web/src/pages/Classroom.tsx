@@ -25,6 +25,7 @@ type Room = {
   points: Point[]; step: string; question: BankQuestion | null; messages: Msg[]; can_skip: boolean; red: string[]
   more_modules: boolean; check: { passed: number; total: number } | null
   conversation?: Conversation | null
+  direct_review?: { point_id: string; title: string; number: number; total: number; question: string; answered: boolean; sources: SourceCard[] } | null
   preparation?: Preparation | null
   failure?: { message: string } | null
   explanation?: { text: string; source: { title: string; url: string; locator: string }; label: string; open: boolean; message_id: string } | null
@@ -340,6 +341,18 @@ export function Classroom() {
                 ref={handle => { if (handle) sourceCards.current.set(m.id, handle); else sourceCards.current.delete(m.id) }} />
               <button className="icon-btn listen" title="听这段" onClick={() => listen(m.content)}><Volume2 size={15} /></button></div>
           })}
+          {room.direct_review && <div className="bubble bot" data-testid="direct-review">
+            <span className="eyebrow">随口聊聊 {room.direct_review.number}/{room.direct_review.total} · 不记分</span>
+            <b style={{ display: "block", margin: "6px 0" }}>{room.direct_review.title}</b>
+            {markdown(room.direct_review.question)}
+            {room.direct_review.answered && <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
+              <span className="small muted">对照原文，自己判断是否理解；回答不保存、不判分。</span>
+              {room.direct_review.sources.map(card => <section key={card.id} style={{ marginTop: 10 }}>
+                <b className="small">{card.title} · {card.locator}</b>
+                <div data-selectable>{markdown(card.text)}</div>
+              </section>)}
+            </div>}
+          </div>}
           {verdictPreview && <div className={`class-verdict ${verdictPreview.correct ? "ok" : "bad"}`}>{verdictPreview.text}</div>}
           {stream !== null && (live(stream)
             ? <div className="bubble bot streaming wait-content">{markdown(live(stream))}</div>
@@ -352,9 +365,12 @@ export function Classroom() {
             }} />}
         </div>
 
+        {room.can_skip && <div className="plan-actions">
+          <Button disabled={!!busy} onClick={() => act("classroom.test", { kind: "skip_test" }, "正在准备直接考…")}><SkipForward />这个模块我都会了，直接考</Button>
+        </div>}
         <Actions room={room} act={act} busy={!!busy} />
-        <ConversationActions step={room.step} conversation={room.conversation} busy={!!busy} act={act}
-          ask={() => { setAskMode(!!q); input.current?.focus() }} />
+        {!room.direct_review && <ConversationActions step={room.step} conversation={room.conversation} busy={!!busy} act={act}
+          ask={() => { setAskMode(!!q); input.current?.focus() }} />}
         {room.explanation && <div className="answer-explanation">
           {room.explanation.open && <><div>{markdown(room.explanation.text)}</div><small className="muted">
             {room.explanation.label} · {room.explanation.source.title} · {room.explanation.source.locator}</small>
@@ -364,8 +380,8 @@ export function Classroom() {
         {askMode && <div className="class-question-tag" role="status">这句是提问 · <button onClick={() => setAskMode(false)}>取消</button></div>}
         <div className="composer">
           <textarea ref={input} className="input" rows={1} value={text} aria-label="课堂输入"
-                    disabled={q?.kind === "recall" && !askMode}
-                    placeholder={askMode ? "想问什么？答完回到刚才" : q?.kind === "recall" ? "作答请用上方问答卡片；提问可点“我想问…”" : (q?.kind === "calc" || q?.question_type === "calc") ? "填写计算数值，可带单位" : q ? "输入作答，或点上方选项；提问可点“我想问…”" : "回答老师或提问，都可以直接说"}
+                    disabled={(q?.kind === "recall" && !askMode) || !!room.direct_review?.answered}
+                    placeholder={room.direct_review?.answered ? "看完原文后，选择下一句或是否跳过" : room.direct_review ? "随口回答，不记分，也不保存" : askMode ? "想问什么？答完回到刚才" : q?.kind === "recall" ? "作答请用上方问答卡片；提问可点“我想问…”" : (q?.kind === "calc" || q?.question_type === "calc") ? "填写计算数值，可带单位" : q ? "输入作答，或点上方选项；提问可点“我想问…”" : "回答老师或提问，都可以直接说"}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.repeat) {
                       e.preventDefault()
@@ -374,7 +390,7 @@ export function Classroom() {
           <MicButton voice={mic} />
           {busy
             ? <Button onClick={() => { stopReading(); abort.current?.abort() }}><Square />停止</Button>
-            : <Button kind="primary" onClick={() => send()} disabled={!text.trim() || (q?.kind === "recall" && !askMode)}><SendHorizontal />发送</Button>}
+            : <Button kind="primary" onClick={() => send()} disabled={!text.trim() || (q?.kind === "recall" && !askMode) || !!room.direct_review?.answered}><SendHorizontal />发送</Button>}
         </div>
       </section>
 
@@ -418,10 +434,17 @@ export function Classroom() {
 
 function Actions({ room, act, busy }: { room: Room; busy: boolean; act: (m: string, p?: Record<string, unknown>, label?: string) => Promise<boolean> }) {
   const step = room.step
+  if (step === "direct_choice") return <div className="plan-actions" role="group" aria-label="是否跳过这个模块" data-testid="direct-choice">
+    <span className="small muted">不管刚才回答怎样，都由你自己决定。</span>
+    <Button kind="primary" disabled={busy} onClick={() => act("classroom.direct_choice", { skip: true }, "正在记录你的选择…")}><SkipForward />跳过这个模块</Button>
+    <Button disabled={busy} onClick={() => act("classroom.direct_choice", { skip: false }, "正在回到原位置…")}>接着学</Button>
+  </div>
+  if (step === "direct_review") return room.direct_review?.answered ? <div className="plan-actions">
+    <Button kind="primary" disabled={busy} onClick={() => act("classroom.direct_next", {}, "老师在想下一句…")}>看完原文，下一句</Button>
+  </div> : <div className="small muted" style={{ padding: "6px 18px" }}>用下面的输入框回答，答完就能看这个点的原文。</div>
   if (step === "preparing_materials") return null
   if (step === "teach") return (
     <div className="plan-actions">
-      {room.can_skip && <Button disabled={busy} onClick={() => act("classroom.test", { kind: "skip_test" }, "正在出题…")}><SkipForward />我会这部分，直接考</Button>}
       {<Button kind="primary" disabled={busy} onClick={() => act("classroom.next")}><ChevronRight />{room.messages.length ? "继续" : "开始上课"}</Button>}
     </div>
   )
