@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Archive, ArchiveRestore, BookOpenCheck, Check, PencilLine, PlayCircle, Plus, Trash2, X } from "lucide-react"
-import { call } from "../bridge"
+import { call, on } from "../bridge"
 import { useApp } from "../store"
 import { Button, SakuraArt, Segmented } from "../ui"
 import type { StudyProgress } from "../ProgressStatus"
@@ -38,6 +38,7 @@ export function Plans() {
   }, [])
 
   React.useEffect(() => { if (ready) reload() }, [ready, reload])
+  React.useEffect(() => on("plans_changed", () => { if (ready) reload() }), [ready, reload])
 
   const shown = (plans ?? []).filter((p) =>
     filter === "archived" ? p.archived : filter === "current" ? !p.archived && p.state !== "completed" : !p.archived)

@@ -261,10 +261,15 @@ def test_network_retry_survives_engine_restart_without_duplicate_write(connectio
         server.after = lose
     else:
         server.before = lose
-    with pytest.raises(PlanError, match='暂未同步'):
-        CourseSync(store, transport).sync()
+    if after_commit:
+        # The retry uses the same request ID and obtains the already committed
+        # receipt, so a lost first response no longer fails the entire round.
+        assert CourseSync(store, transport).sync()['ok']
+    else:
+        with pytest.raises(PlanError, match='暂未同步'):
+            CourseSync(store, transport).sync()
     failed_id = server.calls[-1][2]['request_id']
-    assert store.pending
+    assert bool(store.pending) is not after_commit
     server.before = server.after = None
     CourseSync(store, transport).sync()
     assert not store.pending
@@ -443,8 +448,8 @@ def test_http_failure_after_first_record_keeps_remaining_queue(connection):
         if request.method == 'PUT' and len(server.requests) == 1:
             return httpx.Response(503)
     server.before = fail_second
-    with pytest.raises(PlanError):
-        CourseSync(store, transport).sync()
+    result = CourseSync(store, transport).sync()
+    assert result['uploaded'] == 1 and result['failed'] == 1 and not result['ok']
     assert list(store.pending) == [('modules', 'two')]
     server.before = None
     assert CourseSync(store, transport).sync()['ok']

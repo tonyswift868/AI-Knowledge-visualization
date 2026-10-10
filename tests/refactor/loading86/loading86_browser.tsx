@@ -93,7 +93,7 @@ async function main(){
   useApp.getState().set({planId:'fixture'});useApp.getState().go('classroom');await wait(()=>!!document.querySelector('.class-main'),'classroom');
   const ta=document.querySelector('.composer textarea') as HTMLTextAreaElement
   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(ta,'我不太明白');ta.dispatchEvent(new Event('input',{bubbles:true}));await pause(30)
-  Array.from(document.querySelectorAll('.composer button')).find(b=>b.textContent?.includes('发送'))?.click();await pause(350);assert(document.body.innerText.includes('老师正在想'),'teacher slot');
+  Array.from(document.querySelectorAll('.composer button')).find(b=>b.textContent?.includes('发送'))?.click();await wait(()=>document.body.innerText.includes('老师正在想'),'teacher slot');
   const req=held.find(r=>r.method==='classroom.reply');assert(req,'teacher request')
   receiver(JSON.stringify({type:'stream',id:req.id,delta:'我们换个生活中的例子。'}));await wait(()=>!!document.querySelector('.class-scroll .wait-content'),'stream content');assert(!document.querySelector('.class-scroll .wait'),'placeholder replaced')
   response(req,{...room,messages:[...room.messages,{id:'a2',role:'assistant',kind:'teacher',content:'我们换个生活中的例子。',sources:[]}]});held=held.filter(r=>r!==req)

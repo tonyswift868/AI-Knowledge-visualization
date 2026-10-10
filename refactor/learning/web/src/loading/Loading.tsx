@@ -5,9 +5,9 @@ import { getActivities, showActivity, subscribeActivities, waitLabel } from './a
 import './loading.css'
 
 export type LoadingProps = {active?: boolean; label: string; shape?: 'page'|'cards'|'conversation'|'form'|'inline';
-  started?: number; resetKey?: string|number; onRetry?: () => void; onCancel?: () => void; detail?: string}
+  started?: number; resetKey?: string|number; onRetry?: () => void; onCancel?: () => void; detail?: string; slowHint?: boolean}
 /** One clock per wait, not per progress update. Reserve space before 300ms to avoid layout jumps. */
-export function Loading({active = true, label, shape = 'inline', started, resetKey, onRetry, onCancel, detail}: LoadingProps) {
+export function Loading({active = true, label, shape = 'inline', started, resetKey, onRetry, onCancel, detail, slowHint = true}: LoadingProps) {
   const [age, setAge] = React.useState(0)
   React.useEffect(() => {
     if (!active) { setAge(0); return }
@@ -29,7 +29,7 @@ export function Loading({active = true, label, shape = 'inline', started, resetK
     <div className="wait-message">
       <div className="wait-art" aria-hidden="true"><Sparkles/>{[0,1,2,3,4].map(i => <i key={i} style={{'--wait-i':i} as React.CSSProperties}/>)}</div>
       <div className="wait-copy"><b>{label}</b>{detail && <span>{detail}</span>}
-        {slow && <span>比平时慢，可能是网络问题。</span>}
+        {slow && slowHint && <span>比平时慢，可能是网络问题。</span>}
       </div>
       {(slow && (onRetry || onCancel)) && <div className="wait-actions">
         {onRetry && <button className="btn small" type="button" onClick={onRetry}>重试</button>}

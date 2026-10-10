@@ -4,11 +4,12 @@ from __future__ import annotations
 import json
 import hashlib
 import re
+from contextlib import nullcontext
 
 import httpx
 
 from refactor.learning.sync_identity import PlanError
-from refactor.learning.sync_source import AuthenticatedPlanSource
+from refactor.learning.sync_source import AuthenticatedPlanSource, SNAPSHOT_PATH, MAX_SNAPSHOT_BYTES, validate_snapshot
 from refactor.learning.sync_source import sync_auth_error
 from .sync_records.contract import envelope_for
 
@@ -33,6 +34,57 @@ def _resource_response_envelope(payload):
 
 
 class SyncTransport(AuthenticatedPlanSource):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # One window-owned pool; credentials remain per-request and are never
+        # retained in client defaults. See https://www.python-httpx.org/advanced/clients/
+        self._client = httpx.Client(verify=self._ssl, timeout=20,
+                                   follow_redirects=False, transport=self._transport)
+
+    def close(self):
+        super().close()
+        self._client.close()
+
+    def read_snapshot(self):
+        scope, token = self._session()
+        self._scope = scope
+        headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/json', 'X-MentorFlow-Organization-ID': scope.organization_id, 'X-MentorFlow-Workspace-ID': scope.workspace_id}
+        try:
+            with nullcontext(self._client) as client:
+                with client.stream('GET', self._base_url + SNAPSHOT_PATH, headers=headers) as response:
+                    if response.status_code in (401, 403):
+                        raise sync_auth_error(response, '计划读取的登录状态已失效，请使用账号入口重新验证。')
+                    if response.status_code != 200:
+                        raise PlanError('SOURCE_UNAVAILABLE', '服务器计划接口暂不可用，当前计划尚未确认，请稍后重试。')
+                    raw = bytearray()
+                    for chunk in response.iter_bytes():
+                        self.require_current()
+                        raw.extend(chunk)
+                        if len(raw) > MAX_SNAPSHOT_BYTES:
+                            raise PlanError('SNAPSHOT_TOO_LARGE', '服务器计划快照超过既有接口上限，未截断后显示。')
+            self.require_current()
+
+            def unique_pairs(pairs):
+                value = {}
+                for key, item in pairs:
+                    if key in value:
+                        raise ValueError('duplicate field')
+                    value[key] = item
+                return value
+            snapshot = json.loads(raw.decode('utf-8'), object_pairs_hook=unique_pairs)
+            validate_snapshot(snapshot, scope)
+            self.require_current()
+            return snapshot
+        except PlanError:
+            raise
+        except (httpx.HTTPError, OSError):
+            raise PlanError('SOURCE_UNAVAILABLE', '计划读取失败，请检查网络或服务器状态后重试。') from None
+        except (ValueError, TypeError, UnicodeError, RecursionError):
+            raise PlanError('INVALID_SNAPSHOT', '计划服务返回的数据无法验证。') from None
+        finally:
+            token = ''
+            headers.clear()
+
     def read_changes(self, *, since="0", kind="learning_run", limit=100):
         """Authenticated, bounded page; only an explicit 404 permits fallback."""
         if (not isinstance(since, str) or not re.fullmatch(r"0|[1-9][0-9]{0,18}", since)
@@ -43,8 +95,7 @@ class SyncTransport(AuthenticatedPlanSource):
         self._scope = scope
         headers = self._object_headers(scope, token)
         try:
-            with httpx.Client(verify=self._ssl, timeout=20, follow_redirects=False,
-                              transport=self._transport) as client:
+            with nullcontext(self._client) as client:
                 with client.stream("GET", self._base_url + "/api/enterprise/sync/v1/changes",
                                    headers=headers, params=dict(since=since, kind=kind, limit=limit)) as response:
                     self.require_current()
@@ -108,8 +159,8 @@ class SyncTransport(AuthenticatedPlanSource):
         headers.update({"Content-Type": "application/octet-stream",
                         "X-MentorFlow-SHA256": sha256, "X-MentorFlow-Size": str(len(data))})
         try:
-            with httpx.Client(verify=self._ssl, timeout=60, follow_redirects=False, transport=self._transport) as client:
-                response = client.put(self._base_url + f"/api/enterprise/sync/v1/objects/{sha256}", headers=headers, content=data)
+            with nullcontext(self._client) as client:
+                response = client.put(self._base_url + f"/api/enterprise/sync/v1/objects/{sha256}", headers=headers, content=data, timeout=60)
             self.require_current()
             if response.status_code in (401, 403):
                 raise PlanError("REAUTH_REQUIRED", "资料原件尚未同步，请重新验证账号。")
@@ -133,8 +184,8 @@ class SyncTransport(AuthenticatedPlanSource):
         scope, token = self._session()
         headers = self._object_headers(scope, token)
         try:
-            with httpx.Client(verify=self._ssl, timeout=60, follow_redirects=False, transport=self._transport) as client:
-                response = client.get(self._base_url + f"/api/enterprise/sync/v1/objects/{sha256}", headers=headers)
+            with nullcontext(self._client) as client:
+                response = client.get(self._base_url + f"/api/enterprise/sync/v1/objects/{sha256}", headers=headers, timeout=60)
             self.require_current()
             if response.status_code in (401, 403):
                 raise PlanError("REAUTH_REQUIRED", "资料原件尚未下载，请重新验证账号。")
@@ -194,7 +245,7 @@ class SyncTransport(AuthenticatedPlanSource):
                    "X-MentorFlow-Organization-ID": scope.organization_id,
                    "X-MentorFlow-Workspace-ID": scope.workspace_id}
         try:
-            with httpx.Client(verify=self._ssl, timeout=20, follow_redirects=False, transport=self._transport) as client:
+            with nullcontext(self._client) as client:
                 path = f"/api/enterprise/sync/v1/entities/{kind}/{entity_id}" + ("/delete" if deleting else "")
                 response = client.request("POST" if deleting else "PUT", self._base_url + path,
                                           headers=headers, json=body)
@@ -220,7 +271,9 @@ class SyncTransport(AuthenticatedPlanSource):
         except PlanError:
             raise
         except (httpx.HTTPError, OSError):
-            raise PlanError("SYNC_UNAVAILABLE", "学习记录暂未同步，已保留本机内容，稍后会重试。") from None
+            error = PlanError("SYNC_UNAVAILABLE", "学习记录暂未同步，已保留本机内容，稍后会重试。")
+            error.network_unavailable = True
+            raise error from None
         except (ValueError, TypeError):
             raise PlanError("SYNC_RESPONSE_INVALID", "同步回执无法读取，未报告同步成功。") from None
         finally:

@@ -46,6 +46,7 @@ export function Home() {
   }, [])
   React.useEffect(() => { if (ready) load() }, [ready, load])
   React.useEffect(() => on("study_day", () => load()), [load])   // the refresh time passed while open
+  React.useEffect(() => on("plans_changed", () => { if (ready) load() }), [ready, load])
 
   const running = (plans ?? []).filter((p) => p.today)
   const total = aggregateProgress(running.map(p => p.today!))

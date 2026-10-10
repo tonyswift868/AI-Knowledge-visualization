@@ -123,6 +123,56 @@ class CourseSync:
         self.store, self.transport = record_store, transport
         self._lock, self._cancel, self._closed = Lock(), Event(), Event()
         self._scope = None
+        self.on_progress = None
+        self._merge_messages = []
+
+    def _progress(self, cancel, **values):
+        self._fence(cancel)
+        if self.on_progress is not None:
+            self.on_progress(values, cancel)
+
+    def _merge_message(self, record, remote):
+        """Describe field winners using the store's existing timestamp rule.
+
+        Never include field values (messages and learning content can be private).
+        This is a receipt, not a second merge implementation.
+        """
+        if record.payload == remote:
+            return
+        local = record.payload
+        fields = (set(local) | set(remote)) - {'id', '_field_versions'}
+        absent = object()
+        changed = sorted(f for f in fields if local.get(f, absent) != remote.get(f, absent))
+        if not changed and not record.deleted:
+            return
+        versions = local.get('_field_versions', {})
+        theirs = remote.get('_field_versions', {})
+        here = [f for f in changed if versions.get(f, [0, '']) > theirs.get(f, [0, ''])]
+        there = [f for f in changed if f not in here]
+        title = record.plan_key
+        get_plan = getattr(self.store, 'get_plan', None)
+        if callable(get_plan) and record.plan_key:
+            try:
+                plan = get_plan(record.plan_key)
+                title = plan.get('title') or plan.get('goal') or title
+            except ValueError:
+                pass  # A local plan deletion can precede its dependent rows.
+        label = {'plans': '计划信息', 'points': '知识点', 'modules': '模块',
+                 'teacher_profile': '老师记录', 'question_bank': '题目'}.get(record.entity, '学习记录')
+        owner = f'计划「{title[:80]}」' if title else '账号设置'
+        if record.deleted:
+            self._merge_messages.append(f'{owner}的{label}已在本机删除：保留本机删除，没有用云端副本恢复。')
+            return
+        names = {'title': '标题', 'goal': '学习目标', 'final_goal': '验收目标', 'state': '进度状态',
+                 'archived': '归档状态', 'window': '学习日期与时长', 'notes': '备注',
+                 'summary': '掌握目标', 'minutes': '预计时长', 'uses': '用题记录', 'value': '设置'}
+        def describe(side, selected):
+            if not selected:
+                return f'{side} 0 项'
+            text = '、'.join(names.get(f, label) for f in selected[:3])
+            suffix = f'等 {len(selected)} 项' if len(selected) > 3 else ''
+            return f'{side}的{text}{suffix}'
+        self._merge_messages.append(f'{owner}的{label}有两端修改：按字段更新时间保留{describe("本机", here)}、{describe("云端", there)}。')
 
     def cancel(self):
         self._cancel.set()
@@ -194,6 +244,7 @@ class CourseSync:
             self._fence(cancel)
             cursor, count = self._apply_page(cursor, pending, page["entities"], page["next_cursor"], cancel)
             total += count
+            self._progress(cancel, phase='pull', completed=total)
             if not page["has_more"]:
                 return cursor, total
 
@@ -258,6 +309,10 @@ class CourseSync:
         for record, revision in acknowledgements:
             self.store.mark_synced(record.entity, record.entity_id, record.local_revision, revision)
         if changes:
+            for incoming, _ in changes:
+                candidate = local.get(_wire_id(_values(incoming)))
+                if candidate is not None and not incoming.deleted:
+                    self._merge_message(candidate, incoming.payload)
             self.store.apply_remote(changes)
         next_cursor["since"] = since
         self._save(next_cursor, cancel)
@@ -329,10 +384,19 @@ class CourseSync:
         try:
             self._cancel.clear()
             self._fence(cancel)
-            cursor, pulled = self._pull(self._cursor(), self.store.pending_records(limit), cancel)
+            self._merge_messages = []
+            # For the UI count and merge receipt, include the whole outbox;
+            # network pages and upload batches remain bounded at 500 records.
+            count_limit = 2**31-1 if self.on_progress is not None else limit
+            self._progress(cancel, phase='start', completed=0)
+            cursor, pulled = self._pull(self._cursor(), self.store.pending_records(count_limit), cancel)
             summary = dict(uploaded=0, pulled=pulled, conflicts=0)
             pending = deepcopy(self.store.pending_records(limit))
             acknowledgements = []
+            total = len(self.store.pending_records(count_limit))
+            failures = []
+            network_failures = 0
+            self._progress(cancel, phase='upload', completed=0, total=total, failed=0)
             for record in pending:
                 for attempt in range(2):
                     try:
@@ -345,13 +409,21 @@ class CourseSync:
                         self._send(record, cursor, cancel, deleting=record.deleted,
                                    persist_cursor=False, acknowledgements=acknowledgements)
                         summary["uploaded"] += 1
+                        network_failures = 0
                         break
                     except PlanError as exc:
                         if exc.code not in {"SYNC_CONFLICT", "SYNC_TOMBSTONED"}:
-                            # A previous write in this round may already be
-                            # committed remotely. Persist its cursor before
-                            # acknowledging those exact local revisions. A
-                            # cancellation deliberately leaves all rows queued.
+                            # Retry the same request ID once. A lost response
+                            # must not create another remote revision.
+                            retryable = exc.code == 'SYNC_UNAVAILABLE'
+                            isolated = exc.code in {'SYNC_UNAVAILABLE', 'SYNC_RECORD_TOO_LARGE',
+                                'SYNC_RECORD_INVALID', 'SYNC_RESPONSE_INVALID', 'SYNC_COURSE_INVALID'}
+                            if retryable and attempt == 0:
+                                continue
+                            if isolated:
+                                failures.append(exc)
+                                network_failures = network_failures + 1 if getattr(exc, 'network_unavailable', False) else 0
+                                break
                             if exc.code != "CANCELLED":
                                 self._flush_acknowledgements(cursor, cancel, acknowledgements)
                             raise
@@ -369,12 +441,18 @@ class CourseSync:
                         if record is None:
                             break
                         if attempt or exc.code == "SYNC_TOMBSTONED":
-                            self._flush_acknowledgements(cursor, cancel, acknowledgements)
-                            raise
+                            failures.append(exc)
+                            break
                     except BaseException as exc:
                         if not (isinstance(exc, PlanError) and exc.code == "CANCELLED"):
                             self._flush_acknowledgements(cursor, cancel, acknowledgements)
                         raise
+                self._progress(cancel, phase='upload', completed=summary['uploaded'], total=total, failed=len(failures))
+                if network_failures >= 2:
+                    # Two consecutive records each failed twice at transport
+                    # level: leave the rest queued instead of spending hundreds
+                    # of request timeouts while the connection is unavailable.
+                    break
             self._fence(cancel)
             # The cursor is durable before the queue is acknowledged.  If the
             # process stops between these two calls, the deterministic request
@@ -384,8 +462,18 @@ class CourseSync:
             self._mark_synced(acknowledgements)
             notices = getattr(self.store, 'take_merge_notices', None)
             merged_conflicts = notices() if callable(notices) else 0
-            if merged_conflicts: summary['merged_conflicts'] = merged_conflicts
+            if merged_conflicts:
+                summary['merged_conflicts'] = merged_conflicts
+                summary['merge_messages'] = list(dict.fromkeys(self._merge_messages))
             summary["pending"] = len(self.store.pending_records(limit))
+            if failures:
+                summary['failed'] = len(failures)
+                summary['total'] = total
+                summary['failure_codes'] = sorted({exc.code for exc in failures})
+                # Persist/acknowledge successes first; only an entirely failed
+                # upload batch is a round failure. Pull failure still fails fast.
+                if not summary['uploaded']:
+                    raise failures[0]
             summary["ok"] = summary["pending"] == 0
             return summary
         finally:
