@@ -97,4 +97,35 @@ realm 导入模板不是线上现有 realm 的导出，`--import-realm` 不覆�
 `realm_admin.py` 仅保留原 UPDATE_PASSWORD 可重复执行/回滚工具，本次不调用。
 正式环境独立存在的密码黑名单、SMTP、密钥及凭据不复制进源码。
 
+## BUG-45：网关固定地址与动态地址池
+
+网关在 `mentorflow-e1-preview_internal` 的 `172.18.0.5` 与
+`mentorflow-e1-preview_edge` 的 `172.19.0.2` 必须留在动态地址池外。
+现用完整 Compose 命令的最后追加 `-f compose.network45.yml`（使用部署后的绝对路径）：
+它声明网关固定 IP、Keycloak 原有单地址信任，以及两个高段动态池
+`172.18.128.0/17`、`172.19.128.0/17`。不改镜像、端口、数据卷或应用功能。
+不要仅凭修改 YAML 就声称现有网络已经生效：Docker 网络的 IPAM 需要一次维护窗口重建。
+
+`ops/network45.py` 是一次性分步迁移工具，不是启动守护程序；仅由架构师获准后
+在服务器执行。按 `backup → check-compose → preflight → quiesce → detach → rebuild →
+attach → start → verify` 执行，每步为独立命令，例如：
+
+```sh
+python3 network45.py backup --state /opt/mentorflow/state/bug45-20261010 --env-file /现用env文件
+python3 network45.py check-compose --state /opt/mentorflow/state/bug45-20261010 --overlay /部署路径/compose.network45.yml
+```
+
+工具从真实 Docker inspect 与 Compose labels 备份现行配置，保留当前所有容器的 IP、
+DNS aliases、运行状态、restart 策略及 SMTP 外联网；当前动态低段 IP 会显式保留，
+未来新增动态端点只从高段分配。只重建两个网络，不删应用容器、镜像、卷或数据库。
+停着的重复旧网关保留但断网且 `restart=no`，切换和回退均不让它抢现用网关 IP。
+配置出现未支持端点、旧网络 ID、信任地址/子网不符或库存变更时在停机前停止，
+不得跳过错误。实际部署文件可能含密码；备份留在服务器，不提交。
+
+`rehearse` 在验证现网后临时停网关并释放它的端点，让其余服务与两个全新动态探针
+先起来，再接回网关，验证高段分配与低段固定地址不会冲突；不是一次真实主机重启。
+`rollback` 可在切换中断后按原网络 IPAM 恢复，仍隔离旧网关；回退会恢复原冲突风险。
+验证默认检查四个公网入口最终 HTTP 200（公网 IP 证书需现有 CA 时传 `--ca`），
+然后由用户手工确认客户端登录。完整现场命令和故障处理见该批交付的 `README-server.md`。
+
 源码溯源见 `source_manifest.json`；本地接口审计、运行规模和验证证据见任务回执链接的 report.md。
