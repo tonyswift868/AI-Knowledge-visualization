@@ -15,6 +15,12 @@ import sys
 import tempfile
 import time
 import uuid
+from functools import lru_cache
+
+# Paint before cryptography/Qt imports or hidden shutdown-monitor windows.
+if __name__ == '__main__' and sys.argv[1:2] == ['launch']:
+    from refactor.desktop.delivery.startup_window import native_splash
+    native_splash()
 
 from refactor.desktop.delivery.update_protocol import canonical
 from refactor.desktop.delivery.update_protocol import digest
@@ -110,6 +116,15 @@ def historical(raw, public_keys):
     This is only local version/bootstrap identification. It never admits new
     downloads: install and apply always use current-time verify_release below.
     """
+    return _historical_bytes(bytes(raw), tuple(sorted(public_keys.items())))
+
+
+@lru_cache(maxsize=2)
+def _historical_bytes(raw, key_items):
+    # Reuse only byte-identical metadata with the same compiled public keys.
+    # Unlike a stat hint this cannot hide changed metadata. Network admission
+    # still uses fresh verify_release/anti-replay checks, never this local cache.
+    public_keys = dict(key_items)
     witness_version(raw, public_keys, channel='stable')
     doc = strict_json(raw)
     issued = datetime.fromisoformat(doc['signed']['issued_at'].replace('Z', '+00:00'))
@@ -148,6 +163,18 @@ def resolve_launch_root(executable, selected=None):
     if image not in (root / 'App/MentorFlow.exe', root / 'MentorFlow.exe'):
         raise SecurityError('desktop entry outside selected installation')
     return root
+
+
+def check_launch_files(root, release=None, *, executable=None):
+    """Small signed identity/presence check; hashes belong to install/background."""
+    release = release or installed(root)
+    app = app_path(root)
+    if executable is not None and Path(executable).absolute() != app / 'MentorFlow.exe':
+        raise SecurityError('per-user entry outside selected installation')
+    for name in ('MentorFlow.exe', 'UserRuntime/UserRuntime.exe'):
+        if name not in release.rows or not plain(app / name).is_file():
+            raise SecurityError('missing signed launch file: ' + name)
+    return release
 
 
 def verify_recovery_runtime(root, release=None):
@@ -273,7 +300,6 @@ def refresh_updater(root):
             release = installed(root)
             if (root / JOURNAL).exists() and strict_json(read(root / JOURNAL)).get('phase') not in ('HEALTHY', 'ROLLED_BACK'):
                 raise RecoverableError('App health transaction not finished; retry next startup')
-            verify_payload(root, release)
             result = replace_updater(root, release)
     except RecoverableError as error:
         result = dict(status='DEFERRED', detail=str(error))
@@ -490,9 +516,19 @@ def verify_gui(root, *, executable):
     if Path(executable).absolute() != app / 'MentorFlow.exe':
         raise SecurityError('per-user entry outside selected installation')
     from refactor.desktop.delivery.gui_bootstrap_trust import CLOSURE
-    from refactor.desktop.delivery.gui_bootstrap_trust import closure_paths
     verify_tree(app, release, subset=[CLOSURE])
+    closure = gui_configuration(root, release)
+    verify_tree(app, release, subset=closure)
+    return release
+
+
+def gui_configuration(root, release):
+    """Loader namespace check after signed bytes are verified or stat-reused."""
+    from refactor.desktop.delivery.gui_bootstrap_trust import CLOSURE, closure_paths
+    app = app_path(root)
     closure = closure_paths(strict_json(read(app / CLOSURE)))
+    if not set(closure).issubset(release.rows):
+        raise SecurityError('unsigned bootstrap file')
     # Qt scans all platform plugins, not just qwindows. The signed closure
     # cannot be bypassed by placing an extra DLL or qt.conf beside it.
     for item in (app / '_internal/PySide6/plugins/platforms').iterdir():
@@ -501,8 +537,7 @@ def verify_gui(root, *, executable):
     for name in ('qt.conf', '_internal/qt.conf', '_internal/PySide6/qt.conf'):
         if (app / name).exists() and name not in closure:
             raise SecurityError('unverified Qt loader configuration')
-    verify_tree(app, release, subset=closure)
-    return release
+    return closure
 
 
 def admit(root, envelope, public_keys, *, repair=False):
@@ -703,15 +738,42 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             if not (root / 'Updater').exists():
                 shutil.copytree(root / 'App/UserRuntime', root / 'Updater')
                 atomic(root / UPDATER_RELEASE, release.envelope)
+            # Installer owns the writer lock and requires the Updater stopped.
+            # Finish its replacement BEFORE launching the App's classifier.
+            # Keep the old pair until visible health succeeds, for rollback.
+            old_runtime = stage / 'previous-updater'
+            old_binding = read(root / UPDATER_RELEASE) if (root / UPDATER_RELEASE).exists() else None
+            runtime_backup_ready = False
+            if refresh_runtime:
+                shutil.copytree(root / 'Updater', old_runtime)
+                runtime_backup_ready = True
+            runtime = replace_updater(root, release, public_keys=public_keys) if refresh_runtime else None
+            from refactor.desktop.delivery.startup_integrity import remember_verified, verified_stat_snapshot
+            verified_stats = verified_stat_snapshot(root, release)
             mark('NEW_ACTIVE'); progress(95)
             proof = (health or launch_health)(root, release)
             if not isinstance(proof, dict) or proof.get('ready') is not True:
                 raise RecoverableError('new version did not become ready')
-            runtime = replace_updater(root, release, public_keys=public_keys) if refresh_runtime else None
             mark('HEALTHY'); progress(100)
+            try:
+                remember_verified(root, release, stats=verified_stats)
+            except OSError:
+                # An optimization record cannot turn a healthy install into a
+                # failed transaction. Missing record means a full check next time.
+                import logging
+                logging.getLogger(__name__).warning('integrity stat record unavailable', exc_info=True)
+            if old_runtime.exists():
+                try: shutil.rmtree(old_runtime)
+                except OSError: pass  # committed install; cleanup cannot undo health
             return dict(status='HEALTHY', version=release.version, health=proof,
                         install_uac_count=0, update_uac_count=0, **({'updater': runtime} if runtime else {}))
         except BaseException:
+            if refresh_runtime and locals().get('runtime_backup_ready'):
+                failed_runtime = stage / 'failed-updater'
+                os.replace(root / 'Updater', failed_runtime)
+                os.replace(old_runtime, root / 'Updater')
+                if old_binding is not None: atomic(root / UPDATER_RELEASE, old_binding)
+                else: (root / UPDATER_RELEASE).unlink(missing_ok=True)
             if current and moved:
                 recover(root, public_keys)
                 # A bad target must not leave the user with a closed application.
@@ -735,10 +797,7 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             raise
 
 
-# The login shell paints before the complete signed inventory finishes. Its
-# health proof must still wait for that SAME classifier, not bypass integrity.
-# Real 14,300-file packaged qualification exceeded the prior 45-second IPC gate.
-# Keep a finite budget for full verification plus public-feed timeout/Qt signal.
+# Health means a visible responsive App window, not background inventory or feed.
 STARTUP_HEALTH_TIMEOUT = 180
 
 
@@ -1003,7 +1062,7 @@ def main():
         if args.action == 'apply': pid = strict_json(read(args.intent))['pid']
         scope = (runtime_session(pid) if args.action in
                  ('install', 'apply', 'apply-pending', 'apply-latest', 'update-to-latest',
-                  'recover', 'launch', 'uninstall', 'repair-installation') else nullcontext())
+                  'recover', 'uninstall', 'repair-installation') else nullcontext())
         with scope:
             result = _execute(args, parser, progress)
         if args.result: atomic(args.result, canonical(result))

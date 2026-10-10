@@ -35,11 +35,6 @@ def _launch_checked(root, mark=lambda phase: None):
         try: core.bootstrap_legacy_identity(root)
         except (OSError, RuntimeError, ValueError, ImportError):
             raise _NeedsRepair from None
-    try:
-        install.verify_recovery_runtime(root)
-    except (OSError, RuntimeError, ValueError):
-        raise _NeedsRepair from None
-    mark('recovery_runtime_verified')
     with InstallUpdateLock(root):
         install.require_app_stopped(root)
         if core.unsafe_teardown('next_launch'):
@@ -84,6 +79,9 @@ def launch(root):
     The existing native health handshake confirms the App's visible window.
     No timer, cache receipt or splash window is accepted as App health.
     """
+    from refactor.desktop.delivery.startup_window import has_native_splash
+    if has_native_splash():
+        return _launch_native(root)
     import json
     from contextvars import copy_context
     import threading
@@ -111,14 +109,21 @@ def launch(root):
     layout.addWidget(progress)
     apply(splash, 'sakura')
     splash.reject = lambda: None  # Esc cannot hide the only startup feedback.
-    splash.showNormal(); splash.raise_(); splash.activateWindow()
+    from refactor.desktop.delivery.startup_window import foreground, window_state, log_phase, close_native_splash
+    foreground(splash)
     app.processEvents()
+    close_native_splash()
+    log_phase(root, 'startup_window_visible', **window_state(splash))
     mark('startup_window_visible')
 
     outcome = {}
     done = threading.Event()
     def work():
-        try: outcome['result'] = _launch_checked(root, mark)
+        try:
+            from refactor.desktop.delivery.per_user_runtime_session import runtime_session
+            # First visible window precedes the hidden WM_QUERYENDSESSION listener.
+            with runtime_session():
+                outcome['result'] = _launch_checked(root, mark)
         except BaseException as error: outcome['error'] = error
         finally: done.set()
     loop = QEventLoop()
@@ -142,6 +147,36 @@ def launch(root):
             pass  # Diagnostics never change the signed launch decision.
     if isinstance(outcome.get('error'), _NeedsRepair):
         return repair_update_shell(root)
+    if 'error' in outcome: raise outcome['error']
+    return outcome['result']
+
+
+def _launch_native(root):
+    """Normal shortcut startup needs no Qt in its launcher process."""
+    import threading
+    import time
+    from contextvars import copy_context
+    from refactor.desktop.delivery.startup_window import pump_native_messages, close_native_splash, log_phase
+    from refactor.desktop.delivery.per_user_runtime_session import runtime_session
+    done = threading.Event(); outcome = {}; timings = []
+    started = time.perf_counter()
+    def mark(phase):
+        timings.append(dict(phase=phase, seconds=round(time.perf_counter()-started, 6)))
+    def work():
+        try:
+            with runtime_session(): outcome['result'] = _launch_checked(root, mark)
+        except BaseException as error: outcome['error'] = error
+        finally: done.set()
+    context = copy_context()
+    threading.Thread(target=lambda: context.run(work), daemon=True, name='mf-startup').start()
+    try:
+        while not done.is_set():
+            pump_native_messages(); done.wait(.01)
+    finally:
+        close_native_splash()
+        log_phase(root, 'launcher_complete', phases=timings,
+                  error=type(outcome['error']).__name__ if 'error' in outcome else None)
+    if isinstance(outcome.get('error'), _NeedsRepair): return repair_update_shell(root)
     if 'error' in outcome: raise outcome['error']
     return outcome['result']
 

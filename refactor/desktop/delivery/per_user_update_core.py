@@ -111,7 +111,9 @@ def _startup_policy_evidence(root, current, service=None):
     evidence = [current]
     highest = install.plain(root / install.HIGHEST)
     if highest.exists():
-        evidence.append(verified_witness(install.read(highest), install.keys(), channel=current.signed['channel']))
+        raw = install.read(highest)
+        evidence.append(current if raw == current.envelope else
+                        verified_witness(raw, install.keys(), channel=current.signed['channel']))
     cache = getattr(getattr(service, 'cache', None), 'root', None)
     if cache is None:
         cache = (Path(os.environ['LOCALAPPDATA']) / install.configured().app_id / 'Updates'
@@ -135,12 +137,15 @@ def get_startup_update_state(root, *, service=None, check_feed=True, full=True, 
             release = _canonical_identity_candidate(root)
             return _startup_result('REPAIR_REQUIRED', current=release.version,
                                    reason='canonical_identity_recovery_required')
-        install.verify_recovery_runtime(root, release)
+        if full: install.verify_recovery_runtime(root, release)
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
         return _startup_result('FATAL_UNRECOVERABLE', reason='recovery_runtime_unverified')
     try:
-        install.verify_gui(root, executable=install.app_path(root)/'MentorFlow.exe')
-        if full: install.verify_payload(root, release)
+        if full:
+            install.verify_gui(root, executable=install.app_path(root)/'MentorFlow.exe')
+            install.verify_payload(root, release)
+        else:
+            install.check_launch_files(root, release)
     except (OSError, RuntimeError, ValueError, KeyError, TypeError):
         return _startup_result('REPAIR_REQUIRED', current=release.version, reason='payload_verification_failed')
     from refactor.desktop.delivery.update_protocol import mandatory_floor

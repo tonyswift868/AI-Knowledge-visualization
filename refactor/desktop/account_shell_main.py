@@ -1867,6 +1867,9 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         from PySide6.QtWidgets import QApplication
 
         app = QApplication(sys.argv)
+        if install_root is not None:
+            from .delivery.startup_window import log_phase, foreground, window_state
+            log_phase(install_root, 'qt_ready')
         app.setOrganizationName("MentorFlow")
         app.setApplicationName("MentorFlow")
         instance_lock = _acquire_instance_lock(shell_runtime)
@@ -1894,19 +1897,34 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         gate.cancel_button.hide()
         startup_close = lambda: diagnostics.request_exit('USER_MAIN_CLOSE')
         gate.close_button.clicked.connect(startup_close)
-        gate.showNormal()
+        if install_root is not None:
+            foreground(gate)
+        else:
+            gate.showNormal()
         app.processEvents()
+        if install_root is not None:
+            log_phase(install_root, 'login_window_visible', **window_state(gate))
         gate.close_button.clicked.disconnect(startup_close)
         shell = AccountShell(app, shell_runtime, gate_window=gate)
         shell.show()
         if install_root is not None:
+            foreground(gate)
             from .updates import DesktopUpdates
 
             app._mentorflow_updates = DesktopUpdates(app, install_root, shell.gate, login_handoff=shell)
             app._mentorflow_updates.changed.connect(
                 lambda value: diagnostic_event('update', state=value.get('state', 'UNKNOWN')))
             app._mentorflow_updates.changed.connect(shell._resume_update_login)
+            readiness_logged = [False]
+            def record_login_ready(value):
+                if not readiness_logged[0] and value.get('login_allowed'):
+                    readiness_logged[0] = True
+                    log_phase(install_root, 'login_window_input_ready', **window_state(gate))
+            app._mentorflow_updates.changed.connect(record_login_ready)
             app._mentorflow_updates.start()
+            from .delivery.startup_integrity import schedule
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(0, lambda: schedule(install_root, app, shell))
             if update_attempt and update_nonce:
                 from PySide6.QtCore import QTimer
 
