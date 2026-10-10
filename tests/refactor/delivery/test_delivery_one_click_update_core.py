@@ -131,7 +131,10 @@ def test_offline_next_launch_still_opens_current_not_stale_previous(case, monkey
     (root/'last-recovery.json').write_bytes(canonical(dict(attempt=journal['attempt'],health=dict(ready=True,pid=1))))
     monkeypatch.setattr(core, 'one_click_service', lambda _: service)
     monkeypatch.setattr(service.cache.transport, 'fetch_metadata', lambda *a: (_ for _ in ()).throw(RecoverableError('offline')))
-    monkeypatch.setattr(ProcessPeer, 'inspect', lambda _: dict(elevated=False, integrity_rid=8192))
+    # Native enumeration can encounter another MentorFlow.exe on this machine;
+    # keep the privilege stub complete without treating it as this fixture's App.
+    monkeypatch.setattr(ProcessPeer, 'inspect', lambda _: dict(
+        elevated=False, integrity_rid=8192, executable=str(root/'unrelated-process.exe')))
     launches = []
     monkeypatch.setattr(install, 'launch_health', lambda r,v: (launches.append(v.version) or ready(r,v)))
     monkeypatch.setattr(sys,'argv',['UserRuntime','launch','--root',str(root)])

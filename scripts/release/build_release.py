@@ -10,7 +10,7 @@ REFERENCE=Path(os.environ.get('MF_REFERENCE_PAYLOAD',str(Path(__file__).parent/'
 PUBLIC=Path(os.environ.get('MF_PUBLIC_KEY',str(Path(__file__).parent/'inputs/public-key.json')))
 NODE=Path(os.environ.get('MF_NODE_DIR',str(Path(shutil.which('node') or 'node').resolve().parent)))
 COMPILER=Path(os.environ.get('MF_ISCC',str(Path(os.environ.get('ProgramFiles(x86)','C:/Program Files (x86)'))/'Inno Setup 7/ISCC.exe')))
-FEED=os.environ.get('MF_FEED','https://89.45.45.28/mentorflow/updates/app/stable/stable.json')
+FEED=os.environ.get('MF_FEED','https://aiteacher.clannad.win/updates/app/stable/stable.json')
 TEMP_ROOT=Path(os.environ.get('MF_TEMP_ROOT',os.environ.get('RUNNER_TEMP',tempfile.gettempdir())))
 INPUTS=Path(os.environ.get('MF_RELEASE_INPUTS',str(Path(__file__).parent/'inputs')))
 

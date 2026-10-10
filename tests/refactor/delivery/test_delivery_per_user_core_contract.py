@@ -40,7 +40,9 @@ def test_initial_repair_cli_preflight_and_install_share_admission(case, monkeypa
     base, root, _, _ = case
     source, raw = initial_failure(case, monkeypatch)
     envelope_path = base / 'release-input.json'; envelope_path.write_bytes(raw)
-    monkeypatch.setattr(ProcessPeer, 'inspect', lambda _: dict(elevated=False, integrity_rid=8192))
+    # Enumeration of a foreign same-named process still needs the image field.
+    monkeypatch.setattr(ProcessPeer, 'inspect', lambda _: dict(
+        elevated=False, integrity_rid=8192, executable=str(base/'unrelated-process.exe')))
     monkeypatch.setattr(engine, 'launch_health', ready)  # inert contract test only
     monkeypatch.setattr(sys, 'argv', ['per_user_install', 'preflight', '--parent', str(base)])
     before = file_snapshot(root)

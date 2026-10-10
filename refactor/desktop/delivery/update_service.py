@@ -176,12 +176,16 @@ class MatureUpdateService:
             self.telemetry = UpdateTelemetry()
             self.telemetry.mark('T00_UPDATE_BEGIN')
             with InstallUpdateLock(self.cache.root):
-                self._state('CHECKING', '正在检查更新…')
+                self._state('CHECKING', '正在检查更新…', pointer_status='not_checked', pointer_mismatch=False)
                 self.telemetry.mark('T01_METADATA_FETCH_BEGIN')
-                raw = self._fetch_metadata(cancel)
+                highest = self._witness()[0]
+                def validate_metadata(value):
+                    return verify_release(value, self.keys, current=self.current, channel=self.channel,
+                                          highest_seen=highest)
+                raw = self._fetch_metadata(cancel, validate=validate_metadata)
                 self.telemetry.totals['bytes_read'] += len(raw)
                 release = verify_release(raw, self.keys, current=self.current, channel=self.channel,
-                                         highest_seen=self._witness()[0])
+                                         highest_seen=highest)
                 from refactor.desktop.delivery.runtime_path_budget import budget
                 budget(self.install_root,release.rows)
                 self.telemetry.mark('T02_METADATA_VERIFIED')
@@ -216,16 +220,44 @@ class MatureUpdateService:
             if str(exc)==MESSAGE: self.snapshot={**self.snapshot,'message':MESSAGE}
         return dict(self.snapshot)
 
-    def _fetch_metadata(self, cancel=None):
+    def _fetch_metadata(self, cancel=None, *, validate=None):
+        import logging
         from refactor.desktop.delivery.update_download import HTTPTransport, retry_wait
-        from refactor.desktop.delivery.update_protocol import MAX_METADATA, RecoverableError, DownloadCancelled
+        from refactor.desktop.delivery.update_protocol import MAX_METADATA, RecoverableError, DownloadCancelled, SecurityError
+        from refactor.desktop.delivery.update_protocol import release_pointer, pointer_matches
         cancelled = cancel or (lambda: self._closed or self.cancel_event.is_set())
+        transport = self.cache.transport
+        pointer = None
+        if (validate is not None and isinstance(transport, HTTPTransport)
+                and len(transport.source_urls(self.metadata_url)) == 2
+                and self.metadata_url.endswith('/stable/stable.json')):
+            try:
+                url = self.metadata_url.rsplit('/', 1)[0] + '/latest.json'
+                pointer = release_pointer(transport.fetch_metadata(url, 2048, cancel=cancelled,
+                                                                 validate=release_pointer, deadline=5.0))
+                cached = read_release_witness(self.cache.root, self.keys, channel=self.channel)
+                if cached is not None and pointer_matches(pointer, cached):
+                    validate(cached.envelope)  # Recheck expiration, signature and high-water policy NOW.
+                    self.snapshot = {**self.snapshot, 'pointer_status':'unchanged_verified_cache'}
+                    return cached.envelope
+                self.snapshot = {**self.snapshot, 'pointer_status':'changed'}
+            except DownloadCancelled:
+                raise
+            except (RecoverableError, SecurityError, OSError):
+                self.snapshot = {**self.snapshot, 'pointer_status':'unavailable_full_manifest'}
+                logging.getLogger(__name__).info('update pointer unavailable; checking signed manifest directly')
         for attempt in range(4):  # initial request + three automatic retries
             if cancelled(): raise DownloadCancelled('update check cancelled')
             try:
-                transport = self.cache.transport
-                return (transport.fetch_metadata(self.metadata_url, MAX_METADATA, cancel=cancelled)
-                        if isinstance(transport, HTTPTransport) else transport.fetch_metadata(self.metadata_url, MAX_METADATA))
+                raw = (transport.fetch_metadata(self.metadata_url, MAX_METADATA, cancel=cancelled, validate=validate)
+                       if isinstance(transport, HTTPTransport) else transport.fetch_metadata(self.metadata_url, MAX_METADATA))
+                if pointer is not None and validate is not None:
+                    matched = pointer_matches(pointer, validate(raw))
+                    self.snapshot = {**self.snapshot, 'pointer_mismatch':not matched,
+                                     'pointer_status':'matched_manifest' if matched else 'mismatch_signed_used'}
+                    if not matched:
+                        logging.getLogger(__name__).warning('update pointer mismatch; using verified signed manifest')
+                return raw
             except DownloadCancelled:
                 raise
             except RecoverableError:
@@ -259,7 +291,11 @@ class MatureUpdateService:
                 release = verify_release(self.release.envelope, self.keys, current=self.current, channel=self.channel,
                                          highest_seen=self._witness()[0])
                 self._remember_release(release)
-                self._state('DOWNLOADING', '正在下载变化文件…', actual_downloaded_bytes=0)
+                # Any installed version can reuse equal content. Check-time
+                # manifest rows are an estimate only; hash actual App files now.
+                self.plan.update(self.cache.local_file_plan(release, self.install_root/'App', self.current,
+                    cancel=cancelled, telemetry=getattr(self, 'telemetry', None)))
+                self._state('DOWNLOADING', '正在下载变化文件…', actual_downloaded_bytes=0, **self.plan)
                 assets = [self.release.assets[p] for p in self.plan['download_paths']]
                 import time
                 last_report = 0

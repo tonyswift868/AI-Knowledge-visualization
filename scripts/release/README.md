@@ -128,6 +128,7 @@ python -B scripts/release/sign_and_stage.py --artifact '<下载的ZIP或解压�
 /opt/mentorflow/update-static/e108/app/
   objects/<sha256>
   stable/stable.json
+  stable/latest.json  # 小型未签名指针；最终判断只信已验签 stable.json
   .staging-<version>/objects/<sha256>
   .staging-<version>/stable/stable.json
   releases/<version>/stable.json
@@ -141,6 +142,44 @@ latest 是普通目录，不使用软链接或 junction。切换时在 latest/ �
 硬链接，核对大小和 SHA256，然后 os.replace 原子覆盖固定文件；硬链接
 失败就停止，不降级成软链接或复制。版本目录与 latest 必须在同一文件系统。
 下载重定向保持：`/download` → `/releases/latest/MentorFlow-Setup.exe`。
+
+## 更新地址、清单压缩与小指针
+
+新包的 MF_FEED 默认值为 `https://aiteacher.clannad.win/updates/app/stable/stable.json`，
+签名清单中的 objects 地址也随此根地址生成。旧 IP
+`https://89.45.45.28/mentorflow/updates/app/` 保留，旧客户端不用改。
+新客户端只对这两个固定根地址作同路径镜像回退，不接受任意跨站 URL。
+域名用系统信任根，IP 用现有随包 account-api.pem 加入信任；不关闭 TLS 校验。
+域名连接/证书/HTTP/解压/清单验签或下载内容校验失败时退回 IP；取消不回退。
+两个固定来源各最多一个网络线程，域名超时后即使旧 DNS/请求仍未结束，IP 也能
+独立开始；同一来源不会无限追加挂起线程。其他测试/自定义来源仍保持单来源限制。
+文件仍是 identity、Range 字节续传及 SHA256/大小校验，坏的远程分片重下，
+完整缓存对象被改动仍报错，不把本地损坏当镜像错误忽略。
+
+stable.json 接受 Content-Encoding: gzip，HTTPX 解压后对原始清单字节验签；
+大小限制针对解压后的内容，网络下载统计仍用实际传输字节。objects 不压缩。
+
+两种 mf-publish 模式都在同一次 promote 操作中保存 stable/latest.json：
+`version`、`metadata_version`、`sha256`、`size`（清单原始字节的指纹和长度）。
+先原子写 stable.json，再原子写 latest.json，通常约 140 字节。两个文件不能
+一次 rename 同时切换，因此读到跨切换状态时以已验签的清单为准并记录不一致；
+写指针失败会报错并保留 staging，重跑 promote 可补齐，不产生半截 JSON。
+
+检查先取指针（最多 2 KiB，每次请求总等待上限 5 秒）；与本机已验签清单的
+版本、metadata_version、指纹、长度都相同，且缓存重新通过当前有效期与高水位
+检查时，不下完整清单。缓存仍有新版/强制更新时照常提示，不能误判已是最新。
+有变化、无有效缓存、指针缺失或不合法则读完整清单。指针不授权版本、不改强制线；
+指针与验签清单不一致时记录 pointer_mismatch，采用验签清单，不被未签名提示拦住。
+架构师合入后下一次正常发布即生成指针；本任务不连接服务器部署或补写文件。
+
+### 任意旧版本的文件复用
+
+`base_versions` 与 `incremental_assets` 保留供老客户端使用，新客户端不再拿它们
+作为是否允许增量的门槛。检查阶段用本机文件清单估算；用户开始下载后，逐个核对
+实际 App 文件的大小与 SHA256，和目标签名清单相同就本地独立复制，仅下载缺失、
+不可读或指纹不同的文件。没有本机清单也可按实际文件复用；不会在登录检查时扫描
+整包。实际扫描后更新预估下载量。复制时再校验，完成后整体 verify_tree，原子替换
+及失败回滚不变；本机文件被改过不会因版本号/大小相同而被信任。
 
 ## 安装程序保留规则
 
