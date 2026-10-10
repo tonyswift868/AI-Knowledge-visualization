@@ -78,6 +78,10 @@ class SourceListsError(ValueError):
 
 _CATEGORIES = frozenset({"encyclopedia", "official_docs", "academic", "education",
     "standards", "government", "reference"})
+VIDEO_HOSTS = ('youtube.com', 'youtu.be', 'bilibili.com', 'b23.tv', 'vimeo.com',
+               'youku.com', 'iqiyi.com', 'tencentvideo.com', 'v.qq.com',
+               'douyin.com', 'ixigua.com', 'udemy.com', 'coursera.org',
+               'edx.org', 'icourse163.org', 'xuetangx.com', 'imooc.com')
 _KEYWORD_CATEGORIES = ("adult", "gambling", "piracy")
 _OWNER = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?", re.I)
 _REPO = re.compile(r"[a-z0-9_.-]{1,100}", re.I)
@@ -237,7 +241,7 @@ def blocked_keyword_reasons(text: str, *, lists: SourceLists) -> tuple[str, ...]
         if any(_has_keyword(text, keyword) for keyword in lists.blocked_keywords[kind]))
 
 
-def recommendation_rejection(url: str, *, lists=None) -> str:
+def recommendation_rejection(url: str, *, lists=None, allow_video=False) -> str:
     """URL rules for complete text material recommendations; no HTTP or body analysis."""
     normalized = normalize_url(url)
     if not normalized:
@@ -245,12 +249,17 @@ def recommendation_rejection(url: str, *, lists=None) -> str:
     parsed = urlsplit(normalized)
     policy = lists or load_lists()
     local = load_lists()
-    if any(_matches(parsed.hostname, rule) for rule in (*policy.blocked, *local.blocked)):
+    # Only the recommendation worker opts into the video-only fallback. Other
+    # import/screening policy is unchanged, as are non-video blocked sources.
+    if any(_matches(parsed.hostname, rule) and not (allow_video and rule.match in VIDEO_HOSTS)
+           for rule in (*policy.blocked, *local.blocked)):
         return '视频站或屏蔽来源'
     path = unquote(parsed.path).lower()
     if not path or re.fullmatch(r'/[a-z]{2}(?:-[a-z]{2})?', path):
         return '网站首页，不是完整资料目录'
-    if re.search(r'/(?:videos?|watch|signup|sign-up|signin|sign-in|login|log-in|enroll|register)(?:/|$)', path):
+    if re.search(r'/(?:signup|sign-up|signin|sign-in|login|log-in|enroll|register)(?:/|$)', path):
+        return '视频、报名或登录页'
+    if not allow_video and re.search(r'/(?:videos?|watch)(?:/|$)', path):
         return '视频、报名或登录页'
     if re.search(r'/(select-a-goal|syncclassroom)(/|$)', path):
         return '通用入口，不是完整资料目录'
@@ -538,7 +547,9 @@ def classify_source(url, *, lists=None, publisher_evidence=None, page_text=''):
             or re.search(r'/(?:forums?|discussions?|issues|pulls?)(?:/|$)',path,re.I)
             or (host=='learn.microsoft.com' and ('/answers/' in path or '/archive/blogs/' in path))):
         return dict(level=3,type='community',publisher=host,category='community',evidence='社区公开页面')
-    personal = bool(re.search(r'/(?:~|users?/|students?/|personal/)',path,re.I))
+    # /doc/stable/user/ and /stable/users/ are official user guides, not
+    # account homepages. Generic /users/<name> lives at the site root.
+    personal = bool(re.search(r'/(?:~|students?/|personal/)|^/users?/',path,re.I))
     for rule in type_catalog(lists).type_rules:
         if not personal and any(host == suffix or host.endswith('.'+suffix) for suffix in rule['suffixes']):
             return dict(level=rule['level'],type=rule['type'],publisher=rule['publisher'],

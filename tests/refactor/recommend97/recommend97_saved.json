@@ -1,0 +1,45 @@
+[
+  {
+    "name": "可汗学院中文·二次方程与函数",
+    "type": "课程",
+    "url": "https://zh.khanacademy.org/math/algebra/x2f8bb11595b61c86:quadratic-functions-equations",
+    "why": "中文入门课程，按单元讲二次方程的解法选择、配方、公式、因式分解、判别式和应用题，并配有随堂练习与单元自测，适合零基础跟着学。",
+    "modules": [
+      "一元二次方程的认识",
+      "解法的选择思路",
+      "配方法与公式法",
+      "因式分解法",
+      "根的判别式与根的情况",
+      "列方程解简单应用题",
+      "解法与应用的混合练习",
+      "本章梳理与自测"
+    ],
+    "title": "可汗学院中文·二次方程与函数"
+  },
+  {
+    "name": "OpenStax《Elementary Algebra 2e》第10章 Quadratic Equations",
+    "type": "教材",
+    "url": "https://openstax.org/books/elementary-algebra-2e/pages/10-1-solve-quadratic-equations-using-the-square-root-property",
+    "why": "开放大学基础教材，系统覆盖开平方法、配方法、公式法、判别式、应用题与章末复习，讲解步骤完整，可作英文补充教材。",
+    "modules": [
+      "一元二次方程的认识",
+      "解法的选择思路",
+      "配方法与公式法",
+      "因式分解法",
+      "根的判别式与根的情况",
+      "列方程解简单应用题",
+      "解法与应用的混合练习",
+      "本章梳理与自测"
+    ],
+    "title": "OpenStax《Elementary Algebra 2e》第10章 Quadratic Equations"
+  },
+  {
+    "why": "视频兜底",
+    "title": "离线混合来源验证：Python 视频课程",
+    "type": "课程",
+    "url": "https://youtube.com/playlist?list=offline97",
+    "modules": [
+      "基础"
+    ]
+  }
+]

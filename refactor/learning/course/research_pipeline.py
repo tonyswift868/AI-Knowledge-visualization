@@ -26,6 +26,7 @@ from urllib.parse import urlsplit
 from .extract import ExtractedDocument, ExtractError, extract_bytes, extract_html, useful_title
 from .source_quality import published_date, assess, rank_key, terms, body_identity, canonical_link_key
 from .source_quality import is_landing_page, body_publication_date, junk_reasons
+from .source_quality import is_video_source, recommendation_key, VIDEO_NOTE
 from .source_follow import lesson_links, is_spec_overview_index, is_document_preview
 from .source_filter import (RawHit, SourceLists, blocked_keyword_reasons,
                             load_lists, normalize_url, screen, classify_source)
@@ -36,6 +37,89 @@ from refactor.learning.course.research import ResearchCancelled
 from refactor.learning.course.research import ResearchTimeout
 from refactor.learning.course.research import ResearchUnsupportedContent
 from refactor.learning.course.research import ResearchUploadRequired, ResearchFetchError, material_upload_guidance
+
+
+class GithubStars:
+    """Optional public metadata, cached on this account's machine for one day.
+
+    Run on the recommendation worker, never on the GUI thread. Negative results
+    are cached too, so an unavailable/rate-limited API does not get hammered.
+    """
+    def __init__(self, account_id, data_root, *, transport=None, clock=time.time):
+        from ..preferences.storage import AccountJSON
+        self.storage = AccountJSON(account_id, data_root, 'github-stars.json')
+        self.transport, self.clock = transport, clock
+
+    def get(self, url, *, cancel=None):
+        from .source_filter import github_repo
+        from ..preferences.storage import StorageError
+        import httpx
+        repo = github_repo(url)
+        if not repo or (cancel and cancel.is_set()):
+            return None
+        key = '/'.join(repo).lower()
+        try:
+            with self.storage.lock:
+                try:
+                    cache = self.storage.read({})
+                except StorageError:
+                    cache = {}
+                now = self.clock()
+                cache = {k: v for k, v in cache.items() if isinstance(v, dict)
+                         and type(v.get('at')) in (float, int) and 0 <= now - v['at'] < 86400}
+                if key in cache:
+                    stars = cache[key].get('stars')
+                    return stars if type(stars) is int and stars >= 0 else None
+                stars = None
+                try:
+                    with httpx.Client(transport=self.transport, timeout=3,
+                                      headers={'Accept': 'application/vnd.github+json',
+                                               'User-Agent': 'MentorFlow',
+                                               'X-GitHub-Api-Version': '2022-11-28'}) as client:
+                        response = client.get('https://api.github.com/repos/' + '/'.join(repo))
+                    if response.status_code == 200:
+                        value = response.json().get('stargazers_count')
+                        if type(value) is int and value >= 0:
+                            stars = value
+                except (httpx.HTTPError, ValueError, TypeError, AttributeError):
+                    pass
+                if cancel and cancel.is_set():
+                    return None
+                # Keep public metadata small even after years of recommendations.
+                cache = dict(sorted(cache.items(), key=lambda item: item[1]['at'])[-511:])
+                cache[key] = dict(at=now, stars=stars)
+                self.storage.write(cache)
+                return stars
+        except (OSError, StorageError):
+            return None
+
+
+def prepare_recommendations(rows, *, lists=None, stars=None, cancel=None, previous=()):
+    """Order checked links; video is a fallback only when no text was found."""
+    cards = []
+    for row in rows:
+        if cancel and cancel.is_set():
+            raise ResearchCancelled()
+        card = dict(row)
+        card['is_video'] = is_video_source(card.get('final_url') or card['url'],
+                                         card.get('title', ''), card.pop('_page_prefix', ''))
+        if card['is_video']:
+            card['video_note'] = VIDEO_NOTE
+        else:
+            card.pop('video_note', None)
+        # Model output / an old draft is never a source of GitHub star counts.
+        card.pop('github_stars', None)
+        if stars is not None:
+            count = stars.get(card.get('final_url') or card['url'], cancel=cancel)
+            if count is not None:
+                card['github_stars'] = count
+        cards.append(card)
+    has_text = any(not c['is_video'] for c in cards) or any(
+        not c.get('is_video', is_video_source(c.get('final_url') or c['url'], c.get('title', '')))
+        for c in previous)
+    if has_text:
+        cards = [c for c in cards if not c['is_video']]
+    return sorted(cards, key=lambda c: recommendation_key(c, lists=lists))
 
 
 def _canonical_source_key(source):
