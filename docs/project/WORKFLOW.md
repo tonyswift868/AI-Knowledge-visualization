@@ -138,7 +138,7 @@
   cd D:\MentorFlow-office\client\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/client
-  git reset --hard <主目录 git rev-parse --short HEAD，写在回执>
+  git reset --hard f1bda5b9
 提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
 禁止 push、禁止在 GitHub 上触发工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。不连线上服务器做同步测试（用 tests 里现有的本机假服务器/服务器测试夹具）。D:\MentorFlowApp 只读（可读 Data\logs\mentorflow.log、复制 course.sqlite3 到测试目录分析）；D:\MentorFlowData\account-shell 只读；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md：中间产物用完即删，回执写明最终占用。测试用 D:\MentorFlow\.venv\Scripts\python.exe；前端依赖用 D:\MentorFlow\.local\web-deps 和 D:\MentorFlow\.local\node（不提交 dist）。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
 同时在跑：MF-05（platform）改登录窗口与注册页（refactor/desktop/ 下登录相关文件），和你不冲突。
