@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 开头三节和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-10）：线上 2.0.7（第九十五、九十六批：同步提速与刷新、注册页预热与输入修复）。96-MF04（启动先出窗口、更新提示在登录窗口；部分完成：打包版 1.58 秒出窗）已合入 16f8c6b8，2.0.7 已发布（2026-10-10）。等用户在 2.0.6 上确认注册页能输入、“我的计划”同步后直接出现。第九十七批已合入、2.0.8 发版中；待用户定：缓存改法（[SYS-05]）、BUG-45 上线时间。全量里 loading86、self_test81 两个浏览器测试满载时偶发失败（单独跑通过），记为已知不稳定测试。收到回执时列出本批还差谁的回执。
+- **现在在做的事**（2026-10-10）：线上 2.0.8（直接考、资料推荐文字优先与 stars）。BUG-45 已根治上线。第九十八批（缓存改法①～④）已起草待转发。全量里 loading86、self_test81 两个浏览器测试满载时偶发失败（单独跑通过），记为已知不稳定测试。
 
 ## 协作方式
 
@@ -40,7 +40,7 @@
 - **查用户软件的问题**：装好的软件日志 D:\MentorFlowApp\MentorFlow\Data\logs\mentorflow.log，源代码版日志 D:\MentorFlowData\account-shell\logs\mentorflow.log（JSON 行，只读）；数据库在对应的 learning\accounts\<账号>\*.sqlite3，只读查看用 `sqlite3.connect('file:...?mode=ro', uri=True)`。
 - **界面构建**：PATH 加 `/d/MentorFlow/.local/node`，`node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 不进仓库。
 - **写脚本**：含 Windows 路径或反斜杠的内容不要用 bash heredoc 或 python -c（会被吃掉，BUG-10），写成文件再运行。
-- **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，mentorflow-admin，sudo -n）。线上后端 mentorflow-slim-backend:MF-75（切换与回滚脚本 /opt/mentorflow/state/mf75/switch.sh，上线前备份同目录）；入口 nginx 容器 mentorflow-e1-preview-edge-1（配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf）；更新与下载目录 /opt/mentorflow/update-static/e108/app/；资料白名单 /opt/mentorflow/state/mentorflow-e1-preview/catalog/。
+- **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，mentorflow-admin，sudo -n）。线上后端 mentorflow-slim-backend:MF-75（切换与回滚脚本 /opt/mentorflow/state/mf75/switch.sh，上线前备份同目录）；入口 nginx 容器 mentorflow-e1-preview-edge-1（配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf）；更新与下载目录 /opt/mentorflow/update-static/e108/app/；资料白名单 /opt/mentorflow/state/mentorflow-e1-preview/catalog/。 2026-10-10 起两个 docker 网络设了 ip_range（BUG-45）：以后用 Compose 操作这些容器，命令末尾必须追加 -f /opt/mentorflow/state/bug45-20261010/network45.override.yml。
 - **磁盘（用户 2026-10-10 定）**：测试与临时产物在 .local/test-tmp/ 下；冒烟测试、构建、中间文件用完就自动删，不留着等以后分类。员工删除被系统拦住时，架构师合入后直接删（只留 report.md 和截图），不用再问用户。
 
 ## 当前基线
@@ -48,7 +48,7 @@
 | 项目 | 值 |
 | --- | --- |
 | main | 以 `git rev-parse --short HEAD` 为准；第九十五批合入 c77aaf07 |
-| 已发布 | 2.0.7 = 3624350f（非必须）；强制线 2.0.3 |
+| 已发布 | 2.0.8 = 1c64b2d6（非必须）；强制线 2.0.3 |
 | GitHub | main 已推送（私有仓库）；发版需要的推送由架构师做，其余推送要用户说 |
 | 工位分支 | office/* 只在本地，永不推送；每条任务第一步把工位 reset 到基线 |
 
@@ -59,8 +59,8 @@
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
-| MF-02 | 空闲 | client |
-| MF-03 | 空闲 | classroom |
+| MF-02 | 98-MF02（已起草，待转发） | client |
+| MF-03 | 98-MF03（已起草，待转发） | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
@@ -68,7 +68,66 @@
 
 ## 待派队列
 
-- 无。第九十七批四份已合入 1c64b2d6 并推送，2.0.8 发版中。
+- 第九十八批 2 个任务：已起草（2026-10-10），待用户转发：98-MF02 缓存改法①②、98-MF03 缓存改法③④。
+
+## 第九十八批任务原文（2026-10-10，基线 3b931d5d）
+
+### [98-MF02] client｜缓存改法①②：意图理解固定目录在前、填知识点出处用短编号（¥≤1）
+
+~~~text
+【MentorFlow 第九十八批｜MF-02（工位 client）｜缓存改法①②：意图理解把固定目录放前面、当前修改放末尾；填知识点把重复的长资料名换成固定短编号】
+
+现成项目与许可证（第一节）
+  - 做法照成熟框架的上下文工程：Manus（开头不变、序列化顺序固定、只往后追加）、Anthropic 上下文工程（按需取材）、DeepSeek 上下文缓存（只认从头完全一样的前缀）。不新增依赖，只改 refactor/learning/course/plan_intent.py、app/plan_flow.py（意图请求的 context 组装，约 1478 行）、course/planner_agents.py（generate 的 blocks 与 shared，约 1048 行）。
+  - 依据：97-MF06 的调查报告 D:\MentorFlow\.local\test-tmp\cache97\report.md 第 2、3 节（改法表第 1、2 行）。
+
+开工同步
+  cd D:\MentorFlow-office\client\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/client
+  git reset --hard 3b931d5d
+提交：git -c user.name="MentorFlow Worker client" -c user.email="worker-client@mentorflow.local" commit ...
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp、D:\MentorFlowData\account-shell 只读（要用数据就复制到测试目录）；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次，同一套测试不重复跑。冒烟、构建、中间文件用完立刻自己删，只留 report.md 和必要截图。
+同时在跑：98-MF03（老师请求与备题，teacher_agent.py、request_layout.py、point_materials.py、material_questions.py），不碰你的文件。
+产物目录：D:\MentorFlow\.local\test-tmp\cache98a\。目标两小时内交回。花费上限 ¥1（只用于改前改后真实对照，真实模型用管理员现有的 DeepSeek 预设）。
+规则（用户 2026-10-10 定，CURRENT_STATE [SYS-05]）：只改请求的排列与重复内容，不降思考强度、不删真实约束、不做对话摘要；改前改后功能结果一致。
+要做
+  1. ① 意图理解（plan_intent）：现在请求里当前表单在资料目录之前，表单一改整段都不命中。改为：稳定的目录/编号字典放前面，当前表单与本次用户的话放末尾；只带这个阶段需要的字段，保留名称/编号校验。
+  2. ② 填知识点（generate）：每段资料块都重复很长的资料名。改为开头一次声明固定的短编号目录（如 S1=某资料全名），资料块里只写短编号和真实位置；出处反向映射、编号校验照旧，知识点里显示的出处不变。
+  3. 验证：离线用现有测试和保存的请求确认两类请求的结构与结果不变（意图分类、知识点出处）；真实对照：用用户数据副本，同一流程改前改后各连续调用几次，报告每次的输入、缓存命中、未命中 token 和命中率、费用。
+完成标准：两处改完；离线结果一致；真实对照有数据（命中率或输入量明显改善）；最后全量一次通过；提交在工位。
+回执：写到 D:\MentorFlow\.local\receipts\98-MF02.md（表格：基线 ／ 提交 ／ ①改动与前后命中率 ／ ②改动与前后输入量、命中率 ／ 真实对照花费 ／ 全量 ／ 本地最终占用）；给用户只回一行“98-MF02 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\cache98a\report.md。
+~~~
+
+### [98-MF03] classroom｜缓存改法③④：老师请求固定原文在前、备题去掉重复参考正文（¥≤1）
+
+~~~text
+【MentorFlow 第九十八批｜MF-03（工位 classroom）｜缓存改法③④：老师请求把这一页的固定原文放到对话历史之前；备题时与原文单元完全重复的参考正文不再重复发送】
+
+现成项目与许可证（第一节）
+  - 做法照成熟框架的上下文工程（Manus：开头不变、只往后追加；DeepSeek：只认从头完全一样的前缀）。不新增依赖，只改 refactor/learning/course/teacher_agent.py（约 138 行）、course/request_layout.py（约 28 行 tail 偏移）、course/point_materials.py（154～168 行送模 packet）、course/material_questions.py（220/282 行单元契约）。
+  - 依据：97-MF06 的调查报告 D:\MentorFlow\.local\test-tmp\cache97\report.md 第 3、4 节（改法表第 3、4 行；老师请求真实对照 50.82% → 84.48%）。
+
+开工同步
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard 3b931d5d
+提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp、D:\MentorFlowData\account-shell 只读（要用数据就复制到测试目录）；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次，同一套测试不重复跑。冒烟、构建、中间文件用完立刻自己删，只留 report.md 和必要截图。
+同时在跑：98-MF02（意图理解与填知识点，plan_intent.py、plan_flow.py、planner_agents.py），不碰你的文件。
+产物目录：D:\MentorFlow\.local\test-tmp\cache98b\。目标两小时内交回。花费上限 ¥1（只用于改前改后真实对照，真实模型用管理员现有的 DeepSeek 预设）。
+规则（用户 2026-10-10 定，CURRENT_STATE [SYS-05]）：只改请求的排列与重复内容，不降思考强度、不删真实约束、不做对话摘要；老师讲的内容、备题结果不变。
+要做
+  1. ③ 老师：新一页时这一页的固定原文放在对话历史之前，历史只往后追加；request_layout 里 assemble 现在按“1+旧历史长度”定位 tail，要改成明确分段，并回归新知识点取材、别名、分页（报告里写了这个坑）。
+  2. ④ 备题：只有参考答案去空白后与原文单元拼接完全相同时，才只发单元、不再重复发完整参考答案；有任何差异（标题、代码等）照旧发；完整答案仍由程序保存，要点切分与 AI 选编号结果不变。
+  3. 验证：离线确认老师请求的内容与顺序、备题结果与改前一致；真实对照：用用户数据副本，老师同一页连续几轮、备题同一模块，改前改后各跑一次，报告每次的输入、缓存命中、未命中 token、命中率、费用。
+完成标准：两处改完；离线结果一致；老师请求真实对照命中率明显提升（参考 97 批 50.82% → 84.48%）；最后全量一次通过；web 不用改；提交在工位。
+回执：写到 D:\MentorFlow\.local\receipts\98-MF03.md（表格：基线 ／ 提交 ／ ③改动与前后命中率 ／ ④改动与前后输入量 ／ 真实对照花费 ／ 全量 ／ 本地最终占用）；给用户只回一行“98-MF03 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\cache98b\report.md。
+~~~
+
 
 ## 回执格式
 
