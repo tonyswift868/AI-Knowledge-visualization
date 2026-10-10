@@ -10,7 +10,11 @@ REFERENCE=Path(os.environ.get('MF_REFERENCE_PAYLOAD',str(Path(__file__).parent/'
 PUBLIC=Path(os.environ.get('MF_PUBLIC_KEY',str(Path(__file__).parent/'inputs/public-key.json')))
 NODE=Path(os.environ.get('MF_NODE_DIR',str(Path(shutil.which('node') or 'node').resolve().parent)))
 COMPILER=Path(os.environ.get('MF_ISCC',str(Path(os.environ.get('ProgramFiles(x86)','C:/Program Files (x86)'))/'Inno Setup 7/ISCC.exe')))
-FEED=os.environ.get('MF_FEED','https://aiteacher.clannad.win/updates/app/stable/stable.json')
+# BUG-60: asset URLs in the signed manifest derive from this feed. Clients up to 2.0.9 only
+# download from their own (IP) origin, so the manifest stays on the IP origin; 2.0.10+ clients
+# map it to the domain first (update_download.update_sources).
+LEGACY_ROOT='https://89.45.45.28/mentorflow/updates/app/'
+FEED=os.environ.get('MF_FEED',LEGACY_ROOT+'stable/stable.json')
 TEMP_ROOT=Path(os.environ.get('MF_TEMP_ROOT',os.environ.get('RUNNER_TEMP',tempfile.gettempdir())))
 INPUTS=Path(os.environ.get('MF_RELEASE_INPUTS',str(Path(__file__).parent/'inputs')))
 
@@ -303,6 +307,8 @@ def main():
     from refactor.desktop.delivery.update_protocol import Release,canonical
     from refactor.desktop.delivery.per_user_install import verify_tree
     rows={r['path']:r for r in unsigned['full_release']['assets']}
+    if any(not r['url'].startswith(LEGACY_ROOT+'objects/') for r in rows.values()):
+        raise ValueError('BUG-60：清单下载地址必须在 '+LEGACY_ROOT+'，否则 2.0.9 及更早的客户端无法更新')
     verify_tree(out/'payload',Release(b'',unsigned,rows,rows,canonical(unsigned['file_manifest'])))
     increments=plans(out/'unsigned-release.json',bases)
     result=dict(recipe=recipe,online={k:live.signed[k] for k in ('app_id','version','metadata_version','min_supported_version','expires_at')},

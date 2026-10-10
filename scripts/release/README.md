@@ -145,9 +145,10 @@ latest 是普通目录，不使用软链接或 junction。切换时在 latest/ �
 
 ## 更新地址、清单压缩与小指针
 
-新包的 MF_FEED 默认值为 `https://aiteacher.clannad.win/updates/app/stable/stable.json`，
-签名清单中的 objects 地址也随此根地址生成。旧 IP
-`https://89.45.45.28/mentorflow/updates/app/` 保留，旧客户端不用改。
+MF_FEED 默认值为旧 IP `https://89.45.45.28/mentorflow/updates/app/stable/stable.json`，
+签名清单中的 objects 地址也随此根地址生成，并由 build_release.py 强制检查（BUG-60）：
+2.0.9 及更早的客户端只从自己检查更新的那个来源（IP）下载文件，清单里写域名地址它们会判
+“更新校验未通过”。2.0.10 起的客户端把 IP 地址映射成“先域名、后 IP”，所以清单写 IP 不影响新客户端走域名。
 新客户端只对这两个固定根地址作同路径镜像回退，不接受任意跨站 URL。
 域名用系统信任根，IP 用现有随包 account-api.pem 加入信任；不关闭 TLS 校验。
 域名连接/证书/HTTP/解压/清单验签或下载内容校验失败时退回 IP；取消不回退。
