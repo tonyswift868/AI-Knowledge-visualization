@@ -79,4 +79,4 @@ def test_intent_context_values_are_identical_while_date_and_state_move_back():
     system, messages = plan_intent.intent_request(ctx, '回答')
     payload = json.loads(messages[0]['content'].split('\n', 1)[1])
     assert payload == dict(ctx=ctx,text='回答') and ctx == frozen and system == plan_intent.INTENT_SYSTEM
-    assert list(payload['ctx']) == ['form', 'sections', 'modules', 'cards', 'facts', 'phase', 'recent', 'today']
+    assert list(payload['ctx']) == ['sections', 'modules', 'cards', 'phase', 'facts', 'form', 'recent', 'today']

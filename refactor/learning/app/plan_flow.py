@@ -1497,14 +1497,14 @@ class PlanFlow:
                                 if m["role"] in ("ai", "user") and m.get("text")], max_rows=6)
         cards = [{"n": n, "title": c["title"], "site": c.get("site") or "", "summary": (c.get("summary") or "")[:200],
                   "status": {"new": "待定", "adopted": "已采用", "rejected": "不要"}[c["status"]]}
-                 for n, c in enumerate(draft["sources"], 1)]
+                 for n, c in enumerate(draft["sources"], 1)] if phase in ("sources", "material_preview", "outline") else []
         sections, modules, facts = [], [], {}
         if phase in ("sources", "material_preview", "outline"):
             sections = [{"id": s.id, "source": s.source_title, "title": s.title, "chars": s.chars}
                         for s in self._sections(draft)[1]]
             if draft.get("scope"):
                 facts["scope"] = draft["scope"]
-        if draft.get("outline"):
+        if phase in ("outline", "ready") and draft.get("outline"):
             facts["ranges"] = draft["outline"]["ranges"]
             facts["outline"] = [{"stage": s["title"], "modules": [m["title"] for m in s["modules"]]}
                                 for s in draft["outline"]["stages"]]
@@ -1512,12 +1512,16 @@ class PlanFlow:
                 modules = [dict(n=n, title=m['title'], key=m['key'],
                     points=[dict(n=i, title=p['title']) for i,p in enumerate(m.get('points', []), 1)])
                     for n,m in enumerate(agents.outline_modules(draft['outline']), 1)]
-        if draft.get("estimate"):
+        if phase in ("outline", "ready") and draft.get("estimate"):
             facts["estimate"] = draft["estimate"]
+        # An accepted preview can still carry real learner requirements after
+        # structure confirmation; retain it rather than guessing it is stale.
         if draft.get("preview"):
             facts["preview"] = draft["preview"]
-        if draft.get('material_structure'):
-            facts['material_structure'] = draft['material_structure']
+        if phase in ('material_preview', 'outline', 'ready') and draft.get('material_structure'):
+            # The current module/point numbering is already in modules. Keep
+            # scope/missing/deletion facts, without repeating an older full map.
+            facts['material_structure'] = {k: v for k, v in draft['material_structure'].items() if k != 'modules'}
             if phase == 'material_preview':
                 modules = [dict(n=n, title=m['title'], summary=m['summary'], chapters=m['chapters'])
                            for n, m in enumerate(draft['material_structure']['modules'], 1)]

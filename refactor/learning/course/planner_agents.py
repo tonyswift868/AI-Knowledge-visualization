@@ -9,6 +9,7 @@ Materials are data, never instructions (stated in every prompt that shows them).
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import re
 import unicodedata
@@ -1029,16 +1030,24 @@ def generate_request(form: dict, goal: str, outline: dict, module: dict, chunks,
     for stage in outline["stages"]:
         skeleton.append(f"阶段：{stage['title']}")
         skeleton.extend(f"  - {m['title']}：{m['summary']}" for m in stage["modules"])
-    aliases, blocks = {}, []
+    aliases, blocks, source_names = {}, [], {}
     for index, chunk in enumerate(material_paragraphs(chunks) if material_map else chunks, 1):
         alias = f"c{index}"
         aliases[alias] = chunk["id"]
+        # Unlike per-batch S1/S2 numbering, this stays fixed when a later batch
+        # contains only one of the sources. Chunk aliases remain unchanged.
+        title = chunk.get('source_title', '')
+        identity = json.dumps([chunk.get('source_id'), title], ensure_ascii=False)
+        source_alias = 'S' + hashlib.sha256(identity.encode('utf-8')).hexdigest()[:12]
+        source_names[source_alias] = title
         where = " / ".join(chunk.get("section") or ()) or ""
         label = f"（{chunk.get('kind', 'paragraph')}）" if material_map else ''
-        blocks.append(f"[{alias}] {chunk.get('source_title', '')}{(' · ' + where) if where else ''}{label}\n{chunk['text']}")
+        blocks.append(f"[{alias}] {source_alias}{(' · ' + where) if where else ''}{label}\n{chunk['text']}")
     # Layout for cache reuse (ARCH-08): fixed system, then the plan skeleton shared
     # by every module, then this module's materials, then the short task at the end.
-    shared = f"【学习者】\n{form_brief(form)}\n【核对后的目标】{goal}\n\n【整条路线】\n" + "\n".join(skeleton)
+    directory = json.dumps(source_names, ensure_ascii=False, sort_keys=True)
+    shared = "【资料编号目录（仅代替资料名；出处仍用c编号）】\n" + directory + "\n\n" + \
+             f"【学习者】\n{form_brief(form)}\n【核对后的目标】{goal}\n\n【整条路线】\n" + "\n".join(skeleton)
     if form.get("abandoned_topics"):
         shared += "\n【范围硬约束】只学当前覆盖部分；知识点标题和摘要不得出现：" + "、".join(form["abandoned_topics"])
     constraints = [f"本次最多{max_points}个知识点。"]
