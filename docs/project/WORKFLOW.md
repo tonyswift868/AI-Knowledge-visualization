@@ -68,12 +68,12 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 空闲 | runtime |
+| MF-04 | 94-MF04（已起草，待转发） | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
-空闲工位：全部七个。
+空闲工位：除 runtime 外六个。
 
 ## 待派队列
 
@@ -83,7 +83,47 @@
   - 运行 3 mf-build 2.0.4（上传 staging，非强制，基线 2.0.3）：成功，约 7 分钟，14 个新文件。
   - 签名：本机 sign_and_stage.py 签名成功，但它的 ssh 上传在 Windows 本机失败（退出码 2，内联整段 server_ops 源码的引号问题）；架构师手动把签名清单传到 .staging-2.0.4/stable/ 并核对 SHA256。修复补进 93-MF04。
   - 运行 4 mf-publish 2.0.4：成功，约 11 分钟；公网 stable.json 对 2.0.2、2.0.3 客户端验签均通过 → 2.0.4；releases/2.0.4/ 与 latest 已更新，服务器剩 35 GB。
-- 93-MF04：完成并合入 main（c5768d44，2026-10-10）：安装程序只留最近 3 版、本机签名上传修好。没有在途任务。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+- 93-MF04：完成并合入 main（c5768d44，2026-10-10）。
+- 94-MF04：已起草（2026-10-10），待用户转发：Updater 随版本更新（P0，用户的软件打不开）。合入后用流水线发 2.0.5。90-MF04 用户已转发且完成（fcff74bc，未合入）：拼包部分保留，Wine/Docker 部分由 91-MF04 删除，合入 91 时一起进 main。
+
+## 第九十四批任务原文（2026-10-10，基线 6b40eb33）
+
+### [94-MF04] runtime｜Updater 随版本更新（¥0）
+
+~~~text
+【MentorFlow 第九十四批｜MF-04（工位 runtime）｜更新程序（Updater）随版本更新：老 Updater 让 2.0.4 打不开，必须修】
+
+现成项目与许可证（第一节）
+  - 不新增依赖。做法参照 Squirrel.Windows / Velopack（均 MIT）的通行设计：安装目录里负责启动和更新的小程序（Update.exe）随每个版本一起更新——新版本装好、新 App 第一次正常启动后，由新 App 替换旧的更新程序；安装程序升级时直接换成安装包里的那份。本项目对应的是 Updater\UserRuntime.exe 与 updater-release.json，改 refactor/desktop/delivery/per_user_install.py 及相关调用、Inno 脚本 refactor/desktop/packaging/inno/*，不另起一套。
+
+开工同步
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard 6b40eb33
+提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...
+禁止 push、禁止在 GitHub 上触发工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥。D:\MentorFlowApp 及注册表安装记录只读（可以读它的 Updater、updater-release.json、current-release.json 做对照，不改、不运行安装程序）；D:\MentorFlowData\account-shell 只读；E 盘只读运行（ISCC 只读调用）；不碰 D:\Kristina*。先读 AGENTS.md：中间产物用完即删，回执写明最终占用。测试用 D:\MentorFlow\.venv\Scripts\python.exe。遇到选择自己决定，回执写明理由，不停下来问。不要结束或重启用户正在用的软件进程。
+同时在跑：只有本任务。
+产物目录：D:\MentorFlow\.local\test-tmp\updater94\。目标三小时内交回。花费上限 ¥0。
+背景（2026-10-10 用户实走更新发现，CURRENT_STATE [SYS-06] 待修）：
+  - 用户的安装目录 D:\MentorFlowApp\MentorFlow 里，Updater 还是 2.0.0 时期的（updater-release.json 版本 2.0.0，源码 2f01fa20）。per_user_install.py 约 155–165、556–562 行：Updater 只在“不存在时”从 App/UserRuntime 复制，之后永不更换；Inno 原地升级（directory-policy.iss 的 tkUpgrade）也不换它。
+  - 2.0.0 的 Updater 只认有效期 31 天以内的签名，而 2.0.2 起都按 3 年签。结果：用户用 2.0.4 安装程序原地升级成功（current-release.json 已是 2.0.4），但桌面快捷方式（Updater\UserRuntime.exe launch）启动时，老 Updater 校验不过 2.0.4，弹“修复与更新”窗口并报“修复文件未通过安全校验，未继续应用”，软件打不开；校验期间“关闭”按钮点不了。开始菜单“MentorFlow 修复与更新”同样报错。
+  - 还有一处同批发现：原地升级时安装程序仍显示“创建桌面快捷方式”勾选项，但 finish-options.iss 的 ApplyFinishOptions 对非全新安装直接跳过，勾了也不创建、不提示。
+要做
+  1. 安装程序原地升级 / 修复（tkUpgrade、tkRepair）时，把 Updater 换成安装包里 payload\UserRuntime 那份，并把 updater-release.json 换成这次安装的签名清单；先放到临时目录校验（verify_tree），再原子替换，失败回滚到原来的 Updater，不留半成品。安装时不能有 Updater 进程在跑（检测到就提示用户关闭，或沿用现有的进程检测做法）。
+  2. 软件内更新（点“立即更新”）完成后也要更新 Updater：Updater 不能替换正在运行的自己，所以由新版本 App 第一次正常启动、健康检查通过后，在后台把 Updater 换成本版本的 App/UserRuntime（同样临时目录校验 + 原子替换 + 失败保留旧的、写日志、下次启动再试）。旧 Updater 正在运行时不替换，等下次。
+  3. 已经卡住的用户（老 Updater 打不开新 App）的自救：桌面/开始菜单快捷方式如果启动失败，用户至少要能看到清楚的提示“请到 aiteacher.clannad.win/download 下载最新安装程序覆盖安装”——老 Updater 本身改不了，所以在本任务里只要保证第 1 条让“下载新安装程序原地升级一次”就能彻底恢复；在报告里写清这条恢复路径。
+  4. 原地升级时的桌面快捷方式：勾了就创建（桌面已有同名且不是我们创建的，就不动并提示），没勾不动现有的；不再出现“显示了选项却静默跳过”。
+  5. 修复与更新窗口：任何状态下“关闭”都能点（正在写文件的关键步骤除外，此时显示“正在处理，请稍候”而不是灰掉不说明）。
+  6. 验证（完成标准以这些为准）：
+     a. 本机测试目录里还原用户的情形：用 2.0.0 时期的 Updater（从 D:\MentorFlowApp\MentorFlow\Updater 复制一份到测试目录，只读源）+ 2.0.4 的 App，复现“打不开”；然后按第 1 条的升级路径（离线调用安装核心，不运行 Inno 安装到真实位置）换掉 Updater 后能正常走 launch 校验。
+     b. 第 2 条：模拟“2.0.3 App 更新到新版本 → 新 App 启动 → Updater 被换成新的”，以及替换失败时旧 Updater 仍可用。
+     c. 第 4、5 条有测试或本机截图。
+     d. 离线测试覆盖以上；全量通过。Inno 编译一次成功（只编译不安装）。
+完成标准：a～d 全部通过；所有改动提交在工位。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\updater94\report.md。
+回执（尽量短，用表格）：【MF-04｜runtime｜第九十四批｜完成/部分完成/受阻】基线 ／ 提交 ／ 安装升级换 Updater ／ 软件内更新后换 Updater ／ 用户情形复现与恢复 ／ 桌面快捷方式 ／ 修复窗口关闭 ／ 全量与 Inno 编译 ／ 本地最终占用
+~~~
 
 ## 第九十三批任务原文（2026-10-10，基线 d3693cc6）
 
