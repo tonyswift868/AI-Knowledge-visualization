@@ -205,7 +205,9 @@ class DesktopUpdates(QObject):
             if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE') and not self._cleanup_started:
                 self._cleanup_started = True
                 from .delivery.per_user_install import schedule_program_cleanup
-                schedule_program_cleanup(self.root)
+                # Stagger housekeeping from refresh's two-second first try;
+                # their workers also serialize actual attempts inside App.
+                schedule_program_cleanup(self.root, initial_delay=4)
             if self._login_blocked: self._show_prompt()
             return
         if 'handoff' in value:

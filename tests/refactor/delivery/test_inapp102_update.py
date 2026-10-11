@@ -186,13 +186,13 @@ def test_cleanup_retries_cache_without_release_sidecar(case, monkeypatch):
 def test_cleanup_starts_on_cached_classification_before_network(tmp_path, monkeypatch):
     from refactor.desktop.updates import DesktopUpdates
     starts = []
-    monkeypatch.setattr(install, 'schedule_program_cleanup', lambda root: starts.append(root))
+    monkeypatch.setattr(install, 'schedule_program_cleanup', lambda root, **kw: starts.append((root, kw)))
     ui = SimpleNamespace(_closed=False, root=tmp_path, _cleanup_started=False,
         gate=SimpleNamespace(setEnabled=lambda value: None), state={},
         _publish=lambda value: None, _show_prompt=lambda: None)
     DesktopUpdates._receive(ui, {'cached': dict(state='HEALTHY', login_allowed=True)})
     DesktopUpdates._receive(ui, {'cached': dict(state='HEALTHY', login_allowed=True)})
-    assert starts == [tmp_path]
+    assert starts == [(tmp_path, {'initial_delay': 4})]
 
 
 def test_cleanup_defers_while_download_cache_lock_is_held(case, monkeypatch):

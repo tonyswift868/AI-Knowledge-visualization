@@ -38,7 +38,7 @@ def cdp(action, selector='', value='', target='learning'):
         if result.returncode==0:break
         # Login can finish before Qt has created its learning page/debug target.
         # Retry read-only discovery, never repeat a click or a form submission.
-        if action=='wait-text' and time.monotonic()<deadline and any(t in result.stderr for t in ('preview page not found','ECONNREFUSED')):
+        if action=='wait-text' and time.monotonic()<deadline and any(t in result.stderr for t in ('preview page not found','ECONNREFUSED','Execution context was destroyed')):
             time.sleep(.2);continue
         raise RuntimeError(result.stderr)
     value = json.loads(result.stdout)
@@ -146,7 +146,7 @@ def install_setup(setup, parent, label):
     return parent / 'MentorFlow'
 
 
-def update(root, release, target, *, login_entry=False, blocked=False):
+def update(root, release, target, *, login_entry=False, blocked=False, wait_updater=False):
     old = app_pid(root)
     if not old:
         raise RuntimeError('launch X first')
@@ -163,6 +163,7 @@ def update(root, release, target, *, login_entry=False, blocked=False):
         observer = subprocess.Popen([sys.executable, str(HERE / 'observe.py'), str(root), str(old),
             '--label', 'scenario', '--target', target, '--timeout', '240'], env=ENV, stdout=output, stderr=output)
     try:
+        record('update-click-begin', {'target': target})
         if login_entry:
             uia(old, 'invoke', '立即更新并重启', wait=False)
         else:
@@ -175,6 +176,8 @@ def update(root, release, target, *, login_entry=False, blocked=False):
             launch(root)
         wait_for(lambda: app_pid(root) not in (None, old), 240)
         wait_for(lambda: json.loads((root / 'per-user-transaction.json').read_bytes())['phase'] == 'HEALTHY', 60)
+        if wait_updater:
+            wait_for(lambda: json.loads((root/'updater-release.json').read_bytes())['signed']['version'] == target, 100)
         record('update-check', run('check.py', root, '--version', target))
     finally:
         observer.wait(timeout=250)

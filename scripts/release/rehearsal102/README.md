@@ -27,3 +27,16 @@
 只核对当前进程、保留真实失败结果并卸载，不再更新或重启来掩盖故障。
 103 实测：App HEALTHY、pending 清除、设置/Key/新网页均正确；Updater 刷新因
 更新锁忙而 DEFERRED，仍为旧版。该项未通过，不能把排练脚本退出成功当作发布通过。
+
+104 轮：MF_UAT_ROOT 指向 D:/MentorFlow/.local/test-tmp/inapp104，APP_ID 与模型凭据
+服务独立为 inapp104。`prepare.py` 后运行 `build104.py`：用 10e625f4 的 O 与当前
+工位 X 独立冻结为 2.0.13 / 9.104.14，并逐包调用 `refreeze103.py --check-only`
+核验本机账号配置及两个 exe 内的 localhost 网络限制。然后 `scenario104.py`
+真实安装 O、存测试 Key、从主界面更新 X，等待第一次启动的 Updater UPDATED，
+再从快捷方式目标正常启动一次，核对 UP_TO_DATE 和 cleanup_complete，最后用本轮
+卸载器撤销预览注册和快捷方式、比对正式快照。日志 result104.json、first-startup.jsonl、
+final-startup.jsonl 与 scenario-observations.json 保留首次更新证据，不用重启冒充刷新成功。
+`metrics104.py` 从真实回执/事务/窗口记录汇总分段耗时；`clear104.py` 只清理本轮
+本机测试账号在 inapp104 服务中的凭据和两份测试私钥，完成截图留证后执行。
+若 Inno 首次 UIA provider 尚未就绪，先读取本轮向导状态，仅在文件夹选择框已打开时
+用 `scenario104.py --installer-pid <本轮向导 PID>` 接续；不重复安装、不模拟输入。

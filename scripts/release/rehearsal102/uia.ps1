@@ -68,8 +68,11 @@ foreach($top in $tops){
     # A freshly exposed Inno button can briefly advertise Invoke before its
     # provider returns the pattern. Retry discovery, never emulate input.
     $pattern=$null
-    for($attempt=0;$attempt -lt 5 -and -not $pattern;$attempt++){
-      try{$pattern=$e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)}catch{Start-Sleep -Milliseconds 500}
+    for($attempt=0;$attempt -lt 20 -and -not $pattern;$attempt++){
+      try{$pattern=$e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)}catch{
+       Start-Sleep -Milliseconds 500
+       $e=$top.FindFirst([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,$Name)))
+      }
     }
     if(-not $pattern){throw "InvokePattern unavailable: $Name"}
     $pattern.Invoke();Start-Sleep -Milliseconds 1500;@{invoked=$Name;time=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()} | ConvertTo-Json -Compress;exit
