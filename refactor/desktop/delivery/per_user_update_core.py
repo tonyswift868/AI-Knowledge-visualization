@@ -620,7 +620,9 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
             return install.transact(root, stage, envelope, before_swap=close)
         service.apply_bridge = bridge
         result = service.apply_and_restart()  # independently refreshes metadata again
-        install.atomic(root/PENDING, canonical({**pending, 'state': 'CURRENT_HEALTHY'}))
+        # The signed transaction already records HEALTHY. A completed download
+        # is no longer pending, even if background housekeeping meets a lock.
+        (root/PENDING).unlink(missing_ok=True)
         return {**result, 'state': 'CURRENT_HEALTHY'}
     except install.AppShutdownTimeout:
         install.atomic(root/PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))

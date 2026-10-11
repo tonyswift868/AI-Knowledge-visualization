@@ -39,9 +39,8 @@ def test_legacy_pending_stage_is_reverified_in_fixed_legacy_cache(case, monkeypa
     result = core.resume_pending_on_normal_launch(root, service=service)
     assert result['state'] == 'CURRENT_HEALTHY'
     assert install.installed(root).version == '1.4.1'
-    pending = core.read_pending(root)
-    assert pending['state'] == 'CURRENT_HEALTHY'
-    assert pending['stage'].startswith(str(service.cache.runtime_root))
+    assert not (root / core.PENDING).exists()
+    assert service.staged.is_relative_to(service.cache.runtime_root)
 
 
 def test_self_exit_timeout_keeps_pending_install(case, monkeypatch):

@@ -269,7 +269,7 @@ class DesktopUpdates(QObject):
                 shell.prepare_update_shutdown()
             else:
                 QApplication.closeAllWindows()
-            QApplication.instance().quit()
+            self._exit_for_update()
         except Exception as error:
             from .delivery.per_user_install import maintenance_log
             maintenance_log(self.root, 'app_self_exit_deferred', detail=str(error))
@@ -304,7 +304,18 @@ class DesktopUpdates(QObject):
         shell = self._login_handoff
         if shell is not None and hasattr(shell, 'prepare_update_shutdown'):
             shell.prepare_update_shutdown()
-        QApplication.instance().quit()
+        self._exit_for_update()
+
+    @staticmethod
+    def _exit_for_update():
+        # The desktop lifetime guard deliberately rejects unrequested Qt Quit
+        # events. Register the agreed update handoff before asking Qt to exit.
+        app = QApplication.instance()
+        diagnostics = getattr(app, '_mentorflow_diagnostics', None)
+        if diagnostics is not None:
+            diagnostics.request_exit('UPDATE_HANDOFF')
+        else:
+            app.quit()
 
     def _update_prompt(self):
         if self._prompt is not None:

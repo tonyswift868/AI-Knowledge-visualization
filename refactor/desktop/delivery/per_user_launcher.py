@@ -42,6 +42,17 @@ def _log_pending_install_failure(root, pending, error):
 
 
 def _launch_checked(root, mark=lambda phase: None):
+    from contextlib import ExitStack
+    with ExitStack() as locks:
+        try:
+            locks.enter_context(install.launch_coordination(root))
+        except RecoverableError:
+            install.maintenance_log(root, 'launch_deferred_update_in_progress')
+            return dict(status='UPDATE_IN_PROGRESS', message='正在更新 MentorFlow，请稍候…')
+        return _launch_serialized(root, mark)
+
+
+def _launch_serialized(root, mark):
     from refactor.desktop.delivery.update_download import InstallUpdateLock
     root = install.target(root)
     if not install.is_install(root):
