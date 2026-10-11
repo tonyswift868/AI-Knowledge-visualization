@@ -291,7 +291,7 @@ def replace_updater(root, release, *, public_keys=None, fault=lambda phase: None
     return dict(status='UPDATED', version=release.version)
 
 
-def refresh_updater(root):
+def refresh_updater(root, *, persist_deferred=True):
     """One background attempt after healthy App startup; failure leaves old runtime."""
     import logging
     from refactor.desktop.delivery.update_download import InstallUpdateLock
@@ -309,35 +309,54 @@ def refresh_updater(root):
     except Exception as error:
         result = dict(status='FAILED', detail=str(error), error=type(error).__name__)
     logging.getLogger(__name__).info('Updater refresh: %s', result)
-    if destination is not None:
+    if destination is not None and (persist_deferred or result['status'] != 'DEFERRED'):
         try: atomic(destination / 'updater-refresh.json', canonical(result))
         except OSError: logging.getLogger(__name__).exception('Cannot write updater refresh result')
     return result
 
 
+MAINTENANCE_RETRY_DELAYS = (2, 3, 5, 10, 20, 40)
+# App-local serialization; the existing installation lock still coordinates
+# with other processes. Never hold this lock on the GUI thread.
+import threading as _maintenance_threading
+_maintenance_lock = _maintenance_threading.Lock()
+
+
 def schedule_updater_refresh(root):
     import threading
     def work():
-        # Give the health-acknowledged parent coordinator time to exit. If it
-        # still runs, replace_updater defers until the next App startup.
-        time.sleep(2)
-        refresh_updater(root)
+        for attempt, delay in enumerate(MAINTENANCE_RETRY_DELAYS, 1):
+            time.sleep(delay)
+            with _maintenance_lock:
+                result = refresh_updater(root, persist_deferred=False)
+            maintenance_log(root, 'updater_refresh_attempt', attempt=attempt,
+                            delay_seconds=delay, **result)
+            if result['status'] != 'DEFERRED':
+                return
+        # A busy coordinator is expected during handoff. Only publish the
+        # deferred result once this startup's bounded retry budget is spent.
+        try: atomic(Path(root) / 'updater-refresh.json', canonical(result))
+        except OSError as error:
+            maintenance_log(root, 'updater_refresh_result_write_failed', detail=str(error))
+        maintenance_log(root, 'updater_refresh_deferred', attempts=attempt, **result)
     thread = threading.Thread(target=work, daemon=True, name='updater-refresh')
     thread.start()
     return thread
 
 
-def schedule_program_cleanup(root):
+def schedule_program_cleanup(root, *, initial_delay=2):
     """Housekeeping must not wait for a slow/offline update-feed request."""
     import threading
     if not (Path(root) / STATE).is_file(): return None
     def work():
         # Startup discovery and updater refresh can still own their locks at
         # two seconds. Retry only a busy lock, with a bounded background budget.
-        for delay in (2, 3, 5, 10, 20, 40):
+        for delay in (initial_delay, *MAINTENANCE_RETRY_DELAYS[1:]):
             time.sleep(delay)
             try:
-                cleanup_program_files(root, retry_busy=True)
+                with _maintenance_lock:
+                    cleanup_program_files(root, retry_busy=True)
+                maintenance_log(root, 'cleanup_complete')
                 return
             except RecoverableError:
                 continue
