@@ -55,7 +55,9 @@ begin
       if CoreCancelRequested then Result := '安装已取消。您可以返回重试或关闭安装器。'
       else begin
         Problem := GetIniString('install', 'error', '', CoreStatus);
-        if Pos('请先关闭 MentorFlow', Problem) > 0 then Result := Problem
+        if Pos('close the current App before continuing', Problem) > 0 then
+          Result := '请先关闭 MentorFlow，再点击“上一步”后继续安装。学习资料不会被删除。'
+        else if Pos('请先关闭 MentorFlow', Problem) > 0 then Result := Problem
         else Result := '安装未完成，请稍后重试。学习资料不会被删除。';
       end;
     end;

@@ -84,6 +84,22 @@ def include_payload_data(name):
                 or name.lower().endswith((".obj", ".pdb")))
 
 
+def preview_credential_hook(work, product):
+    """Keep a compiled preview's Locker access outside the production service.
+
+    Empty preview accounts still consume the global update-login handoff on
+    startup. AppId/shortcut isolation alone therefore does not isolate a UAT.
+    This hook is compiled into previews only, before the account shell imports.
+    """
+    if not product.uat:
+        return []
+    path = work / "preview_credentials.py"
+    path.write_text("from refactor.desktop import credential_store\n"
+                    f"credential_store.SERVICE_NAME = {product.app_id + '.Provider.v1'!r}\n",
+                    encoding="utf-8")
+    return [str(path)]
+
+
 def freeze(args):
     product = validate_feed(args.feed, args.app_id)
     key_id, public = read_key(args.public_key)
@@ -143,6 +159,7 @@ def freeze(args):
     if seven_zip:
         data.append((seven_zip.resolve(), "refactor/learning/voice"))
     spec = work / "MentorFlow.spec"
+    credential_hooks = preview_credential_hook(work, product)
     spec.write_text("from PyInstaller.utils.hooks import collect_data_files\n"
         "from scripts.build_learning_installer import include_payload_data\n"
         f"data = {[(p.as_posix(), target) for p, target in data]!r}\n"
@@ -150,7 +167,7 @@ def freeze(args):
         "    data += collect_data_files(package)\n"
         f"a = Analysis({[(ROOT / 'refactor/desktop/packaged_main.py').as_posix()]!r}, "
         f"pathex={[ROOT.as_posix(), work.as_posix()]!r}, datas=data, "
-        f"hiddenimports=['mentorflow_delivery_authority', 'keyring.backends.Windows', 'sherpa_onnx'], excludes={EXCLUDES!r})\n"
+        f"hiddenimports=['mentorflow_delivery_authority', 'keyring.backends.Windows', 'sherpa_onnx'], excludes={EXCLUDES!r}, runtime_hooks={credential_hooks!r})\n"
         "a.datas = [item for item in a.datas if include_payload_data(item[0])]\n"
         "pyz = PYZ(a.pure)\n"
         f"exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='MentorFlow', console=False, upx=False, icon={(work / 'MentorFlow.ico').as_posix()!r})\n"
