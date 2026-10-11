@@ -12,7 +12,7 @@ _gdi_objects = []
 _class_instance = None
 
 
-def native_splash():
+def native_splash(text='正在启动…'):
     """A tiny Win32 splash before Qt loads; QApplication later pumps its messages."""
     global _native
     if os.name != 'nt': return
@@ -53,7 +53,7 @@ def native_splash():
             previous=gdi.SelectObject(dc,fonts[0]); rect=w.RECT(32,28,390,78)
             user.DrawTextW(dc,'MentorFlow',-1,c.byref(rect),0)
             gdi.SelectObject(dc,fonts[1]); gdi.SetTextColor(dc,0x806D84)
-            rect=w.RECT(32,110,390,150); user.DrawTextW(dc,'正在启动…',-1,c.byref(rect),0)
+            rect=w.RECT(32,110,390,150); user.DrawTextW(dc,text,-1,c.byref(rect),0)
             gdi.SelectObject(dc,previous); user.EndPaint(hwnd,c.byref(area)); return 0
         return user.DefWindowProcW(hwnd,message,wp,lp)
     _paint=paint
@@ -88,6 +88,29 @@ def native_splash():
                   first_show_minimized=first_minimized,
                   minimized=bool(user.IsIconic(c.c_void_p(hwnd))),
                   foreground=user.GetForegroundWindow() == hwnd)
+
+
+def run_with_native_splash(action):
+    """Keep the native update window responsive until real App health returns."""
+    import threading
+    from contextvars import copy_context
+    done = threading.Event()
+    outcome = {}
+    context = copy_context()
+    def work():
+        try: outcome['result'] = action()
+        except BaseException as error: outcome['error'] = error
+        finally: done.set()
+    threading.Thread(target=lambda: context.run(work), daemon=True,
+                     name='mf-update-coordinator').start()
+    try:
+        while not done.is_set():
+            pump_native_messages()
+            done.wait(.01)
+    finally:
+        close_native_splash()
+    if 'error' in outcome: raise outcome['error']
+    return outcome['result']
 
 
 def close_native_splash():

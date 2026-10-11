@@ -21,6 +21,9 @@ from functools import lru_cache
 if __name__ == '__main__' and sys.argv[1:2] == ['launch']:
     from refactor.desktop.delivery.startup_window import native_splash
     native_splash()
+elif __name__ == '__main__' and sys.argv[1:2] == ['apply-latest'] and '--app-self-exit' in sys.argv:
+    from refactor.desktop.delivery.startup_window import native_splash
+    native_splash('正在更新 MentorFlow…')
 
 from refactor.desktop.delivery.update_protocol import canonical
 from refactor.desktop.delivery.update_protocol import digest
@@ -329,10 +332,18 @@ def schedule_program_cleanup(root):
     import threading
     if not (Path(root) / STATE).is_file(): return None
     def work():
-        time.sleep(2)
-        try: cleanup_program_files(root)
-        except (OSError, RuntimeError, ValueError) as error:
-            maintenance_log(root, 'cleanup_deferred', error=str(error))
+        # Startup discovery and updater refresh can still own their locks at
+        # two seconds. Retry only a busy lock, with a bounded background budget.
+        for delay in (2, 3, 5, 10, 20, 40):
+            time.sleep(delay)
+            try:
+                cleanup_program_files(root, retry_busy=True)
+                return
+            except RecoverableError:
+                continue
+            except (OSError, RuntimeError, ValueError) as error:
+                maintenance_log(root, 'cleanup_deferred', error=str(error))
+                return
     thread = threading.Thread(target=work, daemon=True, name='program-cleanup')
     thread.start()
     return thread
@@ -380,7 +391,7 @@ def _remove_program_tree(root, path):
         return False
 
 
-def cleanup_program_files(root):
+def cleanup_program_files(root, *, retry_busy=False):
     """Keep current, rollback and the one still-pending download; retry locked junk."""
     from refactor.desktop.delivery.update_download import InstallUpdateLock
     from refactor.desktop.delivery import per_user_update_core as core
@@ -427,6 +438,7 @@ def cleanup_program_files(root):
                 if _remove_program_tree(root, path): removed.append(str(path))
     except (OSError, RuntimeError, ValueError) as error:
         maintenance_log(root, 'cleanup_deferred', error=str(error))
+        if retry_busy and isinstance(error, RecoverableError): raise
     return removed
 
 
@@ -594,6 +606,18 @@ def wait_for_app_exit(root, pid, hwnd_hex, *, timeout=30, ready=lambda: None):
             time.sleep(.05)
         if peer.alive():
             raise AppShutdownTimeout('app self-exit timed out; update remains pending')
+
+
+def launch_coordination(root):
+    """Share the existing nonblocking lock across launch and update handoff.
+
+    The transaction still owns its own installation lock. This outer gate
+    prevents a shortcut from starting the old App between PID exit and swap.
+    """
+    from refactor.desktop.delivery.update_download import InstallUpdateLock
+    directory = plain(target(root) / 'launch-operation')
+    directory.mkdir(exist_ok=True)
+    return InstallUpdateLock(directory)
 
 
 def uninstall_per_user(root):
@@ -1228,7 +1252,12 @@ def main():
                  ('install', 'apply', 'apply-pending', 'apply-latest', 'update-to-latest',
                   'recover', 'uninstall', 'repair-installation') else nullcontext())
         with scope:
-            result = _execute(args, parser, progress)
+            if args.action == 'apply-latest' and args.app_self_exit:
+                from refactor.desktop.delivery.startup_window import run_with_native_splash
+                with launch_coordination(args.root):
+                    result = run_with_native_splash(lambda: _execute(args, parser, progress))
+            else:
+                result = _execute(args, parser, progress)
         if args.result: atomic(args.result, canonical(result))
         return result
     except Exception as error:
