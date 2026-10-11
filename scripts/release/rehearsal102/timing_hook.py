@@ -27,6 +27,20 @@ def wrap(module, name):
     setattr(module,name,timed)
 
 if getattr(sys,'frozen',False):
+    # Rehearsal-only network boundary. A stale resource configuration must
+    # fail locally rather than ever contact production account/model hosts.
+    import httpx
+    _send=httpx.Client.send
+    _async_send=httpx.AsyncClient.send
+    def _local(request):
+        if request.url.host not in ('127.0.0.1','localhost'):
+            raise RuntimeError('UAT_LOCAL_ONLY: non-local HTTP request blocked')
+    def _send_local(self,request,*args,**kwargs):
+        _local(request);return _send(self,request,*args,**kwargs)
+    async def _async_send_local(self,request,*args,**kwargs):
+        _local(request);return await _async_send(self,request,*args,**kwargs)
+    httpx.Client.send=_send_local
+    httpx.AsyncClient.send=_async_send_local
     from refactor.desktop.delivery import per_user_install as install
     from refactor.desktop.delivery import per_user_update_core as core
     from refactor.desktop.delivery import update_download
@@ -47,7 +61,7 @@ if getattr(sys,'frozen',False):
     # Fault injection is confined to a preview runtime hook and an owned marker.
     if 'MentorFlow.exe' == Path(sys.executable).name:
         from refactor.learning.connections import credentials
-        credentials.SERVICE_NAME = 'MentorFlow.UAT.inapp102c.Learning.Models.v1'
+        credentials.SERVICE_NAME = 'MentorFlow.UAT.class103.Learning.Models.v1'
         from refactor.desktop import account_shell_main
         original=getattr(account_shell_main.AccountShell,'prepare_update_shutdown',None)
         def shutdown(self,*a,**k):

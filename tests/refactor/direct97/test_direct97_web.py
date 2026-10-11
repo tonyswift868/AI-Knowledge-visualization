@@ -13,7 +13,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[3]))
 from tests.refactor.direct97.support97 import make,position,act,close
 
 
-def build(directory):
+def build(directory, entry='direct97_browser.tsx', bridge='direct97_bridge.ts'):
     fixture=Path(__file__).parent
     deps=Path('D:/MentorFlow/.local/web-deps')
     node=Path('D:/MentorFlow/.local/node/node.exe')
@@ -33,12 +33,12 @@ def build(directory):
     finally:close(e)
     (directory/'states.json').write_text(json.dumps(states,ensure_ascii=False),encoding='utf-8')
     aliases=[dict(find=k,replacement=v.as_posix()) for k,v in [
-        ('../bridge',fixture/'direct97_bridge.ts'),
+        ('../bridge',fixture/bridge),
         ('../teacher/TeacherStage',fixture/'direct97_optional.tsx'),
         ('../voice',fixture/'direct97_optional.tsx'),
         ('./states.json',directory/'states.json')]]
     (directory/'index.html').write_text('<div id="root"></div><script type="module" src="/entry.tsx"></script>',encoding='utf-8')
-    (directory/'entry.tsx').write_text('import '+json.dumps((fixture/'direct97_browser.tsx').as_posix()),encoding='utf-8')
+    (directory/'entry.tsx').write_text('import '+json.dumps((fixture/entry).as_posix()),encoding='utf-8')
     config=f'''
 import path from 'node:path'
 import {{pathToFileURL}} from 'node:url'
@@ -89,7 +89,7 @@ def browser(directory):
         for stage in ('entry','original','choice'):
             js(f'document.documentElement.dataset.theme={json.dumps(theme)};window.direct97Show({json.dumps(stage)})')
             end=time.monotonic()+5
-            needle={'entry':'这个模块我都会了，直接考','original':'对照原文，自己判断是否理解','choice':'不管刚才回答怎样'}[stage]
+            needle={'entry':'这个模块我都会了，直接考','original':'对照原文，自己判断理解得对不对','choice':'不管刚才回答怎样'}[stage]
             while time.monotonic()<end and not js(f'document.body.textContent.includes({json.dumps(needle)})'):pump()
             assert js(f'document.body.textContent.includes({json.dumps(needle)})')
             pump(.2)

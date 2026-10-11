@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[3]
 TASK = Path(os.environ.get('MF_UAT_ROOT', 'D:/MentorFlow/.local/test-tmp/inapp102c'))
 if not TASK.resolve().is_relative_to(Path('D:/MentorFlow/.local/test-tmp').resolve()):
     raise ValueError('UAT artifacts must stay inside the project test-tmp directory')
-APP_ID = 'MentorFlow.UAT.inapp102c'
+APP_ID = 'MentorFlow.UAT.class103'
 FEED = 'http://127.0.0.1:18763/updates/app/stable/stable.json'
 
 def environment():

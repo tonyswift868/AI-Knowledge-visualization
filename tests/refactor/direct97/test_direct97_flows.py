@@ -55,7 +55,9 @@ def test_direct97_questionless_sample_sources_and_self_choice(tmp_path,learned,s
         assert e.store.records('messages',PLAN)==messages
         assert not e.store.records('judgements',PLAN) and not e.store.records('question_answers',PLAN)
         assert not e.store.records('attempt_closed',PLAN)
-        assert '我觉得' not in e.room._file(PLAN).path.read_text(encoding='utf-8')
+        assert len(view['direct_review']['entries'])==3
+        assert all(entry['answer']=='我觉得是按加入先后处理。' for entry in view['direct_review']['entries'])
+        assert all('我觉得' not in str(request) for request in e.teacher.requests)
         view=act(e,'direct_choice',skip)
         if skip:
             assert view['module']['state']=='skipped' and view['step']=='test_done'

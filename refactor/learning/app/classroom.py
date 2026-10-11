@@ -412,7 +412,10 @@ class Classroom:
         if state['step']=='direct_review':
             review=state['direct_review']
             if not review['answered']:
-                # Deliberately no answer, message, judgement or profile write.
+                # Local, temporary comparison only: never enters messages,
+                # scored answers, judgements, profiles or teacher context.
+                review.setdefault('responses',{})[str(review['index'])]=dict(
+                    point_id=review['points'][review['index']],question=review['question'],answer=text)
                 review['answered']=True
                 if review['index']+1==len(review['points']):state['step']='direct_choice'
             return
@@ -646,7 +649,7 @@ class Classroom:
                 pool=untaught if len(untaught)>=3 else points
                 selected=self._rng.sample(pool,min(3,len(pool)))
                 state['direct_review']=dict(attempt=uuid.uuid4().hex[:16],resume=self._direct_position(state),
-                    points=[p['id'] for p in selected],index=0,question='',answered=False)
+                    points=[p['id'] for p in selected],index=0,question='',answered=False,responses={})
                 state.update(step='direct_review',pending=None,test=None)
                 state.pop('conversation',None)
                 return self._ask_direct(course,state,ctx)
@@ -690,8 +693,21 @@ class Classroom:
         review=state.get('direct_review')
         if not review:return None
         pid=review['points'][review['index']]
+        entries=[]
+        for i in range(review['index']+1):
+            saved=review.get('responses',{}).get(str(i),{})
+            point_id=review['points'][i]
+            current=i==review['index']
+            # Old states have no responses; still show their current prompt.
+            if not saved and not current:continue
+            answered=review['answered'] if current else True
+            entries.append(dict(point_id=point_id,title=course.point(point_id)['title'],number=i+1,
+                question=saved.get('question',review['question'] if current else ''),
+                answer=saved.get('answer',''),answered=answered,
+                sources=[course.passage_card(cid) for cid in course.passages([point_id])] if answered else []))
         return dict(point_id=pid,title=course.point(pid)['title'],number=review['index']+1,total=len(review['points']),
             question=review['question'],answered=review['answered'],
+            entries=entries,answer=review.get('responses',{}).get(str(review['index']),{}).get('answer',''),
             sources=[course.passage_card(cid) for cid in course.passages([pid])] if review['answered'] else [])
 
     def direct_next(self,course,state,ctx):

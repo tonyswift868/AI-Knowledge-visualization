@@ -13,3 +13,17 @@
 7. **收尾**：截图、API/HTTP 状态、事务和计时写报告。替身未实现学习同步，因此“同步失败”仅是夹具限制。预览原钩子隔离账号凭据；本工具额外隔离模型凭据服务 Learning.Models.v1，不读正式 Key。用本轮预览卸载器清理本轮注册/快捷方式，正式快照应不变。大文件即删；被拦就列路径，不绕过。只留报告、截图、小脚本；工具不进入 pytest 自动收集。
 
 复用现有 PyInstaller（GPL 打包例外）、Inno Setup（免费许可）、Python/Node 标准库、Windows UI Automation（系统组件），未新增依赖或更新机制。
+
+103 轮：APP_ID 与模型凭据服务独立为 class103；MF_UAT_ROOT 指到 class103。
+用 Python tarfile 解包 git archive 10e625f4（Windows tar 对中文资源名可能失败），
+`build.py O --source <解包目录>` 构建 2.0.13，`build.py X --source <最终工位>`
+独立冻结 9.103.14（不要用复制 X 改版本的 Y）。若最后只改网页，`python final103.py`
+重新打网页并给完整最终包签名为 N。两包齐全后 `python scenario103.py`：
+真实 O 安装/登录/保存测试 Key → 主界面入口更新 X → 核对 → 本轮卸载 → 正式快照比较。
+输入通过 DOM 原生 setter 和 input/change 事件，不发送 CDP Input 键盘操作。
+复制旧资源后必须重新写入并核验本机 public-runtime.json 与 CA；`refreeze103.py`
+会检查包内地址，并重新冻结测试用 HTTP 本机限制。不要用整目录覆盖已准备的本机配置。
+若真实更新已自行打开新版而检查失败，`scenario103.py --resume --verify-current`
+只核对当前进程、保留真实失败结果并卸载，不再更新或重启来掩盖故障。
+103 实测：App HEALTHY、pending 清除、设置/Key/新网页均正确；Updater 刷新因
+更新锁忙而 DEFERRED，仍为旧版。该项未通过，不能把排练脚本退出成功当作发布通过。

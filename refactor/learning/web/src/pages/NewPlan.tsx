@@ -1,3 +1,4 @@
+import { useRoundScroll } from "../useRoundScroll"
 import * as React from "react"
 import {
   ArrowDown, ArrowUp, BookOpen, Check, ChevronLeft, ChevronRight, CircleAlert, ExternalLink, FileUp, GitBranch, RefreshCw, Rocket, Search, SendHorizontal, Sparkles, Trash2, Wand2, X,
@@ -125,6 +126,7 @@ export function NewPlan() {
   const [text, setText] = React.useState("")
   const [confirmDiscard, setConfirmDiscard] = React.useState(false)
   const scroller = React.useRef<HTMLDivElement>(null)
+  const beginRound = useRoundScroll(scroller, draft?.plan_id)
   const chatInput = React.useRef<HTMLTextAreaElement>(null)
   function adjustContent(value: string) { setText(value); chatInput.current?.focus() }
   const idRef = React.useRef<string | null>(null)
@@ -146,13 +148,9 @@ export function NewPlan() {
     return () => {alive=false;offs.forEach((off) => off());abort.current?.abort()}
   }, [planId, accept, toast, set,loadAttempt])
 
-  React.useLayoutEffect(() => {
-    const el = scroller.current
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
-  }, [draft?.messages.length, status])
-
   async function act(method: string, params: Record<string, unknown> = {}) {
     if (!draft) return
+    beginRound()
     setPending(true)
     abort.current=new AbortController()
     try {
@@ -307,7 +305,7 @@ export function NewPlan() {
                                                       onStarted={() => { toast("ok", "计划已开始！首页会显示今天要学多久。"); set({ planId: null }); go("home") }} />
             return <div key={m.id} className={`bubble bot ${m.kind === "error" ? "warn" : ""}`} data-selectable>
               {m.kind === "error" && <CircleAlert size={16} style={{ verticalAlign: -3, marginRight: 6 }} />}{m.text}</div>
-          })}
+          }).map((element, i) => { const m = visiblePlanMessages(draft.messages)[i]; return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role}>{element}</div> })}
           {draft.phase === "sources" && !status && (
             <div className="plan-actions fade-in">
               <Button disabled={busy} onClick={() => act("plan.more")}><Search />让 AI 推荐 / 换一批</Button>
