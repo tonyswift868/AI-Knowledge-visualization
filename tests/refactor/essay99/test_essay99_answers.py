@@ -63,11 +63,11 @@ def test_essay99_objective_raw_choice_snapshot_and_read_only_bridge(env,tmp_path
     registry=SimpleNamespace(methods={},push=lambda *a:None)
     registry.register=lambda name,fn:registry.methods.__setitem__(name,fn)
     register(registry,lambda:e.services,lambda:DAY,now=lambda:NOW)
-    before=(e.room._file(PLAN).path.read_bytes(),e.store.load_mastery(PLAN).to_dict(),e.store.pending_records(10000))
+    before=(e.store.classroom_position(PLAN),e.store.load_mastery(PLAN).to_dict(),e.store.pending_records(10000))
     for _ in range(2):
         notebook=registry.methods['classroom.wrong_answers'](dict(plan_id=PLAN),None)
         assert notebook[0]['question_id']==qid
-    after=(e.room._file(PLAN).path.read_bytes(),e.store.load_mastery(PLAN).to_dict(),e.store.pending_records(10000))
+    after=(e.store.classroom_position(PLAN),e.store.load_mastery(PLAN).to_dict(),e.store.pending_records(10000))
     assert before==after
     remote=CourseStore('question70',tmp_path/'other-device')
     try:
@@ -91,7 +91,7 @@ def test_essay99_v8_upgrade_keeps_old_payload_and_verdict(env,tmp_path):
     legacy._db.execute('UPDATE schema_version SET version=8');legacy.close()
     reopened=CourseStore('question70',root)
     try:
-        assert SCHEMA_VERSION==9 and reopened._db.execute('SELECT version FROM schema_version').fetchone()[0]==9
+        assert SCHEMA_VERSION==10 and reopened._db.execute('SELECT version FROM schema_version').fetchone()[0]==SCHEMA_VERSION
         assert reopened._db.execute('SELECT payload FROM question_answers').fetchone()[0]==raw
         saved=reopened.wrong_answers(PLAN)[0]['attempts'][0]
         assert saved['correct'] is False and saved['self_correct'] is None

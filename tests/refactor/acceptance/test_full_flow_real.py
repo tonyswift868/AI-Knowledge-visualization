@@ -165,7 +165,7 @@ class Run:
         return {c["id"]: c["text"][:4000] for c in self.store.records("source_chunks", self.plan_id) if c["id"] in wanted}
 
     def student(self, mode):
-        state = self.room._file(self.plan_id).read({})
+        state = self.room._load(self.room._course(self.plan_id))
         pending = state.get("pending") or {}
         packet = dict(persona=PERSONA, mode=mode, question=self.view.get("question"),
                       dialogue=[dict(role=m["role"], text=m["content"]) for m in self.view["messages"][-6:]],

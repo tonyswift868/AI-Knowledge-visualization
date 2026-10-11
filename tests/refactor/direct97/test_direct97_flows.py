@@ -13,7 +13,7 @@ def test_direct97_all_questions_any_position_threshold_and_resume(tmp_path,learn
     try:
         before=position(e,learned,'teach' if learned==0 else 'teaching')
         assert act(e,'enter')['can_skip']
-        view=act(e,'start_test','skip_test');state=e.room._file(PLAN).read({})
+        view=act(e,'start_test','skip_test');state=e.room._load(e.room._course(PLAN))
         assert len(state['test']['queue'])==10 and not view['can_skip']
         # Includes the already explained points' questions, never only the tail.
         assert {q['point_ids'][0] for q in state['test']['queue']}=={'p0','p1','p2','p3'}
@@ -30,7 +30,7 @@ def test_direct97_all_questions_any_position_threshold_and_resume(tmp_path,learn
             profile=e.store.records('teacher_profile',PLAN)[0]['document']['text']
             assert f'已讲{learned}个' in profile and f'另有{4-learned}个点直接考通过' in profile
         else:
-            current=e.room._file(PLAN).read({})
+            current=e.room._load(e.room._course(PLAN))
             assert all(current[k]==before[k] for k in ('module_id','index','step','conversation'))
             assert view['can_skip'] and view['module']['state']=='failed'
         # The question-grade contract: correct starts final check at 2, wrong at 1.
@@ -46,7 +46,7 @@ def test_direct97_questionless_sample_sources_and_self_choice(tmp_path,learned,s
     try:
         before=position(e,learned)
         messages=copy.deepcopy(e.store.records('messages',PLAN))
-        act(e,'start_test','skip_test');review=e.room._file(PLAN).read({})['direct_review']
+        act(e,'start_test','skip_test');review=e.room._load(e.room._course(PLAN))['direct_review']
         assert len(review['points'])==len(set(review['points']))==3
         if learned==0:assert set(review['points'])<={'p0','p1','p2','p3'}
         else:assert set(review['points']) & {'p0','p1'}  # fallback to whole module (only 2 unlearned)
@@ -71,7 +71,7 @@ def test_direct97_questionless_sample_sources_and_self_choice(tmp_path,learned,s
             report=build_report(e.store,PLAN,today=DAY)
             assert report['modules'][0]['state']=='skipped' and report['modules'][0]['test_count']==0
         else:
-            current=e.room._file(PLAN).read({})
+            current=e.room._load(e.room._course(PLAN))
             assert all(current[k]==before[k] for k in ('module_id','index','step','conversation'))
             assert not e.store.records('attempt_closed',PLAN)
             assert len(e.store.load_ledger(PLAN).to_dict()['credits'])==learned
@@ -83,7 +83,7 @@ def test_direct97_entry_hidden_and_rejected_during_other_assessments(tmp_path,st
     e=make(tmp_path)
     try:
         position(e,0,step)
-        state=e.room._file(PLAN).read({});state['phase']=phase;e.room._file(PLAN).write(state)
+        state=e.room._load(e.room._course(PLAN));state['phase']=phase;e.room._save(e.room._course(PLAN),state)
         assert not act(e,'enter')['can_skip']
         rejected=e.room.perform(PLAN,'start_test',context(),('skip_test',))
         assert '当前答题' in rejected['failure']['message'] and not rejected['can_skip']
@@ -115,7 +115,7 @@ def test_direct97_three_unlearned_only_and_small_module(tmp_path):
     e=make(tmp_path/'three',questions=0,points=5)
     try:
         position(e,2);act(e,'start_test','skip_test')
-        assert set(e.room._file(PLAN).read({})['direct_review']['points'])=={'p2','p3','p4'}
+        assert set(e.room._load(e.room._course(PLAN))['direct_review']['points'])=={'p2','p3','p4'}
     finally:close(e)
     e=make(tmp_path/'two',questions=0,points=2)
     try:
@@ -128,10 +128,10 @@ def test_direct97_reopen_during_test_and_second_casual_prompt(tmp_path):
     e=make(tmp_path/'graded')
     try:
         before=position(e,2);act(e,'start_test','skip_test');act(e,'answer',['先进先出'])
-        original=e.room._file(PLAN).read({})
+        original=e.room._load(e.room._course(PLAN))
         e.room=fresh(e);view=act(e,'enter')
         assert view['question']['id']==original['pending']['question']['id']
-        assert e.room._file(PLAN).read({})['test']['resume']['index']==before['index']
+        assert e.room._load(e.room._course(PLAN))['test']['resume']['index']==before['index']
         for _ in range(9):view=act(e,'answer',['先进先出'])
         assert view['module']['state']=='skipped'
         assert len(e.store.records('question_answers',PLAN))==10

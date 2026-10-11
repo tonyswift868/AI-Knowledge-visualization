@@ -211,7 +211,7 @@ def test_classroom_cross_day_timeline_uses_real_today_status(classroom_room):
     _act(classroom, 'reply', '先进先出'); view = _act(classroom, 'reply', '不会')
     assert view['today']['today_target'] == 30 and view['today']['ahead_minutes'] == 10
     _act(classroom, 'start_test', 'module_test')
-    queue = classroom._file(PLAN).read({})['test']['queue']
+    queue = classroom._load(classroom._course(PLAN))['test']['queue']
     assert len(queue)==2
     agent.verdicts.extend(('answer', q['point_ids'][0]!='p1', ['p1'] if q['point_ids'][0]=='p1' else []) for q in queue)
     for _ in queue: view=_act(classroom,'reply','检测作答')
