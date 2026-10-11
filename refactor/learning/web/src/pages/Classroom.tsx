@@ -1,5 +1,6 @@
 import { WrongAnswers } from "../classroom/WrongAnswers"
 import * as React from "react"
+import { useRoundScroll } from "../useRoundScroll"
 import { ClassroomMarkdown } from "../classroom/Markdown"
 import { ProgressStatus, type StudyProgress } from "../ProgressStatus"
 import {
@@ -20,13 +21,15 @@ const TeacherWindow = React.lazy(() => import("../teacher/TeacherStage").then((m
 
 type Msg = { id: string; role: "user" | "assistant" | "system"; kind: string; content: string; sources: SourceCard[] }
 type Point = { id: string; title: string; minutes: number; taught: boolean; state: string; current: boolean }
+type ReviewEntry = { point_id: string; title: string; number: number; question: string; answer?: string; answered: boolean; sources: SourceCard[] }
+
 type Room = {
   plan: { id: string; goal: string; state: string }
   module: { id: string; title: string; number: number; total: number; state: string }
   points: Point[]; step: string; question: BankQuestion | null; messages: Msg[]; can_skip: boolean; red: string[]
   more_modules: boolean; check: { passed: number; total: number } | null
   conversation?: Conversation | null
-  direct_review?: { point_id: string; title: string; number: number; total: number; question: string; answered: boolean; sources: SourceCard[] } | null
+  direct_review?: ReviewEntry & { total: number; entries?: ReviewEntry[] } | null
   preparation?: Preparation | null
   failure?: { message: string } | null
   explanation?: { text: string; source: { title: string; url: string; locator: string }; label: string; open: boolean; message_id: string } | null
@@ -55,6 +58,7 @@ export function Classroom() {
   const [room, setRoom] = React.useState<Room | null>(null)
   const [busy, setBusy] = React.useState<string | null>(null)
   const [stream, setStream] = React.useState<string | null>(null)
+  const [pendingUser, setPendingUser] = React.useState<string | null>(null)
   const [verdictPreview, setVerdictPreview] = React.useState<{ text: string; correct: boolean } | null>(null)
   const [text, setText] = React.useState("")
   const [source, setSource] = React.useState<Source | null>(null)
@@ -73,6 +77,7 @@ export function Classroom() {
   const lessonRefresh = React.useRef<(() => void) | null>(null)
   const lessonChanged = React.useRef(false)
   const scroller = React.useRef<HTMLDivElement>(null)
+  const beginRound = useRoundScroll(scroller, planId)
   const sourceCards = React.useRef(new Map<string, OriginalCardsHandle>())
   const spoken = React.useRef<string | null>(null)
   const streamedMessages = React.useRef(new Set<string>())
@@ -91,6 +96,7 @@ export function Classroom() {
     // A ref locks immediately, including two clicks before React has rendered.
     if (!planId || acting.current) return false
     acting.current = true
+    if (method !== "classroom.state") beginRound()
     const ownGeneration = generation.current
     const before = new Set(room?.messages.map((message) => message.id) ?? [])
     stopReading()
@@ -99,6 +105,8 @@ export function Classroom() {
     voiceTurn.current = turn
     abort.current = new AbortController()
     setBusy(label)
+    setPendingUser(!room?.direct_review && ["classroom.reply", "classroom.ask", "classroom.choose"].includes(method)
+      ? String(params.text ?? room?.conversation?.options?.[Number(params.option)] ?? "") || null : null)
     setStream("")
     setVerdictPreview(null)
     try {
@@ -151,7 +159,7 @@ export function Classroom() {
     } finally {
       if (ownGeneration === generation.current) {
         acting.current = false
-        setBusy(null); setStream(null); setVerdictPreview(null); abort.current = null
+        setBusy(null); setStream(null); setPendingUser(null); setVerdictPreview(null); abort.current = null
       }
       if (lessonChanged.current) lessonRefresh.current?.()
     }
@@ -175,7 +183,7 @@ export function Classroom() {
   React.useEffect(() => {
     if (!planId) { go("home"); return }
     const ownGeneration = ++generation.current
-    setRoom(null); acting.current = false; setAskMode(false); setPointsExpanded(false)
+    setRoom(null); setPendingUser(null); acting.current = false; setAskMode(false); setPointsExpanded(false)
     call<Room>("classroom.enter", { plan_id: planId }).then((r) => {
       if (ownGeneration !== generation.current) return
       spoken.current = r.messages.at(-1)?.id ?? null   // do not read old messages aloud on entry
@@ -217,12 +225,6 @@ export function Classroom() {
     }, 500)
     return () => { active = false; window.clearInterval(timer) }
   }, [room?.step, planId, busy, act])
-
-  React.useLayoutEffect(() => {
-    const el = scroller.current
-    const reduced = reduceMotion || window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: reduced ? "auto" : "smooth" })
-  }, [room?.messages.length, stream, busy, reduceMotion])
 
   // React to what is new since the last look: nod or think on a verdict, read the teacher's words aloud.
   React.useEffect(() => {
@@ -327,15 +329,15 @@ export function Classroom() {
             </div>
           )}
           {room.messages.map((m) => {
-            if (m.role === "user") return <div key={m.id} className={`bubble user ${m.kind === "choice" ? "class-choice" : ""}`} data-selectable>
+            if (m.role === "user") return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role} className={`bubble user ${m.kind === "choice" ? "class-choice" : ""}`} data-selectable>
               {m.kind === "choice" && <span className="class-message-label">我的选择</span>}{m.content}</div>
-            if (m.kind === "casual") return <div key={m.id} className="class-ask" data-selectable><span>随口问</span>{m.content}</div>
-            if (m.kind === "question") return <div key={m.id} className="class-question" data-selectable>{markdown(m.content)}</div>
-            if (m.kind === "verdict") return <div key={m.id} className={`class-verdict ${m.content.startsWith("✓") ? "ok" : "bad"}`}>{m.content}
+            if (m.kind === "casual") return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role} className="class-ask" data-selectable><span>随口问</span>{m.content}</div>
+            if (m.kind === "question") return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role} className="class-question" data-selectable>{markdown(m.content)}</div>
+            if (m.kind === "verdict") return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role} className={`class-verdict ${m.content.startsWith("✓") ? "ok" : "bad"}`}>{m.content}
               {m.id === room.explanation?.message_id && <Button small disabled={!!busy} onClick={() => act("classroom.why")}>为什么？</Button>}</div>
-            if (m.role === "system") return <div key={m.id} className={`class-note ${m.kind === "error" ? "warn" : ""}`}>
+            if (m.role === "system") return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role} className={`class-note ${m.kind === "error" ? "warn" : ""}`}>
               {m.kind === "error" && <CircleAlert size={15} />}{m.content}</div>
-            return <div key={m.id} className={`bubble bot ${m.kind === "step" ? "class-step" : m.kind === "step_reply" ? "class-step-reply" : ""}`} data-selectable>
+            return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role} className={`bubble bot ${m.kind === "step" ? "class-step" : m.kind === "step_reply" ? "class-step-reply" : ""}`} data-selectable>
               {m.kind === "step" && <span className="class-message-label">老师讲解</span>}
               {m.kind === "step_reply" && <span className="class-message-label">老师回应</span>}{markdown(m.content, id => {
                 if (!sourceCards.current.get(m.id)?.reveal(id)) void openSource(id)
@@ -344,21 +346,29 @@ export function Classroom() {
                 ref={handle => { if (handle) sourceCards.current.set(m.id, handle); else sourceCards.current.delete(m.id) }} />
               <button className="icon-btn listen" title="听这段" onClick={() => listen(m.content)}><Volume2 size={15} /></button></div>
           })}
-          {room.direct_review && <div className="bubble bot" data-testid="direct-review">
-            <span className="eyebrow">随口聊聊 {room.direct_review.number}/{room.direct_review.total} · 不记分</span>
-            <b style={{ display: "block", margin: "6px 0" }}>{room.direct_review.title}</b>
-            {markdown(room.direct_review.question)}
-            {room.direct_review.answered && <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
-              <span className="small muted">对照原文，自己判断是否理解；回答不保存、不判分。</span>
-              {room.direct_review.sources.map(card => <section key={card.id} style={{ marginTop: 10 }}>
-                <b className="small">{card.title} · {card.locator}</b>
-                <div data-selectable>{markdown(card.text)}</div>
-              </section>)}
-            </div>}
+          {room.direct_review && <div data-testid="direct-review">
+            {(room.direct_review.entries ?? [room.direct_review]).map(entry => <div key={entry.number} className="bubble bot" style={{ marginBottom: 12 }}
+              data-turn-key={`direct-question-${entry.number}`} data-turn-role="assistant">
+              <span className="eyebrow">随口聊聊 {entry.number}/{room.direct_review!.total} · 不记分</span>
+              <b style={{ display: "block", margin: "6px 0" }}>{entry.title}</b>
+              {markdown(entry.question)}
+              {entry.answered && <>
+                <section className="recall-own" data-testid="direct-answer" data-turn-key={`direct-answer-${entry.number}`} data-turn-role="user">
+                  <b className="small">我的回答</b><div data-selectable style={{ whiteSpace: "pre-wrap" }}>{entry.answer || "（这次回答未保留）"}</div>
+                </section>
+                <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
+                  <span className="small muted">对照原文，自己判断理解得对不对；不判分、不记录。</span>
+                  {entry.sources.map(card => <section key={card.id} style={{ marginTop: 10 }}>
+                    <b className="small">{card.title} · {card.locator}</b><div data-selectable>{markdown(card.text)}</div>
+                  </section>)}
+                </div>
+              </>}
+            </div>)}
           </div>}
+          {pendingUser && <div className="bubble user" data-turn-key="pending-student" data-turn-role="user" data-selectable>{pendingUser}</div>}
           {verdictPreview && <div className={`class-verdict ${verdictPreview.correct ? "ok" : "bad"}`}>{verdictPreview.text}</div>}
           {stream !== null && (live(stream)
-            ? <div className="bubble bot streaming wait-content">{markdown(live(stream))}</div>
+            ? <div data-turn-key="teacher-stream" data-turn-role="assistant" className="bubble bot streaming wait-content">{markdown(live(stream))}</div>
             : <Loading active={!!busy} label={busy?.includes('判')||busy?.includes('核对') ? busy : `老师正在想…${busy && !busy.includes('老师') ? ` · ${busy}` : ''}`}
                 shape="conversation" onCancel={abort.current ? ()=>abort.current?.abort() : undefined}/>)}
           {stream === null && <Loading active={!!busy} label={busy ?? '正在记录回答…'}/>}
@@ -384,7 +394,7 @@ export function Classroom() {
         <div className="composer">
           <textarea ref={input} className="input" rows={1} value={text} aria-label="课堂输入"
                     disabled={(q?.kind === "recall" && !askMode) || !!room.direct_review?.answered}
-                    placeholder={room.direct_review?.answered ? "看完原文后，选择下一句或是否跳过" : room.direct_review ? "随口回答，不记分，也不保存" : askMode ? "想问什么？答完回到刚才" : q?.kind === "recall" ? "作答请用上方问答卡片；提问可点“我想问…”" : (q?.kind === "calc" || q?.question_type === "calc") ? "填写计算数值，可带单位" : q ? "输入作答，或点上方选项；提问可点“我想问…”" : "回答老师或提问，都可以直接说"}
+                    placeholder={room.direct_review?.answered ? "看完原文后，选择下一句或是否跳过" : room.direct_review ? "随口回答，不记分" : askMode ? "想问什么？答完回到刚才" : q?.kind === "recall" ? "作答请用上方问答卡片；提问可点“我想问…”" : (q?.kind === "calc" || q?.question_type === "calc") ? "填写计算数值，可带单位" : q ? "输入作答，或点上方选项；提问可点“我想问…”" : "回答老师或提问，都可以直接说"}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.repeat) {
                       e.preventDefault()

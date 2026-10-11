@@ -40,7 +40,7 @@ async function run() {
   if (document.querySelector('.bank-question-controls')) throw new Error('Unscored dialogue became a scored question card')
   for (let i = 0; i < 3; i++) {
     fill('我按自己的理解说一句。'); await wait(); button('发送').click()
-    await until(() => content().includes('对照原文，自己判断是否理解') && !!document.querySelector<HTMLTextAreaElement>('textarea')?.disabled)
+    await until(() => content().includes('对照原文，自己判断理解得对不对') && !!document.querySelector<HTMLTextAreaElement>('textarea')?.disabled)
     if (content().includes('回到刚才')) throw new Error('Lecture controls leaked into unscored direct review')
     if (!content().includes('队列采用先进先出的顺序')) throw new Error('Source not shown after answer')
     if (i < 2) { button('看完原文，下一句').click(); await until(() => content().includes(`随口聊聊 ${i + 2}/3`) && !document.querySelector<HTMLTextAreaElement>('textarea')?.disabled) }

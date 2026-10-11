@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useRoundScroll } from "../useRoundScroll"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
@@ -33,6 +34,7 @@ export function Chat() {
   const [personaOpen, setPersonaOpen] = React.useState(false)
   const abort = React.useRef<AbortController | null>(null)
   const scroller = React.useRef<HTMLDivElement>(null)
+  const beginRound = useRoundScroll(scroller, current?.id)
   const input = React.useRef<HTMLTextAreaElement>(null)
 
   const refresh = React.useCallback(async () => {
@@ -56,11 +58,6 @@ export function Chat() {
     const off = on("chat_changed", () => { refresh().catch(() => {}) })
     return () => { off(); abort.current?.abort() }
   }, [refresh, open, toast])
-
-  React.useLayoutEffect(() => {
-    const el = scroller.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [current, pending])
 
   async function fresh() {
     if (pending) return
@@ -95,6 +92,7 @@ export function Chat() {
         refresh()
       }
     } catch (e) { toast("error", (e as Error).message); return }
+    beginRound(session.id)
     setDraft("")
     setPending({ user: text, reply: "" })
     const controller = new AbortController()
@@ -157,10 +155,10 @@ export function Chat() {
             </div>
           ) : (
             <>
-              {messages.map((m) => <Bubble key={m.seq} m={m} />)}
+              {messages.map((m) => <div key={m.seq} data-turn-key={`msg-${m.seq}`} data-turn-role={m.role}><Bubble m={m} /></div>)}
               {pending && <>
-                <Bubble m={{ role: "user", content: pending.user }} />
-                <Bubble m={{ role: "assistant", content: pending.reply }} streaming cancel={()=>abort.current?.abort()} />
+                <div data-turn-key="pending-user" data-turn-role="user"><Bubble m={{ role: "user", content: pending.user }} /></div>
+                <div data-turn-key="pending-reply" data-turn-role="assistant"><Bubble m={{ role: "assistant", content: pending.reply }} streaming cancel={()=>abort.current?.abort()} /></div>
               </>}
             </>
           )}

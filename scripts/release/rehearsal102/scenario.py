@@ -24,13 +24,23 @@ def record(name, value):
 
 def run(script, *args):
     result = subprocess.run([sys.executable, str(HERE / script), *map(str, args)],
-                            env=ENV, check=True, capture_output=True, encoding='utf8')
+                            env=ENV, capture_output=True, encoding='utf8')
+    if result.returncode:
+        raise RuntimeError(script + ': ' + result.stderr.strip())
     return json.loads(result.stdout)
 
 
 def cdp(action, selector='', value='', target='learning'):
-    result = subprocess.run([NODE, str(HERE / 'cdp.mjs'), action, selector, value, target],
-                            env=ENV, check=True, capture_output=True, encoding='utf8', timeout=40)
+    deadline=time.monotonic()+40
+    while True:
+        result = subprocess.run([NODE, str(HERE / 'cdp.mjs'), action, selector, value, target],
+                                env=ENV, capture_output=True, encoding='utf8', timeout=40)
+        if result.returncode==0:break
+        # Login can finish before Qt has created its learning page/debug target.
+        # Retry read-only discovery, never repeat a click or a form submission.
+        if action=='wait-text' and time.monotonic()<deadline and any(t in result.stderr for t in ('preview page not found','ECONNREFUSED')):
+            time.sleep(.2);continue
+        raise RuntimeError(result.stderr)
     value = json.loads(result.stdout)
     # Deliberately do not log text entered into a password/Key field.
     record('cdp-' + action, value if action != 'inspect' else {'page_read': True})

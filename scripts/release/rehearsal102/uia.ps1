@@ -64,7 +64,16 @@ foreach($top in $tops){
    if($n -ne $Name -or -not $e.Current.IsEnabled -or $e.Current.IsOffscreen){continue}
    if($Action -eq 'toggle'){$e.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle();exit}
    if($Action -eq 'patterns'){$e.GetSupportedPatterns() | ForEach-Object {$_.ProgrammaticName};continue}
-   if($Action -eq 'invoke'){$pattern=$e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern);$pattern.Invoke();Start-Sleep -Milliseconds 1500;@{invoked=$Name;time=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()} | ConvertTo-Json -Compress;exit}
+   if($Action -eq 'invoke'){
+    # A freshly exposed Inno button can briefly advertise Invoke before its
+    # provider returns the pattern. Retry discovery, never emulate input.
+    $pattern=$null
+    for($attempt=0;$attempt -lt 5 -and -not $pattern;$attempt++){
+      try{$pattern=$e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)}catch{Start-Sleep -Milliseconds 500}
+    }
+    if(-not $pattern){throw "InvokePattern unavailable: $Name"}
+    $pattern.Invoke();Start-Sleep -Milliseconds 1500;@{invoked=$Name;time=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()} | ConvertTo-Json -Compress;exit
+   }
    if($Action -eq 'value' -and $e.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit){$pattern=$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern);$pattern.SetValue($Value);@{set=$Name} | ConvertTo-Json -Compress;exit}
  }
 }
