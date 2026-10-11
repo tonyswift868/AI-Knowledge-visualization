@@ -58,15 +58,6 @@ begin
   finally FindClose(Find); end;
 end;
 
-function ExistingKnownParent: String;
-begin
-  { Resolve on the user's machine. Never restore a development /PARENT value. }
-  Result := ExpandConstant('{localappdata}\Programs');
-  { Only the standard per-user Programs parent; no recursive mkdir or grants. }
-  if DirExists(Result) or CreateDir(Result) then Exit;
-  Result := ''; { Fail closed; the location page requests a real folder. }
-end;
-
 function ClassifyTarget(Target: String): TTargetKind;
 begin
   Result := tkUnknown;
@@ -89,6 +80,29 @@ begin
     Result := tkRepair; Exit; { Core proves complete signed repair evidence. }
   end;
   if KnownTree(Target, '', '', False) then Result := tkNew;
+end;
+
+function ExistingKnownParent: String;
+var Previous: String;
+begin
+  { UsePreviousAppDir resolves only this AppId's Inno uninstall registration.
+    The custom page must use the engine's directory instead of discarding it.
+    Keep the fixed MentorFlow leaf used by ValidateParent; no registry scan. }
+  Previous := RemoveBackslashUnlessRoot(WizardDirValue);
+  if (CompareText(ExtractFileName(Previous), 'MentorFlow') = 0) and
+     DirExists(AddBackslash(Previous) + 'App') and
+     DirExists(AddBackslash(Previous) + 'Data') and
+     FileExists(AddBackslash(Previous) + 'App\MentorFlow.exe') and
+     ((ClassifyTarget(Previous) = tkUpgrade) or
+      (ClassifyTarget(Previous) = tkRepair)) then begin
+    Result := ExtractFileDir(Previous);
+    Log('Using recognized previous installation: ' + Previous);
+    Exit;
+  end;
+  { Missing/stale/unrelated records keep the original per-user default. }
+  Result := ExpandConstant('{localappdata}\Programs');
+  if DirExists(Result) or CreateDir(Result) then Exit;
+  Result := '';
 end;
 
 function Writable(Directory: String): Boolean;

@@ -5,7 +5,8 @@ var
   BrandSurface: TPanel;
   BrandIcon, FolderIcon, LocationCard: TBitmapImage;
   BrandName, BrandTagline, PageTitle, PageSubtitle: TNewStaticText;
-  PathCaption, SpaceCaption, FeedbackCaption, ModeCaption: TNewStaticText;
+  PathCaption: TNewEdit;
+  SpaceCaption, FeedbackCaption, ModeCaption: TNewStaticText;
   ProgressCaption, PercentCaption, SuccessCaption: TNewStaticText;
   OptionsCaption, OptionsFeedback: TNewStaticText;
   BrowseButton, SecondaryButton: TNewButton;
@@ -79,7 +80,7 @@ procedure RefreshLocation(Sender: TObject);
 var Target, Problem: String; NeedsAdmin: Boolean;
 begin
   Problem := ValidateParent(SelectedParent, Target, NeedsAdmin, True);
-  PathCaption.Caption := MinimizePathName(Target, PathCaption.Font, PathCaption.Width);
+  PathCaption.Text := Target;
   PathCaption.Hint := Target;
   if FileExists(AddBackslash(Target) + 'per-user-transaction.json') then
     ModeCaption.Caption := '检测到安装记录；继续前会验证是否可升级或修复。'
@@ -99,10 +100,12 @@ begin
   if IsAdminInstallMode then ModeCaption.Caption := '为所有用户安装'
   else ModeCaption.Caption := '为当前用户安装';
   if Problem = '' then begin
-    if ValidatedTargetKind = tkRepair then begin
+    if (ValidatedTargetKind = tkRepair) and not
+       (FileExists(AddBackslash(Target) + 'per-user-install.json') and
+        FileExists(AddBackslash(Target) + 'current-release.json')) then begin
       ModeCaption.Caption := '已安装，可修复应用';
       PaintPrimary('修复');
-    end else if ValidatedTargetKind = tkUpgrade then begin
+    end else if (ValidatedTargetKind = tkUpgrade) or (ValidatedTargetKind = tkRepair) then begin
       ModeCaption.Caption := '已安装，可更新应用';
       PaintPrimary('更新');
     end else PaintPrimary('安装');
@@ -306,7 +309,18 @@ begin
   FolderIcon.Parent := BrandSurface;
   Bounds(FolderIcon, 56, 236, 32, 32);
   InitializeBitmapImageFromStockIcon(FolderIcon, SIID_FOLDER, clNone, []);
-  PathCaption := LabelAt('', 108, 226, 402, 48, 11, InkColor, True);
+  { Native read-only edit exposes the full directory through UIA ValuePattern
+    and allows copying a long path without changing the chosen location. }
+  PathCaption := TNewEdit.Create(WizardForm);
+  PathCaption.Parent := BrandSurface;
+  PathCaption.ReadOnly := True;
+  PathCaption.BorderStyle := bsNone;
+  PathCaption.Color := CardColor;
+  PathCaption.StyleElements := PathCaption.StyleElements - [seClient, seFont];
+  PathCaption.Font.Size := 11;
+  PathCaption.Font.Style := [fsBold];
+  PathCaption.Font.Color := InkColor;
+  Bounds(PathCaption, 108, 226, 402, 48);
   PathCaption.ShowHint := True;
   SpaceCaption := LabelAt('约需 ' + HumanSize({#RequiredBytes}), 108, 285, 380, 20, 9, MutedColor, False);
   BrowseButton := TNewButton.Create(WizardForm);
