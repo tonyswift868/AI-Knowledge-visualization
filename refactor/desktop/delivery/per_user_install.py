@@ -964,7 +964,8 @@ def app_launch_options():
     # ASFW_ANY must precede Popen; granting the returned PID can lose the race
     # against the child's initial showEvent. Windows may still reject a grant
     # from a background caller; do not force focus or attach input threads.
-    ctypes.windll.user32.AllowSetForegroundWindow(ctypes.c_ulong(0xffffffff))
+    from refactor.desktop.delivery.startup_window import allow_foreground
+    allow_foreground(0xffffffff)
     startup = subprocess.STARTUPINFO()
     startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startup.wShowWindow = 1  # SW_SHOWNORMAL
@@ -1066,6 +1067,8 @@ def handoff_pending(root, *, hwnd_hex, reason='normal'):
     if refreshed['status'] not in ('UPDATED', 'UP_TO_DATE'):
         raise RecoverableError('cannot refresh the update coordinator before handoff')
     runtime = verify_recovery_runtime(root)
+    from refactor.desktop.delivery.startup_window import allow_foreground
+    allow_foreground(0xffffffff, root=root, stage='app_to_updater')
     process = subprocess.Popen([str(runtime), 'apply-latest',
         '--root', str(root), '--pid', str(os.getpid()), '--hwnd-hex', hwnd_hex,
         '--result', str(result), '--app-self-exit', '--ready-file', str(ready)], cwd=root, close_fds=True,

@@ -77,7 +77,9 @@ def native_splash(text='正在启动…'):
     user.ShowWindow(hwnd, 1)
     first_minimized = bool(user.IsIconic(c.c_void_p(hwnd)))
     user.ShowWindow(hwnd, 9)
-    user.SetForegroundWindow(hwnd)
+    user.GetForegroundWindow.restype = w.HWND
+    foreground_before = user.GetForegroundWindow()
+    foreground_result = bool(user.SetForegroundWindow(hwnd))
     user.UpdateWindow(hwnd)
     _native = hwnd
     if '--root' in __import__('sys').argv:
@@ -87,6 +89,9 @@ def native_splash(text='正在启动…'):
                   visible=bool(user.IsWindowVisible(c.c_void_p(hwnd))),
                   first_show_minimized=first_minimized,
                   minimized=bool(user.IsIconic(c.c_void_p(hwnd))),
+                  set_foreground_result=foreground_result,
+                  foreground_before=int(foreground_before or 0),
+                  foreground_after=int(user.GetForegroundWindow() or 0),
                   foreground=user.GetForegroundWindow() == hwnd)
 
 
@@ -165,8 +170,39 @@ def foreground(window):
         # The first ShowWindow honors the parent's STARTUPINFO, even when Qt
         # requests normal. A second explicit restore consumes SW_SHOWMINIMIZED.
         user.ShowWindow(hwnd, 9)  # SW_RESTORE
-        user.SetForegroundWindow(hwnd)
+        user.GetForegroundWindow.restype = ctypes.c_void_p
+        before = user.GetForegroundWindow()
+        result = bool(user.SetForegroundWindow(hwnd))
+        root = runtime_root()
+        if root is not None:
+            log_phase(root, 'app_foreground_requested', hwnd=int(window.winId()),
+                      set_foreground_result=result, foreground_before=int(before or 0),
+                      foreground_after=int(user.GetForegroundWindow() or 0))
     window.raise_(); window.activateWindow()
+
+
+def runtime_root():
+    import sys
+    for flag in ('--install-root', '--root'):
+        if flag in sys.argv and sys.argv.index(flag) + 1 < len(sys.argv):
+            return Path(sys.argv[sys.argv.index(flag) + 1])
+    return None
+
+
+def allow_foreground(pid, *, root=None, stage='updater_to_app'):
+    """Pass normal Windows foreground permission; never attach input threads."""
+    if os.name != 'nt': return False
+    import ctypes
+    user = ctypes.windll.user32
+    user.GetForegroundWindow.restype = ctypes.c_void_p
+    before = user.GetForegroundWindow()
+    result = bool(user.AllowSetForegroundWindow(ctypes.c_ulong(pid)))
+    root = root if root is not None else runtime_root()
+    if root is not None:
+        log_phase(root, 'foreground_permission', stage=stage, target_pid=pid,
+                  granted=result, foreground_before=int(before or 0),
+                  foreground_after=int(user.GetForegroundWindow() or 0))
+    return result
 
 
 def log_phase(root, phase, **values):
