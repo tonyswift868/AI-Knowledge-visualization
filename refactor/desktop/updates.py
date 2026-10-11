@@ -122,6 +122,21 @@ class DesktopUpdates(QObject):
                         result = self._coordinator_result(result)
                     if not result.get('coordinator_started') or result.get('state') in ('FAILED_RECOVERABLE', 'PENDING_INSTALL') or result.get('cancelled'):
                         self._clear_login_handoff()
+                if action in ('startup', 'check') and result.get('state') in ('OPTIONAL_UPDATE', 'MANDATORY_UPDATE', 'UPDATE_AVAILABLE'):
+                    # Keep the login gate usable from the cached classification.
+                    # Download/reconstruction runs in this existing worker at
+                    # background I/O priority, before offering the restart.
+                    from .delivery.startup_integrity import background_io
+                    try:
+                        with background_io():
+                            prepared = self.core.download_latest(self.root, cancel=self._cancel.is_set)
+                    except Exception as error:
+                        # Preparation is opportunistic. Preserve the verified
+                        # offer/gate; clicking can retry the normal signed path.
+                        from .delivery.per_user_install import maintenance_log
+                        maintenance_log(self.root, 'background_update_prepare_deferred', detail=str(error))
+                        prepared = {}
+                    result = {**result, 'prepared': prepared.get('prepared', False)}
             except Exception as exc:
                 from .delivery.per_user_install import maintenance_log
                 maintenance_log(self.root, 'in_app_update_deferred', error_type=type(exc).__name__, detail=str(exc))

@@ -423,11 +423,11 @@ def check_latest(root, *, service=None, cancel=None):
         if owned and service is not None: service.close()
 
 
-def download_latest(root, progress=None, cancel=None, *, service=None):
+def download_latest(root, progress=None, cancel=None, *, service=None, reuse_prepared=False):
     owned = service is None
     try:
         service = service if service is not None else one_click_service(root)
-        return prepare_update(root, service=service, progress=progress, cancel=cancel)
+        return prepare_update(root, service=service, progress=progress, cancel=cancel, reuse_prepared=reuse_prepared)
     except NoFeedConfigured: return _no_feed_result()
     except SecurityError as error:
         install.maintenance_log(root, 'download_latest_failed', detail=str(error))
@@ -463,7 +463,7 @@ def update_to_latest(root, progress=None, cancel=None, *, pid=None, hwnd_hex=Non
     owned = service is None
     try:
         service = service if service is not None else one_click_service(root)
-        prepared = download_latest(root, progress, cancel, service=service)
+        prepared = download_latest(root, progress, cancel, service=service, reuse_prepared=True)
         if prepared.get('state') != 'UPDATE_DOWNLOADED': return prepared
         if cancel is not None and cancel():
             pending = read_pending(root)
@@ -495,7 +495,9 @@ def remember_download(root, stage, envelope, *, state='UPDATE_DOWNLOADED'):
     if state not in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL'): raise ValueError('invalid pending state')
     root = install.target(root); stage = install.plain(stage)
     _, release = install.admit(root, envelope, install.keys())
-    install.verify_tree(stage, release)
+    from .prepared_update import ready, seal
+    if not ready(stage, release):
+        seal(stage, release, lambda: install.verify_tree(stage, release))
     doc = dict(schema=SCHEMA, state=state, stage=str(stage), target=release.version,
                release_sha256=digest(envelope))
     install.atomic(root/PENDING, canonical(doc))
@@ -558,7 +560,7 @@ def status(root):
     return result
 
 
-def prepare_update(root, *, service=None, progress=None, cancel=None):
+def prepare_update(root, *, service=None, progress=None, cancel=None, reuse_prepared=False):
     """Existing signed downloader, Range/resume/cache/full-fallback unchanged.
 
     Passing an already configured service lets UI own progress, cancel and retry.
@@ -566,12 +568,49 @@ def prepare_update(root, *, service=None, progress=None, cancel=None):
     """
     owned = service is None; service = service or configured_service(root)
     try:
+        if reuse_prepared and not (cancel and cancel()):
+            from .prepared_update import ready
+            from .update_download import InstallUpdateLock
+            with InstallUpdateLock(install.target(root)), InstallUpdateLock(service.cache.root):
+                try:
+                    pending = read_pending(root)
+                    stage = _pending_stage(root, pending, service)
+                    envelope = install.read(stage.parent/'release.json')
+                    _, release = install.admit(root, envelope, install.keys())
+                    valid = digest(envelope) == pending['release_sha256'] and ready(stage, release)
+                except (OSError, RuntimeError, ValueError):
+                    valid = False
+                if valid:
+                    service.release, service.staged = release, stage
+                    install.maintenance_log(root, 'update_prepared_reused', target=release.version)
+                    # The coordinator refreshes network policy once before swap.
+                    return dict(state='UPDATE_DOWNLOADED', target=release.version,
+                                ui_state='READY_TO_APPLY', prepared=True)
         snapshot = service.check(manual=True)
         if snapshot['state'] != 'UPDATE_AVAILABLE': return snapshot
-        snapshot = service.download(progress=progress, cancel=cancel)
-        if snapshot['state'] != 'READY_TO_APPLY': return snapshot
-        pending = remember_download(root, service.staged, service.release.envelope)
-        return {**snapshot, **pending, 'ui_state': 'READY_TO_APPLY'}
+        from .update_download import InstallUpdateLock
+        from .prepared_update import ready
+        with InstallUpdateLock(install.target(root)):
+            try:
+                pending = read_pending(root)
+            except (OSError, ValueError, RuntimeError):
+                pending = None
+            if pending and pending['release_sha256'] == digest(service.release.envelope):
+                stage = _pending_stage(root, pending, service)
+                if ready(stage, service.release):
+                    service.staged = stage
+                    install.maintenance_log(root, 'update_prepared_reused', target=service.release.version)
+                    return {**snapshot, 'state': 'UPDATE_DOWNLOADED', 'ui_state': 'READY_TO_APPLY', 'prepared': True}
+                # Restart an owned, altered/incomplete tree under BOTH writer
+                # locks. Never remove the running App or learning data.
+                with InstallUpdateLock(service.cache.root):
+                    if stage.exists() and not install._remove_program_tree(root, stage):
+                        raise RecoverableError('cannot restart changed prepared tree')
+            snapshot = service.download(progress=progress, cancel=cancel)
+            if snapshot['state'] != 'READY_TO_APPLY': return snapshot
+            pending = remember_download(root, service.staged, service.release.envelope)
+            install.maintenance_log(root, 'update_prepared_ready', target=service.release.version)
+            return {**snapshot, **pending, 'ui_state': 'READY_TO_APPLY', 'prepared': True}
     finally:
         if owned: service.close()
 
@@ -604,7 +643,6 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
         pending = {**pending, 'stage': str(stage)}
         if digest(install.read(stage.parent/'release.json')) != pending['release_sha256']:
             raise SecurityError('cached release changed')
-        service.cache.verify_tree(stage, service.release)
         service.staged = stage
         def bridge(root, stage, envelope):
             nonlocal applied
@@ -617,9 +655,13 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
                          install.request_app_shutdown(root, pid, hwnd_hex))
             else:
                 close = lambda: install.require_app_stopped(root)
-            return install.transact(root, stage, envelope, before_swap=close)
-        service.apply_bridge = bridge
-        result = service.apply_and_restart()  # independently refreshes metadata again
+            return install.transact(root, stage, envelope, before_swap=close, prepared=True)
+        # check() just refreshed and verified withdrawal/rollout/high-water.
+        # Keep its cache writer lock through the transaction instead of asking
+        # apply_and_restart to fetch and hash the same release a second time.
+        from .update_download import InstallUpdateLock
+        with InstallUpdateLock(service.cache.root):
+            result = bridge(root, stage, service.release.envelope)
         # The signed transaction already records HEALTHY. A completed download
         # is no longer pending, even if background housekeeping meets a lock.
         (root/PENDING).unlink(missing_ok=True)

@@ -146,14 +146,16 @@ def install_setup(setup, parent, label):
     return parent / 'MentorFlow'
 
 
-def update(root, release, target, *, login_entry=False, blocked=False, wait_updater=False):
+def update(root, release, target, *, login_entry=False, blocked=False, wait_updater=False, already_offered=False):
     old = app_pid(root)
     if not old:
         raise RuntimeError('launch X first')
     shutil.copy2(release, TASK / 'webroot/updates/app/stable/stable.json')
     if blocked:
         (TASK / 'save-block-once').write_text('test-only exit fault', encoding='utf8')
-    if login_entry:
+    if already_offered:
+        pass
+    elif login_entry:
         wait_control(old, '立即更新并重启', 45)
     else:
         cdp('click', '设置')

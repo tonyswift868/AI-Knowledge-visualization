@@ -3,8 +3,10 @@ import argparse,json,shutil,sys
 from common import TASK,ROOT,environment
 environment();sys.path.insert(0,str(ROOT))
 from build import b,stage
-parser=argparse.ArgumentParser();parser.add_argument('label',choices=['O','X'])
-parser.add_argument('--check-only',action='store_true');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('label',choices=['O','X','P'])
+parser.add_argument('--check-only',action='store_true')
+parser.add_argument('--source-root',type=__import__('pathlib').Path,help='Also compare frozen update code with this final source tree')
+args=parser.parse_args()
 work=TASK/('freeze-'+args.label)
 payload=work/'app/MentorFlow'
 def check():
@@ -16,6 +18,23 @@ def check():
         archive=CArchiveReader(str(exe))
         hook=archive.extract('timing_hook')
         assert b'UAT_LOCAL_ONLY' in hook and b'127.0.0.1' in hook,exe
+        if args.source_root:
+            if exe.name=='UserRuntime.exe':
+                import marshal
+                entry=marshal.loads(archive.extract('per_user_install'))
+                path=args.source_root/'refactor/desktop/delivery/per_user_install.py'
+                assert entry==compile(path.read_bytes(),entry.co_filename,'exec',dont_inherit=True,optimize=0),'stale frozen entry script'
+            pyz=archive.open_embedded_archive('PYZ.pyz')
+            names=['refactor.desktop.delivery.per_user_install',
+                   'refactor.desktop.delivery.per_user_update_core',
+                   'refactor.desktop.delivery.update_download',
+                   'refactor.desktop.delivery.prepared_update']
+            if exe.name=='MentorFlow.exe': names.append('refactor.desktop.updates')
+            for name in names:
+                code=pyz.extract(name)
+                source=args.source_root/(name.replace('.', '/')+'.py')
+                expected=compile(source.read_bytes(),code.co_filename,'exec',dont_inherit=True,optimize=0)
+                assert code==expected,('frozen code is not final source',exe,name)
     print('verified local-only configuration and frozen hook:',args.label)
 if args.check_only:
     check();sys.exit(0)
