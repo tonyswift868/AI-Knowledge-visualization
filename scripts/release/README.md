@@ -46,6 +46,13 @@ GitHub 不跑测试。三个工作流共享 `mentorflow-release`、`queue: max`�
 payload、objects、安装程序不做 artifact。pip/npm 缓存可复用；缓存也占额度，
 管理员应按仓库 Billing 观察，无需自动跑清理工作流。
 
+实测（2026-10-11，用 API 汇总 10 月各任务起止时间，每个任务按分钟向上取整）：
+- 共 22 次运行、156 分钟 Windows 机时：mf-build 10 次 45.6 分钟，mf-publish 9 次 66.0 分钟，mf-installer 3 次 33.5 分钟。
+- 发一版不编安装程序约 8 分钟，编安装程序约 15 分钟。
+- artifact 占 3.3 MB，缓存 417 MB。
+
+本机 Git 凭据读不到账户的 Billing 接口（返回 404），剩余额度以 github.com → Settings → Billing 为准。
+
 官方 GitHub 已支持 [queue: max](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)，
 但 actionlint 1.7.12 尚不认识这个字段。运行下面的本机检查：它先严格检查
 触发器、queue 的值、并发组、时限与无矩阵/测试，再调用 actionlint，**只豁免**
