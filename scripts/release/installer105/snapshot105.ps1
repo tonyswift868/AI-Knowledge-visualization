@@ -1,6 +1,8 @@
 param([Parameter(Mandatory=$true)][string]$Out)
 $ErrorActionPreference='Stop'
-$taskRoot='D:/MentorFlow/.local/test-tmp/dir105'
+$taskRoot=if($env:MF_UAT_ROOT){$env:MF_UAT_ROOT}else{'D:/MentorFlow/.local/test-tmp/dir105'}
+$env:LOCALAPPDATA=Join-Path $taskRoot 'local'
+$env:TEMP=Join-Path $taskRoot 'temp';$env:TMP=$env:TEMP
 $records=@()
 foreach($view in @([Microsoft.Win32.RegistryView]::Registry64,[Microsoft.Win32.RegistryView]::Registry32)){
  $base=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser,$view)

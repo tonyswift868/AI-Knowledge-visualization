@@ -3,7 +3,7 @@ import argparse,json,shutil,sys
 from common import TASK,ROOT,environment
 environment();sys.path.insert(0,str(ROOT))
 from build import b,stage
-parser=argparse.ArgumentParser();parser.add_argument('label',choices=['O','X','P'])
+parser=argparse.ArgumentParser();parser.add_argument('label',choices=['O','X','P','Q'])
 parser.add_argument('--check-only',action='store_true')
 parser.add_argument('--source-root',type=__import__('pathlib').Path,help='Also compare frozen update code with this final source tree')
 args=parser.parse_args()
