@@ -92,14 +92,15 @@ def test_content_replan_freezes_history_and_preserves_booked_time(store):
     assert store.save_point_minutes(PLAN, state['fingerprint'], labels(state), today=today)
     new = store.load_ledger(PLAN)
     expected_total = sum(p['minutes'] for p in store.records('points', PLAN))
-    # Check ordinary replan's exact semantics including historical debt (not redistributed).
-    old.replan(today, old.window, expected_total)
+    # Automatic estimates must retain payable past targets, unlike an explicit
+    # user-requested schedule reset (BUG-83, 106-MF06).
+    old.replan(today, old.window, expected_total, preserve_past=True)
     assert new.to_dict() == old.to_dict()
-    assert sum(new.targets.values()) == expected_total - 15
-    assert set(new.targets) == {DAY + timedelta(days=i) for i in range(2,11)}
-    assert new.status(today).today_target == max(new.targets.values())
-    assert new.status(today).debt_minutes == 0
-    assert new.status(today).history_debt_minutes > 0
+    assert sum(new.targets.values()) == expected_total
+    assert set(new.targets) == {DAY + timedelta(days=i) for i in range(11)}
+    assert new.status(today).today_target == max(n for d,n in new.targets.items() if d>=today)
+    assert new.status(today).debt_minutes > 0
+    assert new.status(today).history_debt_minutes == 0
     assert store.records('credits', PLAN) == original_credits
     assert {p['id']:p['minutes'] for p in store.records('points', PLAN) if p['id'] in ('m00','m01')} == {'m00':15,'m01':15}
 

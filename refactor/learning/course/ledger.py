@@ -269,6 +269,7 @@ class Ledger:
         self._relearning_minutes = 0
         self._next_seq = 1
         self._released_minutes = self._active_released_minutes = 0
+        self._estimate_start: date | None = None
 
     @property
     def window(self) -> PlanWindow:
@@ -397,13 +398,18 @@ class Ledger:
             sum(minutes for day, minutes in tentative.items() if day > today), oldest_debt,
         )
 
-    def replan(self, today: date, new_window: PlanWindow, new_total_minutes: int) -> None:
+    def replan(self, today: date, new_window: PlanWindow, new_total_minutes: int,
+               *, preserve_past: bool = False) -> None:
         """Freeze days before today and redistribute within the new window.
 
         Initial allocation (__init__) covers the whole window. A replan starts
         allocating at max(today, window.start), while the history/credit segment
         boundary remains the actual operation day. Moving a start into the
         future must not freeze future targets as missed study days.
+
+        preserve_past is for automatic content estimates: retain elapsed
+        targets and their live FIFO debts; only distribute the future suffix.
+        Ordinary user-requested rescheduling retains its existing semantics.
         """
         _date(today)
         _integer(new_total_minutes)
@@ -414,6 +420,25 @@ class Ledger:
         past = sum(c.minutes for c in self._credits.values() if c.day < today)
         if new_total_minutes < past:
             raise LedgerError("INVALID_REPLAN", "新总时长不能少于重排当天之前已经记录的分钟数。")
+        if preserve_past:
+            # An automatic estimate changes future work, not the learner's
+            # agreement to past targets. Keep their FIFO segment, so today's
+            # repayments cannot be counted in both a closed and a new segment.
+            if new_window != self.window or self._estimate_start and today < self._estimate_start:
+                raise LedgerError("INVALID_REPLAN", "内容重估不能改变日期窗口或已经冻结的日期。")
+            prefix = {d: n for d, n in self._settled_targets().items() if d < today}
+            historical = sum(c.minutes for key, c in self._credits.items()
+                             if self._segments[key] < len(self._history))
+            remaining = max(0, new_total_minutes - historical - self._released_minutes
+                            - self._relearning_minutes - sum(prefix.values()))
+            start = max(today, new_window.start)
+            targets = (distribute(new_window, remaining, from_date=start) if remaining
+                       else dict.fromkeys(_dates(start, new_window.end), 0))
+            self._targets = {**prefix, **targets}
+            self._total_minutes = new_total_minutes
+            self._active_released_minutes = 0
+            self._estimate_start = today
+            return
         remaining = max(0, new_total_minutes - past - self._released_minutes)
         allocation_start = max(today, new_window.start)
         targets = (distribute(new_window, remaining, from_date=allocation_start) if remaining > 0
@@ -439,9 +464,11 @@ class Ledger:
         self._active_start, self._targets = today, targets
         self._relearning_minutes = 0
         self._active_released_minutes = 0
+        self._estimate_start = None
 
     def to_dict(self) -> dict:
         return {
+            **({'estimate_start': self._estimate_start.isoformat()} if self._estimate_start else {}),
             **({'settlement': {'released': self._released_minutes, 'active_released': self._active_released_minutes}}
                if self._released_minutes else {}),
             "version": 1,
@@ -513,6 +540,7 @@ def _fields(data, keys):
 
 def _restore(cls, data):
     data = dict(data)
+    estimate_start = data.pop('estimate_start', None)
     settlement = data.pop('settlement', {'released': 0, 'active_released': 0})
     _fields(settlement, {'released', 'active_released'})
     _fields(data, {"version", "window", "total_minutes", "active_start", "targets", "relearning_minutes", "history", "credits", "submissions", "next_seq"})
@@ -525,13 +553,31 @@ def _restore(cls, data):
     ledger._window = _window_from(data["window"])
     ledger._total_minutes = _integer(data["total_minutes"])
     ledger._active_start = date.fromisoformat(data["active_start"])
+    ledger._estimate_start = date.fromisoformat(estimate_start) if estimate_start is not None else None
     ledger._targets = _calendar_from(data["targets"])
     ledger._relearning_minutes = _integer(data["relearning_minutes"])
     budget = sum(ledger._targets.values())
     allocation_start = max(ledger._active_start, ledger.window.start)
-    expected = (distribute(ledger.window, budget, from_date=allocation_start) if budget
-                else dict.fromkeys(_dates(allocation_start, ledger.window.end), 0))
-    if ledger._active_start > ledger.window.end or expected != ledger._targets or budget > ledger.total_minutes:
+    if ledger._estimate_start is not None:
+        if ledger._estimate_start > ledger.window.end:
+            raise ValueError()
+        # Content re-estimates retain the elapsed calendar verbatim. Only its
+        # suffix is distributed; a smaller estimate can exhaust future work
+        # without erasing already agreed (and possibly unpaid) past targets.
+        start = max(allocation_start, ledger._estimate_start)
+        suffix = {d: n for d, n in ledger._targets.items() if d >= start}
+        amount = sum(suffix.values())
+        expected = (distribute(ledger.window, amount, from_date=start) if amount
+                    else dict.fromkeys(_dates(start, ledger.window.end), 0))
+        if (set(ledger._targets) != set(_dates(allocation_start, ledger.window.end))
+                or suffix != expected or budget > ledger.total_minutes and amount):
+            raise ValueError()
+    else:
+        expected = (distribute(ledger.window, budget, from_date=allocation_start) if budget
+                    else dict.fromkeys(_dates(allocation_start, ledger.window.end), 0))
+        if expected != ledger._targets or budget > ledger.total_minutes:
+            raise ValueError()
+    if ledger._active_start > ledger.window.end:
         raise ValueError()
     if any(not isinstance(data[name], list) for name in ("history", "credits", "submissions")):
         raise ValueError()
@@ -559,7 +605,7 @@ def _restore(cls, data):
     if ledger._history:
         if ledger._active_start != ledger._history[-1].closed_on:
             raise ValueError()
-    elif ledger._active_start != ledger.window.start or budget != ledger.total_minutes:
+    elif ledger._active_start != ledger.window.start or ledger._estimate_start is None and budget != ledger.total_minutes:
         raise ValueError()
     ledger._submissions = {}
     for raw in data["submissions"]:
