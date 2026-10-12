@@ -406,7 +406,9 @@ class Classroom:
         chapter=f"先用一句话说明这一章要解决什么问题：{course.module(state['module_id'])['title']}。" if state['index']==0 else ''
         teaching=self._teacher(course,state,ctx,chapter+'用一个生活化问题开头，给2～3个不计分的可点选项，也允许打字。先不要讲完整结论。',[point['id']],opening=True)
         self._deliver(course,state,teaching)
-        state.update(step='opening',conversation=dict(point_id=point['id'],options=list(teaching.options),interrupted=False))
+        options=list(teaching.options)
+        if '直接开始讲' not in options:options.append('直接开始讲')
+        state.update(step='opening',conversation=dict(point_id=point['id'],options=options,interrupted=False))
 
     def choose(self, course, state, ctx, option):
         conversation=state.get('conversation') or {}
@@ -881,7 +883,7 @@ class Classroom:
                 cancel=ctx.cancel if ctx else None,plan_id=course.plan_id,max_tokens=4096)
             try:
                 teaching=teacher_agent.parse_teaching(result.text,tctx)
-                self._teacher_request_page.accept(request[0],request[1],teacher_agent._dialogue(tctx['dialogue']),result.text)
+                self._teacher_request_page.accept(request[0],request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(result.text))
                 if ctx:
                     ctx.stream(teaching.speech)
                 return teaching
@@ -913,8 +915,9 @@ class Classroom:
         mapping={f'c{i}':cid for i,cid in enumerate(sorted(course.excerpts(self._focus(course,state))),1)}
         with course.store.transaction():
             if user is not None:self._user(course,state,user)
-            speech=_link_citations(teaching.speech,mapping)
-            if not teaching.cited_chunks:
+            body=teacher_agent.strip_source_footer(teaching.speech)
+            speech=_link_citations(body,mapping)
+            if mapping and (body!=teaching.speech or not teaching.cited_chunks):
                 speech+='\n\n看原文：'+' '.join(_link_citations(f'[{alias}]',mapping) for alias in mapping)
             self._say(course,state,speech,role='assistant',kind='teach')
             if explained:
