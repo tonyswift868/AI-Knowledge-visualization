@@ -57,7 +57,8 @@ foreach($top in $tops){
  foreach($e in $all){
    $n=$e.Current.Name
    if($Action -eq 'tree'){
-    $row=@{name=$n;type=$e.Current.ControlType.ProgrammaticName;enabled=$e.Current.IsEnabled;offscreen=$e.Current.IsOffscreen}
+    $row=@{name=$n;type=$e.Current.ControlType.ProgrammaticName;class=$e.Current.ClassName;enabled=$e.Current.IsEnabled;offscreen=$e.Current.IsOffscreen}
+    if($e.Current.ClassName -eq 'TNewEdit'){try{$row.value=$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value}catch{}}
     if($e.Current.ControlType -eq [System.Windows.Automation.ControlType]::CheckBox){try{$row.toggle=$e.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState.ToString()}catch{}}
     $result+=$row;continue
    }

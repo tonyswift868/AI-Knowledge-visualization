@@ -55,3 +55,19 @@ UP_TO_DATE/清理、卸载及正式注册/快捷方式快照。B 的后台准备
 改动产品源码后用 refinal105.py P / X 从各自 spec 执行 --clean 独立重冻，不能直接
 复用旧 PYZ。严格核对命令：refreeze103.py P --check-only --source-root <工位仓库>。
 metrics105.py 汇总三条路线；驱动修复后需新安装目录可用 scenario105.py A --run-id A-final。
+
+107 总验收：先设 `MF_UAT_ROOT=D:/MentorFlow/.local/test-tmp/gate107`、
+`MF_UAT_APP_ID=MentorFlow.UAT.gate107`，LOCALAPPDATA/TEMP/TMP 同样指到任务目录。
+common 和预览 hook 共用此 AppId 的模型凭据命名空间，默认仍兼容 fast105。
+依次运行 `prepare.py`、`build107.py O`、`build107.py P`、`build107.py Q`。
+O 从 10e625f4 解包；P/Q 从当前工位独立冻结为 9.107.14/9.107.15；
+所有安装程序使用当前工位的 Inno 脚本。每包自动执行 refreeze103 --check-only，
+P/Q 额外核对冻结更新模块与工位源码一致；不允许跳过检查就启动。
+`scenario107.py` 串行执行真实全新安装/注册/登录/存 Key/打开新建计划、卸载、
+真实 O 安装→主界面更新 P→二次启动→P 原位置覆盖（读取 UIA 位置框）→后台
+就绪→主界面更新 Q→二次启动→卸载。版本、HEALTHY、pending、Updater UPDATED、
+课程库 schema_version=10、设置/Key 和覆盖前后数据哈希都用真实运行结果核对。
+复用 installer105 的只读全目录/两种注册表视图/快捷方式快照，检查正式版和默认
+安装位置前后不变。结果及分段日志在 logs/result107.json、*-observations.json、
+*-startup.jsonl；失败保留到具体步骤，不用离线替身替代。完成后 clear107.py 只删
+本轮测试凭据和私钥，再清理任务内构建等中间产物。正式签名、服务器和用户数据不动。
