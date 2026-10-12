@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 开头三节和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-12）：线上 2.0.13。2.0.14 的改动全部合入（最后两份 106-MF06 2acee81d [BUG-83]、106-MF02 b88ad324 [BUG-82]；网页已编进 dist）。106-MF04 一直没开始，作废，由 107-MF04 在 b88ad324 上做发版前总验收；107-MF01 准备服务器 MF-76 上线包（批量同步接口）。两份都已起草，待转发。之后：用户同意后架构师按 107-MF01 的清单上线 MF-76；源代码版重启到最新代码（先问用户）让用户看逾期数字（应约 1370，不是 114）和同步速度；总验收过、用户说可以推送，才推送并发 2.0.14（只发一次 GitHub，build_installer=true），用户在装好的软件里点更新，架构师看 launcher-startup.jsonl 和 updater-refresh.json（应为 UPDATED）。用户用过源代码版后，装好的 2.0.13 同步会卡住直到更新（[BUG-81]，数据不丢）。全量里 loading86、self_test81、status88 三个浏览器测试满载时偶发失败（单独跑通过），记为已知不稳定测试。
+- **现在在做的事**（2026-10-12）：线上 2.0.13；服务器 2026-10-12 12:27 已切到 MF-76（批量同步接口，用户同意后架构师直接上线，107-MF01 作废）。2.0.14 的改动全部合入（最后一份 106-MF02 b88ad324，网页已编进 dist）；源代码版 12:28 已用最新代码重启。107-MF04 发版前总验收已起草，待转发（106-MF04 一直没开始，作废）。总验收过、用户说可以推送，才推送并发 2.0.14（只发一次 GitHub，build_installer=true），用户在装好的软件里点更新，架构师看 launcher-startup.jsonl 和 updater-refresh.json（应为 UPDATED）。用户用过源代码版后，装好的 2.0.13 同步会卡住直到更新（[BUG-81]，数据不丢）。全量里 loading86、self_test81、status88 三个浏览器测试满载时偶发失败（单独跑通过），记为已知不稳定测试。
 
 ## 协作方式
 
@@ -43,7 +43,7 @@
 - **查用户软件的问题**：装好的软件日志 D:\MentorFlowApp\MentorFlow\Data\logs\mentorflow.log，源代码版日志 D:\MentorFlowData\account-shell\logs\mentorflow.log（JSON 行，只读）；数据库在对应的 learning\accounts\<账号>\*.sqlite3，只读查看用 `sqlite3.connect('file:...?mode=ro', uri=True)`。
 - **界面构建**：PATH 加 `/d/MentorFlow/.local/node`，`node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 不进仓库。
 - **写脚本**：含 Windows 路径或反斜杠的内容不要用 bash heredoc 或 python -c（会被吃掉，BUG-10），写成文件再运行。
-- **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，mentorflow-admin，sudo -n）。线上后端 mentorflow-slim-backend:MF-75（切换与回滚脚本 /opt/mentorflow/state/mf75/switch.sh，上线前备份同目录）；入口 nginx 容器 mentorflow-e1-preview-edge-1（配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf）；更新与下载目录 /opt/mentorflow/update-static/e108/app/；资料白名单 /opt/mentorflow/state/mentorflow-e1-preview/catalog/。 2026-10-10 起两个 docker 网络设了 ip_range（BUG-45）：以后用 Compose 操作这些容器，命令末尾必须追加 -f /opt/mentorflow/state/bug45-20261010/network45.override.yml。
+- **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，mentorflow-admin，sudo -n）。线上后端 mentorflow-slim-backend:MF-76（2026-10-12；切换与回滚脚本 /opt/mentorflow/state/mf76/switch.sh：无参数切换、check 只查配置、rollback 回到 MF-75；上一版 mf75 目录保留）；入口 nginx 容器 mentorflow-e1-preview-edge-1（配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf）；更新与下载目录 /opt/mentorflow/update-static/e108/app/；资料白名单 /opt/mentorflow/state/mentorflow-e1-preview/catalog/。 2026-10-10 起两个 docker 网络设了 ip_range（BUG-45）：以后用 Compose 操作这些容器，命令末尾必须追加 -f /opt/mentorflow/state/bug45-20261010/network45.override.yml。
 - **磁盘（用户 2026-10-10 定）**：测试与临时产物在 .local/test-tmp/ 下；冒烟测试、构建、中间文件用完就自动删，不留着等以后分类。员工删除被系统拦住时，架构师合入后直接删（只留 report.md 和截图），不用再问用户。
 
 ## 当前基线
@@ -61,7 +61,7 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 107-MF01 已起草，待用户转发（服务器 MF-76 上线包） | server |
+| MF-01 | 空闲（107-MF01 作废：服务器已由架构师直接上线） | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 107-MF04 已起草，待用户转发（2.0.14 发版前总验收；106-MF04 作废） | runtime |
@@ -72,8 +72,8 @@
 ## 待派队列
 
 - 107-MF04（runtime）：2.0.14 发版前总验收（基线 b88ad324）。已起草，待转发。
-- 107-MF01（server）：服务器 MF-76 上线包（批量同步接口，照 MF-75 切换脚本，加 network45，自动回滚）。已起草，待转发。输入在 .local/test-tmp/deploy107/input/（架构师 2026-10-12 从服务器只读取回）。
-- 之后：用户同意 → 架构师上线 MF-76；用户在源代码版看逾期与同步；总验收过、用户说推送 → 发 2.0.14 → 用户在软件里点更新 → 用户走通注册（[ACC-02]）→ 发给朋友。
+- 107-MF01：作废（用户同意后架构师直接上线了 MF-76）。
+- 之后：总验收过、用户说推送 → 发 2.0.14 → 用户在软件里点更新 → 用户走通注册（[ACC-02]）→ 发给朋友。
 
 ## 第一百零七批任务原文（2026-10-12，基线 b88ad324）
 
@@ -137,63 +137,6 @@ D:\MentorFlowApp、D:\MentorFlowData 只读；E 盘只读运行；不碰 D:\Kris
 回执：写到 D:\MentorFlow\.local\receipts\107-MF04.md。表格列：
   基线 ／ 全量 ／ 全新安装与注册 ／ 2.0.13 → P（含 v10、Updater、用时）／ 覆盖升级与安装位置 ／ P → Q 提速（三个时间）／ 网络边界 ／ 正式版前后快照 ／ 新问题 ／ 本地最终占用。
 给用户只回一行“107-MF04 通过/未通过，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\gate107\report.md。
-~~~
-
-### [107-MF01] server｜服务器 MF-76 上线包（[BUG-82]）
-
-~~~text
-【MentorFlow 第一百零七批｜MF-01（工位 server）｜准备服务器上线包 MF-76：把批量同步上传接口（106-MF02）上线，照 MF-75 的切换脚本做，不健康自动回滚到 MF-75（BUG-82）】
-
-现成项目与许可证（第一节）
-  - 全部用现成的：线上正在用的 MF-75 切换脚本 switch.sh（架构师已从服务器只读取回，见下）、refactor/server/Dockerfile、compose.slim.yml、DEPLOY.md 的构建与回滚步骤，以及 Docker / Docker Compose（Apache-2.0）。
-  - 不引新库，不新造部署机制，不加签名、扫描、额外认证（功能先行）。
-
-开工同步
-  cd D:\MentorFlow-office\server\repo
-  git status                        # 应干净；不干净先停下说明
-  git checkout office/server
-  git reset --hard b88ad324         # 主线：已合入 106-MF02 的批量同步接口
-提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...
-禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署（上线由架构师征得用户同意后执行你的脚本）；不碰正式签名私钥；不调用真实模型，不注册真实账号。
-D:\MentorFlowApp、D:\MentorFlowData 只读；E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\deploy107\ 下（input\ 是架构师放的输入，不要删），用完即删中间产物，只留 report.md、input\ 和最终上线包；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-遇到选择自己决定，回执写明理由，不停下来问。花费上限 ¥0。测试要求：只跑与改动相关的测试，全量不用跑（MF-04 同时在跑总验收的全量）。
-同时在跑：MF-04 在 runtime 工位做发版前总验收，占用本机 18763/18764 端口；你起本机服务器用别的端口。
-
-背景（CURRENT_STATE [BUG-82] [ARCH-05] [BUG-45]，refactor/server/DEPLOY.md）：
-  - 106-MF02 给服务器加了批量上传 POST entities/bulk：一次最多 500 行，逐项返回成功、冲突或拒绝；旧的逐条 PUT/delete 保留。改的是 refactor/server/enterprise/structured_sync_api.py 和 enterprise_tenancy/structured_sync.py，不需要数据库迁移。
-  - 本机计时：上传 479 条从 143 秒降到 4.8 秒。新客户端在服务器没有这个接口时（404/405）自动退回逐条上传，所以先发客户端、后上线服务器也能用，只是慢。
-  - 线上现在跑 mentorflow-slim-backend:MF-75（2026-10-07 上线，永久登录，库 0043）。架构师从服务器只读取回了三样，放在 D:\MentorFlow\.local\test-tmp\deploy107\input\：
-    - switch-mf75.sh：当时的切换脚本，含不健康自动回滚；
-    - migration-mf75.Dockerfile；
-    - mf75-server-sha256.txt：线上 MF-75 构建用的 refactor/server 每个文件的 sha256。
-  - BUG-45 之后的规定：在服务器上用 Compose 操作这些容器，命令末尾必须追加 -f /opt/mentorflow/state/bug45-20261010/network45.override.yml。switch-mf75.sh 是在这之前写的，没有这一项。
-
-要做
-  1. 对照 mf75-server-sha256.txt 和主线 b88ad324 的 refactor/server，列出 MF-75 之后服务器代码的全部差异。
-     - 只有 106-MF02 那两个文件：照常做；
-     - 还有别的：逐个说明是什么、上线安不安全、要不要一起上，自己判断并写理由。
-  2. 写上线包（放在 deploy107\package\，回执给清单）：
-     - 构建说明：在服务器临时目录只放 refactor/server（相对路径不变）构建 mentorflow-slim-backend:MF-76，构建后做导入检查（照 DEPLOY.md）。
-     - switch-mf76.sh，照 switch-mf75.sh 改：
-       - CURRENT = 现在线上的 MF-75 配置（mf75 的 compose.slim.yml + session75.override.yml）；
-       - NEW = MF-76（保留永久登录的 MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS: "0"）；
-       - 所有 Compose 命令都追加 network45.override.yml；
-       - 等 healthy、三个健康检查 200；
-       - 再查一次批量接口已注册：不带令牌调用 POST entities/bulk 应返回认证错误，而不是 404；
-       - 任一步失败，自动回滚到 MF-75 并打印日志；
-       - 保留 rollback 参数可手动回滚。
-     - 一份架构师照着执行的步骤清单：上传哪些文件到哪、按什么顺序执行哪几条命令、成功看什么输出、失败怎么回滚。命令里不要有需要猜的值；拿不准的路径写成“先用这条命令查”。
-  3. 查清：重建 backend 容器后，用户要不要重新登录（MF-75 是永久登录，会话存在哪）；oidc-loopback-proxy 要不要跟着重建。写进清单。
-  4. 本机验证：
-     - 用 refactor/server 的 Dockerfile 在本机构建一次（本机没有 Docker 就写明，改用在本机直接起 refactor/server 验证接口）；
-     - 起本机服务器，用新客户端批量上传、旧客户端（10e625f4 的同步代码）逐条上传各跑一次，两者都成功；
-     - 用 bash -n 检查脚本语法，用一个假的 docker 替身把 switch-mf76.sh 的成功和回滚两条路各走一遍，确认命令顺序和参数（含 network45）正确。
-  5. 只改 deploy107\package\ 下的上线包、refactor/server/DEPLOY.md（补一节 MF-76）和 tests/refactor/（如需）。不改服务器业务代码；发现业务代码有问题写进回执，不自己改。
-
-完成标准：第 1 条差异清单；第 2 条上线包和步骤清单齐全；第 3 条有结论；第 4 条本机验证通过（没 Docker 的写明替代做法）。达不到就写“部分完成”或“受阻”。
-回执：写到 D:\MentorFlow\.local\receipts\107-MF01.md。表格列：
-  基线 ／ 提交 ／ MF-75 以来的服务器代码差异 ／ 上线包文件清单 ／ 切换与回滚怎么走 ／ 要不要重新登录、代理要不要重建 ／ 本机验证 ／ 上线预计停机多久 ／ 本地最终占用。
-给用户只回一行“107-MF01 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\deploy107\report.md。
 ~~~
 
 ## 回执格式
