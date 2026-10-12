@@ -30,7 +30,7 @@ from ..course import planner_agents as agents
 from ..course.request_layout import dialogue_tail
 from ..course import source_quality
 from ..course.ledger import LedgerError, PlanWindow, check_cap, distribute, estimate_check_minutes, full_day_minutes
-from ..course.store import StoreError
+from ..course.store import StoreError, POINT_MINUTES_VERSION
 from ..preferences.storage import AccountJSON, StorageError
 from .bridge import BridgeError, CallContext
 
@@ -1955,6 +1955,14 @@ class PlanFlow:
                     return
             difficulties = {}
             for module in state['modules']:
+                # A synced result can arrive while a module's model request is
+                # in flight. Reuse that completion before spending on the next
+                # module; save_point_minutes checks again atomically at commit.
+                plan = store.get_plan(plan_id)
+                if (plan.get('point_minutes_version') == POINT_MINUTES_VERSION
+                        and plan.get('point_minutes_signature') == state['signature']):
+                    status = 'ready'
+                    return
                 points = [p for p in state['points'] if p['module_id'] == module['id']]
                 if not points: continue
                 if all(p.get('difficulty_fingerprint') == state['point_fingerprints'][p['id']]

@@ -1155,14 +1155,31 @@ class CourseStore:
     def _op_seq(self, plan_id):
         return max([p['operation_seq'] for table in ('credits', 'ledger_events') for p in self._rows(table, plan_id)], default=0) + 1
 
-    def _replan(self, plan, today, new_window, total_minutes, *, cause, reason=None):
+    def _replan(self, plan, today, new_window, total_minutes, *, cause, reason=None, point_minutes_key=None):
+        if point_minutes_key:
+            existing = [e for e in self._rows('ledger_events', plan['id'])
+                        if e.get('point_minutes_key') == point_minutes_key]
+            if existing:
+                event = next((e for e in existing if e['id'] == plan.get('point_minutes_event_id')),
+                             min(existing, key=lambda e: (e['operation_seq'], e['id'])))
+                plan['window'], plan['total_minutes'] = event['window'], event['total_minutes']
+                return event['id']
         ledger = self._load_ledger(plan)
-        ledger.replan(today, new_window, total_minutes)  # Validate before changing any rows.
-        event = dict(id=uuid.uuid4().hex, op='replan', operation_seq=self._op_seq(plan['id']),
+        ledger.replan(today, new_window, total_minutes, preserve_past=cause == 'point_minutes')
+        event = dict(op='replan', operation_seq=self._op_seq(plan['id']),
                      today=today.isoformat(), window=_window_json(new_window), total_minutes=total_minutes,
                      cause=cause, reason=reason)
+        if point_minutes_key:
+            event['point_minutes_key'] = point_minutes_key
+            # Identical commands produced independently have identical IDs AND
+            # payloads. Different clocks/sequences retain immutable facts and
+            # are selected once during replay, rather than conflicting on sync.
+            event['id'] = 'point-minutes:' + hashlib.sha256(_json(event).encode()).hexdigest()
+        else:
+            event['id'] = uuid.uuid4().hex
         self._put('ledger_events', plan['id'], event)
         plan['window'], plan['total_minutes'] = event['window'], total_minutes
+        return event['id']
 
     @_atomic
     def replan_plan(self, plan_id, today, new_window=None, new_total_minutes=None, *, reason=None):
@@ -1312,13 +1329,24 @@ class CourseStore:
         if plan['initial_window'] is None: raise StoreError('PLAN_NOT_READY')
         ledger = Ledger(_window(plan['initial_window']), plan['initial_total_minutes'])
         operations = [(p['operation_seq'], p['id'], 'credit', p) for p in self._rows('credits', plan['id'])]
-        operations += [(p['operation_seq'], p['id'], p['op'], p) for p in self._rows('ledger_events', plan['id'])]
+        events = self._rows('ledger_events', plan['id'])
+        operations += [(p['operation_seq'], p['id'], p['op'], p) for p in events]
+        estimate_events = {}
+        for e in sorted(events, key=lambda e: (e['operation_seq'], e['id'])):
+            if e.get('cause') == 'point_minutes' and e.get('point_minutes_key'):
+                key = e['point_minutes_key']
+                if key not in estimate_events or e['id'] == plan.get('point_minutes_event_id'):
+                    estimate_events[key] = e['id']
         for _, _, op, payload in sorted(operations):
             if op == 'credit':
                 c = payload['credit']
                 method = ledger.add_confirmed if c['state'] == 'confirmed' else ledger.add_tentative
                 method(c['credit_id'], c['unit_id'], c['minutes'], _day(c['day']))
-            elif op == 'replan': ledger.replan(_day(payload['today']), _window(payload['window']), payload['total_minutes'])
+            elif op == 'replan':
+                key = payload.get('point_minutes_key')
+                if key and payload['id'] != estimate_events.get(key): continue
+                ledger.replan(_day(payload['today']), _window(payload['window']), payload['total_minutes'],
+                              preserve_past=payload.get('cause') == 'point_minutes')
             elif op == 'confirm': ledger.confirm(payload['unit_id'])
             elif op == 'revoke': ledger.revoke(payload['unit_id'])
             elif op == 'release': ledger.release_unused(payload['minutes'])
@@ -1346,7 +1374,7 @@ class CourseStore:
 
     @_atomic
     def save_point_minutes(self, plan_id, fingerprint, difficulties, *, today=None):
-        """Commit content estimates and the ordinary replan together; preserve credits."""
+        """Commit content estimates and a future-only replan; preserve earned time."""
         from .planner_agents import estimate_point_minutes
         state = self.point_minutes_snapshot(plan_id)
         if state['ready']: return True
@@ -1358,22 +1386,27 @@ class CourseStore:
         weights = {p['id']: estimate_point_minutes(**state['metrics'][p['id']], difficulty=difficulties[p['id']])
                    for p in points}
         for p in points:
+            original = dict(p)
             p.update(difficulty=difficulties[p['id']],
                      minute_estimate=dict(**state['metrics'][p['id']], unconstrained=weights[p['id']]))
             p.update(point_minutes_version=POINT_MINUTES_VERSION,
                      difficulty_fingerprint=state['point_fingerprints'][p['id']])
             if p['id'] not in frozen: p['minutes'] = weights[p['id']]
-            self._put('points', plan_id, p)
+            if p != original: self._put('points', plan_id, p)
         for m in modules:
-            m['learning_minutes'] = sum(p['minutes'] for p in points if p['module_id'] == m['id'])
-            self._put('modules', plan_id, m)
+            minutes = sum(p['minutes'] for p in points if p['module_id'] == m['id'])
+            if minutes != m['learning_minutes']:
+                m['learning_minutes'] = minutes
+                self._put('modules', plan_id, m)
         plan.pop('point_minutes_provisional', None)
         plan.update(point_minutes_version=POINT_MINUTES_VERSION, point_minutes_signature=state['signature'],
                     point_minutes_unconstrained_total=sum(weights.values()))
         total = self._total(plan_id)
         if total != plan['total_minutes']:
-            self._replan(plan, _day(today or date.today()), _window(plan['window']), total,
-                         cause='point_minutes', reason='按原文分量、题量与难度重算')
+            plan['point_minutes_event_id'] = self._replan(
+                plan, _day(today or date.today()), _window(plan['window']), total,
+                cause='point_minutes', reason='按原文分量、题量与难度重算',
+                point_minutes_key=f'{POINT_MINUTES_VERSION}:{state["signature"]}')
         self._put('plans', plan_id, plan)
         return True
 
