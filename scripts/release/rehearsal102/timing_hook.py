@@ -61,7 +61,7 @@ if getattr(sys,'frozen',False):
     # Fault injection is confined to a preview runtime hook and an owned marker.
     if 'MentorFlow.exe' == Path(sys.executable).name:
         from refactor.learning.connections import credentials
-        credentials.SERVICE_NAME = 'MentorFlow.UAT.inapp104.Learning.Models.v1'
+        credentials.SERVICE_NAME = 'MentorFlow.UAT.fast105.Learning.Models.v1'
         from refactor.desktop import account_shell_main
         original=getattr(account_shell_main.AccountShell,'prepare_update_shutdown',None)
         def shutdown(self,*a,**k):

@@ -656,7 +656,8 @@ class ObjectCache:
             trace.mark('T09_CHANGED_MATERIALIZATION_BEGIN')
         trace.mark('T10_CHANGED_MATERIALIZATION_END')
         trace.mark('T11_VERIFY_BEGIN')
-        self.verify_tree(target, release)
+        from .prepared_update import seal
+        seal(target, release, lambda: self.verify_tree(target, release))
         trace.mark('T12_VERIFY_END')
         trace.mark('T13_TARGET_COMPLETE')
         return target

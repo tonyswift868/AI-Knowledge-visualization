@@ -831,7 +831,8 @@ def recover(root, public_keys=None):
 
 
 def transact(root, source, envelope, *, public_keys=None, health=None, progress=lambda value: None,
-             repair=False, before_swap=lambda: None, fault=lambda phase: None, refresh_runtime=False):
+             repair=False, before_swap=lambda: None, fault=lambda phase: None, refresh_runtime=False,
+             prepared=False):
     """Stage -> verify -> swap -> real health; previous remains recoverable."""
     public_keys = public_keys if public_keys is not None else keys()
     root = target(root, probe=True); source = plain(source)
@@ -844,13 +845,24 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
     if initial_repair: _initial_repair_release(root, public_keys, release)
     # A distribution may contain a sibling Installer directory. Only signed
     # files are read/copied; the newly materialized tree must match exactly.
-    verify_tree(source, release, subset=list(release.rows))
+    # Ordinary installers may include an unsigned sibling Installer directory.
+    # Prepared updates have an exact file inventory, held write-denied through
+    # activation. Invalid/old receipts retain the legacy verified copy path.
+    from refactor.desktop.delivery.prepared_update import ready
+    reuse = prepared and source.drive.casefold() == root.drive.casefold() and ready(source, release)
+    if not reuse: verify_tree(source, release, subset=list(release.rows))
     required = sum(r['size'] for r in release.rows.values()) + 64 * 1024**2
     free = shutil.disk_usage(root.parent).free
     if free < required: raise RecoverableError(low_space_message(required, free))
     root.mkdir(exist_ok=True)  # parent exists; only the MentorFlow level is created
     from refactor.desktop.delivery.update_download import InstallUpdateLock
-    with InstallUpdateLock(root):
+    from contextlib import ExitStack
+    with InstallUpdateLock(root), ExitStack() as verified_files:
+        from refactor.desktop.delivery.prepared_update import lease, inventory
+        reuse = reuse and verified_files.enter_context(lease(source, release))
+        if prepared and not reuse:
+            # Recheck under the lock if it changed after the optimistic read.
+            verify_tree(source, release, subset=list(release.rows))
         if refresh_runtime: require_updater_stopped(root)
         current, release = admit(root, envelope, public_keys, repair=repair)
         if initial_repair: _initial_repair_release(root, public_keys, release)
@@ -868,17 +880,43 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             journal['phase'] = phase; atomic(root / JOURNAL, canonical(journal)); fault(phase)
         moved = False; base_closed = False; activated = False
         try:
-            _copy(source, stage / 'App', release, progress)
+            if reuse:
+                from refactor.desktop.delivery.prepared_update import RECEIPT
+                ready_inventory = strict_json(read(source.parent / RECEIPT))['files']
+                # Windows refuses renaming a directory with open child handles,
+                # even with FILE_SHARE_DELETE. Release immediately at rename;
+                # the cache/install writer locks still own the whole operation.
+                verified_files.close()
+                move_started = time.perf_counter()
+                os.replace(source, stage / 'App')
+                maintenance_log(root, 'prepared_tree_moved', files=len(release.rows),
+                                bytes=sum(r['size'] for r in release.rows.values()),
+                                seconds=time.perf_counter()-move_started)
+            else:
+                _copy(source, stage / 'App', release, progress)
             # Cache/staging may be writable: recheck current signed metadata and
             # ALL copied bytes immediately before invoking the swap boundary.
             _, release = admit(root, envelope, public_keys, repair=repair)
-            verify_tree(stage / 'App', release); mark('VERIFIED'); progress(85)
+            verified_inventory = verified_files.enter_context(inventory(stage / 'App', release))
+            if not reuse or verified_inventory != ready_inventory:
+                # One final independent hash pass; hold these exact objects
+                # against writes until the swap (including the close callback).
+                verify_tree(stage / 'App', release)
+            mark('VERIFIED'); progress(85)
             atomic(root / HIGHEST, release.envelope)
             from refactor.desktop.delivery.per_user_update_core import unsafe_teardown
             if unsafe_teardown(): raise RecoverableError('teardown: update remains pending')
-            before_swap()
+            try:
+                before_swap()
+            except PermissionError as error:
+                raise SecurityError('verified staging has a concurrent writer') from error
             base_closed = True
-            verify_tree(stage / 'App', release)
+            # Check names/identity again (not SHA) and release child handles at
+            # the native rename boundary. No other product writer can enter.
+            with inventory(stage / 'App', release) as final_inventory:
+                if final_inventory != verified_inventory:
+                    raise SecurityError('verified staging changed before activation')
+            verified_files.close()
             if unsafe_teardown(): raise RecoverableError('teardown: update remains pending')
             if initial_repair: _initial_repair_release(root, public_keys, release)
             if initial_repair and (root / 'App').exists():
@@ -966,6 +1004,12 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             raise
 
         finally:
+            # Failed before activation: put the same verified download back so
+            # the existing next-start flow can retry it. Never consume pending
+            # content just because the App could not close.
+            verified_files.close()
+            if reuse and not activated and (stage / 'App').exists() and not source.exists():
+                os.replace(stage / 'App', source)
             # This attempt's copy is never needed for resume; the independently
             # verified download remains outside the installation until applied.
             if stage.exists() and not (stage / 'previous-updater').exists():

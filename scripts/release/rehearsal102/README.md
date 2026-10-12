@@ -40,3 +40,18 @@ final-startup.jsonl 与 scenario-observations.json 保留首次更新证据，�
 本机测试账号在 inapp104 服务中的凭据和两份测试私钥，完成截图留证后执行。
 若 Inno 首次 UIA provider 尚未就绪，先读取本轮向导状态，仅在文件夹选择框已打开时
 用 `scenario104.py --installer-pid <本轮向导 PID>` 接续；不重复安装、不模拟输入。
+
+105 轮：MF_UAT_ROOT= D:/MentorFlow/.local/test-tmp/fast105；common.APP_ID 和模型凭据
+服务为 MentorFlow.UAT.fast105。先 prepare.py，再分别运行 build105.py O、P、X：
+O 用 10e625f4（2.0.13）；P/X 用最终工位代码分别独立冻结为 9.105.1/9.105.2，
+不复制改版本。每次冻结自动执行 refreeze103.py <O|P|X> --check-only；先通过才启动。
+scenario105.py A / B / NEXT 各跑一次：A 兼容旧版主界面更新；B 等后台就绪后点击；
+NEXT 等后台就绪后正常关闭，从真实图标目标启动器安装。每次用真 Inno 新装、
+本机 HTTPS 登录、存假 Key/主题，核对新 App、首次 Updater UPDATED、第二次启动
+UP_TO_DATE/清理、卸载及正式注册/快捷方式快照。B 的后台准备期间反复 CDP 读取
+真实页面，记录响应耗时；所有点击为真实 DOM 或 UIA Invoke，不抢鼠标键盘。
+结果 logs/result105-*.json、各路线 observations/first-startup、stages/reconstruction
+记录用于汇总。用 clear105.py 删除该通道凭据及测试私钥；保留报告、截图和小脚本。
+改动产品源码后用 refinal105.py P / X 从各自 spec 执行 --clean 独立重冻，不能直接
+复用旧 PYZ。严格核对命令：refreeze103.py P --check-only --source-root <工位仓库>。
+metrics105.py 汇总三条路线；驱动修复后需新安装目录可用 scenario105.py A --run-id A-final。
