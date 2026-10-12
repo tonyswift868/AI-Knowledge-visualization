@@ -17,11 +17,13 @@ from copy import deepcopy
 import hashlib
 import json
 import re
+import time
 from threading import Event, Lock
 from typing import TYPE_CHECKING
 
 from refactor.learning.sync_identity import PlanError
 from refactor.learning.sync_source import validate_snapshot
+from refactor.runtime_logging import event
 
 if TYPE_CHECKING:
     from .sync_contract import RecordStore, SyncRecord
@@ -31,9 +33,11 @@ CURSOR_SCHEMA = "mentorflow.course-sync-cursor.v1"
 ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,159}\Z")
 # The deployed changes endpoint accepts at most 500 records per page.  Keeping
 # this value here makes the client use that limit for both pulls and the local
-# outbox batch, without adding a server-side batch protocol.
+# outbox round. HTTP uploads are smaller, bounded by count and encoded bytes.
 DEFAULT_BATCH_SIZE = 500
 MAX_BATCH_SIZE = 1000
+UPLOAD_BATCH_SIZE = 100
+UPLOAD_BATCH_BYTES = 2 * 1024 * 1024
 
 
 def _json(value):
@@ -229,6 +233,8 @@ class CourseSync:
         self._fence(cancel)
         total = 0
         while True:
+            started = time.monotonic()
+            event('sync', state='PULL_PAGE_START', completed=total)
             try:
                 page = self.transport.read_changes(since=cursor["since"], limit=DEFAULT_BATCH_SIZE)
             except PlanError as exc:
@@ -244,6 +250,8 @@ class CourseSync:
             self._fence(cancel)
             cursor, count = self._apply_page(cursor, pending, page["entities"], page["next_cursor"], cancel)
             total += count
+            event('sync', state='PULL_PAGE_END', count=len(page['entities']), completed=total,
+                  elapsed_seconds=time.monotonic()-started)
             self._progress(cancel, phase='pull', completed=total)
             if not page["has_more"]:
                 return cursor, total
@@ -306,8 +314,8 @@ class CourseSync:
             # cursor-save crash followed by remote deletion can orphan a row
             # locally: the server tombstone carries only an irreversible hash.
             self._save(identities, cancel)
-        for record, revision in acknowledgements:
-            self.store.mark_synced(record.entity, record.entity_id, record.local_revision, revision)
+        self._mark_synced([(record.entity, record.entity_id, record.local_revision, revision)
+                           for record, revision in acknowledgements])
         if changes:
             for incoming, _ in changes:
                 candidate = local.get(_wire_id(_values(incoming)))
@@ -328,8 +336,13 @@ class CourseSync:
         request_id = "course-" + hashlib.sha256(_json(fingerprint).encode("utf-8")).hexdigest()
         self._fence(cancel)
         args = dict(request_id=request_id, expected_revision=expected)
-        result = (self.transport.delete("learning_run", wire_id, **args) if deleting
-                  else self.transport.write("learning_run", wire_id, payload=payload, **args))
+        started = time.monotonic()
+        event('sync', state='SINGLE_REQUEST_START', count=1)
+        try:
+            result = (self.transport.delete("learning_run", wire_id, **args) if deleting
+                      else self.transport.write("learning_run", wire_id, payload=payload, **args))
+        finally:
+            event('sync', state='SINGLE_REQUEST_END', elapsed_seconds=time.monotonic()-started)
         self._fence(cancel)
         if (result.get("kind") != "learning_run" or result.get("entity_id") != wire_id
                 or type(result.get("revision")) is not int or result["revision"] != expected + 1
@@ -375,12 +388,110 @@ class CourseSync:
         self._mark_synced(acknowledgements)
         acknowledgements.clear()
 
+    def _send_bulk(self, pending, cursor, cancel, summary, failures, total):
+        """Return only rows needing the legacy/deletion/conflict path.
+
+        Request IDs are the same as single PUT. Lost whole-batch receipts can
+        be replayed after restart; acknowledgement fences keep concurrent edits.
+        Conflicts are re-read together, then the store's field merge is reused.
+        """
+        if not callable(getattr(self.transport, 'write_many', None)):
+            return pending
+        operations, singles = [], []
+        for record in pending:
+            try:
+                values = _values(record)
+                wire_id = _wire_id(values)
+                expected = cursor['records'].get(wire_id, {}).get('revision', 0)
+                if record.deleted and not expected:
+                    singles.append(record)
+                    continue
+                payload = _envelope(values)
+                fingerprint = [self._scope.snapshot_scope(), wire_id, record.local_revision,
+                               expected, record.deleted, payload]
+                row = dict(kind='learning_run', entity_id=wire_id, expected_revision=expected,
+                           request_id='course-'+hashlib.sha256(_json(fingerprint).encode()).hexdigest(),
+                           deleted=record.deleted)
+                if not record.deleted:
+                    row['payload'] = payload
+                operations.append((record, values, row))
+            except PlanError as exc:
+                failures.append(exc)
+        index, batch_number, conflicted = 0, 0, set()
+        while index < len(operations):
+            batch, size = [], 0
+            while index < len(operations) and len(batch) < UPLOAD_BATCH_SIZE:
+                item = operations[index]
+                amount = len(_json(item[2]).encode())
+                if batch and size + amount > UPLOAD_BATCH_BYTES:
+                    break
+                batch.append(item); size += amount; index += 1
+            batch_number += 1
+            started = time.monotonic()
+            event('sync', state='UPLOAD_BATCH_START', batch=batch_number, count=len(batch),
+                  completed=summary['uploaded'], total=total)
+            receipts = None
+            for attempt in range(2):
+                self._fence(cancel)
+                try:
+                    receipts = self.transport.write_many([item[2] for item in batch])
+                    break
+                except PlanError as exc:
+                    if exc.code == 'SYNC_BULK_UNSUPPORTED':
+                        return singles + [item[0] for item in batch + operations[index:]]
+                    if exc.code == 'SYNC_UNAVAILABLE' and attempt == 0:
+                        event('sync', state='UPLOAD_BATCH_RETRY', batch=batch_number, code=exc.code)
+                        continue
+                    if exc.code in {'SYNC_UNAVAILABLE', 'SYNC_RESPONSE_INVALID'}:
+                        failures.extend([exc] * len(batch))
+                        event('sync', state='UPLOAD_BATCH_END', batch=batch_number, failed=len(batch),
+                              code=exc.code, elapsed_seconds=time.monotonic()-started)
+                        # Leave unsent rows pending; a disconnected link must not
+                        # consume a timeout for every row in the remaining queue.
+                        return singles
+                    raise
+            acknowledgements = []
+            for (record, values, sent), receipt in zip(batch, receipts):
+                self._fence(cancel)
+                status = receipt['status']
+                if status == 200:
+                    result = receipt.get('result', {})
+                    if (result.get('kind') != sent['kind'] or result.get('entity_id') != sent['entity_id']
+                            or type(result.get('revision')) is not int
+                            or result['revision'] != sent['expected_revision']+1
+                            or result.get('deleted') is not record.deleted
+                            or result.get('payload') != sent.get('payload', {})):
+                        failures.append(PlanError('SYNC_RESPONSE_INVALID', '批量同步回执不匹配。'))
+                        continue
+                    cursor['records'][sent['entity_id']] = _metadata(values, result['revision'], record.deleted)
+                    acknowledgements.append((record.entity, record.entity_id, record.local_revision, result['revision']))
+                    summary['uploaded'] += 1
+                elif status in (409, 410):
+                    summary['conflicts'] += 1
+                    conflicted.add((record.entity, record.entity_id))
+                else:
+                    failures.append(PlanError('SYNC_UNAVAILABLE' if status >= 500 else 'SYNC_RECORD_INVALID',
+                                              '部分学习记录尚未同步，本机记录已保留。'))
+            self._flush_acknowledgements(cursor, cancel, acknowledgements)
+            self._progress(cancel, phase='upload', completed=summary['uploaded'], total=total, failed=len(failures))
+            event('sync', state='UPLOAD_BATCH_END', batch=batch_number, count=len(batch),
+                  completed=summary['uploaded'], failed=len(failures), elapsed_seconds=time.monotonic()-started)
+        if conflicted:
+            next_cursor, count = self._pull(cursor, self.store.pending_records(MAX_BATCH_SIZE), cancel)
+            cursor.clear(); cursor.update(next_cursor)
+            summary['pulled'] += count
+            singles.extend(record for record in self.store.pending_records(MAX_BATCH_SIZE)
+                           if (record.entity, record.entity_id) in conflicted)
+        return singles
+
     def sync(self, *, limit=DEFAULT_BATCH_SIZE, cancel=None):
         """One bounded pull/upload round; errors leave the store retryable."""
         if type(limit) is not int or not 1 <= limit <= MAX_BATCH_SIZE:
             raise ValueError(f"limit must be between 1 and {MAX_BATCH_SIZE}")
         if not self._lock.acquire(blocking=False):
             raise PlanError("SYNC_IN_PROGRESS", "课程同步正在进行。")
+        started = time.monotonic()
+        event('sync', state='ROUND_START')
         try:
             self._cancel.clear()
             self._fence(cancel)
@@ -397,6 +508,7 @@ class CourseSync:
             failures = []
             network_failures = 0
             self._progress(cancel, phase='upload', completed=0, total=total, failed=0)
+            pending = self._send_bulk(pending, cursor, cancel, summary, failures, total)
             for record in pending:
                 for attempt in range(2):
                     try:
@@ -475,6 +587,13 @@ class CourseSync:
                 if not summary['uploaded']:
                     raise failures[0]
             summary["ok"] = summary["pending"] == 0
+            event('sync', state='ROUND_RESULT', completed=summary['uploaded'], count=summary['pulled'],
+                  total=total, failed=len(failures), elapsed_seconds=time.monotonic()-started)
             return summary
+        except BaseException as exc:
+            event('sync', state='ROUND_ERROR', code=getattr(exc, 'code', 'INTERNAL'),
+                  elapsed_seconds=time.monotonic()-started)
+            raise
         finally:
+            event('sync', state='ROUND_END', elapsed_seconds=time.monotonic()-started)
             self._lock.release()

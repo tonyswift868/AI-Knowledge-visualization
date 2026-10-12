@@ -44,15 +44,18 @@ class _WindowCourseSyncService(CourseSyncService):
                 or progress.get('round') is self._finished_progress_round):
             return
         if progress['phase'] in {'start', 'pull'}:
-            message = f"正在读取云端学习记录，已读取 {progress['completed']} 条…"
-            values = {}
+            message = (f"正在读取云端学习记录，已读取 {progress['completed']} 条…"
+                       if progress['completed'] else '正在检查学习记录更新…')
+            values = dict(phase=progress['phase'], completed=progress['completed'],
+                          show_progress=progress['completed'] > 0)
         else:
             completed = progress['base'] + progress['completed']
             total = progress['base'] + progress['total']
             message = f'正在同步 已完成 {completed} / 共 {total} 条'
             if progress['failed']:
                 message += f"，{progress['failed']} 条待重试"
-            values = dict(completed=completed, total=total, failed=progress['failed'])
+            values = dict(phase='upload', completed=completed, total=total, failed=progress['failed'],
+                          show_progress=progress['total'] > 0)
         self._status = dict(state='syncing', at=self._status['at'], message=message, **values)
         self.status_changed.emit(message)
         self.state_changed.emit(self.status())

@@ -42,7 +42,8 @@ print('standalone import passed')
 def test_slim_only_selected_routes_and_no_original_storage():
     from refactor.server.app import app
     paths=app.openapi()['paths']
-    assert len(paths)==37
+    assert len(paths)==38
+    assert set(paths['/api/enterprise/sync/v1/entities/bulk']) == {'post'}
     assert set(p for p in paths if not p.startswith('/api/enterprise/')) == {
         '/health/live','/health/startup','/health/ready'}
     assert not any(part in path for path in paths for part in (

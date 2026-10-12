@@ -136,6 +136,8 @@ class Server:
             response = self.before(request)
             if response is not None:
                 return response
+        if request.url.path == '/api/enterprise/sync/v1/entities/bulk':
+            return httpx.Response(404)  # This fixture models a pre-bulk server.
         if request.method == 'GET':
             if request.url.path == '/api/enterprise/sync/v1/changes':
                 if not self.incremental:

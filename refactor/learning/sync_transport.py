@@ -4,7 +4,8 @@ from __future__ import annotations
 import json
 import hashlib
 import re
-from contextlib import nullcontext
+import time
+from contextlib import nullcontext, contextmanager
 
 import httpx
 
@@ -12,6 +13,7 @@ from refactor.learning.sync_identity import PlanError
 from refactor.learning.sync_source import AuthenticatedPlanSource, SNAPSHOT_PATH, MAX_SNAPSHOT_BYTES, validate_snapshot
 from refactor.learning.sync_source import sync_auth_error
 from .sync_records.contract import envelope_for
+from refactor.runtime_logging import event
 
 
 def _resource_response_envelope(payload):
@@ -40,6 +42,96 @@ class SyncTransport(AuthenticatedPlanSource):
         # retained in client defaults. See https://www.python-httpx.org/advanced/clients/
         self._client = httpx.Client(verify=self._ssl, timeout=20,
                                    follow_redirects=False, transport=self._transport)
+        self._bulk_supported = True
+
+    @contextmanager
+    def _sync_response(self, method, path, **kwargs):
+        """Retry a rejected *old* token only when the shell already rotated it.
+
+        Never refresh credentials here or retry a superseded session. All CAS
+        request IDs/bodies remain unchanged, including after a lost receipt.
+        """
+        for attempt in range(2):
+            scope, token = self._session()
+            self._scope = scope
+            headers = self._object_headers(scope, token)
+            try:
+                with self._client.stream(method, self._base_url + path, headers=headers, **kwargs) as response:
+                    if response.status_code in (401, 403):
+                        error = sync_auth_error(response, '学习记录尚未同步，请重新验证账号。')
+                        event('sync', state='HTTP_AUTH_REJECTED', http_status=response.status_code, code=error.code)
+                        if attempt == 0 and response.status_code == 401 and error.code == 'REAUTH_REQUIRED':
+                            _, fresh = self._session()
+                            if fresh != token:
+                                event('sync', state='AUTH_ROTATED_RETRY')
+                                continue
+                        raise error
+                    yield response
+                    return
+            finally:
+                token = ''
+                headers.clear()
+
+    def write_many(self, records):
+        """A bounded CAS batch. Only an explicit missing route permits fallback."""
+        if not self._bulk_supported:
+            raise PlanError('SYNC_BULK_UNSUPPORTED', '服务器暂未提供批量同步。')
+        if not 1 <= len(records) <= 500:
+            raise ValueError('invalid batch size')
+        started = time.monotonic()
+        event('sync', state='BATCH_REQUEST_START', count=len(records))
+        code, status = 'OK', 0
+        headers, token = {}, ''
+        try:
+            scope, token = self._session()
+            self._scope = scope
+            headers = self._object_headers(scope, token)
+            # Bound the entire body, in addition to httpx's inactivity timeout.
+            # A proxy sending occasional bytes cannot keep a batch alive forever.
+            with self._sync_response('POST', '/api/enterprise/sync/v1/entities/bulk',
+                                     json={'records': records}) as response:
+                status = response.status_code
+                if status in (401, 403):
+                    raise sync_auth_error(response, '学习记录尚未同步，请重新验证账号。')
+                if status in (404, 405):
+                    self._bulk_supported = False
+                    raise PlanError('SYNC_BULK_UNSUPPORTED', '服务器暂未提供批量同步。')
+                if status != 200:
+                    raise PlanError('SYNC_UNAVAILABLE', '学习记录暂未同步，稍后会重试。')
+                raw = bytearray()
+                for chunk in response.iter_bytes():
+                    self.require_current()
+                    raw.extend(chunk)
+                    if time.monotonic() - started > 20:
+                        raise httpx.ReadTimeout('sync batch deadline')
+                    if len(raw) > 160 * 1024 * 1024:
+                        raise ValueError('batch response too large')
+            self.require_current()
+            value = json.loads(raw)
+            results = value['results']
+            if value.get('schema') != 'mentorflow.structured-sync-bulk.v1' or len(results) != len(records):
+                raise ValueError('invalid bulk receipt')
+            for sent, received in zip(records, results):
+                if (received.get('kind') != sent['kind'] or received.get('entity_id') != sent['entity_id']
+                        or type(received.get('status')) is not int):
+                    raise ValueError('invalid bulk identity')
+            return results
+        except PlanError as exc:
+            code = exc.code
+            raise
+        except (httpx.HTTPError, OSError):
+            code = 'SYNC_UNAVAILABLE'
+            error = PlanError(code, '学习记录暂未同步，稍后会重试。')
+            error.network_unavailable = True
+            raise error from None
+        except (ValueError, TypeError, KeyError, AttributeError):
+            code = 'SYNC_RESPONSE_INVALID'
+            raise PlanError(code, '批量同步回执无法验证，未清除待同步记录。') from None
+        finally:
+            token = ''
+            headers.clear()
+            event('sync', state='BATCH_REQUEST_END', count=len(records), code=code,
+                  http_status=status, elapsed_seconds=time.monotonic()-started)
 
     def close(self):
         super().close()
@@ -91,13 +183,14 @@ class SyncTransport(AuthenticatedPlanSource):
                 or int(since) > 2**63 - 1 or kind != "learning_run"
                 or type(limit) is not int or not 1 <= limit <= 500):
             raise ValueError("invalid changes cursor, kind or limit")
+        started = time.monotonic()
         scope, token = self._session()
         self._scope = scope
         headers = self._object_headers(scope, token)
         try:
             with nullcontext(self._client) as client:
-                with client.stream("GET", self._base_url + "/api/enterprise/sync/v1/changes",
-                                   headers=headers, params=dict(since=since, kind=kind, limit=limit)) as response:
+                with self._sync_response("GET", "/api/enterprise/sync/v1/changes",
+                                        params=dict(since=since, kind=kind, limit=limit)) as response:
                     self.require_current()
                     if response.status_code in (401, 403):
                         raise sync_auth_error(response, "登录已失效，本机内容仍保留，请重新登录。")
@@ -106,7 +199,10 @@ class SyncTransport(AuthenticatedPlanSource):
                     if response.status_code != 200:
                         raise PlanError("SYNC_UNAVAILABLE", "学习记录暂未同步，稍后会重试。")
                     raw = bytearray()
-                    for chunk in response.iter_bytes(chunk_size=65536):
+                    for chunk in response.iter_bytes():
+                        self.require_current()
+                        if time.monotonic() - started > 20:
+                            raise httpx.ReadTimeout('sync page deadline')
                         raw.extend(chunk)
                         if len(raw) > 160 * 1024 * 1024:
                             raise ValueError("changes page too large")
@@ -247,8 +343,17 @@ class SyncTransport(AuthenticatedPlanSource):
         try:
             with nullcontext(self._client) as client:
                 path = f"/api/enterprise/sync/v1/entities/{kind}/{entity_id}" + ("/delete" if deleting else "")
-                response = client.request("POST" if deleting else "PUT", self._base_url + path,
-                                          headers=headers, json=body)
+                started = time.monotonic()
+                with self._sync_response("POST" if deleting else "PUT", path, json=body) as response:
+                    raw = bytearray()
+                    for chunk in response.iter_bytes():
+                        self.require_current()
+                        if time.monotonic()-started > 20:
+                            raise httpx.ReadTimeout('sync record deadline')
+                        raw.extend(chunk)
+                        if len(raw) > 2 * 1024 * 1024:
+                            raise ValueError('sync receipt too large')
+                    response = httpx.Response(response.status_code, content=bytes(raw))
             self.require_current()
             if response.status_code in (401, 403):
                 raise sync_auth_error(response, "学习记录尚未同步，请重新验证账号；本机内容仍保留。")

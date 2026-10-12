@@ -176,6 +176,10 @@ class Delete(StrictModel):
     request_id: str = Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')
     expected_revision: int = Field(ge=1, le=2_147_483_646)
 
+class BulkWrite(StrictModel):
+    # Individual validation errors belong to their row, not the whole batch.
+    records: list[dict] = Field(min_length=1, max_length=500)
+
 def error(code, status=409):
     return EnterprisePersistenceRequestError(code, code, status=status)
 
@@ -378,9 +382,9 @@ class StructuredSyncService:
                 # Success requires WAL flush, even if a session default disables it.
                 c.execute(text('SET LOCAL synchronous_commit = on'))
 
-    def write(self, actor, tenant, kind, entity_id, body, *, deleting=False):
+    def _payload(self, kind, entity_id, body, *, deleting=False):
         from pydantic import ValidationError
-        if kind not in SYNC_KINDS or not re.fullmatch(ID_PATTERN, entity_id):
+        if not isinstance(kind, str) or kind not in SYNC_KINDS or not isinstance(entity_id, str) or not re.fullmatch(ID_PATTERN, entity_id):
             raise error('SYNC_ENTITY_INVALID', 422)
         payload = {}
         if not deleting:
@@ -416,47 +420,82 @@ class StructuredSyncService:
             if kind == 'plan' and refactor_payload is None and (len(set(payload['resource_ids'])) != len(payload['resource_ids']) or
                     any(not re.fullmatch(ID_PATTERN, r) for r in payload['resource_ids'])):
                 raise error('SYNC_RESOURCE_IDS_INVALID', 422)
-        context = TenantTransactionContext(tenant=tenant, actor=actor)
-        scope = scope_of(context)
+        return payload
+
+    def _write_row(self, c, scope, kind, entity_id, body, payload, deleting):
         fingerprint = hashlib.sha256(json.dumps([kind, entity_id, body.expected_revision, deleting, payload],
             sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+        replay = c.execute(select(requests).where(predicate(requests, scope), requests.c.request_id == body.request_id)).mappings().first()
+        if replay:
+            if replay['digest'] != fingerprint:
+                raise error('SYNC_IDEMPOTENCY_KEY_REUSED')
+            result = replay['response']
+        else:
+            match = and_(predicate(entities, scope), entities.c.kind == kind, entities.c.entity_id == entity_id)
+            current = c.execute(select(entities).where(match)).mappings().first()
+            revision = current['revision'] if current else 0
+            if deleting and not current:
+                raise error('SYNC_ENTITY_NOT_FOUND', 404)
+            if revision != body.expected_revision:
+                raise error('SYNC_STALE_REVISION')
+            if current and current['deleted']:
+                raise error('SYNC_ENTITY_TOMBSTONED', 410)
+            refs = [('resource', r) for r in payload.get('resource_ids', [])]
+            if kind == 'progress' and not deleting and payload.get('plan_id'):
+                refs.append(('plan', payload['plan_id']))
+            for ref_kind, ref_id in refs:
+                found = c.execute(select(entities.c.entity_id).where(predicate(entities, scope),
+                    entities.c.kind == ref_kind, entities.c.entity_id == ref_id, entities.c.deleted.is_(False))).first()
+                if not found:
+                    raise error('SYNC_REFERENCE_NOT_IN_CURRENT_SCOPE', 422)
+            result = dict(kind=kind, entity_id=entity_id, revision=revision + 1, deleted=deleting, payload=payload)
+            if current:
+                c.execute(update(entities).where(match, entities.c.revision == revision).values(
+                    revision=result['revision'], deleted=deleting, payload=payload))
+            else:
+                c.execute(insert(entities).values(**scope, **result))
+            c.execute(insert(requests).values(**scope, request_id=body.request_id, digest=fingerprint, response=result))
+            from .rehydration_manifest import advance_learning_generation
+            advance_learning_generation(c, scope)
+        return result
+
+    def write(self, actor, tenant, kind, entity_id, body, *, deleting=False):
+        payload = self._payload(kind, entity_id, body, deleting=deleting)
+        context = TenantTransactionContext(tenant=tenant, actor=actor)
+        scope = scope_of(context)
         with self.transactions.transaction(context) as tx:
             self._bind(tx, scope, writing=True)
-            c = tx.connection
-            replay = c.execute(select(requests).where(predicate(requests, scope), requests.c.request_id == body.request_id)).mappings().first()
-            if replay:
-                if replay['digest'] != fingerprint:
-                    raise error('SYNC_IDEMPOTENCY_KEY_REUSED')
-                result = replay['response']
-            else:
-                match = and_(predicate(entities, scope), entities.c.kind == kind, entities.c.entity_id == entity_id)
-                current = c.execute(select(entities).where(match)).mappings().first()
-                revision = current['revision'] if current else 0
-                if deleting and not current:
-                    raise error('SYNC_ENTITY_NOT_FOUND', 404)
-                if revision != body.expected_revision:
-                    raise error('SYNC_STALE_REVISION')
-                if current and current['deleted']:
-                    raise error('SYNC_ENTITY_TOMBSTONED', 410)
-                refs = [('resource', r) for r in payload.get('resource_ids', [])]
-                if kind == 'progress' and not deleting and payload.get('plan_id'):
-                    refs.append(('plan', payload['plan_id']))
-                for ref_kind, ref_id in refs:
-                    found = c.execute(select(entities.c.entity_id).where(predicate(entities, scope),
-                        entities.c.kind == ref_kind, entities.c.entity_id == ref_id, entities.c.deleted.is_(False))).first()
-                    if not found:
-                        raise error('SYNC_REFERENCE_NOT_IN_CURRENT_SCOPE', 422)
-                result = dict(kind=kind, entity_id=entity_id, revision=revision + 1, deleted=deleting, payload=payload)
-                if current:
-                    c.execute(update(entities).where(match, entities.c.revision == revision).values(
-                        revision=result['revision'], deleted=deleting, payload=payload))
-                else:
-                    c.execute(insert(entities).values(**scope, **result))
-                c.execute(insert(requests).values(**scope, request_id=body.request_id, digest=fingerprint, response=result))
-                from .rehydration_manifest import advance_learning_generation
-                advance_learning_generation(c, scope)
-        # Context exits (and COMMIT succeeds) before any HTTP success is possible.
+            result = self._write_row(tx.connection, scope, kind, entity_id, body, payload, deleting)
         return result
+
+    def write_many(self, actor, tenant, body):
+        from pydantic import ValidationError
+        context = TenantTransactionContext(tenant=tenant, actor=actor)
+        scope = scope_of(context)
+        results = []
+        with self.transactions.transaction(context) as tx:
+            self._bind(tx, scope, writing=True)
+            for row in body.records:
+                identity = {k: row.get(k) for k in ('kind', 'entity_id')}
+                try:
+                    with tx.connection.begin_nested():
+                        if set(row) - {'kind', 'entity_id', 'request_id', 'expected_revision', 'payload', 'deleted'}:
+                            raise error('SYNC_RECORD_INVALID', 422)
+                        deleting = row.get('deleted', False)
+                        if type(deleting) is not bool:
+                            raise error('SYNC_RECORD_INVALID', 422)
+                        model = Delete if deleting else Write
+                        data = {k: v for k, v in row.items() if k not in {'kind', 'entity_id', 'deleted'}}
+                        operation = model.model_validate(data)
+                        payload = self._payload(identity['kind'], identity['entity_id'], operation, deleting=deleting)
+                        result = self._write_row(tx.connection, scope, identity['kind'], identity['entity_id'], operation, payload, deleting)
+                    results.append(dict(identity, status=200, result=result))
+                except ValidationError:
+                    results.append(dict(identity, status=422, code='SYNC_RECORD_INVALID'))
+                except EnterprisePersistenceRequestError as exc:
+                    results.append(dict(identity, status=exc.status, code=exc.code))
+        # No success escapes until the complete outer transaction commits.
+        return dict(schema='mentorflow.structured-sync-bulk.v1', results=results)
 
     def snapshot(self, actor, tenant, *, requested_scope=None, scope_version=None):
         from .sync_snapshot import observe

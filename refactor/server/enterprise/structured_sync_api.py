@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, Query
 from fastapi.responses import JSONResponse
 from refactor.server.enterprise.identity.oidc import IdentityError
 from refactor.server.enterprise_tenancy.models import EnterprisePersistenceRequestError
-from refactor.server.enterprise_tenancy.structured_sync import Write, Delete
+from refactor.server.enterprise_tenancy.structured_sync import Write, Delete, BulkWrite
 from sqlalchemy.exc import SQLAlchemyError
 
 router = APIRouter(prefix='/api/enterprise/sync/v1')
@@ -30,6 +30,10 @@ def call(request, method, *args, **kwargs):
 @router.put('/entities/{kind}/{entity_id}')
 def write(request: Request, kind: Literal['plan','progress','resource','task','calendar','review','learner_profile','learning_run','history','setting'], entity_id: str, body: Write):
     return call(request, 'write', kind, entity_id, body)
+
+@router.post('/entities/bulk')
+def write_many(request: Request, body: BulkWrite):
+    return call(request, 'write_many', body)
 
 @router.post('/entities/{kind}/{entity_id}/delete')
 def delete(request: Request, kind: Literal['plan','progress','resource','task','calendar','review','learner_profile','learning_run','history','setting'], entity_id: str, body: Delete):
