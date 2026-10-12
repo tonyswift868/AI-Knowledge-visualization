@@ -68,7 +68,7 @@ def position(e,count=0,step='teaching'):
     for i in range(count):e.store.add_credit(PLAN,f'learn:p{i}',f'p{i}',10,DAY,'tentative')
     e.store.save_teacher_profile(PLAN,dict(teaching_points={f'p{i}':dict(point_id=f'p{i}',title=f'队列概念{i+1}') for i in range(count)}))
     state.update(index=count,step=step,day=DAY.isoformat(),in_session=True,conversation=dict(point_id=f'p{count}',options=[],interrupted=True))
-    e.room._file(PLAN).write(state)
+    e.room._save(e.room._course(PLAN),state)
     return state
 
 def finish_review(e):

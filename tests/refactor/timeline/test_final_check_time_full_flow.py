@@ -167,7 +167,7 @@ def act(env, name, *args):
 
 
 def answer(env, *, wrong=()):
-    pending = env.room._file(PLAN).read({}).get('pending')
+    pending = env.room._load(env.room._course(PLAN)).get('pending')
     actual_wrong = [pid for pid in wrong if pending and pid in pending['point_ids']]
     env.agent.verdicts = [('answer', not actual_wrong, actual_wrong)]
     return act(env, 'reply', '测试作答')
@@ -193,10 +193,10 @@ def check_both(audit, env, scene, expected, *, class_expected=None, view=None):
 
 
 def check_answer(env, *, wrong=False):
-    pending = env.room._file(PLAN).read({})['pending']
+    pending = env.room._load(env.room._course(PLAN))['pending']
     if pending is None:
         act(env, 'start_check')
-        pending = env.room._file(PLAN).read({})['pending']
+        pending = env.room._load(env.room._course(PLAN))['pending']
     return answer(env, wrong=pending['point_ids'] if wrong else ())
 
 
@@ -207,7 +207,7 @@ def finish_check(env):
         if snapshot(env)['step'] == 'completed':
             return
         check_answer(env)
-    assert False, ('最终检验未在有界题数内完成', env.room._file(PLAN).read({}), env.room._bank_jobs)
+    assert False, ('最终检验未在有界题数内完成', env.room._load(env.room._course(PLAN)), env.room._bank_jobs)
 
 
 def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
@@ -221,7 +221,7 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
     act(e,'leave');act(e,'enter');act(e,'next');answer(e)
     act(e,'start_test','module_test')
     while True:
-        pending=e.room._file(PLAN).read({})['pending']
+        pending=e.room._load(e.room._course(PLAN))['pending']
         view=answer(e,wrong=['m0-02'] if 'm0-02' in pending['point_ids'] else [])
         if view['step']!='testing':break
     assert view['module']['state']=='failed'
@@ -245,8 +245,8 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
     assert snapshot(e)['today']['overdue_days']==2
     errors=answered=0
     while not e.store.load_mastery(PLAN).check_complete():
-        pending=e.room._file(PLAN).read({})['pending']
-        if pending is None:act(e,'start_check');pending=e.room._file(PLAN).read({})['pending']
+        pending=e.room._load(e.room._course(PLAN))['pending']
+        if pending is None:act(e,'start_check');pending=e.room._load(e.room._course(PLAN))['pending']
         wrong='m0-02' in pending['point_ids'] and errors<2
         errors+=int(wrong);answered+=1
         view=check_answer(e,wrong=wrong)

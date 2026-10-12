@@ -201,7 +201,7 @@ class MathRun:
         print(text, flush=True)
 
     def state(self):
-        return self.room._file(self.plan_id).read({})
+        return self.room._load(self.room._course(self.plan_id))
 
     def call(self, method, **params):
         self.gw.study_date, self.gw.operation = self.day().isoformat(), method

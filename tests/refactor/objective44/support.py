@@ -26,10 +26,10 @@ def objective_bank(store):
 
 
 def scripted_answer(room,plan,agents,text):
-    pending=room._file(plan).read({}).get('pending')
+    pending=room._load(room._course(plan)).get('pending')
     if not pending:
         # Historical timing scripts finish the explained point explicitly; no casual grade.
-        if room._file(plan).read({}).get('step')=='teaching':
+        if room._load(room._course(plan)).get('step')=='teaching':
             if agents.verdicts:agents.verdicts.pop(0)
             return 'next',()
         return 'reply',(text,)

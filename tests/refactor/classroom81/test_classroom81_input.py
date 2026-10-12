@@ -47,7 +47,7 @@ def test_classroom81_pending_question_ask_preserves_answer_and_reply_grades(tmp_
     monkeypatch.setattr(Classroom,'_materials',staticmethod(lambda:e.materials))
     try:
         before=pending(e)
-        original=copy.deepcopy(e.room._file(PLAN).read({})['pending'])
+        original=copy.deepcopy(e.room._load(e.room._course(PLAN))['pending'])
         requests=[];complete=e.gateway.complete
         def tracked(purpose,messages,**kwargs):
             requests.append(json.loads(messages[-1]['content'].split('\n',1)[1]))
@@ -55,7 +55,7 @@ def test_classroom81_pending_question_ask_preserves_answer_and_reply_grades(tmp_
         e.gateway.complete=tracked
         v=e.room.perform(PLAN,'ask',SimpleNamespace(cancel=threading.Event(),stream=lambda _:None),['题目说的面积是什么意思？'])
         assert not v['failure'] and v['question']==before['question']
-        assert e.room._file(PLAN).read({})['pending']==original
+        assert e.room._load(e.room._course(PLAN))['pending']==original
         assert not e.store.records('judgements',PLAN)
         assert e.gateway.calls==['teacher']
         assert '当前屏幕上正在检测' in requests[0]['director']

@@ -88,7 +88,7 @@ def services(store,root):
 ])
 def test_migration92_versions_keep_courses_open(tmp_path,version,questions,retired):
     with seed(tmp_path,version,questions) as s:
-        assert SCHEMA_VERSION==9 and s._db.execute('SELECT version FROM schema_version').fetchone()[0]==9
+        assert SCHEMA_VERSION==10 and s._db.execute('SELECT version FROM schema_version').fetchone()[0]==SCHEMA_VERSION
         assert s.get_plan(PLAN)['material_version']==3 and not s.get_plan(PLAN).get('unusable')
         bank=s.records('question_bank',PLAN)
         assert sum(q.get('role')=='retired' for q in bank)==retired

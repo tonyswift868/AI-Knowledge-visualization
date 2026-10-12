@@ -263,7 +263,7 @@ class Harness:
         self.view = self.room.run(self.plan_id, lambda *args: None) if self.ops else None
 
     def state(self):
-        return self.room._file(self.plan_id).read({})
+        return self.room._load(self.room._course(self.plan_id))
 
     def act(self, name, *args):
         index = len(self.ops)

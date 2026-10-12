@@ -116,7 +116,7 @@ def test_grading_model_and_followup_prompts_removed():
 
 def test_leave_with_saved_subjective_does_not_prepare_or_grade(e):
     q=question('p0','short')
-    e.room._file(PLAN).write(dict(e.room._rebuild(e.room._course(PLAN)),
+    e.room._save(e.room._course(PLAN),dict(e.room._rebuild(e.room._course(PLAN)),
         pending=dict(kind='module_test',point_ids=['p0'],question=q,answer_id='legacy'),step='testing'))
     before=list(e.materials.prepare)
     act(e,'leave')

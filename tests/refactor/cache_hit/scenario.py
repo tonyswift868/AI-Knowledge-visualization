@@ -11,7 +11,7 @@ def run_scenario(root,*,extended=False):
     room=Classroom(services,lambda:DAY,now=lambda:datetime(2026,10,3,10,tzinfo=timezone.utc))
     try:
         def act(name,*args):
-            pending=room._file(pid).read({}).get('pending') or {}
+            pending=room._load(room._course(pid)).get('pending') or {}
             q=pending.get('question') or {}
             if name=='reply' and q:
                 if q['kind']=='recall':

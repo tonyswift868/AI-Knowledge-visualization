@@ -1,4 +1,4 @@
-"""Account-owned SQLite course data and an atomic record outbox, schema v9.
+"""Account-owned SQLite course data and an atomic record outbox, schema v10.
 
 Each business table stores a canonical, versioned JSON payload plus indexed FK
 columns and a local revision. Payload fields (also validated below):
@@ -16,6 +16,9 @@ question_answers: immutable answer ID, question/point IDs, context, attempt,
 angle, verdict and time; v9 adds literal answer, question snapshot, ticked/missed,
 optional self_correct and dialogue anchor. Missing self_correct means historical
 verdict, never an inferred student choice. All fields travel in the same sync fact.
+classroom_positions: one row/id per plan, atomic scene state, originating
+device_id and saved_at. State uses the existing field timestamp for last-edit
+merge; the local legacy-import marker stays in _meta and is not synced.
 Module positions are global within a plan; point positions are within a module.
 Plan module_count and module point_count prevent a partially downloaded course
 from becoming runnable/complete before all its structural records arrive.
@@ -61,7 +64,7 @@ from .ledger import Ledger, PlanWindow, Credit
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 POINT_MINUTES_VERSION = 2  # Content totals, replacing v1's fixed-budget allocation.
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
@@ -79,6 +82,7 @@ PARENTS = {
     'question_bank': (('module_id', 'modules'),), 'practice_results': (),
     'question_answers': (),  # immutable answered-question facts, independent of point judgements
     'point_links': (('module_id', 'modules'),),
+    'classroom_positions': (),  # one atomic scene (state field) per plan, last edit wins
 }
 STATES = ('creating', 'ready', 'active', 'checking', 'completed')
 
@@ -257,7 +261,7 @@ class CourseStore:
                 PRIMARY KEY(entity,entity_id))''')
             self._db.execute('CREATE TABLE plans(id TEXT PRIMARY KEY, payload TEXT NOT NULL CHECK(json_valid(payload)), revision INTEGER NOT NULL)')
             for entity, parents in PARENTS.items():
-                if entity in ('plans', 'question_bank', 'practice_results', 'question_answers', 'account_settings'): continue
+                if entity in ('plans', 'question_bank', 'practice_results', 'question_answers', 'account_settings', 'classroom_positions'): continue
                 fields = [f'{name} TEXT' for name, _ in parents]
                 constraints = [f'FOREIGN KEY(plan_key,{name}) REFERENCES {parent}(plan_key,id) DEFERRABLE INITIALLY DEFERRED'
                                for name, parent in parents]
@@ -321,6 +325,13 @@ class CourseStore:
             # v9 extends append-only JSON answer facts. Keep old events byte-for-byte
             # (including their sync IDs/verdict); missing fields project as historical.
             self._db.execute('UPDATE schema_version SET version=9')
+            version = 9
+        if version == 9:
+            self._db.execute('''CREATE TABLE IF NOT EXISTS classroom_positions(plan_key TEXT NOT NULL,id TEXT NOT NULL,
+                payload TEXT NOT NULL CHECK(json_valid(payload)),revision INTEGER NOT NULL,
+                FOREIGN KEY(plan_key) REFERENCES plans(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+                PRIMARY KEY(plan_key,id))''')
+            self._db.execute('UPDATE schema_version SET version=10')
 
     def _revision(self):
         self._db.execute("UPDATE _meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
@@ -338,7 +349,11 @@ class CourseStore:
 
     def _validate(self, entity, plan, payload):
         _id(payload['id'])
-        if entity == 'point_links':
+        if entity == 'classroom_positions':
+            if payload['id'] != plan or not isinstance(payload.get('state'), dict) or not isinstance(payload.get('device_id'), str):
+                raise StoreError('INVALID_CLASSROOM_POSITION')
+            _at(payload['saved_at'])
+        elif entity == 'point_links':
             if (payload['id'] != payload.get('module_id') or payload.get('status') not in ('ready', 'failed', 'pending')
                     or not isinstance(payload.get('fingerprint'), str) or not isinstance(payload.get('links'), list)
                     or not isinstance(payload.get('dropped', {}), dict)):
@@ -464,7 +479,7 @@ class CourseStore:
             self._db.execute('DELETE FROM point_sources WHERE plan_key=? AND point_id=?', (plan, identifier))
             self._db.executemany('INSERT INTO point_sources VALUES(?,?,?)', [(plan, identifier, cid) for cid in payload['chunk_ids']])
 
-    def _put(self, entity, plan, payload):
+    def _put(self, entity, plan, payload, *, modified_ns=None):
         payload = json.loads(_json(payload))
         self._validate(entity, plan, payload)
         identifier = _wire_id(entity, plan, payload['id'])
@@ -474,9 +489,9 @@ class CourseStore:
         previous_data = {key: value for key, value in previous.items() if key != _FIELD_VERSIONS}
         if old and not old['deleted'] and previous_data == payload: return payload
         if old and entity in PROGRESS: raise StoreError('EVENT_CONFLICT', '同一进度事件不能被改写。')
-        if entity not in PROGRESS and old and not old['deleted']:
+        if entity not in PROGRESS and (old and not old['deleted'] or entity == 'classroom_positions'):
             versions = dict(previous.get(_FIELD_VERSIONS, {}))
-            stamp = [time.time_ns(), self._device_id()]
+            stamp = [time.time_ns() if modified_ns is None else modified_ns, self._device_id()]
             for field in set(previous_data) | set(payload):
                 if field != 'id' and previous_data.get(field) != payload.get(field):
                     versions[field] = stamp
@@ -489,6 +504,37 @@ class CourseStore:
         self._materialize(entity, plan, payload, revision)
         self._changed('local', entity)
         return {key: value for key, value in payload.items() if key != _FIELD_VERSIONS}
+
+    def classroom_position(self, plan_id):
+        with self._lock:
+            rows = self._rows('classroom_positions', plan_id)
+            return rows[0] if rows else None
+
+    def classroom_position_imported(self, plan_id):
+        with self._lock:
+            return self._db.execute('SELECT 1 FROM _meta WHERE key=?', ('classroom-import:'+plan_id,)).fetchone() is not None
+
+    @_atomic
+    def import_classroom_position(self, plan_id, state, modified_ns):
+        """Once per device. A stale legacy file never replaces a newer synced scene."""
+        if self.classroom_position_imported(plan_id): return
+        if state:
+            identifier = _wire_id('classroom_positions', plan_id, plan_id)
+            old = self._db.execute('SELECT payload FROM _records WHERE entity=? AND entity_id=?', ('classroom_positions',identifier)).fetchone()
+            stamp = json.loads(old[0]).get(_FIELD_VERSIONS,{}).get('state',[0,''])[0] if old else 0
+            if modified_ns > stamp:
+                self.save_classroom_position(plan_id,state,modified_ns=modified_ns)
+        self._db.execute('INSERT INTO _meta VALUES(?,?)', ('classroom-import:'+plan_id,'1'))
+
+    @_atomic
+    def save_classroom_position(self, plan_id, state, *, modified_ns=None):
+        self._get('plans',plan_id,plan_id)
+        modified_ns = time.time_ns() if modified_ns is None else modified_ns
+        return self._put('classroom_positions',plan_id,dict(id=plan_id,state=state,device_id=self._device_id(),
+            saved_at=datetime.fromtimestamp(modified_ns/1_000_000_000,timezone.utc).isoformat()),modified_ns=modified_ns)
+
+    def classroom_device_id(self):
+        with self.transaction(): return self._device_id()
 
     def _device_id(self):
         row = self._db.execute("SELECT value FROM _meta WHERE key='device_id'").fetchone()
@@ -1868,10 +1914,18 @@ class CourseStore:
     @_atomic
     def apply_remote(self, records: list[tuple[SyncRecord, int]]) -> None:
         for record, server_revision in records:
-            if not isinstance(record, SyncRecord) or record.entity not in PARENTS: raise StoreError('UNKNOWN_ENTITY')
+            if not isinstance(record, SyncRecord): raise StoreError('INVALID_RECORD')
             _number(server_revision); _number(record.local_revision)
-            if record.schema != f'mentorflow.course.{record.entity}.v1': raise StoreError('UNSUPPORTED_RECORD_SCHEMA')
             if type(record.deleted) is not bool or not isinstance(record.plan_key, str) or not isinstance(record.payload, dict): raise StoreError('INVALID_RECORD')
+            if record.entity not in PARENTS:
+                # An unknown but coherent future record is harmless. Keep the
+                # existing rejection of a known schema with a forged entity.
+                if not isinstance(record.schema,str) or not re.fullmatch(r'mentorflow\.course\.'+re.escape(record.entity)+r'\.v[0-9]{1,3}',record.schema):
+                    raise StoreError('UNSUPPORTED_RECORD_SCHEMA')
+                _json(record.payload)
+                logging.getLogger(__name__).warning('course sync skipped unknown entity: %s', record.entity)
+                continue
+            if record.schema != f'mentorflow.course.{record.entity}.v1': raise StoreError('UNSUPPORTED_RECORD_SCHEMA')
             payload = json.loads(_json(record.payload))
             if record.entity_id != _wire_id(record.entity, record.plan_key, _id(payload['id'])): raise StoreError('INVALID_RECORD_ID')
             if record.entity in ('chat_sessions', 'chat_messages', 'account_settings') and record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
@@ -1905,7 +1959,16 @@ class CourseStore:
                 uses_union = [dict(purpose=purpose, at=at) for purpose, at in sorted(
                     {(u['purpose'], u['at']) for u in local_uses + payload.get('uses', [])})]
             merged = False
-            if old is not None and old['pending'] and record.entity not in PROGRESS and not record.deleted:
+            if record.entity == 'classroom_positions' and old is not None and not old['deleted'] and not record.deleted:
+                # The whole scene is one versioned field; do not splice a new
+                # module onto an old quiz. Compare even acknowledged scenes:
+                # another device may upload an older legacy-file import later.
+                local = json.loads(old['payload'])
+                if local.get(_FIELD_VERSIONS,{}).get('state',[0,'']) > payload.get(_FIELD_VERSIONS,{}).get('state',[0,'']):
+                    payload = local
+                    merged = old['payload'] != _json(record.payload) or bool(old['pending'])
+                deleted = False
+            elif old is not None and old['pending'] and record.entity not in PROGRESS and not record.deleted:
                 local = json.loads(old['payload'])
                 if old['deleted']:
                     # A pending local removal cannot be undone by a remote edit.

@@ -64,8 +64,8 @@ def test_answer_event_is_idempotent_after_interrupted_classroom_save(room, conte
 
 def test_classroom_save_failure_is_reported(room, monkeypatch):
     classroom, _, _ = room
-    monkeypatch.setattr(classroom, "_file", lambda *_: SimpleNamespace(read=lambda default: default,
-        write=lambda *_: (_ for _ in ()).throw(StorageError("WRITE_FAILED"))))
+    monkeypatch.setattr(classroom.services.store, "save_classroom_position",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(StoreError("WRITE_FAILED")))
     with pytest.raises(BridgeError, match="保存失败"):
         act(classroom, "enter")
 
@@ -88,7 +88,7 @@ def test_reopen_uses_database_completion_state(room):
     course = classroom._course(PLAN)
     stale = classroom._rebuild(course)
     stale["step"] = "completed"
-    classroom._file(PLAN).write(stale)
+    classroom._save(classroom._course(PLAN),stale)
     assert classroom._load(classroom._course(PLAN))["step"] != "completed"
 
 
@@ -105,7 +105,7 @@ def test_position_survives_a_restart(room):
     classroom, agents, store = room
     act(classroom, "enter")
     act(classroom, "next")
-    classroom._file(PLAN).path.unlink()
+    with store.transaction(): store._delete('classroom_positions',PLAN,PLAN)
     fresh = Classroom(classroom.services, lambda: DAY)
     view = fresh.run(PLAN, lambda *a: None, ctx())
     assert view["points"][0]["current"] and view["step"] == "teach"       # unanswered point is taught again
@@ -142,11 +142,11 @@ def test_a_test_closed_before_a_crash_is_finished_not_closed_twice(room):
     act(classroom,'enter');act(classroom,'next')
     act(classroom,'reply','队列是先进先出的结构。');act(classroom,'reply','队列是先进先出的结构。')
     act(classroom,'start_test','module_test');act(classroom,'reply','队列是先进先出的结构。')
-    before=classroom._file(PLAN).read({})
+    before=classroom._load(classroom._course(PLAN))
     v=act(classroom,'reply','队列是先进先出的结构。')
     assert v['step']=='test_done' and v['module']['state']=='passed'
     finished=store.load_ledger(PLAN).to_dict();calls=len(agents.calls)
-    classroom._file(PLAN).write(before)
+    classroom._save(classroom._course(PLAN),before)
     v=act(classroom,'reply','队列是先进先出的结构。')
     assert v['step']=='test_done' and len(store.records('attempt_closed',PLAN))==1
     assert store.load_ledger(PLAN).to_dict()==finished and len(agents.calls)==calls
@@ -178,9 +178,9 @@ def test_a_started_plan_can_be_renamed_archived_and_deleted(room):
     assert store.get_plan(PLAN)["archived"]
     store.restore_plan(PLAN)
     flow = PlanFlow(classroom.services, lambda *a: None, lambda: DAY)
-    assert classroom._file(PLAN).path.exists()
+    assert store.classroom_position(PLAN) is not None
     assert flow.delete_started(PLAN) == {"deleted": True}
-    assert store.list_plans(include_archived=True) == [] and not classroom._file(PLAN).path.exists()
+    assert store.list_plans(include_archived=True) == [] and store.classroom_position(PLAN) is None
 
 
 def test_free_check_on_a_completed_plan_survives_reopening(room):
@@ -194,8 +194,8 @@ def test_free_check_on_a_completed_plan_survives_reopening(room):
     practicing = dict(resume, step="practicing", phase="practice",
                       pending={"kind": "practice", "point_ids": ["p0"], "question": {"stem": "问"}},
                       practice={"resume": resume, "targets": ["p0"], "queue": [], "index": 0, "count": 1})
-    classroom._file(PLAN).write(practicing)
+    classroom._save(classroom._course(PLAN),practicing)
     reloaded = classroom._load(course)
     assert reloaded["step"] == "practicing" and reloaded["pending"]["kind"] == "practice"
-    classroom._file(PLAN).write(resume)
+    classroom._save(classroom._course(PLAN),resume)
     assert classroom._load(course)["step"] == "completed"                    # the plain completed room is kept too

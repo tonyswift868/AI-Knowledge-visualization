@@ -19,7 +19,7 @@ def test_direct103_answers_survive_reopen_but_never_enter_teacher_or_records(tmp
         assert all(e.store.records(k,PLAN)==v for k,v in before.items())
         assert all('独立回答' not in str(r) for r in e.teacher.requests)
         assert act(e,'direct_choice',False)['direct_review'] is None
-        assert '独立回答' not in e.room._file(PLAN).path.read_text(encoding='utf8')
+        assert '独立回答' not in str(e.store.classroom_position(PLAN))
     finally:close(e)
 
 
@@ -27,8 +27,8 @@ def test_direct103_old_state_without_responses_opens_and_accepts_new_answer(tmp_
     e=make(tmp_path,questions=0)
     try:
         act(e,'start_test','skip_test')
-        state=e.room._file(PLAN).read({});state['direct_review'].pop('responses')
-        e.room._file(PLAN).write(state);e.room=fresh(e)
+        state=e.room._load(e.room._course(PLAN));state['direct_review'].pop('responses')
+        e.room._save(e.room._course(PLAN),state);e.room=fresh(e)
         view=act(e,'enter')
         assert view['direct_review']['answer']==''
         assert view['direct_review']['entries'][0]['answer']==''

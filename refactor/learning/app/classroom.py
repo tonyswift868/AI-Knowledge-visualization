@@ -126,12 +126,28 @@ class Classroom:
 
     def _load(self, course):
         try:
-            state = self._file(course.plan_id).read({})
-        except StorageError as exc:
-            raise BridgeError("CLASS_READ_FAILED", "课堂位置读取失败，请重试；不会覆盖已有文件。") from exc
+            store=course.store
+            if not store.classroom_position_imported(course.plan_id):
+                legacy=self._file(course.plan_id)
+                state=legacy.read({})
+                stamp=legacy.path.stat().st_mtime_ns if legacy.path.exists() else 0
+                store.import_classroom_position(course.plan_id,self._pack_position(course,state),stamp)
+            record=store.classroom_position(course.plan_id)
+            state=self._unpack_position(course,record['state']) if record else {}
+            if record and record['device_id'] != store.classroom_device_id():
+                # Session day, local failures and worker progress belong to the
+                # producing process. The question/answer IDs and scene remain.
+                state.update(day=None,in_session=False)
+                for key in ('failure','materials_paused','materials_attempted','preparation_module_entered'):
+                    state.pop(key,None)
+                if state.get('material_wait'):
+                    state['material_wait'].update(done=0,total=0,text='正在准备题目',error=None)
+        except (StorageError,StoreError,OSError) as exc:
+            raise BridgeError("CLASS_READ_FAILED", "课堂位置读取失败，请重试；不会覆盖已有位置。") from exc
         modules = {m['id'] for m in course.modules}
         if state.get('version') != 2 or state.get('module_id') not in modules:
             state = self._rebuild(course)
+        state=self._reconcile_position(course,state)
         room = (state.get('practice') or {}).get('resume', state)
         bank = course.store.records('question_bank',course.plan_id)
         bank_ids = {q['id'] for q in bank}
@@ -164,11 +180,47 @@ class Classroom:
             self._restore_direct(state,review['resume'])
         return state
 
+    def _reconcile_position(self, course, state):
+        if state.get('phase','learning') == 'learning' and state.get('step') in ('teach','opening','teaching','closing','test_offer'):
+            points=course.points_of(state['module_id'])
+            index=state.get('index',0)
+            if (course.book().module(state['module_id']).state in ('passed','skipped')
+                    or state['step'] in ('teach','opening') and 0 <= index < len(points) and points[index]['id'] in course.taught()):
+                # Only stale teaching starts, never a quiz or its result page.
+                # Immutable answers/credits are untouched by this projection.
+                return self._rebuild(course)
+        return state
+
     def _save(self, course, state):
         try:
-            self._file(course.plan_id).write(state)
-        except StorageError as exc:
+            course.store.save_classroom_position(course.plan_id,self._pack_position(course,state))
+        except (StorageError,StoreError) as exc:
             raise BridgeError('CLASS_SAVE_FAILED', '课堂位置保存失败，请重试；已入库判定会按编号恢复。') from exc
+
+    @staticmethod
+    def _pack_position(course, state):
+        """Queues reference synced bank rows, not hundreds of repeated source bodies.
+
+        The pending card stays a full snapshot (including reveal/ticks), so an
+        in-flight question is exactly the one already displayed on the device.
+        """
+        bank={q['id'] for q in course.store.records('question_bank',course.plan_id)}
+        def pack(value):
+            if isinstance(value,list):return [pack(v) for v in value]
+            if not isinstance(value,dict):return value
+            return {k:([{'bank_id':q['id']} if isinstance(q,dict) and q.get('id') in bank else pack(q) for q in v]
+                       if k=='queue' and isinstance(v,list) else pack(v)) for k,v in value.items()}
+        return pack(state)
+
+    @staticmethod
+    def _unpack_position(course, state):
+        bank={q['id']:q for q in course.store.records('question_bank',course.plan_id)}
+        def unpack(value):
+            if isinstance(value,list):return [unpack(v) for v in value]
+            if not isinstance(value,dict):return value
+            if set(value)=={'bank_id'}:return copy.deepcopy(bank.get(value['bank_id'],dict(id=value['bank_id'])))
+            return {k:unpack(v) for k,v in value.items()}
+        return unpack(state)
 
     def _rebuild(self, course):
         book, taught = course.book(), course.taught()

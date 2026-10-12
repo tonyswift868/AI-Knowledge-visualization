@@ -274,7 +274,7 @@ def test_cancelled_model_does_not_write_student(env,monkeypatch):
 
 def test_actual_save_storage_error_maps_readably(env,monkeypatch):
     pending(env)
-    monkeypatch.setattr(env.room,'_file',lambda *a:SimpleNamespace(read=lambda default:default,write=lambda *a:(_ for _ in ()).throw(StorageError('WRITE_FAILED'))))
+    monkeypatch.setattr(env.store,'save_classroom_position',lambda *a,**kw:(_ for _ in ()).throw(StorageError('WRITE_FAILED')))
     with pytest.raises(BridgeError,match='保存失败'):act(env,'enter')
 
 def test_new_grounded_host_retains_exact_accepted_request_for_cache(env,monkeypatch):

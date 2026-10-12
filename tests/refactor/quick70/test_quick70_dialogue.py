@@ -49,9 +49,9 @@ def test_quick70_continue_finishes_learning_without_confirmation(dialogue,action
 def test_quick70_old_unanswered_card_reopens_as_dialogue(dialogue,kind):
     e=dialogue
     act(e,'next');act(e,'choose',0)
-    state=e.room._file(PLAN).read({})
+    state=e.room._load(e.room._course(PLAN))
     state.update(step='answer',pending=dict(kind=kind,question=dict(id='old-quick'),point_ids=['p0']))
-    e.room._file(PLAN).write(state)
+    e.room._save(e.room._course(PLAN),state)
     e.room=Classroom(e.services,lambda:DAY)
     v=act(e,'enter')
     assert v['step']=='teaching' and not v['question']

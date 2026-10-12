@@ -135,7 +135,7 @@ class HistoryRun(base.Run):
 
     def act(self, name, *args, **kwargs):
         self.gw.study_date = self.day().isoformat()
-        before = copy.deepcopy(self.room._file(self.plan_id).read({}))
+        before = copy.deepcopy(self.room._load(self.room._course(self.plan_id)))
         # Simulate power loss at a persisted judgement / closed-attempt boundary.
         # Restoring the pre-operation room file reproduces the two-store window;
         # the database is never rewound and recovery uses the real implementation.
@@ -157,7 +157,7 @@ class HistoryRun(base.Run):
             with patch.object(self.gw, 'complete', fault):
                 v = super().act(name, *args, **kwargs)
         except InterruptedError:
-            self.room._file(self.plan_id).write(before)
+            self.room._save(self.room._course(self.plan_id),before)
             self.reopen(label)
             self.coverage['close_crash' if label.startswith('模块') else 'judgement_crash'] = True
             ce.dump(OUT/'coverage.json',self.coverage)
@@ -168,7 +168,7 @@ class HistoryRun(base.Run):
             ce.dump(OUT/'reopens.json', self.faults)
         # Keep exact question/reference/reply/state next to the observed verdict.
         ce.dump(OUT/'operations'/f'op-{len(self.ops):04d}.json', dict(operation=self.ops[-1], before=before,
-            after=self.room._file(self.plan_id).read({}), view=v))
+            after=self.room._load(self.room._course(self.plan_id)), view=v))
         errors = self.ops[-1].get('errors', [])
         if errors:
             self.note('课堂错误：' + '；'.join(errors))
@@ -218,7 +218,7 @@ class HistoryRun(base.Run):
         ce.dump(OUT/'sources.json',dict(sources=self.store.records('sources',self.plan_id), chunks=self.store.records('source_chunks',self.plan_id)))
 
     def student(self, mode):
-        state = self.room._file(self.plan_id).read({})
+        state = self.room._load(self.room._course(self.plan_id))
         pending = state.get('pending') or {}
         extra = {
             'paraphrase':'完整回答，但采用同义表达，不照抄教材或题目。',
@@ -237,11 +237,11 @@ class HistoryRun(base.Run):
         return _json_object(result.text)['reply']
 
     def reopen(self, label):
-        before = self.room._file(self.plan_id).read({})
+        before = self.room._load(self.room._course(self.plan_id))
         n = len(self.store.records('judgements',self.plan_id))
         self.room = Classroom(self.services,self.day,now=self.room.now,rng=random.Random(2406))
         self.view = self.room.run(self.plan_id,lambda *a:None)
-        after = self.room._file(self.plan_id).read({})
+        after = self.room._load(self.room._course(self.plan_id))
         self.faults.append(dict(label=label,before=before,after=after,judgements_before=n,
             judgements_after=len(self.store.records('judgements',self.plan_id)),step=self.view['step']))
         ce.dump(OUT/'reopens.json',self.faults)
@@ -256,7 +256,7 @@ class HistoryRun(base.Run):
                     and not self.view.get('red') and stop(self.today())
                     and (not force_one_test or test_started)):
                 break
-            pending=self.room._file(self.plan_id).read({}).get('pending')
+            pending=self.room._load(self.room._course(self.plan_id)).get('pending')
             key=json.dumps([step,pending],sort_keys=True,ensure_ascii=False)
             same=same+1 if key==prior else 0; prior=key
             if same>=3 and self.ops[-1].get('errors'):
