@@ -110,7 +110,7 @@ def pending(e,kind='choice',purpose='module_test'):
     return e.room.run(PLAN,show)
 
 def test_open_branch_original_cards_and_conversation(env):
-    e=env;v=act(e,'next');assert v['step']=='opening' and len(v['conversation']['options'])==3
+    e=env;v=act(e,'next');assert v['step']=='opening' and v['conversation']['options']==['针尖','手指','不知道','直接开始讲']
     assert v['messages'][-1]['sources'][0]['text']==PARAGRAPH
     v=act(e,'choose',0);assert v['step']=='teaching' and not v['question']
     assert not e.store.records('judgements',PLAN)
