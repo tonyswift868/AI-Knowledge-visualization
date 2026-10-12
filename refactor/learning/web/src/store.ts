@@ -31,7 +31,7 @@ export type Settings = {
 
 export type Account = { name: string; role_label: string; settings_available?: boolean }
 export type Notice = { message: string; show_verify: boolean } | null
-export type SyncStatus = { state: "syncing" | "synced" | "failed" | "reauth" | "superseded"; at: string | null; message: string } | null
+export type SyncStatus = { state: "syncing" | "synced" | "failed" | "reauth" | "superseded"; at: string | null; message: string; phase?: string; show_progress?: boolean } | null
 export type Toast = { id: number; kind: "ok" | "error" | "info"; text: string }
 
 type State = {

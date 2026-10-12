@@ -67,7 +67,8 @@ class DiagnosticFormatter(logging.Formatter):
             elapsed = record.mf_fields.get('elapsed_seconds')
             if isinstance(elapsed, (int, float)) and 0 <= elapsed < float('inf'):
                 payload['elapsed_seconds'] = round(elapsed, 3)
-            for field in ('pid', 'exit_code', 'memory_bytes', 'threads', 'python_threads', 'previous_pid', 'window_id'):
+            for field in ('pid', 'exit_code', 'memory_bytes', 'threads', 'python_threads', 'previous_pid', 'window_id',
+                          'count', 'completed', 'total', 'failed', 'batch', 'http_status'):
                 value = record.mf_fields.get(field)
                 if type(value) is int:
                     payload[field] = value

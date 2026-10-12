@@ -796,7 +796,9 @@ class AccountShell:
                 # account operation.  Reading under the same lock avoids a
                 # feature request observing one half of a rotated pair.
                 from .login_session import account_session_lock
-                with account_session_lock(profile):
+                # Refresh can hold this lock across a slow network exchange.
+                # Feature workers must yield and retry, never wait behind it.
+                with account_session_lock(profile, blocking=False):
                     access_token, refresh_token = credentials.load_oauth_tokens(profile)
                 if (isinstance(access_token, str) and access_token
                         and isinstance(refresh_token, str) and refresh_token):
