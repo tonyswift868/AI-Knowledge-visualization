@@ -26,3 +26,6 @@
 .class-question-tag { margin:0 20px; color:var(--text-2); font-size:.8rem; }
 .class-question-tag button { border:0; background:none; color:var(--accent); cursor:pointer; font:inherit; padding:6px; }
 .original-fulltext p { margin:0 0 8px; }
+.class-materials { margin: 6px 20px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 12px; overflow-wrap: anywhere; min-width: 0; max-height: 30vh; overflow: auto; flex-shrink: 0; }
+.class-materials summary { cursor: pointer; padding: 6px 0; }
+.class-note-entry { margin: 10px 0; padding: 8px 0; border-top: 1px solid var(--border); }

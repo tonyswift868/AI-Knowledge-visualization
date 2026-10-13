@@ -13,7 +13,7 @@ import { Button } from "../ui"
 import { MicButton, useVoiceInput } from "../voice"
 import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacherVoice"
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
-import { ConversationActions, MaterialsPreparing, OriginalCards, QuestionInputs, type OriginalCardsHandle, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
+import { ConceptMaterials, ModuleNavigation, ConversationActions, MaterialsPreparing, OriginalCards, QuestionInputs, type Concept, type NavigationEntry, type OriginalCardsHandle, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
 import { RecallQuestion, type RecallRequest } from "../classroom/RecallQuestion"
 import { Loading } from '../loading/Loading'
 
@@ -25,10 +25,11 @@ type ReviewEntry = { point_id: string; title: string; number: number; question: 
 
 type Room = {
   plan: { id: string; goal: string; state: string }
-  module: { id: string; title: string; number: number; total: number; state: string }
+  module: { id: string; title: string; number: number; total: number; state: string; navigation?: NavigationEntry[] }
   points: Point[]; step: string; question: BankQuestion | null; messages: Msg[]; can_skip: boolean; red: string[]
   more_modules: boolean; check: { passed: number; total: number } | null
   conversation?: Conversation | null
+  concept?: Concept | null
   direct_review?: ReviewEntry & { total: number; entries?: ReviewEntry[] } | null
   preparation?: Preparation | null
   failure?: { message: string } | null
@@ -323,6 +324,8 @@ export function Classroom() {
         {room.failure && <div className="banner" role="alert">{room.failure.message} <Button small disabled={!!busy}
           onClick={() => act("classroom.retry", {}, "重试这一步…")}>重试</Button></div>}
         {t?.is_late_night && <div className="banner">已经很晚了，注意休息。今天学的内容会记在开课那天。</div>}
+        <ModuleNavigation key={room.module.id} entries={room.module.navigation ?? []} />
+        {room.concept && <ConceptMaterials key={room.concept.subpoint_id} concept={room.concept} />}
         <div className="class-scroll" ref={scroller}>
           {room.messages.length === 0 && !busy && room.step === "teach" && (
             <div className="class-empty">

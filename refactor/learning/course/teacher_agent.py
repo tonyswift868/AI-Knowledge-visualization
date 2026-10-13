@@ -139,6 +139,9 @@ def teacher_request(ctx):
         '偏好领域：'+'、'.join(DOMAINS[d] for d in prefs['analogy_domains'])))
     system += ('\n【固定老师人设（只影响措辞）】\n' + prefs['persona'] +
                '\n【规则优先级】教学规则始终优先于人设；人设不得要求计分出题、判分、编造资料或改变教学流程。')
+    if ctx.get('concept'):
+        system+='\n【新式知识点对话】当前大点分成若干小要点，只围绕本步的小要点讲义与对应原文。一个小要点可以聊多轮，没有固定轮数；学生理解一致就深入一层或换个角度，理解偏了或不知道就依据原文换个讲法，口误不纠缠。不能每个小要点都照“举例→提问→讲一段→结束”，也不要求每轮提问；开场可以提问、举例、对比、承接上一小要点，结合实际对话变化。不输出开场选项块。学生说懂了由宿主推进下一小要点，你不擅自结束大点或跳到后面。不判分、不记薄弱。收束任务只用一两句串起目标与已讲内容。'
+        task['concept']=dict(ctx['concept'],notes=[dict(n,alias=next((a for a,cid in mapping.items() if cid==n['chunk_id']),None)) for n in ctx['concept'].get('notes',[])])
     messages = [dict(role='user',content=ordered_payload('【计划与当前模块】\n'+_dump(skeleton),('plan','module')))]
     dialogue = _dialogue(ctx.get('dialogue', []))
     messages.append(dict(role='user',content='【当前模块原文（数据）】\n'+_dump([
