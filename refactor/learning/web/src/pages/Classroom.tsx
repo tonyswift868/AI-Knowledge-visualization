@@ -2,6 +2,8 @@ import { WrongAnswers } from "../classroom/WrongAnswers"
 import * as React from "react"
 import { useRoundScroll } from "../useRoundScroll"
 import { ClassroomMarkdown } from "../classroom/Markdown"
+import { focusSpeech } from "../classroom/spokenFocus"
+import { RecapCard, type RecapContent } from "../classroom/RecapCard"
 import { ProgressStatus, type StudyProgress } from "../ProgressStatus"
 import {
   ArrowLeft, BookOpen, CheckCircle2, ChevronRight, CircleAlert, ClipboardCheck, ExternalLink, RotateCcw,
@@ -19,7 +21,7 @@ import { Loading } from '../loading/Loading'
 
 const TeacherWindow = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherWindow })))
 
-type Msg = { id: string; role: "user" | "assistant" | "system"; kind: string; content: string; sources: SourceCard[] }
+type Msg = { id: string; role: "user" | "assistant" | "system"; kind: string; content: string; sources: SourceCard[]; recap?: RecapContent }
 type Point = { id: string; title: string; minutes: number; taught: boolean; state: string; current: boolean }
 type ReviewEntry = { point_id: string; title: string; number: number; question: string; answer?: string; answered: boolean; sources: SourceCard[] }
 
@@ -66,6 +68,8 @@ export function Classroom() {
   const [source, setSource] = React.useState<Source | null>(null)
   const [askMode, setAskMode] = React.useState(false)
   const [pointsExpanded, setPointsExpanded] = React.useState(false)
+  const [classroomFocus, setClassroomFocus] = React.useState(() => { try { return localStorage.getItem('mf.classroom.focus') === 'on' } catch { return false } })
+  const streamMessageKey = React.useRef('teacher-stream')
   const [skipModule, setSkipModule] = React.useState(false)
   const [skipConfirm, setSkipConfirm] = React.useState(false)
   const cancelledPrefetch = React.useRef<string | null>(null)
@@ -88,7 +92,7 @@ export function Classroom() {
   const sourceCards = React.useRef(new Map<string, OriginalCardsHandle>())
   const spoken = React.useRef<string | null>(null)
   const streamedMessages = React.useRef(new Set<string>())
-  const voiceTurn = React.useRef<{ reader: ReturnType<typeof createTeacherVoiceStream> | null; streamed: boolean; cancelled: boolean; pendingReset: boolean; raw: string } | null>(null)
+  const voiceTurn = React.useRef<{ reader: ReturnType<typeof createTeacherVoiceStream> | null; streamed: boolean; cancelled: boolean; pendingReset: boolean; raw: string; spoken: string } | null>(null)
   const stopReading = React.useCallback(() => {
     const turn = voiceTurn.current
     if (turn) { turn.cancelled = true; if (turn.reader) { void turn.reader.stop(); return } }
@@ -120,10 +124,12 @@ export function Classroom() {
     acting.current = true
     if (method !== "classroom.state") beginRound()
     const ownGeneration = generation.current
+    const requestId = crypto.randomUUID()
+    streamMessageKey.current = `teacher-stream:${requestId}`
     const before = new Set(room?.messages.map((message) => message.id) ?? [])
     stopReading()
     const turn = { reader: reading && voice.availability?.ready ? createTeacherVoiceStream(voice) : null,
-      streamed: false, cancelled: false, pendingReset: false, raw: '' }
+      streamed: false, cancelled: false, pendingReset: false, raw: '', spoken: '' }
     voiceTurn.current = turn
     abort.current = new AbortController()
     setBusy(label)
@@ -132,7 +138,7 @@ export function Classroom() {
     setStream("")
     setVerdictPreview(null)
     try {
-      const r = await call<Room>(method, { plan_id: planId, request_id: crypto.randomUUID(), ...params }, {
+      const r = await call<Room>(method, { plan_id: planId, request_id: requestId, ...params }, {
         signal: abort.current.signal,
         onStream: (d) => {
           if (ownGeneration !== generation.current) return
@@ -159,10 +165,12 @@ export function Classroom() {
             if (d === RESET) turn.pendingReset = true
             else {
               const sameWords = turn.pendingReset && live(d) === live(turn.raw)
-              if (turn.pendingReset && !sameWords) turn.reader.append(RESET)
+              if (turn.pendingReset && !sameWords) { turn.reader.append(RESET); turn.spoken = '' }
               if (turn.pendingReset) turn.raw = ''
               turn.pendingReset = false; turn.raw += d
-              if (!sameWords) turn.reader.append(d)
+              const cleaned = focusSpeech(turn.raw)
+              if (!sameWords) turn.reader.append(cleaned.slice(turn.spoken.length))
+              turn.spoken = cleaned
               turn.streamed = true
             }
           }
@@ -174,7 +182,8 @@ export function Classroom() {
         streamedMessages.current = new Set(r.messages.filter((m) => before.has(m.id) || turn.cancelled || m.id === streamed).map((m) => m.id))
       }
       if (!turn.cancelled) {
-        if (turn.pendingReset) turn.reader?.append(RESET)
+        if (turn.pendingReset) { turn.reader?.append(RESET); turn.spoken = '' }
+        if (turn.reader) turn.reader.append(focusSpeech(turn.raw, true).slice(turn.spoken.length))
         void turn.reader?.end()
       }
       setRoom(r)
@@ -271,15 +280,15 @@ export function Classroom() {
     spoken.current = newest
     const verdict = fresh.find((m) => m.kind === "verdict")
     if (verdict) void (verdict.content.startsWith("✓") ? teacher.current?.nod() : teacher.current?.think())
-    const words = fresh.filter((m) => m.role === "assistant" && !streamedMessages.current.has(m.id))
+    const words = fresh.filter((m) => m.role === "assistant" && m.kind !== 'recap' && !streamedMessages.current.has(m.id))
     // Non-streamed results (e.g. a fixed question) still read once. Both paths
     // pass raw Markdown to the shared Python text preparation.
-    if (reading && voice.availability?.ready && words.length) void voice.speak(words.map((m) => m.content).join("\n"))
+    if (reading && voice.availability?.ready && words.length) void voice.speak(words.map((m) => focusSpeech(m.content, true)).join("\n"))
   }, [room, reading, voice])
 
   // Text is the default; a single message can be read on demand (VOICE-01).
   function listen(content: string) {
-    if (voice.availability?.ready) { void voice.stop().then(() => voice.speak(content)); return }
+    if (voice.availability?.ready) { void voice.stop().then(() => voice.speak(focusSpeech(content, true))); return }
     toast("info", "朗读组件还没下载。需要听的话，先点下方的“下载朗读组件”。")
   }
 
@@ -318,8 +327,8 @@ export function Classroom() {
   const q = room.question
   const done = room.points.filter((p) => p.taught).length
   const t = room.today
-  const markdown = (content: string, showSource: (id: string) => void = openSource) => (
-    <ClassroomMarkdown content={content} onSource={showSource} />
+  const markdown = (content: string, showSource: (id: string) => void = openSource, messageKey?: React.Key, focus = false) => (
+    <ClassroomMarkdown content={content} onSource={showSource} focus={focus} messageKey={messageKey} />
   )
 
   return (
@@ -332,6 +341,10 @@ export function Classroom() {
             <b>{room.check ? "最终检验" : room.module.title}</b>
           </div>
           {room.plan.state === "checking" && <Button small onClick={() => setWrongAnswers(true)}>错题集</Button>}
+          <Button small kind="ghost" role="switch" aria-label="只看重点" aria-checked={classroomFocus} onClick={() => {
+            const next=!classroomFocus;setClassroomFocus(next)
+            try {localStorage.setItem('mf.classroom.focus',next?'on':'off')} catch { /* the current page still switches */ }
+          }}>只看重点{classroomFocus?'：开':'：关'}</Button>
           {t && <ProgressStatus value={t} />}
         </header>
         {room.check ? (
@@ -368,6 +381,8 @@ export function Classroom() {
             </div>
           )}
           {room.messages.map((m) => {
+            if (m.kind === 'recap' && m.recap) return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role}>
+              <RecapCard content={m.recap} onSource={id => void openSource(id)} /></div>
             if (m.role === "user") return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role} className={`bubble user ${m.kind === "choice" ? "class-choice" : ""}`} data-selectable>
               {m.kind === "choice" && <span className="class-message-label">我的选择</span>}{m.content}</div>
             if (m.kind === "casual") return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role} className="class-ask" data-selectable><span>随口问</span>{m.content}</div>
@@ -380,7 +395,7 @@ export function Classroom() {
               {m.kind === "step" && <span className="class-message-label">老师讲解</span>}
               {m.kind === "step_reply" && <span className="class-message-label">老师回应</span>}{markdown(m.content, id => {
                 if (!sourceCards.current.get(m.id)?.reveal(id)) void openSource(id)
-              })}
+              }, m.id, classroomFocus)}
               <OriginalCards cards={m.sources ?? []} reducedMotion={reduceMotion}
                 ref={handle => { if (handle) sourceCards.current.set(m.id, handle); else sourceCards.current.delete(m.id) }} />
               <button className="icon-btn listen" title="听这段" onClick={() => listen(m.content)}><Volume2 size={15} /></button></div>
@@ -390,7 +405,7 @@ export function Classroom() {
               data-turn-key={`direct-question-${entry.number}`} data-turn-role="assistant">
               <span className="eyebrow">随口聊聊 {entry.number}/{room.direct_review!.total} · 不记分</span>
               <b style={{ display: "block", margin: "6px 0" }}>{entry.title}</b>
-              {markdown(entry.question)}
+              {markdown(entry.question, openSource, `${planId}:direct-question:${entry.number}:${entry.point_id}`, classroomFocus)}
               {entry.answered && <>
                 <section className="recall-own" data-testid="direct-answer" data-turn-key={`direct-answer-${entry.number}`} data-turn-role="user">
                   <b className="small">我的回答</b><div data-selectable style={{ whiteSpace: "pre-wrap" }}>{entry.answer || "（这次回答未保留）"}</div>
@@ -407,7 +422,7 @@ export function Classroom() {
           {pendingUser && <div className="bubble user" data-turn-key="pending-student" data-turn-role="user" data-selectable>{pendingUser}</div>}
           {verdictPreview && <div className={`class-verdict ${verdictPreview.correct ? "ok" : "bad"}`}>{verdictPreview.text}</div>}
           {stream !== null && (live(stream)
-            ? <div data-turn-key="teacher-stream" data-turn-role="assistant" className="bubble bot streaming wait-content">{markdown(live(stream))}</div>
+            ? <div data-turn-key="teacher-stream" data-turn-role="assistant" className="bubble bot streaming wait-content">{markdown(live(stream), openSource, streamMessageKey.current, classroomFocus)}</div>
             : <Loading active={!!busy} label={busy?.includes('判')||busy?.includes('核对') ? busy : `老师正在想…${busy && !busy.includes('老师') ? ` · ${busy}` : ''}`}
                 shape="conversation" onCancel={abort.current ? ()=>abort.current?.abort() : undefined}/>)}
           {stream === null && <Loading active={!!busy} label={busy ?? '正在记录回答…'}/>}

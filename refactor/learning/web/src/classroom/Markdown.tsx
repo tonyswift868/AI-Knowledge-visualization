@@ -1,5 +1,5 @@
 import * as React from "react"
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown"
+import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
@@ -37,17 +37,23 @@ export type ClassroomMarkdownProps = {
 }
 
 export function ClassroomMarkdown({ content, onSource, focus = false, messageKey }: ClassroomMarkdownProps) {
+  const source = React.useRef(onSource)
+  source.current = onSource
+  // Stable component types keep a manually expanded paragraph open while
+  // streaming appends text. messageKey resets it only for a new message.
+  const components = React.useMemo<Components>(() => ({
+    p: ({ node, children, ...attributes }) => <FocusBlock as="p" {...attributes}
+      inList={node?.properties["data-focus-in-list"] === "true"}>{children}</FocusBlock>,
+    li: ({ node, children, ...attributes }) => <FocusBlock as="li" {...attributes}>{children}</FocusBlock>,
+    strong: ({ children }) => <strong>{React.Children.map(children,
+      child => typeof child === "string" ? child.replaceAll("\u2060", "") : child)}</strong>,
+    a: ({ href, children }) => href?.startsWith("mf-source:")
+      ? <button className="cite" title="看原文" onClick={() => source.current?.(href.slice(10))}>{children}</button>
+      : <a href={href} target="_blank" rel="noreferrer">{children}</a>,
+  }), [])
   return <FocusContent focus={focus} messageKey={messageKey}>
     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath, [remarkHighlights, { focus }]]} rehypePlugins={[rehypeKatex]}
-    urlTransform={url => url.startsWith("mf-source:") ? url : defaultUrlTransform(url)}
-    components={{ p: ({ node, children, ...attributes }) => <FocusBlock as="p"
-      {...attributes} inList={focus && node?.properties["data-focus-in-list"] === "true"}>{children}</FocusBlock>,
-      li: ({ node, children, ...attributes }) => <FocusBlock as="li" {...attributes}>{children}</FocusBlock>,
-      strong: ({ children }) => <strong>{React.Children.map(children,
-      child => typeof child === "string" ? child.replaceAll("\u2060", "") : child)}</strong>,
-      a: ({ href, children }) => href?.startsWith("mf-source:")
-      ? <button className="cite" title="看原文" onClick={() => onSource?.(href.slice(10))}>{children}</button>
-      : <a href={href} target="_blank" rel="noreferrer">{children}</a> }}>
+    urlTransform={url => url.startsWith("mf-source:") ? url : defaultUrlTransform(url)} components={components}>
     {cjkStrong(content)}
   </ReactMarkdown>
   </FocusContent>

@@ -35,7 +35,7 @@ async function run() {
   window.direct97Show('entry')
   await until(() => content().includes('跳过该知识点'))
   checks.push('讲到一半仍有直接考入口')
-  document.querySelector<HTMLButtonElement>('[role="switch"]')!.click()
+  document.querySelector<HTMLButtonElement>('[aria-label="切换为跳过该模块"]')!.click()
   await until(() => content().includes('跳过该模块'))
   button('跳过该模块').click()
   await until(() => content().includes('确认，进入直接考'))
@@ -51,7 +51,7 @@ async function run() {
   }
   checks.push('随口回答后显示原文，不使用计分卡；三句后两个自主选择按钮')
   button('接着学').click()
-  await until(() => !!document.querySelector('[role="switch"]'))
+  await until(() => !!document.querySelector('[aria-label="切换为跳过该模块"]'))
   if (!calls.some(c => c.method === 'classroom.direct_choice' && c.params.skip === false)) throw new Error('Resume choice bridge missing')
   window.direct97Show('choice')
   await until(() => content().includes('跳过这个模块'))
@@ -60,7 +60,7 @@ async function run() {
   if (!calls.some(c => c.method === 'classroom.direct_choice' && c.params.skip === true)) throw new Error('Skip choice bridge missing')
   window.direct97Show('graded')
   await until(() => !!document.querySelector('.bank-question-controls'))
-  if (document.querySelector('[role="switch"]')) throw new Error('Direct entry visible while answering')
+  if (document.querySelector('[aria-label="切换为跳过该模块"]')) throw new Error('Direct entry visible while answering')
   checks.push('选择接着学/跳过分别传 false/true；计分答题中不显示直接考入口')
   window.direct97Result = { ok: true, checks }
 }

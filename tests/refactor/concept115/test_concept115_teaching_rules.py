@@ -58,11 +58,11 @@ def test_concept115_classroom_rewrites_absolute_and_records_cross_subpoint_style
     e=concept_environment(tmp_path)
     monkeypatch.setattr(Classroom,'_materials',staticmethod(lambda:e.materials))
     try:
-        e.gateway.replies=['压强一定没有变化。','面积越小压强越大。你觉得呢？']
+        e.gateway.replies=['压强一定没有变化。','==面积越小压强越大。==你觉得呢？']
         view=act(e,'next');assert not view['failure'] and e.gateway.calls==['teacher']*2
         assert '一定' not in view['messages'][-1]['content']
         assert any('绝对化' in m['content'] for m in e.requests[-1][1])
-        e.gateway.replies=['单位面积的压力叫压强。你怎么看？','单位面积的压力叫压强。这一层先把定义记清。']
+        e.gateway.replies=['==单位面积的压力叫压强。==你怎么看？','==单位面积的压力叫压强。==这一层先把定义记清。']
         view=act(e,'next');assert not view['failure']
         assert view['concept']['number']==2 and len(e.gateway.calls)==4
         state=e.store.classroom_position(PLAN)['state']['concept']
@@ -84,10 +84,12 @@ def test_concept115_second_long_closing_kept_whole_without_third_call(tmp_path,m
         act(e,'next');act(e,'next');act(e,'next')
         before=len(e.gateway.calls)
         e.gateway.replies=['先看面积。再看定义。最后看公式。']*2
+        course=e.room._course(PLAN);state=e.room._load(course);state['concept']['wrapping']=True
+        teaching=e.room._teacher(course,state,None,'用一两句收束。',['p0'])
+        assert '先看面积。再看定义。最后看公式。' in teaching.speech
         view=act(e,'next')
         assert not view['failure'] and len(e.gateway.calls)==before+2
-        assert view['messages'][-1]['content'].startswith('先看面积。')
-        assert '再看定义。最后看公式。' in view['messages'][-1]['content']
+        assert view['messages'][-1]['kind']=='recap'
         assert e.store.records('credits',PLAN)[0]['credit']['minutes']==15
     finally:e.room.cancel_materials();e.store.close()
 

@@ -61,8 +61,10 @@ class Gateway:
         if self.fail:raise ModelError('MODEL_CONNECTION_FAILED','模型连接失败，请重试。')
         task=json.loads(next(m['content'].split('\n',1)[1] for m in reversed(messages) if m['content'].startswith('【本步任务】'))) if purpose=='teacher' else None
         if purpose=='teacher':
+            explicit=bool(self.replies)
             text=self.replies.pop(0) if self.replies else ('这一章看压力与面积，针尖和手指你觉得哪个压强大？[c1]\n【选项】\n针尖\n手指\n不知道\n【/选项】' if task['opening'] else
                 ('资料里没讲到硬度相同，可以在计划里补充资料；它只比较面积。[c1]' if '硬度' in task['user'] else '压力相同，面积越小压强越大，我们顺着面积看。[c1]'))
+            if not explicit:text='==压力相同时，受力面积越小，压强越大。==\n'+text
             if kw.get('on_text'):
                 for char in text:kw['on_text'](char)
         else:raise AssertionError('计分不得调用模型：'+purpose)
@@ -150,7 +152,7 @@ def test_model_failure_retry_and_idempotent_buttons(env):
     v=act(env,'choose',0,token='one');assert not v['failure'] and len([m for m in v['messages'] if m['role']=='user'])==1
 
 def test_invalid_citation_removed_without_retry_or_literal_fallback(env):
-    env.gateway.replies=['中文讲解。[c99]\n【选项】\n先看看\n还不知道\n【/选项】']
+    env.gateway.replies=['==中文讲解。==[c99]\n【选项】\n先看看\n还不知道\n【/选项】']
     v=act(env,'next');assert v['step']=='opening'
     message=v['messages'][-1]
     assert '中文讲解。' in message['content'] and 'c99' not in message['content']
@@ -159,7 +161,7 @@ def test_invalid_citation_removed_without_retry_or_literal_fallback(env):
 
 def test_valid_reply_displays_after_format_check(env,monkeypatch):
     def generate(*args,**kw):
-        text='压力与面积有关。[c1]\n\n面积变小会使压强增大。[c1]'
+        text='==压力与面积有关。==[c1]\n\n面积变小会使压强增大。[c1]'
         kw['on_text'](text[:19]);kw['on_text'](text[19:])
         assert env.stream and '[c' not in ''.join(env.stream),'Prose streams before return; source aliases stay hidden'
         return SimpleNamespace(text=text)

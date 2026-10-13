@@ -16,8 +16,8 @@ async function run(){
   if(calls.some(c=>c.method==='speech.stream_end'))throw Error('Must stream before completion')
   ;(window as any).finish116();await until(()=>calls.some(c=>c.method==='speech.stream_end'))
   if(calls.filter(c=>c.method==='speech.stream_start').length!==1)throw Error('Parsed final repeated the voice stream')
-  await until(()=>!document.querySelector<HTMLButtonElement>('[role="switch"]')?.disabled)
-  const toggle=()=>document.querySelector<HTMLButtonElement>('[role="switch"]')!
+  await until(()=>!document.querySelector<HTMLButtonElement>('[aria-label="切换为跳过该模块"]')?.disabled)
+  const toggle=()=>document.querySelector<HTMLButtonElement>('[aria-label="切换为跳过该模块"]')!
   toggle().click();await pause();click('跳过该模块');await until(()=>!!document.querySelector('[aria-label="确认跳过该模块"]'))
   click('取消');await pause();if(calls.some(c=>c.method==='classroom.test'))throw Error('Cancel invoked test')
   click('跳过该模块');await pause();click('确认，进入直接考');await until(()=>calls.some(c=>c.method==='classroom.test'&&c.params.kind==='skip_test'))
