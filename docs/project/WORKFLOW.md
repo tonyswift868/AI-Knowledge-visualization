@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 开头三节和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-13）：线上 2.0.14，服务器 MF-76。已合入待发：[BUG-84]、[BUG-85] 第一轮（78c48370）。用户定先改知识点切分（[BUG-86]）再发 2.0.15；111-MF04 作废。112-MF06 第一轮原型已合入（书单误分）；113-MF06 第二轮已起草，待转发；回来后把对照网页给用户逐个看，用户定了再派第二步。全量里 loading86、self_test81、status88 三个浏览器测试满载时偶发失败（单独跑通过），记为已知不稳定测试。
+- **现在在做的事**（2026-10-14）：线上 2.0.14，服务器 MF-76。已合入待发：[BUG-84]、[BUG-85] 第一轮；[BUG-86] 两轮原型已合入未接线。第一百一十四批四份并行已起草（重切跑完、换进计划的工具、按小要点出题、课堂多轮），待转发。四份合入后：架构师在用户数据上预演 → 用户看预演报告和对照网页点头 → 执行（备份、可回滚）→ 新建计划流程接线 → 总验收 → 发 2.0.15。全量里 loading86、self_test81、status88 三个浏览器测试满载时偶发失败（单独跑通过），记为已知不稳定测试。
 
 ## 协作方式
 
@@ -61,104 +61,357 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲（107-MF01 作废：服务器已由架构师直接上线） | server |
+| MF-01 | 114-MF01 已起草，待用户转发（按小要点出题） | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 空闲 | classroom |
+| MF-03 | 114-MF03 已起草，待用户转发（课堂多轮、资料导航、讲义） | classroom |
 | MF-04 | 空闲（111-MF04 作废） | runtime |
 | MF-05 | 空闲 | platform |
-| MF-06 | 113-MF06 已起草，待用户转发（[BUG-86] 第二轮：整节分类、时长按内容） | tools |
-| MF-07 | 空闲 | library |
+| MF-06 | 114-MF06 已起草，待用户转发（重切第三轮，跑完第 5～8 模块） | tools |
+| MF-07 | 114-MF07 已起草，待用户转发（换进计划的工具：预演、执行、回滚） | library |
 
 ## 待派队列
 
-- 112-MF06 已合入（b9abaedf，原型未接线；书单误分，第一段止损）。
-- 113-MF06（tools）：[BUG-86] 第二轮，整节分类、时长按内容估、过关标准逐项。已起草，待转发（¥5，分两段）。
-- 之后（依赖第一步和用户看过对照网页）：接进建计划流程、替换剩余部分并保留进度、题库按新点重出、课堂按小要点多轮讲（拆成不冲突的几份）。
-- 111-MF04 作废；2.0.15 等 [BUG-86] 改完再发，发前重做总验收。
+- 第一百一十四批四份并行（[BUG-86]，共用数据约定写在每份任务里）：114-MF06、114-MF07、114-MF01、114-MF03。已起草，待转发。
+- 之后（依赖四份都合入）：架构师用 114-MF07 的工具在用户数据上预演（用户软件先关），把预演报告（重排前后总时长、今天目标、逾期）和 114-MF06 的对照网页给用户看；用户点头才执行（自动备份、可回滚）；再派：新建计划流程接上新方法；发版前总验收；发 2.0.15（含 [BUG-84]、[BUG-85] 第一轮、[BUG-86]）。
 - 待用户定：[BUG-85] 第三轮换 Whisper。
 
-## 第一百一十三批任务原文（2026-10-14，基线 b9abaedf）
+## 第一百一十四批任务原文（2026-10-14，基线 cb1d59c3）
 
-### [113-MF06] tools｜知识点按概念重切第二轮（[BUG-86]）
+### [114-MF06] tools｜知识点重切第三轮：修遗留、跑完第 5～8 模块
 
 ~~~text
-【MentorFlow 第一百一十三批｜MF-06（工位 tools）｜知识点按概念重切第二轮：先按“这一节是干什么的”把书单、学习路线这类整节分进导航，再抽概念；时长按内容估、不靠 20～40 分钟往上凑（BUG-86）】
+【MentorFlow 第一百一十四批｜MF-06（工位 tools）｜知识点重切第三轮：修好两处遗留问题，跑完第 5～8 模块，产出最终新结构和对照网页（BUG-86）】
 
 现成项目与许可证（第一节）
-  - 不引新库，在你上一轮合入的原型（planner_agents.py 的新函数、tests/refactor/points112/）上改；模型调用用现有 gateway.complete。
-  - 新增的“整节用途分类”照行业通行的先分类再抽取做法（文档或章节类型分类，再进入信息抽取，只借做法），依据优先用资料自带的结构：目录标题、章节层级（计划建立时按目录原名保存的章节）。
-  - 时长沿用项目现有的按内容估时（84/85-MF06 的 point minutes v2），不新造估时公式。
+  - 不引新库，在你 112、113 的原型上改；模型调用用现有 gateway.complete。做法同前两轮（先分类再抽取、map-reduce 合并、知识组件粒度、抽取式讲义）。
 
 开工同步
   cd D:\MentorFlow-office\tools\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/tools
-  git reset --hard b9abaedf         # 主线：已合入你上一轮的原型（未接线）
+  git reset --hard cb1d59c3         # 主线：已合入 113-MF06 原型（未接线）
 提交：git -c user.name="MentorFlow Worker tools" -c user.email="worker-tools@mentorflow.local" commit ...（不提交 dist）
 禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
-D:\MentorFlowApp、D:\MentorFlowData 只读：照上一轮用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件、不改用户进度。不要启动、结束或重启用户的软件。
-E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\points113\，中间产物用完即删，只留 report.md、新结构 JSON、对照网页和小脚本；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限或要动用户数据才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次。同时在跑：无。
-花费：真实模型总上限 ¥5，分两段，规则同上一轮：
-  - 第一段只跑第 5 模块剩下的 44 点，按下面的过关标准逐项核对，全部过关才跑第二段（第 6、7、8 模块）；
-  - 第一段不过关就停下写清原因。
-  - 真实模式参数同上一轮（--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 不读、不显示、不保存）。
+D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件、不改用户进度。不要启动、结束或重启用户的软件和源代码版。
+E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\points114\，中间产物用完即删，只留 report.md 和必要的小文件；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限或要动用户数据才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（loading86、self_test81、status88 是已知偶发，失败时单独重跑那一项并写明）。
+花费：真实模型总上限 ¥12，分两段：先重跑第 5 模块剩余部分，六项过关标准全过才跑第 6、7、8 模块；第一段不过关就停下写清原因。真实模式参数同上一轮（--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 不读、不显示、不保存）。
+同时在跑（第一百一十四批四份并行，各改各的文件，不要碰别人的范围）：
+  - MF-06（tools）：修完重切方法并跑完第 5～8 模块，只改 planner_agents.py 的新函数和 points 脚本；
+  - MF-07（library）：把新结构换进用户计划的工具，改 course/restructure.py（新）、store.py 的校验、scripts/plan_restructure.py（新）；
+  - MF-01（server 工位）：新式点按小要点出题，改 course/point_materials.py、course/question_bank.py；
+  - MF-03（classroom）：课堂按小要点多轮讲、显示资料导航，改 app/classroom.py、course/teacher_agent.py、课堂前端。
+  
 
-背景（CURRENT_STATE [BUG-86]；上一轮报告 D:\MentorFlow\.local\test-tmp\points112\report.md 和 comparison.html）：
-  - 上一轮（112-MF06）第 5 模块剩余 44 点 → 12 个大点、62 个小要点、3 组导航。
-  - 真正讲知识的部分已经像样，这部分要保持：
-    - 数据库/DBMS、NoSQL、关系模型、ER、范式、存储过程与 SQL、字符集与编码、MySQL utf8mb4；
-    - 外键、连接字符集、utf8mb4 的重复都合并了。
-  - 失败的地方：
-    1. 17 项书单／资料取舍类旧点只有 6 项进了导航。
-       - 前三个大点（“…数据库：MySQL、PostgreSQL、Redis”“Java 版本特性与 JVM”“Spring 生态与开发…”）是用书籍介绍拼出来的；
-       - 模型把“这本书讲了什么”当成了“这里在教什么”；
-       - 合并步骤又把这种错分固定下来；
-       - 讲义里也混进了书籍简介、章节清单和重复句。
-    2. 总时长从 259 分涨到 400 分：每个点都被往 20～40 分钟里凑，时长没有内容依据。
-  - 用户定的规则（不变）：
-    - 书单、学习路线、资料取舍放模块开头的资料导航，不讲、不考、不算时长；
-    - 大知识点 20～40 分钟、3～8 个小要点；
-    - 讲义摘自原文、标出处；
-    - 从用户当前位置（第 5 模块第 8 点）往后重切，进度不动。
+【第一百一十四批共用数据约定（四份任务相同，任何一份都不能自行改动；要改先写进回执由架构师统一定）】
+  - 新式知识点仍存在 points 表，payload 必填字段不变：
+    - id、module_id、position、title、summary、minutes、chunk_ids；
+    - summary 写掌握目标，minutes 等于各小要点分钟之和，chunk_ids 为各小要点出处的并集，按出现顺序。
+  - points 新增可选字段：
+    - structure: "concept_v1"（有它就是新式点）；
+    - goal: 字符串，同 summary；
+    - subpoints: 列表，每项 {id, title, minutes, chunk_ids, notes}：
+      - id 形如 "<点id>-s1"、"<点id>-s2"；
+      - minutes 为正整数；
+      - chunk_ids 只能是本计划已有的 source_chunks id；
+      - notes 是讲义，每条 {text, chunk_id}，chunk_id 必须属于这个小要点的 chunk_ids。
+  - modules 新增可选字段：
+    - navigation: 列表，每项 {id, title, chunk_ids, reason}；
+    - 只供查看，不讲、不考、不算时长。
+  - question_bank 新增可选字段 subpoint_id：题目对应的小要点，必须属于该题 point 的 subpoints。
+  - 旧式点（没有 structure 字段）的行为一律不变。用户计划前面已学的部分仍是旧式点，新旧两种会在同一计划里共存。
+  - 样例数据：D:\MentorFlow\.local\test-tmp\points113\new-structure.json 第 5 模块剩余部分。
+    - 里面 points[].subpoints[].bullets 对应这里的 notes，refs 对应 chunk_ids，cN 别名要换成真实 chunk id，见其 paragraphs 表。
+    - 不要改这个文件，复制一份再用。
+
+背景（CURRENT_STATE [BUG-86]）：
+  - 用户的计划“ai-agent学习”（id 029b076315034c00bbd6842a5c9c31d9，JavaGuide，541 个旧点）原来按篇幅切点，约每 1000 字一个点，书单也成了点。
+  - 用户定：书单等放模块开头的资料导航，不讲不考不算时长；一个大知识点 20～40 分钟、3～8 个小要点，讲课多轮对话、不走固定公式；原文提炼成带出处的讲义；从用户当前学到的位置往后全部重切，已学和已跳过的保留；改完才发 2.0.15。
+  - 113-MF06 的第二轮原型：第 5 模块剩余 44 点 → 7 个大点、43 个小要点、29 条导航，书单 17/17 进导航，讲义没有书籍简介，总时长 259→241 分。
+  - 用户看过对照网页，觉得样子不错。
+  - 用户想尽快用新结构学习，并在换之前看到重排后的总时长、每天目标和逾期是否合理。
+  - 113 的两处遗留（见 D:\MentorFlow\.local\test-tmp\points113\report.md）：
+    1. NoSQL 总览没归进它下面的四类原子概念，K2 和 K3 的第 5 个小要点重复：合并只看概念编号唯一，不保证语义不重复。
+    2. K7 一段 6 行、99 字的 SQL 示例两次被“超过 3 个换行”的限制拒掉，K7 缺 8 个小要点的讲义。
 
 要做
-  1. 整节用途分类（新的第一步，在抽概念之前）：
-     - 按资料自带的章节（目录标题与层级）把每一节分成“教知识”还是“导航”。导航包括：书单与书籍介绍、学习路线、资料推荐与取舍、学习方法建议。
-     - 依据先用标题和结构（例如标题含“书籍推荐”“学习路线”“资料”，正文主要是一本本书的介绍和推荐理由），再让模型对拿不准的节做判断，并给一句理由。
-     - 一节判成导航，整节都进导航，即使里面提到了技术名词，也不再从它抽知识概念。
-     - 一节里两种都有的（例如先讲概念、后荐书），按段落分开，并在报告里列出这类节。
-  2. 只对“教知识”的节做上一轮的抽概念 → 全局合并 → 讲义；讲义只能摘“教知识”的段落，不能摘书籍简介或章节清单。
-  3. 时长：
-     - 每个小要点按现有的按内容估时算分钟，大知识点的分钟是小要点之和。
-     - 20～40 分钟是合并时控制大小用的：内容少就和相邻同类概念合并，不能把时长往上凑。
-     - 新的总分钟和旧点（只算知识类）的内容估时相比，差距超过 ±20% 要逐项说明原因。
-  4. 第一段（第 5 模块剩余 44 点）过关标准，逐项写结果：
-     - 17 项书单／资料取舍类旧点全部进导航；
-     - 抽 10 个小要点核对讲义，书籍简介或章节清单类句子为 0；
-     - 上一轮已合并的重复照样合并；
-     - 每个大点 3～8 个小要点、时长有内容依据；
-     - 知识内容未覆盖为 0；
-     - 总分钟在旧知识类估时的 ±20% 内或有逐项说明。
-  5. 第一段过关后跑第二段（第 6、7、8 模块），同样逐项自查，回执给各模块旧点数 → 新点数与分钟。
-  6. 对照网页沿用上一轮，加两样：
-     - 每个旧点旁标出它所在章节被判成什么（教知识／导航）和理由；
-     - 顶部统计按模块列出导航节数、知识节数。
-  7. 测试（文件名带 113，别和已有的重名）：
-     - 整节分类（书单节整节进导航、混合节按段分开）；
-     - 讲义拒绝导航段；
-     - 时长按内容求和、不凑整；
-     - 上一轮的 112 测试照过。
-  8. 只改 course/planner_agents.py 中你上一轮加的新函数及相关新函数、tests/refactor/points112/ 或新的 points113/ 脚本与测试。仍然不接线、不改课堂、计划流程、存储和用户数据。
+  1. 合并层级：
+     - “总览/定义 + 若干子类”这类概念要归成一个大点，总览做第一个小要点，不能另起一个大点再重复；
+     - 合并后加一步语义去重检查：同模块内两个小要点讲的是同一件事，就合并或报警，在报告列出。
+  2. 讲义里的短代码/SQL 示例：允许不超过 15 行、300 字的原文示例原样摘录；超过的只摘关键行并标出处。
+  3. 用户当前位置以运行时读到的副本为准：用户这几天可能还在学，从最新位置往后切。回执写明从哪一点开始。
+  4. 第一段重跑第 5 模块剩余部分，六项过关标准同 113（书单全进导航；讲义无书籍简介；重复合并；每大点 3～8 小要点且时长有内容依据；知识未覆盖 0；总分钟与旧知识类估时差 ±20% 内或逐项说明）。全过后跑第 6、7、8 模块，每个模块同样自查。
+  5. 产出：
+     - 最终 new-structure.json：结构照 113，另加一份按上面“共用数据约定”换好字段名和真实 chunk id 的 apply-ready.json，给 MF-07 的工具直接用；
+     - 对照网页（沿用 113 的样子，用户已认可）；
+     - 每模块旧点数 → 新点数与分钟。
+  6. 测试（文件名带 114）：总览加子类合并、语义去重报警、短代码示例放行与超长截断、apply-ready.json 的字段与约定一致；112、113 的测试照过。
+  7. 只改 course/planner_agents.py 中你加的新函数和 points 系列脚本与测试。不接线，不改别人的范围。
 
-完成标准：
-  - 第 4 条全部过关且第 5 条跑完；或者第一段不过关时，写清卡在哪一项、证据和下一步建议；
-  - 第 7 条测试通过；最后全量跑一次并通过。loading86、self_test81、status88 是已知偶发，失败时单独重跑那一项并写明。
-  - 花费不超过 ¥5。
+完成标准：第 5～8 模块全部跑完，且每模块自查过关（不过关的写清卡在哪）；apply-ready.json 与约定一致；测试通过；最后全量一次。花费不超过 ¥12。
+回执：写到 D:\MentorFlow\.local\receipts\114-MF06.md。表格列：基线 ／ 提交 ／ 两处修法 ／ 从哪一点开始 ／ 各模块旧点数 → 新点数与分钟 ／ 各模块自查 ／ 文件路径（new-structure.json、apply-ready.json、网页）／ 新增测试 ／ 花费 ／ 全量 ／ 本地最终占用。
+给用户只回一行“114-MF06 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\points114\report.md。
+~~~
 
-回执：写到 D:\MentorFlow\.local\receipts\113-MF06.md。表格列：
-  基线 ／ 提交 ／ 整节分类怎么做与结果（导航节数、知识节数、混合节）／ 第一段过关标准逐项结果 ／ 各模块旧点数 → 新点数与分钟 ／ 网页路径 ／ 新增测试 ／ 花费 ／ 全量 ／ 本地最终占用。
-给用户只回一行“113-MF06 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\points113\report.md。
+### [114-MF07] library｜把新结构换进用户计划的工具（预演、执行、回滚）
+
+~~~text
+【MentorFlow 第一百一十四批｜MF-07（工位 library）｜把新的知识点结构换进用户计划的工具：先预演给出重排前后的总时长、每天目标和逾期，再按用户确认执行，保留全部进度，可回滚（BUG-86）】
+
+现成项目与许可证（第一节）
+  - 不引新库。全部走现有存储与同步：CourseStore 的 _put/删除（会同步到服务器），重排账本用现有 replan（BUG-83 的规则：历史欠账按当天冻结，只重新分配今天及以后）。
+  - 备份用 SQLite 自带的 backup API。
+
+开工同步
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard cb1d59c3         # 主线：已合入 113-MF06 原型（未接线）
+提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
+D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件、不改用户进度。不要启动、结束或重启用户的软件和源代码版。
+E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\restructure114\，中间产物用完即删，只留 report.md 和必要的小文件；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限或要动用户数据才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（loading86、self_test81、status88 是已知偶发，失败时单独重跑那一项并写明）。
+花费：¥0（不调用模型）。
+同时在跑（第一百一十四批四份并行，各改各的文件，不要碰别人的范围）：
+  - MF-06（tools）：修完重切方法并跑完第 5～8 模块，只改 planner_agents.py 的新函数和 points 脚本；
+  - MF-07（library）：把新结构换进用户计划的工具，改 course/restructure.py（新）、store.py 的校验、scripts/plan_restructure.py（新）；
+  - MF-01（server 工位）：新式点按小要点出题，改 course/point_materials.py、course/question_bank.py；
+  - MF-03（classroom）：课堂按小要点多轮讲、显示资料导航，改 app/classroom.py、course/teacher_agent.py、课堂前端。
+  
+
+【第一百一十四批共用数据约定（四份任务相同，任何一份都不能自行改动；要改先写进回执由架构师统一定）】
+  - 新式知识点仍存在 points 表，payload 必填字段不变：
+    - id、module_id、position、title、summary、minutes、chunk_ids；
+    - summary 写掌握目标，minutes 等于各小要点分钟之和，chunk_ids 为各小要点出处的并集，按出现顺序。
+  - points 新增可选字段：
+    - structure: "concept_v1"（有它就是新式点）；
+    - goal: 字符串，同 summary；
+    - subpoints: 列表，每项 {id, title, minutes, chunk_ids, notes}：
+      - id 形如 "<点id>-s1"、"<点id>-s2"；
+      - minutes 为正整数；
+      - chunk_ids 只能是本计划已有的 source_chunks id；
+      - notes 是讲义，每条 {text, chunk_id}，chunk_id 必须属于这个小要点的 chunk_ids。
+  - modules 新增可选字段：
+    - navigation: 列表，每项 {id, title, chunk_ids, reason}；
+    - 只供查看，不讲、不考、不算时长。
+  - question_bank 新增可选字段 subpoint_id：题目对应的小要点，必须属于该题 point 的 subpoints。
+  - 旧式点（没有 structure 字段）的行为一律不变。用户计划前面已学的部分仍是旧式点，新旧两种会在同一计划里共存。
+  - 样例数据：D:\MentorFlow\.local\test-tmp\points113\new-structure.json 第 5 模块剩余部分。
+    - 里面 points[].subpoints[].bullets 对应这里的 notes，refs 对应 chunk_ids，cN 别名要换成真实 chunk id，见其 paragraphs 表。
+    - 不要改这个文件，复制一份再用。
+
+背景（CURRENT_STATE [BUG-86]）：
+  - 用户的计划“ai-agent学习”（id 029b076315034c00bbd6842a5c9c31d9，JavaGuide，541 个旧点）原来按篇幅切点，约每 1000 字一个点，书单也成了点。
+  - 用户定：书单等放模块开头的资料导航，不讲不考不算时长；一个大知识点 20～40 分钟、3～8 个小要点，讲课多轮对话、不走固定公式；原文提炼成带出处的讲义；从用户当前学到的位置往后全部重切，已学和已跳过的保留；改完才发 2.0.15。
+  - 113-MF06 的第二轮原型：第 5 模块剩余 44 点 → 7 个大点、43 个小要点、29 条导航，书单 17/17 进导航，讲义没有书籍简介，总时长 259→241 分。
+  - 用户看过对照网页，觉得样子不错。
+  - 用户想尽快用新结构学习，并在换之前看到重排后的总时长、每天目标和逾期是否合理。
+
+要做
+  1. store.py：按约定校验新增的可选字段（points 的 structure/goal/subpoints、modules 的 navigation、question_bank 的 subpoint_id）。
+     - 只在字段出现时检查形状和引用（chunk id 属于本计划、notes 的 chunk_id 属于本小要点、subpoint_id 属于该点）；
+     - 旧数据和没有这些字段的记录照常；
+     - 不升数据库版本，除非确有必要，必要的话照 SCHEMA_VERSION 迁移写法并说明。
+  2. 新建 course/restructure.py：apply_structure(store, plan_id, structure, *, dry_run)。
+     - structure 就是 apply-ready.json 的内容。
+     - 确定保留哪些点：当前位置（classroom_positions 与进度记录）之前的点，以及任何有讲过、作答、判定、跳过、时长记录的点，一律保留原样。
+     - 结构里覆盖的其余旧点：删除，或标成被新点取代（自己选，要能同步、能回滚，写理由）。
+     - 写入新式点和模块导航；更新模块的 point_count、learning_minutes。
+     - 被取代旧点的题库题标成退役（不删作答记录）。
+     - 课堂位置如果指向被取代的点，改指到第一个新点。
+     - 按新总时长走现有 replan，cause 写 restructure，历史不动。
+  3. 预演（dry_run）报告，给用户看的，要直白：
+     - 保留多少旧点、取代多少、新增多少新点和导航条目；
+     - 每模块重排前后的分钟；
+     - 计划总分钟前后；
+     - 按今天算的“逾期待还”和“今天目标”前后、之后每天目标前后；
+     - 任何对不上的地方（例如结构里引用的 chunk 不存在、要取代的点其实有进度）一律列出并拒绝执行。
+  4. 执行与回滚：新建 scripts/plan_restructure.py。
+     - 子命令：--dry-run、--apply、--rollback；
+     - 参数：用户数据目录、计划 id、结构文件；
+     - apply 前自动备份整个 course.sqlite3 到同目录带时间戳的文件，rollback 用它恢复；
+     - 写清楚：回滚只恢复本机，已同步到服务器的变化怎么处理（例如回滚后再以本机为准重新上传），自己设计并测试。
+     - 要求软件没在运行（检测到就拒绝）。
+  5. 测试（文件名带 114，用约定里的样例和一份临时库）：
+     - 保留有进度的点；
+     - 取代其余点；
+     - 导航写入；
+     - 题库退役；
+     - 课堂位置改指；
+     - replan 不动历史欠账；
+     - 预演与执行一致；
+     - 回滚后库与执行前一致；
+     - 引用不存在的 chunk 时拒绝；
+     - 另一台设备同步后看到同样的新结构。
+  6. 用用户计划的只读副本 + 113 的样例结构（换成约定格式）做一次预演，把报告贴进回执。不在用户真实数据上执行。
+  7. 只改 store.py（校验）、course/restructure.py、scripts/plan_restructure.py 和 tests/refactor/。
+
+完成标准：第 5 条测试通过；第 6 条预演报告完整；最后全量一次。
+回执：写到 D:\MentorFlow\.local\receipts\114-MF07.md。表格列：基线 ／ 提交 ／ 保留与取代规则 ／ 取代方式（删除还是标记）与理由 ／ 预演报告（副本）／ 回滚与同步怎么处理 ／ 新增测试 ／ 全量 ／ 本地最终占用。
+给用户只回一行“114-MF07 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\restructure114\report.md。
+~~~
+
+### [114-MF01] server｜新式知识点按小要点出题
+
+~~~text
+【MentorFlow 第一百一十四批｜MF-01（工位 server，本任务改的是客户端的出题代码）｜新式知识点按小要点出题：每个小要点从自己的原文出客观题，题目标上小要点（BUG-86）】
+
+现成项目与许可证（第一节）
+  - 不引新库。沿用现有出题链：course/point_materials.py 的 prepare_point，现有的“先用资料自带的题、没有再从原文挖空”的规则，干扰项检查 distractor_check，以及 question_bank 的入库与判分规则（[DIR-01]）。
+
+开工同步
+  cd D:\MentorFlow-office\server\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/server
+  git reset --hard cb1d59c3         # 主线：已合入 113-MF06 原型（未接线）
+提交：git -c user.name="MentorFlow Worker server" -c user.email="worker-server@mentorflow.local" commit ...（不提交 dist）
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
+D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件、不改用户进度。不要启动、结束或重启用户的软件和源代码版。
+E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\questions114\，中间产物用完即删，只留 report.md 和必要的小文件；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限或要动用户数据才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（loading86、self_test81、status88 是已知偶发，失败时单独重跑那一项并写明）。
+花费：替身模型离线做完；最后允许一次真实模型核对，上限 ¥1，用模拟工具真实模式 --live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell，Key 不读、不显示、不保存。
+同时在跑（第一百一十四批四份并行，各改各的文件，不要碰别人的范围）：
+  - MF-06（tools）：修完重切方法并跑完第 5～8 模块，只改 planner_agents.py 的新函数和 points 脚本；
+  - MF-07（library）：把新结构换进用户计划的工具，改 course/restructure.py（新）、store.py 的校验、scripts/plan_restructure.py（新）；
+  - MF-01（server 工位）：新式点按小要点出题，改 course/point_materials.py、course/question_bank.py；
+  - MF-03（classroom）：课堂按小要点多轮讲、显示资料导航，改 app/classroom.py、course/teacher_agent.py、课堂前端。
+  工位 server 上先 git status：上一轮作废的 107-MF01 可能留有改动，有就先 git stash 留存再开工，回执写明。
+
+【第一百一十四批共用数据约定（四份任务相同，任何一份都不能自行改动；要改先写进回执由架构师统一定）】
+  - 新式知识点仍存在 points 表，payload 必填字段不变：
+    - id、module_id、position、title、summary、minutes、chunk_ids；
+    - summary 写掌握目标，minutes 等于各小要点分钟之和，chunk_ids 为各小要点出处的并集，按出现顺序。
+  - points 新增可选字段：
+    - structure: "concept_v1"（有它就是新式点）；
+    - goal: 字符串，同 summary；
+    - subpoints: 列表，每项 {id, title, minutes, chunk_ids, notes}：
+      - id 形如 "<点id>-s1"、"<点id>-s2"；
+      - minutes 为正整数；
+      - chunk_ids 只能是本计划已有的 source_chunks id；
+      - notes 是讲义，每条 {text, chunk_id}，chunk_id 必须属于这个小要点的 chunk_ids。
+  - modules 新增可选字段：
+    - navigation: 列表，每项 {id, title, chunk_ids, reason}；
+    - 只供查看，不讲、不考、不算时长。
+  - question_bank 新增可选字段 subpoint_id：题目对应的小要点，必须属于该题 point 的 subpoints。
+  - 旧式点（没有 structure 字段）的行为一律不变。用户计划前面已学的部分仍是旧式点，新旧两种会在同一计划里共存。
+  - 样例数据：D:\MentorFlow\.local\test-tmp\points113\new-structure.json 第 5 模块剩余部分。
+    - 里面 points[].subpoints[].bullets 对应这里的 notes，refs 对应 chunk_ids，cN 别名要换成真实 chunk id，见其 paragraphs 表。
+    - 不要改这个文件，复制一份再用。
+
+背景（CURRENT_STATE [BUG-86]）：
+  - 用户的计划“ai-agent学习”（id 029b076315034c00bbd6842a5c9c31d9，JavaGuide，541 个旧点）原来按篇幅切点，约每 1000 字一个点，书单也成了点。
+  - 用户定：书单等放模块开头的资料导航，不讲不考不算时长；一个大知识点 20～40 分钟、3～8 个小要点，讲课多轮对话、不走固定公式；原文提炼成带出处的讲义；从用户当前学到的位置往后全部重切，已学和已跳过的保留；改完才发 2.0.15。
+  - 113-MF06 的第二轮原型：第 5 模块剩余 44 点 → 7 个大点、43 个小要点、29 条导航，书单 17/17 进导航，讲义没有书籍简介，总时长 259→241 分。
+  - 用户看过对照网页，觉得样子不错。
+  - 用户想尽快用新结构学习，并在换之前看到重排后的总时长、每天目标和逾期是否合理。
+
+要做
+  1. 新式点（有 structure: concept_v1）出题时按小要点走：
+     - 每个小要点从它自己的 chunk_ids 出 1 道客观题（DIR-01 的题型和规则不变），题目写上 subpoint_id；
+     - 某个小要点出不了题时，按现有规则跳过并记录原因，不硬凑；
+     - 一个大点的题数等于能出题的小要点数。
+  2. 模块检测、重测、最终检验、自由检验取题时，新式点按小要点的题来，旧式点不变。
+     - 现有“每点 2 题”的规则对新式点改成“每个小要点 1 题”；
+     - 合格线照现有规则按题算；
+     - 在 question_bank 的取题处实现，写清改了哪些函数。
+  3. 不改 store.py：约定里的新字段 store 本来就容许多余字段，MF-07 会补校验。
+  4. 测试（文件名带 114）：
+     - 新式点按小要点出题并带 subpoint_id；
+     - 出不了题的小要点跳过并记录；
+     - 模块检测按小要点取题；
+     - 旧式点出题与取题完全不变。
+  5. 真实核对（≤¥1）：用约定样例里第 5 模块的 2 个大点出题，逐题看是否考到对应小要点、答案是否在原文里、有没有两个选项都对。回执写结果和花费。
+  6. 只改 course/point_materials.py、course/question_bank.py（如需，app/plan_flow.py 里调用出题的地方）和 tests/refactor/。
+
+完成标准：第 4 条测试通过；第 5 条核对完成；最后全量一次。花费不超过 ¥1。
+回执：写到 D:\MentorFlow\.local\receipts\114-MF01.md。表格列：基线 ／ 提交 ／ 出题怎么按小要点 ／ 取题与合格线怎么改 ／ 新增测试 ／ 真实核对（题数、考到小要点、答案在原文、两个都对、花费）／ 全量 ／ 本地最终占用。
+给用户只回一行“114-MF01 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\questions114\report.md。
+~~~
+
+### [114-MF03] classroom｜课堂按小要点多轮讲、资料导航、讲义
+
+~~~text
+【MentorFlow 第一百一十四批｜MF-03（工位 classroom）｜课堂按小要点多轮讲新式知识点，不走固定公式；模块开头显示资料导航；显示讲义（BUG-86）】
+
+现成项目与许可证（第一节）
+  - 不引新库。沿用现有课堂状态机（app/classroom.py）、老师提示与解析（course/teacher_agent.py）、讲解与出处显示（前端 Markdown 与原文出处），以及 [TEACH-06] 的对话规则（生活化问题开头、顺着学生回答讲、插话与“懂了，继续／没太懂”）。
+
+开工同步
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard cb1d59c3         # 主线：已合入 113-MF06 原型（未接线）
+提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
+D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件、不改用户进度。不要启动、结束或重启用户的软件和源代码版。
+E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\class114\，中间产物用完即删，只留 report.md 和必要的小文件；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限或要动用户数据才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（loading86、self_test81、status88 是已知偶发，失败时单独重跑那一项并写明）。
+花费：替身模型离线做完；最后允许一次真实模型核对，上限 ¥2，用模拟工具真实模式（参数同以往：--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 不读、不显示、不保存）。
+同时在跑（第一百一十四批四份并行，各改各的文件，不要碰别人的范围）：
+  - MF-06（tools）：修完重切方法并跑完第 5～8 模块，只改 planner_agents.py 的新函数和 points 脚本；
+  - MF-07（library）：把新结构换进用户计划的工具，改 course/restructure.py（新）、store.py 的校验、scripts/plan_restructure.py（新）；
+  - MF-01（server 工位）：新式点按小要点出题，改 course/point_materials.py、course/question_bank.py；
+  - MF-03（classroom）：课堂按小要点多轮讲、显示资料导航，改 app/classroom.py、course/teacher_agent.py、课堂前端。
+  
+
+【第一百一十四批共用数据约定（四份任务相同，任何一份都不能自行改动；要改先写进回执由架构师统一定）】
+  - 新式知识点仍存在 points 表，payload 必填字段不变：
+    - id、module_id、position、title、summary、minutes、chunk_ids；
+    - summary 写掌握目标，minutes 等于各小要点分钟之和，chunk_ids 为各小要点出处的并集，按出现顺序。
+  - points 新增可选字段：
+    - structure: "concept_v1"（有它就是新式点）；
+    - goal: 字符串，同 summary；
+    - subpoints: 列表，每项 {id, title, minutes, chunk_ids, notes}：
+      - id 形如 "<点id>-s1"、"<点id>-s2"；
+      - minutes 为正整数；
+      - chunk_ids 只能是本计划已有的 source_chunks id；
+      - notes 是讲义，每条 {text, chunk_id}，chunk_id 必须属于这个小要点的 chunk_ids。
+  - modules 新增可选字段：
+    - navigation: 列表，每项 {id, title, chunk_ids, reason}；
+    - 只供查看，不讲、不考、不算时长。
+  - question_bank 新增可选字段 subpoint_id：题目对应的小要点，必须属于该题 point 的 subpoints。
+  - 旧式点（没有 structure 字段）的行为一律不变。用户计划前面已学的部分仍是旧式点，新旧两种会在同一计划里共存。
+  - 样例数据：D:\MentorFlow\.local\test-tmp\points113\new-structure.json 第 5 模块剩余部分。
+    - 里面 points[].subpoints[].bullets 对应这里的 notes，refs 对应 chunk_ids，cN 别名要换成真实 chunk id，见其 paragraphs 表。
+    - 不要改这个文件，复制一份再用。
+
+背景（CURRENT_STATE [BUG-86]）：
+  - 用户的计划“ai-agent学习”（id 029b076315034c00bbd6842a5c9c31d9，JavaGuide，541 个旧点）原来按篇幅切点，约每 1000 字一个点，书单也成了点。
+  - 用户定：书单等放模块开头的资料导航，不讲不考不算时长；一个大知识点 20～40 分钟、3～8 个小要点，讲课多轮对话、不走固定公式；原文提炼成带出处的讲义；从用户当前学到的位置往后全部重切，已学和已跳过的保留；改完才发 2.0.15。
+  - 113-MF06 的第二轮原型：第 5 模块剩余 44 点 → 7 个大点、43 个小要点、29 条导航，书单 17/17 进导航，讲义没有书籍简介，总时长 259→241 分。
+  - 用户看过对照网页，觉得样子不错。
+  - 用户想尽快用新结构学习，并在换之前看到重排后的总时长、每天目标和逾期是否合理。
+  - 用户对现在讲课的原话：“每一个知识点全部都是给了一个影子，我回答一下，然后他再下一段里面再出一句话，再给一个问题，然后这个点就结束了，永远是这样，太公式了。”要的是一个点里多轮对话。
+
+要做
+  1. 新式点（有 structure: concept_v1）按小要点讲：
+     - 一个大点依次讲它的小要点，每个小要点以讲义 notes 和对应原文为依据；
+     - 老师顺着学生的回答决定下一步：答对就往深一层或换个角度追问一句，答错或不知道就换个讲法再讲，学生说“懂了”就进下一个小要点；
+     - 一个小要点可以有几轮，不设固定轮数；不能每个小要点都套“举例 → 提问 → 讲一段 → 结束”的同一模板，开场方式在提问、举例、对比、从上一个小要点接过来之间变化；
+     - 大点讲完给一两句收束，进入下一点。
+     - 课堂位置记住讲到第几个小要点，换设备、重开都接着（课堂位置已随账号同步，105-MF03）。
+  2. 界面：
+     - 讲新式点时显示“小要点 2/5”这类进度；
+     - 当前小要点的讲义可展开看，每条能点开原文；
+     - 模块开始时显示这个模块的资料导航（折叠的一块，“资料导航（N 条）”，展开能看条目和原文），不讲、不出题、不算时长。
+  3. 时长：沿用现有记时长的方式，大点讲完按点记，不改账本与 store；需要按小要点记的话写进回执作为后续建议。
+  4. 旧式点（没有 structure 字段）讲法完全不变：用户计划前面已学的部分是旧式点。
+  5. 测试（文件名带 114）：
+     - 新式点逐个小要点推进；
+     - 学生答错时同一小要点再讲一轮；
+     - “懂了，继续”进下一小要点；
+     - 重开后从同一小要点接着；
+     - 资料导航显示且不进出题和时长；
+     - 讲义出处可点开；
+     - 旧式点照旧。
+     - 前端用现有浏览器测试写法。
+  6. 真实核对（≤¥2）：用约定样例的 2 个大点各讲一遍，模拟学生有对有错有“没懂”，看是否多轮、是否套模板、讲的是否都在讲义和原文里。回执写对话摘录和花费。
+  7. 只改 app/classroom.py、course/teacher_agent.py、课堂前端相关文件和 tests/refactor/。不改 store.py、出题代码、计划流程。前端改了要编一次网页确认能编过，不提交 dist。
+
+完成标准：第 5 条测试通过；第 6 条核对完成；最后全量一次。花费不超过 ¥2。
+回执：写到 D:\MentorFlow\.local\receipts\114-MF03.md。表格列：基线 ／ 提交 ／ 多轮怎么做（怎么避免固定公式）／ 界面（小要点进度、讲义、资料导航）／ 时长怎么记 ／ 新增测试 ／ 真实核对摘录与花费 ／ 全量 ／ 本地最终占用。
+给用户只回一行“114-MF03 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\class114\report.md。
 ~~~
 
 ## 回执格式
