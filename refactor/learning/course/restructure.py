@@ -8,7 +8,7 @@ No model, files, network, schema migration or shared service is owned here.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import date
 import hashlib
 import json
@@ -116,12 +116,32 @@ def _calendar(ledger, today):
                 remaining_minutes=status['remaining_minutes'])
 
 
-def _prepare(store, plan_id, structure):
+def _prepare(store, plan_id, structure, *, end_date=None):
     if not isinstance(structure, dict): raise StoreError('INVALID_STRUCTURE', '结构文件必须是 JSON 对象。')
     structure = deepcopy(structure)
     plan = store._get('plans', plan_id, plan_id)
     today = date.fromisoformat(structure.get('today') or date.today().isoformat())
     issues = []
+    original_window = _window(plan['window'])
+    requested_end = original_window.end
+    valid_end = True
+    if end_date is not None:
+        try:
+            # fromisoformat also accepts compact dates; CLI/API require YYYY-MM-DD.
+            requested_end = date.fromisoformat(end_date)
+            if requested_end.isoformat() != end_date:
+                raise ValueError()
+            if requested_end < today or requested_end < original_window.start:
+                raise ValueError()
+        except (TypeError, ValueError):
+            issues.append('新截止日必须为 YYYY-MM-DD，且不能早于今天或原开始日')
+            requested_end, valid_end = original_window.end, False
+    new_window = replace(original_window, end=requested_end)
+    deadline_changed = valid_end and requested_end != original_window.end
+    if deadline_changed:
+        issues.append('截止日变更目前只能预演，不能执行：现有 Ledger.replan(preserve_past=True) 禁止改变窗口，'
+                      'CourseStore.replan_plan 固定写 explicit_replan，无法以 restructure 原样回放；'
+                      '需同时调整 store.py 与 ledger.py（不在本任务允许修改范围内）')
     if structure.get('plan_id') != plan_id: issues.append('结构文件的计划 id 不一致')
     if structure.get('complete') is False: issues.append('结构文件标记为未完成，不能执行')
     if structure.get('quality_review', {}).get('passed') is False:
@@ -216,14 +236,34 @@ def _prepare(store, plan_id, structure):
     before_ledger = store._load_ledger(plan)
     total = plan['total_minutes'] + sum(c['new']['learning_minutes']-c['old']['learning_minutes'] for c in changed)
     after_ledger = Ledger.from_dict(before_ledger.to_dict())
-    try: after_ledger.replan(today, _window(plan['window']), total, preserve_past=True)
+    try:
+        # Calculation on a detached clone only. Never publish this window as a
+        # restructure event: the current store's replay would reject it. Keeping
+        # the FIFO segment and prefix allows an honest, read-only date preview.
+        if deadline_changed:
+            after_ledger._window = new_window
+        after_ledger.replan(today, new_window, total, preserve_past=True)
     except (StoreError, LedgerError, ValueError) as exc: issues.append('无法重排账本：' + str(exc))
     before, after = _calendar(before_ledger, today), _calendar(after_ledger, today)
     if any(before['targets'].get(day) != after['targets'].get(day) for day in before['targets'] if day < today.isoformat()):
         issues.append('历史目标发生变化，拒绝执行')
     questions = [q for q in store.records('question_bank', plan_id) if set(q['point_ids']) & replacement_ids and q.get('role') != 'retired']
     journal = [tuple(row) for row in store._db.execute('SELECT entity,entity_id,payload,deleted,local_revision FROM _records WHERE plan_key=? ORDER BY entity,entity_id', (plan_id,))]
-    token = _digest([structure, journal, today.isoformat()])
+    token_input = [structure, journal, today.isoformat()]
+    if end_date is not None: token_input.append(end_date)
+    token = _digest(token_input)
+    future = {day: minutes for day, minutes in after['targets'].items()
+              if today.isoformat() <= day <= requested_end.isoformat()}
+    over_cap = [dict(day=day, target=minutes, excess_minutes=minutes-600)
+                for day, minutes in future.items() if minutes > 600]
+    allocation = after_ledger._allocation()
+    outstanding = after['overdue_to_repay'] + sum(max(0, minutes
+        - allocation.confirmed.get(date.fromisoformat(day), 0)
+        - allocation.tentative.get(date.fromisoformat(day), 0)) for day, minutes in future.items())
+    remaining_days = max(0, (requested_end-max(today, original_window.start)).days+1)
+    capacity = remaining_days * 600
+    daily_excess = sum(row['excess_minutes'] for row in over_cap)
+    capacity_excess = max(0, outstanding-capacity)
     report = dict(plan_id=plan_id, title=plan.get('title') or plan['goal'], today=today.isoformat(),
                   can_apply=not issues, issues=issues, preview_token=token,
                   retained_old_points=len(points)-len(replacement_ids), protected_old_points=len(protected),
@@ -236,16 +276,33 @@ def _prepare(store, plan_id, structure):
                                 covered_before=sum(points[pid]['minutes'] for pid in c['replace']),
                                 covered_after=sum(p['minutes'] for p in c['points'])) for c in changed],
                   total_before=plan['total_minutes'], total_after=total,
+                  end_date_before=original_window.end.isoformat(), end_date_after=requested_end.isoformat(),
+                  remaining_days=remaining_days,
+                  deadline_change_supported=not deadline_changed,
+                  daily_cap=dict(minutes=600, fits=not over_cap and not capacity_excess, over_cap_days=over_cap,
+                                 excess_minutes=max(daily_excess, capacity_excess),
+                                 daily_target_excess_minutes=daily_excess,
+                                 total_capacity_excess_minutes=capacity_excess,
+                                 capacity_minutes=capacity, outstanding_minutes=outstanding,
+                                 average_minutes_including_overdue=(outstanding+remaining_days-1)//remaining_days
+                                     if remaining_days else None,
+                                 maximum_daily_minutes=max(future.values(), default=0),
+                                 includes_overdue=True),
                   retained_estimate_offset=plan['total_minutes']-store._total(plan_id), before=before, after=after,
                   daily=[dict(day=day, before=before['targets'].get(day,0), after=after['targets'].get(day,0))
-                         for day in sorted(set(before['targets']) | set(after['targets'])) if day >= today.isoformat()])
+                         for day in sorted(set(before['targets']) | set(after['targets']))
+                         if today.isoformat() <= day <= requested_end.isoformat()])
     return report, changed, questions, cursor, plan
 
 
-def apply_structure(store, plan_id, structure, *, dry_run):
-    """Preview without writes; otherwise validate again and commit all or nothing."""
+def apply_structure(store, plan_id, structure, *, dry_run, end_date=None):
+    """Preview without writes; otherwise validate and commit all or nothing.
+
+    end_date is optional YYYY-MM-DD. Changed deadlines are forecast only until
+    the existing store/ledger support preserving past targets across windows.
+    """
     with store.transaction():
-        report, changed, questions, cursor, plan = _prepare(store, plan_id, structure)
+        report, changed, questions, cursor, plan = _prepare(store, plan_id, structure, end_date=end_date)
         if dry_run: return report
         if report['issues']: raise RestructureError(report)
         for q in questions:
@@ -291,10 +348,20 @@ def format_report(report):
     lines += [f"{m['title']}：学习分钟 {m['before']} → {m['after']}；点数 {m['before_points']} → {m['after_points']}" for m in report['modules']]
     lines += [f"  本次取代范围：{m['covered_before']} → {m['covered_after']} 分钟" for m in report['modules']]
     lines += [f"计划总分钟：{report['total_before']} → {report['total_after']}",
+              f"截止日：{report['end_date_before']} → {report['end_date_after']}；剩余 {report['remaining_days']} 天（含今天/原开始日）",
               f"逾期待还：{report['before']['overdue_to_repay']} → {report['after']['overdue_to_repay']} 分钟",
               f"今天目标：{report['before']['today_target']} → {report['after']['today_target']} 分钟",
               '今天及以后每天目标：']
     lines += [f"  {row['day']}：{row['before']} → {row['after']} 分钟" for row in report['daily']]
+    cap = report['daily_cap']
+    lines.append(f"按每天上限 {cap['minutes']} 分钟：{'排得下' if cap['fits'] else '排不下'}；"
+                 f"最高每天 {cap['maximum_daily_minutes']} 分钟；累计超出 {cap['excess_minutes']} 分钟。"
+                 f"含逾期未还共 {cap['outstanding_minutes']} 分钟，剩余天数容量 {cap['capacity_minutes']} 分钟，"
+                 f"总容量缺口 {cap['total_capacity_excess_minutes']} 分钟；未自动改日期或目标。")
+    lines += [f"  {row['day']} 超出 {row['excess_minutes']} 分钟" for row in cap['over_cap_days']]
+    if cap['average_minutes_including_overdue'] is not None:
+        lines.append(f"若要到截止日同时学完并还清逾期，平均每天约 {cap['average_minutes_including_overdue']} 分钟"
+                     '（仅容量估算，不改每日目标或欠账）。')
     if report['retained_estimate_offset']:
         lines.append(f"保留原计划相对模块合计的 {report['retained_estimate_offset']} 分钟估时差额；仅调整本次重切的增减量，不消掉旧欠账。")
     lines += ['历史日期的目标与全部原进度不改。', '确认用的预演编号：' + report['preview_token']]
