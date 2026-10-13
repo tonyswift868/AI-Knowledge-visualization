@@ -1,0 +1,22 @@
+body { overflow: auto; user-select: text; }
+.preview117 { max-width: 1120px; margin: auto; padding: 36px; }
+.preview117-header { display:flex; gap:20px; justify-content:space-between; align-items:center; margin-bottom:28px; }
+.preview117-eyebrow { color:var(--text-2); font-size:.8rem; letter-spacing:.06em; }
+.preview117 h1 { font-size:1.85rem; margin:8px 0 0; letter-spacing:-.025em; }
+.preview117 h2 { font-size:.83rem; font-weight:600; color:var(--text-2); margin:0 0 12px; }
+.preview117-switch { display:flex; gap:8px; align-items:center; white-space:nowrap; background:var(--surface); border:1px solid var(--border-strong); border-radius:24px; padding:10px 14px; font-size:.85rem; }
+.preview117-switch input { accent-color:var(--accent); }
+.preview117-grid { display:grid; grid-template-columns:1.15fr 1fr; gap:26px; align-items:start; }
+.preview117 .bubble { max-width:none; width:100%; margin:0; padding:18px 22px; line-height:1.85; }
+.preview117-note { font-size:.8rem; color:var(--text-2); line-height:1.8; padding:16px; }
+.preview117-stream { margin-top:26px; max-width:650px; }
+.preview117-stream small { display:block; color:var(--text-2); margin:10px 3px; font-size:.78rem; }
+.preview117-contract { position:absolute; left:-10000px; width:700px; }
+@media(max-width:700px) {
+ .preview117 { padding:20px 16px; }
+ .preview117-header { align-items:flex-start; gap:12px; }
+ .preview117 h1 { font-size:1.35rem; }
+ .preview117-grid { grid-template-columns:1fr; gap:20px; }
+ .preview117-switch { padding:8px; font-size:.76rem; }
+ .preview117 .bubble { padding:14px 16px; }
+}
