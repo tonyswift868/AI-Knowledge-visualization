@@ -7,6 +7,33 @@ import "./conversation.css"
 
 export type SourceCard = { id: string; text: string; title: string; url: string | null; locator: string }
 export type Conversation = { point_id: string; options: string[]; interrupted: boolean }
+export type NavigationEntry = { id: string; title: string; reason: string; sources: SourceCard[] }
+export type Concept = { point_id: string; title: string; goal: string; subpoint_id: string; title_current: string; number: number; total: number;
+  notes: { text: string; source: SourceCard }[] }
+
+export function ModuleNavigation({ entries }: { entries: NavigationEntry[] }) {
+  if (!entries.length) return null
+  return <details className="class-materials" aria-label="资料导航">
+    <summary>资料导航（{entries.length} 条）</summary>
+    <p className="small muted">供查阅，不讲解、不检测、不计时长。</p>
+    {entries.map(entry => <section key={entry.id}><h4>{entry.title}</h4><p>{entry.reason}</p><OriginalCards cards={entry.sources} /></section>)}
+  </details>
+}
+
+export function ConceptMaterials({ concept }: { concept: Concept }) {
+  const refs = React.useRef(new Map<number, OriginalCardsHandle>())
+  return <section className="class-materials" aria-label="小要点讲义">
+    <strong>小要点 {concept.number}/{concept.total} · {concept.title_current}</strong>
+    <details><summary>查看讲义（{concept.notes.length} 条）</summary>
+      <p className="small muted">掌握目标：{concept.goal}</p>
+      {concept.notes.map((note, index) => <div key={index} className="class-note-entry">
+        <ClassroomMarkdown content={note.text} />
+        <Button small kind="ghost" onClick={() => refs.current.get(index)?.reveal(note.source.id)}>看这条的原文</Button>
+        <OriginalCards cards={[note.source]} ref={handle => { if (handle) refs.current.set(index, handle); else refs.current.delete(index) }} />
+      </div>)}
+    </details>
+  </section>
+}
 export type Preparation = { done: number; total: number; text: string; error?: string | null }
 export type BankQuestion = { id: string; kind: "choice" | "multi" | "fill" | "short" | "essay" | "calc" | "recall" | "objective";
   question_type?: "choice" | "multi" | "fill" | "calc"; revealed?: boolean; ticked?: number[]; reference?: string; key_points?: string[]; answer?: string;

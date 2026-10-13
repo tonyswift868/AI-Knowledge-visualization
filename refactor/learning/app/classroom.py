@@ -261,14 +261,23 @@ class Classroom:
             if pending.get('revealed'):question.update(reference=q['reference'],key_points=q['key_points'],answer=pending['learner_answer'],ticked=pending.get('ticked',[]))
         if question:question.update(purpose=PURPOSE[pending['kind']],number=pending.get('number'),total=pending.get('total'))
         today = self._today(course,state)
+        concept=self._concept(course,state)
+        concept_view=None
+        if concept:
+            point,sub,index=concept
+            concept_view=dict(point_id=point['id'],title=point['title'],goal=point.get('goal',point['summary']),
+                subpoint_id=sub['id'],title_current=sub['title'],number=index+1,total=len(point['subpoints']),
+                rounds=(state.get('concept') or {}).get('rounds',0),notes=[dict(text=n['text'],source=course.passage_card(n['chunk_id'])) for n in sub.get('notes',[])])
+        navigation=[dict(id=n['id'],title=n['title'],reason=n.get('reason',''),
+            sources=[course.passage_card(cid) for cid in n.get('chunk_ids',[])]) for n in module.get('navigation',[])]
         preparing = self._jobs.get((course.plan_id, module['id']))
         current_preparation = ({k:preparing[k] for k in ('module_id','done','total','text','error')}
             if preparing and preparing['status'] in ('running','queued','failed') and not preparing['cancel'].is_set()
             and state.get('phase')=='learning' else None)
         return dict(plan={k:course.plan.get(k) for k in ('id','goal','state')},
-            module=dict(id=module['id'],title=module['title'],number=course.modules.index(module)+1,total=len(course.modules),state=book.module(module['id']).state),
+            module=dict(id=module['id'],title=module['title'],number=course.modules.index(module)+1,total=len(course.modules),state=book.module(module['id']).state,navigation=navigation),
             points=[dict(id=p['id'],title=p['title'],minutes=p['minutes'],taught=p['id'] in taught,state=book.point(p['id']).state,current=i==state['index']) for i,p in enumerate(points)],
-            step=state['step'],question=question,messages=messages,conversation=state.get('conversation'),
+            step=state['step'],question=question,messages=messages,conversation=state.get('conversation'),concept=concept_view,
             preparation=state.get('material_wait') or current_preparation,failure=state.get('failure'),explanation=state.get('answer_explanation'),
             can_skip=self._can_direct(course,state),
             direct_review=self._direct_view(course,state),
@@ -387,6 +396,18 @@ class Classroom:
     def next(self, course, state, ctx):
         state.pop('materials_paused',None)
         if state['step']=='preparing_materials':return
+        concept=self._concept(course,state)
+        if concept and state['step'] in ('teaching','closing'):
+            point,sub,index=concept
+            if index+1<len(point['subpoints']):
+                return self._concept_begin(course,state,ctx,index+1)
+            state.setdefault('concept',dict(point_id=point['id'],subpoint_id=sub['id'],rounds=0))['wrapping']=True
+            teaching=self._teacher(course,state,ctx,'这个大知识点的小要点已经讲完。用一两句把它们与掌握目标串起来收束，不再出问题，不重讲全文。',[point['id']])
+            self._deliver(course,state,teaching)
+            state.pop('concept',None)
+            self._point_done(course,state)
+            self._publish_today(course,state,ctx)
+            return
         if state['step'] in ('teaching','closing'):
             self._point_done(course,state)
             self._publish_today(course,state,ctx)
@@ -403,12 +424,42 @@ class Classroom:
                 state['index']+=1
                 state['step']='teach' if state['index']<len(course.points_of(state['module_id'])) else 'test_offer'
                 return
+        if point.get('structure')=='concept_v1' and point.get('subpoints'):
+            return self._concept_begin(course,state,ctx,0)
         chapter=f"先用一句话说明这一章要解决什么问题：{course.module(state['module_id'])['title']}。" if state['index']==0 else ''
         teaching=self._teacher(course,state,ctx,chapter+'用一个生活化问题开头，给2～3个不计分的可点选项，也允许打字。先不要讲完整结论。',[point['id']],opening=True)
         self._deliver(course,state,teaching)
         options=list(teaching.options)
         if '直接开始讲' not in options:options.append('直接开始讲')
         state.update(step='opening',conversation=dict(point_id=point['id'],options=options,interrupted=False))
+
+    @staticmethod
+    def _concept(course,state):
+        if state.get('pending') or state.get('direct_review') or state.get('phase','learning')!='learning' or state.get('step') not in ('teach','opening','teaching','closing'):
+            return None
+        points=course.points_of(state['module_id'])
+        if not 0<=state['index']<len(points):return None
+        point=points[state['index']]
+        if point.get('structure')!='concept_v1' or not point.get('subpoints'):return None
+        saved=state.get('concept') or {}
+        index=next((i for i,s in enumerate(point['subpoints']) if saved.get('point_id')==point['id'] and s['id']==saved.get('subpoint_id')),0)
+        return point,point['subpoints'][index],index
+
+    def _concept_begin(self,course,state,ctx,index):
+        point=course.points_of(state['module_id'])[state['index']]
+        sub=point['subpoints'][index]
+        state['concept']=dict(point_id=point['id'],subpoint_id=sub['id'],rounds=0)
+        teaching=self._teacher(course,state,ctx,'现在开始当前小要点。结合学生刚才的回应和最近的开场，自行选择生活化问题、短例子、对比或从上一小要点接过来，不按序号轮换套路，不连续套同一模板。不一次讲完全部小要点。围绕当前讲义展开，留空间让学生回应；不必每轮结尾问问题，不输出选项块。',[point['id']])
+        self._deliver(course,state,teaching,explained=True)
+        state.update(step='teaching',conversation=dict(point_id=point['id'],options=[],interrupted=False))
+
+    def _teaching_excerpts(self,course,state,point_ids):
+        excerpts=course.excerpts(point_ids)
+        concept=self._concept(course,state)
+        if concept and point_ids==[concept[0]['id']] and not (state.get('concept') or {}).get('wrapping'):
+            wanted=set(concept[1]['chunk_ids'])
+            return {cid:text for cid,text in excerpts.items() if cid in wanted}
+        return excerpts
 
     def choose(self, course, state, ctx, option):
         conversation=state.get('conversation') or {}
@@ -474,6 +525,8 @@ class Classroom:
                 if review['index']+1==len(review['points']):state['step']='direct_choice'
             return
         if state['step']=='opening':return self._student_message(course,state,ctx,text)
+        if self._concept(course,state) and text.strip() in ('懂了','我懂了','明白了'):
+            return self.next(course,state,ctx)
         pending=state.get('pending')
         if not pending:
             if text.strip() in ('继续','懂了，继续','懂了继续','下一个','我会了','我已经会了') and state['step'] in ('teaching','closing'):
@@ -676,6 +729,7 @@ class Classroom:
             else:self._ask_practice(course,state,ctx)
 
     def _point_done(self, course, state):
+        state.pop('concept',None)
         point=course.points_of(state['module_id'])[state['index']]
         self._credit_learning(course,state,point)
         state['index']+=1;state['pending']=None;state.pop('conversation',None)
@@ -718,7 +772,7 @@ class Classroom:
 
     @staticmethod
     def _direct_position(state):
-        return {key:copy.deepcopy(state.get(key)) for key in ('module_id','index','step','phase','conversation')}
+        return {key:copy.deepcopy(state.get(key)) for key in ('module_id','index','step','phase','conversation','concept')}
 
     @staticmethod
     def _restore_direct(state,resume):
@@ -867,13 +921,21 @@ class Classroom:
 
     def _teacher(self, course, state, ctx, director, point_ids, *, user='',opening=False,allow_plan=False):
         plan,module=self._skeleton(course,state,point_ids)
-        excerpts=course.excerpts(point_ids)
+        excerpts=self._teaching_excerpts(course,state,point_ids)
         available=self._related_passages(course,excerpts,user) if allow_plan else excerpts
         document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
         tctx=dict(plan=plan,module=module,prefs=self._prefs(course),profile=document.get('text','')[:6000],dialogue=self._dialogue(course,state),
             current_points=[dict(id=pid,title=course.point(pid)['title']) for pid in point_ids],
             director=director,user=user,excerpts=excerpts,plan_passages=available,opening=opening)
         tctx['request_page']=self._teacher_request_page
+        concept=self._concept(course,state)
+        if concept:
+            point,sub,index=concept
+            wrapping=(state.get('concept') or {}).get('wrapping',False)
+            tctx['concept']=dict(title=point['title'],goal=point.get('goal',point['summary']),
+                subpoint_id=sub['id'],title_current=sub['title'],number=index+1,total=len(point['subpoints']),
+                completed_titles=[s['title'] for s in point['subpoints'][:index]],wrapping=wrapping,
+                notes=[n for s in (point['subpoints'] if wrapping else [sub]) for n in s.get('notes',[])])
         request=teacher_agent.teacher_request(tctx)
         for attempt in range(2):
             if ctx and ctx.cancel.is_set():raise ModelCancelled()
@@ -912,7 +974,7 @@ class Classroom:
         return result
 
     def _deliver(self, course, state, teaching, user=None, explained=False):
-        mapping={f'c{i}':cid for i,cid in enumerate(sorted(course.excerpts(self._focus(course,state))),1)}
+        mapping={f'c{i}':cid for i,cid in enumerate(sorted(self._teaching_excerpts(course,state,self._focus(course,state))),1)}
         with course.store.transaction():
             if user is not None:self._user(course,state,user)
             body=teacher_agent.strip_source_footer(teaching.speech)
@@ -920,6 +982,10 @@ class Classroom:
             if mapping and (body!=teaching.speech or not teaching.cited_chunks):
                 speech+='\n\n看原文：'+' '.join(_link_citations(f'[{alias}]',mapping) for alias in mapping)
             self._say(course,state,speech,role='assistant',kind='teach')
+            concept=self._concept(course,state)
+            if concept:
+                saved=state.setdefault('concept',dict(point_id=concept[0]['id'],subpoint_id=concept[1]['id'],rounds=0))
+                saved['rounds']=saved.get('rounds',0)+1
             if explained:
                 document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
                 points=dict(document.get('teaching_points',{}));pid=self._focus(course,state)[0]
