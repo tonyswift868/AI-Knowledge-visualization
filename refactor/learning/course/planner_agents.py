@@ -1399,6 +1399,289 @@ def rebuild_classified_concept_module(module, old_points, chunks, questions, com
     return base
 
 
+def directory_sections(paragraphs):
+    """A route in a mixed technical article's title is not its whole purpose."""
+    book = re.compile(r'书单|书籍推荐|推荐书籍|必读.*书籍|^《.+》$')
+    route = re.compile(r'(?:学习|复习|阅读|备考|通关)(?:路线|计划)|学习方法|资料推荐|资料取舍')
+    mixed = re.compile(r'核心概念|架构演进|典型特征|工作原理|实现原理')
+    roots = []
+    for p in paragraphs.values():
+        title = re.search(r'(?:^|\n)title:\s*([^\n]+)',p['text'])
+        if title and (book.search(title.group(1)) or route.search(title.group(1)) and not mixed.search(title.group(1))):
+            roots.append((p.get('source_id'),tuple(p.get('section') or []),title.group(1)))
+    result = concept_sections(paragraphs)
+    for section in result:
+        path=tuple(section['section'])
+        inherited=next((title for src,root,title in roots if src==section['source_id'] and root and path[:len(root)]==root),None)
+        title=path[-1] if path else ''
+        explicit=book.search(title) or route.search(title) and not mixed.search(title)
+        reason=('所属文档“'+inherited+'”明确为书单/学习通关计划，整节保留导航。' if inherited else
+                '原文小节标题明确为书单、路线或资料建议，整节保留导航。' if explicit else '')
+        section.update(reason=reason,knowledge=[] if reason else None,navigation=section['refs'] if reason else None,
+                       decision='structure' if reason else 'pending')
+    return result
+
+
+def directory_purposes(paragraphs, complete, previous=()):
+    """Reuse prior model partitions; reclassify only newly ambiguous sections."""
+    sections=directory_sections(paragraphs);old={s['id']:s for s in previous}
+    sections=[old[s['id']] if s['decision']=='pending' and old.get(s['id'],{}).get('decision')=='model'
+              and all(old[s['id']].get(k)==s.get(k) for k in ('refs','section','source_id')) else s
+              for s in sections]
+    pending=[s for s in sections if s['decision']=='pending'];classified={};batch=[];size=0
+    def classify(rows):
+        system,messages=section_purpose_request(rows,paragraphs)
+        for attempt in range(2):
+            try:
+                retry_system=system if not attempt else system+'\n上次输出未通过格式校验；请重新检查所有S/c编号，完整逐段分类。'
+                checked=parse_section_purpose(complete('classify',retry_system,messages),rows)
+                classified.update((s['id'],s) for s in checked);return
+            except AgentFormatError:
+                if attempt:raise
+    for section in pending:
+        length=sum(len(paragraphs[r]['text']) for r in section['refs'])
+        if batch and size+length>7000:classify(batch);batch=[];size=0
+        batch.append(section);size+=length
+    if batch:classify(batch)
+    return [classified.get(s['id'],s) for s in sections]
+
+
+def directory_structure(paragraphs, old_points, required, questions):
+    """BUG-86 fourth proposal: original hierarchy, never semantic similarity.
+
+    A stored chunk is an indivisible ownership unit: all its teaching paragraphs
+    follow its first original heading. This avoids duplicate teaching of a chunk
+    without losing later paragraphs in it. Distinct chunks with overlapping text
+    remain distinct. No live generation path calls this prototype.
+    """
+    units = {}
+    for ref, paragraph in paragraphs.items():
+        if paragraph.get('purpose') != 'knowledge': continue
+        cid = paragraph['parent_chunk_id']
+        units.setdefault(cid, dict(refs=[], section=paragraph.get('section') or ['正文'],
+                                   source=paragraph.get('source_id')) )['refs'].append(ref)
+    sections = []
+    for unit in units.values():
+        key = (unit['source'], tuple(unit['section']))
+        if not sections or sections[-1][0] != key: sections.append((key,[]))
+        sections[-1][1].append(unit)
+    # A parent's own introduction is not a finest-level leaf. Carry it into
+    # the first following child, preserving the exact original paragraph order.
+    leaves = []
+    for index,(key,rows) in enumerate(sections):
+        source,path=key
+        if index+1<len(sections):
+            next_key,next_rows=sections[index+1];next_source,next_path=next_key
+            if source==next_source and len(next_path)>len(path) and next_path[:len(path)]==path:
+                first=next_rows[0]
+                next_rows[0]=dict(first,section=list(next_path),refs=[r for u in rows for r in u['refs']]+first['refs'])
+                continue
+        leaves.append((key,rows))
+    sections=leaves
+
+    def groups(rows, count):
+        # Nearest paragraph-count boundaries, but never split an atomic chunk.
+        count = min(count, len(rows))
+        if not count: return []
+        result = []; start = 0; total = sum(len(r['refs']) for r in rows)
+        consumed = 0
+        for i in range(1, count):
+            stop = start+1
+            while stop < len(rows)-(count-i) and consumed+sum(len(r['refs']) for r in rows[start:stop]) < total*i/count:
+                stop += 1
+            result.append(rows[start:stop]); consumed += sum(len(r['refs']) for r in rows[start:stop]); start = stop
+        result.append(rows[start:]); return result
+
+    def build(parts, index):
+        rows = [u for part in parts for u in part['units']]
+        # Child headings are retained unless their count needs adjustment.
+        subgroups = [p['units'] for p in parts]
+        if len(subgroups) < 3: subgroups = groups(rows, min(8, max(3, len(subgroups))))
+        elif len(subgroups) > 8:
+            subgroups = [[u for part in g for u in part['units']]
+                         for g in groups([dict(refs=[r for u in p['units'] for r in u['refs']], units=p['units'])
+                                          for p in parts], 8)]
+        title = parts[0]['path'][-1] if len(parts) == 1 else '、'.join(p['path'][-1] for p in parts)
+        subs = []
+        for j, group in enumerate(subgroups, 1):
+            refs = [r for u in group for r in u['refs']]
+            paths = list(dict.fromkeys(tuple(u['section']) for u in group))
+            original = '；'.join(dict.fromkeys(' / '.join(paragraphs[r].get('section') or ['正文']) for r in refs))
+            # For paragraph-only groups use original words, never generated names.
+            sub_title = '、'.join(p[-1] for p in paths)
+            if len(parts) < 3:
+                lines = re.sub(r'^[\s#*`>\-]+', '', paragraphs[refs[0]]['text']).splitlines()
+                first = lines[0] if lines else sub_title
+                sub_title = first[:12] or sub_title
+            subs.append(dict(id=f'K{index}-S{j}', title=sub_title, refs=refs,
+                             original_heading=original, bullets=[]))
+        point = dict(id=f'K{index}', title=title, goal='理解与应用原文小节：'+title,
+                     original_heading=[' / '.join(p['path']) for p in parts], subpoints=subs)
+        concept_content_minutes(dict(points=[point]), paragraphs, old_points, required, questions)
+        return point
+
+    leaves = [dict(path=list(path), parent=(source, path[:-1] if len(path)>1 else path), units=rows)
+              for (source,path), rows in sections]
+    points = []; packed = []; i = 0
+    while i < len(leaves):
+        parts = [leaves[i]]; i += 1
+        point = build(parts, len(points)+1)
+        while point['minutes'] < 20 and i < len(leaves) and leaves[i]['parent'] == parts[-1]['parent']:
+            parts.append(leaves[i]); i += 1; point = build(parts, len(points)+1)
+        # Finest original headings are already split. A leaf without children
+        # cannot be split into invented sections merely to hit a time limit.
+        points.append(point); packed.append(parts)
+    # Assign each existing question once across the completed module.
+    concept_content_minutes(dict(points=points), paragraphs, old_points, required, questions)
+    # Point-local provisional question counts can disappear after the module's
+    # unique assignment. Apply the short-section rule to the FINAL weights too.
+    while True:
+        merge = next((i for i in range(len(points)-1) if points[i]['minutes']<20
+                      and packed[i][-1]['parent']==packed[i+1][0]['parent']), None)
+        if merge is None: break
+        packed[merge:merge+2]=[packed[merge]+packed[merge+1]]
+        points=[build(parts,i+1) for i,parts in enumerate(packed)]
+        concept_content_minutes(dict(points=points),paragraphs,old_points,required,questions)
+    return points
+
+
+def validate_directory_structure(structure, paragraphs):
+    """Only source ownership, navigation, coverage and literal notes are hard gates."""
+    owners = {}; seen = set(); errors = []
+    for section in directory_sections(paragraphs):
+        if section['decision']=='structure' and any(paragraphs[r].get('purpose')!='navigation' for r in section['refs']):
+            errors.append('书单/路线必须整节导航：'+section['title'])
+    for nav in structure['navigation']:
+        for ref in nav['refs']:
+            if ref not in paragraphs or paragraphs[ref].get('purpose') != 'navigation':
+                errors.append('导航出处或分类错误：'+ref)
+            seen.add(ref)
+    for point in structure['points']:
+        if point['minutes'] != sum(s['minutes'] for s in point['subpoints']): errors.append('分钟求和不一致')
+        for sub in point['subpoints']:
+            for ref in sub['refs']:
+                if ref not in paragraphs or paragraphs[ref].get('purpose') != 'knowledge':
+                    errors.append('知识出处或分类错误：'+ref); continue
+                cid = paragraphs[ref]['parent_chunk_id']
+                if cid in owners and owners[cid] != sub['id']: errors.append('chunk 重复归属：'+cid)
+                owners[cid] = sub['id']; seen.add(ref)
+            for bullet in sub.get('bullets', []):
+                ref = bullet.get('ref'); text = bullet.get('text','')
+                if (ref not in sub['refs'] or not text or ''.join(text.split()) not in
+                        ''.join(paragraphs[ref]['text'].split())): errors.append('讲义出处或摘句错误：'+sub['id'])
+    missing = [r for r in paragraphs if r not in seen]
+    if missing: errors.append('原文未覆盖：'+','.join(missing))
+    if errors: raise AgentFormatError('；'.join(dict.fromkeys(errors)))
+    return dict(passed=True, uncovered=missing, owned_chunks=len(owners))
+
+
+def directory_note_subset(point_id, subpoint, bullets, paragraphs):
+    """Retain valid MODEL excerpts, never invent replacements for bad bullets.
+
+    Existing strict provenance/literal/length checks still validate every kept
+    excerpt. One malformed excerpt no longer discards two other valid ones.
+    """
+    from itertools import combinations
+    def check(values):
+        reply=dict(points=[dict(id=point_id,subpoints=[dict(id=subpoint['id'],bullets=values)])])
+        return parse_classified_notes(json.dumps(reply,ensure_ascii=False),
+            [dict(id=point_id,subpoints=[subpoint])],paragraphs,allow_short_examples=True)[0]['subpoints'][0]['bullets']
+    if not isinstance(bullets,list):raise AgentFormatError('讲义必须为列表')
+    for i,j in combinations(range(len(bullets)),2):
+        try:kept=check([bullets[i],bullets[j]])
+        except (AgentFormatError,KeyError,TypeError):continue
+        for k,bullet in enumerate(bullets):
+            if k in (i,j) or len(kept)>=6:continue
+            try:kept=check(kept+[bullet])
+            except (AgentFormatError,KeyError,TypeError):continue
+        return kept
+    raise AgentFormatError('不足两条不同的有效原文摘句')
+
+
+def rebuild_directory_module(module, old_points, chunks, questions, complete, *, checkpoint=None, note_workers=1):
+    """Original sections -> deterministic grouping -> optional literal notes.
+
+    Only ambiguous purpose classification and notes use the injected gateway.
+    Notes retry once per failed subpoint, then fall back to original source.
+    """
+    sources = dict.fromkeys(c.get('source_id') for c in chunks)
+    rank = {source:i for i,source in enumerate(sources)}
+    ordered = [c for _,c in sorted(enumerate(chunks), key=lambda pair:
+        (rank[pair[1].get('source_id')],pair[1].get('position',pair[0]),pair[0]))]
+    paragraphs, required = concept_materials(old_points, ordered)
+    # Respect imported block heading paths, not only the containing chunk path.
+    by_id = {c['id']: c for c in chunks}
+    for p in paragraphs.values():
+        for block in by_id[p['parent_chunk_id']].get('block_fragments', []):
+            if block.get('text') == p['text'] and block.get('section'):
+                p['section'] = list(block['section']); break
+    sections = directory_purposes(paragraphs,complete)
+    navigation = []
+    for section in sections:
+        for kind in ('knowledge','navigation'):
+            for ref in section[kind]: paragraphs[ref]['purpose'] = kind
+        if section['navigation']:
+            navigation.append(dict(id=f'N{len(navigation)+1}',title=section['title'],refs=section['navigation'],concepts=[],
+                                   reason=section['reason'],minutes=0,assessed=False))
+    result = dict(module_id=module['id'],title=module['title'],paragraphs=paragraphs,sections=sections,
+                  points=directory_structure(paragraphs,old_points,required,questions),navigation=navigation,
+                  concepts=[],notes_failures=[])
+    validate_directory_structure(result,paragraphs)
+    if checkpoint: checkpoint('structure',result)
+    notes_system = CONCEPT_NOTES_SYSTEM + '\n允许逐字短代码/SQL示例（不超过15行、300字）；更长只摘关键连续行。每个小要点恰好返回一次。'
+    subs = [(p,s) for p in result['points'] for s in p['subpoints']]
+    # Bounded batches, individually validate/salvage, so one bad excerpt never
+    # discards valid notes from the other subpoints in the same response.
+    def notes(rows, retry=False):
+        # A point can occur more than once: assemble a unique parent list.
+        by_point = {}
+        for p,s in rows: by_point.setdefault(p['id'],dict(id=p['id'],subpoints=[]))['subpoints'].append(s)
+        packet = list(by_point.values()); _,messages = concept_notes_request(packet,paragraphs)
+        retry_system = notes_system if not retry else notes_system+'\n上次这些小要点摘录未通过校验；重新选2～6条不同的逐字连续原文，检查编号、长度和书籍简介。'
+        try: reply = _concept_json(complete('notes',retry_system,messages))
+        except AgentFormatError: return rows
+        failures = []
+        for p,s in rows:
+            try:
+                matches = [v for pp in reply['points'] if pp['id']==p['id'] for v in pp['subpoints'] if v['id']==s['id']]
+                if len(matches)!=1: raise AgentFormatError('讲义小要点遗漏或重复')
+                s['bullets'] = directory_note_subset(p['id'],s,matches[0].get('bullets'),paragraphs)
+            except (AgentFormatError,KeyError,TypeError): failures.append((p,s))
+        return failures
+    batch=[]; size=0; batches=[]
+    def finish(rows):
+        failed=notes(rows)
+        if failed: failed=notes(failed,retry=True)
+        return [s['id'] for _,s in failed]
+    for p,s in subs:
+        length=sum(len(paragraphs[r]['text']) for r in s['refs'])
+        if batch and (size+length>8500 or len(batch)>=8): batches.append(batch); batch=[];size=0
+        batch.append((p,s));size+=length
+    if batch: batches.append(batch)
+    if note_workers == 1:
+        for batch in batches:
+            result['notes_failures'].extend(finish(batch))
+            if checkpoint: checkpoint('notes',result)
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(3,max(1,note_workers))) as pool:
+            for failures in pool.map(finish,batches):
+                result['notes_failures'].extend(failures)
+                if checkpoint: checkpoint('notes',result)
+    result.update(concept_coverage(old_points,required,result))
+    for old in old_points:
+        result['old_to_new'][old['id']]['sections']=[dict(title=s['title'],reason=s['reason'],
+            kind='mixed' if s['knowledge'] and s['navigation'] else 'knowledge' if s['knowledge'] else 'navigation')
+            for s in sections if set(s['refs']).intersection(required[old['id']])]
+    result['section_counts']={kind:sum(bool(s['knowledge']) and bool(s['navigation']) if kind=='mixed' else
+        bool(s[kind]) and not s['navigation' if kind=='knowledge' else 'knowledge'] for s in sections)
+        for kind in ('knowledge','navigation','mixed')}
+    result['hard_rules']=validate_directory_structure(result,paragraphs)
+    result['minor_issues']=[dict(id=p['id'],minutes=p['minutes'],subpoints=len(p['subpoints'])) for p in result['points']
+                            if not 20<=p['minutes']<=40 or not 3<=len(p['subpoints'])<=8]
+    return result
+
+
 def resolve_paragraph(chunk, citation):
     """Resolve a host paragraph ID against current stored blocks, never a quote."""
     for paragraph in material_paragraphs([chunk]):
