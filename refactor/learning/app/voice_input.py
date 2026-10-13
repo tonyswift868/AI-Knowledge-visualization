@@ -1,7 +1,8 @@
 """Local voice input for QWebChannel; recognition never sends an answer.
 
 ``voice.status/download/download_cancel/start/cancel`` run on the Qt thread.
-Only explicit ``download(consent=True, job_id=...)`` can access the network.
+Only explicit download fetches model files. A contextual recording may use the
+existing account model gateway for a short, cancellable text correction.
 ``stop(session_id=...)`` waits on a bridge worker, dispatching recorder control
 to Qt, and returns the same whole transcript as ``voice.final``. Each recording
 has a caller-generated session_id; stale cancellation cannot stop a newer one.
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, TimeoutError
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 import json
 from pathlib import Path
 import re
@@ -28,6 +30,8 @@ from ..voice.asr.glossary import correct
 from ..voice.asr.model_manager import ModelManager, REQUIRED_FILES
 from ..voice.storage import choose_installation, storage_root
 from ..voice.asr.service import AsrService
+from ..voice.asr.lesson import lesson_context
+from ..voice.asr.correction import finish as finish_correction, needs_model
 from .bridge import BridgeError
 
 
@@ -50,9 +54,10 @@ class VoiceInput(QObject):
     _invoke = Signal(object)
     _progress = Signal(object, int, int)
     _download_done = Signal(object, object)
+    _correction_done = Signal(str, object)
 
     def __init__(self, bridge, data_root: Path, parent=None, *, model_manager=None,
-                 engine_factory=None, recorder_factory=None):
+                 engine_factory=None, recorder_factory=None, gateway_provider=None, store_provider=None):
         super().__init__(parent)
         self.bridge = bridge
         self.manager = model_manager or ModelManager(data_root)
@@ -63,10 +68,15 @@ class VoiceInput(QObject):
         self._result = None
         self._engine = None
         self._terms = ()
+        self._protected_terms = ()
         self._segment_index = 0
         self._raw = ""
         self._replacements = []
         self._invalid_model = False
+        self._gateway_provider, self._store_provider = gateway_provider, store_provider
+        self._question = ''
+        self._correction_cancel = threading.Event()
+        self._stop_deadline = None
         # Tokens remain safe when the parent dies during a socket read.
         # Never join the downloader on the GUI thread.
         lifetime = self._lifetime = {"job": None}
@@ -91,11 +101,23 @@ class VoiceInput(QObject):
         self._invoke.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
         self._progress.connect(self._download_progress, Qt.ConnectionType.QueuedConnection)
         self._download_done.connect(self._download_finished, Qt.ConnectionType.QueuedConnection)
+        self._correction_done.connect(self._corrected, Qt.ConnectionType.QueuedConnection)
         for name, handler in (("status", self.status), ("download", self.download),
                               ("download_cancel", self.download_cancel), ("start", self.start),
                               ("cancel", self.cancel)):
             bridge.register("voice." + name, handler, ui=True)
         bridge.register("voice.stop", self.stop)
+        bridge.register("voice.context", self.context)
+
+    def context(self, params, ctx):
+        """Read local module vocabulary off the GUI thread, before recording."""
+        self._check_open()
+        if self._store_provider is None:
+            return dict(terms=[], question='')
+        plan, module = params.get('plan_id'), params.get('module_id')
+        if not isinstance(plan,str) or not isinstance(module,str):
+            raise BridgeError('BAD_PARAMS','缺少当前课堂。')
+        return lesson_context(self._store_provider(),plan,module,params.get('point_id',''))
 
     def _check_open(self):
         if self._closed.is_set():
@@ -177,14 +199,24 @@ class VoiceInput(QObject):
         self._check_open()
         session = _token(params, "session_id")
         terms = params.get("terms", [])
+        protected=params.get('protected',[])
         if (not isinstance(terms, list) or len(terms) > 256
                 or any(not isinstance(t, str) or not 1 <= len(t) <= 120 for t in terms)):
             raise BridgeError("BAD_PARAMS", "课程术语应为不超过 256 项的短文本列表。")
+        if not isinstance(protected,list) or len(protected)>6000 or any(not isinstance(t,str) or len(t)!=2 for t in protected):
+            raise BridgeError('BAD_PARAMS','原文保护词格式无效。')
         if self._active or self._job is not None:
             raise BridgeError("ASR_BUSY", "已有语音输入或模型下载正在进行。")
         if self._invalid_model:
             raise BridgeError("ASR_MODEL_INVALID", "本机语音模型校验失败，请重新下载。")
-        self.service.set_glossary(terms)
+        question=params.get('question','')
+        if not isinstance(question,str) or len(question)>1600:
+            raise BridgeError('BAD_PARAMS','语音纠正的课堂问题过长。')
+        self._question=question
+        self._correction_cancel=threading.Event()
+        self._stop_deadline=None
+        self._protected_terms=tuple(protected)
+        self.service.set_glossary(terms,protected_terms=protected)
         self._session, self._terms = session, tuple(terms)
         self._active = True
         self._result = Future()
@@ -227,6 +259,7 @@ class VoiceInput(QObject):
                 raise BridgeError("CANCELLED", "已取消。")
             if session != self._session or self._result is None:
                 raise BridgeError("ASR_SESSION_EXPIRED", "这次语音输入已经结束。")
+            self._stop_deadline=time.monotonic()+3.
             self.service.stop()
             return self._result
 
@@ -257,7 +290,7 @@ class VoiceInput(QObject):
     def _segments(self):
         if self._engine is not None:
             for raw in self._engine.take_finalized():
-                text, replacements = correct(raw, self._terms)
+                text, replacements = correct(raw, self._terms, protect_existing=False, protected_terms=self._protected_terms,lesson_match=True)
                 self.bridge.push("voice.segment", {"session_id": self._session, "index": self._segment_index,
                                  "text": text, "raw_text": raw, "replacements": replacements})
                 self._segment_index += 1
@@ -272,6 +305,31 @@ class VoiceInput(QObject):
             return
         self._segments()
         result = self._payload(text)
+        self._engine = None
+        self._segment_timer.stop()
+        if self._gateway_provider is not None and needs_model(text,self._terms,self._question):
+            session,terms,question,cancel=self._session,self._terms,self._question,self._correction_cancel
+            protected=self._protected_terms
+            remaining=max(0.,(self._stop_deadline or (time.monotonic()+3.))-time.monotonic())
+            def worker():
+                try:
+                    correction=finish_correction(result['raw_text'],text,terms,question,self._gateway_provider,
+                                                 cancel=cancel,timeout=remaining,protected_terms=protected)
+                    output=correction.text
+                except Exception: output=text
+                edits=[(a,b,result['raw_text'][a:b],output[c:d])
+                       for tag,a,b,c,d in SequenceMatcher(None,result['raw_text'],output,autojunk=False).get_opcodes()
+                       if tag!='equal']
+                if not self._closed.is_set() and not cancel.is_set():
+                    self._correction_done.emit(session,dict(result,text=output,replacements=edits))
+            threading.Thread(target=worker,name='mf-asr-correction',daemon=True).start()
+            return
+        self._corrected(self._session,result)
+
+    @Slot(str, object)
+    def _corrected(self, session, result):
+        if self._closed.is_set() or not self._active or session!=self._session:
+            return
         self._active, self._engine = False, None
         self._segment_timer.stop()
         self.bridge.push("voice.final", result)
@@ -295,6 +353,7 @@ class VoiceInput(QObject):
     def cancel(self, params, _ctx):
         session = _token(params, "session_id")
         if session == self._session:
+            self._correction_cancel.set()
             self._active = False  # Suppress AsrService's empty reset transcript.
             self._segment_timer.stop()
             self.service.cancel()
@@ -322,7 +381,9 @@ class VoiceInput(QObject):
 
 def register(bridge, window):
     """Only registration and disposal are needed in LearningWindow."""
-    voice = VoiceInput(bridge, window._data_root, window)
+    voice = VoiceInput(bridge, window._data_root, window,
+                       gateway_provider=lambda: window.services.gateway,
+                       store_provider=lambda: window.services.store)
     window.switch_requested.connect(voice.reset)
     window.logout_requested.connect(voice.reset)
     window.page.loadStarted.connect(voice.reset)

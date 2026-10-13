@@ -25,6 +25,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
+from difflib import SequenceMatcher
 import re
 
 from pypinyin import Style, lazy_pinyin
@@ -94,7 +95,7 @@ class _Candidate:
         return self.score, -(self.end - self.start)
 
 
-def correct(text: str, terms: Iterable[str]) -> tuple[str, list[Replacement]]:
+def correct(text: str, terms: Iterable[str], *, protect_existing=True, protected_terms=(), lesson_match=False) -> tuple[str, list[Replacement]]:
     """Return corrected text and reversible original-text edits; no I/O."""
     if not isinstance(text, str) or isinstance(terms, (str, bytes)):
         raise TypeError("text must be str and terms must be an iterable of strings")
@@ -108,6 +109,9 @@ def correct(text: str, terms: Iterable[str]) -> tuple[str, list[Replacement]]:
     if not chinese and not english:
         return text, []
     protected, candidates, present = [], [], set()
+    for word in protected_terms:
+        if len(word)>=2:
+            protected.extend(match.span() for match in re.finditer(re.escape(word),text))
     for entries in chinese.values():
         for term, _ in entries:
             matches = list(re.finditer(re.escape(term), text))
@@ -121,6 +125,12 @@ def correct(text: str, terms: Iterable[str]) -> tuple[str, list[Replacement]]:
             protected.extend(match.span() for match in exact)
             continue
         candidates.extend(_Candidate(*match.span(), term, 0) for match in matches)
+        if lesson_match and len(re.sub(r'\s','',term))>=5:
+            for run in re.finditer(r'[A-Za-z][A-Za-z -]*',text):
+                compact=re.sub(r'[ -]','',run.group()).lower()
+                target=re.sub(r'[ -]','',term).lower()
+                if compact!=target and compact[:2]==target[:2] and SequenceMatcher(None,compact,target).ratio()>=.8:
+                    candidates.append(_Candidate(*run.span(),term,2))
     for run in _HAN.finditer(text) if chinese else ():
         sounds = tuple(lazy_pinyin(run.group(), style=Style.NORMAL))
         if len(sounds) != len(run.group()):
@@ -129,14 +139,27 @@ def correct(text: str, terms: Iterable[str]) -> tuple[str, list[Replacement]]:
             for offset in range(len(sounds) - width + 1):
                 source = sounds[offset:offset + width]
                 for term, target in entries:
-                    if term in present:
+                    if protect_existing and term in present:
                         continue
                     score = _score(source, target)
+                    if score is None and lesson_match:
+                        # Nasal endings are often missed together (下料 vs
+                        # 向量). Each changed syllable must retain its initial
+                        # and differ by at most one phonetic spelling edit.
+                        pairs=[(a.replace('ng','n'),b.replace('ng','n')) for a,b in zip(source,target)]
+                        diff=[(a,b) for a,b in pairs if a!=b]
+                        if 1<=len(diff)<=2 and all(_initial(a) and _initial(a)==_initial(b) and _one_edit(a,b) for a,b in diff):
+                            score=2
                     if score is not None:
                         start = run.start() + offset
                         candidates.append(_Candidate(start, start + width, term, score))
-    candidates = [item for item in candidates if not any(
-        item.start < end and start < item.end for start, end in protected)]
+    def changes_protected(item, start, end):
+        if not (item.start < end and start < item.end): return False
+        if item.end-item.start != len(item.term): return True
+        a,b=max(start,item.start),min(end,item.end)
+        return text[a:b] != item.term[a-item.start:b-item.start]
+    candidates = [item for item in candidates if not any(changes_protected(item,start,end)
+                                                         for start,end in protected)]
     selected, ambiguous_spans = [], []
     for item in sorted(candidates, key=lambda item: (item.rank, item.start, item.term)):
         if any(item.start < end and start < item.end for start, end in ambiguous_spans):

@@ -42,7 +42,8 @@ _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
            'temperature', 'timeout', 'has_api_key')
 
 # Program-owned settings (SYS-07, 2026-10-01): only the three metadata purposes
-# disable thinking; all other purposes request high where the provider supports it.
+# disable thinking; other learning purposes request high where supported.
+# Optional ASR spelling correction is a separate short, non-thinking call.
 # Profile replays contained an unsupported historical claim with thinking off;
 # the task's quality fallback retains the provider default for that purpose.
 PURPOSE_EFFORT = {
@@ -51,7 +52,11 @@ PURPOSE_EFFORT = {
     'generate': 'high', 'plan_additions_generate': 'high',
     'source_scoring': 'high', 'research': 'high', 'teacher': 'high', 'coverage_check': 'high',
     'profile': None, 'sufficiency': 'none', 'plan_intent': 'none',
+    'asr_correction': 'none',
 }
+# BUG-85: optional dictation correction must never inherit a long thinking
+# request or the DeepSeek maximum-output override. Other purposes are unchanged.
+PURPOSE_SHORT_LIMITS = {'asr_correction': (3., 80)}
 
 PURPOSE_MIN_OUTPUT = {
     'teacher': 8192, 'profile': 8192, 'check_profile': 8192, 'coverage_check': 8192,
@@ -494,7 +499,9 @@ class ModelGateway:
                 if not secret:
                     raise ModelError('MODEL_KEY_REQUIRED', '当前模型还没有 API Key：请到 设置 → 模型连接 填入 API Key 并保存。')
                 timeout = BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else config['timeout']
-                if purpose != 'connection_test':  # the explicit "Reply OK" probe stays tiny
+                if purpose in PURPOSE_SHORT_LIMITS:
+                    timeout, max_tokens = PURPOSE_SHORT_LIMITS[purpose]
+                elif purpose != 'connection_test':  # the explicit "Reply OK" probe stays tiny
                     max_tokens = MODEL_MAX_OUTPUT.get(config['model'], max_tokens)
                 deadline = time.monotonic() + timeout
                 emitted = False

@@ -33,6 +33,7 @@ class AsrService(QObject):
         self._last_raw_text = ""
         self._last_replacements = []
         self._glossary = ()
+        self._protected_terms = ()
         self._disposed = False
         self._timer = QTimer(self)
         self._timer.setInterval(400)
@@ -49,7 +50,7 @@ class AsrService(QObject):
             self._state = state
             self.state_changed.emit(state)
 
-    def set_glossary(self, terms) -> None:
+    def set_glossary(self, terms, *, protected_terms=()) -> None:
         """Replace the caller's course glossary; an empty iterable disables it.
 
         Update an active transcript immediately. Finished/edited input is not
@@ -60,11 +61,12 @@ class AsrService(QObject):
         terms = tuple(terms)
         correct("", terms)  # Validate/prepare before changing the active glossary.
         self._glossary = terms
+        self._protected_terms = tuple(protected_terms)
         if not self._disposed and self._engine is not None:
             self._publish_partial(self._engine.snapshot().text)
 
     def _publish_partial(self, raw: str) -> None:
-        text, replacements = correct(raw, self._glossary)
+        text, replacements = correct(raw, self._glossary, protect_existing=False, protected_terms=self._protected_terms,lesson_match=True)
         if (raw, text, replacements) != (self._last_raw_text, self._last_text, self._last_replacements):
             self._last_raw_text, self._last_text = raw, text
             self._last_replacements = replacements
@@ -148,7 +150,7 @@ class AsrService(QObject):
             self._engine = self._future = None
             self._lifetime["engine"] = None
             self._set_state("idle")
-            text, replacements = correct(raw, self._glossary)
+            text, replacements = correct(raw, self._glossary, protect_existing=False, protected_terms=self._protected_terms,lesson_match=True)
             self._last_raw_text, self._last_text = raw, text
             self._last_replacements = replacements
             self.corrections_changed.emit(raw, list(replacements))
