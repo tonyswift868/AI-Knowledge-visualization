@@ -139,6 +139,8 @@ def teacher_request(ctx):
         '偏好领域：'+'、'.join(DOMAINS[d] for d in prefs['analogy_domains'])))
     system += ('\n【固定老师人设（只影响措辞）】\n' + prefs['persona'] +
                '\n【规则优先级】教学规则始终优先于人设；人设不得要求计分出题、判分、编造资料或改变教学流程。')
+    system+='\n【精炼与重点，适用于新旧知识点】每次回复用==重点句==标出1～3句最关键的结论，只标完整结论，不把整段都涂满、不标问句；加粗仍用于术语。普通回复约200～300字，开场或简单回应可更短，不为凑字重复。学生明确要求展开、详细点时可以长。不要大段搬原文，想看全文指向“原文出处”。不合要求只重写一次；仍长或标注不合要求，完整保留，任何时候不截断老师的话。大知识点的要点卡由程序提供，你不要重复输出长总结。'
+    task['presentation']=dict(highlight_sentences=[1,3],target_characters=[200,300],expanded=wants_expansion(task['user']))
     if ctx.get('concept'):
         system+='\n【新式知识点对话】当前大点分成若干小要点，只围绕本步的小要点讲义与对应原文。一个小要点可以聊多轮，没有固定轮数；学生理解一致就深入一层或换个角度，理解偏了或不知道就依据原文换个讲法，口误不纠缠。不能每个小要点都照“举例→提问→讲一段→结束”，也不要求每轮提问；开场可以提问、举例、对比、承接上一小要点，结合实际对话变化。不输出开场选项块。学生说懂了由宿主推进下一小要点，你不擅自结束大点或跳到后面。不判分、不记薄弱。收束任务只用一两句串起目标与已讲内容。'
         system+='\n【新式点的事实边界，优先于篇幅与例子偏好】notes 是这一步要讲到的事实，不是发散联想的种子；对应原文用来核实事实、补全限定与前提。结论、能力边界和前提只能来自它们。可以换说法，不得把“适合某场景”改成“只能做这些”，不得从存储比喻推断读取算法或性能保证。原文没给出的“只能、一定、完全不能、只有、就得”等绝对化断言不要写。优先用原文已有例子；自拟比喻须说明只对应哪一点、不代表其他能力，不能用它证明新结论。复用原文例子必须带上原文的假设和限定，不省略如“不同班级学号可重复、班级内学号唯一”这类前提。拿不准就停在讲义事实，不填模型常识。'
@@ -155,7 +157,7 @@ def teacher_request(ctx):
     if task['opening']:
         task['output_format']='先写中文开场问题，最后另起一段输出【选项】\n与这个问题配套的简短说法一\n与这个问题配套的简短说法二\n（可选第三种说法）\n【/选项】。实际填写2～3个回答选项，不照抄示例占位文字，不用“直接开始讲／我先说说我知道的”代替问题的回答；程序另提供直接开始讲。没有配套选项就不要问选哪个。这是不计分的开场，不是题卡。'
     messages.append(dict(role='user',content=ordered_payload('【本步任务】\n'+_dump(task),
-        ('director','user','opening','profile','current_points','output_format'))))
+        ('director','user','opening','profile','current_points','presentation','output_format'))))
     if ctx.get('request_page') is not None:
         messages=ctx['request_page'].assemble(system,messages,dialogue)
     _dump(messages)
@@ -196,7 +198,30 @@ _ABSOLUTES=('完全不能','只能','一定','只有','必须','绝对','必然'
 def _plain_teaching(text):
     text=strip_source_footer(text)
     text=''.join(text[a:b] for a,b in _prose_spans(text))
-    return re.sub(r'\s+',' ',_CITATION.sub('',text).replace('**','')).strip()
+    return re.sub(r'\s+',' ',_CITATION.sub('',text).replace('**','').replace('==','')).strip()
+
+
+def wants_expansion(text):
+    return bool(re.search(r'展开|详细|细讲|多讲|讲透|深入讲',text)) and not bool(re.search(r'不要展开|不用详细|别展开',text))
+
+
+def reply_metrics(text):
+    body=strip_source_footer(text).split('【选项】',1)[0]
+    visible=_CITATION.sub('',_SOURCE_LINK.sub('',body)).replace('==','').replace('**','').replace('`','')
+    prose=body
+    prose=re.sub(r'```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|\$\$[\s\S]*?\$\$|\$[^$\n]+\$', '',prose)
+    spans=re.findall(r'(?<![=\\])==(?!=)(.+?)(?<![=\\])==(?!=)',prose,re.S)
+    sentences=[s.strip() for span in spans for s in re.findall(r'[^。！？!?]+[。！？!?]?',span) if s.strip()]
+    return dict(characters=len(re.sub(r'\s+',' ',visible).strip()),highlight_sentences=len(sentences),highlight_spans=len(spans),
+                highlighted_question=any(s.endswith(('?','？')) for s in sentences))
+
+
+def validate_presentation(text,ctx):
+    metrics=reply_metrics(text)
+    if not 1<=metrics['highlight_sentences']<=3 or metrics['highlighted_question']:
+        raise AgentFormatError('presentation: 用==…==只标1～3句关键结论，不标问句，重新写一次，不硬改或截断原话')
+    if metrics['characters']>350 and not wants_expansion(ctx.get('user','')):
+        raise AgentFormatError('presentation: 普通回复约200～300字，精炼到结论及必要解释，重新写一次，不截断')
 
 
 def _sentences(text):

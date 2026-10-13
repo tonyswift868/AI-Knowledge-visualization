@@ -49,7 +49,7 @@ def test_classroom77_formal_handlers_date_opening_and_reopen(tmp_path,monkeypatc
     try:
         v=call('classroom.enter')
         assert v['today']['study_day']==handlers._local_study_day(e.services.settings.load()).isoformat()
-        e.gateway.replies=['我们先从面积与压强的区别开始。']
+        e.gateway.replies=['==压力相同时，面积越小压强越大。==我们先从面积与压强的区别开始。']
         v=call('classroom.next')
         assert v['step']=='opening'
         assert v['conversation']['options']==['直接开始讲','我先说说我知道的']

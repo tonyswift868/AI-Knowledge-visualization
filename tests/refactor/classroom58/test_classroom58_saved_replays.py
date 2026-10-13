@@ -68,7 +68,7 @@ def test_invalid_ids_removed_and_uncited_paragraphs_stay():
     assert result.speech=='第一段没有编号。\n\n第二段[c1]，错误编号。'
 
 
-def test_teacher_replay_never_retries_or_pastes_english_source():
+def test_teacher_replay_rewrites_only_for_highlights_never_pastes_source():
     data=fixture();ctx=data['teacher_context'];calls=[]
     def complete(*args,**kwargs):
         calls.append(args);return SimpleNamespace(text=data['teacher_replies'][min(len(calls)-1,1)])
@@ -78,7 +78,12 @@ def test_teacher_replay_never_retries_or_pastes_english_source():
     room._skeleton=lambda *a:(ctx['plan'],ctx['module'])
     room._prefs=lambda course:ctx['prefs'];room._dialogue=lambda *a:[]
     result=room._teacher(course,{},None,ctx['director'],[ctx['current_points'][0]['id']],opening=True)
-    assert len(calls)==1 and result.speech.startswith('刚才我们摸到了键盘')
+    # Preserve the genuine old replay. Missing citations remain acceptable,
+    # while the new 119 presentation rule requests exactly one rewrite.
+    assert len(calls)==2
+    assert 'presentation:' in calls[-1][1][-1]['content']
+    assert result.speech == data['teacher_replies'][1].split('【选项】')[0].strip()
+    assert all(source not in result.speech for source in ctx['excerpts'].values())
     # Repeated genuine format failure is surfaced, never replaced by raw source.
     room.services.gateway.complete=lambda *a,**kw:SimpleNamespace(text='Only English.')
     with pytest.raises(AgentFormatError):room._teacher(course,{},None,ctx['director'],[ctx['current_points'][0]['id']],opening=True)

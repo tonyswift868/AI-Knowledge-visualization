@@ -64,10 +64,12 @@ def test_concept114_multiround_wrong_confused_continue_and_point_credit(concept_
     assert '单位面积' in originals and 'c0' not in originals and '书单' not in originals
     assert '不要求每轮提问' in e.requests[-1][2]
     view=act(e,'next');assert view['concept']['number']==3
+    before=len(e.gateway.calls)
     view=act(e,'next');assert view['step']=='test_offer' and view['concept'] is None
     credits=e.store.records('credits',PLAN)
     assert len(credits)==1 and credits[0]['credit']['minutes']==15
-    assert task(e)['concept']['wrapping'] and '一两句' in task(e)['director']
+    assert len(e.gateway.calls)==before and view['messages'][-1]['kind']=='recap'
+    assert len(view['messages'][-1]['recap']['items'])==3
     assert not e.store.records('judgements',PLAN)
 
 

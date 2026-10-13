@@ -98,10 +98,12 @@ def test_speed116_long_wrap_rewrites_once_and_keeps_every_character(tmp_path,mon
         act(env,'next');act(env,'next');act(env,'next')
         text='我们把感知和输入串起来理解，'*20+'最后再认识UTF-8/16/32的区别。第二句完整保留。'
         env.gateway.replies=[text,text];before=len(env.gateway.calls)
+        course=env.room._course(PLAN);state=env.room._load(course);state['concept']['wrapping']=True
+        teaching=env.room._teacher(course,state,None,'用一两句收束。',['p0'])
+        assert teaching.speech==text
         view=act(env,'next')
         assert not view['failure'] and len(env.gateway.calls)==before+2
-        assert text in view['messages'][-1]['content']
-        assert 'UTF-8/16/32的区别。第二句完整保留。' in ''.join(env.stream)
+        assert view['messages'][-1]['kind']=='recap'
     finally:env.room.cancel_materials();env.store.close()
 
 def test_speed116_concept_continue_prefetch_is_next_subpoint_and_not_credit(tmp_path,monkeypatch):
@@ -131,11 +133,11 @@ def test_speed116_other_actions_with_list_arguments_discard_prefetch(e):
 def test_speed116_ready_prediction_does_not_replay_its_rejected_draft(e,monkeypatch):
     act(e,'next')
     def model(*args,**kw):
-        text='中文最终讲解。[c1]' if any('上一条回复格式不合格' in m['content'] for m in args[1]) else '我已经修改计划。'
+        text='==中文最终讲解。==[c1]' if any('上一条回复格式不合格' in m['content'] for m in args[1]) else '我已经修改计划。'
         kw['on_text'](text)
         return SimpleNamespace(text=text)
     monkeypatch.setattr(e.gateway,'complete',model)
     prepare(e);wait_jobs(e);e.stream.clear()
     view=act(e,'choose',0)
-    assert not view['failure'] and e.stream==['中文最终讲解。[c1]']
+    assert not view['failure'] and e.stream==['==中文最终讲解。==[c1]']
     assert '修改计划' not in ''.join(e.stream)

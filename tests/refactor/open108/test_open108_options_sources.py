@@ -9,7 +9,7 @@ from tests.refactor.conversation37.test_grounded_conversation37 import env, act,
 
 
 def test_open108_matching_options_and_one_click_skip_survive_reopen(env):
-    env.gateway.replies=['面积变小时，你觉得下面哪种说法最贴近？\n【选项】\n压强增大\n压强减小\n【/选项】']
+    env.gateway.replies=['==压强比较要看压力和面积。==\n面积变小时，你觉得下面哪种说法最贴近？\n【选项】\n压强增大\n压强减小\n【/选项】']
     view=act(env,'next')
     assert view['conversation']['options']==['压强增大','压强减小','直接开始讲']
     act(env,'leave')
@@ -34,8 +34,8 @@ def test_open108_task_requests_answers_instead_of_fixed_controls():
 
 
 def test_open108_copied_source_footer_displayed_once_and_never_sent_back(env):
-    env.gateway.replies=['先看面积。\n看原文：[〔1〕](mf-source:c0)\n看原文：[〔1〕](mf-source:c0)',
-                         '面积变小，压强增大。[c1]']
+    env.gateway.replies=['==先比较受力面积。==\n看原文：[〔1〕](mf-source:c0)\n看原文：[〔1〕](mf-source:c0)',
+                         '==面积变小，压强增大。==[c1]']
     captured=[];complete=env.gateway.complete
     def record(purpose,messages,**kwargs):
         captured.append(messages)

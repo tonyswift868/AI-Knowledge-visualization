@@ -87,8 +87,7 @@ class Classroom:
         if concept and state['step'] in ('teaching','closing'):
             point,sub,index=concept
             if index+1==len(point['subpoints']):
-                state.setdefault('concept',{})['wrapping']=True
-                return self._teacher_context(course,state,CONCEPT_WRAP,[point['id']])
+                return None # The deterministic recap needs no speculative model request.
             state['concept'].update(subpoint_id=point['subpoints'][index+1]['id'],rounds=0)
             return self._teacher_context(course,state,CONCEPT_START,[point['id']])
         if state['step'] in ('teaching','closing'):
@@ -347,7 +346,13 @@ class Classroom:
                 if cid in passages:
                     if cid not in cards_by_id:cards_by_id[cid]=course.passage_card(cid)
                     cards.append(cards_by_id[cid])
-            messages.append(dict(id=m['id'],role=m['role'],kind=m.get('kind','text'),content=m['content'],sources=cards))
+            message=dict(id=m['id'],role=m['role'],kind=m.get('kind','text'),content=m['content'],sources=cards)
+            if m.get('kind')=='recap':
+                try:
+                    recap=json.loads(m['content'])
+                    if isinstance(recap,dict) and isinstance(recap.get('title'),str) and isinstance(recap.get('items'),list):message['recap']=recap
+                except (ValueError,TypeError):pass
+            messages.append(message)
         question = {k:q.get(k, []) if k=='options' else q.get(k) for k in ('id','kind','stem','options','source')} if q else None
         if question and q['kind']=='objective':
             graded=question_bank.grading_question(q);question['question_type']=graded['kind']
@@ -500,9 +505,7 @@ class Classroom:
             point,sub,index=concept
             if index+1<len(point['subpoints']):
                 return self._concept_begin(course,state,ctx,index+1)
-            state.setdefault('concept',dict(point_id=point['id'],subpoint_id=sub['id'],rounds=0))['wrapping']=True
-            teaching=self._teacher(course,state,ctx,CONCEPT_WRAP,[point['id']])
-            self._deliver(course,state,teaching)
+            self._recap(course,state,point)
             state.pop('concept',None)
             self._point_done(course,state)
             self._publish_today(course,state,ctx)
@@ -535,6 +538,25 @@ class Classroom:
     def _opening_director(course,state):
         chapter=f"先用一句话说明这一章要解决什么问题：{course.module(state['module_id'])['title']}。" if state['index']==0 else ''
         return chapter+'用一个生活化问题开头，给2～3个不计分的可点选项，也允许打字。先不要讲完整结论。'
+
+    def _recap(self, course, state, point):
+        items=[]
+        for sub in point['subpoints']:
+            candidates=[];notes=[]
+            for note in sub.get('notes',[]):
+                text=re.sub(r'\[([^\]]+)\]\([^)]*\)',r'\1',note['text']).replace('**','').replace('`','')
+                text=re.sub(r'^\s*(?:[-*#]+\s+)?', '',text).strip()
+                notes.append((text,note['chunk_id']))
+                if re.match(r'^\s*(?:#{1,6}\s+|\*\*\d+[.、])',note['text']):continue
+                sentences=re.findall(r'[^。！？!?\n]+[。！？!?]',text)
+                candidates.extend((s.strip(),note['chunk_id']) for s in sentences if s.strip())
+            # Prefer a concise complete source sentence, preserving note order.
+            short=next((row for row in candidates if len(row[0])<=80),None)
+            chosen=short or (candidates[0] if candidates else None)
+            if not chosen:
+                chosen=notes[0] if notes else ('（该小要点暂无讲义）',None)
+            items.append(dict(title=sub['title'],text=chosen[0],chunk_id=chosen[1]))
+        self._say(course,state,json.dumps(dict(title=point['title'],items=items),ensure_ascii=False),role='assistant',kind='recap')
 
     def skip_point(self, course, state, ctx):
         if state.get('pending') or state.get('direct_review') or state['step'] not in ('teach','opening','teaching','closing'):
@@ -1113,6 +1135,7 @@ class Classroom:
             if cancel and cancel.is_set():raise ModelCancelled()
             try:
                 teaching=teacher_agent.parse_teaching(result.text,tctx)
+                teacher_agent.validate_presentation(teaching.speech,tctx)
                 cache_request=original_request if concept else request
                 if visible!=teaching.speech:emit(RESET);emit(teaching.speech)
                 return teaching,cache_request,teaching.speech if concept else result.text
@@ -1120,9 +1143,10 @@ class Classroom:
                 emit(RESET)
                 if attempt==0:
                     request=(request[0],request[1]+([dict(role='assistant',content=result.text)] if concept else [])+[dict(role='user',content=f'上一条回复格式不合格：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])
-                elif concept and str(exc).startswith('concept'):
+                elif str(exc).startswith(('concept','presentation')):
                     kept=teacher_agent.concept_fallback(result.text,tctx)
-                    kept_ctx=dict(tctx,concept=dict(tctx['concept'],rewrite_exhausted=True))
+                    kept_ctx=dict(tctx)
+                    if concept:kept_ctx['concept']=dict(concept,rewrite_exhausted=True)
                     teaching=teacher_agent.parse_teaching(kept,kept_ctx)
                     emit(teaching.speech)
                     return teaching,original_request,teaching.speech
@@ -1351,6 +1375,10 @@ class Classroom:
         for m in course.store.messages(course.plan_id, self._channel(state)):
             role = "user" if m["role"] == "user" else "assistant"
             text = m["content"] if m["role"] != "system" else f"（系统）{m['content']}"
+            if m.get('kind')=='recap':
+                try:
+                    recap=json.loads(text);text='要点卡：'+recap['title']+'\n'+'\n'.join(i['title']+'：'+i['text'] for i in recap['items'])
+                except (ValueError,KeyError,TypeError):pass
             rows.append({"role": role, "text": text})
         return dialogue_tail(rows, max_rows=DIALOGUE_ROWS, max_chars=DIALOGUE_CHARS)
 

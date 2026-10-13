@@ -16,7 +16,7 @@ let generation=0
 async function page(mode:string){show(mode);useApp.setState({planId:'d'.repeat(32),settings:{reduce_motion:true,theme:'sakura'} as never});root.render(<main style={{height:'100%',padding:18}} key={++generation}>{mode==='chat'?<Chat/>:mode==='plan'?<NewPlan/>:<Classroom/>}</main>);await until(()=>!!document.querySelector('.class-scroll,.chat-scroll'));await pause(300)}
 function aligned(e:Element){const scroll=document.querySelector('.class-scroll,.chat-scroll')!;const delta=e.getBoundingClientRect().top-scroll.getBoundingClientRect().top;if(Math.abs(delta-12)>3)throw Error('not aligned '+delta+' '+e.getAttribute('data-turn-key'))}
 declare global {interface Window { run103:()=>Promise<any>; show103:(mode:string)=>Promise<void> }}
-async function direct(){document.querySelector<HTMLButtonElement>('[role="switch"]')!.click();await pause();button('跳过该模块');await pause();button('确认，进入直接考');await pause()}
+async function direct(){document.querySelector<HTMLButtonElement>('[aria-label="切换为跳过该模块"]')!.click();await pause();button('跳过该模块');await pause();button('确认，进入直接考');await pause()}
 window.show103=async mode=>{await page(mode);if(mode==='direct'){await direct();for(let i=0;i<3;i++){fill('我按自己的理解说一句。');await pause();button('发送');await pause(100);if(i<2){button('看完原文，下一句');await pause(100)}}}else{fill('这一轮学生的话');await pause();button('发送');await pause(900)}}
 window.run103=async()=>{
  const checks:string[]=[]
