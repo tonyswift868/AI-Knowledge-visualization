@@ -64,3 +64,5 @@
 @media (prefers-reduced-motion: reduce) { .mf-voice-bars i { animation: none; } .mf-voice-mic { transition: none; } }
 @media (max-width: 1050px) { .mf-voice-preview-grid { grid-template-columns: 1fr; } .mf-voice-preview { padding: 24px; } }
 @media (max-width: 600px) { .mf-voice-card { padding: 20px; } .mf-voice-composer-actions { flex-direction: column; } }
+.mf-voice-correction { max-width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.mf-voice-correction svg { flex-shrink: 0; }

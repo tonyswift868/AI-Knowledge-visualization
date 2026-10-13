@@ -71,7 +71,9 @@ export function Classroom() {
   const teacher = React.useRef<TeacherStageHandle>(null)
   const voice = useTeacherVoice(teacher, { autoWarm: reading })
   const terms = React.useMemo(() => (room?.points ?? []).map((p) => p.title).slice(0, 60), [room?.points])
-  const mic = useVoiceInput({ value: text, onChange: setText, terms, scopeKey: room ? `${planId}:${room.module.id}` : undefined, disabled: !!busy })
+  const mic = useVoiceInput({ value: text, onChange: setText, terms,
+    context: room && planId ? {plan_id:planId,module_id:room.module.id,point_id:room.points.find(p=>p.current)?.id} : undefined,
+    scopeKey: room ? `${planId}:${room.module.id}` : undefined, disabled: !!busy })
   const abort = React.useRef<AbortController | null>(null)
   const acting = React.useRef(false)
   const lessonRefresh = React.useRef<(() => void) | null>(null)

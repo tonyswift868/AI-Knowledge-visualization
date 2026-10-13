@@ -75,7 +75,8 @@ export function MicButton({ voice, compact = false }: { voice: VoiceInputControl
       {recording && <span className="mf-voice-live" role="status"><span className="mf-voice-bars" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <i key={i} />)}</span>
         {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")} · 正在聆听</span>}
       {(recording || finishing || preparing) && <button type="button" className="mf-voice-quiet" onClick={voice.cancel} aria-label="取消录音"><X size={16} />取消</button>}
-      {voice.canUndo && <button type="button" className="mf-voice-quiet mf-voice-correction" onClick={voice.undoCorrections}><Undo2 size={15} />已按课程术语修正 · 撤销</button>}
+      {voice.canUndo && <button type="button" className="mf-voice-quiet mf-voice-correction" onClick={voice.undoCorrections}
+        aria-label="换回原识别文字" title="点击换回原文"><Undo2 size={15} />已按本课用词纠正，原识别：{voice.originalText}</button>}
     </div>
     {!voice.supported && <p className="mf-voice-hint">请在 MentorFlow 桌面端使用语音输入。</p>}
     {voice.error && !voice.downloadOpen && <div className="mf-voice-error" role="alert">{voice.error.message}

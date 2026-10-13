@@ -35,6 +35,7 @@ export type VoiceInputOptions = {
   onChange: (value: string) => void
   /** Terms are captured at start. Unmount or change scopeKey when changing course/input. */
   terms?: readonly string[]
+  context?: { plan_id: string; module_id: string; point_id?: string }
   disabled?: boolean
   scopeKey?: string
   transport?: VoiceTransport
@@ -44,7 +45,7 @@ export type VoiceInputOptions = {
  * Whole partials replace only this recording's appended text. Manual edits
  * cancel recognition; late results cannot overwrite the learner's new text.
  */
-export function useVoiceInput({ value, onChange, terms = [], disabled = false, scopeKey, transport = desktop }: VoiceInputOptions) {
+export function useVoiceInput({ value, onChange, terms = [], context, disabled = false, scopeKey, transport = desktop }: VoiceInputOptions) {
   const [state, setState] = React.useState<VoiceState>("idle")
   const [model, setModel] = React.useState<ModelStatus | null>(null)
   const [error, setError] = React.useState<VoiceError | null>(null)
@@ -52,14 +53,15 @@ export function useVoiceInput({ value, onChange, terms = [], disabled = false, s
   const [segments, setSegments] = React.useState<VoiceSegment[]>([])
   const [replacements, setReplacements] = React.useState<Replacement[]>([])
   const [undone, setUndone] = React.useState(false)
+  const [originalText, setOriginalText] = React.useState("")
   const [notice, setNotice] = React.useState("")
   const alive = React.useRef(false)
   const epoch = React.useRef(0)
   const session = React.useRef<Dictation | null>(null)
   const downloadJob = React.useRef<string | null>(null)
   const busy = React.useRef(false)
-  const latest = React.useRef({ value, onChange, terms, disabled })
-  latest.current = { value, onChange, terms, disabled }
+  const latest = React.useRef({ value, onChange, terms, context, disabled })
+  latest.current = { value, onChange, terms, context, disabled }
   const supported = transport.available()
 
   const cancelRecording = React.useCallback(() => {
@@ -77,6 +79,7 @@ export function useVoiceInput({ value, onChange, terms = [], disabled = false, s
     const current = session.current
     if (!alive.current || !current?.active || data.session_id !== current.id) return
     current.raw = data.raw_text
+    setOriginalText(data.raw_text)
     current.expected = append(current.base, current.undone ? data.raw_text : data.text)
     latest.current.onChange(current.expected)
     setReplacements(data.replacements)
@@ -163,10 +166,13 @@ export function useVoiceInput({ value, onChange, terms = [], disabled = false, s
       if (!alive.current || epoch.current !== run) return
       setModel(info)
       if (info.state !== "ready") { busy.current = false; setState("idle"); setDownloadOpen(true); return }
+      const lesson = latest.current.context ? await transport.call<{terms:string[];question:string;protected?:string[]}>("voice.context", latest.current.context)
+        : {terms:[...latest.current.terms],question:"",protected:[]}
+      if (!alive.current || epoch.current !== run) return
       const id = token()
       session.current = { id, base: latest.current.value, expected: latest.current.value, active: true, raw: "", undone: false }
-      setSegments([]); setReplacements([]); setUndone(false); setState("starting")
-      await transport.call("voice.start", { session_id: id, terms: [...latest.current.terms] })
+      setSegments([]); setReplacements([]); setOriginalText(""); setUndone(false); setState("starting")
+      await transport.call("voice.start", { session_id: id, terms: lesson.terms, question: lesson.question,protected:lesson.protected??[] })
     } catch (reason) { if (alive.current && epoch.current === run) report(reason) }
   }
 
@@ -218,7 +224,7 @@ export function useVoiceInput({ value, onChange, terms = [], disabled = false, s
     setUndone(true)
   }
 
-  return { state, model, error, segments, replacements, notice, downloadOpen, supported, disabled,
+  return { state, model, error, segments, replacements, originalText, notice, downloadOpen, supported, disabled,
     ownsDownload: !!downloadJob.current, canUndo: replacements.length > 0 && !undone,
     start, stop, cancel: cancelRecording, download, cancelDownload, undoCorrections,
     openDownload: () => setDownloadOpen(true), closeDownload: () => {

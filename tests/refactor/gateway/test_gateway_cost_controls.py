@@ -69,9 +69,9 @@ def test_deepseek_wire_and_journal_show_actual_parameters(tmp_path,monkeypatch,e
 
 
 def test_all_fixed_educational_efforts_high_except_three():
-    assert {p for p,v in PURPOSE_EFFORT.items() if v=='none'}=={'sufficiency','plan_intent'}
+    assert {p for p,v in PURPOSE_EFFORT.items() if v=='none'}=={'sufficiency','plan_intent','asr_correction'}
     assert PURPOSE_EFFORT['profile'] is None  # real replay quality fallback
-    assert all(v=='high' for p,v in PURPOSE_EFFORT.items() if p not in {'profile','sufficiency','plan_intent'})
+    assert all(v=='high' for p,v in PURPOSE_EFFORT.items() if p not in {'profile','sufficiency','plan_intent','asr_correction'})
 
 
 @pytest.mark.parametrize('code',['MODEL_TIMEOUT','MODEL_CONNECTION_FAILED','MODEL_CANCELLED'])
