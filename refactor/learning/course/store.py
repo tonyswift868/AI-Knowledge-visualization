@@ -347,7 +347,7 @@ class CourseStore:
     def _rows(self, entity, plan):
         return [json.loads(row[0]) for row in self._db.execute(f'SELECT payload FROM {entity} WHERE plan_key=? ORDER BY id', (plan,))]
 
-    def _validate(self, entity, plan, payload):
+    def _validate(self, entity, plan, payload, *, references=True):
         _id(payload['id'])
         if entity == 'classroom_positions':
             if payload['id'] != plan or not isinstance(payload.get('state'), dict) or not isinstance(payload.get('device_id'), str):
@@ -440,7 +440,9 @@ class CourseStore:
         elif entity == 'question_bank':
             from .question_bank import validate_question
             try:
-                validate_question(payload)
+                # subpoint_id is stored here; the bank's legacy shape validator
+                # need not know this optional structural reference.
+                validate_question({k: v for k, v in payload.items() if k != 'subpoint_id'})
                 _id(payload['module_id'])
                 for point_id in payload['point_ids']: _id(point_id)
             except (ValueError, KeyError, TypeError):
@@ -461,11 +463,80 @@ class CourseStore:
                     or not set(payload['wrong_points']) <= set(payload['point_ids'])
                     or bool(payload['wrong_points']) == payload['correct']):
                 raise StoreError('INVALID_PRACTICE')
+        self._validate_concept_fields(entity, plan, payload, references=references)
         _json(payload)
+
+    def _validate_concept_fields(self, entity, plan, payload, *, references=True):
+        """Optional concept_v1 JSON fields; old rows retain their old contract.
+
+        Remote children can precede parents. Shape is checked on ingestion;
+        cross-record references are checked before projection, like point_sources.
+        """
+        def text(value):
+            if not isinstance(value, str) or not value.strip(): raise StoreError('INVALID_CONCEPT')
+        def chunks(value):
+            if (not isinstance(value, list) or any(not isinstance(cid, str) for cid in value)
+                    or len(set(value)) != len(value)):
+                raise StoreError('INVALID_CONCEPT_CHUNKS')
+            for cid in value:
+                _id(cid)
+                if references: self._get('source_chunks', plan, cid)
+        if entity == 'points':
+            if 'replaced_by' in payload and (not isinstance(payload['replaced_by'], list)
+                    or any(not isinstance(pid, str) or not pid for pid in payload['replaced_by'])
+                    or len(set(payload['replaced_by'])) != len(payload['replaced_by'])
+                    or not isinstance(payload.get('replacement_operation'), str)):
+                raise StoreError('INVALID_REPLACEMENT')
+            if 'structure' in payload and payload['structure'] != 'concept_v1':
+                raise StoreError('INVALID_CONCEPT')
+            if 'structure' in payload: text(payload.get('title'))
+            if 'goal' in payload:
+                text(payload['goal'])
+                if payload['goal'] != payload['summary']: raise StoreError('INVALID_CONCEPT_GOAL')
+            if 'subpoints' in payload:
+                subs = payload['subpoints']
+                if not isinstance(subs, list): raise StoreError('INVALID_SUBPOINTS')
+                ids, union, minutes = set(), [], 0
+                for sub in subs:
+                    if not isinstance(sub, dict): raise StoreError('INVALID_SUBPOINTS')
+                    sid = sub.get('id')
+                    if (not isinstance(sid, str) or not re.fullmatch(re.escape(payload['id']) + r'-s[1-9][0-9]*', sid)
+                            or sid in ids): raise StoreError('INVALID_SUBPOINT_ID')
+                    ids.add(sid); text(sub.get('title')); _number(sub.get('minutes'), True)
+                    minutes += sub['minutes']; chunks(sub.get('chunk_ids'))
+                    union.extend(cid for cid in sub['chunk_ids'] if cid not in union)
+                    if not isinstance(sub.get('notes'), list): raise StoreError('INVALID_NOTES')
+                    for note in sub['notes']:
+                        if not isinstance(note, dict): raise StoreError('INVALID_NOTES')
+                        text(note.get('text'))
+                        if note.get('chunk_id') not in sub['chunk_ids']: raise StoreError('INVALID_NOTE_CHUNK')
+                if minutes != payload['minutes'] or union != payload['chunk_ids']:
+                    raise StoreError('INVALID_CONCEPT_TOTAL')
+        elif entity == 'modules' and 'navigation' in payload:
+            if not isinstance(payload['navigation'], list): raise StoreError('INVALID_NAVIGATION')
+            seen = set()
+            for nav in payload['navigation']:
+                if not isinstance(nav, dict): raise StoreError('INVALID_NAVIGATION')
+                _id(nav.get('id')); text(nav.get('title')); text(nav.get('reason'))
+                if nav['id'] in seen: raise StoreError('INVALID_NAVIGATION')
+                seen.add(nav['id']); chunks(nav.get('chunk_ids'))
+        elif entity == 'question_bank' and 'subpoint_id' in payload:
+            _id(payload['subpoint_id'])
+            if references and payload.get('role') != 'retired':
+                parents = [self._get('points', plan, pid) for pid in payload['point_ids']]
+                if not any(p['module_id'] == payload['module_id'] and any(
+                        s['id'] == payload['subpoint_id'] for s in p.get('subpoints', [])) for p in parents):
+                    raise StoreError('INVALID_QUESTION_SUBPOINT')
 
     def _materialize(self, entity, plan, payload, revision):
         payload = {key: value for key, value in payload.items() if key != _FIELD_VERSIONS}
         identifier = payload['id']
+        if entity == 'points' and 'replaced_by' in payload:
+            # Reversible inactivity, not a server tombstone (which cannot be
+            # resurrected). Keep the original payload in _records for rollback.
+            self._db.execute('DELETE FROM point_sources WHERE plan_key=? AND point_id=?', (plan, identifier))
+            self._db.execute('DELETE FROM points WHERE plan_key=? AND id=?', (plan, identifier))
+            return
         if entity == 'plans':
             self._db.execute('INSERT INTO plans VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,revision=excluded.revision',
                              (identifier, _json(payload), revision))
@@ -1165,7 +1236,7 @@ class CourseStore:
                 plan['window'], plan['total_minutes'] = event['window'], event['total_minutes']
                 return event['id']
         ledger = self._load_ledger(plan)
-        ledger.replan(today, new_window, total_minutes, preserve_past=cause == 'point_minutes')
+        ledger.replan(today, new_window, total_minutes, preserve_past=cause in ('point_minutes', 'restructure'))
         event = dict(op='replan', operation_seq=self._op_seq(plan['id']),
                      today=today.isoformat(), window=_window_json(new_window), total_minutes=total_minutes,
                      cause=cause, reason=reason)
@@ -1346,7 +1417,7 @@ class CourseStore:
                 key = payload.get('point_minutes_key')
                 if key and payload['id'] != estimate_events.get(key): continue
                 ledger.replan(_day(payload['today']), _window(payload['window']), payload['total_minutes'],
-                              preserve_past=payload.get('cause') == 'point_minutes')
+                              preserve_past=payload.get('cause') in ('point_minutes', 'restructure'))
             elif op == 'confirm': ledger.confirm(payload['unit_id'])
             elif op == 'revoke': ledger.revoke(payload['unit_id'])
             elif op == 'release': ledger.release_unused(payload['minutes'])
@@ -1940,6 +2011,12 @@ class CourseStore:
                 if entity == 'points':
                     missing |= any(not self._db.execute('SELECT 1 FROM source_chunks WHERE plan_key=? AND id=?', (plan, cid)).fetchone() for cid in payload['chunk_ids'])
                 if missing: deferred.append(row); continue
+                try:
+                    self._validate_concept_fields(entity, plan, payload)
+                except StoreError as exc:
+                    if exc.code == 'NOT_FOUND':
+                        deferred.append(row); continue
+                    raise
                 self._materialize(entity, plan, payload, row['local_revision'])
             if len(deferred) == len(pending): break
             pending = deferred
@@ -1966,7 +2043,7 @@ class CourseStore:
             old = self._db.execute('SELECT * FROM _records WHERE entity=? AND entity_id=?', (record.entity, record.entity_id)).fetchone()
             if record.entity in PROGRESS:
                 if record.deleted: continue  # Never erase even an already-synced event.
-                self._validate(record.entity, record.plan_key, payload)
+                self._validate(record.entity, record.plan_key, payload, references=False)
                 if record.entity in ('judgements', 'attempt_closed'):
                     other = 'attempt_closed' if record.entity == 'judgements' else 'judgements'
                     if self._db.execute('SELECT 1 FROM _records WHERE entity=? AND entity_id=?', (other, record.entity_id)).fetchone():
@@ -1983,7 +2060,7 @@ class CourseStore:
             if not record.deleted:
                 # Validate the actual remote record before choosing local fields;
                 # otherwise a malformed remote edit could be silently hidden.
-                self._validate(record.entity, record.plan_key, payload)
+                self._validate(record.entity, record.plan_key, payload, references=False)
             repair_answered = False
             uses_union = None
             if (record.entity == 'question_bank' and not record.deleted and old is not None and not old['deleted']
@@ -2037,7 +2114,7 @@ class CourseStore:
                 repair_answered = True
             if not deleted and record.entity == 'question_bank':
                 payload = self._retire_legacy_question(payload)
-            if not deleted: self._validate(record.entity, record.plan_key, payload)
+            if not deleted: self._validate(record.entity, record.plan_key, payload, references=False)
             if record.entity == 'plans' and payload['id'] != record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
             self._db.execute('''INSERT INTO _records VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(entity,entity_id)
                 DO UPDATE SET payload=excluded.payload,deleted=excluded.deleted,local_revision=excluded.local_revision,
