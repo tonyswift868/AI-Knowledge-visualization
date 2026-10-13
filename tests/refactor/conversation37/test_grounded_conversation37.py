@@ -155,13 +155,13 @@ def test_invalid_citation_removed_without_retry_or_literal_fallback(env):
     message=v['messages'][-1]
     assert '中文讲解。' in message['content'] and 'c99' not in message['content']
     assert PARAGRAPH not in message['content'] and message['sources']
-    assert env.gateway.calls==['teacher'] and RESET not in env.stream
+    assert env.gateway.calls==['teacher'] and 'c99' not in ''.join(env.stream)
 
 def test_valid_reply_displays_after_format_check(env,monkeypatch):
     def generate(*args,**kw):
         text='压力与面积有关。[c1]\n\n面积变小会使压强增大。[c1]'
         kw['on_text'](text[:19]);kw['on_text'](text[19:])
-        assert not env.stream,'Unvalidated source labels must not be displayed'
+        assert env.stream and '[c' not in ''.join(env.stream),'Prose streams before return; source aliases stay hidden'
         return SimpleNamespace(text=text)
     act(env,'next');env.stream.clear();monkeypatch.setattr(env.gateway,'complete',generate)
     v=act(env,'choose',0)

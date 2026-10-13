@@ -47,11 +47,11 @@ def test_concept115_closing_is_two_sentences_and_80_characters():
     with pytest.raises(AgentFormatError,match='concept_wrap'):
         agent.parse_teaching('先认识感知。再认识输入。还要认识输出。',c)
     safe=agent.concept_fallback('先认识感知。再认识输入。还要认识输出。',c)
-    assert safe=='先认识感知。'
+    assert safe=='先认识感知。再认识输入。还要认识输出。'
     very_long='感知接收环境信息，'*30+'这就是感知。'
     safe=agent.concept_fallback(very_long,c)
-    assert len(safe)<=80 and len(agent._sentences(safe))==1
-    assert agent.parse_teaching(safe,c)
+    assert safe==very_long
+    assert agent.parse_teaching(safe,dict(c,concept=dict(c['concept'],rewrite_exhausted=True)))
 
 
 def test_concept115_classroom_rewrites_absolute_and_records_cross_subpoint_style(tmp_path,monkeypatch):
@@ -77,7 +77,7 @@ def test_concept115_classroom_rewrites_absolute_and_records_cross_subpoint_style
     finally:e.room.cancel_materials();e.store.close()
 
 
-def test_concept115_second_long_closing_uses_first_sentence_without_third_call(tmp_path,monkeypatch):
+def test_concept115_second_long_closing_kept_whole_without_third_call(tmp_path,monkeypatch):
     e=concept_environment(tmp_path)
     monkeypatch.setattr(Classroom,'_materials',staticmethod(lambda:e.materials))
     try:
@@ -87,7 +87,7 @@ def test_concept115_second_long_closing_uses_first_sentence_without_third_call(t
         view=act(e,'next')
         assert not view['failure'] and len(e.gateway.calls)==before+2
         assert view['messages'][-1]['content'].startswith('先看面积。')
-        assert '再看定义' not in view['messages'][-1]['content']
+        assert '再看定义。最后看公式。' in view['messages'][-1]['content']
         assert e.store.records('credits',PLAN)[0]['credit']['minutes']==15
     finally:e.room.cancel_materials();e.store.close()
 

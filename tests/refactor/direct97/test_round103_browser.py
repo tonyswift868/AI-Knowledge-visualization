@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import socket
 import sys
 import time
 
@@ -30,8 +31,10 @@ def host(directory):
 def test_round103_actual_pages_anchor_answers_short_stream_and_upward_scroll(tmp_path):
     from tests.refactor.direct97.test_direct97_web import build
     build(tmp_path,'round103_browser.tsx','round103_bridge.ts')
-    env=dict(os.environ,QT_QPA_PLATFORM='offscreen',QTWEBENGINE_REMOTE_DEBUGGING='127.0.0.1:18863',
-        QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu --remote-allow-origins=*',MF_CDP_ENDPOINT='http://127.0.0.1:18863',
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1',0));port=probe.getsockname()[1]
+    env=dict(os.environ,QT_QPA_PLATFORM='offscreen',QTWEBENGINE_REMOTE_DEBUGGING=f'127.0.0.1:{port}',
+        QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu --remote-allow-origins=*',MF_CDP_ENDPOINT=f'http://127.0.0.1:{port}',
         MF_UAT_ROOT=str(tmp_path),PYTHONDONTWRITEBYTECODE='1')
     def cdp(action,selector='',value=''):
         p=subprocess.run([NODE,str(CDP),action,selector,value],env=env,capture_output=True,text=True,encoding='utf8',timeout=45)

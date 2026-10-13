@@ -29,6 +29,7 @@ type Room = {
   points: Point[]; step: string; question: BankQuestion | null; messages: Msg[]; can_skip: boolean; red: string[]
   more_modules: boolean; check: { passed: number; total: number } | null
   conversation?: Conversation | null
+  teaching_version?: string | null
   concept?: Concept | null
   direct_review?: ReviewEntry & { total: number; entries?: ReviewEntry[] } | null
   preparation?: Preparation | null
@@ -65,6 +66,9 @@ export function Classroom() {
   const [source, setSource] = React.useState<Source | null>(null)
   const [askMode, setAskMode] = React.useState(false)
   const [pointsExpanded, setPointsExpanded] = React.useState(false)
+  const [skipModule, setSkipModule] = React.useState(false)
+  const [skipConfirm, setSkipConfirm] = React.useState(false)
+  const cancelledPrefetch = React.useRef<string | null>(null)
   const [recallAttempt, setRecallAttempt] = React.useState(0)
   const input = React.useRef<HTMLTextAreaElement>(null)
   const generation = React.useRef(0)
@@ -72,7 +76,7 @@ export function Classroom() {
   const teacher = React.useRef<TeacherStageHandle>(null)
   const voice = useTeacherVoice(teacher, { autoWarm: reading })
   const terms = React.useMemo(() => (room?.points ?? []).map((p) => p.title).slice(0, 60), [room?.points])
-  const mic = useVoiceInput({ value: text, onChange: setText, terms,
+  const mic = useVoiceInput({ value: text, onChange: value => {cancelPrefetch();setText(value)}, terms,
     context: room && planId ? {plan_id:planId,module_id:room.module.id,point_id:room.points.find(p=>p.current)?.id} : undefined,
     scopeKey: room ? `${planId}:${room.module.id}` : undefined, disabled: !!busy })
   const abort = React.useRef<AbortController | null>(null)
@@ -84,7 +88,7 @@ export function Classroom() {
   const sourceCards = React.useRef(new Map<string, OriginalCardsHandle>())
   const spoken = React.useRef<string | null>(null)
   const streamedMessages = React.useRef(new Set<string>())
-  const voiceTurn = React.useRef<{ reader: ReturnType<typeof createTeacherVoiceStream> | null; streamed: boolean; cancelled: boolean } | null>(null)
+  const voiceTurn = React.useRef<{ reader: ReturnType<typeof createTeacherVoiceStream> | null; streamed: boolean; cancelled: boolean; pendingReset: boolean; raw: string } | null>(null)
   const stopReading = React.useCallback(() => {
     const turn = voiceTurn.current
     if (turn) { turn.cancelled = true; if (turn.reader) { void turn.reader.stop(); return } }
@@ -94,6 +98,21 @@ export function Classroom() {
   React.useEffect(() => { if (askMode) input.current?.focus() }, [askMode])
   React.useEffect(() => { setAskMode(false) }, [room?.question?.id, room?.module.id])
   React.useEffect(() => { setPointsExpanded(false) }, [room?.module.id])
+  const currentPoint = room?.points.find(p=>p.current)?.id
+  React.useEffect(() => { setSkipModule(false); setSkipConfirm(false) }, [planId, currentPoint])
+  React.useEffect(() => {
+    if (!planId || !room?.teaching_version) return
+    const version = room.teaching_version
+    cancelledPrefetch.current = null
+    void call('classroom.prefetch', { plan_id: planId, version }).catch(()=>undefined)
+    return () => { void call('classroom.cancel_prefetch', {plan_id:planId,version}).catch(()=>undefined) }
+  }, [planId,room?.teaching_version])
+  const cancelPrefetch = () => {
+    const version=room?.teaching_version
+    if (!version || cancelledPrefetch.current===version) return
+    cancelledPrefetch.current=version
+    void call('classroom.cancel_prefetch', {plan_id:planId,version}).catch(()=>undefined)
+  }
 
   const act = React.useCallback(async (method: string, params: Record<string, unknown> = {}, label = "老师在想…") => {
     // A ref locks immediately, including two clicks before React has rendered.
@@ -104,7 +123,7 @@ export function Classroom() {
     const before = new Set(room?.messages.map((message) => message.id) ?? [])
     stopReading()
     const turn = { reader: reading && voice.availability?.ready ? createTeacherVoiceStream(voice) : null,
-      streamed: false, cancelled: false }
+      streamed: false, cancelled: false, pendingReset: false, raw: '' }
     voiceTurn.current = turn
     abort.current = new AbortController()
     setBusy(label)
@@ -134,7 +153,19 @@ export function Classroom() {
             return
           }
           setStream((s) => (d === RESET ? "" : (s ?? "") + d))
-          if (turn.reader && !turn.cancelled) { turn.reader.append(d); if (d !== RESET) turn.streamed = true }
+          if (turn.reader && !turn.cancelled) {
+            // A parsed citation replacement changes display markup, not words:
+            // do not stop and read the same spoken reply from the beginning.
+            if (d === RESET) turn.pendingReset = true
+            else {
+              const sameWords = turn.pendingReset && live(d) === live(turn.raw)
+              if (turn.pendingReset && !sameWords) turn.reader.append(RESET)
+              if (turn.pendingReset) turn.raw = ''
+              turn.pendingReset = false; turn.raw += d
+              if (!sameWords) turn.reader.append(d)
+              turn.streamed = true
+            }
+          }
         },
       })
       if (ownGeneration !== generation.current) { turn.cancelled = true; void turn.reader?.stop(); return false }
@@ -142,7 +173,10 @@ export function Classroom() {
         const streamed = r.messages.find((m) => !before.has(m.id) && m.role === "assistant")?.id
         streamedMessages.current = new Set(r.messages.filter((m) => before.has(m.id) || turn.cancelled || m.id === streamed).map((m) => m.id))
       }
-      if (!turn.cancelled) void turn.reader?.end()
+      if (!turn.cancelled) {
+        if (turn.pendingReset) turn.reader?.append(RESET)
+        void turn.reader?.end()
+      }
       setRoom(r)
       return !r.failure
     } catch (e) {
@@ -384,11 +418,18 @@ export function Classroom() {
         </div>
 
         {room.can_skip && <div className="plan-actions">
-          <Button disabled={!!busy} onClick={() => act("classroom.test", { kind: "skip_test" }, "正在准备直接考…")}><SkipForward />这个模块我都会了，直接考</Button>
+          <Button disabled={!!busy || (!skipModule && !currentPoint)} onClick={() => { if (skipModule) { cancelPrefetch(); setSkipConfirm(true) } else void act('classroom.skip_point',{},'正在进入下一个知识点…') }}><SkipForward />{skipModule ? '跳过该模块' : '跳过该知识点'}</Button>
+          <button type="button" className="btn" role="switch" aria-label="切换为跳过该模块" aria-checked={skipModule}
+            disabled={!!busy} onClick={()=>{cancelPrefetch();setSkipModule(v=>!v)}}
+            style={{display:'inline-flex',alignItems:'center',gap:6,padding:'6px 10px'}}>
+            <span aria-hidden style={{width:34,height:20,borderRadius:12,background:skipModule?'var(--accent-2)':'var(--line)',display:'inline-flex',padding:2}}>
+              <span style={{width:16,height:16,borderRadius:'50%',background:'var(--text)',transform:skipModule?'translateX(14px)':undefined}} />
+            </span><span className="small">模块</span>
+          </button>
         </div>}
         <Actions room={room} act={act} busy={!!busy} />
         {!room.direct_review && <ConversationActions step={room.step} conversation={room.conversation} busy={!!busy} act={act}
-          ask={() => { setAskMode(!!q); input.current?.focus() }} />}
+          ask={() => { cancelPrefetch(); setAskMode(!!q); input.current?.focus() }} />}
         {room.explanation && <div className="answer-explanation">
           {room.explanation.open && <><div>{markdown(room.explanation.text)}</div><small className="muted">
             {room.explanation.label} · {room.explanation.source.title} · {room.explanation.source.locator}</small>
@@ -400,7 +441,7 @@ export function Classroom() {
           <textarea ref={input} className="input" rows={1} value={text} aria-label="课堂输入"
                     disabled={(q?.kind === "recall" && !askMode) || !!room.direct_review?.answered}
                     placeholder={room.direct_review?.answered ? "看完原文后，选择下一句或是否跳过" : room.direct_review ? "随口回答，不记分" : askMode ? "想问什么？答完回到刚才" : q?.kind === "recall" ? "作答请用上方问答卡片；提问可点“我想问…”" : (q?.kind === "calc" || q?.question_type === "calc") ? "填写计算数值，可带单位" : q ? "输入作答，或点上方选项；提问可点“我想问…”" : "回答老师或提问，都可以直接说"}
-                    onChange={(e) => setText(e.target.value)}
+                    onChange={(e) => {cancelPrefetch();setText(e.target.value)}}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.repeat) {
                       e.preventDefault()
                       void send()
@@ -437,6 +478,11 @@ export function Classroom() {
       </React.Suspense>
 
       {wrongAnswers && <WrongAnswers planId={planId!} onClose={() => setWrongAnswers(false)} />}
+      {skipConfirm && <section className="class-source" role="dialog" aria-modal="true" aria-label="确认跳过该模块">
+        <h3>跳过该模块？</h3><p>有题会进入整个模块的直接考；没有题会随口聊三个点，再由你决定是否跳过。</p>
+        <div className="row"><Button kind="primary" onClick={()=>{setSkipConfirm(false);void act('classroom.test',{kind:'skip_test'},'正在准备直接考…')}}>确认，进入直接考</Button>
+        <Button kind="ghost" onClick={()=>setSkipConfirm(false)}>取消</Button></div>
+      </section>}
       {source && (
         <div className="class-source fade-in" role="dialog">
           <div className="row between">
