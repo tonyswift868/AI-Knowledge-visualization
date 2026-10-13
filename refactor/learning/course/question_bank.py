@@ -149,12 +149,19 @@ def contains_original(quote, text):
 
 def retire_legacy_question(row):
     if row.get('role') == 'retired': return row
+    if row.get('subpoint_id') and checked_question(row): return row
     if row.get('kind') in ('objective', 'recall') and row.get('origin') == 'found': return row
     return dict(row, role='retired', retirement=dict(version=8, preparation_reset=False, previous_role=row.get('role', 'bank'),
         reason='旧格式题已退出考核，历史作答保留；新题只从资料原文准备。'))
 
 
 def validate_question(row):
+    if 'subpoint_id' in row:
+        sid = row['subpoint_id']
+        ids = row.get('point_ids', [])
+        if (not isinstance(sid, str) or not isinstance(ids,list) or len(ids) != 1 or not isinstance(ids[0],str)
+                or not re.fullmatch(re.escape(ids[0]) + r'-s[1-9][0-9]*', sid)):
+            raise ValueError('小要点编号必须属于题目的知识点')
     if row.get('role') == 'retired':
         # Historical schemas (including type/angle instead of kind) are kept
         # verbatim. They are evidence, never a grading/selection input.
@@ -170,7 +177,7 @@ def validate_question(row):
     # Previously saved B-line questions remain bank questions; no invented
     # quick questions are inferred from their old usage history.
     keys = set(row) - {'_field_versions', 'role', 'source_level', 'source_type', 'target',
-        'cloze_subject', 'contrast_evidence', 'distractor_check', 'question_origin'}
+        'cloze_subject', 'contrast_evidence', 'distractor_check', 'question_origin', 'subpoint_id'}
     if 'question_origin' in row and row['question_origin'] not in ('material','web'):
         raise ValueError('原题来源分类无效')
     if 'cloze_subject' in row and (not isinstance(row['cloze_subject'],str) or not row['cloze_subject'].strip()):
@@ -247,7 +254,7 @@ def validate_question(row):
 def _validate_material_question(row):
     """Batch-70 admission schema only; selection is owned by assessment."""
     required = FIELDS | {'options', 'reference', 'key_points', 'objective_kind'}
-    keys = set(row) - {'_field_versions', 'role'}
+    keys = set(row) - {'_field_versions', 'role', 'subpoint_id'}
     if keys != required: raise ValueError('资料原题字段不符合契约')
     if row.get('origin') != 'found' or row.get('role', 'bank') != 'bank': raise ValueError('只接收资料自带题')
     for key in ('id', 'module_id', 'stem'):
@@ -312,13 +319,24 @@ def select_question(rows, point_id, purpose, exclude_ids=()):
 def assessment_question(row):
     """Only material-provided questions participate in question-based assessment."""
     return (row.get('kind') in ('objective','recall','choice','multi','fill','calc') and row.get('role','bank')=='bank'
-            and row.get('origin')!='cloze' and row.get('question_origin')!='web'
+            and (row.get('origin')!='cloze' or bool(row.get('subpoint_id')) and checked_question(row))
+            and row.get('question_origin')!='web'
             and (row.get('kind') in ('objective','recall') or answer_compare.can_grade(row))
             and row.get('distractor_check',{}).get('state')!='rejected')
 
 
 def assessment_questions(rows, module_id=None):
-    return [q for q in rows if assessment_question(q) and (module_id is None or q['module_id']==module_id)]
+    eligible = [q for q in rows if assessment_question(q) and (module_id is None or q['module_id']==module_id)]
+    # A concept has one assessed question per subpoint, never a two-question cap
+    # per parent point. Historical question-based assessments are unchanged.
+    seen = set(); result = []
+    for q in eligible:
+        key = (q['module_id'], q.get('subpoint_id'))
+        if q.get('subpoint_id'):
+            if key in seen: continue
+            seen.add(key)
+        result.append(q)
+    return result
 
 
 def grading_question(row):
