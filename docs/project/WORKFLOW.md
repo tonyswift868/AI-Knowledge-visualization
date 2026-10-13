@@ -68,13 +68,13 @@
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 115-MF06 进行中（按原文目录重切，2026-10-14 发出） | tools |
-| MF-07 | 118-MF07 已起草，待用户转发（改截止日保住欠账、重排同时改截止日） | library |
+| MF-07 | 120-MF07 已起草，待用户转发（报告最高欠账回放，[BUG-89]） | library |
 
 ## 待派队列
 
 - 第一百一十四批四份已合入（be709040，网页已编进 dist）。
 - 115-MF04 已合入（90577e31，[BUG-87] 已关闭）。115-MF06（按原文目录重切，第四轮）：进行中。
-- 117-MF02 已合入（2ce351a3，组件未接线）；117-MF07 已合入（673394c6，截止日只能预演）。118-MF07（改截止日保住欠账、重排同时改截止日）：已起草，待转发。
+- 117-MF02 已合入（2ce351a3，组件未接线）；117-MF07 已合入（673394c6，截止日只能预演）。118-MF07 已合入（8d41ea5b，[BUG-88] 已修）。120-MF07（报告最高欠账回放 [BUG-89]）：已起草，待转发。
 - 116-MF03 已合入（cf79b127；loading86 测试冲突取 115-MF04 的版本）。119-MF03（接 117 组件、老师标荧光、回复两三百字、要点卡）：已起草，待转发。
 - 之后：用户看网页与整份预演点头 → 架构师用 scripts/plan_restructure.py 在用户数据上执行（用户软件先关、自动备份）→ 新建计划流程接上新方法 → 发版前总验收 → 发 2.0.15。
 - 待用户定：[BUG-85] 第三轮换 Whisper。
@@ -443,6 +443,47 @@ D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用�
 完成标准：第 4 条测试通过；第 5 条核对完成且截图齐全；最后全量一次。花费不超过 ¥2。
 回执：写到 D:\MentorFlow\.local\receipts\119-MF03.md。表格列：基线 ／ 提交 ／ 提示改法（荧光、长度）／ 要点卡怎么取结论 ／ 接线与开关 ／ 新增测试 ／ 真实核对（荧光句数、字数分布、要点卡质量、花费）／ 截图路径 ／ 全量 ／ 本地最终占用。
 给用户只回一行“119-MF03 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\focus119\report.md。
+~~~
+
+## 第一百二十批任务原文（2026-10-14，基线 8d41ea5b）
+
+### [120-MF07] library｜报告最高欠账回放
+
+~~~text
+【MentorFlow 第一百二十批｜MF-07（工位 library）｜报告里的“最高欠账”回放仍用旧重排规则，峰值算少（实测账本 14、报告只记 10）：让报告回放和账本用同一套规则（BUG-89）】
+
+现成项目与许可证（第一节）
+  - 不引新库。报告回放 course/report.py 改为复用 store/ledger 里按重排原因选择 preserve_past 的同一段逻辑（你 118 改过的那处），不另写一份规则。
+
+开工同步
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard 8d41ea5b         # 主线：已合入你的 118
+提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号；不调用真实模型。
+D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件。不要启动、结束或重启用户的软件和源代码版。
+E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\report120\，用完即删，只留 report.md。
+遇到选择自己决定，回执写明理由，不停下来问。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次。花费 ¥0。
+同时在跑：MF-03 改课堂（classroom.py、teacher_agent.py、前端），MF-06 改 planner_agents.py；你不碰它们。
+
+背景（CURRENT_STATE [BUG-89] [BUG-88] [BUG-83]）：
+  - 你在 118 发现：course/report.py 第 90 行左右的独立峰值回放，replan 时直接调 ledger.replan(today, window, total)，不看重排原因。
+  - 所以 restructure、point_minutes、用户改日期这几种保住欠账的重排，在报告回放里仍按旧规则把欠账移走。
+  - 实测活跃账本峰值曾为 14，报告只记 10。当前欠账和每日目标是对的，只是报告里的“最高欠账”偏小。
+
+要做
+  1. 报告回放按事件里记录的重排原因选择与账本相同的规则，复用同一个函数或判断，不在 report.py 里另写一份。
+  2. 测试（文件名带 120）：
+     - 有保住欠账的重排时，报告最高欠账与活跃账本一致（复现 14 对 10 的例子）；
+     - 旧的普通重排事件按原规则；
+     - 已有报告测试照过。
+  3. 用用户计划的只读副本对比修前修后报告里的最高欠账与提前量，贴进回执。
+  4. 只改 course/report.py（以及为复用而必须调整的 store.py/ledger.py 的一两处）和 tests/refactor/。
+
+完成标准：第 2 条测试通过；第 3 条有数字；最后全量一次。
+回执：写到 D:\MentorFlow\.local\receipts\120-MF07.md。表格列：基线 ／ 提交 ／ 改法 ／ 副本修前修后数字 ／ 新增测试 ／ 全量 ／ 本地最终占用。
+给用户只回一行“120-MF07 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\report120\report.md。
 ~~~
 
 ## 回执格式
