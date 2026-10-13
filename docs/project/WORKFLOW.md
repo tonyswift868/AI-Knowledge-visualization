@@ -44,7 +44,7 @@
 - **界面构建**：PATH 加 `/d/MentorFlow/.local/node`，`node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 不进仓库。
 - **写脚本**：含 Windows 路径或反斜杠的内容不要用 bash heredoc 或 python -c（会被吃掉，BUG-10），写成文件再运行。
 - **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，mentorflow-admin，sudo -n）。线上后端 mentorflow-slim-backend:MF-76（2026-10-12；切换与回滚脚本 /opt/mentorflow/state/mf76/switch.sh：无参数切换、check 只查配置、rollback 回到 MF-75；上一版 mf75 目录保留）；入口 nginx 容器 mentorflow-e1-preview-edge-1（配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf）；更新与下载目录 /opt/mentorflow/update-static/e108/app/；资料白名单 /opt/mentorflow/state/mentorflow-e1-preview/catalog/。 2026-10-10 起两个 docker 网络设了 ip_range（BUG-45）：以后用 Compose 操作这些容器，命令末尾必须追加 -f /opt/mentorflow/state/bug45-20261010/network45.override.yml。
-- **自动等回执（用户 2026-10-14 定）**：派出任务后，架构师在后台挂 `.local/tmp/wait_receipts.sh <任务号…>`（每 30 秒查一次 .local/receipts，新回执出现或更新就结束并叫醒架构师），收到就直接读回执、审查合入、清理、更新文档，再挂下一次；不用等用户转告。
+- **自动等回执（用户 2026-10-14 定）**：只挂一个后台等待：`.local/tmp/receipt_watch.sh wait`（每 30 秒查整个 .local/receipts，和 .local/tmp/receipts.seen 比，有新的或改过的回执就列出并结束），收到就直接读回执、审查合入、清理、更新文档，处理完用 `receipt_watch.sh ack <任务号>` 记为已处理，再挂一次 wait；不用等用户转告，不按任务分别挂多个。
 - **磁盘（用户 2026-10-10 定）**：测试与临时产物在 .local/test-tmp/ 下；冒烟测试、构建、中间文件用完就自动删，不留着等以后分类。员工删除被系统拦住时，架构师合入后直接删（只留 report.md 和截图），不用再问用户。
 
 ## 当前基线
@@ -64,7 +64,7 @@
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 116-MF03 进行中（2026-10-14 发出，附“收束不截断”补充） | classroom |
+| MF-03 | 119-MF03 已起草，待用户转发（荧光、回复长度、要点卡、接线） | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 115-MF06 进行中（按原文目录重切，2026-10-14 发出） | tools |
@@ -74,9 +74,8 @@
 
 - 第一百一十四批四份已合入（be709040，网页已编进 dist）。
 - 115-MF04 已合入（90577e31，[BUG-87] 已关闭）。115-MF06（按原文目录重切，第四轮）：进行中。
-- 115-MF03 已合入（453647c5，部分完成）。116-MF03（提速、跳过按钮、收束）进行中；附补充：第 5 条改为“收束超长重写一次后原样保留，不截断”。
 - 117-MF02 已合入（2ce351a3，组件未接线）；117-MF07 已合入（673394c6，截止日只能预演）。118-MF07（改截止日保住欠账、重排同时改截止日）：已起草，待转发。
-- MF-03 下一份（等 116 回来）：把 117-MF02 的组件接进课堂，老师按 ==…== 标重点、回复两三百字、大点讲完发 recap 要点卡（[TEACH-06]）。
+- 116-MF03 已合入（cf79b127；loading86 测试冲突取 115-MF04 的版本）。119-MF03（接 117 组件、老师标荧光、回复两三百字、要点卡）：已起草，待转发。
 - 之后：用户看网页与整份预演点头 → 架构师用 scripts/plan_restructure.py 在用户数据上执行（用户软件先关、自动备份）→ 新建计划流程接上新方法 → 发版前总验收 → 发 2.0.15。
 - 待用户定：[BUG-85] 第三轮换 Whisper。
 
@@ -370,6 +369,80 @@ E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\Mentor
 完成标准：第 1 条有结论和证据；第 3 条能执行；第 4 条测试通过；第 5 条副本上执行前后数字一致可解释；最后全量一次。
 回执：写到 D:\MentorFlow\.local\receipts\118-MF07.md。表格列：基线 ／ 提交 ／ 正常改截止日会不会抹掉欠账（证据、原因）／ 修法 ／ 重排加改截止日怎么做 ／ 副本上执行前后数字 ／ 新增测试 ／ 全量 ／ 本地最终占用。
 给用户只回一行“118-MF07 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\window118\report.md。
+~~~
+
+## 第一百一十九批任务原文（2026-10-14，基线 cf79b127）
+
+### [119-MF03] classroom｜课堂精炼接线
+
+~~~text
+【MentorFlow 第一百一十九批｜MF-03（工位 classroom）｜课堂精炼：老师用荧光标重点、回复控制在两三百字、大知识点讲完发要点卡；把 117-MF02 的三个组件接进课堂，加“只看重点”开关（TEACH-06）】
+
+现成项目与许可证（第一节）
+  - 不引新库。接线用 117-MF02 已合入的组件：ClassroomMarkdown 的 focus、messageKey，以及 RecapCard。接线说明见 tests/refactor/focus117/README117.md。
+  - 老师提示与解析在现有 course/teacher_agent.py、app/classroom.py 上改，沿用你 116 的边生成边显示和提前生成。
+
+开工同步
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard cf79b127         # 主线：已合入你的 116 和 117-MF02 的组件
+提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
+D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用户的软件和源代码版。E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。
+产物在 D:\MentorFlow\.local\test-tmp\focus119\，中间产物用完即删，只留 report.md 和截图；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（原来的五个不稳定测试已修好，全量失败按真失败处理；跑浏览器测试前把 D:\MentorFlow\.local\node 加进 PATH，basetemp 的父目录先建好）。
+花费：替身离线做完；最后一次真实核对上限 ¥2。真实模式参数同以往（--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 不读、不显示、不保存）。
+同时在跑：
+  - MF-07 改账本重排（ledger.py、store.py 的重排部分、restructure.py、plan_restructure.py，可能动 plan_flow.py 改日期那处）；
+  - MF-06 改 planner_agents.py。
+  - 你不碰这些文件。
+
+背景（CURRENT_STATE [TEACH-06]“精炼与重点”）：
+  - 用户要的是精炼，不是大段搬原文让人逐句读；有的用户赶时间只看重点。
+  - 用户定（2026-10-14）：
+    - 荧光笔标出每次回复的 1～3 句关键结论，加粗仍留给术语；
+    - 课堂加“只看重点”开关，打开后没标荧光的文字收起或变淡；
+    - 平时一次回复两三百字左右，学生要求展开时可以长；原文放在“原文出处”里，不大段搬；
+    - 大知识点讲完用要点卡（每个小要点一行结论，摘自讲义）代替长总结；
+    - 任何时候都不截断老师的话。
+  - 117-MF02 已做好组件（合入 2ce351a3）：
+    - 正文 ==重点句== 渲染为荧光；
+    - ClassroomMarkdown 的 focus 模式会把无荧光段落收成“…（点开）”，问题句保留；
+    - RecapCard 渲染 kind=recap 的消息 {title, items:[{title, text, chunk_id}]}。
+
+要做
+  1. 老师提示（新旧两种点都适用）：
+     - 每次回复用 ==…== 标出 1～3 句最关键的结论，只标结论，不整段标；术语照旧加粗；
+     - 平时一次回复控制在两三百字左右，学生说“展开讲讲”“详细点”这类话时可以长；
+     - 不大段引用原文，要看原文的指向“原文出处”。
+     - 超长时按现有方式请老师重写一次，重写后仍长就原样保留，不截断。
+     - 荧光句数不对（0 句或超过 3 句）同样只请重写一次，不硬改文字。
+  2. 要点卡（只对新式点）：
+     - 一个大知识点讲完时发一条 kind=recap 的消息：title 是大点标题，每个小要点一项，结论取自它的讲义 notes，chunk_id 带上；
+     - 一项一行：从讲义里选最能概括这个小要点的一条完整句子，不截断半句；讲义都很长时，可以让模型用原文词语写一句 ≤40 字的结论，并标出处。用哪种自己定，写理由。
+     - 老师自己的收束这时改成一句话或省掉，不和要点卡重复。
+     - 要点卡同步、重开后还在，旧消息没有它不受影响。
+  3. 接线：
+     - 课堂所有老师消息用 ClassroomMarkdown，按说明传 focus 和 messageKey（边生成边显示时保持稳定）；
+     - kind=recap 的消息渲染 RecapCard，“原文”按钮接现有原文出处打开方式；
+     - 课堂顶部加“只看重点”开关，默认关，状态记在本机设置里（换页面、重开后保持）。
+  4. 测试（文件名带 119）：
+     - 提示要求荧光与长度；
+     - 0 句或超过 3 句荧光会请重写一次、不硬改；
+     - 超长重写一次后原样保留；
+     - 新式点讲完发 recap、结论都是完整句；
+     - 旧式点不发 recap；
+     - 只看重点开关切换与保持；
+     - recap 的“原文”能打开；
+     - 114～116 的课堂测试和旧式点课堂测试照过。
+     - 前端用现有浏览器测试写法。
+  5. 真实核对（≤¥2）：用约定样例的两个大点各讲一遍。统计每次回复的荧光句数、字数分布；看要点卡每项是否是完整句、是否忠于讲义；截图打开和关闭“只看重点”两种样子（亮色、暗色窄窗）。
+  6. 只改 app/classroom.py、course/teacher_agent.py、课堂前端相关文件和 tests/refactor/。编一次网页确认能编过，不提交 dist。
+
+完成标准：第 4 条测试通过；第 5 条核对完成且截图齐全；最后全量一次。花费不超过 ¥2。
+回执：写到 D:\MentorFlow\.local\receipts\119-MF03.md。表格列：基线 ／ 提交 ／ 提示改法（荧光、长度）／ 要点卡怎么取结论 ／ 接线与开关 ／ 新增测试 ／ 真实核对（荧光句数、字数分布、要点卡质量、花费）／ 截图路径 ／ 全量 ／ 本地最终占用。
+给用户只回一行“119-MF03 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\focus119\report.md。
 ~~~
 
 ## 回执格式
