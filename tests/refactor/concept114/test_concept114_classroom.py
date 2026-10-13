@@ -44,7 +44,7 @@ def concept_env(tmp_path,monkeypatch):
 
 
 def task(e):
-    return json.loads(e.requests[-1][1][-1]['content'].split('\n',1)[1])
+    return json.loads(next(m['content'].split('\n',1)[1] for m in reversed(e.requests[-1][1]) if m['content'].startswith('【本步任务】')))
 
 
 def test_concept114_multiround_wrong_confused_continue_and_point_credit(concept_env):

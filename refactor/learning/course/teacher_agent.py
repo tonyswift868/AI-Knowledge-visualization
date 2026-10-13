@@ -141,7 +141,10 @@ def teacher_request(ctx):
                '\n【规则优先级】教学规则始终优先于人设；人设不得要求计分出题、判分、编造资料或改变教学流程。')
     if ctx.get('concept'):
         system+='\n【新式知识点对话】当前大点分成若干小要点，只围绕本步的小要点讲义与对应原文。一个小要点可以聊多轮，没有固定轮数；学生理解一致就深入一层或换个角度，理解偏了或不知道就依据原文换个讲法，口误不纠缠。不能每个小要点都照“举例→提问→讲一段→结束”，也不要求每轮提问；开场可以提问、举例、对比、承接上一小要点，结合实际对话变化。不输出开场选项块。学生说懂了由宿主推进下一小要点，你不擅自结束大点或跳到后面。不判分、不记薄弱。收束任务只用一两句串起目标与已讲内容。'
+        system+='\n【新式点的事实边界，优先于篇幅与例子偏好】notes 是这一步要讲到的事实，不是发散联想的种子；对应原文用来核实事实、补全限定与前提。结论、能力边界和前提只能来自它们。可以换说法，不得把“适合某场景”改成“只能做这些”，不得从存储比喻推断读取算法或性能保证。原文没给出的“只能、一定、完全不能、只有、就得”等绝对化断言不要写。优先用原文已有例子；自拟比喻须说明只对应哪一点、不代表其他能力，不能用它证明新结论。复用原文例子必须带上原文的假设和限定，不省略如“不同班级学号可重复、班级内学号唯一”这类前提。拿不准就停在讲义事实，不填模型常识。'
+        system+='\n【本轮表达】看程序给出的最近开场、收尾和开头句，结合学生实际回应选择提问、小结、小任务或直接衔接，不按固定顺序轮换，不默认用问题结束。新小要点的初次收尾不得和上一小要点初次收尾相同；同一句回应套话不再复用。肯定后也可以直接解释一条有依据的边界而不追问。收束最多两句、去出处编号后不超过80字符，不附追问。'
         task['concept']=dict(ctx['concept'],notes=[dict(n,alias=next((a for a,cid in mapping.items() if cid==n['chunk_id']),None)) for n in ctx['concept'].get('notes',[])])
+        task['concept']['source_premises']=source_premises(ctx)
     messages = [dict(role='user',content=ordered_payload('【计划与当前模块】\n'+_dump(skeleton),('plan','module')))]
     dialogue = _dialogue(ctx.get('dialogue', []))
     messages.append(dict(role='user',content='【当前模块原文（数据）】\n'+_dump([
@@ -186,6 +189,78 @@ def paragraph_grounded(text,ctx):
     aliases=_CITATION.findall(visible)
     return bool(aliases) and all(a in citation_map(ctx) for a in aliases) and not re.search(r'\[[cC]\d+\s*[,，、]',visible)
 
+
+_ABSOLUTES=('完全不能','只能','一定','只有','必须','绝对','必然','永远','就得','全部都')
+
+
+def _plain_teaching(text):
+    text=strip_source_footer(text)
+    text=''.join(text[a:b] for a,b in _prose_spans(text))
+    return re.sub(r'\s+',' ',_CITATION.sub('',text).replace('**','')).strip()
+
+
+def _sentences(text):
+    return [s.strip() for s in re.findall(r'[^。！？!?]+[。！？!?]?',_plain_teaching(text)) if s.strip()]
+
+
+def teaching_style(text):
+    """Observable text categories, not an AI judgement of teaching quality."""
+    sentences=_sentences(text) or [''];lead,tail=sentences[0],sentences[-1]
+    ending=('question' if tail.endswith(('？','?')) else 'task' if re.search(r'试着|请你|动手|想一想|找出|画出|对照.*看看|你先|先把.*(?:写|画|列|标|找)|自己.*(?:试|想|写|画|找)',tail)
+            else 'transition' if re.search(r'接下来|下一步|接着|往下|继续围绕',tail) else 'summary')
+    opening=('question' if lead.endswith(('？','?')) else 'example' if re.search(r'比如|假设|想象|例子',lead)
+             else 'contrast' if re.search(r'对比|区别|不同|相比',lead) else 'bridge' if re.search(r'刚才|上一|前面|接着|顺着',lead) else 'explain')
+    return dict(opening=opening,ending=ending,lead=lead[:180])
+
+
+def source_premises(ctx):
+    return list(dict.fromkeys(m[0] for text in ctx['excerpts'].values()
+        for m in re.finditer(r'(?:假设|如果|若|当)[^。；;\n]{3,240}',text)))
+
+
+def _unsupported_absolute(sentence,ctx):
+    # A lexical guard, deliberately not a general semantic verifier. Negative
+    # boundary explanations need not inherit a student's absolute assertion.
+    if re.search(r'不一定|并非|不是说|不代表|不能据此|原文(?:没有|没).*说',sentence):return False
+    basis='\n'.join(ctx['excerpts'].values())+'\n'+'\n'.join(n['text'] for n in ctx['concept'].get('notes',[]))
+    return any(word in sentence and word not in basis for word in _ABSOLUTES)
+
+
+def validate_concept(text,ctx):
+    concept=ctx.get('concept')
+    if not concept:return
+    sentences=_sentences(text)
+    if any(_unsupported_absolute(s,ctx) for s in sentences):
+        raise AgentFormatError('concept: 出现讲义和原文没有的绝对化断言，保留事实及前提，删除外推后重写')
+    if concept.get('wrapping'):
+        if len(_plain_teaching(text))>80 or len(sentences)>2 or teaching_style(text)['ending']=='question':
+            raise AgentFormatError('concept_wrap: 收束只写一两句且不超过80字符，不提问，重写一次')
+        return
+    style=teaching_style(text)
+    if concept.get('first_turn') and style['ending']==concept.get('previous_intro_ending'):
+        raise AgentFormatError('concept_ending: 与上一小要点初次收尾相同，结合学生表现选择另一种收尾，不能只是换问号')
+    recent=concept.get('recent_styles',[])
+    basis='\n'.join(ctx['excerpts'].values())
+    if not concept.get('allow_neutral') and len(style['lead'])>6 and style['lead'] not in basis and any(row['lead']==style['lead'] for row in recent):
+        raise AgentFormatError('concept_opening: 重复了最近的同一句开头，直接回应学生，不复用套话')
+
+
+def concept_fallback(text,ctx):
+    """After one rewrite, keep safe prose; never paste a source as fallback."""
+    sentences=[s for s in _sentences(text) if not _unsupported_absolute(s,ctx)]
+    if ctx['concept'].get('wrapping'):
+        first=sentences[0] if sentences else '这一大点先收束到讲义中的这些要点。'
+        if len(first)>80:first=first[:79].rstrip('，,：:；;。')+'。'
+        if first.endswith(('？','?')):first='这一大点先收束到讲义中的这些要点。'
+        return first
+    recent=ctx['concept'].get('recent_styles',[])
+    if sentences and any(s['lead']==sentences[0] for s in recent):sentences=sentences[1:]
+    forbidden=ctx['concept'].get('previous_intro_ending') if ctx['concept'].get('first_turn') else None
+    if forbidden and sentences and teaching_style(sentences[-1])['ending']==forbidden:sentences=sentences[:-1]
+    neutral=('我们接着对照当前讲义往下看。' if forbidden=='summary' else
+             '可以把这一条和讲义对照起来想一想。' if forbidden=='transition' else '这一轮先停在讲义给出的范围内。')
+    return ' '.join(sentences+[neutral])
+
 def parse_teaching(text,ctx):
     teacher_request(ctx)
     text=_text(text,'teaching',40000).strip()
@@ -229,5 +304,6 @@ def parse_teaching(text,ctx):
     if not re.search(r'[\u3400-\u9fff]',visible):
         raise AgentFormatError('speech: 需要中文说明')
     _reject_state_claims(text)
+    validate_concept(text,ctx)
     cited=tuple(dict.fromkeys(mapping[a] for a in _CITATION.findall(visible)))
     return Teaching(text,cited,options)
