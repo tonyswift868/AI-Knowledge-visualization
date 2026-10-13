@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 开头三节和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-14）：线上 2.0.14，服务器 MF-76。已合入待发：[BUG-84]、[BUG-85] 第一轮、[BUG-86] 第一百一十四批（换入工具、按小要点出题、课堂多轮，只对新式点生效）。115-MF03、115-MF04 已起草待转发；115-MF06 等用户点头。全量里的五个不稳定测试已修好（[BUG-87]），以后全量失败按真失败处理。
+- **现在在做的事**（2026-10-14）：线上 2.0.14，服务器 MF-76。已合入待发：[BUG-84]、[BUG-85] 第一轮、[BUG-86] 第一百一十四～一百一十九批（换入工具、按目录切点 440→144、按小要点出题、课堂多轮与提速、高亮与回顾卡、改日期保住欠账 [BUG-88]），新式部分只对新式点生效。120-MF07、121-MF06 已起草待转发。全量里的五个不稳定测试已修好（[BUG-87]），以后全量失败按真失败处理。
 
 ## 协作方式
 
@@ -72,380 +72,12 @@
 
 ## 待派队列
 
-- 第一百一十四批四份已合入（be709040，网页已编进 dist）。
-- 115-MF04 已合入（90577e31）；115-MF06 已合入（d5d6bf84，440→144 大点）。121-MF06（新建计划接按目录切、讲义改到模块准备时）：已起草，待转发。
-- 117-MF02 已合入（2ce351a3，组件未接线）；117-MF07 已合入（673394c6，截止日只能预演）。118-MF07 已合入（8d41ea5b，[BUG-88] 已修）。120-MF07（报告最高欠账回放 [BUG-89]）：已起草，待转发。
-- 116-MF03 已合入（cf79b127；loading86 测试冲突取 115-MF04 的版本）。119-MF03 已合入（15afe435）。
-- 之后：119-MF03、120-MF07、121-MF06 合入 → 发版前总验收 → 用户说可以推送 → 发 2.0.15 → 用户更新 → 关掉软件、用最新数据重新预演给用户看 → 用户点头 → 架构师用 scripts/plan_restructure.py --apply --end-date 2026-10-22 换入（自动备份、可回滚）。
+- 第一百一十四～一百一十九批全部已合入（最后一份 119-MF03，15afe435；主线 efbb0670）。
+- 120-MF07（报告最高欠账回放 [BUG-89]）、121-MF06（新建计划接按目录切、讲义改到模块准备时）：已起草，待转发，基线 efbb0670，两份互不冲突可并行。
+- 之后：120-MF07、121-MF06 合入 → 发版前总验收 → 用户说可以推送 → 发 2.0.15 → 用户更新 → 关掉软件、用最新数据重新预演给用户看 → 用户点头 → 架构师用 scripts/plan_restructure.py --apply --end-date 2026-10-22 换入（自动备份、可回滚）。
 - 待用户定：[BUG-85] 第三轮换 Whisper。
 
-## 第一百一十五批任务原文（2026-10-14，基线 be709040）
-
-### [115-MF03]
-
-~~~text
-【MentorFlow 第一百一十五批｜MF-03（工位 classroom）｜新式知识点讲课第二轮：不越出讲义和原文下结论、例子不说过头、不漏原文前提、结尾不总是提问、收束只一两句（BUG-86）】
-
-现成项目与许可证（第一节）
-  - 不引新库，在你 114 的 concept 分支上改老师提示与解析（course/teacher_agent.py、app/classroom.py）。规则沿用 [DIR-01]：老师可以打比方，但比方不能产生原文没有的结论；不加 AI 核对老师这一层（用户定过）。
-
-开工同步
-  cd D:\MentorFlow-office\classroom\repo
-  git status                        # 应干净；不干净先停下说明
-  git checkout office/classroom
-  git reset --hard be709040         # 主线：第一百一十四批四份已合入（新式点只在 structure=concept_v1 时生效，用户计划里还没有）
-提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
-禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
-D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件、不改用户进度。不要启动、结束或重启用户的软件和源代码版。
-E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\class115\，中间产物用完即删，只留 report.md 和必要的小文件；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限或要动用户数据才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次。
-花费：替身离线做完；最后一次真实核对上限 ¥2，真实模式参数同以往（--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 不读、不显示、不保存）。
-同时在跑：MF-04（runtime）修不稳定测试，只改测试文件和测试工具，不碰你的范围。
-
-背景（CURRENT_STATE [BUG-86] [TEACH-06] [DIR-01]；你的上一轮报告 D:\MentorFlow\.local\test-tmp\class114\report.md 与 review114.json）：
-  - 114-MF03 已合入 3aca0463：新式点按小要点多轮讲、小要点进度、讲义、资料导航都能用，位置与时长正确。
-  - 真实核对发现的讲课质量问题（原话、原文和调用号见你的 review114.json）：
-    1. 越出原文下结论：Redis 被外推成“通道只有凭键取值、不能复杂查询”；
-    2. 例子说过头：列存的例子过度绝对化；
-    3. 漏了原文前提：完全函数依赖的例子漏了“班级内学号唯一”的前提；
-    4. 9 个小要点的第一次讲解都以提问收尾，若干回应套路重复，用户原话嫌“太公式”；
-    5. 第一个大点的收束超过一两句。
-
-要做
-  1. 提示与上下文：
-     - 每个小要点把它的讲义 notes 当作“这一步要讲到的事实”，原文段落当依据；
-     - 明确：结论、限定和前提只能来自讲义和原文；打比方时要说清比方的边界；原文写的前提（如“班级内”）讲例子时必须带上；
-     - 原文没有的绝对化说法（只能、一定、完全不能）不能出现。
-  2. 去公式化：
-     - 每轮结尾可以是一个问题、一句小结、一个让学生动手想的小任务或直接接下一步，按上一轮学生的表现选；
-     - 同一个大点内不能连续两个小要点用同一种收尾；
-     - 回应学生时不复用同一句套话。
-     - 用程序记录最近用过的收尾方式和开场方式交给提示，不靠固定轮换顺序。
-  3. 收束：大点讲完的收束限制在一两句（例如 ≤80 字），超出时要求重写一次，再超就截到第一句。
-  4. 测试（文件名带 115）：
-     - 替身输出带“只能/一定”这类原文没有的绝对化词，会被要求重写；
-     - 连续两个小要点同种收尾，第二次会换；
-     - 收束超长会被处理；
-     - 114 的 concept 测试和旧式点课堂测试照过。
-  5. 真实核对（≤¥2）：用 114 同一份样例的 K2、K4，加一个别的大点，各讲一遍，学生有对有错有“没懂”。
-     - 逐条人工核对：越出原文的结论数、说过头的例子数、漏前提数、收尾方式分布、收束字数；
-     - 和 114 那次并排对比。
-  6. 只改 course/teacher_agent.py、app/classroom.py 中 concept 分支相关部分和 tests/refactor/。旧式点讲法不变。
-
-完成标准：第 4 条测试通过；第 5 条核对里越出原文、说过头、漏前提都为 0，收尾不再全是提问，收束一两句；最后全量一次（loading86、self_test81、status88、integration38、gateway 的 coverage_check 时限断言是已知不稳定项，MF-04 正在修，失败时单独重跑那一项并写明）。花费不超过 ¥2。达不到写“部分完成”。
-回执：写到 D:\MentorFlow\.local\receipts\115-MF03.md。表格列：基线 ／ 提交 ／ 改法（依据约束、去公式化、收束）／ 新增测试 ／ 真实核对（114 对比 115 的各项数字、摘录）／ 花费 ／ 全量 ／ 本地最终占用。
-给用户只回一行“115-MF03 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\class115\report.md。
-~~~
-
-### [115-MF04]
-
-~~~text
-【MentorFlow 第一百一十五批｜MF-04（工位 runtime）｜修掉全量里反复偶发失败的五个测试，让全量结果可信】
-
-现成项目与许可证（第一节）
-  - 不引新库。用 pytest 现有的 monkeypatch／固定时钟写法，以及项目里已有的可注入 now/clock 参数；浏览器测试沿用现有 Chromium 测试写法与等待工具。
-
-开工同步
-  cd D:\MentorFlow-office\runtime\repo
-  git status                        # 应干净；不干净先停下说明
-  git checkout office/runtime
-  git reset --hard be709040         # 主线：第一百一十四批四份已合入（新式点只在 structure=concept_v1 时生效，用户计划里还没有）
-提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...（不提交 dist）
-禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
-D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件、不改用户进度。不要启动、结束或重启用户的软件和源代码版。
-E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\flaky115\，中间产物用完即删，只留 report.md 和必要的小文件；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限或要动用户数据才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次。
-花费：¥0。
-同时在跑：MF-03（classroom）改老师提示，只改 teacher_agent.py、classroom.py 的 concept 分支，你不碰。
-
-背景：最近几批全量里这些测试单独重跑都能过，满载时偶发失败，每次都要人工说明，全量结果不可信：
-  1. loading86：startup placeholder 断言（114-MF07 全量）；
-  2. status88（114-MF01 全量）；
-  3. self_test81（以往多次）；
-  4. integration38：总时长一致性断言 42 ≠ 9 + 23（114-MF06 全量，单跑通过，原因未确认）；
-  5. gateway 的 coverage_check 时限断言要求正好 1800，实际 1799.985：源码是用总 deadline 减去已耗时（114-MF03 全量）。
-
-要做
-  1. 逐个查清偶发原因（时间、并发、浏览器加载时序、共享临时目录等），每个写一句话原因和证据。
-  2. 修测试本身，让它确定性地通过或失败：
-     - 时间相关的注入固定时钟；
-     - 浮点时限的断言改成验证“剩余时限 = 总时限 − 已耗时”的关系，或允许合理的毫秒误差并写理由；
-     - 浏览器等待改成等明确的就绪信号，不靠固定 sleep。
-     - 不得用删掉断言、跳过、放宽到失去意义的方式“修好”。
-  3. 如果查到是产品代码的真问题（例如 integration38 真有时长算错的路径）：
-     - 不在本任务改产品代码，写清复现步骤和证据，交架构师另派。
-  4. 验证：
-     - 五个测试各自在满载下（例如同时跑 -n 或循环 20 次）稳定通过，记录次数；
-     - 最后全量跑一次。
-  5. 只改 tests/refactor/ 下相关测试和测试工具。
-
-完成标准：五个测试都有原因和修法，循环验证不再偶发；全量一次通过（真产品问题另列，不算失败遮掩）。
-回执：写到 D:\MentorFlow\.local\receipts\115-MF04.md。表格列：基线 ／ 提交 ／ 五个测试各自的原因、证据、修法 ／ 循环验证次数与结果 ／ 发现的产品问题（如有）／ 全量 ／ 本地最终占用。
-给用户只回一行“115-MF04 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\flaky115\report.md。
-~~~
-
-### [115-MF06]
-
-~~~text
-【MentorFlow 第一百一十五批｜MF-06（工位 tools）｜知识点重切第四轮：硬规则不过才停，软问题标出来交用户在网页上看；跑完第 5～8 模块；产出能直接交给换入工具的完整结果（BUG-86）】
-
-现成项目与许可证（第一节）
-  - 不引新库，在你 112～114 的原型上改；模型调用用现有 gateway.complete。
-  - 换入格式以 114-MF07 合入的 course/restructure.py 和 scripts/plan_restructure.py 为准（顶层 plan_id、可选 today、modules[{module_id, replace_point_ids, points, navigation, expected_points?}]，点与小要点字段照 114 共用约定）。
-
-开工同步
-  cd D:\MentorFlow-office\tools\repo
-  git status                        # 应干净；不干净先停下说明
-  git checkout office/tools
-  git reset --hard be709040         # 主线：第一百一十四批四份已合入（新式点只在 structure=concept_v1 时生效，用户计划里还没有）
-提交：git -c user.name="MentorFlow Worker tools" -c user.email="worker-tools@mentorflow.local" commit ...（不提交 dist）
-禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
-D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件、不改用户进度。不要启动、结束或重启用户的软件和源代码版。
-E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\points115\，中间产物用完即删，只留 report.md 和必要的小文件；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限或要动用户数据才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次。
-花费：真实模型总上限 ¥15，分两段：第 5 模块剩余部分过了硬规则再跑第 6、7、8 模块。真实模式参数同以往（--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 不读、不显示、不保存）。
-同时在跑：MF-03 改课堂提示、MF-04 修不稳定测试，都不碰你的范围。
-
-背景（CURRENT_STATE [BUG-86]；你 113、114 的报告）：
-  - 第二轮（113）几乎可用：书单全进导航，讲义无书籍简介，7 大点 43 小要点 241 分，只剩 NoSQL 重复和一个大点缺讲义。
-  - 第三轮（114）加了更严的自动检查，报警一律停，结果讲义一条都没生成、第 6～8 模块没跑。
-  - 用户本来就要逐个看知识点。所以改成：硬规则自动把关，软问题标出来交用户定。
-  - 换入工具（114-MF07）已合入，预演在副本上跑通：第 5 模块样例逾期 1535→1535 不变，之后每天目标 238→约 236。
-
-要做
-  1. 规则分两类：
-     - 硬规则（不过就停、不交付）：书单、学习路线类全进导航；讲义每条都标出处，且只摘知识段落的原文；知识内容未覆盖为 0；不编原文没有的内容；字段与换入格式一致。
-     - 软问题（不停，标在结果和网页上，写清原因和建议）：可能重复的小要点或大点；大点不在 20～40 分钟或小要点不在 3～8 个；某个小要点重试一次后仍没有讲义；总时长与旧知识类估时差超过 ±20%。
-  2. 跑完第 5 模块剩余部分（以运行时副本的用户位置为准）和第 6、7、8 模块。
-  3. 产出：
-     - apply-ready.json，直接符合 scripts/plan_restructure.py 的输入格式，complete=true；
-     - 对照网页：沿用用户认可的样子，软问题醒目标出，每条附建议做法（合并到哪、保留、拆开），顶部按模块统计软问题数；
-     - 用 scripts/plan_restructure.py --dry-run 在用户库副本上预演整份结构，把预演报告（重排前后总分钟、逾期待还、今天目标、之后每天目标、保留/取代/新增数）贴进回执。
-     - 预演必须没有被拒的硬错误。
-  4. 测试（文件名带 115）：硬规则不过就停；软问题只标不停；导出格式能被 plan_restructure 的预演接受；112～114 的测试照过。
-  5. 只改 course/planner_agents.py 中你加的新函数和 points 系列脚本与测试；不改 restructure.py（格式问题写进回执）。
-
-完成标准：第 5～8 模块全部产出、硬规则全过、预演无硬错误；网页标出全部软问题；测试通过；最后全量一次（已知不稳定项单独重跑写明）。花费不超过 ¥15。
-回执：写到 D:\MentorFlow\.local\receipts\115-MF06.md。表格列：基线 ／ 提交 ／ 各模块旧点数 → 新点数与分钟 ／ 硬规则结果 ／ 软问题清单（按模块计数与典型例子）／ 整份预演报告 ／ 文件路径 ／ 新增测试 ／ 花费 ／ 全量 ／ 本地最终占用。
-给用户只回一行“115-MF06 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\points115\report.md。
-~~~
-
-## 第一百一十六批任务原文（2026-10-14，基线 453647c5）
-
-### [116-MF03] classroom｜课堂提速与跳过按钮
-
-~~~text
-【MentorFlow 第一百一十六批｜MF-03（工位 classroom）｜课堂提速与跳过按钮：可点选项的回复提前生成、老师回复边生成边显示；“跳过该知识点”按钮，“跳过该模块”藏到开关后并加确认；修收束被截成残句（TEACH-06、TEACH-03、TEACH-07）】
-
-现成项目与许可证（第一节）
-  - 不引新库。
-  - 提前生成用现有 gateway.complete 在后台线程并发调用，取消用现有的 cancel 机制。
-  - 边生成边显示用 gateway.complete 已有的 on_text 流式回调和课堂现有的 ctx.stream 推送；同一前缀的并发请求沿用 [SYS-05] 的缓存写法，让 DeepSeek 前缀缓存命中。
-  - 做法是对话产品通行的“预测性预取”（speculative prefetch）与流式输出，只借做法。
-  - 前端沿用现有课堂组件与样式；开关用现有按钮样式做，不引组件库。
-
-开工同步
-  cd D:\MentorFlow-office\classroom\repo
-  git status                        # 应干净；不干净先停下说明
-  git checkout office/classroom
-  git reset --hard 453647c5         # 主线：已合入你的 115（讲课约束、收尾去重复、收束限长）
-提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
-禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
-D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用户的软件和源代码版。E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。
-产物在 D:\MentorFlow\.local\test-tmp\speed116\，中间产物用完即删，只留 report.md 和必要的小文件；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（原来的五个不稳定测试已修好，全量失败按真失败处理）。
-花费：替身离线做完；最后一次真实计时与核对上限 ¥3（提前生成会多花，用户同意）。真实模式参数同以往（--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 不读、不显示、不保存）。
-同时在跑：MF-06 重切知识点（只改 planner_agents.py 新函数与 points 脚本），不碰你的范围。
-
-背景（CURRENT_STATE [TEACH-06] [TEACH-03] [TEACH-07]）：
-  - 用户定（2026-10-14）：在意的是等老师回复的延迟，不在意多花的模型费用。
-    - 老师给出可点选项时（老师自己的 2～3 个选项、〔懂了，继续〕〔没太懂〕），后台立刻为每个选项预先生成回复，点了马上出，或接着正在生成的继续出；
-    - 〔懂了，继续〕同时预备下一个小要点（或下一个点）的开场；
-    - 用户自己打字时，作废预备，按输入回答。
-  - 架构师读代码发现：classroom._teacher 调 gateway.complete 时 on_text 是空函数，整条生成完、parse_teaching 解析后才 ctx.stream 推给界面，所以用户一直看着“老师正在想…”。
-  - 用户定的跳过按钮：
-    - 课堂里显眼的按钮改成“跳过该知识点”：点了直接跳到下一个点（新式点就是下一个大知识点），不弹窗、不随口问，按 [TEACH-03]“我会了”记；这个点的题照样进模块检测。
-    - 按钮旁一个往右拉的小开关，拉过去按钮变成“跳过该模块”，点了先弹窗确认，确认后走现有 [TEACH-07] 的流程。
-    - 目的是防误触：误点跳过一个知识点关系不大，跳过整个模块要多一步确认。
-  - 你 115 的遗留：K6 的收束被截成“UTF-8/16/32 。”这样的残句。
-
-要做
-  1. 先量现状：在真实模式下量“点选项到出第一个字”“到整条出完”“打字发送到出第一个字”，各取 5 次以上，回执列平均和最慢。
-  2. 边生成边显示：
-     - 老师回复可见的正文边生成边推给界面；
-     - 选项块、出处标记等要解析的部分先不显示，整条完成、解析后再定稿替换；
-     - 格式不合格触发现有重写时，界面要能撤掉已显示的半截，再显示重写结果（现有 RESET 机制）。
-     - 新式点和旧式点都适用。
-  3. 提前生成：
-     - 界面出现可点选项时，后台为每个选项各发一个生成；〔懂了，继续〕预备下一步开场；
-     - 用户点了：已生成完的直接显示，还在生成的接上继续流式显示；
-     - 用户打字、插话、切走、点了别的，其余预备全部取消作废，不写进记录、不记账、不改位置；
-     - 预备结果必须对应当前课堂状态（用状态版本号对上），状态变了就作废，不能把旧预备显示出来。
-     - 同一时刻预备数有上限（例如 4 个），自己定。
-  4. 跳过按钮：按上面的用户规定实现。
-     - “跳过该知识点”不弹窗、不随口问，按“我会了”记，新式点跳过剩下所有小要点；
-     - 小开关拉过去变“跳过该模块”，弹窗确认后走现有直接考流程；
-     - 开关状态不跨点保留（每次进新点恢复成“跳过该知识点”）。
-  5. 收束：不再把超长收束截成第一句。改成重写一次仍超长时，取到第一个完整句号为止；如果截下来不成句，就用不超过 80 字的原收束整句，字数略超可以接受。不能出现残句。
-  6. 改后再量第 1 条的三个时间。目标：点选项到出字 ≤1 秒（预备已完成时）；打字发送到出第一个字 ≤3 秒。回执列改前改后对比和这次多花的钱。
-  7. 测试（文件名带 116）：
-     - 预备命中直接显示；
-     - 预备进行中被点击接着流式显示；
-     - 打字后预备作废且不留痕；
-     - 状态变化后旧预备不显示；
-     - 边生成边显示后格式重写会撤掉半截；
-     - 跳过该知识点不弹窗、按“我会了”记；
-     - 开关切到跳过该模块会弹窗，取消不跳、确认走直接考；
-     - 收束不出残句；
-     - 114、115 的课堂测试照过，旧式点课堂测试照过。
-     - 前端用现有浏览器测试写法。
-  8. 只改 app/classroom.py、course/teacher_agent.py（如需）、课堂前端相关文件和 tests/refactor/。前端改了要编一次网页确认能编过，不提交 dist。
-
-完成标准：第 7 条测试通过；第 6 条有改前改后实测；最后全量一次。花费不超过 ¥3。达不到写“部分完成”。
-回执：写到 D:\MentorFlow\.local\receipts\116-MF03.md。表格列：基线 ／ 提交 ／ 边生成边显示怎么做 ／ 提前生成怎么做（命中、作废、上限）／ 跳过按钮与开关 ／ 收束修法 ／ 改前改后延迟与多花的钱 ／ 新增测试 ／ 全量 ／ 本地最终占用。
-给用户只回一行“116-MF03 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\speed116\report.md。
-~~~
-
-## 第一百一十八批任务原文（2026-10-14，基线 673394c6）
-
-### [118-MF07] library｜改截止日保住欠账
-
-~~~text
-【MentorFlow 第一百一十八批｜MF-07（工位 library）｜改截止日也要保住过去的欠账：查清 App 里正常改截止日会不会像 BUG-83 那样把逾期抹掉，会就修；让重排时能同时改截止日（BUG-86、BUG-83）】
-
-现成项目与许可证（第一节）
-  - 不引新库。在现有时长账本 course/ledger.py（Ledger.replan 的普通重排与 preserve_past 两条路）、CourseStore.replan_plan 和你做的 course/restructure.py、scripts/plan_restructure.py 上改。规则沿用 [BUG-16]“历史按当天冻结”和 [BUG-83]“重排不能抹掉过去仍要还的欠账”。
-
-开工同步
-  cd D:\MentorFlow-office\library\repo
-  git status                        # 应干净；不干净先停下说明
-  git checkout office/library
-  git reset --hard 673394c6         # 主线：已合入你的 117（截止日预演）
-提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
-禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号；不调用真实模型。
-D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件。不要启动、结束或重启用户的软件和源代码版。
-E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\window118\，中间产物用完即删，只留 report.md；删除被拦住就列路径交架构师。
-遇到选择自己决定，回执写明理由，不停下来问。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次。花费 ¥0。
-同时在跑：MF-03 改课堂（classroom.py、teacher_agent.py、前端），MF-06 改 planner_agents.py；你不碰它们。
-
-背景（CURRENT_STATE [BUG-86]“重排后的逾期”、[BUG-83]、[BUG-16]）：
-  - 用户定（2026-10-14）：
-    - 重排不重算过去的欠账，逾期保持约 1500 分；
-    - 截止日从 10-20 延到 10-22，之后每天目标按新总时长和新天数平摊。
-  - 你 117 的预演：样例下逾期 1535 不变，每天 238→183。
-  - 执行被拦住，原因是：
-    - Ledger.replan(preserve_past=True) 禁止改窗口；
-    - CourseStore.replan_plan 固定写 explicit_replan，不能按 restructure 回放。
-  - 架构师读 ledger.py 发现：
-    - preserve_past 只给自动重估和 restructure 用；
-    - 用户在 App 里正常改截止日走的是普通 replan（注释写“Ordinary user-requested rescheduling retains its existing semantics”）。
-    - [BUG-83] 当时的问题正是普通 replan 把过去的欠账移出了“还在还”的那一段，逾期从 1132 显示成 114。
-    - 所以要怀疑：用户在 App 里正常改截止日，可能同样把逾期抹掉。
-
-要做
-  1. 先查清：
-     - 用固定时钟搭一个“窗口进行到一半、已有欠账、当天已还一部分”的计划，在 App 的正常改截止日路径（plan_flow 里改结束日期调用的那条）上把截止日往后延；
-     - 看改前改后：逾期待还、今天已还、过去各天目标。
-     - 也用用户计划的只读副本做一次（只在副本上）。
-     - 回执写清：会不会抹掉，抹掉多少，原因在哪一行。
-  2. 如果会抹掉：这是和 [BUG-83] 同类的问题。
-     - 修成：改截止日（以及其他用户主动改日期、每天上限的重排）也保住过去仍要还的欠账，只重新分配今天及以后；
-     - 另一台设备回放结果一致。
-     - 架构师会另记一条 BUG。
-  3. 让重排能同时改截止日：
-     - preserve_past 的重排允许同时换窗口（只允许往后延或改未来部分，不能改已冻结的日子）；
-     - CourseStore 的重排能写 restructure 原因并按它回放；
-     - scripts/plan_restructure.py --apply --end-date 能真正执行；
-     - 只走一次重排；回滚能恢复原截止日。
-  4. 测试（文件名带 118）：
-     - 正常改截止日保住欠账（如果第 1 条查出会抹掉，修前先写出失败的测试）；
-     - 重排加改截止日一次完成，过去目标与逾期不变、之后按新天数平摊；
-     - 两台设备回放一致；
-     - 回滚恢复截止日与账本；
-     - BUG-16、BUG-83 原有测试照过。
-  5. 用用户计划的只读副本 + 117 的样例结构，带 --end-date 2026-10-22 做一次完整的预演与（副本上的）执行，贴出执行前后的逾期、今天目标、之后每天目标。
-  6. 只改 course/ledger.py、course/store.py 中与重排相关的部分、course/restructure.py、scripts/plan_restructure.py、app/plan_flow.py 中改日期调用重排的地方（如需）和 tests/refactor/。
-
-完成标准：第 1 条有结论和证据；第 3 条能执行；第 4 条测试通过；第 5 条副本上执行前后数字一致可解释；最后全量一次。
-回执：写到 D:\MentorFlow\.local\receipts\118-MF07.md。表格列：基线 ／ 提交 ／ 正常改截止日会不会抹掉欠账（证据、原因）／ 修法 ／ 重排加改截止日怎么做 ／ 副本上执行前后数字 ／ 新增测试 ／ 全量 ／ 本地最终占用。
-给用户只回一行“118-MF07 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\window118\report.md。
-~~~
-
-## 第一百一十九批任务原文（2026-10-14，基线 cf79b127）
-
-### [119-MF03] classroom｜课堂精炼接线
-
-~~~text
-【MentorFlow 第一百一十九批｜MF-03（工位 classroom）｜课堂精炼：老师用荧光标重点、回复控制在两三百字、大知识点讲完发要点卡；把 117-MF02 的三个组件接进课堂，加“只看重点”开关（TEACH-06）】
-
-现成项目与许可证（第一节）
-  - 不引新库。接线用 117-MF02 已合入的组件：ClassroomMarkdown 的 focus、messageKey，以及 RecapCard。接线说明见 tests/refactor/focus117/README117.md。
-  - 老师提示与解析在现有 course/teacher_agent.py、app/classroom.py 上改，沿用你 116 的边生成边显示和提前生成。
-
-开工同步
-  cd D:\MentorFlow-office\classroom\repo
-  git status                        # 应干净；不干净先停下说明
-  git checkout office/classroom
-  git reset --hard cf79b127         # 主线：已合入你的 116 和 117-MF02 的组件
-提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
-禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
-D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用户的软件和源代码版。E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。
-产物在 D:\MentorFlow\.local\test-tmp\focus119\，中间产物用完即删，只留 report.md 和截图；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（原来的五个不稳定测试已修好，全量失败按真失败处理；跑浏览器测试前把 D:\MentorFlow\.local\node 加进 PATH，basetemp 的父目录先建好）。
-花费：替身离线做完；最后一次真实核对上限 ¥2。真实模式参数同以往（--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 不读、不显示、不保存）。
-同时在跑：
-  - MF-07 改账本重排（ledger.py、store.py 的重排部分、restructure.py、plan_restructure.py，可能动 plan_flow.py 改日期那处）；
-  - MF-06 改 planner_agents.py。
-  - 你不碰这些文件。
-
-背景（CURRENT_STATE [TEACH-06]“精炼与重点”）：
-  - 用户要的是精炼，不是大段搬原文让人逐句读；有的用户赶时间只看重点。
-  - 用户定（2026-10-14）：
-    - 荧光笔标出每次回复的 1～3 句关键结论，加粗仍留给术语；
-    - 课堂加“只看重点”开关，打开后没标荧光的文字收起或变淡；
-    - 平时一次回复两三百字左右，学生要求展开时可以长；原文放在“原文出处”里，不大段搬；
-    - 大知识点讲完用要点卡（每个小要点一行结论，摘自讲义）代替长总结；
-    - 任何时候都不截断老师的话。
-  - 117-MF02 已做好组件（合入 2ce351a3）：
-    - 正文 ==重点句== 渲染为荧光；
-    - ClassroomMarkdown 的 focus 模式会把无荧光段落收成“…（点开）”，问题句保留；
-    - RecapCard 渲染 kind=recap 的消息 {title, items:[{title, text, chunk_id}]}。
-
-要做
-  1. 老师提示（新旧两种点都适用）：
-     - 每次回复用 ==…== 标出 1～3 句最关键的结论，只标结论，不整段标；术语照旧加粗；
-     - 平时一次回复控制在两三百字左右，学生说“展开讲讲”“详细点”这类话时可以长；
-     - 不大段引用原文，要看原文的指向“原文出处”。
-     - 超长时按现有方式请老师重写一次，重写后仍长就原样保留，不截断。
-     - 荧光句数不对（0 句或超过 3 句）同样只请重写一次，不硬改文字。
-  2. 要点卡（只对新式点）：
-     - 一个大知识点讲完时发一条 kind=recap 的消息：title 是大点标题，每个小要点一项，结论取自它的讲义 notes，chunk_id 带上；
-     - 一项一行：从讲义里选最能概括这个小要点的一条完整句子，不截断半句；讲义都很长时，可以让模型用原文词语写一句 ≤40 字的结论，并标出处。用哪种自己定，写理由。
-     - 老师自己的收束这时改成一句话或省掉，不和要点卡重复。
-     - 要点卡同步、重开后还在，旧消息没有它不受影响。
-  3. 接线：
-     - 课堂所有老师消息用 ClassroomMarkdown，按说明传 focus 和 messageKey（边生成边显示时保持稳定）；
-     - kind=recap 的消息渲染 RecapCard，“原文”按钮接现有原文出处打开方式；
-     - 课堂顶部加“只看重点”开关，默认关，状态记在本机设置里（换页面、重开后保持）。
-  4. 测试（文件名带 119）：
-     - 提示要求荧光与长度；
-     - 0 句或超过 3 句荧光会请重写一次、不硬改；
-     - 超长重写一次后原样保留；
-     - 新式点讲完发 recap、结论都是完整句；
-     - 旧式点不发 recap；
-     - 只看重点开关切换与保持；
-     - recap 的“原文”能打开；
-     - 114～116 的课堂测试和旧式点课堂测试照过。
-     - 前端用现有浏览器测试写法。
-  5. 真实核对（≤¥2）：用约定样例的两个大点各讲一遍。统计每次回复的荧光句数、字数分布；看要点卡每项是否是完整句、是否忠于讲义；截图打开和关闭“只看重点”两种样子（亮色、暗色窄窗）。
-  6. 只改 app/classroom.py、course/teacher_agent.py、课堂前端相关文件和 tests/refactor/。编一次网页确认能编过，不提交 dist。
-
-完成标准：第 4 条测试通过；第 5 条核对完成且截图齐全；最后全量一次。花费不超过 ¥2。
-回执：写到 D:\MentorFlow\.local\receipts\119-MF03.md。表格列：基线 ／ 提交 ／ 提示改法（荧光、长度）／ 要点卡怎么取结论 ／ 接线与开关 ／ 新增测试 ／ 真实核对（荧光句数、字数分布、要点卡质量、花费）／ 截图路径 ／ 全量 ／ 本地最终占用。
-给用户只回一行“119-MF03 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\focus119\report.md。
-~~~
-
-## 第一百二十批任务原文（2026-10-14，基线 8d41ea5b）
+## 第一百二十批任务原文（2026-10-14，基线 efbb0670）
 
 ### [120-MF07] library｜报告最高欠账回放
 
@@ -459,13 +91,13 @@ D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用�
   cd D:\MentorFlow-office\library\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/library
-  git reset --hard 8d41ea5b         # 主线：已合入你的 118
+  git reset --hard efbb0670         # 主线：已合入你的 118、MF-06 的 115、MF-03 的 119
 提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
 禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号；不调用真实模型。
 D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件。不要启动、结束或重启用户的软件和源代码版。
 E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\report120\，用完即删，只留 report.md。
 遇到选择自己决定，回执写明理由，不停下来问。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次。花费 ¥0。
-同时在跑：MF-03 改课堂（classroom.py、teacher_agent.py、前端），MF-06 改 planner_agents.py；你不碰它们。
+同时在跑：MF-06 改 planner_agents.py、plan_flow.py 和计划流程前端；你不碰它们。
 
 背景（CURRENT_STATE [BUG-89] [BUG-88] [BUG-83]）：
   - 你在 118 发现：course/report.py 第 90 行左右的独立峰值回放，replan 时直接调 ledger.replan(today, window, total)，不看重排原因。
@@ -486,7 +118,7 @@ E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\Mentor
 给用户只回一行“120-MF07 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\report120\report.md。
 ~~~
 
-## 第一百二十一批任务原文（2026-10-14，基线 37a1743c）
+## 第一百二十一批任务原文（2026-10-14，基线 efbb0670）
 
 ### [121-MF06] tools｜新建计划接按目录切
 
@@ -502,17 +134,14 @@ E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\Mentor
   cd D:\MentorFlow-office\tools\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/tools
-  git reset --hard 37a1743c         # 主线：已合入你的 115、MF-07 的 118（重排保住欠账）
+  git reset --hard efbb0670         # 主线：已合入你的 115、MF-07 的 118（重排保住欠账）、MF-03 的 119（高亮、回顾卡）
 提交：git -c user.name="MentorFlow Worker tools" -c user.email="worker-tools@mentorflow.local" commit ...（不提交 dist）
 禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
 D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用户的软件和源代码版。E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。
 产物在 D:\MentorFlow\.local\test-tmp\wire121\，中间产物用完即删，只留 report.md；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
 遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（跑浏览器测试前把 D:\MentorFlow\.local\node 加进 PATH，basetemp 的父目录先建好）。
 花费：替身离线做完；最后一次真实建计划核对上限 ¥4。真实模式参数同以往（--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 不读、不显示、不保存）。
-同时在跑：
-  - MF-03 改课堂（classroom.py、teacher_agent.py、课堂前端）；
-  - MF-07 改 course/report.py。
-  - 你不碰它们。
+同时在跑：MF-07 改 course/report.py；你不碰它。课堂文件（classroom.py、teacher_agent.py、课堂前端）这次也不改。
 
 背景（CURRENT_STATE [BUG-86] [PLAN-06] [TEACH-08]）：
   - 用户的计划已用你的按原文目录切法跑完：440 个旧点 → 144 个大点、408 个小要点、214 条导航，硬规则全过。等 2.0.15 发布后由架构师换入用户计划。
@@ -530,7 +159,7 @@ D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用�
      - 讲义写进点的 subpoints[].notes 并同步；
      - 已有讲义的不重复生成；
      - 准备失败不挡课堂。
-  3. 课堂在讲义还没准备好时：新式点照样能讲（老师按小要点原文讲）；讲义生成好后下一次显示即用上。确认现有课堂代码（114～116 已合入）在 notes 为空时不报错，有问题写进回执，不改课堂文件。
+  3. 课堂在讲义还没准备好时：新式点照样能讲（老师按小要点原文讲）；讲义生成好后下一次显示即用上。确认现有课堂代码（114～116、119 已合入，含回顾卡）在 notes 为空时不报错，有问题写进回执，不改课堂文件。
   4. 建计划页面上“大致模块 → 知识点”那一步的展示，如果按点数显示，改成显示大点数和小要点数；资料导航在计划详情里能看到。只改计划流程相关的前端，不碰课堂页面。
   5. 测试（文件名带 121）：
      - 新计划出新式点和导航、不再出书单点；
