@@ -1,8 +1,4 @@
-"""Read-only deadline forecasts and the current ledger integration boundary.
-
-These tests deliberately do not pretend that a changed deadline can be applied:
-the permitted files cannot change CourseStore's replay or Ledger's window rule.
-"""
+"""Deadline forecasts, now executable after the 118 ledger integration."""
 from datetime import date
 import json
 
@@ -40,34 +36,33 @@ def test_enddate117_forecast_preserves_prefix_debt_and_spreads_same_suffix(store
     assert extended['daily_cap']['fits'] and extended['daily_cap']['includes_overdue']
     assert extended['daily_cap']['capacity_minutes'] == 5400
     text = format_report(extended)
-    assert '2026-10-20 → 2026-10-22' in text and '2026-10-22' in text and '不能执行' in text
+    assert '2026-10-20 → 2026-10-22' in text and '2026-10-22' in text and extended['can_apply']
 
 
-def test_enddate117_existing_ledger_and_store_cannot_publish_restructure_with_changed_window(store):
+def test_enddate117_existing_ledger_and_store_publish_restructure_with_changed_window(store):
     """Real interfaces, no replacement services or mocked successful replays."""
     from dataclasses import replace
     ledger = store.load_ledger('p')
-    with pytest.raises(LedgerError, match='不能改变日期窗口'):
-        ledger.replan(DAY, replace(ledger.window, end=date(2026,10,22)), 80, preserve_past=True)
+    ledger.replan(DAY, replace(ledger.window, end=date(2026,10,22)), 80, preserve_past=True)
+    assert ledger.window.end == date(2026,10,22)
     store.replan_plan('p', DAY, new_window=replace(ledger.window, end=date(2026,10,22)),
-                      new_total_minutes=80, reason='restructure')
+                      new_total_minutes=80, reason='按确认结构重排', cause='restructure')
     event = max(store.records('ledger_events', 'p'), key=lambda e: e['operation_seq'])
-    assert event['cause'] == 'explicit_replan'  # reason does not select cause.
+    assert event['cause'] == 'restructure'
+    assert store.load_ledger('p').to_dict() == ledger.to_dict()
 
 
-def test_enddate117_changed_deadline_apply_refuses_without_backup_or_any_writes(store, monkeypatch):
+def test_enddate117_changed_deadline_requires_matching_confirmation_without_any_writes(store, monkeypatch):
     original = dump(store)
     preview = apply_structure(store, 'p', proposal(), dry_run=True, end_date='2026-10-22')
-    assert not preview['can_apply'] and not preview['deadline_change_supported']
-    assert any('store.py 与 ledger.py' in issue for issue in preview['issues'])
+    assert preview['can_apply'] and preview['deadline_change_supported']
     def unexpected(*args, **kwargs):
         pytest.fail('Refused operation must not write a replan or backup')
     monkeypatch.setattr(store, '_replan', unexpected)
     monkeypatch.setattr(cli, 'make_backup', unexpected)
-    with pytest.raises(RestructureError):
-        apply_structure(store, 'p', proposal(), dry_run=False, end_date='2026-10-22')
-    with pytest.raises(RestructureError):
-        cli.execute(store, 'p', proposal(), preview['preview_token'], end_date='2026-10-22')
+    from refactor.learning.course.store import StoreError
+    with pytest.raises(StoreError, match='必须先看预演'):
+        cli.execute(store, 'p', proposal(), preview['preview_token'], end_date='2026-10-23')
     assert dump(store) == original
 
 
@@ -148,7 +143,7 @@ def test_enddate117_capacity_can_fail_even_when_new_targets_fit(store):
     assert not report['daily_cap']['fits']
 
 
-def test_enddate117_cli_outputs_changed_deadline_forecast_and_refuses_apply(tmp_path, monkeypatch, capsys):
+def test_enddate117_cli_outputs_changed_deadline_forecast_and_applies(tmp_path, monkeypatch, capsys):
     with CourseStore('account', tmp_path) as s:
         seed(s)
         original = dump(s)
@@ -158,11 +153,12 @@ def test_enddate117_cli_outputs_changed_deadline_forecast_and_refuses_apply(tmp_
     out = tmp_path/'preview.json'
     args = ['--data-root', str(tmp_path), '--plan-id', 'p', '--structure', str(source),
             '--end-date', '2026-10-22']
-    assert cli.main(['--dry-run', *args, '--report', str(out)]) == 2
+    assert cli.main(['--dry-run', *args, '--report', str(out)]) == 0
     preview = json.loads(out.read_text(encoding='utf-8'))
     assert preview['end_date_after'] == '2026-10-22' and len(preview['daily']) == 9
     assert '截止日：2026-10-20 → 2026-10-22' in capsys.readouterr().out
-    assert cli.main(['--apply', *args, '--confirm-preview', preview['preview_token']]) == 2
-    assert not list((tmp_path/'learning/accounts/account').glob('*.bak'))
+    assert cli.main(['--apply', *args, '--confirm-preview', preview['preview_token']]) == 0
+    assert list((tmp_path/'learning/accounts/account').glob('*.bak'))
     with CourseStore('account', tmp_path) as s:
-        assert dump(s) == original
+        assert dump(s) != original
+        assert s.get_plan('p')['window']['end'] == '2026-10-22'

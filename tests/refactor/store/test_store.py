@@ -147,7 +147,7 @@ class StoreTests(unittest.TestCase):
         self.assertEqual([p['id'] for p in s.records('points', 'p')], ['point1'])
         new_window = PlanWindow(TODAY, TODAY+timedelta(days=7), 100)
         s.replan_plan('p', TODAY+timedelta(days=1), new_window)
-        expected.replan(TODAY+timedelta(days=1), new_window, 50)
+        expected.replan(TODAY+timedelta(days=1), new_window, 50, preserve_past=True)
         self.assertEqual(s.load_ledger('p').to_dict(), expected.to_dict())
         self.assertEqual(s.get_plan('p')['window']['end'], new_window.end.isoformat())
 

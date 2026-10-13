@@ -225,14 +225,17 @@ class ReportTests(unittest.TestCase):
         s = self.prepare()
         s.add_credit('p', 'past', 'past-unit', 10, DAY)
         next_day = DAY + timedelta(days=1)
-        s.replan_plan('p', next_day, PlanWindow(DAY, DAY + timedelta(days=4), 200), reason='延期补学')
+        # Closed historical segments still exist for legacy content operations;
+        # user explicit_replan/window_changed deliberately keep their FIFO live.
+        s.replan_plan('p', next_day, PlanWindow(DAY, DAY + timedelta(days=4), 200),
+                      reason='旧内容重排', cause='module_generated')
         frozen = s.load_ledger('p').to_dict()['history']
         s.revoke_credits('p', 'past-unit', today=next_day, event_id='revoke')
         report = self.finish(next_day)
         self.assertEqual(s.load_ledger('p').to_dict()['history'], frozen)
         self.assertEqual(report['plan']['replan_count'], 2)
-        self.assertEqual([r['cause'] for r in report['plan']['replans']], ['module_generated', 'explicit_replan'])
-        self.assertEqual(report['plan']['replans'][-1]['reason'], '延期补学')
+        self.assertEqual([r['cause'] for r in report['plan']['replans']], ['module_generated', 'module_generated'])
+        self.assertEqual(report['plan']['replans'][-1]['reason'], '旧内容重排')
         self.assertEqual((report['plan']['original_end_date'], report['plan']['end_date']), ('2026-10-03', '2026-10-05'))
         self.assertEqual(report['plan']['early_days'], 3)
         history, current = report['time']['days'][0:2]
@@ -246,7 +249,8 @@ class ReportTests(unittest.TestCase):
     def test_replan_preserves_historical_debt_separately_from_live_peak(self):
         s = self.prepare()
         s.add_credit('p', 'past', 'u', 10, DAY + timedelta(days=1), 'confirmed')
-        s.replan_plan('p', DAY + timedelta(days=2), PlanWindow(DAY, DAY + timedelta(days=4), 200))
+        s.replan_plan('p', DAY + timedelta(days=2), PlanWindow(DAY, DAY + timedelta(days=4), 200),
+                      cause='module_generated')
         report = self.finish(DAY + timedelta(days=3))
         self.assertEqual(report['time']['history_debt_minutes'], 10)
         self.assertEqual(report['time']['debt_peak_minutes'], 10)
@@ -259,7 +263,7 @@ class ReportTests(unittest.TestCase):
         s = self.prepare()
         s.add_credit('p', 'past', 'u', 10, DAY)
         next_day = DAY + timedelta(days=1)
-        s.replan_plan('p', next_day)
+        s.replan_plan('p', next_day, cause='module_generated')
         s.confirm_credits('p', 'u', today=next_day)
         report = self.finish(next_day)
         self.assertEqual(report['time']['days'][0]['tentative_minutes'], 10)
@@ -357,7 +361,7 @@ class ReportTests(unittest.TestCase):
         s.save_intake('p', window=special, today=DAY, reason='次日休息')
         s.start_plan('p', today=DAY)
         s.add_credit('p', 'all', 'all', 30, DAY, 'confirmed')
-        s.replan_plan('p', DAY + timedelta(days=1))
+        s.replan_plan('p', DAY + timedelta(days=1), cause='module_generated')
         report = self.finish(DAY + timedelta(days=1))
         self.assertEqual([d['target_minutes'] for d in report['time']['days']], [15, 0, 0])
         self.assertEqual(report['time']['ahead_peak_minutes'], 15)

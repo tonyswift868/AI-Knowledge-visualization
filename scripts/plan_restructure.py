@@ -195,7 +195,7 @@ def main(argv=None):
     parser.add_argument('--account-id')
     parser.add_argument('--structure', type=Path)
     parser.add_argument('--today', help='明确学习日 YYYY-MM-DD；默认本机今天')
-    parser.add_argument('--end-date', help='新截止日 YYYY-MM-DD；现有账本暂仅支持日期变更预演')
+    parser.add_argument('--end-date', help='新截止日 YYYY-MM-DD；与新总时长一次重排，历史目标和欠账保留')
     parser.add_argument('--confirm-preview')
     parser.add_argument('--backup', type=Path)
     parser.add_argument('--resync', action='store_true', help='已确认上传过的结构：回滚业务值并排队补偿同步')

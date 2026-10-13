@@ -407,9 +407,10 @@ class Ledger:
         boundary remains the actual operation day. Moving a start into the
         future must not freeze future targets as missed study days.
 
-        preserve_past is for automatic content estimates: retain elapsed
-        targets and their live FIFO debts; only distribute the future suffix.
-        Ordinary user-requested rescheduling retains its existing semantics.
+        preserve_past retains elapsed targets and their live FIFO debts. Course
+        content estimates AND user-requested window changes use this mode.
+        The default branch retains legacy segment-closing behavior for generated
+        content operations and historical journals, not user date changes.
         """
         _date(today)
         _integer(new_total_minutes)
@@ -421,12 +422,20 @@ class Ledger:
         if new_total_minutes < past:
             raise LedgerError("INVALID_REPLAN", "新总时长不能少于重排当天之前已经记录的分钟数。")
         if preserve_past:
-            # An automatic estimate changes future work, not the learner's
-            # agreement to past targets. Keep their FIFO segment, so today's
+            # Rescheduling changes future work, not the learner's agreement to
+            # past targets. Keep their FIFO segment, so today's
             # repayments cannot be counted in both a closed and a new segment.
-            if new_window != self.window or self._estimate_start and today < self._estimate_start:
-                raise LedgerError("INVALID_REPLAN", "内容重估不能改变日期窗口或已经冻结的日期。")
+            if self._estimate_start and today < self._estimate_start:
+                raise LedgerError("INVALID_REPLAN", "不能重排已经冻结的日期。")
+            if new_window.start != self.window.start and min(new_window.start, self.window.start) < today:
+                raise LedgerError("INVALID_REPLAN", "不能改变已经开始的起始日期；只能调整未来部分。")
             prefix = {d: n for d, n in self._settled_targets().items() if d < today}
+            active_start = self._active_start if self._history else new_window.start
+            # Extending an expired plan must not invent debt for days outside
+            # its former window, or leave holes in the serialized calendar.
+            if today > date.min:
+                for d in _dates(max(active_start, new_window.start), today - timedelta(days=1)):
+                    prefix.setdefault(d, 0)
             historical = sum(c.minutes for key, c in self._credits.items()
                              if self._segments[key] < len(self._history))
             remaining = max(0, new_total_minutes - historical - self._released_minutes
@@ -435,7 +444,8 @@ class Ledger:
             targets = (distribute(new_window, remaining, from_date=start) if remaining
                        else dict.fromkeys(_dates(start, new_window.end), 0))
             self._targets = {**prefix, **targets}
-            self._total_minutes = new_total_minutes
+            self._window, self._total_minutes = new_window, new_total_minutes
+            self._active_start = active_start
             self._active_released_minutes = 0
             self._estimate_start = today
             return
@@ -561,7 +571,7 @@ def _restore(cls, data):
     if ledger._estimate_start is not None:
         if ledger._estimate_start > ledger.window.end:
             raise ValueError()
-        # Content re-estimates retain the elapsed calendar verbatim. Only its
+        # Content estimates and date changes retain the elapsed calendar. Its
         # suffix is distributed; a smaller estimate can exhaust future work
         # without erasing already agreed (and possibly unpaid) past targets.
         start = max(allocation_start, ledger._estimate_start)

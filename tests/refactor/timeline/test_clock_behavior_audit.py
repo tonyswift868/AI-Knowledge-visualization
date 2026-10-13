@@ -261,17 +261,20 @@ def test_audit_seven_week_extension_keeps_history_and_reopen(env, audit):
     end = START+timedelta(days=48)
     env.store.save_intake(PLAN, window=PlanWindow(START, end, 180), today=day, reason="每天安排太紧，延长一周")
     ledger = env.store.load_ledger(PLAN)
-    # 2520 - 19*60 = 1380 over 28 days: first 8 days 50, remaining 20 days 49.
-    expected_targets = {day+timedelta(days=i): 50 if i < 8 else 49 for i in range(28)}
-    audit("延长一周：只重排剩余1380分钟，历史欠120保留", "PLAN-08", expected_targets, ledger.targets)
-    check_status(audit, "重排后首页不重复追讨已重分配的历史欠账", dict(today_target=50, debt_minutes=0,
-                 history_debt_minutes=120, remaining_minutes=1380), home(env), rule="PLAN-08")
+    # 21*60 frozen minutes; distribute only (2520-1260)/28 = 45 daily.
+    # The unpaid 120 remains live and is repaid separately, not hidden/rebilled.
+    expected_targets = {day+timedelta(days=i): 45 for i in range(28)}
+    prefix = {START+timedelta(days=i):60 for i in range(21)}
+    audit("延长一周：未来1260分钟每天45，过去目标冻结", "PLAN-08", {**prefix,**expected_targets}, ledger.targets)
+    check_status(audit, "重排后仍显示并可还过去欠账", dict(today_target=45, debt_minutes=120,
+                 history_debt_minutes=0, remaining_minutes=1380), home(env), rule="PLAN-08")
     history = ledger.to_dict()["history"]
     for i, (d, minutes) in enumerate(expected_targets.items()):
         env.clock.set(d)
-        credit(env, minutes)
-        check_status(audit, f"延长后第{i+1}天按新目标学{minutes}分钟", dict(today_target=minutes,
-                     today_confirmed=minutes, debt_minutes=0, ahead_minutes=0, history_debt_minutes=120), home(env))
+        credit(env, minutes + (120 if i == 0 else 0))
+        check_status(audit, f"延长后第{i+1}天学习（首日另补旧欠120）", dict(today_target=minutes,
+                     today_confirmed=minutes, debt_minutes=0, ahead_minutes=0, history_debt_minutes=0), home(env))
+        assert {d:n for d,n in env.store.load_ledger(PLAN).targets.items() if d < day} == prefix
     assert env.store.load_ledger(PLAN).to_dict()["history"] == history
     with CourseStore("clock_audit", env.root) as reopened:
         assert reopened.load_ledger(PLAN).to_dict() == env.store.load_ledger(PLAN).to_dict()
