@@ -40,6 +40,15 @@ def browser(root, output):
     gateway=Locator(rows())
     current=SimpleNamespace(account_id='browser81',data_root=root/'data',gateway=gateway)
     register(bridge,lambda:current,view)
+    # Import/edit renders the set before its follow-up list request completes.
+    # Keep that real request in flight to exercise busy, rather than racing it.
+    from dataclasses import replace
+    from threading import Event
+    listing=bridge._handlers['selftest.list']
+    def delayed_list(*args,**kwargs):
+        Event().wait(.25)  # Injected backend latency, never a UI readiness wait.
+        return listing.function(*args,**kwargs)
+    bridge._handlers['selftest.list']=replace(listing,function=delayed_list)
     channel=QWebChannel(page);channel.registerObject('mf',bridge);page.setWebChannel(channel)
     console=[]
     page.javaScriptConsoleMessage=lambda level,message,line,source: console.append(message)
@@ -58,18 +67,26 @@ def browser(root, output):
             assert time.monotonic()<end,(code,console)
             pump()
     def click(text):
+        wait('(()=>{const b=[...document.querySelectorAll("button")].find(e=>e.textContent.trim()==='+json.dumps(text)+');return !!b&&!b.disabled})()')
         assert js('(()=>{let b=[...document.querySelectorAll("button")].find(e=>e.textContent.trim()==='+json.dumps(text)+');if(!b||b.disabled)return false;b.click();return true})()'),text
     def fill(selector,text):
         assert js('(()=>{let e=document.querySelector('+json.dumps(selector)+');if(!e)return false;Object.getOwnPropertyDescriptor(e.tagName==="TEXTAREA"?HTMLTextAreaElement.prototype:HTMLInputElement.prototype,"value").set.call(e,'+json.dumps(text)+');e.dispatchEvent(new Event("input",{bubbles:true}));return true})()')
-        pump(.08)
+        wait('document.querySelector('+json.dumps(selector)+').value==='+json.dumps(text))
     output.mkdir(parents=True,exist_ok=True)
     def shots(stage):
         for width in (390,1050):
-            view.resize(width,1050);pump(.12)
+            view.resize(width,1050);wait('innerWidth==='+str(width))
             assert js('document.documentElement.scrollWidth<=innerWidth'),(stage,width)
         for theme in ('sakura','aurora'):
-            js('window.selfTest81.theme('+json.dumps(theme)+');true');pump(.15)
-            assert view.grab().save(str(output/f'{stage}-{theme}.png'))
+            color='#ab1201' if theme=='sakura' else '#ab1202'
+            js('window.selfTest81.theme('+json.dumps(theme)+');(()=>{let e=document.getElementById("frame115");if(!e){e=document.createElement("div");e.id="frame115";document.body.append(e)}e.style.cssText="position:fixed;left:0;top:0;width:2px;height:2px;z-index:99999;background:'+color+'";return true})()')
+            deadline=time.monotonic()+5
+            while True:
+                frame=view.grab()
+                if frame.toImage().pixelColor(0,0).name()==color: break
+                assert time.monotonic()<deadline,'new theme compositor frame not ready'
+                pump()
+            assert frame.save(str(output/f'{stage}-{theme}.png'))
     try:
         view.setUrl(QUrl.fromLocalFile(str(root/'dist/index.html')))
         wait('!!window.selfTest81 && document.body.textContent.includes("上传题目自测")')
@@ -105,15 +122,16 @@ def browser(root, output):
                 click('写好了，看参考答案');wait('!!document.querySelector(".recall-reference")')
                 if not keypoint_shots:
                     shots('keypoints');keypoint_shots=True
-                js('document.querySelectorAll(".recall-point input").forEach(e=>e.click());true');pump()
+                js('document.querySelectorAll(".recall-point input").forEach(e=>e.click());true')
+                wait('[...document.querySelectorAll(".recall-point input")].every(e=>e.checked)')
                 click('提交')
             elif js('!!document.querySelector("input[type=radio]")'):
-                js('document.querySelector("input[type=radio]").click();true');pump();click('提交答案')
+                js('document.querySelector("input[type=radio]").click();true');click('提交答案')
             else:
                 fill('.self-test-objective input','5');click('提交答案')
             wait('!!document.querySelector(".self-test-verdict")')
             assert js('document.querySelector(".self-test-verdict").textContent.includes("答对了")')
-            click('继续');pump(.06)
+            click('继续');wait('!document.querySelector(".self-test-verdict") || !!document.querySelector(".self-test-complete")')
         shots('completed')
         assert js('document.body.textContent.includes("答对 3 次 · 答错 0 次")')
         # Exercise upload via the actual UI file-token path and document importer.

@@ -81,11 +81,13 @@ def browser(root):
 
 def test_status88_page_open_completion_retry_light_and_dark(tmp_path):
     build(tmp_path)
-    env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu')
+    env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu',PYTHONIOENCODING='utf-8')
     run = subprocess.run([sys.executable, '-B', str(Path(__file__)), str(tmp_path)], env=env,
-                         capture_output=True, text=True, encoding='utf8', timeout=100)
+                         capture_output=True, text=True, encoding='utf8', errors='replace', timeout=100)
     assert run.returncode == 0, run.stdout+run.stderr
 
 
 if __name__ == '__main__':
-    build(Path(sys.argv[1])); browser(Path(sys.argv[1]))
+    target=Path(sys.argv[1])
+    if not (target/'dist/index.html').is_file(): build(target)
+    browser(target)

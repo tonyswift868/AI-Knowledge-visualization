@@ -2,6 +2,7 @@ import json
 import sqlite3
 import threading
 import asyncio
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -19,27 +20,44 @@ from tests.refactor.providers.samples import anthro
 _REAL_COMPLETE = providers.complete
 
 
+@pytest.fixture
+def deadline_clock115(monkeypatch):
+    from refactor.learning.connections import gateway
+    samples = []
+    def monotonic():
+        value = 100. + len(samples) * .125
+        samples.append(value)
+        return value
+    # Patch only the gateway module's clock, not Python/Qt's global clock.
+    monkeypatch.setattr(gateway, 'time', SimpleNamespace(monotonic=monotonic))
+    return samples
+
+
 @pytest.mark.parametrize('purpose,minimum', list(PURPOSE_MIN_OUTPUT.items()))
 @pytest.mark.parametrize('requested', [1,4096,32768])
-def test_purpose_caps_raise_only_and_background_timeout(tmp_path,monkeypatch,purpose,minimum,requested):
+def test_purpose_caps_raise_only_and_background_timeout(tmp_path,monkeypatch,purpose,minimum,requested,deadline_clock115):
     g,p=configured(tmp_path)
     calls=[]
     monkeypatch.setattr(providers,'complete',lambda p,**kw:(calls.append(kw),answer())[1])
     g.complete(purpose,MESSAGES,max_tokens=requested)
     assert calls[0]['max_tokens']==MODEL_MAX_OUTPUT.get(p['model'],max(requested,minimum))
-    assert calls[0]['timeout']==(BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else 120)
+    assert len(deadline_clock115)==2
+    budget=BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else 120
+    assert calls[0]['timeout']==budget-(deadline_clock115[1]-deadline_clock115[0])
     assert calls[0]['reasoning_effort']==(None if purpose=='profile' else 'high')
 
 
 @pytest.mark.parametrize('timeout',[1,60,270,300])
 @pytest.mark.parametrize('purpose',['teacher','point_materials','outline'])
-def test_timeout_keeps_larger_preset_and_foreground_unchanged(tmp_path,monkeypatch,timeout,purpose):
+def test_timeout_keeps_larger_preset_and_foreground_unchanged(tmp_path,monkeypatch,timeout,purpose,deadline_clock115):
     g,p= configured(tmp_path)
     g.save_preset('deepseek',preset_id=p['id'],timeout=timeout)
     calls=[]
     monkeypatch.setattr(providers,'complete',lambda p,**kw:(calls.append(kw),answer())[1])
     g.complete(purpose,MESSAGES)
-    assert calls[0]['timeout']==(BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else timeout)
+    assert len(deadline_clock115)==2
+    budget=BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else timeout
+    assert calls[0]['timeout']==budget-(deadline_clock115[1]-deadline_clock115[0])
 
 
 @pytest.mark.parametrize('effort',['none','low','high','max'])

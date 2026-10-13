@@ -129,7 +129,13 @@ def to_question(room, plan_id, view, *, streamed=None):
 
 
 def join_workers():
-    for worker in list(threading.enumerate()):
-        if worker.name.startswith(('classroom-', 'plan-materials', 'plan-point-links', 'plan-point-minutes')):
-            worker.join(5)
-            assert not worker.is_alive()
+    # Materials completion can start a minutes worker *during* parent.join().
+    # Drain newly spawned descendants as well; never read a mixed DB projection.
+    deadline = time.monotonic() + 15
+    while True:
+        workers = [w for w in threading.enumerate() if w is not threading.current_thread()
+                   and w.name.startswith(('classroom-', 'plan-materials', 'plan-point-links', 'plan-point-minutes'))]
+        if not workers: return
+        for worker in workers:
+            worker.join(max(0, deadline-time.monotonic()))
+            assert not worker.is_alive(), 'background worker did not settle: '+worker.name
