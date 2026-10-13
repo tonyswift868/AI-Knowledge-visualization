@@ -86,7 +86,9 @@ async function main(){
   root.render(<Loading key="slow" started={Date.now()-16000} shape="conversation" label="老师正在想…" onCancel={()=>action++} onRetry={()=>action++}/>)
   await wait(()=>!!document.querySelector('[data-wait-slow="true"]'),'slow');assert(document.body.innerText.includes('比平时慢'),'slow copy');document.querySelectorAll<HTMLButtonElement>('.wait-actions button').forEach(b=>b.click());assert(action===2,'retry and cancel wired')
   result.checks.push('300ms/3s/15s boundaries; retry/cancel callbacks')
-  window.loading86Hold='app.bootstrap';root.render(<App/>);await pause(340);assert(document.body.innerText.includes('正在准备学习空间'),'startup placeholder')
+  window.loading86Hold='app.bootstrap';root.render(<App/>);
+  await wait(()=>held.some(r=>r.method==='app.bootstrap'),'bootstrap actually pending')
+  await wait(()=>document.body.innerText.includes('正在准备学习空间'),'startup placeholder')
   window.loading86Hold=undefined;held.filter(r=>r.method==='app.bootstrap').forEach(r=>fake(r));held=held.filter(r=>r.method!=='app.bootstrap')
   await wait(()=>document.body.innerText.includes('查看全部计划'),'home loaded')
   plansDelay=650;useApp.getState().go('plans');await pause(360);assert(document.querySelector('.wait-cards'),'plans shape');await wait(()=>document.body.innerText.includes('查看路线'),'plans content')

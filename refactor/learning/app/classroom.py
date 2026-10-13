@@ -30,6 +30,10 @@ DIALOGUE_ROWS, DIALOGUE_CHARS, CHECK_BATCH = 40, 60000, 4
 RESET, VERDICT_EVENT = "\x00", "\x01VERDICT:"
 MATERIAL_EVENT = "\x01MATERIAL:"
 TODAY_EVENT = "\x01TODAY:"
+EXPLAIN = '顺着学生的开场回答讲本点重点。对的直接顺着讲，不重复铺垫；错了或不知道，不纠缠，一起看原文。每段简洁，不反复问清楚吗；不出计分题。'
+CONFUSED = '学生没太懂，依据同一原文换一种口语说法或生活化例子；不能引入新知识结论，不出计分题。'
+CONCEPT_START = '现在开始当前小要点。结合学生刚才的回应和最近的开场，自行选择生活化问题、短例子、对比或从上一小要点接过来，不按序号轮换套路，不连续套同一模板。不一次讲完全部小要点。围绕当前讲义展开，留空间让学生回应；不必每轮结尾问问题，不输出选项块。'
+CONCEPT_WRAP = '这个大知识点的小要点已经讲完。用一两句、只说结论，把它们与掌握目标串起来收束，不再出问题，不重讲全文。'
 PURPOSE = {"module_test": "module", "skip_test": "direct",
            "retest": "retest", "check": "final", "practice": "free"}
 
@@ -49,12 +53,102 @@ class Classroom:
         self._local = threading.local()
         self.material_event = lambda data: None
         self._teacher_request_page = AppendOnlyPage()
+        self._prefetch_lock = threading.RLock()
+        self._prefetches = {}
 
     def cancel_materials(self, plan_id=None):
         """Only this classroom's preparation jobs, never the shared gateway/store."""
         for key,job in list(self._jobs.items()):
             if plan_id is None or key[0]==plan_id:
                 job['cancel'].set();self._jobs.pop(key,None)
+        self.cancel_prefetch(plan_id)
+
+    def cancel_prefetch(self, plan_id=None, version=None):
+        with self._prefetch_lock:
+            for pid,group in list(self._prefetches.items()):
+                if (plan_id is None or pid==plan_id) and (version is None or version==group['version']):
+                    for job in group['jobs'].values():job['cancel'].set()
+                    self._prefetches.pop(pid,None)
+
+    def _teaching_version(self, course, state):
+        if state.get('pending') or state.get('direct_review') or state['step'] not in ('teach','opening','teaching','closing'):return None
+        value=dict(state=state,points=course.points,modules=course.modules,dialogue=self._dialogue(course,state),
+            prefs=self._prefs(course),profile=course.store.records('teacher_profile',course.plan_id),
+            excerpts=course.excerpts([p['id'] for p in course.points]))
+        return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,default=str).encode()).hexdigest()
+
+    def _predicted_teacher(self, course, state, action, args):
+        """Describe the next teacher request without performing any course writes."""
+        state=copy.deepcopy(state)
+        if action=='choose':
+            return self._teacher_context(course,state,EXPLAIN,self._focus(course,state),user=state['conversation']['options'][args[0]])
+        if action=='confused':return self._teacher_context(course,state,CONFUSED,self._focus(course,state),user='没太懂')
+        concept=self._concept(course,state)
+        if concept and state['step'] in ('teaching','closing'):
+            point,sub,index=concept
+            if index+1==len(point['subpoints']):
+                state.setdefault('concept',{})['wrapping']=True
+                return self._teacher_context(course,state,CONCEPT_WRAP,[point['id']])
+            state['concept'].update(subpoint_id=point['subpoints'][index+1]['id'],rounds=0)
+            return self._teacher_context(course,state,CONCEPT_START,[point['id']])
+        if state['step'] in ('teaching','closing'):
+            state.update(index=state['index']+1,step='teach',pending=None)
+            state.pop('conversation',None);state.pop('concept',None)
+        points=course.points_of(state['module_id'])
+        if state['index']>=len(points):return None
+        point=points[state['index']]
+        if not course.passages([point['id']]):return None
+        if point.get('structure')=='concept_v1' and point.get('subpoints'):
+            state['concept']=dict(point_id=point['id'],subpoint_id=point['subpoints'][0]['id'],rounds=0,
+                style_history=state.get('concept_recent_styles',[]),intro_endings=[])
+            return self._teacher_context(course,state,CONCEPT_START,[point['id']])
+        return self._teacher_context(course,state,self._opening_director(course,state),[point['id']],opening=True)
+
+    def prefetch(self, plan_id, version):
+        lock=self._lock(plan_id)
+        if not lock.acquire(False):return dict(total=0,ready=0)
+        try:
+            course=self._course(plan_id);state=self._load(course)
+            if not version or version!=self._teaching_version(course,state):
+                self.cancel_prefetch(plan_id,version)
+                return dict(total=0,ready=0)
+            with self._prefetch_lock:
+                existing=self._prefetches.get(plan_id)
+                if existing and existing['version']==version:
+                    return dict(total=len(existing['jobs']),ready=sum(j['done'] for j in existing['jobs'].values()))
+                self.cancel_prefetch()
+                actions=([('choose',(i,)) for i in range(len((state.get('conversation') or {}).get('options',[])))]
+                         if state['step']=='opening' else [('next',()),('confused',())] if state['step'] in ('teaching','closing') else [('next',())])
+                group=dict(version=version,jobs={});self._prefetches[plan_id]=group
+                for action,args in actions[:4]:
+                    tctx=self._predicted_teacher(course,state,action,args)
+                    if not tctx:continue
+                    tctx['request_page']=copy.deepcopy(self._teacher_request_page)
+                    request=teacher_agent.teacher_request(tctx)
+                    job=dict(cancel=threading.Event(),condition=threading.Condition(),chunks=[],done=False,error=None,
+                             request=request,tctx=tctx)
+                    group['jobs'][(action,args)]=job
+                    def generate(job=job):
+                        def emit(delta):
+                            with job['condition']:job['chunks'].append(delta);job['condition'].notify_all()
+                        try:job['result']=self._generate_teacher(plan_id,job['tctx'],job['request'],job['cancel'],emit)
+                        except Exception as exc:job['error']=exc
+                        finally:
+                            with job['condition']:job['done']=True;job['condition'].notify_all()
+                    threading.Thread(target=generate,name='classroom-prefetch',daemon=True).start()
+                return dict(total=len(group['jobs']),ready=sum(j['done'] for j in group['jobs'].values()))
+        finally:lock.release()
+
+    def _take_prefetch(self, course, state, action):
+        if not action:return None
+        with self._prefetch_lock:
+            group=self._prefetches.pop(course.plan_id,None)
+            if not group:return None
+            selected=(group['jobs'].get((action[0],tuple(action[1]))) if action[0] in ('next','choose','confused')
+                      and group['version']==self._teaching_version(course,state) else None)
+            for job in group['jobs'].values():
+                if job is not selected:job['cancel'].set()
+            return selected
 
     def _activity_key(self, plan_id):
         return (str(self.services.data_root), self.services.account_id, plan_id)
@@ -85,6 +179,7 @@ class Classroom:
             if action and action[2] in state.get("completed_requests", []):
                 return self.snapshot(course, state)
             original = copy.deepcopy(state)
+            self._local.prefetched = self._take_prefetch(course,state,action)
             try:
                 if state.get('pending') and not self._gradable(state['pending']['question']) and not (action and action[0]=='leave'):
                     self._replace_subjective(course,state,ctx)
@@ -122,6 +217,9 @@ class Classroom:
             self._save(course, state)
             return self.snapshot(course, state)
         finally:
+            selected=getattr(self._local,'prefetched',None)
+            if selected:selected['cancel'].set()
+            self._local.prefetched=None
             lock.release()
 
     def _load(self, course):
@@ -278,6 +376,7 @@ class Classroom:
             module=dict(id=module['id'],title=module['title'],number=course.modules.index(module)+1,total=len(course.modules),state=book.module(module['id']).state,navigation=navigation),
             points=[dict(id=p['id'],title=p['title'],minutes=p['minutes'],taught=p['id'] in taught,state=book.point(p['id']).state,current=i==state['index']) for i,p in enumerate(points)],
             step=state['step'],question=question,messages=messages,conversation=state.get('conversation'),concept=concept_view,
+            teaching_version=self._teaching_version(course,state),
             preparation=state.get('material_wait') or current_preparation,failure=state.get('failure'),explanation=state.get('answer_explanation'),
             can_skip=self._can_direct(course,state),
             direct_review=self._direct_view(course,state),
@@ -402,7 +501,7 @@ class Classroom:
             if index+1<len(point['subpoints']):
                 return self._concept_begin(course,state,ctx,index+1)
             state.setdefault('concept',dict(point_id=point['id'],subpoint_id=sub['id'],rounds=0))['wrapping']=True
-            teaching=self._teacher(course,state,ctx,'这个大知识点的小要点已经讲完。用一两句把它们与掌握目标串起来收束，不再出问题，不重讲全文。',[point['id']])
+            teaching=self._teacher(course,state,ctx,CONCEPT_WRAP,[point['id']])
             self._deliver(course,state,teaching)
             state.pop('concept',None)
             self._point_done(course,state)
@@ -426,12 +525,23 @@ class Classroom:
                 return
         if point.get('structure')=='concept_v1' and point.get('subpoints'):
             return self._concept_begin(course,state,ctx,0)
-        chapter=f"先用一句话说明这一章要解决什么问题：{course.module(state['module_id'])['title']}。" if state['index']==0 else ''
-        teaching=self._teacher(course,state,ctx,chapter+'用一个生活化问题开头，给2～3个不计分的可点选项，也允许打字。先不要讲完整结论。',[point['id']],opening=True)
+        teaching=self._teacher(course,state,ctx,self._opening_director(course,state),[point['id']],opening=True)
         self._deliver(course,state,teaching)
         options=list(teaching.options)
         if '直接开始讲' not in options:options.append('直接开始讲')
         state.update(step='opening',conversation=dict(point_id=point['id'],options=options,interrupted=False))
+
+    @staticmethod
+    def _opening_director(course,state):
+        chapter=f"先用一句话说明这一章要解决什么问题：{course.module(state['module_id'])['title']}。" if state['index']==0 else ''
+        return chapter+'用一个生活化问题开头，给2～3个不计分的可点选项，也允许打字。先不要讲完整结论。'
+
+    def skip_point(self, course, state, ctx):
+        if state.get('pending') or state.get('direct_review') or state['step'] not in ('teach','opening','teaching','closing'):
+            raise BridgeError('STEP_INVALID','请先完成当前答题。')
+        self._point_done(course,state)
+        self._publish_today(course,state,ctx)
+        if state['step']=='teach':return self.next(course,state,ctx)
 
     @staticmethod
     def _concept(course,state):
@@ -452,7 +562,7 @@ class Classroom:
         state['concept']=dict(point_id=point['id'],subpoint_id=sub['id'],rounds=0,
             style_history=prior.get('style_history',[]) if prior.get('point_id')==point['id'] else state.get('concept_recent_styles',[]),
             intro_endings=prior.get('intro_endings',[]) if prior.get('point_id')==point['id'] else [])
-        teaching=self._teacher(course,state,ctx,'现在开始当前小要点。结合学生刚才的回应和最近的开场，自行选择生活化问题、短例子、对比或从上一小要点接过来，不按序号轮换套路，不连续套同一模板。不一次讲完全部小要点。围绕当前讲义展开，留空间让学生回应；不必每轮结尾问问题，不输出选项块。',[point['id']])
+        teaching=self._teacher(course,state,ctx,CONCEPT_START,[point['id']])
         self._deliver(course,state,teaching,explained=True)
         state.update(step='teaching',conversation=dict(point_id=point['id'],options=[],interrupted=False))
 
@@ -472,14 +582,14 @@ class Classroom:
 
     def _explain(self, course, state, ctx, text):
         point=self._focus(course,state)[0]
-        teaching=self._teacher(course,state,ctx,'顺着学生的开场回答讲本点重点。对的直接顺着讲，不重复铺垫；错了或不知道，不纠缠，一起看原文。每段简洁，不反复问清楚吗；不出计分题。',[point],user=text)
+        teaching=self._teacher(course,state,ctx,EXPLAIN,[point],user=text)
         self._deliver(course,state,teaching,user=text,explained=True)
         state['step']='teaching';state['conversation']['options']=[]
 
     def confused(self, course, state, ctx):
         if state['step'] not in ('opening','teaching','closing'):raise BridgeError('STEP_INVALID','可以先提问说明哪里不明白。')
         text='没太懂'
-        teaching=self._teacher(course,state,ctx,'学生没太懂，依据同一原文换一种口语说法或生活化例子；不能引入新知识结论，不出计分题。',self._focus(course,state),user=text)
+        teaching=self._teacher(course,state,ctx,CONFUSED,self._focus(course,state),user=text)
         self._deliver(course,state,teaching,user=text)
 
     def ask(self, course, state, ctx, text):
@@ -922,7 +1032,7 @@ class Classroom:
         pid=q['point_ids'][0];state['index']=next(i for i,p in enumerate(course.points_of(q['module_id'])) if p['id']==pid)
         self._show_question(course,state,q,'practice',number=practice['index']+1,total=practice['count'])
 
-    def _teacher(self, course, state, ctx, director, point_ids, *, user='',opening=False,allow_plan=False):
+    def _teacher_context(self, course, state, director, point_ids, *, user='',opening=False,allow_plan=False):
         plan,module=self._skeleton(course,state,point_ids)
         excerpts=self._teaching_excerpts(course,state,point_ids)
         available=self._related_passages(course,excerpts,user) if allow_plan else excerpts
@@ -943,33 +1053,79 @@ class Classroom:
             intros=[r for r in saved.get('intro_endings',[]) if r['subpoint_id']!=sub['id']]
             tctx['concept'].update(first_turn=saved.get('rounds',0)==0,recent_styles=saved.get('style_history',[]),
                 previous_intro_ending=intros[-1]['ending'] if intros else None)
+        return tctx
+
+    def _teacher(self, course, state, ctx, director, point_ids, *, user='',opening=False,allow_plan=False):
+        tctx=self._teacher_context(course,state,director,point_ids,user=user,opening=opening,allow_plan=allow_plan)
         request=teacher_agent.teacher_request(tctx)
+        selected=getattr(self._local,'prefetched',None)
+        self._local.prefetched=None
+        if selected and selected['request']==request and not selected['cancel'].is_set():
+            offset=0
+            try:
+                while True:
+                    if ctx and ctx.cancel.is_set():selected['cancel'].set();raise ModelCancelled()
+                    # A finished prediction is already parsed. Do not replay
+                    # rejected draft chunks (or restart speech) on a cache hit.
+                    if offset==0 and selected['done'] and not selected['error']:
+                        if ctx:ctx.stream(selected['result'][0].speech)
+                        break
+                    with selected['condition']:
+                        chunks=selected['chunks'][offset:];offset+=len(chunks)
+                        done=selected['done']
+                        if not chunks and not done:selected['condition'].wait(.025)
+                    for chunk in chunks:
+                        if ctx:ctx.stream(chunk)
+                    if done:break
+                if selected['error']:raise selected['error']
+                result=selected['result']
+                log.info('classroom prefetch hit plan=%s ready=%s',course.plan_id,selected['done'])
+            except ModelCancelled:raise
+            except Exception:
+                log.info('classroom prefetch unavailable; generating current reply',exc_info=True)
+                if ctx:ctx.stream(RESET)
+                result=self._generate_teacher(course.plan_id,tctx,request,ctx.cancel if ctx else None,ctx.stream if ctx else lambda d:None)
+        else:
+            if selected:selected['cancel'].set()
+            result=self._generate_teacher(course.plan_id,tctx,request,ctx.cancel if ctx else None,ctx.stream if ctx else lambda d:None)
+        teaching,cache_request,accepted=result
+        self._teacher_request_page.accept(cache_request[0],cache_request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(accepted))
+        return teaching
+
+    def _generate_teacher(self, plan_id, tctx, request, cancel, emit):
+        """Only model work here: no state, transcript, credits or cache writes."""
+        concept=tctx.get('concept')
         original_request=request
         for attempt in range(2):
-            if ctx and ctx.cancel.is_set():raise ModelCancelled()
-            # Validate the full reply before displaying it, including removing
-            # invalid source labels. Uncited Chinese explanations are valid.
-            result=self.services.gateway.complete('teacher',request[1],system=request[0],on_text=lambda delta:None,
-                cancel=ctx.cancel if ctx else None,plan_id=course.plan_id,max_tokens=4096)
+            if cancel and cancel.is_set():raise ModelCancelled()
+            raw='';visible=''
+            def on_text(delta):
+                nonlocal raw,visible
+                if cancel and cancel.is_set():raise ModelCancelled()
+                raw+=delta
+                body=teacher_agent.streaming_body(raw)
+                if body!=visible:
+                    if body.startswith(visible):emit(body[len(visible):])
+                    else:emit(RESET);emit(body)
+                    visible=body
+            result=self.services.gateway.complete('teacher',request[1],system=request[0],on_text=on_text,
+                cancel=cancel,plan_id=plan_id,max_tokens=4096)
+            if cancel and cancel.is_set():raise ModelCancelled()
             try:
                 teaching=teacher_agent.parse_teaching(result.text,tctx)
-                accepted=teaching.speech if concept else result.text
                 cache_request=original_request if concept else request
-                self._teacher_request_page.accept(cache_request[0],cache_request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(accepted))
-                if ctx:
-                    ctx.stream(teaching.speech)
-                return teaching
+                if visible!=teaching.speech:emit(RESET);emit(teaching.speech)
+                return teaching,cache_request,teaching.speech if concept else result.text
             except AgentFormatError as exc:
-                if ctx:ctx.stream(RESET)
+                emit(RESET)
                 if attempt==0:
                     request=(request[0],request[1]+([dict(role='assistant',content=result.text)] if concept else [])+[dict(role='user',content=f'上一条回复格式不合格：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])
                 elif concept and str(exc).startswith('concept'):
-                    safe=teacher_agent.concept_fallback(result.text,tctx)
-                    safe_ctx=dict(tctx,concept=dict(tctx['concept'],allow_neutral=True))
-                    teaching=teacher_agent.parse_teaching(safe,safe_ctx)
-                    self._teacher_request_page.accept(original_request[0],original_request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(safe))
-                    if ctx:ctx.stream(teaching.speech)
-                    return teaching
+                    kept=teacher_agent.concept_fallback(result.text,tctx)
+                    kept_ctx=dict(tctx,concept=dict(tctx['concept'],rewrite_exhausted=True))
+                    teaching=teacher_agent.parse_teaching(kept,kept_ctx)
+                    emit(teaching.speech)
+                    return teaching,original_request,teaching.speech
                 else:raise
 
     @staticmethod
@@ -1381,6 +1537,9 @@ def register(bridge, services, study_day, *, presence=lambda active,plan_id=None
         'classroom.enter':enter,'classroom.leave':leave,'classroom.source':source,
         'classroom.state':lambda p,c:room().run(p.get('plan_id'),lambda *args:None,c),
         'classroom.next':lambda p,c:invoke('next',p,c),
+        'classroom.skip_point':lambda p,c:invoke('skip_point',p,c),
+        'classroom.prefetch':lambda p,c:room().prefetch(p.get('plan_id'),p.get('version')),
+        'classroom.cancel_prefetch':lambda p,c:room().cancel_prefetch(p.get('plan_id'),p.get('version')) or dict(ok=True),
         'classroom.choose':lambda p,c:invoke('choose',p,c,p.get('option')),
         'classroom.confused':lambda p,c:invoke('confused',p,c),
         'classroom.ask':lambda p,c:invoke('ask',p,c,text(p)),

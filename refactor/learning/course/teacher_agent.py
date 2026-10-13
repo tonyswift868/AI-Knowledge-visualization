@@ -228,7 +228,7 @@ def _unsupported_absolute(sentence,ctx):
 
 def validate_concept(text,ctx):
     concept=ctx.get('concept')
-    if not concept:return
+    if not concept or concept.get('rewrite_exhausted'):return
     sentences=_sentences(text)
     if any(_unsupported_absolute(s,ctx) for s in sentences):
         raise AgentFormatError('concept: 出现讲义和原文没有的绝对化断言，保留事实及前提，删除外推后重写')
@@ -246,20 +246,20 @@ def validate_concept(text,ctx):
 
 
 def concept_fallback(text,ctx):
-    """After one rewrite, keep safe prose; never paste a source as fallback."""
-    sentences=[s for s in _sentences(text) if not _unsupported_absolute(s,ctx)]
-    if ctx['concept'].get('wrapping'):
-        first=sentences[0] if sentences else '这一大点先收束到讲义中的这些要点。'
-        if len(first)>80:first=first[:79].rstrip('，,：:；;。')+'。'
-        if first.endswith(('？','?')):first='这一大点先收束到讲义中的这些要点。'
-        return first
-    recent=ctx['concept'].get('recent_styles',[])
-    if sentences and any(s['lead']==sentences[0] for s in recent):sentences=sentences[1:]
-    forbidden=ctx['concept'].get('previous_intro_ending') if ctx['concept'].get('first_turn') else None
-    if forbidden and sentences and teaching_style(sentences[-1])['ending']==forbidden:sentences=sentences[:-1]
-    neutral=('我们接着对照当前讲义往下看。' if forbidden=='summary' else
-             '可以把这一条和讲义对照起来想一想。' if forbidden=='transition' else '这一轮先停在讲义给出的范围内。')
-    return ' '.join(sentences+[neutral])
+    """After the single rewrite, keep the entire reply (116 user decision)."""
+    return text
+
+
+def streaming_body(text):
+    """Visible provisional prose only; hold partial option/source markup."""
+    text=text.split('【',1)[0]
+    text=re.sub(r'\[[cC][^\]\n]*(?:\]|$)','',text)
+    text=_SOURCE_LINK.sub('',text)
+    # A token may stop inside a citation or a Markdown source link.
+    start=text.rfind('[')
+    if start>=0 and (']' not in text[start:] or text[start:].startswith('[〔')):
+        text=text[:start]
+    return strip_source_footer(text)
 
 def parse_teaching(text,ctx):
     teacher_request(ctx)

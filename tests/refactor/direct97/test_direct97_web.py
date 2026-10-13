@@ -89,7 +89,7 @@ def browser(directory):
         for stage in ('entry','original','choice'):
             js(f'document.documentElement.dataset.theme={json.dumps(theme)};window.direct97Show({json.dumps(stage)})')
             end=time.monotonic()+5
-            needle={'entry':'这个模块我都会了，直接考','original':'对照原文，自己判断理解得对不对','choice':'不管刚才回答怎样'}[stage]
+            needle={'entry':'跳过该知识点','original':'对照原文，自己判断理解得对不对','choice':'不管刚才回答怎样'}[stage]
             while time.monotonic()<end and not js(f'document.body.textContent.includes({json.dumps(needle)})'):pump()
             assert js(f'document.body.textContent.includes({json.dumps(needle)})')
             pump(.2)
