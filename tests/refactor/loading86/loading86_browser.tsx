@@ -6,9 +6,9 @@ import { connect, call } from '../../../refactor/learning/web/src/bridge'
 import { useApp } from '../../../refactor/learning/web/src/store'
 import { beginActivity, endActivity, getActivities } from '../../../refactor/learning/web/src/loading/activity'
 import '../../../refactor/learning/web/src/theme.css'
+import {until, clock115, pause} from '../flaky115/browser115'
 
 declare global {interface Window { loading86Native?:boolean; loading86ReaderOnly?:boolean; loading86Result?:any; loading86Show?:any; loading86Ready?:boolean; loading86Hold?:string; loading86Wire?:any }}
-const pause=(ms:number)=>new Promise(r=>setTimeout(r,ms))
 const frames=async()=>{await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame)}
 const wait=async(fn:()=>boolean,label:string,limit=5000)=>{const end=performance.now()+limit;while(!fn()){if(performance.now()>end)throw Error(label+': '+document.body.innerText);await pause(10)}await frames()}
 const assert=(b:unknown,label:string)=>{if(!b)throw Error(label)}
@@ -78,21 +78,29 @@ async function main(){
     await wait(()=>Array.from(document.querySelectorAll('.bubble.bot')).some(n=>!seen.has(n.textContent))&&!document.querySelector('.class-scroll .wait'), 'native teacher',240000)
     clearInterval(sampling);clearInterval(capture);result.intermediate=[...visibleWaits];result.timings.push({operation:'teacher_reply',ms:performance.now()-at,intermediate:middle});result.ok=true;window.loading86Result=result;return
   }
-  // Exact boundaries via an already running wait plus real debounce measurements.
+  // Drive the component's real timer callbacks with an exact test clock.
+  const clock=clock115()
   let action=0
   root.render(<Loading shape="cards" label="正在读取我的计划…" onRetry={()=>action++} onCancel={()=>action++}/>)
-  await frames();assert(document.querySelector('[data-wait-tier="quiet"]'),'quiet');assert(getComputedStyle(document.querySelector('.wait')!).visibility==='hidden','under 300ms hidden')
-  await pause(340);assert(document.querySelector('[data-wait-tier="medium"]'),'medium');await pause(2750);assert(document.querySelector('[data-wait-tier="long"]'),'long')
-  root.render(<Loading key="slow" started={Date.now()-16000} shape="conversation" label="老师正在想…" onCancel={()=>action++} onRetry={()=>action++}/>)
+  await until(()=>clock.pending()===3&&!!document.querySelector('[data-wait-tier="quiet"]'),'loading effect installed')
+  assert(getComputedStyle(document.querySelector('.wait')!).visibility==='hidden','under 300ms hidden')
+  clock.advance(299);assert(document.querySelector('[data-wait-tier="quiet"]'),'299ms quiet')
+  clock.advance(1);await until(()=>!!document.querySelector('[data-wait-tier="medium"]'),'300ms medium')
+  clock.advance(2699);assert(document.querySelector('[data-wait-tier="medium"]'),'2999ms medium')
+  clock.advance(1);await until(()=>!!document.querySelector('[data-wait-tier="long"]'),'3000ms long')
+  clock.advance(11999);assert(!document.querySelector('[data-wait-slow="true"]'),'14999ms not slow')
+  clock.advance(1)
   await wait(()=>!!document.querySelector('[data-wait-slow="true"]'),'slow');assert(document.body.innerText.includes('比平时慢'),'slow copy');document.querySelectorAll<HTMLButtonElement>('.wait-actions button').forEach(b=>b.click());assert(action===2,'retry and cancel wired')
-  result.checks.push('300ms/3s/15s boundaries; retry/cancel callbacks')
-  window.loading86Hold='app.bootstrap';root.render(<App/>);await pause(340);assert(document.body.innerText.includes('正在准备学习空间'),'startup placeholder')
+  result.checks.push('299/300ms, 2999/3000ms, 14999/15000ms exact boundaries; retry/cancel callbacks')
+  root.render(<div id="clock115-unmounted"/>);await until(()=>!!document.querySelector('#clock115-unmounted')&&clock.pending()===0,'clock cleanup');clock.restore()
+  window.loading86Hold='app.bootstrap';root.render(<App/>);await wait(()=>held.some(r=>r.method==='app.bootstrap')&&document.body.innerText.includes('正在准备学习空间'),'startup placeholder')
   window.loading86Hold=undefined;held.filter(r=>r.method==='app.bootstrap').forEach(r=>fake(r));held=held.filter(r=>r.method!=='app.bootstrap')
   await wait(()=>document.body.innerText.includes('查看全部计划'),'home loaded')
-  plansDelay=650;useApp.getState().go('plans');await pause(360);assert(document.querySelector('.wait-cards'),'plans shape');await wait(()=>document.body.innerText.includes('查看路线'),'plans content')
+  window.loading86Hold='plans.list';useApp.getState().go('plans');await wait(()=>held.some(r=>r.method==='plans.list')&&!!document.querySelector('.wait-cards'),'plans shape')
+  window.loading86Hold=undefined;held.filter(r=>r.method==='plans.list').forEach(r=>fake(r));held=held.filter(r=>r.method!=='plans.list');await wait(()=>document.body.innerText.includes('查看路线'),'plans content')
   useApp.getState().set({planId:'fixture'});useApp.getState().go('classroom');await wait(()=>!!document.querySelector('.class-main'),'classroom');
   const ta=document.querySelector('.composer textarea') as HTMLTextAreaElement
-  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(ta,'我不太明白');ta.dispatchEvent(new Event('input',{bubbles:true}));await pause(30)
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(ta,'我不太明白');ta.dispatchEvent(new Event('input',{bubbles:true}));await until(()=>Array.from(document.querySelectorAll<HTMLButtonElement>('.composer button')).some(b=>b.textContent?.includes('发送')&&!b.disabled),'composer enabled')
   Array.from(document.querySelectorAll('.composer button')).find(b=>b.textContent?.includes('发送'))?.click();await wait(()=>document.body.innerText.includes('老师正在想'),'teacher slot');
   const req=held.find(r=>r.method==='classroom.reply');assert(req,'teacher request')
   receiver(JSON.stringify({type:'stream',id:req.id,delta:'我们换个生活中的例子。'}));await wait(()=>!!document.querySelector('.class-scroll .wait-content'),'stream content');assert(!document.querySelector('.class-scroll .wait'),'placeholder replaced')
@@ -101,7 +109,7 @@ async function main(){
   result.checks.push('startup/home/plans/classroom placeholders; first text replaces teacher wait')
   // Non-content actions use the same component, with no request body stored.
   useApp.getState().go('tools');window.loading86Hold='settings.save'
-  const pending=call('settings.save',{changes:{chat_persona:'DO_NOT_RETAIN'}});await pause(340)
+  const pending=call('settings.save',{changes:{chat_persona:'DO_NOT_RETAIN'}});await wait(()=>!!document.querySelector('.wait-global'),'fallback ready')
   assert(document.querySelector('.wait-global'),'fallback action');assert(!JSON.stringify(getActivities()).includes('DO_NOT_RETAIN'),'metadata only')
   const save=held.find(r=>r.method==='settings.save');response(save,{settings});await pending;held=held.filter(r=>r!==save);window.loading86Hold=undefined
   await wait(()=>!document.querySelector('.wait-global'),'fallback dismissed')
@@ -109,13 +117,14 @@ async function main(){
   result.checks.push('global fallback metadata only; response removes activity')
   const slowReq=call('selftest.import',{}, {signal:new AbortController().signal});await slowReq
   result.checks.push('no real model/credentials')
+  Date.now=()=>1700000100000 // Screenshot tiers must not age while Chromium is busy.
   window.loading86Show=async(theme:string,mode:string,reduced=false)=>{
     window.loading86Ready=false
     document.documentElement.dataset.theme=theme;document.documentElement.classList.toggle('reduce-motion',reduced)
-    root.render(<><div className="page" style={{maxWidth:900,margin:'30px auto'}}><h1>学习正在准备好</h1><p className="muted">每一步都看得见；准备好后会自动继续。</p><Loading key={`${theme}-${mode}-${reduced}`} label={mode==='teacher'?'老师正在想…':mode==='slow'?'正在按资料填知识点…':'正在读取我的计划…'}
+    root.render(<><div className="page" data-screenshot115={`${theme}-${mode}-${reduced}`} style={{maxWidth:900,margin:'30px auto'}}><h1>学习正在准备好</h1><p className="muted">每一步都看得见；准备好后会自动继续。</p><Loading key={`${theme}-${mode}-${reduced}`} label={mode==='teacher'?'老师正在想…':mode==='slow'?'正在按资料填知识点…':'正在读取我的计划…'}
       started={Date.now()-(mode==='medium'?600:mode==='slow'?16000:4000)} shape={mode==='medium'?'cards':'conversation'} detail={mode==='slow'?'当前模块 2/4':undefined} onCancel={mode==='slow'?()=>{}:undefined} onRetry={mode==='slow'?()=>{}:undefined}/>
       </div><div style={{position:'fixed',left:0,top:0,width:2,height:2,background:(theme==='sakura'?'#aa112':'#bb223')+(['medium','long','teacher','slow'].indexOf(mode)+2)}}/></>)
-    await pause(70);await frames();window.loading86Ready=true
+    await until(()=>document.querySelector('[data-screenshot115]')?.getAttribute('data-screenshot115')===`${theme}-${mode}-${reduced}`&&!!document.querySelector('.wait-'+(mode==='medium'?'medium':'long')),'screenshot tier');await frames();window.loading86Ready=true
   }
   result.ok=true;window.loading86Result=result
 }

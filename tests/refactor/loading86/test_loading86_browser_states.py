@@ -82,8 +82,10 @@ def browser(root):
 
 def test_loading86_clock_slots_stream_and_metadata(tmp_path):
     build(tmp_path)
-    run=subprocess.run([sys.executable,'-B',str(Path(__file__)),str(tmp_path)],capture_output=True,text=True,encoding='utf8',timeout=100)
+    run=subprocess.run([sys.executable,'-B',str(Path(__file__)),str(tmp_path)],env=dict(os.environ,PYTHONIOENCODING='utf-8'),capture_output=True,text=True,encoding='utf8',errors='replace',timeout=100)
     assert run.returncode==0,run.stdout+run.stderr
 
 if __name__=='__main__':
-    target=Path(sys.argv[1]);build(target);browser(target)
+    target=Path(sys.argv[1])
+    if not (target/'dist/index.html').is_file(): build(target)
+    browser(target)
