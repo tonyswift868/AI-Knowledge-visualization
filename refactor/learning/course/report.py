@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from .ledger import Ledger, PlanWindow
+from .ledger import Ledger, PlanWindow, replan_preserves_past
 from .store import StoreError
 
 
@@ -87,7 +87,8 @@ def _peaks(plan, operations, through):
             method = ledger.add_confirmed if credit['state'] == 'confirmed' else ledger.add_tentative
             method(credit['credit_id'], credit['unit_id'], credit['minutes'], _day(credit['day']))
         elif op == 'replan':
-            ledger.replan(_day(raw['today']), _window(raw['window']), raw['total_minutes'])
+            ledger.replan(_day(raw['today']), _window(raw['window']), raw['total_minutes'],
+                          preserve_past=replan_preserves_past(raw.get('cause')))
         elif op == 'release':
             ledger.release_unused(raw['minutes'])
         else:
