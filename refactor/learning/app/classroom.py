@@ -448,7 +448,10 @@ class Classroom:
     def _concept_begin(self,course,state,ctx,index):
         point=course.points_of(state['module_id'])[state['index']]
         sub=point['subpoints'][index]
-        state['concept']=dict(point_id=point['id'],subpoint_id=sub['id'],rounds=0)
+        prior=state.get('concept') or {}
+        state['concept']=dict(point_id=point['id'],subpoint_id=sub['id'],rounds=0,
+            style_history=prior.get('style_history',[]) if prior.get('point_id')==point['id'] else state.get('concept_recent_styles',[]),
+            intro_endings=prior.get('intro_endings',[]) if prior.get('point_id')==point['id'] else [])
         teaching=self._teacher(course,state,ctx,'现在开始当前小要点。结合学生刚才的回应和最近的开场，自行选择生活化问题、短例子、对比或从上一小要点接过来，不按序号轮换套路，不连续套同一模板。不一次讲完全部小要点。围绕当前讲义展开，留空间让学生回应；不必每轮结尾问问题，不输出选项块。',[point['id']])
         self._deliver(course,state,teaching,explained=True)
         state.update(step='teaching',conversation=dict(point_id=point['id'],options=[],interrupted=False))
@@ -936,7 +939,12 @@ class Classroom:
                 subpoint_id=sub['id'],title_current=sub['title'],number=index+1,total=len(point['subpoints']),
                 completed_titles=[s['title'] for s in point['subpoints'][:index]],wrapping=wrapping,
                 notes=[n for s in (point['subpoints'] if wrapping else [sub]) for n in s.get('notes',[])])
+            saved=state.get('concept') or {}
+            intros=[r for r in saved.get('intro_endings',[]) if r['subpoint_id']!=sub['id']]
+            tctx['concept'].update(first_turn=saved.get('rounds',0)==0,recent_styles=saved.get('style_history',[]),
+                previous_intro_ending=intros[-1]['ending'] if intros else None)
         request=teacher_agent.teacher_request(tctx)
+        original_request=request
         for attempt in range(2):
             if ctx and ctx.cancel.is_set():raise ModelCancelled()
             # Validate the full reply before displaying it, including removing
@@ -945,14 +953,23 @@ class Classroom:
                 cancel=ctx.cancel if ctx else None,plan_id=course.plan_id,max_tokens=4096)
             try:
                 teaching=teacher_agent.parse_teaching(result.text,tctx)
-                self._teacher_request_page.accept(request[0],request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(result.text))
+                accepted=teaching.speech if concept else result.text
+                cache_request=original_request if concept else request
+                self._teacher_request_page.accept(cache_request[0],cache_request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(accepted))
                 if ctx:
                     ctx.stream(teaching.speech)
                 return teaching
             except AgentFormatError as exc:
                 if ctx:ctx.stream(RESET)
                 if attempt==0:
-                    request=(request[0],request[1]+[dict(role='user',content=f'上一条回复格式不合格：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])
+                    request=(request[0],request[1]+([dict(role='assistant',content=result.text)] if concept else [])+[dict(role='user',content=f'上一条回复格式不合格：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])
+                elif concept and str(exc).startswith('concept'):
+                    safe=teacher_agent.concept_fallback(result.text,tctx)
+                    safe_ctx=dict(tctx,concept=dict(tctx['concept'],allow_neutral=True))
+                    teaching=teacher_agent.parse_teaching(safe,safe_ctx)
+                    self._teacher_request_page.accept(original_request[0],original_request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(safe))
+                    if ctx:ctx.stream(teaching.speech)
+                    return teaching
                 else:raise
 
     @staticmethod
@@ -985,6 +1002,12 @@ class Classroom:
             concept=self._concept(course,state)
             if concept:
                 saved=state.setdefault('concept',dict(point_id=concept[0]['id'],subpoint_id=concept[1]['id'],rounds=0))
+                if not saved.get('wrapping'):
+                    style=teacher_agent.teaching_style(teaching.speech)
+                    saved['style_history']=(saved.get('style_history',[])+[dict(style,subpoint_id=concept[1]['id'])])[-12:]
+                    state['concept_recent_styles']=saved['style_history']
+                    if saved.get('rounds',0)==0:
+                        saved['intro_endings']=(saved.get('intro_endings',[])+[dict(subpoint_id=concept[1]['id'],ending=style['ending'])])[-8:]
                 saved['rounds']=saved.get('rounds',0)+1
             if explained:
                 document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
