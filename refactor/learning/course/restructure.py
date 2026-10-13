@@ -124,7 +124,6 @@ def _prepare(store, plan_id, structure, *, end_date=None):
     issues = []
     original_window = _window(plan['window'])
     requested_end = original_window.end
-    valid_end = True
     if end_date is not None:
         try:
             # fromisoformat also accepts compact dates; CLI/API require YYYY-MM-DD.
@@ -135,13 +134,8 @@ def _prepare(store, plan_id, structure, *, end_date=None):
                 raise ValueError()
         except (TypeError, ValueError):
             issues.append('新截止日必须为 YYYY-MM-DD，且不能早于今天或原开始日')
-            requested_end, valid_end = original_window.end, False
+            requested_end = original_window.end
     new_window = replace(original_window, end=requested_end)
-    deadline_changed = valid_end and requested_end != original_window.end
-    if deadline_changed:
-        issues.append('截止日变更目前只能预演，不能执行：现有 Ledger.replan(preserve_past=True) 禁止改变窗口，'
-                      'CourseStore.replan_plan 固定写 explicit_replan，无法以 restructure 原样回放；'
-                      '需同时调整 store.py 与 ledger.py（不在本任务允许修改范围内）')
     if structure.get('plan_id') != plan_id: issues.append('结构文件的计划 id 不一致')
     if structure.get('complete') is False: issues.append('结构文件标记为未完成，不能执行')
     if structure.get('quality_review', {}).get('passed') is False:
@@ -237,11 +231,6 @@ def _prepare(store, plan_id, structure, *, end_date=None):
     total = plan['total_minutes'] + sum(c['new']['learning_minutes']-c['old']['learning_minutes'] for c in changed)
     after_ledger = Ledger.from_dict(before_ledger.to_dict())
     try:
-        # Calculation on a detached clone only. Never publish this window as a
-        # restructure event: the current store's replay would reject it. Keeping
-        # the FIFO segment and prefix allows an honest, read-only date preview.
-        if deadline_changed:
-            after_ledger._window = new_window
         after_ledger.replan(today, new_window, total, preserve_past=True)
     except (StoreError, LedgerError, ValueError) as exc: issues.append('无法重排账本：' + str(exc))
     before, after = _calendar(before_ledger, today), _calendar(after_ledger, today)
@@ -278,7 +267,7 @@ def _prepare(store, plan_id, structure, *, end_date=None):
                   total_before=plan['total_minutes'], total_after=total,
                   end_date_before=original_window.end.isoformat(), end_date_after=requested_end.isoformat(),
                   remaining_days=remaining_days,
-                  deadline_change_supported=not deadline_changed,
+                  deadline_change_supported=True,
                   daily_cap=dict(minutes=600, fits=not over_cap and not capacity_excess, over_cap_days=over_cap,
                                  excess_minutes=max(daily_excess, capacity_excess),
                                  daily_target_excess_minutes=daily_excess,
@@ -298,8 +287,8 @@ def _prepare(store, plan_id, structure, *, end_date=None):
 def apply_structure(store, plan_id, structure, *, dry_run, end_date=None):
     """Preview without writes; otherwise validate and commit all or nothing.
 
-    end_date is optional YYYY-MM-DD. Changed deadlines are forecast only until
-    the existing store/ledger support preserving past targets across windows.
+    end_date is optional YYYY-MM-DD. The total and window are applied in one
+    normal store replan, retaining its immutable journal and FIFO debt.
     """
     with store.transaction():
         report, changed, questions, cursor, plan = _prepare(store, plan_id, structure, end_date=end_date)
@@ -332,9 +321,10 @@ def apply_structure(store, plan_id, structure, *, dry_run, end_date=None):
             if 'point_id' in state: state['point_id'] = first['id']
             for key in ('conversation', 'recall_result', 'answer_explanation'): state.pop(key, None)
             store.save_classroom_position(plan_id, state)
-        store._replan(plan, date.fromisoformat(report['today']), _window(plan['window']), report['total_after'],
+        store.replan_plan(plan_id, date.fromisoformat(report['today']),
+                      new_window=replace(_window(plan['window']), end=date.fromisoformat(report['end_date_after'])),
+                      new_total_minutes=report['total_after'],
                       cause='restructure', reason='按已确认的知识点结构重排；预演 ' + report['preview_token'])
-        store._put('plans', plan_id, plan)
         return report
 
 

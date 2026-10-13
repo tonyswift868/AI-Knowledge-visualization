@@ -415,9 +415,9 @@ def test_timeline_tentative_confirmation_or_failed_test_revoke(simulation, passe
 
 
 def test_timeline_extension_freezes_history_and_redistributes_only_remaining(simulation):
-    """360/6=60; after 90 credited, extend six remaining days to 270/6=45."""
+    """Freeze 3*60; spread 180/6=30, keep and actually repay the unpaid 90."""
     start = date(2026, 9, 28)
-    sim = simulation('06 中途延期与历史冻结', '原每天 60；前三天共记 90、欠 90。第四天延期到共 9 天：剩余 270 分在后 6 天各分 45，历史欠账 90 保留。')
+    sim = simulation('06 中途延期与历史冻结', '原每天 60；前三天共记 90、欠 90。第四天延期：过去目标冻结，未来180分各30，另还原欠90。')
     sim.prepare(start, start + timedelta(days=5), 360)
     for offset, amount, completed, debt in ((0, 60, 60, 0), (1, 0, 0, 0), (2, 30, 0, 30)):
         day = start + timedelta(days=offset)
@@ -430,24 +430,22 @@ def test_timeline_extension_freezes_history_and_redistributes_only_remaining(sim
     sim.observe(day, debt=90, note='延期前')
     sim.store.save_intake('plan', window=PlanWindow(start, start + timedelta(days=8), 180),
                           today=day, reason='欠账后主动延长截止日期')
-    sim.observe(day, target=45, history=90, note='延期后，历史欠账另列')
+    sim.observe(day, target=30, debt=90, note='延期后仍欠90，未来每天30')
     frozen = sim.store.load_ledger('plan').to_dict()['history']
-    assert list(frozen[-1]['targets'].values()) == [60, 60, 60]
-    assert list(frozen[-1]['confirmed'].values()) == [60, 30, 0]
-    assert frozen[-1]['debt_minutes'] == 90
-    sim.credit(90)
-    sim.observe(day, target=45, confirmed=45, ahead=45, ahead_days=1, history=90, note='补学 90 分')
+    prefix = {start+timedelta(days=i):60 for i in range(3)}
+    assert {d:n for d,n in sim.store.load_ledger('plan').targets.items() if d<day} == prefix
+    sim.credit(120)
+    sim.observe(day, target=30, confirmed=30, note='补原欠90，再完成今天30')
     for offset in range(4, 9):
         day = start + timedelta(days=offset)
         sim.clock.set(day)
-        if offset > 4:
-            sim.credit(45)
-        sim.observe(day, target=45, confirmed=45, time_completed=offset == 8, history=90, note='按新目标继续')
+        sim.credit(30)
+        sim.observe(day, target=30, confirmed=30, time_completed=offset == 8, note='按新目标继续')
         assert sim.store.load_ledger('plan').to_dict()['history'] == frozen
     sim.reopen()
     assert sim.store.load_ledger('plan').to_dict()['history'] == frozen
     sim.finish()
-    sim.trace.conclusion = '账本与需求一致：历史逐日已填和 90 分欠账冻结；首页未展示历史欠账，展示位置待确认（A-03）。'
+    sim.trace.conclusion = '过去目标不重算；旧欠90持续显示并实际还清，未来每天30；重开后账本一致。'
 
 
 def test_timeline_overdue_includes_unfinished_checks_until_full_completion(simulation):

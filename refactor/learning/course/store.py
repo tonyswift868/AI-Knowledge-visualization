@@ -1236,7 +1236,8 @@ class CourseStore:
                 plan['window'], plan['total_minutes'] = event['window'], event['total_minutes']
                 return event['id']
         ledger = self._load_ledger(plan)
-        ledger.replan(today, new_window, total_minutes, preserve_past=cause in ('point_minutes', 'restructure'))
+        ledger.replan(today, new_window, total_minutes,
+                      preserve_past=cause in ('point_minutes', 'restructure', 'window_changed', 'explicit_replan'))
         event = dict(op='replan', operation_seq=self._op_seq(plan['id']),
                      today=today.isoformat(), window=_window_json(new_window), total_minutes=total_minutes,
                      cause=cause, reason=reason)
@@ -1253,10 +1254,10 @@ class CourseStore:
         return event['id']
 
     @_atomic
-    def replan_plan(self, plan_id, today, new_window=None, new_total_minutes=None, *, reason=None):
+    def replan_plan(self, plan_id, today, new_window=None, new_total_minutes=None, *, reason=None, cause='explicit_replan'):
         plan = self._get('plans', plan_id, plan_id)
         self._replan(plan, _day(today), _window(new_window or plan['window']),
-                     plan['total_minutes'] if new_total_minutes is None else new_total_minutes, cause='explicit_replan', reason=reason)
+                     plan['total_minutes'] if new_total_minutes is None else new_total_minutes, cause=cause, reason=reason)
         self._put('plans', plan_id, plan)
 
     @_atomic
@@ -1417,7 +1418,7 @@ class CourseStore:
                 key = payload.get('point_minutes_key')
                 if key and payload['id'] != estimate_events.get(key): continue
                 ledger.replan(_day(payload['today']), _window(payload['window']), payload['total_minutes'],
-                              preserve_past=payload.get('cause') in ('point_minutes', 'restructure'))
+                              preserve_past=payload.get('cause') in ('point_minutes', 'restructure', 'window_changed', 'explicit_replan'))
             elif op == 'confirm': ledger.confirm(payload['unit_id'])
             elif op == 'revoke': ledger.revoke(payload['unit_id'])
             elif op == 'release': ledger.release_unused(payload['minutes'])
