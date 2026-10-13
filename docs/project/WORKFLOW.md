@@ -63,19 +63,19 @@
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
-| MF-02 | 117-MF02 待用户转发（精炼显示三个前端组件） | client |
+| MF-02 | 空闲 | client |
 | MF-03 | 116-MF03 进行中（2026-10-14 发出，附“收束不截断”补充） | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 115-MF06 进行中（按原文目录重切，2026-10-14 发出） | tools |
-| MF-07 | 117-MF07 待用户转发（换入工具加改截止日） | library |
+| MF-07 | 118-MF07 已起草，待用户转发（改截止日保住欠账、重排同时改截止日） | library |
 
 ## 待派队列
 
 - 第一百一十四批四份已合入（be709040，网页已编进 dist）。
 - 115-MF04 已合入（90577e31，[BUG-87] 已关闭）。115-MF06（按原文目录重切，第四轮）：进行中。
 - 115-MF03 已合入（453647c5，部分完成）。116-MF03（提速、跳过按钮、收束）进行中；附补充：第 5 条改为“收束超长重写一次后原样保留，不截断”。
-- 117-MF02（界面组件：荧光、只看重点、要点卡，不改 Classroom.tsx）、117-MF07（换入工具加 --end-date，用户定改到 10-22）：已起草，待转发，与 MF-03、MF-06 并行（用户 2026-10-14 指出能并行的不要等）。
+- 117-MF02 已合入（2ce351a3，组件未接线）；117-MF07 已合入（673394c6，截止日只能预演）。118-MF07（改截止日保住欠账、重排同时改截止日）：已起草，待转发。
 - MF-03 下一份（等 116 回来）：把 117-MF02 的组件接进课堂，老师按 ==…== 标重点、回复两三百字、大点讲完发 recap 要点卡（[TEACH-06]）。
 - 之后：用户看网页与整份预演点头 → 架构师用 scripts/plan_restructure.py 在用户数据上执行（用户软件先关、自动备份）→ 新建计划流程接上新方法 → 发版前总验收 → 发 2.0.15。
 - 待用户定：[BUG-85] 第三轮换 Whisper。
@@ -305,6 +305,71 @@ D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用�
 完成标准：第 7 条测试通过；第 6 条有改前改后实测；最后全量一次。花费不超过 ¥3。达不到写“部分完成”。
 回执：写到 D:\MentorFlow\.local\receipts\116-MF03.md。表格列：基线 ／ 提交 ／ 边生成边显示怎么做 ／ 提前生成怎么做（命中、作废、上限）／ 跳过按钮与开关 ／ 收束修法 ／ 改前改后延迟与多花的钱 ／ 新增测试 ／ 全量 ／ 本地最终占用。
 给用户只回一行“116-MF03 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\speed116\report.md。
+~~~
+
+## 第一百一十八批任务原文（2026-10-14，基线 673394c6）
+
+### [118-MF07] library｜改截止日保住欠账
+
+~~~text
+【MentorFlow 第一百一十八批｜MF-07（工位 library）｜改截止日也要保住过去的欠账：查清 App 里正常改截止日会不会像 BUG-83 那样把逾期抹掉，会就修；让重排时能同时改截止日（BUG-86、BUG-83）】
+
+现成项目与许可证（第一节）
+  - 不引新库。在现有时长账本 course/ledger.py（Ledger.replan 的普通重排与 preserve_past 两条路）、CourseStore.replan_plan 和你做的 course/restructure.py、scripts/plan_restructure.py 上改。规则沿用 [BUG-16]“历史按当天冻结”和 [BUG-83]“重排不能抹掉过去仍要还的欠账”。
+
+开工同步
+  cd D:\MentorFlow-office\library\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/library
+  git reset --hard 673394c6         # 主线：已合入你的 117（截止日预演）
+提交：git -c user.name="MentorFlow Worker library" -c user.email="worker-library@mentorflow.local" commit ...（不提交 dist）
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号；不调用真实模型。
+D:\MentorFlowApp、D:\MentorFlowData 只读：要用用户数据就用 sqlite3 mode=ro 的 backup 复制到任务目录再用，不改原件。不要启动、结束或重启用户的软件和源代码版。
+E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\MentorFlow\.local\test-tmp\window118\，中间产物用完即删，只留 report.md；删除被拦住就列路径交架构师。
+遇到选择自己决定，回执写明理由，不停下来问。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次。花费 ¥0。
+同时在跑：MF-03 改课堂（classroom.py、teacher_agent.py、前端），MF-06 改 planner_agents.py；你不碰它们。
+
+背景（CURRENT_STATE [BUG-86]“重排后的逾期”、[BUG-83]、[BUG-16]）：
+  - 用户定（2026-10-14）：
+    - 重排不重算过去的欠账，逾期保持约 1500 分；
+    - 截止日从 10-20 延到 10-22，之后每天目标按新总时长和新天数平摊。
+  - 你 117 的预演：样例下逾期 1535 不变，每天 238→183。
+  - 执行被拦住，原因是：
+    - Ledger.replan(preserve_past=True) 禁止改窗口；
+    - CourseStore.replan_plan 固定写 explicit_replan，不能按 restructure 回放。
+  - 架构师读 ledger.py 发现：
+    - preserve_past 只给自动重估和 restructure 用；
+    - 用户在 App 里正常改截止日走的是普通 replan（注释写“Ordinary user-requested rescheduling retains its existing semantics”）。
+    - [BUG-83] 当时的问题正是普通 replan 把过去的欠账移出了“还在还”的那一段，逾期从 1132 显示成 114。
+    - 所以要怀疑：用户在 App 里正常改截止日，可能同样把逾期抹掉。
+
+要做
+  1. 先查清：
+     - 用固定时钟搭一个“窗口进行到一半、已有欠账、当天已还一部分”的计划，在 App 的正常改截止日路径（plan_flow 里改结束日期调用的那条）上把截止日往后延；
+     - 看改前改后：逾期待还、今天已还、过去各天目标。
+     - 也用用户计划的只读副本做一次（只在副本上）。
+     - 回执写清：会不会抹掉，抹掉多少，原因在哪一行。
+  2. 如果会抹掉：这是和 [BUG-83] 同类的问题。
+     - 修成：改截止日（以及其他用户主动改日期、每天上限的重排）也保住过去仍要还的欠账，只重新分配今天及以后；
+     - 另一台设备回放结果一致。
+     - 架构师会另记一条 BUG。
+  3. 让重排能同时改截止日：
+     - preserve_past 的重排允许同时换窗口（只允许往后延或改未来部分，不能改已冻结的日子）；
+     - CourseStore 的重排能写 restructure 原因并按它回放；
+     - scripts/plan_restructure.py --apply --end-date 能真正执行；
+     - 只走一次重排；回滚能恢复原截止日。
+  4. 测试（文件名带 118）：
+     - 正常改截止日保住欠账（如果第 1 条查出会抹掉，修前先写出失败的测试）；
+     - 重排加改截止日一次完成，过去目标与逾期不变、之后按新天数平摊；
+     - 两台设备回放一致；
+     - 回滚恢复截止日与账本；
+     - BUG-16、BUG-83 原有测试照过。
+  5. 用用户计划的只读副本 + 117 的样例结构，带 --end-date 2026-10-22 做一次完整的预演与（副本上的）执行，贴出执行前后的逾期、今天目标、之后每天目标。
+  6. 只改 course/ledger.py、course/store.py 中与重排相关的部分、course/restructure.py、scripts/plan_restructure.py、app/plan_flow.py 中改日期调用重排的地方（如需）和 tests/refactor/。
+
+完成标准：第 1 条有结论和证据；第 3 条能执行；第 4 条测试通过；第 5 条副本上执行前后数字一致可解释；最后全量一次。
+回执：写到 D:\MentorFlow\.local\receipts\118-MF07.md。表格列：基线 ／ 提交 ／ 正常改截止日会不会抹掉欠账（证据、原因）／ 修法 ／ 重排加改截止日怎么做 ／ 副本上执行前后数字 ／ 新增测试 ／ 全量 ／ 本地最终占用。
+给用户只回一行“118-MF07 完成/部分完成/受阻，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\window118\report.md。
 ~~~
 
 ## 回执格式
