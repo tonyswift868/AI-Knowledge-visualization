@@ -65,8 +65,8 @@ def _manifest_path(backup):
     return Path(str(backup)+'.json')
 
 
-def execute(store, plan_id, structure, confirmation):
-    preview = apply_structure(store, plan_id, structure, dry_run=True)
+def execute(store, plan_id, structure, confirmation, *, end_date=None):
+    preview = apply_structure(store, plan_id, structure, dry_run=True, end_date=end_date)
     if preview['issues']: raise RestructureError(preview)
     if confirmation != preview['preview_token']:
         raise StoreError('CONFIRM_PREVIEW', '必须先看预演，再传 --confirm-preview 预演编号；数据或日期变化后请重新预演。')
@@ -74,10 +74,10 @@ def execute(store, plan_id, structure, confirmation):
     # The app's instance lock is held by main. This transaction also fences any
     # unexpected local writer between preview, backup and commit.
     with store.transaction():
-        checked = apply_structure(store, plan_id, structure, dry_run=True)
+        checked = apply_structure(store, plan_id, structure, dry_run=True, end_date=end_date)
         if checked['preview_token'] != confirmation:
             raise StoreError('STALE_PREVIEW', '备份期间数据变了，未执行，请重新预演。')
-        report = apply_structure(store, plan_id, structure, dry_run=False)
+        report = apply_structure(store, plan_id, structure, dry_run=False, end_date=end_date)
         manifest = dict(version=1, account_id=store.account_id, plan_id=plan_id, database=str(store.path.resolve()),
                         backup=str(backup.resolve()), preview=report, after_digest=business_digest(store._db))
         _manifest_path(backup).write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -195,6 +195,7 @@ def main(argv=None):
     parser.add_argument('--account-id')
     parser.add_argument('--structure', type=Path)
     parser.add_argument('--today', help='明确学习日 YYYY-MM-DD；默认本机今天')
+    parser.add_argument('--end-date', help='新截止日 YYYY-MM-DD；现有账本暂仅支持日期变更预演')
     parser.add_argument('--confirm-preview')
     parser.add_argument('--backup', type=Path)
     parser.add_argument('--resync', action='store_true', help='已确认上传过的结构：回滚业务值并排队补偿同步')
@@ -211,6 +212,7 @@ def main(argv=None):
         if not lock.tryLock(0): raise StoreError('APP_RUNNING', '软件实例锁仍被占用，未操作数据库。')
         account = _account(args.data_root, args.plan_id, args.account_id)
         if args.rollback:
+            if args.end_date: raise StoreError('INVALID_ARGUMENT', '--end-date 只用于 --dry-run/--apply。')
             if not args.backup: raise StoreError('BACKUP_REQUIRED', '回滚必须指定 --backup。')
             output = rollback(args.data_root, account, args.plan_id, args.backup, resync=args.resync)
             print(json.dumps(output, ensure_ascii=False, indent=2))
@@ -223,9 +225,9 @@ def main(argv=None):
                                     datetime.now().astimezone().tzinfo).isoformat()
             structure['today'] = args.today or structure.get('today') or current_day
             with CourseStore(account, args.data_root) as store:
-                if args.dry_run: output = apply_structure(store, args.plan_id, structure, dry_run=True)
+                if args.dry_run: output = apply_structure(store, args.plan_id, structure, dry_run=True, end_date=args.end_date)
                 else:
-                    output, backup = execute(store, args.plan_id, structure, args.confirm_preview)
+                    output, backup = execute(store, args.plan_id, structure, args.confirm_preview, end_date=args.end_date)
                     output = dict(output, backup=str(backup), local_only_rollback_command='--rollback --backup '+str(backup))
             print(format_report(output))
         if args.report: args.report.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding='utf-8')
