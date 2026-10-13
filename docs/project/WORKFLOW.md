@@ -252,9 +252,9 @@ E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。产物在 D:\Mentor
 禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
 D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用户的软件和源代码版。E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。
 产物在 D:\MentorFlow\.local\test-tmp\speed116\，中间产物用完即删，只留 report.md 和必要的小文件；删除被拦住就列路径交架构师。含反斜杠的内容写成脚本文件再运行（BUG-10）。
-遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（loading86、self_test81、status88、integration38、gateway 的 coverage_check 时限断言是已知不稳定项，MF-04 正在修，失败时单独重跑那一项并写明）。
+遇到选择自己决定，回执写明理由，不停下来问；只有超出花费上限才停。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（原来的五个不稳定测试已修好，全量失败按真失败处理）。
 花费：替身离线做完；最后一次真实计时与核对上限 ¥3（提前生成会多花，用户同意）。真实模式参数同以往（--live --account-id mfa1_17fc829187d21932c9e27bfcf8a9ecac0bc698565aebf16c90c0f27428aac932 --preset-root D:\MentorFlowData\account-shell；Key 不读、不显示、不保存）。
-同时在跑：MF-04 修不稳定测试（只改测试）、MF-06 重切知识点（只改 planner_agents.py 新函数与 points 脚本），都不碰你的范围。
+同时在跑：MF-06 重切知识点（只改 planner_agents.py 新函数与 points 脚本），不碰你的范围。
 
 背景（CURRENT_STATE [TEACH-06] [TEACH-03] [TEACH-07]）：
   - 用户定（2026-10-14）：在意的是等老师回复的延迟，不在意多花的模型费用。
