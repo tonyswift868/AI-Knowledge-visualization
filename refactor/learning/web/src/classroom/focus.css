@@ -1,0 +1,46 @@
+/* One marker treatment; text stays upright while the paint has slanted edges. */
+mark.hl {
+  color: var(--text, #35202f);
+  background: linear-gradient(174deg, transparent 9%, rgba(246, 210, 92, .53) 11%, rgba(255, 224, 122, .65) 88%, transparent 91%);
+  border-radius: .15em .08em .18em .1em;
+  padding: .07em .16em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  font-weight: inherit;
+}
+[data-theme="aurora"] mark.hl {
+  background: linear-gradient(174deg, transparent 9%, rgba(155, 140, 255, .36) 11%, rgba(79, 224, 205, .22) 88%, transparent 91%);
+}
+.focus-content { min-width: 0; overflow-wrap: anywhere; }
+.focus-block { min-width: 0; }
+.focus-reveal { display: none; border: 0; padding: 6px 2px; border-radius: 6px; background: transparent;
+  color: var(--text-2); font: inherit; font-size: .85em; cursor: pointer; text-align: left; }
+.focus-reveal:hover { background: var(--accent-soft); color: var(--text); }
+.focus-reveal:focus-visible, .recap-source:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.focus-content .focus-block:not(:has(mark.hl)):not(:has([data-focus-question])) > .focus-reveal { display: inline-flex; }
+.focus-content .focus-block:not(:has(mark.hl)):not(:has([data-focus-question])):not([data-open="true"]) > .focus-body { display: none; }
+.focus-content .focus-body:has(mark.hl) { color: var(--text-2); }
+.focus-content [data-focus-question] { color: var(--text); }
+.recap-card { color: var(--text); background: linear-gradient(135deg, var(--accent-soft), transparent 65%), var(--surface-solid);
+  border: 1px solid var(--border-strong); border-radius: 18px; padding: 18px; width: 100%; min-width: 0; box-shadow: var(--shadow);
+  overflow-wrap: anywhere; }
+.recap-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.recap-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 38px;
+  border-radius: 12px; color: var(--accent); background: var(--accent-soft); }
+.recap-label { color: var(--text-2); font-size: .74rem; letter-spacing: .08em; }
+.recap-header h3 { font-size: 1.06rem; margin: 2px 0 0; line-height: 1.5; }
+.recap-items { list-style: none; margin: 0; padding: 0; }
+.recap-row { display: flex; align-items: baseline; gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); }
+.recap-number { color: var(--accent); font-size: .76rem; min-width: 1.3em; font-variant-numeric: tabular-nums; }
+.recap-line { flex: 1; min-width: 0; font-size: .9rem; line-height: 1.75; }
+.recap-line strong { margin-right: .65em; }
+.recap-source { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto;
+  background: var(--accent-soft); color: var(--text-2); border: 1px solid var(--border); border-radius: 7px;
+  padding: 4px 6px; font: inherit; font-size: .73rem; cursor: pointer; }
+.recap-source:hover { color: var(--accent); border-color: var(--accent); }
+.recap-source:disabled { cursor: default; opacity: .6; }
+@media (max-width: 600px) {
+  .recap-card { padding: 13px; border-radius: 14px; }
+  .recap-row { gap: 6px; }
+  .recap-source { padding: 4px; }
+}
