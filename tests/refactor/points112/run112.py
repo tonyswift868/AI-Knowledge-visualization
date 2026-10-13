@@ -92,6 +92,7 @@ class PaidCalls:
         if cost is None or cost.currency!='CNY' or self.gateway.spent+cost.high>self.gateway.limit:
             raise RuntimeError('BUDGET:下一次完整输出上限预留会超过总预算，未调用')
         self.evidence.event('forecast',stage=stage,expected={'classify':'先按整节用途分类；混合节逐段归属并说明理由',
+                            'dedup':'检查同模块小要点语义重复和总览/子类分裂，仅配对报警',
                             'extract':'每段有概念/导航归属','merge':'全模块同概念合并，3～8小要点，分钟由宿主规则决定','notes':'2～6条逐字原文摘句'}[stage],
                             worst_peak_cny=str(cost.high),spent_peak_cny=str(self.gateway.spent))
         print('calling',stage,'spent peak',self.gateway.spent,'reserve',cost.high,flush=True)
