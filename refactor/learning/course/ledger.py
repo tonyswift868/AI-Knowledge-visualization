@@ -18,6 +18,14 @@ from math import isfinite, lcm
 from types import MappingProxyType
 
 
+def replan_preserves_past(cause: str | None) -> bool:
+    """Shared policy for live commands, stored-event replay and report peaks.
+
+    Missing/unknown causes retain the legacy segment-closing behavior.
+    """
+    return cause in ('point_minutes', 'restructure', 'window_changed', 'explicit_replan')
+
+
 class LedgerError(ValueError):
     def __init__(self, code: str, message: str | None = None):
         self.code = code

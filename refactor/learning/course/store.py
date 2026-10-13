@@ -60,7 +60,7 @@ import time
 import uuid
 
 from ..preferences.storage import account_directory
-from .ledger import Ledger, PlanWindow, Credit
+from .ledger import Ledger, PlanWindow, Credit, replan_preserves_past
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
@@ -1237,7 +1237,7 @@ class CourseStore:
                 return event['id']
         ledger = self._load_ledger(plan)
         ledger.replan(today, new_window, total_minutes,
-                      preserve_past=cause in ('point_minutes', 'restructure', 'window_changed', 'explicit_replan'))
+                      preserve_past=replan_preserves_past(cause))
         event = dict(op='replan', operation_seq=self._op_seq(plan['id']),
                      today=today.isoformat(), window=_window_json(new_window), total_minutes=total_minutes,
                      cause=cause, reason=reason)
@@ -1418,7 +1418,7 @@ class CourseStore:
                 key = payload.get('point_minutes_key')
                 if key and payload['id'] != estimate_events.get(key): continue
                 ledger.replan(_day(payload['today']), _window(payload['window']), payload['total_minutes'],
-                              preserve_past=payload.get('cause') in ('point_minutes', 'restructure', 'window_changed', 'explicit_replan'))
+                              preserve_past=replan_preserves_past(payload.get('cause')))
             elif op == 'confirm': ledger.confirm(payload['unit_id'])
             elif op == 'revoke': ledger.revoke(payload['unit_id'])
             elif op == 'release': ledger.release_unused(payload['minutes'])
