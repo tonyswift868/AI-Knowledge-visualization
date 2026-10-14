@@ -16,7 +16,9 @@ function button(text: string) {
   return value
 }
 async function until(predicate: () => boolean) {
-  for (let i = 0; i < 250; i++) { if (predicate()) return; await wait() }
+  // BUG-87: a fixed 250 x 20 ms budget timed out under full-suite load.
+  const deadline = Date.now() + 30000
+  while (Date.now() < deadline) { if (predicate()) return; await wait() }
   throw new Error(`Timed out: ${content()}`)
 }
 function fill(text: string) {
