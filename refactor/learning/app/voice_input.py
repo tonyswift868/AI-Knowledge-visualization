@@ -76,7 +76,6 @@ class VoiceInput(QObject):
         self._gateway_provider, self._store_provider = gateway_provider, store_provider
         self._question = ''
         self._correction_cancel = threading.Event()
-        self._stop_deadline = None
         # Tokens remain safe when the parent dies during a socket read.
         # Never join the downloader on the GUI thread.
         lifetime = self._lifetime = {"job": None}
@@ -214,7 +213,6 @@ class VoiceInput(QObject):
             raise BridgeError('BAD_PARAMS','语音纠正的课堂问题过长。')
         self._question=question
         self._correction_cancel=threading.Event()
-        self._stop_deadline=None
         self._protected_terms=tuple(protected)
         self.service.set_glossary(terms,protected_terms=protected)
         self._session, self._terms = session, tuple(terms)
@@ -259,7 +257,6 @@ class VoiceInput(QObject):
                 raise BridgeError("CANCELLED", "已取消。")
             if session != self._session or self._result is None:
                 raise BridgeError("ASR_SESSION_EXPIRED", "这次语音输入已经结束。")
-            self._stop_deadline=time.monotonic()+3.
             self.service.stop()
             return self._result
 
@@ -310,11 +307,10 @@ class VoiceInput(QObject):
         if self._gateway_provider is not None and needs_model(text,self._terms,self._question):
             session,terms,question,cancel=self._session,self._terms,self._question,self._correction_cancel
             protected=self._protected_terms
-            remaining=max(0.,(self._stop_deadline or (time.monotonic()+3.))-time.monotonic())
             def worker():
                 try:
                     correction=finish_correction(result['raw_text'],text,terms,question,self._gateway_provider,
-                                                 cancel=cancel,timeout=remaining,protected_terms=protected)
+                                                 cancel=cancel,protected_terms=protected)
                     output=correction.text
                 except Exception: output=text
                 edits=[(a,b,result['raw_text'][a:b],output[c:d])

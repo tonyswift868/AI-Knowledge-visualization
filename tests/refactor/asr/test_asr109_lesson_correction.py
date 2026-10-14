@@ -56,29 +56,31 @@ def test_asr109_model_fixes_only_phonetic_text_and_never_answers_for_student():
     assert acceptable('香ra','向量RAG',['向量 RAG'])
 
 
-def test_asr109_timeout_returns_local_and_cancels_late_model():
-    stopped=threading.Event()
+def test_asr109_user_cancel_returns_local_and_cancels_late_model():
+    stopped=threading.Event();cancel=threading.Event()
     class Slow:
         def complete(self,*args,**kwargs):
+            cancel.set()
             kwargs['cancel'].wait(1)
             stopped.set()
             return SimpleNamespace(text='GraphRAG那边')
     started=time.monotonic()
-    result=finish('graRAG那边','graRAG那边',['GraphRAG'],'哪边？',Slow(),timeout=.04)
-    assert result.text=='graRAG那边' and result.outcome=='timeout'
+    result=finish('graRAG那边','graRAG那边',['GraphRAG'],'哪边？',Slow(),cancel=cancel)
+    assert result.text=='graRAG那边' and result.outcome=='cancelled'
     assert time.monotonic()-started<.3 and stopped.wait(.5)
 
 
-def test_asr109_provider_acquisition_is_inside_fallback_deadline():
-    release=threading.Event()
+def test_asr109_provider_acquisition_can_be_cancelled():
+    release=threading.Event();cancel=threading.Event();calls=[]
     def provider():
-        release.wait(.3)
-        return SimpleNamespace(complete=lambda *a,**k:SimpleNamespace(text='向量那个'))
+        cancel.set();release.wait(1)
+        return SimpleNamespace(complete=lambda *a,**k:calls.append(True))
     try:
         start=time.monotonic()
-        result=finish('下料来个','下料来个',['向量'],'哪边？',provider,timeout=.03)
-        assert result.outcome=='timeout' and time.monotonic()-start<.2
+        result=finish('下料来个','下料来个',['向量'],'哪边？',provider,cancel=cancel)
+        assert result.outcome=='cancelled' and time.monotonic()-start<.2
     finally: release.set()
+    assert not calls
 
 
 def test_asr109_user_long_transcript_preserves_uncertain_oral_fragments():

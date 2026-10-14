@@ -1,7 +1,7 @@
 """Existing 109 correction with exact-input cache and a shared CNY .10 budget.
 
-Historic results are replayed with their measured wait, inside the same remaining
-three-second stop deadline. Reference sentences never enter model requests.
+Historic results are replayed with their measured wait; the current product
+waits for the gateway result (123 removed the stop deadline). Reference sentences never enter model requests.
 """
 import argparse
 import json
@@ -73,9 +73,6 @@ def combine(root,version,account,preset_root):
             if row['id'] in completed:continue
             context=contexts[row['sentence_id']];terms=context['vocabulary'];q=context.get('question','')
             token=key(row['local'],context);old=cache.get(token)
-            remaining=max(0.,3.-row['seconds']-row['local_seconds'])
-            # Product VoiceInput uses this same stop deadline. No allowance is
-            # added for the model when offline recognition took longer.
             trigger=needs_model(row['local'],terms,q)
             if not trigger:
                 result=SimpleNamespace(text=row['local'],called=False,outcome='local',seconds=0.)
@@ -84,13 +81,13 @@ def combine(root,version,account,preset_root):
                     def complete(self,*args,**kwargs):
                         kwargs['cancel'].wait(old['seconds'])
                         return SimpleNamespace(text=old['text'])
-                result=finish(row['raw'],row['local'],terms,q,Cached(),timeout=remaining,protected_terms=protected)
+                result=finish(row['raw'],row['local'],terms,q,Cached(),protected_terms=protected)
             else:
                 with (root/'report.md').open('a',encoding='utf-8') as f:
                     f.write(f'\n付费前 {version}/{row["id"]}：预期仅修复已有读音的术语，保留口语与否定，不补内容；'
-                            '80 token，停止后3秒内回退，整批上限¥0.10。\n')
+                            '80 token，等模型连接完成，整批上限¥0.10。\n')
                 client=acquire()
-                result=finish(row['raw'],row['local'],terms,q,client,timeout=remaining,protected_terms=protected)
+                result=finish(row['raw'],row['local'],terms,q,client,protected_terms=protected)
                 cache[token]=dict(text=result.text,seconds=result.seconds,called=result.called,
                                   source='122/'+version,outcome=result.outcome)
                 # Do not start another paid call until any cancelled call's
