@@ -82,7 +82,7 @@ D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用�
 产物在 D:\MentorFlow\.local\test-tmp\asr123\，用完即删，只留 report.md。含反斜杠的内容写成脚本文件再运行（BUG-10）。
 遇到选择自己决定，回执写明理由，不停下来问。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次。
 花费：真实模型核对上限 ¥0.05。
-同时在跑：无。
+同时在跑：MF-06 改建计划的资料采用（plan_flow.py、plan_intent.py、NewPlan.tsx）；你不碰它们。
 
 背景（CURRENT_STATE [BUG-85]）：
   - 用户从没要求过“3 秒内出字”。这是架构师自己定的目标（用户 2026-10-14 指出），却被写进了代码：
