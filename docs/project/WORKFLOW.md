@@ -47,7 +47,7 @@
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 空闲 | classroom |
+| MF-03 | 130-MF03 已起草，待转发 | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
@@ -63,6 +63,52 @@
 - 127-MF03 已合入（e70c977e，跳过按钮右侧拉手，网页已重新编译）。
 - 129-MF03 已合入（f31c6fb2，聊天区占满高度；layout129 留下的 1.3 GB 临时文件员工删除被拦，架构师已删，只留报告和截图）。
 - 之后（用户 2026-10-14 定并确认顺序：等 2 号做完、全部合入后一次性在源代码版测，满意再发 2.0.15）：用户计划已在源代码版换入（2026-10-14 15:10，[BUG-86]；到装上 2.0.15 前不开 2.0.14）→ 用户在源代码版体验 → 满意后发版前总验收 → 用户说可以推送 → 发 2.0.15。
+
+- 用户 2026-10-14 源代码版亲测：BUG-93（只看重点切换跳到老消息）、BUG-94（语音输入行乱跳，改为纠正后的文字只在输入框里）架构师已修（主线 5c8d18f9），待用户重启后亲测。130-MF03（要点卡后不用点继续、要点卡对齐顶部，[TEACH-06]）已起草，待转发，原文如下。
+
+### [130-MF03] classroom｜要点卡后接着讲下一个点
+
+~~~text
+【MentorFlow 第一百三十批｜MF-03（工位 classroom）｜大知识点讲完：要点卡出来后不用再点“继续”，紧接着讲下一个点；要点卡对齐在聊天区最上方（TEACH-06）】
+
+现成项目与许可证（第一节）
+  - 不引新库。全部沿用本项目现有机制：app/classroom.py 的 next、_recap、_point_done、_publish_today、_target_met、_wait；预取 prefetch／_predicted_teacher（_teacher 里按 request 完全相等才命中）；前端 web/src/useRoundScroll.ts 的“新一轮对齐”。
+
+开工同步
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard 5c8d18f9         # 主线：已含 BUG-93（只看重点切换不跳）、BUG-94（语音输入行不跳）
+提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号；不调用真实模型。
+D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用户的软件和源代码版。E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。
+产物在 D:\MentorFlow\.local\test-tmp\recap130\，用完即删，只留 report.md 和截图。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到选择自己决定，回执写明理由，不停下来问。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（跑浏览器测试前把 D:\MentorFlow\.local\node 加进 PATH）。花费 ¥0。
+同时在跑：无。
+
+背景（CURRENT_STATE [TEACH-06]“精炼与重点”）：
+  - 现在：新式大知识点讲完最后一个小要点，用户点“懂了，继续”后，next() 走 _recap 出要点卡，然后 _point_done、_publish_today，直接 return；step 回到 teach，界面显示“继续”按钮（Classroom.tsx 里 step==="teach" 那段），用户还得再点一次才开始下一个点。
+  - _predicted_teacher 在“最后一个小要点”时返回 None（注释：要点卡是确定性的、不需要预取），所以下一个点的第一句只在要点卡出来、step 变成 teach 之后才开始预取。
+  - _teacher 只有在 selected['request']==request 完全相等时才用预取结果；request 里含本模块对话原文，要点卡也在对话里（_dialogue 会把 kind=recap 转成文字）。
+  - 用户 2026-10-14 定：要点卡出来后不要再让用户点“继续”，太慢；要点卡显示在当前聊天区的最上方（不特殊样式，就是默认展开、放在顶上），紧接着下面就是下一个点的第一条消息。要点卡不长，不会占满一页。用户知道下一句是提前准备好的，要的就是不用等、不用点。
+
+要做
+  1. 后端连续走：next() 里大知识点最后一个小要点那一支，出要点卡、_point_done、_publish_today 之后：
+     - 如果 step 是 teach 且今天目标没满（_target_met 为假），在同一次操作里接着开始下一个点，走和平常 next 完全相同的路径（新式点 _concept_begin、旧式点开场、需要备题时 _wait、没有原文的点跳过等）；
+     - 如果模块讲完（step 变成 test_offer 等）或今天目标已满，照现在停在要点卡后面；
+     - 下一个点的老师请求失败时，要点卡和已记的完成（时长）不能丢、不能重复；失败走现有 failure／retry，重试时直接开始下一个点，不会再出一次要点卡、不会重复记时长。
+  2. 预取要命中：用户停在最后一个小要点（step teaching/closing）时，'next' 的预测要准确描述“要点卡之后下一个点的第一条老师请求”：对话里带上这张要点卡、index+1、新点的 concept 状态等，保证用户点“懂了，继续”时命中预取、不再现场等模型。把要点卡内容的生成抽成纯函数，_recap 和预测共用。预测不准的情况（模块讲完、今天目标已满、下一个点要等备题或没原文）就返回 None。
+  3. 前端对齐：同一次操作里出现要点卡和下一条老师消息时，把要点卡对齐到聊天区最上方，下一条消息紧接在下面；即使这次操作产生了用户气泡（例如“懂了，继续”），也以要点卡为对齐点。要点卡照现在的样子默认展开，不加特殊样式。用 useRoundScroll 现有的锚点机制实现（例如让它在新增内容里优先选要点卡），不要另写一套滚动。
+  4. 不影响别的流程：旧式点（没有小要点）、跳过知识点、跳过模块、模块检测、“只看重点”切换（BUG-93）都照旧。
+  5. 测试（文件名带 130）：
+     - 后端：最后一个小要点 → 一次操作里出要点卡并开始下一个点；模块讲完时停在要点卡；今天目标已满时停在要点卡；下一个点请求失败后重试只开始下一个点、不重复要点卡和时长；用假模型确认点“懂了，继续”命中预取（日志 classroom prefetch hit、模型只被调用一次）。
+     - 真实 React 浏览器测试：要点卡对齐在聊天区顶部、下一条消息紧接其下、中间没有“继续”按钮；两套主题、窄窗口。截改前改后的图放进报告。
+  6. 只改 app/classroom.py（next、_recap、_predicted_teacher 及相关小函数）、web/src/useRoundScroll.ts 或 Classroom.tsx 里对齐相关的部分，以及 tests/refactor/。
+
+完成标准：大知识点讲完后不用再点“继续”就接着讲下一个点，且命中预取；要点卡在聊天区最上方、下一条消息紧接其下；模块讲完／目标已满／失败重试三种情况正确；相关测试和最后一次全量通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\recap130\report.md。
+回执：写到 D:\MentorFlow\.local\receipts\130-MF03.md（格式见 WORKFLOW「回执格式」），给用户只回一行“130-MF03 完成/部分完成/受阻，回执已写入”。回执项目：基线 ／ 提交 ／ 后端连续走的做法 ／ 预取是否命中（证据） ／ 前端对齐做法 ／ 三种停住或失败情况 ／ 截图 ／ 相关测试与全量结果 ／ 本地最终占用
+~~~
 
 ## 回执格式
 
