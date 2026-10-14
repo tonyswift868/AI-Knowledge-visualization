@@ -8,13 +8,16 @@ as ResearchPipeline and github_repo for offline use.
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
+import json
 import time
 
 from . import github_repo, materials
-from .research_pipeline import ResearchPipeline
+from .research_pipeline import ResearchPipeline, retry_selected, fetch_selected_bytes
 from .source_filter import RawHit, load_lists, normalize_url
 from refactor.learning.course.research import ResearchCancelled
 from refactor.learning.course.research import ResearchTimeout
+from refactor.learning.course.research import ResearchFetchError
 
 
 class LinkImportError(ValueError):
@@ -47,9 +50,11 @@ def _key(url):
     return url
 
 
-def _existing(store, plan_id, aliases):
+def _existing(store, plan_id, aliases, book_key=None):
     for source in store.records('sources', plan_id):
         if source['kind'] != 'url':
+            continue
+        if book_key is not None and source.get('site_book_key')!=book_key:
             continue
         known = [source.get('url'), source.get('final_url'), *source.get('link_aliases', [])]
         if aliases & {_key(u) for u in known if isinstance(u, str)}:
@@ -78,11 +83,13 @@ def _success(store, plan_id, source, status):
                 chunk_count=len(chunks), warnings=source.get('warnings', []),
                 code='already_linked' if linked else '',
                 message='资料已关联到现有知识点，不再重复分析。' if linked else
-                        '资料已在计划中，可继续分析。' if status == 'existing' else '正文已读取并采用。')
+                        '资料已在计划中，可继续分析。' if status == 'existing' else '正文已读取并采用。',
+                **source.get('site_book_read',{}))
 
 
 def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=None,
-                 cancel=None, max_urls=10, timeout=20.0, creating=False, recommended=False):
+                 cancel=None, max_urls=10, timeout=20.0, creating=False, recommended=False,
+                 site_book=None, selected_pages=None, progress=None):
     """Return a JSON-ready batch result in input order.
 
     fetcher(url, *, cancel, timeout) -> FetchedContent; repo_fetch(url, cancel)
@@ -107,10 +114,20 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
     _active(store, plan_id, creating=creating)  # fail before network for a wrong account or plan
     lists = lists if lists is not None else load_lists()
     started, results, source_ids = time.monotonic(), [], []
+    book_key = None
+    if site_book is not None:
+        choices={e['id']:e['url'] for e in site_book['entries']}
+        if (not isinstance(selected_pages,list) or not selected_pages or
+                any(not isinstance(v,str) or v not in choices for v in selected_pages)):
+            book_key='invalid-selection'  # read_book returns the per-URL error below
+        else:
+            book_key=hashlib.sha256(json.dumps(sorted({choices[v] for v in selected_pages}),ensure_ascii=False).encode()).hexdigest()
 
     def checked_fetch(url, token):
         _check(token)
-        body = (repo_fetch or github_repo.default_fetch)(url, token)
+        body = retry_selected(lambda:repo_fetch(url,token) if repo_fetch else
+            fetch_selected_bytes(url,cancel=token,timeout=timeout,max_bytes=github_repo.MAX_TOTAL,
+                allowed_types={'application/json','text/plain','text/markdown','application/octet-stream'}).body,token)
         _check(token)
         return body
 
@@ -127,13 +144,20 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
                     raise LinkImportError('invalid_url', '请输入完整的 HTTP(S) 网址。')
                 with store.transaction():
                     _active(store, plan_id, creating=creating)
-                    source = _existing(store, plan_id, {url})
+                    source = _existing(store, plan_id, {url}, book_key)
                     if source is not None:
                         source = _use_existing(store, plan_id, source)
                         result.update(_success(store, plan_id, source, 'existing'))
                     _check(cancel)
                 if source is None:
-                    if github_repo.parse(url):
+                    book_result = {}
+                    if site_book is not None:
+                        from .site_book import read_book
+                        if len(urls)!=1 or _key(site_book['root'])!=url:
+                            raise LinkImportError('invalid_book','目录与所选资料不一致，请重新读取目录。')
+                        verified,book_result=read_book(site_book,selected_pages,fetcher=fetcher,
+                            cancel=cancel,lists=lists,timeout=timeout,progress=progress)
+                    elif github_repo.parse(url):
                         verified = github_repo.import_repo(url, fetch=checked_fetch, cancel=cancel, lists=lists)
                         # import_repo's root-only canonical URL drops explicit
                         # branch selection. Keep it here to avoid merging branches.
@@ -172,7 +196,7 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
                     with store.transaction():
                         _active(store, plan_id, creating=creating)  # may have changed while fetching
                         _check(cancel)
-                        source = _existing(store, plan_id, aliases)
+                        source = _existing(store, plan_id, aliases, book_key)
                         if source is not None:
                             source = _use_existing(store, plan_id, source)
                             status = 'existing'
@@ -182,11 +206,15 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
                             except Exception as exc:
                                 raise LinkImportError('storage_failed', '正文未能完整入库，请检查磁盘及账号状态后重试。') from exc
                             status = 'imported'
+                        if book_key is not None:
+                            source=dict(source,site_book_key=book_key,site_book_read=book_result)
+                            store.add_sources(plan_id,[source])
                         known = set(source.get('link_aliases', []))
                         if not aliases <= known:
                             source = dict(source, link_aliases=sorted(known | aliases))
                             store.add_sources(plan_id, [source])
                         result.update(_success(store, plan_id, source, status))
+                        result.update(book_result)
                         _check(cancel)  # rolls back chunks and outbox on late cancellation
                 if not result['already_linked'] and result['source_id'] not in source_ids:
                     source_ids.append(result['source_id'])
@@ -197,10 +225,13 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
                     code, message = exc.code, exc.message
                 elif isinstance(exc, (ResearchTimeout, TimeoutError)):
                     code, message = 'fetch_timeout', '资料读取超时，请稍后重试。'
+                elif isinstance(exc, ResearchFetchError):
+                    code, message = ('robots_unavailable' if getattr(exc,'code',None)=='robots_unavailable' else 'fetch_failed'), str(exc)
                 else:
                     code, message = 'import_failed', '资料读取或保存失败，本条未采用，请稍后重试。'
                 result = dict(original_url=original, normalized_url=url,
                               status='cancelled' if code == 'cancelled' else 'failed', code=code, message=message)
+                if hasattr(exc,'failed_pages'):result['failed_pages']=exc.failed_pages
             result['elapsed_seconds'] = time.monotonic() - began
             results.append(result)
     return dict(source_ids=source_ids, results=results,

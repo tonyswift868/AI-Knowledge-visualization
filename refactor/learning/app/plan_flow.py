@@ -623,12 +623,19 @@ class PlanFlow:
 
     def _import_links(self, draft, ctx, urls):
         self.status(draft['plan_id'], '正在读取你提供的资料…')
-        outcome = self._read_links(draft, ctx, urls)
+        outcome = self._read_links(draft, ctx, urls, discover_book=True)
         if outcome['cancelled']: raise ModelCancelled()
         cards = []
         stored = {s['id']: s for s in self.services.store.records('sources', draft['plan_id'])}
         for result in outcome['results']:
-            if result['status'] in ('imported', 'existing'):
+            if result['status']=='directory':
+                existing = next((c for c in draft['sources'] if c.get('url')==result['original_url'] and not c.get('source_id')),None)
+                card=existing or dict(card_id=_new_id()[:12],kind='url',url=result['original_url'],
+                    title=result['site_book']['title'],site=result['original_url'],tier='user',summary='',
+                    relevance=None,credibility=None,note='请勾选网站目录后确认读取。',user_provided=True,status='new',chars=0)
+                card.update(site_book=result['site_book'],read_status='selecting',read_error='',status='new')
+                if not existing: cards.append(card)
+            elif result['status'] in ('imported', 'existing'):
                 source = stored[result['source_id']]
                 existing = next((c for c in draft['sources'] if c.get('source_id') == source['id']), None)
                 if existing:
@@ -644,16 +651,60 @@ class PlanFlow:
         if any(r['status'] in ('imported', 'existing') for r in outcome['results']):
             self._invalidate_material_structure(draft)
         imported = any(r['status'] in ('imported', 'existing') for r in outcome['results'])
-        draft['messages'].append(_msg('ai', 'sources' if imported else 'error',
-            '已读取你提供的资料。请按这些资料调整结构。' if imported else '这次资料未能导入，请检查链接，或下载后上传文件。',
+        draft['messages'].append(_msg('ai', 'sources' if imported or cards else 'error',
+            '已读取你提供的资料。请按这些资料调整结构。' if imported else
+            '找到网页书目录，请在卡片勾选章节并确认读取。' if any(r['status']=='directory' for r in outcome['results']) else
+            '这次资料未能导入，请检查链接，或下载后上传文件。',
             cards=[c['card_id'] for c in cards]))
         self.save(draft)
 
-    def _read_links(self, draft, ctx, urls, *, recommended=False):
+    def _read_links(self, draft, ctx, urls, *, recommended=False, discover_book=False,
+                    site_book=None, selected_pages=None, progress=None):
         from ..course.addition_links import import_links
-        return import_links(self.services.store, draft['plan_id'], urls, fetcher=self.fetcher,
+        from ..course import github_repo
+        if discover_book:
+            from ..course.site_book import discover, RobotsUnavailable
+            results, ids = [], []
+            for url in urls:
+                try:
+                    from ..course.source_quality import is_video_source
+                    warnings=draft.setdefault('source_read_warnings',{})
+                    warnings.pop(url,None)
+                    try:
+                        book=None if github_repo.parse(url) or is_video_source(url,'','') else discover(url,fetcher=self.fetcher,cancel=ctx.cancel)
+                    except Exception as exc:
+                        if ctx.cancel.is_set():raise ModelCancelled() from None
+                        warnings[url]=(str(exc) if isinstance(exc,RobotsUnavailable) else
+                            '网站目录暂时读取失败，本次只读取这个网址的单页。'+str(exc))
+                        book=None
+                    if book:
+                        results.append(dict(status='directory',original_url=url,site_book=book));continue
+                    result=self._read_links(draft,ctx,[url],recommended=recommended)
+                    if url in warnings:
+                        for row in result['results']:
+                            if row.get('url'):warnings[row['url']]=warnings[url]
+                        self.save(draft)
+                    results.extend(result['results']);ids.extend(result['source_ids'])
+                except Exception as exc:
+                    if ctx.cancel.is_set(): raise ModelCancelled() from None
+                    results.append(dict(status='failed',original_url=url,code='directory_failed',
+                        message='目录读取失败：'+str(exc)))
+            return dict(results=results,source_ids=list(dict.fromkeys(ids)),
+                        cancelled=any(r['status']=='cancelled' for r in results))
+        result = import_links(self.services.store, draft['plan_id'], urls, fetcher=self.fetcher,
             repo_fetch=self.repo_fetch, lists=self._lists(), cancel=ctx.cancel, creating=True,
-            recommended=recommended)
+            recommended=recommended,site_book=site_book,selected_pages=selected_pages,progress=progress)
+        if site_book is not None and any(r.get('code')=='robots_unavailable' for r in result['results']):
+            # A directory may sit open until its robots snapshot expires.
+            warning=next(r['message'] for r in result['results'] if r.get('code')=='robots_unavailable')
+            fallback=self._read_links(draft,ctx,urls,recommended=recommended)
+            warnings=draft.setdefault('source_read_warnings',{})
+            for row in fallback['results']:
+                for key in (row.get('original_url'),row.get('url')):
+                    if key:warnings[key]=warning
+            self.save(draft)
+            return fallback
+        return result
 
     @staticmethod
     def _decision_cards(draft):
@@ -695,7 +746,7 @@ class PlanFlow:
             return '计划已经生成，现在不能再改创建时的资料。'
         return '正在生成计划，请稍等，当前不能再改资料。'
 
-    def decide(self, draft, card_id, adopt, *, ctx=None):
+    def decide(self, draft, card_id, adopt, *, ctx=None, selected_pages=None):
         if draft['phase'] not in ('sources', 'material_preview', 'outline', 'questions'):
             raise BridgeError('PHASE_INVALID', self._source_phase_message(draft))
         card = next((c for c in self._decision_cards(draft) if c['card_id'] == card_id), None)
@@ -709,20 +760,32 @@ class PlanFlow:
                 self.save(draft)
                 return False
             self.status(draft['plan_id'], '正在读取《'+card['title']+'》…')
-            card.update(read_status='reading', read_error='')
+            card.update(read_status='reading', read_error='',status='new')
             self.save(draft)
             try:
-                outcome = self._read_links(draft, ctx, [card['url']], recommended=True)
+                if card.get('site_book') and selected_pages is None:
+                    card.update(read_status='selecting');self.save(draft);return False
+                def progress(done,total,failed):
+                    card.update(read_done=done,read_total=total,failed_pages=failed)
+                    self.save(draft)
+                outcome = self._read_links(draft, ctx, [card['url']], recommended=not card.get('user_provided'),
+                    discover_book=not card.get('site_book'),site_book=card.get('site_book'),
+                    selected_pages=selected_pages,progress=progress)
                 result = outcome['results'][0]
+                if result['status']=='directory':
+                    card.update(site_book=result['site_book'],read_status='selecting',read_error='')
+                    self.save(draft);return False
                 if result['status']=='cancelled': raise ModelCancelled()
                 if result['status'] not in ('imported','existing'):
                     card.update(read_status='failed', read_error=result['message']+' 请下载后上传。',
-                                read_code=result['code'], status='new')
+                                read_code=result['code'], status='new',failed_pages=result.get('failed_pages',[]))
                     self.save(draft)
                     return False
                 source = next(s for s in self.services.store.records('sources',draft['plan_id']) if s['id']==result['source_id'])
                 card.update(source_id=source['id'],chars=result['char_count'],sha=source.get('sha256'),
-                            read_status='ready',read_error='',read_seconds=result['elapsed_seconds'])
+                            read_status='ready',read_error='',read_seconds=result['elapsed_seconds'],
+                            failed_pages=result.get('failed_pages',[]),read_total=result.get('total_pages',0),
+                            read_done=result.get('done_pages',0),read_success=result.get('successful_pages',0))
                 if not any(c.get('source_id')==source['id'] for c in draft['sources']):
                     draft['sources'].append(card)
             except ModelCancelled:
@@ -1837,7 +1900,9 @@ class PlanFlow:
                         titles[adopt].append(f"《{card['title']}》")
             parts = ([f"已采用{'、'.join(titles[True])}"] if titles[True] else []) + \
                     ([f"已不要{'、'.join(titles[False])}"] if titles[False] else [])
-            return self._say(draft, "；".join(parts) + "。" if parts else '没有采用新的资料；请查看卡片上的读取原因。')
+            return self._say(draft, "；".join(parts) + "。" if parts else
+                '请在资料卡片里勾选章节并确认读取。' if any(c.get('read_status')=='selecting' for c in cards) else
+                '没有采用新的资料；请查看卡片上的读取原因。')
         if kind == "limit_scope":
             if phase not in ("sources", "material_preview", "outline"):
                 return self._say(draft, "现在已经不能改学习范围了。")
@@ -2610,7 +2675,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.map_delete": lambda p,c: flow().run(plan_id(p), lambda d,x: flow().request_map_delete(d, p.get('modules', []), p.get('points', [])), c),
         "plan.map_delete_confirm": lambda p,c: flow().run(plan_id(p), lambda d,x: flow().confirm_map_delete(d, p.get('confirm')), c),
         "plan.more": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().more_sources(d, x), c),
-        "plan.decide": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().decide(d, text(p, "card_id", 40), p.get("adopt") is True, ctx=x), c),
+        "plan.decide": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().decide(d, text(p, "card_id", 40), p.get("adopt") is True, ctx=x, selected_pages=p.get('selected_pages')), c),
         "plan.missing": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().resolve_missing(d, x, text(p, 'action', 20)), c),
         "plan.outline": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().make_outline(d, x), c),
         "plan.estimate": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().estimate(d), c),

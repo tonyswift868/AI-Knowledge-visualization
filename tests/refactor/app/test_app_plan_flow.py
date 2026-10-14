@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from refactor.learning.app import handlers
 from refactor.learning.app.services import AppServices
 from refactor.learning.connections.providers.base import WebHit
-from refactor.learning.course.research import FetchedContent
+from refactor.learning.course.research import FetchedContent, ResearchFetchError
 from refactor.learning.app.plan_flow import PlanFlow
 
 from .test_app_window_layer import make_bridge, pump, qapp, tmp_root  # noqa: F401
@@ -30,6 +30,9 @@ def page(title):
 
 
 def fetcher(url, *, cancel, timeout):
+    if url in ('https://docs.python.org/robots.txt','https://docs.python.org/sitemap.xml'):
+        # This fake site has single pages and no website-book metadata.
+        raise ResearchFetchError('HTTP 404',status_code=404)
     return FetchedContent(url, url, "text/html; charset=utf-8", page(PAGES[url]), "2026-09-27T00:00:00Z")
 
 

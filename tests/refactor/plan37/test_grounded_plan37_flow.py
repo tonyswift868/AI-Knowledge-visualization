@@ -10,7 +10,7 @@ from refactor.learning.app.bridge import BridgeError, CallContext
 from refactor.learning.app.plan_flow import PlanFlow, map_ranges, short_plan_name
 from refactor.learning.course import planner_agents as agents, plan_intent
 from refactor.learning.course.ledger import PlanWindow
-from refactor.learning.course.research import FetchedContent
+from refactor.learning.course.research import FetchedContent, ResearchFetchError
 from refactor.learning.course.source_filter import load_lists
 from refactor.learning.course.store import CourseStore
 
@@ -96,6 +96,8 @@ def fixture(tmp_path):
     body = ('<html><head><title>Pressure OpenStax</title></head><body><h1>Pressure</h1><h2>Pressure definition</h2>'
             + f'<p>{QUOTE} </p>'*25 + '</body></html>').encode()
     def fetch(url, **kwargs):
+        if url in ('https://openstax.org/robots.txt','https://openstax.org/sitemap.xml'):
+            raise ResearchFetchError('HTTP 404',status_code=404)
         assert url == URL
         actual = body if model.count == 1 else ('<html><h1>Pressure</h1><p>'+QUOTE*100+'</p></html>').encode()
         return FetchedContent(url, url, "text/html", actual, "2026-10-03T00:00:00Z")
