@@ -15,6 +15,8 @@ class FailureEvidence:
         self.vendor_message = None
         self.events = deque(maxlen=8)
         self.stage = 'before_response'
+        self.block_types = []
+        self.stop_reason = None
 
     def request(self, body):
         def collect(value, depth=0):
@@ -81,4 +83,6 @@ class FailureEvidence:
         return dict(provider=self.provider, http_status=self.status, content_type=self.content_type,
                     vendor_error_type=self.vendor_type, vendor_error_message=self.vendor_message,
                     last_sse_events=list(self.events), stage=self.stage,
-                    exception_type=self.clean(type(exception).__name__) if exception is not None else None)
+                    exception_type=self.clean(type(exception).__name__) if exception is not None else None,
+                    block_types=[self.clean(v) for v in self.block_types[:128]],
+                    stop_reason=self.clean(self.stop_reason))

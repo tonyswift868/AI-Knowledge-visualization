@@ -45,7 +45,7 @@ async def streamed(http, url, body, sink):
         sources.extend(data.get('web_search') or [])
         for choice in data.get('choices') or []:
             if choice.get('index', 0) != 0:
-                raise invalid()
+                raise invalid('choice_index')
             if choice.get('finish_reason'):
                 reason = choice['finish_reason']
             delta = choice.get('delta') or {}
@@ -67,7 +67,7 @@ async def streamed(http, url, body, sink):
                 for key in ('name', 'arguments'):
                     call['function'][key] += function.get(key, '')
     if not done or not reason or raw_usage is None:
-        raise invalid()
+        raise invalid('incomplete_chat_message')
     if tool_calls:
         message['tool_calls'] = [tool_calls[i] for i in sorted(tool_calls)]
     return {'model': model, 'usage': raw_usage, 'web_search': sources,
@@ -97,20 +97,24 @@ async def run(http, config):
         choice = data['choices'][0]
         calls = choice['message'].get('tool_calls') or []
         reason = choice.get('finish_reason')
+        if getattr(http, 'evidence', None) is not None:
+            http.evidence.stage = 'validating_chat_response'
+            http.evidence.stop_reason = reason
         if calls or reason == 'tool_calls':
             if provider != 'kimi' or not config['enable_search'] or not calls or reason != 'tool_calls':
-                raise ModelError('MODEL_RESPONSE_INVALID', '模型请求了未配置的客户端工具。')
+                raise invalid('unsupported_client_tool', message='模型请求了未配置的客户端工具。')
             if used + len(calls) > config['max_search_uses']:
-                raise ModelError('MODEL_RESPONSE_INVALID', '搜索次数已达上限，模型尚未完成回复。')
+                raise invalid('search_limit', message='搜索次数已达上限，模型尚未完成回复。', search_requests=used + len(calls),
+                              search_limit=config['max_search_uses'])
             ids = set()
             for call in calls:
                 if (call.get('type') != 'function' or call['function']['name'] != '$web_search'
                         or not isinstance(call['function']['arguments'], str)
                         or not call.get('id') or call['id'] in ids):
-                    raise invalid()
+                    raise invalid('invalid_search_tool_call')
                 ids.add(call['id'])
         elif reason not in {'stop', 'length'}:
-            raise invalid()
+            raise invalid('stop_reason:' + str(reason))
         result = parse(data, provider, config['model'], config['enable_search'])
         sink.finish(result.text)
         results.append(result)
@@ -122,4 +126,4 @@ async def run(http, config):
         for call in calls:
             body['messages'].append({'role': 'tool', 'tool_call_id': call['id'],
                                       'name': '$web_search', 'content': call['function']['arguments']})
-    raise ModelError('MODEL_RESPONSE_INVALID', '模型工具往返次数超限。')
+    raise invalid('tool_round_limit', message='模型工具往返次数超限。')

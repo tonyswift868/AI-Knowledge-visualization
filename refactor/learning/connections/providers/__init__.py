@@ -99,7 +99,20 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
                                and not error.response_received and len(accounting.receipts) == 1)
         if error.safe_to_retry:
             error.request_attempted = False
-        error.diagnostics = evidence.snapshot(cause)
+        validation = getattr(error, 'validation', {})
+        # Vendor-controlled reason/type values can themselves echo credentials.
+        cleaned = {}
+        for field, value in validation.items():
+            if isinstance(value, str):
+                cleaned[field] = evidence.clean(value)
+            elif type(value) is int:
+                cleaned[field] = value
+            elif isinstance(value, list):
+                cleaned[field] = [evidence.clean(v) for v in value[:128] if isinstance(v, str)]
+        error.validation = cleaned
+        error.diagnostics = dict(evidence.snapshot(cause), **cleaned)
+        if error.code == 'MODEL_RESPONSE_INVALID' and error.diagnostics.get('reason') in {None, 'protocol_validation'}:
+            error.diagnostics['reason'] = 'protocol_validation:' + evidence.stage
         # Model names are vendor-controlled too; never journal an echoed key.
         if isinstance(error.model, str) and api_key in error.model:
             error.model = ''
@@ -112,7 +125,7 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
             accounting.check_truncated()
             if (not isinstance(result.text, str) or not result.text.strip()
                     or not isinstance(result.model, str) or api_key in result.model):
-                raise invalid()
+                raise invalid('empty_text_or_invalid_model')
             accounting.annotate(result.usage)
             return result
 
@@ -126,4 +139,4 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
         raise failure(ModelError('MODEL_CONNECTION_FAILED', '无法连接模型服务，请检查地址和网络。'), exc) from None
     except Exception as exc:
         # Parse failures, callback/client exceptions may contain request secrets.
-        raise failure(invalid(), exc) from None
+        raise failure(invalid('parse_error:' + type(exc).__name__), exc) from None

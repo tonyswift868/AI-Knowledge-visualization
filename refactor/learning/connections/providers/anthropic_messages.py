@@ -32,7 +32,7 @@ def parse(data, provider, requested_model, search_enabled):
                     # preserve error details, never advertise 44 successful URLs.
                     search_errors.append({'result_index': len(hits), 'result': dict(result)})
                 elif result.get('type') != 'web_search_result':
-                    raise invalid()
+                    raise invalid('unknown_search_result:' + str(result.get('type')))
                 hits.append(hit(result))
     return ModelResult(''.join(texts), read_usage('anthropic_messages', provider, data, search_enabled,
                        search_errors=search_errors),
@@ -49,19 +49,26 @@ async def streamed(http, url, body, sink):
         kind = data.get('type', event)
         if kind == 'message_start':
             if message is not None:
-                raise invalid()
+                raise invalid('duplicate_message_start')
             message = data['message']
         elif kind == 'content_block_start':
             index = data['index']
             if index in blocks or message is None:
-                raise invalid()
+                raise invalid('invalid_block_start', block_index=index)
             blocks[index] = data['content_block']
+            if getattr(http, 'evidence', None) is not None:
+                http.evidence.block_types = [b['type'] for b in blocks.values()]
             if blocks[index]['type'] == 'text':
                 sink.emit(blocks[index].get('text', ''))
         elif kind == 'content_block_delta':
             block = blocks[data['index']]
             delta = data['delta']
             if delta['type'] == 'text_delta':
+                if block['type'] != 'text':
+                    # Thinking/tool deltas must never become visible answer text.
+                    # An undocumented mixed block stays invalid, with evidence.
+                    raise invalid('block_delta_mismatch', block_index=data['index'],
+                                  block_type=block['type'], delta_type=delta['type'])
                 text = string(delta['text'])
                 block['text'] = block.get('text', '') + text
                 sink.emit(text)
@@ -75,8 +82,10 @@ async def streamed(http, url, body, sink):
                 block[key] = block.get(key, '') + delta[key]
         elif kind == 'message_delta':
             if message is None:
-                raise invalid()
+                raise invalid('message_delta_before_start')
             message.update(data['delta'])
+            if getattr(http, 'evidence', None) is not None:
+                http.evidence.stop_reason = message.get('stop_reason')
             # Usage fields are cumulative, not deltas, within one response.
             message.setdefault('usage', {}).update(data.get('usage', {}))
         elif kind == 'message_stop':
@@ -84,7 +93,7 @@ async def streamed(http, url, body, sink):
     if not ended or message is None or not message.get('stop_reason'):
         if getattr(http, 'evidence', None) is not None:
             http.evidence.stage = 'incomplete_anthropic_message'
-        raise invalid()
+        raise invalid('incomplete_anthropic_message')
     for index, value in partials.items():
         blocks[index]['input'] = json.loads(value)
     message['content'] = [blocks[index] for index in sorted(blocks)]
@@ -130,7 +139,8 @@ async def run(http, config):
         if config['enable_search']:
             remaining = config['max_search_uses'] - used
             if remaining <= 0 and results:
-                raise ModelError('MODEL_RESPONSE_INVALID', '搜索次数已达上限，模型尚未完成回复。')
+                raise invalid('search_limit', message='搜索次数已达上限，模型尚未完成回复。',
+                              search_requests=used, search_limit=config['max_search_uses'])
             body['tools'] = [{'type': 'web_search_20250305', 'name': 'web_search',
                               'max_uses': remaining}]
         sink = TextSink(config['on_text'])
@@ -138,20 +148,22 @@ async def run(http, config):
                 else await http.json(url, body))
         if getattr(http, 'evidence', None) is not None:
             http.evidence.stage = 'validating_anthropic_response'
+            http.evidence.block_types = [b.get('type', '') for b in data.get('content', [])]
+            http.evidence.stop_reason = data.get('stop_reason')
         result = parse(data, config['provider_id'], config['model'], config['enable_search'])
-        sink.finish(result.text)
+        sink.finish(result.text, block_types=[b['type'] for b in data['content']])
         results.append(result)
         used += result.usage.search_requests
         if config['enable_search'] and used > config['max_search_uses']:
-            raise invalid()
+            raise invalid('search_limit', search_requests=used, search_limit=config['max_search_uses'])
         if result.finish_reason == 'pause_turn':
             # Preserve encrypted search results, thinking and signatures verbatim.
             body['messages'].append({'role': 'assistant', 'content': data['content']})
             continue
         if result.finish_reason == 'tool_use':
-            raise ModelError('MODEL_RESPONSE_INVALID', '模型请求了未配置的客户端工具。')
+            raise invalid('unsupported_client_tool', message='模型请求了未配置的客户端工具。')
         if result.finish_reason not in {'end_turn', 'max_tokens', 'stop_sequence',
                                          'refusal', 'model_context_window_exceeded'}:
-            raise invalid()
+            raise invalid('stop_reason:' + result.finish_reason)
         return combine(results)
-    raise ModelError('MODEL_RESPONSE_INVALID', '模型工具往返次数超限。')
+    raise invalid('tool_round_limit', message='模型工具往返次数超限。')

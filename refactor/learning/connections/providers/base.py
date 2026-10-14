@@ -61,19 +61,21 @@ class ModelResult:
     finish_reason: str
 
 
-def invalid():
-    return ModelError('MODEL_RESPONSE_INVALID', '模型没有返回有效的完整协议响应。')
+def invalid(reason='protocol_validation', *, message='模型没有返回有效的完整协议响应。', **details):
+    error = ModelError('MODEL_RESPONSE_INVALID', message)
+    error.validation = dict(reason=reason, **details)
+    return error
 
 
 def integer(value):
     if type(value) is not int or value < 0:
-        raise invalid()
+        raise invalid('invalid_integer')
     return value
 
 
 def string(value):
     if not isinstance(value, str):
-        raise invalid()
+        raise invalid('invalid_string')
     return value
 
 
@@ -85,7 +87,7 @@ def hit(item, *, url='url', title='title', snippet='snippet'):
 
 def usage(raw, input_tokens, cached, output, reasoning=None, searches=None, **metadata):
     if not isinstance(raw, dict):
-        raise invalid()
+        raise invalid('invalid_usage')
     missing = []
     for field, value in [('cached_input_tokens', cached), ('reasoning_tokens', reasoning),
                          ('search_requests', searches)]:
@@ -96,7 +98,7 @@ def usage(raw, input_tokens, cached, output, reasoning=None, searches=None, **me
     output = integer(output)
     reasoning = integer(reasoning) if reasoning is not None else 0
     if cached > total or reasoning > output:
-        raise invalid()
+        raise invalid('usage_counter_inconsistent')
     if 'cached_input_tokens' in missing:
         missing.append('uncached_input_tokens')
     details = dict(raw)
@@ -151,14 +153,21 @@ class TextSink:
         if self.callback:
             try:
                 self.callback(delta)
-            except Exception:
-                raise invalid() from None
+            except ModelCancelled:
+                raise
+            except Exception as exc:
+                raise invalid('text_callback', callback_exception=type(exc).__name__) from None
 
-    def finish(self, text):
+    def finish(self, text, *, block_types=()):
         if not self.callback:
             return
         current = ''.join(self.parts)
         if not current:
             self.emit(text)
         elif current != text:
-            raise invalid()
+            first = next((i for i, (a, b) in enumerate(zip(current, text)) if a != b),
+                         min(len(current), len(text)))
+            # Lengths and position suffice; no response or thinking text retained.
+            raise invalid('text_mismatch', emitted_characters=len(current),
+                          final_characters=len(text), first_difference=first,
+                          block_types=list(block_types))

@@ -445,6 +445,19 @@ class ModelGateway:
         record = dict(safe.snapshot(), at=timestamp().isoformat(), request_id=identifier,
                       purpose=safe.clean(purpose), code=error.code,
                       exception_type=safe.clean(diagnostic.get('exception_type')))
+        # Allowlist protocol evidence; never persist arbitrary vendor payloads.
+        record['reason'] = safe.clean(diagnostic.get('reason')) or (
+            'protocol_validation:' + safe.stage if error.code == 'MODEL_RESPONSE_INVALID' else None)
+        for field in ('emitted_characters', 'final_characters', 'first_difference',
+                      'search_requests', 'search_limit', 'block_index'):
+            if type(diagnostic.get(field)) is int:
+                record[field] = diagnostic[field]
+        for field in ('block_types',):
+            if isinstance(diagnostic.get(field), list):
+                record[field] = [safe.clean(v) for v in diagnostic[field][:128] if isinstance(v, str)]
+        for field in ('block_type', 'delta_type', 'stop_reason', 'callback_exception'):
+            if isinstance(diagnostic.get(field), str):
+                record[field] = safe.clean(diagnostic[field])
         try:
             with self._lock:
                 handler = RotatingFileHandler(self.usage_log.path.with_name('model-failures.log'),
