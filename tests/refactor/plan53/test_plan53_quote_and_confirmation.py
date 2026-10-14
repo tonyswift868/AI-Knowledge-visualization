@@ -112,7 +112,7 @@ def test_plan53_final_map_and_generation_use_same_normalized_quotes(flow,monkeyp
     complete=model.complete
     def reply(purpose,messages,**kwargs):
         result=complete(purpose,messages,**kwargs)
-        if purpose=='generate':
+        if purpose=='generate' and isinstance(json.loads(result.text),dict):
             value=json.loads(result.text)
             for p in value['points']:
                 for cite in p['citations']: cite['quote']=' '.join(cite['quote'])

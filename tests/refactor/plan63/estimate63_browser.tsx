@@ -35,7 +35,7 @@ async function run() {
   check(document.querySelector<HTMLTextAreaElement>('.plan-chat textarea')?.value.includes('调整') || document.querySelector<HTMLTextAreaElement>('textarea')?.value.includes('调整'), 'adjust contents')
   check(document.activeElement?.tagName === 'TEXTAREA', 'focus adjustment input')
   render('outline'); await wait(200)
-  check(document.body.textContent?.includes('平均 8 分钟'), 'exact eight minute estimate')
+  check(document.body.textContent?.includes('按原文内容估算'), 'content based estimate')
   check(!button('确认，保存').disabled && button('把每天时长提高到'), 'precise choices and ignore')
   render('over'); await wait(100)
   document.querySelector('.structure-estimate')?.scrollIntoView({block:'center'})

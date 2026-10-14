@@ -29,12 +29,17 @@ def seed_module(store, pid, mid):
         quick = bank_question(p['id'], mid, kind='choice', index=2) | dict(source=source, answer_source=source)
         quick.update(role='quick', origin='cloze')
         rows.append(quick)
+        if p.get('structure') == 'concept_v1':
+            # Synthetic admitted questions must retain their subpoint identity,
+            # just like the production concept bank schema.
+            for i,row in enumerate(rows):row['subpoint_id']=p['subpoints'][i % len(p['subpoints'])]['id']
         store.add_bank_questions(pid, mid, rows)
     # Scheduler tests replace preparation IO. Persist the new completion
     # contract too; the synthetic reviewed legacy bank tests classroom state.
     from refactor.learning.course.point_materials import prepare_module
     from tests.refactor.material_questions70.test_material_questions70_contract import split70
-    prepare_module(store,pid,mid,dict(question_splitter=split70,cancel=threading.Event()),lambda *a:None)
+    prepare_module(store,pid,mid,dict(question_splitter=split70,cancel=threading.Event(),
+        finder=lambda packet,*a,**k:dict(subpoints=[])),lambda *a:None)
 
 
 def wait_for(predicate, timeout=3):

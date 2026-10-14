@@ -182,7 +182,7 @@ def test_plan51_material_map_output_budget_covers_high_thinking(flow,monkeypatch
     def complete(purpose,messages,**kwargs):
         if purpose=='generate':
             limits.append(kwargs['max_tokens'])
-            assert 'citations' in kwargs['system']
+            assert 'knowledge' in kwargs['system'] and 'navigation' in kwargs['system']
         assert kwargs.get('system')!=agents.MAP_SYSTEM
         return original(purpose,messages,**kwargs)
     monkeypatch.setattr(model,'complete',complete)

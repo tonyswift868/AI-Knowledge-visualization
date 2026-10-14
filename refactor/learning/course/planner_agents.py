@@ -1452,7 +1452,7 @@ def directory_structure(paragraphs, old_points, required, questions):
     A stored chunk is an indivisible ownership unit: all its teaching paragraphs
     follow its first original heading. This avoids duplicate teaching of a chunk
     without losing later paragraphs in it. Distinct chunks with overlapping text
-    remain distinct. No live generation path calls this prototype.
+    remain distinct. New plan creation uses the same host-owned grouping.
     """
     units = {}
     for ref, paragraph in paragraphs.items():
@@ -1598,7 +1598,7 @@ def directory_note_subset(point_id, subpoint, bullets, paragraphs):
     raise AgentFormatError('不足两条不同的有效原文摘句')
 
 
-def rebuild_directory_module(module, old_points, chunks, questions, complete, *, checkpoint=None, note_workers=1):
+def rebuild_directory_module(module, old_points, chunks, questions, complete, *, checkpoint=None, note_workers=1, include_notes=True):
     """Original sections -> deterministic grouping -> optional literal notes.
 
     Only ambiguous purpose classification and notes use the injected gateway.
@@ -1608,7 +1608,12 @@ def rebuild_directory_module(module, old_points, chunks, questions, complete, *,
     rank = {source:i for i,source in enumerate(sources)}
     ordered = [c for _,c in sorted(enumerate(chunks), key=lambda pair:
         (rank[pair[1].get('source_id')],pair[1].get('position',pair[0]),pair[0]))]
-    paragraphs, required = concept_materials(old_points, ordered)
+    if old_points:
+        paragraphs, required = concept_materials(old_points, ordered)
+    else:
+        paragraphs = {f'c{i}': p for i,p in enumerate(
+            (p for p in material_paragraphs(ordered) if p['kind'] != 'heading'), 1)}
+        required = {}
     # Respect imported block heading paths, not only the containing chunk path.
     by_id = {c['id']: c for c in chunks}
     for p in paragraphs.values():
@@ -1628,8 +1633,27 @@ def rebuild_directory_module(module, old_points, chunks, questions, complete, *,
                   concepts=[],notes_failures=[])
     validate_directory_structure(result,paragraphs)
     if checkpoint: checkpoint('structure',result)
+    if include_notes:
+        fill_directory_notes(result, complete, checkpoint=checkpoint, note_workers=note_workers)
+    result.update(concept_coverage(old_points,required,result))
+    for old in old_points:
+        result['old_to_new'][old['id']]['sections']=[dict(title=s['title'],reason=s['reason'],
+            kind='mixed' if s['knowledge'] and s['navigation'] else 'knowledge' if s['knowledge'] else 'navigation')
+            for s in sections if set(s['refs']).intersection(required[old['id']])]
+    result['section_counts']={kind:sum(bool(s['knowledge']) and bool(s['navigation']) if kind=='mixed' else
+        bool(s[kind]) and not s['navigation' if kind=='knowledge' else 'knowledge'] for s in sections)
+        for kind in ('knowledge','navigation','mixed')}
+    result['hard_rules']=validate_directory_structure(result,paragraphs)
+    result['minor_issues']=[dict(id=p['id'],minutes=p['minutes'],subpoints=len(p['subpoints'])) for p in result['points']
+                            if not 20<=p['minutes']<=40 or not 3<=len(p['subpoints'])<=8]
+    return result
+
+
+def fill_directory_notes(result, complete, *, checkpoint=None, note_workers=1):
+    """Prepare missing literal notes only; a failed subpoint keeps its source."""
+    paragraphs = result['paragraphs']
     notes_system = CONCEPT_NOTES_SYSTEM + '\n允许逐字短代码/SQL示例（不超过15行、300字）；更长只摘关键连续行。每个小要点恰好返回一次。'
-    subs = [(p,s) for p in result['points'] for s in p['subpoints']]
+    subs = [(p,s) for p in result['points'] for s in p['subpoints'] if not s.get('bullets')]
     # Bounded batches, individually validate/salvage, so one bad excerpt never
     # discards valid notes from the other subpoints in the same response.
     def notes(rows, retry=False):
@@ -1668,18 +1692,48 @@ def rebuild_directory_module(module, old_points, chunks, questions, complete, *,
             for failures in pool.map(finish,batches):
                 result['notes_failures'].extend(failures)
                 if checkpoint: checkpoint('notes',result)
-    result.update(concept_coverage(old_points,required,result))
-    for old in old_points:
-        result['old_to_new'][old['id']]['sections']=[dict(title=s['title'],reason=s['reason'],
-            kind='mixed' if s['knowledge'] and s['navigation'] else 'knowledge' if s['knowledge'] else 'navigation')
-            for s in sections if set(s['refs']).intersection(required[old['id']])]
-    result['section_counts']={kind:sum(bool(s['knowledge']) and bool(s['navigation']) if kind=='mixed' else
-        bool(s[kind]) and not s['navigation' if kind=='knowledge' else 'knowledge'] for s in sections)
-        for kind in ('knowledge','navigation','mixed')}
-    result['hard_rules']=validate_directory_structure(result,paragraphs)
-    result['minor_issues']=[dict(id=p['id'],minutes=p['minutes'],subpoints=len(p['subpoints'])) for p in result['points']
-                            if not 20<=p['minutes']<=40 or not 3<=len(p['subpoints'])<=8]
     return result
+
+
+def directory_plan_module(module, chunks, complete):
+    """New-plan projection: real chunk IDs, stable subpoint IDs, no paid notes."""
+    result = rebuild_directory_module(module, [], chunks, [], complete, include_notes=False)
+    paragraphs = result['paragraphs']
+    def chunk_ids(refs):
+        return list(dict.fromkeys(paragraphs[r]['parent_chunk_id'] for r in refs))
+    points = []
+    for i,p in enumerate(result['points'],1):
+        pid = f"{module['id']}-{i:02d}"
+        subs = [dict(id=f'{pid}-s{j}', title=s['title'], minutes=s['minutes'],
+                     chunk_ids=chunk_ids(s['refs']), notes=[]) for j,s in enumerate(p['subpoints'],1)]
+        refs = list(dict.fromkeys(r for s in p['subpoints'] for r in s['refs']))
+        citations = [dict(chunk_id=paragraphs[r]['parent_chunk_id'], paragraph_id=paragraphs[r]['id'],
+            paragraph_start=paragraphs[r]['paragraph_start'], paragraph_end=paragraphs[r]['paragraph_end'],
+            quote=paragraphs[r]['text'], title=paragraphs[r].get('source_title', '资料'), url=None,
+            locator=' / '.join(paragraphs[r].get('section') or [])) for r in refs]
+        points.append(dict(id=pid, module_id=module['id'], position=i-1, title=p['title'], summary=p['goal'],
+            goal=p['goal'], structure='concept_v1', minutes=sum(s['minutes'] for s in subs),
+            chunk_ids=chunk_ids(refs), subpoints=subs, citations=citations))
+    navigation = [dict(id=f"{module['id']}-nav{i}",title=n['title'],chunk_ids=chunk_ids(n['refs']),reason=n['reason'])
+                  for i,n in enumerate(result['navigation'],1)]
+    return dict(points=points,navigation=navigation)
+
+
+def prepare_directory_notes(points, chunks, complete):
+    """Translate persisted subpoints to numbered source and return notes by ID."""
+    paragraphs = {f'c{i}':dict(p,purpose='knowledge') for i,p in enumerate(
+        (p for p in material_paragraphs(chunks) if p['kind']!='heading'),1)}
+    packet = []
+    for p in points:
+        if p.get('structure') != 'concept_v1': continue
+        subs = [dict(id=s['id'],title=s['title'],refs=[r for r,v in paragraphs.items()
+                    if v['parent_chunk_id'] in s['chunk_ids']],bullets=[])
+                for s in p['subpoints'] if not s.get('notes')]
+        if subs: packet.append(dict(id=p['id'],subpoints=subs))
+    result = dict(points=packet,paragraphs=paragraphs,notes_failures=[])
+    fill_directory_notes(result,complete)
+    return {s['id']:[dict(text=b['text'],chunk_id=paragraphs[b['ref']]['parent_chunk_id'])
+                     for b in s['bullets']] for p in packet for s in p['subpoints']}
 
 
 def resolve_paragraph(chunk, citation):

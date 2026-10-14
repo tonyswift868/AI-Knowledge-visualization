@@ -45,6 +45,9 @@ class Model:
         return {"model": "offline"}
     def complete(self, purpose, messages, **kwargs):
         self.calls.append(purpose)
+        from tests.refactor.wire121.model121 import directory_reply
+        reply=directory_reply(purpose,messages,kwargs.get('system'))
+        if reply is not None:return reply
         text = messages[-1]["content"]
         if purpose == 'point_difficulty':
             result = [dict(id=p['id'],difficulty='中') for p in json.loads(messages[0]['content'])['points']]
@@ -94,13 +97,14 @@ def fixture(tmp_path):
             + f'<p>{QUOTE} </p>'*25 + '</body></html>').encode()
     def fetch(url, **kwargs):
         assert url == URL
-        return FetchedContent(url, url, "text/html", body, "2026-10-03T00:00:00Z")
+        actual = body if model.count == 1 else ('<html><h1>Pressure</h1><p>'+QUOTE*100+'</p></html>').encode()
+        return FetchedContent(url, url, "text/html", actual, "2026-10-03T00:00:00Z")
     def prepare(store, pid, mid, ctx, progress):
         from refactor.learning.course.point_materials import prepare_module
         from tests.refactor.material_questions70.test_material_questions70_contract import split70
         # This plan-only fixture has no original exercises. Zero questions is
         # a completed extraction, not an instruction to manufacture questions.
-        result=prepare_module(store,pid,mid,dict(question_splitter=split70,cancel=ctx['cancel']),lambda *a:None)
+        result=prepare_module(store,pid,mid,dict(question_splitter=split70,cancel=ctx['cancel'],gateway=model),lambda *a:None)
         assert store.records("points", pid)
         prepared.append(mid)
         progress(1, 1, "原文与备题完成")
@@ -140,7 +144,7 @@ def test_plan37_whole_offline_flow_and_reopen(fixture):
     assert any("第 1 模块的资料与题目 1/1" in str(e) for e in events)
     detail = flow.detail(pid)
     point = detail["stages"][0]["modules"][0]["points"][0]
-    assert point["citations"][0]["quote"] == QUOTE
+    assert QUOTE in point["citations"][0]["quote"]
     assert detail["plan"]["title"] == "初二物理：压强与浮力"
     assert flow.load(pid)["outline"]["grounded"]
     flow.start_request(pid)
@@ -185,7 +189,8 @@ def test_plan37_user_cap_warns_without_blocking_generation(fixture):
     flow, model, ctx, *_ = fixture
     model.count = 30
     draft = adopt_and_map(fixture)
-    draft["form"].update(end=TODAY.isoformat(), daily_cap=50)
+    # Point count is now host-owned, so force a genuine cap overrun via the cap.
+    draft["form"].update(end=TODAY.isoformat(), daily_cap=10)
     flow.estimate(draft)
     r = draft["outline"]["ranges"]
     assert r['over_cap'] and r['suggested_days']>=2  # Even learning alone exceeds the user's cap.

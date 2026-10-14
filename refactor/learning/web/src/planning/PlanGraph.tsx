@@ -12,13 +12,17 @@ export type GraphModule = {
   key: string; title: string; summary: string; id?: string; chapters?: string[]; refs?: string[]; ref_titles?: string[]
   prerequisites?: string[]; minutes?: [number, number]; estimated_points?: [number, number]; estimated_point_count?: number
   estimated_question_count?: number; has_material_questions?: boolean
-  points?: { title: string; summary: string; citations?: GraphCitation[]; source_general?: boolean }[]
+  points?: { title: string; summary: string; citations?: GraphCitation[]; source_general?: boolean; structure?: string; subpoints?: {id: string; title: string; minutes: number}[] }[]
 }
 export type GraphStage = { title: string; modules: GraphModule[] }
 type ModuleData = { module: GraphModule; number: number; mode: "structure" | "outline"; active?: boolean }
 type ModuleNode = Node<ModuleData, "module">
 type DeleteMap = (module: string, point?: number) => void
 const WIDTH = 294, HEIGHT = 204, GAP = 44, PAD = 26
+function pointCount(m: GraphModule) {
+  const points=m.points??[]
+  return points.some(p=>p.structure==='concept_v1') ? `${points.length} 个大知识点 · ${points.reduce((n,p)=>n+(p.subpoints?.length??0),0)} 个小要点` : `${points.length} 个点`
+}
 
 const ModuleCard = React.memo(function ModuleCard({ data }: NodeProps<ModuleNode>) {
   const m = data.module
@@ -28,7 +32,7 @@ const ModuleCard = React.memo(function ModuleCard({ data }: NodeProps<ModuleNode
     <p className="pg-module-summary">{m.summary || "点开查看学习内容与原文依据"}</p>
     <div className="pg-tags">
       {m.minutes && <span><Clock3 size={12} />{m.minutes[0]}–{m.minutes[1]} 分钟</span>}
-      <span><BookOpen size={12} />{data.mode === "outline" ? `${m.points?.length ?? 0} 个点` : `${m.estimated_point_count !== undefined ? `约 ${m.estimated_point_count} 点 · ` : ""}${(m.chapters ?? m.ref_titles ?? m.refs ?? []).length} 处依据`}</span>
+      <span><BookOpen size={12} />{data.mode === "outline" ? pointCount(m) : `${m.estimated_point_count !== undefined ? `约 ${m.estimated_point_count} 点 · ` : ""}${(m.chapters ?? m.ref_titles ?? m.refs ?? []).length} 处依据`}</span>
       {data.mode === "structure" && m.estimated_question_count !== undefined && <span>{m.estimated_question_count ? `约 ${m.estimated_question_count} 道题` : "资料里没有题，这个模块只学不考"}</span>}
     </div>
     <Handle type="source" position={Position.Right} id="right" /><Handle type="source" position={Position.Bottom} id="bottom" />
@@ -88,7 +92,7 @@ function ModuleDetails({ module: m, stages, mode, close, onDelete, busy }: { mod
   const titleOf = Object.fromEntries(stages.flatMap(s => s.modules).map(m => [m.key, m.title]))
   const chapters = m.chapters ?? m.ref_titles ?? m.refs ?? []
   return <aside className="pg-details nodrag nowheel" aria-label={`${m.title}详情`}>
-    <header><span className="pg-eyebrow">{mode === "structure" ? "模块内容与依据" : `${m.points?.length ?? 0} 个知识点`}</span><button className="pg-icon" onClick={close} aria-label="关闭模块详情"><X size={18} />关闭</button></header>
+    <header><span className="pg-eyebrow">{mode === "structure" ? "模块内容与依据" : pointCount(m)}</span><button className="pg-icon" onClick={close} aria-label="关闭模块详情"><X size={18} />关闭</button></header>
     <h3>{m.title}</h3><h4>学什么</h4><p>{m.summary}</p>
     {mode === "outline" && onDelete && <button className="pg-expand" disabled={busy} onClick={() => onDelete(m.key)}><Trash2 size={14} />删掉这个模块</button>}
     {m.minutes && <p className="pg-meta">预计 {m.minutes[0]}–{m.minutes[1]} 分钟</p>}

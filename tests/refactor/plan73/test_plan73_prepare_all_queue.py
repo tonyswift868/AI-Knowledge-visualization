@@ -16,6 +16,11 @@ def four(fixture):
     d=adopt_and_map(fixture)
     seed=d['outline']['stages'][0]['modules'][0]
     d['outline']['stages'][0]['modules']=[dict(copy.deepcopy(seed),id=f'm{i}',key=f'm{i}',title=f'模块{i}') for i in range(4)]
+    # Cloned modules require independent, stable concept/subpoint identities.
+    for module in d['outline']['stages'][0]['modules']:
+        for index, point in enumerate(module['points'],1):
+            point.update(id=f"{module['id']}-{index:02d}",module_id=module['id'])
+            for j,sub in enumerate(point.get('subpoints',[]),1):sub['id']=f"{point['id']}-s{j}"
     f.estimate(d)
     return f,ctx,d
 

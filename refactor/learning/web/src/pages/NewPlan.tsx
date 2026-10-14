@@ -17,7 +17,7 @@ type Card = {
   user_provided?: boolean
 }
 type Citation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
-type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean }
+type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean; structure?: string; subpoints?: {id: string; title: string; minutes: number}[] }
 type OModule = { points?: MapPoint[]; id?: string; key: string; title: string; summary: string; refs: string[]; ref_titles: string[]; prerequisites: string[]; minutes: [number, number] }
 type TimeRanges = { total: [number, number]; daily: [number, number]; cap: number; over_cap: boolean; points?: number; learning?: number; checks_pending?: boolean; suggested_cap?: number; suggested_days?: number | null; suggested_end: string | null }
 type StructureRanges = Omit<TimeRanges, "points" | "learning"> & { points: [number, number]; learning: [number, number]; module_check: [number, number]; final_check: [number, number]; input_tokens: [number, number]; typical?: TimeRanges; warning_level?: "none" | "possible" | "impossible"; estimated_question_count?: number; modules_with_questions?: number }
@@ -68,7 +68,8 @@ export type Draft = {
 type Detail = {
   plan: { id: string; title?: string; goal: string; state: string; window: { start: string; end: string } | null; total_minutes: number }
   stages: { id: string; title: string; modules: { id: string; title: string; summary: string; learning_minutes: number; check_minutes: number; state?: string | null; cloze_heavy?: boolean
-    points: { citations?: Citation[]; source_general?: boolean; id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number; needs_review?: boolean; taught?: boolean }[] }[] }[]
+    navigation?: {id: string; title: string; reason: string; citations?: Citation[]}[]
+    points: { structure?: string; subpoints?: {id: string; title: string; minutes: number}[]; citations?: Citation[]; source_general?: boolean; id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number; needs_review?: boolean; taught?: boolean }[] }[] }[]
   sources: { id: string; title: string; url: string | null; kind: string }[]
   daily?: { full_day: number; cap: number; ok: boolean; suggested_end: string | null }
 }
@@ -493,6 +494,7 @@ function OutlineCard({ outline, onDelete, busy }: { outline: Outline; onDelete?:
         <div><span>预计总时长</span><b>{hours(r.total[0])} – {hours(r.total[1])}</b></div>
         <div><span>每日任务时长<Tip text={TASK_TIME_TIP} /></span><b>{r.daily[0]} – {r.daily[1]} 分钟</b></div>
         <div><span>模块</span><b>{all.length} 个 · {outline.stages.length} 个阶段</b></div>
+        <div><span>知识内容</span><b>{all.reduce((n,m)=>n+(m.points?.length??0),0)} 个大知识点 · {all.reduce((n,m)=>n+(m.points??[]).reduce((k,p)=>k+(p.subpoints?.length??0),0),0)} 个小要点</b></div>
       </div>
       {r.over_cap && <div className="outline-warn"><CircleAlert size={16} />每日任务时长可能超过你设的上限（{r.cap} 分钟）。{r.suggested_end ? `可以考虑把结束日期延后到 ${r.suggested_end}，` : ""}或者让我精简路线。</div>}
       <PlanGraph stages={outline.stages.map(s => ({ ...s, title: stageLabel(s.title, outline.stages.length) }))} onDelete={onDelete} busy={busy} />
@@ -538,7 +540,7 @@ function EstimateCard({ draft, text, busy, active, onGo, onChange, onShrink }:
     <div className="bubble bot">{text}</div>
     <div className="estimate-card">
       <div className="outline-sum">
-        <div><span>知识点 × 平均 8 分钟</span><b>{r.points} 个 · 学习 {hours(r.learning ?? 0)}</b></div>
+        <div><span>按原文内容估算</span><b>{r.points} 个大知识点 · 学习 {hours(r.learning ?? 0)}</b></div>
         <div><span>{r.checks_pending ? "学习与已备好题的检测时长" : "含模块检测与最终检验"}</span><b>约 {hours(r.total[1])}</b></div>
         <div><span>每天 / 你的时间上限</span><b>{r.daily[1]} / {r.cap} 分钟</b></div>
       </div>
@@ -614,7 +616,7 @@ export function PlanTree({ detail, editable, busy, onDelete, onMove }:
                     </button>
                     <div className="row" style={{ gap: 6 }}>
                       {m.state && MODULE_STATE[m.state] && <span className={`pill ${MODULE_STATE[m.state][1]}`}>{MODULE_STATE[m.state][0]}</span>}
-                      <span className="pill muted">{m.points.length} 个点 · {m.learning_minutes + m.check_minutes} 分钟</span>
+                      <span className="pill muted">{m.points.length} 个{m.points.some(p=>p.structure==='concept_v1')?'大知识点':'点'}{m.points.some(p=>p.subpoints?.length)?` · ${m.points.reduce((n,p)=>n+(p.subpoints?.length??0),0)} 个小要点`:''} · {m.learning_minutes + m.check_minutes} 分钟</span>
                       {editable && <>
                         <button className="icon-btn sm" disabled={busy} title="上移" onClick={() => onMove?.(m.id, -1)}><ArrowUp /></button>
                         <button className="icon-btn sm" disabled={busy} title="下移" onClick={() => onMove?.(m.id, 1)}><ArrowDown /></button>
@@ -624,6 +626,7 @@ export function PlanTree({ detail, editable, busy, onDelete, onMove }:
                     </div>
                   </div>
                   <p>{m.summary}</p>
+                  {!!m.navigation?.length && <details><summary>资料导航（{m.navigation.length} 条，不计学习时长）</summary>{m.navigation.map(n=><div key={n.id}><b>{n.title}</b><p>{n.reason}</p><PointCitations citations={n.citations}/></div>)}</details>}
                   {m.cloze_heavy && <small className="muted">这个模块有较多知识点用的是原文填空题</small>}
                   {open === m.id && (
                     <ol className="point-list fade-in">

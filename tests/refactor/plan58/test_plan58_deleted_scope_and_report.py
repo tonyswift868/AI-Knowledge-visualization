@@ -124,20 +124,21 @@ def test_plan58_renumbered_module_keys_do_not_mark_retained_devices_as_deleted()
     assert deleted_modules == ['硬件与软件']
 
 
-def test_plan58_small57_full_map_replay_keeps_original_modules_and_nine_points(flow, monkeypatch):
+def test_plan58_small57_full_map_replay_keeps_modules_and_directory_scope(flow, monkeypatch):
     f, ctx, pid, model = flow
     data = evidence()
     monkeypatch.setattr(f, '_sections', lambda d: (data['sources'], sections(data)))
     monkeypatch.setattr(f, '_adopted', lambda d: (data['sources'], {data['sources'][0]['id']: data['chunks']}))
-    replies = iter(data['module_replies'])
-    monkeypatch.setattr(model, 'complete', lambda *a, **k: SimpleNamespace(text=next(replies)))
+    from tests.refactor.wire121.model121 import directory_reply
+    monkeypatch.setattr(model, 'complete', lambda purpose,messages,**k: directory_reply(purpose,messages,k.get('system')))
     d = f.load(pid)
     d.update(phase='material_preview', material_structure=copy.deepcopy(data['selected']),
              removed_content=removed(data))
     f.make_outline(d, ctx)
     modules = agents.outline_modules(d['outline'])
     assert [m['title'] for m in modules] == [m['title'] for m in data['selected']['modules']]
-    assert sum(len(m['points']) for m in modules) == 9
+    assert all(p['structure']=='concept_v1' and p['subpoints'] for m in modules for p in m['points'])
+    assert all(s['notes']==[] for m in modules for p in m['points'] for s in p['subpoints'])
     assert not any('ATM' in p['summary'] or '计算器' in p['summary'] for m in modules for p in m['points'])
 
 
