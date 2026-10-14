@@ -65,7 +65,10 @@ def test_124_does_not_replace_failed_original_with_another_page(flow):
         return page(url,body='<a href="https://docs.python.org/3/another-lesson.html">另一份课文</a>')
     f.fetcher=fetch
     view=f.run(pid,lambda d,c:f.decide(d,'pick1',True,ctx=c),c)['draft']
-    assert calls==[PAGE] and view['recommendations'][0]['url']==PAGE
+    # Directory discovery may read robots/sitemap and the requested page, but
+    # must never substitute an arbitrary body hyperlink for the failed lesson.
+    assert set(calls)<={PAGE,'https://docs.python.org/robots.txt','https://docs.python.org/sitemap.xml'}
+    assert view['recommendations'][0]['url']==PAGE
     assert view['recommendations'][0]['read_status']=='failed'
     assert not f.services.store.records('sources',pid)
 

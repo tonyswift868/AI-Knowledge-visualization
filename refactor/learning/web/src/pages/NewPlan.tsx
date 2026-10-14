@@ -15,7 +15,9 @@ type Card = {
   relevance: number | null; credibility: number | null; note: string; status: "new" | "adopted" | "rejected"; chars: number
   quality?: { source_type?: string; community?: boolean; source_group?: string; covered_modules?: string[] }
   user_provided?: boolean
-  read_status?: 'none'|'reading'|'ready'|'failed'|'cancelled'; read_error?: string
+  read_status?: 'none'|'reading'|'selecting'|'ready'|'failed'|'cancelled'; read_error?: string
+  site_book?: {entries:{id:string;url:string;title:string;section:string[]}[]; origin:string}
+  read_done?:number; read_total?:number; failed_pages?:{url:string;title:string;message:string}[]
 }
 type Citation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
 type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean; structure?: string; subpoints?: {id: string; title: string; minutes: number}[] }
@@ -34,6 +36,7 @@ export type Recommendation = {
   github_stars?: number; is_video?: boolean; video_note?: string
   status?: Card['status']; read_status?: Card['read_status']; read_error?: string; chars?: number
   credibility?: number; quality?: Card['quality']
+  site_book?:Card['site_book'];read_done?:number;read_total?:number;failed_pages?:Card['failed_pages']
 }
 
 export function formatStars(stars: number): string {
@@ -42,12 +45,12 @@ export function formatStars(stars: number): string {
   return String(stars)
 }
 
-export function RecommendationCards({cards, busy = false, onUse, onReject, onCancel}: {
-  cards: Recommendation[]; busy?: boolean; onUse: (url: string) => void; onReject?: (id: string) => void; onCancel?: () => void
+export function RecommendationCards({cards, busy = false, onUse, onReject, onCancel, onRead}: {
+  cards: Recommendation[]; busy?: boolean; onUse: (url: string) => void; onReject?: (id: string) => void; onCancel?: () => void; onRead?:(id:string,pages:string[])=>void
 }) {
   return <>{cards.map(c => <SourceCard key={c.card_id} card={{...c,kind:'url',site:c.url,tier:'recommendation',
     summary:c.why,note:c.why,relevance:null,credibility:c.credibility??3,chars:c.chars??0,status:c.status??'new'}}
-    locked={busy} onCancel={onCancel} onDecide={adopt=>adopt?onUse(c.url):onReject?.(c.card_id)}>
+    locked={busy} onCancel={onCancel} onRead={pages=>onRead?.(c.card_id,pages)} onDecide={adopt=>adopt?onUse(c.url):onReject?.(c.card_id)}>
     <p className="small">{c.type} · 大致覆盖：{c.modules.join("、")}
       {typeof c.github_stars==='number' && <span title={`${c.github_stars} GitHub stars`}> · ★ {formatStars(c.github_stars)}</span>}</p>
     {c.is_video && <p className="small">视频，难以生成知识点</p>}
@@ -251,7 +254,8 @@ export function NewPlan() {
               <RecommendationCards cards={(draft.recommendations ?? []).filter(c => m.cards?.includes(c.card_id))}
                 busy={busy || !['sources','material_preview','outline'].includes(draft.phase)}
                 onUse={url => act("plan.decide", {card_id:draft.recommendations?.find(c=>c.url===url)?.card_id,adopt:true})}
-                onReject={card_id=>act('plan.decide',{card_id,adopt:false})} onCancel={()=>abort.current?.abort()} />
+                onReject={card_id=>act('plan.decide',{card_id,adopt:false})} onCancel={()=>abort.current?.abort()}
+                onRead={(card_id,selected_pages)=>act('plan.decide',{card_id,adopt:true,selected_pages})} />
             </div>
             if (m.kind === "material_preview") return <div key={m.id} className="plan-block">
               {draft.material_structure && m.version === draft.material_structure.version && draft.material_structure.modules?.length ? <>
@@ -279,6 +283,8 @@ export function NewPlan() {
                 <div className="bubble bot">{m.text}</div>
                 <GroupedSources cards={(m.cards ?? []).map(id => cards[id]).filter(Boolean)}
                   locked={busy || !["questions", "sources", "material_preview", "outline"].includes(draft.phase)}
+                  onCancel={()=>abort.current?.abort()}
+                  onRead={(card_id,selected_pages)=>act('plan.decide',{card_id,adopt:true,selected_pages})}
                   onDecide={(id,adopt) => act("plan.decide", {card_id:id,adopt})} />
               </div>
             )
@@ -446,7 +452,23 @@ function Stars({ n, label }: { n: number | null; label: string }) {
   return <span className="stars" title={`${label} ${n}/5`}>{label}<i>{"●".repeat(n)}<em>{"●".repeat(5 - n)}</em></i></span>
 }
 
-function SourceCard({ card, locked, onDecide, onCancel, children }: { card: Card; locked: boolean; onDecide: (adopt: boolean) => void; onCancel?:()=>void; children?:React.ReactNode }) {
+export function BookSelection({book,locked,onRead}: {book:NonNullable<Card['site_book']>;locked:boolean;onRead:(pages:string[])=>void}) {
+  const [selected,setSelected]=React.useState(()=>new Set(book.entries.map(e=>e.id)))
+  type Node={name:string;children:Node[];ids:string[]}
+  const root:Node={name:'目录',children:[],ids:[]}
+  for(const entry of book.entries){let n=root;n.ids.push(entry.id);for(const name of entry.section){let child=n.children.find(c=>c.name===name);if(!child){child={name,children:[],ids:[]};n.children.push(child)}child.ids.push(entry.id);n=child}}
+  function toggle(ids:string[],checked:boolean){setSelected(old=>{const next=new Set(old);ids.forEach(id=>checked?next.add(id):next.delete(id));return next})}
+  function tree(node:Node):React.ReactNode{return <ul style={{paddingLeft:18,listStyle:'none'}}>{node.children.map((n,i)=><li key={i}><label className="row small"><input type="checkbox" disabled={locked} checked={n.ids.every(id=>selected.has(id))}
+    ref={el=>{if(el)el.indeterminate=n.ids.some(id=>selected.has(id))&&!n.ids.every(id=>selected.has(id))}}
+    onChange={e=>toggle(n.ids,e.target.checked)}/>{n.name}{n.children.length>0?`（${n.ids.length}页）`:''}</label>{tree(n)}</li>)}</ul>}
+  return <section aria-label="网站目录"><p>网站目录 · 共 {book.entries.length} 页，已选 {selected.size} 页</p>
+    <label className="row small"><input type="checkbox" disabled={locked} checked={selected.size===book.entries.length} onChange={e=>toggle(root.ids,e.target.checked)}/>全选章节</label>
+    <div style={{maxHeight:320,overflow:'auto'}}>{tree(root)}</div>
+    <Button small kind="primary" disabled={locked||!selected.size} onClick={()=>onRead(book.entries.filter(e=>selected.has(e.id)).map(e=>e.id))}>确认章节并读取</Button>
+  </section>
+}
+
+function SourceCard({ card, locked, onDecide, onCancel, onRead, children }: { card: Card; locked: boolean; onDecide: (adopt: boolean) => void; onCancel?:()=>void; onRead?:(pages:string[])=>void; children?:React.ReactNode }) {
   const general = !card.user_provided && card.kind !== "file" && card.credibility === 3
   const tier = card.kind === "file" ? ["上传", "file"] : (card.credibility ?? 0) >= 5 ? ["权威来源", "ok"] : (card.credibility ?? 0) >= 4 ? ["成熟平台", "ok"] : ["一般网站", "muted"]
   return (
@@ -462,7 +484,9 @@ function SourceCard({ card, locked, onDecide, onCancel, children }: { card: Card
       <p className="source-note">{card.quality?.covered_modules?.length ? `覆盖：${card.quality.covered_modules.join("、")}` : card.note || "由你提供，正文已读取；请确认适合本次学习。"}</p>
       {general && <p className="source-note" role="note">一般网站，可能有错，请自行判断；不默认采用。</p>}
       {children}
-      {card.read_status==='reading' && <p role="status">正在读取… {onCancel && <Button small kind="ghost" onClick={onCancel}>取消读取</Button>}</p>}
+      {card.site_book && card.status==='new' && onRead && <BookSelection key={JSON.stringify(card.site_book.entries)} book={card.site_book} locked={locked} onRead={onRead}/>}
+      {card.read_status==='reading' && <p role="status">正在读取… {card.read_total ? `已读 ${card.read_done??0} / ${card.read_total} 页` : ''} {onCancel && <Button small kind="ghost" onClick={onCancel}>取消读取</Button>}</p>}
+      {!!card.failed_pages?.length && <details><summary>跳过 {card.failed_pages.length} 个失败页</summary>{card.failed_pages.map(v=><p key={v.url}>{v.title}：{v.message} <a href={v.url} target="_blank" rel="noreferrer">原网页</a></p>)}</details>}
       {card.read_error && <p role={card.read_status==='failed'?'alert':'note'}>{card.read_error}</p>}
       {card.status==='adopted' && <p className="small">已采用</p>}
       <div className="row between wrap">
@@ -477,7 +501,7 @@ function SourceCard({ card, locked, onDecide, onCancel, children }: { card: Card
   )
 }
 
-export function GroupedSources({cards,locked,onDecide}: {cards:Card[];locked:boolean;onDecide:(id:string,adopt:boolean)=>void}) {
+export function GroupedSources({cards,locked,onDecide,onRead,onCancel}: {cards:Card[];locked:boolean;onDecide:(id:string,adopt:boolean)=>void;onRead?:(id:string,pages:string[])=>void;onCancel?:()=>void}) {
   const own=cards.filter(c=>c.user_provided)
   const ordered=cards.filter(c=>!c.user_provided).sort((a,b)=>(b.credibility??0)-(a.credibility??0) || (b.relevance??0)-(a.relevance??0)
     || Number(!!(a.quality?.community || a.quality?.source_type==="community"))-Number(!!(b.quality?.community || b.quality?.source_type==="community")))
@@ -485,7 +509,7 @@ export function GroupedSources({cards,locked,onDecide}: {cards:Card[];locked:boo
     {name:"成熟平台",cards:ordered.filter(c=>c.credibility===4)},
     {name:"一般网站",cards:ordered.filter(c=>(c.credibility??0)<4)}]
   return <>{groups.filter(g=>g.cards.length).map(g=><section key={g.name} aria-label={g.name}>
-    <h3 className="small muted">{g.name}</h3><div className="source-grid">{g.cards.map(c=><SourceCard key={c.card_id} card={c} locked={locked} onDecide={adopt=>onDecide(c.card_id,adopt)} />)}</div>
+    <h3 className="small muted">{g.name}</h3><div className="source-grid">{g.cards.map(c=><SourceCard key={c.card_id} card={c} locked={locked} onCancel={onCancel} onRead={pages=>onRead?.(c.card_id,pages)} onDecide={adopt=>onDecide(c.card_id,adopt)} />)}</div>
   </section>)}</>
 }
 
