@@ -54,9 +54,9 @@ PURPOSE_EFFORT = {
     'profile': None, 'sufficiency': 'none', 'plan_intent': 'none',
     'asr_correction': 'none',
 }
-# BUG-85: optional dictation correction must never inherit a long thinking
-# request or the DeepSeek maximum-output override. Other purposes are unchanged.
-PURPOSE_SHORT_LIMITS = {'asr_correction': (3., 80)}
+# BUG-85: dictation correction must never inherit a long thinking request or the
+# DeepSeek maximum-output override. It keeps the preset's normal network timeout.
+PURPOSE_MAX_TOKENS = {'asr_correction': 80}
 
 PURPOSE_MIN_OUTPUT = {
     'teacher': 8192, 'profile': 8192, 'check_profile': 8192, 'coverage_check': 8192,
@@ -499,8 +499,8 @@ class ModelGateway:
                 if not secret:
                     raise ModelError('MODEL_KEY_REQUIRED', '当前模型还没有 API Key：请到 设置 → 模型连接 填入 API Key 并保存。')
                 timeout = BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else config['timeout']
-                if purpose in PURPOSE_SHORT_LIMITS:
-                    timeout, max_tokens = PURPOSE_SHORT_LIMITS[purpose]
+                if purpose in PURPOSE_MAX_TOKENS:
+                    max_tokens = PURPOSE_MAX_TOKENS[purpose]
                 elif purpose != 'connection_test':  # the explicit "Reply OK" probe stays tiny
                     max_tokens = MODEL_MAX_OUTPUT.get(config['model'], max_tokens)
                 deadline = time.monotonic() + timeout

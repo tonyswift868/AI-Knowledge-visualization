@@ -11,7 +11,8 @@ def test_gateway109_asr_small_non_thinking_foreground_call(tmp_path,vault,monkey
     monkeypatch.setattr(providers,'complete',complete)
     try:
         gateway.complete('asr_correction',[dict(role='user',content='项梁那个')],max_tokens=80)
-        assert calls[0]['max_tokens']==80 and 0<calls[0]['timeout']<=3
+        # 123: no self-imposed 3 s cap; the preset's network timeout applies.
+        assert calls[0]['max_tokens']==80 and calls[0]['timeout']>3
         assert calls[0]['reasoning_effort']=='none'
         summary=gateway.usage_log.summary(START,END,group_by='purpose')
         assert summary['total']['calls']==1

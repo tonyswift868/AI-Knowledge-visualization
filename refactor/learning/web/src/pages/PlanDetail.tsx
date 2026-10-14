@@ -73,10 +73,12 @@ export function PlanDetail() {
     let live = true
     const revision = ++linksRead.current
     setDetail(null); setLoadError(""); setMinutesError('')
-    const timer = setTimeout(() => { if (live) { live = false; setLoadError("读取超时") } }, 15000)
+    // After 15 s show the slow-network hint with retry, but keep waiting: a
+    // late result is still shown rather than thrown away.
+    const timer = setTimeout(() => { if (live) setLoadError("读取超时") }, 15000)
     call<Detail>("plan.detail", { plan_id: planId }).then(d => {
       if (!live) return
-      clearTimeout(timer); if(revision===linksRead.current)setDetail(d)
+      clearTimeout(timer); setLoadError(""); if(revision===linksRead.current)setDetail(d)
       call<typeof gaps>("classroom.gaps", { plan_id: planId }).then(rows => { if (live) setGaps(rows) }).catch(() => {})
     }).catch(e => { if (live) { clearTimeout(timer); setLoadError(e.message || "读取计划失败") } })
     setGaps([])
