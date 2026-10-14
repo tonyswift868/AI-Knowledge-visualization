@@ -16,7 +16,7 @@ import { Button } from "../ui"
 import { MicButton, useVoiceInput } from "../voice"
 import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacherVoice"
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
-import { ConceptMaterials, ModuleNavigation, ConversationActions, MaterialsPreparing, OriginalCards, QuestionInputs, type Concept, type NavigationEntry, type OriginalCardsHandle, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
+import { MaterialToolbar, PreparationBadge, PreparationWait, ConversationActions, OriginalCards, QuestionInputs, type Concept, type NavigationEntry, type OriginalCardsHandle, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
 import { RecallQuestion, type RecallRequest } from "../classroom/RecallQuestion"
 import { Loading } from '../loading/Loading'
 
@@ -148,7 +148,7 @@ export function Classroom() {
             return
           }
           if (d.startsWith(MATERIAL_EVENT)) {
-            try { const p = JSON.parse(d.slice(MATERIAL_EVENT.length)) as Preparation; setBusy(`${p.text} ${p.done}/${p.total}`) } catch { /* keep the current progress */ }
+            try { const p = JSON.parse(d.slice(MATERIAL_EVENT.length)) as Preparation; setBusy(`${p.text} ${p.done}/${p.total}`); setRoom(previous => previous ? { ...previous, preparation: p } : previous) } catch { /* keep the current progress */ }
             return
           }
           if (d.startsWith(VERDICT_EVENT)) {
@@ -340,26 +340,27 @@ export function Classroom() {
           <div className="class-title">
             <span className="eyebrow">{room.check ? "全部模块已学完" : `模块 ${room.module.number}/${room.module.total}`} · {room.plan.goal}</span>
             <b>{room.check ? "最终检验" : room.module.title}</b>
+            <div className="class-module-inline129">
+              <span>{room.check ? `已通过 ${room.check.passed}/${room.check.total} 个知识点` : `本模块 ${done}/${room.points.length} 个点已讲`}</span>
+              {!room.check && <button aria-expanded={pointsExpanded} aria-controls="classroom-points" onClick={() => setPointsExpanded(value => !value)}>
+                {pointsExpanded ? '收起知识点' : '展开知识点'}</button>}
+              <div className="class-check-bar" role="progressbar" aria-label={room.check ? '最终检验进度' : '本模块讲解进度'}
+                aria-valuenow={room.check?.passed ?? done} aria-valuemin={0} aria-valuemax={room.check?.total ?? room.points.length}>
+                <i style={{ width: `${100 * (room.check?.passed ?? done) / Math.max(1, room.check?.total ?? room.points.length)}%` }}/></div>
+            </div>
           </div>
           {room.plan.state === "checking" && <Button small onClick={() => setWrongAnswers(true)}>错题集</Button>}
           <Button small kind="ghost" role="switch" aria-label="只看重点" aria-checked={classroomFocus} onClick={() => {
             const next=!classroomFocus;setClassroomFocus(next)
             try {localStorage.setItem('mf.classroom.focus',next?'on':'off')} catch { /* the current page still switches */ }
           }}>只看重点{classroomFocus?'：开':'：关'}</Button>
-          {t && <ProgressStatus value={t} />}
-        </header>
-        {room.check ? (
-          <div className="class-points">
-            <div className="class-check-bar"><i style={{ width: `${(room.check.passed / Math.max(1, room.check.total)) * 100}%` }} /></div>
-            <span className="muted small">已通过 {room.check.passed}/{room.check.total} 个知识点</span>
+          <div className="class-status129">
+            {t && <ProgressStatus value={t} />}
+            {room.preparation && <PreparationBadge preparation={room.preparation} busy={!!busy} act={act} reducedMotion={reduceMotion}/>}
+            {t?.is_late_night && <span className="class-late129" title="已经很晚了，注意休息。今天学的内容会记在开课那天。">夜深了，注意休息</span>}
           </div>
-        ) : <div className="class-module-progress">
-          <div className="row between"><span className="small">第 {room.module.number} 个模块 · 本模块 {done} / {room.points.length} 个点已讲</span>
-            <Button small kind="ghost" aria-expanded={pointsExpanded} aria-controls="classroom-points"
-              onClick={() => setPointsExpanded(value => !value)}>{pointsExpanded ? "收起知识点" : "展开知识点"}</Button></div>
-          <div className="class-check-bar" role="progressbar" aria-label="本模块讲解进度" aria-valuenow={done} aria-valuemin={0} aria-valuemax={room.points.length}>
-            <i style={{ width: `${100 * done / Math.max(1, room.points.length)}%` }} /></div>
-          {pointsExpanded && <div className="class-points" id="classroom-points">
+        </header>
+          {pointsExpanded && !room.check && <div className="class-points class-points-popup129" id="classroom-points">
           {room.points.map((p, i) => (
             <span key={p.id} className={`class-point ${p.current && ["teach", "opening", "teaching", "closing", "answer", "preparing_materials"].includes(room.step) ? "current" : ""} ${p.taught ? "taught" : ""} ${POINT_TONE[p.state] ?? ""}`}
                   title={`${p.title} · ${p.minutes} 分钟${POINT_LABEL[p.state] ? " · " + POINT_LABEL[p.state] : ""}`}>
@@ -367,14 +368,11 @@ export function Classroom() {
             </span>
           ))}
           </div>}
-        </div>}
-        {room.preparation && <MaterialsPreparing preparation={room.preparation} busy={!!busy} act={act} />}
-        {room.failure && <div className="banner" role="alert">{room.failure.message} <Button small disabled={!!busy}
+        {room.failure && <div className="class-failure129" role="alert"><span title={room.failure.message}>{room.failure.message}</span> <Button small disabled={!!busy}
           onClick={() => act("classroom.retry", {}, "重试这一步…")}>重试</Button></div>}
-        {t?.is_late_night && <div className="banner">已经很晚了，注意休息。今天学的内容会记在开课那天。</div>}
-        <ModuleNavigation key={room.module.id} entries={room.module.navigation ?? []} />
-        {room.concept && <ConceptMaterials key={room.concept.subpoint_id} concept={room.concept} />}
+        <MaterialToolbar key={room.module.id} concept={room.concept} entries={room.module.navigation ?? []}/>
         <div className="class-scroll" ref={scroller}>
+          {room.step === 'preparing_materials' && <PreparationWait preparation={room.preparation} busy={!!busy} act={act}/>}
           {room.messages.length === 0 && !busy && room.step === "teach" && (
             <div className="class-empty">
               <BookOpen size={28} />
