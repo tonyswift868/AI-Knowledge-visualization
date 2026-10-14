@@ -100,18 +100,21 @@ class Correction:
     seconds: float = 0.
 
 
-def finish(raw, local, terms, question, gateway, *, cancel=None, timeout=3.,protected_terms=()):
-    """Caller runs off GUI; hard return deadline even for an unresponsive seam.
+def finish(raw, local, terms, question, gateway, *, cancel=None, protected_terms=()):
+    """Caller runs off GUI; the gateway owns the request timeout.
 
     Cancel is per-call, never the gateway's global cancellation. Late results
     are ignored. Gateway still completes its normal usage/failure accounting.
     """
-    if gateway is None or not needs_model(local,terms,question) or timeout<=0:
+    if cancel is not None and cancel.is_set():
+        return Correction(local, outcome='cancelled')
+    if gateway is None or not needs_model(local,terms,question):
         return Correction(local)
     started=time.monotonic();done=threading.Event();token=threading.Event();box={}
     def run():
         try:
             client=gateway() if callable(gateway) else gateway
+            if token.is_set(): return
             box['result']=client.complete('asr_correction',[{'role':'user','content':json.dumps(
                 dict(recognized=local,teacher_question=re.sub(r'\[([^]]*)\]\([^)]+\)',r'\1',question)[-600:],
                      terms=list(terms)[:40]),ensure_ascii=False)}],
@@ -119,11 +122,13 @@ def finish(raw, local, terms, question, gateway, *, cancel=None, timeout=3.,prot
         except Exception: box['error']=True
         finally: done.set()
     threading.Thread(target=run,name='mf-asr-correction-call',daemon=True).start()
-    deadline=started+min(3.,timeout)
-    while not done.wait(min(.02,max(0.,deadline-time.monotonic()))):
-        if (cancel is not None and cancel.is_set()) or time.monotonic()>=deadline:
+    while not done.wait(.02):
+        if cancel is not None and cancel.is_set():
             token.set()
-            return Correction(local,True,'timeout',time.monotonic()-started)
+            return Correction(local,True,'cancelled',time.monotonic()-started)
+    if cancel is not None and cancel.is_set():
+        token.set()
+        return Correction(local,True,'cancelled',time.monotonic()-started)
     result=box.get('result');text=getattr(result,'text','').strip()
     accepted=acceptable(local,text,terms,protected_terms)
     return Correction(text if accepted else local,True,'accepted' if accepted else 'fallback',time.monotonic()-started)

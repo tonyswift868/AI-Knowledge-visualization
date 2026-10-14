@@ -97,7 +97,7 @@ def main():
         for row in json.loads((root/'text-cases.json').read_text(encoding='utf-8')):
             local=correct(row['raw'],row['terms'],protect_existing=False,protected_terms=protected,lesson_match=True)[0]
             with (root/'report.md').open('a',encoding='utf-8') as f:f.write(f"\n付费前 {row['id']}：仅修术语和同音字；推测原意不作为补写依据，不改‘长得比较矮/用制力’。\n")
-            result=finish(row['raw'],local,row['terms'],row['question'],gateway,timeout=2.8,protected_terms=protected)
+            result=finish(row['raw'],local,row['terms'],row['question'],gateway,protected_terms=protected)
             supplemental.append(dict(row,local=local,combined=result.text,called=result.called,outcome=result.outcome,seconds=result.seconds))
         (root/'supplement-results.json').write_text(json.dumps(supplemental,ensure_ascii=False,indent=2),encoding='utf-8')
         deadline=time.monotonic()+5

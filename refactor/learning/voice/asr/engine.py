@@ -20,7 +20,6 @@ MAX_BUFFERED_BYTES = SAMPLE_RATE * 2 * 30
 PRE_SPEECH_SECONDS = 0.3
 WHOLE_CHUNK_SECONDS = 25.0
 LONG_PAUSE_SECONDS = 1.5
-WHOLE_TIMEOUT_SECONDS = 2.0
 
 
 def _whole_chunks(audio: np.ndarray, speech_ranges, max_seconds=WHOLE_CHUNK_SECONDS):
@@ -238,7 +237,7 @@ class AsrEngine:
 
         Native inference cannot be interrupted. A daemon holds its own backend
         reference; a late result cannot touch the engine/Future or new session.
-        The worker returns the preview on timeout without waiting for inference.
+        Wait for inference to finish unless the user cancels.
         """
         first = getattr(backend, "first_speech_sample", None)
         if first is None and not fallback:
@@ -273,11 +272,11 @@ class AsrEngine:
                 done.set()
         started = time.monotonic()
         threading.Thread(target=recognize, name="mf-sensevoice-final", daemon=True).start()
-        while not done.wait(min(.02, max(0.0, WHOLE_TIMEOUT_SECONDS - (time.monotonic() - started)))):
-            if cancelled.is_set() or time.monotonic() - started >= WHOLE_TIMEOUT_SECONDS:
-                stopped.set()  # Do not decode further blocks after falling back.
+        while not done.wait(.02):
+            if cancelled.is_set():
+                stopped.set()  # Do not decode further blocks after cancellation.
                 self.whole_seconds = time.monotonic() - started
-                self.whole_outcome = "cancelled" if cancelled.is_set() else "fallback_timeout"
+                self.whole_outcome = "cancelled"
                 return fallback
         self.whole_seconds = time.monotonic() - started
         self.whole_outcome = "fallback_failed" if box.get("error") else "whole"

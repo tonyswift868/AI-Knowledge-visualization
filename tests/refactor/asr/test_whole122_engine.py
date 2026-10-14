@@ -79,15 +79,13 @@ def test_whole122_final_uses_whole_audio_and_keeps_internal_pause(tmp_path):
     assert engine.snapshot().text=='项梁那个。'
 
 
-@pytest.mark.parametrize('mode',['failed','empty','timeout','prepare'])
-def test_whole122_failure_and_timeout_fall_back_without_error(tmp_path,monkeypatch,mode):
+@pytest.mark.parametrize('mode',['failed','empty','prepare'])
+def test_whole122_failure_falls_back_without_error(tmp_path,monkeypatch,mode):
     release=Event()
     class Fallback(Backend122):
         def final(self,audio):
             if mode=='failed':raise RuntimeError('test whole decode failure')
-            if mode=='timeout':release.wait(2)
             return ''
-    monkeypatch.setattr(engine_module,'WHOLE_TIMEOUT_SECONDS',.04)
     engine,_=make(tmp_path,Fallback())
     if mode=='prepare':
         def failed_setup(*_):raise RuntimeError('optional final setup failed')
@@ -96,7 +94,7 @@ def test_whole122_failure_and_timeout_fall_back_without_error(tmp_path,monkeypat
         two_parts(engine)
         assert engine.finish().result(2)=='下料。 来个。'
         assert engine.failure is None
-        assert engine.whole_outcome==('fallback_timeout' if mode=='timeout' else 'fallback_failed')
+        assert engine.whole_outcome=='fallback_failed'
     finally:
         release.set();engine.cancel();assert engine.wait_closed()
 
@@ -140,7 +138,7 @@ def test_whole122_cancel_during_second_pass_suppresses_late_result(tmp_path):
     finally:release.set();engine.cancel()
 
 
-def test_whole122_timeout_does_not_decode_remaining_long_blocks(tmp_path,monkeypatch):
+def test_whole122_cancel_does_not_decode_remaining_long_blocks(tmp_path,monkeypatch):
     entered,release=Event(),Event()
     class Slow(Backend122):
         calls=0
@@ -148,12 +146,13 @@ def test_whole122_timeout_does_not_decode_remaining_long_blocks(tmp_path,monkeyp
             self.calls+=1;self.thread=current_thread();entered.set();release.wait(2)
             return '忽略迟到终稿'
     monkeypatch.setattr(engine_module,'_whole_chunks',lambda audio,ranges:[audio,audio])
-    monkeypatch.setattr(engine_module,'WHOLE_TIMEOUT_SECONDS',.04)
     engine,backend=make(tmp_path,Slow())
     try:
         two_parts(engine);future=engine.finish()
         assert entered.wait(2)
-        assert future.result(2)=='下料。 来个。'
+        engine.cancel()
+        with pytest.raises(CancelledError):future.result(2)
+        assert engine.wait_closed()
         release.set();backend.thread.join(1)
         assert not backend.thread.is_alive() and backend.calls==1
     finally:release.set();engine.cancel();engine.wait_closed()
