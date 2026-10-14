@@ -13,7 +13,7 @@ import json
 import time
 
 from . import github_repo, materials
-from .research_pipeline import ResearchPipeline
+from .research_pipeline import ResearchPipeline, retry_selected, fetch_selected_bytes
 from .source_filter import RawHit, load_lists, normalize_url
 from refactor.learning.course.research import ResearchCancelled
 from refactor.learning.course.research import ResearchTimeout
@@ -125,7 +125,9 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
 
     def checked_fetch(url, token):
         _check(token)
-        body = (repo_fetch or github_repo.default_fetch)(url, token)
+        body = retry_selected(lambda:repo_fetch(url,token) if repo_fetch else
+            fetch_selected_bytes(url,cancel=token,timeout=timeout,max_bytes=github_repo.MAX_TOTAL,
+                allowed_types={'application/json','text/plain','text/markdown','application/octet-stream'}).body,token)
         _check(token)
         return body
 
@@ -224,7 +226,7 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
                 elif isinstance(exc, (ResearchTimeout, TimeoutError)):
                     code, message = 'fetch_timeout', '资料读取超时，请稍后重试。'
                 elif isinstance(exc, ResearchFetchError):
-                    code, message = 'fetch_failed', str(exc)
+                    code, message = ('robots_unavailable' if getattr(exc,'code',None)=='robots_unavailable' else 'fetch_failed'), str(exc)
                 else:
                     code, message = 'import_failed', '资料读取或保存失败，本条未采用，请稍后重试。'
                 result = dict(original_url=original, normalized_url=url,

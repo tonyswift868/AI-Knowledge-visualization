@@ -18,6 +18,7 @@ type Card = {
   read_status?: 'none'|'reading'|'selecting'|'ready'|'failed'|'cancelled'; read_error?: string
   site_book?: {entries:{id:string;url:string;title:string;section:string[]}[]; origin:string}
   read_done?:number; read_total?:number; failed_pages?:{url:string;title:string;message:string}[]
+  read_warning?:string
 }
 type Citation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
 type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean; structure?: string; subpoints?: {id: string; title: string; minutes: number}[] }
@@ -34,7 +35,7 @@ type FormData = {
 export type Recommendation = {
   card_id: string; title: string; type: string; url: string; why: string; modules: string[]
   github_stars?: number; is_video?: boolean; video_note?: string
-  status?: Card['status']; read_status?: Card['read_status']; read_error?: string; chars?: number
+  status?: Card['status']; read_status?: Card['read_status']; read_error?: string; read_warning?:string; chars?: number
   credibility?: number; quality?: Card['quality']
   site_book?:Card['site_book'];read_done?:number;read_total?:number;failed_pages?:Card['failed_pages']
 }
@@ -64,6 +65,7 @@ export type Draft = {
   estimate?: { modules: number; input_tokens: [number, number]; output_tokens: [number, number]; amount: { low: string; high: string; currency: string } | null; model: string; blocked?: boolean; points?: number }
   preview?: { summary: string; modules: { title: string; summary: string }[]; version: number }
   recommendations?: Recommendation[]
+  source_read_warnings?:Record<string,string>
   material_structure?: { version: number; missing: string[]; excluded?: {name: string; reason: string; refs: string[]}[]; modules?: GraphModule[]; ranges?: StructureRanges }
   busy: string | null
 }
@@ -188,7 +190,7 @@ export function NewPlan() {
 
   const busy = pending || !!status
   const phaseIndex = STEPS.findIndex(([phases]) => phases.includes(draft.phase))
-  const cards = Object.fromEntries(draft.sources.map((c) => [c.card_id, c]))
+  const cards = Object.fromEntries(draft.sources.map((c) => [c.card_id, {...c,read_warning:draft.source_read_warnings?.[c.url??'']}]))
   const adopted = draft.sources.filter((c) => c.status === "adopted").length
   const lastOutline = [...draft.messages].reverse().find((m) => m.kind === "outline")?.id
   const lastDeleteConfirmation = [...draft.messages].reverse().find((m) => m.kind === "map_delete_confirmation")?.id
@@ -251,7 +253,7 @@ export function NewPlan() {
             </div>
             if (m.kind === "recommendations") return <div key={m.id} className="plan-block">
               <div className="bubble bot">{m.text}</div>
-              <RecommendationCards cards={(draft.recommendations ?? []).filter(c => m.cards?.includes(c.card_id))}
+              <RecommendationCards cards={(draft.recommendations ?? []).filter(c => m.cards?.includes(c.card_id)).map(c=>({...c,read_warning:draft.source_read_warnings?.[c.url]}))}
                 busy={busy || !['sources','material_preview','outline'].includes(draft.phase)}
                 onUse={url => act("plan.decide", {card_id:draft.recommendations?.find(c=>c.url===url)?.card_id,adopt:true})}
                 onReject={card_id=>act('plan.decide',{card_id,adopt:false})} onCancel={()=>abort.current?.abort()}
@@ -485,7 +487,8 @@ function SourceCard({ card, locked, onDecide, onCancel, onRead, children }: { ca
       {general && <p className="source-note" role="note">一般网站，可能有错，请自行判断；不默认采用。</p>}
       {children}
       {card.site_book && card.status==='new' && onRead && <BookSelection key={JSON.stringify(card.site_book.entries)} book={card.site_book} locked={locked} onRead={onRead}/>}
-      {card.read_status==='reading' && <p role="status">正在读取… {card.read_total ? `已读 ${card.read_done??0} / ${card.read_total} 页` : ''} {onCancel && <Button small kind="ghost" onClick={onCancel}>取消读取</Button>}</p>}
+      {card.read_warning && <p role="note">{card.read_warning}</p>}
+      {card.read_status==='reading' && <p role="status">正在读取… {card.read_total ? `已读 ${card.read_done??0} / ${card.read_total} 页（临时失败会重试，首轮后会补读失败页）` : ''} {onCancel && <Button small kind="ghost" onClick={onCancel}>取消读取</Button>}</p>}
       {!!card.failed_pages?.length && <details><summary>跳过 {card.failed_pages.length} 个失败页</summary>{card.failed_pages.map(v=><p key={v.url}>{v.title}：{v.message} <a href={v.url} target="_blank" rel="noreferrer">原网页</a></p>)}</details>}
       {card.read_error && <p role={card.read_status==='failed'?'alert':'note'}>{card.read_error}</p>}
       {card.status==='adopted' && <p className="small">已采用</p>}

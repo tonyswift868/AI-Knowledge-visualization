@@ -2,8 +2,9 @@
 
 Run from a worker thread. Inject fetcher(url, *, cancel, timeout) ->
 FetchedContent for offline tests; it must honour the event-like cancellation
-token. The default uses ResearchService's guarded byte fetch. Timeouts/cancel
-return promptly and fence late results; Python cannot forcibly kill an injected
+token. Candidate validation retains its total deadline; selected materials only
+use network connect/read inactivity timeouts. Cancel fences late results;
+Python cannot forcibly kill an injected
 synchronous fetcher. One pipeline owns a bounded executor, also across retries.
 Use close() (or a with block) when leaving the account/plan.
 """
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
@@ -21,7 +22,8 @@ import re
 from threading import BoundedSemaphore, Event, Lock, RLock
 import time
 import unicodedata
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urljoin
+from email.utils import parsedate_to_datetime
 
 from .extract import ExtractedDocument, ExtractError, extract_bytes, extract_html, useful_title
 from .source_quality import published_date, assess, rank_key, terms, body_identity, canonical_link_key
@@ -171,7 +173,7 @@ class _Cancel:
     def __init__(self, external, closed, timeout):
         self.external, self.closed = external, closed
         self.stopped = Event()
-        self.deadline = time.monotonic() + timeout
+        self.deadline = math.inf if timeout is None else time.monotonic() + timeout
 
     def is_set(self):
         return (self.stopped.is_set() or self.closed.is_set()
@@ -186,6 +188,127 @@ class _Cancel:
 
 def _cancelled(event):
     return event is not None and event.is_set()
+
+
+SELECTED_ATTEMPTS = 3
+SELECTED_BACKOFF = 1.0
+
+
+def _retry_delay(exc, attempt):
+    value=getattr(exc,'retry_after',None)
+    if value is None and getattr(exc,'response',None) is not None:
+        value=exc.response.headers.get('Retry-After')
+    if value:
+        try:return max(0.0,float(value))
+        except (ValueError,TypeError):
+            try:return max(0.0,parsedate_to_datetime(value).timestamp()-time.time())
+            except (ValueError,TypeError,OverflowError):pass
+    return SELECTED_BACKOFF * 2**attempt
+
+
+def _transient(exc):
+    import httpx
+    if isinstance(exc,(ResearchCancelled,ExtractError,_Rejected)):return False
+    if isinstance(exc,(ResearchTimeout,TimeoutError,ConnectionError,httpx.TimeoutException,httpx.TransportError)):
+        return True
+    if isinstance(getattr(exc,'__cause__',None),httpx.TransportError):return True
+    status=getattr(exc,'status_code',None)
+    if status is None and getattr(exc,'response',None) is not None:status=exc.response.status_code
+    if status is not None:return status==429 or 500<=status<600
+    if isinstance(exc,ResearchFetchError):
+        return bool(re.search(r'EOF|SSL|connection|reset|断开|连接|超时',str(exc),re.I))
+    return False
+
+
+def retry_selected(operation, cancel=None):
+    """Three attempts, cancellable IO wait/backoff, no overall deadline.
+
+    A cancelled synchronous transport may still finish its socket operation;
+    its result is fenced and cannot start another attempt or commit anything.
+    """
+    from .research import _check_cancel
+    pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='selected-material')
+    try:
+        for attempt in range(SELECTED_ATTEMPTS):
+            _check_cancel(cancel)
+            future=pool.submit(operation)
+            while not future.done():
+                _check_cancel(cancel)
+                wait([future],timeout=.02)
+            _check_cancel(cancel)
+            try:return future.result()
+            except Exception as exc:
+                if attempt==SELECTED_ATTEMPTS-1 or not _transient(exc):raise
+                until=time.monotonic()+_retry_delay(exc,attempt)
+                while time.monotonic()<until:
+                    _check_cancel(cancel)
+                    time.sleep(min(.02,max(0,until-time.monotonic())))
+    finally:pool.shutdown(wait=False,cancel_futures=True)
+
+
+def fetch_selected_bytes(url, *, cancel=None, timeout=20.0, max_bytes=8*1024*1024,
+                         allowed_types=None, request_guard=None, service=None):
+    """Existing guarded HTTPX client, per-connect/read inactivity timeout only.
+
+    ResearchService.fetch_bytes deliberately retains its candidate deadline.
+    This selected-material path reuses its client/address checks, redirect and
+    byte limits, without changing that out-of-scope public research behavior.
+    """
+    import httpx
+    from .research import (_safe_candidate_url,_check_cancel,smartedu_metadata_url,
+                           _smartedu_pdf,ResearchUploadRequired)
+    service=service or ResearchService(timeout=timeout,max_bytes=max_bytes)
+    current=_safe_candidate_url(url)
+    if not current:raise ResearchFetchError('资料网址无效。')
+    original=current;metadata=smartedu_metadata_url(current);title=''
+    if metadata:
+        import json
+        try:
+            result=fetch_selected_bytes(metadata,cancel=cancel,timeout=timeout,max_bytes=max_bytes,
+                allowed_types={'application/json','text/plain'},request_guard=request_guard,service=service)
+            data=json.loads(result.body)
+            if not isinstance(data,dict):raise ValueError('教材元数据不是对象')
+            title=data.get('title') or ''
+            if not isinstance(title,str):title=''
+            pdf=_smartedu_pdf(data)
+            if not pdf:raise ResearchUploadRequired(material_upload_guidance(original,title))
+            result=fetch_selected_bytes(pdf,cancel=cancel,timeout=timeout,max_bytes=max_bytes,
+                allowed_types={'application/pdf'},request_guard=request_guard,service=service)
+            return replace(result,url=original)
+        except (ResearchFetchError,ValueError,KeyError,TypeError) as exc:
+            if _transient(exc):raise
+            if isinstance(exc,ResearchUploadRequired):raise
+            status=getattr(exc,'status_code',None)
+            raise ResearchUploadRequired(material_upload_guidance(original,title)+
+                (f'（HTTP {status}。）' if status else '')) from exc
+    allowed_types=allowed_types or {'text/html','application/xhtml+xml','application/pdf','text/plain','text/markdown'}
+    try:
+        with service._client() as client:
+            for redirects in range(service.max_redirects+1):
+                _check_cancel(cancel);service._validate_fetch_url(current,cancel=cancel)
+                guard=request_guard(current,cancel=cancel) if request_guard else nullcontext()
+                with guard,client.stream('GET',current,timeout=timeout) as response:
+                    status=response.status_code
+                    if status in {301,302,303,307,308}:
+                        target=_safe_candidate_url(urljoin(current,response.headers.get('location','')))
+                        if not response.headers.get('location') or not target or redirects==service.max_redirects:
+                            raise ResearchFetchError('网页重定向无效或次数超过限制。')
+                        current=target;continue
+                    if not 200<=status<300:
+                        exc=ResearchFetchError(f'网页返回 HTTP {status}，未读取正文。',status_code=status)
+                        exc.retry_after=response.headers.get('Retry-After');raise exc
+                    media=response.headers.get('content-type','').split(';',1)[0].strip().casefold()
+                    if media not in allowed_types:raise ResearchUnsupportedContent(f'网页内容类型 {media!r} 不支持正文读取。')
+                    length=response.headers.get('content-length')
+                    if length and (not length.isdigit() or int(length)>max_bytes):raise ResearchFetchError('网页正文超过大小限制或长度声明无效。')
+                    data=bytearray()
+                    for part in response.iter_bytes(chunk_size=64*1024):
+                        _check_cancel(cancel);data.extend(part)
+                        if len(data)>max_bytes:raise ResearchFetchError('网页正文超过大小限制。')
+                    _check_cancel(cancel)
+                    return FetchedContent(original,current,media,bytes(data),datetime.now(timezone.utc).isoformat())
+    except httpx.TimeoutException as exc:raise ResearchTimeout('连接超时或连续等待数据超时。') from exc
+    except httpx.HTTPError as exc:raise ResearchFetchError('读取网页失败：'+str(exc)) from exc
 
 
 def _urls(values):
@@ -247,7 +370,8 @@ def _title_check(search_title, titles):
 
 class ResearchPipeline:
     def __init__(self, *, fetcher=None, lists_provider=None, concurrency=4, per_site=2,
-                 timeout=15.0, max_sources=40, min_text_chars=120, max_bytes=8*1024*1024, ocr=None):
+                 timeout=15.0, max_sources=40, min_text_chars=120, max_bytes=8*1024*1024, ocr=None,
+                 retry_fetch=True):
         for name, value in (('concurrency', concurrency), ('per_site', per_site),
                             ('max_sources', max_sources), ('min_text_chars', min_text_chars), ('max_bytes', max_bytes)):
             if type(value) is not int or value < 1:
@@ -257,6 +381,7 @@ class ResearchPipeline:
         if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError('timeout 必须是正数')
         self.fetcher, self.lists_provider = fetcher, lists_provider
+        self.retry_fetch=retry_fetch
         self.ocr = ocr  # existing PdfOCR engine; no new OCR model/dependency
         self.concurrency, self.per_site, self.timeout = concurrency, per_site, timeout
         self.max_sources, self.min_text_chars, self.max_bytes = max_sources, min_text_chars, max_bytes
@@ -315,7 +440,16 @@ class ResearchPipeline:
 
         try:
             token.check()
-            if self.fetcher is None:
+            if user_provided:
+                def read_selected():
+                    if self.fetcher is None:
+                        return fetch_selected_bytes(hit.url,cancel=token,timeout=self.timeout,max_bytes=self.max_bytes,
+                            request_guard=guard,allowed_types={'text/html','application/xhtml+xml','application/pdf',
+                                'text/plain','text/markdown','image/png','image/jpeg','image/webp'})
+                    with self._site_slot(hit.url,token):
+                        return self.fetcher(hit.url,cancel=token,timeout=self.timeout)
+                fetched=retry_selected(read_selected,token) if self.retry_fetch else read_selected()
+            elif self.fetcher is None:
                 fetched = ResearchService(timeout=self.timeout, max_bytes=self.max_bytes).fetch_bytes(
                     {'url': hit.url, 'title': hit.title}, cancel=token, request_guard=guard,
                     allowed_types={'text/html','application/xhtml+xml','application/pdf','text/plain','text/markdown',
@@ -422,15 +556,16 @@ class ResearchPipeline:
         except ResearchUnsupportedContent:
             return RejectedSource(hit.url, hit.title, 'unsupported_type', '服务器未返回支持的正文类型。')
         except (ResearchTimeout, TimeoutError):
-            return RejectedSource(hit.url, hit.title, 'fetch_timeout', '资料抓取超过时间限制。')
+            return RejectedSource(hit.url, hit.title, 'fetch_timeout', '连接超时或连续等待数据超时，重试后仍未读到正文。' if user_provided else '资料抓取超过时间限制。')
         except ResearchFetchError as exc:
             guidance=material_upload_guidance(hit.url,hit.title,lists=lists)
             if guidance:
                 return RejectedSource(hit.url,hit.title,'material_upload_required',guidance+
                     (f'（HTTP {exc.status_code}。）' if exc.status_code else '（网络读取失败。）'))
-            return RejectedSource(hit.url,hit.title,'fetch_failed','资料抓取失败，未把搜索摘要当作已验证正文。')
-        except Exception:
-            return RejectedSource(hit.url, hit.title, 'fetch_failed', '资料抓取失败，未把搜索摘要当作已验证正文。')
+            return RejectedSource(hit.url,hit.title,'fetch_failed',str(exc) if user_provided else '资料抓取失败，未把搜索摘要当作已验证正文。')
+        except Exception as exc:
+            return RejectedSource(hit.url, hit.title, 'fetch_failed',
+                type(exc).__name__+': '+str(exc) if user_provided else '资料抓取失败，未把搜索摘要当作已验证正文。')
 
     def run(self, hits, *, accepted_urls=(), rejected_urls=(), lists: SourceLists | None = None,
             include_low=False, cancel=None, goal='', user_provided=False) -> ResearchResult:
@@ -511,7 +646,7 @@ class ResearchPipeline:
                     break
                 if sites.get(host, 0) >= self.per_site:
                     continue
-                token = _Cancel(cancel, self._closed, self.timeout)
+                token = _Cancel(cancel, self._closed, None if user_provided else self.timeout)
                 with self._lifecycle:
                     if self._closed.is_set():
                         break

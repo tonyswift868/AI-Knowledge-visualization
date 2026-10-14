@@ -663,15 +663,27 @@ class PlanFlow:
         from ..course.addition_links import import_links
         from ..course import github_repo
         if discover_book:
-            from ..course.site_book import discover
+            from ..course.site_book import discover, RobotsUnavailable
             results, ids = [], []
             for url in urls:
                 try:
                     from ..course.source_quality import is_video_source
-                    book=None if github_repo.parse(url) or is_video_source(url,'','') else discover(url,fetcher=self.fetcher,cancel=ctx.cancel)
+                    warnings=draft.setdefault('source_read_warnings',{})
+                    warnings.pop(url,None)
+                    try:
+                        book=None if github_repo.parse(url) or is_video_source(url,'','') else discover(url,fetcher=self.fetcher,cancel=ctx.cancel)
+                    except Exception as exc:
+                        if ctx.cancel.is_set():raise ModelCancelled() from None
+                        warnings[url]=(str(exc) if isinstance(exc,RobotsUnavailable) else
+                            '网站目录暂时读取失败，本次只读取这个网址的单页。'+str(exc))
+                        book=None
                     if book:
                         results.append(dict(status='directory',original_url=url,site_book=book));continue
                     result=self._read_links(draft,ctx,[url],recommended=recommended)
+                    if url in warnings:
+                        for row in result['results']:
+                            if row.get('url'):warnings[row['url']]=warnings[url]
+                        self.save(draft)
                     results.extend(result['results']);ids.extend(result['source_ids'])
                 except Exception as exc:
                     if ctx.cancel.is_set(): raise ModelCancelled() from None
@@ -679,9 +691,20 @@ class PlanFlow:
                         message='目录读取失败：'+str(exc)))
             return dict(results=results,source_ids=list(dict.fromkeys(ids)),
                         cancelled=any(r['status']=='cancelled' for r in results))
-        return import_links(self.services.store, draft['plan_id'], urls, fetcher=self.fetcher,
+        result = import_links(self.services.store, draft['plan_id'], urls, fetcher=self.fetcher,
             repo_fetch=self.repo_fetch, lists=self._lists(), cancel=ctx.cancel, creating=True,
             recommended=recommended,site_book=site_book,selected_pages=selected_pages,progress=progress)
+        if site_book is not None and any(r.get('code')=='robots_unavailable' for r in result['results']):
+            # A directory may sit open until its robots snapshot expires.
+            warning=next(r['message'] for r in result['results'] if r.get('code')=='robots_unavailable')
+            fallback=self._read_links(draft,ctx,urls,recommended=recommended)
+            warnings=draft.setdefault('source_read_warnings',{})
+            for row in fallback['results']:
+                for key in (row.get('original_url'),row.get('url')):
+                    if key:warnings[key]=warning
+            self.save(draft)
+            return fallback
+        return result
 
     @staticmethod
     def _decision_cards(draft):

@@ -19,7 +19,7 @@ from lxml import html as html_parser
 
 from .research import ResearchService, ResearchFetchError, ResearchCancelled, _check_cancel
 from .source_filter import normalize_url, RawHit
-from .research_pipeline import ResearchPipeline
+from .research_pipeline import ResearchPipeline, retry_selected, fetch_selected_bytes
 from .extract import _document
 
 DEFAULT_INTERVAL = 1.0
@@ -36,6 +36,10 @@ class BookReadError(ValueError):
     def __init__(self,failed):
         self.failed_pages=failed
         super().__init__('所有所选页都读取失败，请查看失败列表，或下载后上传。')
+
+
+class RobotsUnavailable(ResearchFetchError):
+    code = 'robots_unavailable'
 
 
 def canonical(url):
@@ -82,7 +86,7 @@ class Reader:
             except ResearchFetchError as exc:
                 if exc.status_code in (404, 410): text=''
                 elif exc.status_code in (401, 403): text='User-agent: *\nDisallow: /'
-                else: raise ResearchFetchError('无法确认 robots.txt，请稍后重试：'+str(exc)) from exc
+                else: raise RobotsUnavailable('网站的 robots.txt 暂时读不到，整本读取请稍后重试。'+str(exc)) from exc
             self.robot_snapshot=dict(url=origin,text=text,retrieved_at=time.time())
         self.rules.parse(self.robot_snapshot['text'].splitlines())
         self.interval = max(DEFAULT_INTERVAL, self.rules.crawl_delay(AGENT) or 0)
@@ -117,6 +121,10 @@ class Reader:
 
     def raw(self, url, *, metadata=False, cancel=None):
         token = cancel if cancel is not None else self.cancel
+        return retry_selected(lambda:self._raw_once(url,metadata=metadata,cancel=token),token)
+
+    def _raw_once(self, url, *, metadata=False, cancel=None):
+        token = cancel if cancel is not None else self.cancel
         if self.fetcher:
             with self.guard(url,metadata=metadata,cancel=token):
                 value = self.fetcher(url,cancel=token,timeout=self.timeout)
@@ -124,8 +132,8 @@ class Reader:
                 with self.guard(value.final_url,metadata=metadata,cancel=token): pass
             _check_cancel(token)
             return value
-        return ResearchService(timeout=self.timeout, user_agent=AGENT).fetch_bytes(
-            {'url':url},cancel=token,
+        return fetch_selected_bytes(url,cancel=token,timeout=self.timeout,max_bytes=2_000_000,
+            service=ResearchService(timeout=self.timeout,user_agent=AGENT),
             request_guard=lambda u,**kw:self.guard(u,metadata=metadata,cancel=token),
             allowed_types={'text/html','application/xhtml+xml','text/plain','text/markdown',
                            'application/xml','text/xml','application/pdf'})
@@ -203,7 +211,8 @@ def discover(url, *, fetcher=None, cancel=None, timeout=20.0):
                         parents.append((indent,title))
                     origin='_sidebar.md'
                 except ResearchCancelled: raise
-                except (ResearchFetchError,UnicodeError): pass
+                except (ResearchFetchError,UnicodeError) as exc:
+                    raise ResearchFetchError('网站声明的侧栏暂时读不到：'+str(exc)) from exc
     if not entries:
         sitemap_urls = reader.rules.site_maps() or [urljoin(url,'/sitemap.xml')]
         queue, seen, pages = list(sitemap_urls), set(), set()
@@ -216,7 +225,14 @@ def discover(url, *, fetcher=None, cancel=None, timeout=20.0):
                 if not reader.rules.can_fetch(AGENT,target): continue
                 xml = ET.fromstring(reader.raw(target,metadata=True).body)
             except ResearchCancelled: raise
-            except (ResearchFetchError,ET.ParseError): continue
+            except ResearchFetchError as exc:
+                # An absent conventional sitemap is normal for a single page.
+                # A broken declared/index sitemap must not yield a partial TOC.
+                if exc.status_code in (404,410) and not reader.rules.site_maps() and target==urljoin(url,'/sitemap.xml'):
+                    continue
+                raise ResearchFetchError('网站目录暂时读不到：'+str(exc)) from exc
+            except ET.ParseError as exc:
+                raise ResearchFetchError('网站目录格式无法解析：'+str(exc)) from exc
             index = xml.tag.rsplit('}',1)[-1]=='sitemapindex'
             for node in xml:
                 loc = next((x.text for x in node if x.tag.rsplit('}',1)[-1]=='loc'),None)
@@ -244,8 +260,11 @@ def read_book(book, selected, *, fetcher=None, cancel=None, lists=None, timeout=
                                  robot_snapshot=book.get('robot_snapshot'))
     blocks,failed,read=[],[],[]; first=None; total=len(entries)
     if progress: progress(0,total,[])
-    with ResearchPipeline(fetcher=reader.fetch,timeout=timeout,max_sources=1,concurrency=1,per_site=1) as pipeline:
+    documents={};failures={}
+    with ResearchPipeline(fetcher=reader.fetch,timeout=timeout,max_sources=1,concurrency=1,per_site=1,retry_fetch=False) as pipeline:
+      for round_number in (1,2):
         for index,entry in enumerate(entries,1):
+            if entry['id'] in documents:continue
             _check_cancel(cancel)
             try:
                 if not reader.rules.can_fetch(AGENT,entry['url']):
@@ -259,20 +278,24 @@ def read_book(book, selected, *, fetcher=None, cancel=None, lists=None, timeout=
                 body='\n\n'.join(b.text for b in source.document.blocks)
                 if not _title_check('',[source.title])[0] or sum(c.isalnum() for c in body)<120:
                     raise ValueError('需要登录、页面不可用或正文太少。')
-                first=first or source
-                for block in source.document.blocks:
-                    # Prefix page TOC hierarchy, then retain inner article headings.
-                    inner=block.section
-                    if inner and inner[0] in (source.title,entry['title']): inner=inner[1:]
-                    blocks.append(replace(block,section=tuple(entry['section'])+inner))
-                read.append(dict(url=entry['url'],title=entry['title'],chars=source.document.char_count,
-                                 section=entry['section']))
+                documents[entry['id']]=source
+                failures.pop(entry['id'],None)
             except ResearchCancelled: raise
             except Exception as exc:
                 _check_cancel(cancel)
-                failed.append(dict(url=entry['url'],title=entry['title'],message=str(exc)))
-            if progress: progress(index,total,failed[:])
+                failures[entry['id']]=dict(url=entry['url'],title=entry['title'],message=str(exc),round=round_number)
+            if progress: progress(index if round_number==1 else total,total,list(failures.values()))
     _check_cancel(cancel)
+    failed=list(failures.values())
+    for entry in entries:
+        source=documents.get(entry['id'])
+        if source is None:continue
+        first=first or source
+        for block in source.document.blocks:
+            inner=block.section
+            if inner and inner[0] in (source.title,entry['title']):inner=inner[1:]
+            blocks.append(replace(block,section=tuple(entry['section'])+inner))
+        read.append(dict(url=entry['url'],title=entry['title'],chars=source.document.char_count,section=entry['section']))
     if not first: raise BookReadError(failed)
     raw=json.dumps([dict(text=b.text,section=b.section,kind=b.kind) for b in blocks],ensure_ascii=False).encode()
     document=_document(raw,book['title'],'text/html',blocks,
