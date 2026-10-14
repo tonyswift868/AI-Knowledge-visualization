@@ -47,7 +47,7 @@
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 空闲 | classroom |
+| MF-03 | 133-MF03 已起草，待转发 | classroom |
 | MF-04 | 132-MF04 进行中 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
@@ -207,6 +207,42 @@ D:\MentorFlowApp、D:\MentorFlowData 只读（要用的复制到任务目录）�
 回执：写到 D:\MentorFlow\.local\receipts\132-MF04.md。表格列：
   基线 ／ 全量 ／ 全新安装与注册 ／ 覆盖安装（不先开旧版，含新结构计划显示）／ 2.0.14 → P 软件内更新（含用时）／ P → Q 提速（三个时间）／ 网络边界 ／ 正式版前后快照 ／ 新问题 ／ 本地最终占用。
 给用户只回一行“132-MF04 通过/未通过，回执已写入”。报告写到 D:\MentorFlow\.local\test-tmp\gate132\report.md。
+~~~
+
+- 133-MF03（老师新回复贴顶对齐的回归，[BUG-98]）已起草，待转发，原文如下。
+
+### [133-MF03] classroom｜新回复贴顶对齐回归
+
+~~~text
+【MentorFlow 第一百三十三批｜MF-03（工位 classroom）｜回归：老师每条新回复出来后不再贴着聊天区顶部对齐，查出是哪次改坏的并改回（BUG-98）】
+
+现成项目与许可证（第一节）
+  - 不引新库。只用本项目现有的 web/src/useRoundScroll.ts（“新一轮对齐”）和 Classroom.tsx；用 git bisect／逐个提交对照定位。
+
+开工同步
+  cd D:\MentorFlow-office\classroom\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/classroom
+  git reset --hard d2fa4dc3
+提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号；不调用真实模型。
+D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用户的软件和源代码版。E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。
+产物在 D:\MentorFlow\.local\test-tmp\align133\，用完即删，只留 report.md 和截图。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到选择自己决定，回执写明理由，不停下来问。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次（跑浏览器测试前把 D:\MentorFlow\.local\node 加进 PATH）。花费 ¥0。
+同时在跑：MF-04 在 gate132 做 2.0.15 发版前总验收（不改产品代码）。
+
+背景（CURRENT_STATE [BUG-98]、[TEACH-05]、[TEACH-06]）：
+  - 原来的效果（用户认可的）：每一轮对话，老师的新回复（或这一轮学生的气泡）出来后，聊天区自动滚到让这一轮的开头贴着聊天区顶部（useRoundScroll：begin() 记下已有的 data-turn-key，新内容出来后把锚点 scrollIntoView block:start，用户自己往上滚就停止跟随）。
+  - 用户 2026-10-14 晚在源代码版发现：现在老师说完一句，新消息不再贴着顶部了，“改着改着改没了”。
+  - 今天下午到晚上动过这一块的提交：cfecb371（BUG-93：只看重点切换时保持顶部那条消息，Classroom.tsx 加了 focusAnchor 和一个 useLayoutEffect）、cf71a1ba／5c8d18f9／273686b6 里的 BUG-94（语音输入区布局，voice.css、MicButton.tsx）、273686b6 里的 130-MF03（useRoundScroll 新增内容优先选要点卡、recap 外层加 data-turn-kind；Classroom.tsx 对齐相关部分）。
+要做
+  1. 写一个真实 React 浏览器复现：普通的一轮（学生点“懂了，继续”或打字发送 → 老师流式回复 → 落成正式消息）、带要点卡的一轮、只有老师消息的一轮，断言这一轮的锚点（学生气泡，或要点卡，或老师新消息）顶部离聊天区顶部约 12px（scroll-margin-top），并且流式过程中不往回跳。
+  2. 用这个复现在上面几个提交之间对照（或 git bisect），找出是哪次、哪几行改坏的，写进报告。
+  3. 改回：普通轮恢复原来的对齐；要点卡轮保持 130 的效果（要点卡在顶部、下一条紧接其下）；BUG-93（切换只看重点不跳）、BUG-94（语音输入区不乱跳）的效果都不能丢。
+  4. 测试（文件名带 133）：上面三种轮次加“只看重点”切换、语音输入状态出现时都不破坏对齐；两套主题、窄窗口。相关测试和最后一次全量通过。
+完成标准：三种轮次的新消息都贴顶对齐，复现测试能抓住这次回归；BUG-93、BUG-94、要点卡效果不变；相关测试与全量通过。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\align133\report.md（含是哪次提交改坏的、改前改后截图）。
+回执：写到 D:\MentorFlow\.local\receipts\133-MF03.md（格式见 WORKFLOW「回执格式」），给用户只回一行“133-MF03 完成/部分完成/受阻，回执已写入”。回执项目：基线 ／ 提交 ／ 改坏的提交和原因 ／ 怎么改回 ／ 三种轮次对齐结果 ／ BUG-93/94/要点卡是否保持 ／ 相关测试与全量 ／ 本地最终占用
 ~~~
 
 ## 回执格式
