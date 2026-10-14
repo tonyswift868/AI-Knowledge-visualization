@@ -129,7 +129,7 @@ D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用�
 给用户只回一行“128-MF06 完成/部分完成/受阻，回执已写入”。
 ~~~
 
-## 第一百二十九批任务原文（2026-10-14，基线：127-MF03 合入后由架构师填）
+## 第一百二十九批任务原文（2026-10-14，基线 a45c5048）
 
 ### [129-MF03] classroom｜聊天区占满高度
 
@@ -143,7 +143,7 @@ D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用�
   cd D:\MentorFlow-office\classroom\repo
   git status                        # 应干净；不干净先停下说明
   git checkout office/classroom
-  git reset --hard BASE129          # 主线：已合入你的 127（跳过按钮拉手）
+  git reset --hard a45c5048          # 主线：已合入你的 127（跳过按钮拉手）
 提交：git -c user.name="MentorFlow Worker classroom" -c user.email="worker-classroom@mentorflow.local" commit ...（不提交 dist）
 禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号；不调用真实模型。
 D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用户的软件和源代码版。E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。
