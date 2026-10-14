@@ -15,6 +15,7 @@ type Card = {
   relevance: number | null; credibility: number | null; note: string; status: "new" | "adopted" | "rejected"; chars: number
   quality?: { source_type?: string; community?: boolean; source_group?: string; covered_modules?: string[] }
   user_provided?: boolean
+  read_status?: 'none'|'reading'|'ready'|'failed'|'cancelled'; read_error?: string
 }
 type Citation = { chunk_id: string; title: string; url: string | null; locator: string; quote: string }
 type MapPoint = { title: string; summary: string; citations: Citation[]; source_general?: boolean; structure?: string; subpoints?: {id: string; title: string; minutes: number}[] }
@@ -31,6 +32,8 @@ type FormData = {
 export type Recommendation = {
   card_id: string; title: string; type: string; url: string; why: string; modules: string[]
   github_stars?: number; is_video?: boolean; video_note?: string
+  status?: Card['status']; read_status?: Card['read_status']; read_error?: string; chars?: number
+  credibility?: number; quality?: Card['quality']
 }
 
 export function formatStars(stars: number): string {
@@ -39,20 +42,16 @@ export function formatStars(stars: number): string {
   return String(stars)
 }
 
-export function RecommendationCards({cards, busy = false, onUse}: {
-  cards: Recommendation[]; busy?: boolean; onUse: (url: string) => void
+export function RecommendationCards({cards, busy = false, onUse, onReject, onCancel}: {
+  cards: Recommendation[]; busy?: boolean; onUse: (url: string) => void; onReject?: (id: string) => void; onCancel?: () => void
 }) {
-  return <>{cards.map(c => <div className="card" key={c.card_id}>
-    <strong>{c.title}</strong><span className="muted small"> · {c.type}</span>
-    {typeof c.github_stars === "number" && <span className="muted small" title={`${c.github_stars} GitHub stars`}> · ★ {formatStars(c.github_stars)}</span>}
+  return <>{cards.map(c => <SourceCard key={c.card_id} card={{...c,kind:'url',site:c.url,tier:'recommendation',
+    summary:c.why,note:c.why,relevance:null,credibility:c.credibility??3,chars:c.chars??0,status:c.status??'new'}}
+    locked={busy} onCancel={onCancel} onDecide={adopt=>adopt?onUse(c.url):onReject?.(c.card_id)}>
+    <p className="small">{c.type} · 大致覆盖：{c.modules.join("、")}
+      {typeof c.github_stars==='number' && <span title={`${c.github_stars} GitHub stars`}> · ★ {formatStars(c.github_stars)}</span>}</p>
     {c.is_video && <p className="small">视频，难以生成知识点</p>}
-    <p>{c.why}</p><p className="small">大致覆盖：{c.modules.join("、")}</p>
-    <div className="plan-actions">
-      <a className="btn ghost" href={c.url} target="_blank" rel="noreferrer"><ExternalLink />打开完整资料</a>
-      <Button kind="primary" disabled={busy} onClick={() => onUse(c.url)}>用这份资料</Button>
-    </div>
-    <div className="muted small">“用这份资料”直接按网址导入；也可以打开后下载上传。</div>
-  </div>)}</>
+  </SourceCard>)}</>
 }
 
 export type Draft = {
@@ -250,7 +249,9 @@ export function NewPlan() {
             if (m.kind === "recommendations") return <div key={m.id} className="plan-block">
               <div className="bubble bot">{m.text}</div>
               <RecommendationCards cards={(draft.recommendations ?? []).filter(c => m.cards?.includes(c.card_id))}
-                busy={busy} onUse={url => act("plan.say", {text: url})} />
+                busy={busy || !['sources','material_preview','outline'].includes(draft.phase)}
+                onUse={url => act("plan.decide", {card_id:draft.recommendations?.find(c=>c.url===url)?.card_id,adopt:true})}
+                onReject={card_id=>act('plan.decide',{card_id,adopt:false})} onCancel={()=>abort.current?.abort()} />
             </div>
             if (m.kind === "material_preview") return <div key={m.id} className="plan-block">
               {draft.material_structure && m.version === draft.material_structure.version && draft.material_structure.modules?.length ? <>
@@ -445,7 +446,7 @@ function Stars({ n, label }: { n: number | null; label: string }) {
   return <span className="stars" title={`${label} ${n}/5`}>{label}<i>{"●".repeat(n)}<em>{"●".repeat(5 - n)}</em></i></span>
 }
 
-function SourceCard({ card, locked, onDecide }: { card: Card; locked: boolean; onDecide: (adopt: boolean) => void }) {
+function SourceCard({ card, locked, onDecide, onCancel, children }: { card: Card; locked: boolean; onDecide: (adopt: boolean) => void; onCancel?:()=>void; children?:React.ReactNode }) {
   const general = !card.user_provided && card.kind !== "file" && card.credibility === 3
   const tier = card.kind === "file" ? ["上传", "file"] : (card.credibility ?? 0) >= 5 ? ["权威来源", "ok"] : (card.credibility ?? 0) >= 4 ? ["成熟平台", "ok"] : ["一般网站", "muted"]
   return (
@@ -453,13 +454,17 @@ function SourceCard({ card, locked, onDecide }: { card: Card; locked: boolean; o
       <div className="row between" style={{ alignItems: "flex-start" }}>
         <div style={{ minWidth: 0 }}>
           <b className="source-title" title={card.title}>{card.kind === "file" ? <BookOpen size={15} /> : null}{card.title}</b>
-          <span className="muted small">{card.site}{card.chars ? ` · 约 ${Math.round(card.chars / 1000)} 千字` : ""}</span>
+          <span className="muted small">{card.site}{card.chars ? ` · 约 ${Math.max(.1,Math.round(card.chars / 100)/10)} 千字` : ""}</span>
         </div>
         <span className={`pill ${tier[1]}`}>{tier[0]}</span>
       </div>
       <p className="source-note">来源类型：{card.kind === "file" ? "上传文档" : ({ official_docs: "官方文档", academic: "大学与学术资料", education: "教材与教育平台", encyclopedia: "百科", standards: "标准", government: "官方机构", reference: "参考资料", official_repository: "官方代码仓库" } as Record<string, string>)[card.quality?.source_type ?? ""] ?? "网页资料"} · 用于讲解；带答案的题目在准备时核实。</p>
       <p className="source-note">{card.quality?.covered_modules?.length ? `覆盖：${card.quality.covered_modules.join("、")}` : card.note || "由你提供，正文已读取；请确认适合本次学习。"}</p>
       {general && <p className="source-note" role="note">一般网站，可能有错，请自行判断；不默认采用。</p>}
+      {children}
+      {card.read_status==='reading' && <p role="status">正在读取… {onCancel && <Button small kind="ghost" onClick={onCancel}>取消读取</Button>}</p>}
+      {card.read_error && <p role={card.read_status==='failed'?'alert':'note'}>{card.read_error}</p>}
+      {card.status==='adopted' && <p className="small">已采用</p>}
       <div className="row between wrap">
         <div className="row small" style={{ gap: 12 }}>{!card.user_provided && <><Stars n={card.relevance} label="相关" /><Stars n={card.credibility} label="可信" /></>}</div>
         <div className="row" style={{ gap: 6 }}>
