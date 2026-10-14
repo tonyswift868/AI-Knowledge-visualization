@@ -48,7 +48,7 @@ def test_cache98_host_projects_stage_without_losing_current_ids_or_constraints()
     flow._sections=lambda draft:([],[section])
     module=dict(key='m1',title='网络',summary='解释概念',chapters=['网络'],refs=['s1.1'])
     draft=dict(phase='material_preview',form=context()['form'],messages=context()['recent'],
-        sources=[dict(title='教程',status='adopted')],scope={'include':['s1.1']},
+        sources=[dict(card_id='source1',title='教程',status='adopted')],scope={'include':['s1.1']},
         preview={'old':'旧预览'},estimate={'old':'旧预估'},
         material_structure=dict(modules=[module],missing=['安全'],removed_content=['安装']))
     frozen=deepcopy(draft);ctx=flow._intent_context(draft)

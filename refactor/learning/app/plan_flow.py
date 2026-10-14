@@ -531,7 +531,7 @@ class PlanFlow:
                                           ("可以直接生成路线轮廓。" if has_own else "请点下面的“上传资料”，传好后生成路线轮廓。")))
             self.save(draft)
             return
-        self._say(draft, '你有自己信任的教材、课程、仓库或学习清单吗？可以上传或贴网址，也可以让我推荐。看中推荐资料后请下载上传。')
+        self._say(draft, '你有自己信任的教材、课程、仓库或学习清单吗？可以上传或贴网址，也可以让我推荐。看中推荐资料后勾选“认可并采用”，即可读取正文。')
         self._recommend(draft, ctx)
 
     # ----------------------------------------------------------- 2 research
@@ -576,9 +576,16 @@ class PlanFlow:
         except ResearchCancelled:
             raise ModelCancelled() from None
         if ctx.cancel.is_set(): raise ModelCancelled()
+        from ..course.source_filter import classify_source
+        for card in cards:
+            identity = classify_source(card.get('final_url') or card['url'], lists=self._lists())
+            card.update(kind='url', site=card['url'], tier='recommendation', summary=card.get('why',''),
+                note=card.get('why',''), status='new', chars=0, user_provided=False, relevance=None,
+                credibility={1:5,2:4}.get(identity.get('level'),3),
+                quality=dict(source_type=identity.get('type'), covered_modules=card.get('modules',[])))
         draft.setdefault('recommendations', []).extend(cards)
         draft['messages'].append(_msg('ai', 'recommendations',
-            '看中哪份，打开后下载下来传给我；也可以直接贴网址或 GitHub 仓库。推荐链接只检查能否打开，还没有读取正文。'
+            '勾选“认可并采用”后会读取这份资料的正文；也可以直接贴网址或 GitHub 仓库。推荐时还没有读取正文。'
             if cards else '这次没有找到更多可用文字资料：候选链接暂时打不开，或只有视频。可以上传自己的资料，或让我换一批推荐。',
             cards=[c['card_id'] for c in cards]))
         self.save(draft)
@@ -615,10 +622,8 @@ class PlanFlow:
             return False, url, type(exc).__name__
 
     def _import_links(self, draft, ctx, urls):
-        from ..course.addition_links import import_links
         self.status(draft['plan_id'], '正在读取你提供的资料…')
-        outcome = import_links(self.services.store, draft['plan_id'], urls, fetcher=self.fetcher,
-            repo_fetch=self.repo_fetch, lists=self._lists(), cancel=ctx.cancel, creating=True)
+        outcome = self._read_links(draft, ctx, urls)
         if outcome['cancelled']: raise ModelCancelled()
         cards = []
         stored = {s['id']: s for s in self.services.store.records('sources', draft['plan_id'])}
@@ -643,6 +648,23 @@ class PlanFlow:
             '已读取你提供的资料。请按这些资料调整结构。' if imported else '这次资料未能导入，请检查链接，或下载后上传文件。',
             cards=[c['card_id'] for c in cards]))
         self.save(draft)
+
+    def _read_links(self, draft, ctx, urls, *, recommended=False):
+        from ..course.addition_links import import_links
+        return import_links(self.services.store, draft['plan_id'], urls, fetcher=self.fetcher,
+            repo_fetch=self.repo_fetch, lists=self._lists(), cancel=ctx.cancel, creating=True,
+            recommended=recommended)
+
+    @staticmethod
+    def _decision_cards(draft):
+        # Recommendation order remains stable even after a selection is also
+        # attached to sources. Imported/user cards follow without duplicates.
+        cards, seen = [], set()
+        for card in [*draft.get('recommendations',[]), *draft['sources']]:
+            if not card.get('card_id'): continue
+            if card['card_id'] not in seen:
+                cards.append(card); seen.add(card['card_id'])
+        return cards
 
     def _lists(self):
         try:
@@ -676,13 +698,52 @@ class PlanFlow:
     def decide(self, draft, card_id, adopt, *, ctx=None):
         if draft['phase'] not in ('sources', 'material_preview', 'outline', 'questions'):
             raise BridgeError('PHASE_INVALID', self._source_phase_message(draft))
-        card = next((c for c in draft['sources'] if c['card_id'] == card_id), None)
-        if not card or not card.get('source_id'):
-            raise BridgeError('PARAM_INVALID', '推荐链接还不是学习资料，请先下载上传或主动贴网址。')
+        card = next((c for c in self._decision_cards(draft) if c['card_id'] == card_id), None)
+        if not card:
+            raise BridgeError('PARAM_INVALID', '找不到这份资料，请刷新后重试。')
+        if not card.get('source_id') and adopt:
+            if ctx is None: raise BridgeError('PARAM_INVALID', '请重新选择这份资料。')
+            if card.get('is_video'):
+                card.update(read_status='failed',read_error='这是视频资料，未取得文字正文，请下载后上传文字资料。',
+                            read_code='video_source',status='new')
+                self.save(draft)
+                return False
+            self.status(draft['plan_id'], '正在读取《'+card['title']+'》…')
+            card.update(read_status='reading', read_error='')
+            self.save(draft)
+            try:
+                outcome = self._read_links(draft, ctx, [card['url']], recommended=True)
+                result = outcome['results'][0]
+                if result['status']=='cancelled': raise ModelCancelled()
+                if result['status'] not in ('imported','existing'):
+                    card.update(read_status='failed', read_error=result['message']+' 请下载后上传。',
+                                read_code=result['code'], status='new')
+                    self.save(draft)
+                    return False
+                source = next(s for s in self.services.store.records('sources',draft['plan_id']) if s['id']==result['source_id'])
+                card.update(source_id=source['id'],chars=result['char_count'],sha=source.get('sha256'),
+                            read_status='ready',read_error='',read_seconds=result['elapsed_seconds'])
+                if not any(c.get('source_id')==source['id'] for c in draft['sources']):
+                    draft['sources'].append(card)
+            except ModelCancelled:
+                card.update(read_status='cancelled',read_error='已取消读取。',status='new')
+                self.save(draft)
+                raise
+            except Exception:
+                card.update(read_status='failed',read_error='正文读取失败，请稍后重试，或下载后上传。',status='new')
+                self.save(draft)
+                raise
+        if not card.get('source_id'):
+            card.update(status='rejected',read_status='none',read_error='')
+            self.save(draft)
+            return True
         self.services.store.set_source_adopted(draft['plan_id'], card['source_id'], adopt)
-        card['status'] = 'adopted' if adopt else 'rejected'
+        for other in [*draft['sources'],*draft.get('recommendations',[])]:
+            if other.get('source_id')==card['source_id']:
+                other['status']='adopted' if adopt else 'rejected'
         self._invalidate_material_structure(draft)
         self.save(draft)
+        return True
 
     def _invalidate_material_structure(self, draft):
         if (draft.get('material_structure') or {}).get('removed_content'):
@@ -1184,6 +1245,12 @@ class PlanFlow:
 
     def get_draft(self, plan_id):
         draft = self.load(plan_id)
+        if not self._lock(plan_id).locked():
+            interrupted = [c for c in self._decision_cards(draft) if c.get('read_status')=='reading']
+            if interrupted:
+                for card in interrupted:
+                    card.update(read_status='cancelled',read_error='上次读取已中断，请重新勾选。')
+                self.save(draft)
         if draft['phase'] == 'ready':
             modules = agents.outline_modules(draft['outline'])
             self._prepare_remaining(plan_id, modules, self._prepare_callable())
@@ -1558,8 +1625,8 @@ class PlanFlow:
         recent = dialogue_tail([{"role": m["role"], "text": m["text"][:1500]} for m in draft["messages"]
                                 if m["role"] in ("ai", "user") and m.get("text")], max_rows=6)
         cards = [{"n": n, "title": c["title"], "site": c.get("site") or "", "summary": (c.get("summary") or "")[:200],
-                  "status": {"new": "待定", "adopted": "已采用", "rejected": "不要"}[c["status"]]}
-                 for n, c in enumerate(draft["sources"], 1)] if phase in ("sources", "material_preview", "outline") else []
+                  "status": {"new": "待定", "adopted": "已采用", "rejected": "不要"}[c.get("status",'new')]}
+                 for n, c in enumerate(self._decision_cards(draft), 1)] if phase in ("sources", "material_preview", "outline") else []
         sections, modules, facts = [], [], {}
         if phase in ("sources", "material_preview", "outline"):
             sections = [{"id": s.id, "source": s.source_title, "title": s.title, "chars": s.chars}
@@ -1762,14 +1829,15 @@ class PlanFlow:
             return self.more_sources(draft, ctx, params["instruction"], echo=False)
         if kind == "decide_sources":
             titles = {True: [], False: []}
+            cards = self._decision_cards(draft)
             for adopt, key in ((True, "adopt"), (False, "reject")):
                 for n in params[key]:
-                    card = draft["sources"][n - 1]
-                    self.decide(draft, card["card_id"], adopt, ctx=ctx)
-                    titles[adopt].append(f"《{card['title']}》")
+                    card = cards[n - 1]
+                    if self.decide(draft, card["card_id"], adopt, ctx=ctx):
+                        titles[adopt].append(f"《{card['title']}》")
             parts = ([f"已采用{'、'.join(titles[True])}"] if titles[True] else []) + \
                     ([f"已不要{'、'.join(titles[False])}"] if titles[False] else [])
-            return self._say(draft, "；".join(parts) + "。")
+            return self._say(draft, "；".join(parts) + "。" if parts else '没有采用新的资料；请查看卡片上的读取原因。')
         if kind == "limit_scope":
             if phase not in ("sources", "material_preview", "outline"):
                 return self._say(draft, "现在已经不能改学习范围了。")

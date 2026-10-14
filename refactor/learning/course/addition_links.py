@@ -82,7 +82,7 @@ def _success(store, plan_id, source, status):
 
 
 def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=None,
-                 cancel=None, max_urls=10, timeout=20.0, creating=False):
+                 cancel=None, max_urls=10, timeout=20.0, creating=False, recommended=False):
     """Return a JSON-ready batch result in input order.
 
     fetcher(url, *, cancel, timeout) -> FetchedContent; repo_fetch(url, cancel)
@@ -145,6 +145,29 @@ def import_links(store, plan_id, urls, *, fetcher=None, repo_fetch=None, lists=N
                             raise LinkImportError(rejected.code, rejected.message)
                         verified = outcome.verified[0]
                     _check(cancel)
+                    if recommended:
+                        # Keep the same reader (and no alternate-page fallback),
+                        # but don't mistake a login/error/video or empty preview
+                        # for the recommended lesson. Explicit general sites
+                        # remain usable; publisher grading is not an adoption gate.
+                        from .source_filter import recommendation_rejection, blocked_keyword_reasons
+                        from .source_quality import is_video_source
+                        from .source_follow import is_document_preview
+                        from .research_pipeline import _title_check, junk_reasons
+                        body = '\n\n'.join(b.text for b in verified.document.blocks)
+                        reason = recommendation_rejection(verified.final_url,lists=lists)
+                        if reason: raise LinkImportError('source_rejected',reason)
+                        if is_video_source(verified.final_url,verified.title,body):
+                            raise LinkImportError('video_source','这是视频页面，不能直接读取学习正文。')
+                        if (not _title_check('',[verified.title])[0] or
+                                any(v in body.lower() for v in ('this book has been removed','this page has been removed'))):
+                            raise LinkImportError('page_unavailable','资料需要登录、已下架或不可访问。')
+                        if is_document_preview(verified.final_url,verified.title,body):
+                            raise LinkImportError('document_preview','只能读取预览页，未取得完整正文。')
+                        if sum(c.isalnum() for c in body) < pipeline.min_text_chars:
+                            raise LinkImportError('body_too_short','读取到的正文太少，不能作为完整学习资料。')
+                        if junk_reasons(verified.title,body) or blocked_keyword_reasons(body,lists=lists):
+                            raise LinkImportError('source_rejected','正文命中现有资料过滤规则，未采用。')
                     aliases = {url, _key(verified.url), _key(verified.final_url)} - {None}
                     with store.transaction():
                         _active(store, plan_id, creating=creating)  # may have changed while fetching
