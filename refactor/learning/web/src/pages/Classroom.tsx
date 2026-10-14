@@ -90,6 +90,24 @@ export function Classroom() {
   const lessonChanged = React.useRef(false)
   const scroller = React.useRef<HTMLDivElement>(null)
   const beginRound = useRoundScroll(scroller, planId)
+  // Toggling “只看重点” resizes every turn above; keep the turn at the top of the view in place.
+  const focusAnchor = React.useRef<{ key: string, offset: number } | null>(null)
+  const toggleFocus = () => {
+    const el = scroller.current
+    if (el) {
+      const top = el.getBoundingClientRect().top
+      const turn = Array.from(el.querySelectorAll<HTMLElement>('[data-turn-key]')).find(e => e.getBoundingClientRect().bottom > top + 1)
+      focusAnchor.current = turn ? { key: turn.dataset.turnKey!, offset: Math.max(0, turn.getBoundingClientRect().top - top) } : null
+    }
+    const next = !classroomFocus; setClassroomFocus(next)
+    try { localStorage.setItem('mf.classroom.focus', next ? 'on' : 'off') } catch { /* the current page still switches */ }
+  }
+  React.useLayoutEffect(() => {
+    const anchor = focusAnchor.current, el = scroller.current
+    focusAnchor.current = null
+    const turn = anchor && el && Array.from(el.querySelectorAll<HTMLElement>('[data-turn-key]')).find(e => e.dataset.turnKey === anchor.key)
+    if (turn && el) el.scrollTop += turn.getBoundingClientRect().top - el.getBoundingClientRect().top - anchor!.offset
+  }, [classroomFocus])
   const sourceCards = React.useRef(new Map<string, OriginalCardsHandle>())
   const spoken = React.useRef<string | null>(null)
   const streamedMessages = React.useRef(new Set<string>())
@@ -350,10 +368,7 @@ export function Classroom() {
             </div>
           </div>
           {room.plan.state === "checking" && <Button small onClick={() => setWrongAnswers(true)}>错题集</Button>}
-          <Button small kind="ghost" role="switch" aria-label="只看重点" aria-checked={classroomFocus} onClick={() => {
-            const next=!classroomFocus;setClassroomFocus(next)
-            try {localStorage.setItem('mf.classroom.focus',next?'on':'off')} catch { /* the current page still switches */ }
-          }}>只看重点{classroomFocus?'：开':'：关'}</Button>
+          <Button small kind="ghost" role="switch" aria-label="只看重点" aria-checked={classroomFocus} onClick={toggleFocus}>只看重点{classroomFocus?'：开':'：关'}</Button>
           <div className="class-status129">
             {t && <ProgressStatus value={t} />}
             {room.preparation && <PreparationBadge preparation={room.preparation} busy={!!busy} act={act} reducedMotion={reduceMotion}/>}
