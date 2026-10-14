@@ -100,6 +100,7 @@ def test_plan63_warning_does_not_block_user_confirming(fixture):
     flow.generate(draft, ctx)
     assert draft['phase'] == 'ready'
     points = flow.services.store.records('points', draft['plan_id'])
-    assert len(points) == 30 and all(p['minutes'] == 3 for p in points)
-    assert draft['outline']['ranges']['total'][1]==90  # Prior to preparation: learning only.
+    assert len(points) == 1 and points[0]['structure']=='concept_v1'
+    assert points[0]['minutes']==sum(s['minutes'] for s in points[0]['subpoints']) > 10
+    assert draft['outline']['ranges']['total'][1]==sum(p['minutes'] for p in points)  # No original exercises.
     assert flow.services.store.get_plan(draft['plan_id'])['total_minutes'] == flow.public(draft)['outline']['ranges']['total'][1]

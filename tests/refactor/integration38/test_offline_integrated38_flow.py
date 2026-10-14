@@ -43,6 +43,9 @@ class IntegratedModel(Agents):
             return super().complete(purpose,messages,**kw)
         self.calls.append(purpose)
         self.requests.append(dict(purpose=purpose,system=kw.get('system'),messages=messages))
+        from tests.refactor.wire121.model121 import directory_reply
+        reply=directory_reply(purpose,messages,kw.get('system'))
+        if reply is not None:return reply
         if purpose == 'sufficiency':
             from refactor.learning.course.planner_agents import PREVIEW_SYSTEM
             value = (dict(summary='理解队列与栈',modules=[dict(title='数据结构',summary='理解处理顺序')])
@@ -115,6 +118,15 @@ def build_plan(root, events):
     d=run(lambda d,c:flow.chat(d,c,URL))
     d=run(lambda d,c:flow.make_outline(d,c));assert d['phase']=='material_preview'
     d=run(lambda d,c:flow.chat(d,c,'确认结构'));assert d['outline']['grounded']
+    # This fixture's downstream scenarios assert the LEGACY opening/quick-test
+    # contract. Keep a legacy course snapshot, explicitly, before persistence.
+    # New concept creation and classroom fallback are exercised by wire121.
+    legacy=flow.load(pid)
+    for stage in legacy['outline']['stages']:
+        for module in stage['modules']:
+            for point in module['points']:
+                for field in ('structure','subpoints','goal'):point.pop(field,None)
+    flow.save(legacy)
     assert all(p['citations'] for s in d['outline']['stages'] for m in s['modules'] for p in m['points'])
     d=run(lambda d,c:flow.estimate(d));estimate=d['outline']['ranges']['total'][1]
     d=run(lambda d,c:flow.generate(d,c));assert d['phase']=='ready'

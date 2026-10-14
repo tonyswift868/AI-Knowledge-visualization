@@ -933,18 +933,42 @@ class PlanFlow:
                    for m in structure['modules']]
         # One stage; its label is not the goal sentence (that carried stale dates).
         skeleton = {'stages': [{'title': '全部模块', 'modules': modules}]}
-        working = dict(draft, form=self._effective_form(draft), outline=skeleton, material_map=True)
         by_section = {s.id: s for s in sections}
         for module in modules:
             allowed = {cid for ref in module['refs'] for cid in by_section[ref].chunk_ids}
             selected = [c for c in chunks if c['id'] in allowed]
+            # Explicitly removed directory branches (and their broad parent
+            # introduction) cannot reappear through a shared selected chunk.
+            def retained(chunk):
+                path = tuple(agents.original_text(v).casefold() for v in chunk.get('section') or [])
+                for removed in draft.get('removed_content', ()):
+                    if removed['kind'] != 'chapter' or removed.get('source_id') not in (None,chunk['source_id']): continue
+                    deleted = tuple(agents.original_text(v).casefold() for v in removed['title'].split(' / '))
+                    if path and (path[:len(deleted)] == deleted or deleted[:len(path)] == path): return False
+                return True
+            selected = [c for c in selected if retained(c)]
             picked = self._module_chunks(selected, {s['id']: s['title'] for s in sources})
             self.status(draft['plan_id'], '正在填知识点：' + module['title'])
-            module['points'] = self._generate_module_batches(working, module, picked, ctx)
-        # Resolve numbered evidence from stored paragraphs inside a host-owned
-        # envelope; the model cannot rewrite structure or original quotations.
-        outline = agents.parse_material_map(json.dumps(dict(skeleton, message='已按确认的资料结构逐模块填入知识点。'),
-            ensure_ascii=False), sections, sources, chunks, structure)
+            def complete(stage, system, messages):
+                reply = self.services.gateway.complete('generate', messages, system=system,
+                    cancel=ctx.cancel, plan_id=draft['plan_id'], max_tokens=8192)
+                if ctx.cancel.is_set(): raise ModelCancelled()
+                return reply if isinstance(reply, str) else reply.text
+            module.update(agents.directory_plan_module(module, picked, complete))
+        teaching = [m for m in modules if m['points']]
+        if not teaching:
+            raise BridgeError('NO_KNOWLEDGE', '采用的内容只有资料导航，没有可讲的知识正文，请补充资料。')
+        # A navigation-only chapter is viewable at the next teaching module,
+        # never an empty teaching module that would block starting the plan.
+        for index, module in enumerate(modules):
+            if module['points']: continue
+            owner = next((m for m in modules[index+1:] if m['points']), teaching[-1])
+            owner['navigation'] = module['navigation'] + owner['navigation']
+            owner['refs'] = list(dict.fromkeys(module['refs'] + owner['refs']))
+        skeleton['stages'][0]['modules'] = teaching
+        # The host owns headings, grouping and evidence; do not run the legacy
+        # point parser, which would strip subpoints and merge source overlaps.
+        outline = dict(skeleton, dropped=[], message='已按原文目录整理大知识点、小要点和资料导航。')
         if outline["dropped"]:
             self._say(draft, "找不到可核验原文，已删除这些知识点：" + "、".join(outline["dropped"]) +
                       "。如还需要学习这些内容，请继续找资料、提供资料，或告诉我这部分暂时不学。")
@@ -995,7 +1019,7 @@ class PlanFlow:
                 [p['title'], p.get('summary'), p.get('citations'), metrics[p['id']]['characters']],
                 ensure_ascii=False, sort_keys=True).encode()).hexdigest() for p in points]
             originals = module['points']
-            if annotate and any(p.get('_difficulty_key') != key or p.get('difficulty') not in agents.MINUTE_RULE['difficulty']
+            if annotate and not all(p.get('structure') == 'concept_v1' for p in originals) and any(p.get('_difficulty_key') != key or p.get('difficulty') not in agents.MINUTE_RULE['difficulty']
                                 for p,key in zip(originals, keys)):
                 if cancel.is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
                 messages, aliases = agents.point_difficulty_request(dict(module, id=str(i)), points)
@@ -1006,9 +1030,10 @@ class PlanFlow:
                 for p,row,key in zip(originals, points, keys):
                     p.update(difficulty=labels[row['id']], _difficulty_key=key)
             for j,(p,row) in enumerate(zip(originals, points), 1):
-                persisted = saved.get(f"{module.get('id')}-{j:02d}") if draft['phase'] in ('generating','ready') else None
-                p['minutes'] = (persisted['minutes'] if persisted else agents.estimate_point_minutes(
-                    **metrics[row['id']], difficulty=p.get('difficulty', '中')))
+                persisted = saved.get(p.get('id') if p.get('structure') == 'concept_v1' else f"{module.get('id')}-{j:02d}") if draft['phase'] in ('generating','ready') else None
+                p['minutes'] = (persisted['minutes'] if persisted else
+                    sum(s['minutes'] for s in p['subpoints']) if p.get('structure') == 'concept_v1' else
+                    agents.estimate_point_minutes(**metrics[row['id']], difficulty=p.get('difficulty', '中')))
             module['minutes'] = [sum(p['minutes'] for p in originals)] * 2
         return map_ranges(self._window(draft), len(rows), module_counts=[len(m['points']) for m in modules],
                           question_counts=question_counts, learning_minutes=sum(m['minutes'][0] for m in modules))
@@ -1047,7 +1072,8 @@ class PlanFlow:
             for module in stage["modules"]:
                 modules.append({"id": module["id"], "stage_id": stage["id"], "title": module["title"],
                                 "summary": module["summary"], "prerequisites": [keys[p] for p in module["prerequisites"]],
-                                "learning_minutes": sum(p['minutes'] for p in module['points'])})
+                                "learning_minutes": sum(p['minutes'] for p in module['points']),
+                                **({'navigation': module['navigation']} if 'navigation' in module else {})})
         chunks = store.records("source_chunks", plan_id)
         for module, source in zip(modules, [m for s in draft["outline"]["stages"] for m in s["modules"]]):
             module["chunk_ids"] = [c["id"] for c in self._span_chunks(source, chunks)]
@@ -1101,14 +1127,16 @@ class PlanFlow:
                 return
             self._save_outline(draft)
             for module in modules:
-                payload = [dict({k:v for k,v in p.items() if k != '_difficulty_key'}, id=f"{module['id']}-{index:02d}")
+                payload = [dict({k:v for k,v in p.items() if k != '_difficulty_key'},
+                                id=p['id'] if p.get('structure') == 'concept_v1' else f"{module['id']}-{index:02d}")
                            for index, p in enumerate(module["points"], 1)]
                 store.save_generated_module(plan_id, module["id"], payload, today=self.study_day(),
                     check_minutes=0, final_check_minutes=0, check_question_minutes=2)
             # Reuse preview labels: saving must not rescale or ask the model again.
-            initial = store.point_minutes_snapshot(plan_id)
-            store.save_point_minutes(plan_id, initial['fingerprint'],
-                {p['id']: p['difficulty'] for p in initial['points']}, today=self.study_day())
+            if not all(p.get('structure') == 'concept_v1' for m in modules for p in m['points']):
+                initial = store.point_minutes_snapshot(plan_id)
+                store.save_point_minutes(plan_id, initial['fingerprint'],
+                    {p['id']: p['difficulty'] for p in initial['points']}, today=self.study_day())
             draft["generation"] = {m["id"]: "pending" for m in modules}
             draft["phase"] = "generating"
             draft["messages"].append(_msg("ai", "progress", "计划已保存，正在准备第 1 模块的资料与题目。"))
@@ -1122,6 +1150,7 @@ class PlanFlow:
         draft["generation"][first["id"]] = "running"
         self.save(draft)
         try:
+            self._prepare_notes(plan_id, first['id'], ctx)
             preparation = prepare(store, plan_id, first["id"], self._material_context(ctx), progress)
             self._save_material_summary(plan_id, first["id"], preparation)
             if ctx.cancel.is_set():
@@ -1178,6 +1207,38 @@ class PlanFlow:
         # existing account gateway; MF-04 owns material/question preparation.
         return dict(cancel=ctx.cancel, gateway=self.services.gateway, fetcher=self.fetcher,
                     on_status=lambda text: ctx.stream(text))
+
+    def _prepare_notes(self, plan_id, module_id, ctx):
+        """Optional module preparation, never a prerequisite for teaching."""
+        store = self.services.store
+        points = [p for p in store.records('points', plan_id) if p['module_id'] == module_id]
+        if not any(p.get('structure') == 'concept_v1' and
+                   any(not s.get('notes') for s in p['subpoints']) for p in points): return
+        chunks = store.records('source_chunks', plan_id)
+        def complete(stage, system, messages):
+            if ctx.cancel.is_set(): raise ModelCancelled()
+            try:
+                reply = self.services.gateway.complete('point_materials', messages, system=system,
+                    cancel=ctx.cancel, plan_id=plan_id, max_tokens=8192)
+            except ModelCancelled: raise
+            except Exception as exc:
+                raise agents.AgentFormatError('讲义准备失败') from exc
+            return reply if isinstance(reply, str) else reply.text
+        try:
+            notes = agents.prepare_directory_notes(points, chunks, complete)
+            if ctx.cancel.is_set(): raise ModelCancelled()
+            with store.transaction():
+                for current in store.records('points', plan_id):
+                    if current['module_id'] != module_id or current.get('structure') != 'concept_v1': continue
+                    changed = False
+                    for sub in current['subpoints']:
+                        if not sub.get('notes') and notes.get(sub['id']):
+                            sub['notes'] = notes[sub['id']]; changed = True
+                    if changed: store._put('points', plan_id, current)
+        except ModelCancelled: raise
+        except Exception:
+            log.warning('optional notes failed plan=%s module=%s; original source remains available',
+                        plan_id, module_id, exc_info=True)
 
     def _module_ready(self, plan_id, module_id):
         from ..course.point_materials import preparation_done
@@ -1272,6 +1333,7 @@ class PlanFlow:
                 self._record_preparation(plan_id, mid, 'running')
                 with self._background_material_lock(plan_id):
                     if job['cancel'].is_set(): raise ModelCancelled()
+                    self._prepare_notes(plan_id, mid, ctx)
                     result = prepare(self.services.store, plan_id, mid, self._material_context(ctx), progress)
                 if job['cancel'].is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
                 self._save_material_summary(plan_id, mid, result)
@@ -1947,12 +2009,17 @@ class PlanFlow:
         try:
             if state is None:
                 state = store.point_minutes_snapshot(plan_id)
-                if state['ready']:
-                    status = 'ready'
-                    return
-                if not state['points'] or sum(m.get('point_count', 0) for m in state['modules']) != len(state['points']):
-                    status = 'none'
-                    return
+            if state['points'] and all(p.get('structure') == 'concept_v1' for p in state['points']):
+                # Directory points were estimated per subpoint. Legacy v2
+                # recalculation would cap their combined minutes at 25.
+                status = 'ready'
+                return
+            if state['ready']:
+                status = 'ready'
+                return
+            if not state['points'] or sum(m.get('point_count', 0) for m in state['modules']) != len(state['points']):
+                status = 'none'
+                return
             difficulties = {}
             for module in state['modules']:
                 # A synced result can arrive while a module's model request is
@@ -2121,6 +2188,7 @@ class PlanFlow:
             by_module.setdefault(point["module_id"], []).append(
                 {"id": point["id"], "title": point.get("title", ""), "summary": point["summary"], "minutes": point["minutes"],
                  "citations": point.get("citations", []),
+                 **({'structure': point['structure'], 'subpoints': point['subpoints']} if point.get('structure') == 'concept_v1' else {}),
                  "source_general": bool(cids) and all(cid in chunk_source and general.get(chunk_source[cid], False) for cid in cids),
                  "needs_review": point['id'] in review, "taught": point['id'] in taught})
         result = {"plan": {k: plan.get(k) for k in ("id", "title", "goal", "final_goal", "state", "window", "total_minutes", "module_count")},
@@ -2128,6 +2196,9 @@ class PlanFlow:
                   "stages": [{"id": s["id"], "title": s.get("title", ""), "modules": [
                       {"id": m["id"], "title": m["title"], "summary": m.get("summary", ""), "learning_minutes": m["learning_minutes"],
                        "check_minutes": m["check_minutes"], "points": by_module.get(m["id"], []),
+                       "navigation": [dict(n, citations=[dict(chunk_id=c['id'], title=c.get('section', ['资料'])[-1] if c.get('section') else '资料',
+                           quote=c['text'], locator=' / '.join(c.get('section') or []), url=None)
+                           for c in chunks if c['id'] in n['chunk_ids']]) for n in m.get('navigation', [])],
                        "prerequisites": m.get("prerequisites", []),
                        "state": book.module(m["id"]).state if book else None,
                        "question_count": bank_counts.get(m['id'], [0, 0])[0],

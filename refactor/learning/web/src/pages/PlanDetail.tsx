@@ -5,7 +5,7 @@ import { call, on } from "../bridge"
 import { useApp, type KnowledgeDetail } from "../store"
 import { KnowledgeMap, PointSources } from "../planning/KnowledgeMap"
 import { Button, TASK_TIME_TIP, Tip } from "../ui"
-import { requirementWithoutDates } from "./NewPlan"
+import { requirementWithoutDates, PointCitations } from "./NewPlan"
 import type { PlanTree } from "./NewPlan"
 import { Loading } from '../loading/Loading'
 
@@ -165,8 +165,9 @@ function QuestionMap({detail}: {detail: Detail}) {
         <summary className="module-toggle" style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <b style={{flex:"1 1 220px",overflowWrap:"anywhere"}}><em>{n}</em>{m.title}</b>
           <span className={`pill ${tone}`}>{label}</span><span className="pill muted">{m.question_count === undefined ? "题目统计暂不可用" : `题目 ${m.question_count} 道，已过 ${m.passed_questions ?? 0} 道`}</span>
-          <span className="pill muted">{m.points.length} 个点 · {m.learning_minutes + m.check_minutes} 分钟</span>
+          <span className="pill muted">{m.points.length} 个{m.points.some(p=>p.structure==='concept_v1')?'大知识点':'点'}{m.points.some(p=>p.subpoints?.length)?` · ${m.points.reduce((n,p)=>n+(p.subpoints?.length??0),0)} 个小要点`:''} · {m.learning_minutes + m.check_minutes} 分钟</span>
         </summary><p>{m.summary}</p>
+        {!!m.navigation?.length && <details><summary>资料导航（{m.navigation.length} 条，不计学习时长）</summary>{m.navigation.map(n=><div key={n.id}><b>{n.title}</b><p>{n.reason}</p><PointCitations citations={n.citations}/></div>)}</details>}
         <ModulePoints module={m} />
       </details>
     })}</div>

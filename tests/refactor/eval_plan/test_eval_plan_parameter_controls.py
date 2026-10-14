@@ -236,6 +236,9 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
             return {"provider_id": "deepseek", "model": "fake"}
         def complete(self, purpose, messages, **kwargs):
             operations.append(purpose)
+            from tests.refactor.wire121.model121 import directory_reply
+            reply=directory_reply(purpose,messages,kwargs.get('system'))
+            if reply is not None:return reply
             text = messages[-1]["content"]
             if purpose == 'point_difficulty':
                 result = [dict(id=p['id'],difficulty='中') for p in json.loads(messages[0]['content'])['points']]
@@ -294,11 +297,12 @@ def test_eval_plan_resume_formal_uses_existing_outline_and_both_real_import_path
     generated = exp.run_one("base", 1, generate=True)
     assert generated["formal_complete"] and generated["metrics"]["point_count"] == 2
     assert first["draft"]["plan_id"] == generated["draft"]["plan_id"]
-    assert [p for p in operations if p not in ('point_links','point_difficulty')] == ["sufficiency", "sufficiency", "outline", "generate", "point_materials"]
+    assert [p for p in operations if p not in ('point_links','point_difficulty','point_materials')] == ["sufficiency", "sufficiency", "outline", "generate"]
+    assert operations.count('point_materials')==3  # optional notes + failed preparation + retry
     assert len(generated["metrics"]["chapter_coverage"]) == 2
     assert generated["metrics"]["point_minutes_sum"] == 10  # two original paragraphs at five content-based minutes
     assert exp.run_one("base", 1, generate=True)["formal_complete"]
-    assert len([p for p in operations if p not in ('point_links','point_difficulty')]) == 5
+    assert len([p for p in operations if p not in ('point_links','point_difficulty')]) == 7
     exp.budget.fail_outline = True
     failed = exp.run_one("advanced", 1)
     assert failed["error_code"] == "AGENT_FORMAT"

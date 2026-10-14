@@ -75,6 +75,18 @@ class ScriptedModel:
         elif purpose == 'outline' and system == __import__('refactor.learning.course.planner_agents',fromlist=['MATERIAL_STRUCTURE_SYSTEM']).MATERIAL_STRUCTURE_SYSTEM:
             packet=json.loads(user);section=packet['directory'][0]
             text=json.dumps(dict(summary='按资料调整结构',modules=[dict(key=f'm{i}',title='改过的模块1' if i==1 and packet.get('instruction') else f'模块{i}',summary='理解资料',refs=[section['id']],chapters=[section['title']]) for i in range(1,4)],missing=[]),ensure_ascii=False)
+        elif purpose == 'generate' and messages[0]['content'].lstrip().startswith('{'):
+            packet=json.loads(messages[0]['content'])
+            text=json.dumps([dict(id=s['id'],reason='章节讲知识',knowledge=[p['id'] for p in s['paragraphs']],navigation=[])
+                             for s in packet['sections']])
+        elif purpose == 'point_materials' and '摘' in system and '讲义' in system:
+            packet=json.loads(messages[0]['content'])
+            text=json.dumps(dict(points=[dict(id=p['id'],subpoints=[dict(id=s['id'],bullets=[
+                dict(ref=s['refs'][0],text=t+'。') for t in packet['paragraphs'][s['refs'][0]].split('。')[:2]])
+                for s in p['subpoints']]) for p in packet['points']]))
+        elif purpose == 'point_materials' and 'subpoints' in json.loads(user):
+            packet=json.loads(user)
+            text=json.dumps(dict(subpoints=[dict(id=s['id'],cloze=[]) for s in packet['subpoints']]))
         elif purpose == 'generate':
             prompt=messages[0]['content']
             title=re.search(r'【本模块】(.+?)：',prompt)[1]

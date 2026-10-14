@@ -250,6 +250,9 @@ class ScriptedGateway:
 
     def complete(self, purpose, messages, **kwargs):
         self.calls.append({"purpose": purpose, "enable_search": kwargs.get("enable_search", False)})
+        from tests.refactor.wire121.model121 import directory_reply
+        reply=directory_reply(purpose,messages,kwargs.get('system'))
+        if reply is not None:return reply
         prompt = messages[-1]["content"]
         if purpose == 'point_difficulty':
             return SimpleNamespace(text=json.dumps([dict(id=p['id'],difficulty='中') for p in json.loads(messages[0]['content'])['points']]), search_hits=(), citations=())

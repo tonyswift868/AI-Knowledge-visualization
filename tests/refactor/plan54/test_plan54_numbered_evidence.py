@@ -113,9 +113,9 @@ def test_plan54_real_flow_stores_program_text_without_model_quotes(flow,monkeypa
     def reply(purpose,messages,**kwargs):
         result=complete(purpose,messages,**kwargs)
         if purpose=='generate':
-            assert '不抄原句' in kwargs['system']
+            assert '只用给定编号' in kwargs['system']
             value=json.loads(result.text)
-            for p in value['points']:p.pop('citations',None)
+            assert isinstance(value,list)  # Classification returns IDs, never quotations.
             return SimpleNamespace(text=json.dumps(value))
         return result
     monkeypatch.setattr(model,'complete',reply)
