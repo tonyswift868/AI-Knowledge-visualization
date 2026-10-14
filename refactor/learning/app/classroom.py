@@ -84,13 +84,20 @@ class Classroom:
             return self._teacher_context(course,state,EXPLAIN,self._focus(course,state),user=state['conversation']['options'][args[0]])
         if action=='confused':return self._teacher_context(course,state,CONFUSED,self._focus(course,state),user='没太懂')
         concept=self._concept(course,state)
+        recap=None
         if concept and state['step'] in ('teaching','closing'):
             point,sub,index=concept
-            if index+1==len(point['subpoints']):
-                return None # The deterministic recap needs no speculative model request.
-            state['concept'].update(subpoint_id=point['subpoints'][index+1]['id'],rounds=0)
-            return self._teacher_context(course,state,CONCEPT_START,[point['id']])
-        if state['step'] in ('teaching','closing'):
+            if index+1<len(point['subpoints']):
+                state['concept'].update(subpoint_id=point['subpoints'][index+1]['id'],rounds=0)
+                return self._teacher_context(course,state,CONCEPT_START,[point['id']])
+            points=course.points_of(state['module_id'])
+            if (state['index']+1>=len(points) or self._target_met_after_point(course,state,point)
+                    or not self._ready(course,state['module_id'])):
+                return None
+            recap=self._recap_content(point)
+            state.update(index=state['index']+1,step='teach',pending=None)
+            state.pop('conversation',None);state.pop('concept',None)
+        elif state['step'] in ('teaching','closing'):
             state.update(index=state['index']+1,step='teach',pending=None)
             state.pop('conversation',None);state.pop('concept',None)
         points=course.points_of(state['module_id'])
@@ -100,8 +107,24 @@ class Classroom:
         if point.get('structure')=='concept_v1' and point.get('subpoints'):
             state['concept']=dict(point_id=point['id'],subpoint_id=point['subpoints'][0]['id'],rounds=0,
                 style_history=state.get('concept_recent_styles',[]),intro_endings=[])
-            return self._teacher_context(course,state,CONCEPT_START,[point['id']])
-        return self._teacher_context(course,state,self._opening_director(course,state),[point['id']],opening=True)
+            context=self._teacher_context(course,state,CONCEPT_START,[point['id']])
+        else:
+            context=self._teacher_context(course,state,self._opening_director(course,state),[point['id']],opening=True)
+        if recap is not None:context['dialogue']=self._dialogue(course,state,recap=recap)
+        return context
+
+    def _target_met_after_point(self, course, state, point):
+        """Project this credit with the existing FIFO ledger, without any writes."""
+        from datetime import date
+        try:
+            today=self._today(course,state)
+            ledger=course.store.load_ledger(course.plan_id)
+            ledger.add_tentative(f"learn:{point['id']}",point['id'],point['minutes'],date.fromisoformat(self._day(state)))
+            status=ledger.status(date.fromisoformat(today['progress_day']))
+            return status.today_target>0 and status.today_confirmed+status.today_tentative>=status.today_target
+        except Exception:
+            # An uncertain prediction never speculates beyond a completion barrier.
+            return True
 
     def prefetch(self, plan_id, version):
         lock=self._lock(plan_id)
@@ -178,6 +201,7 @@ class Classroom:
             if action and action[2] in state.get("completed_requests", []):
                 return self.snapshot(course, state)
             original = copy.deepcopy(state)
+            self._local.point_checkpoint = None
             self._local.prefetched = self._take_prefetch(course,state,action)
             try:
                 if state.get('pending') and not self._gradable(state['pending']['question']) and not (action and action[0]=='leave'):
@@ -198,17 +222,19 @@ class Classroom:
                     state["completed_requests"] = (state.get("completed_requests", []) + [action[2]] + ([retried[2]] if retried else []))[-40:]
             except ModelCancelled:
                 if ctx: ctx.stream(RESET)
-                self._save(course, original)
+                self._save(course, self._local.point_checkpoint or original)
                 raise BridgeError("CANCELLED", "已停止，当前题目和位置保留。") from None
             except (ModelError, AgentFormatError, StoreError, BridgeError) as exc:
-                state = original
+                state = self._local.point_checkpoint or original
+                if self._local.point_checkpoint and action:action=('next',[],action[2])
                 state["failure"] = dict(message=getattr(exc, "message", str(exc)),
                     action=action[0] if action else "next", args=action[1] if action else [],
                     request_id=action[2] if action else uuid.uuid4().hex)
                 if ctx: ctx.stream(RESET)
             except Exception:
                 log.exception("classroom operation failed for %s", plan_id)
-                state = original
+                state = self._local.point_checkpoint or original
+                if self._local.point_checkpoint and action:action=('next',[],action[2])
                 state["failure"] = dict(message="这一步没有完成，请重试；原来的题目和位置保留。",
                     action=action[0] if action else "next", args=action[1] if action else [],
                     request_id=action[2] if action else uuid.uuid4().hex)
@@ -219,6 +245,7 @@ class Classroom:
             selected=getattr(self._local,'prefetched',None)
             if selected:selected['cancel'].set()
             self._local.prefetched=None
+            self._local.point_checkpoint=None
             lock.release()
 
     def _load(self, course):
@@ -510,8 +537,12 @@ class Classroom:
             state.pop('concept',None)
             self._point_done(course,state)
             self._publish_today(course,state,ctx)
-            return
-        if state['step'] in ('teaching','closing'):
+            if state['step']!='teach' or state['module_id']!=point['module_id'] or self._target_met(course,state):return
+            # The recap and credit are committed facts. A later teacher failure
+            # must retry only the new point, including a typed “懂了” action.
+            self._save(course,state)
+            self._local.point_checkpoint=copy.deepcopy(state)
+        elif state['step'] in ('teaching','closing'):
             self._point_done(course,state)
             self._publish_today(course,state,ctx)
             if state['step']!='teach':return
@@ -540,7 +571,8 @@ class Classroom:
         chapter=f"先用一句话说明这一章要解决什么问题：{course.module(state['module_id'])['title']}。" if state['index']==0 else ''
         return chapter+'用一个生活化问题开头，给2～3个不计分的可点选项，也允许打字。先不要讲完整结论。'
 
-    def _recap(self, course, state, point):
+    @staticmethod
+    def _recap_content(point):
         items=[]
         for sub in point['subpoints']:
             candidates=[];notes=[]
@@ -557,7 +589,14 @@ class Classroom:
             if not chosen:
                 chosen=notes[0] if notes else ('（该小要点暂无讲义）',None)
             items.append(dict(title=sub['title'],text=chosen[0],chunk_id=chosen[1]))
-        self._say(course,state,json.dumps(dict(title=point['title'],items=items),ensure_ascii=False),role='assistant',kind='recap')
+        return dict(title=point['title'],items=items)
+
+    def _recap(self, course, state, point):
+        self._say(course,state,json.dumps(self._recap_content(point),ensure_ascii=False),role='assistant',kind='recap')
+
+    @staticmethod
+    def _recap_text(recap):
+        return '要点卡：'+recap['title']+'\n'+'\n'.join(i['title']+'：'+i['text'] for i in recap['items'])
 
     def skip_point(self, course, state, ctx):
         if state.get('pending') or state.get('direct_review') or state['step'] not in ('teach','opening','teaching','closing'):
@@ -1372,16 +1411,17 @@ class Classroom:
                  "points": [{"id": p["id"], "title": p["title"], "summary": p.get("summary", "")} for p in course.points_of(module["id"])]})
 
 
-    def _dialogue(self, course, state):
+    def _dialogue(self, course, state, *, recap=None):
         rows = []
         for m in course.store.messages(course.plan_id, self._channel(state)):
             role = "user" if m["role"] == "user" else "assistant"
             text = m["content"] if m["role"] != "system" else f"（系统）{m['content']}"
             if m.get('kind')=='recap':
                 try:
-                    recap=json.loads(text);text='要点卡：'+recap['title']+'\n'+'\n'.join(i['title']+'：'+i['text'] for i in recap['items'])
+                    text=self._recap_text(json.loads(text))
                 except (ValueError,KeyError,TypeError):pass
             rows.append({"role": role, "text": text})
+        if recap is not None:rows.append(dict(role='assistant',text=self._recap_text(recap)))
         return dialogue_tail(rows, max_rows=DIALOGUE_ROWS, max_chars=DIALOGUE_CHARS)
 
 

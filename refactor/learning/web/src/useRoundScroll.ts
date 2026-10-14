@@ -26,8 +26,11 @@ export function useRoundScroll(container: React.RefObject<HTMLDivElement | null>
     const fresh = items.filter(e => !s.before.has(e.dataset.turnKey!))
     // A streamed placeholder may be replaced by the persisted teacher bubble.
     let anchor = items.find(e => e.dataset.turnKey === s.anchor)
+    const recap = fresh.find(e => e.dataset.turnKind === 'recap')
     const user = fresh.find(e => e.dataset.turnRole === 'user')
-    if (user && (!anchor || anchor.dataset.turnRole !== 'user')) {
+    if (recap && anchor !== recap) {
+      anchor = recap; s.aligned = false
+    } else if (!recap && user && (!anchor || anchor.dataset.turnRole !== 'user')) {
       anchor = user; s.aligned = false
     } else if (!anchor) { anchor = fresh[0]; s.aligned = false }
     if (!anchor) return

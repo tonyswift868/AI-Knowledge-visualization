@@ -395,7 +395,7 @@ export function Classroom() {
             </div>
           )}
           {room.messages.map((m) => {
-            if (m.kind === 'recap' && m.recap) return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role}>
+            if (m.kind === 'recap' && m.recap) return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role} data-turn-kind="recap">
               <RecapCard content={m.recap} onSource={id => void openSource(id)} /></div>
             if (m.role === "user") return <div key={m.id} data-turn-key={m.id} data-turn-role={m.role} className={`bubble user ${m.kind === "choice" ? "class-choice" : ""}`} data-selectable>
               {m.kind === "choice" && <span className="class-message-label">我的选择</span>}{m.content}</div>

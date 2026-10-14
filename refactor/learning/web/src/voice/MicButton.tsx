@@ -79,7 +79,7 @@ export function MicButton({ voice, compact = false }: { voice: VoiceInputControl
         transcript itself is only shown in the input box (BUG-94, user 2026-10-14). */}
     <div className="mf-voice-status">
       <Loading active={preparing || finishing} label={label} onCancel={voice.cancel}/>
-      {recording && <span className="mf-voice-live" role="status"><span className="mf-voice-bars" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <i key={i} />)}</span>正在聆听</span>}
+      {recording && <span className="mf-voice-live" role="status"><span className="mf-voice-bars" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <i key={i} />)}</span>正在聆听 {clock}</span>}
       {(recording || finishing || preparing) && <button type="button" className="mf-voice-quiet" onClick={voice.cancel} aria-label="取消录音"><X size={16} />取消</button>}
       {!voice.supported && <p className="mf-voice-hint">请在 MentorFlow 桌面端使用语音输入。</p>}
       {voice.error && !voice.downloadOpen && <div className="mf-voice-error" role="alert">{voice.error.message}
