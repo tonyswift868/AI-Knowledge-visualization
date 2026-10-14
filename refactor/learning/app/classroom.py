@@ -1141,6 +1141,7 @@ class Classroom:
                 if visible!=teaching.speech:emit(RESET);emit(teaching.speech)
                 return teaching,cache_request,teaching.speech if concept else result.text
             except AgentFormatError as exc:
+                log.info('classroom teacher reply rejected attempt=%s reason=%s',attempt,str(exc)[:120])
                 emit(RESET)
                 if attempt==0:
                     request=(request[0],request[1]+([dict(role='assistant',content=result.text)] if concept else [])+[dict(role='user',content=f'上一条回复格式不合格：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])
