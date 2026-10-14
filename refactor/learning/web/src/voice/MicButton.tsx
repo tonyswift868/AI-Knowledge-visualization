@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Download, Mic, Square, Undo2, X } from "lucide-react"
+import { Download, Mic, Square, X } from "lucide-react"
 import type { VoiceInputController } from "./useVoiceInput"
 import "./voice.css"
 import { Loading } from '../loading/Loading'
@@ -63,7 +63,8 @@ export function MicButton({ voice, compact = false }: { voice: VoiceInputControl
   }, [recording])
   const label = recording ? "结束录音" : finishing ? "正在识别最后一句…" : preparing ? "正在准备…" : "开始录音"
   // The button keeps one short label width; longer progress text goes to the status strip.
-  const short = recording ? "结束录音" : finishing ? "识别中…" : preparing ? "准备中…" : "开始录音"
+  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+  const short = recording ? `结束 ${clock}` : finishing ? "识别中…" : preparing ? "准备中…" : "开始录音"
   return <div className="mf-voice" data-voice-state={voice.state}>
     <div className="mf-voice-controls">
       <button type="button" className={`mf-voice-mic ${recording ? "is-recording" : ""} ${compact ? "is-compact" : ""}`}
@@ -74,14 +75,12 @@ export function MicButton({ voice, compact = false }: { voice: VoiceInputControl
         {!compact && <span>{short}</span>}
       </button>
     </div>
-    {/* Everything that comes and goes lives here, so the input row never reflows (BUG-94). */}
+    {/* Whatever comes and goes floats here; the input row never reflows. The corrected
+        transcript itself is only shown in the input box (BUG-94, user 2026-10-14). */}
     <div className="mf-voice-status">
       <Loading active={preparing || finishing} label={label} onCancel={voice.cancel}/>
-      {recording && <span className="mf-voice-live" role="status"><span className="mf-voice-bars" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <i key={i} />)}</span>
-        {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")} · 正在聆听</span>}
+      {recording && <span className="mf-voice-live" role="status"><span className="mf-voice-bars" aria-hidden="true">{[0, 1, 2, 3, 4].map((i) => <i key={i} />)}</span>正在聆听</span>}
       {(recording || finishing || preparing) && <button type="button" className="mf-voice-quiet" onClick={voice.cancel} aria-label="取消录音"><X size={16} />取消</button>}
-      {voice.canUndo && <button type="button" className="mf-voice-quiet mf-voice-correction" onClick={voice.undoCorrections}
-        aria-label="换回原识别文字" title="点击换回原文"><Undo2 size={15} />已按本课用词纠正，原识别：{voice.originalText}</button>}
       {!voice.supported && <p className="mf-voice-hint">请在 MentorFlow 桌面端使用语音输入。</p>}
       {voice.error && !voice.downloadOpen && <div className="mf-voice-error" role="alert">{voice.error.message}
         {["ASR_MODEL_INVALID", "ASR_MODEL_REQUIRED"].includes(voice.error.code) && <button type="button" className="mf-voice-quiet" onClick={voice.openDownload}>准备模型</button>}

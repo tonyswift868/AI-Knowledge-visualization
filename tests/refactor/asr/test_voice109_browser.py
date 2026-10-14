@@ -31,7 +31,7 @@ return this.resolve(s,path.join(deps,'package.json'),{{...o,skipSelf:true}})}}}}
     assert result.returncode==0,result.stdout+result.stderr
     report=json.loads((tmp_path/'browser-result.json').read_text(encoding='utf-8'))
     assert report['ok'],report
-    assert len(report['checks'])==6
+    assert len(report['checks'])==5  # BUG-94: original-text line and its undo removed by the user
 
 
 if __name__=='__main__':

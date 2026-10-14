@@ -36,9 +36,8 @@ async function run(){
  assert(log.some(x=>x.method==='voice.context'&&x.params.point_id==='x'),'current lesson context');checks.push('context')
  await (window as any).asr109.voice.stop();await wait(()=>(window as any).asr109.text==='向量那个。')
  assert(!log.some(x=>x.method==='classroom.reply'),'must not submit automatically');checks.push('no auto-send')
- assert(document.body.textContent!.includes('已按本课用词纠正，原识别：下料来个。'),'show original');checks.push('original visible')
- ;(document.querySelector('[aria-label="换回原识别文字"]') as HTMLButtonElement).click()
- await wait(()=>(window as any).asr109.text==='下料来个。');checks.push('undo')
+ // BUG-94 (user 2026-10-14): only the corrected text, in the input; no separate original-text line.
+ assert(!document.body.textContent!.includes('原识别')&&!document.querySelector('[aria-label="换回原识别文字"]'),'no original line');checks.push('corrected only in input')
  const input=document.querySelector('textarea')!
  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(input,'我确认：向量检索。')
  input.dispatchEvent(new Event('input',{bubbles:true}))

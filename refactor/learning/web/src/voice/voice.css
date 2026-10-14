@@ -66,12 +66,14 @@
 @media (max-width: 600px) { .mf-voice-card { padding: 20px; } .mf-voice-composer-actions { flex-direction: column; } }
 .mf-voice-correction { max-width: 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .mf-voice-correction svg { flex-shrink: 0; }
-/* Status strip: progress, timer, correction, hints. Normal flow elsewhere; fixed in the classroom composer (BUG-94). */
+/* Status: progress, cancel, hints, errors. Normal flow elsewhere; in the classroom it floats
+   above the input row so the row never reflows; the corrected transcript lives only in the input (BUG-94). */
 .mf-voice-status { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; font-size: .82rem; }
 .mf-voice-status:empty { display: none; }
 .mf-voice-status .mf-voice-hint, .mf-voice-status .mf-voice-error { margin: 0; }
-.mf-voice-mic:not(.is-compact) { min-width: 8.6em; }
-.class-main .composer:has(> .mf-voice) { position: relative; flex-wrap: nowrap !important; padding-bottom: 50px; }
+.mf-voice-mic:not(.is-compact) { min-width: 8.6em; font-variant-numeric: tabular-nums; }
+.class-main .composer:has(> .mf-voice) { position: relative; flex-wrap: nowrap !important; overflow: visible !important; max-height: none !important; }
 .class-main .composer:has(> .mf-voice) > .mf-voice { flex-shrink: 0; }
-.class-main .composer .mf-voice-status { display: flex; position: absolute; left: 18px; right: 18px; bottom: 10px; height: 34px;
-  overflow-y: auto; align-content: flex-start; line-height: 1.45; scrollbar-width: thin; }
+.class-main .composer .mf-voice-status { position: absolute; right: 18px; bottom: calc(100% + 6px); max-width: min(560px, calc(100% - 36px));
+  padding: 6px 12px; border-radius: 12px; background: var(--surface-solid); border: 1px solid var(--border); box-shadow: var(--shadow-hover);
+  line-height: 1.5; z-index: 3; }
