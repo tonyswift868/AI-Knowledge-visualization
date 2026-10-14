@@ -492,8 +492,9 @@ class Classroom:
             self._prepare(course,state['module_id'],retry=True)
 
     def stop_preparation(self, course, state, ctx):
-        state['materials_paused']=True
-        self.cancel_materials(course.plan_id)
+        # Leave only the foreground wait. The shared preparation queue keeps
+        # working; returning to learning must not cancel or pause its jobs.
+        state.pop('materials_paused',None)
         wait=state.pop('material_wait',None)
         if wait:state['step']=wait['previous_step']
 

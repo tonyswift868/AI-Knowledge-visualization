@@ -1,6 +1,5 @@
 import * as React from "react"
-import { Loading } from '../loading/Loading'
-import { BookOpen, ChevronDown, ChevronRight } from "lucide-react"
+import { BookOpen, ChevronDown, ChevronRight, Library, LoaderCircle, X } from "lucide-react"
 import { Button } from "../ui"
 import { ClassroomMarkdown } from "./Markdown"
 import "./conversation.css"
@@ -11,28 +10,69 @@ export type NavigationEntry = { id: string; title: string; reason: string; sourc
 export type Concept = { point_id: string; title: string; goal: string; subpoint_id: string; title_current: string; number: number; total: number;
   notes: { text: string; source: SourceCard }[] }
 
-export function ModuleNavigation({ entries }: { entries: NavigationEntry[] }) {
-  if (!entries.length) return null
-  return <details className="class-materials" aria-label="资料导航">
-    <summary>资料导航（{entries.length} 条）</summary>
+function ModuleNavigation({ entries }: { entries: NavigationEntry[] }) {
+  return <>
     <p className="small muted">供查阅，不讲解、不检测、不计时长。</p>
     {entries.map(entry => <section key={entry.id}><h4>{entry.title}</h4><p>{entry.reason}</p><OriginalCards cards={entry.sources} /></section>)}
-  </details>
+  </>
 }
 
-export function ConceptMaterials({ concept }: { concept: Concept }) {
+function ConceptMaterials({ concept }: { concept: Concept }) {
   const refs = React.useRef(new Map<number, OriginalCardsHandle>())
-  return <section className="class-materials" aria-label="小要点讲义">
-    <strong>小要点 {concept.number}/{concept.total} · {concept.title_current}</strong>
-    <details><summary>查看讲义（{concept.notes.length} 条）</summary>
+  return <section aria-label="小要点讲义">
       <p className="small muted">掌握目标：{concept.goal}</p>
       {concept.notes.map((note, index) => <div key={index} className="class-note-entry">
         <ClassroomMarkdown content={note.text} />
         <Button small kind="ghost" onClick={() => refs.current.get(index)?.reveal(note.source.id)}>看这条的原文</Button>
         <OriginalCards cards={[note.source]} ref={handle => { if (handle) refs.current.set(index, handle); else refs.current.delete(index) }} />
       </div>)}
-    </details>
   </section>
+}
+
+/** Non-modal native dialog: it overlays the conversation without reflowing it. */
+export function MaterialToolbar({ concept, entries }: { concept?: Concept | null; entries: NavigationEntry[] }) {
+  const [open, setOpen] = React.useState<'notes' | 'navigation' | null>(null)
+  const dialog = React.useRef<HTMLDialogElement>(null)
+  const trigger = React.useRef<HTMLButtonElement | null>(null)
+  const id = React.useId()
+  const navigationKey = entries.map(entry => entry.id).join('|')
+  const close = React.useCallback(() => { setOpen(null); trigger.current?.focus({ preventScroll: true }) }, [])
+  React.useEffect(() => { setOpen(null) }, [concept?.subpoint_id, navigationKey])
+  React.useEffect(() => {
+    if (!open || !dialog.current) return
+    const popup = dialog.current
+    popup.show()
+    popup.focus({ preventScroll: true })
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Element
+      if (!popup.contains(target) && !target.closest('[data-materials]')) { event.preventDefault(); close() }
+    }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); close() } }
+    document.addEventListener('pointerdown', outside)
+    document.addEventListener('keydown', escape)
+    return () => { popup.close(); document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape) }
+  }, [open, close])
+  if (!concept && !entries.length) return null
+  function toggle(kind: 'notes' | 'navigation', button: HTMLButtonElement) {
+    trigger.current = button
+    if (open === kind) close(); else setOpen(kind)
+  }
+  return <div className="class-material-row129">
+    {concept && <span className="class-subpoint129" title={`小要点 ${concept.number}/${concept.total} · ${concept.title_current}`}>
+      小要点 {concept.number}/{concept.total} · {concept.title_current}</span>}
+    <div className="class-material-buttons129">
+      {!!concept?.notes.length && <button data-materials="notes" aria-label={`讲义（${concept.notes.length}）`} title="讲义"
+        aria-expanded={open === 'notes'} aria-controls={id} onClick={e => toggle('notes', e.currentTarget)}>
+        <BookOpen size={15}/><span>讲义（{concept.notes.length}）</span></button>}
+      {!!entries.length && <button data-materials="navigation" aria-label={`资料导航（${entries.length}）`} title="资料导航"
+        aria-expanded={open === 'navigation'} aria-controls={id} onClick={e => toggle('navigation', e.currentTarget)}>
+        <Library size={15}/><span>资料导航（{entries.length}）</span></button>}
+    </div>
+    {open && <dialog ref={dialog} id={id} tabIndex={-1} className="class-material-popup129" aria-label={open === 'notes' ? '讲义' : '资料导航'}>
+      <header><b>{open === 'notes' ? '讲义' : '资料导航'}</b><button aria-label="关闭资料浮层" onClick={close}><X size={16}/></button></header>
+      {open === 'notes' && concept ? <ConceptMaterials concept={concept}/> : <ModuleNavigation entries={entries}/>}
+    </dialog>}
+  </div>
 }
 export type Preparation = { done: number; total: number; text: string; error?: string | null }
 export type BankQuestion = { id: string; kind: "choice" | "multi" | "fill" | "short" | "essay" | "calc" | "recall" | "objective";
@@ -115,12 +155,17 @@ export function ConversationActions({ step, conversation, act, busy, ask }: {
   </div>
 }
 
-export function MaterialsPreparing({ preparation, act, busy }: { preparation: Preparation; act: Act; busy: boolean }) {
-  return <div className="class-note" role="status">
-    <Loading label={`${preparation.text} · ${preparation.done}/${preparation.total}`} resetKey={preparation.total}/>
-    {preparation.error && <><span role="alert">{preparation.error}</span><Button small disabled={busy}
-      onClick={() => act("classroom.retry", {}, "重新准备…")}>重试</Button></>}
-    <Button small disabled={busy} onClick={() => act("classroom.cancel_preparation", {}, "取消准备…")}>取消准备</Button>
+export function PreparationBadge({ preparation, act, busy, reducedMotion }: { preparation: Preparation; act: Act; busy: boolean; reducedMotion: boolean }) {
+  if (preparation.error) return <button className="class-preparation129 failed" title={preparation.error} disabled={busy}
+    onClick={() => act('classroom.retry', {}, '重新准备…')}>准备失败，重试</button>
+  return <span className="class-preparation129" role="status" title={preparation.text} data-reduced={reducedMotion || undefined}>
+    <LoaderCircle size={13}/><span>题目准备中 {preparation.done}/{preparation.total}</span></span>
+}
+
+export function PreparationWait({ preparation, act, busy }: { preparation?: Preparation | null; act: Act; busy: boolean }) {
+  return <div className="class-wait129" role="status">
+    <span>正在准备这个模块的题（{preparation?.done ?? 0}/{preparation?.total ?? 0}），备好后自动继续</span>
+    <Button small disabled={busy} onClick={() => act('classroom.cancel_preparation', {}, '回去接着学…')}>先回去接着学</Button>
   </div>
 }
 
