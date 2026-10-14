@@ -48,7 +48,7 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 130-MF03 已起草，待转发 | classroom |
-| MF-04 | 空闲 | runtime |
+| MF-04 | 131-MF04 已起草，待转发 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
@@ -108,6 +108,47 @@ D:\MentorFlowApp、D:\MentorFlowData 只读；不要启动、结束或重启用�
 完成标准：大知识点讲完后不用再点“继续”就接着讲下一个点，且命中预取；要点卡在聊天区最上方、下一条消息紧接其下；模块讲完／目标已满／失败重试三种情况正确；相关测试和最后一次全量通过。
 验收：报告写到 D:\MentorFlow\.local\test-tmp\recap130\report.md。
 回执：写到 D:\MentorFlow\.local\receipts\130-MF03.md（格式见 WORKFLOW「回执格式」），给用户只回一行“130-MF03 完成/部分完成/受阻，回执已写入”。回执项目：基线 ／ 提交 ／ 后端连续走的做法 ／ 预取是否命中（证据） ／ 前端对齐做法 ／ 三种停住或失败情况 ／ 截图 ／ 相关测试与全量结果 ／ 本地最终占用
+~~~
+
+- 131-MF04（查清并修掉协议校验丢掉完整回复，[BUG-96]）已起草，待转发，原文如下。
+
+### [131-MF04] runtime｜协议校验丢掉完整回复
+
+~~~text
+【MentorFlow 第一百三十一批｜MF-04（工位 runtime）｜查清并修掉：DeepSeek 已完整返回的回复被我们的协议校验丢掉（MODEL_RESPONSE_INVALID，BUG-96）】
+
+现成项目与许可证（第一节）
+  - 不引新库。只改本项目的模型接入层：refactor/learning/connections/providers/（anthropic_messages.py、openai_chat.py、base.py 的 TextSink）和 gateway.py 写 model-failures.log 的地方。协议以 DeepSeek 官方 Anthropic 兼容接口文档和 Anthropic Messages 流式事件文档为准（先查文档里 stop_reason 的全部取值、思考模式下各内容块与 delta 的类型），回执写明查了哪几页。
+
+开工同步
+  cd D:\MentorFlow-office\runtime\repo
+  git status                        # 应干净；不干净先停下说明
+  git checkout office/runtime
+  git reset --hard f6031a63
+提交：git -c user.name="MentorFlow Worker runtime" -c user.email="worker-runtime@mentorflow.local" commit ...（不提交 dist）
+禁止 push、禁止触发 GitHub 工作流；禁止 ssh、连接服务器、部署；不碰正式签名私钥；不注册真实账号。
+D:\MentorFlowApp、D:\MentorFlowData 只读（要用的复制到产物目录）；不要启动、结束或重启用户的软件和源代码版。E 盘只读运行；不碰 D:\Kristina*。先读 AGENTS.md。
+产物在 D:\MentorFlow\.local\test-tmp\proto131\，用完即删，只留 report.md。含反斜杠的内容写成脚本文件再运行（BUG-10）。
+遇到选择自己决定，回执写明理由，不停下来问。测试要求：工作中只跑与改动相关的测试，全量只在最后跑一次。
+花费：真实模型只为第 3 条复现，事先在报告里写预期；第一段 ¥3，第一段抓到失败或确认抓不到就停；抓不到可再用第二段 ¥5，上限合计 ¥8。用管理员 DeepSeek 预设，Key 只经现有代码读取。
+同时在跑：MF-03 改课堂要点卡（130，app/classroom.py、useRoundScroll.ts）。你不碰 classroom.py 和前端。
+
+背景（CURRENT_STATE [BUG-96]）：
+  - 用户 2026-10-14 18:17 在源代码版课堂里，一次老师请求（request_id daf83f4139794ab9b53e3c208bddbb9e，deepseek-v4-flash，Anthropic 协议，思考模式 high，流式；输出 372 token，已计费约 ¥0.008）报 MODEL_RESPONSE_INVALID，回复没能用上。
+  - 证据（只读，复制后再看）：D:\MentorFlowData\account-shell\learning\accounts\<账号>\model-failures.log 最后一条：HTTP 200，last_sse_events 以 content_block_delta…content_block_stop、message_delta、message_stop 结尾，stage=validating_anthropic_response；同目录 model-usage.sqlite3 的 calls 表有这条的用量（thinking_blocks=1、thinking_characters=592）。也就是说流已收完，是我们自己最后一步校验没过。
+  - anthropic_messages.py 在 stage=validating_anthropic_response 之后可能抛 invalid 的地方：parse()（未知的 web_search 结果类型）、TextSink.finish（流里发出去的文字和最终各 text 块拼起来的文字不一致）、联网搜索次数超限、stop_reason 不在 {end_turn, max_tokens, stop_sequence, refusal, model_context_window_exceeded}。现在不记录具体是哪一项。
+  - 一个值得先验证的猜测：streamed() 收到 text_delta 时不管它所属块的类型，都追加到那个块并发给 TextSink；parse() 只拼 type=='text' 的块。如果 DeepSeek 在思考块（或别的非 text 块）的下标上发了 text_delta，就会“发出去的”和“最终文字”不一致。stop_reason 出现文档外的取值是另一个可能。
+
+要做
+  1. 补记录：上面每一处抛 invalid 的地方都带上具体原因写进 model-failures.log（例如 reason=stop_reason:<实际值>、reason=text_mismatch（发出去多少字、最终多少字、第一个不同的位置、各块类型序列）、reason=search_limit、reason=unknown_search_result:<type>），openai_chat.py 同类地方一并补；不记录 API Key，回复正文最多记前后各 40 字。
+  2. 查文档：确认 DeepSeek Anthropic 兼容接口实际可能返回的 stop_reason 和思考模式下的块/delta 类型，与我们的校验逐条对照，列出不一致处。
+  3. 复现：在副本环境用真实模型按课堂老师请求的形状（Anthropic 协议、思考模式 high、流式、带 on_text）连续发请求，抓到失败时用第 1 条的记录定位原因；同时把每次请求的块类型序列和 stop_reason 统计进报告。按上面的分段预算，抓不到就如实写“未复现”，并说明第 1 条的记录已能在下次发生时给出原因。
+  4. 修：按查到的原因修（例如只把 text 块的 delta 发给 TextSink、或放行文档里合法的 stop_reason）；拿不准的情况不放行，只保证有记录。不改动计费与用量记账规则。
+  5. 测试（文件名带 131）：每种 invalid 原因都有离线用例并断言日志里有对应 reason；如找到原因，加用真实事件序列做成的离线夹具（只保留事件类型和长度，不留正文）。相关测试和最后一次全量通过。
+
+完成标准：每一处协议校验失败都能在 model-failures.log 看到具体原因；文档对照列清；复现结果如实（抓到就定位并修好、离线用例覆盖）；相关测试与全量通过；花费不超上限。
+验收：报告写到 D:\MentorFlow\.local\test-tmp\proto131\report.md。
+回执：写到 D:\MentorFlow\.local\receipts\131-MF04.md（格式见 WORKFLOW「回执格式」），给用户只回一行“131-MF04 完成/部分完成/受阻，回执已写入”。回执项目：基线 ／ 提交 ／ 补的记录 ／ 文档对照结论 ／ 复现（请求数、抓到几次、原因） ／ 修了什么 ／ 相关测试与全量 ／ 花费 ／ 本地最终占用
 ~~~
 
 ## 回执格式
