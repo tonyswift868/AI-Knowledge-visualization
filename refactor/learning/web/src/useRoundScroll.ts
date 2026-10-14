@@ -2,11 +2,12 @@ import * as React from 'react'
 import { useApp } from './store'
 import './round-scroll.css'
 
-/** Anchor a conversation turn, never its growing tail. No spacer or history rewrite. */
-export function useRoundScroll(container: React.RefObject<HTMLDivElement | null>, scope: string | null | undefined) {
+/** Anchor a conversation turn, never its growing tail. */
+export function useRoundScroll(container: React.RefObject<HTMLDivElement | null>, scope: string | null | undefined, alignShortTurns = false) {
   const reduced = useApp(s => s.settings?.reduce_motion ?? false)
   const state = React.useRef({ scope, loaded: false, waiting: false, stopped: false,
     before: new Set<string>(), anchor: '', aligned: false, top: 0 })
+  const tail = React.useRef({ element: null as HTMLDivElement | null, original: '', base: 0, extra: 0 })
   const begin = React.useCallback((nextScope = scope) => {
     const s = state.current
     s.scope = nextScope
@@ -17,7 +18,14 @@ export function useRoundScroll(container: React.RefObject<HTMLDivElement | null>
     const el = container.current
     if (!el) return
     const s = state.current
+    const space = tail.current
+    if (space.element !== el) {
+      if (space.element) space.element.style.paddingBottom = space.original
+      Object.assign(space, { element: el, original: el.style.paddingBottom,
+        base: parseFloat(getComputedStyle(el).paddingBottom) || 0, extra: 0 })
+    }
     if (s.scope !== scope) {
+      el.style.paddingBottom = space.original; space.extra = 0
       Object.assign(s, { scope, loaded: false, waiting: false, stopped: false, anchor: '' })
     }
     if (!s.loaded) { el.scrollTop = el.scrollHeight; s.top = el.scrollTop; s.loaded = true }
@@ -35,18 +43,31 @@ export function useRoundScroll(container: React.RefObject<HTMLDivElement | null>
     } else if (!anchor) { anchor = fresh[0]; s.aligned = false }
     if (!anchor) return
     s.anchor = anchor.dataset.turnKey!
+    if (alignShortTurns) {
+      // Native scrolling cannot put a short final turn at the top without
+      // enough scroll range. Reserve only the missing range; streamed text
+      // consumes it, keeping the anchor still instead of following the tail.
+      const target = el.scrollTop + anchor.getBoundingClientRect().top - el.getBoundingClientRect().top - 12
+      const naturalMax = el.scrollHeight - el.clientHeight - space.extra
+      space.extra = Math.ceil(Math.max(0, target - naturalMax))
+      el.style.paddingBottom = `${space.base + space.extra}px`
+    }
+    s.aligned = Math.abs(anchor.getBoundingClientRect().top - el.getBoundingClientRect().top - 12) < 2
     if (s.aligned) return
     const move = () => {
       if (s.stopped || !anchor?.isConnected) return
       anchor.scrollIntoView({ block: 'start', inline: 'nearest', behavior:
         reduced || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
-      // If the turn fits on screen the browser clamps naturally. Retry only
-      // while it grows towards the top, not after the top has been reached.
+      // Other conversation pages retain their natural short-turn clamp.
       s.aligned = Math.abs(anchor.getBoundingClientRect().top - el.getBoundingClientRect().top - 12) < 2
       s.top = el.scrollTop
     }
     move()
   })
+  React.useEffect(() => () => {
+    const space = tail.current
+    if (space.element) space.element.style.paddingBottom = space.original
+  }, [])
   React.useEffect(() => {
     const el = container.current
     if (!el) return

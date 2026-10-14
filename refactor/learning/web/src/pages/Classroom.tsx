@@ -89,7 +89,7 @@ export function Classroom() {
   const lessonRefresh = React.useRef<(() => void) | null>(null)
   const lessonChanged = React.useRef(false)
   const scroller = React.useRef<HTMLDivElement>(null)
-  const beginRound = useRoundScroll(scroller, planId)
+  const beginRound = useRoundScroll(scroller, planId, true)
   // Toggling “只看重点” resizes every turn above; keep the turn at the top of the view in place.
   const focusAnchor = React.useRef<{ key: string, offset: number } | null>(null)
   const toggleFocus = () => {
