@@ -1,4 +1,4 @@
-"""VAD endpointing and repeated offline recognition, all on one worker thread."""
+"""VAD previews, followed by a bounded whole-recording offline final pass."""
 from __future__ import annotations
 
 from collections import deque
@@ -17,6 +17,42 @@ SAMPLE_RATE = 16000
 PARTIAL_INTERVAL = 0.4
 END_SILENCE_SECONDS = 0.8
 MAX_BUFFERED_BYTES = SAMPLE_RATE * 2 * 30
+PRE_SPEECH_SECONDS = 0.3
+WHOLE_CHUNK_SECONDS = 25.0
+LONG_PAUSE_SECONDS = 1.5
+WHOLE_TIMEOUT_SECONDS = 2.0
+
+
+def _whole_chunks(audio: np.ndarray, speech_ranges, max_seconds=WHOLE_CHUNK_SECONDS):
+    """Split only inside long VAD gaps; choose the longest reachable pause.
+
+    A continuous utterance exceeding the limit has no safe boundary: the final
+    pass falls back, rather than cutting a word or inventing an endpoint.
+    """
+    limit = int(max_seconds * SAMPLE_RATE)
+    merged = []
+    for start, end in sorted(speech_ranges):
+        start, end = max(0, start), min(len(audio), end)
+        if end <= start:
+            continue
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    gaps = [(left[1], right[0]) for left, right in zip(merged, merged[1:])
+            if right[0] - left[1] >= LONG_PAUSE_SECONDS * SAMPLE_RATE]
+    chunks, offset = [], 0
+    while len(audio) - offset > limit:
+        available = [(a, b) for a, b in gaps if offset < a < offset + limit]
+        if not available:
+            raise ValueError("no_long_pause")
+        a, b = max(available, key=lambda gap: (gap[1] - gap[0], gap[0]))
+        cut = min((a + b) // 2, offset + limit)
+        chunks.append(audio[offset:cut])
+        offset = cut
+    if offset < len(audio):
+        chunks.append(audio[offset:])
+    return chunks
 
 
 @dataclass(frozen=True)
@@ -53,11 +89,15 @@ class _SenseVoiceBackend:
         self.vad = sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=30)
         self.load_seconds = time.perf_counter() - started
         self.first_speech_sample = None
+        self.speech_ranges: list[tuple[int, int]] = []
 
     def _completed(self) -> list[np.ndarray]:
         result = []
         while not self.vad.empty():
-            result.append(np.asarray(self.vad.front.samples, dtype=np.float32).copy())
+            segment = self.vad.front
+            samples = np.asarray(segment.samples, dtype=np.float32).copy()
+            self.speech_ranges.append((segment.start, segment.start + len(samples)))
+            result.append(samples)
             self.vad.pop()
         return result
 
@@ -111,6 +151,9 @@ class AsrEngine:
         self.decode_seconds: list[float] = []
         self.worker_thread_id: int | None = None
         self.first_speech_sample: int | None = None
+        self.whole_outcome = "pending"
+        self.whole_seconds = 0.0
+        self.whole_block_seconds: list[float] = []
         self._thread = threading.Thread(target=self._run, name="mf-sensevoice", daemon=True)
         self._thread.start()
 
@@ -190,6 +233,56 @@ class AsrEngine:
             else:
                 self._partial = text
 
+    def _whole_final(self, backend, recording: list[bytes], fallback: str) -> str:
+        """Use the same loaded recognizer, handing it off after VAD is flushed.
+
+        Native inference cannot be interrupted. A daemon holds its own backend
+        reference; a late result cannot touch the engine/Future or new session.
+        The worker returns the preview on timeout without waiting for inference.
+        """
+        first = getattr(backend, "first_speech_sample", None)
+        if first is None and not fallback:
+            self.whole_outcome = "silence"
+            return fallback
+        start = max(0, (first or 0) - round(PRE_SPEECH_SECONDS * SAMPLE_RATE))
+        audio = np.frombuffer(b"".join(recording), dtype="<i2")[start:].astype(np.float32) / 32768.0
+        ranges = [(a - start, b - start) for a, b in getattr(backend, "speech_ranges", [])]
+        try:
+            chunks = _whole_chunks(audio, ranges)
+        except ValueError:
+            self.whole_outcome = "fallback_no_long_pause"
+            return fallback
+        self.whole_block_seconds = [len(chunk) / SAMPLE_RATE for chunk in chunks]
+        done, box = threading.Event(), {}
+        stopped = threading.Event()
+        cancelled = self._cancel
+        def recognize():
+            try:
+                texts = []
+                for chunk in chunks:
+                    if cancelled.is_set() or stopped.is_set():
+                        return
+                    text = backend.decode(chunk).strip()
+                    if not text:
+                        raise ValueError("empty_final")
+                    texts.append(text)
+                box["text"] = " ".join(texts)
+            except Exception:
+                box["error"] = True
+            finally:
+                done.set()
+        started = time.monotonic()
+        threading.Thread(target=recognize, name="mf-sensevoice-final", daemon=True).start()
+        while not done.wait(min(.02, max(0.0, WHOLE_TIMEOUT_SECONDS - (time.monotonic() - started)))):
+            if cancelled.is_set() or time.monotonic() - started >= WHOLE_TIMEOUT_SECONDS:
+                stopped.set()  # Do not decode further blocks after falling back.
+                self.whole_seconds = time.monotonic() - started
+                self.whole_outcome = "cancelled" if cancelled.is_set() else "fallback_timeout"
+                return fallback
+        self.whole_seconds = time.monotonic() - started
+        self.whole_outcome = "fallback_failed" if box.get("error") else "whole"
+        return box.get("text", fallback)
+
     def _run(self) -> None:
         self.worker_thread_id = threading.get_ident()
         try:
@@ -197,6 +290,7 @@ class AsrEngine:
             self.load_seconds = getattr(backend, "load_seconds", 0.0)
             self.ready.set()
             tail = np.empty(0, dtype=np.float32)
+            recording: list[bytes] = []
             last_partial_at = 0.0
             last_partial_size = 0
             while not self._cancel.is_set():
@@ -216,11 +310,24 @@ class AsrEngine:
                             self._decode(backend, segment, final=True)
                     for segment in backend.flush():
                         self._decode(backend, segment, final=True)
+                    self.first_speech_sample = getattr(backend, "first_speech_sample", None)
+                    fallback = " ".join(self._sentences)
+                    try:
+                        text = self._whole_final(backend, recording, fallback)
+                    except Exception:
+                        # Optional second-pass setup is also allowed to fail.
+                        self.whole_outcome = "fallback_failed"
+                        text = fallback
                     with self._condition:
                         if not self._cancel.is_set():
+                            if self.whole_seconds:
+                                self.decode_seconds.append(self.whole_seconds)
                             self._partial = ""
-                            self._result.set_result(" ".join(self._sentences))
+                            self._sentences = [text] if text else []
+                            self._result.set_result(text)
                     break
+                if pcm:
+                    recording.append(pcm)
                 audio = np.concatenate((tail, np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0))
                 end = len(audio) - len(audio) % backend.window_size
                 for offset in range(0, end, backend.window_size):

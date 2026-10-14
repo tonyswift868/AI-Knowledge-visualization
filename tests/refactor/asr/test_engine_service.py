@@ -93,7 +93,8 @@ def test_vad_finals_and_current_partial_do_not_duplicate(tmp_path, qt_app):
         snapshot = engine.snapshot()
         assert snapshot.text == first + " " + snapshot.partial
         result = engine.finish().result(timeout=5)
-        assert result.count("句子") == 2
+        assert result.count("句子") == 1  # Final pass replaces both VAD previews.
+        assert engine.whole_outcome == "whole"
         assert engine.wait_closed()
     finally:
         engine.cancel()
@@ -165,7 +166,8 @@ def test_service_partials_are_whole_transcript_stop_gives_final(qt_app, tmp_path
         assert recorder.stopped
         assert asr.state == "finishing"
         until(qt_app, lambda: bool(finals))
-        assert len(finals) == 1 and finals[0].count("句子") == 2
+        assert len(finals) == 1 and finals[0].count("句子") == 1
+        assert engine.whole_outcome == "whole"
         assert states == ["recording", "finishing", "idle"]
         assert all(thread == get_ident() for thread in signal_threads)
         assert engine.worker_thread_id != get_ident()

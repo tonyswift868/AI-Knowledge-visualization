@@ -139,7 +139,12 @@ class AsrService(QObject):
         if failure is not None:
             self._fail(failure.code, failure.message)
             return
-        self._publish_partial(self._engine.snapshot().text)
+        # The whole-recording final replaces the preview. Do not correct and
+        # publish it as a partial, then do the same expensive correction again.
+        # Snapshot first: final may become ready while this snapshot is read.
+        preview = self._engine.snapshot().text
+        if self._future is None or not self._future.done():
+            self._publish_partial(preview)
         if self._future is not None and self._future.done():
             try:
                 raw = self._future.result()
