@@ -75,7 +75,14 @@ foreach($top in $tops){
        $e=$top.FindFirst([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,$Name)))
       }
     }
-    if(-not $pattern){throw "InvokePattern unavailable: $Name"}
+    if(-not $pattern){
+      # Some VCL buttons have no legacy .NET proxy pattern although native
+      # Windows UIA provides Invoke. Stay on UIA, never emulate input/focus.
+      if($e.Current.NativeWindowHandle -eq 0){throw "InvokePattern unavailable: $Name"}
+      $response=& 'D:/MentorFlow/.venv/Scripts/python.exe' -B (Join-Path $PSScriptRoot 'native_uia.py') --pid $TargetPid --hwnd $e.Current.NativeWindowHandle
+      if($LASTEXITCODE -ne 0){throw "Native UIA Invoke failed: $Name"}
+      @{invoked=$Name;method='Windows COM UIA InvokePattern';time=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()} | ConvertTo-Json -Compress;exit
+    }
     $pattern.Invoke();Start-Sleep -Milliseconds 1500;@{invoked=$Name;time=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()} | ConvertTo-Json -Compress;exit
    }
    if($Action -eq 'value' -and $e.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit){$pattern=$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern);$pattern.SetValue($Value);@{set=$Name} | ConvertTo-Json -Compress;exit}

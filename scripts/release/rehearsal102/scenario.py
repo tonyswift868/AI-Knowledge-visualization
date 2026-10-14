@@ -92,7 +92,24 @@ def close(root):
         wait_control(pid, '关闭', 30)
         rows = controls(pid)
     name = 'Close' if any(r.get('name') == 'Close' for r in rows) else '关闭'
-    uia(pid, 'invoke', name)
+    try:
+        uia(pid, 'invoke', name)
+    except RuntimeError as error:
+        # Qt can destroy its caption before UIA returns. Observe the actual
+        # owned process exit; never turn a live/blocked app into a fake pass.
+        if app_pid(root) is None:
+            record('close-confirmed-after-uia-error', dict(pid=pid))
+            return
+        # A frameless owner can advertise a stale OS Close button. Use the
+        # existing real account-menu exit, then its stable native login Close.
+        record('close-caption-unavailable', dict(pid=pid))
+        cdp('evaluate', "[...document.querySelectorAll('button')].find(e=>e.textContent.includes('更新排练账号')).click()")
+        cdp('click', '退出登录')
+        wait_control(pid, '关闭', 30)
+        uia(pid, 'invoke', '关闭')
+        wait_for(lambda: app_pid(root) is None, 45)
+        record('close-confirmed-via-account-menu', dict(pid=pid))
+        return
     wait_for(lambda: app_pid(root) is None, 45)
 
 
@@ -160,7 +177,9 @@ def update(root, release, target, *, login_entry=False, blocked=False, wait_upda
     else:
         cdp('click', '设置')
         cdp('click', '检查更新')
-        cdp('wait-text', '立即更新并重启')
+        # Reconstruction/background preparation can exceed the text helper's
+        # 30s window. Observe the real enabled action, never guess with sleep.
+        wait_for(lambda: cdp('evaluate', "[...document.querySelectorAll('button')].some(e=>e.textContent.trim()==='立即更新并重启'&&!e.disabled&&e.getClientRects().length)"), 180)
     with (TASK / 'logs/update-observer.out').open('w', encoding='utf8') as output:
         observer = subprocess.Popen([sys.executable, str(HERE / 'observe.py'), str(root), str(old),
             '--label', 'scenario', '--target', target, '--timeout', '240'], env=ENV, stdout=output, stderr=output)

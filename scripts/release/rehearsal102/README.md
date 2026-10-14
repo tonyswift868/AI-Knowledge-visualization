@@ -56,6 +56,34 @@ UP_TO_DATE/清理、卸载及正式注册/快捷方式快照。B 的后台准备
 复用旧 PYZ。严格核对命令：refreeze103.py P --check-only --source-root <工位仓库>。
 metrics105.py 汇总三条路线；驱动修复后需新安装目录可用 scenario105.py A --run-id A-final。
 
+132 总验收：沿用 107 驱动，设 `MF_UAT_ROOT=D:/MentorFlow/.local/test-tmp/gate132`、
+`MF_UAT_APP_ID=MentorFlow.UAT.gate132`，所有子进程 LOCALAPPDATA/TEMP/TMP 指到该目录。
+依次 `prepare.py`、`build132.py O`、`build132.py P`、`build132.py Q`：O 从 64fdf076
+独立冻结为 2.0.14，P/Q 从当前工位独立冻结为 9.132.15/9.132.16；O/P 编真实预览安装程序。
+每包自动做 refreeze103 --check-only（P/Q 对照最终源码），通过后才启动。
+`scenario132.py` 走全新安装/注册/登录/测试 Key/新建计划页；旧版用过并退出后直接覆盖 P，
+用 BUG-86 重切夹具检查取代旧点不显示、进入第一句前的课堂；另一份 O→P 软件内更新，
+再等 P 后台就绪→Q。所有界面动作仍为 UIA/CDP，未改更新链。
+测试 Key 通过真实设置页保存，其模型接口也设为 localhost，避免课堂自动预取访问正式模型。
+使用 fixture 的已准备模块，不注入老师回复、不点开始讲解；注册、更新与课堂页面是实际产品。
+BUG-86 夹具沿用原测试的数据关系，但计划编号改为桥接口要求的 32 位十六进制；
+原单元测试的 `p` 只适用于 Store，不能直接用于真界面。若修正驱动后要接续已通过的
+全新安装，可 `scenario132.py --remaining --cover-folder <新的任务内目录名>`，保留失败记录，
+重新走覆盖和更新，不能把失败步骤标成通过。
+若真实覆盖已通过、只在后续 UI 等待上修正驱动，用 `--verify-covered`：保留原覆盖
+证据，在新的任务目录安装同一 P 包，复制本轮保留的 Data 后接续 UI/更新验证；报告
+注明接续边界。这不是再次覆盖测试，也不能把它冒充原来失败的覆盖安装。
+课堂的知识点默认收起，先用实际“展开知识点”按钮核对，不等待隐藏列表里的文字。
+驱动修正后若需把覆盖安装→详情→课堂→第二次启动连贯重走，更新已通过时可用
+`--remaining --cover-only --cover-folder <新的任务内目录名>`，不重复已通过的两次更新。
+已通过覆盖 UI 后可用 `--updates-only --update-folder <新的任务内目录名>` 仅接续更新。
+更新等待以真实“立即更新并重启”按钮可点为准，最多 180 秒；后台重建不受 CDP 通用
+30 秒文字等待限制，超时仍明确失败，不跳过下载或准备。
+VCL 按钮在 .NET UIA 代理拿不到 InvokePattern 时，uia.ps1 改用系统原生 COM UIA 的
+同一 InvokePattern（native_uia.py）；仍核对 HWND 的 PID 和任务目录所有权，不模拟输入。
+result132.json、各更新 observations/startup、截图留证；最后按既有卸载器撤销预览注册和
+快捷方式，对照正式版全目录/注册/快捷方式快照。`clear132.py` 仅清本轮测试凭据和私钥。
+
 107 总验收：先设 `MF_UAT_ROOT=D:/MentorFlow/.local/test-tmp/gate107`、
 `MF_UAT_APP_ID=MentorFlow.UAT.gate107`，LOCALAPPDATA/TEMP/TMP 同样指到任务目录。
 common 和预览 hook 共用此 AppId 的模型凭据命名空间，默认仍兼容 fast105。
