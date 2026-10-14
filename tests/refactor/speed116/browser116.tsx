@@ -22,7 +22,7 @@ async function run(){
   click('取消');await pause();if(calls.some(c=>c.method==='classroom.test'))throw Error('Cancel invoked test')
   click('跳过该模块');await pause();click('确认，进入直接考');await until(()=>calls.some(c=>c.method==='classroom.test'&&c.params.kind==='skip_test'))
   await until(()=>!toggle().disabled)
-  toggle().click();await pause();click('跳过该知识点');await until(()=>calls.some(c=>c.method==='classroom.skip_point'))
+  await until(()=>toggle().getAttribute('aria-checked')==='false');click('跳过该知识点');await until(()=>calls.some(c=>c.method==='classroom.skip_point'))
   await until(()=>toggle().getAttribute('aria-checked')==='false')
   if(document.querySelector('[aria-label="确认跳过该模块"]'))throw Error('Point skip opened confirmation')
   ;(window as any).conversationResult={ok:true,checks:['预备入口','流式先于完成可见','定稿替换','模块取消不跳/确认直接考','知识点无确认跳过','跨点开关复位']}

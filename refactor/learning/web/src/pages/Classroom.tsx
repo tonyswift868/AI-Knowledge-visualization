@@ -1,3 +1,4 @@
+import { SkipControl127 } from "./SkipControl127"
 import { WrongAnswers } from "../classroom/WrongAnswers"
 import * as React from "react"
 import { useRoundScroll } from "../useRoundScroll"
@@ -433,14 +434,12 @@ export function Classroom() {
         </div>
 
         {room.can_skip && <div className="plan-actions">
-          <Button disabled={!!busy || (!skipModule && !currentPoint)} onClick={() => { if (skipModule) { cancelPrefetch(); setSkipConfirm(true) } else void act('classroom.skip_point',{},'正在进入下一个知识点…') }}><SkipForward />{skipModule ? '跳过该模块' : '跳过该知识点'}</Button>
-          <button type="button" className="btn" role="switch" aria-label="切换为跳过该模块" aria-checked={skipModule}
-            disabled={!!busy} onClick={()=>{cancelPrefetch();setSkipModule(v=>!v)}}
-            style={{display:'inline-flex',alignItems:'center',gap:6,padding:'6px 10px'}}>
-            <span aria-hidden style={{width:34,height:20,borderRadius:12,background:skipModule?'var(--accent-2)':'var(--line)',display:'inline-flex',padding:2}}>
-              <span style={{width:16,height:16,borderRadius:'50%',background:'var(--text)',transform:skipModule?'translateX(14px)':undefined}} />
-            </span><span className="small">模块</span>
-          </button>
+          <SkipControl127 module={skipModule} busy={!!busy} hasPoint={!!currentPoint} reducedMotion={reduceMotion}
+            onMode={value => { cancelPrefetch(); setSkipModule(value) }}
+            onSkip={() => {
+              if (skipModule) { cancelPrefetch(); setSkipConfirm(true) }
+              else void act('classroom.skip_point', {}, '正在进入下一个知识点…').then(ok => { if (ok) setSkipModule(false) })
+            }} />
         </div>}
         <Actions room={room} act={act} busy={!!busy} />
         {!room.direct_review && <ConversationActions step={room.step} conversation={room.conversation} busy={!!busy} act={act}
@@ -495,7 +494,7 @@ export function Classroom() {
       {wrongAnswers && <WrongAnswers planId={planId!} onClose={() => setWrongAnswers(false)} />}
       {skipConfirm && <section className="class-source" role="dialog" aria-modal="true" aria-label="确认跳过该模块">
         <h3>跳过该模块？</h3><p>有题会进入整个模块的直接考；没有题会随口聊三个点，再由你决定是否跳过。</p>
-        <div className="row"><Button kind="primary" onClick={()=>{setSkipConfirm(false);void act('classroom.test',{kind:'skip_test'},'正在准备直接考…')}}>确认，进入直接考</Button>
+        <div className="row"><Button kind="primary" onClick={()=>{setSkipConfirm(false);void act('classroom.test',{kind:'skip_test'},'正在准备直接考…').then(ok=>{if(ok)setSkipModule(false)})}}>确认，进入直接考</Button>
         <Button kind="ghost" onClick={()=>setSkipConfirm(false)}>取消</Button></div>
       </section>}
       {source && (
