@@ -291,6 +291,22 @@ class Ledger:
     def targets(self) -> dict[date, int]:
         return self._settled_targets()
 
+    def scheduled_cap(self, today: date) -> CapReport:
+        """Actual targets from today, excluding frozen past targets and debt.
+
+        Keep the same full-weight-day convention as planning previews. Only
+        the suggested extension is estimated; the displayed minutes and cap
+        decision always come from the persisted target calendar.
+        """
+        targets = {day: minutes for day, minutes in self.targets.items() if day >= today}
+        current = full_day_minutes(targets, self.window)
+        cap = self.window.daily_cap_minutes
+        suggested = None
+        if current > cap and today <= self.window.end:
+            future = replace(self.window, start=max(today, self.window.start))
+            suggested = check_cap(future, sum(targets.values())).suggested_end
+        return CapReport(current <= cap, current, cap, suggested)
+
     def release_unused(self, minutes: int) -> None:
         """Release unused estimates, never manufacture a learning credit.
 

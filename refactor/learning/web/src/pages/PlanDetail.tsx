@@ -113,6 +113,9 @@ export function PlanDetail() {
           </div>
         </div>
       </div>
+      {detail.daily?.ok === false && <p className="outline-warn" role="status">
+        每日任务时长 {detail.daily.full_day} 分钟，超过了你设的上限 {detail.daily.cap} 分钟。
+      </p>}
       <div className="row" style={{ marginTop: 12, gap: 10 }}>
         {(detail.plan.state === "active" || detail.plan.state === "checking") &&
           <Button kind="primary" onClick={() => go("classroom")}><PlayCircle />开课</Button>}
@@ -414,7 +417,7 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
         </> : <span className="muted small">没有需要新增的模块。</span>}
         {selected.length > 0 && t && <div className="stack" style={{ gap: 6 }}>
           <span className="small">预计多学 {view.added_minutes[0] === view.added_minutes[1] ? view.added_minutes[0] : `${view.added_minutes[0]}–${view.added_minutes[1]}`} 分钟；
-            截止日为 {end} 时每天多约 {t.extra_daily_minutes} 分钟{t.exceeds_cap ? `，会超过每天上限 ${view.daily_cap_minutes} 分钟` : ""}。</span>
+            截止日为 {end} 时每日任务时长约 {t.daily_minutes} 分钟（其中新增资料每天多约 {t.extra_daily_minutes} 分钟）{t.exceeds_cap ? `，会超过每天上限 ${view.daily_cap_minutes} 分钟` : ""}。</span>
           {t.exceeds_cap && t.suggested_end && <Button small disabled={!!busy || view.exact} onClick={() => repreview(selected, t.suggested_end!)}>
             把截止日推迟到 {t.suggested_end}</Button>}
           <label className="field small">截止日期<input className="input" type="date" value={end} disabled={!!busy || view.exact}
