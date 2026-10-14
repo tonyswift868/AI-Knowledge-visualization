@@ -2279,10 +2279,11 @@ class PlanFlow:
         if any((m.get('question_extraction') or {}).get('reason')=='material_format_upgrade'
                and (m.get('material_preparation') or {}).get('state')!='done' for m in modules):
             result['migration_message']='旧题已退出考核，学习进度已保留；相关模块的题会按资料重新准备。'
-        if plan.get("window") and plan.get("total_minutes"):
+        if plan.get("window") and (started or plan.get("total_minutes")):
             from ..course.store import _window
             window = _window(plan["window"])
-            cap = check_cap(window, plan["total_minutes"])
+            cap = (store.load_ledger(plan_id).scheduled_cap(self.study_day()) if started
+                   else check_cap(window, plan["total_minutes"]))
             result["daily"] = {"full_day": cap.full_day_minutes, "cap": cap.cap, "ok": cap.ok,
                                "suggested_end": cap.suggested_end.isoformat() if cap.suggested_end else None}
         if started and plan.get("window"):

@@ -13,7 +13,7 @@ import hashlib
 import json
 
 from . import planner_agents as agents
-from .ledger import Ledger, PlanWindow, check_cap, estimate_check_minutes, full_day_minutes
+from .ledger import Ledger, PlanWindow, estimate_check_minutes
 
 
 class AdditionError(ValueError):
@@ -270,9 +270,8 @@ def _timing(state, today, window, added):
     ledger = Ledger.from_dict(state['ledger'])
     before = ledger.targets
     ledger.replan(today, window, ledger.total_minutes + added)
-    effective = replace(window, start=max(today, window.start))
-    cap = check_cap(effective, sum(ledger.targets.values()))
-    return dict(daily_minutes=full_day_minutes(ledger.targets, effective), exceeds_cap=not cap.ok,
+    cap = ledger.scheduled_cap(today)
+    return dict(daily_minutes=cap.full_day_minutes, exceeds_cap=not cap.ok,
                 suggested_end=cap.suggested_end.isoformat() if cap.suggested_end else None,
                 daily_delta={d.isoformat(): n - before.get(d, 0) for d, n in ledger.targets.items()},
                 targets={d.isoformat(): n for d, n in ledger.targets.items()},
@@ -293,9 +292,10 @@ def preview(state, proposal, *, today, selected=None, new_end=None, generated=No
     if not modules:
         if window != _window(state['plan']['window']):
             _fail('SUPPLEMENT_TIME_IMMUTABLE', '仅补充资料不改时间。')
-        timing = dict(daily_minutes=full_day_minutes(Ledger.from_dict(state['ledger']).targets, window),
-                      exceeds_cap=False, suggested_end=None, daily_delta={}, targets={}, extra_daily_minutes=0)
-        timing['exceeds_cap'] = timing['daily_minutes'] > window.daily_cap_minutes
+        cap = Ledger.from_dict(state['ledger']).scheduled_cap(today)
+        timing = dict(daily_minutes=cap.full_day_minutes, exceeds_cap=not cap.ok,
+                      suggested_end=cap.suggested_end.isoformat() if cap.suggested_end else None,
+                      daily_delta={}, targets={}, extra_daily_minutes=0)
         low = high = timing
         learning = [0, 0]; checks = [0, 0]
     else:
