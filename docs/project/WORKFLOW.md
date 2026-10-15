@@ -46,13 +46,13 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 144-MF01（Java 原生会话与身份补齐，[ARCH-09]）已起草，待转发 | server |
+| MF-01 | 146-MF01（Java 账号生命周期，[ARCH-09]）已起草，待转发 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
-| MF-07 | 145-MF07（Java 同步 5 个接口，[ARCH-09]）已起草，待转发 | library |
+| MF-07 | 147-MF07（Java 注销与管理概览，[ARCH-09]）已起草，待转发 | library |
 
 ## 待派队列
 
@@ -65,6 +65,8 @@
 
 - 144-MF01：Java 原生会话（登录、刷新、退出、会话、一台在线）和原生令牌鉴权补齐。任务文件 D:\MentorFlow\.local\tasks\144-MF01.md（已起草，待转发）。
 - 145-MF07：Java 同步 5 个接口。任务文件 D:\MentorFlow\.local\tasks\145-MF07.md（已起草，待转发）。与 144 并行：MF-01 管 identity、account 包，MF-07 只建 sync 包。
+
+- 144-MF01（部分完成：Python 短期令牌只在进程内存，Java 认不出，只能整组切换）、145-MF07（完成）已合入 414cd5e0。146-MF01、147-MF07 已起草待转发（基线 414cd5e0），146 开工先跑 server_java 全部。
 
 ## 回执格式
 
