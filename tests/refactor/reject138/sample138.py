@@ -24,7 +24,6 @@ def rejection(text,ctx):
         message=str(exc)
         return ('HIGHLIGHT_COUNT_OR_QUESTION' if message.startswith('presentation: 用') else
                 'TOO_LONG' if message.startswith('presentation: 普通') else
-                'ABSOLUTE_WORD' if message.startswith('concept:') else
                 'WRAPUP' if message.startswith('concept_wrap:') else
                 'REPEATED_ENDING' if message.startswith('concept_ending:') else
                 'REPEATED_OPENING' if message.startswith('concept_opening:') else 'PARSE_FAILED')

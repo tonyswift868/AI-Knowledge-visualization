@@ -19,11 +19,10 @@ def ctx(**updates):
 
 
 @pytest.mark.parametrize('word',['只能','一定','完全不能','只有','就得'])
-def test_concept115_unsupported_absolute_requires_rewrite(word):
-    with pytest.raises(AgentFormatError,match='绝对化'):
-        agent.parse_teaching('传感器'+word+'接收声音。',ctx())
+def test_concept115_absolute_words_are_allowed(word):
+    # User 2026-10-15: absolute wording is no longer rejected (it wasted rewrites).
+    assert agent.parse_teaching('传感器'+word+'接收声音。',ctx()).speech
     assert agent.parse_teaching('传感器接收环境信息。',ctx()).speech
-    assert agent.parse_teaching('这不代表传感器只能接收声音。',ctx()).speech
 
 
 def test_concept115_supported_qualifier_and_raw_premise_are_retained():
@@ -54,17 +53,16 @@ def test_concept115_closing_is_two_sentences_and_80_characters():
     assert agent.parse_teaching(safe,dict(c,concept=dict(c['concept'],rewrite_exhausted=True)))
 
 
-def test_concept115_classroom_rewrites_absolute_and_records_cross_subpoint_style(tmp_path,monkeypatch):
+def test_concept115_classroom_keeps_absolute_and_records_cross_subpoint_style(tmp_path,monkeypatch):
     e=concept_environment(tmp_path)
     monkeypatch.setattr(Classroom,'_materials',staticmethod(lambda:e.materials))
     try:
-        e.gateway.replies=['压强一定没有变化。','==面积越小压强越大。==你觉得呢？']
-        view=act(e,'next');assert not view['failure'] and e.gateway.calls==['teacher']*2
-        assert '一定' not in view['messages'][-1]['content']
-        assert any('绝对化' in m['content'] for m in e.requests[-1][1])
+        e.gateway.replies=['==压强一定没有变化。==你觉得呢？','==面积越小压强越大。==你觉得呢？']
+        view=act(e,'next');assert not view['failure'] and e.gateway.calls==['teacher']
+        assert '一定' in view['messages'][-1]['content']
         e.gateway.replies=['==单位面积的压力叫压强。==你怎么看？','==单位面积的压力叫压强。==这一层先把定义记清。']
         view=act(e,'next');assert not view['failure']
-        assert view['concept']['number']==2 and len(e.gateway.calls)==4
+        assert view['concept']['number']==2 and len(e.gateway.calls)==3
         state=e.store.classroom_position(PLAN)['state']['concept']
         assert e.store.classroom_position(PLAN)['state']['concept_recent_styles']==state['style_history']
         assert [r['ending'] for r in state['intro_endings']]==['question','summary']

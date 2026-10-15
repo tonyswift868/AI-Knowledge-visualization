@@ -23,7 +23,6 @@ def case(reason):
         'HIGHLIGHT_COUNT':'中文说明没有荧光。',
         'HIGHLIGHT_QUESTION':'==你怎么看？==',
         'TOO_LONG':'==单位面积上的压力叫压强。=='+('对照压力与面积理解这个前提。'*35),
-        'ABSOLUTE_WORD':'==它一定只能这样工作。==',
         'WRAPUP_TOO_LONG':'==单位面积上的压力叫压强。=='+('对照压力与面积理解这个前提，'*8)+'结论。',
         'WRAPUP_SENTENCE_COUNT':'==第一条结论。==第二条结论。第三条结论。',
         'WRAPUP_QUESTION':'==先认识压强。==你怎么看？',
@@ -36,7 +35,7 @@ def case(reason):
     return ctx,bad
 
 REASONS=['STATE_CLAIM','CHINESE_REQUIRED','PARSE_FAILED','HIGHLIGHT_COUNT','HIGHLIGHT_QUESTION',
-    'TOO_LONG','ABSOLUTE_WORD','WRAPUP_TOO_LONG','WRAPUP_SENTENCE_COUNT','WRAPUP_QUESTION',
+    'TOO_LONG','WRAPUP_TOO_LONG','WRAPUP_SENTENCE_COUNT','WRAPUP_QUESTION',
     'REPEATED_ENDING','REPEATED_OPENING']
 
 @pytest.mark.parametrize('reason',REASONS)
@@ -84,12 +83,11 @@ def test_teacher138_prompts_match_existing_limits_and_explain_existing_endings()
 
 @pytest.mark.parametrize('text',['原文那条排序只有一行。','讲义里只有两句。','正文只有 3 段。',
     '这一段其实只有两个问题：谁大概更快，为什么。','本轮只有三个要点。'])
-def test_teacher138_document_quantity_is_not_a_capability_assertion(text):
-    ctx,_=case('ABSOLUTE_WORD')
+def test_teacher138_absolute_wording_is_accepted(text):
+    # User 2026-10-15: no absolute-word rewrite at all.
+    ctx,_=case('TOO_LONG')
     agent.validate_concept(text,ctx)
-    with pytest.raises(agent.TeachingFormatError,match='绝对化') as error:
-        agent.validate_concept(text+'系统只能做这一件事。',ctx)
-    assert error.value.reason=='ABSOLUTE_WORD'
+    agent.validate_concept(text+'系统只能做这一件事。',ctx)
 
 def test_teacher138_mixed_language_counts_terms_not_letters_and_keeps_length_guard():
     text='==原文介绍三个删除命令。=='+'\n'.join(['比较 `TRUNCATE` 和 `DELETE`。']*20)

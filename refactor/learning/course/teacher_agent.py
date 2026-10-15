@@ -151,7 +151,7 @@ def teacher_request(ctx):
     task['presentation']=dict(highlight_sentences=[1,3],target_characters=[200,300],expanded=wants_expansion(task['user']))
     if ctx.get('concept'):
         system+='\n【新式知识点对话】当前大点分成若干小要点，只围绕本步的小要点讲义与对应原文。一个小要点可以聊多轮，没有固定轮数；学生理解一致就深入一层或换个角度，理解偏了或不知道就依据原文换个讲法，口误不纠缠。不能每个小要点都照“举例→提问→讲一段→结束”，也不要求每轮提问；开场可以提问、举例、对比、承接上一小要点，结合实际对话变化。不输出开场选项块。学生说懂了由宿主推进下一小要点，你不擅自结束大点或跳到后面。不判分、不记薄弱。收束任务只用一两句串起目标与已讲内容。'
-        system+='\n【新式点的事实边界，优先于篇幅与例子偏好】notes 是这一步要讲到的事实，不是发散联想的种子；对应原文用来核实事实、补全限定与前提。结论、能力边界和前提只能来自它们。可以换说法，不得把“适合某场景”改成“只能做这些”，不得从存储比喻推断读取算法或性能保证。原文没给出的“只能、一定、完全不能、只有、就得”等绝对化断言不要写。优先用原文已有例子；自拟比喻须说明只对应哪一点、不代表其他能力，不能用它证明新结论。复用原文例子必须带上原文的假设和限定，不省略如“不同班级学号可重复、班级内学号唯一”这类前提。拿不准就停在讲义事实，不填模型常识。'
+        system+='\n【新式点的事实边界，优先于篇幅与例子偏好】notes 是这一步要讲到的事实，不是发散联想的种子；对应原文用来核实事实、补全限定与前提。结论、能力边界和前提只能来自它们。可以换说法，不得从存储比喻推断读取算法或性能保证。优先用原文已有例子；自拟比喻须说明只对应哪一点、不代表其他能力，不能用它证明新结论。复用原文例子必须带上原文的假设和限定，不省略如“不同班级学号可重复、班级内学号唯一”这类前提。拿不准就停在讲义事实，不填模型常识。'
         system+='\n【本轮表达】看程序给出的最近开场、收尾和开头句，结合学生实际回应选择提问、小结、小任务或直接衔接，不按固定顺序轮换，不默认用问题结束。新小要点的初次收尾不得和上一小要点初次收尾相同；同一句回应套话不再复用。肯定后也可以直接解释一条有依据的边界而不追问。收束最多两句、去出处编号后不超过80字符，不附追问。'
         task['concept']=dict(ctx['concept'],notes=[dict(n,alias=next((a for a,cid in mapping.items() if cid==n['chunk_id']),None)) for n in ctx['concept'].get('notes',[])])
         task['concept']['source_premises']=source_premises(ctx)
@@ -204,7 +204,6 @@ def paragraph_grounded(text,ctx):
     return bool(aliases) and all(a in citation_map(ctx) for a in aliases) and not re.search(r'\[[cC]\d+\s*[,，、]',visible)
 
 
-_ABSOLUTES=('完全不能','只能','一定','只有','必须','绝对','必然','永远','就得','全部都')
 
 
 def _plain_teaching(text):
@@ -260,25 +259,10 @@ def source_premises(ctx):
         for m in re.finditer(r'(?:假设|如果|若|当)[^。；;\n]{3,240}',text)))
 
 
-def _unsupported_absolute(sentence,ctx):
-    # A lexical guard, deliberately not a general semantic verifier. Negative
-    # boundary explanations need not inherit a student's absolute assertion.
-    if re.search(r'不一定|并非|不是说|不代表|不能据此|原文(?:没有|没).*说',sentence):return False
-    # A count of lines/sentences in the supplied document describes its
-    # presentation, not an exclusive claim about the subject's capabilities.
-    # Keep other assertions in the same sentence subject to the original guard.
-    sentence=re.sub(r'(?:原文|讲义|资料|正文|段落|文字|这(?:一)?段|本(?:段|节|轮|页|步))[^。；;！？!?]{0,12}只有\s*(?:[0-9]+|[一二三四五六七八九十百两]+)\s*(?:行|句|段|页|个(?:问题|要点|步骤))',
-        lambda m:m[0].replace('只有','',1),sentence)
-    basis='\n'.join(ctx['excerpts'].values())+'\n'+'\n'.join(n['text'] for n in ctx['concept'].get('notes',[]))
-    return any(word in sentence and word not in basis for word in _ABSOLUTES)
-
-
 def validate_concept(text,ctx):
     concept=ctx.get('concept')
     if not concept or concept.get('rewrite_exhausted'):return
     sentences=_sentences(text)
-    if any(_unsupported_absolute(s,ctx) for s in sentences):
-        raise TeachingFormatError('ABSOLUTE_WORD','concept: 出现讲义和原文没有的绝对化断言，保留事实及前提，删除外推后重写')
     if concept.get('wrapping'):
         reason=('WRAPUP_TOO_LONG' if len(_plain_teaching(text))>80 else
                 'WRAPUP_SENTENCE_COUNT' if len(sentences)>2 else
