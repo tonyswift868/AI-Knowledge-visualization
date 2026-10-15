@@ -275,7 +275,7 @@
 - 更新：2026-10-10
 
 ### [ARCH-09] 服务器后端逐块改用 Java
-- 状态：第 1 步本机完成，已合入主线（142-MF01）：Spring Boot 3.5、Java 21，身份校验、资料目录、健康检查；同一套 HTTP 契约测试对 Python 版和 Java 版各 9 组全过。Java 内存约 200～245 MiB（Python 约 88～90 MiB），1000 次目录请求平均 3.9 ms（Python 5.5 ms）；本机没有 Docker，Dockerfile 写了没构建。原生登录、cookie、issuer 迁移相关仍只在 Python，切流量前要补。服务器内存（架构师 2026-10-16 只读查看）：共 7.9 GB、已用 1.5 GB、可用 6.4 GB，4 核；现有容器 Keycloak 562 MB、Python 后端 114 MB、Postgres 81 MB；Java 版约 250 MB，并排跑没问题。
+- 状态：第 2 步之一完成（用户 2026-10-16 同意，架构师操作）：服务器上加了不接流量的 Java 容器 mentorflow-java-shadow（镜像 mentorflow-java-server:142，主线 Java 代码本机打包，jar sha256 399f91fa…，内存上限 512 MB，实际约 174 MB）和它自己的 OIDC 回环代理 mentorflow-java-shadow-oidc（和 Python 后端同一镜像、同一配置、同样的只读与降权参数），挂在 mentorflow-e1-preview_internal 网络，没有发布端口，nginx 没有任何路由指向它。核对（2026-10-16 01:15，从内部网络同时请求两边）：/health/live、/health/startup 一致；/health/ready 两边 postgres、Keycloak 都通（Java 的 email 依赖未配置，按设计不发邮件）；资料目录未登录时两边都回 401 ENTERPRISE_AUTH_REQUIRED，正文一致。文件在服务器 /opt/mentorflow/state/java-shadow（setup.sh、Dockerfile、root 只读的 java.env，数据库密码只在服务器上拼）；本机副本 .local/server/java-shadow。撤掉：docker rm -f mentorflow-java-shadow-oidc mentorflow-java-shadow。此前第 1 步：第 1 步本机完成，已合入主线（142-MF01）：Spring Boot 3.5、Java 21，身份校验、资料目录、健康检查；同一套 HTTP 契约测试对 Python 版和 Java 版各 9 组全过。Java 内存约 200～245 MiB（Python 约 88～90 MiB），1000 次目录请求平均 3.9 ms（Python 5.5 ms）；本机没有 Docker，Dockerfile 写了没构建。原生登录、cookie、issuer 迁移相关仍只在 Python，切流量前要补。服务器内存（架构师 2026-10-16 只读查看）：共 7.9 GB、已用 1.5 GB、可用 6.4 GB，4 核；现有容器 Keycloak 562 MB、Python 后端 114 MB、Postgres 81 MB；Java 版约 250 MB，并排跑没问题。
 - 用户定（2026-10-15）：用户求职方向是 Java + AI，两个项目都是 Python。服务器上适合 Java 的业务部分改写成 Java，不适合的照旧；尽量不影响现有服务，不能改出无底洞的 bug。
   - 模型调用继续客户端直连，用用户自己的 Key，不做中转。
   - AI 相关（提示词、编排）继续用 Python，不用 Java 硬做。
