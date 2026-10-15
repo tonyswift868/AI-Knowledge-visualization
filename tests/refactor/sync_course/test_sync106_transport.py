@@ -14,22 +14,23 @@ from refactor.learning.sync_identity import PlanError
 from refactor.learning import sync_transport as module
 
 
-def test_sync106_trickling_batch_response_obeys_deadline_and_logs(connection, monkeypatch, caplog):
+def test_sync106_trickling_batch_response_keeps_slow_success_and_logs(connection, monkeypatch, caplog):
     _, transport, _ = connection
     ticks=SimpleNamespace(value=0)
+    receipt=json.dumps(dict(schema='mentorflow.structured-sync-bulk.v1',
+        results=[dict(kind='learning_run',entity_id='test',status=200,result={})])).encode()
     class Stream(httpx.SyncByteStream):
         def __iter__(self):
             yield b'{'
             ticks.value=21
-            yield b' '
+            yield receipt[1:]
     transport._client.close()
     transport._client=httpx.Client(transport=httpx.MockTransport(lambda req:httpx.Response(200,stream=Stream())))
     monkeypatch.setattr(module,'time',SimpleNamespace(monotonic=lambda:ticks.value))
-    with caplog.at_level('INFO',logger='refactor.runtime'),pytest.raises(PlanError) as caught:
-        transport.write_many([dict(kind='learning_run',entity_id='test')])
-    assert caught.value.code=='SYNC_UNAVAILABLE'
+    with caplog.at_level('INFO',logger='refactor.runtime'):
+        assert transport.write_many([dict(kind='learning_run',entity_id='test')])[0]['status']==200
     fields=[r.mf_fields for r in caplog.records if hasattr(r,'mf_fields')]
-    assert fields[-1]['state']=='BATCH_REQUEST_END' and fields[-1]['code']=='SYNC_UNAVAILABLE'
+    assert fields[-1]['state']=='BATCH_REQUEST_END' and fields[-1]['code']=='OK'
     assert fields[-1]['elapsed_seconds']==21
     transport.close()
 

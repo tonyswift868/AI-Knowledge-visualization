@@ -14,6 +14,7 @@ make repeated apply_remote calls safe (including after a cursor-save failure).
 from __future__ import annotations
 
 from copy import deepcopy
+from collections import deque
 import hashlib
 import json
 import re
@@ -418,14 +419,18 @@ class CourseSync:
             except PlanError as exc:
                 failures.append(exc)
         index, batch_number, conflicted = 0, 0, set()
-        while index < len(operations):
-            batch, size = [], 0
-            while index < len(operations) and len(batch) < UPLOAD_BATCH_SIZE:
-                item = operations[index]
-                amount = len(_json(item[2]).encode())
-                if batch and size + amount > UPLOAD_BATCH_BYTES:
-                    break
-                batch.append(item); size += amount; index += 1
+        split_batches = deque()
+        while index < len(operations) or split_batches:
+            if split_batches:
+                batch = split_batches.popleft()
+            else:
+                batch, size = [], 0
+                while index < len(operations) and len(batch) < UPLOAD_BATCH_SIZE:
+                    item = operations[index]
+                    amount = len(_json(item[2]).encode())
+                    if batch and size + amount > UPLOAD_BATCH_BYTES:
+                        break
+                    batch.append(item); size += amount; index += 1
             batch_number += 1
             started = time.monotonic()
             event('sync', state='UPLOAD_BATCH_START', batch=batch_number, count=len(batch),
@@ -438,7 +443,20 @@ class CourseSync:
                     break
                 except PlanError as exc:
                     if exc.code == 'SYNC_BULK_UNSUPPORTED':
-                        return singles + [item[0] for item in batch + operations[index:]]
+                        remaining = batch + [item for queued in split_batches for item in queued] + operations[index:]
+                        return singles + [item[0] for item in remaining]
+                    if exc.code == 'SYNC_BATCH_TOO_LARGE':
+                        if len(batch) > 1:
+                            middle = len(batch) // 2
+                            # Reuse the original operations, including CAS IDs.
+                            split_batches.appendleft(batch[middle:])
+                            split_batches.appendleft(batch[:middle])
+                            event('sync', state='UPLOAD_BATCH_SPLIT', batch=batch_number, count=len(batch))
+                        else:
+                            # Same deterministic request ID via the legacy path.
+                            singles.append(batch[0][0])
+                            event('sync', state='UPLOAD_SINGLE_FALLBACK', batch=batch_number, count=1)
+                        break
                     if exc.code == 'SYNC_UNAVAILABLE' and attempt == 0:
                         event('sync', state='UPLOAD_BATCH_RETRY', batch=batch_number, code=exc.code)
                         continue
@@ -450,6 +468,8 @@ class CourseSync:
                         # consume a timeout for every row in the remaining queue.
                         return singles
                     raise
+            if receipts is None:  # Size rejection is retry work, not a failed round.
+                continue
             acknowledgements = []
             for (record, values, sent), receipt in zip(batch, receipts):
                 self._fence(cancel)
@@ -470,7 +490,8 @@ class CourseSync:
                     summary['conflicts'] += 1
                     conflicted.add((record.entity, record.entity_id))
                 else:
-                    failures.append(PlanError('SYNC_UNAVAILABLE' if status >= 500 else 'SYNC_RECORD_INVALID',
+                    failures.append(PlanError('SYNC_RECORD_TOO_LARGE' if status == 413 else
+                                              'SYNC_UNAVAILABLE' if status >= 500 else 'SYNC_RECORD_INVALID',
                                               '部分学习记录尚未同步，本机记录已保留。'))
             self._flush_acknowledgements(cursor, cancel, acknowledgements)
             self._progress(cancel, phase='upload', completed=summary['uploaded'], total=total, failed=len(failures))
