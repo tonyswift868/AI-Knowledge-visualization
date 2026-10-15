@@ -14,7 +14,7 @@ from tests.refactor.conversation37.test_grounded_conversation37 import act
 from tests.refactor.concept114.test_concept114_classroom import concept_environment
 
 
-def build(directory):
+def build(directory, browser_fixture=None):
     directory.mkdir(parents=True,exist_ok=True)
     e=concept_environment(directory/'data')
     try:
@@ -27,7 +27,7 @@ def build(directory):
     aliases=[dict(find='../bridge',replacement=(here/'bridge114.ts').as_posix()),
         dict(find='./states114.json',replacement=(directory/'states114.json').as_posix())]
     aliases.extend(dict(find=k,replacement=optional.as_posix()) for k in ('../teacher/TeacherStage','../voice'))
-    (directory/'entry.tsx').write_text('import '+json.dumps((here/'browser114.tsx').as_posix()),encoding='utf-8')
+    (directory/'entry.tsx').write_text('import '+json.dumps((browser_fixture or here/'browser114.tsx').as_posix()),encoding='utf-8')
     (directory/'index.html').write_text('<div id="root"></div><script type="module" src="/entry.tsx"></script>',encoding='utf-8')
     config=f"""import path from 'node:path';import {{pathToFileURL}} from 'node:url';
 const deps={json.dumps(deps.as_posix())};const {{default:react}}=await import(pathToFileURL(path.join(deps,'node_modules/@vitejs/plugin-react/dist/index.js')));

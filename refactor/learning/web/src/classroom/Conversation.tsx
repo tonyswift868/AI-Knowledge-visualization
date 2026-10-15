@@ -37,7 +37,9 @@ export function MaterialToolbar({ concept, entries }: { concept?: Concept | null
   const id = React.useId()
   const navigationKey = entries.map(entry => entry.id).join('|')
   const close = React.useCallback(() => { setOpen(null); trigger.current?.focus({ preventScroll: true }) }, [])
-  React.useEffect(() => { setOpen(null) }, [concept?.subpoint_id, navigationKey])
+  // Close the previous material before the new toolbar can receive a click.
+  // A passive effect can run after that first click and discard its open state.
+  React.useLayoutEffect(() => { setOpen(null) }, [concept?.subpoint_id, navigationKey])
   React.useEffect(() => {
     if (!open || !dialog.current) return
     const popup = dialog.current
