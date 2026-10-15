@@ -30,6 +30,7 @@ import win.clannad.mentorflow.identity.IdentitySettings;
 public final class NativeIdentityBridge implements NativeSessionService.CredentialVerifier,
         NativeSessionService.AccountStateChecker {
     private final ObjectMapper json=new ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+    private final ObjectMapper authorityJson=json.copy().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
     private final IdentitySettings settings;
     private final Clock clock;
     private final URI endpoint;
@@ -120,6 +121,58 @@ public final class NativeIdentityBridge implements NativeSessionService.Credenti
         catch(Exception error){throw unavailable();}
     }
 
+    /** Lifecycle availability is the existing opt-in/expiry, not a new capability switch. */
+    public boolean lifecycleActive() {
+        return lifecycle!=null && (lifecycleExpiry==null || clock.instant().isBefore(lifecycleExpiry));
+    }
+
+    /** Existing private Keycloak SPI owns codes, one-time state, mutations and mail. */
+    public JsonNode authority(Map<String,Object> payload,int maxBytes,String errorCode,String errorMessage) {
+        try {
+            Reply result=call(identityHttp,HttpRequest.newBuilder(endpoint).header("Content-Type","application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(payload))),maxBytes,authorityJson);
+            if(result.status!=200 || result.body==null || !result.body.isObject() || !result.body.path("status").isTextual())
+                throw new IllegalArgumentException("Invalid authority response");
+            return result.body;
+        } catch(Exception error) {
+            throw fail(503,errorCode,errorMessage);
+        }
+    }
+
+    public record AdminResult(int status,JsonNode body,String location) {}
+
+    /** One explicit Admin REST operation. No retry, redirect or mutation reconciliation. */
+    public AdminResult adminCall(String method,String path,Map<String,Object> payload,Map<String,String> params) {
+        if(!lifecycleActive())throw fail(503,"ADMIN_AUTHORITY_UNAVAILABLE","账号服务暂不可用。");
+        long operationDeadline=System.nanoTime()+Duration.ofSeconds(12).toNanos();
+        try {
+            StringBuilder target=new StringBuilder(adminBase).append(path);
+            if(params!=null&&!params.isEmpty()) {
+                boolean first=true;
+                for(var item:params.entrySet()) {
+                    target.append(first?'?':'&');first=false;
+                    target.append(URLEncoder.encode(item.getKey(),StandardCharsets.UTF_8)).append('=')
+                        .append(URLEncoder.encode(item.getValue(),StandardCharsets.UTF_8));
+                }
+            }
+            HttpRequest.BodyPublisher body=payload==null?HttpRequest.BodyPublishers.noBody()
+                :HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(payload));
+            String accessToken;
+            try{accessToken=adminToken();}
+            catch(Exception error){throw fail(503,"ADMIN_AUTHORITY_UNAVAILABLE","账号服务暂不可用。");}
+            Reply result=call(adminHttp,HttpRequest.newBuilder(URI.create(target.toString()))
+                .header("Accept","application/json").header("Content-Type","application/json")
+                .header("Authorization","Bearer "+accessToken).method(method,body),65536,json,
+                Math.min(operationDeadline,System.nanoTime()+Duration.ofSeconds(10).toNanos()));
+            return new AdminResult(result.status,result.body,result.location);
+        } catch(IdentityFailure error) {
+            if("NATIVE_IDENTITY_INVALID".equals(error.code))throw fail(503,"KEYCLOAK_RESPONSE_INVALID","账号服务暂不可用。");
+            throw error;
+        } catch(Exception error) {
+            throw fail(503,"KEYCLOAK_OUTCOME_UNKNOWN","账号服务暂不可用。");
+        }
+    }
+
     private JsonNode adminGet(String path) throws Exception {
         var result=call(adminHttp,HttpRequest.newBuilder(URI.create(adminBase+path)).header("Accept","application/json")
             .header("Content-Type","application/json").header("Authorization","Bearer "+adminToken()).GET(),65536);
@@ -144,19 +197,26 @@ public final class NativeIdentityBridge implements NativeSessionService.Credenti
             adminToken=token.asText();adminTokenDeadline=System.nanoTime()+Duration.ofSeconds(ttl.asInt()-5).toNanos();return adminToken;
         } catch(Exception e){adminToken=null;adminTokenDeadline=0;throw e;}
     }
-    private record Reply(int status,JsonNode body) {}
+    private record Reply(int status,JsonNode body,String location) {}
     private Reply call(HttpClient client,HttpRequest.Builder request,int max) throws Exception {
-        long deadline=System.nanoTime()+Duration.ofSeconds(10).toNanos();
-        var result=client.send(request.timeout(Duration.ofSeconds(10)).build(),java.net.http.HttpResponse.BodyHandlers.ofInputStream());
+        return call(client,request,max,json);
+    }
+    private Reply call(HttpClient client,HttpRequest.Builder request,int max,ObjectMapper reader) throws Exception {
+        return call(client,request,max,reader,System.nanoTime()+Duration.ofSeconds(10).toNanos());
+    }
+    private Reply call(HttpClient client,HttpRequest.Builder request,int max,ObjectMapper reader,long deadline) throws Exception {
+        if(deadline<=System.nanoTime())throw new java.net.http.HttpTimeoutException("Operation deadline exceeded");
+        var result=client.send(request.timeout(Duration.ofNanos(Math.max(1,deadline-System.nanoTime()))).build(),java.net.http.HttpResponse.BodyHandlers.ofInputStream());
         try(var stream=result.body()) {
-            if(result.statusCode()!=200)return new Reply(result.statusCode(),json.nullNode());
+            String location=result.headers().firstValue("Location").orElse(null);
+            if(result.statusCode()!=200)return new Reply(result.statusCode(),json.nullNode(),location);
             var read=new java.util.concurrent.FutureTask<byte[]>(()->stream.readNBytes(max+1));
             Thread.ofVirtual().start(read);
             byte[] raw;
             try{raw=read.get(Math.max(1,deadline-System.nanoTime()),java.util.concurrent.TimeUnit.NANOSECONDS);}
             finally{if(!read.isDone())read.cancel(true);}
             if(raw.length>max)throw fail(503,"NATIVE_IDENTITY_INVALID","账号服务响应无法验证。");
-            return new Reply(result.statusCode(),json.readTree(raw));
+            return new Reply(result.statusCode(),reader.readTree(raw),location);
         }
     }
     private static HttpClient http(SSLContext context) {

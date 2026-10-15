@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 ROOT = Path(__file__).resolve().parents[3]
-LOCAL = Path(os.environ.get("JAVA144_ARTIFACTS", r"D:\MentorFlow\.local\test-tmp\auth144"))
+LOCAL = Path(os.environ.get("JAVA144_TMP") or os.environ.get("JAVA144_ARTIFACTS") or "D:/MentorFlow/.local/test-tmp/auth144")
 JAVA_HOME = Path(r"D:\MentorFlow\.local\java\jdk-21.0.12.1+1")
 CLASSPATH_FILE = LOCAL / "test-classpath.txt"
 NATIVE_PREFIX = "/api/enterprise/auth/native"
@@ -350,7 +350,8 @@ def wait_server144(endpoint: dict):
     deadline=time.monotonic()+60
     while time.monotonic()<deadline and endpoint["process"].poll() is None:
         try:
-            response=httpx.get(endpoint["base_url"]+"/health/live",verify=str(LOCAL / "tls" / "ca.pem"),timeout=.5,trust_env=False)
+            ca=endpoint.get("env",{}).get("MENTORFLOW_NATIVE_IDENTITY_CA_FILE",str(LOCAL / "tls" / "ca.pem"))
+            response=httpx.get(endpoint["base_url"]+"/health/live",verify=ssl.create_default_context(cafile=ca),timeout=.5,trust_env=False)
             if response.status_code==200: endpoint["log"].close(); return
         except Exception: time.sleep(.1)
     endpoint["process"].terminate()

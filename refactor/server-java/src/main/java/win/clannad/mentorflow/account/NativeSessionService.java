@@ -95,6 +95,8 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
         this.ttlSeconds = sessionTtlSeconds;
     }
 
+    public String issuer() {return issuer;}
+
     public Map<String,Object> login(String username, String password, String peer) {
         throttle(username, peer);
         String ticket=randomHex(16);
@@ -313,7 +315,8 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
         catch (Exception failure) { throw unavailable(); }
     }
 
-    private void throttle(String username, String peer) {
+    /** Reuse the native attempt counter for authenticated password reauthentication. */
+    public void throttle(String username, String peer) {
         long now = clock.millis();
         synchronized (attempts) {
             attempts.entrySet().removeIf(entry -> entry.getValue().deadline() <= now);

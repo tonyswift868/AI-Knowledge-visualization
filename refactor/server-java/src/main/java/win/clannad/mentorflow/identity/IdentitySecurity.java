@@ -45,6 +45,7 @@ public class IdentitySecurity {
         http.authorizeHttpRequests(c->c
             .requestMatchers(NativeAccessAuthenticator.LOGIN_PATH,NativeAccessAuthenticator.REFRESH_PATH,
                 NativeAccessAuthenticator.LOGOUT_PATH,NativeAccessAuthenticator.SESSION_PATH).permitAll()
+            .requestMatchers(AccountRoutes146.PUBLIC_PATHS.toArray(String[]::new)).permitAll()
             .requestMatchers("/api/**").authenticated().anyRequest().permitAll());
         var entryPoint = (org.springframework.security.web.AuthenticationEntryPoint)(request,response,error)-> {
             Throwable current=error; IdentityFailure matched=null;
@@ -56,10 +57,15 @@ public class IdentitySecurity {
         http.oauth2ResourceServer(c->c.authenticationEntryPoint(entryPoint)
             .bearerTokenResolver(request-> {
                 if (!request.getRequestURI().startsWith("/api")) return null;
-                if (NativeAccessAuthenticator.isSessionEndpoint(request.getRequestURI())) return null;
+                if (NativeAccessAuthenticator.isSessionEndpoint(request.getRequestURI())||AccountRoutes146.isPublic(request.getRequestURI())) return null;
                 String auth=request.getHeader("Authorization"); auth=auth==null?"":auth.strip();
                 String cookie="";
                 if (request.getCookies()!=null) for (Cookie item:request.getCookies()) if (item.getName().equals(settings.cookieName)) cookie=item.getValue().strip();
+                if(AccountRoutes146.isWorkspace(request.getRequestURI())) {
+                    if(!cookie.isEmpty())throw new IdentityFailure(401,"AUTH_BOUNDARY_CONFLICT","Account bootstrap requires bearer authentication");
+                    if(!auth.startsWith("Bearer ")||auth.chars().filter(v->v==' ').count()!=1)
+                        throw new IdentityFailure(401,"ENTERPRISE_AUTH_REQUIRED","A verified bearer account is required");
+                }
                 if (!auth.isEmpty() && !cookie.isEmpty()) throw new IdentityFailure(401,"AUTH_BOUNDARY_CONFLICT","Cookie and bearer identity modes cannot be mixed");
                 if (auth.isEmpty()) {
                     if (!cookie.isEmpty()) throw new IdentityFailure(401,"ENTERPRISE_SESSION_INVALID","Enterprise session is invalid");
@@ -86,12 +92,16 @@ public class IdentitySecurity {
         ContextFilter(IdentityDirectory directory) { this.directory=directory; }
         @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain) throws IOException,ServletException {
             if (!request.getRequestURI().startsWith("/api")) {chain.doFilter(request,response);return;}
-            if (NativeAccessAuthenticator.isSessionEndpoint(request.getRequestURI())) {chain.doFilter(request,response);return;}
+            if (NativeAccessAuthenticator.isSessionEndpoint(request.getRequestURI())||AccountRoutes146.isPublic(request.getRequestURI())) {chain.doFilter(request,response);return;}
             var auth=SecurityContextHolder.getContext().getAuthentication();
             if (!(auth instanceof JwtAuthenticationToken authenticated)) {chain.doFilter(request,response);return;}
             try {
                 Jwt jwt=authenticated.getToken(); String issuer=jwt.getClaimAsString("iss"), subject=jwt.getSubject();
                 directory.ensureOpen(issuer,subject);
+                if(AccountRoutes146.isWorkspace(request.getRequestURI())) {
+                    request.setAttribute("account_principal",jwt);
+                    chain.doFilter(request,response);return;
+                }
                 String org=request.getHeader("X-MentorFlow-Organization-ID"); org=org==null?"":org.strip();
                 String workspace=request.getHeader("X-MentorFlow-Workspace-ID"); workspace=workspace==null||workspace.isBlank()?null:workspace.strip();
                 if (org.isEmpty()) throw new IdentityFailure(403,"ENTERPRISE_ORGANIZATION_REQUIRED","Bearer identity requires a selected organization");

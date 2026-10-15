@@ -28,8 +28,7 @@ import win.clannad.mentorflow.identity.IdentitySettings;
 @Configuration
 @ConditionalOnProperty(name="MENTORFLOW_NATIVE_IDENTITY_ENDPOINT")
 public class NativeConfiguration144 {
-    @Bean @ConditionalOnMissingBean(Clock.class) Clock nativeClock(){return Clock.systemUTC();}
-    @Bean @ConditionalOnMissingBean(DataSource.class) DataSource nativeDataSource(Environment env) {
+    static DataSource nativeDataSource(Environment env) {
         String raw=env.getRequiredProperty("MENTORFLOW_DATABASE_URL");Properties properties=new Properties();String url;
         if(raw.startsWith("jdbc:postgresql:"))url=raw;
         else {

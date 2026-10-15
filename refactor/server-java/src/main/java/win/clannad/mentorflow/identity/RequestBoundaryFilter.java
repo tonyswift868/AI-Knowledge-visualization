@@ -19,6 +19,7 @@ public final class RequestBoundaryFilter extends OncePerRequestFilter {
         request.setAttribute("request_id",id); response.setHeader("X-Request-ID",id);
         request.setAttribute("identity_settings",settings);
         response.setHeader("X-MentorFlow-Runtime-Profile","ACCOUNT_CORE_MVP");
+        if (AccountRoutes146.isWorkspace(request.getRequestURI())) response.setHeader("Cache-Control","no-store");
         try {
             if (request.getRequestURI().startsWith("/api") && !settings.mode.equals("ENTERPRISE_SERVER"))
                 throw new IdentityFailure(503,"ENTERPRISE_IDENTITY_DISABLED","Enterprise identity is not enabled");
