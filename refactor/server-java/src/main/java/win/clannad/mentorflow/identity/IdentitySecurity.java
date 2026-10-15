@@ -42,7 +42,10 @@ public class IdentitySecurity {
     @Bean SecurityFilterChain api(HttpSecurity http, IdentitySettings settings, CompatibleJwtDecoder decoder, IdentityDirectory directory) throws Exception {
         http.csrf(c->c.disable()).sessionManagement(c->c.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
         http.headers(c->c.disable()); // Do not replace Python's existing cache/response headers.
-        http.authorizeHttpRequests(c->c.requestMatchers("/api/**").authenticated().anyRequest().permitAll());
+        http.authorizeHttpRequests(c->c
+            .requestMatchers(NativeAccessAuthenticator.LOGIN_PATH,NativeAccessAuthenticator.REFRESH_PATH,
+                NativeAccessAuthenticator.LOGOUT_PATH,NativeAccessAuthenticator.SESSION_PATH).permitAll()
+            .requestMatchers("/api/**").authenticated().anyRequest().permitAll());
         var entryPoint = (org.springframework.security.web.AuthenticationEntryPoint)(request,response,error)-> {
             Throwable current=error; IdentityFailure matched=null;
             while (current!=null) { if (current instanceof IdentityFailure f) {matched=f;break;} current=current.getCause(); }
@@ -53,6 +56,7 @@ public class IdentitySecurity {
         http.oauth2ResourceServer(c->c.authenticationEntryPoint(entryPoint)
             .bearerTokenResolver(request-> {
                 if (!request.getRequestURI().startsWith("/api")) return null;
+                if (NativeAccessAuthenticator.isSessionEndpoint(request.getRequestURI())) return null;
                 String auth=request.getHeader("Authorization"); auth=auth==null?"":auth.strip();
                 String cookie="";
                 if (request.getCookies()!=null) for (Cookie item:request.getCookies()) if (item.getName().equals(settings.cookieName)) cookie=item.getValue().strip();
@@ -64,8 +68,8 @@ public class IdentitySecurity {
                 if (!auth.startsWith("Bearer ") || auth.chars().filter(v->v==' ').count()!=1)
                     throw new IdentityFailure(401,"OIDC_TOKEN_INVALID","Bearer authorization is malformed");
                 String token=auth.substring(7);
-                // Native/cookie login is Python-owned until the account migration.
-                if (token.startsWith("mfn1_a_")) throw new IdentityFailure(401,"ENTERPRISE_SESSION_REAUTH_REQUIRED","登录已失效，请重新登录。");
+                if(token.startsWith("mfn1_a_")&&!"https".equalsIgnoreCase(request.getScheme()))
+                    throw new IdentityFailure("ENTERPRISE_SESSION_REAUTH_REQUIRED","登录已失效，请重新登录。");
                 return token;
             }).jwt(cj->cj.decoder(decoder).jwtAuthenticationConverter(jwt ->
                 new JwtAuthenticationToken(jwt,List.of(),jwt.getSubject()))));
@@ -82,6 +86,7 @@ public class IdentitySecurity {
         ContextFilter(IdentityDirectory directory) { this.directory=directory; }
         @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain) throws IOException,ServletException {
             if (!request.getRequestURI().startsWith("/api")) {chain.doFilter(request,response);return;}
+            if (NativeAccessAuthenticator.isSessionEndpoint(request.getRequestURI())) {chain.doFilter(request,response);return;}
             var auth=SecurityContextHolder.getContext().getAuthentication();
             if (!(auth instanceof JwtAuthenticationToken authenticated)) {chain.doFilter(request,response);return;}
             try {

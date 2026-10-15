@@ -27,18 +27,21 @@ import java.util.concurrent.TimeUnit;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.ObjectProvider;
 
 /** Nimbus/Spring performs RSA verification; this adapter preserves Python errors/order. */
 @Component
 public final class CompatibleJwtDecoder implements JwtDecoder {
     private final IdentitySettings settings;
+    private final NativeAccessAuthenticator nativeAccess;
     private final DefaultJOSEProcessor<SecurityContext> signatures;
     private final ObjectMapper strict=JsonMapper.builder()
         .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
         .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
         .build();
-    public CompatibleJwtDecoder(IdentitySettings settings) throws Exception {
+    public CompatibleJwtDecoder(IdentitySettings settings, ObjectProvider<NativeAccessAuthenticator> nativeAccess) throws Exception {
         this.settings=settings;
+        this.nativeAccess=nativeAccess.getIfAvailable();
         ResourceRetriever retriever=new ValidatingResourceRetriever(
             settings.timeout*1000,settings.timeout*1000,Integer.MAX_VALUE,strict);
         var source=new RemoteJWKSet<SecurityContext>(URI.create(settings.jwksUri).toURL(),
@@ -89,6 +92,10 @@ public final class CompatibleJwtDecoder implements JwtDecoder {
         return value;
     }
     @Override public Jwt decode(String token) {
+        if(token!=null&&token.startsWith("mfn1_a_")) {
+            if(nativeAccess==null) throw new IdentityFailure("ENTERPRISE_SESSION_REAUTH_REQUIRED","登录已失效，请重新登录。");
+            return nativeAccess.authenticateAccess(token);
+        }
         if (token==null || token.isEmpty() || token.length()>24000 || token.chars().anyMatch(Character::isWhitespace))
             throw new IdentityFailure("OIDC_TOKEN_INVALID","OIDC token is missing, too large, or malformed");
         String[] parts=token.split("\\.",-1);
@@ -119,7 +126,7 @@ public final class CompatibleJwtDecoder implements JwtDecoder {
         for(String name:List.of("iss","aud","exp","iat","jti","sub")) if (!claims.has(name))
             throw new IdentityFailure("OIDC_CLAIM_REQUIRED","OIDC "+name+" claim is required");
         String issuer=text(claims,"iss",500,false);
-        if (!issuer.equals(claims.get("iss").asText()) || !issuer.equals(settings.issuer)) throw new IdentityFailure("OIDC_ISSUER_INVALID","OIDC token issuer is invalid");
+        if (!issuer.equals(claims.get("iss").asText()) || !settings.acceptsIssuer(issuer,(long)(Instant.now().toEpochMilli()/1000d))) throw new IdentityFailure("OIDC_ISSUER_INVALID","OIDC token issuer is invalid");
         JsonNode aud=claims.get("aud"); List<String> audiences=new ArrayList<>();
         if (aud.isTextual() && !aud.asText().strip().isEmpty()) audiences.add(aud.asText().strip());
         else if (aud.isArray() && aud.size()>0 && aud.size()<=32) {
@@ -136,7 +143,10 @@ public final class CompatibleJwtDecoder implements JwtDecoder {
         if(exp<=now-settings.skew) throw new IdentityFailure("OIDC_TOKEN_EXPIRED","OIDC token has expired");
         if(exp<=iat) throw new IdentityFailure("OIDC_CLAIM_INVALID","OIDC token expiry must follow issuance");
         if(exp-iat>settings.maxLifetime+settings.skew) throw new IdentityFailure("OIDC_TOKEN_LIFETIME_INVALID","OIDC token lifetime is too long");
-        if(!settings.canonicalIssuer.equals(issuer)) throw new IdentityFailure("OIDC_IDENTITY_CONTINUITY_REQUIRED","Account continuity is not authorized");
+        String subject=text(claims,"sub",300,false);
+        String canonicalIssuer;
+        try { canonicalIssuer=settings.canonicalizeIssuer(issuer,subject); }
+        catch(IllegalArgumentException denied) { throw new IdentityFailure("OIDC_IDENTITY_CONTINUITY_REQUIRED","Account continuity is not authorized"); }
         number(claims,"auth_time",true);text(claims,"jti",300,false);text(claims,"sub",300,false);
         for(String name:List.of("client_id","preferred_username","sid","name")) text(claims,name,300,true);
         text(claims,"email",320,true);text(claims,"acr",160,true);
@@ -157,7 +167,7 @@ public final class CompatibleJwtDecoder implements JwtDecoder {
         if(!Double.isNaN(nbf)) claimValues.put("nbf",instant(nbf));
         double authTime=number(claims,"auth_time",true);
         if(!Double.isNaN(authTime)) claimValues.put("auth_time",instant(authTime));
-        claimValues.put("iss",issuer);
+        claimValues.put("iss",canonicalIssuer);
         claimValues.put("aud",audiences);
         claimValues.put("jti",text(claims,"jti",300,false));
         claimValues.put("sub",text(claims,"sub",300,false));

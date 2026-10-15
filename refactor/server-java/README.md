@@ -1,4 +1,4 @@
-# MentorFlow Java server (first migration step)
+# MentorFlow Java server (local migration work)
 
 This Spring Boot 3 / Java 21 service is a local implementation of the authenticated catalog endpoints and the three account-core health endpoints. Its contracts are checked over HTTP against the existing Python server. Python defaults to `PERSONAL_LOCAL`; this first Java version requires `ENTERPRISE_SERVER`. It is not wired into production routing and is not ready for an online cutover.
 
@@ -38,7 +38,15 @@ The deployment mode and OIDC configuration use the existing Python environment n
 | `MENTORFLOW_KEYCLOAK_HTTP_TIMEOUT_SECONDS` | JWKS request timeout; default 10. |
 | `MENTORFLOW_KEYCLOAK_JWKS_CACHE_SECONDS` | JWKS cache period; default 300. |
 | `MENTORFLOW_DATABASE_URL` | Existing database connection setting used by the identity directory and readiness check. |
-| `MENTORFLOW_IDENTITY_SESSION_COOKIE_NAME` | Used to detect cookie/bearer conflicts; cookie sessions remain Python-owned. |
+| `MENTORFLOW_IDENTITY_SESSION_COOKIE_NAME` | Cookie/bearer conflict detection and expired-cookie clearing; valid browser-cookie sessions remain Python-owned. |
+| `MENTORFLOW_KEYCLOAK_ISSUER_MIGRATION_JSON` | Existing bounded issuer migration window and authority digest. |
+| `MENTORFLOW_IDENTITY_CONTINUITY_FILE`, `MENTORFLOW_IDENTITY_CONTINUITY_SHA256`, `MENTORFLOW_IDENTITY_CONTINUITY_SIGNATURE_HEX`, `MENTORFLOW_IDENTITY_CONTINUITY_PUBLIC_KEY_HEX` | Existing signed per-subject issuer continuity configuration. |
+| `MENTORFLOW_NATIVE_IDENTITY_ENDPOINT` | Enables native auth through the existing private Keycloak verifier endpoint. |
+| `MENTORFLOW_NATIVE_IDENTITY_CA_FILE`, `MENTORFLOW_NATIVE_IDENTITY_CERT_FILE`, `MENTORFLOW_NATIVE_IDENTITY_KEY_FILE` | Existing native-verifier TLS material. |
+| `MENTORFLOW_NATIVE_EXTERNAL_ISSUER` | Optional verifier issuer; checked and canonicalized by the identity configuration. |
+| `MENTORFLOW_NATIVE_AUTH_SINGLE_PROCESS`, `WEB_CONCURRENCY` | Native auth requires both to be `1`. |
+| `MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS` | Native family lifetime; default `0` means no time expiration. Access tokens remain short-lived. |
+| `MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED`, `MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG` | Existing opt-in lifecycle admin configuration, required for checking current account/password binding on native login and refresh. |
 | `MENTORFLOW_SERVICE_IDENTITY_GRANTS_JSON` | Existing configured service-account grants, with the same permission enum. |
 | `MENTORFLOW_KEYCLOAK_DISCOVERY_URL` | URL used by the readiness probe. |
 | `MENTORFLOW_CATALOG_DIR` | Catalog directory; defaults to `/run/mentorflow/catalog`. |
@@ -49,7 +57,9 @@ Catalog files are `source-whitelist.json` and `model-prices.json`. Each must be 
 
 ## Migration boundary
 
-This first step validates RS256 bearer JWTs and resolves organization/workspace membership through the shared identity directory. Opaque desktop-native access tokens, Python browser-cookie sessions, and issuer migration/continuity remain Python-owned. Do not point production traffic at this service or switch an nginx route based only on this local build. A production cutover requires the separately requested shadow comparison and explicit user approval.
+The service validates RS256 JWTs, signed issuer continuity, and its own native access tokens, resolving membership through the shared identity directory. Native login/refresh/logout/session use the existing Alembic-owned `native_session_families` table; Java never creates or migrates production tables. Refresh tokens survive service restart and can rotate in either implementation over the same database.
+
+Access-token hashes and valid browser-cookie sessions are process-local in Python. Existing database rows cannot reconstruct them. Therefore a native access token minted by one implementation is not recognized by the other, and Java does not accept a valid Python browser-cookie session. These are explicit migration gaps, covered by HTTP tests rather than substituted shared stores. Do not split protected traffic across the two implementations or switch production routing based only on this local build. Cutover needs an agreed session handoff and explicit user approval.
 
 ## HTTP contracts and measurements
 
@@ -69,3 +79,5 @@ The same assertions receive a Python or Java base URL. Both real local servers u
 Set `JAVA142_BENCHMARK=1` for a separate measurement run. It makes 20 warm-up requests and 1000 sequential requests per backend and writes `build/resource142.json`; default test runs skip this optional measurement. RSS sums the server process and descendants, including the Windows virtualenv redirector and its actual Python worker. This is a local Windows measurement with fake external membership state, not a production PostgreSQL/Linux capacity test.
 
 Response comparisons preserve status, application headers, content length and UTF-8 body bytes. Readiness excludes `dependencies[*].duration_ms` and the resulting content length only; HTTP server/date/connection framing is transport-specific. Fixed request IDs and token times keep the remaining values deterministic.
+
+The `144` HTTP tests additionally start real embedded PostgreSQL 17.6 (test-only Zonky dependency), apply existing Alembic migrations with the existing database roles/schema prerequisites, and use a local TLS Keycloak substitute. Run `dependency:build-classpath -DincludeScope=test -Dmdep.outputFile=<scratch>/test-classpath.txt` after building; their scratch root is `D:/MentorFlow/.local/test-tmp/auth144`. No H2, production credentials, remote identity service or user data are used. Native contract comparisons normalize generated secrets and clock values, and separately compare durable family state and concurrent operations.

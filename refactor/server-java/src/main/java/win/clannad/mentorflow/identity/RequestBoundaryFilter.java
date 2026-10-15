@@ -17,6 +17,7 @@ public final class RequestBoundaryFilter extends OncePerRequestFilter {
         String id=request.getHeader("X-Request-ID"); id=id==null?"":id.strip();
         if (!id.matches("[A-Za-z0-9._:-]{1,128}")) { byte[] bytes=new byte[16]; RANDOM.nextBytes(bytes); id=HexFormat.of().formatHex(bytes); }
         request.setAttribute("request_id",id); response.setHeader("X-Request-ID",id);
+        request.setAttribute("identity_settings",settings);
         response.setHeader("X-MentorFlow-Runtime-Profile","ACCOUNT_CORE_MVP");
         try {
             if (request.getRequestURI().startsWith("/api") && !settings.mode.equals("ENTERPRISE_SERVER"))

@@ -307,7 +307,8 @@ def test_http142_jwt_rejections_match(python_client142,java_client142,local_jwks
     tokens=[]
     valid=local_jwks142.token()
     head,claims,signature=valid.split(".")
-    tokens.append(".".join((head,claims,"A"+signature[1:]))) # changed signature byte, not unused base64 bits
+    replacement="B" if signature[0]=="A" else "A"
+    tokens.append(".".join((head,claims,replacement+signature[1:]))) # Always change the byte, even when it already starts with A.
     tokens.extend((
         local_jwks142.token(extra_claims={"iss":"https://wrong.example/realm"}),
         local_jwks142.token(audience="wrong-api"),
