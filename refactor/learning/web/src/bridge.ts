@@ -1,14 +1,17 @@
 // Page side of the Qt bridge (see refactor/learning/app/bridge.py for the wire format).
 import { beginActivity, endActivity, streamActivity } from './loading/activity'
+import { useApp, type ModelFault } from './store'
 
 type Pending = { resolve: (v: any) => void; reject: (e: BridgeFailure) => void; onStream?: (d: string) => void }
 type Listener = (data: any) => void
 
 export class BridgeFailure extends Error {
   code: string
-  constructor(code: string, message: string) {
+  model_fault?: ModelFault
+  constructor(code: string, message: string, fault?: ModelFault) {
     super(message)
     this.code = code
+    this.model_fault = fault
   }
 }
 
@@ -37,12 +40,15 @@ function handle(text: string) {
     if (!p) return
     pending.delete(msg.id)
     endActivity(msg.id)
+    const fault = msg.error?.model_fault ?? msg.result?.failure?.model_fault
+    if (fault) useApp.getState().setModelStatus({state:'error',short:fault.short,fault})
     if (msg.ok) p.resolve(msg.result)
-    else p.reject(new BridgeFailure(msg.error?.code ?? "ERROR", msg.error?.message ?? "操作没有完成。"))
+    else p.reject(new BridgeFailure(msg.error?.code ?? "ERROR", msg.error?.message ?? "操作没有完成。",fault))
   } else if (msg.type === "stream") {
     streamActivity(msg.id, msg.delta ?? '')
     pending.get(msg.id)?.onStream?.(msg.delta)
   } else if (msg.type === "event") {
+    if (msg.name === 'model_status') useApp.getState().setModelStatus(msg.data)
     listeners.get(msg.name)?.forEach((fn) => fn(msg.data))
   }
 }

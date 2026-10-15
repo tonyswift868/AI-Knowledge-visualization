@@ -93,6 +93,7 @@ export function App() {
                                                                   notice: r.notice, ready: r.ready });setBootstrapError('')}}).catch(e => {if(alive)setBootstrapError(e.message)})
     load()
     call("sync.status").then((d) => s.set({ sync: d })).catch(() => {})
+    call("models.status").then(d=>{if(d?.state)s.setModelStatus(d)}).catch(()=>{})
     const offs = [
       on("ready", (d) => { s.set({ ready: true, account: d.account }); call("settings.get").then((r) => s.set({ settings: r.settings })) }),
       on("account", (d) => s.set({ account: d })),
@@ -100,7 +101,7 @@ export function App() {
       on("session_notice", (d) => s.set({ notice: d })),
       on("window", (d) => s.set({ fullscreen: !!d.fullscreen })),
       on("navigate", (d) => { if (d?.route === "home") s.go("home") }),
-      on("scope_changed", () => s.set({ ready: false, sync: null })),
+      on("scope_changed", () => s.set({ ready: false, sync: null, modelStatus:{state:'unknown',short:'模型待验证'},modelFault:null,modelRetry:null })),
       on("sync_status", (d) => s.set({ sync: d })),
       on("sync_conflict", (d) => s.toast("info", d.message)),
     ]
@@ -151,6 +152,9 @@ export function App() {
             </button>
             <div className="grow" />
             <span className={`chip ${s.ready ? "" : "warn"}`}><span className="dot" />{s.ready ? "账号已连接" : "正在连接账号服务…"}</span>
+            <button className={`chip model-status ${s.modelStatus.state}`} title={s.modelStatus.fault?.message ?? '以最近一次模型请求结果为准'}
+              onClick={()=>s.modelStatus.fault ? s.set({modelFault:s.modelStatus.fault}) : s.toast('info',s.modelStatus.state === 'ok' ? '最近一次模型请求正常。' : '还没有模型请求结果，可到设置测试连接。')}>
+              <span className="dot"/>{s.modelStatus.short}</button>
             {s.ready && s.sync && (
               <button className={`chip sync ${s.sync.state}`} title={s.sync.state === "failed" ? "点一下重试" : "点一下立即同步"}
                       onClick={() => call("sync.now").then((d) => s.set({ sync: d })).catch(() => {})}>

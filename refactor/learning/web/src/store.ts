@@ -33,6 +33,9 @@ export type Account = { name: string; role_label: string; settings_available?: b
 export type Notice = { message: string; show_verify: boolean } | null
 export type SyncStatus = { state: "syncing" | "synced" | "failed" | "reauth" | "superseded"; at: string | null; message: string; phase?: string; show_progress?: boolean } | null
 export type Toast = { id: number; kind: "ok" | "error" | "info"; text: string }
+export type ModelFault = { id?: string; category: string; code: string; message: string; short: string; purpose?: string; plan_id?: string;
+  actions: { id: string; label: string; url?: string }[] }
+export type ModelStatus = { state: 'unknown' | 'ok' | 'error'; short: string; fault?: ModelFault }
 
 type State = {
   route: Route
@@ -48,6 +51,10 @@ type State = {
   fullscreen: boolean
   sidebarCollapsed: boolean
   toasts: Toast[]
+  modelStatus: ModelStatus
+  modelFault: ModelFault | null
+  modelRetry: (() => void) | null
+  setModelStatus: (status: ModelStatus) => void
   go: (route: Route, tab?: SettingsTab) => void
   set: (patch: Partial<State>) => void
   toast: (kind: Toast["kind"], text: string) => void
@@ -70,9 +77,15 @@ export const useApp = create<State>((set) => ({
   fullscreen: false,
   sidebarCollapsed: false,
   toasts: [],
+  modelStatus: {state:'unknown', short:'模型待验证'},
+  modelFault: null,
+  modelRetry: null,
+  setModelStatus: (status) => set((s) => ({modelStatus:status,
+    modelFault: status.state === 'ok' ? null : status.fault && status.fault.id !== s.modelStatus.fault?.id ? status.fault : s.modelFault})),
   go: (route, tab) => set((s) => ({ route, settingsTab: tab ?? s.settingsTab })),
   set: (patch) => set(patch),
   toast: (kind, text) => {
+    if (kind === 'error' && useApp.getState().modelStatus.fault?.message === text) return
     const id = ++toastId
     set((s) => ({ toasts: [...s.toasts.slice(-3), { id, kind, text }] }))
     setTimeout(() => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), kind === "error" ? 6000 : 3200)

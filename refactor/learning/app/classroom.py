@@ -154,7 +154,13 @@ class Classroom:
                         def emit(delta):
                             with job['condition']:job['chunks'].append(delta);job['condition'].notify_all()
                         try:job['result']=self._generate_teacher(plan_id,job['tctx'],job['request'],job['cancel'],emit)
-                        except Exception as exc:job['error']=exc
+                        except Exception as exc:
+                            if isinstance(exc, AgentFormatError) and not job['cancel'].is_set():
+                                from ..connections.faults import present_error
+                                log.exception('prefetched teacher format retries exhausted')
+                                exc=ModelError('AGENT_FORMAT','回复格式不符合要求。')
+                                present_error(self.services.gateway,exc,purpose='teacher',plan_id=plan_id)
+                            job['error']=exc
                         finally:
                             with job['condition']:job['done']=True;job['condition'].notify_all()
                     threading.Thread(target=generate,name='classroom-prefetch',daemon=True).start()
@@ -170,6 +176,9 @@ class Classroom:
                       and group['version']==self._teaching_version(course,state) else None)
             for job in group['jobs'].values():
                 if job is not selected:job['cancel'].set()
+            if selected:
+                with selected['condition']:
+                    selected['failed_before_click']=bool(selected['done'] and selected['error'])
             return selected
 
     def _activity_key(self, plan_id):
@@ -216,6 +225,9 @@ class Classroom:
                         self._resume_materials(course, state, ctx)
                         if original.get('phase') != 'practice' and state.get('phase') != 'practice' and not (action and action[0]=='start_practice'):
                             self._prepare_next_module(course, state, entering=bool(action and action[0]=='enter'))
+                previous_fault=(original.get('failure') or {}).get('model_fault')
+                clear=getattr(self.services,'clear_model_fault_scope',None)
+                if previous_fault and callable(clear):clear(previous_fault.get('purpose','teacher'),plan_id)
                 state.pop("failure", None)
                 if action:
                     retried=getattr(self._local,'action',None)
@@ -226,8 +238,17 @@ class Classroom:
                 raise BridgeError("CANCELLED", "已停止，当前题目和位置保留。") from None
             except (ModelError, AgentFormatError, StoreError, BridgeError) as exc:
                 state = self._local.point_checkpoint or original
+                action=getattr(self._local,'action',None) or action
+                fault = None
+                if isinstance(exc, (ModelError, AgentFormatError)):
+                    from ..connections.faults import present_error
+                    if isinstance(exc, AgentFormatError):
+                        log.exception('teacher format retries exhausted')
+                        exc = ModelError('AGENT_FORMAT', '回复格式不符合要求。')
+                    fault = present_error(self.services.gateway, exc, purpose='classroom:'+str(action[0] if action else 'next'), plan_id=plan_id)
                 if self._local.point_checkpoint and action:action=('next',[],action[2])
                 state["failure"] = dict(message=getattr(exc, "message", str(exc)),
+                    model_fault=fault,
                     action=action[0] if action else "next", args=action[1] if action else [],
                     request_id=action[2] if action else uuid.uuid4().hex)
                 if ctx: ctx.stream(RESET)
@@ -1122,6 +1143,10 @@ class Classroom:
         request=teacher_agent.teacher_request(tctx)
         selected=getattr(self._local,'prefetched',None)
         self._local.prefetched=None
+        # Only a prediction that failed BEFORE this user action is restarted.
+        # Adopting a pending prediction keeps its original send time/deadline.
+        if selected and selected.get('failed_before_click'):
+            selected['cancel'].set();selected=None
         if selected and selected['request']==request and not selected['cancel'].is_set():
             offset=0
             try:
@@ -1143,6 +1168,7 @@ class Classroom:
                 result=selected['result']
                 log.info('classroom prefetch hit plan=%s ready=%s',course.plan_id,selected['done'])
             except ModelCancelled:raise
+            except (ModelError, AgentFormatError):raise
             except Exception:
                 log.info('classroom prefetch unavailable; generating current reply',exc_info=True)
                 if ctx:ctx.stream(RESET)

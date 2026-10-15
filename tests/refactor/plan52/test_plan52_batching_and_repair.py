@@ -89,7 +89,7 @@ def test_plan52_intent_two_bad_outputs_leave_domain_unchanged(flow,monkeypatch):
     monkeypatch.setattr(model,'complete',lambda *a,**k:SimpleNamespace(text='{"intents":['))
     result=f.run(pid,lambda d,c:f.chat(d,c,'改成别的目标'),c)['draft']
     assert all(result.get(k)==before.get(k) for k in domain)
-    assert result['messages'][-1]['text'].startswith('没听懂，换个说法。')
+    assert result['messages'][-1]['text'] == '软件出了点问题，没拿到回复（不是网络，也不是模型服务的问题），已自动记录。请点重试'
 
 
 def test_plan52_truncation_does_not_consume_one_format_repair(flow,monkeypatch):

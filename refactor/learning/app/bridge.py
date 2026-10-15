@@ -181,6 +181,12 @@ class AppBridge(QObject):
             diagnostic_event('bridge', state='FAILED', code=getattr(exc, 'code', 'INTERNAL'), exc_info=True)
             code = getattr(exc, "code", None)
             message = getattr(exc, "message", None)
+            fault = getattr(exc, 'model_fault', None)
+            if isinstance(code, str) and (code.startswith('MODEL_') or code == 'AGENT_FORMAT') and code != 'MODEL_CANCELLED':
+                from ..connections.faults import model_fault
+                reporter = getattr(self, 'model_error_handler', None)
+                fault = fault or (reporter(exc, handler.method, params) if callable(reporter) else model_fault(exc))
+                if fault: message = fault['message']
             # PlanError deliberately keeps its text in Exception.args. Preserve
             # known auth codes even when that exception has no .message field.
             if code == 'NATIVE_SESSION_SUPERSEDED':
@@ -193,6 +199,7 @@ class AppBridge(QObject):
             if isinstance(code, str) and isinstance(message, str) and message:
                 response = {"type": "response", "id": request_id, "ok": False,
                             "error": {"code": code, "message": message}}
+                if fault: response['error']['model_fault'] = fault
             else:
                 log.exception("bridge handler failed: %s", request_id)
                 response = {"type": "response", "id": request_id, "ok": False,

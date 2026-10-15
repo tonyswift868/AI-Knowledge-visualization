@@ -65,7 +65,7 @@ def test_retry86_exhaustion_preserves_public_error_and_proven_zero_usage(tmp_pat
     with pytest.raises(ModelError) as caught:
         g.complete('minute_recalculation', MESSAGES)
     assert caught.value.code == 'MODEL_CONNECTION_FAILED'
-    assert str(caught.value) == '无法连接模型服务，请检查地址和网络。'
+    assert str(caught.value) == '连不上模型服务，请检查网络'
     assert len(calls) == 3 and delays == [1., 3.]
     state, code, stored, _ = ledger_row(g)
     meta = json.loads(stored)['raw']['_mentorflow']

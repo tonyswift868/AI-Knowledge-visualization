@@ -5,7 +5,7 @@ import {
 } from "lucide-react"
 import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
-import { Button, Field, Segmented, TASK_TIME_TIP, Tip } from "../ui"
+import { Button, Field, Segmented, TASK_TIME_TIP, Tip, useModelRetry } from "../ui"
 import { PlanGraph, type GraphModule } from "../planning/PlanGraph"
 import { Loading } from '../loading/Loading'
 
@@ -136,6 +136,7 @@ export function NewPlan() {
   function adjustContent(value: string) { setText(value); chatInput.current?.focus() }
   const idRef = React.useRef<string | null>(null)
   const abort = React.useRef<AbortController | null>(null)
+  const lastModelAction = React.useRef<{method:string;params:Record<string,unknown>}|null>(null)
   const [loadError,setLoadError] = React.useState('')
   const [loadAttempt,retryLoad] = React.useReducer(n=>n+1,0)
 
@@ -155,6 +156,7 @@ export function NewPlan() {
 
   async function act(method: string, params: Record<string, unknown> = {}) {
     if (!draft) return
+    lastModelAction.current={method,params}
     beginRound()
     setPending(true)
     abort.current=new AbortController()
@@ -168,6 +170,8 @@ export function NewPlan() {
     } finally { setPending(false);abort.current=null }
   }
 
+  useModelRetry(()=>{const previous=lastModelAction.current;if(previous && !pending)void act(previous.method,previous.params)},
+    f=>!!lastModelAction.current && f.plan_id===draft?.plan_id && !['point_links','point_difficulty'].includes(f.purpose ?? ''))
   async function say() {
     const value = text.trim()
     if (!value) return

@@ -41,6 +41,8 @@ def vendor_error(provider, status, data=None):
     balance |= provider == 'openai' and code == 'credit_balance_exhausted'
     if balance:
         return ModelError(MODEL_INSUFFICIENT_BALANCE, INSUFFICIENT_BALANCE_MESSAGE, status)
+    if kind == 'overloaded_error':
+        return http_error(503)
     if status < 400:
         status = {'authentication_error': 401, 'permission_error': 403,
                   'rate_limit_error': 429, 'overloaded_error': 503}.get(kind, 500)
@@ -119,6 +121,8 @@ class HTTP:
                     if response.is_stream_consumed:
                         self.observe_bytes(response.content)
                 if response.status_code != 200:
+                    if self.accounting:
+                        self.accounting.first_event()  # A definitive HTTP error is not a queued response.
                     self.evidence.stage = 'http_error_response'
                     # Redirects are rejected before reading the body or credentials
                     # could be sent to a second host, even on a supplied client.
@@ -147,6 +151,8 @@ class HTTP:
                         break
                     raise ModelError('MODEL_RESPONSE_TOO_LARGE', '模型回复过大，请缩小请求后重试。')
                 raw.extend(chunk)
+                if raw.strip() and self.accounting and response.status_code == 200:
+                    self.accounting.first_event()
                 self.check()
         finally:
             # A cancel/timeout/read failure can race the final body chunk. Meter
@@ -213,6 +219,8 @@ class HTTP:
                                     self.evidence.event(event, None)
                                     raise
                             self.evidence.event(event, data)
+                            if self.accounting and data is not None and event != 'ping' and data.get('type') != 'ping':
+                                self.accounting.first_event()
                             if self.accounting:
                                 self.accounting.event(event, data)
                             ready.append((event, data))
@@ -246,7 +254,7 @@ class HTTP:
                 raise invalid()
 
 
-async def guarded(factory, timeout, cancel):
+async def guarded(factory, timeout, cancel, accounting=None):
     if cancel is not None and cancel.is_set():
         raise ModelCancelled()
     task = asyncio.create_task(factory())
@@ -255,6 +263,8 @@ async def guarded(factory, timeout, cancel):
             while not task.done():
                 if cancel is not None and cancel.is_set():
                     raise ModelCancelled()
+                if accounting is not None and accounting.first_expired():
+                    raise ModelError('MODEL_FIRST_EVENT_TIMEOUT', '模型暂时无法使用，请稍后再试。')
                 await asyncio.wait({task}, timeout=.02)
             if cancel is not None and cancel.is_set():
                 raise ModelCancelled()

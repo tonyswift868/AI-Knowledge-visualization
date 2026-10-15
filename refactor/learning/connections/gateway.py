@@ -16,6 +16,7 @@ Deletion of a migrated preset must not revoke the old page's key.
 from __future__ import annotations
 
 import copy
+from contextlib import contextmanager
 from dataclasses import replace
 import math
 import hashlib
@@ -35,6 +36,7 @@ from .pricing import PriceCatalog, timestamp
 from .usage import UsageLog
 from .balance import BalanceClient, BalanceHistory, supported as balance_supported
 from .providers._failure_evidence import FailureEvidence
+from .faults import model_fault
 from refactor.runtime_logging import trace_model_call
 
 _UNSET = object()
@@ -95,7 +97,12 @@ class _Cancellation(threading.Event):
 
 
 class ModelGateway:
-    def __init__(self, account_id, data_root, *, price_catalog=None):
+    def __init__(self, account_id, data_root, *, price_catalog=None, first_event_timeout=30.):
+        self.first_event_timeout = first_event_timeout
+        self.status_listener = None
+        self._model_status = dict(state='unknown', message='尚未请求模型', short='模型待验证')
+        self._fault_counts = {}
+        self._presentation = threading.local()
         try:
             self._storage = AccountJSON(account_id, data_root, 'model-gateway.json')
             self._legacy = AccountJSON(account_id, data_root, 'connections.json')
@@ -123,6 +130,60 @@ class ModelGateway:
     def _ensure_open(self):
         if self._closed:
             raise ModelError('MODEL_CLIENT_CLOSED', '模型连接已经关闭。')
+
+    def model_status(self):
+        with self._lock:
+            return copy.deepcopy(self._model_status)
+
+    @contextmanager
+    def defer_errors(self):
+        """The caller publishes only after its existing format/transport retries."""
+        before=getattr(self._presentation,'deferred',False)
+        self._presentation.deferred=True
+        try:
+            yield
+        finally:
+            self._presentation.deferred=before
+
+    def _publish_status(self, value):
+        with self._lock:
+            if self._closed:
+                return  # A late result from the previous account cannot paint the retained window.
+            self._model_status = value
+            listener = self.status_listener
+        if callable(listener):
+            try:
+                listener(copy.deepcopy(value))
+            except Exception:
+                logging.getLogger(__name__).warning('model status observer failed')
+
+    def report_error(self, error, *, purpose='model', plan_id=''):
+        if getattr(error, 'model_fault', None):
+            return error.model_fault
+        if error.code == 'MODEL_CANCELLED': return None
+        try: config = self.get_configuration()
+        except ModelError: config = None
+        provider = config['provider_id'] if config else ''
+        fault = model_fault(error, provider)
+        if not fault: return None
+        key = (purpose, plan_id, fault['category'])
+        with self._lock:
+            count = self._fault_counts.get(key, 0)+1
+            self._fault_counts[key] = count
+        fault = model_fault(error, provider, repeated=count >= 2)
+        if not fault: return None
+        if not getattr(error, 'diagnostic_log_written', False):
+            self._log_failure(error, config, '', [], None, getattr(error,'request_id',None) or uuid.uuid4().hex, purpose)
+        fault.update(id=getattr(error,'request_id',None) or uuid.uuid4().hex, purpose=purpose, plan_id=plan_id)
+        error.model_fault = fault
+        error.message = fault['message']
+        error.args = (error.message,)
+        self._publish_status(dict(state='error', short=fault['short'], fault=fault))
+        return fault
+
+    def clear_fault_scope(self, purpose, plan_id=''):
+        with self._lock:
+            self._fault_counts = {k:v for k,v in self._fault_counts.items() if k[:2] != (purpose,plan_id)}
 
     @staticmethod
     def _fields(provider_id, display_name, base_url, model, temperature, timeout):
@@ -533,7 +594,8 @@ class ModelGateway:
                                                     api_key=secret, messages=messages, system=system, enable_search=enable_search,
                                                     temperature=config['temperature'], timeout=max(.001, deadline-time.monotonic()),
                                                     cancel=token, on_text=receive if on_text is not None else None,
-                                                    max_tokens=max_tokens, reasoning_effort=effort)
+                                                    max_tokens=max_tokens, reasoning_effort=effort,
+                                                    first_event_timeout=self.first_event_timeout)
                         break
                     except ModelError as exc:
                         safe = (getattr(exc, 'safe_to_retry', False) is True
@@ -587,7 +649,7 @@ class ModelGateway:
                     # An invalid answer can still have final, billable meters.
                     # Only the adapter knows whether a stream's usage is partial.
                     observed = self._billable_usage(exc.usage, config, effort)
-                if observed is None and exc.code in {'MODEL_TIMEOUT', 'MODEL_CONNECTION_FAILED', 'MODEL_CANCELLED'}:
+                if observed is None and exc.code in {'MODEL_TIMEOUT', 'MODEL_CONNECTION_FAILED', 'MODEL_CANCELLED', 'MODEL_FIRST_EVENT_TIMEOUT'}:
                     # A missing receipt is unknown, not zero. Preserve whether
                     # the provider was attempted; a pre-send cancel cannot bill.
                     sent = getattr(exc, 'request_attempted', attempted)
@@ -595,6 +657,7 @@ class ModelGateway:
                         'unreported_fields': ['input_tokens', 'cached_input_tokens', 'uncached_input_tokens',
                                               'output_tokens', 'reasoning_tokens', 'search_requests'] if sent else [],
                         'request_attempted': sent,
+                        'first_event_ms': None,
                         'sent_reasoning_parameters': getattr(exc, 'sent_reasoning_parameters', {}),
                     }})
                     observed = self._billable_usage(unknown, config, effort) if config else unknown
@@ -612,7 +675,14 @@ class ModelGateway:
             if error:
                 error.request_id = identifier
                 self._log_failure(error, config, secret, messages, system, identifier, purpose)
+                # Outline/module generation owns its existing truncation/split retry.
+                # Only its exhausted result should reach the user's error banner.
+                if not getattr(self._presentation,'deferred',False) and (error.code != 'MODEL_OUTPUT_TRUNCATED' or purpose == 'connection_test'):
+                    self.report_error(error, purpose=purpose, plan_id=plan_id)
                 raise error
+            self.clear_fault_scope(purpose, plan_id)
+            self._publish_status(dict(state='ok', short='模型正常', message='最近一次模型请求成功。',
+                                      provider_id=config['provider_id'], id=identifier))
             return result
         finally:
             secret = None

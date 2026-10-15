@@ -35,7 +35,7 @@ _ADAPTERS = {'anthropic_messages': anthropic_messages, 'dashscope_generation': d
 def complete(provider_id, *, base_url, model, api_key, messages, system=None,
              enable_search=False, max_search_uses=8, max_tokens=4096, temperature=None,
              timeout=120.0, cancel=None, on_text=None, http_client=None,
-             reasoning_effort=None) -> ModelResult:
+             reasoning_effort=None, first_event_timeout=30.) -> ModelResult:
     if not isinstance(provider_id, str) or provider_id not in REGISTRY:
         raise ModelError('MODEL_CONFIG_INVALID', '请选择支持的模型厂商。')
     spec = REGISTRY[provider_id]
@@ -67,6 +67,7 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
             or type(max_tokens) is not int or max_tokens < 1
             or type(enable_search) is not bool
             or type(timeout) not in {int, float} or not math.isfinite(timeout) or timeout <= 0
+            or type(first_event_timeout) not in {int, float} or not math.isfinite(first_event_timeout) or first_event_timeout <= 0
             or (temperature is not None and (type(temperature) not in {int, float}
                 or not math.isfinite(temperature)))):
         raise ModelError('MODEL_CONFIG_INVALID', '模型调用参数无效。')
@@ -87,7 +88,7 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
     config = dict(provider_id=provider_id, protocol=spec.protocol, base_url=base_url, model=model, messages=messages,
                   system=system, enable_search=enable_search, max_search_uses=max_search_uses,
                   max_tokens=max_tokens, temperature=temperature, on_text=on_text,
-                  reasoning_effort=reasoning_effort)
+                  reasoning_effort=reasoning_effort, first_event_timeout=first_event_timeout)
     accounting = Accounting(config)
     evidence = FailureEvidence(provider_id, api_key)
 
@@ -111,6 +112,8 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
                 cleaned[field] = [evidence.clean(v) for v in value[:128] if isinstance(v, str)]
         error.validation = cleaned
         error.diagnostics = dict(evidence.snapshot(cause), **cleaned)
+        if error.code == 'MODEL_FIRST_EVENT_TIMEOUT':
+            error.diagnostics['reason'] = 'first_event_timeout'
         if error.code == 'MODEL_RESPONSE_INVALID' and error.diagnostics.get('reason') in {None, 'protocol_validation'}:
             error.diagnostics['reason'] = 'protocol_validation:' + evidence.stage
         # Model names are vendor-controlled too; never journal an echoed key.
@@ -130,7 +133,7 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
             return result
 
     try:
-        return asyncio.run(guarded(call, timeout, cancel))
+        return asyncio.run(guarded(call, timeout, cancel, accounting))
     except ModelError as exc:
         raise failure(exc) from None
     except (TimeoutError, httpx.TimeoutException) as exc:

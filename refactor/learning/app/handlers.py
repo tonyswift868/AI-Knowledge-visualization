@@ -54,11 +54,20 @@ def register(bridge, window):
         current = window.services
         if current is None:
             raise BridgeError("NOT_READY", "账号服务还在连接，请稍候。")
+        if hasattr(current, 'bind_model_status'):
+            current.bind_model_status(lambda data: bridge.push('model_status', data))
         return current
+
+    def report_model_error(error, method, params):
+        from ..connections.faults import present_error
+        return present_error(services().gateway, error, purpose=method, plan_id=params.get('plan_id',''))
+    bridge.model_error_handler = report_model_error
 
     # ---------------------------------------------------------------- app
     def bootstrap(params, ctx: CallContext):
         current = window.services
+        if current is not None and hasattr(current, 'bind_model_status'):
+            current.bind_model_status(lambda data: bridge.push('model_status', data))
         settings = current.settings.load() if current else AppSettings.defaults_copy()
         return {"version": APP_VERSION, "account": window.account_info(), "settings": settings,
                 "options": AppSettings.options(), "notice": window.session_notice,
@@ -213,6 +222,7 @@ def register(bridge, window):
     bridge.register("models.select", model_select)
     bridge.register("models.delete", model_delete)
     bridge.register("models.test", model_test)
+    bridge.register('models.status', lambda p,c: services().model_status())
     bridge.register("models.balance", model_balance)
 
     # -------------------------------------------------------------- usage

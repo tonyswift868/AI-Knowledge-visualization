@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from decimal import Decimal
 import json
+import math
 from pathlib import Path
 import re
 import sqlite3
@@ -58,6 +59,13 @@ def _clean_usage(value, depth=0):
         cleaned['request_attempted'] = meta['request_attempted']
     if 'sent_reasoning_parameters' in meta:
         cleaned['sent_reasoning_parameters'] = sent_reasoning(meta['sent_reasoning_parameters'])
+    def latency(value):
+        return value is None or (type(value) in (int,float) and math.isfinite(value) and value >= 0)
+    if 'first_event_ms' in meta and latency(meta['first_event_ms']):
+        cleaned['first_event_ms'] = meta['first_event_ms']
+    values=meta.get('first_event_ms_by_request')
+    if isinstance(values,list) and all(latency(v) for v in values):
+        cleaned['first_event_ms_by_request'] = values[:1024]
     for field in ('thinking_blocks', 'thinking_characters'):
         if type(meta.get(field)) is int and meta[field] >= 0:
             cleaned[field] = meta[field]

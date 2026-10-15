@@ -1,7 +1,7 @@
 import * as React from "react"
-import { CheckCircle2, CircleHelp, Info, XCircle } from "lucide-react"
+import { CheckCircle2, CircleHelp, Info, XCircle, TriangleAlert, X } from "lucide-react"
 import { createPortal } from "react-dom"
-import { useApp } from "./store"
+import { useApp, type ModelFault } from "./store"
 
 // ------------------------------------------------------------------ brand
 export function BrandMark() {
@@ -99,8 +99,13 @@ export function Ring({ value, total, tentative = 0, size = 132, stroke = 12, chi
 export function Toasts() {
   const toasts = useApp((s) => s.toasts)
   const dismiss = useApp((s) => s.dismiss)
+  const fault = useApp((s) => s.modelFault)
   return (
     <div className="toasts" role="status" aria-live="polite">
+      {fault && <div className="toast error model-fault-toast" role="alert">
+        <TriangleAlert aria-hidden="true"/><div className="grow"><div>{fault.message}</div><ModelFaultActions fault={fault}/></div>
+        <button className="icon-btn" aria-label="关闭模型提示" onClick={()=>useApp.getState().set({modelFault:null})}><X/></button>
+      </div>}
       {toasts.map((t) => (
         <div key={t.id} className={`toast ${t.kind}`} onClick={() => dismiss(t.id)}>
           {t.kind === "ok" ? <CheckCircle2 /> : t.kind === "error" ? <XCircle /> : <Info />}
@@ -109,6 +114,35 @@ export function Toasts() {
       ))}
     </div>
   )
+}
+
+const modelRetries=new Set<{run:()=>void;accepts:(fault:ModelFault)=>boolean}>()
+export function ModelFaultActions({fault, onRetry}: {fault:ModelFault; onRetry?:()=>void}) {
+  const retry = useApp(s=>s.modelRetry)
+  const canRetry=!!retry && [...modelRetries].some(entry=>entry.accepts(fault))
+  return <div className="row model-fault-actions">{fault.actions.map(a=>a.id === 'recharge' && a.url
+    ? <a key={a.id} className="btn small" href={a.url} target="_blank" rel="noreferrer">{a.label}</a>
+    : <Button key={a.id} small onClick={()=>['settings','recharge'].includes(a.id) ? useApp.getState().go('settings','models') : (onRetry ?? retry)?.()}
+        disabled={a.id === 'retry' && !onRetry && !canRetry}>{a.label}</Button>)}</div>
+}
+
+export function ModelFaultPanel({fault,onRetry}: {fault:ModelFault;onRetry?:()=>void}) {
+  return <div className="model-fault-panel" role="alert"><TriangleAlert aria-hidden="true"/><div><p>{fault.message}</p>
+    <ModelFaultActions fault={fault} onRetry={onRetry}/></div></div>
+}
+
+// A retry repeats the page's existing action, including its result/event handling.
+// Registration lasts only while that page is mounted; it never replays saved input after navigation.
+export function useModelRetry(retry:()=>void, accepts:(fault:ModelFault)=>boolean = ()=>true) {
+  const latest=React.useRef({retry,accepts})
+  latest.current={retry,accepts}
+  React.useEffect(()=>{
+    const entry={run:()=>latest.current.retry(),accepts:(fault:ModelFault)=>latest.current.accepts(fault)}
+    modelRetries.add(entry)
+    const run=()=>{const fault=useApp.getState().modelStatus.fault;if(fault)[...modelRetries].reverse().find(e=>e.accepts(fault))?.run()}
+    useApp.getState().set({modelRetry:run})
+    return ()=>{modelRetries.delete(entry);useApp.getState().set({modelRetry:modelRetries.size ? run : null})}
+  },[])
 }
 
 // ------------------------------------------------------------------ controls

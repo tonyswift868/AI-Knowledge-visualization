@@ -316,11 +316,16 @@ class PlanFlow:
         try:
             draft = self.load(plan_id)
             try:
+                fault_scope='plan:'+draft['phase']
                 work(draft, ctx)
+                clear=getattr(self.services,'clear_model_fault_scope',None)
+                if callable(clear):clear(fault_scope,plan_id)
             except ModelCancelled:
                 raise BridgeError("CANCELLED", "已停止。") from None
             except ModelError as exc:
-                draft["messages"].append(_msg("ai", "error", f"{exc.message} 可以稍后重试。"))
+                from ..connections.faults import present_error
+                present_error(self.services.gateway, exc, purpose='plan:'+draft['phase'], plan_id=plan_id)
+                draft["messages"].append(_msg("ai", "error", exc.message))
                 self.save(draft)
         finally:
             del self._call_context.cancel
@@ -388,16 +393,20 @@ class PlanFlow:
         AccountJSON(self.services.account_id, self.services.data_root, f"classroom/{plan_id}.json").path.unlink(missing_ok=True)
 
     # ----------------------------------------------------------- model calls
-    def _ask(self, purpose, request, parse, ctx, *, plan_id, search=False, max_tokens=4096):
+    def _ask(self, purpose, request, parse, ctx, *, plan_id, search=False, max_tokens=4096, defer_truncation=False):
+        from contextlib import nullcontext
+        from ..connections.faults import present_error
         system, messages = request[0], request[1]
         messages = list(messages)
         last = None
         transport_retried = format_retried = False
         for attempt in range(3):  # one provider retry and one format repair, both bounded
             try:
-                result = self.services.gateway.complete(purpose, messages, system=system, enable_search=search,
-                                                        cancel=ctx.cancel, plan_id=plan_id, max_tokens=max_tokens,
-                                                        **({'on_text': lambda _text: None} if purpose == 'outline' else {}))
+                gateway=self.services.gateway
+                with gateway.defer_errors() if hasattr(gateway,'defer_errors') else nullcontext():
+                    result = gateway.complete(purpose, messages, system=system, enable_search=search,
+                                              cancel=ctx.cancel, plan_id=plan_id, max_tokens=max_tokens,
+                                              **({'on_text': lambda _text: None} if purpose == 'outline' else {}))
             except ModelError as exc:
                 if (exc.code == MODEL_OUTPUT_TRUNCATED and not transport_retried and max_tokens < 32768
                         and not ctx.cancel.is_set()):
@@ -407,6 +416,8 @@ class PlanFlow:
                     transport_retried = True
                     continue
                 if transport_retried or exc.code not in TRANSIENT or ctx.cancel.is_set():
+                    if not (defer_truncation and exc.code == MODEL_OUTPUT_TRUNCATED):
+                        present_error(self.services.gateway,exc,purpose=purpose,plan_id=plan_id)
                     raise
                 log.info("agent %s transient error %s, retrying once", purpose, exc.code)
                 last = exc
@@ -1650,14 +1661,20 @@ class PlanFlow:
                 points = agents.filter_removed_content(points, batch, draft.get('removed_content', ()))
             return points
         try:
-            return [self._ask("generate", request[:2], parse, ctx, plan_id=draft["plan_id"], max_tokens=8192)[0]]
+            return [self._ask("generate", request[:2], parse, ctx, plan_id=draft["plan_id"], max_tokens=8192, defer_truncation=True)[0]]
         except ModelError as exc:
             if exc.code != MODEL_OUTPUT_TRUNCATED or not split or (minutes is not None and minutes[0] < 4):
+                if exc.code == MODEL_OUTPUT_TRUNCATED:
+                    from ..connections.faults import present_error
+                    present_error(self.services.gateway,exc,purpose='generate',plan_id=draft['plan_id'])
                 raise
             log.info("module %s batch %s hit the output limit; retrying in two halves", module["id"], index)
         halves = agents.split_module_chunks(batch, max_chars=sum(len(c["text"]) for c in batch) // 2 + 1)
         if len(halves) != 2:
-            raise ModelError(MODEL_OUTPUT_TRUNCATED, "模型输出达到上限，这个模块的资料拆小后仍然不行。")
+            from ..connections.faults import present_error
+            error=ModelError(MODEL_OUTPUT_TRUNCATED, "模型输出达到上限，这个模块的资料拆小后仍然不行。")
+            present_error(self.services.gateway,error,purpose='generate',plan_id=draft['plan_id'])
+            raise error
         ranges = agents.batch_minute_ranges(halves, minutes) if minutes is not None else [None, None]
         return [part for i, (half, r) in enumerate(zip(halves, ranges), 1)
                 for part in self._generate_batch(draft, module, half, r, (i, 2), ctx,
@@ -2402,7 +2419,11 @@ class PlanFlow:
         except ModelCancelled:
             raise BridgeError("CANCELLED", "已停止。") from None
         except ModelError as exc:
-            raise BridgeError(exc.code, f"{exc.message} 可以稍后重试。") from None
+            from ..connections.faults import present_error
+            fault=present_error(self.services.gateway,exc,purpose='plan.additions',plan_id=plan_id)
+            error=BridgeError(exc.code,exc.message)
+            error.model_fault=fault
+            raise error from None
         finally:
             self.status(plan_id, "")
             lock.release()

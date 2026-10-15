@@ -53,7 +53,7 @@ def http_error(status):
         401: ("MODEL_AUTH_FAILED", "API Key 无效或没有访问权限。"),
         403: ("MODEL_PERMISSION_DENIED", "模型服务拒绝访问。"),
         404: ("MODEL_NOT_FOUND", "请检查模型地址和模型名称。"),
-        429: ("MODEL_RATE_LIMITED", "请求过于频繁或模型余额不足。"),
+        429: ("MODEL_RATE_LIMITED", "请求太频繁，请稍等再试。"),
     }.get(status, ("MODEL_HTTP_ERROR", "模型服务暂时无法完成请求。"))
     if 300 <= status < 400:
         code, message = "MODEL_REDIRECT_REJECTED", "模型地址发生重定向，请填写最终 API 地址。"
@@ -66,15 +66,17 @@ async def _send(config, secret, messages, idempotency_key=None):
         headers["X-Idempotency-Key"] = str(idempotency_key)[:200]
     raw = bytearray()
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(config["timeout"], connect=5), follow_redirects=False, trust_env=False) as client:
-            async with client.stream("POST", completions_url(config["base_url"]), headers=headers,
-                                     json={"model": config["model"], "messages": messages, "temperature": config["temperature"]}, follow_redirects=False) as response:
-                if response.status_code != 200:
-                    raise http_error(response.status_code)
-                async for chunk in response.aiter_bytes():
-                    if len(raw) + len(chunk) > 2 * 1024 * 1024:
-                        raise ModelError("MODEL_RESPONSE_TOO_LARGE", "模型回复过大，请缩小请求后重试。")
-                    raw.extend(chunk)
+        # Legacy component clients share the same independent first-event guard.
+        # Import at call time: the provider HTTP layer also uses http_error above.
+        from .providers._http import HTTP, guarded
+        from .providers._accounting import Accounting
+        accounting = Accounting(dict(config, provider_id='relay', protocol='openai_chat', enable_search=False))
+        async def read():
+            async with HTTP('relay', secret, config['timeout'], accounting=accounting) as http:
+                async with http.response(completions_url(config['base_url']),
+                    dict(model=config['model'],messages=messages,temperature=config['temperature']),headers) as response:
+                    raw.extend(await http.read(response,limit=2*1024*1024))
+        await guarded(read,config['timeout'],None,accounting)
         try:
             data = json.loads(raw)
             result = data["choices"][0]["message"]["content"]

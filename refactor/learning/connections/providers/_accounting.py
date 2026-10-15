@@ -5,6 +5,7 @@ Only numeric usage, protocol metadata and visible text *lengths* survive errors;
 no prompt, answer, reasoning, tool arguments or URL is attached to an exception.
 """
 from __future__ import annotations
+import time
 
 from ..errors import MODEL_OUTPUT_TRUNCATED, ModelError
 from .base import Usage, combine_usage, usage
@@ -336,15 +337,29 @@ class Accounting:
     """
     def __init__(self, config):
         self.config, self.receipts = config, []
+        self.first_event_timeout = config.get('first_event_timeout', 30.)
+
+    def first_event(self):
+        receipt = self.receipts[-1]
+        if receipt.first_event_ms is None:
+            receipt.first_event_ms = round((time.monotonic()-receipt.sent_at)*1000, 3)
+
+    def first_expired(self):
+        return bool(self.receipts and self.receipts[-1].first_event_ms is None and
+                    time.monotonic()-self.receipts[-1].sent_at >= self.first_event_timeout)
 
     def start(self, body=None):
         self.receipts.append(_Receipt(self.config, body))
+        self.receipts[-1].sent_at = time.monotonic()
+        self.receipts[-1].first_event_ms = None
 
     def annotate(self, usage):
         # Only program-defined parameter values/counts, never arbitrary body
         # content or vendor extensions. Keep the original numeric meters.
         meta = usage.raw.setdefault('_mentorflow', {})
         meta['request_attempted'] = bool(self.receipts)
+        meta['first_event_ms'] = self.receipts[0].first_event_ms if self.receipts else None
+        meta['first_event_ms_by_request'] = [r.first_event_ms for r in self.receipts]
         meta['sent_reasoning_parameters'] = self.receipts[-1].sent_reasoning if self.receipts else {}
         if self.config['protocol'] == 'anthropic_messages':
             meta['thinking_blocks'] = sum(r.thinking_blocks for r in self.receipts)

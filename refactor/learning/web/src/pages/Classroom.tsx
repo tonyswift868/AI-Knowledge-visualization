@@ -12,7 +12,8 @@ import {
 } from "lucide-react"
 import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
-import { Button } from "../ui"
+import { Button, ModelFaultPanel, useModelRetry } from "../ui"
+import type { ModelFault } from '../store'
 import { MicButton, useVoiceInput } from "../voice"
 import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacherVoice"
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
@@ -36,7 +37,7 @@ type Room = {
   concept?: Concept | null
   direct_review?: ReviewEntry & { total: number; entries?: ReviewEntry[] } | null
   preparation?: Preparation | null
-  failure?: { message: string } | null
+  failure?: { message: string; model_fault?: ModelFault } | null
   explanation?: { text: string; source: { title: string; url: string; locator: string }; label: string; open: boolean; message_id: string } | null
   today: (StudyProgress & { needs_rest?: boolean; is_late_night?: boolean }) | null
 }
@@ -230,6 +231,12 @@ export function Classroom() {
     }
   }, [planId, room, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading])
 
+  const retryModel = React.useCallback(()=>{
+    if(room?.failure)void act('classroom.retry',{},'重试这一步…')
+    else if(room?.teaching_version && planId)void call('classroom.cancel_prefetch',{plan_id:planId}).then(()=>call('classroom.prefetch',{plan_id:planId,version:room.teaching_version}))
+  },[room?.failure,room?.teaching_version,planId,act])
+  useModelRetry(retryModel,f=>(!f.plan_id || f.plan_id===planId) && (f.purpose==='teacher' || f.purpose?.startsWith('classroom')===true || !f.purpose))
+
   const recallRequest: RecallRequest = async <T,>(method: string, params: Record<string, unknown>) => {
     if (!planId || acting.current) throw new Error("请等当前操作完成。")
     acting.current = true
@@ -383,7 +390,7 @@ export function Classroom() {
             </span>
           ))}
           </div>}
-        {room.failure && <div className="class-failure129" role="alert"><span title={room.failure.message}>{room.failure.message}</span> <Button small disabled={!!busy}
+        {room.failure && !room.failure.model_fault && <div className="class-failure129" role="alert"><span title={room.failure.message}>{room.failure.message}</span> <Button small disabled={!!busy}
           onClick={() => act("classroom.retry", {}, "重试这一步…")}>重试</Button></div>}
         <MaterialToolbar key={room.module.id} concept={room.concept} entries={room.module.navigation ?? []}/>
         <div className="class-scroll" ref={scroller}>
@@ -440,6 +447,8 @@ export function Classroom() {
             : <Loading active={!!busy} label={busy?.includes('判')||busy?.includes('核对') ? busy : `老师正在想…${busy && !busy.includes('老师') ? ` · ${busy}` : ''}`}
                 shape="conversation" onCancel={abort.current ? ()=>abort.current?.abort() : undefined}/>)}
           {stream === null && <Loading active={!!busy} label={busy ?? '正在记录回答…'}/>}
+          {!busy && room.failure?.model_fault && <div data-turn-key={`model-failure:${room.failure.model_fault.id}`} data-turn-role="assistant">
+            <ModelFaultPanel fault={room.failure.model_fault} onRetry={retryModel}/></div>}
           {q?.kind === "recall" && <RecallQuestion key={`${planId}:${q.id}:${q.purpose}:${q.number ?? ""}:${recallAttempt}`}
             question={q} request={recallRequest} busy={!!busy} next={() => {
               void act("classroom.state", {}, "正在读取下一题…").then((ok) => { if (ok) setRecallAttempt((value) => value + 1) })

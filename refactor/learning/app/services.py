@@ -29,6 +29,7 @@ class AppServices:
         self._catalog = None
         self._chat = None
         self._closed = False
+        self.model_status_listener = None
 
     # -- catalog (server whitelist and prices, cached, with built-in fallback)
     @property
@@ -56,7 +57,25 @@ class AppServices:
             if self._gateway is None and not self._closed:
                 from ..connections.gateway import ModelGateway
                 self._gateway = ModelGateway(self.account_id, self.data_root, price_catalog=self._price_catalog())
+                self._gateway.status_listener = self.model_status_listener
             return self._gateway
+
+    def bind_model_status(self, listener):
+        with self._lock:
+            self.model_status_listener = listener
+            if self._gateway is not None:
+                self._gateway.status_listener = listener
+
+    def model_status(self):
+        # Rendering a status chip must not load the remote price catalogue.
+        with self._lock:
+            status=getattr(self._gateway,'model_status',None)
+            return status() if callable(status) else dict(state='unknown',short='模型待验证')
+
+    def clear_model_fault_scope(self, purpose, plan_id):
+        with self._lock:
+            clear=getattr(self._gateway,'clear_fault_scope',None)
+            if callable(clear):clear(purpose,plan_id)
 
     # -- course store (plans, progress, reports)
     @property

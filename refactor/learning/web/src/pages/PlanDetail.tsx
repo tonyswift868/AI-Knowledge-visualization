@@ -4,7 +4,7 @@ import { ArrowLeft, BookOpen, CalendarClock, ExternalLink, FilePlus2, FileText, 
 import { call, on } from "../bridge"
 import { useApp, type KnowledgeDetail } from "../store"
 import { KnowledgeMap, PointSources } from "../planning/KnowledgeMap"
-import { Button, TASK_TIME_TIP, Tip } from "../ui"
+import { Button, TASK_TIME_TIP, Tip, useModelRetry } from "../ui"
 import { requirementWithoutDates, PointCitations } from "./NewPlan"
 import type { PlanTree } from "./NewPlan"
 import { Loading } from '../loading/Loading'
@@ -67,6 +67,11 @@ export function PlanDetail() {
       if(currentPlan.current===planId&&revision===linksRead.current)setDetail(d)
     } catch(e) {setMinutesError((e as Error).message)}
   }
+  useModelRetry(()=>{
+    const fault=useApp.getState().modelStatus.fault
+    if(fault?.purpose==='point_links')void retryLinks()
+    else if(fault?.purpose==='point_difficulty')void retryMinutes()
+  },f=>f.plan_id===planId && ['point_links','point_difficulty'].includes(f.purpose ?? ''))
 
   React.useEffect(() => {
     if (!planId) { go("plans"); return }
@@ -325,6 +330,9 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
   const [selected, setSelected] = React.useState<string[]>([])
   const [end, setEnd] = React.useState("")
   const [busy, setBusy] = React.useState<string | null>(null)
+  const retryAddition = React.useRef<(()=>void)|null>(null)
+  useModelRetry(()=>retryAddition.current?.(),f=>open && !busy && !!retryAddition.current && f.plan_id===detail.plan.id &&
+    (f.purpose?.includes('addition')===true))
   const titles: Record<string, string> = {}
   detail.stages.forEach((s) => s.modules.forEach((m) => { titles[m.id] = m.title }))
   first?.modules.forEach((m) => { titles[m.key] = m.title })
@@ -346,6 +354,7 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
     if (r?.token) { setToken(r.token); setNames(r.names) }   // keeps any pasted links
   }
   async function analyze() {
+    retryAddition.current=()=>{void analyze()}
     const urls = links.split(/\s+/).filter((u) => /^https?:\/\//.test(u))
     const r = await step("正在读取资料并分析和现有路线的关系（通常半分钟到一分钟）…",
       () => call<{ addition_id: string; preview: AddPreview; failed: string[]; source_quality?: typeof sourceQuality }>("plan.add_analyze", { plan_id: detail.plan.id, token, urls }))
@@ -361,6 +370,7 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
     if (r) setView(r)
   }
   async function generate() {
+    retryAddition.current=()=>{void generate()}
     const r = await step("正在为新增的内容生成知识点…",
       () => call<AddPreview>("plan.add_generate", { addition_id: addition, selected, new_end: end }))
     if (r) setView(r)

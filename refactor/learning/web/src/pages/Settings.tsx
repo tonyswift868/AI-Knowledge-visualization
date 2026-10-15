@@ -6,7 +6,7 @@ import {
 } from "lucide-react"
 import { call, on, BridgeFailure } from "../bridge"
 import { useApp, type Settings as S, type SettingsTab, type TeacherPreset } from "../store"
-import { Button, Field, Segmented, Toggle } from "../ui"
+import { Button, Field, Segmented, Toggle, ModelFaultPanel, useModelRetry } from "../ui"
 import { Loading } from '../loading/Loading'
 
 const TABS: { id: SettingsTab; label: string; icon: any }[] = [
@@ -137,6 +137,7 @@ function Models() {
   const [form, setForm] = React.useState({ provider_id: "deepseek", preset_id: "" as string | null, display_name: "", base_url: "", model: "", api_key: "", timeout: 120 })
   const [saving, setSaving] = React.useState(false)
   const [testing, setTesting] = React.useState(false)
+  const [testFault, setTestFault] = React.useState<import('../store').ModelFault|null>(null)
   const testCancel=React.useRef<AbortController|null>(null)
   React.useEffect(()=>()=>testCancel.current?.abort(),[])
   const [balanceReload, setBalanceReload] = React.useState(0)
@@ -189,15 +190,19 @@ function Models() {
 
   async function test() {
     setTesting(true)
+    setTestFault(null)
     testCancel.current=new AbortController()
     try {
       const r = await call<{ latency_ms: number; model: string }>("models.test",{}, {signal:testCancel.current.signal})
       toast("ok", `连接正常：${r.model || "模型"} 在 ${(r.latency_ms / 1000).toFixed(1)} 秒内回复。`)
     } catch (e) {
-      toast("error", `连接失败：${(e as BridgeFailure).message}`)
+      const error = e as BridgeFailure
+      setTestFault(error.model_fault ?? null)
+      toast("error", error.message)
     } finally { testCancel.current=null;setTesting(false) }
   }
 
+  useModelRetry(test,f=>f.purpose === 'connection_test' || f.purpose === 'models.test' || !f.purpose)
   async function action(method: "models.select" | "models.delete", id: string) {
     try {
       const r = await call<{ presets: Preset[]; active_id: string | null }>(method, { preset_id: id })
@@ -213,6 +218,7 @@ function Models() {
   return (
     <div className="stack">
       <Loading active={testing || saving} label={testing ? '正在验证模型连接…' : '正在保存模型预设…'} onCancel={testing ? ()=>testCancel.current?.abort() : undefined}/>
+      {testFault && <ModelFaultPanel fault={testFault} onRetry={test}/>}
       <div className="card">
         <div className="row between">
           <div>

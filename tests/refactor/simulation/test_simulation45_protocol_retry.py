@@ -76,7 +76,8 @@ def test_simulation45_bridge_reports_real_protocol_failure_after_host_retry(reco
     try:
         summary=Driver(sim,ScriptUser(),Persona()).run(to='sources')
         assert summary['stop']['code']=='BRIDGE_FAILED'
-        assert '原始协议失败' in summary['stop']['message']
+        assert '软件出了点问题，没拿到回复' in summary['stop']['message']
+        assert '原始协议失败' not in summary['stop']['message']
         assert '模拟已止损' not in summary['stop']['message']
         assert sum(c['purpose']=='research' for c in sim.evidence.calls)==2
         assert sim.gateway.halted.is_set()

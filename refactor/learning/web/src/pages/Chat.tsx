@@ -8,7 +8,7 @@ import "katex/dist/katex.min.css"
 import { ArrowLeft, MessageSquarePlus, SendHorizontal, Square, Trash2, UserRoundPen } from "lucide-react"
 import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
-import { Button, SakuraArt } from "../ui"
+import { Button, SakuraArt, useModelRetry } from "../ui"
 import { Loading } from '../loading/Loading'
 
 type Msg = { role: "user" | "assistant"; content: string; seq?: number }
@@ -81,6 +81,7 @@ export function Chat() {
     } catch (e) { toast("error", (e as Error).message) }
   }
 
+  useModelRetry(()=>{void send()},f=>f.purpose==='free_chat' || f.purpose==='chat.send')
   async function send() {
     const text = draft.trim()
     if (!text || pending) return
