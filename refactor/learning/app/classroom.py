@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
+import contextlib
 import copy
 import hashlib
 import importlib
@@ -1196,8 +1197,19 @@ class Classroom:
                     if body.startswith(visible):emit(body[len(visible):])
                     else:emit(RESET);emit(body)
                     visible=body
-            result=self.services.gateway.complete('teacher',request[1],system=request[0],on_text=on_text,
-                cancel=cancel,plan_id=plan_id,max_tokens=4096)
+            def ask():
+                return self.services.gateway.complete('teacher',request[1],system=request[0],on_text=on_text,
+                    cancel=cancel,plan_id=plan_id,max_tokens=4096)
+            # BUG-105: thinking mode can end after thinking with no text; ask once more quietly.
+            defer=getattr(self.services.gateway,'defer_errors',None)
+            try:
+                with (defer() if callable(defer) else contextlib.nullcontext()):result=ask()
+            except ModelError as exc:
+                if (exc.code!='MODEL_RESPONSE_INVALID' or visible
+                        or getattr(exc,'diagnostics',{}).get('reason')!='empty_text_or_invalid_model'):raise
+                from refactor.runtime_logging import event
+                event('classroom',state='TEACHER_EMPTY_RETRY',count=attempt+1,code='PREFETCH' if prefetched else 'FOREGROUND',purpose='teacher')
+                result=ask()
             if cancel and cancel.is_set():raise ModelCancelled()
             try:
                 teaching=teacher_agent.parse_teaching(result.text,tctx)
