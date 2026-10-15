@@ -189,9 +189,10 @@ def test_split135_other_requests_keep_existing_timeout(local135):
 
 
 def test_split135_window_status_remains_syncing_during_split(local135):
-    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtWidgets import QApplication
     from refactor.learning.app.sync import _WindowCourseSyncService
-    app=QCoreApplication.instance() or QCoreApplication([])
+    # Later QWidget tests share this process; a QCoreApplication cannot host them.
+    app=QApplication.instance() or QApplication([])
     fake,transport=local135;store=MemoryStore(*rows135());states=[]
     service=_WindowCourseSyncService(store,transport,auto_start=False)
     service.state_changed.connect(lambda value:states.append(dict(value)))
@@ -206,9 +207,9 @@ def test_split135_window_status_remains_syncing_during_split(local135):
 
 
 def test_split135_partial_rejection_ui_keeps_syncing_and_pending_count(local135):
-    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtWidgets import QApplication
     from refactor.learning.app.sync import _WindowCourseSyncService
-    app=QCoreApplication.instance() or QCoreApplication([])
+    app=QApplication.instance() or QApplication([])
     fake,transport=local135;rows=rows135(5);fake.cap=1;fake.bad={wire(rows[2])[0]}
     service=_WindowCourseSyncService(MemoryStore(*rows),transport,auto_start=False)
     states=[];service.state_changed.connect(lambda value:states.append(dict(value)))
