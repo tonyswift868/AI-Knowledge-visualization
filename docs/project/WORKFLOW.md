@@ -48,7 +48,7 @@
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 143-MF03（样式类不打回，[TEACH-06]，2.0.20）已起草，待转发（基线 bc308837，2.0.19 发出后合入） | classroom |
+| MF-03 | 143-MF03（样式类不打回，[TEACH-06]，2.0.20）进行中（基线 bc308837） | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |

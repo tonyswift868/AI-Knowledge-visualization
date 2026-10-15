@@ -275,7 +275,7 @@
 - 更新：2026-10-10
 
 ### [ARCH-09] 服务器后端逐块改用 Java
-- 状态：第 1 步本机完成，已合入主线（142-MF01）：Spring Boot 3.5、Java 21，身份校验、资料目录、健康检查；同一套 HTTP 契约测试对 Python 版和 Java 版各 9 组全过。Java 内存约 200～245 MiB（Python 约 88～90 MiB），1000 次目录请求平均 3.9 ms（Python 5.5 ms）；本机没有 Docker，Dockerfile 写了没构建。原生登录、cookie、issuer 迁移相关仍只在 Python，切流量前要补。下一步（上服务器并排跑）前先看服务器内存。
+- 状态：第 1 步本机完成，已合入主线（142-MF01）：Spring Boot 3.5、Java 21，身份校验、资料目录、健康检查；同一套 HTTP 契约测试对 Python 版和 Java 版各 9 组全过。Java 内存约 200～245 MiB（Python 约 88～90 MiB），1000 次目录请求平均 3.9 ms（Python 5.5 ms）；本机没有 Docker，Dockerfile 写了没构建。原生登录、cookie、issuer 迁移相关仍只在 Python，切流量前要补。服务器内存（架构师 2026-10-16 只读查看）：共 7.9 GB、已用 1.5 GB、可用 6.4 GB，4 核；现有容器 Keycloak 562 MB、Python 后端 114 MB、Postgres 81 MB；Java 版约 250 MB，并排跑没问题。
 - 用户定（2026-10-15）：用户求职方向是 Java + AI，两个项目都是 Python。服务器上适合 Java 的业务部分改写成 Java，不适合的照旧；尽量不影响现有服务，不能改出无底洞的 bug。
   - 模型调用继续客户端直连，用用户自己的 Key，不做中转。
   - AI 相关（提示词、编排）继续用 Python，不用 Java 硬做。
