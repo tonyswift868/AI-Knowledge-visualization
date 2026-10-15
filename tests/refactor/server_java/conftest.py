@@ -4,6 +4,7 @@ import pytest
 from contract_support144 import (LOCAL, OLD_ISSUER, FakeKeycloak144, make_tls144,
     prepare_databases144, seed_tenant144, start_java144, start_postgres144,
     start_python144, stop_postgres144, stop_server144)
+from contract_support147 import closure147_backends  # noqa: F401
 
 
 @pytest.fixture(scope="session")

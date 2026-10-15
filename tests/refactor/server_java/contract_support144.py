@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 ROOT = Path(__file__).resolve().parents[3]
-LOCAL = Path(r"D:\MentorFlow\.local\test-tmp\auth144")
+LOCAL = Path(os.environ.get("JAVA144_ARTIFACTS", r"D:\MentorFlow\.local\test-tmp\auth144"))
 JAVA_HOME = Path(r"D:\MentorFlow\.local\java\jdk-21.0.12.1+1")
 CLASSPATH_FILE = LOCAL / "test-classpath.txt"
 NATIVE_PREFIX = "/api/enterprise/auth/native"
