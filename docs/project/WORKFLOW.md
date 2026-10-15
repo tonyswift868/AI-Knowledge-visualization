@@ -49,7 +49,7 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 138-MF03（老师回复打回率高、原因进日志，[BUG-101]，2.0.18）已起草，待转发 | classroom |
-| MF-04 | 137-MF04（检查更新顺序与进度，[BUG-100]）已起草，待转发 | runtime |
+| MF-04 | 137-MF04（检查更新顺序与进度，[BUG-100]，2.0.17）进行中 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
