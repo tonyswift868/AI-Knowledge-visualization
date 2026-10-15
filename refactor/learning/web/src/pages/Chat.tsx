@@ -5,11 +5,12 @@ import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import "katex/dist/katex.min.css"
-import { ArrowLeft, MessageSquarePlus, SendHorizontal, Square, Trash2, UserRoundPen } from "lucide-react"
+import { ArrowLeft, Check, Copy, MessageSquarePlus, SendHorizontal, Square, Trash2, UserRoundPen } from "lucide-react"
 import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
 import { Button, SakuraArt, useModelRetry } from "../ui"
 import { Loading, MODEL_SLOW_MESSAGE } from '../loading/Loading'
+import './chat-copy.css'
 
 type Msg = { role: "user" | "assistant"; content: string; seq?: number }
 type Summary = { id: string; title: string; updated_at: string; count: number }
@@ -207,8 +208,45 @@ function Bubble({ m, streaming, cancel }: { m: Msg; streaming?: boolean; cancel?
       {m.content
         ? <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{m.content}</ReactMarkdown>
         : <Loading shape="conversation" slowMessage={MODEL_SLOW_MESSAGE} label="老师正在想…" onCancel={cancel}/>}
+      {!streaming && m.content && <CopyReply text={m.content} />}
     </div>
   )
+}
+
+function CopyReply({ text }: { text: string }) {
+  const toast = useApp((s) => s.toast)
+  const [copied, setCopied] = React.useState(false)
+  const [busy, setBusy] = React.useState(false)
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  React.useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
+  async function copy() {
+    setBusy(true)
+    try {
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
+        if (window.qt?.webChannelTransport) {
+          // Qt has no browser permission prompt UI. A "prompt" state leaves
+          // writeText pending indefinitely, so use the native write-only path.
+          const permission = await navigator.permissions.query({ name: 'clipboard-write' as PermissionName })
+          if (permission.state !== 'granted') throw new Error('Clipboard permission unavailable')
+        }
+        await navigator.clipboard.writeText(text)
+      } catch {
+        // Qt file:// pages may deny clipboard permission; keep this write-only.
+        await call('app.copy_text', { text })
+      }
+      setCopied(true)
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(() => setCopied(false), 2000)
+    } catch (e) {
+      toast('error', `复制失败：${(e as Error).message}`)
+    } finally { setBusy(false) }
+  }
+  return <div className="chat-reply-actions">
+    <button type="button" className="chat-copy" title="复制" aria-label={copied ? '已复制' : '复制'} disabled={busy} onClick={copy}>
+      {copied ? <Check size={14} /> : <Copy size={14} />}<span aria-live="polite">{copied ? '已复制' : '复制'}</span>
+    </button>
+  </div>
 }
 
 function Persona({ onClose }: { onClose: () => void }) {

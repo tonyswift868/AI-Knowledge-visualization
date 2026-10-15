@@ -88,8 +88,20 @@ class AppBridge(QObject):
         # Worker threads hand results to the GUI thread through this queued
         # signal; QWebChannel signals must only be emitted from the GUI thread.
         self._deliver.connect(self._emit, Qt.ConnectionType.QueuedConnection)
+        self.register('app.copy_text', self._copy_text, ui=True)
         if parent is not None and hasattr(parent, '_data_root'):
             self.register('logs.open', self._open_logs, ui=True)
+
+    def _copy_text(self, params, context):
+        from PySide6.QtGui import QGuiApplication
+        text = params.get('text')
+        if not isinstance(text, str):
+            raise BridgeError('PARAM_INVALID', '复制内容必须是文字。')
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is None:
+            raise BridgeError('CLIPBOARD_UNAVAILABLE', '暂时无法写入剪贴板。')
+        clipboard.setText(text)
+        return {'ok': True}
 
     def _open_logs(self, params, context):
         from PySide6.QtCore import QUrl

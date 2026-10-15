@@ -1,0 +1,4 @@
+.chat-reply-actions { display: flex; margin-top: 8px; }
+.chat-copy { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-3); font: inherit; font-size: 0.76rem; line-height: 1.5; cursor: pointer; user-select: none; }
+.chat-copy:hover, .chat-copy:focus-visible { color: var(--accent); border-color: var(--border); background: var(--accent-soft); }
+.chat-copy:disabled { cursor: wait; }
