@@ -15,9 +15,10 @@ try{
   await until('!!document.querySelector(".model-status.unknown")');await js('window.fail134()');
   await until('!!document.querySelector(".model-fault-toast") && !!document.querySelector(".model-status.error")');
   assert(await js(`document.querySelectorAll('.model-fault-toast').length===1 && !document.querySelector('.model-fault-toast').textContent.includes('PRIVATE')`),'one red safe warning');
-  await js(`document.querySelector('[aria-label="关闭模型提示"]').click()`);await until('!document.querySelector(".model-fault-toast")');
+  assert(await js(`!document.querySelector('.model-fault-toast button') && !document.querySelector('.model-fault-toast a')`),'warning bar has no buttons');
+  await js('window.hide134()');await until('!document.querySelector(".model-fault-toast")');
   await js(`document.querySelector('.model-status').click()`);await until('!!document.querySelector(".model-fault-toast")');
-  await js(`document.querySelector('[aria-label="关闭模型提示"]').click();window.fail134()`);await until('!!document.querySelector(".model-fault-toast")');
+  await js('window.hide134();window.fail134()');await until('!!document.querySelector(".model-fault-toast")');
   const box=await js(`(()=>{const r=document.querySelector('.model-fault-toast').getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,width:innerWidth}})()`);assert(box.left>=0&&box.right<=box.width+1,'toast clipped '+JSON.stringify(box));
   assert(box.top<40&&Math.abs((box.left+box.right)/2-box.width/2)<2,'warning bar not at top centre '+JSON.stringify(box));
   await shot(`fault134-${theme}-${width}.png`);await js('window.success134()');

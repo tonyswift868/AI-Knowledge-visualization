@@ -38,5 +38,6 @@ function status(ok=false){const fault={id:`fault134-${++number}`,category:'busy'
 ;(window as any).scenario134=(theme:string)=>{settings.theme=theme;room=structuredClone(initial);fail=true;useApp.setState({route:'classroom',planId:'a'.repeat(32),settings:structuredClone(settings) as any,modelStatus:{state:'unknown',short:'模型待验证'},modelFault:null})}
 ;(window as any).success134=()=>{fail=false;status(true)}
 ;(window as any).fail134=()=>{fail=true;status()}
+;(window as any).hide134=()=>useApp.setState({modelFault:null})
 ;(window as any).settings134=()=>useApp.getState().go('settings','models')
 ;(window as any).ready134=connect().then(()=>{(window as any).scenario134('sakura');createRoot(document.getElementById('root')!).render(<App/>);return true})

@@ -1,5 +1,5 @@
 import * as React from "react"
-import { CheckCircle2, CircleHelp, Info, XCircle, TriangleAlert, X } from "lucide-react"
+import { CheckCircle2, CircleHelp, Info, XCircle, TriangleAlert } from "lucide-react"
 import { createPortal } from "react-dom"
 import { useApp, type ModelFault } from "./store"
 
@@ -107,9 +107,9 @@ export function Toasts() {
     return () => clearTimeout(timer)
   }, [fault])
   return (<>
+    {/* Notice only (user 2026-10-15): no buttons; the in-page panel keeps retry/settings. */}
     {fault && <div className="toast error model-fault-toast" role="alert">
-      <TriangleAlert aria-hidden="true"/><div className="grow"><div>{fault.message}</div><ModelFaultActions fault={fault}/></div>
-      <button className="icon-btn" aria-label="关闭模型提示" onClick={()=>useApp.getState().set({modelFault:null})}><X/></button>
+      <TriangleAlert aria-hidden="true"/><div className="grow">{fault.message}</div>
     </div>}
     <div className="toasts" role="status" aria-live="polite">
       {toasts.map((t) => (

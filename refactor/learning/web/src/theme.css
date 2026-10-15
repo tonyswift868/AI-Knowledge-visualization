@@ -639,8 +639,8 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .bubble .listen { margin-left: 8px; vertical-align: middle; opacity: 0.55; }
 .bubble .listen:hover { opacity: 1; }
 /* One model warning bar at the top centre (user 2026-10-15), shared by all pages and both themes; leaves after 6 s. */
-.toast.model-fault-toast { position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:60; background:#991b32; color:#fff; border:1px solid #ff8da0; cursor:default; align-items:flex-start; width:min(640px,calc(100vw - 32px)); max-width:none; }
-.model-fault-toast > svg { flex-shrink:0; color:#fff; }
+.toast.model-fault-toast { position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:60; background:#991b32; color:#fff; border:1px solid #ff8da0; cursor:default; align-items:center; gap:12px; width:min(640px,calc(100vw - 32px)); max-width:none; padding:16px 20px; font-size:1.08rem; font-weight:600; line-height:1.5; }
+.toast.model-fault-toast > svg { flex-shrink:0; width:26px; height:26px; color:#ffd43b; margin-top:0; }
 .model-fault-toast .icon-btn { color:#fff; flex-shrink:0; }
 .model-fault-actions { flex-wrap:wrap; margin-top:10px; gap:8px; }
 .model-fault-toast .btn { background:#fff; color:#801329; border-color:#fff; text-decoration:none; }
