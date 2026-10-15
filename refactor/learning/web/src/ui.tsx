@@ -100,12 +100,18 @@ export function Toasts() {
   const toasts = useApp((s) => s.toasts)
   const dismiss = useApp((s) => s.dismiss)
   const fault = useApp((s) => s.modelFault)
-  return (
+  // User 2026-10-15: a red bar at the top centre that leaves by itself, like the other error toasts.
+  React.useEffect(() => {
+    if (!fault) return
+    const timer = setTimeout(() => { if (useApp.getState().modelFault === fault) useApp.getState().set({ modelFault: null }) }, 6000)
+    return () => clearTimeout(timer)
+  }, [fault])
+  return (<>
+    {fault && <div className="toast error model-fault-toast" role="alert">
+      <TriangleAlert aria-hidden="true"/><div className="grow"><div>{fault.message}</div><ModelFaultActions fault={fault}/></div>
+      <button className="icon-btn" aria-label="关闭模型提示" onClick={()=>useApp.getState().set({modelFault:null})}><X/></button>
+    </div>}
     <div className="toasts" role="status" aria-live="polite">
-      {fault && <div className="toast error model-fault-toast" role="alert">
-        <TriangleAlert aria-hidden="true"/><div className="grow"><div>{fault.message}</div><ModelFaultActions fault={fault}/></div>
-        <button className="icon-btn" aria-label="关闭模型提示" onClick={()=>useApp.getState().set({modelFault:null})}><X/></button>
-      </div>}
       {toasts.map((t) => (
         <div key={t.id} className={`toast ${t.kind}`} onClick={() => dismiss(t.id)}>
           {t.kind === "ok" ? <CheckCircle2 /> : t.kind === "error" ? <XCircle /> : <Info />}
@@ -113,7 +119,7 @@ export function Toasts() {
         </div>
       ))}
     </div>
-  )
+  </>)
 }
 
 const modelRetries=new Set<{run:()=>void;accepts:(fault:ModelFault)=>boolean}>()

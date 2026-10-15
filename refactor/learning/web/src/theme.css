@@ -638,8 +638,8 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .negotiate button { align-self: flex-start; }
 .bubble .listen { margin-left: 8px; vertical-align: middle; opacity: 0.55; }
 .bubble .listen:hover { opacity: 1; }
-/* One persistent model warning, shared by all pages and both themes. */
-.toast.model-fault-toast { background:#991b32; color:#fff; border:1px solid #ff8da0; cursor:default; align-items:flex-start; max-width:min(540px,calc(100vw - 32px)); }
+/* One model warning bar at the top centre (user 2026-10-15), shared by all pages and both themes; leaves after 6 s. */
+.toast.model-fault-toast { position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:60; background:#991b32; color:#fff; border:1px solid #ff8da0; cursor:default; align-items:flex-start; width:min(640px,calc(100vw - 32px)); max-width:none; }
 .model-fault-toast > svg { flex-shrink:0; color:#fff; }
 .model-fault-toast .icon-btn { color:#fff; flex-shrink:0; }
 .model-fault-actions { flex-wrap:wrap; margin-top:10px; gap:8px; }

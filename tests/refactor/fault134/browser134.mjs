@@ -18,7 +18,8 @@ try{
   await js(`document.querySelector('[aria-label="关闭模型提示"]').click()`);await until('!document.querySelector(".model-fault-toast")');
   await js(`document.querySelector('.model-status').click()`);await until('!!document.querySelector(".model-fault-toast")');
   await js(`document.querySelector('[aria-label="关闭模型提示"]').click();window.fail134()`);await until('!!document.querySelector(".model-fault-toast")');
-  const box=await js(`(()=>{const r=document.querySelector('.model-fault-toast').getBoundingClientRect();return {left:r.left,right:r.right,width:innerWidth}})()`);assert(box.left>=0&&box.right<=box.width+1,'toast clipped '+JSON.stringify(box));
+  const box=await js(`(()=>{const r=document.querySelector('.model-fault-toast').getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,width:innerWidth}})()`);assert(box.left>=0&&box.right<=box.width+1,'toast clipped '+JSON.stringify(box));
+  assert(box.top<40&&Math.abs((box.left+box.right)/2-box.width/2)<2,'warning bar not at top centre '+JSON.stringify(box));
   await shot(`fault134-${theme}-${width}.png`);await js('window.success134()');
   await until('!!document.querySelector(".model-status.ok") && !document.querySelector(".model-fault-toast")');
  }
@@ -31,7 +32,8 @@ try{
  await js('window.settings134()');await until(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='测试连接'&&!b.disabled)`);
  await js(`[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='测试连接').click()`);
  await until(`!!document.querySelector('.content .model-fault-panel')`);await shot('fault134-settings.png');
- await pause(6200);assert(await js(`!!document.querySelector('.model-fault-toast')`),'persistent warning auto disappeared');
+ assert(await js(`!!document.querySelector('.model-fault-toast')`),'settings failure shows the bar');await pause(6200);assert(await js(`!document.querySelector('.model-fault-toast')`),'warning bar should leave after 6 s');
+ await js('window.fail134()');await until('!!document.querySelector(".model-fault-toast")');
  await js('window.success134()');await until('!document.querySelector(".model-fault-toast")');
- fs.writeFileSync(path.join(root,'browser134.json'),JSON.stringify({themes:2,widths:[1050,520],repeat:true,persistent:true,chipRecovery:true,classroom:true,settings:true}));
+ fs.writeFileSync(path.join(root,'browser134.json'),JSON.stringify({themes:2,widths:[1050,520],repeat:true,autoHide:true,chipRecovery:true,classroom:true,settings:true}));
 }finally{ws.close()}
