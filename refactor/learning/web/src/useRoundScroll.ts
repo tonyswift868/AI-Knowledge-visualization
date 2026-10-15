@@ -72,8 +72,8 @@ export function useRoundScroll(container: React.RefObject<HTMLDivElement | null>
     const el = container.current
     if (!el) return
     const stop = () => { state.current.stopped = true }
-    const wheel = (e: WheelEvent) => { if (e.deltaY < 0) stop() }
-    const key = (e: KeyboardEvent) => { if (['ArrowUp','PageUp','Home'].includes(e.key)) stop() }
+    const wheel = () => stop()
+    const key = (e: KeyboardEvent) => { if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','PageUp','PageDown','Home','End',' ','Spacebar'].includes(e.key)) stop() }
     // A pointer on the scroll container also covers dragging its scrollbar.
     // Do not infer intent from scroll events: smooth programmatic scrolling
     // generates those too, including upward movement on a new turn.
