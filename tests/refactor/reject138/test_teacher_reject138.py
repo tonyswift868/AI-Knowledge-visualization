@@ -34,9 +34,7 @@ def case(reason):
     if reason=='REPEATED_OPENING':ctx['concept']['recent_styles']=[dict(lead='这块可以这样理解。')]
     return ctx,bad
 
-REASONS=['STATE_CLAIM','CHINESE_REQUIRED','PARSE_FAILED','HIGHLIGHT_COUNT','HIGHLIGHT_QUESTION',
-    'TOO_LONG','WRAPUP_TOO_LONG','WRAPUP_SENTENCE_COUNT','WRAPUP_QUESTION',
-    'REPEATED_ENDING','REPEATED_OPENING']
+REASONS=['STATE_CLAIM','CHINESE_REQUIRED','PARSE_FAILED','TOO_LONG']
 
 @pytest.mark.parametrize('reason',REASONS)
 @pytest.mark.parametrize('prefetched',[False,True])
@@ -86,8 +84,9 @@ def test_teacher138_prompts_match_existing_limits_and_explain_existing_endings()
 def test_teacher138_absolute_wording_is_accepted(text):
     # User 2026-10-15: no absolute-word rewrite at all.
     ctx,_=case('TOO_LONG')
-    agent.validate_concept(text,ctx)
-    agent.validate_concept(text+'系统只能做这一件事。',ctx)
+    assert agent.parse_teaching(text,ctx).speech==text
+    strong=text+'系统只能做这一件事。'
+    assert agent.parse_teaching(strong,ctx).speech==strong
 
 def test_teacher138_mixed_language_counts_terms_not_letters_and_keeps_length_guard():
     text='==原文介绍三个删除命令。=='+'\n'.join(['比较 `TRUNCATE` 和 `DELETE`。']*20)

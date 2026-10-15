@@ -96,7 +96,9 @@ def test_speed116_long_wrap_rewrites_once_and_keeps_every_character(tmp_path,mon
     env=concept_environment(tmp_path);monkeypatch.setattr(Classroom,'_materials',staticmethod(lambda:env.materials))
     try:
         act(env,'next');act(env,'next');act(env,'next')
-        text='我们把感知和输入串起来理解，'*20+'最后再认识UTF-8/16/32的区别。第二句完整保留。'
+        # Concept closing style is no longer a retry gate. Keep this regression
+        # focused on the retained TOO_LONG rewrite and whole-reply fallback.
+        text='==我们把感知和输入串起来理解。=='+('沿着讲义继续看输入与输出之间的关系。'*24)+'最后再认识UTF-8/16/32的区别。第二句完整保留。'
         env.gateway.replies=[text,text];before=len(env.gateway.calls)
         course=env.room._course(PLAN);state=env.room._load(course);state['concept']['wrapping']=True
         teaching=env.room._teacher(course,state,None,'用一两句收束。',['p0'])

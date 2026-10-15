@@ -17,7 +17,7 @@ def test_focus119_prompt_and_literal_highlights():
     assert not agent.wants_expansion('不用详细讲')
 
 @pytest.mark.parametrize('invalid',['没有荧光的一句话。','==一。== ==二。== ==三。== ==四。==','==为什么？=='])
-def test_focus119_bad_highlights_rewrite_once_without_editing(tmp_path,invalid):
+def test_focus119_bad_highlights_are_kept_without_rewrite(tmp_path,invalid):
     env=make_environment(tmp_path)
     try:
         calls=[]
@@ -26,8 +26,8 @@ def test_focus119_bad_highlights_rewrite_once_without_editing(tmp_path,invalid):
         env.gateway.complete=complete
         co=env.room._course(PLAN);st=env.room._load(co)
         result=env.room._teacher(co,st,None,'解释本点。',['p0'])
-        assert len(calls)==2 and result.speech==invalid
-        assert 'presentation' in calls[-1][1][-1]['content']
+        assert len(calls)==1 and result.speech==invalid
+        assert not any('上一条回复格式不合格' in m['content'] for m in calls[0][1])
         assert not env.store.messages(PLAN,'m0')
     finally:env.room.cancel_materials();env.store.close()
 

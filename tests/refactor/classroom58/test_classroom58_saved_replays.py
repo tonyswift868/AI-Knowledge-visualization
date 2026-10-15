@@ -78,11 +78,11 @@ def test_teacher_replay_rewrites_only_for_highlights_never_pastes_source():
     room._skeleton=lambda *a:(ctx['plan'],ctx['module'])
     room._prefs=lambda course:ctx['prefs'];room._dialogue=lambda *a:[]
     result=room._teacher(course,{},None,ctx['director'],[ctx['current_points'][0]['id']],opening=True)
-    # Preserve the genuine old replay. Missing citations remain acceptable,
-    # while the new 119 presentation rule requests exactly one rewrite.
-    assert len(calls)==2
-    assert 'presentation:' in calls[-1][1][-1]['content']
-    assert result.speech == data['teacher_replies'][1].split('【选项】')[0].strip()
+    # Style issues no longer trigger a rewrite; preserve the first usable
+    # Chinese draft exactly. Genuine parse/language failures remain rejected.
+    assert len(calls)==1
+    assert not any('上一条回复格式不合格' in message['content'] for message in calls[0][1])
+    assert result.speech == data['teacher_replies'][0].split('【选项】')[0].strip()
     assert all(source not in result.speech for source in ctx['excerpts'].values())
     # Repeated genuine format failure is surfaced, never replaced by raw source.
     room.services.gateway.complete=lambda *a,**kw:SimpleNamespace(text='Only English.')

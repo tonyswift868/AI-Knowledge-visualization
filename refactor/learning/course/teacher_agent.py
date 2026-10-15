@@ -147,7 +147,7 @@ def teacher_request(ctx):
         '偏好领域：'+'、'.join(DOMAINS[d] for d in prefs['analogy_domains'])))
     system += ('\n【固定老师人设（只影响措辞）】\n' + prefs['persona'] +
                '\n【规则优先级】教学规则始终优先于人设；人设不得要求计分出题、判分、编造资料或改变教学流程。')
-    system+='\n【精炼与重点，适用于新旧知识点】每次回复用==重点句==标出1～3句最关键的结论，只标完整结论，不把整段都涂满、不标问句；加粗仍用于术语。普通回复约200～300字，开场或简单回应可更短，不为凑字重复。学生明确要求展开、详细点时可以长。不要大段搬原文，想看全文指向“原文出处”。不合要求只重写一次；仍长或标注不合要求，完整保留，任何时候不截断老师的话。大知识点的要点卡由程序提供，你不要重复输出长总结。\n【本次输出自查】普通回复的全部可见正文（含开头、比喻、列表、结尾）合计不超过350字；200～300字已经包含这些部分，不是先讲300字再添例子。“多例子”也只选最有用的一例，其余留给后续对话。至少有一句陈述结论用成对的==包住，最多三句，不把提问放在==里；选项不算荧光结论。'
+    system+='\n【精炼与重点，适用于新旧知识点】每次回复用==重点句==标出1～3句最关键的结论，只标完整结论，不把整段都涂满、不标问句；加粗仍用于术语。普通回复约200～300字，开场或简单回应可更短，不为凑字重复。学生明确要求展开、详细点时可以长。不要大段搬原文，想看全文指向“原文出处”。只有普通回复超过350字且学生未要求展开时，请精炼重写一次；仍长就完整保留，任何时候不截断老师的话。荧光标注、开头与收尾方式只是表达偏好，不因这些样式问题打回重写。大知识点的要点卡由程序提供，你不要重复输出长总结。\n【本次输出自查】普通回复的全部可见正文（含开头、比喻、列表、结尾）合计不超过350字；200～300字已经包含这些部分，不是先讲300字再添例子。“多例子”也只选最有用的一例，其余留给后续对话。尽量有一句陈述结论用成对的==包住，最多三句，不把提问放在==里；选项不算荧光结论。'
     task['presentation']=dict(highlight_sentences=[1,3],target_characters=[200,300],expanded=wants_expansion(task['user']))
     if ctx.get('concept'):
         system+='\n【新式知识点对话】当前大点分成若干小要点，只围绕本步的小要点讲义与对应原文。一个小要点可以聊多轮，没有固定轮数；学生理解一致就深入一层或换个角度，理解偏了或不知道就依据原文换个讲法，口误不纠缠。不能每个小要点都照“举例→提问→讲一段→结束”，也不要求每轮提问；开场可以提问、举例、对比、承接上一小要点，结合实际对话变化。不输出开场选项块。学生说懂了由宿主推进下一小要点，你不擅自结束大点或跳到后面。不判分、不记薄弱。收束任务只用一两句串起目标与已讲内容。'
@@ -232,10 +232,6 @@ def reply_metrics(text):
 
 def validate_presentation(text,ctx):
     metrics=reply_metrics(text)
-    if not 1<=metrics['highlight_sentences']<=3:
-        raise TeachingFormatError('HIGHLIGHT_COUNT','presentation: 用==…==只标1～3句关键结论，不标问句，重新写一次，不硬改或截断原话')
-    if metrics['highlighted_question']:
-        raise TeachingFormatError('HIGHLIGHT_QUESTION','presentation: 用==…==只标1～3句关键结论，不标问句，重新写一次，不硬改或截断原话')
     if metrics['word_count']>350 and not wants_expansion(ctx.get('user','')):
         raise TeachingFormatError('TOO_LONG','presentation: 普通回复约200～300字，精炼到结论及必要解释，重新写一次，不截断')
 
@@ -257,26 +253,6 @@ def teaching_style(text):
 def source_premises(ctx):
     return list(dict.fromkeys(m[0] for text in ctx['excerpts'].values()
         for m in re.finditer(r'(?:假设|如果|若|当)[^。；;\n]{3,240}',text)))
-
-
-def validate_concept(text,ctx):
-    concept=ctx.get('concept')
-    if not concept or concept.get('rewrite_exhausted'):return
-    sentences=_sentences(text)
-    if concept.get('wrapping'):
-        reason=('WRAPUP_TOO_LONG' if len(_plain_teaching(text))>80 else
-                'WRAPUP_SENTENCE_COUNT' if len(sentences)>2 else
-                'WRAPUP_QUESTION' if teaching_style(text)['ending']=='question' else None)
-        if reason:
-            raise TeachingFormatError(reason,'concept_wrap: 收束只写一两句且不超过80字符，不提问，重写一次')
-        return
-    style=teaching_style(text)
-    if concept.get('first_turn') and style['ending']==concept.get('previous_intro_ending'):
-        raise TeachingFormatError('REPEATED_ENDING','concept_ending: 与上一小要点初次收尾相同，结合学生表现选择另一种收尾，不能只是换问号')
-    recent=concept.get('recent_styles',[])
-    basis='\n'.join(ctx['excerpts'].values())
-    if not concept.get('allow_neutral') and len(style['lead'])>6 and style['lead'] not in basis and any(row['lead']==style['lead'] for row in recent):
-        raise TeachingFormatError('REPEATED_OPENING','concept_opening: 重复了最近的同一句开头，直接回应学生，不复用套话')
 
 
 def concept_fallback(text,ctx):
@@ -347,6 +323,5 @@ def _parse_teaching(text,ctx):
     if not re.search(r'[\u3400-\u9fff]',visible):
         raise TeachingFormatError('CHINESE_REQUIRED','speech: 需要中文说明')
     _reject_state_claims(text)
-    validate_concept(text,ctx)
     cited=tuple(dict.fromkeys(mapping[a] for a in _CITATION.findall(visible)))
     return Teaching(text,cited,options)

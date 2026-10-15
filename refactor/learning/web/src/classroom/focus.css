@@ -17,8 +17,10 @@ mark.hl {
   color: var(--text-2); font: inherit; font-size: .85em; cursor: pointer; text-align: left; }
 .focus-reveal:hover { background: var(--accent-soft); color: var(--text); }
 .focus-reveal:focus-visible, .recap-source:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.focus-content .focus-block:not(:has(mark.hl)):not(:has([data-focus-question])) > .focus-reveal { display: inline-flex; }
-.focus-content .focus-block:not(:has(mark.hl)):not(:has([data-focus-question])):not([data-open="true"]) > .focus-body { display: none; }
+/* If the reply has no highlight markers, keep its full text visible. A malformed
+   or older teacher reply must not disappear just because focus mode is enabled. */
+.focus-content:has(mark.hl) .focus-block:not(:has(mark.hl)):not(:has([data-focus-question])) > .focus-reveal { display: inline-flex; }
+.focus-content:has(mark.hl) .focus-block:not(:has(mark.hl)):not(:has([data-focus-question])):not([data-open="true"]) > .focus-body { display: none; }
 .focus-content .focus-body:has(mark.hl) { color: var(--text-2); }
 .focus-content [data-focus-question] { color: var(--text); }
 .recap-card { color: var(--text); background: linear-gradient(135deg, var(--accent-soft), transparent 65%), var(--surface-solid);
