@@ -153,7 +153,7 @@ class Classroom:
                     def generate(job=job):
                         def emit(delta):
                             with job['condition']:job['chunks'].append(delta);job['condition'].notify_all()
-                        try:job['result']=self._generate_teacher(plan_id,job['tctx'],job['request'],job['cancel'],emit)
+                        try:job['result']=self._generate_teacher(plan_id,job['tctx'],job['request'],job['cancel'],emit,prefetched=True)
                         except Exception as exc:
                             if isinstance(exc, AgentFormatError) and not job['cancel'].is_set():
                                 from ..connections.faults import present_error
@@ -1180,7 +1180,7 @@ class Classroom:
         self._teacher_request_page.accept(cache_request[0],cache_request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(accepted))
         return teaching
 
-    def _generate_teacher(self, plan_id, tctx, request, cancel, emit):
+    def _generate_teacher(self, plan_id, tctx, request, cancel, emit, *, prefetched=False):
         """Only model work here: no state, transcript, credits or cache writes."""
         concept=tctx.get('concept')
         original_request=request
@@ -1206,7 +1206,9 @@ class Classroom:
                 if visible!=teaching.speech:emit(RESET);emit(teaching.speech)
                 return teaching,cache_request,teaching.speech if concept else result.text
             except AgentFormatError as exc:
-                log.info('classroom teacher reply rejected attempt=%s reason=%s',attempt,str(exc)[:120])
+                from refactor.runtime_logging import event
+                event('classroom',state='TEACHER_REJECTED',reason=getattr(exc,'reason','PARSE_FAILED'),
+                      count=attempt+1,code='PREFETCH' if prefetched else 'FOREGROUND',purpose='teacher')
                 emit(RESET)
                 if attempt==0:
                     request=(request[0],request[1]+([dict(role='assistant',content=result.text)] if concept else [])+[dict(role='user',content=f'上一条回复格式不合格：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])

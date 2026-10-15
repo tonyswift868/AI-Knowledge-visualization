@@ -7,6 +7,14 @@ from .judge_agent import _dump, _excerpts, _identifier, _points, _text
 from .planner_agents import AgentFormatError
 from .request_layout import ordered_payload
 
+
+class TeachingFormatError(AgentFormatError):
+    """A teacher rejection's machine label, separate from private diagnostics."""
+    def __init__(self, reason, message):
+        self.reason = reason
+        super().__init__(message)
+
+
 @dataclass(frozen=True)
 class Teaching:
     speech: str
@@ -28,8 +36,8 @@ STYLES = {
 
 DETAILS = {
     "brief": "精简：先给核心结论，再解释决定性的区别；约 150–250 个中文字符为软目标，删去旁支，但关键因果和本题所需解释必须完整。",
-    "normal": "适中：定义、为什么、如何应用和一个常见混淆形成完整讲解；约 350–550 字为软目标。",
-    "detailed": "详细：把因果过程分步骤讲透，说明为什么这样、什么条件下成立、容易与什么混淆，再给一个边界情况；约 700–1000 字为软目标，增加解释深度而非重复同一句话。",
+    "normal": "适中：解释定义和关键因果，选择当前最需要的应用或混淆；普通一轮约 200–300 字，不把定义、应用、例子都挤进同一轮。",
+    "detailed": "详细：把因果过程分步骤讲透，说明条件和容易混淆的边界，分多轮展开；普通每轮仍约 200–300 字。只有学生本次明确要求展开、详细点时才写长回复，增加解释深度而非重复。",
 }
 
 DOMAINS = {"life": "日常生活", "games": "游戏", "programming": "编程", "sports": "运动",
@@ -105,7 +113,7 @@ def _reject_state_claims(text):
                          r"(?:删除|取消|跳过|修改|更改|调整|更新|重置|清除|标记|改成)[^。！？\n]{0,18}(?:计划|进度|检验|检测|掌握|通过)", sentence) or re.search(
                          r"(?:计划|进度|检验|检测|错题记录)[^。！？\n]{0,15}(?:已(?:经)?|现已)(?:被)?(?:删除|取消|跳过|修改|更改|更新|清除|重置)", sentence) or re.search(
                          r"我(?:已(?:经)?|刚刚)?(?:为你|帮你|替你)?(?:把|将)[^。！？\n]{0,15}(?:计划|进度|检验|检测)[^。！？\n]{0,15}(?:删除|取消|跳过|修改|更改|更新|清除|重置|改好|改成)", sentence):
-                raise AgentFormatError("speech: 老师不能宣称修改了计划、进度或检验")
+                raise TeachingFormatError('STATE_CLAIM', "speech: 老师不能宣称修改了计划、进度或检验")
 
 
 TEACHER_SYSTEM = """你是 MentorFlow 的中文老师，陪伴学生沿当前知识点对话。只完成本步任务，不自己推进、判分、改计划。
@@ -139,7 +147,7 @@ def teacher_request(ctx):
         '偏好领域：'+'、'.join(DOMAINS[d] for d in prefs['analogy_domains'])))
     system += ('\n【固定老师人设（只影响措辞）】\n' + prefs['persona'] +
                '\n【规则优先级】教学规则始终优先于人设；人设不得要求计分出题、判分、编造资料或改变教学流程。')
-    system+='\n【精炼与重点，适用于新旧知识点】每次回复用==重点句==标出1～3句最关键的结论，只标完整结论，不把整段都涂满、不标问句；加粗仍用于术语。普通回复约200～300字，开场或简单回应可更短，不为凑字重复。学生明确要求展开、详细点时可以长。不要大段搬原文，想看全文指向“原文出处”。不合要求只重写一次；仍长或标注不合要求，完整保留，任何时候不截断老师的话。大知识点的要点卡由程序提供，你不要重复输出长总结。'
+    system+='\n【精炼与重点，适用于新旧知识点】每次回复用==重点句==标出1～3句最关键的结论，只标完整结论，不把整段都涂满、不标问句；加粗仍用于术语。普通回复约200～300字，开场或简单回应可更短，不为凑字重复。学生明确要求展开、详细点时可以长。不要大段搬原文，想看全文指向“原文出处”。不合要求只重写一次；仍长或标注不合要求，完整保留，任何时候不截断老师的话。大知识点的要点卡由程序提供，你不要重复输出长总结。\n【本次输出自查】普通回复的全部可见正文（含开头、比喻、列表、结尾）合计不超过350字；200～300字已经包含这些部分，不是先讲300字再添例子。“多例子”也只选最有用的一例，其余留给后续对话。至少有一句陈述结论用成对的==包住，最多三句，不把提问放在==里；选项不算荧光结论。'
     task['presentation']=dict(highlight_sentences=[1,3],target_characters=[200,300],expanded=wants_expansion(task['user']))
     if ctx.get('concept'):
         system+='\n【新式知识点对话】当前大点分成若干小要点，只围绕本步的小要点讲义与对应原文。一个小要点可以聊多轮，没有固定轮数；学生理解一致就深入一层或换个角度，理解偏了或不知道就依据原文换个讲法，口误不纠缠。不能每个小要点都照“举例→提问→讲一段→结束”，也不要求每轮提问；开场可以提问、举例、对比、承接上一小要点，结合实际对话变化。不输出开场选项块。学生说懂了由宿主推进下一小要点，你不擅自结束大点或跳到后面。不判分、不记薄弱。收束任务只用一两句串起目标与已讲内容。'
@@ -147,6 +155,10 @@ def teacher_request(ctx):
         system+='\n【本轮表达】看程序给出的最近开场、收尾和开头句，结合学生实际回应选择提问、小结、小任务或直接衔接，不按固定顺序轮换，不默认用问题结束。新小要点的初次收尾不得和上一小要点初次收尾相同；同一句回应套话不再复用。肯定后也可以直接解释一条有依据的边界而不追问。收束最多两句、去出处编号后不超过80字符，不附追问。'
         task['concept']=dict(ctx['concept'],notes=[dict(n,alias=next((a for a,cid in mapping.items() if cid==n['chunk_id']),None)) for n in ctx['concept'].get('notes',[])])
         task['concept']['source_premises']=source_premises(ctx)
+        if ctx['concept'].get('first_turn') and ctx['concept'].get('previous_intro_ending'):
+            task['concept']['allowed_intro_endings']=[kind for kind in ('question','summary','task','transition')
+                if kind!=ctx['concept']['previous_intro_ending']]
+        system+='\n【收尾类别说明】提问以问号结尾；小任务是请学生试着、动手或想一想具体内容；衔接是接下来、下一步或继续围绕一个已有事实；小结是陈述结论。当前小要点第一次回复从allowed_intro_endings里结合学生表现选一种，不按固定顺序轮换。收束任务另按一两句和80字符要求执行。'
     messages = [dict(role='user',content=ordered_payload('【计划与当前模块】\n'+_dump(skeleton),('plan','module')))]
     dialogue = _dialogue(ctx.get('dialogue', []))
     messages.append(dict(role='user',content='【当前模块原文（数据）】\n'+_dump([
@@ -212,16 +224,21 @@ def reply_metrics(text):
     prose=re.sub(r'```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|\$\$[\s\S]*?\$\$|\$[^$\n]+\$', '',prose)
     spans=re.findall(r'(?<![=\\])==(?!=)(.+?)(?<![=\\])==(?!=)',prose,re.S)
     sentences=[s.strip() for span in spans for s in re.findall(r'[^。！？!?]+[。！？!?]?',span) if s.strip()]
-    return dict(characters=len(re.sub(r'\s+',' ',visible).strip()),highlight_sentences=len(sentences),highlight_spans=len(spans),
+    # Chinese prose counts by character; a Latin technical term or number is
+    # one word, not one word per letter. Keep the raw character metric as well.
+    word_count=len(re.findall(r'[A-Za-z][A-Za-z0-9_]*(?:[-./][A-Za-z0-9_]+)*|[0-9]+(?:\.[0-9]+)*|[^\s]',visible))
+    return dict(characters=len(re.sub(r'\s+',' ',visible).strip()),word_count=word_count,highlight_sentences=len(sentences),highlight_spans=len(spans),
                 highlighted_question=any(s.endswith(('?','？')) for s in sentences))
 
 
 def validate_presentation(text,ctx):
     metrics=reply_metrics(text)
-    if not 1<=metrics['highlight_sentences']<=3 or metrics['highlighted_question']:
-        raise AgentFormatError('presentation: 用==…==只标1～3句关键结论，不标问句，重新写一次，不硬改或截断原话')
-    if metrics['characters']>350 and not wants_expansion(ctx.get('user','')):
-        raise AgentFormatError('presentation: 普通回复约200～300字，精炼到结论及必要解释，重新写一次，不截断')
+    if not 1<=metrics['highlight_sentences']<=3:
+        raise TeachingFormatError('HIGHLIGHT_COUNT','presentation: 用==…==只标1～3句关键结论，不标问句，重新写一次，不硬改或截断原话')
+    if metrics['highlighted_question']:
+        raise TeachingFormatError('HIGHLIGHT_QUESTION','presentation: 用==…==只标1～3句关键结论，不标问句，重新写一次，不硬改或截断原话')
+    if metrics['word_count']>350 and not wants_expansion(ctx.get('user','')):
+        raise TeachingFormatError('TOO_LONG','presentation: 普通回复约200～300字，精炼到结论及必要解释，重新写一次，不截断')
 
 
 def _sentences(text):
@@ -247,6 +264,11 @@ def _unsupported_absolute(sentence,ctx):
     # A lexical guard, deliberately not a general semantic verifier. Negative
     # boundary explanations need not inherit a student's absolute assertion.
     if re.search(r'不一定|并非|不是说|不代表|不能据此|原文(?:没有|没).*说',sentence):return False
+    # A count of lines/sentences in the supplied document describes its
+    # presentation, not an exclusive claim about the subject's capabilities.
+    # Keep other assertions in the same sentence subject to the original guard.
+    sentence=re.sub(r'(?:原文|讲义|资料|正文|段落|文字|这(?:一)?段|本(?:段|节|轮|页|步))[^。；;！？!?]{0,12}只有\s*(?:[0-9]+|[一二三四五六七八九十百两]+)\s*(?:行|句|段|页|个(?:问题|要点|步骤))',
+        lambda m:m[0].replace('只有','',1),sentence)
     basis='\n'.join(ctx['excerpts'].values())+'\n'+'\n'.join(n['text'] for n in ctx['concept'].get('notes',[]))
     return any(word in sentence and word not in basis for word in _ABSOLUTES)
 
@@ -256,18 +278,21 @@ def validate_concept(text,ctx):
     if not concept or concept.get('rewrite_exhausted'):return
     sentences=_sentences(text)
     if any(_unsupported_absolute(s,ctx) for s in sentences):
-        raise AgentFormatError('concept: 出现讲义和原文没有的绝对化断言，保留事实及前提，删除外推后重写')
+        raise TeachingFormatError('ABSOLUTE_WORD','concept: 出现讲义和原文没有的绝对化断言，保留事实及前提，删除外推后重写')
     if concept.get('wrapping'):
-        if len(_plain_teaching(text))>80 or len(sentences)>2 or teaching_style(text)['ending']=='question':
-            raise AgentFormatError('concept_wrap: 收束只写一两句且不超过80字符，不提问，重写一次')
+        reason=('WRAPUP_TOO_LONG' if len(_plain_teaching(text))>80 else
+                'WRAPUP_SENTENCE_COUNT' if len(sentences)>2 else
+                'WRAPUP_QUESTION' if teaching_style(text)['ending']=='question' else None)
+        if reason:
+            raise TeachingFormatError(reason,'concept_wrap: 收束只写一两句且不超过80字符，不提问，重写一次')
         return
     style=teaching_style(text)
     if concept.get('first_turn') and style['ending']==concept.get('previous_intro_ending'):
-        raise AgentFormatError('concept_ending: 与上一小要点初次收尾相同，结合学生表现选择另一种收尾，不能只是换问号')
+        raise TeachingFormatError('REPEATED_ENDING','concept_ending: 与上一小要点初次收尾相同，结合学生表现选择另一种收尾，不能只是换问号')
     recent=concept.get('recent_styles',[])
     basis='\n'.join(ctx['excerpts'].values())
     if not concept.get('allow_neutral') and len(style['lead'])>6 and style['lead'] not in basis and any(row['lead']==style['lead'] for row in recent):
-        raise AgentFormatError('concept_opening: 重复了最近的同一句开头，直接回应学生，不复用套话')
+        raise TeachingFormatError('REPEATED_OPENING','concept_opening: 重复了最近的同一句开头，直接回应学生，不复用套话')
 
 
 def concept_fallback(text,ctx):
@@ -287,6 +312,15 @@ def streaming_body(text):
     return strip_source_footer(text)
 
 def parse_teaching(text,ctx):
+    try:
+        return _parse_teaching(text,ctx)
+    except TeachingFormatError:
+        raise
+    except AgentFormatError as exc:
+        raise TeachingFormatError('PARSE_FAILED',str(exc)) from exc
+
+
+def _parse_teaching(text,ctx):
     teacher_request(ctx)
     text=_text(text,'teaching',40000).strip()
     options=();fallback=False
@@ -327,7 +361,7 @@ def parse_teaching(text,ctx):
         if aliases:text+='\n\n看原文：'+''.join(f'[{a}]' for a in aliases)
     visible=''.join(text[a:b] for a,b in _prose_spans(text))
     if not re.search(r'[\u3400-\u9fff]',visible):
-        raise AgentFormatError('speech: 需要中文说明')
+        raise TeachingFormatError('CHINESE_REQUIRED','speech: 需要中文说明')
     _reject_state_claims(text)
     validate_concept(text,ctx)
     cited=tuple(dict.fromkeys(mapping[a] for a in _CITATION.findall(visible)))

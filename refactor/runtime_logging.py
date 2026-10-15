@@ -22,7 +22,7 @@ _handler = None
 _crash_file = None
 _lock = threading.RLock()
 _EVENTS = {'startup', 'login', 'refresh', 'sync', 'update', 'model', 'bridge',
-           'exit', 'window', 'qt', 'renderer', 'process'}
+           'exit', 'window', 'qt', 'renderer', 'process', 'classroom'}
 
 
 def log_directory(data_root):
