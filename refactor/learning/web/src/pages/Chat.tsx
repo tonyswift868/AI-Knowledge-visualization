@@ -9,7 +9,7 @@ import { ArrowLeft, MessageSquarePlus, SendHorizontal, Square, Trash2, UserRound
 import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
 import { Button, SakuraArt, useModelRetry } from "../ui"
-import { Loading } from '../loading/Loading'
+import { Loading, MODEL_SLOW_MESSAGE } from '../loading/Loading'
 
 type Msg = { role: "user" | "assistant"; content: string; seq?: number }
 type Summary = { id: string; title: string; updated_at: string; count: number }
@@ -206,7 +206,7 @@ function Bubble({ m, streaming, cancel }: { m: Msg; streaming?: boolean; cancel?
     <div className={`bubble bot ${streaming ? "streaming wait-content" : ""}`} data-selectable>
       {m.content
         ? <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{m.content}</ReactMarkdown>
-        : <Loading shape="conversation" label="老师正在想…" onCancel={cancel}/>}
+        : <Loading shape="conversation" slowMessage={MODEL_SLOW_MESSAGE} label="老师正在想…" onCancel={cancel}/>}
     </div>
   )
 }

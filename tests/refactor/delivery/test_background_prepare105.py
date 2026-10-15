@@ -10,12 +10,12 @@ from tests.refactor.installer.test_startup96_presentation import app96, Feed96, 
 
 
 @pytest.mark.parametrize('failure', [False, True])
-def test_prepare_before_offer_keeps_login_and_event_loop_responsive105(app96, tmp_path, monkeypatch, failure):
+def test_offer_before_prepare_keeps_login_and_event_loop_responsive105(app96, tmp_path, monkeypatch, failure):
     monkeypatch.setattr(per_user_install, 'schedule_updater_refresh', lambda *_: None)
     monkeypatch.setattr(per_user_install, 'schedule_program_cleanup', lambda *a, **k: None)
     feed = Feed96(); feed.release.set()
     entered, done = threading.Event(), threading.Event()
-    def download(root, cancel):
+    def download(root, cancel, progress=None, reuse_prepared=False):
         assert threading.current_thread() is not threading.main_thread()
         entered.set()
         while not done.wait(.01):
@@ -29,9 +29,10 @@ def test_prepare_before_offer_keeps_login_and_event_loop_responsive105(app96, tm
     timer = QTimer(); timer.setInterval(5); timer.timeout.connect(lambda: ticks.append(True)); timer.start()
     try:
         ui.start(); pump(app96, lambda: entered.is_set() and gate.isEnabled())
-        assert ui.snapshot()['busy'] and ui._prompt is None
+        assert not ui.snapshot()['busy'] and ui._background_preparing
+        assert ui._prompt.isVisible() and ui._prompt.install.isEnabled()
         pump(app96, lambda: len(ticks)>=5)
-        done.set(); pump(app96, lambda: not ui.snapshot()['busy'])
+        done.set(); pump(app96, lambda: not ui._background_preparing)
         assert ui.state['state']=='OPTIONAL_UPDATE'
         assert ui.state['prepared'] is not failure
         assert ui._prompt.isVisible() and ui._prompt.install.isEnabled()

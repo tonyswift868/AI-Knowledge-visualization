@@ -59,11 +59,13 @@ def test_update37_defer_and_daily_check_survive_window_recreation(tmp_path):
         def check_latest(self, root, cancel=None):
             self.checks += 1
             return dict(state='UPDATE_AVAILABLE', latest='2.0.2')
+        def download_latest(self, root, **kwargs):
+            return dict(state='UPDATE_DOWNLOADED', prepared=True)
     core = Core()
     adapter = DesktopUpdates(app, tmp_path, gate, core=core)
     def finish():
         until = time.monotonic() + 2
-        while adapter.snapshot()['busy'] and time.monotonic() < until:
+        while (adapter.snapshot()['busy'] or adapter._background_preparing) and time.monotonic() < until:
             app.processEvents(); time.sleep(.005)
         assert not adapter.snapshot()['busy']
     try:

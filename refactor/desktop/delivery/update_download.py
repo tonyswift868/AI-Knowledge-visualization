@@ -391,6 +391,10 @@ class ObjectCache:
             total += min(asset['size'], amount)
         return total
 
+    def downloaded_files(self, assets):
+        """Progress only; publication continues to use the existing hash checks."""
+        return sum((self.objects / asset['sha256']).is_file() for asset in assets)
+
     def _download_once(self, asset, *, cancel=lambda: False, progress=lambda n: None):
         if cancel():
             raise DownloadCancelled('download cancelled')
@@ -521,7 +525,9 @@ class ObjectCache:
             if cancel():
                 raise DownloadCancelled('download cancelled')
             downloaded[path] = self.download(release.assets[path], cancel=cancel, progress=progress)
+            progress(0)  # Report completed files, including cached/zero-byte ones.
         trace.mark('T04_ASSET_DOWNLOAD_COMPLETE')
+        progress(0)  # Downloads are finished; the existing reconstruction follows.
         trace.mark('T05_RECONSTRUCTION_BEGIN')
         safe_entry(target.parent,stage_root,directory=True)
         target.parent.mkdir(parents=True,exist_ok=True)

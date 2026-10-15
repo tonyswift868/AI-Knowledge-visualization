@@ -283,6 +283,7 @@ class MatureUpdateService:
             with InstallUpdateLock(self.cache.root):
                 if self._closed: raise DownloadCancelled('update service closed')
                 self._state('PREPARING', '正在准备更新…')
+                if progress is not None: progress(dict(self.snapshot))
                 # Lazy worker-only acceptance: never scan the package while
                 # constructing the ordinary startup/settings UI.
                 if self.cache.accepted_app is None and self._accepted_source_factory is not None:
@@ -297,20 +298,30 @@ class MatureUpdateService:
                     cancel=cancelled, telemetry=getattr(self, 'telemetry', None)))
                 self._state('DOWNLOADING', '正在下载变化文件…', actual_downloaded_bytes=0, **self.plan)
                 assets = [self.release.assets[p] for p in self.plan['download_paths']]
+                self.snapshot = {**self.snapshot, 'total_download_files':len(assets)}
                 import time
                 last_report = 0
                 def report_progress(_):
                     nonlocal last_report
                     self.snapshot = {**self.snapshot, 'actual_downloaded_bytes':self.cache.transport.bytes_received-before,
-                                     'downloaded_bytes': self.cache.downloaded_bytes(assets)}
-                    if progress is not None and time.monotonic() - last_report >= .2:
+                                     'downloaded_bytes': self.cache.downloaded_bytes(assets),
+                                     'downloaded_files':self.cache.downloaded_files(assets)}
+                    done, total = self.snapshot['downloaded_bytes'], self.plan['expected_download_bytes']
+                    if self.snapshot['downloaded_files'] == len(assets):
+                        self.snapshot = {**self.snapshot, 'state':'PREPARING', 'message':'正在准备新版本…'}
+                    else:
+                        self.snapshot = {**self.snapshot, 'state':'DOWNLOADING', 'message':
+                            f"正在下载 {self.snapshot['downloaded_files']}/{len(assets)} 个文件（{done/1048576:.2f} MB / {total/1048576:.2f} MB）"}
+                    if progress is not None and (_ == 0 or time.monotonic() - last_report >= .2):
                         last_report = time.monotonic()
                         progress(dict(self.snapshot))
+                report_progress(0)
                 self.staged = self.cache.reconstruct(release, self.plan, self.install_root/'App',
                     cancel=cancelled, progress=report_progress,
                     telemetry=getattr(self, 'telemetry', None))
                 actual = self.cache.transport.bytes_received-before
-                self._state('READY_TO_APPLY', '下载和校验完成，可稍后更新。',
+                self._state('READY_TO_APPLY', '已下载好，点一下就能更新。',
+                            downloaded_files=len(assets), total_download_files=len(assets),
                             downloaded_bytes=self.plan['expected_download_bytes'],
                             actual_downloaded_bytes=actual,
                             saved_bytes=max(0, self.plan['full_bytes']-actual),

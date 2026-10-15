@@ -7,7 +7,7 @@ import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
 import { Button, Field, Segmented, TASK_TIME_TIP, Tip, useModelRetry } from "../ui"
 import { PlanGraph, type GraphModule } from "../planning/PlanGraph"
-import { Loading } from '../loading/Loading'
+import { Loading, MODEL_SLOW_MESSAGE } from '../loading/Loading'
 
 // ------------------------------------------------------------------ types
 type Card = {
@@ -330,7 +330,7 @@ export function NewPlan() {
             </div>
           )}
           <Loading active={busy} label={status || ({sources:"正在找资料…",material_preview:"正在按资料整理结构…",outline:"正在填知识点…",generating:"正在保存与准备题目…"}[draft.phase] ?? "正在理解你的需求…")}
-            shape="conversation" resetKey={draft.phase} onCancel={pending ? ()=>abort.current?.abort() : undefined}/>
+            shape="conversation" slowMessage={['plan.say','plan.submit','plan.more','plan.outline','plan.generate','plan.confirm_structure','plan.decide','plan.map_delete'].includes(lastModelAction.current?.method ?? '') ? MODEL_SLOW_MESSAGE : undefined} resetKey={draft.phase} onCancel={pending ? ()=>abort.current?.abort() : undefined}/>
         </div>
         <div className="composer">
           <textarea ref={chatInput} className="input" rows={1} value={text} disabled={!canType} placeholder={canType ? placeholder : draft.phase === "form" ? "先填好上面的表单" : "用上面的按钮继续"}

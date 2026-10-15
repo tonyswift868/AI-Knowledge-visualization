@@ -10,12 +10,29 @@ export type UpdateStatus = {
   latest?: string; target?: string; message?: string; release_notes?: string; mandatory?: boolean
   deferred?: boolean; mandatory_floor?: string; min_supported_version?: string; mandatory_reason?: string
   downloaded_bytes?: number; actual_downloaded_bytes?: number; expected_download_bytes?: number
+  downloaded_files?: number; total_download_files?: number; download_state?: string
+  background_downloading?: boolean; prepared?: boolean
 }
 type Notice = { status: UpdateStatus | null; open: boolean; later: boolean; manual: boolean; error: string }
 export const useUpdates = create<Notice>(() => ({ status: null, open: false, later: false, manual: false, error: "" }))
-const offered = (s: UpdateStatus | null) => !!s && ["AVAILABLE", "UPDATE_AVAILABLE", "OPTIONAL_UPDATE", "MANDATORY_UPDATE", "PENDING_INSTALL"].includes(s.state)
+export const offered = (s: UpdateStatus | null) => !!s && ["AVAILABLE", "UPDATE_AVAILABLE", "OPTIONAL_UPDATE", "MANDATORY_UPDATE", "PENDING_INSTALL"].includes(s.state)
 const mandatory = (s: UpdateStatus | null) => !!s?.mandatory || s?.state === "MANDATORY_UPDATE"
 export const hasUpdate = () => offered(useUpdates.getState().status) || useUpdates.getState().later
+export function UpdateProgress({status}: {status: UpdateStatus | null}) {
+  if (!status) return null
+  const phase = status.download_state || status.state
+  const active = !!status.busy || !!status.background_downloading
+  if (!active && !status.prepared && phase !== 'READY_TO_APPLY') return null
+  const total = status.expected_download_bytes || 0
+  const received = status.downloaded_bytes ?? status.actual_downloaded_bytes ?? 0
+  const message = status.prepared ? '已下载好，点一下就能更新。' : phase === 'PREPARING' ? '正在准备新版本…'
+    : phase === 'DOWNLOADING' ? `正在下载 ${status.downloaded_files || 0}/${status.total_download_files || 0} 个文件（${(received/1048576).toFixed(2)} MB / ${(total/1048576).toFixed(2)} MB）`
+    : status.message || '正在检查更新…'
+  return <div aria-label="更新进度"><p role="status">{message}</p>
+    <Loading active={active} label={message}/>
+    {(phase === 'DOWNLOADING' || phase === 'PREPARING') && <progress aria-label="下载进度" max={Math.max(1,total)} value={Math.min(total,received)} style={{width:'100%'}}/>}
+  </div>
+}
 let started = false
 let nextAutomaticAt = 0
 let pendingCheck: "automatic" | "manual" | null = null
@@ -102,18 +119,16 @@ export function UpdateNotice() {
 
   if (!notice.open || !ready || route === "classroom") return null
   const downloading = !!status?.busy || ["APPLYING", "RESTART_REQUIRED", "UPDATE_DOWNLOADED"].includes(status?.state || "")
-  const total = status?.expected_download_bytes || 0
-  const received = status?.downloaded_bytes ?? status?.actual_downloaded_bytes ?? 0
-  const bytes = (v: number) => `${(v / 1024 / 1024).toFixed(2)} MiB`
   return <div role="presentation" style={{ position: "fixed", inset: 0, background: "#0008", display: "grid", placeItems: "center", zIndex: 1000 }}>
     <section role="dialog" aria-modal="true" aria-label="MentorFlow 更新" className="card stack" style={{ width: "min(540px, 90vw)", padding: 28, maxHeight: "80vh", overflowY: "auto" }}>
       <h2>MentorFlow 更新</h2>
+      <h3>发现新版本 {status?.latest || status?.target}</h3>
       <p>当前版本 {status?.current || status?.version} → 新版本 {status?.latest || status?.target}</p>
       <p style={{ whiteSpace: "pre-wrap" }}>{status?.release_notes || "此版本未提供更新说明。"}</p>
       <p>更新完成后会自动重启，并继续当前登录（仅这一次）。</p>
       {mandatory(status) && <p>版本 {status?.mandatory_floor || status?.min_supported_version || status?.latest} 必须安装：{({security:"安全修复",protocol:"更新协议兼容要求",data_compatibility:"数据兼容要求",support_floor:"版本兼容要求"} as Record<string,string>)[status?.mandatory_reason || "support_floor"] || status?.mandatory_reason}</p>}
       <p role="status">{notice.error || status?.message}</p>
-      {downloading && <div aria-label="下载进度"><Loading label={status?.message || '正在下载并准备更新…'}/><progress max={Math.max(1, total)} value={Math.min(total, received)} style={{ width: "100%" }} /><p>{bytes(received)} / {bytes(total)}</p></div>}
+      <UpdateProgress status={status}/>
       <div className="row">
         <Button kind="primary" busy={!!status?.busy} disabled={downloading || status?.state === "FAILED_SECURITY"} onClick={() => void installUpdate()}>
           {status?.state === "DOWNLOAD_PAUSED_OR_INTERRUPTED" ? "继续" : mandatory(status) ? "立即更新" : "立即更新并重启"}

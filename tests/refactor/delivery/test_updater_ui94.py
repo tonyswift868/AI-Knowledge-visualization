@@ -20,10 +20,14 @@ def test_updater94_app_schedules_only_after_startup_classification(monkeypatch, 
     def publish(value): calls.append(('classified', value['state']))
     ui = SimpleNamespace(_closed=False, _busy=True, state={}, root=tmp_path,
                          _publish=publish, gate=SimpleNamespace(setEnabled=lambda _: None),
-                         _show_prompt=lambda: None, _update_prompt=lambda: None)
+                         _show_prompt=lambda: None, _update_prompt=lambda: None,
+                         _prepare_in_background=lambda: calls.append(('prepare', tmp_path)))
     DesktopUpdates._receive(ui, dict(action='startup', result=dict(state=state, login_allowed=state=='HEALTHY')))
     assert calls[0] == ('classified', state)
-    assert calls[1:] == ([] if state=='FATAL_UNRECOVERABLE' else [('refresh', tmp_path)])
+    expected = [] if state=='FATAL_UNRECOVERABLE' else [('refresh', tmp_path)]
+    if state in ('OPTIONAL_UPDATE','MANDATORY_UPDATE'):
+        expected.append(('prepare', tmp_path))
+    assert calls[1:] == expected
 
 
 @pytest.fixture

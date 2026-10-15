@@ -44,6 +44,7 @@ class DesktopUpdates(QObject):
         self._deferred = False
         self._next_automatic = 0
         self._continuing_download = False
+        self._background_preparing = False
         self._login_blocked = True
         app.aboutToQuit.connect(self.close)
         app.commitDataRequest.connect(self._defer_session)
@@ -71,6 +72,8 @@ class DesktopUpdates(QObject):
             self.changed.emit(self.snapshot())
             return self.snapshot()
         if self._busy: return self.snapshot()
+        if self._background_preparing and action in ('startup', 'check', 'automatic'):
+            return self.snapshot()
         if action == "automatic":
             if time.monotonic() < self._next_automatic: return self.snapshot()
             self._next_automatic = time.monotonic() + 86400
@@ -89,6 +92,8 @@ class DesktopUpdates(QObject):
         self._busy = True
         self._cancel.clear()
         self._publish({**self.state, "state": "DOWNLOADING" if action == "install" else "CHECKING",
+                       'download_state': 'PREPARING' if action == 'install' else '',
+                       'prepared': False,
                        "message": "正在下载并准备更新…" if action == "install" else "正在检查更新…"})
         self._update_prompt()
 
@@ -122,21 +127,6 @@ class DesktopUpdates(QObject):
                         result = self._coordinator_result(result)
                     if not result.get('coordinator_started') or result.get('state') in ('FAILED_RECOVERABLE', 'PENDING_INSTALL') or result.get('cancelled'):
                         self._clear_login_handoff()
-                if action in ('startup', 'check') and result.get('state') in ('OPTIONAL_UPDATE', 'MANDATORY_UPDATE', 'UPDATE_AVAILABLE'):
-                    # Keep the login gate usable from the cached classification.
-                    # Download/reconstruction runs in this existing worker at
-                    # background I/O priority, before offering the restart.
-                    from .delivery.startup_integrity import background_io
-                    try:
-                        with background_io():
-                            prepared = self.core.download_latest(self.root, cancel=self._cancel.is_set)
-                    except Exception as error:
-                        # Preparation is opportunistic. Preserve the verified
-                        # offer/gate; clicking can retry the normal signed path.
-                        from .delivery.per_user_install import maintenance_log
-                        maintenance_log(self.root, 'background_update_prepare_deferred', detail=str(error))
-                        prepared = {}
-                    result = {**result, 'prepared': prepared.get('prepared', False)}
             except Exception as exc:
                 from .delivery.per_user_install import maintenance_log
                 maintenance_log(self.root, 'in_app_update_deferred', error_type=type(exc).__name__, detail=str(exc))
@@ -152,6 +142,29 @@ class DesktopUpdates(QObject):
 
         self._pool.submit(work)
         return self.snapshot()
+
+    def _prepare_in_background(self):
+        """Queue only after the GUI has received the verified offer.
+
+        Install uses this same single worker, so a click during preparation
+        continues its download and then reuses the existing signed ready tree.
+        """
+        if self._background_preparing or self._closed:
+            return
+        self._background_preparing = True
+        def work():
+            from .delivery.startup_integrity import background_io
+            try:
+                with background_io():
+                    prepared = self.core.download_latest(self.root,
+                        progress=lambda value: self._send({'background_progress': value}),
+                        cancel=self._cancel.is_set, reuse_prepared=True)
+            except Exception as error:
+                from .delivery.per_user_install import maintenance_log
+                maintenance_log(self.root, 'background_update_prepare_deferred', detail=str(error))
+                prepared = {}
+            self._send({'background_ready': prepared})
+        self._pool.submit(work)
 
     def _install_progress(self, value):
         # The existing core calls APPLYING synchronously immediately before
@@ -211,6 +224,23 @@ class DesktopUpdates(QObject):
     def _receive(self, value):
         if self._closed:
             return
+        if 'background_progress' in value or 'background_ready' in value:
+            finished = 'background_ready' in value
+            progress = value.get('background_ready', value.get('background_progress', {}))
+            if finished:
+                self._background_preparing = False
+            phase = progress.get('ui_state') or progress.get('state', 'PREPARING')
+            ready = bool(progress.get('prepared') or phase == 'READY_TO_APPLY')
+            message = ('已下载好，点一下就能更新。' if ready else progress.get('message')
+                       or '后台下载暂时中断，点更新可继续。')
+            # Background work does not consume user consent or hide the offer.
+            fields = {key: progress[key] for key in ('downloaded_bytes', 'actual_downloaded_bytes',
+                'expected_download_bytes', 'downloaded_files', 'total_download_files') if key in progress}
+            self._publish({**self.state, **fields, 'download_state': phase,
+                           'prepared': ready, 'background_downloading': not finished,
+                           'message': message})
+            self._update_prompt()
+            return
         if 'cached' in value:
             result = value['cached']
             self._login_blocked = not result.get('login_allowed', False)
@@ -236,7 +266,10 @@ class DesktopUpdates(QObject):
                 'result': self._coordinator_result(value['handoff'])}))
             return
         if "progress" in value:
-            self._publish({**self.state, **value["progress"]})
+            progress = value['progress']
+            self._publish({**self.state, **progress,
+                           'download_state': progress.get('state', self.state.get('download_state')),
+                           'prepared': progress.get('state') == 'READY_TO_APPLY'})
             self._update_prompt()
             return
         self._busy = False
@@ -273,6 +306,9 @@ class DesktopUpdates(QObject):
                                "message": f"网络不稳，已下载 {done}/{total} 字节，稍后会自动继续。"})
             if self._continuing_download: self._retry.start()
         self._update_prompt()
+        if value['action'] in ('startup', 'check') and result.get('state') in (
+                'OPTIONAL_UPDATE', 'MANDATORY_UPDATE', 'UPDATE_AVAILABLE'):
+            self._prepare_in_background()
 
     def _finish_handoff(self):
         """Close our UI only after the updater process has been launched."""
@@ -339,9 +375,13 @@ class DesktopUpdates(QObject):
             status = self.snapshot()
             status['hide_later'] = bool(status.get('mandatory'))
             if status.get('state') in ('OPTIONAL_UPDATE', 'UPDATE_AVAILABLE'):
-                status['message'] = ('有新版本可用，可以现在更新，或点“稍后”继续登录。'
+                guidance = ('有新版本可用，可以现在更新，或点“稍后”继续登录。'
                     if self._prompt_parent() is self.gate else
                     '有新版本可用，可以现在更新，或稍后在 设置 → 关于 更新。')
+                # Preserve live download/preparation messages, but classify a
+                # fresh offer for the window visible NOW (login may have moved).
+                if not status.get('download_state'):
+                    status['message'] = guidance
             self._prompt.update_status(status)
 
     def _prompt_parent(self):

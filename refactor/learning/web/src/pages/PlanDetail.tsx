@@ -7,7 +7,7 @@ import { KnowledgeMap, PointSources } from "../planning/KnowledgeMap"
 import { Button, TASK_TIME_TIP, Tip, useModelRetry } from "../ui"
 import { requirementWithoutDates, PointCitations } from "./NewPlan"
 import type { PlanTree } from "./NewPlan"
-import { Loading } from '../loading/Loading'
+import { Loading, MODEL_SLOW_MESSAGE } from '../loading/Loading'
 
 type Detail = React.ComponentProps<typeof PlanTree>["detail"] & KnowledgeDetail & {
   migration_message?: string
@@ -99,7 +99,7 @@ export function PlanDetail() {
     <div className="page">
       <Button small kind="ghost" onClick={() => go("plans")}><ArrowLeft />我的计划</Button>
       {detail.migration_message && <p role="status">{detail.migration_message}</p>}
-      <Loading active={detail.point_minutes_status==='running'} label="正在按内容重算知识点时长…" onRetry={retryMinutes}/>
+      <Loading active={detail.point_minutes_status==='running'} slowMessage={MODEL_SLOW_MESSAGE} label="正在按内容重算知识点时长…" onRetry={retryMinutes}/>
       {detail.point_minutes_status==='failed' && <div className="row" role="status"><span>学习分钟重算未完成，原有时长仍可查看。</span><Button small onClick={retryMinutes}>重试时长重算</Button></div>}
       {minutesError && <p role="alert">{minutesError}</p>}
       <Loading active={detail.preparation_status==='running'} label="正在后台准备模块题目…"
@@ -398,7 +398,7 @@ function AddMaterialCard({ detail, onApplied }: { detail: Detail; onApplied: () 
         <textarea className="input" rows={2} value={links} onChange={(e) => setLinks(e.target.value)}
                   placeholder="https://docs.python.org/zh-cn/3/tutorial/…" />
       </>}
-      <Loading active={!!busy} label={busy ?? "正在处理资料…"} shape="form"/>
+      <Loading active={!!busy} label={busy ?? "正在处理资料…"} slowMessage={busy?.includes("分析") || busy?.includes("生成知识点") ? MODEL_SLOW_MESSAGE : undefined} shape="form"/>
       {!first && !busy && <div className="plan-actions">
         <Button small kind="ghost" onClick={cancelAddition}>取消</Button>
         <Button small kind="primary" disabled={!token && !/https?:\/\//.test(links)} onClick={analyze}>开始分析</Button>

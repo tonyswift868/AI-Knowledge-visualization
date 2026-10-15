@@ -19,7 +19,7 @@ import { createTeacherVoiceStream, useTeacherVoice } from "../teacher/useTeacher
 import type { TeacherStageHandle } from "../teacher/TeacherStage"
 import { MaterialToolbar, PreparationBadge, PreparationWait, ConversationActions, OriginalCards, QuestionInputs, type Concept, type NavigationEntry, type OriginalCardsHandle, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
 import { RecallQuestion, type RecallRequest } from "../classroom/RecallQuestion"
-import { Loading } from '../loading/Loading'
+import { Loading, MODEL_SLOW_MESSAGE } from '../loading/Loading'
 
 const TeacherWindow = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherWindow })))
 
@@ -445,7 +445,7 @@ export function Classroom() {
           {stream !== null && (live(stream)
             ? <div data-turn-key="teacher-stream" data-turn-role="assistant" className="bubble bot streaming wait-content">{markdown(live(stream), openSource, streamMessageKey.current, classroomFocus)}</div>
             : <Loading active={!!busy} label={busy?.includes('判')||busy?.includes('核对') ? busy : `老师正在想…${busy && !busy.includes('老师') ? ` · ${busy}` : ''}`}
-                shape="conversation" onCancel={abort.current ? ()=>abort.current?.abort() : undefined}/>)}
+                shape="conversation" slowMessage={MODEL_SLOW_MESSAGE} onCancel={abort.current ? ()=>abort.current?.abort() : undefined}/>)}
           {stream === null && <Loading active={!!busy} label={busy ?? '正在记录回答…'}/>}
           {!busy && room.failure?.model_fault && <div data-turn-key={`model-failure:${room.failure.model_fault.id}`} data-turn-role="assistant">
             <ModelFaultPanel fault={room.failure.model_fault} onRetry={retryModel}/></div>}

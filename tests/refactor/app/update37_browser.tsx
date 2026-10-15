@@ -56,7 +56,7 @@ async function run() {
   await checkUpdate(); await wait(1300)
   assert(dialog() && button("立即更新") && button("稍后")?.disabled, "强制更新稍后灰色")
   button("立即更新").click(); await wait(1300)
-  assert(fixture.installs === 1 && dialog()?.textContent?.includes("2.00 MiB / 10.00 MiB"), "框内进度")
+  assert(fixture.installs === 1 && dialog()?.textContent?.includes("2.00 MB / 10.00 MB"), "框内进度")
   passed.push("强制更新/框内进度")
   window.result = { ok: true, passed, checks: fixture.checks, installs: fixture.installs }
 }

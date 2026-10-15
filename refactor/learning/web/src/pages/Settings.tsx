@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useUpdates, checkUpdate, installUpdate } from "../updates/UpdateNotice"
+import { useUpdates, checkUpdate, installUpdate, UpdateProgress, offered as updateOffered } from "../updates/UpdateNotice"
 import {
   BellRing, BookOpenText, Bot, CheckCircle2, Clock3, Coins, GraduationCap, HeartHandshake, KeyRound, Laugh, LogOut, Palette, PlugZap, RefreshCw,
   ShieldCheck, Target, Trash2, UserRound, Users, Waypoints,
@@ -7,7 +7,7 @@ import {
 import { call, on, BridgeFailure } from "../bridge"
 import { useApp, type Settings as S, type SettingsTab, type TeacherPreset } from "../store"
 import { Button, Field, Segmented, Toggle, ModelFaultPanel, useModelRetry } from "../ui"
-import { Loading } from '../loading/Loading'
+import { Loading, MODEL_SLOW_MESSAGE } from '../loading/Loading'
 
 const TABS: { id: SettingsTab; label: string; icon: any }[] = [
   { id: "models", label: "模型连接", icon: PlugZap },
@@ -65,14 +65,16 @@ export function Settings() {
 function AboutUpdates() {
   const { status, error, later } = useUpdates()
   const [logError, setLogError] = React.useState("")
-  const offered = status && ["AVAILABLE", "UPDATE_AVAILABLE", "OPTIONAL_UPDATE", "MANDATORY_UPDATE", "PENDING_INSTALL"].includes(status.state)
+  const offered = updateOffered(status)
   const message = status?.message || (status ? ({ UP_TO_DATE: "已是最新版本。", UPDATE_AVAILABLE: "有新版本可用。",
     APPLYING: "正在安装更新，完成后将自动重启。", UPDATE_DOWNLOADED: "下载完成，正在准备安装。" } as Record<string, string>)[status.state] : "正在读取版本…")
   return <section className="card" aria-label="关于 MentorFlow" style={{ marginTop: 20, padding: 20 }}>
     <h3>关于 MentorFlow {later && <span aria-label="有新版本" style={{ color: "#f24b63" }}>●</span>}</h3>
     <p>版本 {status?.version ?? "…"}</p>
+    {offered && <p>发现新版本 {status?.latest || status?.target}</p>}
     <Loading active={!status || !!status.busy} label={message || '正在读取版本…'}/>
     <p className="small muted" role="status">{logError || error || message}</p>
+    <UpdateProgress status={status}/>
     <div className="row">
       <Button small disabled={!status?.available || status.busy} onClick={() => void checkUpdate()}><RefreshCw />检查更新</Button>
       {offered && <Button small kind="primary" disabled={status.busy} onClick={() => void installUpdate()}>更新并自动重启</Button>}
@@ -217,7 +219,7 @@ function Models() {
 
   return (
     <div className="stack">
-      <Loading active={testing || saving} label={testing ? '正在验证模型连接…' : '正在保存模型预设…'} onCancel={testing ? ()=>testCancel.current?.abort() : undefined}/>
+      <Loading slowMessage={testing ? MODEL_SLOW_MESSAGE : undefined} active={testing || saving} label={testing ? '正在验证模型连接…' : '正在保存模型预设…'} onCancel={testing ? ()=>testCancel.current?.abort() : undefined}/>
       {testFault && <ModelFaultPanel fault={testFault} onRetry={test}/>}
       <div className="card">
         <div className="row between">
