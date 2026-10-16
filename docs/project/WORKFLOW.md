@@ -49,7 +49,7 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 空闲 | runtime |
+| MF-04 | 153-MF04（测试连接误报，[BUG-106]）已起草，待转发 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
