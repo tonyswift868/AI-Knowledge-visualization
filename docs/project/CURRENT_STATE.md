@@ -598,7 +598,7 @@
 - 做法：
   - 服务器（Java + LangChain4j）：把分块文字用开源中文向量模型 bge-small-zh 在服务器进程里转成语义向量入库；提问时问题也转成向量，按余弦相似度取最近的几段，再加关键词重合混合排序。
   - 同一资料按内容 sha256 只存一次，多份资料一起问只是按所选资料过滤，不重算。
-  - 服务器 PostgreSQL 没有 pgvector，向量先存成数组、在 Java 里算相似度。
+  - 向量存 pgvector（用户 2026-10-16 定装上）：架构师 2026-10-16 17:40 先备份（/opt/mentorflow/backups/pgvector-20261016），再用“原官方镜像加 postgresql-17-pgvector”的 mentorflow-postgres-pgvector:17 重建数据库容器；数据目录原样沿用，同步记录 3249 条不变；mentorflow 库已执行 CREATE EXTENSION vector（0.8.7）。重启时 Java 就绪检查约 10 秒内恢复。
   - 问答会话先只存本机。
 - 关联：[ARCH-09] [PLAN-09] [UI-02]
 - 更新：2026-10-16
