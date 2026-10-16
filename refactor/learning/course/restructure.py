@@ -124,7 +124,11 @@ def _regroup_points(store, plan_id, module_points, requested_ids, incoming_point
     payloads are copied from the live records; only their titles may change.
     """
     source_subpoints = {}
+    source_markers = {}
     for point in sorted(module_points, key=lambda p: (p['position'], p['id'])):
+        marker = point.get('subpoint_preparation')
+        if isinstance(marker, dict):
+            source_markers[point['id']] = marker
         for sub_index, subpoint in enumerate(point.get('subpoints', [])):
             sid = subpoint.get('id')
             if sid in source_subpoints:
@@ -138,6 +142,7 @@ def _regroup_points(store, plan_id, module_points, requested_ids, incoming_point
                 if owner in requested_ids and owner not in protected_ids}
     seen = []
     cleaned = []
+    subpoint_renames = {}
     empty_ids = []
     for incoming in incoming_points:
         if not isinstance(incoming, dict):
@@ -174,9 +179,59 @@ def _regroup_points(store, plan_id, module_points, requested_ids, incoming_point
             empty_ids.append(pid)
             continue
         kept_subpoints.sort(key=lambda item: item[0])
-        kept_subpoints = [subpoint for _, subpoint in kept_subpoints]
+        # A subpoint id is scoped by its parent in the persisted store.  A
+        # regroup changes that parent, so give each moved subpoint its new
+        # parent-scoped id while retaining the old id in this mapping for
+        # migrating question and classroom references.
+        renamed = []
+        transferred = {}
+        transferred_rejections = []
+        for index, (_, subpoint) in enumerate(kept_subpoints, 1):
+            old_sid = subpoint['id']
+            new_sid = f"{pid}-s{index}"
+            subpoint = dict(subpoint, id=new_sid)
+            # Keep an explicit alias on the child.  This lets preparation
+            # carry terminal outcomes across a parent move even when the
+            # source marker lived on the old parent record.
+            aliases = subpoint.get('legacy_subpoint_ids', [])
+            if isinstance(aliases, str): aliases = [aliases]
+            if not isinstance(aliases, list): aliases = []
+            subpoint['legacy_subpoint_ids'] = list(dict.fromkeys([*aliases, old_sid]))
+            subpoint_renames[old_sid] = new_sid
+            owner = source_subpoints[old_sid][0]
+            marker = source_markers.get(owner, {})
+            processed = marker.get('processed_subpoints', {}) if isinstance(marker, dict) else {}
+            if isinstance(processed, list):
+                processed = {r.get('subpoint_id'): r for r in processed if isinstance(r, dict)}
+            if isinstance(processed, dict):
+                item = processed.get(old_sid)
+                if isinstance(item, str): item = {'status': item}
+                if isinstance(item, dict) and item.get('status') in ('valid', 'rejected', 'retired'):
+                    transferred[new_sid] = dict(item, subpoint_id=new_sid)
+            if isinstance(marker, dict):
+                for rejection in marker.get('rejections', []):
+                    if isinstance(rejection, dict) and rejection.get('subpoint_id') == old_sid:
+                        transferred_rejections.append(dict(rejection, subpoint_id=new_sid))
+            renamed.append(subpoint)
+        kept_subpoints = renamed
         point = deepcopy(incoming)
         point['subpoints'] = kept_subpoints
+        if transferred or transferred_rejections:
+            # Fingerprints intentionally remain invalidated after regroup;
+            # _prepare_concept_point will refresh the marker while treating
+            # these terminal child outcomes as already processed.
+            existing_marker = point.get('subpoint_preparation', {})
+            if not isinstance(existing_marker, dict): existing_marker = {}
+            existing_processed = existing_marker.get('processed_subpoints', {})
+            if isinstance(existing_processed, list):
+                existing_processed = {r.get('subpoint_id'): r for r in existing_processed if isinstance(r, dict)}
+            if not isinstance(existing_processed, dict): existing_processed = {}
+            merged_processed = dict(existing_processed)
+            merged_processed.update(transferred)
+            point['subpoint_preparation'] = dict(existing_marker,
+                state='pending', fingerprint='', result={},
+                rejections=list(existing_marker.get('rejections', [])) + transferred_rejections,
+                processed_subpoints=merged_processed)
         point['minutes'] = sum(s['minutes'] for s in kept_subpoints)
         point['chunk_ids'] = list(dict.fromkeys(cid for s in kept_subpoints for cid in s.get('chunk_ids', [])))
         cleaned.append(point)
@@ -187,7 +242,7 @@ def _regroup_points(store, plan_id, module_points, requested_ids, incoming_point
         issues.append(module_id + '：小要点重复分组：' + '、'.join(duplicates))
     if missing:
         issues.append(module_id + '：有未分组的小要点：' + '、'.join(missing))
-    return cleaned, protected_subpoints, empty_ids
+    return cleaned, protected_subpoints, empty_ids, subpoint_renames
 
 
 def _prepare(store, plan_id, structure, *, end_date=None):
@@ -236,6 +291,7 @@ def _prepare(store, plan_id, structure, *, end_date=None):
             issues.append('课堂 point_id 与模块/index 不一致，拒绝猜测当前进度')
     changed, replacement_ids, new_ids, seen_modules = [], set(), set(), set()
     question_moves, empty_regroup_groups, protected_subpoint_ids, regroup_details = [], [], set(), []
+    subpoint_renames = {}
     for scope in scopes:
         if (not isinstance(scope, dict) or not isinstance(scope.get('module_id'), str)
                 or scope['module_id'] not in modules):
@@ -286,8 +342,9 @@ def _prepare(store, plan_id, structure, *, end_date=None):
         if not isinstance(rows, list) or not isinstance(navigation, list):
             issues.append(mid + '：points 与 navigation 必须是列表'); continue
         if regroup:
-            rows, protected_sids, emptied = _regroup_points(
+            rows, protected_sids, emptied, renamed = _regroup_points(
                 store, plan_id, covered, actual_ids, rows, module_protected, chunk_ids, issues, mid)
+            subpoint_renames.update(renamed)
             protected_subpoint_ids.update(protected_sids)
             empty_regroup_groups.extend(str(pid) for pid in emptied if pid)
             regroup_details.append(dict(module_id=mid,
@@ -348,7 +405,8 @@ def _prepare(store, plan_id, structure, *, end_date=None):
             if regroup:
                 for question in store.records('question_bank', plan_id):
                     sid = question.get('subpoint_id')
-                    target = subpoint_targets.get(sid)
+                    new_sid = subpoint_renames.get(sid, sid)
+                    target = subpoint_targets.get(new_sid)
                     if not target:
                         continue
                     old_question_points = question.get('point_ids', [])
@@ -358,10 +416,11 @@ def _prepare(store, plan_id, structure, *, end_date=None):
                     migrated = list(dict.fromkeys(target if pid == source else pid for pid in old_question_points))
                     if target not in migrated:
                         migrated.append(target)
-                    question_moves.append(dict(id=question['id'], point_ids=migrated))
+                    question_moves.append(dict(id=question['id'], point_ids=migrated,
+                                               subpoint_id=new_sid))
                     try:
                         store._validate('question_bank', plan_id,
-                                        dict(question, point_ids=migrated), references=False)
+                                        dict(question, point_ids=migrated, subpoint_id=new_sid), references=False)
                     except (StoreError, KeyError, TypeError, ValueError) as exc:
                         issues.append('题目无法按 subpoint_id 迁移：' + question['id'] +
                                       '（' + getattr(exc, 'code', type(exc).__name__) + '）')
@@ -400,6 +459,7 @@ def _prepare(store, plan_id, structure, *, end_date=None):
                   new_subpoints=sum(len(p.get('subpoints', [])) for c in changed for p in c['points']),
                   navigation_entries=sum(len(c['new']['navigation']) for c in changed), retired_questions=len(questions),
                   regroup_subpoints=regroup, regrouped_questions=len(question_moves),
+                  subpoint_renames=dict(subpoint_renames),
                   protected_subpoints=len(protected_subpoint_ids), empty_regroup_groups=empty_regroup_groups,
                   regroup_details=regroup_details,
                   classroom_redirect=cursor in replacement_ids,
@@ -455,7 +515,8 @@ def apply_structure(store, plan_id, structure, *, dry_run, end_date=None):
             store._put('modules', plan_id, change['new'])
         for move in question_moves:
             question = store._get('question_bank', plan_id, move['id'])
-            store._put('question_bank', plan_id, dict(question, point_ids=move['point_ids']))
+            store._put('question_bank', plan_id, dict(question, point_ids=move['point_ids'],
+                                                      subpoint_id=move.get('subpoint_id', question.get('subpoint_id'))))
         if report['classroom_redirect']:
             change = next(c for c in changed if cursor in c['replace'])
             if not change['points']: raise StoreError('EMPTY_CURSOR_MODULE', '当前位置没有可接续的新点。')

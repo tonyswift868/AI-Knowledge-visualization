@@ -101,10 +101,13 @@ def test_regroup158_proposed_contract_preserves_progress_current_scene_and_skips
     assert points['old1']['subpoints'][0] == before_subpoints['old1-s1']
     assert points['old2']['subpoints'][0] == before_subpoints['old2-s1']
     moved_subpoints = {s['id']: s for s in points['new-group']['subpoints']}
-    assert set(moved_subpoints) == {'old3-s1', 'old4-s1', 'old5-s1'}
-    assert [s['id'] for s in points['new-group']['subpoints']] == ['old3-s1', 'old4-s1', 'old5-s1']
-    for sid, sub in moved_subpoints.items():
-        assert {**sub, 'title': before_subpoints[sid]['title']} == before_subpoints[sid]
+    assert set(moved_subpoints) == {'new-group-s1', 'new-group-s2', 'new-group-s3'}
+    assert [s['id'] for s in points['new-group']['subpoints']] == ['new-group-s1', 'new-group-s2', 'new-group-s3']
+    old_sids = ['old3-s1', 'old4-s1', 'old5-s1']
+    for new_sid, old_sid in zip(moved_subpoints, old_sids):
+        sub = moved_subpoints[new_sid]
+        restored = {k: v for k, v in sub.items() if k != 'legacy_subpoint_ids'}
+        assert {**restored, 'id': old_sid, 'title': before_subpoints[old_sid]['title']} == before_subpoints[old_sid]
         assert sub['title'] == '改过的小要点标题'
     assert points['new-group']['minutes'] == sum(s['minutes'] for s in moved_subpoints.values())
     assert points['new-group']['chunk_ids'] == ['c']
@@ -112,9 +115,12 @@ def test_regroup158_proposed_contract_preserves_progress_current_scene_and_skips
     after_questions = {q['id']: q for q in store.records('question_bank', 'p')}
     for qid, original in before_questions.items():
         current = after_questions[qid]
-        assert current['subpoint_id'] == original['subpoint_id']
-        assert {k: v for k, v in current.items() if k != 'point_ids'} == {
-            k: v for k, v in original.items() if k != 'point_ids'}
+        expected_sid = {'old3-s1': 'new-group-s1', 'old4-s1': 'new-group-s2', 'old5-s1': 'new-group-s3'}.get(
+            original.get('subpoint_id'), original.get('subpoint_id'))
+        assert current['subpoint_id'] == expected_sid
+        comparable = {k: v for k, v in current.items() if k not in ('point_ids', 'subpoint_id')}
+        original_comparable = {k: v for k, v in original.items() if k not in ('point_ids', 'subpoint_id')}
+        assert comparable == original_comparable
         expected = ['new-group'] if qid in {'old3', 'old4', 'old5'} else original['point_ids']
         assert current['point_ids'] == expected
     after_module = next(row for row in store.records('modules', 'p') if row['id'] == 'm')
@@ -122,10 +128,9 @@ def test_regroup158_proposed_contract_preserves_progress_current_scene_and_skips
     assert after_module.get('question_extraction') == before_module.get('question_extraction')
 
 
-def test_regroup158_real_store_rejects_parent_prefixed_smallpoint_ids(store):
+def test_regroup158_real_store_accepts_parent_prefixed_smallpoint_ids(store):
     preview = apply_structure(store, 'p', _proposal(store), dry_run=True)
-    assert not preview['can_apply']
-    assert any('新点校验失败' in issue for issue in preview['issues'])
+    assert preview['can_apply'], preview['issues']
     assert preview['regrouped_questions'] == 3, preview
 
 
