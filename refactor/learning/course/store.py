@@ -1433,8 +1433,20 @@ class CourseStore:
             points, modules = self.records('points', plan_id), self.records('modules', plan_id)
             metrics = point_minute_metrics(points, self.records('source_chunks', plan_id),
                                            self.records('question_bank', plan_id))
-            content = [(p['id'], p['module_id'], p['title'], p.get('summary'), p.get('citations'),
-                        metrics[p['id']]['characters']) for p in points]
+            content = []
+            for p in points:
+                # Preserve the v2 identity shape for legacy points so an
+                # existing plan does not re-request difficulty merely because
+                # this version learned about concept children.  Concept
+                # parents include their child IDs/minutes: regrouping must
+                # invalidate their signature even though they have no parent
+                # citations.
+                row = (p['id'], p['module_id'], p['title'], p.get('summary'), p.get('citations'),
+                       metrics[p['id']]['characters'])
+                if p.get('structure') == 'concept_v1':
+                    row += (p.get('structure'),
+                            tuple((s.get('id'), s.get('minutes')) for s in p.get('subpoints', [])))
+                content.append(row)
             fingerprint = hashlib.sha256(json.dumps(content, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
             point_fingerprints = {row[0]: hashlib.sha256(json.dumps(row, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
                                   for row in content}
@@ -1452,18 +1464,35 @@ class CourseStore:
         if state['ready']: return True
         if state['fingerprint'] != fingerprint: return False
         points, modules, plan = state['points'], state['modules'], state['plan']
-        if set(difficulties) != {p['id'] for p in points}: raise StoreError('MINUTE_POINTS_CHANGED')
+        # Directory based concept points already have their estimate in the
+        # subpoints.  They must not be sent through the legacy citation based
+        # estimator (their parent citations are intentionally absent).  Keep
+        # accepting the historical all-points label map for old plans, while
+        # mixed plans only require labels for legacy points.
+        legacy = {p['id'] for p in points if p.get('structure') != 'concept_v1'}
+        supplied = set(difficulties)
+        if supplied not in (legacy, {p['id'] for p in points}):
+            raise StoreError('MINUTE_POINTS_CHANGED')
         # Any completed concept subpoint freezes its parent estimate: a later
         # metadata refresh must not move the goal beneath already-earned work.
         frozen = self.learning_credit_projection(plan_id)['recorded']
-        weights = {p['id']: estimate_point_minutes(**state['metrics'][p['id']], difficulty=difficulties[p['id']])
-                   for p in points}
+        weights = {}
+        for p in points:
+            if p.get('structure') == 'concept_v1':
+                # The parent is a projection of its children.  Keeping this
+                # invariant makes regrouped plans stable across devices and
+                # prevents a second difficulty call from shrinking them.
+                weights[p['id']] = sum(int(s['minutes']) for s in p.get('subpoints', []))
+            else:
+                weights[p['id']] = estimate_point_minutes(
+                    **state['metrics'][p['id']], difficulty=difficulties[p['id']])
         for p in points:
             original = dict(p)
-            p.update(difficulty=difficulties[p['id']],
-                     minute_estimate=dict(**state['metrics'][p['id']], unconstrained=weights[p['id']]))
-            p.update(point_minutes_version=POINT_MINUTES_VERSION,
-                     difficulty_fingerprint=state['point_fingerprints'][p['id']])
+            if p.get('structure') != 'concept_v1':
+                p.update(difficulty=difficulties[p['id']],
+                         minute_estimate=dict(**state['metrics'][p['id']], unconstrained=weights[p['id']]))
+                p.update(point_minutes_version=POINT_MINUTES_VERSION,
+                         difficulty_fingerprint=state['point_fingerprints'][p['id']])
             if p['id'] not in frozen: p['minutes'] = weights[p['id']]
             if p != original: self._put('points', plan_id, p)
         for m in modules:

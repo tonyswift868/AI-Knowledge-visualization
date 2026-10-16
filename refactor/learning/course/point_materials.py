@@ -301,6 +301,55 @@ def _base(point, kind, stem, answer, origin, question, answer_source, *, options
     return row
 
 
+def _subpoint_aliases(subpoint):
+    """Return IDs that identify this subpoint across a regroup operation.
+
+    A regroup gives a moved subpoint a new ``<point>-sN`` ID so the store and
+    question-bank validators can accept it.  The source ID is still useful for
+    carrying preparation markers across that move.  Accept the few spellings
+    used by older snapshots, while keeping the current ID as the canonical
+    key.
+    """
+    values = [subpoint.get('id')]
+    for key in ('legacy_subpoint_ids', 'previous_subpoint_ids', 'source_subpoint_ids'):
+        raw = subpoint.get(key, ())
+        if isinstance(raw, str): raw = [raw]
+        if isinstance(raw, (list, tuple, set)):
+            values.extend(raw)
+    for key in ('legacy_subpoint_id', 'previous_subpoint_id', 'source_subpoint_id'):
+        value = subpoint.get(key)
+        if value: values.append(value)
+    return {value for value in values if isinstance(value, str) and value}
+
+
+def _processed_marker_ids(previous, subpoints):
+    """Map current subpoint IDs to prior preparation status.
+
+    ``processed_subpoints`` is deliberately small and data-only.  It records
+    a terminal outcome (valid, rejected, or retired), so a changed parent
+    fingerprint does not cause a completed subpoint to be sent to the model
+    again.  Legacy markers are reconstructed from their rejection rows.
+    """
+    raw = previous.get('processed_subpoints', {})
+    if isinstance(raw, list):
+        raw = {row.get('subpoint_id'): row for row in raw if isinstance(row, dict)}
+    if not isinstance(raw, dict): raw = {}
+    rejected = {}
+    for row in previous.get('rejections', ()):
+        if isinstance(row, dict) and row.get('subpoint_id'):
+            rejected[row['subpoint_id']] = dict(status='rejected', reason=row.get('reason', ''))
+    out = {}
+    for sub in subpoints:
+        aliases = _subpoint_aliases(sub)
+        for alias in aliases:
+            item = raw.get(alias) or rejected.get(alias)
+            if isinstance(item, str): item = {'status': item}
+            if isinstance(item, dict) and item.get('status') in ('valid', 'rejected', 'retired'):
+                out[sub['id']] = dict(item, subpoint_id=sub['id'])
+                break
+    return out
+
+
 def _prepare_concept_point(store, plan_id, point, ctx):
     """One original exercise or reviewed original-span gap per concept subpoint."""
     with _lock(store,plan_id,point['id']):
@@ -314,7 +363,15 @@ def _prepare_concept_point(store, plan_id, point, ctx):
                   if point['id'] in q['point_ids'] and q.get('subpoint_id') in valid]
         if previous.get('fingerprint')==fingerprint and previous.get('state')=='done':
             return dict(previous['result'])
-        ready={q['subpoint_id'] for q in existing};found=[];waiting=[];rejections=[]
+        # A question may be valid, explicitly rejected, or retired.  All three
+        # are terminal preparation outcomes.  Count them before looking at the
+        # model so regrouping a point does not requeue work that already ran.
+        all_bank=[q for q in store.records('question_bank',plan_id)
+                  if point['id'] in q.get('point_ids',[]) and q.get('subpoint_id') in valid]
+        ready={q['subpoint_id'] for q in all_bank}
+        processed=_processed_marker_ids(previous, point['subpoints'])
+        ready.update(processed)
+        found=[];waiting=[];rejections=[]
         sources,_=_material_chunks(store,plan_id)
         for sub in point['subpoints']:
             if sub['id'] in ready:continue
@@ -384,10 +441,28 @@ def _prepare_concept_point(store, plan_id, point, ctx):
                     rejections.append(dict(subpoint_id=q['subpoint_id'],reason='题干重复，现有入库规则跳过'))
             final=[q for q in assessment_questions(list(saved.values()))
                    if point['id'] in q['point_ids'] and q.get('subpoint_id') in valid]
+            # Persist a per-subpoint terminal marker.  Keep old rejection
+            # evidence and update it by ID so a later regroup can map it via
+            # ``legacy_subpoint_ids`` without asking the model again.
+            terminal=dict(processed)
+            for q in final:
+                terminal[q['subpoint_id']]=dict(subpoint_id=q['subpoint_id'],status='valid')
+            for q in all_bank:
+                if q.get('role')=='retired' and q.get('subpoint_id') in valid:
+                    terminal[q['subpoint_id']]=dict(subpoint_id=q['subpoint_id'],status='retired')
+            for row in rejections:
+                sid=row.get('subpoint_id')
+                if sid: terminal[sid]=dict(row,status='rejected')
+            merged_rejections=[];seen=set()
+            for row in list(previous.get('rejections',()))+rejections:
+                key=(row.get('subpoint_id'),row.get('reason'),json.dumps(row.get('details'),ensure_ascii=False,sort_keys=True,default=str)) if isinstance(row,dict) else None
+                if key in seen:continue
+                seen.add(key);merged_rejections.append(row)
             result=dict(passages=len(point['chunk_ids']),questions=len(final),
                 cloze=sum(q['origin']=='cloze' for q in final),skipped=len(valid)-len(final))
             current=store._get('points',plan_id,point['id'])
-            current['subpoint_preparation']=dict(state='done',fingerprint=fingerprint,result=result,rejections=rejections)
+            current['subpoint_preparation']=dict(state='done',fingerprint=fingerprint,result=result,
+                rejections=merged_rejections,processed_subpoints=terminal)
             if current.get('question_preparation')=='pending':current['question_preparation']='done'
             store._put('points',plan_id,current)
         return result

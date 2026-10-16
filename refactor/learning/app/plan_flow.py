@@ -2159,11 +2159,6 @@ class PlanFlow:
         try:
             if state is None:
                 state = store.point_minutes_snapshot(plan_id)
-            if state['points'] and all(p.get('structure') == 'concept_v1' for p in state['points']):
-                # Directory points were estimated per subpoint. Legacy v2
-                # recalculation would cap their combined minutes at 25.
-                status = 'ready'
-                return
             if state['ready']:
                 status = 'ready'
                 return
@@ -2180,14 +2175,18 @@ class PlanFlow:
                         and plan.get('point_minutes_signature') == state['signature']):
                     status = 'ready'
                     return
-                points = [p for p in state['points'] if p['module_id'] == module['id']]
+                # concept_v1 parents already carry the exact sum of their
+                # child minutes; never send those parents to the legacy
+                # difficulty estimator.
+                points = [p for p in state['points']
+                          if p['module_id'] == module['id'] and p.get('structure') != 'concept_v1']
                 if not points: continue
                 if all(p.get('difficulty_fingerprint') == state['point_fingerprints'][p['id']]
                        and p.get('difficulty') in agents.MINUTE_RULE['difficulty'] for p in points):
                     difficulties.update({p['id']: p['difficulty'] for p in points})
                     continue
                 if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
-                messages, aliases = agents.point_difficulty_request(module, state['points'])
+                messages, aliases = agents.point_difficulty_request(module, points)
                 reply = self.services.gateway.complete('point_difficulty', messages, system=agents.POINT_DIFFICULTY_SYSTEM,
                     cancel=job['cancel'], plan_id=plan_id, max_tokens=4096)
                 difficulties.update(agents.parse_point_difficulty(reply if isinstance(reply, str) else reply.text, aliases))
