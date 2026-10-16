@@ -53,7 +53,9 @@ def test_focus119_recap_complete_notes_reopen_and_sync(tmp_path,monkeypatch):
         for row,sub in zip(message['recap']['items'],env.store.records('points',PLAN)[0]['subpoints']):
             assert row['text'] in sub['notes'][0]['text'] and row['text'].endswith('。')
             assert row['chunk_id']==sub['notes'][0]['chunk_id']
-        assert len(env.store.records('credits',PLAN))==1
+        credits=env.store.records('credits',PLAN)
+        assert len([row for row in credits if row['id'].startswith('subpoint:')])==3
+        assert sum(row['credit']['minutes'] for row in credits)==15
         env.room=Classroom(env.services,env.room.study_day,now=env.room.now)
         assert act(env,'enter')['messages'][-1]['recap']==message['recap']
         other=CourseStore(ACCOUNT,tmp_path/'second')

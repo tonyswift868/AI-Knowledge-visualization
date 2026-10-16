@@ -1453,8 +1453,9 @@ class CourseStore:
         if state['fingerprint'] != fingerprint: return False
         points, modules, plan = state['points'], state['modules'], state['plan']
         if set(difficulties) != {p['id'] for p in points}: raise StoreError('MINUTE_POINTS_CHANGED')
-        frozen = {r['credit']['unit_id'] for r in self._rows('credits', plan_id)
-                  if r['id'].startswith(('learn:', 'relearn:'))}
+        # Any completed concept subpoint freezes its parent estimate: a later
+        # metadata refresh must not move the goal beneath already-earned work.
+        frozen = self.learning_credit_projection(plan_id)['recorded']
         weights = {p['id']: estimate_point_minutes(**state['metrics'][p['id']], difficulty=difficulties[p['id']])
                    for p in points}
         for p in points:
@@ -1492,8 +1493,7 @@ class CourseStore:
             positions = {m['id']: i for i, m in enumerate(modules)}
             points = sorted(self._rows('points', plan_id), key=lambda p: (positions[p['module_id']], p['position'], p['id']))
             from .question_bank import assessment_questions
-            taught = [r['credit']['unit_id'] for r in self._rows('credits',plan_id)
-                      if r['id'].startswith(('learn:','relearn:'))]
+            taught = self.learning_credit_projection(plan_id)['taught']
             bank = self.records('question_bank',plan_id)
             active = assessment_questions(bank)
             active_ids = {q['id'] for q in active}
@@ -1513,6 +1513,32 @@ class CourseStore:
                               historical_event_ids=historical_events)
             for event in events: book.apply(event)
             return book
+
+    def learning_credit_projection(self, plan_id):
+        """Return immutable learning-credit markers used by mastery and estimates.
+
+        Old whole-point learn/relearn rows remain authoritative. Concept points
+        become taught only after their original subpoint-credit total reaches
+        the point estimate; any recorded subpoint freezes that estimate while
+        the point is in progress.
+        """
+        points = self.records('points', plan_id)
+        rows = self._rows('credits', plan_id)
+        taught = {row['credit']['unit_id'] for row in rows
+                  if row['id'].startswith(('learn:', 'relearn:'))}
+        recorded = set(taught)
+        subpoint_minutes = {}
+        for row in rows:
+            credit = row['credit']
+            unit = credit['unit_id']
+            if row['id'].startswith('subpoint:'):
+                recorded.add(unit)
+                subpoint_minutes[unit] = subpoint_minutes.get(unit, 0) + credit['minutes']
+        for point in points:
+            if (point.get('structure') == 'concept_v1' and point.get('subpoints') and
+                    subpoint_minutes.get(point['id'], 0) >= point['minutes']):
+                taught.add(point['id'])
+        return {'taught': taught, 'recorded': recorded}
 
     def today_status(self, plan_id, *, now, refresh, tz, classroom_day=None) -> dict:
         """Read one coherent course snapshot; no clock, writes or notifications.

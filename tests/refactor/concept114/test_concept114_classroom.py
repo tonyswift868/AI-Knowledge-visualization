@@ -67,7 +67,8 @@ def test_concept114_multiround_wrong_confused_continue_and_point_credit(concept_
     before=len(e.gateway.calls)
     view=act(e,'next');assert view['step']=='test_offer' and view['concept'] is None
     credits=e.store.records('credits',PLAN)
-    assert len(credits)==1 and credits[0]['credit']['minutes']==15
+    assert len([row for row in credits if row['id'].startswith('subpoint:')])==3
+    assert sum(row['credit']['minutes'] for row in credits)==15
     assert len(e.gateway.calls)==before and view['messages'][-1]['kind']=='recap'
     assert len(view['messages'][-1]['recap']['items'])==3
     assert not e.store.records('judgements',PLAN)
@@ -76,6 +77,7 @@ def test_concept114_multiround_wrong_confused_continue_and_point_credit(concept_
 def test_concept114_reopen_and_second_device_continue_same_subpoint(concept_env,tmp_path):
     e=concept_env
     act(e,'next');act(e,'next');before=act(e,'reply','这一步我还想多聊。')
+    assert 'p0' not in e.room._course(PLAN).taught()
     e.room=Classroom(e.services,e.room.study_day,now=e.room.now)
     reopened=act(e,'enter')
     assert reopened['concept']==before['concept']

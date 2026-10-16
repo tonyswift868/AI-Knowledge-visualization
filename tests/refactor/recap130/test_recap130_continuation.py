@@ -26,7 +26,8 @@ def test_recap130_same_action_card_credit_and_next_point(tmp_path,next_concept):
         assert view['messages'][-2]['kind']=='recap' and view['messages'][-1]['role']=='assistant'
         assert json.loads(view['messages'][-2]['content'])==Classroom._recap_content(e.store.records('points',PLAN)[0])
         credits=e.store.records('credits',PLAN)
-        assert len(credits)==1 and credits[0]['credit']['minutes']==15
+        assert len([row for row in credits if row['id'].startswith('subpoint:')])==3
+        assert sum(row['credit']['minutes'] for row in credits)==15
         assert any(s.startswith(TODAY_EVENT) for s in e.stream)
     finally:close130(e)
 
@@ -123,7 +124,7 @@ def test_recap130_prediction_declines_uncertain_path_and_actual_uses_normal_path
         if barrier=='not_ready':
             view=act(e,'next')
             assert not view['failure'] and view['step']=='preparing_materials' and waits==['next']
-            assert view['messages'][-1]['kind']=='recap' and len(e.store.records('credits',PLAN))==1
+            assert view['messages'][-1]['kind']=='recap' and len(e.store.records('credits',PLAN))==3
     finally:close130(e)
 
 
@@ -135,5 +136,5 @@ def test_recap130_cancelled_next_teacher_keeps_completed_point(tmp_path,monkeypa
         with pytest.raises(BridgeError,match='已停止'):act(e,'next')
         view=e.room.run(PLAN,lambda *args:None)
         assert view['step']=='teach' and view['messages'][-1]['kind']=='recap'
-        assert len(e.store.records('credits',PLAN))==1
+        assert len([row for row in e.store.records('credits',PLAN) if row['id'].startswith('subpoint:')])==3
     finally:close130(e)

@@ -3,7 +3,7 @@ import copy,json,logging,threading
 from types import SimpleNamespace
 import pytest
 from refactor.runtime_logging import DiagnosticFormatter
-from refactor.learning.app.classroom import Classroom,RESET
+from refactor.learning.app.classroom import Classroom,RESET,TODAY_EVENT
 from refactor.learning.course import teacher_agent as agent
 from tests.refactor.teacher_agent.test_class_teacher_agent import context
 from tests.refactor.concept114.test_concept114_classroom import concept_environment
@@ -118,7 +118,9 @@ def test_teacher138_ready_prefetch_has_rewritten_before_click_no_reset_or_extra_
             count=len(calls);env.stream.clear()
             result=act(env,'next')
         assert not result['failure'] and len(calls)==count
-        assert env.stream==[GOOD] and RESET not in env.stream
+        progress=[json.loads(item[len(TODAY_EVENT):]) for item in env.stream if item.startswith(TODAY_EVENT)]
+        assert len(progress)==1 and progress[0]['today_tentative']==5
+        assert [item for item in env.stream if not item.startswith(TODAY_EVENT)]==[GOOD] and RESET not in env.stream
         reasons=[r.mf_fields for r in caplog.records if getattr(r,'mf_event',None)=='classroom']
         assert len(reasons)==2 and all(r['code']=='PREFETCH' and r['reason']=='TOO_LONG' for r in reasons)
         assert any('classroom prefetch hit' in r.getMessage() for r in caplog.records)
