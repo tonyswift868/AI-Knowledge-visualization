@@ -588,7 +588,7 @@
 - 更新：2026-10-10
 
 ### [RAG-01] 资料问答（检索增强）
-- 状态：已实现未上线（2026-10-16 合入 4756f4c6）。服务器（154-MF01）：LangChain4j bge-small-zh-v1.5（512 维，进程内），pgvector 表 rag_documents、rag_chunks、rag_document_aliases（迁移 0044，FORCE RLS），四个接口见 refactor/server-java/RAG_API.md；MDN 中文样本自拟 20 问前 5 命中 20/20（小样本）；模型加载后 Java 内存约 +200 MB，建议 1024 MB。客户端（155-MF02）：左侧“资料问答”页，三种选资料方式，只传文字，SHA256 去重，问答 rag_qa 流式，[n] 可点看原文，资料外补充有标记，会话存本机 rag.sqlite3；真实三问人工核对 3/3 符合原文。上线前缺口交 156-MF01：注销时清理 RAG 表、部署包与迁移脚本。
+- 状态：已实现未上线（2026-10-16 合入 4756f4c6）。服务器（154-MF01）：LangChain4j bge-small-zh-v1.5（512 维，进程内），pgvector 表 rag_documents、rag_chunks、rag_document_aliases（迁移 0044，FORCE RLS），四个接口见 refactor/server-java/RAG_API.md；MDN 中文样本自拟 20 问前 5 命中 20/20（小样本）；模型加载后 Java 内存约 +200 MB，建议 1024 MB。客户端（155-MF02）：左侧“资料问答”页，三种选资料方式，只传文字，SHA256 去重，问答 rag_qa 流式，[n] 可点看原文，资料外补充有标记，会话存本机 rag.sqlite3；真实三问人工核对 3/3 符合原文。156-MF01 补了注销清理（0045）和部署包。2026-10-16 23:54 上线：先备份（/opt/mentorflow/backups/rag-eeb63f78），迁移以 mentorflow_migrator 执行失败（对 account_closure 模式没有 CREATE 权限），整个升级回滚，库仍为 0043。架构师的上线脚本用管道取输出，没捕获失败，继续部署了 Java eeb63f78；Java 正常，但 RAG 表不存在，客户端未发版，无人调用。修迁移交 157-MF01（按线上真实角色复现）。
 - 需求（用户 2026-10-16 定）：
   - 左侧导航单独一个“资料问答”页，不放在“更多工具”。
   - 选资料三种方式：选一个计划就针对其全部资料；跨计划挑几份混在一起；直接上传新文件、不建计划。
