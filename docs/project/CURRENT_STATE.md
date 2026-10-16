@@ -6,11 +6,11 @@
 
 2026-10-17 更新。
 
-- **目录与代码**：主目录 D:\MentorFlow，代码全在 refactor/（客户端 learning、desktop，服务器 server），测试在 tests/refactor/；员工工位 D:\MentorFlow-office\<工位>\repo（WORKFLOW）。架构：PySide6 + QWebEngine 嵌 React（Vite）前端，Python 后端，固定流程编排；模型 DeepSeek（deepseek-v4-flash）。服务器 89.45.45.28：后端 Java（[ARCH-09]，容器 mentorflow-java-backend，镜像 mentorflow-java-server:eeb63f78）+ Keycloak；数据库 PG17 + pgvector 0.8.7，迁移版本 0043（RAG 表还没建，[BUG-107]）。
+- **目录与代码**：主目录 D:\MentorFlow，代码全在 refactor/（客户端 learning、desktop，服务器 server），测试在 tests/refactor/；员工工位 D:\MentorFlow-office\<工位>\repo（WORKFLOW）。架构：PySide6 + QWebEngine 嵌 React（Vite）前端，Python 后端，固定流程编排；模型 DeepSeek（deepseek-v4-flash）。服务器 89.45.45.28：后端 Java（[ARCH-09]，容器 mentorflow-java-backend，镜像 mentorflow-java-server:eeb63f78）+ Keycloak；数据库 PG17 + pgvector 0.8.7，迁移版本 0045（RAG 表已建，2026-10-17）。
 - **产品方向**：见 [DIR-01]。
 - **版本与测试**：线上 2.0.20（2026-10-16 00:54 发布，只发软件内更新；非必须；基线 2.0.19；main 59ec4d8b，[SYS-06]），发版走 GitHub Actions 流水线。用户本人亲测是唯一算数的验收，不用 AI 模拟测试（[QA-01]）。
 - **用户在学的计划**：“java guide”（资料 JavaGuide，10-07～10-22）：2026-10-14 已在源代码版换成新结构（保留 101 个已学/已跳过旧点，加 144 个大知识点），逾期已平摊，每天 323 分（[BUG-86]）。同一账号同一时间只能一台在线（[ACC-01]）。
-- **接下来**（2026-10-17 交班）：①157-MF01 已合入（e3247021，[BUG-107]）：等用户同意后，架构师上服务器先备份、再重跑 migrate.sh（0043 → 0045，检查退出码）、跑 rag-verify.sh，确认 RAG 表就绪；②之后发 2.0.21（资料问答客户端 [RAG-01] + 测试连接修复 [BUG-106]，只发软件内更新）；③后端已全部是 Java（[ARCH-09]，Python 已停）。邮件类流程（注册、找回、改邮箱、注销）线上未真用，用户愿意时给测试邮箱再测；Python 回退镜像对 0044 之后的库要按 156 README 重建 fallback；④缓存命中率复查（[SYS-05]）。
+- **接下来**（2026-10-17 交班）：①服务器 RAG 表已建好（2026-10-17，[BUG-107] 已关闭）；②正在发 2.0.21（用户 2026-10-17 同意）（资料问答客户端 [RAG-01] + 测试连接修复 [BUG-106]，只发软件内更新）；③后端已全部是 Java（[ARCH-09]，Python 已停）。邮件类流程（注册、找回、改邮箱、注销）线上未真用，用户愿意时给测试邮箱再测；Python 回退镜像对 0044 之后的库要按 156 README 重建 fallback；④缓存命中率复查（[SYS-05]）。
 - **用户定的暂不做**：番茄钟、自习室、学习远征（不是永远不做）。
 - **用户的电脑**：装好的软件 D:\MentorFlowApp\MentorFlow；源代码版数据 D:\MentorFlowData\account-shell（只读）；旧版客户端数据 %LOCALAPPDATA%\MentorFlow（不要动）；E 盘是移动固态硬盘，只读运行，不写不复制（BUG-02）；D:\Kristina* 是别的项目，不碰。
 - **发给外部新用户**：对方从 aiteacher.clannad.win/download 下载安装、用自己的邮箱注册、用自己的 DeepSeek Key（设置→模型连接）。到 2026-10-14 还没给对方发过任何版本。放行标准（都在真打包程序上走通、架构师看过证据，才让用户测、再发给对方）：①下载站安装程序全新安装不报错、有桌面图标；②几秒内出登录窗口、不闪，注册、登录、填 Key、建计划能用；③以后发新版，在软件里点一下更新，软件自己关掉、换好、自动重新打开。现状：安装程序覆盖安装（2.0.13）和软件内更新（2.0.13→2.0.14）用户已走通；全新安装和注册还没有真人走通过（[ACC-02]）。
@@ -67,7 +67,7 @@
 | UI-00 | 前端整体 | 已实现；对话滚动规则已实现未发布（103-MF03） | 2026-10-12 |
 | UI-01 | 首页 | 已实现 | 2026-10-10 |
 | UI-02 | 更多工具 | 已实现；教师闲聊一键复制随 2.0.19 发布 | 2026-10-15 |
-| RAG-01 | 资料问答（检索增强） | 已实现未上线；服务器迁移待重跑（[BUG-107]），之后客户端随 2.0.21 发 | 2026-10-17 |
+| RAG-01 | 资料问答（检索增强） | 服务器已就绪（2026-10-17）；客户端随 2.0.21 发，待用户亲测 | 2026-10-17 |
 | VOICE-01 | 语音输入与朗读 | 已实现；整段重识别已合入未发布（[BUG-85]） | 2026-10-14 |
 | QA-01 | 验收方式 | 用户正式测试 | 2026-10-10 |
 | BUG-01 | 新界面滚动卡死、左侧栏消失 | 已关闭（2026-09-27） | 2026-09-28 |
@@ -174,7 +174,7 @@
 | BUG-104 | JavaGuide 计划的知识点切得太碎太杂，用户分不清在讲什么（一个模块 80 个点，标题是序号列表、“总结”等） | 待讨论（用户这周先用老师预设应急，软件改不改等用户定） | 2026-10-15 |
 | BUG-105 | 课堂弹红色“软件出了点问题，没拿到回复”：DeepSeek 只思考、没写正文就结束 | 已修，随 2.0.19 发布，待用户亲测 | 2026-10-15 |
 | BUG-106 | 设置页“测试连接”在思考模式下必报“模型回复异常”（32 个 token 被思考用完） | 已修未发布（153-MF04） | 2026-10-16 |
-| BUG-107 | 线上执行 RAG 迁移失败：迁移角色对 account_closure 没有 CREATE；上线脚本没发现失败，继续部署了 Java | 已修未上线（157-MF01），待重跑线上迁移 | 2026-10-17 |
+| BUG-107 | 线上执行 RAG 迁移失败：迁移角色对 account_closure 没有 CREATE；上线脚本没发现失败，继续部署了 Java | 已关闭（2026-10-17 线上重跑成功） | 2026-10-17 |
 | BUG-75 | 预览版和正式版共用 Windows 凭据，预览版启动会读走正式版的“更新后自动登录”凭据 | 已关闭（随 2.0.13 发布） | 2026-10-12 |
 | BUG-76 | 软件开着时运行安装程序，只提示“安装未完成，请稍后重试” | 已修，已发布（2.0.13） | 2026-10-14 |
 
@@ -589,7 +589,7 @@
 - 更新：2026-10-10
 
 ### [RAG-01] 资料问答（检索增强）
-- 状态：已实现未上线（2026-10-16 合入 4756f4c6）。服务器（154-MF01）：LangChain4j bge-small-zh-v1.5（512 维，进程内），pgvector 表 rag_documents、rag_chunks、rag_document_aliases（迁移 0044，FORCE RLS），四个接口见 refactor/server-java/RAG_API.md；MDN 中文样本自拟 20 问前 5 命中 20/20（小样本）；模型加载后 Java 内存约 +200 MB，建议 1024 MB。客户端（155-MF02）：左侧“资料问答”页，三种选资料方式，只传文字，SHA256 去重，问答 rag_qa 流式，[n] 可点看原文，资料外补充有标记，会话存本机 rag.sqlite3；真实三问人工核对 3/3 符合原文。156-MF01 补了注销清理（0045）和部署包。2026-10-16 23:54 第一次上线迁移失败、已整体回滚，库仍为 0043；Java eeb63f78 已在线，但 RAG 表不存在，客户端未发版，没人调用（[BUG-107]）。157-MF01 已修，待用户同意后重跑。
+- 状态：已实现未上线（2026-10-16 合入 4756f4c6）。服务器（154-MF01）：LangChain4j bge-small-zh-v1.5（512 维，进程内），pgvector 表 rag_documents、rag_chunks、rag_document_aliases（迁移 0044，FORCE RLS），四个接口见 refactor/server-java/RAG_API.md；MDN 中文样本自拟 20 问前 5 命中 20/20（小样本）；模型加载后 Java 内存约 +200 MB，建议 1024 MB。客户端（155-MF02）：左侧“资料问答”页，三种选资料方式，只传文字，SHA256 去重，问答 rag_qa 流式，[n] 可点看原文，资料外补充有标记，会话存本机 rag.sqlite3；真实三问人工核对 3/3 符合原文。156-MF01 补了注销清理（0045）和部署包。服务器已就绪：2026-10-16 第一次上线迁移失败（[BUG-107]），157-MF01 修好后 2026-10-17 00:39 重跑成功，库为 0045，三张 RAG 表已建；Java eeb63f78 不用重启。客户端随 2.0.21 发。
 - 需求（用户 2026-10-16 定）：
   - 左侧导航单独一个“资料问答”页，不放在“更多工具”。
   - 选资料三种方式：选一个计划就针对其全部资料；跨计划挑几份混在一起；直接上传新文件、不建计划。
@@ -1057,13 +1057,13 @@
 - 更新：2026-10-14
 
 ### [BUG-107] 线上执行 RAG 迁移失败：迁移角色对 account_closure 没有 CREATE；上线脚本没发现失败，继续部署了 Java
-- 状态：已修未上线（157-MF01，合入 e3247021），待用户同意后重跑线上迁移。
+- 状态：已关闭（157-MF01 合入 e3247021；2026-10-17 00:39 线上重跑成功）。
 - 现象：2026-10-16 23:54（服务器 14:54 UTC），架构师先备份（/opt/mentorflow/backups/rag-eeb63f78），再用 deploy/migrate.sh 以 mentorflow_migrator 执行 upgrade head，报 psycopg.errors.InsufficientPrivilege: permission denied for schema account_closure，0044、0045 整体回滚，库仍为 0043_native_sessions，rag 表不存在。上线脚本用管道取输出，没检查退出码，没发现失败，接着部署了 Java eeb63f78；Java 正常，RAG 接口因为没有表用不了，客户端没发版，没人调用。
 - 原因：0045 要在 account_closure 模式里替换注销清理函数（CREATE OR REPLACE）。线上 account_closure 属主是 mentorflow_closure，迁移角色只有 USAGE；它虽是 mentorflow_closure 的成员，但不继承其权限。156 的本机测试夹具里迁移角色默认继承了 closure 的权限，测试也没断言“迁移角色没有 CREATE”，所以没测出来。
 - 排查：线上只读查角色和模式权限（.local/test-tmp/roles157.txt）；157-MF01 在真实 PG17.6 + pgvector 0.8.7 上按线上角色原样搭库，从 0043 复现同一个 42501 报错。
 - 解决（157-MF01）：0045 替换函数前 SET LOCAL ROLE mentorflow_closure，替换完 RESET ROLE，和 0041 的先例一致（0041 在线上就是这样执行成功的）；授权、RLS 策略、触发器仍由迁移角色执行；不给任何角色加权限。0044 没有同类问题。新增 test_migration_roles157：迁移角色 NOINHERIT、成员关系 INHERIT FALSE / SET TRUE，每轮断言迁移角色没有有效 CREATE。
-- 验证：157-MF01 本机：线上同款角色下 0043 → head → 0043 → head 都成功，函数属主和权限不变；同库正式 Java HTTP 注销 COMPLETED，目标账号三张 RAG 表清空、另一账号不受影响；Python 全量 4186 通过 0 失败（2026-10-17）。线上重跑待做。
-- 经验：迁移测试的角色和权限要照线上原样搭（包括继承标志），并断言“不该有的权限确实没有”；上服务器的脚本每一步都检查退出码，失败就停，不用管道吞掉结果。
+- 验证：157-MF01 本机：线上同款角色下 0043 → head → 0043 → head 都成功，函数属主和权限不变；同库正式 Java HTTP 注销 COMPLETED，目标账号三张 RAG 表清空、另一账号不受影响；Python 全量 4186 通过 0 失败（2026-10-17）。线上重跑（用户 2026-10-17 同意；服务器时间 10-16 16:39 UTC）：源码放 /opt/mentorflow/releases/java-e3247021，脚本 rerun157.sh 每步检查退出码。先备份到 /opt/mentorflow/backups/rag-e3247021（pg_dump 10,145,827 字节，目录 1163 项），migrate.sh 0043 → 0045_account_closure_rag 退出码 0。只读核对：三张 rag 表 RLS 开且 FORCE；account_closure 下 14 个函数属主仍是 mentorflow_closure；迁移角色对 account_closure 仍只有 USAGE、没有 CREATE；mentorflow_app 对三张表可读写删；同步记录 3253 条前后不变；Java /health/ready 200，未登录调 RAG 接口 401，10 分钟内日志无错误，没重启 Java。rag-verify.sh 要一次性测试库和 Maven、Java、Alembic 环境，服务器上没跑（上一次脚本里那句其实也没跑成，报错被管道吞了）；往返测试由 156、157 在本机做过。途中一次失败：第一次上传的源码是 Windows 换行，migrate.sh 一开头就报 “set: Illegal option -”，数据库没动；改用 git -c core.autocrlf=false -c core.eol=lf archive 重传后成功。
+- 经验：迁移测试的角色和权限要照线上原样搭（包括继承标志），并断言“不该有的权限确实没有”；上服务器的脚本每一步都检查退出码，失败就停，不用管道吞掉结果；从 Windows 往服务器传源码用 git -c core.autocrlf=false -c core.eol=lf archive，否则 .sh 带 Windows 换行跑不了。
 - 关联：[RAG-01] [ARCH-09]
 - 更新：2026-10-17
 

@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 的「当前阶段」和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-17）：线上客户端 2.0.20；服务器后端是 Java（mentorflow-java-backend，镜像 mentorflow-java-server:eeb63f78，含 RAG 代码），数据库 PG17 + pgvector 0.8.7，迁移仍是 0043。157-MF01 已合入（e3247021，修 0045 权限，[BUG-107]）。下一步：用户同意后架构师上服务器备份、重跑迁移、跑 rag-verify.sh；成功后列清 2.0.21 的内容请用户定发不发（[RAG-01] 客户端、[BUG-106]）。员工全部空闲。
+- **现在在做的事**（2026-10-17）：线上客户端 2.0.20；服务器后端 Java（镜像 mentorflow-java-server:eeb63f78），数据库 PG17 + pgvector 0.8.7，迁移 0045（RAG 表 2026-10-17 已建，[BUG-107] 已关闭）。正在发 2.0.21（用户 2026-10-17 同意：[RAG-01] 资料问答客户端、[BUG-106]；只发软件内更新）。员工全部空闲。
 
 ## 固定做法（规则见 AGENTS.md）
 
@@ -27,6 +27,7 @@
 - **查用户软件的问题**：装好的软件日志 D:\MentorFlowApp\MentorFlow\Data\logs\mentorflow.log，源代码版日志 D:\MentorFlowData\account-shell\logs\mentorflow.log（JSON 行，只读）；数据库在对应的 learning\accounts\<账号>\*.sqlite3，只读查看用 `sqlite3.connect('file:...?mode=ro', uri=True)`。
 - **界面构建**：PATH 加 `/d/MentorFlow/.local/node`，`node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 不进仓库。
 - **写脚本**：含 Windows 路径或反斜杠的内容不要用 bash heredoc 或 python -c（会被吃掉，BUG-10），写成文件再运行。
+- **往服务器传源码**：`git -c core.autocrlf=false -c core.eol=lf archive --format=tar -o <tar> <提交> refactor/server refactor/server-java`，scp 上去解到 /opt/mentorflow/releases/java-<提交>/，再核对关键文件 sha256；不加这两个参数 .sh 会带 Windows 换行，跑不了（[BUG-107]）。
 - **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，mentorflow-admin，sudo -n）。Python 后端 mentorflow-slim-backend:MF-76（已停，留作回退；切换与回滚脚本 /opt/mentorflow/state/mf76/switch.sh：无参数切换、check 只查配置、rollback 回到 MF-75；上一版 mf75 目录保留）；入口 nginx 容器 mentorflow-e1-preview-edge-1（配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf）；更新与下载目录 /opt/mentorflow/update-static/e108/app/；资料白名单 /opt/mentorflow/state/mentorflow-e1-preview/catalog/。 后端是 Java（[ARCH-09]，2026-10-16 起）：容器 mentorflow-java-backend、mentorflow-java-oidc，部署与切换、回滚、停用和恢复 Python 的脚本在 /opt/mentorflow/releases/java-539ab610/refactor/server-java/deploy（README 有步骤）；compose 需 BACKEND_ENV=/opt/mentorflow/state/mentorflow-e1-preview/account-core-21337c1/runtime.env；Python 后端已停，镜像 mentorflow-slim-backend:MF-76 保留。 数据库容器镜像为 mentorflow-postgres-pgvector:17（[RAG-01]，2026-10-16）。它的 compose 标签指向已不存在的旧目录，以后用 compose 操作 postgres，要用后端容器标签里的文件组，加上 --profile account-core-mvp、-f /opt/mentorflow/backups/pgvector-20261016/pgvector.override.yml，最后再加 BUG-45 override。 2026-10-10 起两个 docker 网络设了 ip_range（BUG-45）：以后用 Compose 操作这些容器，命令末尾必须追加 -f /opt/mentorflow/state/bug45-20261010/network45.override.yml。
 - **自动等回执（用户 2026-10-14 定）**：只挂一个后台等待：`.local/tmp/receipt_watch.sh wait`（每 30 秒查整个 .local/receipts，和 .local/tmp/receipts.seen 比，有新的或改过的回执就列出并结束），收到就直接读回执、审查合入、清理、更新文档，处理完用 `receipt_watch.sh ack <任务号>` 记为已处理，再挂一次 wait；不用等用户转告，不按任务分别挂多个。
 - **磁盘（用户 2026-10-10 定）**：测试与临时产物在 .local/test-tmp/ 下；冒烟测试、构建、中间文件用完就自动删，不留着等以后分类。员工删除被系统拦住时，架构师合入后直接删（只留 report.md 和截图），不用再问用户。
@@ -57,7 +58,7 @@
 ## 待派队列
 
 - 157-MF01 已合入（e3247021，[BUG-107]）。员工的 mig157 残留架构师已删，只留 report.md（里面有线上重跑步骤）。
-- 下一步（架构师，要用户同意）：上服务器重跑迁移 → rag-verify.sh → 用户定发不发 2.0.21。
+- 线上迁移已重跑成功（2026-10-17，[BUG-107]）。2.0.21 发版中。
 - 待用户定：[BUG-104] JavaGuide 知识点太碎要不要改。
 
 ## 回执格式
