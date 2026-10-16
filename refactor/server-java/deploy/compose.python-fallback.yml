@@ -1,0 +1,5 @@
+# Temporary paired-probe/rollback backend built from the release's current
+# refactor/server source. Keep this layer before network45.override.yml.
+services:
+  backend:
+    image: mentorflow-slim-backend:MF-156-python-fallback

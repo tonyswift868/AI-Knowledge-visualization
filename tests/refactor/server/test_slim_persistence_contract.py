@@ -121,7 +121,7 @@ def test_slim_original_migration_chain_same_head_and_schema(schema_template, tmp
     engine=create_engine(f'sqlite:///{schema_template.as_posix()}')
     try:
         with engine.connect() as connection:
-            assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '0044_rag_documents'
+            assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '0045_account_closure_rag'
     finally:
         engine.dispose()
 

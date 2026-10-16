@@ -109,10 +109,10 @@ def _python_trace(monkeypatch):
 
 
 def test_closure_timeout_interrupt_and_client_cancellation148(monkeypatch):
-    build = TASK_ROOT / "build"
+    build = Path(os.environ.get("JAVA142_ARTIFACTS", str(TASK_ROOT / "build")))
     classes = build / "classes"
     test_classes = build / "test-classes"
-    dep_file = TASK_ROOT / "test-classpath.txt"
+    dep_file = Path(os.environ.get("JAVA156_CLASSPATH_FILE", str(TASK_ROOT / "test-classpath.txt")))
     assert classes.is_dir() and test_classes.is_dir() and dep_file.is_file(), \
         "Run the unified Java build first; this test must not start Maven."
     deps = dep_file.read_text(encoding="utf-8").strip()

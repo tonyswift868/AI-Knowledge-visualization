@@ -161,7 +161,7 @@ def _start_local144(fixture, backend: str, directory: Path, *, active_window: bo
     else:
         truststore, password = _java_truststore144(fixture["tls"]["ca"], directory)
         java_home = Path(r"D:\MentorFlow\.local\java\jdk-21.0.12.1+1")
-        build = LOCAL / "build"
+        build = Path(os.environ.get("JAVA142_ARTIFACTS", str(LOCAL / "build")))
         classpath = str(build / "classes") + os.pathsep + str(build / "test-classes")
         classpath += os.pathsep + (LOCAL / "test-classpath.txt").read_text(encoding="utf-8").strip()
         env["PATH"] = str(java_home / "bin") + os.pathsep + env.get("PATH", "")

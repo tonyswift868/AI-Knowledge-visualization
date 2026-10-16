@@ -42,20 +42,10 @@ def _free_port() -> int:
 
 
 def _ensure_classpath() -> Path:
-    if CLASSPATH_FILE.is_file():
-        return CLASSPATH_FILE
-    BUILD.mkdir(parents=True, exist_ok=True)
-    CLASSPATH_FILE.parent.mkdir(parents=True, exist_ok=True)
-    env = os.environ.copy()
-    env["JAVA_HOME"] = str(JAVA_HOME)
-    env["PATH"] = str(JAVA_HOME / "bin") + os.pathsep + env.get("PATH", "")
-    env.update({"TMP": str(TASK_ROOT), "TEMP": str(TASK_ROOT), "TMPDIR": str(TASK_ROOT)})
-    command = [str(MAVEN), "-q", "-Dmaven.repo.local=" + str(M2),
-               "-Dmdep.includeScope=test", "-Dmdep.outputFile=" + str(CLASSPATH_FILE),
-               "-f", str(ROOT / "refactor/server-java/pom.xml"), "dependency:build-classpath"]
-    result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True, timeout=900)
-    if result.returncode or not CLASSPATH_FILE.is_file():
-        raise RuntimeError("RAG154 test classpath generation failed: " + result.stdout[-3000:] + result.stderr[-3000:])
+    from java_build156 import ensure_java_build
+    ready, reason = ensure_java_build()
+    if not ready:
+        raise RuntimeError("server_java build unavailable: " + reason)
     return CLASSPATH_FILE
 
 

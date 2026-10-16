@@ -1,12 +1,15 @@
-"""Real loopback HTTP, including keepalive frames which reset socket read timers."""
+"""Loopback HTTP faults and clock-driven first-event deadline contracts."""
 import contextlib
+import asyncio
 import json
 import socket
 import threading
 import time
+from types import SimpleNamespace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
+import httpx
 
 from refactor.learning.connections import credentials, providers, transport
 from refactor.learning.connections.errors import ModelError
@@ -14,6 +17,66 @@ from refactor.learning.connections.gateway import ModelGateway
 from refactor.learning.connections.faults import model_fault
 from tests.refactor.gateway.conftest import MemoryVault
 from tests.refactor.providers.samples import anthro, chat, anthro_frames, chat_frames
+
+
+def scripted_first_event134(monkeypatch, provider, mode):
+    """Keep the real parser/guard/gateway; advance only accounting's clock.
+
+    Wall time includes key storage, logging, HTTP setup and thread scheduling,
+    which is not the vendor first-event deadline. Do not patch Python's global
+    time module: asyncio's scheduler must continue to use its real clock.
+    """
+    from refactor.learning.connections.providers import _accounting
+    clock, calls, accounts = [0.0], [], []
+    monkeypatch.setattr(_accounting, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
+    accounting_class, complete = providers.Accounting, providers.complete
+
+    def accounting(config):
+        value = accounting_class(config)
+        accounts.append(value)
+        return value
+
+    monkeypatch.setattr(providers, 'Accounting', accounting)
+
+    class Stream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            meter = accounts[-1]
+            if mode == 'grace':
+                data = anthro(provider='deepseek') if provider == 'deepseek' else chat(provider='zhipu')
+                if calls[-1].get('stream'):
+                    frames = anthro_frames(data) if provider == 'deepseek' else chat_frames(data)
+                else:
+                    raw = json.dumps(data).encode()
+                    frames = [raw[:2], raw[2:]]
+                for index, frame in enumerate(frames):
+                    clock[0] = .14 if index == 0 else .38
+                    yield frame
+                assert meter.receipts[-1].first_event_ms == 140
+                assert not meter.first_expired()
+                return
+            heartbeat = (b'event: ping\ndata: {"type":"ping"}\n\n' if mode == 'ping'
+                         else b'\n' if mode == 'blank' else b': keep-alive\n\n')
+            for value in (.05, .10, .199):
+                clock[0] = value
+                yield heartbeat
+                assert meter.receipts[-1].first_event_ms is None
+                assert not meter.first_expired()
+            clock[0] = .20
+            yield heartbeat
+            assert meter.first_expired()
+            # The real guarded() loop must notice the deadline and cancel this
+            # still-open response; EOF/protocol errors cannot end it instead.
+            await asyncio.Event().wait()
+
+    def handle(request):
+        calls.append(json.loads(request.content))
+        streaming = calls[-1].get('stream', False)
+        return httpx.Response(200, headers={'Content-Type': 'text/event-stream' if streaming else 'application/json'},
+                              stream=Stream())
+
+    client = httpx.MockTransport(handle)
+    monkeypatch.setattr(providers, 'complete', lambda *args, **kwargs: complete(*args, **kwargs, http_client=client))
+    return calls, clock, accounts
 
 
 @contextlib.contextmanager
@@ -78,12 +141,13 @@ def request134(gateway,base,provider,*,stream=True,purpose='connection_test'):
 @pytest.mark.parametrize('provider',['deepseek','relay_openai'])
 @pytest.mark.parametrize('mode,stream',[('keepalive',True),('blank',False),('ping',True)])
 @pytest.mark.parametrize('purpose',['teacher','connection_test','outline'])
-def test_first_event134_heartbeat_is_not_response_and_never_retries(gateway134,provider,mode,stream,purpose):
-    with server134(provider,mode) as (base,calls):
-        start=time.monotonic()
-        with pytest.raises(ModelError) as caught:request134(gateway134,base,provider,stream=stream,purpose=purpose)
-        assert .18 <= time.monotonic()-start < 1
-        assert len(calls)==1 and caught.value.code=='MODEL_FIRST_EVENT_TIMEOUT'
+def test_first_event134_heartbeat_is_not_response_and_never_retries(gateway134,monkeypatch,provider,mode,stream,purpose):
+    calls, clock, accounts = scripted_first_event134(monkeypatch, provider, mode)
+    with pytest.raises(ModelError) as caught:
+        request134(gateway134,'https://fault134.invalid',provider,stream=stream,purpose=purpose)
+    assert clock[0] == gateway134.first_event_timeout == .20
+    assert accounts[-1].receipts[-1].first_event_ms is None
+    assert len(calls)==1 and caught.value.code=='MODEL_FIRST_EVENT_TIMEOUT'
     status=gateway134.model_status();fault=status['fault']
     assert status['state']=='error' and fault['category']=='busy'
     assert '服务繁忙' in fault['message'] and [a['id'] for a in fault['actions']]==['retry']
@@ -93,11 +157,12 @@ def test_first_event134_heartbeat_is_not_response_and_never_retries(gateway134,p
 
 @pytest.mark.parametrize('provider',['deepseek','relay_openai'])
 @pytest.mark.parametrize('stream',[True,False])
-def test_first_event134_before_deadline_then_slow_good_reply_survives(gateway134,provider,stream):
-    with server134(provider,'grace') as (base,calls):
-        result=request134(gateway134,base,provider,stream=stream)
-        assert result.text=='答案' and len(calls)==1
-        assert 125 <= result.usage.raw['_mentorflow']['first_event_ms'] < 200
+def test_first_event134_before_deadline_then_slow_good_reply_survives(gateway134,monkeypatch,provider,stream):
+    calls, clock, _ = scripted_first_event134(monkeypatch, provider, 'grace')
+    result=request134(gateway134,'https://fault134.invalid',provider,stream=stream)
+    assert result.text=='答案' and len(calls)==1
+    assert clock[0] == .38 > gateway134.first_event_timeout
+    assert result.usage.raw['_mentorflow']['first_event_ms'] == 140
     assert gateway134.model_status()['state']=='ok'
     import sqlite3
     with sqlite3.connect(gateway134.usage_log.path) as db:

@@ -58,7 +58,7 @@ def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
             assert hnsw_count == 0
     _run_alembic(url, ["upgrade", "head"], run_dir / "migration-idempotent-test.log", rag154_backends["issuer"])
     with psycopg.connect(url.replace("postgresql+psycopg://", "postgresql://")) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0044_rag_documents"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0045_account_closure_rag"
     _run_alembic(url, ["downgrade", "0043_native_sessions"], run_dir / "migration-down-test.log", rag154_backends["issuer"])
     assert _tables(url) == (None, None, None)
     _run_alembic(url, ["upgrade", "head"], run_dir / "migration-up-test.log", rag154_backends["issuer"])

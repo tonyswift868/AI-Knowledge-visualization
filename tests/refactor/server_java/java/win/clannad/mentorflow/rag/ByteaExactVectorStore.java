@@ -35,8 +35,9 @@ public final class ByteaExactVectorStore implements RagVectorStore {
         Object[] args = new Object[documentIds.size() + 1]; args[0] = scope;
         for (int i = 0; i < documentIds.size(); i++) args[i + 1] = documentIds.get(i);
         byte[] query = encode(queryVector);
-        List<Candidate> candidates = jdbc.query("SELECT document_id,seq,text,page,section,embedding FROM rag_chunks "
-                        + "WHERE account_scope=? AND document_id IN (" + marks + ")",
+        List<Candidate> candidates = jdbc.query("SELECT c.document_id,c.seq,c.text,c.page,c.section,c.embedding FROM rag_chunks c "
+                        + "JOIN rag_documents d USING (account_scope,document_id) "
+                        + "WHERE c.account_scope=? AND d.status='ready' AND c.document_id IN (" + marks + ")",
                 (rs, row) -> new Candidate(rs.getString("document_id"), rs.getInt("seq"), rs.getString("text"),
                         rs.getString("page"), rs.getString("section"), cosine(query, rs.getBytes("embedding"))), args);
         candidates.sort(java.util.Comparator.comparingDouble(Candidate::cosine).reversed()

@@ -15,6 +15,11 @@ services:
         -Djavax.net.ssl.trustStore=/run/mentorflow/trust/trust.p12
         -Djavax.net.ssl.trustStorePassword=changeit
         -Djavax.net.ssl.trustStoreType=PKCS12
+        -Djava.io.tmpdir=/tmp
+      DJL_CACHE_DIR: /tmp/mentorflow-rag/native-cache
+      ENGINE_CACHE_DIR: /tmp/mentorflow-rag/native-cache
+      HF_HOME: /tmp/mentorflow-rag/huggingface
+      HF_HUB_CACHE: /tmp/mentorflow-rag/huggingface/hub
     networks:
       internal:
         aliases:
@@ -26,8 +31,10 @@ services:
     security_opt:
       - no-new-privileges:true
     tmpfs:
-      - /tmp:size=64m,mode=1777
-    mem_limit: 768m
+      # RAG-01 measured ~32 MiB native extraction plus JVM scratch; 128 MiB
+      # leaves headroom while keeping the read-only container writable only here.
+      - /tmp:size=128m,mode=1777
+    mem_limit: 1024m
     entrypoint: ["/app/entrypoint.sh"]
 
   java-oidc:

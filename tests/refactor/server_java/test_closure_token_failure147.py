@@ -9,6 +9,7 @@ import pytest
 
 import contract_support145 as c145
 import contract_support147 as support
+from java_build156 import BUILD
 
 
 def _login(client):
@@ -48,7 +49,7 @@ def test_paired_admin_token_expiry_failure_checkpoint_and_retry147(closure147_ba
                 endpoint = support._start_python147(urls[name], fixture["tls"], identities[name], directory)
             else:
                 endpoint = support._start_java147(urls[name], fixture["tls"], identities[name], directory,
-                    c145.ARTIFACTS / "mentorflow-server-0.1.0.jar",
+                    BUILD / "mentorflow-server-0.1.0.jar",
                     support.ARTIFACTS / "test-classes147")
             endpoints.append(endpoint)
             client = httpx.Client(base_url=endpoint["base_url"],

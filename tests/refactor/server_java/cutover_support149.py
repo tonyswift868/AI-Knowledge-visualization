@@ -172,7 +172,7 @@ def client_cutover149():
     root_build = Path(os.environ.get("JAVA142_ARTIFACTS", str(ARTIFACTS.parent / "build")))
     test_classes = root_build / "test-classes"
     classpath = os.pathsep.join((str(test_classes), str(root_build / "classes"),
-        Path(os.environ.get("FIX149_CLASSPATH", str(ARTIFACTS.parent / "test-classpath.txt"))).read_text(encoding="utf-8").strip()))
+        Path(os.environ.get("FIX149_CLASSPATH", str(root_build.parent / "test-classpath.txt"))).read_text(encoding="utf-8").strip()))
     pg = c145.EmbeddedPostgresProcess145(classpath, ARTIFACTS / "postgres.log")
     tls_dir = ARTIFACTS / "tls"
     from contract_support144 import make_tls144

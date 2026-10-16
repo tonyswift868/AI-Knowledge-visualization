@@ -46,37 +46,14 @@ def _run(command, *, cwd=ROOT, env=None, log=None, timeout=240):
 
 
 def _maven_java145(tmp_path):
-    ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    target = ARTIFACTS
-    pom = ROOT / "refactor/server-java/pom.xml"
-    build_env = os.environ.copy()
-    build_env["JAVA_HOME"] = str(JAVA_HOME)
-    build_env["PATH"] = str(JAVA_HOME / "bin") + os.pathsep + build_env.get("PATH", "")
-    settings_args = ["-s", os.environ["JAVA_MAVEN_SETTINGS"]] if os.environ.get("JAVA_MAVEN_SETTINGS") else []
-    jar = target / "mentorflow-server-0.1.0.jar"
-    production_inputs = [pom]
-    production_inputs.extend(path for path in (ROOT / "refactor/server-java/src/main").rglob("*")
-                             if path.is_file())
-    if (not jar.is_file() or any(path.stat().st_mtime_ns > jar.stat().st_mtime_ns
-                                 for path in production_inputs)):
-        _run([str(MAVEN), "-q", *settings_args, "-Dmaven.repo.local=" + str(M2),
-              "-Djava142.build.directory=" + str(target), "-DskipTests", "package",
-              "-f", str(pom)], env=build_env, timeout=900)
-    cp_file = tmp_path / "maven-classpath145.txt"
-    _run([str(MAVEN), "-q", *settings_args, "-Dmaven.repo.local=" + str(M2),
-          "-Djava142.build.directory=" + str(target), "-Dmdep.includeScope=test",
-          "-Dmdep.outputFile=" + str(cp_file), "-f", str(pom),
-          "dependency:build-classpath"], env=build_env, timeout=600)
-    dependency_cp = cp_file.read_text(encoding="utf-8").strip()
-    classes = ARTIFACTS / "test-classes145"
-    classes.mkdir(parents=True, exist_ok=True)
-    compile_cp = os.pathsep.join((str(target / "classes"), dependency_cp))
-    source = ROOT / "tests/refactor/server_java/java/contract145"
-    java_sources = [str(source / name) for name in (
-        "EmbeddedPostgres145.java", "Contract145Main.java", "Contract145Fixtures.java")]
-    _run([str(JAVA_HOME / "bin/javac.exe"), "-encoding", "UTF-8", "-cp", compile_cp,
-          "-d", str(classes), *java_sources], timeout=180)
-    return jar, classes, os.pathsep.join((str(classes), compile_cp))
+    from java_build156 import BUILD, CLASSPATH_FILE, ensure_java_build
+    ready, reason = ensure_java_build()
+    if not ready:
+        raise RuntimeError("server_java build unavailable: " + reason)
+    classes = BUILD / "test-classes"
+    dependency_cp = CLASSPATH_FILE.read_text(encoding="utf-8").strip()
+    compile_cp = os.pathsep.join((str(BUILD / "classes"), str(classes), dependency_cp))
+    return BUILD / "mentorflow-server-0.1.0.jar", classes, os.pathsep.join((str(classes), compile_cp))
 
 
 class EmbeddedPostgresProcess145:

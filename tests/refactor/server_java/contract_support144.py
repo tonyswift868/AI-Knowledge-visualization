@@ -25,7 +25,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 ROOT = Path(__file__).resolve().parents[3]
 LOCAL = Path(os.environ.get("JAVA144_TMP") or os.environ.get("JAVA144_ARTIFACTS") or "D:/MentorFlow/.local/test-tmp/auth144")
 JAVA_HOME = Path(r"D:\MentorFlow\.local\java\jdk-21.0.12.1+1")
-CLASSPATH_FILE = LOCAL / "test-classpath.txt"
+CLASSPATH_FILE = Path(os.environ.get("JAVA156_CLASSPATH_FILE", r"D:\MentorFlow\.local\test-tmp\ship156\test-classpath.txt"))
 NATIVE_PREFIX = "/api/enterprise/auth/native"
 ORG, WORKSPACE = "org-144", "workspace-144"
 OLD_ISSUER = "https://localhost:18080/realms/mentorflow"
@@ -329,7 +329,7 @@ def start_java144(db_url: str, identity: FakeKeycloak144, tls: dict[str, Path], 
         *, issuer: str | None = None, canonical: str | None = None, classes: Path | None = None) -> dict:
     java = JAVA_HOME / "bin" / "java.exe"
     if not java.exists(): raise RuntimeError(f"Java 21 missing: {java}")
-    build_root = LOCAL / "build"
+    build_root = Path(os.environ.get("JAVA142_ARTIFACTS", str(LOCAL / "build")))
     classpath = str(build_root / "classes")
     test_classes = build_root / "test-classes"
     if test_classes.exists(): classpath += os.pathsep + str(test_classes)

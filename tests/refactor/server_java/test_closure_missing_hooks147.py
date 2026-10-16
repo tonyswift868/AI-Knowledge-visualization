@@ -10,6 +10,7 @@ import pytest
 
 import contract_support145 as c145
 import contract_support147 as support
+from java_build156 import BUILD
 
 pytestmark = pytest.mark.slow
 
@@ -31,7 +32,7 @@ def test_default_server_closure_prepare_uses_production_hooks147(closure147_back
     env["PORT"] = str(port)
     log_path = directory / "server.log"
     log = log_path.open("wb")
-    jar = c145.ARTIFACTS / "mentorflow-server-0.1.0.jar"
+    jar = BUILD / "mentorflow-server-0.1.0.jar"
     command = [str(c145.JAVA_HOME / "bin" / "java.exe"),
         "-Dloader.main=win.clannad.mentorflow.ServerApplication", "-cp", str(jar),
         "org.springframework.boot.loader.launch.PropertiesLauncher"]

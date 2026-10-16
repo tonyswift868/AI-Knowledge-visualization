@@ -5,10 +5,12 @@ set -eu
 
 action=${1:-}
 case "$action" in
-  start|stop) ;;
-  *) echo "usage: $0 start|stop" >&2; exit 2 ;;
+  start|stop|recreate) ;;
+  *) echo "usage: $0 start|stop|recreate" >&2; exit 2 ;;
 esac
+deploy_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 network_override=${BUG45_OVERRIDE:-/opt/mentorflow/state/bug45-20261010/network45.override.yml}
+fallback_override=${PYTHON_FALLBACK_OVERRIDE:-$deploy_dir/compose.python-fallback.yml}
 docker_bin=${DOCKER_BIN:-docker}
 python_container=${PYTHON_CONTAINER:-mentorflow-e1-preview-backend-1}
 project=$("$docker_bin" inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$python_container")
@@ -57,8 +59,18 @@ set -f
 for file in $compose_files; do set -- "$@" -f "$file"; done
 set +f
 IFS=$old_ifs
+if [ "$action" = recreate ]; then
+  [ -f "$fallback_override" ] || {
+    echo "Python fallback override not found: $fallback_override" >&2
+    exit 1
+  }
+  set -- "$@" -f "$fallback_override"
+fi
 set -- "$@" -f "$network_override"
 if [ "$action" = start ]; then
   exec "$docker_bin" compose "$@" start backend oidc-loopback-proxy
+fi
+if [ "$action" = recreate ]; then
+  exec "$docker_bin" compose "$@" up -d --no-deps --force-recreate backend oidc-loopback-proxy
 fi
 exec "$docker_bin" compose "$@" stop oidc-loopback-proxy backend
