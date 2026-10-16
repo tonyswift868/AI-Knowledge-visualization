@@ -166,9 +166,8 @@ def _start_java_http(database_url, tls, identity, directory, jar, *, forward_str
 def client_cutover149():
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     (ARTIFACTS / "tmp").mkdir(parents=True, exist_ok=True)
-    os.environ["TEMP"] = os.environ["TMP"] = str(ARTIFACTS / "tmp")
-    os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
-    os.environ["PYTHONUTF8"] = "1"
+    # Child processes receive the scoped environment from conftest; do not
+    # mutate the parent process from this module fixture.
     root_build = Path(os.environ.get("JAVA142_ARTIFACTS", str(ARTIFACTS.parent / "build")))
     test_classes = root_build / "test-classes"
     classpath = os.pathsep.join((str(test_classes), str(root_build / "classes"),

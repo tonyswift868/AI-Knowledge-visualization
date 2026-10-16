@@ -120,7 +120,9 @@ def test_closure_timeout_interrupt_and_client_cancellation148(monkeypatch):
     helper = ROOT / "tests/refactor/server_java/java/contract148/ClosureCancellation148.java"
     task_tmp = TASK_ROOT / "tmp"
     task_tmp.mkdir(parents=True, exist_ok=True)
-    os.environ["TEMP"] = os.environ["TMP"] = str(task_tmp)
+    # TEMP/TMP are scoped by the server_java test hook.  This test's child
+    # process receives its own directory through the explicit environment
+    # assembled below; never leak it to the pytest process.
     harness_classes = build / "closure-harness148"
     harness_classes.mkdir(parents=True, exist_ok=True)
     javac = Path(r"D:\MentorFlow\.local\java\jdk-21.0.12.1+1\bin\javac.exe")

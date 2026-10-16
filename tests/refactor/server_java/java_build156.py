@@ -5,17 +5,60 @@ import os
 from pathlib import Path
 import subprocess
 import threading
+import time
+from contextlib import contextmanager
 
 ROOT = Path(__file__).resolve().parents[3]
-TASK_ROOT = Path(os.environ.get("SHIP156_TMP", r"D:\MentorFlow\.local\test-tmp\ship156"))
-BUILD = Path(os.environ.get("JAVA156_BUILD", str(TASK_ROOT / "build")))
+_CACHE_ROOT = Path(os.environ.get("JAVA_CACHE_ROOT", r"D:\MentorFlow\.local\test-tmp\java-cache"))
+_SHIP_ROOT = os.environ.get("SHIP156_TMP")
+TASK_ROOT = Path(_SHIP_ROOT or os.environ.get("JAVA156_RUNTIME_TMP", str(_CACHE_ROOT / "runtime")))
+BUILD = Path(os.environ.get("JAVA156_BUILD", str(_CACHE_ROOT / "build")))
 JAVA_HOME = Path(os.environ.get("JAVA_HOME", r"D:\MentorFlow\.local\java\jdk-21.0.12.1+1"))
 MAVEN = Path(os.environ.get("JAVA156_MAVEN", r"D:\MentorFlow\.local\java\apache-maven-3.9.16\bin\mvn.cmd"))
-M2 = Path(os.environ.get("JAVA_MAVEN_REPO", str(TASK_ROOT / "m2")))
+M2 = Path(os.environ.get("JAVA_MAVEN_REPO", str(_CACHE_ROOT / "m2")))
 READONLY_M2 = Path(os.environ.get("JAVA156_READONLY_M2", r"D:\MentorFlow\.local\java\m2"))
 CLASSPATH_FILE = Path(os.environ.get("JAVA156_CLASSPATH_FILE", str(TASK_ROOT / "test-classpath.txt")))
 _lock = threading.Lock()
 _state: tuple[bool, str] | None = None
+
+
+@contextmanager
+def _build_file_lock():
+    """Serialize builders across pytest processes while reusing java-cache."""
+    lock_path = _CACHE_ROOT / "build.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0)
+            handle.write("0")
+            handle.flush()
+            # LK_LOCK has a finite retry window on Windows.  Poll the
+            # non-blocking operation so a Maven build longer than ten seconds
+            # still queues the second pytest process instead of failing.
+            while True:
+                try:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.25)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
 
 
 def _classpath_problem(cp_file: Path) -> str | None:
@@ -111,13 +154,14 @@ def ensure_java_build() -> tuple[bool, str]:
     global _state
     with _lock:
         if _state is None:
-            if not (JAVA_HOME / "bin" / "java.exe").is_file():
-                _state = (False, f"Java 21 executable is missing: {JAVA_HOME / 'bin' / 'java.exe'}")
-            else:
-                current, reason = _artifacts_current(BUILD, CLASSPATH_FILE)
-                _state = ((True, "Existing Java 21/Maven artifacts are current") if current else
-                          _run_build_once(build=BUILD, java_home=JAVA_HOME, maven=MAVEN,
-                                          m2=M2, readonly_m2=READONLY_M2))
+            with _build_file_lock():
+                if not (JAVA_HOME / "bin" / "java.exe").is_file():
+                    _state = (False, f"Java 21 executable is missing: {JAVA_HOME / 'bin' / 'java.exe'}")
+                else:
+                    current, reason = _artifacts_current(BUILD, CLASSPATH_FILE)
+                    _state = ((True, "Existing Java 21/Maven artifacts are current") if current else
+                              _run_build_once(build=BUILD, java_home=JAVA_HOME, maven=MAVEN,
+                                              m2=M2, readonly_m2=READONLY_M2))
         return _state
 
 
