@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 _PLAN_ID = re.compile(r"[a-f0-9]{32}")
 PREF_KEYS = ("teacher_style", "detail", "examples", "analogy_domains")
 DIALOGUE_ROWS, DIALOGUE_CHARS, CHECK_BATCH = 40, 60000, 4
+CONCEPT_WRAP_CONTEXT_CHARS = 8000
 RESET, VERDICT_EVENT = "\x00", "\x01VERDICT:"
 MATERIAL_EVENT = "\x01MATERIAL:"
 TODAY_EVENT = "\x01TODAY:"
@@ -73,9 +74,11 @@ class Classroom:
 
     def _teaching_version(self, course, state):
         if state.get('pending') or state.get('direct_review') or state['step'] not in ('teach','opening','teaching','closing'):return None
+        try:excerpts=self._teaching_excerpts(course,state,self._focus(course,state))
+        except (AgentFormatError,BridgeError):return None
         value=dict(state=state,points=course.points,modules=course.modules,dialogue=self._dialogue(course,state),
             prefs=self._prefs(course),profile=course.store.records('teacher_profile',course.plan_id),
-            excerpts=course.excerpts([p['id'] for p in course.points]))
+            excerpts=excerpts)
         return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,default=str).encode()).hexdigest()
 
     def _predicted_teacher(self, course, state, action, args):
@@ -120,7 +123,10 @@ class Classroom:
         try:
             today=self._today(course,state)
             ledger=course.store.load_ledger(course.plan_id)
-            ledger.add_tentative(f"learn:{point['id']}",point['id'],point['minutes'],date.fromisoformat(self._day(state)))
+            minutes=(self._learning_remainder(course,point)
+                if point.get('structure')=='concept_v1' and point.get('subpoints') else point['minutes'])
+            if minutes:
+                ledger.add_tentative(f"learn:{point['id']}",point['id'],minutes,date.fromisoformat(self._day(state)))
             status=ledger.status(date.fromisoformat(today['progress_day']))
             return status.today_target>0 and status.today_confirmed+status.today_tentative>=status.today_target
         except Exception:
@@ -146,7 +152,7 @@ class Classroom:
                 for action,args in actions[:4]:
                     tctx=self._predicted_teacher(course,state,action,args)
                     if not tctx:continue
-                    tctx['request_page']=copy.deepcopy(self._teacher_request_page)
+                    tctx['request_page']=copy.deepcopy(tctx.get('request_page',self._teacher_request_page))
                     request=teacher_agent.teacher_request(tctx)
                     job=dict(cancel=threading.Event(),condition=threading.Condition(),chunks=[],done=False,error=None,
                              request=request,tctx=tctx)
@@ -553,6 +559,12 @@ class Classroom:
         concept=self._concept(course,state)
         if concept and state['step'] in ('teaching','closing'):
             point,sub,index=concept
+            # A subpoint becomes learning progress as soon as the learner
+            # advances away from it.  Keep its event ID independent from the
+            # whole-point marker so an interrupted lecture is not mistaken
+            # for a completed point by _Course.taught().
+            self._credit_subpoint(course,state,point,sub)
+            self._publish_today(course,state,ctx)
             if index+1<len(point['subpoints']):
                 return self._concept_begin(course,state,ctx,index+1)
             self._recap(course,state,point)
@@ -651,12 +663,145 @@ class Classroom:
         state.update(step='teaching',conversation=dict(point_id=point['id'],options=[],interrupted=False))
 
     def _teaching_excerpts(self,course,state,point_ids):
-        excerpts=course.excerpts(point_ids)
-        concept=self._concept(course,state)
-        if concept and point_ids==[concept[0]['id']] and not (state.get('concept') or {}).get('wrapping'):
-            wanted=set(concept[1]['chunk_ids'])
-            return {cid:text for cid,text in excerpts.items() if cid in wanted}
-        return excerpts
+        concept=self._concept_context(course,state,point_ids)
+        if concept:
+            if concept[3] and (state.get('concept') or {}).get('wrapping'):
+                _,chunk_ids,*_=self._concept_wrap_material(concept[0],concept[2])
+                # Keep real chunk IDs for citation resolution, but never attach
+                # source paragraphs to a large-point closing request.
+                return {cid:'讲义出处' for cid in chunk_ids}
+            chunks,sources=course._source_rows()
+            wanted=concept[1].get('chunk_ids') or []
+            return {cid:chunks[cid]['text'][:40000] for cid in wanted
+                    if cid in chunks and chunks[cid].get('text','').strip()
+                    and sources.get(chunks[cid].get('source_id'),{}).get('adopted')}
+        return course.excerpts(point_ids)
+
+    def _concept_context(self,course,state,point_ids):
+        """Resolve the relevant small point even when a quiz suspends teaching."""
+        active=self._concept(course,state)
+        if active and point_ids==[active[0]['id']]:return (*active,True)
+        if len(point_ids)!=1:return None
+        try:point=course.point(point_ids[0])
+        except StopIteration:return None
+        subpoints=point.get('subpoints') or []
+        if point.get('structure')!='concept_v1' or not subpoints:return None
+
+        # A pending bank question carries the most precise scope.
+        question=(state.get('pending') or {}).get('question') or {}
+        if state.get('pending'):
+            sid=question.get('subpoint_id')
+            index=next((i for i,s in enumerate(subpoints) if s['id']==sid),None)
+            if index is not None:return point,subpoints[index],index,False
+            source=question.get('source') or {}
+            chunk_ids=set(question.get('chunk_ids') or ())
+            if isinstance(source,dict):
+                chunk_ids.update(source.get('chunk_ids') or ())
+                if source.get('chunk_id'):chunk_ids.add(source['chunk_id'])
+            if chunk_ids:
+                index=next((i for i,s in enumerate(subpoints) if chunk_ids.intersection(s.get('chunk_ids') or ())),None)
+                if index is not None:return point,subpoints[index],index,False
+
+        # Persisted position wins for direct_review; its resume snapshot is the
+        # exact subpoint the learner was on before opening the review.
+        review=state.get('direct_review') or {}
+        practice=state.get('practice') or {}
+        resume=review.get('resume') or practice.get('resume') or {}
+        saved=resume.get('concept') or state.get('concept') or {}
+        if saved.get('point_id')==point['id']:
+            index=next((i for i,s in enumerate(subpoints) if s['id']==saved.get('subpoint_id')),None)
+            if index is not None:return point,subpoints[index],index,False
+        # A direct-review point without a saved concept position is deliberately
+        # scoped to one small point; never fall back to its entire big point.
+        return point,subpoints[0],0,False
+
+    @staticmethod
+    def _concept_wrap_material(point,current_index=None):
+        """Return complete, source-linked note sentences within a hard budget."""
+        subpoints=point.get('subpoints') or []
+        def complete_prefix(text,limit):
+            text=str(text or '').strip()
+            kept=[]
+            for sentence in re.findall(r'[^。！？!?]+[。！？!?]?|[。！？!?]',text):
+                sentence=sentence.strip()
+                if not sentence:continue
+                candidate=''.join(kept)+sentence
+                if len(candidate)>limit:break
+                kept.append(sentence)
+            return ''.join(kept)
+        goal=complete_prefix(point.get('goal') or point.get('summary',''),1200)
+        point_title=str(point.get('title') or '')
+        if len(point_title)>500:point_title='（大知识点标题过长，已省略）'
+        if current_index is None:current_index=len(subpoints)-1
+        current_index=max(0,min(current_index,len(subpoints)-1)) if subpoints else 0
+        # Titles are whole atoms, never clipped. Reserve half the budget for
+        # notes and provenance; include the current title first, then earlier
+        # titles in order, and report how many could not fit.
+        title_budget=CONCEPT_WRAP_CONTEXT_CHARS//4
+        selected_titles=[];title_cost=0
+        order=([current_index]+[i for i in range(len(subpoints)) if i!=current_index])
+        for i in order:
+            title=str(subpoints[i].get('title') or '')
+            cost=len(json.dumps(title,ensure_ascii=False))+2
+            if title and title_cost+cost<=title_budget:
+                selected_titles.append((i,title));title_cost+=cost
+        selected_titles.sort()
+        included_indexes={i for i,_ in selected_titles}
+        display_titles=[title for _,title in selected_titles]
+        completed_titles=[title for i,title in selected_titles if i<current_index]
+        current_title=next((title for i,title in selected_titles if i==current_index),
+                           '（当前小要点标题过长，已省略）')
+        omitted_titles=max(0,len(subpoints)-len(selected_titles))
+        omitted_notes=0
+        notes=[]
+        def bundle_size(candidate):
+            ids=list(dict.fromkeys(n['chunk_id'] for n in candidate if n.get('chunk_id')))
+            aliases={cid:f'c{i}' for i,cid in enumerate(sorted(ids),1)}
+            wire_notes=[dict(n,alias=aliases.get(n['chunk_id'])) for n in candidate]
+            payload=dict(title=point_title,goal=goal,completed_titles=completed_titles,
+                         title_current=current_title,subpoint_titles=display_titles,
+                         omitted_subpoint_titles=omitted_titles,omitted_note_sentences=omitted_notes,
+                         subpoint_id=subpoints[current_index]['id'] if subpoints else '',
+                         number=current_index+1,total=len(subpoints),wrapping=True,
+                         first_turn=False,recent_styles=[],previous_intro_ending=None,
+                         notes=wire_notes,source_premises=[],
+                         excerpts={cid:'讲义出处' for cid in ids})
+            return len(json.dumps(payload,ensure_ascii=False,separators=(',',':')))
+        # Metadata repeats titles in the contract fields, so enforce the cap
+        # against that actual wire shape, not just the title list itself.
+        while selected_titles and bundle_size([])>CONCEPT_WRAP_CONTEXT_CHARS:
+            removable=next((j for j in range(len(selected_titles)-1,-1,-1)
+                            if selected_titles[j][0]!=current_index),None)
+            if removable is None:break
+            selected_titles.pop(removable)
+            selected_titles.sort()
+            included_indexes={i for i,_ in selected_titles}
+            display_titles=[title for _,title in selected_titles]
+            completed_titles=[title for i,title in selected_titles if i<current_index]
+            current_title=next((title for i,title in selected_titles if i==current_index),
+                               '（当前小要点标题过长，已省略）')
+            omitted_titles=max(0,len(subpoints)-len(selected_titles))
+        for i,sub in enumerate(subpoints):
+            if i not in included_indexes:continue
+            title=str(sub.get('title') or '')
+            for note in sub.get('notes') or []:
+                cid=note.get('chunk_id')
+                text=str(note.get('text') or '').strip()
+                if not cid or not text:continue
+                # Split only at sentence-ending punctuation. An unpunctuated
+                # note is kept whole; no branch clips the tail of a sentence.
+                for sentence in re.findall(r'[^。！？!?]+[。！？!?]?|[。！？!?]',text):
+                    sentence=sentence.strip()
+                    if not sentence:continue
+                    row=dict(subpoint_title=title,text=sentence,chunk_id=cid)
+                    candidate=[*notes,row]
+                    if bundle_size(candidate)<=CONCEPT_WRAP_CONTEXT_CHARS:
+                        notes.append(row)
+                    else:omitted_notes+=1
+        ids=list(dict.fromkeys(n['chunk_id'] for n in notes))
+        if not ids:
+            ids=list(dict.fromkeys(cid for sub in subpoints for cid in sub.get('chunk_ids',[])))[:1]
+        return notes,ids,goal,point_title,completed_titles,current_title,display_titles,omitted_titles,omitted_notes
 
     def choose(self, course, state, ctx, option):
         conversation=state.get('conversation') or {}
@@ -992,7 +1137,7 @@ class Classroom:
             if review['index']+1==len(review['points']):state['step']='direct_choice'
             return
         teaching=self._teacher(course,state,ctx,teacher_agent.DIRECT_REVIEW,[pid])
-        review['question']=_link_citations(teaching.speech,{f'c{i}':cid for i,cid in enumerate(sorted(course.excerpts([pid])),1)})
+        review['question']=_link_citations(teaching.speech,{f'c{i}':cid for i,cid in enumerate(sorted(self._teaching_excerpts(course,state,[pid])),1)})
 
     def _direct_view(self,course,state):
         review=state.get('direct_review')
@@ -1052,6 +1197,25 @@ class Classroom:
             missing=max(0,point['minutes']-credited)
             if missing:
                 credit_id=f"learn:{point['id']}" if f"learn:{point['id']}" not in existing else f"relearn:direct:{attempt}:{point['id']}"
+                course.store.add_credit(course.plan_id,credit_id,point['id'],missing,self._day(state),'confirmed')
+
+    def _restore_concept_learning(self,course,state,attempt):
+        rows=course.store.records('credits',course.plan_id)
+        existing={row['id'] for row in rows}
+        live=course.store.load_ledger(course.plan_id).to_dict()['credits']
+        for point in course.points_of(state['module_id']):
+            if point.get('structure')!='concept_v1' or not point.get('subpoints'):
+                continue
+            historically_earned=any(row['credit']['unit_id']==point['id'] and
+                                    row['id'].startswith(('subpoint:','learn:','relearn:'))
+                                    for row in rows)
+            if not historically_earned:
+                continue
+            credited=sum(item['minutes'] for item in live if item['unit_id']==point['id'])
+            missing=max(0,point['minutes']-credited)
+            token=hashlib.sha256(point['id'].encode('utf-8')).hexdigest()
+            credit_id=f"relearn:concept:{attempt}:{token}"
+            if missing and credit_id not in existing:
                 course.store.add_credit(course.plan_id,credit_id,point['id'],missing,self._day(state),'confirmed')
 
     def _ask_next(self, course, state, ctx=None):
@@ -1117,26 +1281,47 @@ class Classroom:
         self._show_question(course,state,q,'practice',number=practice['index']+1,total=practice['count'])
 
     def _teacher_context(self, course, state, director, point_ids, *, user='',opening=False,allow_plan=False):
+        concept=self._concept(course,state)
+        scoped=self._concept_context(course,state,point_ids)
+        wrapping=bool(concept and (state.get('concept') or {}).get('wrapping'))
         plan,module=self._skeleton(course,state,point_ids)
         excerpts=self._teaching_excerpts(course,state,point_ids)
-        available=self._related_passages(course,excerpts,user) if allow_plan else excerpts
+        # A concept turn is grounded in its current subpoint (or bounded notes
+        # for wrap-up). Plan-wide retrieval is reserved for explicit questions
+        # on legacy points so it cannot re-expand concept context.
+        if allow_plan and not wrapping:
+            available=self._related_passages(course,excerpts,user,
+                max_chars=4000 if scoped else 16000,max_passages=3 if scoped else 12)
+        else:available=excerpts
         document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
         tctx=dict(plan=plan,module=module,prefs=self._prefs(course),profile=document.get('text','')[:6000],dialogue=self._dialogue(course,state),
             current_points=[dict(id=pid,title=course.point(pid)['title']) for pid in point_ids],
             director=director,user=user,excerpts=excerpts,plan_passages=available,opening=opening)
-        tctx['request_page']=self._teacher_request_page
-        concept=self._concept(course,state)
+        # An append-only page can retain old source blocks. Concept requests
+        # must start from their exact bounded source map each time.
+        tctx['request_page']=None if scoped else self._teacher_request_page
+        if scoped and not concept:
+            point,sub,_,_=scoped
+            director=(director+'\n本次只围绕小要点“'+sub['title']+'”回应；不要把它扩展为整个大知识点。')
+            tctx['director']=director
         if concept:
             point,sub,index=concept
             wrapping=(state.get('concept') or {}).get('wrapping',False)
-            tctx['concept']=dict(title=point['title'],goal=point.get('goal',point['summary']),
+            wrap_material=self._concept_wrap_material(point,index) if wrapping else None
+            tctx['concept']=dict(title=(wrap_material[3] if wrapping else point['title']),
+                goal=(wrap_material[2] if wrapping else point.get('goal',point['summary'])),
                 subpoint_id=sub['id'],title_current=sub['title'],number=index+1,total=len(point['subpoints']),
                 completed_titles=[s['title'] for s in point['subpoints'][:index]],wrapping=wrapping,
-                notes=[n for s in (point['subpoints'] if wrapping else [sub]) for n in s.get('notes',[])])
+                notes=(wrap_material[0] if wrapping else [n for n in sub.get('notes',[])]))
+            if wrapping:
+                tctx['concept'].update(title_current=wrap_material[5],completed_titles=wrap_material[4],
+                    subpoint_titles=wrap_material[6],omitted_subpoint_titles=wrap_material[7],
+                    omitted_note_sentences=wrap_material[8])
             saved=state.get('concept') or {}
             intros=[r for r in saved.get('intro_endings',[]) if r['subpoint_id']!=sub['id']]
-            tctx['concept'].update(first_turn=saved.get('rounds',0)==0,recent_styles=saved.get('style_history',[]),
-                previous_intro_ending=intros[-1]['ending'] if intros else None)
+            tctx['concept'].update(first_turn=(saved.get('rounds',0)==0 and not wrapping),
+                recent_styles=[] if wrapping else saved.get('style_history',[]),
+                previous_intro_ending=None if wrapping else intros[-1]['ending'] if intros else None)
         return tctx
 
     def _teacher(self, course, state, ctx, director, point_ids, *, user='',opening=False,allow_plan=False):
@@ -1178,7 +1363,8 @@ class Classroom:
             if selected:selected['cancel'].set()
             result=self._generate_teacher(course.plan_id,tctx,request,ctx.cancel if ctx else None,ctx.stream if ctx else lambda d:None)
         teaching,cache_request,accepted=result
-        self._teacher_request_page.accept(cache_request[0],cache_request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(accepted))
+        if tctx.get('request_page') is not None:
+            self._teacher_request_page.accept(cache_request[0],cache_request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(accepted))
         return teaching
 
     def _generate_teacher(self, plan_id, tctx, request, cancel, emit, *, prefetched=False):
@@ -1234,21 +1420,34 @@ class Classroom:
                 else:raise
 
     @staticmethod
-    def _related_passages(course, excerpts, user):
+    def _related_passages(course, excerpts, user, *, max_chars=16000,max_passages=12):
         """Retrieve bounded source text for an interruption, not the whole book."""
         words=set(re.findall(r'[a-zA-Z][a-zA-Z0-9_-]{1,}',user.lower()))
         for part in re.findall(r'[\u3400-\u9fff]+',user):
             words.update(part[i:i+n] for n in (2,3,4) for i in range(len(part)-n+1))
-        ranked=[]
-        for cid,row in course.passages([p['id'] for p in course.points]).items():
-            if cid in excerpts:continue
-            text=row['text'];lower=text.lower()
-            score=sum(len(word) for word in words if word in lower)
-            if score:ranked.append((-score,cid,text))
-        result=dict(excerpts);remaining=16000
+        if not words:return dict(excerpts)
+        ranked=[];seen=set(excerpts)
+        # Fetch and score one point at a time; do not materialize the whole
+        # plan's source corpus before deciding which small passages to attach.
+        for point in course.points:
+            for cid,row in course.passages([point['id']]).items():
+                if cid in seen:continue
+                seen.add(cid)
+                text=row['text'];lower=text.lower()
+                score=sum(len(word) for word in words if word in lower)
+                if score:
+                    ranked.append((-score,cid,text));ranked.sort()
+                    if len(ranked)>12:ranked.pop()
+        result=dict(excerpts);remaining=max_chars
         for _,cid,text in sorted(ranked):
-            if remaining<=0 or len(result)-len(excerpts)>=12:break
-            result[cid]=text[:min(4000,remaining)];remaining-=len(result[cid])
+            if remaining<=0 or len(result)-len(excerpts)>=max_passages:break
+            limit=min(4000,remaining)
+            # Preserve the legacy retrieval contract: a long paragraph without
+            # sentence punctuation still contributes its bounded source prefix.
+            # Whole-sentence selection is only for the concept wrap bundle.
+            bounded=text[:limit]
+            if bounded:
+                result[cid]=bounded;remaining-=len(bounded)
         return result
 
     def _deliver(self, course, state, teaching, user=None, explained=False):
@@ -1320,7 +1519,56 @@ class Classroom:
             self_correct=pending.get('self_correct'),question=snapshot,dialogue_channel=self._channel(state),question_message_id=pending.get('question_message_id'))
 
     def _credit_learning(self, course, state, point):
+        if point.get('structure')=='concept_v1' and point.get('subpoints'):
+            missing=self._learning_remainder(course,point)
+            if missing:
+                credit_id=f"learn:{point['id']}"
+                if not any(row['id']==credit_id for row in course.store.records('credits',course.plan_id)):
+                    course.store.add_credit(course.plan_id,credit_id,point['id'],missing,self._day(state),'tentative')
+            return
         course.store.add_credit(course.plan_id,f"learn:{point['id']}",point['id'],point['minutes'],self._day(state),'tentative')
+
+    @staticmethod
+    def _subpoint_credit_id(point, subpoint):
+        token=hashlib.sha256((point['id']+'\0'+subpoint['id']).encode('utf-8')).hexdigest()
+        return f"subpoint:{token}"
+
+    def _credit_subpoint(self, course, state, point, subpoint):
+        """Record one completed concept subpoint once, attached to its point."""
+        credit_id=self._subpoint_credit_id(point,subpoint)
+        rows=course.store.records('credits',course.plan_id)
+        # The outbox stores immutable submissions even if a later module-test
+        # failure revokes their live ledger projection.  Checking that journal
+        # before adding also makes scene-save retries across study days safe.
+        if any(row['id']==credit_id for row in rows):
+            return False
+        # A scene restored from an older version may already have its full-point
+        # marker while still carrying a concept cursor. Do not append child time
+        # on top of that completed point.
+        if any(row['credit']['unit_id']==point['id'] and
+               (row['id']==f"learn:{point['id']}" or row['id'].startswith('relearn:'))
+               for row in rows):
+            return False
+        course.store.add_credit(course.plan_id,credit_id,point['id'],subpoint['minutes'],self._day(state),'tentative')
+        return True
+
+    @classmethod
+    def _learning_remainder(cls, course, point):
+        """Whole-point minutes still needed after recorded subpoint credits.
+
+        Credit submissions are immutable history, so a module-test revoke does
+        not turn an already completed lesson into new work.  The whole-point
+        marker (including legacy/relearn markers) likewise proves completion.
+        """
+        rows=course.store.records('credits',course.plan_id)
+        if any(row['credit']['unit_id']==point['id'] and
+               (row['id']==f"learn:{point['id']}" or row['id'].startswith("relearn:"))
+               for row in rows):
+            return 0
+        prefix="subpoint:"
+        minutes=sum(row['credit']['minutes'] for row in rows
+                    if row['credit']['unit_id']==point['id'] and row['id'].startswith(prefix))
+        return max(0,point['minutes']-minutes)
 
     def _profile(self, course):
         document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
@@ -1467,6 +1715,9 @@ class Classroom:
 
     def _focus(self, course, state):
         if state.get('pending'):return state['pending']['point_ids']
+        if state.get('direct_review'):
+            review=state['direct_review']
+            return [review['points'][review['index']]]
         points = course.points_of(state["module_id"])
         return [points[min(state["index"], len(points) - 1)]["id"]]
 
@@ -1495,13 +1746,20 @@ class Classroom:
         test=state['test'];mid=state['module_id'];store=course.store;day=self._day(state)
         if not course.book().attempt_closed(mid,test['attempt']):
             store.append_attempt_closed(course.plan_id,AttemptClosed(uuid.uuid4().hex,course.next_seq(),mid,test['attempt'],test['kind']))
-        store.settle_module_test(course.plan_id,mid,test['attempt'],today=day)
-        book=course.book();passed=book.module(mid).state in ('passed','skipped')
-        if passed and book.module(mid).state=='skipped':
-            self._direct_credits(course,state,test['attempt'])
-        elif passed or test['kind']=='module_test':
-            for p in course.points_of(mid):
-                store.confirm_credits(course.plan_id,p['id'],event_id=f"confirm:{test['attempt']}:{p['id']}",today=day)
+        with store.transaction():
+            store.settle_module_test(course.plan_id,mid,test['attempt'],today=day)
+            book=course.book();passed=book.module(mid).state in ('passed','skipped')
+            if passed and book.module(mid).state=='skipped':
+                self._direct_credits(course,state,test['attempt'])
+            elif passed or test['kind']=='module_test':
+                for p in course.points_of(mid):
+                    is_concept=p.get('structure')=='concept_v1' and p.get('subpoints')
+                    if test['kind']=='module_test' and not passed and is_concept:
+                        store.revoke_credits(course.plan_id,p['id'],event_id=f"revoke-concept:{test['attempt']}:{p['id']}",today=day)
+                    else:
+                        store.confirm_credits(course.plan_id,p['id'],event_id=f"confirm:{test['attempt']}:{p['id']}",today=day)
+                if passed and test['kind']=='retest':
+                    self._restore_concept_learning(course,state,test['attempt'])
         correct=sum(book.question(q['id']).module_correct is True for q in self._questions(course,mid));total=len(self._questions(course,mid))
         state.update(step='test_done',pending=None,test=None)
         if not passed and test['kind']=='skip_test' and test.get('resume'):
@@ -1551,8 +1809,7 @@ class _Course:
         return max([time.time_ns() // 1000, *(seq + 1 for seq in seqs)])
 
     def taught(self):
-        return {c["credit"]["unit_id"] for c in self.store.records("credits", self.plan_id)
-                if c["id"].startswith(("learn:", "relearn:"))}
+        return self.store.learning_credit_projection(self.plan_id)['taught']
 
     def passages(self, point_ids):
         """Point chunk_ids are the projection of point_sources, never a guessed source."""

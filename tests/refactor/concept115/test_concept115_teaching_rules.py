@@ -89,7 +89,9 @@ def test_concept115_style_closing_kept_whole_without_rewrite(tmp_path,monkeypatc
         view=act(e,'next')
         assert not view['failure'] and len(e.gateway.calls)==before+1
         assert view['messages'][-1]['kind']=='recap'
-        assert e.store.records('credits',PLAN)[0]['credit']['minutes']==15
+        credits=e.store.records('credits',PLAN)
+        assert len([row for row in credits if row['id'].startswith('subpoint:')])==3
+        assert sum(row['credit']['minutes'] for row in credits)==15
     finally:e.room.cancel_materials();e.store.close()
 
 
