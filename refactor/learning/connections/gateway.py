@@ -45,7 +45,7 @@ _PUBLIC = ('id', 'provider_id', 'display_name', 'base_url', 'model',
 
 # Program-owned settings (SYS-07, 2026-10-01): only the three metadata purposes
 # disable thinking; other learning purposes request high where supported.
-# Optional ASR spelling correction is a separate short, non-thinking call.
+# Optional ASR spelling correction and explicit connection probes do not think.
 # Profile replays contained an unsupported historical claim with thinking off;
 # the task's quality fallback retains the provider default for that purpose.
 PURPOSE_EFFORT = {
@@ -489,7 +489,7 @@ class ModelGateway:
         """Explicit user action only. No probe during construction/save/select."""
         return self._complete('connection_test', [{'role': 'user', 'content': 'Reply OK.'}],
                               system=None, enable_search=False, on_text=None, cancel=None, plan_id='', max_tokens=32,
-                              reasoning_effort=None)
+                              reasoning_effort='none')
 
     def _log_failure(self, error, config, secret, messages, system, identifier, purpose):
         """Local account log, bounded; logging failure never replaces model error."""
@@ -598,6 +598,34 @@ class ModelGateway:
                                                     first_event_timeout=self.first_event_timeout)
                         break
                     except ModelError as exc:
+                        # A probe tests reachability/authentication, not answer
+                        # completeness. Some providers ignore thinking=disabled
+                        # and spend the tiny output budget on reasoning alone.
+                        # Keep the receipt (and billing), without treating an
+                        # incomplete stream or malformed protocol as success.
+                        probe_usage = getattr(exc, 'usage', None)
+                        probe_meta = (probe_usage.raw.get('_mentorflow', {})
+                                      if isinstance(probe_usage, providers.Usage) else {})
+                        probe_reason = getattr(exc, 'diagnostics', {}).get('reason')
+                        probe_content = (getattr(exc, 'generated_text_length', 0) > 0
+                                         or probe_meta.get('thinking_characters', 0) > 0)
+                        probe_complete = (getattr(exc, 'response_received', False)
+                                          and isinstance(probe_usage, providers.Usage)
+                                          and not probe_meta.get('partial_usage')
+                                          and getattr(exc, 'response_model_valid', False) is True
+                                          and isinstance(getattr(exc, 'model', None), str)
+                                          and bool(exc.model.strip()))
+                        probe_response = (
+                            (exc.code == 'MODEL_OUTPUT_TRUNCATED' and not probe_reason)
+                            or (exc.code == 'MODEL_RESPONSE_INVALID'
+                            and probe_reason == 'empty_text_or_invalid_model'
+                            and probe_meta.get('thinking_characters', 0) > 0))
+                        if purpose == 'connection_test' and probe_complete and probe_content and probe_response:
+                            result = providers.ModelResult('', probe_usage, config['provider_id'],
+                                                           getattr(exc, 'model', config['model']),
+                                                           (), (), (), getattr(exc, 'finish_reason', '')
+                                                           or getattr(exc, 'diagnostics', {}).get('stop_reason', ''))
+                            break
                         safe = (getattr(exc, 'safe_to_retry', False) is True
                                 and exc.code in {'MODEL_CONNECTION_FAILED', 'MODEL_TIMEOUT'}
                                 and not emitted and not getattr(exc, 'response_received', False)

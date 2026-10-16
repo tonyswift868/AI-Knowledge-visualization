@@ -125,10 +125,17 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
         async with HTTP(provider_id, api_key, timeout, http_client, cancel, accounting, evidence) as http:
             result = await _ADAPTERS[spec.protocol].run(http, config)
             http.check()
-            accounting.check_truncated()
+            response_model_valid = isinstance(result.model, str) and bool(result.model.strip()) and api_key not in result.model
+            try:
+                accounting.check_truncated()
+            except ModelError as error:
+                error.response_model_valid = response_model_valid
+                raise
             if (not isinstance(result.text, str) or not result.text.strip()
                     or not isinstance(result.model, str) or api_key in result.model):
-                raise invalid('empty_text_or_invalid_model')
+                error = invalid('empty_text_or_invalid_model')
+                error.response_model_valid = response_model_valid
+                raise error
             accounting.annotate(result.usage)
             return result
 
