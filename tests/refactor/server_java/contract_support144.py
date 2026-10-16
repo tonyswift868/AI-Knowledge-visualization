@@ -240,7 +240,8 @@ def prepare_databases144(port: int, databases: tuple[str, ...]):
     env = dict(os.environ)
     env["MENTORFLOW_MIGRATION_DATABASE_URL"] = f"postgresql+psycopg://mentorflow_migrator:local-migrator-144@127.0.0.1:{port}/auth144_template"
     command = [sys.executable, "-m", "alembic", "-c", str(ROOT / "refactor/server/alembic.ini"),
-               "-x", f"closure_issuer={OLD_ISSUER}", "upgrade", "head"]
+               "-x", f"closure_issuer={OLD_ISSUER}",
+               "-x", "rag_vector_backend=local-test", "upgrade", "head"]
     result = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, timeout=240)
     if result.returncode:
         (LOCAL / "alembic144.stdout.txt").write_text(result.stdout, encoding="utf-8")

@@ -20,7 +20,7 @@ from contract_support142 import LocalJwks, ProcessEndpoint142, _stop_process
 ROOT = Path(__file__).resolve().parents[3]
 TASK_ROOT = Path(os.environ.get("SYNC145_TMP", r"D:\MentorFlow\.local\test-tmp\sync145\test-agent"))
 ARTIFACTS = Path(os.environ.get("JAVA145_ARTIFACTS", r"D:\MentorFlow\.local\test-tmp\sync145\build"))
-M2 = Path(r"D:\MentorFlow\.local\java\m2")
+M2 = Path(os.environ.get("JAVA_MAVEN_REPO", r"D:\MentorFlow\.local\java\m2"))
 MAVEN = Path(r"D:\MentorFlow\.local\java\apache-maven-3.9.16\bin\mvn.cmd")
 JAVA_HOME = Path(r"D:\MentorFlow\.local\java\jdk-21.0.12.1+1")
 PYTHON = Path(r"D:\MentorFlow\.venv\Scripts\python.exe")
@@ -52,17 +52,18 @@ def _maven_java145(tmp_path):
     build_env = os.environ.copy()
     build_env["JAVA_HOME"] = str(JAVA_HOME)
     build_env["PATH"] = str(JAVA_HOME / "bin") + os.pathsep + build_env.get("PATH", "")
+    settings_args = ["-s", os.environ["JAVA_MAVEN_SETTINGS"]] if os.environ.get("JAVA_MAVEN_SETTINGS") else []
     jar = target / "mentorflow-server-0.1.0.jar"
     production_inputs = [pom]
     production_inputs.extend(path for path in (ROOT / "refactor/server-java/src/main").rglob("*")
                              if path.is_file())
     if (not jar.is_file() or any(path.stat().st_mtime_ns > jar.stat().st_mtime_ns
                                  for path in production_inputs)):
-        _run([str(MAVEN), "-q", "-Dmaven.repo.local=" + str(M2),
+        _run([str(MAVEN), "-q", *settings_args, "-Dmaven.repo.local=" + str(M2),
               "-Djava142.build.directory=" + str(target), "-DskipTests", "package",
               "-f", str(pom)], env=build_env, timeout=900)
     cp_file = tmp_path / "maven-classpath145.txt"
-    _run([str(MAVEN), "-q", "-Dmaven.repo.local=" + str(M2),
+    _run([str(MAVEN), "-q", *settings_args, "-Dmaven.repo.local=" + str(M2),
           "-Djava142.build.directory=" + str(target), "-Dmdep.includeScope=test",
           "-Dmdep.outputFile=" + str(cp_file), "-f", str(pom),
           "dependency:build-classpath"], env=build_env, timeout=600)
@@ -139,6 +140,7 @@ def _run_migration145(url, issuer, log):
     _run([str(PYTHON), "-B", "-m", "alembic", "-c",
           str(ROOT / "refactor/server/alembic.ini"), "-x",
           "closure_issuer=" + issuer,
+          "-x", "rag_vector_backend=local-test",
           "upgrade", "head"],
          env=env, log=log, timeout=900)
 

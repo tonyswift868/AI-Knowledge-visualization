@@ -1,5 +1,6 @@
 """Real Alembic/SQLite persistence; identity and network are isolated fakes."""
 import asyncio
+from argparse import Namespace
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -53,6 +54,7 @@ def setup(tmp_path):
     db = tmp_path / 'native.db'
     config = Config(str(Path(__file__).resolve().parents[3] / 'refactor/server/alembic.ini'))
     config.set_main_option('sqlalchemy.url', 'sqlite:///' + db.as_posix())
+    config.cmd_opts = Namespace(x=['rag_vector_backend=local-test'])
     config.attributes['configure_logger'] = False
     command.upgrade(config, 'head')
     engine = sa.create_engine('sqlite:///' + db.as_posix())
@@ -183,6 +185,7 @@ def test_migration_downgrade_reupgrade(setup, tmp_path):
     engine, _, _, _ = setup
     config = Config(str(Path(__file__).resolve().parents[3] / 'refactor/server/alembic.ini'))
     config.set_main_option('sqlalchemy.url', str(engine.url))
+    config.cmd_opts = Namespace(x=['rag_vector_backend=local-test'])
     config.attributes['configure_logger'] = False
     command.downgrade(config, '0042_structured_sync_changes')
     assert 'native_session_families' not in sa.inspect(engine).get_table_names()

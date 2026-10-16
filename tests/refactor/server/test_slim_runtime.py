@@ -97,7 +97,7 @@ def test_slim_real_uvicorn_health_and_local_business_requests(schema_template, t
         partial(identity_runtime.enterprise_request_context,now=now))
     def verify():
         with engine.connect() as conn:
-            assert conn.scalar(text('SELECT version_num FROM alembic_version'))=='0043_native_sessions'
+            assert conn.scalar(text('SELECT version_num FROM alembic_version'))=='0044_rag_documents'
     monkeypatch.setattr(entry.EnterpriseIdentityConfig,'from_env',lambda:identity.config)
     monkeypatch.setattr(entry.orm_runtime,'configure_enterprise_orm',lambda:engine)
     monkeypatch.setattr(entry.orm_runtime,'verify_enterprise_runtime_schema',verify)

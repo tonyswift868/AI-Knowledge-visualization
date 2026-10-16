@@ -1,0 +1,182 @@
+[
+  {
+    "seq": 0,
+    "question": "GET 请求能用于什么？是否应包含数据？",
+    "text": "HTTP GET 方法请求指定资源的表示。使用 GET 的请求应该只用于请求数据，而不应该包含数据。",
+    "section": "GET",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/GET",
+    "source_html_sha256": "02678b7a51ba34d4d40f67932d0c40e7320ffefc6b70442fbbcc316037da5d33",
+    "paragraph_sha256": "9ea0567024547d5fe29bd6683c5bb4b505e9076f2b94fbc712f821a57b57cc60"
+  },
+  {
+    "seq": 1,
+    "question": "为什么 GET 请求一般不应带请求体？",
+    "text": "备注：在 GET 请求中发送请求体或有效载荷可能会导致一些现有的实现拒绝该请求——虽然规范没有禁止，但语义没有定义。最好是避免在 GET 请求中发送有效载荷。",
+    "section": "GET",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/GET",
+    "source_html_sha256": "02678b7a51ba34d4d40f67932d0c40e7320ffefc6b70442fbbcc316037da5d33",
+    "paragraph_sha256": "b23687f7aae87fb43f7f98765eebdd0263ddcc7baed3cbe360d64c0f0e12fc1a"
+  },
+  {
+    "seq": 2,
+    "question": "HEAD 会请求哪些信息，和 GET 的响应头有什么关系？",
+    "text": "HTTP HEAD 方法请求资源的标头信息，并且这些标头与 HTTP GET 方法请求时返回的一致。该请求方法的一个使用场景是在下载一个大文件前先通过 HEAD 请求读取其 Content-Length 标头的值获取文件的大小，而无需实际下载文件，以此可以节约带宽资源。",
+    "section": "HEAD",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/HEAD",
+    "source_html_sha256": "89aa1e56d08e201c244135058bf52ec156d21f38e32a802dfced46f2c5db237d",
+    "paragraph_sha256": "58b83c7b7f8174889dfe8838591baaf389bfec2e872c8711cd924b1904bea92d"
+  },
+  {
+    "seq": 3,
+    "question": "HEAD 响应应该包含消息正文吗？",
+    "text": "警告：HEAD 方法的响应不应包含响应主体。即使包含了响应主体，也必须忽略掉：任何（可能用于描述错误响应主体的）表示标头会被假定为在发送相似的 GET 请求时也会接收到。",
+    "section": "HEAD",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/HEAD",
+    "source_html_sha256": "89aa1e56d08e201c244135058bf52ec156d21f38e32a802dfced46f2c5db237d",
+    "paragraph_sha256": "40c4cfbd6a794eaeab68d8a525f42560c2f23e9c52c7d1cd8d260920bbd7a697"
+  },
+  {
+    "seq": 4,
+    "question": "POST 方法把什么发送到哪里，正文类型由什么说明？",
+    "text": "HTTP POST 方法发送数据给服务器。请求主体的类型由 Content-Type 标头指定。",
+    "section": "POST",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/POST",
+    "source_html_sha256": "928e2d006a412c9502fc705f96b3facac299868b5e5fb01878a1d06a1a460a58",
+    "paragraph_sha256": "09c2daa8eb5963d793e0bae719f0ad862cc60ddb32f42cd3fe94d0775ae7a83c"
+  },
+  {
+    "seq": 5,
+    "question": "PUT 与 POST 在重复相同请求时的幂等性有何不同？",
+    "text": "PUT 和 POST 方法的区别是，PUT 方法是幂等的：调用一次与连续调用多次效果是相同的（即没有副作用），而连续调用多次相同的 POST 方法可能会有副作用，比如多次提交同一订单。",
+    "section": "POST",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/POST",
+    "source_html_sha256": "928e2d006a412c9502fc705f96b3facac299868b5e5fb01878a1d06a1a460a58",
+    "paragraph_sha256": "70ef3e8cd497bb04d04df342c6b011e8175bca0dbee3a534c4cbad4e6433dc43"
+  },
+  {
+    "seq": 6,
+    "question": "PUT 可以如何改变目标资源？",
+    "text": "HTTP PUT 请求方法创建一个新的资源或用请求的有效载荷替换目标资源的表示。",
+    "section": "PUT",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/PUT",
+    "source_html_sha256": "33b6a284bd324982c3caf6f7415387bf34e9a4171f26c938a1bd82aa66bd02b2",
+    "paragraph_sha256": "3dfeabc525ca341a8e116c0228bf93738b3e38431170b869a7b696891e259b94"
+  },
+  {
+    "seq": 7,
+    "question": "PUT 创建新资源成功时应返回哪个状态码？",
+    "text": "如果目标资源没有当前的表示，并且 PUT 方法成功创建了资源，那么源服务器必须返回 201（Created）来通知用户代理资源已创建。",
+    "section": "响应",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/PUT",
+    "source_html_sha256": "33b6a284bd324982c3caf6f7415387bf34e9a4171f26c938a1bd82aa66bd02b2",
+    "paragraph_sha256": "0fec0725c5163d74eae4194e14afe899029a684c305e6c45104e257e3001c47d"
+  },
+  {
+    "seq": 8,
+    "question": "DELETE 方法用于什么操作？",
+    "text": "HTTP DELETE 请求方法用于删除指定的资源。",
+    "section": "DELETE",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/DELETE",
+    "source_html_sha256": "5db62cade48d15310331222f7d9df4554f83e466c262c6ff2763b307ec8f9da5",
+    "paragraph_sha256": "693ade9fa798e83478cb267b7bdca6fa51da5c52e79a719e4ef91484864be972"
+  },
+  {
+    "seq": 9,
+    "question": "OPTIONS 可以用来询问服务器的哪些通信选项？",
+    "text": "HTTP OPTIONS 方法向给定 URL 或服务器请求其允许的通信选项。它可用于测试一个请求允许使用的 HTTP 方法，或用于确定一个请求在发起 CORS 预检请求时是否会成功。客户端可以使用该方法指定一个 URL，或者使用星号（*）来指代整个服务器。",
+    "section": "OPTIONS 请求方法",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/OPTIONS",
+    "source_html_sha256": "1acd1c1eded928697536c405b1de14956f25d7e014834ee50b5f2c95961cba37",
+    "paragraph_sha256": "ebdafced3e00e27f74100ee86d591062cbeb331c9f9c2853b1255751b5f69d2a"
+  },
+  {
+    "seq": 10,
+    "question": "PATCH 对资源做什么类型的修改？",
+    "text": "HTTP PATCH 请求方法用于对资源进行部分修改。",
+    "section": "PATCH",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/PATCH",
+    "source_html_sha256": "39706274ee10798c7b251b4336308a90869a0da1a79ec2755dc46714c77872ae",
+    "paragraph_sha256": "e381e18e43d8d060d593d07689a0fa86730b3973b4a2a248a49c15c56a4d8ab0"
+  },
+  {
+    "seq": 11,
+    "question": "TRACE 方法用于什么测试？",
+    "text": "HTTP 方法 TRACE 沿着通往目标资源的路径进行信息回环测试。",
+    "section": "TRACE 请求方法",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/TRACE",
+    "source_html_sha256": "519ccbcfb82152285df48d8d047df0f7c828e7d94701295f0812257fca24948d",
+    "paragraph_sha256": "dcdee4e37ce8b2f5a78a04b9bc844ee33934218d95feb00884733dd73b2c6631"
+  },
+  {
+    "seq": 12,
+    "question": "CONNECT 如何建立与目标资源的通信？",
+    "text": "HTTP CONNECT 方法可以开启与所请求资源之间的双向沟通的通道。它可以用来创建隧道（tunnel）。",
+    "section": "CONNECT",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Methods/CONNECT",
+    "source_html_sha256": "8878ec50de0da97109f0d58e6338844b1c4d57e0916705cdbfdadba0dd4235b7",
+    "paragraph_sha256": "7b1ffc3ebcd5004c816828c7f76d42a9bcb61d001166b9918cf358063edac695"
+  },
+  {
+    "seq": 13,
+    "question": "Promise 对象表示什么结果？",
+    "text": "Promise 对象表示异步操作最终的完成（或失败）以及其结果值。",
+    "section": "Promise",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Promise",
+    "source_html_sha256": "656a320d204fd009761b21ac30f620dc407d64ad32aa9af225d5f76a8a4b99c0",
+    "paragraph_sha256": "1c57407f662c8034ccc15c7e11a8574e8ccd5405bd9c00523662a7b72cad7338"
+  },
+  {
+    "seq": 14,
+    "question": "then() 最多接受什么参数，并支持怎样的调用方式？",
+    "text": "Promise 实例的 then() 方法最多接受两个参数：用于 Promise 兑现和拒绝情况的回调函数。它立即返回一个等效的 Promise 对象，允许你链接到其他 Promise 方法，从而实现链式调用。",
+    "section": "Promise.prototype.then()",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Promise/then",
+    "source_html_sha256": "ce74132145c74ccb40e90c975db9d3f8de04406b7b8623ff1dc8d7b29a7c2621",
+    "paragraph_sha256": "517c5082a26cc7046a03684dc098013b235f5d95a5b05160085e28a4e3a9338a"
+  },
+  {
+    "seq": 15,
+    "question": "catch() 用于处理 Promise 的什么情况？",
+    "text": "Promise 实例的 catch() 方法用于注册一个在 promise 被拒绝时调用的函数。它会立即返回一个等效的 Promise 对象，这可以允许你链式调用其他 promise 的方法。此方法是 Promise.prototype.then(undefined, onRejected) 的一种简写形式。",
+    "section": "Promise.prototype.catch()",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Promise/catch",
+    "source_html_sha256": "cdfff445a08c4377fae8c3fd8c0020287fc8133ec6508b7e94b6bb96e4f84362",
+    "paragraph_sha256": "a4e7fe4abe7e3b2ad4d17f830aa35d4d393e57a9c13213f173a408656b2a9489"
+  },
+  {
+    "seq": 16,
+    "question": "finally() 在什么时点调用处理函数？",
+    "text": "Promise 实例的 finally() 方法用于注册一个在 promise 敲定（兑现或拒绝）时调用的函数。它会立即返回一个等效的 Promise 对象，这可以允许你链式调用其他 promise 方法。",
+    "section": "Promise.prototype.finally()",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Promise/finally",
+    "source_html_sha256": "bf592157348a2d08a02b3045bb557337413eebe20920d75a743652d78af3bcc1",
+    "paragraph_sha256": "6c1438b7f7eb562295da2720ea5a7be1ad1aab805fb5c1fff0ce47548743e232"
+  },
+  {
+    "seq": 17,
+    "question": "Promise.race() 何时使返回的 Promise 敲定？",
+    "text": "Promise.race() 静态方法接受一个 promise 可迭代对象作为输入，并返回一个 Promise。这个返回的 promise 会随着第一个 promise 的敲定而敲定。",
+    "section": "Promise.race()",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Promise/race",
+    "source_html_sha256": "6a247adcae71ae4df650f278fc8061a5c45d689eaf8756fd81cd34ebb2e3b933",
+    "paragraph_sha256": "b825b60662f57c09e1ddb5cc93e22a6a40c4cff8ea863da43306e8b3555745a4"
+  },
+  {
+    "seq": 18,
+    "question": "fetch() 在 HTTP 错误状态下是否仍会解析并返回 Response？",
+    "text": "fetch() 方法有一个必需参数，即要获取资源的路径。它返回一个 Promise，该 Promise 会在服务器返回头部信息后，立即解析兑现为该请求的 Response 对象——即使服务器的响应是 HTTP 错误状态。你也可以传入一个可选的 init 选项对象作为第二个参数（参见 Request）。",
+    "section": "概念和用法",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/API/Fetch_API",
+    "source_html_sha256": "39c580b90cff03375656ad3a857f66efb9d9e57bde8c83ee012eee00dfba4b3e",
+    "paragraph_sha256": "836b525cf45534d6d7957d3af06f8595ff87b25a0c930fead2eab8aabf48de73"
+  },
+  {
+    "seq": 19,
+    "question": "AbortController.abort() 可以中止哪些内容？",
+    "text": "中止一个尚未完成的异步操作。这能够中止 fetch 请求及任何响应体和流的使用。",
+    "section": "实例方法",
+    "page": "https://developer.mozilla.org/zh-CN/docs/Web/API/AbortController",
+    "source_html_sha256": "9b5f0807d06fc6406a76537fca4591ff989fa3058d3ffb6cd6f15b5e9594b88a",
+    "paragraph_sha256": "0c9f5aa5c894ee76f21e610ed6fdd8a23df3f330337cfa24aa3b2ced5dc5e399"
+  }
+]

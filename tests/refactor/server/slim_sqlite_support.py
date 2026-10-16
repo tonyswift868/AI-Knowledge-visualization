@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from argparse import Namespace
 
 from alembic import command
 from alembic.config import Config
@@ -30,6 +31,7 @@ def _principal(subject='user-a', token='fixture'):
 def _config(database):
     config = Config(str(ROOT / 'refactor/server/alembic.ini'))
     config.set_main_option('sqlalchemy.url', f'sqlite:///{database.as_posix()}')
+    config.cmd_opts = Namespace(x=['rag_vector_backend=local-test'])
     config.attributes['configure_logger'] = False
     return config
 

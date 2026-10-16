@@ -17,7 +17,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 DEPLOY = ROOT / "refactor" / "server-java" / "deploy"
-TEST_TMP = Path(r"D:\MentorFlow\.local\test-tmp\deploy151")
+TEST_TMP = Path(os.environ.get("DEPLOY151_TMP", r"D:\MentorFlow\.local\test-tmp\deploy151"))
 BASH = Path(r"C:\Program Files\Git\bin\bash.exe")
 
 
