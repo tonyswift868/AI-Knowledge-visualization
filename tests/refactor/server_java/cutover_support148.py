@@ -41,7 +41,9 @@ def cutover148_backends():
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     temp = ARTIFACTS / "tmp"
     temp.mkdir(parents=True, exist_ok=True)
-    os.environ["TEMP"] = os.environ["TMP"] = str(temp)
+    # The conftest hook supplies TEMP/TMP only while this server_java item is
+    # running.  Keep the parent environment untouched so other test trees use
+    # pytest's own basetemp.
     if not CLASSPATH_FILE.is_file():
         pytest.skip("148 requires the root-prepared Java/Zonky classpath")
     root_build = Path(os.environ.get("JAVA142_ARTIFACTS", str(ARTIFACTS.parent / "build")))

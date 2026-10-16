@@ -255,10 +255,20 @@ def _stop(endpoint):
 
 @pytest.fixture(scope="session")
 def closure147_backends(tmp_path_factory):
+    # Keep this session fixture isolated even though it is created before the
+    # function-scoped environment fixture.  The build artifacts remain in the
+    # shared cache; servers, certificates and database files stay in pytest's
+    # current basetemp.
+    global TASK_ROOT, ARTIFACTS
+    if not os.environ.get("SHIP156_TMP"):
+        TASK_ROOT = tmp_path_factory.getbasetemp() / "server-java-closure147"
+        ARTIFACTS = TASK_ROOT / "build"
     TASK_ROOT.mkdir(parents=True, exist_ok=True); ARTIFACTS.mkdir(parents=True, exist_ok=True)
     local_temp = TASK_ROOT / "tmp"
     local_temp.mkdir(parents=True, exist_ok=True)
-    os.environ["TEMP"] = os.environ["TMP"] = str(local_temp)
+    # TEMP/TMP are scoped by server_java/conftest.py around the whole test
+    # item.  Do not write them here: this is a session fixture and changing
+    # the parent process would leak the Java directory into unrelated tests.
     buildtmp = TASK_ROOT / "pytest-build"
     buildtmp.mkdir(parents=True, exist_ok=True)
     # contract_support145 captures these locations at import time; update the
