@@ -1,0 +1,55 @@
+# Add this file and compose.generated.yml to the existing production Compose
+# invocation. Keep network45.override.yml last (BUG-45).
+services:
+  java-backend:
+    image: mentorflow-java-server:${MF_JAVA_VERSION:?run build.sh VERSION first}
+    container_name: mentorflow-java-backend
+    restart: unless-stopped
+    env_file:
+      - ${MF_JAVA_DEPLOY_DIR:?run prepare-config.sh}/.java.env
+    environment:
+      PORT: "8080"
+      MENTORFLOW_BIND_ADDRESS: 0.0.0.0
+      MENTORFLOW_CATALOG_DIR: /run/mentorflow/catalog
+      JAVA_TOOL_OPTIONS: >-
+        -Djavax.net.ssl.trustStore=/run/mentorflow/trust/trust.p12
+        -Djavax.net.ssl.trustStorePassword=changeit
+        -Djavax.net.ssl.trustStoreType=PKCS12
+    networks:
+      internal:
+        aliases:
+          - java-backend
+    volumes:
+      - ${MF_JAVA_TRUSTSTORE_DIR:?set MF_JAVA_TRUSTSTORE_DIR}:/run/mentorflow/trust:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    mem_limit: 768m
+    entrypoint: ["/app/entrypoint.sh"]
+
+  java-oidc:
+    image: ${MF_OIDC_PROXY_IMAGE:?run prepare-config.sh first}
+    container_name: mentorflow-java-oidc
+    restart: unless-stopped
+    network_mode: service:java-backend
+    depends_on:
+      - java-backend
+    read_only: true
+    user: "101:101"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /var/cache/nginx:size=8m,mode=0750,uid=101,gid=101
+    mem_limit: 64m
+    volumes:
+      - mentorflow-e1-preview_oidc_proxy_secrets:/run/secrets:ro
+      - ${MF_OIDC_PROXY_CONFIG:?run prepare-config.sh first}:/etc/nginx/nginx.conf:ro
+
+volumes:
+  mentorflow-e1-preview_oidc_proxy_secrets:
+    external: true

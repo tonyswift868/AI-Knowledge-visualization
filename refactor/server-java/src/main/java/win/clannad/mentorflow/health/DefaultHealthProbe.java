@@ -17,6 +17,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import win.clannad.mentorflow.identity.IdentityDirectory;
+import win.clannad.mentorflow.admin.NativeEmailHealthProbe;
 
 /** ACCOUNT_CORE_MVP probes corresponding to observability.health. */
 @Component
@@ -31,14 +32,16 @@ public final class DefaultHealthProbe implements HealthProbe {
         "web_frontend", "worker_dependencies");
     private final Environment env;
     private final IdentityDirectory directory;
+    private final NativeEmailHealthProbe emailHealth;
     private final AtomicBoolean started = new AtomicBoolean(false);
     private final HttpClient http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(2)).followRedirects(HttpClient.Redirect.NEVER).build();
     private final ObjectMapper json = new ObjectMapper();
 
-    public DefaultHealthProbe(Environment env, IdentityDirectory directory) {
+    public DefaultHealthProbe(Environment env, IdentityDirectory directory, NativeEmailHealthProbe emailHealth) {
         this.env = env;
         this.directory = directory;
+        this.emailHealth = emailHealth;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -49,8 +52,12 @@ public final class DefaultHealthProbe implements HealthProbe {
     @Override
     public List<Dependency> dependencies() {
         Map<String, Dependency> result = new TreeMap<>();
-        result.put("email", new Dependency("email", false,
-            "EMAIL_AUTHORITY_NOT_CONFIGURED", 0, false, null));
+        // Python registers the same native identity authority's cached SMTP probe.
+        // No backend SMTP connection or send is introduced here.
+        long emailStarted = System.nanoTime();
+        Map<String,String> email = emailHealth.sample();
+        result.put("email", new Dependency("email", "healthy".equals(email.get("status")),
+            email.get("code"), elapsedMs(emailStarted), false, null));
 
         String databaseUrl = text("MENTORFLOW_DATABASE_URL");
         long start = System.nanoTime();

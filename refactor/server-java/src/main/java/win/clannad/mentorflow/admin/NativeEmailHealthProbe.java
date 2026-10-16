@@ -23,7 +23,7 @@ import win.clannad.mentorflow.identity.IdentitySettings;
 
 /** Cached view of the identity authority's SMTP probe, matching the Python registry adapter. */
 @Component
-final class NativeEmailHealthProbe {
+public final class NativeEmailHealthProbe {
     private static final JsonMapper JSON=JsonMapper.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
         .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     private static final long CACHE_NANOS=Duration.ofSeconds(60).toNanos();
@@ -34,7 +34,7 @@ final class NativeEmailHealthProbe {
 
     NativeEmailHealthProbe(Environment env,IdentitySettings settings){this.env=env;this.settings=settings;}
 
-    synchronized Map<String,String> sample() {
+    public synchronized Map<String,String> sample() {
         if(System.nanoTime()<deadline)return cached;
         Map<String,String> value=status("unavailable","EMAIL_TRANSPORT_UNAVAILABLE");
         try {
