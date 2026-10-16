@@ -50,9 +50,11 @@ public final class WorkspaceController146 {
         try{body=raw.length==0?null:JSON.readTree(input);}
         catch(JsonProcessingException failure){
             long offset=failure.getLocation()==null?-1:failure.getLocation().getCharOffset();
-            int position=offset<0?0:(int)input.codePointCount(0,(int)Math.min(offset,input.length()));
-            var issue=issue("json_invalid",java.util.List.of("body",position),"JSON decode error",Map.of());
-            var context=new LinkedHashMap<String,Object>();context.put("error",jsonErrorMessage(failure.getOriginalMessage()));issue.put("ctx",context);
+              int charOffset=offset<0?0:(int)Math.min(offset,input.length());
+              Integer trailingPosition=jsonTrailingDataPosition(input);
+              int position=trailingPosition==null?jsonErrorPosition(input,failure.getOriginalMessage(),charOffset):trailingPosition;
+              var issue=issue("json_invalid",java.util.List.of("body",position),"JSON decode error",Map.of());
+              var context=new LinkedHashMap<String,Object>();context.put("error",trailingPosition==null?jsonErrorMessage(input,failure.getOriginalMessage()):"Extra data");issue.put("ctx",context);
             return validationError(java.util.List.of(issue));
         }
         catch(Exception failure){return validationError(java.util.List.of(issue("json_invalid",java.util.List.of("body",0),"JSON decode error",input)));}
@@ -99,14 +101,137 @@ public final class WorkspaceController146 {
         return jwt;
     }
     private static boolean nonEmpty(String value){return value!=null&&!value.isEmpty();}
-    private static String jsonErrorMessage(String jacksonMessage) {
+    private static String jsonErrorMessage(String input,String jacksonMessage) {
         // The HTTP error is FastAPI's JSONDecodeError projection, not Jackson's
         // implementation-specific diagnostic. Parsing remains Jackson-owned.
         if(jacksonMessage.contains("double-quote to start field name"))return "Expecting property name enclosed in double quotes";
         if(jacksonMessage.contains("colon to separate"))return "Expecting ':' delimiter";
         if(jacksonMessage.contains("comma to separate"))return "Expecting ',' delimiter";
+        if(jacksonMessage.contains("Unrecognized character escape"))return "Invalid \\escape";
+        if(jacksonMessage.contains("expected a hex-digit for character escape sequence"))return "Invalid \\uXXXX escape";
+        if(jacksonMessage.contains("Illegal unquoted character"))return "Invalid control character at";
+        if(jacksonMessage.contains("Decimal point not followed by a digit"))return "Expecting ',' delimiter";
+        if(jacksonMessage.contains("Leading zeroes not allowed"))return "Expecting ',' delimiter";
+        if(jacksonMessage.contains("Trailing token"))return "Extra data";
+        if(jacksonMessage.contains("Unexpected end-of-input"))return eofJsonError(input);
         if(jacksonMessage.contains("Unrecognized token"))return "Expecting value";
+        if(jacksonMessage.contains("Unexpected close marker")) {
+            int open=arrayOpenBeforeMismatchedClose(input);
+            if(open>=0&&input.substring(open+1).strip().length()>1)return "Expecting ',' delimiter";
+            return "Expecting value";
+        }
+        if(jacksonMessage.contains("numeric value")) {
+            if(input.matches("(?s).*:[\\s]*0[0-9].*"))return "Expecting ',' delimiter";
+            if(input.matches("(?s).*[0-9]\\.[\\s}\\]].*" )||input.matches("(?s).*[0-9][eE][+-]?[\\s}\\]].*"))return "Expecting ',' delimiter";
+            return "Expecting value";
+        }
         return jacksonMessage;
+    }
+    private static String eofJsonError(String input) {
+        String text=input.stripTrailing();
+        int quote=-1;boolean inString=false,escaped=false;
+        for(int i=0;i<text.length();i++) {
+            char c=text.charAt(i);
+            if(inString) {if(escaped)escaped=false;else if(c=='\\')escaped=true;else if(c=='"'){inString=false;quote=-1;}}
+            else if(c=='"'){inString=true;quote=i;}
+        }
+        if(inString)return "Unterminated string starting at";
+        if(text.endsWith("{" ))return "Expecting property name enclosed in double quotes";
+        if(text.endsWith(","))return lastUnclosedContainer(text)=='['?"Expecting value":"Expecting property name enclosed in double quotes";
+        if(text.endsWith("\""))return lastClosedStringIsObjectKey(text)?"Expecting ':' delimiter":"Expecting ',' delimiter";
+        if(text.endsWith(":" )||text.endsWith("["))return "Expecting value";
+        if(text.matches("(?s).*:[\\s]*-?[0-9]+[eE][+-]?$" )||text.matches("(?s).*:[\\s]*-?[0-9]+\\.$"))return "Expecting ',' delimiter";
+        if(text.matches("(?s).*(true|false|null)$"))return "Expecting ',' delimiter";
+        if(!text.isEmpty()) {
+            char last=text.charAt(text.length()-1);
+            if(last=='}'||last==']'||Character.isDigit(last))return "Expecting ',' delimiter";
+        }
+        return "Expecting value";
+    }
+    private static char lastUnclosedContainer(String text) {
+        java.util.ArrayDeque<Character> stack=new java.util.ArrayDeque<>();
+        boolean inString=false,escaped=false;
+        for(int i=0;i<text.length();i++) {
+            char c=text.charAt(i);
+            if(inString) {
+                if(escaped)escaped=false;
+                else if(c=='\\')escaped=true;
+                else if(c=='"')inString=false;
+                continue;
+            }
+            if(c=='"'){inString=true;continue;}
+            if(c=='['||c=='{')stack.push(c);
+            else if((c==']'||c=='}')&&!stack.isEmpty())stack.pop();
+        }
+        return stack.isEmpty()?0:stack.peek();
+    }
+    private static boolean lastClosedStringIsObjectKey(String text) {
+        int opening=text.lastIndexOf('"',text.length()-2);if(opening<0)return false;
+        int previous=opening-1;while(previous>=0&&Character.isWhitespace(text.charAt(previous)))previous--;
+        return previous>=0&&(text.charAt(previous)=='{'||text.charAt(previous)==',')&&lastUnclosedContainer(text)=='{';
+    }
+    private static int jsonErrorPosition(String input,String jacksonMessage,int charOffset) {
+        if(jacksonMessage.contains("Unexpected end-of-input")) {
+            String text=input.stripTrailing();
+            int quote=-1;boolean inString=false,escaped=false;
+            for(int i=0;i<text.length();i++) {
+                char c=text.charAt(i);
+                if(inString) {
+                    if(escaped)escaped=false;
+                    else if(c=='\\')escaped=true;
+                    else if(c=='"'){inString=false;quote=-1;}
+                } else if(c=='"'){inString=true;quote=i;}
+            }
+            if(inString&&quote>=0)return input.codePointCount(0,quote);
+            if(text.matches("(?s).*:[\\s]*-?[0-9]+[eE][+-]?$" )||text.matches("(?s).*:[\\s]*-?[0-9]+\\.$")) {
+                int end=input.length();if(text.matches("(?s).*[eE][+-]$"))end=Math.max(0,end-2);else end=Math.max(0,end-1);
+                return input.codePointCount(0,end);
+            }
+            return input.codePointCount(0,input.length());
+        }
+        if(jacksonMessage.contains("Unrecognized character escape"))return input.codePointCount(0,Math.max(0,charOffset-1));
+        if(jacksonMessage.contains("expected a hex-digit for character escape sequence")) {
+            int escape=input.lastIndexOf("\\u",Math.min(charOffset,input.length()));if(escape>=0)return input.codePointCount(0,escape+1);
+        }
+        if(jacksonMessage.contains("Leading zeroes not allowed")) {
+            int colon=input.lastIndexOf(':',Math.min(charOffset,input.length()));
+            int number=colon+1;while(number<input.length()&&Character.isWhitespace(input.charAt(number)))number++;
+            return input.codePointCount(0,Math.min(input.length(),number+1));
+        }
+        if(jacksonMessage.contains("Unexpected close marker"))return input.codePointCount(0,charOffset);
+        if(jacksonMessage.contains("numeric value")) {
+            if(input.stripTrailing().matches("(?s).*:[\\s]*-?[0-9]+\\.$"))return input.codePointCount(0,input.stripTrailing().length()-1);
+            return input.codePointCount(0,Math.max(0,charOffset-1));
+        }
+        return input.codePointCount(0,charOffset);
+    }
+    private static Integer jsonTrailingDataPosition(String input) {
+        try(var parser=JSON.createParser(input)) {
+            var first=JSON.reader().without(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(parser);
+            if(first==null)return null;
+            long offset=parser.getCurrentLocation().getCharOffset();
+            int end=(int)Math.max(0,Math.min(offset,input.length()));
+            while(end<input.length()&&Character.isWhitespace(input.charAt(end)))end++;
+            return end<input.length()?input.codePointCount(0,end):null;
+        } catch(Exception ignored) {
+            return null;
+        }
+    }
+    private static int arrayOpenBeforeMismatchedClose(String input) {
+        java.util.ArrayDeque<Integer> stack=new java.util.ArrayDeque<>();boolean inString=false,escaped=false;
+        for(int i=0;i<input.length();i++) {
+            char c=input.charAt(i);
+            if(inString){if(escaped)escaped=false;else if(c=='\\')escaped=true;else if(c=='"')inString=false;continue;}
+            if(c=='"'){inString=true;continue;}
+            if(c=='['||c=='{')stack.push(i);
+            else if(c==']'||c=='}') {
+                if(stack.isEmpty())return -1;
+                int open=stack.peek();char opener=input.charAt(open);
+                if((c==']'&&opener=='[')||(c=='}'&&opener=='{'))stack.pop();
+                else return opener=='['?open:-1;
+            }
+        }
+        return -1;
     }
     private static Map<String,Object> issue(String type,java.util.List<?> location,String message,Object input) {
         var value=new LinkedHashMap<String,Object>();value.put("type",type);value.put("loc",location);value.put("msg",message);value.put("input",input);return value;

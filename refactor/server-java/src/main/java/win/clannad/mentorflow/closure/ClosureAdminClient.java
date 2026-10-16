@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.CancellationException;
 import java.util.List;
 import java.util.Map;
 import org.springframework.core.env.Environment;
@@ -63,7 +64,8 @@ public final class ClosureAdminClient implements ClosureProvider {
                     ||user.path("username").asText().isEmpty()||user.path("username").asText().codePointCount(0,user.path("username").asText().length())>255
                     ||!user.path("enabled").isBoolean()||!user.path("enabled").booleanValue())throw new ClosureFailure("CLOSURE_UNAVAILABLE");
             return user.path("username").asText();
-        }catch(Exception error){throw new ClosureFailure("CLOSURE_UNAVAILABLE");}
+        }catch(CancellationException cancelled){throw cancelled;}
+        catch(Exception error){throw new ClosureFailure("CLOSURE_UNAVAILABLE");}
     }
     @Override public void ensureDeleted(String subject) {
         if(providerRequest("GET",subject)==404)return;
@@ -85,6 +87,7 @@ public final class ClosureAdminClient implements ClosureProvider {
             }
             return reply.status();
         }catch(ClosureFailure error){throw error;}
+        catch(CancellationException cancelled){throw cancelled;}
         catch(Exception error){throw new ClosureFailure("CLOSURE_PROVIDER_OUTCOME_UNKNOWN");}
     }
     private record Reply(int status,String contentType,byte[] body){}
@@ -96,6 +99,7 @@ public final class ClosureAdminClient implements ClosureProvider {
         long deadline=System.nanoTime()+Duration.ofSeconds(12).toNanos();
         String authority;
         try { authority=adminToken(); }
+        catch(CancellationException cancelled){throw cancelled;}
         catch(Exception unavailable) {
             // Python's resolver raises LifecycleError here, so the provider
             // reports an uncertain outcome rather than a rejected user request.
@@ -107,7 +111,9 @@ public final class ClosureAdminClient implements ClosureProvider {
             .method(method,HttpRequest.BodyPublishers.noBody());
         if(lifecycleRead)builder.header("Content-Type","application/json");
         var request=builder.build();
-        var response=http.send(request,HttpResponse.BodyHandlers.ofInputStream());
+        HttpResponse<java.io.InputStream> response;
+        try{response=http.send(request,HttpResponse.BodyHandlers.ofInputStream());}
+        catch(InterruptedException cancelled){Thread.currentThread().interrupt();throw new CancellationException("closure provider request cancelled");}
         try(var stream=response.body()) {
             byte[] bytes=new byte[0];
             if(response.statusCode()==200||response.statusCode()==404) {
@@ -126,8 +132,10 @@ public final class ClosureAdminClient implements ClosureProvider {
         String form="grant_type=client_credentials&client_id="+URLEncoder.encode(text("client_id"),StandardCharsets.UTF_8)
             +"&client_secret="+URLEncoder.encode(secret,StandardCharsets.UTF_8);
         long deadline=System.nanoTime()+Duration.ofSeconds(10).toNanos();
-        var response=http.send(HttpRequest.newBuilder(URI.create(tokenEndpoint)).timeout(Duration.ofSeconds(10))
-            .header("Content-Type","application/x-www-form-urlencoded").POST(HttpRequest.BodyPublishers.ofString(form)).build(),HttpResponse.BodyHandlers.ofInputStream());
+        HttpResponse<java.io.InputStream> response;
+        try{response=http.send(HttpRequest.newBuilder(URI.create(tokenEndpoint)).timeout(Duration.ofSeconds(10))
+            .header("Content-Type","application/x-www-form-urlencoded").POST(HttpRequest.BodyPublishers.ofString(form)).build(),HttpResponse.BodyHandlers.ofInputStream());}
+        catch(InterruptedException cancelled){Thread.currentThread().interrupt();throw new CancellationException("closure provider request cancelled");}
         try(var stream=response.body()) {
             byte[] raw=read(stream,32769,deadline);if(raw.length>32768)throw new ClosureFailure("CLOSURE_PROVIDER_UNAVAILABLE");
             JsonNode body=JSON.readTree(raw);String value=body.path("access_token").asText();JsonNode ttl=body.path("expires_in");
@@ -139,6 +147,7 @@ public final class ClosureAdminClient implements ClosureProvider {
     private static byte[] read(java.io.InputStream stream,int maximum,long deadline)throws Exception {
         var task=new java.util.concurrent.FutureTask<byte[]>(()->stream.readNBytes(maximum));Thread.ofVirtual().start(task);
         try{return task.get(Math.max(1,deadline-System.nanoTime()),java.util.concurrent.TimeUnit.NANOSECONDS);}
+        catch(InterruptedException cancelled){task.cancel(true);Thread.currentThread().interrupt();throw new CancellationException("closure response read cancelled");}
         finally{if(!task.isDone())task.cancel(true);}
     }
 }

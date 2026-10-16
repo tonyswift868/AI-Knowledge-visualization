@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.concurrent.CancellationException;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -102,6 +103,7 @@ public final class ClosureHttpFilter extends OncePerRequestFilter {
             write(response,result.status(),result.payload(),true);
         } catch(ClosureFailure failure){error(response,failure.code,failure.status,action,operation);}
         catch(IdentityFailure failure){error(response,failure.code,failure.status,action,operation);}
+        catch(CancellationException cancelled){throw cancelled;}
         catch(Exception failure){error(response,"CLOSURE_UNAVAILABLE",503,action,operation);}
         finally{if(body!=null)body.clear();}
     }

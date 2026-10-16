@@ -26,6 +26,16 @@ public final class AccountRateLimit146 {
             RATES.put(key,new Attempt(attempt.count+1,attempt.end));
         }
     }
+
+    /**
+     * Keep closure reauthentication on the native account throttle.  The
+     * shared operation counter above has different thresholds and does not
+     * include the subject dimension used by Python's native-session throttle.
+     */
+    public static void throttleClosure(NativeSessionService sessions,String subject,String peer) {
+        if(sessions==null)throw new IdentityFailure(503,"NATIVE_SESSION_UNAVAILABLE","账号会话暂不可用。");
+        sessions.throttle(subject,peer);
+    }
     private static IdentityFailure limited() {
         return new IdentityFailure(429,"RESET_RATE_LIMITED","请稍后重试。");
     }

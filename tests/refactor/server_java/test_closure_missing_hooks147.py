@@ -1,4 +1,4 @@
-"""Default Java application keeps login available while unavailable closure hooks fail closed."""
+"""Default Java application wires real account closure hooks without test doubles."""
 from __future__ import annotations
 
 import subprocess
@@ -14,7 +14,7 @@ import contract_support147 as support
 pytestmark = pytest.mark.slow
 
 
-def test_default_server_closure_prepare_unavailable_without_rows147(closure147_backends):
+def test_default_server_closure_prepare_uses_production_hooks147(closure147_backends):
     fixture = closure147_backends
     identity = fixture["identities"]["java"]
     subject = "user-147-no-hooks"
@@ -57,12 +57,12 @@ def test_default_server_closure_prepare_unavailable_without_rows147(closure147_b
         prepare = client.post("/api/enterprise/account/closure/prepare",
             json={"current_password": "correct"}, headers={"Authorization": "Bearer " + access,
                 "X-Request-ID": "closure147-no-hooks-prepare"})
-        assert prepare.status_code == 503, prepare.text
-        assert prepare.json()["code"] == "CLOSURE_UNAVAILABLE", prepare.text
+        assert prepare.status_code == 200, prepare.text
+        assert prepare.json()["state"] == "PREPARED", prepare.text
         with psycopg.connect(admin_url) as conn:
             after = conn.execute("SELECT count(*) FROM account_closure.operations WHERE subject_id=%s", (subject,)).fetchone()[0]
             total_after = conn.execute("SELECT count(*) FROM account_closure.operations").fetchone()[0]
-        assert (after, total_after) == (before, total_before)
+        assert (after, total_after) == (before + 1, total_before + 1)
     finally:
         if client is not None:
             client.close()

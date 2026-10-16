@@ -312,7 +312,7 @@ class FakeLifecycleKeycloak146:
                         self._send(200, [{"type":"password","id":"pwd-"+subject,"createdDate":owner.password_created}]); return
                     subject = tail
                     user = owner._users.get(subject)
-                    if user is None: self._send(404, {}); return
+                    if user is None: self._send(404, {"error": "User not found"}); return
                     payload = {"id": subject, "username": user["username"] if owner.admin_username_override is None else owner.admin_username_override, "email": user.get("email"),
                         "enabled": owner.enabled, "notBefore": owner.not_before, "emailVerified": user.get("email_verified", False)}
                     self._send(200, payload); return

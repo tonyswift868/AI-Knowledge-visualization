@@ -4,11 +4,19 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongSupplier;
 
 /** Request-driven account closure coordinator; no worker or background deletion. */
 public final class ClosureService {
@@ -16,6 +24,7 @@ public final class ClosureService {
     private static final Pattern TOKEN = Pattern.compile("mfc1_[A-Za-z0-9_-]{43}");
     private static final Pattern OPERATION = Pattern.compile("[0-9a-f]{32}");
     private static final Pattern SUBJECT = Pattern.compile("[A-Za-z0-9_-]{1,128}");
+    private static final ScheduledExecutorService DEADLINES=deadlineExecutor();
     private static final Map<String,String> MESSAGES = Map.of(
         "PREPARED", "注销已准备，账号尚未删除。", "IN_PROGRESS", "账号注销正在处理。",
         "RETRYABLE_FAILURE", "注销尚未完成，请使用原恢复凭证重试。", "COMPLETED", "账号注销已完成。");
@@ -23,13 +32,30 @@ public final class ClosureService {
     private final ClosureProvider provider;
     private final ClosureAuthority authority;
     private final SecureRandom random;
+    private final long commitTimeoutNanos;
+    private final LongSupplier monotonicNanos;
+
+    private static ScheduledExecutorService deadlineExecutor() {
+        ScheduledThreadPoolExecutor executor=new ScheduledThreadPoolExecutor(1,task->{
+            Thread thread=new Thread(task,"mentorflow-closure-deadline");thread.setDaemon(true);return thread;
+        });
+        executor.setRemoveOnCancelPolicy(true);
+        return executor;
+    }
 
     public ClosureService(ClosureStore store, ClosureProvider provider, ClosureAuthority authority, Clock clock) {
-        this(store,provider,authority,clock,new SecureRandom());
+        this(store,provider,authority,clock,new SecureRandom(),Duration.ofSeconds(75),System::nanoTime);
     }
     ClosureService(ClosureStore store, ClosureProvider provider, ClosureAuthority authority, Clock clock, SecureRandom random) {
+        this(store,provider,authority,clock,random,Duration.ofSeconds(75),System::nanoTime);
+    }
+    ClosureService(ClosureStore store, ClosureProvider provider, ClosureAuthority authority, Clock clock,
+            SecureRandom random,Duration commitTimeout,LongSupplier monotonicNanos) {
         this.store=store; this.provider=provider; this.authority=authority;
         this.random=random;
+        if(commitTimeout==null||commitTimeout.isZero()||commitTimeout.isNegative())throw new IllegalArgumentException("positive commit timeout required");
+        this.commitTimeoutNanos=commitTimeout.toNanos();
+        this.monotonicNanos=monotonicNanos;
     }
 
     public Result prepare(String issuer, String subject, String actorKind, String password) {
@@ -65,35 +91,71 @@ public final class ClosureService {
         if (!Boolean.TRUE.equals(record.get("acquired"))) {
             return new Result("COMPLETED".equals(record.get("state"))?200:202,publicResult(record));
         }
+        Thread requestThread=Thread.currentThread();
+        AtomicBoolean timedOut=new AtomicBoolean();
+        Object timerGate=new Object();
+        boolean[] timerClosed={false};
+        ScheduledFuture<?> interrupt=DEADLINES.schedule(()->{
+            synchronized(timerGate) {
+                if(timerClosed[0])return;
+                timedOut.set(true);
+                requestThread.interrupt();
+            }
+        },commitTimeoutNanos,TimeUnit.NANOSECONDS);
         try {
-            long deadline=System.nanoTime()+java.time.Duration.ofSeconds(75).toNanos();
+            long deadline=monotonicNanos.getAsLong()+commitTimeoutNanos;
             String subject=requiredString(record,"subject_id");
-            ensureBefore(deadline);
+            ensureBefore(deadline,monotonicNanos);
             if (!authority.revokeLocal(subject).complete()) throw new ClosureFailure("CLOSURE_SESSION_REVOCATION_PENDING");
-            ensureBefore(deadline);
+            ensureBefore(deadline,monotonicNanos);
             if ((provider==null||!provider.active()) && !Boolean.TRUE.equals(record.get("identity_deleted"))) throw new ClosureFailure("CLOSURE_PROVIDER_UNAVAILABLE");
             if (!Boolean.TRUE.equals(record.get("data_cleaned"))) {
-                ensureBefore(deadline); record=store.clean(operation,digest,claim); ensureBefore(deadline);
+                ensureBefore(deadline,monotonicNanos); record=store.clean(operation,digest,claim); ensureBefore(deadline,monotonicNanos);
             }
             if (!Boolean.TRUE.equals(record.get("identity_deleted"))) {
-                ensureBefore(deadline); provider.ensureDeleted(subject); ensureBefore(deadline);
-                record=store.providerDone(operation,digest,claim); ensureBefore(deadline);
+                ensureBefore(deadline,monotonicNanos); provider.ensureDeleted(subject); ensureBefore(deadline,monotonicNanos);
+                record=store.providerDone(operation,digest,claim); ensureBefore(deadline,monotonicNanos);
             }
-            ensureBefore(deadline);
+            ensureBefore(deadline,monotonicNanos);
             if (!authority.revokeLocal(subject).complete()) throw new ClosureFailure("CLOSURE_SESSION_REVOCATION_PENDING");
-            ensureBefore(deadline);
-            ensureBefore(deadline);
+            ensureBefore(deadline,monotonicNanos);
+            ensureBefore(deadline,monotonicNanos);
             record=store.complete(operation,digest,claim);
-            ensureBefore(deadline);
-            return new Result(200,publicResult(record));
+            ensureBefore(deadline,monotonicNanos);
+            Result completed=new Result(200,publicResult(record));
+            synchronized(timerGate) {
+                if(timedOut.get())throw new ClosureFailure("CLOSURE_RETRY_REQUIRED");
+                timerClosed[0]=true;
+                interrupt.cancel(false);
+                return completed;
+            }
+        } catch (CancellationException cancelled) {
+            // Match asyncio.CancelledError: leave the operation lease untouched
+            // for request cancellation; timeout is a retryable operation result.
+            if(timedOut.get()) {
+                Thread.interrupted();
+                return failure(operation,digest,claim,record,"CLOSURE_RETRY_REQUIRED");
+            }
+            throw cancelled;
         } catch (Exception e) {
+            if(timedOut.get()) {
+                Thread.interrupted();
+                return failure(operation,digest,claim,record,"CLOSURE_RETRY_REQUIRED");
+            }
             String code=e instanceof ClosureFailure failure?failure.code:"CLOSURE_RETRY_REQUIRED";
             return failure(operation,digest,claim,record,code);
+        } finally {
+            synchronized(timerGate) {
+                timerClosed[0]=true;
+                interrupt.cancel(false);
+                if(timedOut.get())Thread.interrupted();
+            }
         }
     }
 
-    private static void ensureBefore(long deadline) {
-        if (System.nanoTime() >= deadline) throw new ClosureFailure("CLOSURE_RETRY_REQUIRED");
+    private static void ensureBefore(long deadline,LongSupplier monotonicNanos) {
+        if(Thread.currentThread().isInterrupted())throw new CancellationException("closure request cancelled");
+        if (monotonicNanos.getAsLong() >= deadline) throw new ClosureFailure("CLOSURE_RETRY_REQUIRED");
     }
 
     private Result failure(String operation,String digest,String claim,Map<String,Object> fallback,String code) {
