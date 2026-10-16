@@ -2307,8 +2307,8 @@ class PlanFlow:
         points = store.records("points", plan_id)
         started = plan.get("state") in ("active", "checking", "completed")
         book = store.load_mastery(plan_id) if started else None
-        taught = {row['credit']['unit_id'] for row in store.records('credits', plan_id)
-                  if row['id'].startswith(('learn:', 'relearn:'))} if started else set()
+        # Concept points earned through subpoint credits count as taught too (158-MF03).
+        taught = store.learning_credit_projection(plan_id)['taught'] if started else set()
         from ..course.question_bank import review_points
         bank = store.records('question_bank', plan_id)
         retired = {q['id'] for q in bank if q.get('role')=='retired'}
