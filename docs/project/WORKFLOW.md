@@ -7,12 +7,12 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 的「当前阶段」和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-17 交班）：用户换架构师。线上客户端 2.0.20；服务器后端是 Java（mentorflow-java-backend，镜像 mentorflow-java-server:eeb63f78，含 RAG 代码），数据库 PG17 加 pgvector 0.8.7，alembic 仍是 0043（RAG 迁移失败已回滚，备份 /opt/mentorflow/backups/rag-eeb63f78）。157-MF01 已起草待转发（修 0045 权限）。主线 153（BUG-106）、154/155/156（RAG）已合入未发布。员工除 MF-01 外都空闲。教训：上服务器的脚本不要用管道吞掉失败，每步检查退出码；发版前列清包含什么、不包含什么，请用户确认；不替用户推迟要做的事；费额度的活交给员工。
+- **现在在做的事**（2026-10-17）：线上客户端 2.0.20；服务器后端是 Java（mentorflow-java-backend，镜像 mentorflow-java-server:eeb63f78，含 RAG 代码），数据库 PG17 + pgvector 0.8.7，迁移仍是 0043。157-MF01 已合入（e3247021，修 0045 权限，[BUG-107]）。下一步：用户同意后架构师上服务器备份、重跑迁移、跑 rag-verify.sh；成功后列清 2.0.21 的内容请用户定发不发（[RAG-01] 客户端、[BUG-106]）。员工全部空闲。
 
 ## 固定做法（规则见 AGENTS.md）
 
 - **员工实测不占用户的鼠标键盘（2026-10-11）**：真打包实测用 Windows 的 UI Automation（InvokePattern）点原生按钮、读文字；网页里的按钮和输入框用 Chrome DevTools 协议（测试环境设 QTWEBENGINE_REMOTE_DEBUGGING），因为 Qt 6.11 网页的无障碍接口只能聚焦、点不动；不用 computer-use、模拟输入或抢前台（102-MF04 用电脑界面操作时被用户按 Esc 中止）；测试窗口会出现在屏幕上，派任务时先告诉用户。
-- **发版**（什么时候发由用户定）：用流水线发版，让用户在装好的软件上点更新亲测（操作手册“发布新版”）。**本机先验、GitHub 一版只跑一次（用户 2026-10-11 提出）**：先在本机用同一个打包脚本打预览版，跑一遍 scripts/release 的发版前总验收（102-MF04c 整理），过了才触发 mf-build / mf-publish；没在本机验过的版本不上 GitHub。正式版不在本机打：本机环境会把别的 DLL 混进包里（102-MF04 实测混入过 ICU/OpenSSL），而且同一版本两边打出来的文件不同，会扰乱以后的增量更新。**版本号只在真正发布时占用（用户 2026-10-12 定）**：定下要发的下一版（现在是 2.0.15），在发布前查出的 bug 修完仍发这个版本号，不跳到下一个号；本机排练用的测试版本号（如 9.103.14）不算。
+- **发版**（什么时候发由用户定）：用流水线发版，让用户在装好的软件上点更新亲测（操作手册“发布新版”）。**本机先验、GitHub 一版只跑一次（用户 2026-10-11 提出）**：先在本机用同一个打包脚本打预览版，跑一遍 scripts/release 的发版前总验收（102-MF04c 整理），过了才触发 mf-build / mf-publish；没在本机验过的版本不上 GitHub。正式版不在本机打：本机环境会把别的 DLL 混进包里（102-MF04 实测混入过 ICU/OpenSSL），而且同一版本两边打出来的文件不同，会扰乱以后的增量更新。**版本号只在真正发布时占用（用户 2026-10-12 定）**：定下要发的下一版（现在是 2.0.21），在发布前查出的 bug 修完仍发这个版本号，不跳到下一个号；本机排练用的测试版本号（如 9.103.14）不算。
 - **任务文件与短通知（用户 2026-10-15 定）**：任务全文只写在 D:\MentorFlow\.local\tasks\<任务号>.md（和回执目录 .local\receipts 并列），本文件待派队列只写任务号、一句话和文件路径，不贴全文。回复用户时最后给每位员工一行短通知，例如“MF-04：新任务 134-MF04，读 D:\MentorFlow\.local\tasks\134-MF04.md 照做，回执写到 D:\MentorFlow\.local\receipts\134-MF04.md。”用户只转发这一行。
 - **任务状态**：任务写好标“已起草，待转发”；用户说发了才改“进行中”；合入后从员工表和待派队列删掉，任务原文也删。
 - **署名**：主目录提交用 `git -c user.name="tonyswift868" -c user.email="205869700+tonyswift868@users.noreply.github.com" commit ...`，结尾加 Co-Authored-By 行；不写进共享 git 配置。员工用各自工位名提交。
@@ -27,7 +27,7 @@
 - **查用户软件的问题**：装好的软件日志 D:\MentorFlowApp\MentorFlow\Data\logs\mentorflow.log，源代码版日志 D:\MentorFlowData\account-shell\logs\mentorflow.log（JSON 行，只读）；数据库在对应的 learning\accounts\<账号>\*.sqlite3，只读查看用 `sqlite3.connect('file:...?mode=ro', uri=True)`。
 - **界面构建**：PATH 加 `/d/MentorFlow/.local/node`，`node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 不进仓库。
 - **写脚本**：含 Windows 路径或反斜杠的内容不要用 bash heredoc 或 python -c（会被吃掉，BUG-10），写成文件再运行。
-- **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，mentorflow-admin，sudo -n）。线上后端 mentorflow-slim-backend:MF-76（2026-10-12；切换与回滚脚本 /opt/mentorflow/state/mf76/switch.sh：无参数切换、check 只查配置、rollback 回到 MF-75；上一版 mf75 目录保留）；入口 nginx 容器 mentorflow-e1-preview-edge-1（配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf）；更新与下载目录 /opt/mentorflow/update-static/e108/app/；资料白名单 /opt/mentorflow/state/mentorflow-e1-preview/catalog/。 后端是 Java（[ARCH-09]，2026-10-16 起）：容器 mentorflow-java-backend、mentorflow-java-oidc，部署与切换、回滚、停用和恢复 Python 的脚本在 /opt/mentorflow/releases/java-539ab610/refactor/server-java/deploy（README 有步骤）；compose 需 BACKEND_ENV=/opt/mentorflow/state/mentorflow-e1-preview/account-core-21337c1/runtime.env；Python 后端已停，镜像 mentorflow-slim-backend:MF-76 保留。 数据库容器镜像为 mentorflow-postgres-pgvector:17（[RAG-01]，2026-10-16）。它的 compose 标签指向已不存在的旧目录，以后用 compose 操作 postgres，要用后端容器标签里的文件组，加上 --profile account-core-mvp、-f /opt/mentorflow/backups/pgvector-20261016/pgvector.override.yml，最后再加 BUG-45 override。 2026-10-10 起两个 docker 网络设了 ip_range（BUG-45）：以后用 Compose 操作这些容器，命令末尾必须追加 -f /opt/mentorflow/state/bug45-20261010/network45.override.yml。
+- **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，mentorflow-admin，sudo -n）。Python 后端 mentorflow-slim-backend:MF-76（已停，留作回退；切换与回滚脚本 /opt/mentorflow/state/mf76/switch.sh：无参数切换、check 只查配置、rollback 回到 MF-75；上一版 mf75 目录保留）；入口 nginx 容器 mentorflow-e1-preview-edge-1（配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf）；更新与下载目录 /opt/mentorflow/update-static/e108/app/；资料白名单 /opt/mentorflow/state/mentorflow-e1-preview/catalog/。 后端是 Java（[ARCH-09]，2026-10-16 起）：容器 mentorflow-java-backend、mentorflow-java-oidc，部署与切换、回滚、停用和恢复 Python 的脚本在 /opt/mentorflow/releases/java-539ab610/refactor/server-java/deploy（README 有步骤）；compose 需 BACKEND_ENV=/opt/mentorflow/state/mentorflow-e1-preview/account-core-21337c1/runtime.env；Python 后端已停，镜像 mentorflow-slim-backend:MF-76 保留。 数据库容器镜像为 mentorflow-postgres-pgvector:17（[RAG-01]，2026-10-16）。它的 compose 标签指向已不存在的旧目录，以后用 compose 操作 postgres，要用后端容器标签里的文件组，加上 --profile account-core-mvp、-f /opt/mentorflow/backups/pgvector-20261016/pgvector.override.yml，最后再加 BUG-45 override。 2026-10-10 起两个 docker 网络设了 ip_range（BUG-45）：以后用 Compose 操作这些容器，命令末尾必须追加 -f /opt/mentorflow/state/bug45-20261010/network45.override.yml。
 - **自动等回执（用户 2026-10-14 定）**：只挂一个后台等待：`.local/tmp/receipt_watch.sh wait`（每 30 秒查整个 .local/receipts，和 .local/tmp/receipts.seen 比，有新的或改过的回执就列出并结束），收到就直接读回执、审查合入、清理、更新文档，处理完用 `receipt_watch.sh ack <任务号>` 记为已处理，再挂一次 wait；不用等用户转告，不按任务分别挂多个。
 - **磁盘（用户 2026-10-10 定）**：测试与临时产物在 .local/test-tmp/ 下；冒烟测试、构建、中间文件用完就自动删，不留着等以后分类。员工删除被系统拦住时，架构师合入后直接删（只留 report.md 和截图），不用再问用户。
 
@@ -35,8 +35,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| main | 以 `git rev-parse --short HEAD` 为准；2.0.14 已推送并发布 |
-| 已发布 | 2.0.14 = 1a58917c（2026-10-12，非必须；下载站安装程序 2.0.14）；强制线 2.0.3 |
+| main | 以 `git rev-parse --short HEAD` 为准；157-MF01 合入 e3247021；153～157 未发布 |
+| 已发布 | 2.0.20 = 59ec4d8b（2026-10-16，非必须，只发软件内更新）；下载站安装程序 2.0.15；强制线 2.0.3 |
 | GitHub | main 已推送（私有仓库），远端只有 main 一个分支（9-26 遗留的 15 个 Dependabot 升级请求与分支 2026-10-12 经用户同意已关闭并删除，它们的配置已随旧代码删除，不会再生成）；发版需要的推送由架构师做，其余推送要用户说 |
 | 工位分支 | office/* 只在本地，永不推送；每条任务第一步把工位 reset 到基线 |
 
@@ -46,7 +46,7 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 157-MF01（线上迁移权限失败，修 0045，[RAG-01]）已起草，待转发 | server |
+| MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
@@ -56,21 +56,9 @@
 
 ## 待派队列
 
-- 第一百三十七～一百三十九批全部已合入：137-MF04（[BUG-100]，随 2.0.17 发布）；138-MF03（[BUG-101]，744478c9）、139-MF02（[BUG-102]，3eaa481e）随 2.0.18 发布（2026-10-15）。任务文件留在 D:\MentorFlow\.local\tasks\。
-- 140-MF02：教师闲聊老师回复一键复制（[UI-02]）。已合入（63ff8639，2026-10-15；员工全量 1 失败为 concept114，主线上同样失败，与本改动无关，见 141）。用户 2026-10-15 定：攒着，和下次别的改动一起发版，不单独发。
-- 141-MF03：concept114 测试时好时坏，查是产品还是夹具问题（[BUG-103]）。已合入（07e6fa08，2026-10-15）：产品竞态，已修。
-
-- 142-MF01：服务器后端改 Java 第一步，只在本机，不碰服务器（[ARCH-09]）。已完成（c0692370；子代理 3 个；全量 4002 通过 1 失败为 classroom81 浏览器偶发，单跑通过；java142 残留已删，只留报告；JDK 和 Maven 仓库在 .local\java 保留复用），已合入主线（2026-10-15 2.0.19 发出后）。
-- 143-MF03：样式类不打回（[TEACH-06]），作为 2.0.20。任务文件 D:\MentorFlow\.local\tasks\143-MF03.md（已起草，待转发；基线 bc308837，2.0.19 发出后合入）。
-
-- 144-MF01：Java 原生会话（登录、刷新、退出、会话、一台在线）和原生令牌鉴权补齐。任务文件 D:\MentorFlow\.local\tasks\144-MF01.md（已起草，待转发）。
-- 145-MF07：Java 同步 5 个接口。任务文件 D:\MentorFlow\.local\tasks\145-MF07.md（已起草，待转发）。与 144 并行：MF-01 管 identity、account 包，MF-07 只建 sync 包。
-
-- 144-MF01（部分完成：Python 短期令牌只在进程内存，Java 认不出，只能整组切换）、145-MF07（完成）已合入 414cd5e0。146-MF01、147-MF07 已起草待转发（基线 414cd5e0），146 开工先跑 server_java 全部。
-
-- 146-MF01、147-MF07 已合入 5490ff51（都为部分完成：注销钩子未接、注销取消时限未对照、坏 JSON 的 422 文字不同；邮件走 Keycloak SPI 架构师认可）。148-MF01 收口已起草待转发。
-
-- 148-MF01 已合入 6bba5b3f（完成：server_java 107 通过、Python 全量 4104 通过 0 失败；本机整组切换与切回演练通过；旧 Python 访问令牌在 Java 回 401 ENTERPRISE_SESSION_REAUTH_REQUIRED；切换清单 refactor/server-java/CUTOVER148.md）。下一步：架构师更新服务器 Java 影子容器（补原生身份 mTLS 配置）并对比，再经用户同意、在用户关掉软件时整组切换。
+- 157-MF01 已合入（e3247021，[BUG-107]）。员工的 mig157 残留架构师已删，只留 report.md（里面有线上重跑步骤）。
+- 下一步（架构师，要用户同意）：上服务器重跑迁移 → rag-verify.sh → 用户定发不发 2.0.21。
+- 待用户定：[BUG-104] JavaGuide 知识点太碎要不要改。
 
 ## 回执格式
 
