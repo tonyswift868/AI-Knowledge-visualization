@@ -49,7 +49,7 @@
 | MF-01 | 154-MF01（资料问答服务器端，[RAG-01]）已起草，待转发 | server |
 | MF-02 | 155-MF02（资料问答客户端，[RAG-01]）已起草，待转发 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 153-MF04（测试连接误报，[BUG-106]）已起草，待转发 | runtime |
+| MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
