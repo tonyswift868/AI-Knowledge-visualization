@@ -48,7 +48,7 @@
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 空闲 | classroom |
+| MF-03 | 150-MF03（课堂能点的选项变少，查因）已起草，待转发 | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
