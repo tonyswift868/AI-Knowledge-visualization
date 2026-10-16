@@ -10,7 +10,8 @@ import httpx
 
 import contract_support145 as c145
 import contract_support147 as c147
-from contract_support144 import CLASSPATH_FILE, OLD_ISSUER, make_tls144
+import contract_support144
+from contract_support144 import OLD_ISSUER, make_tls144
 from lifecycle_support146 import FakeLifecycleKeycloak146, SMTPInbox146
 
 
@@ -44,7 +45,9 @@ def cutover148_backends():
     # The conftest hook supplies TEMP/TMP only while this server_java item is
     # running.  Keep the parent environment untouched so other test trees use
     # pytest's own basetemp.
-    if not CLASSPATH_FILE.is_file():
+    # Read at call time: conftest rebinds the path after import (BUG-108).
+    classpath_file = contract_support144.CLASSPATH_FILE
+    if not classpath_file.is_file():
         pytest.skip("148 requires the root-prepared Java/Zonky classpath")
     root_build = Path(os.environ.get("JAVA142_ARTIFACTS", str(ARTIFACTS.parent / "build")))
     jar = root_build / "mentorflow-server-0.1.0.jar"
@@ -53,7 +56,7 @@ def cutover148_backends():
         pytest.skip("148 requires the root-prepared Java jar and PostgreSQL launcher class")
 
     classpath = os.pathsep.join((str(test_classes), str(root_build / "classes"),
-                                 CLASSPATH_FILE.read_text(encoding="utf-8").strip()))
+                                 classpath_file.read_text(encoding="utf-8").strip()))
     pg = c145.EmbeddedPostgresProcess145(classpath,
                                          ARTIFACTS / "postgres.log")
     tls = make_tls144(ARTIFACTS / "tls")

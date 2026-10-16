@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 的「当前阶段」和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-17）：线上客户端 2.0.23；服务器 Java eeb63f78，数据库迁移 0045。159-MF06 已合入（94134584）。等用户更新到 2.0.23 并关掉软件后，架构师换入按主题重分（[BUG-104]）：对 D:\MentorFlowApp\MentorFlow\Data 先 --dry-run 拿预演编号、核对 3258/1714/296 不变，再 --apply --confirm-preview（步骤 .local/test-tmp/points159/install-steps.md）。159-MF01（[BUG-108]）是否已转发待用户确认。
+- **现在在做的事**（2026-10-17）：线上客户端 2.0.23；服务器 Java eeb63f78，数据库迁移 0045。159-MF06 已合入（94134584）。等用户更新到 2.0.23 并关掉软件后，架构师换入按主题重分（[BUG-104]）：对 D:\MentorFlowApp\MentorFlow\Data 先 --dry-run 拿预演编号、核对 3258/1714/296 不变，再 --apply --confirm-preview（步骤 .local/test-tmp/points159/install-steps.md）。159-MF01 已合入，[BUG-108] 已关闭。员工全部空闲。
 
 ## 固定做法（规则见 AGENTS.md）
 
@@ -20,7 +20,7 @@
 ## 架构师操作手册
 
 - **合入员工分支**：主目录 `git merge --no-ff office/<工位>`（或 `git diff --binary <基线> <员工提交> | git apply --index --3way`），逐文件看改动是否在任务范围内；跑本批改动相关的测试（`pytest $(git diff --name-only <基线> HEAD | grep '^tests/.*test_.*\.py$')`），两份以上改动合在一起时再跑一次全量。
-- **全量测试**（2026-10-17 约 4200 项、45 分钟）：`TMP=… TEMP=… SHIP156_TMP=D:/MentorFlow/.local/test-tmp/<子目录>/ship .venv/Scripts/python.exe -m pytest tests/refactor -q -p no:cacheprovider --basetemp=D:/MentorFlow/.local/test-tmp/<子目录>/pt`（先把 .local/test-tmp/ship156/m2 复制到 <子目录>/ship/m2，免得重下 Maven 依赖；不设 SHIP156_TMP 会把整场临时文件写进共享的 ship156，[BUG-108]），输出重定向到文件、放后台跑，跑完删子目录。
+- **全量测试**（2026-10-17 约 4230 项、40～45 分钟）：`TMP=D:/MentorFlow/.local/test-tmp/<子目录> TEMP=同上 .venv/Scripts/python.exe -m pytest tests/refactor -q -p no:cacheprovider --basetemp=D:/MentorFlow/.local/test-tmp/<子目录>/pt`，输出重定向到文件、放后台跑，跑完删子目录。Java 构建缓存在 .local/test-tmp/java-cache（共享、加锁，不要删），不用再设 SHIP156_TMP（[BUG-108]）。
 - **基线**：合入并提交后 `git rev-parse --short HEAD` 就是下一批任务的基线。
 - **发布新版**（[SYS-06]）：①合入并推送 main；②手动运行 GitHub 工作流 mf-build（版本号、更新说明、是否必须及原因、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机 `.venv/Scripts/python.exe -B scripts/release/sign_and_stage.py --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity E:/Codex/Secrets/MentorFlow/ssh/mentorflow-e1-ops-ed25519`；④手动运行 mf-publish（版本号；build_installer 默认 false 只发更新约 1～3 分钟，要新安装程序时设 true 约 10 分钟，或事后单独跑 mf-installer）；⑤用客户端代码对公网 stable.json 验签，看 aiteacher.clannad.win/download。触发和查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（.local/tmp/watch_run.sh 轮询到结束）。工作流只能手动触发，额度红线见 scripts/release/README.md。
 - **启动/重启用户的源代码版**：`Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden`。重启前一定先问用户（可能在上课）。
@@ -47,7 +47,7 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 159-MF01 修测试夹具临时目录（[BUG-108]）已起草，待转发 | server |
+| MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
@@ -58,8 +58,7 @@
 ## 待派队列
 
 - 159-MF06 已合入（94134584），随 2.0.23 发布；换入用户数据由架构师做（等用户更新、关软件）。
-- 159-MF01（server）：[BUG-108] 测试夹具只在 server_java 测试期间改临时目录、Java 构建缓存共享加锁。任务文件 D:\MentorFlow\.local\tasks\159-MF01.md，已起草，待转发。和 159-MF06 不改同一处，并行。
-- ship156 等 159-MF01 列清单后再删。
+- 159-MF01 已合入（c5026a64）+ 架构师补修 2 处测试辅助文件；ship156 已删（只留 report.md）。[BUG-108] 已关闭。
 
 ## 回执格式
 

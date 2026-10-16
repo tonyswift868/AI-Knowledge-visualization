@@ -20,7 +20,8 @@ from pathlib import Path
 from socketserver import StreamRequestHandler, ThreadingTCPServer
 from urllib.parse import parse_qs, urlsplit
 
-from contract_support144 import (OLD_ISSUER, CLASSPATH_FILE,
+import contract_support144
+from contract_support144 import (OLD_ISSUER,
     make_tls144, prepare_databases144, seed_tenant144, start_java144,
     start_postgres144, start_python144, stop_postgres144, stop_server144)
 
@@ -397,8 +398,10 @@ class FakeLifecycleKeycloak146:
 
 def build_pair146(run_dir: Path):
     """Standalone PG17 + local HTTPS/mTLS authority, without the 144 server fixture."""
-    if not CLASSPATH_FILE.is_file():
-        raise RuntimeError(f"Prepared Java/Zonky classpath missing: {CLASSPATH_FILE}")
+    # Read at call time: conftest rebinds the path after this module is imported (BUG-108).
+    classpath_file = contract_support144.CLASSPATH_FILE
+    if not classpath_file.is_file():
+        raise RuntimeError(f"Prepared Java/Zonky classpath missing: {classpath_file}")
     run_dir.mkdir(parents=True, exist_ok=True)
     tls = make_tls144(run_dir / "tls")
     postgres_dir = run_dir / "postgres"

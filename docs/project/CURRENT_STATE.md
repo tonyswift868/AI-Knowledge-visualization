@@ -174,7 +174,7 @@
 | BUG-104 | JavaGuide 计划的知识点切得太碎太杂，用户分不清在讲什么（一个模块 80 个点，标题是序号列表、“总结”等） | 修复中：前置随 2.0.23 发布，等用户更新、关软件后换入 | 2026-10-17 |
 | BUG-105 | 课堂弹红色“软件出了点问题，没拿到回复”：DeepSeek 只思考、没写正文就结束 | 已修，随 2.0.19 发布，待用户亲测 | 2026-10-15 |
 | BUG-106 | 设置页“测试连接”在思考模式下必报“模型回复异常”（32 个 token 被思考用完） | 已修，随 2.0.21 发布，待用户亲测 | 2026-10-17 |
-| BUG-108 | 测试的 server_java/conftest.py 在收集时把整场测试的 TEMP/TMP 改到共享的 ship156 目录，员工全量写出任务目录 | 修复中（159-MF01） | 2026-10-17 |
+| BUG-108 | 测试的 server_java/conftest.py 在收集时把整场测试的 TEMP/TMP 改到共享的 ship156 目录，员工全量写出任务目录 | 已关闭（2026-10-17） | 2026-10-17 |
 | BUG-107 | 线上执行 RAG 迁移失败：迁移角色对 account_closure 没有 CREATE；上线脚本没发现失败，继续部署了 Java | 已关闭（2026-10-17 线上重跑成功） | 2026-10-17 |
 | BUG-75 | 预览版和正式版共用 Windows 凭据，预览版启动会读走正式版的“更新后自动登录”凭据 | 已关闭（随 2.0.13 发布） | 2026-10-12 |
 | BUG-76 | 软件开着时运行安装程序，只提示“安装未完成，请稍后重试” | 已修，已发布（2.0.13） | 2026-10-14 |
@@ -1058,11 +1058,12 @@
 - 更新：2026-10-14
 
 ### [BUG-108] 测试的 server_java/conftest.py 在收集时把整场测试的 TEMP/TMP 改到共享的 ship156 目录，员工全量写出任务目录
-- 状态：修复中（159-MF01）。
+- 状态：已关闭（159-MF01 合入 c5026a64，架构师补修 2 处，2026-10-17）。
 - 现象：2026-10-17 158-MF03 跑 Python 全量时，所有测试的临时文件写进了 D:\MentorFlow\.local\test-tmp\ship156\tmp（不是自己的 class158），员工发现越界后中途停掉，全量只跑了约 74%。ship156 当时共约 618 MB（build 158 MB、m2 279 MB、tmp 189 MB、cutover 132 MB、client-cutover 100 MB），是 156 起各任务共用的 Java 构建缓存加上各次全量的临时文件。
 - 原因：tests/refactor/server_java/conftest.py 在模块导入时用 os.environ.update 设 TEMP、TMP、TMPDIR 和一串 *_TMP，没设 SHIP156_TMP 时默认固定指向 ship156。pytest 收集到这个目录就改了整个进程的环境，之后所有测试都用它；两个员工同时跑全量还会共用同一个 Java 构建目录。
-- 临时办法：跑全量时显式设 SHIP156_TMP 指到自己的任务目录（可先复制 ship156/m2 免得重新下 Maven 依赖）。
-- 解决：待修：Java 构建缓存（build、m2）留共享位置，临时目录只在 server_java 的测试期间生效、结束恢复，不改整场测试的 TEMP。
+- 解决（159-MF01）：Java 构建缓存（jar、classes、m2、classpath）放共享的 .local/test-tmp/java-cache，跨进程文件锁排队、锁内再查一次，源码没变就复用；TEMP/TMP/TMPDIR 和各 *_TMP 只在 server_java 的测试运行期间指到本场 basetemp 下，结束恢复；显式设 SHIP156_TMP 的老用法仍有效。架构师合入后删掉 ship156（只留 report.md）再跑 server_java，查出员工漏掉的 2 处：lifecycle_support146、cutover_support148 在导入时就把 classpath 路径按名字拷走，看不到 conftest 后来改的路径；前者 8 项报错，后者会悄悄跳过 148 的测试。改成调用时读 contract_support144.CLASSPATH_FILE。
+- 验证：159-MF01 两场并发都通过、全量 4228 通过；架构师删掉 ship156 后重跑受影响的 6 个文件 11 项全部通过、无跳过，ship156 没有新文件（2026-10-17）。
+- 经验：测试辅助文件里会被 conftest 改的路径，不要用 from … import 拷成常量，要在用的时候读；路径不对时宁可报错，不要悄悄跳过。删掉旧目录再跑一遍，才能确认真的没人在用。
 - 关联：[ARCH-09]
 - 更新：2026-10-17
 
