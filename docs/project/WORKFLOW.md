@@ -46,7 +46,7 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲 | server |
+| MF-01 | 149-MF01（切 Java 后客户端登录失败，查因并修，[ARCH-09]）已起草，待转发 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
