@@ -560,6 +560,7 @@
 - 服务器与下载站：更新目录 /opt/mentorflow/update-static/e108/app/（objects、stable/stable.json、releases/）；2.0.9 及更早的客户端只走 https://89.45.45.28/mentorflow/updates/app/，2.0.10 起先走 https://aiteacher.clannad.win/updates/app/、不行退回 IP；aiteacher.clannad.win 经 Cloudflare 代理 + Origin 证书（/download、/releases/、/updates/app/ 三个入口；/updates/app/ 2026-10-10 加，改前备份 /opt/mentorflow/state/edge.conf.bak-20261010-updates），入口 nginx 配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf（改前备份 /opt/mentorflow/state/edge.conf.bak-20261010；上线时的问题见 [BUG-70]）。objects 在 Cloudflare 不缓存。clannad.win 还有 auth 子域名与 Brevo 发信记录，改 DNS 时不要动。实测速度：Cloudflare 约 1.3 MB/s，旧 IP 直连 0.15～0.6 MB/s。
 - 当前实现：scripts/build_learning_installer.py、scripts/release/、.github/workflows/mf-*.yml；客户端 refactor/desktop/delivery/、updates.py、update_dialog.py；Inno 脚本 refactor/desktop/packaging/inno/。签名密钥 key_id mentorflow-app-2026（Ed25519）。
 - 关联：[ARCH-03] [ENV-01] [BUG-59] [BUG-60] [BUG-61] [BUG-62] [BUG-63] [BUG-64] [BUG-67] [BUG-68] [BUG-69] [BUG-70]
+- 中途退出（用户 2026-10-16 亲测）：用户在 2.0.19 → 2.0.20 软件内更新下载中途故意退出软件，更新记为 FAILED_RECOVERABLE，重新打开仍是完好的 2.0.19，可正常使用，可再次更新。
 - 更新：2026-10-11
 
 ### [SYS-07] 按用途设定思考强度
