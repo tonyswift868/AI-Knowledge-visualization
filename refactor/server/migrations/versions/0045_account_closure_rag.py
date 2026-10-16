@@ -24,7 +24,13 @@ def _replace_function_once(signature: str, old: str, new: str) -> None:
             f"account closure function changed unexpectedly: {signature} anchor count "
             f"was {definition.count(old)}"
         )
+    # The production migrator has USAGE but no effective CREATE on
+    # account_closure. CREATE OR REPLACE must therefore run as the schema
+    # owner. Keep the role change local to this migration transaction and
+    # restore the migrator before it touches public-table policies or triggers.
+    op.execute("SET LOCAL ROLE mentorflow_closure")
     bind.exec_driver_sql(definition.replace(old, new, 1))
+    op.execute("RESET ROLE")
 
 
 def _scope_expression() -> str:
