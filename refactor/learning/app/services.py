@@ -28,6 +28,7 @@ class AppServices:
         self._store = None
         self._catalog = None
         self._chat = None
+        self._rag = None
         self._closed = False
         self.model_status_listener = None
 
@@ -95,6 +96,22 @@ class AppServices:
                 self._chat = CourseChatStore(self.store)
             return self._chat
 
+    # -- document Q&A (local-only sessions; never part of CourseStore/outbox)
+    @property
+    def rag(self):
+        with self._lock:
+            if self._rag is None and not self._closed:
+                from .rag import RagService
+                self._rag = RagService(
+                    store=self.store,
+                    account_id=self.account_id,
+                    session_provider=self.session_provider,
+                    api_base_url=self.api_base_url,
+                    ca_bundle=self.ca_bundle,
+                    gateway=self.gateway,
+                )
+            return self._rag
+
     def refresh_catalog(self):
         try:
             catalog = self.catalog
@@ -106,7 +123,8 @@ class AppServices:
     def close(self):
         with self._lock:
             self._closed = True
-            services, self._gateway, self._store, self._catalog = (self._gateway, self._store, self._catalog), None, None, None
+            services, self._gateway, self._store, self._catalog, self._rag = (
+                self._rag, self._gateway, self._catalog, self._store), None, None, None, None
             self._chat = None
         for service in services:
             if service is not None:

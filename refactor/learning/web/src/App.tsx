@@ -1,5 +1,5 @@
 import * as React from "react"
-import { ChevronsUpDown, CirclePlus, Cloud, CloudOff, House, LayoutGrid, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen,
+import { ChevronsUpDown, CirclePlus, Cloud, CloudOff, House, LayoutGrid, LogOut, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Files,
   Repeat2, Route as RouteIcon, Settings2, ShieldCheck } from "lucide-react"
 import { call, on } from "./bridge"
 import { useApp, type Route } from "./store"
@@ -9,6 +9,7 @@ import { Plans } from "./pages/Plans"
 import { NewPlan } from "./pages/NewPlan"
 import { Tools } from "./pages/Tools"
 import { Chat } from "./pages/Chat"
+import { Rag } from "./pages/Rag"
 import { PlanDetail } from "./pages/PlanDetail"
 import { Classroom } from "./pages/Classroom"
 import { Report } from "./pages/Report"
@@ -37,6 +38,9 @@ const NAV: { label: string; items: NavItem[] }[] = [
     { id: "home", label: "首页", icon: House },
     { id: "plans", label: "我的计划", icon: RouteIcon, also: ["plan"] },
     { id: "new-plan", label: "新建计划", icon: CirclePlus },
+  ] },
+  { label: "资料", items: [
+    { id: "rag", label: "资料问答", icon: Files },
   ] },
   { label: "更多", items: [
     { id: "tools", label: "更多工具", icon: LayoutGrid, also: ["chat"] },
@@ -116,7 +120,7 @@ export function App() {
     root.classList.toggle("reduce-motion", !!s.settings?.reduce_motion)
   }, [theme, s.settings?.font_scale, s.settings?.reduce_motion])
 
-  const Page = previewHash === "#/dev/voice" ? VoiceInputPreview : previewHash === "#/dev/teacher" ? TeacherStagePreview : { home: Home, plans: Plans, plan: PlanDetail, "new-plan": NewPlan, classroom: Classroom, report: Report, tools: Tools, chat: Chat, settings: Settings }[s.route]
+  const Page = previewHash === "#/dev/voice" ? VoiceInputPreview : previewHash === "#/dev/teacher" ? TeacherStagePreview : { home: Home, plans: Plans, plan: PlanDetail, "new-plan": NewPlan, classroom: Classroom, report: Report, tools: Tools, chat: Chat, rag: Rag, settings: Settings }[s.route]
 
   return (
     <>
@@ -132,7 +136,7 @@ export function App() {
               <div key={group.label} className="nav-group">
                 <span className="nav-heading">{group.label}</span>
                 {group.items.map((n) => (
-                  <button key={n.id} className={`nav-item ${s.route === n.id || n.also?.includes(s.route) ? "active" : ""}`}
+                  <button key={n.id} data-testid={n.id === "rag" ? "nav-rag" : undefined} aria-label={n.label} className={`nav-item ${s.route === n.id || n.also?.includes(s.route) ? "active" : ""}`}
                           onClick={() => { if (n.id === "new-plan") s.set({ planId: null }); s.go(n.id) }} title={n.label}>
                     <span className="nav-icon"><n.icon /></span><span className="nav-label">{n.label}</span>
                     {n.id === "settings" && update.later && <span aria-label="有新版本" style={{ color: "#f24b63" }}>●</span>}

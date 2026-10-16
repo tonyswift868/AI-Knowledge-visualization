@@ -267,6 +267,8 @@ def register(bridge, window):
 
     from . import chat
     chat.register(bridge, services)
+    from . import rag
+    rag.register(bridge, services, window)
     from ..course import self_test
     self_test.register(bridge, services, window)
 

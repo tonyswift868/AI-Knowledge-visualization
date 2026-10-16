@@ -1,6 +1,6 @@
 import { create } from "zustand"
 
-export type Route = "home" | "plans" | "plan" | "new-plan" | "classroom" | "report" | "tools" | "chat" | "settings"
+export type Route = "home" | "plans" | "plan" | "new-plan" | "classroom" | "report" | "tools" | "chat" | "rag" | "settings"
 export type SettingsTab = "models" | "usage" | "learning" | "time" | "appearance" | "account"
 
 export type TeacherPreset = { id: string; name: string; persona: string; style: string; detail: string; examples: string; analogies: string[] }

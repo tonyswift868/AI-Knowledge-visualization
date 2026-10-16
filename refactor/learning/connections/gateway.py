@@ -54,7 +54,7 @@ PURPOSE_EFFORT = {
     'generate': 'high', 'plan_additions_generate': 'high',
     'source_scoring': 'high', 'research': 'high', 'teacher': 'high', 'coverage_check': 'high',
     'profile': None, 'sufficiency': 'none', 'plan_intent': 'none',
-    'asr_correction': 'none',
+    'asr_correction': 'none', 'rag_qa': 'high',
 }
 # BUG-85: dictation correction must never inherit a long thinking request or the
 # DeepSeek maximum-output override. It keeps the preset's normal network timeout.
