@@ -46,7 +46,7 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 148-MF01（Java 收口：接线、补差异、本机整组切换演练，[ARCH-09]）已起草，待转发 | server |
+| MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
@@ -69,6 +69,8 @@
 - 144-MF01（部分完成：Python 短期令牌只在进程内存，Java 认不出，只能整组切换）、145-MF07（完成）已合入 414cd5e0。146-MF01、147-MF07 已起草待转发（基线 414cd5e0），146 开工先跑 server_java 全部。
 
 - 146-MF01、147-MF07 已合入 5490ff51（都为部分完成：注销钩子未接、注销取消时限未对照、坏 JSON 的 422 文字不同；邮件走 Keycloak SPI 架构师认可）。148-MF01 收口已起草待转发。
+
+- 148-MF01 已合入 6bba5b3f（完成：server_java 107 通过、Python 全量 4104 通过 0 失败；本机整组切换与切回演练通过；旧 Python 访问令牌在 Java 回 401 ENTERPRISE_SESSION_REAUTH_REQUIRED；切换清单 refactor/server-java/CUTOVER148.md）。下一步：架构师更新服务器 Java 影子容器（补原生身份 mTLS 配置）并对比，再经用户同意、在用户关掉软件时整组切换。
 
 ## 回执格式
 
