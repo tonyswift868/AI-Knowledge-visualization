@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 的「当前阶段」和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-17）：线上客户端 2.0.20；服务器后端 Java（镜像 mentorflow-java-server:eeb63f78），数据库 PG17 + pgvector 0.8.7，迁移 0045（RAG 表 2026-10-17 已建，[BUG-107] 已关闭）。2.0.21 已发布（2026-10-17 01:51：[RAG-01] 资料问答客户端、[BUG-106]；只发软件内更新），等用户点更新亲测；用户用资料问答时架构师看 Java 日志。158-MF06（[BUG-104] 按主题重分没学的三个模块）、158-MF03（课堂撑得住大点：按小要点记时长、收束不塞整个主题原文）进行中（2026-10-17 已派发）。顺序：158-MF03 合入 → 发 2.0.22 → 用户更新 → 换入 158-MF06。
+- **现在在做的事**（2026-10-17）：线上客户端 2.0.20；服务器后端 Java（镜像 mentorflow-java-server:eeb63f78），数据库 PG17 + pgvector 0.8.7，迁移 0045（RAG 表 2026-10-17 已建，[BUG-107] 已关闭）。2.0.21 已发布（2026-10-17 01:51：[RAG-01] 资料问答客户端、[BUG-106]；只发软件内更新），等用户点更新亲测；用户用资料问答时架构师看 Java 日志。158-MF03 已合入（8ca25324，部分完成：员工全量中断，架构师补修计划详情 42d9dd5e 并重跑全量）；158-MF06（[BUG-104] 按主题重分没学的三个模块）进行中。顺序：158-MF03 合入 → 发 2.0.22 → 用户更新 → 换入 158-MF06。
 
 ## 固定做法（规则见 AGENTS.md）
 
@@ -20,7 +20,7 @@
 ## 架构师操作手册
 
 - **合入员工分支**：主目录 `git merge --no-ff office/<工位>`（或 `git diff --binary <基线> <员工提交> | git apply --index --3way`），逐文件看改动是否在任务范围内；跑本批改动相关的测试（`pytest $(git diff --name-only <基线> HEAD | grep '^tests/.*test_.*\.py$')`），两份以上改动合在一起时再跑一次全量。
-- **全量测试**（约 10 分钟，2026-10-10 约 3280 通过、28 跳过）：`TMP=D:/MentorFlow/.local/tmp TEMP=D:/MentorFlow/.local/tmp .venv/Scripts/python.exe -m pytest tests/refactor -q -p no:cacheprovider --basetemp=D:/MentorFlow/.local/test-tmp/<子目录>/pt`，输出重定向到文件、放后台跑，跑完删子目录。
+- **全量测试**（2026-10-17 约 4200 项、45 分钟）：`TMP=… TEMP=… SHIP156_TMP=D:/MentorFlow/.local/test-tmp/<子目录>/ship .venv/Scripts/python.exe -m pytest tests/refactor -q -p no:cacheprovider --basetemp=D:/MentorFlow/.local/test-tmp/<子目录>/pt`（先把 .local/test-tmp/ship156/m2 复制到 <子目录>/ship/m2，免得重下 Maven 依赖；不设 SHIP156_TMP 会把整场临时文件写进共享的 ship156，[BUG-108]），输出重定向到文件、放后台跑，跑完删子目录。
 - **基线**：合入并提交后 `git rev-parse --short HEAD` 就是下一批任务的基线。
 - **发布新版**（[SYS-06]）：①合入并推送 main；②手动运行 GitHub 工作流 mf-build（版本号、更新说明、是否必须及原因、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机 `.venv/Scripts/python.exe -B scripts/release/sign_and_stage.py --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity E:/Codex/Secrets/MentorFlow/ssh/mentorflow-e1-ops-ed25519`；④手动运行 mf-publish（版本号；build_installer 默认 false 只发更新约 1～3 分钟，要新安装程序时设 true 约 10 分钟，或事后单独跑 mf-installer）；⑤用客户端代码对公网 stable.json 验签，看 aiteacher.clannad.win/download。触发和查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（.local/tmp/watch_run.sh 轮询到结束）。工作流只能手动触发，额度红线见 scripts/release/README.md。
 - **启动/重启用户的源代码版**：`Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden`。重启前一定先问用户（可能在上课）。
@@ -49,7 +49,7 @@
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 158-MF03 课堂撑得住大点（[BUG-104] 配套）进行中 | classroom |
+| MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 158-MF06 按主题重分知识点（[BUG-104]）进行中 | tools |
@@ -60,7 +60,7 @@
 - 157-MF01 已合入（e3247021，[BUG-107]）。员工的 mig157 残留架构师已删，只留 report.md（里面有线上重跑步骤）。
 - 线上迁移已重跑成功（2026-10-17，[BUG-107]）；2.0.21 已发布，等用户亲测。
 - 158-MF06（tools）：[BUG-104] 按主题重分“java guide”没学的三个模块，副本上测过后由架构师换入（用户关软件时）。任务文件 D:\MentorFlow\.local\tasks\158-MF06.md，进行中（2026-10-17 已派发）。
-- 158-MF03（classroom）：每讲完一个小要点就记时长、大点收束不带整个主题原文、查清其他带整点原文的路径（[BUG-104] 配套）。任务文件 D:\MentorFlow\.local\tasks\158-MF03.md，进行中（2026-10-17 已派发）。与 158-MF06 不改同一处，可并行；换入 158-MF06 要等 158-MF03 随 2.0.22 发布、用户更新之后。
+- 158-MF03 已合入（8ca25324）+ 架构师补修 42d9dd5e；全量重跑中，过了发 2.0.22（课堂按小要点记时长、收束不塞整个主题原文），用户更新后再换入 158-MF06。
 
 ## 回执格式
 
