@@ -48,7 +48,7 @@
 | --- | --- | --- |
 | MF-01 | 151-MF01（Java 转正部署包，[ARCH-09]）已起草，待转发 | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 空闲（150-MF03 已交付：不是回归，待用户定方案） | classroom |
+| MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
