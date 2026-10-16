@@ -116,9 +116,86 @@ def _calendar(ledger, today):
                 remaining_minutes=status['remaining_minutes'])
 
 
+def _regroup_points(store, plan_id, module_points, requested_ids, incoming_points,
+                    protected_ids, chunk_ids, issues, module_id):
+    """Re-home existing subpoints while preserving their source material.
+
+    The proposal controls only big-point grouping, names and goals. Small-point
+    payloads are copied from the live records; only their titles may change.
+    """
+    source_subpoints = {}
+    for point in sorted(module_points, key=lambda p: (p['position'], p['id'])):
+        for sub_index, subpoint in enumerate(point.get('subpoints', [])):
+            sid = subpoint.get('id')
+            if sid in source_subpoints:
+                issues.append(module_id + '：旧结构的小要点 id 重复，无法安全重分组：' + str(sid))
+            else:
+                source_subpoints[sid] = (point['id'], subpoint, (point['position'], point['id'], sub_index))
+
+    protected_subpoints = {sid for sid, (owner, _, _) in source_subpoints.items()
+                           if owner in protected_ids}
+    expected = {sid for sid, (owner, _, _) in source_subpoints.items()
+                if owner in requested_ids and owner not in protected_ids}
+    seen = []
+    cleaned = []
+    empty_ids = []
+    for incoming in incoming_points:
+        if not isinstance(incoming, dict):
+            issues.append(module_id + '：新点必须是对象')
+            continue
+        raw_subpoints = incoming.get('subpoints')
+        if not isinstance(raw_subpoints, list):
+            issues.append(module_id + '：重分组的大点必须包含小要点列表')
+            continue
+        kept_subpoints = []
+        for proposed in raw_subpoints:
+            if not isinstance(proposed, dict):
+                issues.append(module_id + '：重分组的小要点必须是对象')
+                continue
+            sid = proposed.get('id')
+            if sid not in source_subpoints:
+                issues.append(module_id + '：重分组引用未知小要点：' + str(sid))
+                continue
+            seen.append(sid)
+            if sid in protected_subpoints:
+                # Current/progress content stays attached to its old big point.
+                continue
+            owner, original, original_order = source_subpoints[sid]
+            if owner not in requested_ids:
+                issues.append(module_id + '：小要点来自未列入 replace_point_ids 的点：' + str(sid))
+                continue
+            subpoint = deepcopy(original)
+            title = proposed.get('title')
+            if isinstance(title, str) and title.strip():
+                subpoint['title'] = title
+            kept_subpoints.append((original_order, subpoint))
+        pid = incoming.get('id')
+        if not kept_subpoints:
+            empty_ids.append(pid)
+            continue
+        kept_subpoints.sort(key=lambda item: item[0])
+        kept_subpoints = [subpoint for _, subpoint in kept_subpoints]
+        point = deepcopy(incoming)
+        point['subpoints'] = kept_subpoints
+        point['minutes'] = sum(s['minutes'] for s in kept_subpoints)
+        point['chunk_ids'] = list(dict.fromkeys(cid for s in kept_subpoints for cid in s.get('chunk_ids', [])))
+        cleaned.append(point)
+
+    duplicates = sorted({sid for sid in seen if seen.count(sid) > 1})
+    missing = sorted(expected - set(seen))
+    if duplicates:
+        issues.append(module_id + '：小要点重复分组：' + '、'.join(duplicates))
+    if missing:
+        issues.append(module_id + '：有未分组的小要点：' + '、'.join(missing))
+    return cleaned, protected_subpoints, empty_ids
+
+
 def _prepare(store, plan_id, structure, *, end_date=None):
     if not isinstance(structure, dict): raise StoreError('INVALID_STRUCTURE', '结构文件必须是 JSON 对象。')
     structure = deepcopy(structure)
+    regroup = structure.get('regroup_subpoints') is True
+    if 'regroup_subpoints' in structure and not isinstance(structure['regroup_subpoints'], bool):
+        raise StoreError('INVALID_STRUCTURE', 'regroup_subpoints 必须是布尔值。')
     plan = store._get('plans', plan_id, plan_id)
     today = date.fromisoformat(structure.get('today') or date.today().isoformat())
     issues = []
@@ -153,9 +230,12 @@ def _prepare(store, plan_id, structure, *, end_date=None):
         count = sum(p['module_id'] == state.get('module_id') for p in points.values())
         if state.get('module_id') not in modules or type(state.get('index')) is not int or not 0 <= state['index'] <= count:
             issues.append('课堂位置不能对应现有模块/知识点，拒绝猜测当前进度')
-        if state.get('point_id') and state['point_id'] != cursor:
+        concept_state = state.get('concept')
+        stored_cursor = state.get('point_id') or (concept_state.get('point_id') if isinstance(concept_state, dict) else None)
+        if stored_cursor and stored_cursor != cursor:
             issues.append('课堂 point_id 与模块/index 不一致，拒绝猜测当前进度')
     changed, replacement_ids, new_ids, seen_modules = [], set(), set(), set()
+    question_moves, empty_regroup_groups, protected_subpoint_ids, regroup_details = [], [], set(), []
     for scope in scopes:
         if (not isinstance(scope, dict) or not isinstance(scope.get('module_id'), str)
                 or scope['module_id'] not in modules):
@@ -170,12 +250,28 @@ def _prepare(store, plan_id, structure, *, end_date=None):
             issues.append(mid + '：必须明确列出不重复的 replace_point_ids'); continue
         missing = [pid for pid in ids if pid not in points or points[pid]['module_id'] != mid]
         if missing: issues.append(mid + '：要取代的旧点不存在/不属于此模块：' + ', '.join(missing)); continue
-        replacement_ids.update(ids)
-        for pid in ids:
-            if pid in protected: issues.append('要取代的点已有进度，拒绝：' + pid + '（' + '、'.join(protected[pid]) + '）')
+        requested_ids = set(ids)
+        module_protected = {pid for pid in requested_ids if pid in protected}
+        if regroup:
+            # Preserve the active point even before it has a saved conversation.
+            if cursor in requested_ids:
+                module_protected.add(cursor)
+                protected.setdefault(cursor, []).append('课堂当前位置（分组时保留）')
+            # Questions without subpoint_id cannot be moved safely.
+            for question in store.records('question_bank', plan_id):
+                if not question.get('subpoint_id'):
+                    tied = set(question.get('point_ids', [])) & requested_ids
+                    module_protected.update(tied)
+                    for pid in tied:
+                        protected.setdefault(pid, []).append('题目没有 subpoint_id，保留原点以保留题目归属')
+        elif module_protected:
+            for pid in sorted(module_protected):
+                issues.append('要取代的点已有进度，拒绝：' + pid + '（' + '、'.join(protected[pid]) + '）')
+        actual_ids = requested_ids - module_protected if regroup else requested_ids
+        replacement_ids.update(actual_ids)
         covered = sorted((points[pid] for pid in ids), key=lambda p: (p['position'], p['id']))
         indexes = [members.index(p) for p in covered]
-        if indexes != list(range(min(indexes), max(indexes) + 1)):
+        if not regroup and indexes != list(range(min(indexes), max(indexes) + 1)):
             issues.append(mid + '：取代范围必须连续，不能穿过保留点')
         if old_module['point_count'] != len(members) or old_module['learning_minutes'] != sum(p['minutes'] for p in members):
             issues.append(mid + '：模块点数/学习分钟与实际知识点不一致，请先修复或完成同步')
@@ -189,13 +285,23 @@ def _prepare(store, plan_id, structure, *, end_date=None):
         navigation = scope.get('navigation')
         if not isinstance(rows, list) or not isinstance(navigation, list):
             issues.append(mid + '：points 与 navigation 必须是列表'); continue
-        first = covered[0]['position']
+        if regroup:
+            rows, protected_sids, emptied = _regroup_points(
+                store, plan_id, covered, actual_ids, rows, module_protected, chunk_ids, issues, mid)
+            protected_subpoint_ids.update(protected_sids)
+            empty_regroup_groups.extend(str(pid) for pid in emptied if pid)
+            regroup_details.append(dict(module_id=mid,
+                preserved_point_ids=sorted(module_protected),
+                preserved_subpoint_ids=sorted(protected_sids),
+                empty_group_ids=[str(pid) for pid in emptied if pid]))
+        first = min((points[pid]['position'] for pid in actual_ids), default=covered[0]['position'])
         prepared = []
-        kept = [p for p in members if p['id'] not in ids]
+        kept = [p for p in members if p['id'] not in actual_ids]
         positions = {p['position'] for p in kept}
         for i, incoming in enumerate(rows):
             if not isinstance(incoming, dict): issues.append(mid + '：新点必须是对象'); continue
-            point = dict(incoming, module_id=mid, position=first+i)
+            point = dict(incoming, module_id=mid,
+                         position=(max((p['position'] for p in members), default=-1)+1+i) if regroup else first+i)
             pid = point.get('id')
             if not isinstance(pid, str): issues.append(mid + '：新点 id 无效'); continue
             if pid in points or pid in new_ids: issues.append('新点 id 已存在/重复：' + pid)
@@ -214,19 +320,51 @@ def _prepare(store, plan_id, structure, *, end_date=None):
             prepared.append(point)
         if any(type(p.get('minutes')) is not int or p['minutes'] <= 0 for p in prepared): continue
         updated = dict(old_module, navigation=navigation, point_count=len(kept)+len(prepared),
-                       learning_minutes=sum(p['minutes'] for p in kept+prepared),
-                       question_extraction=dict(state='pending', reason='restructure'),
-                       material_preparation=dict(old_module.get('material_preparation') or {}, state='pending',
-                           error=None, message='这个模块的题需要按资料重新准备，学习进度已保留。'))
+                       learning_minutes=sum(p['minutes'] for p in kept+prepared))
+        if not regroup:
+            updated.update(question_extraction=dict(state='pending', reason='restructure'),
+                           material_preparation=dict(old_module.get('material_preparation') or {}, state='pending',
+                               error=None, message='这个模块的题需要按资料重新准备，学习进度已保留。'))
         if not updated['point_count']: issues.append(mid+'：重切后没有可学习的点，现有课堂尚不能接续空模块')
-        if cursor in ids and not prepared: issues.append(mid+'：当前位置被取代，但没有可接续的新点')
+        if not regroup and cursor in ids and not prepared: issues.append(mid+'：当前位置被取代，但没有可接续的新点')
         for nav in navigation:
             for cid in nav.get('chunk_ids', []) if isinstance(nav, dict) and isinstance(nav.get('chunk_ids'), list) else []:
                 if isinstance(cid, str) and cid not in chunk_ids: issues.append('导航引用不存在的本计划 chunk：'+cid)
         try: store._validate('modules', plan_id, updated)
         except (StoreError, KeyError, TypeError, ValueError) as exc:
             issues.append('模块导航校验失败：' + mid + '（' + getattr(exc, 'code', type(exc).__name__) + '）')
-        changed.append(dict(old=old_module, new=updated, points=prepared, replace=ids))
+        if actual_ids or (not regroup and ids):
+            subpoint_targets = {sub['id']: point['id'] for point in prepared for sub in point.get('subpoints', [])}
+            # A question may reference more than one point.  Only the parent
+            # that actually owns its stable subpoint is replaced; other point
+            # associations can refer to untouched content and must survive.
+            subpoint_sources = {
+                sub['id']: point['id']
+                for point in store.records('points', plan_id)
+                for sub in point.get('subpoints', [])
+            }
+            changed.append(dict(old=old_module, new=updated, points=prepared, replace=sorted(actual_ids),
+                                requested=ids, subpoint_targets=subpoint_targets, regroup=regroup))
+            if regroup:
+                for question in store.records('question_bank', plan_id):
+                    sid = question.get('subpoint_id')
+                    target = subpoint_targets.get(sid)
+                    if not target:
+                        continue
+                    old_question_points = question.get('point_ids', [])
+                    if not set(old_question_points) & actual_ids:
+                        continue
+                    source = subpoint_sources.get(sid)
+                    migrated = list(dict.fromkeys(target if pid == source else pid for pid in old_question_points))
+                    if target not in migrated:
+                        migrated.append(target)
+                    question_moves.append(dict(id=question['id'], point_ids=migrated))
+                    try:
+                        store._validate('question_bank', plan_id,
+                                        dict(question, point_ids=migrated), references=False)
+                    except (StoreError, KeyError, TypeError, ValueError) as exc:
+                        issues.append('题目无法按 subpoint_id 迁移：' + question['id'] +
+                                      '（' + getattr(exc, 'code', type(exc).__name__) + '）')
     before_ledger = store._load_ledger(plan)
     total = plan['total_minutes'] + sum(c['new']['learning_minutes']-c['old']['learning_minutes'] for c in changed)
     after_ledger = Ledger.from_dict(before_ledger.to_dict())
@@ -236,7 +374,9 @@ def _prepare(store, plan_id, structure, *, end_date=None):
     before, after = _calendar(before_ledger, today), _calendar(after_ledger, today)
     if any(before['targets'].get(day) != after['targets'].get(day) for day in before['targets'] if day < today.isoformat()):
         issues.append('历史目标发生变化，拒绝执行')
-    questions = [q for q in store.records('question_bank', plan_id) if set(q['point_ids']) & replacement_ids and q.get('role') != 'retired']
+    questions = ([] if regroup else
+                 [q for q in store.records('question_bank', plan_id)
+                  if set(q['point_ids']) & replacement_ids and q.get('role') != 'retired'])
     journal = [tuple(row) for row in store._db.execute('SELECT entity,entity_id,payload,deleted,local_revision FROM _records WHERE plan_key=? ORDER BY entity,entity_id', (plan_id,))]
     token_input = [structure, journal, today.isoformat()]
     if end_date is not None: token_input.append(end_date)
@@ -259,6 +399,9 @@ def _prepare(store, plan_id, structure, *, end_date=None):
                   protected=protected, replaced_old_points=len(replacement_ids), new_points=len(new_ids),
                   new_subpoints=sum(len(p.get('subpoints', [])) for c in changed for p in c['points']),
                   navigation_entries=sum(len(c['new']['navigation']) for c in changed), retired_questions=len(questions),
+                  regroup_subpoints=regroup, regrouped_questions=len(question_moves),
+                  protected_subpoints=len(protected_subpoint_ids), empty_regroup_groups=empty_regroup_groups,
+                  regroup_details=regroup_details,
                   classroom_redirect=cursor in replacement_ids,
                   modules=[dict(id=c['old']['id'], title=c['old']['title'], before=c['old']['learning_minutes'],
                                 after=c['new']['learning_minutes'], before_points=c['old']['point_count'], after_points=c['new']['point_count'],
@@ -281,7 +424,7 @@ def _prepare(store, plan_id, structure, *, end_date=None):
                   daily=[dict(day=day, before=before['targets'].get(day,0), after=after['targets'].get(day,0))
                          for day in sorted(set(before['targets']) | set(after['targets']))
                          if today.isoformat() <= day <= requested_end.isoformat()])
-    return report, changed, questions, cursor, plan
+    return report, changed, questions, cursor, plan, question_moves
 
 
 def apply_structure(store, plan_id, structure, *, dry_run, end_date=None):
@@ -291,7 +434,7 @@ def apply_structure(store, plan_id, structure, *, dry_run, end_date=None):
     normal store replan, retaining its immutable journal and FIFO debt.
     """
     with store.transaction():
-        report, changed, questions, cursor, plan = _prepare(store, plan_id, structure, end_date=end_date)
+        report, changed, questions, cursor, plan, question_moves = _prepare(store, plan_id, structure, end_date=end_date)
         if dry_run: return report
         if report['issues']: raise RestructureError(report)
         for q in questions:
@@ -310,6 +453,9 @@ def apply_structure(store, plan_id, structure, *, dry_run, end_date=None):
                 if kept != links['links']:
                     store._put('point_links', plan_id, dict(links, links=kept, status='pending'))
             store._put('modules', plan_id, change['new'])
+        for move in question_moves:
+            question = store._get('question_bank', plan_id, move['id'])
+            store._put('question_bank', plan_id, dict(question, point_ids=move['point_ids']))
         if report['classroom_redirect']:
             change = next(c for c in changed if cursor in c['replace'])
             if not change['points']: raise StoreError('EMPTY_CURSOR_MODULE', '当前位置没有可接续的新点。')
@@ -335,6 +481,9 @@ def format_report(report):
              f"取代 {report['replaced_old_points']}；新增大点 {report['new_points']}；资料导航 {report['navigation_entries']} 条（不计时、不考核）。",
              f"新大点包含 {report['new_subpoints']} 个小要点。",
              f"题库退役 {report['retired_questions']} 道；课堂位置{'将接到第一个新点' if report['classroom_redirect'] else '保持不变'}。"]
+    if report.get('regroup_subpoints'):
+        lines.append(f"保留原小要点 {report['protected_subpoints']} 个；空分组跳过 {len(report['empty_regroup_groups'])} 个；"
+                     f"按小要点迁移题目 {report['regrouped_questions']} 道（题目内容与答题记录保留）。")
     lines += [f"{m['title']}：学习分钟 {m['before']} → {m['after']}；点数 {m['before_points']} → {m['after_points']}" for m in report['modules']]
     lines += [f"  本次取代范围：{m['covered_before']} → {m['covered_after']} 分钟" for m in report['modules']]
     lines += [f"计划总分钟：{report['total_before']} → {report['total_after']}",
