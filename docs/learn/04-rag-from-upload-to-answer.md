@@ -1,98 +1,123 @@
 # 资料问答 RAG：从上传到回答
 
-## 1. 检索增强生成：把资料放进回答上下文
+本章按“资料室的一次跑腿”来学：先把讲义收进来，再整理入架，接着替读者找相关卡片，最后把原文交给答题者并带回可核对的出处。面试频率是本稿的学习优先级判断，不是统计调查；下面只标“常被问、偶尔问、基本不问”。
 
+## 1. 检索增强生成：先找资料，再组织回答
 
-RAG（检索增强生成）可以先从你选定的资料里找出相关段落，再把问题和段落交给语言模型组织回答；LangChain4j 官方把它概括为把相关信息检索出来并注入提示词。[概念出处：LangChain4j《RAG》](https://docs.langchain4j.dev/tutorials/rag/) **（一句话层）**
+先查资料，再由模型回答。RAG 可以理解成给回答加一道“先查资料”的工序：系统从你选定的材料里找相关段落，把它们和问题一起交给语言模型组织答案。[R01] **（一句话层）**
 
+在 MentorFlow 里，客户端把问题送到 Java 服务找资料，再由客户端把找回的段落连同问题交给模型网关；Java 服务负责查找，不负责生成最终回答。[R02] 这能让模型回答时多一份可检查的依据，也可能减少凭空发挥；但“给了资料”不等于“答对了”。检索到的段落可能不够，模型也可能读错或答偏。[R03] **（三句话层）**
 
-普通聊天主要靠模型已有的训练知识回答，RAG 则在回答前增加一次针对资料的检索。[概念出处：LangChain4j《RAG》](https://docs.langchain4j.dev/tutorials/rag/) MentorFlow 的资料问答由客户端把问题发给 Java 服务检索，客户端再把检索段落和问题交给模型网关；Java 服务本身负责检索，不负责生成最终回答。[客户端调用与组装：`refactor/learning/app/rag.py:639-700`；服务检索入口：`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagController.java:37-40`；基线 `958e7668`]。“增强”不是保证正确，而是给模型更多可核对的上下文；官方说明这种方式是为了降低幻觉概率，不能把它当作保证。[概念出处：LangChain4j《RAG》](https://docs.langchain4j.dev/tutorials/rag/) **（三句话层）**
+再往里看，系统会把文字变成一串数字，叫 embedding（嵌入向量），这样问题和资料段落就能按语义接近程度比较。MentorFlow 用 LangChain4j 提供的量化 BGE 中文小模型，在 Java 进程内算出 512 维向量；模型第一次需要时才加载，运行时不必调用云端 embedding 服务。[R04] **（深一层）**
 
-
-这里的 embedding（嵌入向量）是把文本变成一串数字，让系统可以按语义距离比较问题和资料段落；LangChain4j 将向量检索描述为先把文本变成向量，再按余弦相似度或其他距离排序。[概念出处：LangChain4j《RAG》](https://docs.langchain4j.dev/tutorials/rag/) MentorFlow 用 LangChain4j 的量化 BGE small zh v1.5 模型，在 Java 进程里计算 512 维向量，模型第一次被调用时才加载。[实现：`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagEmbedding.java:8-36`；依赖与模型说明：`refactor/server-java/RAG_API.md:68`；基线 `958e7668`] 这不是 Java 调用云端 embedding API；项目资料说明该模型随 Maven 模块提供，运行时不需访问大模型服务。[`refactor/server-java/RAG_API.md:62-68`；基线 `958e7668`] **（深一层）**
-
-**比喻**
-像开卷考试：先从指定课本里翻出相关页，再把题目和这些页交给会写答案的人整理。课本对应被选中的资料，翻页对应检索，整理答案对应语言模型生成。这个比喻不成立的地方是：计算机不是按书页标题准确翻找，向量检索只是在计算表示之间的接近程度，本实现之后还做关键词重排；找到的段落可能不充分，模型也可能误读，所以答案仍需看引用原文。[检索机制：`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:195-229`；客户端引用展示：`refactor/learning/web/src/pages/Rag.tsx:283-323`；基线 `958e7668`]
-
-**面试频率分级：常被问（判断；只表示本稿优先级，不是统计）**。这是 Java + AI 副项目的主链路概念，能解释“怎么回答资料问题”比记实现类名更值得先掌握；本标注是学习优先级判断，没有用外部面经统计支持。
+把自己想成资料室的跑腿编辑：你先按读者的问题找几张相关卡片，再把卡片递给答题者。这个场景能说明“检索在前、生成在后”，但系统不是按书名或页标题精准翻找；向量只是数字表示之间的接近程度，后面还会做关键词重排，找来的内容也未必充分。[R05] **常被问**
 
 ### RAG 是什么？它为什么可能减少幻觉？
-- 参考要点：RAG 在生成回答前先检索相关资料段落，再把段落放进问题上下文里让模型回答。[概念出处：LangChain4j《RAG》](https://docs.langchain4j.dev/tutorials/rag/)
-- 参考要点：MentorFlow 的客户端把问题和检索段落交给模型网关生成回答，Java 服务负责资料检索。[`refactor/learning/app/rag.py:639-700`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagController.java:37-40`；基线 `958e7668`]
-- 参考要点：检索提供额外上下文，可能降低幻觉概率，但不保证正确。[概念出处：LangChain4j《RAG》](https://docs.langchain4j.dev/tutorials/rag/)
 
-## 2. 上传与入库：本机抽文字，服务器分块存储
+- RAG 先找相关资料段落，再把段落放进问题上下文供模型回答。[R01]
+- MentorFlow 的客户端把问题和检索段落交给模型网关生成回答，Java 服务负责检索。[R02]
+- 检索增加了回答依据，可能减少幻觉，但不能保证正确。[R03]
 
+### 学习路线：本节出处
 
-用户选文件后，客户端在本机抽取文字、保存文字块，再把文字块分批上传给 Java 服务；原始文件不上传。[文件抽取与本地保存：`refactor/learning/app/rag.py:569-600`；界面提示：`refactor/learning/web/src/pages/Rag.tsx:221-234`；服务接收分块：`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:35-49`；基线 `958e7668`] **（一句话层）**
+| 编号 | 具体说法 | 出处 |
+|---|---|---|
+| R01 | RAG 把检索到的相关信息注入提示上下文 | [LangChain4j RAG](https://docs.langchain4j.dev/tutorials/rag/) |
+| R02 | 客户端发起检索并组装模型请求；Java 控制器提供检索入口 | `refactor/learning/app/rag.py:639-700`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagController.java:37-40` |
+| R03 | RAG 的目标是改善依据质量，不保证模型回答正确 | [LangChain4j RAG](https://docs.langchain4j.dev/tutorials/rag/) |
+| R04 | embedding 把文本变成向量以便比较；项目使用量化 BGE small zh v1.5、512 维向量和进程内按需加载 | [LangChain4j RAG](https://docs.langchain4j.dev/tutorials/rag/)；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagEmbedding.java:8-36`；`refactor/server-java/RAG_API.md:62-68` |
+| R05 | 服务先取检索候选并重排；客户端显示返回原文引用 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:195-229`；`refactor/learning/web/src/pages/Rag.tsx:283-323` |
 
+## 2. 上传与入库：本机抽文字，资料室收卡片
 
-客户端支持 PDF、DOCX、PPTX、EPUB、XLSX、Markdown、TXT、CSV、JSON、HTML 等文件，并通过 `extract_file` 抽取文本和页码、章节信息。[`refactor/learning/app/rag.py:569-615`；基线 `958e7668`] 文本块先保存在用户本机的 `rag.sqlite3`，文档问答会话也存本机 SQLite。[`refactor/learning/app/rag.py:102-143`、`refactor/learning/app/rag.py:280-281`；基线 `958e7668`] 入库请求通过已登录账户的传输层访问 `/api/enterprise/rag/v1`，服务端只接受经过认证的 HUMAN 账户上下文。[`refactor/learning/app/rag.py:68-99`、`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagController.java:14-26,41-46`；基线 `958e7668`] **（三句话层）**
+本机抽文，文字分批入库。用户选中文件后，客户端在本机抽取文字，切成带页码或章节信息的文本块，再把这些文字块分批送到 Java 服务；原始文件不上传。[R06] **（一句话层）**
 
+支持的格式包括 PDF、DOCX、PPTX、EPUB、XLSX、Markdown、TXT、CSV、JSON 和 HTML。抽出的块与问答会话保存在本机 SQLite。[R07] 分批送达时，每块带从 0 开始的序号；服务端收齐一份资料的全部连续编号后，才把状态标成“可检索”。[R08] **（三句话层）**
 
-分块的 `seq` 从 0 开始，客户端为了适应请求体限制可分批重传；服务端只有在收到从 0 到 `total_chunks - 1` 的完整连续集合后才把文档状态设为 `ready`。[协议说明：`refactor/server-java/RAG_API.md:13-31`；完成条件：`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:91-116`；基线 `958e7668`] 服务端单次 JSON 请求体上限为 9 MiB，超限返回 413。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagController.java:18,49-62`；基线 `958e7668`] 同一账户内，完整文档会按分块正文计算 SHA-256；相同正文可复用已有内容并保留请求 ID 别名。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:98-116,148-167`；基线 `958e7668`] **（深一层）**
+同一账号里，正文相同的完整资料可以按 SHA-256 去重。[R08] 上传需要已登录的人类用户账号。服务端按身份签发方和该用户的唯一标识确定账号范围，因此不同学习计划可以共用同一账号的资料。[R09] **（深一层）**
 
-**比喻**
-像把一份讲义在本地复印成带页码的小卡片，再分几次送到资料室；资料室确认卡片编号齐全后，才把整份讲义标成可查。卡片对应文本块，编号对应 `seq`，收齐对应 `ready`。这个比喻不成立的地方是：真实系统还会算向量、校验账户并处理重试和去重；它不是简单把文件放进一个公共文件柜。[本地文字块及上传：`refactor/learning/app/rag.py:474-528,569-600`；完整性与去重：`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:52-116`；基线 `958e7668`]
-
-**面试频率分级：常被问（判断；只表示本稿优先级，不是统计）**。数据从哪里来、是否上传原文件、怎样处理大文件，是讲清系统边界和隐私边界的直接问题；本标注是判断，不代表面经统计结果。
+想象你是资料室的收件编辑：先把讲义复印成带页码的小卡片，分几趟送去；编号齐全后才贴上“可查”标签。这个比喻只说明抽文字、分块、收齐的顺序。实际服务还会校验登录、处理重传和去重，也会生成向量；它不是一个所有人都能翻的公共文件柜。[R10] **常被问**
 
 ### 上传文件时，原文件会到服务器吗？
-- 参考要点：客户端在本机调用 `extract_file` 抽取文件文字并保存分块。[`refactor/learning/app/rag.py:569-600`；基线 `958e7668`]
-- 参考要点：客户端把文字块分批上传到 Java 服务。[`refactor/learning/app/rag.py:474-528`；基线 `958e7668`]
-- 参考要点：界面说明原文件不会上传，上传的是抽取后的文字分块。[`refactor/learning/web/src/pages/Rag.tsx:221-234`；基线 `958e7668`]
 
-## 3. 检索：embedding、top-k 与 pgvector
+- 客户端在本机抽取文件文字并保存分块。[R06]
+- 客户端把抽取后的文字块分批上传给 Java 服务。[R06]
+- 界面明确说明原文件不会上传，上传的是文字分块。[R11]
 
+### 学习路线：本节出处
 
-用户提问时，服务将问题转成向量，在用户选中的资料中找语义接近的段落，再混合关键词相似度排序，返回前 k 段。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:195-229`；基线 `958e7668`] **（一句话层）**
+| 编号 | 具体说法 | 出处 |
+|---|---|---|
+| R06 | 文件在客户端抽取、分块，并分批上传文字 | `refactor/learning/app/rag.py:474-528,569-615`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:35-49` |
+| R07 | 支持格式列表；文本块和问答会话保存在本机 SQLite | `refactor/learning/app/rag.py:102-143,235-257,280-281,569-615` |
+| R08 | 序号从 0 开始；完整连续块变为 ready；完整资料按正文 SHA-256 去重 | `refactor/server-java/RAG_API.md:20-22,31`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:91-116,148-167` |
+| R09 | 上传要求已登录的人类用户；按身份签发方与用户标识确定账号范围，计划之间可复用 | `refactor/learning/app/rag.py:68-99`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagController.java:14-26,41-46`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:332-342`；`refactor/server-java/RAG_API.md:7` |
+| R10 | 客户端本地抽取和保存、服务端完整性与去重处理 | `refactor/learning/app/rag.py:474-528,569-600`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:52-116` |
+| R11 | 用户界面说明仅上传抽取文字，不上传原文件 | `refactor/learning/web/src/pages/Rag.tsx:221-234` |
 
+## 3. 检索：先找候选，再排队交给答题者
 
-top-k 是“最多取排名靠前的 k 个结果”这个参数名；在本项目中 API 默认 k=5、最大 100，客户端提问时实际传 `k=8`。[服务默认值和上限：`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:22-24,195-200,221-229`；客户端参数：`refactor/learning/app/rag.py:648-651`；基线 `958e7668`] 服务先让 pgvector 按余弦距离找较大的候选集合，再以 80% 归一化余弦相似度与 20% 字符二元组 Jaccard 重排，最终只返回前 k 段。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:203-229,380-394`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/PgVectorStore.java:43-53`；基线 `958e7668`] pgvector 是 PostgreSQL 的向量扩展，可存向量并按余弦距离等运算符找近邻；项目表使用 512 维向量和 HNSW 余弦索引。[官方说明：pgvector README](https://github.com/pgvector/pgvector)；项目说明：`refactor/server-java/RAG_API.md:64`；基线 `958e7668`] **（三句话层）**
+读者提问时，Java 服务把问题转成向量，在用户明确选中的资料里找语义接近的段落，再结合关键词重排，最后返回前 k 段。[R12] **（一句话层）**
 
+top-k 的意思是“最多取排在前面的 k 段”；本项目客户端实际传入 k=8，服务 API 默认 k=5、允许的最大值是 100。[R13] pgvector 先按余弦距离找一批向量候选，之后服务把归一化余弦相似度和字符二元组关键词重合度按 80:20 混合排序。[R14] pgvector 是 PostgreSQL 的向量扩展，项目使用 512 维向量和 HNSW 余弦索引。[R14] **（三句话层）**
 
-HNSW 是一种近似最近邻索引，通常用速度换取部分召回率；pgvector 官方说明近似索引可能和精确检索给出不同结果。[官方说明：pgvector README 的 Indexing/HNSW](https://github.com/pgvector/pgvector) 项目文档明确指出 HNSW 近似检索不保证和全量精确检索完全一致，过滤账户和所选资料时配置 iterative scan 以减少过滤后结果不足。[`refactor/server-java/RAG_API.md:56,64`；基线 `958e7668`] 因此检索分数只是这一轮候选的相对排序依据，不是答案正确率；服务返回数据库原文，客户端据此构造提示词并给引用编号。[`refactor/server-java/RAG_API.md:56`；`refactor/learning/app/rag.py:652-681`；基线 `958e7668`] **（深一层）**
+HNSW 是近似近邻索引：它帮助更快找候选，但结果不保证和逐条精确比较完全相同。最终分数只表示这一轮候选的相对排序，不是“答对概率”；服务返回的是数据库里的原文段落。[R15] **（深一层）**
 
-**比喻**
-像先用“意思相近”找出一摞可能有用的卡片，再用卡片和问题共享的关键词重新排队，最后只递给答题者前几张。向量近邻对应第一轮候选，关键词重排对应第二轮评分，top-k 对应最后递出的数量。这个比喻不成立的地方是，排序分数不是“答对概率”，而且近似索引可能漏掉某些本来相关的卡片。[实现与相对分数说明：`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:212-229`、`refactor/server-java/RAG_API.md:56,64`；基线 `958e7668`]
-
-**面试频率分级：常被问（判断；只表示本稿优先级，不是统计）**。RAG 面试讲解中，“怎么检索、top-k 是什么、为什么用向量库”能展示候选召回与答案生成的边界；本标注是判断，没有外部面经统计支持。
+在资料室里，这像先按“意思相近”挑一摞卡片，再看问题和卡片共享哪些词，重新排队后只递上前几张。这个场景解释了两轮排序和 top-k；它不表示分数等于正确率，也不表示近似索引永远不会漏掉相关内容。[R16] **常被问**
 
 ### embedding 是什么？
-- 参考要点：embedding 是模型把文本转换成数字向量的表示方式，系统比较问题向量和资料向量的距离来做语义检索。[概念出处：LangChain4j《RAG》](https://docs.langchain4j.dev/tutorials/rag/)
-- 参考要点：MentorFlow 使用 BGE small zh v1.5 模型生成 512 维向量。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagEmbedding.java:19-23`；`refactor/server-java/RAG_API.md:68`；基线 `958e7668`]
-- 参考要点：Java 进程首次调用时才加载这个模型。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagEmbedding.java:8-10,25-36`；基线 `958e7668`]
+
+- embedding 是把文本转换成数字向量，供系统比较问题与资料的语义距离。[R04]
+- MentorFlow 使用 BGE small zh v1.5 生成 512 维向量。[R04]
+- Java 进程第一次需要模型时才加载它。[R04]
 
 ### top-k=8 的意思是系统只查八段吗？
-- 参考要点：不是；服务先取一批向量候选，再进行混合重排，最后最多返回 k 段。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:212-229`；基线 `958e7668`]
-- 参考要点：客户端提问时实际传入 `k=8`。[`refactor/learning/app/rag.py:648-651`；基线 `958e7668`]
-- 参考要点：服务端 API 默认 k 为 5、允许的最大值为 100。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:22-24,195-200`；基线 `958e7668`]
+
+- 不是；服务先找候选、再重排，最终最多返回 k 段。[R14]
+- 客户端提问时传入 k=8。[R13]
+- 服务默认 k=5，允许的最大值为 100。[R13]
 
 ### 向量检索和关键词检索怎么配合？
-- 参考要点：服务先按 pgvector 余弦距离取向量候选。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/PgVectorStore.java:43-53`；基线 `958e7668`]
-- 参考要点：候选再按归一化余弦相似度与字符二元组 Jaccard 按 80:20 混合排序。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:212-229,380-394`；基线 `958e7668`]
-- 参考要点：最终返回前 k 段，分数用于本次检索的相对排序，不代表正确率。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:221-229`；`refactor/server-java/RAG_API.md:56`；基线 `958e7668`]
 
-## 4. 生成回答、引用与已知边界
+- pgvector 先按余弦距离找一批语义候选。[R14]
+- 服务再按语义相似度与字符二元组关键词重合度混合排序。[R14]
+- 返回前 k 段；分数只表示本次排序，不表示答案正确率。[R15]
 
+### 学习路线：本节出处
 
-客户端把问题和检索段落交给模型网关生成回答，并把段落编号映射成可点击引用；没有检索到段落时，提示词会明确带上“没有检索到相关段落”。[`refactor/learning/app/rag.py:672-700`；`refactor/learning/web/src/pages/Rag.tsx:283-323,326-352`；基线 `958e7668`] **（一句话层）**
+| 编号 | 具体说法 | 出处 |
+|---|---|---|
+| R12 | 问题向量检索选中文档，并经混合排序返回结果 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:195-229` |
+| R13 | 服务默认 k=5、最大 100；客户端实际传 k=8 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:22-24,195-200`；`refactor/learning/app/rag.py:648-651` |
+| R14 | pgvector 余弦距离候选、80:20 混合排序、512 维向量与 HNSW 索引 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:203-229,380-394`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/PgVectorStore.java:43-53`；`refactor/server-java/RAG_API.md:64`；[pgvector](https://github.com/pgvector/pgvector) |
+| R15 | HNSW 属近似检索；分数是相对排序，返回数据库原文 | `refactor/server-java/RAG_API.md:56,64`；`refactor/learning/app/rag.py:652-681`；[pgvector HNSW](https://github.com/pgvector/pgvector) |
+| R16 | 服务先取向量候选并以关键词重排，近似结果与精确结果可能不同 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:212-229,380-394`；`refactor/server-java/RAG_API.md:56,64` |
 
+## 4. 生成回答、引用与边界：把原文一起带回来
 
-提示词要求模型只依据问题和提供的段落回答事实，引用使用 `[1]` 这类编号，资料没有答案时明确说明；资料外常识须用“资料外补充：”标出。[`refactor/learning/app/rag.py:34-38`] 回答、引用段落和会话保存在本机 `rag.sqlite3`，问答会话不进入课程同步日志。[`refactor/learning/app/rag.py:1-6,102-143,235-257`] 用户可点击引用查看对应原文块、页码和章节信息。[`refactor/learning/web/src/pages/Rag.tsx:283-323,326-352`] **（三句话层）**
+带回引用，核对原文再信。客户端把问题和检索段落交给模型网关；模型回答里可以用编号标记段落，用户点编号就能查看相应原文、页码和章节。没有找到段落时，客户端会告诉模型当前没有检索结果。[R17] **（一句话层）**
 
+提示词要求回答事实只依据问题和提供的段落，资料没有答案就明确说；如补充常识，必须标成“资料外补充”。回答、引用段落与问答会话保存在本机 SQLite。[R18] 系统没有对生成答案做语义正确性验证。[R20] **（三句话层）**
 
-RAG 服务按账户作用域存资料；Java 控制器从已验证的账户上下文取得 HUMAN 身份，数据库仓储在事务中设置账户作用域，并使用 PostgreSQL 行级安全策略保护 RAG 表。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagController.java:41-46`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagRepository.java:63-98`；`refactor/server-java/RAG_API.md:7`；基线 `958e7668`] PostgreSQL 官方说明，行级安全策略可以按用户限制哪些行可读写；具体是否生效仍取决于表策略与数据库角色配置。[官方说明：PostgreSQL 17 Row Security](https://www.postgresql.org/docs/17/ddl-rowsecurity.html) 项目状态记录显示，RAG 表迁移曾因迁移角色缺少 `account_closure` 模式的 `CREATE` 权限而失败；修复后在 2026-10-17 重跑迁移成功，三张 RAG 表启用并强制 RLS。[`docs/project/CURRENT_STATE.md:1101-1109`（BUG-107）；`docs/project/CURRENT_STATE.md:595-606`（RAG-01）；基线 `958e7668`] 当前样章基线下，资料问答客户端随 2.0.21 发布、服务器迁移就绪，但 CURRENT_STATE 仍写着“待用户亲测”，所以不能把功能描述成已由用户验收。[`docs/project/CURRENT_STATE.md:13,595-606`；基线 `958e7668`] **（深一层）**
+资料按已验证账号隔离。数据库的行级安全策略（RLS）会把每行的账号范围与当前事务的账号范围对照，只允许匹配的资料行通过；迁移为三张 RAG 表启用并强制执行这类策略。RAG 当前仍标记为待用户亲测，因此不能把代码实现说成用户已经验收。[R19] **（深一层）**
 
-**比喻**
-像答题者交卷时在每条答案旁标上讲义页码，阅卷人可以点页码检查原文。引用编号对应返回段落，原文面板对应可复核材料。这个比喻不成立的地方是：页码标记由模型按提示生成，提示本身不能保证模型每次都引用正确；界面能显示被检索段落，但不能证明整段回答都被它充分支持。[提示约束：`refactor/learning/app/rag.py:34-38`；引用展示：`refactor/learning/web/src/pages/Rag.tsx:283-323`；基线 `958e7668`]
-
-**面试频率分级：偶尔问（判断；只表示本稿优先级，不是统计）**。本章把账户隔离、检索失败和上线状态列为可选深入题；这是学习路径判断，没有证据说明副项目固定问到哪一层。
+资料室的答题者交卷时，会在答案旁标出卡片编号；读者点编号能检查原文。这解释了引用的用途，却不能证明答案每句话都被原文支持：编号由模型按提示生成，提示不能保证它每次都标对；显示原文也不等于完成了答案正确性验证。[R20] **偶尔问**
 
 ### 为什么不能说这个 RAG 一定不会幻觉？
-- 参考要点：RAG 把检索到的相关原文放入上下文，目的是让模型使用这些资料回答。[概念出处：LangChain4j《RAG》](https://docs.langchain4j.dev/tutorials/rag/)
-- 参考要点：项目提示模型在资料没有答案时明确说明，并要求引用编号对应提供的段落。[`refactor/learning/app/rag.py:34-38`；基线 `958e7668`]
-- 参考要点：检索结果和引用可供用户核对；这个流程发送检索上下文并保存模型回答，代码中没有对最终回答做语义正确性验证。[`refactor/learning/app/rag.py:652-700`；`refactor/learning/web/src/pages/Rag.tsx:283-323`；基线 `958e7668`]
+
+- RAG 会把找到的资料段落放入上下文，让模型据此回答。[R01]
+- 项目提示模型资料没有答案时要说明，并要求引用编号对应已提供的段落。[R18]
+- 用户可以核对检索原文，但最终回答没有经过语义正确性验证。[R20]
+
+### 学习路线：本节出处
+
+| 编号 | 具体说法 | 出处 |
+|---|---|---|
+| R17 | 客户端组装模型请求，并提供可点击引用和无检索结果提示 | `refactor/learning/app/rag.py:672-700`；`refactor/learning/web/src/pages/Rag.tsx:283-323,326-352` |
+| R18 | 提示词规定依据、引用、无答案和资料外补充；会话保存在本机 | `refactor/learning/app/rag.py:34-38,102-143,235-257` |
+| R19 | RAG 服务给事务设置账号范围；迁移对三张表启用并强制应用按账号范围匹配的 RLS 策略；项目记录用户验收仍待完成 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagController.java:41-46`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagRepository.java:63-98`；`refactor/server/migrations/versions/0044_rag_documents.py:142-146`；`docs/project/CURRENT_STATE.md:595-606`；[PostgreSQL 17 RLS](https://www.postgresql.org/docs/17/ddl-rowsecurity.html) |
+| R20 | 提示约束回答和引用方式，但最终回答无语义正确性校验 | `refactor/learning/app/rag.py:34-38,652-700`；`refactor/learning/web/src/pages/Rag.tsx:283-323` |
 
 ## 学习路线：不用背清单
-知道 HNSW 是近似索引即可，不必背图结构参数；项目也明确承认近似检索不等同精确检索。[官方说明：pgvector README](https://github.com/pgvector/pgvector)；项目说明：`refactor/server-java/RAG_API.md:64`；基线 `958e7668`] 上传接口有请求体和分块数量限制，知道“存在上限，具体数值和字段可查实现”即可，不用背数值或 SQL 列名。[`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagController.java:18,49-62`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:22-24`；基线 `958e7668`] 记住 RLS 用来限制账户行访问，并能讲清 BUG-107 的原因与结果即可，不必背迁移脚本的每条 SQL。[PostgreSQL 官方说明](https://www.postgresql.org/docs/17/ddl-rowsecurity.html)；`docs/project/CURRENT_STATE.md:1101-1109`（BUG-107）；基线 `958e7668`]
+
+记住四步就够：本机抽文字，分块送入库，按问题检索原文，模型组织回答并附引用。HNSW 的图结构参数、接口请求上限、数据库字段和迁移 SQL 都不必背；知道近似检索可能漏项、分数不是正确率、引用仍需核原文即可。[R08][R15][R19]
