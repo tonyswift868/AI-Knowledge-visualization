@@ -49,6 +49,8 @@ payload、objects、安装程序不做 artifact。pip/npm 缓存可复用；缓�
 实测（2026-10-11，用 API 汇总 10 月各任务起止时间，每个任务按分钟向上取整）：
 - 共 22 次运行、156 分钟 Windows 机时：mf-build 10 次 45.6 分钟，mf-publish 9 次 66.0 分钟，mf-installer 3 次 33.5 分钟。
 - 发一版不编安装程序约 8 分钟，编安装程序约 15 分钟。
+
+实测（2026-10-17，同样方法，汇总账号两个私有仓库 10 月 1 日以来全部 46 次运行）：全部跑在 Windows 上，共 276 分钟机时，按 Windows 两倍计 552 分钟；免费额度 2000 分钟还剩约 1448，折合 Windows 机时约 724 分钟。最近几次发版（只发更新）每次约 mf-build 4.5～5.5 分钟 + mf-publish 1 分钟，折合约 12～14 分钟额度。账单周期若不是从 1 号算起，以 Billing 页为准。
 - artifact 占 3.3 MB，缓存 417 MB。
 
 本机 Git 凭据读不到账户的 Billing 接口（返回 404），剩余额度以 github.com → Settings → Billing 为准。
