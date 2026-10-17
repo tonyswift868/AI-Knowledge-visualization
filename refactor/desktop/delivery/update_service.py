@@ -268,9 +268,8 @@ class MatureUpdateService:
                                 raw, self.keys, current=self.current, channel=self.channel,
                                 highest_seen=highest,
                                 previous_envelope=latest_witness.envelope)
-                        self.snapshot = {**self.snapshot,
-                                         'pointer_status': 'witness_reconciled',
-                                         'witness_reconciled': True}
+                        # Keep pointer_status: it records which fetch path ran (BUG-109 timing).
+                        self.snapshot = {**self.snapshot, 'witness_reconciled': True}
                 with self._check_stage('classification'):
                     plan = make_plan(release, self._local_rows(), self.current)
                 eligible = rollout_eligible(release, self.install_identity)

@@ -107,7 +107,7 @@ def test_update_check160_unchanged_pointer_reconciles_concurrent_mandatory_witne
     assert result['state'] == 'UPDATE_AVAILABLE'
     assert result['mandatory'] is True
     assert result['latest'] == '2.0.4'
-    assert result['pointer_status'] == 'witness_reconciled'
+    assert result['pointer_status'] != 'witness_reconciled'  # fetch path label is kept
     assert result['witness_reconciled'] is True
     assert service.release.envelope == new_envelope
     assert witness_path.read_bytes() == new_envelope
