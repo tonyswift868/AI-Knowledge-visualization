@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication
 class DesktopUpdates(QObject):
     changed = Signal(object)
     _finished = Signal(object)
+    STARTUP_LOGIN_WAIT_MS = 15_000
 
     def __init__(self, app, root, gate, *, core=None, login_handoff=None):
         super().__init__(app)
@@ -46,13 +47,76 @@ class DesktopUpdates(QObject):
         self._continuing_download = False
         self._background_preparing = False
         self._login_blocked = True
+        self._startup_cached = None
+        self._startup_started = None
+        self._login_wait_timer = QTimer(self)
+        self._login_wait_timer.setSingleShot(True)
+        self._login_wait_timer.setInterval(self.STARTUP_LOGIN_WAIT_MS)
+        self._login_wait_timer.timeout.connect(self._allow_cached_startup)
         app.aboutToQuit.connect(self.close)
         app.commitDataRequest.connect(self._defer_session)
         core.attach_shutdown_guard(app)
 
     def start(self):
-        getattr(self.gate, 'set_login_available', self.gate.setEnabled)(False)
+        # Keep the account form usable while the small update check runs. A
+        # submitted login is queued by AccountShell until this gate resolves.
+        getattr(self.gate, 'set_login_available', self.gate.setEnabled)(True)
+        self._startup_started = time.monotonic()
+        self._login_wait_timer.start()
+        self._publish({**self.state, 'state': 'CHECKING',
+                       'login_check_pending': True,
+                       'login_check_status': 'checking',
+                       'login_check_message': '正在检查更新…',
+                       'message': '正在检查更新…'})
         QTimer.singleShot(0, lambda: self.run("startup"))
+
+    def _allow_cached_startup(self):
+        """After the bounded network wait, apply only the locally verified policy."""
+        if self._closed or not self.state.get('login_check_pending'):
+            return
+        # The check worker may still be waiting on the network. The UI gate is
+        # now resolved by its deadline; later results remain authoritative.
+        self._busy = False
+        cached = self._startup_cached
+        if cached is None:
+            # No verified local policy exists to authorize normal use. Resolve
+            # the wait with a repair state instead of either inventing a policy
+            # or keeping the startup gate spinning forever.
+            result = {'state': 'REPAIR_REQUIRED', 'login_allowed': False,
+                      'message': '无法读取本机已验证的更新状态，请修复或重新安装。',
+                      'feed': 'UNAVAILABLE_RECOVERABLE', 'offline_fallback': True,
+                      'reason': 'verified_cache_unavailable'}
+        else:
+            result = {**cached, 'offline_fallback': True,
+                      'feed': 'OFFLINE_TIMEOUT',
+                      'message': cached.get('message') or '暂时无法检查更新，按本机已验证状态继续。'}
+        from .delivery.per_user_install import maintenance_log
+        maintenance_log(self.root, 'startup_login_gate', outcome='offline_fallback',
+                        elapsed_ms=round((time.monotonic() - (self._startup_started or time.monotonic())) * 1000),
+                        cached=bool(cached), state=result.get('state'))
+        self._apply_startup_result(result, status='offline_fallback')
+
+    def _apply_startup_result(self, result, *, status='ready'):
+        self._login_wait_timer.stop()
+        result = {**result,
+                  'login_check_pending': False,
+                  'login_check_status': status,
+                  'login_check_message': ''}
+        result['mandatory'] = result.get('state') == 'MANDATORY_UPDATE'
+        self._publish({**self.state, **result})
+        self._login_blocked = not result.get('login_allowed', False)
+        getattr(self.gate, 'set_login_available', self.gate.setEnabled)(not self._login_blocked)
+        if self._login_blocked or result.get('state') == 'OPTIONAL_UPDATE':
+            self._show_prompt()
+        if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE'):
+            from .delivery.per_user_install import schedule_updater_refresh
+            schedule_updater_refresh(self.root)
+        if status == 'ready' and result.get('feed') == 'VERIFIED':
+            self._next_automatic = time.monotonic() + 86400
+        from .delivery.per_user_install import maintenance_log
+        maintenance_log(self.root, 'startup_login_gate', outcome=status,
+                        elapsed_ms=round((time.monotonic() - (self._startup_started or time.monotonic())) * 1000),
+                        state=result.get('state'), feed=result.get('feed'))
 
     def snapshot(self):
         return {**self.state, "busy": self._busy, "available": True, "deferred": self._deferred}
@@ -129,7 +193,24 @@ class DesktopUpdates(QObject):
                         self._clear_login_handoff()
             except Exception as exc:
                 from .delivery.per_user_install import maintenance_log
-                maintenance_log(self.root, 'in_app_update_deferred', error_type=type(exc).__name__, detail=str(exc))
+                event = 'startup_update_check' if action == 'startup' else 'in_app_update_deferred'
+                maintenance_log(self.root, event, outcome='error',
+                                error_type=type(exc).__name__, detail=str(exc))
+                if action == 'startup':
+                    cached = self._startup_cached
+                    if cached is not None:
+                        result = {**cached, 'feed': 'UNAVAILABLE_RECOVERABLE',
+                                  'offline_fallback': True}
+                        self._send({'action': action, 'result': result,
+                                    'network_error': type(exc).__name__})
+                        return
+                    result = {'state': 'REPAIR_REQUIRED', 'login_allowed': False,
+                              'feed': 'UNAVAILABLE_RECOVERABLE', 'offline_fallback': True,
+                              'message': '无法读取本机已验证的更新状态，请修复或重新安装。',
+                              'reason': 'verified_cache_unavailable'}
+                    self._send({'action': action, 'result': result,
+                                'network_error': type(exc).__name__})
+                    return
                 self._clear_login_handoff()
                 from .delivery.per_user_update_core import PENDING
                 pending = self.root / PENDING
@@ -243,17 +324,28 @@ class DesktopUpdates(QObject):
             return
         if 'cached' in value:
             result = value['cached']
-            self._login_blocked = not result.get('login_allowed', False)
-            getattr(self.gate, 'set_login_available', self.gate.setEnabled)(not self._login_blocked)
-            self._publish({**self.state, **result,
-                           'mandatory': result.get('state') == 'MANDATORY_UPDATE'})
+            self._startup_cached = dict(result)
+            from .delivery.per_user_install import maintenance_log
+            maintenance_log(self.root, 'startup_login_gate', outcome='verified_cache_ready',
+                            elapsed_ms=round((time.monotonic() - (self._startup_started or time.monotonic())) * 1000),
+                            state=result.get('state'))
+            # Cached status is a fallback only. In particular, cached HEALTHY
+            # must not release the login gate before the current feed check.
+            self._publish({**self.state, 'cached_login_allowed': bool(result.get('login_allowed'))})
+            if result.get('state') == 'MANDATORY_UPDATE':
+                # An already verified mandatory floor can be shown immediately;
+                # it never needs a fresh network request to remain binding.
+                self._publish({**self.state, **result, 'mandatory': True,
+                               'login_check_pending': True, 'login_allowed': False})
+                self._login_blocked = True
+                getattr(self.gate, 'set_login_available', self.gate.setEnabled)(False)
+                self._show_prompt()
             if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE') and not self._cleanup_started:
                 self._cleanup_started = True
                 from .delivery.per_user_install import schedule_program_cleanup
                 # Stagger housekeeping from refresh's two-second first try;
                 # their workers also serialize actual attempts inside App.
                 schedule_program_cleanup(self.root, initial_delay=4)
-            if self._login_blocked: self._show_prompt()
             return
         if 'handoff' in value:
             self._busy = False
@@ -276,22 +368,16 @@ class DesktopUpdates(QObject):
         result = value["result"]
         if value['action'] == 'startup':
             result = {**result, 'mandatory': result.get('state') == 'MANDATORY_UPDATE'}
-            if 'login_allowed' not in result:
-                # A transport exception cannot erase a verified cached gate.
-                result['login_allowed'] = self.state.get('login_allowed', False)
-                result['mandatory'] = self.state.get('mandatory', False)
-        self._publish({**self.state, **result})
+            status = ('offline_fallback' if result.get('offline_fallback') or
+                      result.get('feed') != 'VERIFIED' else 'ready')
+            self._apply_startup_result(result, status=status)
+        else:
+            self._publish({**self.state, **result})
         if value["action"] == "startup":
-            if result.get('feed') == 'VERIFIED': self._next_automatic = time.monotonic() + 86400
-            self._login_blocked = not result.get("login_allowed", False)
-            getattr(self.gate, 'set_login_available', self.gate.setEnabled)(not self._login_blocked)
-            if self._login_blocked or result.get('state') == 'OPTIONAL_UPDATE':
-                self._show_prompt()
-            if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE'):
-                # Wait for the startup classifier before touching its runtime:
-                # replacing while it hashes Updater can manufacture a failure.
-                from .delivery.per_user_install import schedule_updater_refresh
-                schedule_updater_refresh(self.root)
+            if value.get('network_error'):
+                from .delivery.per_user_install import maintenance_log
+                maintenance_log(self.root, 'startup_update_check', outcome='network_error',
+                                error_type=value['network_error'])
         elif value["action"] == "install":
             if result.get('state') in ('PENDING_INSTALL', 'FAILED_RECOVERABLE') or result.get('cancelled'):
                 self._clear_login_handoff()
@@ -399,6 +485,7 @@ class DesktopUpdates(QObject):
         self._closed = True
         if self._prompt is not None: self._prompt.hide()
         self._retry.stop()
+        self._login_wait_timer.stop()
         self._cancel.set()
         self._session.close()
         self._pool.shutdown(wait=False, cancel_futures=True)

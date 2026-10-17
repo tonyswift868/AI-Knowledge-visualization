@@ -283,5 +283,34 @@ def register(bridge, window):
     # Classroom calls study_day() with no arguments (as the simulator wires it);
     # passing the settings-taking helper itself made entering a class fail.
     classroom.register(bridge, services, lambda: _local_study_day(services().settings.load()), presence=presence)
+
+    def classroom_draft(params, *, save):
+        # WebEngine is off-the-record. Its localStorage cannot preserve an
+        # unsent answer across the update/restart; use existing account-scoped
+        # atomic JSON storage instead of changing the course database schema.
+        import hashlib
+        from ..preferences.storage import AccountJSON, StorageError
+        current = services()
+        plan_id = _text(params, 'plan_id', limit=128)
+        if current.store.get_plan(plan_id) is None:
+            raise BridgeError('PLAN_NOT_FOUND', '没有找到这份计划。')
+        filename = 'classroom-input-' + hashlib.sha256(plan_id.encode('utf-8')).hexdigest()[:32] + '.json'
+        storage = AccountJSON(current.account_id, current.data_root, filename)
+        try:
+            if save:
+                text = _text(params, 'text', limit=storage.max_bytes, required=False, default='')
+                if not isinstance(text, str):
+                    raise BridgeError('PARAM_INVALID', '课堂输入必须是文字。')
+                storage.write({'version': 1, 'text': text})
+                return {'saved': True}
+            value = storage.read({'version': 1, 'text': ''})
+            if value.get('version') != 1 or not isinstance(value.get('text'), str):
+                raise StorageError()
+            return {'text': value['text']}
+        except StorageError:
+            raise BridgeError('CLASSROOM_DRAFT_UNAVAILABLE', '未发送的课堂输入暂时无法读取或保存，请重试。') from None
+
+    bridge.register('classroom.draft_get', lambda p, c: classroom_draft(p, save=False))
+    bridge.register('classroom.draft_set', lambda p, c: classroom_draft(p, save=True))
     from ..connections.balance import register as register_balance
     register_balance(bridge, services)

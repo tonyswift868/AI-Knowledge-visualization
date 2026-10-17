@@ -1,7 +1,9 @@
 """Repair close/cancel boundaries and Inno opt-in shortcut contracts."""
 from pathlib import Path
 import threading
+import time
 from types import SimpleNamespace
+from types import MethodType
 
 import pytest
 from PySide6.QtWidgets import QApplication
@@ -17,11 +19,15 @@ def test_updater94_app_schedules_only_after_startup_classification(monkeypatch, 
     from refactor.desktop.updates import DesktopUpdates
     calls = []
     monkeypatch.setattr(install, 'schedule_updater_refresh', lambda root: calls.append(('refresh', root)))
+    monkeypatch.setattr(install, 'maintenance_log', lambda *_a, **_k: None)
     def publish(value): calls.append(('classified', value['state']))
     ui = SimpleNamespace(_closed=False, _busy=True, state={}, root=tmp_path,
                          _publish=publish, gate=SimpleNamespace(setEnabled=lambda _: None),
+                         _login_wait_timer=SimpleNamespace(stop=lambda: None),
+                         _startup_started=time.monotonic(), _next_automatic=0,
                          _show_prompt=lambda: None, _update_prompt=lambda: None,
                          _prepare_in_background=lambda: calls.append(('prepare', tmp_path)))
+    ui._apply_startup_result = MethodType(DesktopUpdates._apply_startup_result, ui)
     DesktopUpdates._receive(ui, dict(action='startup', result=dict(state=state, login_allowed=state=='HEALTHY')))
     assert calls[0] == ('classified', state)
     expected = [] if state=='FATAL_UNRECOVERABLE' else [('refresh', tmp_path)]

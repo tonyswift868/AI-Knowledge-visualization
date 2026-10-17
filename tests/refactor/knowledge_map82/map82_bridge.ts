@@ -1,5 +1,14 @@
 import data from './map82_data.json'
 import * as native from '../../../refactor/learning/web/src/bridge'
+export class BridgeFailure extends Error {
+ code: string
+ model_fault?: unknown
+ constructor(code: string, message: string, model_fault?: unknown) {
+  super(message)
+  this.code = code
+  this.model_fault = model_fault
+ }
+}
 const connected = (window as any).map82Native ? native.connect() : null
 const listeners = new Map<string,Set<(data:any)=>void>>()
 export const requests: {method:string;params:any}[]=[]

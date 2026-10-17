@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import contextmanager
+import time
 
 def install_cache_identity(root):
     import os
@@ -157,6 +159,17 @@ class MatureUpdateService:
             stream.write(release.envelope); stream.flush(); os.fsync(stream.fileno())
         temporary.replace(target)
 
+    @contextmanager
+    def _check_stage(self, name):
+        started = time.monotonic()
+        try:
+            yield
+        finally:
+            elapsed = round((time.monotonic() - started) * 1000, 3)
+            self._check_timings[name] = self._check_timings.get(name, 0) + elapsed
+            from refactor.desktop.delivery.per_user_install import maintenance_log
+            maintenance_log(self.install_root, 'update_check_stage', stage=name, elapsed_ms=elapsed)
+
     def check(self, *, manual=True, cancel=None):
         import logging
         import time
@@ -175,22 +188,91 @@ class MatureUpdateService:
         try:
             self.telemetry = UpdateTelemetry()
             self.telemetry.mark('T00_UPDATE_BEGIN')
-            with InstallUpdateLock(self.cache.root):
-                self._state('CHECKING', '正在检查更新…', pointer_status='not_checked', pointer_mismatch=False)
+            self._check_timings = {}
+            with self._check_stage('check_total'):
+                self._state('CHECKING', '正在检查更新…', pointer_status='not_checked', pointer_mismatch=False,
+                            witness_write_deferred=False, witness_reconciled=False)
                 self.telemetry.mark('T01_METADATA_FETCH_BEGIN')
-                highest = self._witness()[0]
+                with self._check_stage('signed_cache'):
+                    previous = read_release_witness(self.cache.root, self.keys, channel=self.channel)
+                highest = previous.signed['metadata_version'] if previous else 0
+                validated = {}
                 def validate_metadata(value):
-                    return verify_release(value, self.keys, current=self.current, channel=self.channel,
-                                          highest_seen=highest)
-                raw = self._fetch_metadata(cancel, validate=validate_metadata)
+                    # Transport validates before accepting a mirror. Retain that
+                    # same verified result for this check, rather than parsing
+                    # and verifying the full manifest repeatedly afterwards.
+                    if value not in validated:
+                        with self._check_stage('signature_and_manifest'):
+                            validated[value] = verify_release(value, self.keys, current=self.current,
+                                channel=self.channel, highest_seen=highest)
+                    return validated[value]
+                raw = self._fetch_metadata(cancel, validate=validate_metadata, cached=previous)
                 self.telemetry.totals['bytes_read'] += len(raw)
-                release = verify_release(raw, self.keys, current=self.current, channel=self.channel,
-                                         highest_seen=highest)
+                release = validate_metadata(raw)
                 from refactor.desktop.delivery.runtime_path_budget import budget
                 budget(self.install_root,release.rows)
                 self.telemetry.mark('T02_METADATA_VERIFIED')
-                self._remember_release(release)
-                plan = make_plan(release, self._local_rows(), self.current)
+                # Read-only discovery must not queue behind an ongoing large
+                # download. A new witness still commits under the existing OS
+                # lock and rechecks the latest high-water/mandatory floor there.
+                unchanged = previous is not None and previous.envelope == raw
+                if not unchanged:
+                    from refactor.desktop.delivery.update_protocol import RecoverableError
+                    try:
+                        with self._check_stage('witness_lock_and_commit'):
+                            with InstallUpdateLock(self.cache.root):
+                                self._remember_release(release)
+                    except RecoverableError:
+                        # A busy downloader cannot turn a newly verified
+                        # mandatory policy back into "no update". Reconcile
+                        # with any witness that won the race; keep discovery
+                        # available. Download/apply still commit under the lock
+                        # and reverify before materializing or replacing files.
+                        latest = read_release_witness(self.cache.root, self.keys, channel=self.channel)
+                        if latest is not None:
+                            release = verify_release(raw, self.keys, current=self.current,
+                                channel=self.channel, previous_envelope=latest.envelope)
+                        self.snapshot = {**self.snapshot, 'witness_write_deferred': True}
+                        logging.getLogger(__name__).info('verified update policy retained while witness lock busy')
+                # The network request above intentionally runs without the
+                # install lock. Another updater can therefore commit a newer
+                # signed policy while this check is fetching the small pointer
+                # and take the unchanged-cache fast path. Reconcile against the
+                # atomically replaced witness immediately before classification
+                # so an old cached envelope cannot hide a newer mandatory floor.
+                with self._check_stage('witness_reconcile'):
+                    latest_witness = read_release_witness(
+                        self.cache.root, self.keys, channel=self.channel)
+                    if (latest_witness is not None
+                            and (previous is None or latest_witness.envelope != previous.envelope)):
+                        latest_release = verify_release(
+                            latest_witness.envelope, self.keys, current=self.current,
+                            channel=self.channel, highest_seen=highest,
+                            previous_envelope=previous.envelope if previous is not None else None)
+                        network_epoch = release.signed['metadata_version']
+                        witness_epoch = latest_release.signed['metadata_version']
+                        if network_epoch < witness_epoch:
+                            # The response was already authenticated against
+                            # the older snapshot. It is now stale, so use the
+                            # fresh witness, revalidated above for expiry,
+                            # current version, channel, signature and floor.
+                            release = latest_release
+                        elif network_epoch == witness_epoch:
+                            if release.envelope != latest_witness.envelope:
+                                raise SecurityError('metadata replay or same-version equivocation')
+                            release = latest_release
+                        else:
+                            # Keep a higher network response only when it
+                            # extends the newly observed witness monotonically.
+                            release = verify_release(
+                                raw, self.keys, current=self.current, channel=self.channel,
+                                highest_seen=highest,
+                                previous_envelope=latest_witness.envelope)
+                        self.snapshot = {**self.snapshot,
+                                         'pointer_status': 'witness_reconciled',
+                                         'witness_reconciled': True}
+                with self._check_stage('classification'):
+                    plan = make_plan(release, self._local_rows(), self.current)
                 eligible = rollout_eligible(release, self.install_identity)
                 plan['rollout_eligible'] = eligible
                 plan['withdrawn'] = release.signed['withdrawn']
@@ -205,7 +287,15 @@ class MatureUpdateService:
                 self._state('UPDATE_AVAILABLE' if plan['update'] else 'UP_TO_DATE',
                             '发现新版本' if plan['update'] else ('当前已是最新版本' if eligible else '此版本暂未向本设备开放，继续使用当前版本。'),
                             **plan, last_checked=time.time())
-                self._persist_check()
+                from refactor.desktop.delivery.update_protocol import RecoverableError
+                try:
+                    with self._check_stage('status_lock_and_write'):
+                        with InstallUpdateLock(self.cache.root):
+                            self._persist_check()
+                except RecoverableError:
+                    # This receipt only throttles checks; the signed witness is
+                    # already current. Busy housekeeping cannot hide its result.
+                    logging.getLogger(__name__).info('update check status write deferred: lock busy')
         except Exception as exc:
             logging.getLogger(__name__).exception('desktop signed update check failed')
             from refactor.desktop.delivery.update_protocol import RecoverableError, DownloadCancelled
@@ -218,9 +308,10 @@ class MatureUpdateService:
                         code='UPDATE_CHECK_NETWORK_UNAVAILABLE' if isinstance(exc, RecoverableError) and not isinstance(exc, DownloadCancelled) else '')
             from refactor.desktop.delivery.runtime_path_budget import MESSAGE
             if str(exc)==MESSAGE: self.snapshot={**self.snapshot,'message':MESSAGE}
+        self.snapshot = {**self.snapshot, 'check_timings_ms': dict(getattr(self, '_check_timings', {}))}
         return dict(self.snapshot)
 
-    def _fetch_metadata(self, cancel=None, *, validate=None):
+    def _fetch_metadata(self, cancel=None, *, validate=None, cached=None):
         import logging
         from refactor.desktop.delivery.update_download import HTTPTransport, retry_wait
         from refactor.desktop.delivery.update_protocol import MAX_METADATA, RecoverableError, DownloadCancelled, SecurityError
@@ -229,13 +320,12 @@ class MatureUpdateService:
         transport = self.cache.transport
         pointer = None
         if (validate is not None and isinstance(transport, HTTPTransport)
-                and len(transport.source_urls(self.metadata_url)) == 2
                 and self.metadata_url.endswith('/stable/stable.json')):
             try:
                 url = self.metadata_url.rsplit('/', 1)[0] + '/latest.json'
-                pointer = release_pointer(transport.fetch_metadata(url, 2048, cancel=cancelled,
-                                                                 validate=release_pointer, deadline=5.0))
-                cached = read_release_witness(self.cache.root, self.keys, channel=self.channel)
+                with self._check_stage('pointer'):
+                    pointer = release_pointer(transport.fetch_metadata(url, 2048, cancel=cancelled,
+                                                                     validate=release_pointer, deadline=5.0))
                 if cached is not None and pointer_matches(pointer, cached):
                     validate(cached.envelope)  # Recheck expiration, signature and high-water policy NOW.
                     self.snapshot = {**self.snapshot, 'pointer_status':'unchanged_verified_cache'}
@@ -249,8 +339,9 @@ class MatureUpdateService:
         for attempt in range(4):  # initial request + three automatic retries
             if cancelled(): raise DownloadCancelled('update check cancelled')
             try:
-                raw = (transport.fetch_metadata(self.metadata_url, MAX_METADATA, cancel=cancelled, validate=validate)
-                       if isinstance(transport, HTTPTransport) else transport.fetch_metadata(self.metadata_url, MAX_METADATA))
+                with self._check_stage('full_manifest'):
+                    raw = (transport.fetch_metadata(self.metadata_url, MAX_METADATA, cancel=cancelled, validate=validate)
+                           if isinstance(transport, HTTPTransport) else transport.fetch_metadata(self.metadata_url, MAX_METADATA))
                 if pointer is not None and validate is not None:
                     matched = pointer_matches(pointer, validate(raw))
                     self.snapshot = {**self.snapshot, 'pointer_mismatch':not matched,

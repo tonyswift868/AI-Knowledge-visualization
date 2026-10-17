@@ -187,7 +187,7 @@ def test_cleanup_starts_on_cached_classification_before_network(tmp_path, monkey
     from refactor.desktop.updates import DesktopUpdates
     starts = []
     monkeypatch.setattr(install, 'schedule_program_cleanup', lambda root, **kw: starts.append((root, kw)))
-    ui = SimpleNamespace(_closed=False, root=tmp_path, _cleanup_started=False,
+    ui = SimpleNamespace(_closed=False, root=tmp_path, _cleanup_started=False, _startup_started=None,
         gate=SimpleNamespace(setEnabled=lambda value: None), state={},
         _publish=lambda value: None, _show_prompt=lambda: None)
     DesktopUpdates._receive(ui, {'cached': dict(state='HEALTHY', login_allowed=True)})

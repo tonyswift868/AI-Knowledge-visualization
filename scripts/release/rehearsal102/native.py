@@ -18,6 +18,15 @@ def uia(pid, action='tree', name='', value='', out='', wait=True):
     if result.returncode:raise RuntimeError(result.stderr)
     return json.loads(result.stdout) if result.stdout.strip() else None
 
+def login(pid, username):
+    env=environment()
+    env['MF_UAT_LOGIN_PASSWORD']='UAT-only-password102c'
+    result=subprocess.run([PS,'-NoProfile','-ExecutionPolicy','Bypass','-File',str(HERE/'uia.ps1'),
+        '-TargetPid',str(pid),'-Action','login','-Name',username],env=env,
+        capture_output=True,encoding='utf-8',timeout=10)
+    if result.returncode: raise RuntimeError(result.stderr)
+    return json.loads(result.stdout) if result.stdout.strip() else None
+
 def controls(pid):
     rows=uia(pid)
     return [r for r in rows if r.get('enabled') and not r.get('offscreen')]

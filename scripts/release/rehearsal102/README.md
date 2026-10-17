@@ -99,3 +99,38 @@ P/Q 额外核对冻结更新模块与工位源码一致；不允许跳过检查�
 安装位置前后不变。结果及分段日志在 logs/result107.json、*-observations.json、
 *-startup.jsonl；失败保留到具体步骤，不用离线替身替代。完成后 clear107.py 只删
 本轮测试凭据和私钥，再清理任务内构建等中间产物。正式签名、服务器和用户数据不动。
+
+160-MF04（BUG-109 登录更新门闩）：必须先显式设置 `MF_UAT_ROOT` 为本轮 `gate160`，
+`MF_UAT_APP_ID=MentorFlow.UAT.gate160`，并让 `LOCALAPPDATA`、`TEMP`、`TMP`、`TMPDIR`
+及 `PYTHONIOENCODING=UTF-8` 指向任务目录。`build160.py`、`publish160.py`、`scenario160.py`
+在导入公共配置前都会拒绝缺少 `MF_UAT_ROOT` 或使用其他 AppId，防止静默落到旧任务目录。
+冻结子进程还需 `PYTHONPATH=D:/MentorFlow/.local/test-tmp/installer/build-tools;<repo>`，以使用
+已有的 PyInstaller/Pillow/cryptography 工具；不安装新依赖。
+
+本轮最终包使用 `build160.py X-release160b`，从最终工位独立冻结 X（9.160.1），编真实预览
+安装程序、本机签名清单和 objects；随后 `build160.py Y-required-release160` 与
+`Y-optional-release160` 从该冻结 payload 派生策略清单。每个产品包启动前运行
+`refreeze103.py X-release160b --check-only --source-root <最终工位>`，确认签名公钥/本机账号
+地址、两个 exe 的 localhost-only hook，以及冻结的更新服务、安装/启动、登录与 handler 模块
+和源码一致。冻结包只在本地测试源 `127.0.0.1:18763`，账号替身只在 `localhost:18764`；发现
+非本机请求立即停测。
+
+每个策略场景使用独立 task-owned 安装根和该根自己的签名缓存；同一 `MentorFlow.UAT.gate160`
+不可并行安装或启动多个 App（共享 CDP 端口 18861），场景间需确认上一个 App PID 已退出。
+`scenario160.py core-install --root <任务根>/MentorFlow` 用冻结包内同一 UserRuntime 安装核心，
+写入并校验实际 HEALTHY 安装；后续命令接着这个根运行真实冻结 App/Updater，不是桥接替身。
+策略操作为 `no-update-timing`、`offline-cache`、`mandatory-login`、`classroom-mandatory`、
+`optional-login`。推荐顺序：先在 fresh X 根跑 `no-update-timing` 与 `offline-cache`；
+另一个 fresh X 根发布 required Y、设 `logs/metadata-delay.json` 为 `{"seconds": 3}`，立即
+提交登录，验证 15 秒门闩内的 mandatory 结果；课堂另用 fresh X 根，发布 required Y 后设
+3 秒逐请求延迟（低于现有网络期限），从实际设置页触发检查、回到课堂输入未发送草稿，再验证先持久保存/弹强制框并
+在更新重启后从后端恢复草稿；optional 场景也用 fresh X 根和 optional Y，核实“稍后”能登录。
+延迟文件删除即恢复无延迟，创建 `logs/update-feed-offline` 只让本机更新源返回 503，账号替身
+保持在线。超过网络期限的人工延迟只能证明网络失败，不能冒充更新结果或课堂保存通过。
+
+基线普通 Python 测量不能冒充真包。早期 X-persist 候选真包的一次延迟排练检查约 12.344 秒，
+其中指针 5 秒、完整清单 5.25 秒；它已含本轮门控实现，不是未修改的基线。不能仅凭清单
+source_sha 认定冻结源码（未提交构建仍可写旧 HEAD）。该延迟场景不等价于最终包缓存未变场景，不据此推断用户公网 9 秒的根因。最终包
+必须记录真实 localhost 指针及签名清单分段耗时。UIA 仅用 Invoke/ValuePattern，不用系统输入；
+CDP 只连接本机测试窗口。日志、截图、缓存与副本均留在任务目录，最终清理预览注册、快捷方式、
+凭据和测试私钥；正式安装与用户数据不动。

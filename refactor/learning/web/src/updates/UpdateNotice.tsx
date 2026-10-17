@@ -17,6 +17,13 @@ type Notice = { status: UpdateStatus | null; open: boolean; later: boolean; manu
 export const useUpdates = create<Notice>(() => ({ status: null, open: false, later: false, manual: false, error: "" }))
 export const offered = (s: UpdateStatus | null) => !!s && ["AVAILABLE", "UPDATE_AVAILABLE", "OPTIONAL_UPDATE", "MANDATORY_UPDATE", "PENDING_INSTALL"].includes(s.state)
 const mandatory = (s: UpdateStatus | null) => !!s?.mandatory || s?.state === "MANDATORY_UPDATE"
+type MandatoryUpdateGuard = () => Promise<void>
+let mandatoryUpdateGuard: MandatoryUpdateGuard | null = null
+export function registerMandatoryUpdateGuard(guard: MandatoryUpdateGuard) {
+  mandatoryUpdateGuard = guard
+  return () => { if (mandatoryUpdateGuard === guard) mandatoryUpdateGuard = null }
+}
+async function prepareMandatoryUpdate() { await mandatoryUpdateGuard?.() }
 export const hasUpdate = () => offered(useUpdates.getState().status) || useUpdates.getState().later
 export function UpdateProgress({status}: {status: UpdateStatus | null}) {
   if (!status) return null
@@ -81,33 +88,63 @@ export function UpdateNotice() {
   const toast = useApp((s) => s.toast)
   const notice = useUpdates()
   const status = notice.status
+  const guardedVersion = React.useRef<string | null>(null)
+  const guardRunning = React.useRef(false)
+  const [savingClassroom, setSavingClassroom] = React.useState(false)
+  const [saveError, setSaveError] = React.useState("")
+  const mustGuardClassroom = mandatory(status) && route === "classroom"
+  const mandatoryKey = status ? `${status.latest || status.target || status.version}:${status.mandatory_floor || status.min_supported_version || ""}` : ""
+
+  const saveClassroom = React.useCallback((key: string) => {
+    if (guardRunning.current) return
+    guardRunning.current = true
+    setSavingClassroom(true)
+    setSaveError("")
+    void prepareMandatoryUpdate().then(() => {
+      guardedVersion.current = key
+      const current = useUpdates.getState().status
+      if (mandatory(current) && `${current?.latest || current?.target || current?.version}:${current?.mandatory_floor || current?.min_supported_version || ""}` === key)
+        useUpdates.setState({ open: true })
+    }).catch((e) => {
+      setSaveError((e as Error)?.message || "课堂进度暂时无法保存。请重试后继续更新。")
+    }).finally(() => {
+      guardRunning.current = false
+      setSavingClassroom(false)
+    })
+  }, [])
   React.useEffect(() => {
-    if (!ready) return // only the logged-in main interface runs discovery
     let live = true
     const refresh = async () => {
       try {
-        if (Date.now() >= nextAutomaticAt && pendingCheck === null) {
+        // Status is a local, read-only bridge snapshot. Keep observing it even
+        // while account services are reconnecting: a mandatory policy must
+        // still lock every route. Only network discovery waits for `ready`.
+        if (ready && Date.now() >= nextAutomaticAt && pendingCheck === null) {
           nextAutomaticAt = Date.now() + 24 * 60 * 60 * 1000
           await checkUpdate(false)
         }
-        if (pendingCheck !== null) await dispatchCheck()
+        if (ready && pendingCheck !== null) await dispatchCheck()
         const s = await call<UpdateStatus>("update.status")
         if (live) acceptStatus(s)
       } catch (e) { if (live) useUpdates.setState({ error: (e as Error).message }) }
     }
-    if (!started) { started = true; nextAutomaticAt = Date.now() + 24 * 60 * 60 * 1000; void checkUpdate(false) }
+    if (ready && !started) { started = true; nextAutomaticAt = Date.now() + 24 * 60 * 60 * 1000; void checkUpdate(false) }
     void refresh()
     const poll = setInterval(refresh, 1000)
     return () => { live = false; clearInterval(poll) }
   }, [ready])
 
   React.useEffect(() => {
-    if (!ready || !status || status.busy || pendingCheck !== null) return
+    if (!status || (!ready && !mandatory(status)) || pendingCheck !== null && !mandatory(status)) return
     if (offered(status)) {
       // All classroom modes share this route. Defer until home/plan; manual
       // discovery in Settings uses exactly the same dialog.
       const safe = ["home", "plans", "plan"].includes(route) || notice.manual && route === "settings"
-      if (safe && (notice.manual || !notice.later || mandatory(status))) useUpdates.setState({ open: true, manual: false })
+      if (mandatory(status)) {
+        if (route === "classroom" && guardedVersion.current !== mandatoryKey) {
+          if (!guardRunning.current) saveClassroom(mandatoryKey)
+        } else useUpdates.setState({ open: true, manual: false })
+      } else if (safe && (notice.manual || !notice.later)) useUpdates.setState({ open: true, manual: false })
     } else {
       if (status.state === "UP_TO_DATE" && (notice.open || notice.later)) useUpdates.setState({ open: false, later: false })
       if (!notice.manual || !["UP_TO_DATE", "FAILED_RECOVERABLE", "FAILED_SECURITY", "UNPACKAGED"].includes(status.state)) return
@@ -115,12 +152,32 @@ export function UpdateNotice() {
         ? `已是最新版本 ${status.current || status.version}` : status.message || "暂时无法检查更新。")
       useUpdates.setState({ manual: false })
     }
-  }, [ready, route, status, notice.manual, notice.later])
+  }, [ready, route, status, notice.manual, notice.later, mandatoryKey, saveClassroom])
 
-  if (!notice.open || !ready || route === "classroom") return null
+  const blocking = mustGuardClassroom && guardedVersion.current !== mandatoryKey
+  const showSaving = blocking && (savingClassroom || (!saveError && !guardRunning.current))
+  const retrySave = () => { if (mandatoryKey) saveClassroom(mandatoryKey) }
+  React.useLayoutEffect(() => {
+    const shell = document.querySelector<HTMLElement>(".shell")
+    if (!shell) return
+    const lock = mandatory(status) && (notice.open || blocking)
+    shell.inert = !!lock
+    if (lock) shell.setAttribute("aria-hidden", "true")
+    else shell.removeAttribute("aria-hidden")
+    return () => { shell.inert = false; shell.removeAttribute("aria-hidden") }
+  }, [ready, status, notice.open, blocking])
+
+  if (!ready && !mandatory(status)) return null
+  if (blocking) return <div role="presentation" style={{ position: "fixed", inset: 0, background: "#0008", display: "grid", placeItems: "center", zIndex: 1000 }}>
+    <section role="dialog" aria-modal="true" aria-label="必须更新前保存课堂" className="card stack" tabIndex={-1} autoFocus style={{ width: "min(540px, 90vw)", padding: 28 }}>
+      <h2>正在准备必须更新</h2>
+      {showSaving ? <p role="status">正在保存课堂进度和未发送的输入…</p> : <><p role="alert">{saveError || "课堂进度暂时无法保存。请重试后继续更新。"}</p><Button kind="primary" onClick={retrySave}>重试保存</Button></>}
+    </section>
+  </div>
+  if (!notice.open) return null
   const downloading = !!status?.busy || ["APPLYING", "RESTART_REQUIRED", "UPDATE_DOWNLOADED"].includes(status?.state || "")
   return <div role="presentation" style={{ position: "fixed", inset: 0, background: "#0008", display: "grid", placeItems: "center", zIndex: 1000 }}>
-    <section role="dialog" aria-modal="true" aria-label="MentorFlow 更新" className="card stack" style={{ width: "min(540px, 90vw)", padding: 28, maxHeight: "80vh", overflowY: "auto" }}>
+    <section role="dialog" aria-modal="true" aria-label="MentorFlow 更新" className="card stack" tabIndex={-1} autoFocus style={{ width: "min(540px, 90vw)", padding: 28, maxHeight: "80vh", overflowY: "auto" }}>
       <h2>MentorFlow 更新</h2>
       <h3>发现新版本 {status?.latest || status?.target}</h3>
       <p>当前版本 {status?.current || status?.version} → 新版本 {status?.latest || status?.target}</p>
@@ -133,7 +190,7 @@ export function UpdateNotice() {
         <Button kind="primary" busy={!!status?.busy} disabled={downloading || status?.state === "FAILED_SECURITY"} onClick={() => void installUpdate()}>
           {status?.state === "DOWNLOAD_PAUSED_OR_INTERRUPTED" ? "继续" : mandatory(status) ? "立即更新" : "立即更新并重启"}
         </Button>
-        <Button disabled={mandatory(status) || downloading} onClick={() => void deferUpdate()}>稍后</Button>
+        {!mandatory(status) && <Button disabled={downloading} onClick={() => void deferUpdate()}>稍后</Button>}
       </div>
     </section>
   </div>

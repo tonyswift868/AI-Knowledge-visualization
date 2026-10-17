@@ -7,6 +7,23 @@ from refactor.desktop.account_identity import AccountIdentity
 identity=AccountIdentity('https://localhost:18764/test-realm','test-update-user','更新排练账号')
 class Files(SimpleHTTPRequestHandler):
     def __init__(self,*a,**k): super().__init__(*a,directory=str(B/'webroot'),**k)
+    def do_GET(self):
+        # Reversible offline switch for the update-feed routes only; the HTTPS
+        # account substitute remains available to the preview application.
+        if (B/'logs/update-feed-offline').exists() and self.path.startswith('/updates/app/'):
+            self.send_error(503, 'local UAT update feed disabled')
+            return
+        # Optional, task-local delay used to press Login while a signed update
+        # check is genuinely pending. A missing/invalid file means no delay.
+        # The default behavior of this local-only test server is unchanged.
+        try:
+            delay_file=B/'logs/metadata-delay.json'
+            delay=json.loads(delay_file.read_text(encoding='utf8')).get('seconds',0) if delay_file.exists() else 0
+            if self.path.endswith(('/latest.json','/stable.json')) and isinstance(delay,(int,float)) and 0<delay<=20:
+                time.sleep(delay)
+        except (OSError,ValueError,TypeError):
+            pass
+        return super().do_GET()
     def log_message(self,fmt,*a):
         with (B/'logs/http.jsonl').open('a',encoding='utf8') as f:f.write(json.dumps({'time':time.time(),'path':self.path,'status':a[1] if len(a)>1 else '', 'request':fmt%a},ensure_ascii=False)+'\n')
 class API(BaseHTTPRequestHandler):

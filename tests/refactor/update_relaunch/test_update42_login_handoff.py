@@ -249,6 +249,10 @@ def test_update42_adapter_writes_after_download_before_old_coordinator_and_clean
             return dict(state='APPLYING', coordinator_started=True)
     gate = QWidget()
     adapter = DesktopUpdates(qapp, tmp_path, gate, core=Core(), login_handoff=Owner())
+    # Release the real named Windows session event before substituting it.
+    # Otherwise a later cancellation leaves that leaked process-wide event
+    # signalled and unrelated update tests can never apply their fixture.
+    adapter._session.close()
     adapter._session = NS(require_running=lambda: None, close=lambda: None, defer=lambda: None)
     adapter._coordinator_result = lambda value: (dict(state='FAILED_RECOVERABLE') if outcome == 'failed'
         else {**value, 'cancelled': True} if outcome == 'cancelled' else value)
