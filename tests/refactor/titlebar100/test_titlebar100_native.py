@@ -94,7 +94,10 @@ def test_titlebar100_update_gate_and_caption_close_respond_immediately(app,tmp_p
     try:
         if phase=='startup':
             ui.start();app.processEvents()
-            assert gate.isEnabled() and not gate.login_card.isEnabled()
+            # The startup update check keeps the login surface available; its
+            # AUTHENTICATING state still disables credential controls until
+            # AccountShell has resolved the pending login action.
+            assert gate.isEnabled() and gate.login_card.isEnabled()
             assert not gate.primary_button.isEnabled() and gate.close_button.isEnabled()
         start=time.perf_counter()
         QTest.mouseClick(gate.close_button,Qt.LeftButton)

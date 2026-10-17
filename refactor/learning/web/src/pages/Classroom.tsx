@@ -20,6 +20,7 @@ import type { TeacherStageHandle } from "../teacher/TeacherStage"
 import { MaterialToolbar, PreparationBadge, PreparationWait, ConversationActions, OriginalCards, QuestionInputs, type Concept, type NavigationEntry, type OriginalCardsHandle, type BankQuestion, type Conversation, type Preparation, type SourceCard } from "../classroom/Conversation"
 import { RecallQuestion, type RecallRequest } from "../classroom/RecallQuestion"
 import { Loading, MODEL_SLOW_MESSAGE } from '../loading/Loading'
+import { registerMandatoryUpdateGuard } from "../updates/UpdateNotice"
 
 const TeacherWindow = React.lazy(() => import("../teacher/TeacherStage").then((m) => ({ default: m.TeacherWindow })))
 
@@ -57,6 +58,10 @@ function live(text: string) {
 
 export function Classroom() {
   const planId = useApp((s) => s.planId)
+  // The frontend account object currently exposes the authenticated account's
+  // stable login name (not its display label). Include it in draft keys so
+  // accounts that happen to use the same plan id cannot see each other's text.
+  const accountScope = useApp((s) => s.account?.name || "anonymous")
   const [wrongAnswers, setWrongAnswers] = React.useState(false)
   const go = useApp((s) => s.go)
   const toast = useApp((s) => s.toast)
@@ -67,6 +72,11 @@ export function Classroom() {
   const [pendingUser, setPendingUser] = React.useState<string | null>(null)
   const [verdictPreview, setVerdictPreview] = React.useState<{ text: string; correct: boolean } | null>(null)
   const [text, setText] = React.useState("")
+  const inputDraft = React.useRef("")
+  const draftEditVersion = React.useRef(0)
+  const lastDraftScope = React.useRef(accountScope)
+  const lastDraftPlan = React.useRef(planId)
+  const hasResolvedDraftScope = React.useRef(accountScope !== "anonymous")
   const [source, setSource] = React.useState<Source | null>(null)
   const [askMode, setAskMode] = React.useState(false)
   const [pointsExpanded, setPointsExpanded] = React.useState(false)
@@ -82,11 +92,35 @@ export function Classroom() {
   const teacher = React.useRef<TeacherStageHandle>(null)
   const voice = useTeacherVoice(teacher, { autoWarm: reading })
   const terms = React.useMemo(() => (room?.points ?? []).map((p) => p.title).slice(0, 60), [room?.points])
-  const mic = useVoiceInput({ value: text, onChange: value => {cancelPrefetch();setText(value)}, terms,
+  const mic = useVoiceInput({ value: text, onChange: value => {cancelPrefetch();setDraftText(value)}, terms,
     context: room && planId ? {plan_id:planId,module_id:room.module.id,point_id:room.points.find(p=>p.current)?.id} : undefined,
     scopeKey: room ? `${planId}:${room.module.id}` : undefined, disabled: !!busy })
   const abort = React.useRef<AbortController | null>(null)
   const acting = React.useRef(false)
+  const pendingSend = React.useRef(false)
+  const idleWaiters = React.useRef<Array<() => void>>([])
+  const notifyClassroomIdle = React.useCallback(() => {
+    if (acting.current || pendingSend.current) return
+    idleWaiters.current.splice(0).forEach(resolve => resolve())
+  }, [])
+  const waitForClassroomIdle = React.useCallback(() => new Promise<void>(resolve => {
+    if (!acting.current && !pendingSend.current) resolve()
+    else idleWaiters.current.push(resolve)
+  }), [])
+  const draftStorageKey = React.useCallback((targetPlan: string) =>
+    `mf.classroom.unsent.${encodeURIComponent(accountScope)}.${encodeURIComponent(targetPlan)}`,
+  [accountScope])
+  const setDraftText = React.useCallback((value: string, targetPlan = planId) => {
+    draftEditVersion.current++
+    inputDraft.current = value
+    setText(value)
+    if (!targetPlan) return
+    try {
+      const key = draftStorageKey(targetPlan)
+      if (value) localStorage.setItem(key, value)
+      else localStorage.removeItem(key)
+    } catch { /* keep the live input even if browser storage is unavailable */ }
+  }, [draftStorageKey, planId])
   const lessonRefresh = React.useRef<(() => void) | null>(null)
   const lessonChanged = React.useRef(false)
   const scroller = React.useRef<HTMLDivElement>(null)
@@ -118,6 +152,64 @@ export function Classroom() {
     if (turn) { turn.cancelled = true; if (turn.reader) { void turn.reader.stop(); return } }
     void voice.stop()
   }, [voice.stop])
+
+  React.useEffect(() => {
+    if (!planId) return
+    let active = true
+    let draft = ""
+    const resolvingInitialAccount = accountScope !== "anonymous" && !hasResolvedDraftScope.current
+      && lastDraftPlan.current === planId && lastDraftScope.current === "anonymous"
+    if (resolvingInitialAccount && inputDraft.current) {
+      // The account identity can arrive after the route/input during startup.
+      // Move that live draft into the account namespace instead of replacing
+      // it with the (possibly empty) account-local copy.
+      draft = inputDraft.current
+      try {
+        localStorage.setItem(draftStorageKey(planId), draft)
+        localStorage.removeItem(`mf.classroom.unsent.anonymous.${encodeURIComponent(planId)}`)
+      } catch { /* the live ref remains authoritative until durable save */ }
+    } else {
+      try { draft = localStorage.getItem(draftStorageKey(planId)) || "" } catch { /* storage can be disabled */ }
+      inputDraft.current = draft
+      setText(draft)
+    }
+    lastDraftScope.current = accountScope
+    lastDraftPlan.current = planId
+    if (accountScope !== "anonymous") hasResolvedDraftScope.current = true
+    const editVersion = draftEditVersion.current
+    void call<{text?: string}>("classroom.draft_get", { plan_id: planId }).then((saved) => {
+      if (!active || draftEditVersion.current !== editVersion || inputDraft.current !== draft) return
+      const persisted = typeof saved?.text === "string" ? saved.text : ""
+      // Local storage is the freshest live copy when available. The account
+      // scoped durable draft is the fallback after process/browser storage loss.
+      if (!draft && persisted) setDraftText(persisted, planId)
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [accountScope, draftStorageKey, planId, setDraftText])
+
+  React.useLayoutEffect(() => registerMandatoryUpdateGuard(async () => {
+    const currentPlan = planId
+    if (!currentPlan) return
+    try {
+      const key = draftStorageKey(currentPlan)
+      if (inputDraft.current) localStorage.setItem(key, inputDraft.current)
+      else localStorage.removeItem(key)
+    } catch { /* account scoped classroom.draft_set below is durable storage */ }
+    await waitForClassroomIdle()
+    const persisted = await call<{saved?: boolean}>("classroom.draft_set", {
+      plan_id: currentPlan, text: inputDraft.current,
+    })
+    if (persisted?.saved !== true) throw new Error("未发送的课堂输入暂未保存，请重试后继续更新。")
+    // A state read also goes through Classroom.run and persists the current
+    // position. Retry only the transient lock held by its periodic refresh.
+    for (let attempt = 0; ; attempt++) {
+      try { await call("classroom.state", { plan_id: currentPlan }); return }
+      catch (error) {
+        if (!(error instanceof BridgeFailure) || error.code !== "CLASS_BUSY" || attempt >= 20) throw error
+        await new Promise(resolve => window.setTimeout(resolve, 50))
+      }
+    }
+  }), [draftStorageKey, planId, waitForClassroomIdle])
 
   React.useEffect(() => { if (askMode) input.current?.focus() }, [askMode])
   React.useEffect(() => { setAskMode(false) }, [room?.question?.id, room?.module.id])
@@ -228,8 +320,9 @@ export function Classroom() {
         setBusy(null); setStream(null); setPendingUser(null); setVerdictPreview(null); abort.current = null
       }
       if (lessonChanged.current) lessonRefresh.current?.()
+      notifyClassroomIdle()
     }
-  }, [planId, room, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading])
+  }, [planId, room, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading, notifyClassroomIdle])
 
   const retryModel = React.useCallback(()=>{
     if(room?.failure)void act('classroom.retry',{},'重试这一步…')
@@ -249,6 +342,7 @@ export function Classroom() {
       return result
     } finally {
       if (ownGeneration === generation.current) { acting.current = false; setBusy(null) }
+      notifyClassroomIdle()
     }
   }
 
@@ -329,14 +423,25 @@ export function Classroom() {
     const t = (value ?? text).trim()
     if (!t || acting.current || (room?.question?.kind === "recall" && !askMode)) return
     stopReading()
+    const beforeDraft = inputDraft.current
+    pendingSend.current = true
     if (value === undefined) setText("")
     const numericAnswer = !askMode && (room?.question?.kind === "calc" || room?.question?.question_type === "calc")
     const questionMessage = askMode
     setAskMode(false) // The tag belongs to this send only, including a failed send.
-    if (!(await act(questionMessage ? "classroom.ask" : numericAnswer ? "classroom.answer" : "classroom.reply",
-      numericAnswer ? { value: t } : { text: t }, numericAnswer ? "正在核对数值…" : "老师在看你的回答…")) && value === undefined) {
-      setText((draft) => draft || t)
-    }
+    try {
+      const ok = await act(questionMessage ? "classroom.ask" : numericAnswer ? "classroom.answer" : "classroom.reply",
+        numericAnswer ? { value: t } : { text: t }, numericAnswer ? "正在核对数值…" : "老师在看你的回答…")
+      if (value === undefined && inputDraft.current === beforeDraft) {
+        setDraftText(ok ? "" : beforeDraft || t)
+        if (ok && planId) {
+          try {
+            const cleared = await call<{saved?: boolean}>("classroom.draft_set", { plan_id: planId, text: "" })
+            if (cleared?.saved !== true) throw new Error("草稿清理未确认")
+          } catch { toast("info", "回答已发送，但本机恢复草稿暂未清除。") }
+        }
+      }
+    } finally { pendingSend.current = false; notifyClassroomIdle() }
   }
 
   async function openSource(chunk: string) {
@@ -477,7 +582,7 @@ export function Classroom() {
           <textarea ref={input} className="input" rows={1} value={text} aria-label="课堂输入"
                     disabled={(q?.kind === "recall" && !askMode) || !!room.direct_review?.answered}
                     placeholder={room.direct_review?.answered ? "看完原文后，选择下一句或是否跳过" : room.direct_review ? "随口回答，不记分" : askMode ? "想问什么？答完回到刚才" : q?.kind === "recall" ? "作答请用上方问答卡片；提问可点“我想问…”" : (q?.kind === "calc" || q?.question_type === "calc") ? "填写计算数值，可带单位" : q ? "输入作答，或点上方选项；提问可点“我想问…”" : "回答老师或提问，都可以直接说"}
-                    onChange={(e) => {cancelPrefetch();setText(e.target.value)}}
+                    onChange={(e) => {cancelPrefetch();setDraftText(e.target.value)}}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !e.repeat) {
                       e.preventDefault()
                       void send()

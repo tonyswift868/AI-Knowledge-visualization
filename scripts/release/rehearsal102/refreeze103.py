@@ -3,7 +3,7 @@ import argparse,json,shutil,sys
 from common import TASK,ROOT,environment
 environment();sys.path.insert(0,str(ROOT))
 from build import b,stage
-parser=argparse.ArgumentParser();parser.add_argument('label',choices=['O','X','P','Q'])
+parser=argparse.ArgumentParser();parser.add_argument('label',choices=['O','X','X-final','X-verified','X-persist','X-release160','X-release160b','P','Q'])
 parser.add_argument('--check-only',action='store_true')
 parser.add_argument('--source-root',type=__import__('pathlib').Path,help='Also compare frozen update code with this final source tree')
 args=parser.parse_args()
@@ -28,8 +28,12 @@ def check():
             names=['refactor.desktop.delivery.per_user_install',
                    'refactor.desktop.delivery.per_user_update_core',
                    'refactor.desktop.delivery.update_download',
-                   'refactor.desktop.delivery.prepared_update']
-            if exe.name=='MentorFlow.exe': names.append('refactor.desktop.updates')
+                   'refactor.desktop.delivery.prepared_update',
+                   'refactor.desktop.delivery.update_service']
+            if exe.name=='MentorFlow.exe':
+                names.extend(['refactor.desktop.updates',
+                              'refactor.desktop.account_shell_main',
+                              'refactor.learning.app.handlers'])
             for name in names:
                 code=pyz.extract(name)
                 source=args.source_root/(name.replace('.', '/')+'.py')

@@ -67,6 +67,8 @@ class AccountShell:
         self._session_credentials = None
         self._update_login_token = None
         self._update_restore_pending = False
+        self._update_auto_pending = False
+        self._update_interactive_pending = False
         self._update_handoff_account = None
         self._generation = 0
         self._cancelled = threading.Event()
@@ -496,6 +498,8 @@ class AccountShell:
         self._update_login_token = None
         if update_restore:
             self._update_auto_pending = False
+        self._update_interactive_pending = False
+        self._update_auto_pending = False
         self._invalidate_login_jobs()
         self._remembered_profile = None
         self._login_result = None
@@ -519,18 +523,43 @@ class AccountShell:
 
     def _updates_allow_login(self) -> bool:
         adapter = getattr(getattr(self, 'app', None), '_mentorflow_updates', None)
-        return adapter is None or bool(adapter.state.get('login_allowed') and not adapter.state.get('mandatory'))
+        if adapter is None:
+            return True
+        state = adapter.state
+        return not state.get('login_check_pending') and bool(
+            state.get('login_allowed') and not state.get('mandatory'))
 
     def _resume_update_login(self, value) -> None:
-        if getattr(self, '_update_auto_pending', False) and AccountShell._updates_allow_login(self):
+        if value.get('login_check_pending'):
+            return
+        allowed = AccountShell._updates_allow_login(self)
+        if not allowed:
+            if getattr(self, '_update_interactive_pending', False):
+                self._update_interactive_pending = False
+                from refactor.desktop.login_shell import LoginGateState
+                self.gate.set_state(LoginGateState.LOGIN_READY,
+                                    detail='当前版本需要先更新，更新完成后才能登录。')
+            return
+        waiting_for_optional_choice = (
+            value.get('state') == 'OPTIONAL_UPDATE' and not value.get('deferred'))
+        if getattr(self, '_update_auto_pending', False) and not waiting_for_optional_choice:
             self._update_auto_pending = False
             self._begin_remembered_login()
+        elif (getattr(self, '_update_interactive_pending', False)
+              and (value.get('state') != 'OPTIONAL_UPDATE' or value.get('deferred'))):
+            self._update_interactive_pending = False
+            from refactor.desktop.login_shell import LoginGateState
+            self.gate.set_state(LoginGateState.LOGIN_READY)
+            self._begin_interactive_login()
 
     def _begin_remembered_login(self) -> None:
         from refactor.desktop.login_shell import LoginGateState
 
         if not AccountShell._updates_allow_login(self):
             self._update_auto_pending = True
+            adapter = getattr(self.app, '_mentorflow_updates', None)
+            if adapter is not None and adapter.state.get('login_check_pending'):
+                self.gate.set_state(LoginGateState.AUTHENTICATING, detail='正在检查更新…')
             return
         profile = self._remembered_profile
         if self._closing or profile is None:
@@ -579,7 +608,13 @@ class AccountShell:
         from refactor.desktop.login_shell import LoginGateState
         from refactor.desktop.native_auth import MESSAGES
 
-        if self._closing or not AccountShell._updates_allow_login(self):
+        if self._closing:
+            return
+        if not AccountShell._updates_allow_login(self):
+            adapter = getattr(self.app, '_mentorflow_updates', None)
+            if adapter is not None and adapter.state.get('login_check_pending'):
+                self._update_interactive_pending = True
+                self.gate.set_state(LoginGateState.AUTHENTICATING, detail='正在检查更新…')
             return
         selected = (
             self.session.registry.get(self._remembered_profile.account_id)

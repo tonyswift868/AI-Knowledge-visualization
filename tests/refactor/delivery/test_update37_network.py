@@ -141,7 +141,7 @@ def test_update37_security_failure_is_not_retried(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('failures, expected_calls', [(2, 3), (4, 4)])
-def test_update37_metadata_three_retries(monkeypatch, failures, expected_calls):
+def test_update37_metadata_three_retries(monkeypatch, tmp_path, failures, expected_calls):
     waits = []
     monkeypatch.setattr(io, 'retry_wait', lambda seconds, cancel: waits.append(seconds))
     class Transport:
@@ -153,6 +153,8 @@ def test_update37_metadata_three_retries(monkeypatch, failures, expected_calls):
     transport = Transport()
     service = object.__new__(MatureUpdateService)
     service.cache = SimpleNamespace(transport=transport)
+    service.install_root = tmp_path
+    service._check_timings = {}
     service.metadata_url = 'https://example.invalid/stable.json'
     service._closed = False; service.cancel_event = threading.Event()
     if failures == 4:

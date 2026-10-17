@@ -44,17 +44,25 @@ async function run() {
   useUpdates.setState({ later: false, open: false })
   useApp.getState().set({ planId: "synthetic" })
   useApp.getState().go("classroom"); await checkUpdate(false); await wait(1300)
-  assert(!dialog(), "课堂所有模式不得弹框")
-  // Avoid rendering a class without a plan in this fixture, while preserving
-  // the actual route gating in the global update component.
-  useApp.getState().go("home"); await wait(100)
-  assert(dialog(), "返回首页必须弹出待提醒更新")
-  passed.push("课堂延后/返回首页")
-  useUpdates.setState({ open: false })
+  assert(!dialog(), "可选更新不得打扰课堂")
+  passed.push("课堂可选更新保持安静")
+  // A required update must persist the active classroom before opening
+  // its modal, even when discovered while the classroom route is active.
   fixture.mandatory = true
+  fixture.classroomEvents.length = 0
+  await checkUpdate()
+  await wait(1500)
+  assert(fixture.classroomEvents.includes("draft_set") && fixture.classroomEvents.includes("classroom.state"), "强制更新前持久保存输入和课堂进度")
+  const draftSavedAt = fixture.classroomEvents.indexOf("draft_set")
+  assert(fixture.classroomEvents.indexOf("classroom.state", draftSavedAt + 1) > draftSavedAt, "未发送输入先于强制更新课堂状态保存")
+  assert(dialog() && button("立即更新") && !button("稍后"), "课堂保存后显示无稍后的强制更新框")
+  passed.push("课堂强制更新先保存再弹框")
+  useApp.getState().go("home"); await wait(100)
+  assert(dialog(), "强制更新离开课堂后仍保持弹框")
+  useUpdates.setState({ open: false })
   useApp.getState().go("settings", "account")
   await checkUpdate(); await wait(1300)
-  assert(dialog() && button("立即更新") && button("稍后")?.disabled, "强制更新稍后灰色")
+  assert(dialog() && button("立即更新") && !button("稍后"), "强制更新不提供稍后")
   button("立即更新").click(); await wait(1300)
   assert(fixture.installs === 1 && dialog()?.textContent?.includes("2.00 MB / 10.00 MB"), "框内进度")
   passed.push("强制更新/框内进度")

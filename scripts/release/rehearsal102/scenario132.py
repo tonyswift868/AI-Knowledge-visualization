@@ -110,7 +110,7 @@ def detail(root, tag, restructured=False, classroom=False):
         s.cdp('click', '开课')
         s.cdp('wait-text', '展开知识点')
         s.cdp('click', '展开知识点')
-        s.cdp('wait-text', '新概念')
+        s.cdp('wait-text', '新概念' if restructured else '旧点0')
         s.cdp('wait-text', '开始上课')
         s.cdp('shot', str(TASK/f'screenshots/{tag}-classroom-before-teacher.png'))
         value['classroom_before_teacher'] = True

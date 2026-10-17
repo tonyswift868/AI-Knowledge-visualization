@@ -29,6 +29,29 @@ if($TargetPid -ne 0){
  if (-not $p.ExecutablePath.StartsWith($taskRoot+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'not an owned test process'}
 }
 $cond= if($TargetPid -eq 0){[System.Windows.Automation.Condition]::TrueCondition}else{New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty,$TargetPid)}
+if($Action -eq 'login'){
+ $deadline=[DateTimeOffset]::UtcNow.AddSeconds(12)
+ while([DateTimeOffset]::UtcNow -lt $deadline){
+  $loginTops=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$cond)
+  foreach($loginTop in $loginTops){
+   $account=$loginTop.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'账号')))
+   $password=$loginTop.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'密码')))
+   $login=$loginTop.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'登录 MentorFlow')))
+   if($account -and $password -and $login -and $account.Current.IsEnabled -and $password.Current.IsEnabled -and $login.Current.IsEnabled -and -not $account.Current.IsOffscreen -and -not $password.Current.IsOffscreen -and -not $login.Current.IsOffscreen){
+    $account.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($Name)
+    $password.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($env:MF_UAT_LOGIN_PASSWORD)
+    $login.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    @{submitted=$true;time=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()} | ConvertTo-Json -Compress
+    exit
+   }
+  }
+  Start-Sleep -Milliseconds 100
+ }
+ throw 'enabled login controls did not appear before update check completed'
+}
 $tops=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$cond)
 $result=@()
 foreach($top in $tops){

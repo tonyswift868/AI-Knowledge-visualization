@@ -1,6 +1,7 @@
 export const fixture = {
   checks: 0, installs: 0, newest: true, mandatory: false,
   current: "2.0.1", latest: "2.0.2", floor: "", reason: "",
+  classroomEvents: [] as string[],
   status: { available: true, busy: false, state: "HEALTHY", version: "2.0.1", current: "2.0.1", message: "尚未检查更新。" } as any,
 }
 export async function call(method: string) {
@@ -9,9 +10,12 @@ export async function call(method: string) {
   if (method === "plans.list") return { plans: [], today: { target_minutes: 0, confirmed_minutes: 0 } }
   if (method === "sync.status") return null
   if (method === "classroom.enter" || method === "classroom.state") return {
+    ...(method === "classroom.state" ? (fixture.classroomEvents.push("classroom.state"), {}) : {}),
     plan: { id: "synthetic", goal: "测试课", state: "active" }, module: { id: "m", title: "测试模块", number: 1, total: 1, state: "active" },
     points: [], step: "teach", question: null, messages: [], can_skip: false, red: [], more_modules: false, check: null, today: null,
   }
+  if (method === "classroom.draft_set") { fixture.classroomEvents.push("draft_set"); return { saved: true } }
+  if (method === "classroom.draft_get") return { text: "" }
   if (method === "update.status") return { ...fixture.status }
   if (method === "update.defer") { fixture.status = { ...fixture.status, deferred: true }; return { ...fixture.status } }
   if (method === "update.check" || method === "update.automatic") {

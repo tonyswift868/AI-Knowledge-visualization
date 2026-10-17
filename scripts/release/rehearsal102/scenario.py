@@ -141,7 +141,7 @@ def register(root):
     wait_control(pid, '登录 MentorFlow', 30)
 
 
-def install_setup(setup, parent, label):
+def install_setup(setup, parent, label, *, linger_ok=False):
     parent = parent.resolve()
     if not parent.is_relative_to(TASK.resolve()):
         raise ValueError('owned installation folder required')
@@ -157,7 +157,16 @@ def install_setup(setup, parent, label):
     if launch_option.get('toggle') == 'On':
         uia(pid, 'toggle', '启动 MentorFlow')
     uia(pid, 'invoke', '关闭')
-    wait_for(lambda: process.poll() is not None, 30)
+    if linger_ok:
+        # On this Windows build the Inno finish page can remain open after its
+        # enabled UIA Close InvokePattern; successful installation is already
+        # proven by the finish page and installed runtime. Keep the native
+        # window untouched while continuing the isolated UAT.
+        if not (parent/'MentorFlow/current-release.json').is_file():
+            raise RuntimeError('installer finish page appeared without installed current-release.json')
+        record('installer-finish-process-still-open', {'pid':pid,'path':str(parent/'MentorFlow')})
+    else:
+        wait_for(lambda: process.poll() is not None, 30)
     if process.returncode:
         raise RuntimeError('real preview installer failed')
     return parent / 'MentorFlow'
