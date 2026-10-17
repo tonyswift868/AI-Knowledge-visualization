@@ -42,6 +42,8 @@ export function UpdateProgress({status}: {status: UpdateStatus | null}) {
 }
 let started = false
 let nextAutomaticAt = 0
+// User 2026-10-17: re-check every 30 minutes; mandatory releases then lock open apps promptly.
+const AUTOMATIC_CHECK_MS = 30 * 60 * 1000
 let pendingCheck: "automatic" | "manual" | null = null
 let dispatching = false
 function acceptStatus(status: UpdateStatus) {
@@ -120,7 +122,7 @@ export function UpdateNotice() {
         // while account services are reconnecting: a mandatory policy must
         // still lock every route. Only network discovery waits for `ready`.
         if (ready && Date.now() >= nextAutomaticAt && pendingCheck === null) {
-          nextAutomaticAt = Date.now() + 24 * 60 * 60 * 1000
+          nextAutomaticAt = Date.now() + AUTOMATIC_CHECK_MS
           await checkUpdate(false)
         }
         if (ready && pendingCheck !== null) await dispatchCheck()
@@ -128,7 +130,7 @@ export function UpdateNotice() {
         if (live) acceptStatus(s)
       } catch (e) { if (live) useUpdates.setState({ error: (e as Error).message }) }
     }
-    if (ready && !started) { started = true; nextAutomaticAt = Date.now() + 24 * 60 * 60 * 1000; void checkUpdate(false) }
+    if (ready && !started) { started = true; nextAutomaticAt = Date.now() + AUTOMATIC_CHECK_MS; void checkUpdate(false) }
     void refresh()
     const poll = setInterval(refresh, 1000)
     return () => { live = false; clearInterval(poll) }

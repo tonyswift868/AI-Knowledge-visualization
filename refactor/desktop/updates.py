@@ -11,6 +11,9 @@ import time
 from PySide6.QtCore import QObject, QTimer, Qt, Signal, Slot
 from PySide6.QtWidgets import QApplication
 
+# User 2026-10-17: re-check every 30 minutes so a mandatory release reaches apps left open.
+AUTOMATIC_CHECK_SECONDS = 30 * 60
+
 
 class DesktopUpdates(QObject):
     changed = Signal(object)
@@ -112,7 +115,7 @@ class DesktopUpdates(QObject):
             from .delivery.per_user_install import schedule_updater_refresh
             schedule_updater_refresh(self.root)
         if status == 'ready' and result.get('feed') == 'VERIFIED':
-            self._next_automatic = time.monotonic() + 86400
+            self._next_automatic = time.monotonic() + AUTOMATIC_CHECK_SECONDS
         from .delivery.per_user_install import maintenance_log
         maintenance_log(self.root, 'startup_login_gate', outcome=status,
                         elapsed_ms=round((time.monotonic() - (self._startup_started or time.monotonic())) * 1000),
@@ -140,7 +143,7 @@ class DesktopUpdates(QObject):
             return self.snapshot()
         if action == "automatic":
             if time.monotonic() < self._next_automatic: return self.snapshot()
-            self._next_automatic = time.monotonic() + 86400
+            self._next_automatic = time.monotonic() + AUTOMATIC_CHECK_SECONDS
             action = "check"
         if action not in {"startup", "check", "install"}:
             raise ValueError("unknown update operation")
