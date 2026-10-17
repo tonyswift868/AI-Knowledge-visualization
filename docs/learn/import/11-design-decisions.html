@@ -1,0 +1,104 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>设计取舍：为什么 MentorFlow 按这些规矩做</title>
+<style>body{max-width:54rem;margin:2rem auto;padding:0 1rem;font:18px/1.8 system-ui}aside{background:#f3f5f8;padding:1rem;font-size:.85em}table{border-collapse:collapse;width:100%}td{border:1px solid #bbb;padding:.4rem}a{color:#165baa}code{overflow-wrap:anywhere}svg{width:100%;height:auto}pre{white-space:pre-wrap;font-size:12px}</style></head><body><main>
+<header class="reading-intro">
+<h1>设计取舍：为什么 MentorFlow 按这些规矩做</h1>
+<p>事实基线：<code>7df4f6ea</code>。这篇不是列技术名词，而是沿着一间自习室的改造过程，讲清“遇到什么麻烦、谁定下什么规矩、后来系统怎样变化”。面试优先级是本稿的学习判断，不是频率统计；每节标题只标一次优先级。只讲有明确记录的决定，不把工程师的猜测写成用户当时的理由。</p>
+</header>
+<h2>1. AI 可以找资料，不能编题再自己判｜常被问</h2>
+<p>有题才考，老师依原文教。<span role="complementary">[D01]</span> <strong>（一句话层）</strong></p>
+<p><strong>背景：</strong>最初设想把讲课、出题和判题都交给 AI；实测 AI 不稳定、成本高，出的题和判的分都不可信。用户在 2026 年 10 月 3 日、6 日定下产品边界：AI 可以帮忙从资料里找、指出、配对，不替程序造题或决定主观题对错。<span role="complementary">[D01]</span></p>
+<p><strong>决定：</strong>题目只从资料自带的题或用户上传的题来；没有题的模块只学习、不考试。老师按资料教，能用生活例子解释，但不能从比喻推出资料没有的结论。<span role="complementary">[D01]</span> <strong>（三句话层）</strong></p>
+<p>AI 参与的是资料定位，例如指出知识点依据哪段、问答题要点选哪几条、知识点之间有什么前置关系。采不采纳结果、怎样推进课堂和怎样记分，由宿主按规则处理。这样讲课仍然可以自然，但规则不会因为 AI 临时生成一段话就改变。<span role="complementary">[D01]</span> <strong>（深一层）</strong></p>
+<p>这像校长规定：老师可以从讲义里找到合适页码、用生活例子讲明白；测验题必须来自题库，成绩由校务规则确认。这个比喻不表示现实学校一定这样安排，而是说明 MentorFlow 把“讲解建议”和“课程状态”分开。结果是题目来源、判分责任和课堂进度各有归属，AI 不会一边出题一边给自己判卷。</p>
+<p><strong>你可以这样跟面试官说：</strong>“我们试过让 AI 找资料、出题、判题，实测成本和可靠性都不理想。现在 AI 帮忙定位资料，题目来自原题或用户上传的题；没有题就只学不考。老师可以解释和举例，程序负责流程和判分。”</p>
+<h3>为什么不让 AI 自己出题、自己判分？</h3>
+<ul><li>实测 AI 不稳定、成本高，出的题和判的分都不可信。<span role="complementary">[D01]</span></li></ul>
+<ul><li>题目只从资料自带的题或用户上传的题来；没有题的模块只学习、不考试。<span role="complementary">[D01]</span></li></ul>
+<ul><li>老师按资料教，能用生活例子解释，但不能从比喻推出资料没有的结论。<span role="complementary">[D01]</span></li></ul>
+<h3>学习路线：本节出处</h3>
+<aside aria-label="阅读出处，不进课程">
+<table><tbody>
+<tr><td>编号</td><td>说法</td><td>出处</td></tr>
+<tr><td>D01</td><td>AI 只负责找、指出、配对；题目来源、无题处理和教师原文边界</td><td><code>docs/project/CURRENT_STATE.md:208-218</code>，[DIR-01]；当前规则见 <code>docs/project/CURRENT_STATE.md:827-833</code></td></tr>
+<tr><td>延伸阅读</td><td>接着读</td><td><a href="../04-rag-from-upload-to-answer.md">04 资料问答 RAG</a>；05 课堂（待写）</td></tr>
+</tbody></table>
+</aside>
+<h2>2. 模型请求从客户端直连，使用用户自己的 Key｜常被问</h2>
+<p>用户持钥，直接请求模型。<span role="complementary">[D02]</span> <strong>（一句话层）</strong></p>
+<p><strong>背景：</strong>产品要在课堂、计划和资料问答中调用模型，同时账号、同步和资料检索由自己的服务器处理。用户定下边界：模型继续由客户端直接请求，使用用户自己的 Key，不经 MentorFlow 服务器转发。<span role="complementary">[D02]</span></p>
+<p><strong>决定：</strong>用户在桌面端配置模型连接，客户端按用途调用所选模型；凭据保存在本机 Windows 凭据中。服务器承担账号和同步等业务，不能把模型调用顺手改成服务器代发。<span role="complementary">[D02]</span> <strong>（三句话层）</strong></p>
+<p>这项决定把模型调用和服务器业务拆成两条路径：客户端拿用户配置的 Key 与模型服务通信，服务器用 Java 处理账号、同步及资料检索。资料问答也沿用这个边界——Java 返回相关原文，客户端再把问题和片段交给用户选择的模型生成回答。当前项目状态列出七家模型厂商和两种中转站，但只验证过 DeepSeek；支持范围与验证范围不能混为一谈。<span role="complementary">[D02]</span> <strong>（深一层）</strong></p>
+<p>像自习室的学生自己选一位校外讲师并直接联系；校方负责教室、学籍和借书记录，不替学生把问题转交给讲师。这个比喻只表达请求路线，不代表模型 Key 像普通聊天内容一样可随意保存或共享。实际 Key 放在本机凭据存储，服务器不做模型请求中转；因此模型连接出错时要查客户端连接和模型厂商链路，账号同步或 RAG 检索故障则查对应服务器链路。</p>
+<p><strong>你可以这样跟面试官说：</strong>“模型由桌面端直接调用，用户在本机配置自己的 Key，服务器不代发模型请求。服务器处理账号和同步，RAG 服务器只把资料片段检索回来，最终回答仍由客户端交给用户选择的模型生成。”</p>
+<h3>为什么模型 Key 不经过 MentorFlow 服务器？</h3>
+<ul><li>用户定下边界：模型继续由客户端直接请求，使用用户自己的 Key，不经 MentorFlow 服务器转发。<span role="complementary">[D02]</span></li></ul>
+<ul><li>凭据保存在本机 Windows 凭据中。<span role="complementary">[D02]</span></li></ul>
+<ul><li>Java 返回相关原文，客户端再把问题和片段交给用户选择的模型生成回答。<span role="complementary">[D02]</span></li></ul>
+<h3>学习路线：本节出处</h3>
+<aside aria-label="阅读出处，不进课程">
+<table><tbody>
+<tr><td>编号</td><td>说法</td><td>出处</td></tr>
+<tr><td>D02</td><td>模型调用客户端直连、用户自己的 Key；Key 存本机凭据；RAG 检索与生成分工</td><td><code>docs/project/CURRENT_STATE.md:302-305</code>，[ARCH-09]；<code>docs/project/CURRENT_STATE.md:542-543</code>，[SYS-02]；<code>docs/project/CURRENT_STATE.md:611-625</code>，[RAG-01]</td></tr>
+<tr><td>延伸阅读</td><td>接着读</td><td><a href="../01-overall-architecture.md">01 总架构</a>；<a href="../04-rag-from-upload-to-answer.md">04 资料问答 RAG</a></td></tr>
+</tbody></table>
+</aside>
+<h2>3. 服务器适合的业务逐块迁到 Java，客户端与 AI 编排留在原位｜常被问</h2>
+<p>后端迁移，客户端先不动。<span role="complementary">[D03]</span> <strong>（一句话层）</strong></p>
+<p><strong>背景：</strong>项目当时的服务器是 Python，用户的求职方向是 Java + AI，两个项目都使用 Python。用户决定把服务器上适合 Java 的业务部分改写为 Java，同时尽量不影响现有服务；AI 提示词和编排继续用 Python，模型仍由客户端直连。<span role="complementary">[D03]</span></p>
+<p><strong>决定：</strong>先迁资料目录，再迁同步，再迁账号；客户端不改，Java 与 Python 遵守同一 HTTP 契约。部署前影子对比；代码按业务逐块迁移，正式上线时整组切流并保留回退路径。<span role="complementary">[D03]</span> <strong>（三句话层）</strong></p>
+<p>边界不是“所有东西都改 Java”：模型调用不搬进服务器，桌面端不改，Keycloak 不动，静态软件更新也不属于这次迁移。RAG 是后来另行加入的服务器检索能力，记录里允许用 Java + LangChain4j 做，但不能据此声称 AI 提示词和生成也已经迁到 Java。服务器整体于 2026 年 10 月 16 日正式切到 Java；用户登录、同步、上课的实测记录支持当前业务链已接通，注册、找回等发邮件流程仍未在线上真实走过。<span role="complementary">[D03]</span> <strong>（深一层）</strong></p>
+<p>像自习室把借书、收费和门禁这些后台账务逐项交给新系统，教室里学生用的桌面、老师讲课方式和校门身份系统先照旧；每换一项先和旧账对对，再分区启用，发现问题有回退路。比喻只说明迁移边界和顺序，不表示 Java 天然更快或更适合所有工作。结果是服务器后端业务当前由 Java 正式服务，客户端与 Python AI 编排各守原有职责。</p>
+<p><strong>你可以这样跟面试官说：</strong>“用户求职方向是 Java + AI，因此服务器适合 Java 的业务按块迁移，客户端不动，模型请求仍从客户端直连。Java 与 Python 遵守同一 HTTP 契约，正式上线时整组切到 Java 并保留回退；提示词和客户端编排继续用 Python。”</p>
+<h3>为什么没有把模型调用和所有客户端逻辑也迁到 Java？</h3>
+<ul><li>用户决定把服务器上适合 Java 的业务部分改写为 Java，同时尽量不影响现有服务；AI 提示词和编排继续用 Python，模型仍由客户端直连。<span role="complementary">[D03]</span></li></ul>
+<ul><li>客户端不改，Java 与 Python 遵守同一 HTTP 契约。<span role="complementary">[D03]</span></li></ul>
+<ul><li>部署前影子对比；代码按业务逐块迁移，正式上线时整组切流并保留回退路径。<span role="complementary">[D03]</span></li></ul>
+<h3>学习路线：本节出处</h3>
+<aside aria-label="阅读出处，不进课程">
+<table><tbody>
+<tr><td>编号</td><td>说法</td><td>出处</td></tr>
+<tr><td>D03</td><td>Java 迁移背景、边界、分步与HTTP契约、正式上线及未在线验收的账号流程</td><td><code>docs/project/CURRENT_STATE.md:284-306</code>，[ARCH-09]；部署和当前状态见 <code>docs/project/CURRENT_STATE.md:300-301</code></td></tr>
+<tr><td>延伸阅读</td><td>接着读</td><td><a href="../01-overall-architecture.md">01 总架构</a>；07 账号（待汇总）</td></tr>
+</tbody></table>
+</aside>
+<h2>4. 大知识点按主题分组，大小由主题决定｜偶尔问</h2>
+<p>主题连贯，内容不漏不重。<span role="complementary">[D04]</span> <strong>（一句话层）</strong></p>
+<p><strong>背景：</strong>JavaGuide 计划里一个模块被机械地拆成许多小点，网关、配置中心、分布式事务等主题混在一起；标题有的只是列表项或“总结”，学习时很难知道正在讲什么。用户提出的不是“把点数削到某个固定数字”，而是让内容连贯、不要太碎。<span role="complementary">[D04]</span></p>
+<p><strong>决定：</strong>知识点按主题重新分组，大小不设上下限，不机械追求每点相同；小要点、讲义和题保持不变，只调整大点分组与不清楚的标题。<span role="complementary">[D04]</span> <strong>（三句话层）</strong></p>
+<p>重分主题前，样本模块有 80 个大点、216 个小要点；模型提出主题分组和标题，程序检查每个小要点恰好归入一次。换入方案保留已经学过的点，并在副本上检查预演、换入、回滚、课堂和计划详情。当前记录显示第六模块从 80 个大点整理为 45 个，已经换入用户计划，但效果仍待用户查看；所以结果可以说“完成结构调整并保留内容”，不能说用户已验收学习体验。<span role="complementary">[D04]</span> <strong>（深一层）</strong></p>
+<p>像把自习室书架从“每个小标题占一格”改成按主题分区：网关相关材料放在一起，配置中心另设一组；每本书和里面的笔记不换，只调整归档位置和标签。这个比喻不代表软件只靠人工挪书，实际由模型提出分组、程序校验完整性，架构师在用户数据上执行换入。决定的后果是主题更集中、点数减少，但每个主题的大小可能不同，内容也没有因此自动变短。</p>
+<p><strong>你可以这样跟面试官说：</strong>“JavaGuide 计划按目录切得太碎，相关主题散在不同知识点里。用户决定按主题分组，不设大小上下限；小要点、讲义和题都保留，只改上层分组。程序校验每个小要点只归属一次，再在副本里验证换入和回滚。”</p>
+<h3>为什么知识点不按固定时长或数量切？</h3>
+<ul><li>用户提出的不是“把点数削到某个固定数字”，而是让内容连贯、不要太碎。<span role="complementary">[D04]</span></li></ul>
+<ul><li>小要点、讲义和题保持不变，只调整大点分组与不清楚的标题。<span role="complementary">[D04]</span></li></ul>
+<ul><li>程序检查每个小要点恰好归入一次。<span role="complementary">[D04]</span></li></ul>
+<h3>学习路线：本节出处</h3>
+<aside aria-label="阅读出处，不进课程">
+<table><tbody>
+<tr><td>编号</td><td>说法</td><td>出处</td></tr>
+<tr><td>D04</td><td>问题背景、用户按主题重分且不设大小上下限、保持小要点/讲义/题、校验与当前用户验收边界</td><td><code>docs/project/CURRENT_STATE.md:1146-1155</code>，[BUG-104]；换入数量及待用户查看见 <code>docs/project/CURRENT_STATE.md:1147,1158</code></td></tr>
+<tr><td>延伸阅读</td><td>接着读</td><td>03 建计划、05 课堂（待写）；08 本地数据与时长账本（待写）</td></tr>
+</tbody></table>
+</aside>
+<h2>5. 本机把版本准备妥，再手动发布一个不可改写的版本｜偶尔问</h2>
+<p>本机验妥，再走发布链路。<span role="complementary">[D05]</span> <strong>（一句话层）</strong></p>
+<p><strong>背景：</strong>软件更新会替换用户正在使用的文件；如果发布前后版本内容变化，用户拿到的文件和版本清单就可能对不上。当前发布记录要求日常版本默认只发软件内更新文件和版本清单，不编安装程序；发布方式是 GitHub Actions 构建、本机签名、再发布。<span role="complementary">[D05]</span></p>
+<p><strong>决定：</strong>发版前先在本机把候选版本验过，确认后再推送并触发一次 GitHub Actions 发布链；当前流水线由 GitHub Actions 构建、本机签名、再执行发布。签名私钥留在本机，发布出去的版本号不再改内容。<span role="complementary">[D05]</span> <strong>（三句话层）</strong></p>
+<p>这不等于把签名密钥交给 GitHub：GitHub Actions 手动触发构建，本机签名，再执行发布。日常更新默认不重新编安装器，给新用户或累计足够改动时才考虑编；用户端会验签、下载变更文件、替换程序并在中断时保留可恢复状态。当前 2.0.25 是软件内更新版本，而下载站安装器仍是 2.0.15；这说明安装包和软件内更新不是同一条发布通道。<span role="complementary">[D05]</span> <strong>（深一层）</strong></p>
+<p>像自习室贴出一版已经盖章的课表：先在校内逐项核对，确认后再公开；公开后不把同一个版本号换成另一张课表。GitHub Actions 是构建流程的一环，本机保管签名钥匙并完成签名，发布步骤把签名后的内容送到更新站。比喻只表示先核对、签名和版本内容固定，不代表发布只靠一个按钮，也不表示当前每种安装场景都已由用户验收。后果是版本和签名可核对，日常只传变化文件；尚未走过的全新安装与注册不能借此说成已验收。</p>
+<p><strong>你可以这样跟面试官说：</strong>“发版按固定链路走：先在本机核对版本，再手动触发 GitHub Actions 构建；本机用不出本机的私钥签名，最后发布更新文件和清单。版本号一旦发出就不改内容，用户端会验签后再更新。”</p>
+<h3>为什么私钥留在本机，版本发布后不再改内容？</h3>
+<ul><li>发版前先在本机把候选版本验过，确认后再推送并触发一次 GitHub Actions 发布链。<span role="complementary">[D05]</span></li></ul>
+<ul><li>GitHub Actions 手动触发构建，本机签名，再执行发布。<span role="complementary">[D05]</span></li></ul>
+<ul><li>签名私钥留在本机，发布出去的版本号不再改内容。<span role="complementary">[D05]</span></li></ul>
+<h3>学习路线：本节出处</h3>
+<aside aria-label="阅读出处，不进课程">
+<table><tbody>
+<tr><td>编号</td><td>说法</td><td>出处</td></tr>
+<tr><td>D05</td><td>本机先验证、确认后再推送并触发发布；当前 GitHub Actions 构建—本机签名—发布顺序、版本不可变、私钥位置和当前发布状态</td><td><code>D:/MentorFlow/.local/tasks/163-MF07.md</code> 第 3 项；<code>docs/project/CURRENT_STATE.md:569,583-585</code>，[SYS-06]；发布清单见 <code>D:/MentorFlow-office/library/repo/AGENTS.md</code> 第 17 行</td></tr>
+<tr><td>延伸阅读</td><td>接着读</td><td>09 发布更新、10 安装启动（待写）</td></tr>
+</tbody></table>
+</aside>
+<h2>学习路线：不用背清单</h2>
+<p>记住五个决定各自保护什么：AI 不越过资料和宿主规则，模型请求由客户端直连、不经 MentorFlow 服务器中转，Java 迁移按原接口分步走，知识点按主题组织，发布内容与签名保持可核对。版本号、工作流编号和每次发布的构建编号不用背；需要时从对应出处表和项目状态查。每个取舍都可以从背景讲起，再说明用户定了什么，最后讲它在系统里留下什么边界。</p>
+</main></body></html>
