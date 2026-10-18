@@ -196,6 +196,40 @@ def github_repo(url: str) -> tuple[str, str] | None:
     return _repo_parts(*parts[:2]) if len(parts) >= 2 else None
 
 
+def github_recommendation_key(url: str) -> str | None:
+    """Return repository-wide identity for recommendation deduplication.
+
+    GitHub's repository home, README/blob links, branches and subdirectories
+    all describe one importable repository. Keep ``normalize_url`` page-level
+    because other callers need precise URL identity.
+    """
+    repo = github_repo(url)
+    return f"github:{repo[0]}/{repo[1]}" if repo else None
+
+
+_GITHUB_NONCONTENT_ROUTES = frozenset({
+    "releases", "tags", "issues", "pull", "pulls", "actions",
+    "projects", "discussions", "commits", "branches", "compare",
+    "network", "settings", "security", "notifications",
+})
+
+
+def is_noncontent_github_url(url: str) -> bool:
+    """Whether a GitHub URL is a repository management/activity page.
+
+    The repository wiki is intentionally not rejected here: it may contain
+    substantive documentation. It still shares repository identity for
+    deduplication against a user-provided repository.
+    """
+    if not github_repo(url):
+        return False
+    normalized = normalize_url(url)
+    if not normalized:
+        return False
+    parts = [unquote(part).casefold() for part in urlsplit(normalized).path.strip("/").split("/")]
+    return len(parts) >= 3 and parts[2] in _GITHUB_NONCONTENT_ROUTES
+
+
 def _matches(host: str, rule: DomainRule) -> bool:
     if "*" in rule.match or "?" in rule.match:
         return fnmatchcase(host, rule.match)
@@ -247,6 +281,8 @@ def recommendation_rejection(url: str, *, lists=None, allow_video=False) -> str:
     if not normalized:
         return '链接无效'
     parsed = urlsplit(normalized)
+    if is_noncontent_github_url(normalized):
+        return 'GitHub 仓库管理或动态页面，不是正文资料'
     policy = lists or load_lists()
     local = load_lists()
     # Only the recommendation worker opts into the video-only fallback. Other

@@ -31,7 +31,9 @@ from .source_quality import is_landing_page, body_publication_date, junk_reasons
 from .source_quality import is_video_source, recommendation_key, VIDEO_NOTE
 from .source_follow import lesson_links, is_spec_overview_index, is_document_preview
 from .source_filter import (RawHit, SourceLists, blocked_keyword_reasons,
-                            load_lists, normalize_url, screen, classify_source)
+                            load_lists, normalize_url, screen, classify_source,
+                            github_recommendation_key, is_noncontent_github_url,
+                            recommendation_rejection)
 from refactor.learning.course.research import FetchedContent
 from refactor.learning.course.research import ResearchService
 from refactor.learning.course.research import ResearchError
@@ -96,13 +98,51 @@ class GithubStars:
             return None
 
 
-def prepare_recommendations(rows, *, lists=None, stars=None, cancel=None, previous=()):
-    """Order checked links; video is a fallback only when no text was found."""
+def _recommendation_identity(value):
+    if not isinstance(value, str):
+        return None
+    return github_recommendation_key(value) or (
+        'url:' + normalized if (normalized := normalize_url(value)) else None)
+
+
+def prepare_recommendations(rows, *, lists=None, stars=None, cancel=None, previous=(), provided=()):
+    """Filter repository aliases before ranking; video is only a text fallback.
+
+    ``provided`` and ``previous`` accept the same card dictionaries as rows,
+    or URL strings. This keeps user-owned GitHub repositories from returning
+    as the root, README, branch or subdirectory under a different card title.
+    """
+    def urls(items):
+        for item in items:
+            if isinstance(item, str):
+                yield item
+            elif isinstance(item, Mapping):
+                for field in ('final_url', 'url'):
+                    value = item.get(field)
+                    if isinstance(value, str):
+                        yield value
+
+    provided_rows, previous_rows = tuple(provided), tuple(previous)
+    excluded = {_recommendation_identity(url) for url in (*tuple(urls(provided_rows)), *tuple(urls(previous_rows)))}
+    excluded.discard(None)
+    seen = set(excluded)
+    # Existing user-selected and previous text prevents a duplicate-only round
+    # from surfacing videos as if no text material existed.
+    has_prior_text = any(
+        not is_video_source(url, '') for url in urls((*provided_rows, *previous_rows))
+    )
     cards = []
     for row in rows:
         if cancel and cancel.is_set():
             raise ResearchCancelled()
         card = dict(row)
+        url = card.get('final_url') or card.get('url', '')
+        if is_noncontent_github_url(url) or recommendation_rejection(url, lists=lists, allow_video=True):
+            continue
+        identity = _recommendation_identity(url)
+        if not identity or identity in seen:
+            continue
+        seen.add(identity)
         card['is_video'] = is_video_source(card.get('final_url') or card['url'],
                                          card.get('title', ''), card.pop('_page_prefix', ''))
         if card['is_video']:
@@ -116,9 +156,7 @@ def prepare_recommendations(rows, *, lists=None, stars=None, cancel=None, previo
             if count is not None:
                 card['github_stars'] = count
         cards.append(card)
-    has_text = any(not c['is_video'] for c in cards) or any(
-        not c.get('is_video', is_video_source(c.get('final_url') or c['url'], c.get('title', '')))
-        for c in previous)
+    has_text = any(not c['is_video'] for c in cards) or has_prior_text
     if has_text:
         cards = [c for c in cards if not c['is_video']]
     return sorted(cards, key=lambda c: recommendation_key(c, lists=lists))

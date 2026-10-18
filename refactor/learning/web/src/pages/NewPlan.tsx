@@ -143,14 +143,19 @@ export function NewPlan() {
   const accept = React.useCallback((d: Draft) => { idRef.current = d.plan_id; setDraft(d); setStatus(d.busy) }, [])
 
   React.useEffect(() => {
-    const load = planId ? call<{ draft: Draft }>("plan.get", { plan_id: planId }) : call<{ draft: Draft }>("plan.current")
     let alive=true
+    let receivedCurrentDraft=false
+    idRef.current=planId
     setLoadError('')
-    load.then((r) => {if(alive)accept(r.draft)}).catch((e) => {if(alive)setLoadError(e.message)})
     const offs = [
-      on("plan_draft", (d: Draft) => { if (d.plan_id === idRef.current) accept(d) }),
+      on("plan_draft", (d: Draft) => {
+        const expectedPlanId = planId ?? idRef.current
+        if (expectedPlanId && d.plan_id === expectedPlanId) { receivedCurrentDraft=true; accept(d) }
+      }),
       on("plan_status", (d: { plan_id: string; text: string }) => { if (d.plan_id === idRef.current) setStatus(d.text || null) }),
     ]
+    const load = planId ? call<{ draft: Draft }>("plan.get", { plan_id: planId }) : call<{ draft: Draft }>("plan.current")
+    load.then((r) => {if(alive && !receivedCurrentDraft)accept(r.draft)}).catch((e) => {if(alive && !receivedCurrentDraft)setLoadError(e.message)})
     return () => {alive=false;offs.forEach((off) => off());abort.current?.abort()}
   }, [planId, accept, toast, set,loadAttempt])
 
