@@ -1,235 +1,308 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
-<title>面试自测：六轮把项目讲清楚</title>
-<style>body{max-width:54rem;margin:2rem auto;padding:0 1rem;font:18px/1.8 system-ui}aside{background:#f4f5f7;font-size:.8em;padding:1rem}table{border-collapse:collapse;width:100%}td,th{border:1px solid #bbb;padding:.4rem}a{color:#165baa}code{overflow-wrap:anywhere}</style></head><body><main><header>
-<h1>面试自测：六轮把项目讲清楚</h1>
-<p>面试像一场排练。</p>
-<p>本篇把 00～12 的主线和专题整理成六轮连续追问：项目介绍、技术栈、AI、Java 后端、工程化、BUG 故事。“常被问／偶尔问”表示复习优先级，不是面试频率统计。每题先有可直接口述的回答，再列 3～5 条原文参考要点和对应来源。事实基线：提交 37f96400；项目状态截至 2026-10-18。<span role="complementary">[M00]</span></p>
-<p>贯穿场景是一间自习室的面试排练：先介绍房间和课程，再说明老师、后台、交付与维修。比喻只帮助记忆分工，真实系统由客户端、服务器、数据库和网络协作。<span role="complementary">[M00]</span></p>
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>面试自测：六组练习把项目讲清楚</title><style>body{max-width:54rem;margin:2rem auto;padding:0 1rem;font:18px/1.8 system-ui;color:#242424;background:#fff}h2{margin-top:2.2em}h3,h4{margin-top:1.6em}aside{background:#f4f5f7;font-size:.8em;padding:1rem;overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.9em}td,th{border:1px solid #bbb;padding:.4rem;overflow-wrap:anywhere}a{color:#165baa}code{overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere}img,svg{max-width:100%;height:auto}@media(prefers-color-scheme:dark){body{color:#eee;background:#1d1e24}aside{background:#292b33}a{color:#9bc8ff}td,th{border-color:#666}}</style></head><body><main>
+<header><h1>面试自测：六组练习把项目讲清楚</h1>
+<p>把它当成六组练习题：先自己回答，再看参考说法和原文要点。每组围绕一个面试主题。</p>
+<p>本篇把 00～12 的主线和专题整理成六组练习：项目介绍、技术栈、AI、Java 后端、工程化、BUG 故事。“常被问／偶尔问”表示复习优先级，不是面试频率统计。先读每组的问题，试讲 30 秒，再展开参考要点核对；每组要点逐字摘自对应专题。事实核验基线：<code>e61fd00d</code>；项目状态截至 2026-10-18。<span role="complementary">[M00]</span></p>
+<p>先遮住参考要点，只看各组问题作答；不会的先标记，答完再展开答案并回到出处核对。比喻只帮助记忆分工，真实系统由客户端、服务器、数据库和网络协作。<span role="complementary">[M00]</span></p>
 </header>
-<h2>第一轮：项目介绍与协作经历｜常被问</h2>
+<h2>先作答：六组练习题</h2>
+<p>先按表中问题口述，再往下看参考材料。可以用纸遮住后文；每题先讲结论，再讲一个依据和一个边界。</p>
+<table><thead><tr><th>组</th><th>先回答的问题</th></tr></thead><tbody><tr><td>项目介绍</td><td>MentorFlow 解决什么问题？你如何说明需求、AI 实现和验证的贡献边界？</td></tr><tr><td>技术栈</td><td>页面、Python、本地课程库、Java 服务和模型怎样分工？</td></tr><tr><td>计划与课堂</td><td>为什么计划和课堂状态由程序控制？资料怎样变成有依据的回答？</td></tr><tr><td>Java 后端</td><td>迁移了什么、保留了什么？身份验证和业务授权有什么区别？</td></tr><tr><td>工程交付</td><td>为什么下载完成、自动测试通过或健康状态都不等于整体验收？</td></tr><tr><td>故障故事</td><td>任选离线同步覆盖或中断恢复，讲现象、证据、修复和边界。</td></tr></tbody></table>
+<h2>第一轮：项目介绍与协作经历<span role="complementary">｜常被问</span></h2>
 <h3>项目用途</h3>
-<p>先讲项目用途。<strong>一句话层。</strong><span role="complementary">[M01]</span></p>
-<p>MentorFlow 是为了方便用 AI 学项目知识而做的桌面 AI 教师平台。用户给目标和资料，确认计划后进入课堂，程序守住学习状态和判题规则。Java 服务处理账号、同步与资料检索，客户端用自己的模型生成回答；安装更新通过真打包流程排练。<strong>三句话层。</strong><span role="complementary">[M01]</span></p>
-<p>开发上由架构师拆任务、GPT 员工按范围实现并交回执，再核对证据和集成。我会清楚说明用户决定、AI 实现和验证各自的边界。<strong>深一层。</strong><span role="complementary">[M01,M02]</span></p>
-<p><strong>你可以这样跟面试官说：</strong>“MentorFlow 是为了方便用 AI 学项目知识而做的桌面 AI 教师平台。用户给目标和资料，确认计划后进入课堂，程序守住学习状态和判题规则。Java 服务处理账号、同步与资料检索，客户端用自己的模型生成回答；安装更新通过真打包流程排练。开发上由架构师拆任务、GPT 员工按范围实现并交回执，再核对证据和集成。我会清楚说明用户决定、AI 实现和验证各自的边界。”</p>
+<p>先讲项目用途。<strong role="complementary">一句话层。</strong><span role="complementary">[M01]</span></p>
+<p>MentorFlow 是按资料教学的桌面 AI 教师平台。用户给目标和资料，确认计划后进入课堂；AI 负责讲解，本机程序负责流程、判题规则和学习记录。Java 服务负责账号、同步与资料检索，模型请求由客户端直连。<strong role="complementary">三句话层。</strong><span role="complementary">[M01]</span></p>
+<p>开发上由架构师拆任务、AI 按范围实现并交付证据，再核对和集成。面试时应按自己的真实职责说明用户决定、AI 实现和验证的边界，不要把 AI 生成的代码说成自己逐行编写。<strong role="complementary">深一层。</strong><span role="complementary">[M01]</span></p>
+<p><strong>你可以这样跟面试官说：</strong>“MentorFlow 是按资料教学的桌面 AI 教师平台。用户给目标和资料，确认计划后进入课堂；AI 负责讲解，本机程序负责流程、判题规则和学习记录。Java 服务负责账号、同步与资料检索，模型请求由客户端直连。”</p>
 <h4>常被问｜请用一分钟介绍 MentorFlow？</h4>
-<ul><li>MentorFlow 是为了方便用 AI 学项目知识而做的桌面 AI 教师平台。</li></ul>
-<ul><li>用户给目标和资料，确认计划后进入课堂，程序守住学习状态和判题规则。</li></ul>
-<ul><li>Java 服务处理账号、同步与资料检索，客户端用自己的模型生成回答；安装更新通过真打包流程排练。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>MentorFlow 是按资料教学的桌面 AI 教师平台。</p>
+</li>
+<li><p>用户给目标和资料，确认计划后进入课堂；AI 负责讲解，本机程序负责流程、判题规则和学习记录。</p>
+</li>
+<li><p>Java 服务负责账号、同步与资料检索，模型请求由客户端直连。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M01</td><td><a href="00-from-zero-to-one.html">00 从零到一</a>：起源段、“学习路线：一分钟说完”；<a href="01-overall-architecture.html">01 总架构</a>：第1、3、4节</td></tr>
-<tr><td>M02</td><td><a href="00-from-zero-to-one.html">00 从零到一</a>：第九站“让 AI 员工按任务协作”</td></tr>
-</table></aside>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M01</td><td><a href="00-from-zero-to-one.html">00 从零到一</a>：起源段、“学习路线：一分钟说完”；<a href="01-overall-architecture.html">01 总架构</a>：第1、3、4节</td></tr></tbody></table>
+</aside>
 <h3>协作与证据</h3>
-<p>再讲贡献边界。<strong>一句话层。</strong><span role="complementary">[M02]</span></p>
-<p>本批工作采用 AI 架构师拆分任务、多个 GPT 员工并行完成专题、回执说明交付和证据的方式；架构师负责核对和集成。AI 生成的代码要如实归属，不能说成用户亲手逐行编写。<strong>三句话层。</strong><span role="complementary">[M02]</span></p>
-<p>项目也要求关键交付走真打包排练，代码看起来正常不等于用户安装更新已通过。像总设计师把装修拆成工单，再逐项验收；这个比喻不表示 AI 员工能自行决定产品方向。<strong>深一层。</strong><span role="complementary">[M02]</span></p>
-<p><strong>你可以这样跟面试官说：</strong>“这批工作由 AI 架构师拆分任务，多个 GPT 员工按边界实现并提交回执，架构师核对后集成。需求取舍由用户确认，AI 完成的代码不会说成我亲手逐行写的；关键交付还要真包排练。”</p>
+<p>再讲贡献边界。<strong role="complementary">一句话层。</strong><span role="complementary">[M02]</span></p>
+<p>项目采用需求拆分、按范围实现、交付证据、核对集成的协作方式。面试者应按本人真实角色说明参与部分，不能把 AI 生成的代码说成自己亲手逐行编写。<strong role="complementary">三句话层。</strong><span role="complementary">[M02]</span></p>
+<p>项目协作先写清需求、允许修改的文件和验收方式，实现者按边界完成工作，再用回执说明改动和验证证据。像先把任务和验收标准写清，再核对交付；这不表示实现者可以自行决定产品方向。<strong role="complementary">深一层。</strong><span role="complementary">[M02]</span></p>
+<p><strong>你可以这样跟面试官说：</strong>“项目把需求拆成有边界的任务，执行者交回实现和证据，再由负责人核对集成。我会按自己的真实职责说明参与部分，不把 AI 生成的代码说成亲手逐行编写；关键交付还要真包排练。”</p>
 <h4>偶尔问｜代码是你亲手逐行写的吗？</h4>
-<ul><li>本批工作采用 AI 架构师拆分任务、多个 GPT 员工并行完成专题、回执说明交付和证据的方式；架构师负责核对和集成。</li></ul>
-<ul><li>AI 生成的代码要如实归属，不能说成用户亲手逐行编写。</li></ul>
-<ul><li>项目也要求关键交付走真打包排练，代码看起来正常不等于用户安装更新已通过。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>项目协作先写清需求、允许修改的文件和验收方式。</p>
+</li>
+<li><p>实现者按边界完成工作，再用回执说明改动和验证证据。</p>
+</li>
+<li><p>口述自己的贡献时，应如实区分需求决定、AI 实现和本人验证。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M02</td><td><a href="00-from-zero-to-one.html">00 从零到一</a>：第九站“让 AI 员工按任务协作”</td></tr>
-</table></aside>
-<h2>第二轮：技术栈连环问｜常被问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M02</td><td><a href="00-from-zero-to-one.html">00 从零到一</a>：第九站“开发时怎样分工与核对”；协作描述应按面试者本人真实经历调整</td></tr></tbody></table>
+</aside>
+<h2>第二轮：技术栈连环问<span role="complementary">｜常被问</span></h2>
 <h3>请求路径</h3>
-<p>先说请求路径。<strong>一句话层。</strong><span role="complementary">[M03]</span></p>
-<p>MentorFlow 是 Windows 桌面程序，PySide6 建立桌面窗口，Qt WebEngine 显示 React 页面；页面经 QWebChannel 把操作交给 Python 宿主。宿主管学习流程，界面负责呈现和交互；用户点“开始”后由宿主处理，而不是让网页直接改数据库。实际交接是有方法名、参数和返回消息的 JSON 请求，并不是网页能随便改后台文件。<strong>三句话层。</strong><span role="complementary">[M03]</span></p>
-<p>像前台把请求交给本机老师处理；实际传递的是受控消息，不是纸单。<strong>深一层。</strong><span role="complementary">[M03]</span></p>
+<p>先说请求路径。<strong role="complementary">一句话层。</strong><span role="complementary">[M03]</span></p>
+<p>MentorFlow 是 Windows 桌面程序，PySide6 建立桌面窗口，Qt WebEngine 显示 React 页面；页面经 QWebChannel（网页与本机程序之间传递请求的桥）把操作交给 Python 本机程序。QWebChannel 把带编号、方法名和参数的请求交给宿主处理器。<strong role="complementary">三句话层。</strong><span role="complementary">[M03]</span></p>
+<p>像前台把请求交给本机老师处理；实际传递的是受控消息，不是纸单。<strong role="complementary">深一层。</strong><span role="complementary">[M03]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“PySide6 和 Qt WebEngine 承载 React 页面，页面通过 QWebChannel 把操作交给本机 Python。Python 处理学习业务，再把结果交回界面；桥传递带方法和参数的请求，不让网页直接改数据库。”</p>
 <h4>常被问｜前端和 Python 怎样接力处理一次操作？</h4>
-<ul><li>MentorFlow 是 Windows 桌面程序，PySide6 建立桌面窗口，Qt WebEngine 显示 React 页面；页面经 QWebChannel 把操作交给 Python 宿主。</li></ul>
-<ul><li>宿主管学习流程，界面负责呈现和交互；用户点“开始”后由宿主处理，而不是让网页直接改数据库。</li></ul>
-<ul><li>实际交接是有方法名、参数和返回消息的 JSON 请求，并不是网页能随便改后台文件。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>React 负责显示交互，Python 宿主处理学习业务与本地状态。</p>
+</li>
+<li><p>QWebChannel 把带编号、方法名和参数的请求交给宿主处理器。</p>
+</li>
+<li><p>宿主返回响应或事件，页面据此更新画面。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M03</td><td><a href="02-tech-stack.html">02 技术栈</a>：第1节“开门看到的是什么”；<a href="01-overall-architecture.html">01 总架构</a>：第1节“前台、办事屏和本机老师分工接待”</td></tr>
-</table></aside>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M03</td><td><a href="02-tech-stack.html">02 技术栈</a>：第1节“开门看到的是什么”；<a href="01-overall-architecture.html">01 总架构</a>：第1节“前台、办事屏和本机老师分工接待”</td></tr></tbody></table>
+</aside>
 <h3>三类数据</h3>
-<p>再分三类数据。<strong>一句话层。</strong><span role="complementary">[M04]</span></p>
-<p>学生手里的笔记本和资料室的共享档案职责不同：本机 SQLite 保存学习数据，服务器 PostgreSQL 保存服务器数据；同步传递相关记录，不是每次点击都直接写服务器库。每个账号有自己的 <code>course.sqlite3</code>，保存计划、资料文字块、题库、作答和账本事件。上传的原文件另外保存在这个账号的 <code>files/&lt;sha256&gt;</code> 下，文件名来自内容摘要。跨设备同步传记录和提取出的文字，不传这些原件。客户端用自己的 Key 直连生成模型；项目配置了 DeepSeek 提供商及其默认模型，Key 放 Windows 凭据里。<strong>三句话层。</strong><span role="complementary">[M04]</span></p>
-<p>事务控制一组写入的提交或撤回，认证和行级策略各管不同边界；这个账本比喻不代表 SQLite 文件就是服务器数据库。<strong>深一层。</strong><span role="complementary">[M04]</span></p>
-<p><strong>你可以这样跟面试官说：</strong>“SQLite 管本机课程，PostgreSQL 管服务器数据，客户端用用户自己的 Key 直连模型。同步是独立记录链路；事务保证一组本地写入一起完成，认证通过也不代表可以读所有账号数据。”</p>
+<p>再分三类数据。<strong role="complementary">一句话层。</strong><span role="complementary">[M04]</span></p>
+<p>本机 SQLite 保存学习数据，服务器 PostgreSQL 保存服务器数据；同步传递相关记录，不是每次点击都直接写服务器库。课程库保存计划、资料文字块、题库、作答和账本事件。客户端把抽取后的文字块分批上传给 Java 服务。客户端用自己的 Key 直连生成模型；项目配置了 DeepSeek 提供商及其默认模型，Key 从本机操作系统的凭据库读取。<strong role="complementary">三句话层。</strong><span role="complementary">[M04]</span></p>
+<p>事务控制一组写入的提交或撤回，认证和行级策略各管不同边界；这个账本比喻不代表 SQLite 文件就是服务器数据库。<strong role="complementary">深一层。</strong><span role="complementary">[M04]</span></p>
+<p><strong>你可以这样跟面试官说：</strong>“SQLite 管本机课程，PostgreSQL 管服务器数据，客户端用用户自己的 Key 直连模型。同步是独立记录链路；事务保证一组写入一起完成，认证通过也不代表可以读所有账号数据。”</p>
 <h4>偶尔问｜为什么不把课程数据、服务器数据和模型请求放在一起？</h4>
-<ul><li>学生手里的笔记本和资料室的共享档案职责不同：本机 SQLite 保存学习数据，服务器 PostgreSQL 保存服务器数据；同步传递相关记录，不是每次点击都直接写服务器库。</li></ul>
-<ul><li>跨设备同步传记录和提取出的文字，不传这些原件。</li></ul>
-<ul><li>客户端用自己的 Key 直连生成模型；项目配置了 DeepSeek 提供商及其默认模型，Key 放 Windows 凭据里。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>本机 SQLite 保存学习数据，服务器 PostgreSQL 保存服务器数据；同步传递相关记录，不是每次点击都直接写服务器库。</p>
+</li>
+<li><p>客户端把抽取后的文字块分批上传给 Java 服务。</p>
+</li>
+<li><p>客户端用自己的 Key 直连生成模型；项目配置了 DeepSeek 提供商及其默认模型，Key 从本机操作系统的凭据库读取。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M04</td><td><a href="02-tech-stack.html">02 技术栈</a>：第2节“谁办业务，谁查身份”、第3节“两本账，为什么不放一起”、第4节“找资料的人和讲课的人”；<a href="08-local-data-and-ledger.html">08 本地数据</a>：第1节“本机课程库与文件袋”；<a href="01-overall-architecture.html">01 总架构</a>：第2节“本机老师把课程和进度记在自己的账本里”</td></tr>
-</table></aside>
-<h2>第三轮：计划、课堂与资料问答｜常被问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M04</td><td><a href="02-tech-stack.html">02 技术栈</a>：第2节“谁办业务，谁查身份”、第3节“两本数据账”、第4节“检索与生成”；<a href="08-local-data-and-ledger.html">08 本地数据</a>：第1节“本机课程库与文件袋”；<a href="01-overall-architecture.html">01 总架构</a>：第2节“本机老师把课程和进度记在自己的账本里” ；<a href="04-rag-from-upload-to-answer.html">04 资料问答 RAG</a>：第2节本机抽文与文字上传</td></tr></tbody></table>
+</aside>
+<h2>第三轮：计划、课堂与资料问答<span role="complementary">｜常被问</span></h2>
 <h3>计划与课堂状态</h3>
-<p>先让用户确认。<strong>一句话层。</strong><span role="complementary">[M05]</span></p>
-<p>AI 帮忙理解补充要求、追问缺少的信息，并给一份需求摘要和大致模块。用户确认前，不直接生成完整知识地图；本机控制流程的程序按阶段执行，付费生成和开始计划也由用户点按钮确认。课堂状态机（也就是控制课堂流程的程序）决定当前是开场、讲解、检测还是重测；老师负责回应，题目与作答状态由程序管理。<strong>三句话层。</strong><span role="complementary">[M05]</span></p>
-<p>控制课堂流程的程序负责推进课程，老师不能因为聊天而改计划、取消检测或直接判学生过关。<strong>深一层。</strong><span role="complementary">[M05]</span></p>
+<p>先让用户确认。<strong role="complementary">一句话层。</strong><span role="complementary">[M05]</span></p>
+<p>AI 帮忙理解补充要求、追问缺少的信息，并给一份需求摘要和大致模块。用户确认前，不直接生成完整知识地图；本机控制流程的程序按阶段执行，付费生成和开始计划也由用户点按钮确认。课堂状态机（也就是控制课堂流程的程序）决定当前是开场、讲解、检测还是重测；老师负责回应，题目与作答状态由程序管理。<strong role="complementary">三句话层。</strong><span role="complementary">[M05]</span></p>
+<p>控制课堂流程的程序负责推进课程，老师不能因为聊天而改计划、取消检测或直接判学生过关。<strong role="complementary">深一层。</strong><span role="complementary">[M05]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“计划先收集并校验需求，再让 AI 帮忙整理摘要和模块；用户确认前不会直接生成完整地图。课堂由状态机控制阶段，老师负责回应，题目、作答状态和进度由程序管理。”</p>
 <h4>常被问｜为什么不让 AI 一次写完计划，或直接改课堂状态？</h4>
-<ul><li>AI 帮忙理解补充要求、追问缺少的信息，并给一份需求摘要和大致模块。</li></ul>
-<ul><li>用户确认前，不直接生成完整知识地图；本机控制流程的程序按阶段执行，付费生成和开始计划也由用户点按钮确认。</li></ul>
-<ul><li>课堂状态机（也就是控制课堂流程的程序）决定当前是开场、讲解、检测还是重测；老师负责回应，题目与作答状态由程序管理。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>AI 帮忙理解补充要求、追问缺少的信息，并给一份需求摘要和大致模块。</p>
+</li>
+<li><p>用户确认前，不直接生成完整知识地图；本机控制流程的程序按阶段执行，付费生成和开始计划也由用户点按钮确认。</p>
+</li>
+<li><p>课堂状态机（也就是控制课堂流程的程序）决定当前是开场、讲解、检测还是重测；老师负责回应，题目与作答状态由程序管理。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M05</td><td><a href="03-plan-from-materials.html">03 建计划</a>：第1节“先问清楚想学到哪里”；<a href="05-classroom.html">05 课堂</a>：第1节“课堂不是计时器，而是从讲解走到掌握”；<a href="11-design-decisions.html">11 设计取舍</a>：第1节“AI 可以找资料，不能编题再自己判”</td></tr>
-</table></aside>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M05</td><td><a href="03-plan-from-materials.html">03 建计划</a>：第1节“先问清楚想学到哪里”；<a href="05-classroom.html">05 课堂</a>：第1节“课堂不是计时器，而是从讲解走到掌握”；<a href="11-design-decisions.html">11 设计取舍</a>：第1节“AI 可以找资料，不能编题再自己判”</td></tr></tbody></table>
+</aside>
 <h3>资料到回答</h3>
-<p>再从资料找答案。<strong>一句话层。</strong><span role="complementary">[M06]</span></p>
-<p>本机抽文，文字分批入库。用户选中文件后，客户端在本机抽取文字，切成带页码或章节信息的文本块，再把这些文字块分批送到 Java 服务；原始文件不上传。在 MentorFlow 里，客户端把问题送到 Java 服务找资料，再由客户端把找回的段落连同问题交给模型网关；Java 服务负责查找，不负责生成最终回答。这能让模型回答时多一份可检查的依据，也可能减少凭空发挥；但“给了资料”不等于“答对了”。检索到的段落可能不够，模型也可能读错或答偏。<strong>三句话层。</strong><span role="complementary">[M06]</span></p>
-<p>像跑腿员找出相关讲义交给老师；找到相似段落仍要核对原文。<strong>深一层。</strong><span role="complementary">[M06]</span></p>
+<p>再从资料找答案。<strong role="complementary">一句话层。</strong><span role="complementary">[M06]</span></p>
+<p>本机抽文，文字分批入库。用户选中文件后，客户端在本机抽取文字，切成带页码或章节信息的文本块，再把这些文字块分批送到 Java 服务；原始文件不上传。在 MentorFlow 里，客户端把问题送到 Java 服务找资料，再由客户端把找回的段落连同问题交给模型网关；Java 服务负责查找，不负责生成最终回答。这能让模型回答时多一份可检查的依据，也可能减少凭空发挥；但“给了资料”不等于“答对了”。检索到的段落可能不够，模型也可能读错或答偏。<strong role="complementary">三句话层。</strong><span role="complementary">[M06]</span></p>
+<p>像跑腿员找出相关讲义交给老师；找到相似段落仍要核对原文。<strong role="complementary">深一层。</strong><span role="complementary">[M06]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“客户端本机抽取文字，上传文字分块而不是原文件；Java 检索相关片段，客户端再调用模型生成回答。RAG 增加回答依据但不保证正确，引用要回到原文核对。”</p>
 <h4>常被问｜RAG 从资料到回答经过哪些步骤？</h4>
-<ul><li>用户选中文件后，客户端在本机抽取文字，切成带页码或章节信息的文本块，再把这些文字块分批送到 Java 服务；原始文件不上传。</li></ul>
-<ul><li>在 MentorFlow 里，客户端把问题送到 Java 服务找资料，再由客户端把找回的段落连同问题交给模型网关；Java 服务负责查找，不负责生成最终回答。</li></ul>
-<ul><li>这能让模型回答时多一份可检查的依据，也可能减少凭空发挥；但“给了资料”不等于“答对了”。检索到的段落可能不够，模型也可能读错或答偏。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>用户选中文件后，客户端在本机抽取文字，切成带页码或章节信息的文本块，再把这些文字块分批送到 Java 服务；原始文件不上传。</p>
+</li>
+<li><p>在 MentorFlow 里，客户端把问题送到 Java 服务找资料，再由客户端把找回的段落连同问题交给模型网关；Java 服务负责查找，不负责生成最终回答。</p>
+</li>
+<li><p>这能让模型回答时多一份可检查的依据，也可能减少凭空发挥；但“给了资料”不等于“答对了”。检索到的段落可能不够，模型也可能读错或答偏。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M06</td><td><a href="04-rag-from-upload-to-answer.html">04 资料问答 RAG</a>：第1节“检索增强生成”、第2节“上传与入库”、第4节“生成回答、引用与边界”</td></tr>
-</table></aside>
-<h2>第四轮：Java 后端连环问｜常被问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M06</td><td><a href="04-rag-from-upload-to-answer.html">04 资料问答 RAG</a>：第1节“检索增强生成”、第2节“上传与入库”、第4节“生成回答、引用与边界”</td></tr></tbody></table>
+</aside>
+<h2>第四轮：Java 后端连环问<span role="complementary">｜常被问</span></h2>
 <h3>迁移边界</h3>
-<p>先讲迁移边界。<strong>一句话层。</strong><span role="complementary">[M07]</span></p>
-<p>用户求职方向是 Java + AI，因此服务器适合 Java 的业务按块迁移，客户端不动，模型请求仍从客户端直连。Java 与 Python 遵守同一 HTTP 契约，正式上线时整组切到 Java 并保留回退；提示词和客户端编排继续用 Python。<strong>三句话层。</strong><span role="complementary">[M07]</span></p>
-<p>Keycloak 验证身份，Spring Security 认证进入接口的凭证，业务还要检查账号和工作区成员。<strong>深一层。</strong><span role="complementary">[M07]</span></p>
+<p>先讲迁移边界。<strong role="complementary">一句话层。</strong><span role="complementary">[M07]</span></p>
+<p>用户求职方向是 Java + AI，因此服务器适合 Java 的业务按块迁移，客户端不动，模型请求仍从客户端直连。Java 与 Python 遵守同一 HTTP 契约，服务器业务已于 2026 年 10 月 16 日整组切到 Java 并保留回退；提示词和客户端编排继续用 Python。注册、找回等发邮件流程尚未在线上真实走过。<strong role="complementary">三句话层。</strong><span role="complementary">[M07]</span></p>
+<p>Keycloak 验证身份，Spring Security 认证进入接口的凭证，业务还要检查账号和工作区成员。<strong role="complementary">深一层。</strong><span role="complementary">[M07]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“用户的求职方向是 Java + AI，所以把适合 Java 的服务器业务分块迁移，客户端和模型调用保留原边界。两端遵守同一 HTTP 契约，正式切换时保留回退；身份验证和业务授权仍是不同检查。”</p>
 <h4>常被问｜为什么迁移服务器业务，却保留 Python 客户端和 AI 编排？</h4>
-<ul><li>用户求职方向是 Java + AI，因此服务器适合 Java 的业务按块迁移，客户端不动，模型请求仍从客户端直连。</li></ul>
-<ul><li>客户端不改，Java 与 Python 遵守同一 HTTP 契约。</li></ul>
-<ul><li>提示词和客户端编排继续用 Python。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>用户求职方向是 Java + AI，因此服务器适合 Java 的业务按块迁移，客户端不动，模型请求仍从客户端直连。</p>
+</li>
+<li><p>客户端不改，Java 与 Python 遵守同一 HTTP 契约。</p>
+</li>
+<li><p>提示词和客户端编排继续用 Python。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M07</td><td><a href="11-design-decisions.html">11 设计取舍</a>：第3节“服务器适合的业务逐块迁到 Java”；<a href="02-tech-stack.html">02 技术栈</a>：第2节“谁办业务，谁查身份”</td></tr>
-</table></aside>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M07</td><td><a href="11-design-decisions.html">11 设计取舍</a>：第3节“服务器适合的业务逐块迁到 Java”；<a href="02-tech-stack.html">02 技术栈</a>：第2节“谁办业务，谁查身份”</td></tr></tbody></table>
+</aside>
 <h3>登录与权限</h3>
-<p>再看登录边界。<strong>一句话层。</strong><span role="complementary">[M08]</span></p>
-<p>Keycloak JWT 由资源服务器验证签名和声明；<code>mfn1_a_</code> 原生 access 交给 <code>NativeSessionService</code> 检查进程缓存与数据库中的会话族。验证令牌后，服务还要检查账号是否开放、用户是否属于请求的组织或工作区；令牌有效本身不代表有权读取任意空间。<strong>三句话层。</strong><span role="complementary">[M08]</span></p>
-<p>PostgreSQL 和 Keycloak 是两个独立系统，无法由一个 JDBC 事务同时提交或回滚；检查点允许失败后继续原操作。<strong>深一层。</strong><span role="complementary">[M08]</span></p>
+<p>再看登录边界。<strong role="complementary">一句话层。</strong><span role="complementary">[M08]</span></p>
+<p>身份令牌由资源服务器核对签名和声明；桌面登录服务还会检查它对应的本机进程会话是否仍有效。身份有效后，业务仍要检查账号是否开放、用户是否属于请求的组织或工作区；登录成功不代表有权读取任意空间。<strong role="complementary">三句话层。</strong><span role="complementary">[M08]</span></p>
+<p>PostgreSQL 和 Keycloak 是两个独立系统，无法由一个 JDBC 事务同时提交或回滚；检查点允许失败后继续原操作。<strong role="complementary">深一层。</strong><span role="complementary">[M08]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“Keycloak 提供身份凭据，Spring Security 验证进入接口的令牌；业务再检查账号状态和工作区权限。注销还要跨 PostgreSQL 和 Keycloak 分步执行，失败可从检查点继续。”</p>
 <h4>常被问｜令牌有效是否代表可以读取所有账号数据？</h4>
-<ul><li>Keycloak JWT 由资源服务器验证签名和声明；<code>mfn1_a_</code> 原生 access 交给 <code>NativeSessionService</code> 检查进程缓存与数据库中的会话族。</li></ul>
-<ul><li>验证令牌后，服务还要检查账号是否开放、用户是否属于请求的组织或工作区；令牌有效本身不代表有权读取任意空间。</li></ul>
-<ul><li>PostgreSQL 和 Keycloak 是两个独立系统，无法由一个 JDBC 事务同时提交或回滚。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>原生 access 有效期为 300 秒，刷新后会轮换 refresh；数据库保存刷新令牌摘要和会话主体，不保存刷新令牌明文。</p>
+</li>
+<li><p>验证令牌后，服务还要检查账号是否开放、用户是否属于请求的组织或工作区；令牌有效本身不代表有权读取任意空间。</p>
+</li>
+<li><p>PostgreSQL 和 Keycloak 是两个独立系统，无法由一个 JDBC 事务同时提交或回滚。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M08</td><td><a href="07-account-and-login.html">07 账号</a>：第2节“登录与令牌”、第4节“注销”、第5节“Spring Boot 的门卫、数据库账本与迁移权限”</td></tr>
-</table></aside>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M08</td><td><a href="07-account-and-login.html">07 账号</a>：第2节“登录与令牌”、第4节“注销”、第5节“Spring Boot 的门卫、数据库账本与迁移权限”</td></tr></tbody></table>
+</aside>
 <h3>Java 数据库迁移</h3>
-<p>再看库表权限。<strong>一句话层。</strong><span role="complementary">[M13]</span></p>
-<p>Alembic 迁移仍由专门迁移角色执行，Java 不在启动时自动建表。数据库用行级安全（RLS）按事务绑定的账号/租户范围限制行访问。BUG-107 暴露过线上权限与测试夹具不一致：迁移角色对 <code>account_closure</code> 只有 <code>USAGE</code>、没有 <code>CREATE</code>，所以替换注销函数时报权限错误；修复是在替换函数时临时 <code>SET LOCAL ROLE mentorflow_closure</code>，没有给迁移角色额外授权。<strong>三句话层。</strong><span role="complementary">[M13]</span></p>
-<p>迁移角色能切换到函数属主角色，但不自动继承它的 CREATE 权限，也就是创建数据库对象的权限。<strong>深一层。</strong><span role="complementary">[M13]</span></p>
+<p>再看库表权限。<strong role="complementary">一句话层。</strong><span role="complementary">[M13]</span></p>
+<p>Alembic 迁移仍由专门迁移角色执行，Java 不在启动时自动建表。数据库用行级安全（RLS）按事务绑定的账号/租户范围限制行访问。BUG-107 暴露过线上权限与测试夹具不一致：迁移角色对 <code>account_closure</code> 只有 <code>USAGE</code>、没有 <code>CREATE</code>，所以替换注销函数时报权限错误；修复是在替换函数时临时 <code>SET LOCAL ROLE mentorflow_closure</code>，没有给迁移角色额外授权。<strong role="complementary">三句话层。</strong><span role="complementary">[M13]</span></p>
+<p>迁移角色能切换到函数属主角色，但不自动继承它的 CREATE 权限，也就是创建数据库对象的权限。<strong role="complementary">深一层。</strong><span role="complementary">[M13]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“Java 启动时不自动建表，Alembic 仍用专门角色迁移；业务请求按事务范围交给 RLS 限行。曾因线上迁移角色缺 CREATE 失败，我们临时切换已有函数属主角色，不扩大授权，并检查升级结果。”</p>
 <h4>常被问｜Java 启动、迁移角色和 RLS 各负责什么？</h4>
-<ul><li>Alembic 迁移仍由专门迁移角色执行，Java 不在启动时自动建表。</li></ul>
-<ul><li>数据库用行级安全（RLS）按事务绑定的账号/租户范围限制行访问。</li></ul>
-<ul><li>修复是在替换函数时临时 <code>SET LOCAL ROLE mentorflow_closure</code>，没有给迁移角色额外授权。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>Alembic 迁移仍由专门迁移角色执行，Java 不在启动时自动建表。</p>
+</li>
+<li><p>数据库用行级安全（RLS）按事务绑定的账号/租户范围限制行访问。</p>
+</li>
+<li><p>修复是在替换函数时临时 <code>SET LOCAL ROLE mentorflow_closure</code>，没有给迁移角色额外授权。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M13</td><td><a href="07-account-and-login.html">07 账号</a>：第5节“Spring Boot 的门卫、数据库账本与迁移权限”；<a href="12-bug-stories.html">12 BUG 故事</a>：第3节“维修员是会员，却没有房门钥匙：迁移权限与发布失败”</td></tr>
-</table></aside>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M13</td><td><a href="07-account-and-login.html">07 账号</a>：第5节“Spring Boot 的门卫、数据库账本与迁移权限”；<a href="12-bug-stories.html">12 BUG 故事</a>：第3节“维修员是会员，却没有房门钥匙：迁移权限与发布失败”</td></tr></tbody></table>
+</aside>
 <h3>同步顺序</h3>
-<p>先讲同步顺序。<strong>一句话层。</strong><span role="complementary">[M09]</span></p>
-<p>客户端先带着上次保存的游标读取变更；服务器按游标分页返回记录，客户端把远端记录交给本地存储合并，再保存新的游标。接着客户端读取本机待上传队列，优先把记录分批提交；较新的服务器支持批量接口，旧服务返回 404 或 405 时，客户端会退回逐条接口。<strong>三句话层。</strong><span role="complementary">[M09]</span></p>
-<p>如果两台都改同一个字段，就比较字段更新时间；本机和远端的版本信息包含时间与设备编号，时间相同再按设备编号作稳定排序，并提示用户哪份计划的哪些字段各自保留。两台电脑时钟差很大时，按时间判断谁后改可能出错。<strong>深一层。</strong><span role="complementary">[M09]</span></p>
+<p>先讲同步顺序。<strong role="complementary">一句话层。</strong><span role="complementary">[M09]</span></p>
+<p>客户端先带着上次保存的游标读取变更；服务器按游标分页返回记录，客户端把远端记录交给本地存储合并，再保存新的游标。接着客户端读取本机待上传队列，优先把记录分批提交；较新的服务器支持批量接口，旧服务返回 404 或 405 时，客户端会退回逐条接口。<strong role="complementary">三句话层。</strong><span role="complementary">[M09]</span></p>
+<p>如果两台都改同一个字段，就比较字段更新时间；本机和远端的版本信息包含时间与设备编号，时间相同再按设备编号作稳定排序，并提示用户哪份计划的哪些字段各自保留。两台电脑时钟差很大时，按时间判断谁后改可能出错。<strong role="complementary">深一层。</strong><span role="complementary">[M09]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“一轮先拉服务器变更，再推本机待上传记录。客户端按字段合并，若同一字段两边都改，就按时间和设备编号排序并提示用户；时钟差太大时，先后判断可能不准。”</p>
 <h4>常被问｜两台设备离线修改时，同步怎样避免整条覆盖？</h4>
-<ul><li>客户端先带着上次保存的游标读取变更；服务器按游标分页返回记录，客户端把远端记录交给本地存储合并，再保存新的游标。</li></ul>
-<ul><li>接着客户端读取本机待上传队列，优先把记录分批提交；较新的服务器支持批量接口，旧服务返回 404 或 405 时，客户端会退回逐条接口。</li></ul>
-<ul><li>如果两台都改同一个字段，就比较字段更新时间；本机和远端的版本信息包含时间与设备编号，时间相同再按设备编号作稳定排序，并提示用户哪份计划的哪些字段各自保留。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>客户端先带着上次保存的游标读取变更；服务器按游标分页返回记录，客户端把远端记录交给本地存储合并，再保存新的游标。</p>
+</li>
+<li><p>接着客户端读取本机待上传队列，优先把记录分批提交；较新的服务器支持批量接口，旧服务返回 404 或 405 时，客户端会退回逐条接口。</p>
+</li>
+<li><p>如果两台都改同一个字段，就比较字段更新时间；本机和远端的版本信息包含时间与设备编号，时间相同再按设备编号作稳定排序，并提示用户哪份计划的哪些字段各自保留。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M09</td><td><a href="06-sync.html">06 同步</a>：第3节“一轮同步怎样走完”、第4节“两台电脑同时改，谁的内容留下”</td></tr>
-</table></aside>
-<h2>第五轮：工程化与交付｜常被问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M09</td><td><a href="06-sync.html">06 同步</a>：第3节“增量同步：先拉变化，再传本机记录”、第4节“冲突处理：按字段合并”</td></tr></tbody></table>
+</aside>
+<h2>第五轮：工程化与交付<span role="complementary">｜常被问</span></h2>
 <h3>发布证据</h3>
-<p>再讲发布证据。<strong>一句话层。</strong><span role="complementary">[M10]</span></p>
-<p>在确定的代码提交上生成软件包和文件清单，验证清单确实来自这次基线，再把待签名产物交给发布流程。签名私钥只在本机使用；发布端检查版本规则与文件指纹后切换线上清单。软件内更新曾出现下载到 100% 后仍失败：模态更新框挡住了发给登录窗或主界面的关闭消息，旧流程等不到 App 退出，随后回滚。<strong>三句话层。</strong><span role="complementary">[M10]</span></p>
-<p>更新相关工作要先用真打包程序走通旧版到新版；新程序必须报告版本正确且窗口可见、可响应，事务才写成 HEALTHY。测试替身可以验证分支，但窗口消息、进程退出和跨版本路径必须再用真打包程序验。<strong>深一层。</strong><span role="complementary">[M10]</span></p>
+<p>再讲发布证据。<strong role="complementary">一句话层。</strong><span role="complementary">[M10]</span></p>
+<p>在确定的代码提交上生成软件包和文件清单，验证清单确实来自这次基线，再把待签名产物交给发布流程。签名私钥只在本机使用；发布端检查版本规则与文件指纹后切换线上清单。软件内更新曾出现下载到 100% 后仍失败：模态更新框挡住了发给登录窗或主界面的关闭消息，旧流程等不到 App 退出，随后回滚。<strong role="complementary">三句话层。</strong><span role="complementary">[M10]</span></p>
+<p>更新相关工作要先用真打包程序走通旧版到新版；新程序必须报告版本正确且窗口可见、可响应，事务才写成 HEALTHY。测试替身可以验证分支，但窗口消息、进程退出和跨版本路径必须再用真打包程序验。<strong role="complementary">深一层。</strong><span role="complementary">[M10]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“构建、签名、发布和客户端替换是可分别核对的步骤。更新功能要从真实启动器走旧版到新版，并确认新窗口可见、能响应；自动测试、真包排练和用户本人验收各自回答不同问题。”</p>
 <h4>常被问｜为什么下载完成或自动测试通过还不能算更新成功？</h4>
-<ul><li>软件内更新曾出现下载到 100% 后仍失败：模态更新框挡住了发给登录窗或主界面的关闭消息，旧流程等不到 App 退出，随后回滚。</li></ul>
-<ul><li>新程序必须报告版本正确且窗口可见、可响应，事务才写成 HEALTHY。</li></ul>
-<ul><li>测试替身可以验证分支，但窗口消息、进程退出和跨版本路径必须再用真打包程序验。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>软件内更新曾出现下载到 100% 后仍失败：模态更新框挡住了发给登录窗或主界面的关闭消息，旧流程等不到 App 退出，随后回滚。</p>
+</li>
+<li><p>新程序必须报告版本正确且窗口可见、可响应，事务才写成 HEALTHY。</p>
+</li>
+<li><p>测试替身可以验证分支，但窗口消息、进程退出和跨版本路径必须再用真打包程序验。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M10</td><td><a href="09-release-and-update.html">09 发布更新</a>：第1、2、4、5节；<a href="10-install-and-startup.html">10 安装启动</a>：第1、2节；<a href="12-bug-stories.html">12 BUG 故事</a>：第6节</td></tr>
-</table></aside>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M10</td><td><a href="09-release-and-update.html">09 发布更新</a>：第1、2、4、5节；<a href="10-install-and-startup.html">10 安装启动</a>：第1、2节；<a href="12-bug-stories.html">12 BUG 故事</a>：第6节</td></tr></tbody></table>
+</aside>
 <h3>测试与真包</h3>
-<p>测试要分层验。<strong>一句话层。</strong><span role="complementary">[M14]</span></p>
-<p>新程序必须报告版本正确且窗口可见、可响应，事务才写成 HEALTHY。这份“健康证明”只确认目标进程和窗口，不代表所有学习功能都已测完。因而排练用真冻结包和测试签名，并从桌面启动器走更新；网页按钮用 CDP，原生安装与更新按钮用 UI Automation，不能只用替身关闭 App。<strong>三句话层。</strong><span role="complementary">[M14]</span></p>
-<p>测试替身可以验证分支，但窗口消息、进程退出和跨版本路径必须再用真打包程序验。<strong>深一层。</strong><span role="complementary">[M14]</span></p>
+<p>测试要分层验。<strong role="complementary">一句话层。</strong><span role="complementary">[M14]</span></p>
+<p>新程序必须报告版本正确且窗口可见、可响应，事务才写成 HEALTHY。这份“健康证明”只确认目标进程和窗口，不代表所有学习功能都已测完。因而排练用真冻结包和测试签名，并从桌面启动器走更新；网页按钮用 CDP，原生安装与更新按钮用 UI Automation，不能只用替身关闭 App。<strong role="complementary">三句话层。</strong><span role="complementary">[M14]</span></p>
+<p>测试替身可以验证分支，但窗口消息、进程退出和跨版本路径必须再用真打包程序验。<strong role="complementary">深一层。</strong><span role="complementary">[M14]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“替身测试验证分支，窗口消息和跨版本升级要用真冻结包排练；健康状态只证明新进程和窗口可见、可响应，不等于所有学习功能验收。”</p>
 <h4>常被问｜为什么替身通过和更新健康还不等于整体验收？</h4>
-<ul><li>新程序必须报告版本正确且窗口可见、可响应，事务才写成 HEALTHY。</li></ul>
-<ul><li>这份“健康证明”只确认目标进程和窗口，不代表所有学习功能都已测完。</li></ul>
-<ul><li>因而排练用真冻结包和测试签名，并从桌面启动器走更新；网页按钮用 CDP，原生安装与更新按钮用 UI Automation，不能只用替身关闭 App。</li></ul>
-<ul><li>测试替身可以验证分支，但窗口消息、进程退出和跨版本路径必须再用真打包程序验。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>新程序必须报告版本正确且窗口可见、可响应，事务才写成 HEALTHY。</p>
+</li>
+<li><p>这份“健康证明”只确认目标进程和窗口，不代表所有学习功能都已测完。</p>
+</li>
+<li><p>因而排练用真冻结包和测试签名，并从桌面启动器走更新；网页按钮用 CDP，原生安装与更新按钮用 UI Automation，不能只用替身关闭 App。</p>
+</li>
+<li><p>测试替身可以验证分支，但窗口消息、进程退出和跨版本路径必须再用真打包程序验。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M14</td><td><a href="09-release-and-update.html">09 发布更新</a>：第4节“更新交接、文件替换与恢复”、第5节“真打包排练与故障证据”；<a href="12-bug-stories.html">12 BUG 故事</a>：第6节“更新到 100%，窗口为什么还不肯退出？”</td></tr>
-</table></aside>
-<h2>第六轮：BUG 故事｜常被问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M14</td><td><a href="09-release-and-update.html">09 发布更新</a>：第4节“更新交接、文件替换与恢复”、第5节“真打包排练与故障证据”；<a href="12-bug-stories.html">12 BUG 故事</a>：第6节“更新到 100%，窗口为什么还不肯退出？”</td></tr></tbody></table>
+</aside>
+<h2>第六轮：BUG 故事<span role="complementary">｜常被问</span></h2>
 <h3>离线覆盖故障</h3>
-<p>先说失败现象。<strong>一句话层。</strong><span role="complementary">[M11]</span></p>
-<p>我们查到离线修改被同步覆盖，连待上传标记都清掉了。根因是只按服务器版本覆盖整条记录。修成逐字段比较：不同字段各保留，同字段按本地时间和设备编号排序，提示用户。测试用两份独立 Store 互相同步，验证值和队列都没丢；我也会明确说，设备时钟偏差是这个方案的边界。<strong>三句话层。</strong><span role="complementary">[M11]</span></p>
-<p>两台设备时钟差很多时，这个顺序可能不符合实际先后。<strong>深一层。</strong><span role="complementary">[M11]</span></p>
+<p>先说失败现象。<strong role="complementary">一句话层。</strong><span role="complementary">[M11]</span></p>
+<p>我们查到离线修改被同步覆盖，连待上传标记都清掉了。根因是只按服务器版本覆盖整条记录。修成逐字段比较：不同字段各保留，同字段按本地时间和设备编号排序，提示用户。测试用两份独立 Store 互相同步，验证值和队列都没丢；我也会明确说，设备时钟偏差是这个方案的边界。<strong role="complementary">三句话层。</strong><span role="complementary">[M11]</span></p>
+<p>两台设备时钟差很多时，这个顺序可能不符合实际先后。<strong role="complementary">深一层。</strong><span role="complementary">[M11]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“离线修改曾被另一台设备覆盖，待上传标记也丢了。原因是整条记录按服务器版本覆盖；改成字段级合并后，不同字段都能留下，同字段按时间和设备号决胜并提示冲突。两份独立 Store 互相同步验证了数据和队列；设备时钟差异仍是边界。”</p>
 <h4>常被问｜离线修改被覆盖后，你怎样修并验证？</h4>
-<ul><li>我们查到离线修改被同步覆盖，连待上传标记都清掉了。</li></ul>
-<ul><li>根因是只按服务器版本覆盖整条记录。</li></ul>
-<ul><li>修成逐字段比较：不同字段各保留，同字段按本地时间和设备编号排序，提示用户。</li></ul>
-<ul><li>测试用两份独立 Store 互相同步，验证值和队列都没丢；我也会明确说，设备时钟偏差是这个方案的边界。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>我们查到离线修改被同步覆盖，连待上传标记都清掉了。</p>
+</li>
+<li><p>根因是只按服务器版本覆盖整条记录。</p>
+</li>
+<li><p>修成逐字段比较：不同字段各保留，同字段按本地时间和设备编号排序，提示用户。</p>
+</li>
+<li><p>测试用两份独立 Store 互相同步，验证值和队列都没丢；我也会明确说，设备时钟偏差是这个方案的边界。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M11</td><td><a href="12-bug-stories.html">12 BUG 故事</a>：第2节“两家分馆改同一本账”；<a href="06-sync.html">06 同步</a>：第4节“两台电脑同时改，谁的内容留下”</td></tr>
-</table></aside>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M11</td><td><a href="12-bug-stories.html">12 BUG 故事</a>：第2节“两家分馆改同一本账”；<a href="06-sync.html">06 同步</a>：第4节“两台电脑同时改，谁的内容留下”</td></tr></tbody></table>
+</aside>
 <h3>中断恢复</h3>
-<p>再说明恢复原则。<strong>一句话层。</strong><span role="complementary">[M12]</span></p>
-<p>数据库已经结算，课堂状态还在检测中，重试就重复结束同一次检测。操作前对照数据库，发现检测已经结束就补完收尾；给每道待答题一个固定编号，再次处理沿用原判定。<strong>三句话层。</strong><span role="complementary">[M12]</span></p>
-<p>测试特意停在两次保存之间，确认恢复后只结算一次；保存失败也必须报错，不能假装成功。<strong>深一层。</strong><span role="complementary">[M12]</span></p>
+<p>再说明恢复原则。<strong role="complementary">一句话层。</strong><span role="complementary">[M12]</span></p>
+<p>数据库已经结算，课堂状态还在检测中，重试就重复结束同一次检测。操作前对照数据库，发现检测已经结束就补完收尾；给每道待答题一个固定编号，再次处理沿用原判定。<strong role="complementary">三句话层。</strong><span role="complementary">[M12]</span></p>
+<p>测试特意停在两次保存之间，确认恢复后只结算一次；保存失败也必须报错，不能假装成功。<strong role="complementary">深一层。</strong><span role="complementary">[M12]</span></p>
 <p><strong>你可以这样跟面试官说：</strong>“一次检测在数据库结算后、课堂状态保存前中断，重试可能重复记账。恢复先查已经落库的事实，再补完收尾；固定编号保证重复请求沿用原判定。测试在两次保存之间中断，确认只结算一次。”</p>
 <h4>偶尔问｜进程中断后，怎样避免重复结束一次检测？</h4>
-<ul><li>操作前对照数据库，发现检测已经结束就补完收尾。</li></ul>
-<ul><li>给每道待答题一个固定编号，再次处理沿用原判定。</li></ul>
-<ul><li>测试特意停在两次保存之间，确认恢复后只结算一次。</li></ul>
+<details>
+<summary role="complementary">参考要点（先作答，再展开）</summary>
+<ul><li><p>操作前对照数据库，发现检测已经结束就补完收尾。</p>
+</li>
+<li><p>给每道待答题一个固定编号，再次处理沿用原判定。</p>
+</li>
+<li><p>测试特意停在两次保存之间，确认恢复后只结算一次。</p>
+</li>
+</ul>
+</details>
 <h4>学习路线：本题出处</h4>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M12</td><td><a href="12-bug-stories.html">12 BUG 故事</a>：第1节“收据写好了，柜台却说没办完：中断恢复与幂等”</td></tr>
-</table></aside>
-<h2>最后一天冲刺清单：只练常被问｜常被问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M12</td><td><a href="12-bug-stories.html">12 BUG 故事</a>：第1节“收据写好了，柜台却说没办完：中断恢复与幂等”</td></tr></tbody></table>
+</aside>
+<h2>最后一天冲刺清单：只练常被问<span role="complementary">｜常被问</span></h2>
 <p>按优先级依次口述，答完再回到出处表核对原话。</p>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>顺序</td><td>练习题</td></tr>
-<tr><td>1</td><td>一分钟介绍 MentorFlow。</td></tr>
-<tr><td>2</td><td>前端、Python、SQLite、Java、PostgreSQL 和模型怎样分工？</td></tr>
-<tr><td>3</td><td>建计划与课堂为什么由程序掌握状态？</td></tr>
-<tr><td>4</td><td>RAG 如何从本地资料走到回答，为什么不保证正确？</td></tr>
-<tr><td>5</td><td>Java 服务启动、迁移角色和 RLS 各负责什么？</td></tr>
-<tr><td>6</td><td>为什么迁移服务器业务到 Java，登录如何分清身份和权限？</td></tr>
-<tr><td>7</td><td>两台设备离线修改时，同步怎样避免整条覆盖？</td></tr>
-<tr><td>8</td><td>怎样证明更新从下载、替换到新程序启动真的成功？</td></tr>
-<tr><td>9</td><td>为什么替身通过和更新健康还不等于整体验收？</td></tr>
-<tr><td>10</td><td>离线同步覆盖怎样复现、修复、验证？</td></tr>
-</table></aside>
+<table><thead><tr><th>顺序</th><th>练习题</th></tr></thead><tbody><tr><td>1</td><td>一分钟介绍 MentorFlow。</td></tr><tr><td>2</td><td>前端、Python、SQLite、Java、PostgreSQL 和模型怎样分工？</td></tr><tr><td>3</td><td>建计划与课堂为什么由程序掌握状态？</td></tr><tr><td>4</td><td>RAG 如何从本地资料走到回答，为什么不保证正确？</td></tr><tr><td>5</td><td>Java 服务启动、迁移角色和 RLS 各负责什么？</td></tr><tr><td>6</td><td>为什么迁移服务器业务到 Java，登录如何分清身份和权限？</td></tr><tr><td>7</td><td>两台设备离线修改时，同步怎样避免整条覆盖？</td></tr><tr><td>8</td><td>怎样证明更新从下载、替换到新程序启动真的成功？</td></tr><tr><td>9</td><td>为什么替身通过和更新健康还不等于整体验收？</td></tr><tr><td>10</td><td>离线同步覆盖怎样复现、修复、验证？</td></tr></tbody></table>
 <h3>学习路线：本篇出处</h3>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>要点出处</td></tr>
-<tr><td>M00</td><td><span role="complementary">[DOC-01]</span>（docs/project/CURRENT_STATE.md:227-239）；基线提交 37f96400</td></tr>
-<tr><td>M01–M12</td><td>各题出处表分别指向 <a href="00-from-zero-to-one.html">00 主线</a> 至 <a href="12-bug-stories.html">12 BUG 故事</a> 的对应小节</td></tr>
-</table></aside>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>要点出处</th></tr></thead><tbody><tr><td>M00</td><td><span role="complementary">[DOC-01]</span></td></tr><tr><td>M01–M14</td><td>各题出处表分别指向 <a href="00-from-zero-to-one.html">00 主线</a> 至 <a href="12-bug-stories.html">12 BUG 故事</a> 的对应小节</td></tr></tbody></table>
+</aside>
 </main></body></html>

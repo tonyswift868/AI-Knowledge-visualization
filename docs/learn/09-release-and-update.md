@@ -1,6 +1,6 @@
 # 09 发布与软件内更新
 
-事实基线：`7df4f6ea`。[D01]
+事实基线：`e61fd00d`。[D01]
 
 本篇标“偶尔问”表示学习优先级判断，不是面试频率统计；按每节的一句话层、三句话层和深一层来学。[D01]
 
@@ -8,7 +8,7 @@
 
 ## 1. 从代码到待签名软件包｜偶尔问
 
-构建和签名分开，让生成软件包的机器不必持有正式私钥，清单再交给本机签名步骤核对和签出。[P01,P03] **一句话层。**
+构建、签名分两步。[P01,P03] **一句话层。**
 
 架构师在 GitHub 手动运行页选代码分支或标签，填写版本号和说明，再触发构建工作流 `mf-build`。[P01] GitHub Actions 的 Windows 构建机器把程序和依赖整理成可运行目录，并产出未签名清单。[P01] 正式发布的构建会把服务器缺少的文件对象送到暂存区；只构建、不发布的模式则不上传。[P01,P02] **三句话层。**
 
@@ -28,7 +28,7 @@
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| D01 | 学习资料按面试优先级安排，事实以指定基线为准 | `docs/project/CURRENT_STATE.md:227-237`；`docs/learn/README.md:5-9` |
+| D01 | 学习资料按面试优先级安排，事实以指定基线为准 | [DOC-01]；`docs/learn/README.md:5-9` |
 | P01 | mf-build 手动触发，在 Windows runner 冻结；正式发布构建（build_only=false）上传服务器缺少的对象 | `.github/workflows/mf-build.yml:1-5,28-31,41-65`；`scripts/release/README.md:89-95`；[GitHub：手动运行工作流](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow) |
 | P02 | 发行清单列文件、大小、SHA-256，并记录 source_sha；构建后核对其与基线相等 | `scripts/build_learning_installer.py:249-275`；`scripts/release/build_release.py:241-245,302-312` |
 | P03 | 本机调用现有 signer，签好 stable.json 后只暂存签名清单；Ed25519 是签名方案 | `scripts/release/sign_and_stage.py:40-46`；`scripts/release/README.md:96-107`；`refactor/desktop/delivery/update_protocol.py:145-167`；[RFC 8032：EdDSA](https://www.rfc-editor.org/rfc/rfc8032.html) |
@@ -36,7 +36,7 @@
 
 ## 2. 本机盖章，服务器发布｜偶尔问
 
-正式签名私钥留在架构师本机，服务器只收到已签名清单。[P03] 签名不是加密。[P03] **一句话层。**
+私钥只在本机签名；签名不是加密。[P03] **一句话层。**
 
 架构师在本机核对签名密钥身份并签出清单，再把签好的 `stable.json` 放进服务器暂存区。[P03] 发布工作流 `mf-publish` 先验签和检查版本规则，再核对文件对象、归档该版清单。[P04] 线上清单和小指针各自原子替换：读者看到的是各文件完整的旧内容或新内容，但两份文件不是一起完成的一个原子事务。[P04,U01] **三句话层。**
 
@@ -63,20 +63,25 @@
 
 ## 3. 客户端检查版本与登录门控｜偶尔问
 
-客户端先看一张小指针，真正的更新决定来自通过验签的完整清单。[U01,U02] **一句话层。**
+小指针提示版本变化，更新决定看验签清单。[U01,U02] **一句话层。**
 
 客户端先取 `latest.json`，把版本号、metadata 版本、清单 SHA-256 和大小与本机已验签的清单比较；一致时重新核对缓存清单的有效期和策略，就不必下载完整清单。[U01] 指针变化、缺失或不合法时，客户端取 `stable.json` 并验证 Ed25519 签名；如果指针与清单不一致，记录差异但以签名清单继续判断。[U01,U02] 签名清单还要通过产品身份、版本顺序、渠道、有效期、本机已见过的最高元数据版本（高水位）和强制更新线等检查。[U02] **三句话层。**
 
-用户可以填写登录表单，提交请求会等本轮更新检查。[U03] 检查失败或等到 15 秒上限时，只按本机已验签的策略决定是否放行。[U03] 若没有可用的已验证状态，客户端要求修复，不凭空放行。[U03] 如果缓存记着强制更新，断网不会把强制要求降成可选；非强制更新可稍后处理，强制更新没有“稍后”。[U03] 已登录后才发现必须更新，也会阻止继续操作；课堂先保存进度和未发送输入，再弹更新框，保存失败就提示重试。[U09] 可选更新仍不在课堂打扰。[U09] 公开下载先走域名，连接或验证失败时尝试固定 IP 备用源，两条路径都要验签。[U10] 当前基线仍把登录更新框被截（BUG-110）和后台预下载撞锁后显示错误（BUG-111）列为待修。[U04] **深一层。**
+用户可以填写登录表单，提交请求会等本轮更新检查。[U03] 检查失败或等到 15 秒上限时，只按本机已验签的策略决定是否放行。[U03] 若没有可用的已验证状态，客户端要求修复，不凭空放行。[U03] 登录后客户端每 30 分钟再检查一次更新。[U03] 如果缓存记着强制更新，断网不会把强制要求降成可选；非强制更新可稍后处理，强制更新没有“稍后”。[U03] 已登录后才发现必须更新，也会阻止继续操作；课堂先保存进度和未发送输入，再弹更新框，保存失败就提示重试。[U09] 可选更新仍不在课堂打扰。[U09] 公开下载先走域名，连接或验证失败时尝试固定 IP 备用源，两条路径都要验签。[U10] 当前基线仍把登录更新框被截（BUG-110）和后台预下载撞锁后显示错误（BUG-111）列为待修。[U04] **深一层。**
 
 这像读者先看书店的到货牌：牌子没变，就不用再搬整本目录；牌子变了，才取目录核对出版社印章。它不表示指针本身可信，也不表示离线时一定可以继续使用——本机若没有有效的已验证策略，登录会被挡住。[U01,U03]
 
 **你可以这样跟面试官说：**“客户端先看本机是否有一份仍有效、已经验签的版本策略，再按小指针判断是否需要取完整清单。指针只是提示，真正决定版本的是验签后的清单；断网时也不会把强制更新变成可选。如果本机没有可用的已验证状态，客户端会要求修复，而不是猜一个版本放行。”[U01,U02,U03]
 
+对照这一步的原文，可以用下面的话复述：
+
+登录后客户端每 30 分钟检查一次更新。
+
 ### 离线时，客户端依据什么放行？
 
 - 检查失败或等到 15 秒上限时，只按本机已验签的策略决定是否放行。[U03]
 - 若没有可用的已验证状态，客户端要求修复，不凭空放行。[U03]
+- 登录后客户端每 30 分钟检查一次更新。[U03]
 - 如果缓存记着强制更新，断网不会把强制要求降成可选；非强制更新可稍后处理，强制更新没有“稍后”。[U03]
 
 
@@ -86,14 +91,14 @@
 | --- | --- | --- |
 | U01 | 指针与清单匹配则复用已验签缓存；失败则下载清单，指针不授权版本 | `refactor/desktop/delivery/update_protocol.py:61-80`；`refactor/desktop/delivery/update_service.py:313-350`；`scripts/release/README.md:178-183` |
 | U02 | 签名清单校验受信公钥、产品身份、版本、渠道、算法、有效期与高水位 | `refactor/desktop/delivery/update_protocol.py:133-188` |
-| U03 | 登录门禁等待检查；15 秒后只采用已验证缓存；缺缓存要求修复；强制版本禁止继续登录 | `refactor/desktop/updates.py:63-123`；`docs/project/CURRENT_STATE.md:1095-1103` |
-| U04 | BUG-110 更新对话框尺寸待修，BUG-111 后台预下载锁冲突待修 | `docs/project/CURRENT_STATE.md:1079-1093` |
+| U03 | 登录门禁等待检查；15 秒后只采用已验证缓存；缺缓存要求修复；强制版本禁止继续登录 | `refactor/desktop/updates.py:21,55-103,118-147`；[BUG-109] |
+| U04 | BUG-110 更新对话框尺寸待修，BUG-111 后台预下载锁冲突待修 | [BUG-110] [BUG-111] |
 | U09 | 登录后任何页面都拦必须更新；课堂先保存输入与状态，失败可重试；可选更新课堂延后 | `refactor/learning/web/src/updates/UpdateNotice.tsx:97-113,140-176,188-195`；`refactor/learning/web/src/pages/Classroom.tsx:180-215` |
-| U10 | 客户端域名主源、固定 IP 备用源；旧客户端的清单对象地址保持兼容 | `refactor/desktop/delivery/update_download.py:32-41,275-292`；`scripts/release/build_release.py:16-17,310-311`；[SYS-06]；公开源：`https://aiteacher.clannad.win/updates/app/`、`https://89.45.45.28/mentorflow/updates/app/` |
+| U10 | 客户端域名主源、固定 IP 备用源；旧客户端的清单对象地址保持兼容 | `refactor/desktop/delivery/update_download.py:32-41,275-292`；`scripts/release/build_release.py:16-17,310-311`；[SYS-06]；公开源：域名主源与固定 IP 备用源 |
 
 ## 4. 更新交接、文件替换与恢复｜偶尔问
 
-更新器先核对下载内容，再交给安装事务；新程序健康可见后才算更新成功。[U05,U07] **一句话层。**
+更新须经校验和健康确认。[U05,U07] **一句话层。**
 
 客户端重新验签并比对文件指纹，内容相同的本机文件复用，只下载缺少或不同的文件，再准备完整暂存版本。[U05,U06] 点更新后，App 把请求交给独立的更新协调进程，收到接手回执后保存必要状态并自行退出。[U07] 安装事务核对目标文件、保留旧版、换入新 App，确认新窗口可见并响应后才写成健康状态 HEALTHY。[U07] **三句话层。**
 
@@ -115,13 +120,13 @@
 | --- | --- | --- |
 | U05 | 下载前复验清单；按文件 SHA-256 和大小复用本机相同内容，并重建签名完整树 | `refactor/desktop/delivery/update_service.py:357-418`；`refactor/desktop/delivery/update_protocol.py:308-323`；`refactor/desktop/delivery/per_user_install.py:661-679` |
 | U06 | 已准备暂存可校验复用；失败时保留 pending；应用前重新检查签名清单 | `refactor/desktop/delivery/per_user_update_core.py:563-615,618-672` |
-| U04 | 当前基线后台预下载撞锁失败仍待修，不保证弹框时已经准备完成 | `docs/project/CURRENT_STATE.md:1079-1084` [BUG-111] |
-| U07 | 更新交接、文件事务、旧版回滚及可见响应健康握手 | `refactor/desktop/updates.py:253-294,402-421`；`refactor/desktop/delivery/per_user_update_core.py:647-672`；`refactor/desktop/delivery/per_user_install.py:833-964,977-1019,1038-1061`；`docs/project/CURRENT_STATE.md:1501-1519` |
-| U08 | Updater 有限重试；程序目录清理保护待安装版本；0.51 GB 对象缓存不在当时清理范围 | `refactor/desktop/delivery/per_user_install.py:294-343,413-461`；`docs/project/CURRENT_STATE.md:1430-1437,1490-1498` |
+| U04 | 当前基线后台预下载撞锁失败仍待修，不保证弹框时已经准备完成 | [BUG-111] |
+| U07 | 更新交接、文件事务、旧版回滚及可见响应健康握手 | `refactor/desktop/updates.py:253-294,402-421`；`refactor/desktop/delivery/per_user_update_core.py:647-672`；`refactor/desktop/delivery/per_user_install.py:833-964,977-1019,1038-1061`；[BUG-71] |
+| U08 | Updater 有限重试；程序目录清理保护待安装版本；0.51 GB 对象缓存不在当时清理范围 | `refactor/desktop/delivery/per_user_install.py:294-343,413-461`；[BUG-109] |
 
 ## 5. 真打包排练与故障证据｜偶尔问
 
-单元测试能检查函数，真打包排练才能检查启动器、App、Updater 跨进程交接和安装目录切换是否真的接得上。[R01] **一句话层。**
+单元测试能检查函数，真打包才能测跨进程更新。[R01] **一句话层。**
 
 软件内更新曾出现下载到 100% 后仍失败：模态更新框挡住了发给登录窗或主界面的关闭消息，旧流程等不到 App 退出，随后回滚。[R01] 修复后，App 把任务交给 Updater 并收到接手回执，再保存状态、关闭窗口并自行退出；Updater 等 App 进程结束后换文件并重启。[R01,R02] 因而排练用真冻结包和测试签名，并从桌面启动器走更新；网页按钮用 CDP，原生安装与更新按钮用 UI Automation，不能只用替身关闭 App。[R01,R03] **三句话层。**
 
@@ -141,10 +146,10 @@
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| R01 | BUG-71 的模态关闭失败、原因、修复和真包排练记录；跨进程步骤须真包实测 | `docs/project/CURRENT_STATE.md:1501-1519` |
+| R01 | BUG-71 的模态关闭失败、原因、修复和真包排练记录；跨进程步骤须真包实测 | [BUG-71] |
 | R02 | App 交接、退出、Updater 执行事务及失败保留待安装 | `refactor/desktop/updates.py:253-294,402-421`；`refactor/desktop/delivery/per_user_update_core.py:647-672`；`refactor/desktop/delivery/per_user_install.py:833-964,977-1019` |
-| R03 | 本机 CDP/UIA 端到端排练记录 | `docs/project/CURRENT_STATE.md:1515-1519` |
-| P04 | 本机先验、GitHub 一版只跑一次；正式发版前验证与审阅 | 本轮任务 `D:/MentorFlow/.local/tasks/163-MF04.md` 第1项；`scripts/release/README.md:87-95`；`AGENTS.md:17` |
+| R03 | 本机 CDP/UIA 端到端排练记录 | [BUG-71] |
+| P04 | 本机先验、GitHub 一版只跑一次；正式发版前验证与审阅 | `scripts/release/README.md:87-95`；`AGENTS.md:17`；[SYS-06] |
 
 ## 学习路线：不用背｜基本不问
 

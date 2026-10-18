@@ -1,6 +1,6 @@
-# 总架构：一堂课由谁接力完成
+# 总架构：MentorFlow 的主要部分怎样协作
 
-基线是仓库 `7df4f6ea`：以下讲的是当前桌面版和线上服务。标题后的“常被问／偶尔问／基本不问”表示学习优先级判断，不是统计出来的面试频率。想象一间自习室：桌面窗口像前台，React 是办事屏，本机 Python 是老师和记账员，Java 服务是远处的校务办公室，更新站像独立的软件下载柜。比喻只帮助理解分工，真实系统靠程序接口、数据库和网络传数据，不会有真人跑腿。[A01]
+基线是仓库 `e61fd00d`：以下讲的是当前桌面版和线上服务。标题后的“常被问／偶尔问／基本不问”表示学习优先级判断，不是统计出来的面试频率。想象一间自习室：桌面窗口像前台，React 是办事屏，本机 Python 是老师和记账员，Java 服务是远处的校务办公室，更新站像独立的软件下载柜。比喻只帮助理解分工，真实系统靠程序接口、数据库和网络传数据，不会有真人跑腿。[A01]
 
 ## 1. 前台、办事屏和本机老师分工接待｜常被问
 
@@ -38,11 +38,11 @@ flowchart LR
 ### 学习路线：本节出处
 | 编号 | 具体说法 | 文件:行／条目／官方链接 |
 | --- | --- | --- |
-| A01 | 当前整体由桌面 PySide6、React、Python、DeepSeek、Java、Keycloak、PostgreSQL/pgvector 组成 | `docs/project/CURRENT_STATE.md:9` |
-| A02 | 单个 QtWebEngine 窗口承载 React 页面 | `refactor/learning/app/window.py:1-5,280-305`；[Qt for Python](https://doc.qt.io/qtforpython-6/) |
-| A03 | 页面与 Python 通过 QWebChannel 请求、响应和事件通信 | `refactor/learning/app/bridge.py:1-14`；`refactor/learning/app/window.py:291-301`；[Qt WebChannel](https://doc.qt.io/qt-6/qtwebchannel-index.html) |
-| A04 | 桥接层检查请求并把处理结果送回页面 | `refactor/learning/app/bridge.py:12-14` |
-| A05 | 课堂、同步、资料问答与更新是不同的程序链路 | `refactor/learning/app/window.py:356-412`；`refactor/learning/app/rag.py`；`refactor/desktop/delivery/update_service.py:28-45` |
+| A01 | 当前整体由桌面 PySide6、React、Python、DeepSeek、Java、Keycloak、PostgreSQL/pgvector 组成 | [ARCH-01]、[ARCH-02]、[ARCH-09]、[RAG-01]；`refactor/learning/web/package.json`；`refactor/server-java/pom.xml:4-16` |
+| A02 | 单个 QtWebEngine 窗口承载 React 页面 | `refactor/learning/app/window.py:270-305`；[Qt for Python](https://doc.qt.io/qtforpython-6/) |
+| A03 | 页面与 Python 通过 QWebChannel 请求、响应和事件通信 | `refactor/learning/app/bridge.py:130-228`；`refactor/learning/app/window.py:299-301`；[Qt WebChannel](https://doc.qt.io/qt-6/qtwebchannel-index.html) |
+| A04 | 桥接层检查请求并把处理结果送回页面 | `refactor/learning/app/bridge.py:140-228` |
+| A05 | 课堂、同步、资料问答与更新是不同的程序链路 | `refactor/learning/app/window.py:291-301`；`refactor/learning/app/classroom.py:208-271`；`refactor/learning/app/sync.py:104-153`；`refactor/learning/app/rag.py`；`refactor/desktop/delivery/update_service.py:28-45` |
 
 ## 2. 本机老师把课程和进度记在自己的账本里｜常被问
 
@@ -67,8 +67,8 @@ Python 的课程服务读取计划、课程资料和当前进度，课堂规则�
 | A06 | 每个账号的课程库路径为 `course.sqlite3` | `refactor/learning/course/store.py:157-174`；`docs/project/CURRENT_STATE.md` `[ARCH-03]` |
 | A07 | Python 服务提供课程存储，SQLite 写入使用事务 | `refactor/learning/app/services.py:18,86-90`；`refactor/learning/course/store.py:157-176,189-222` |
 | A08 | 本机课程数据库与服务器数据库分开 | `docs/project/CURRENT_STATE.md` `[ARCH-03]` |
-| A09 | 同步有独立服务，失败时保留本地记录 | `refactor/learning/app/sync.py:85-105`；`docs/project/CURRENT_STATE.md` `[ARCH-03]` |
-| A10 | 原始资料文件本地保存，不随同步上传 | `docs/project/CURRENT_STATE.md` `[ARCH-03]` |
+| A09 | 同步有独立服务，失败时保留本地记录 | `refactor/learning/app/sync.py:104-153,190-204`；[ARCH-03]、[ARCH-05] |
+| A10 | 原始资料文件本地保存，不随同步上传 | `refactor/learning/app/rag.py:474-528,569-615`；[ARCH-03] |
 
 ## 3. 上一节课时，页面、模型和服务器怎样接力｜常被问
 
@@ -93,14 +93,14 @@ Python 的课程服务读取计划、课程资料和当前进度，课堂规则�
 ### 学习路线：本节出处
 | 编号 | 具体说法 | 文件:行／条目／官方链接 |
 | --- | --- | --- |
-| A11 | 课堂本地处理与同步由不同组件负责 | `refactor/learning/app/window.py:356-412`；`refactor/learning/app/classroom.py` |
-| A12 | 桌面课堂操作经桥接进入本机学习服务 | `refactor/learning/app/bridge.py:3-14`；`refactor/learning/app/services.py:18-26`；`refactor/learning/app/classroom.py:199-210,279-286,1600-1610,1862-1908` |
+| A11 | 课堂本地处理与同步由不同组件负责 | `refactor/learning/app/classroom.py:208-271`；`refactor/learning/app/sync.py:104-153` |
+| A12 | 桌面课堂操作经桥接进入本机学习服务 | `refactor/learning/app/handlers.py:278-285`；`refactor/learning/app/classroom.py:208-271,346-350,1862-1927` |
 | A13 | 客户端 gateway 取出用户配置的凭据并调用模型 provider，DeepSeek 使用官方 API 地址 | `refactor/learning/connections/gateway.py:391-400,479,593-601`；`refactor/learning/connections/providers/registry.py:20-27`；`docs/project/CURRENT_STATE.md` `[SYS-02]`；[DeepSeek API](https://api-docs.deepseek.com/) |
 | A14 | 用户选择的模型由客户端连接，Java 不中转 | `docs/project/CURRENT_STATE.md` `[ARCH-09]` |
 | A15 | 课堂宿主按用户操作推进并保存状态；模型生成讲解文本，不直接改学习状态 | `refactor/learning/app/classroom.py:201-271,346-353,1378-1404`；`refactor/learning/course/store.py:189-222` |
 | A16 | Java 服务使用 Spring Boot、OAuth 资源服务器和 PostgreSQL | `refactor/server-java/pom.xml:4-16`；`refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncController.java:20-44`；`docs/project/CURRENT_STATE.md` `[ARCH-09]` |
-| A17 | 同步失败时本地数据保留并可重试 | `refactor/learning/app/sync.py:85-105` |
-| A18 | 同步与模型调用由独立网络组件执行 | `refactor/learning/app/sync.py:104-153`；`refactor/learning/connections/gateway.py:42-45` |
+| A17 | 同步失败时本地数据保留并可重试 | `refactor/learning/app/sync.py:104-153,190-204`；`refactor/learning/course/sync_course.py:508-560` |
+| A18 | 同步与模型调用由独立网络组件执行 | `refactor/learning/app/sync.py:112-115`；`refactor/learning/connections/gateway.py:593-601`；`refactor/learning/connections/transport.py:63-79` |
 | A26 | 登录身份由 Keycloak 验证，Java 接口以身份处理服务请求 | `refactor/server-java/src/main/java/win/clannad/mentorflow/identity/IdentitySecurity.java:42-45`；`docs/project/CURRENT_STATE.md` `[ARCH-09]` |
 
 ## 4. 资料问答和软件下载各走自己的门｜偶尔问
@@ -111,7 +111,7 @@ Python 的课程服务读取计划、课程资料和当前进度，课堂规则�
 
 客户端仍用用户选择的模型和自己的 Key 生成回答；Java 负责存文字和找片段，不替模型写答案。资料问答会话保存在本机，上传的是文字，不是原文件。[A21] **深一层。**
 
-软件更新走另一条链：桌面更新器向独立更新站检查版本清单、取回所需文件并验证签名，再准备安装；该过程不依赖课堂请求或 RAG 检索。[A22] 下载站还提供安装程序入口，当前线上软件内更新已到 2.0.25，下载站安装程序仍是 2.0.15。[A23]
+软件更新走另一条链：桌面更新器向独立更新站检查版本清单、取回所需文件并验证签名，再准备安装；该过程不依赖课堂请求或 RAG 检索。[A22] 下载站还提供安装程序入口；截至本篇核验基线记录（2026-10-18），线上软件内更新已到 2.0.25，下载站安装程序仍是 2.0.15。[A23]
 
 所以自习室里“把一段资料交给校务柜台查找”只对应资料问答，“换一套软件”只对应更新；两件事都不是普通上一节课的必经步骤。[A24]
 
@@ -130,7 +130,7 @@ Python 的课程服务读取计划、课程资料和当前进度，课堂规则�
 | A20 | 客户端上传文字块，Java 侧检索 | `refactor/server-java/RAG_API.md:1-22,33-45`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagController.java:14-39` |
 | A21 | Java 只检索，不调用模型；客户端直连模型，问答会话本地保存 | `refactor/server-java/RAG_API.md:1-8`；`docs/project/CURRENT_STATE.md` `[RAG-01]` |
 | A22 | 更新器读取签名清单、验证版本并下载文件 | `refactor/desktop/delivery/update_service.py:28-45,382,452-489`；`refactor/desktop/delivery/update_protocol.py:133-166` |
-| A23 | 当前线上版本与下载站安装程序版本 | `docs/project/CURRENT_STATE.md` `[SYS-06]` |
+| A23 | 截至核验基线记录的线上版本与下载站安装程序版本 | `docs/project/CURRENT_STATE.md` `[SYS-06]` |
 | A24 | 资料问答、课堂与软件更新各自使用单独请求链 | `refactor/learning/app/rag.py`；`refactor/learning/app/sync.py`；`refactor/desktop/delivery/update_service.py:28-45` |
 | A27 | RAG 向量检索使用 pgvector，普通同步与课堂数据另走课程记录路径 | `docs/project/CURRENT_STATE.md` `[RAG-01]` `[ARCH-03]`；`refactor/server-java/RAG_API.md:45-60` |
 
