@@ -22,6 +22,9 @@ def test_updater94_app_schedules_only_after_startup_classification(monkeypatch, 
     monkeypatch.setattr(install, 'maintenance_log', lambda *_a, **_k: None)
     def publish(value): calls.append(('classified', value['state']))
     ui = SimpleNamespace(_closed=False, _busy=True, state={}, root=tmp_path,
+                         _startup_pointer_policy=None,
+                         _background_preparing=False,
+                         _background_retry=SimpleNamespace(isActive=lambda: False),
                          _publish=publish, gate=SimpleNamespace(setEnabled=lambda _: None),
                          _login_wait_timer=SimpleNamespace(stop=lambda: None),
                          _startup_started=time.monotonic(), _next_automatic=0,

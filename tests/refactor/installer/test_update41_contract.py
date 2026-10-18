@@ -54,7 +54,7 @@ def test_update41_prelogin_gate_progress_and_no_defer(tmp_path):
     gate = QWidget(); gate.show()
     class Core:
         def attach_shutdown_guard(self, app): pass
-        def get_startup_update_state(self, root, full, check_feed, cancel=None):
+        def get_startup_update_state(self, root, full, check_feed, cancel=None, on_pointer_policy=None):
             # Cached signed policy is checked before refreshing the feed.
             return dict(state='MANDATORY_UPDATE', login_allowed=False, current='2.0.2', latest='2.0.4',
                 mandatory_floor='2.0.3', mandatory_reason='protocol', release_notes='升级说明')

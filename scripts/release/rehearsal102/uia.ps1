@@ -30,18 +30,23 @@ if($TargetPid -ne 0){
 }
 $cond= if($TargetPid -eq 0){[System.Windows.Automation.Condition]::TrueCondition}else{New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty,$TargetPid)}
 if($Action -eq 'login'){
+ function FindTypedLoginControl($top,$controlName,$controlType){
+  $matches=$top.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+   (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,$controlName)))
+  foreach($candidate in $matches){if($candidate.Current.ControlType -eq $controlType){return $candidate}}
+  return $null
+ }
  $deadline=[DateTimeOffset]::UtcNow.AddSeconds(12)
  while([DateTimeOffset]::UtcNow -lt $deadline){
   $loginTops=[System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,$cond)
   foreach($loginTop in $loginTops){
-   $account=$loginTop.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'账号')))
-   $password=$loginTop.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'密码')))
-   $login=$loginTop.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,'登录 MentorFlow')))
+   $account=FindTypedLoginControl $loginTop '账号' ([System.Windows.Automation.ControlType]::Edit)
+   $password=FindTypedLoginControl $loginTop '密码' ([System.Windows.Automation.ControlType]::Edit)
+   $login=FindTypedLoginControl $loginTop '登录 MentorFlow' ([System.Windows.Automation.ControlType]::Button)
    if($account -and $password -and $login -and $account.Current.IsEnabled -and $password.Current.IsEnabled -and $login.Current.IsEnabled -and -not $account.Current.IsOffscreen -and -not $password.Current.IsOffscreen -and -not $login.Current.IsOffscreen){
-    $account.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($Name)
+    $accountPattern=$account.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+    $accountPattern.SetValue($Name)
+    if($accountPattern.Current.Value -ne $Name){throw 'test account value did not reach its edit control'}
     $password.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue($env:MF_UAT_LOGIN_PASSWORD)
     $login.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     @{submitted=$true;time=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()} | ConvertTo-Json -Compress

@@ -124,7 +124,8 @@ def _startup_policy_evidence(root, current, service=None):
     return evidence
 
 
-def get_startup_update_state(root, *, service=None, check_feed=True, full=True, cancel=None):
+def get_startup_update_state(root, *, service=None, check_feed=True, full=True, cancel=None,
+                             on_pointer_policy=None):
     """Single authority for startup; no account API, token or UI dependency.
 
     Network errors cannot invent a mandatory gate or erase one already proved
@@ -175,7 +176,12 @@ def get_startup_update_state(root, *, service=None, check_feed=True, full=True, 
     owned = service is None
     try:
         service = service if service is not None else one_click_service(root)
-        result = service.check(manual=True, cancel=cancel) if cancel is not None else service.check(manual=True)
+        check_kwargs = {'manual': True}
+        if cancel is not None:
+            check_kwargs['cancel'] = cancel
+        if on_pointer_policy is not None:
+            check_kwargs['on_pointer_policy'] = on_pointer_policy
+        result = service.check(**check_kwargs)
         # check() may have persisted a valid witness before an unrelated status
         # write failed. Re-read it even when no downloadable release is returned.
         evidence.extend(_startup_policy_evidence(root, release, service))
@@ -432,6 +438,14 @@ def download_latest(root, progress=None, cancel=None, *, service=None, reuse_pre
     except SecurityError as error:
         install.maintenance_log(root, 'download_latest_failed', detail=str(error))
         return dict(state='FAILED_SECURITY', message='更新文件未通过安全校验，未继续应用。')
+    except RecoverableError as error:
+        if str(error) == 'another update operation is active':
+            install.maintenance_log(root, 'download_latest_failed', detail=str(error),
+                                    code='UPDATE_LOCK_BUSY')
+            return dict(state='FAILED_RECOVERABLE', code='UPDATE_LOCK_BUSY',
+                        message='后台更新准备正在等待安装任务。')
+        install.maintenance_log(root, 'download_latest_failed', detail=str(error))
+        return dict(state='FAILED_RECOVERABLE', message='更新下载暂时无法完成，请稍后重试。', no_feed=service is None)
     except (OSError, RuntimeError, ValueError) as error:
         install.maintenance_log(root, 'download_latest_failed', detail=str(error))
         return dict(state='FAILED_RECOVERABLE', message='更新下载暂时无法完成，请稍后重试。', no_feed=service is None)

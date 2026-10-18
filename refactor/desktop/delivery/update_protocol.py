@@ -73,11 +73,49 @@ def release_pointer(raw: bytes) -> dict:
     return value
 
 
+def release_pointer_policy(raw: bytes, pointer: dict) -> dict:
+    """Parse the paired unsigned login-gate hint without granting release trust.
+
+    The exact four-field release pointer remains compatible with older clients.
+    This second file is only an early UI hint; the signed release envelope is
+    still fetched and verified before the update check returns.
+    """
+    if len(raw) > 2048:
+        raise SecurityError('login policy hint too large')
+    value = strict_json(raw)
+    fields = {'version', 'metadata_version', 'sha256', 'size',
+              'mandatory', 'mandatory_floor'}
+    if not isinstance(value, dict) or set(value) != fields:
+        raise SecurityError('invalid login policy hint fields')
+    version_key(value['version'])
+    version_key(value['mandatory_floor'])
+    if (type(value['metadata_version']) is not int or value['metadata_version'] < 1
+            or type(value['size']) is not int or not 0 < value['size'] <= MAX_METADATA
+            or not isinstance(value['sha256'], str) or not HASH.fullmatch(value['sha256'])
+            or type(value['mandatory']) is not bool):
+        raise SecurityError('invalid login policy hint values')
+    if version_key(value['mandatory_floor']) > version_key(value['version']):
+        raise SecurityError('login policy floor exceeds hinted release')
+    if any(value[key] != pointer[key]
+           for key in ('version', 'metadata_version', 'sha256', 'size')):
+        raise SecurityError('login policy hint does not match release pointer')
+    return value
+
+
 def pointer_matches(pointer: dict, release) -> bool:
     return (pointer['version'] == release.version
             and pointer['metadata_version'] == release.signed['metadata_version']
             and pointer['sha256'] == digest(release.envelope)
             and pointer['size'] == len(release.envelope))
+
+
+def make_login_policy(release) -> dict:
+    """Create the paired early-login hint from an already verified release."""
+    return dict(version=release.version,
+                metadata_version=release.signed['metadata_version'],
+                sha256=digest(release.envelope), size=len(release.envelope),
+                mandatory=release.signed['mandatory'],
+                mandatory_floor=mandatory_floor(release))
 
 
 def safe_path(value: str) -> str:

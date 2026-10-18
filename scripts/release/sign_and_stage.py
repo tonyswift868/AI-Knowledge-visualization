@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from scripts import build_learning_installer as builder
-from scripts.release.pipeline import PUBLIC, stage_manifest
+from scripts.release.pipeline import PUBLIC, stage_manifest, verified_release
+from refactor.desktop.delivery.update_protocol import make_login_policy
 from scripts.release.transport import LocalServer, SSHServer
 
 
@@ -43,7 +44,12 @@ def main():
                                     private_key=args.private_key, output=stable))
     server = LocalServer(args.local_server_root) if args.local_server_root else SSHServer(
         args.work / 'ssh', identity=args.ssh_identity)
-    print(stage_manifest(server, stable, args.public_key))
+    release = verified_release(stable, args.public_key)
+    staged = stage_manifest(server, stable, args.public_key)
+    expected_policy = make_login_policy(release)
+    if staged.get('login_policy') != expected_policy:
+        raise RuntimeError('server staged login policy does not match signed manifest')
+    print(staged)
 
 
 if __name__ == '__main__':
