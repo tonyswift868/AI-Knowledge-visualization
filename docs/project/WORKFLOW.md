@@ -60,7 +60,7 @@
 
 - 169-MF06（tools，基线 6823365a）：修 [BUG-115]，¥3 内复现。任务文件 D:\MentorFlow\.local\tasks\169-MF06.md，进行中（用户 2026-10-19 已发）。合入后随下一版（2.0.28）发布。
 - 170-MF02（client，基线 c80b7314）：修 [BUG-116]，¥3 内复现。任务文件 D:\MentorFlow\.local\tasks\170-MF02.md，进行中（用户 2026-10-19 已发）。和 169 一起随 2.0.28 发布。
-- 171-MF03（classroom，基线 BASE171）：修 [BUG-117]，¥0。任务文件 D:\MentorFlow\.local\tasks\171-MF03.md，已起草，待转发。只改 PlanGraph.tsx／KnowledgeMap.tsx，和 169、170 不冲突；随 2.0.28。
+- 171-MF03（classroom，基线 ad8ee3d6）：修 [BUG-117]，¥0。任务文件 D:\MentorFlow\.local\tasks\171-MF03.md，已起草，待转发。只改 PlanGraph.tsx／KnowledgeMap.tsx，和 169、170 不冲突；随 2.0.28。
 - 其余员工空闲（2026-10-19）。第一百五十八～一百六十八批都已合入并随 2.0.22～2.0.27 发布，过程在 git 和 CURRENT_STATE 的 BUG 条目里。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）。
 
