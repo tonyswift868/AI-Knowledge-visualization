@@ -1446,6 +1446,88 @@ def directory_purposes(paragraphs, complete, previous=()):
     return [classified.get(s['id'],s) for s in sections]
 
 
+DIRECTORY_SUBPOINT_TITLE_LIMIT = 64
+
+
+def _directory_title_clean(value):
+    """Display source words, without Markdown presentation or link targets."""
+    value = re.sub(r'!?(\[([^\]]+)\])\([^)]*\)', r'\2', value)
+    value = re.sub(r'<[^>]+>', '', value)
+    value = re.sub(r'^[\s>#]+', '', value)
+    value = value.replace('|', ' ')
+    value = re.sub(r'[*`~]', '', value)
+    value = re.sub(r'(?<!\w)#+', '', value)
+    value = re.sub(r'(?<!\w)_+|_+(?!\w)', '', value)
+    return re.sub(r'\s+', ' ', value).strip()
+
+
+def _directory_title_limit(value):
+    """Clip only at punctuation/word boundaries and keep brackets paired."""
+    if len(value) > DIRECTORY_SUBPOINT_TITLE_LIMIT:
+        prefix = value[:DIRECTORY_SUBPOINT_TITLE_LIMIT]
+        # Prefer an earlier clause boundary over a cut in a long clause.
+        boundaries = list(re.finditer(r'[，,；;：:。！？!?]', prefix))
+        if boundaries:
+            prefix = prefix[:boundaries[-1].start()]
+        elif (re.match(r'[A-Za-z0-9_]', value[DIRECTORY_SUBPOINT_TITLE_LIMIT:])
+              and re.search(r'[A-Za-z0-9_]$', prefix)):
+            prefix = re.sub(r'[A-Za-z0-9_]+$', '', prefix)
+        value = prefix.rstrip(' ,，;；:：-—/')
+    pairs = {'(': ')', '（': '）', '[': ']', '【': '】', '{': '}', '「': '」', '《': '》'}
+    stack = []; kept = []
+    for char in value:
+        if char in pairs:
+            stack.append((char, len(kept))); kept.append(char)
+        elif char in pairs.values():
+            if stack and pairs[stack[-1][0]] == char:
+                stack.pop(); kept.append(char)
+        else:
+            kept.append(char)
+    if stack:
+        kept = kept[:stack[0][1]]
+    return ''.join(kept).rstrip(' ,，;；:：-—/')
+
+
+def _directory_subpoint_title(text, fallback):
+    """Prefer source headings, otherwise the first normal prose sentence.
+
+    A title is a label, not a source replacement: this never mutates source,
+    references, or existing plans. Code/table/list rows cannot name a lesson.
+    """
+    fence = None; prose = []; headings = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        marker = re.match(r'^(`{3,}|~{3,})', line)
+        if marker:
+            if fence is None:
+                fence = marker.group(1)[0]
+            elif marker.group(1)[0] == fence:
+                fence = None
+            continue
+        if fence or not line or raw.startswith(('    ', '\t')):
+            continue
+        heading = re.match(r'^#{1,6}\s+(.+)', line)
+        if heading:
+            headings.append(_directory_title_clean(heading.group(1))); continue
+        if ('|' in line or re.match(r'^(?:\d+[.)、．）]|[A-Za-z][.)]|[（(][\d一二三四五六七八九十]+[)）]|[①-⑳]|[-+*]\s)', line)
+                or re.fullmatch(r'[-=:_\s]+', line)):
+            continue
+        if (re.match(r'^(?:import |from .+ import |def |class |public |private |return |SELECT |INSERT |CREATE |const |let |var |function )', line, re.I)
+                or re.match(r'^[\w.]+\s*(?:[-+*/]?=|\([^)]*\)\s*(?:[;{]|$))', line)
+                or line.startswith(('//', '/*', '*/', '$ '))
+                or line in ('{', '}', '};')
+                or (line.endswith((';', '{', '}')) and not re.search(r'[\u3400-\u9fff]', line))):
+            continue
+        cleaned = _directory_title_clean(line)
+        end = re.search(r'[。！？!?]|\.(?=\s|$)', cleaned)
+        prose.append(cleaned[:end.end()] if end else cleaned)
+    for candidate in headings + prose + [_directory_title_clean(fallback)]:
+        title = _directory_title_limit(candidate)
+        if title:
+            return title
+    return '原文要点'
+
+
 def directory_structure(paragraphs, old_points, required, questions):
     """BUG-86 fourth proposal: original hierarchy, never semantic similarity.
 
@@ -1507,12 +1589,15 @@ def directory_structure(paragraphs, old_points, required, questions):
             refs = [r for u in group for r in u['refs']]
             paths = list(dict.fromkeys(tuple(u['section']) for u in group))
             original = '；'.join(dict.fromkeys(' / '.join(paragraphs[r].get('section') or ['正文']) for r in refs))
-            # For paragraph-only groups use original words, never generated names.
-            sub_title = '、'.join(p[-1] for p in paths)
-            if len(parts) < 3:
-                lines = re.sub(r'^[\s#*`>\-]+', '', paragraphs[refs[0]]['text']).splitlines()
-                first = lines[0] if lines else sub_title
-                sub_title = first[:12] or sub_title
+            # Retain actual source subtitles. Generic/document-only headings
+            # fall back to prose across the group, never a fixed first-line cut.
+            source_titles = {paragraphs[r].get('source_title') for r in refs}
+            headings = [p[-1] for p in paths if p[-1] not in
+                        {'正文', '内容', '资料', '未分节', *source_titles}
+                        and not re.match(r'^\s*(?:\d+[.)、．]|[|`])', p[-1])]
+            sub_title = (_directory_subpoint_title('', '、'.join(headings)) if headings else
+                         _directory_subpoint_title('\n'.join(paragraphs[r]['text'] for r in refs
+                             if paragraphs[r].get('kind') not in {'code', 'table'}), '原文要点'))
             subs.append(dict(id=f'K{index}-S{j}', title=sub_title, refs=refs,
                              original_heading=original, bullets=[]))
         point = dict(id=f'K{index}', title=title, goal='理解与应用原文小节：'+title,
