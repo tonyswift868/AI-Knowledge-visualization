@@ -4,13 +4,13 @@
 
 ## 当前阶段（接手先读）
 
-2026-10-17 更新。
+2026-10-19 更新（交班）。
 
 - **目录与代码**：主目录 D:\MentorFlow，代码全在 refactor/（客户端 learning、desktop，服务器 server），测试在 tests/refactor/；员工工位 D:\MentorFlow-office\<工位>\repo（WORKFLOW）。架构：PySide6 + QWebEngine 嵌 React（Vite）前端，Python 后端，固定流程编排；模型 DeepSeek（deepseek-v4-flash）。服务器 89.45.45.28：后端 Java（[ARCH-09]，容器 mentorflow-java-backend，镜像 mentorflow-java-server:eeb63f78）+ Keycloak；数据库 PG17 + pgvector 0.8.7，迁移版本 0045（RAG 表已建，2026-10-17）。
 - **产品方向**：见 [DIR-01]。
 - **版本与测试**：线上 2.0.27（2026-10-19 02:14 发布，只发软件内更新；非必须；基线 2.0.26；main 8b19ae46，[SYS-06]），发版走 GitHub Actions 流水线。用户本人亲测是唯一算数的验收，不用 AI 模拟测试（[QA-01]）。
-- **用户在学的计划**：“java guide”（资料 JavaGuide，10-07～10-22）：2026-10-14 已在源代码版换成新结构（保留 101 个已学/已跳过旧点，加 144 个大知识点），逾期已平摊，每天 323 分（[BUG-86]）。同一账号同一时间只能一台在线（[ACC-01]）。
-- **接下来**（2026-10-17 交班）：①服务器 RAG 表已建好（2026-10-17，[BUG-107] 已关闭）；②2.0.21、2.0.22 已发布（2026-10-17），等用户在装好的软件里点更新、亲测资料问答页（[RAG-01]）、测试连接（[BUG-106]）；③知识点按主题重分（[BUG-104]）：2026-10-17 19:43 已换入用户计划，待用户看效果；④登录时等更新检查、必须更新处处拦、每 30 分钟检查（[BUG-109]）已在用户那台验证；更新框被截（[BUG-110]）、后台预下载撞锁误报（[BUG-111]）待修（资料问答客户端 [RAG-01] + 测试连接修复 [BUG-106]，只发软件内更新）；③后端已全部是 Java（[ARCH-09]，Python 已停）。邮件类流程（注册、找回、改邮箱、注销）线上未真用，用户愿意时给测试邮箱再测；Python 回退镜像对 0044 之后的库要按 156 README 重建 fallback；④缓存命中率复查（[SYS-05]）。
+- **用户在学的计划**：①“java guide”（资料 JavaGuide，10-07～10-22）：2026-10-17 已换成按主题分组（[BUG-104]，第 6 模块 80 → 45 点，备份在账号目录 course.sqlite3.before-restructure-*.bak）；同一账号同一时间只能一台在线（[ACC-01]）。②2026-10-19 用户正在新建计划学本项目（[DOC-01]）：资料用公开仓库链接 https://github.com/tonyswift868/mentorflow-guide 导入，10-19～10-24，每天上限 180 分钟；真实链接试切约 14 个模块、79 个大点、96 道问答原题，学习约 7.6 小时、加检测约 15 小时。
+- **接下来**（2026-10-19 交班，员工全部空闲，没有待转发的任务）：①用户在用 2.0.27 新建计划学本项目（[DOC-01]）；学的过程中反馈资料哪里讲不顺、比喻不对、讲了面试不问的，就派人改 docs/learn，再用 scripts/learn/export_guide.py --strict 导出、到 .local/guide-export/mentorflow-guide（独立 git 仓库，远端 tonyswift868/mentorflow-guide，公开）提交推送，推送后用 scripts/learn/README.md 里的 --url --import-only 命令零花费复核。②[BUG-114] 等下一次发新版时，看用户那台 launcher-startup.jsonl 里 startup_login_gate 的 outcome 和耗时，确认可选更新几秒放行（2.0.27 起才生效）。③[BUG-104] 按主题重分后用户还没反馈效果，可以问一句。④邮件类流程（注册、找回、改邮箱、注销）线上没真用过，用户愿意时给测试邮箱再测；Python 回退镜像对 0044 之后的库要按 156 README 重建 fallback；缓存命中率复查（[SYS-05]）。⑤发给朋友的放行标准里，全新安装和注册还没有真人走通（[ACC-02]），下载站安装程序还是 2.0.15，发给朋友前要重做安装程序（mf-publish 设 build_installer=true，约多 10 分钟 Actions）。⑥GitHub Actions：10 月 1～17 日两个私有仓库共计费约 552 分钟（Windows 两倍），每发一版只发更新约 12～14 分钟，额度宽裕（scripts/release/README.md）。
 - **用户定的暂不做**：番茄钟、自习室、学习远征（不是永远不做）。
 - **用户的电脑**：装好的软件 D:\MentorFlowApp\MentorFlow；源代码版数据 D:\MentorFlowData\account-shell（只读）；旧版客户端数据 %LOCALAPPDATA%\MentorFlow（不要动）；E 盘是移动固态硬盘，只读运行，不写不复制（BUG-02）；D:\Kristina* 是别的项目，不碰。
 - **发给外部新用户**：对方从 aiteacher.clannad.win/download 下载安装、用自己的邮箱注册、用自己的 DeepSeek Key（设置→模型连接）。到 2026-10-14 还没给对方发过任何版本。放行标准（都在真打包程序上走通、架构师看过证据，才让用户测、再发给对方）：①下载站安装程序全新安装不报错、有桌面图标；②几秒内出登录窗口、不闪，注册、登录、填 Key、建计划能用；③以后发新版，在软件里点一下更新，软件自己关掉、换好、自动重新打开。现状：安装程序覆盖安装（2.0.13）和软件内更新（2.0.13→2.0.14）用户已走通；全新安装和注册还没有真人走通过（[ACC-02]）。
