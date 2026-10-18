@@ -2,9 +2,11 @@
 
 先读 [00 主线](00-from-zero-to-one.md)，知道为什么要开这间资料室，再来认识里面的工具。别一进门就背二十个英文名：先跟着用户走一趟——打开窗口、登录、拿资料、学习、保存、更新。
 
-“常被问／偶尔问／基本不问”只表示本课按 Java + AI 副项目给出的复习优先级，不是概率统计。项目事实按 `69f30f2b` 核对；概念见各节出处表。先用一句话认工具，再用三句话讲流程，最后挑值得追问的机制深入。没有选型比较，就说没有，不替团队编理由。
+“常被问／偶尔问／基本不问”只表示本课按 Java + AI 副项目给出的复习优先级，不是概率统计。项目事实按 `e61fd00d` 核对；概念见各节出处表。先用一句话认工具，再用三句话讲流程，最后挑值得追问的机制深入。没有选型比较，就说没有，不替团队编理由。
 
-## 1. 开门看到的是什么？｜偶尔问
+## 1. 窗口与界面｜偶尔问
+
+窗口里有网页。[T01]
 
 你打开 MentorFlow，看到的是 Windows 窗口；里面的按钮、资料卡片和课堂画面，却由网页技术绘制。想成资料室里装了一块电子白板：房间容纳它，白板显示画面，后面的控制台办事。[T01]
 
@@ -16,58 +18,82 @@ Vite 是网页的开发与打包工具，TypeScript 帮开发时检查类型。�
 
 房间、白板和控制台不代表三个独立进程；桥也不代表任意网页都能改本地数据库。仓库能证明这些工具在用，未找到与其他桌面或前端方案的正式比较。
 
+React 负责显示交互，Python 宿主处理学习业务与本地状态。[T01] QWebChannel 把带编号、方法名和参数的请求交给宿主处理器。[T02] 宿主返回响应或事件，页面据此更新画面。[T02] **三句话层。**
+
+**你可以这样跟面试官说：**“页面用 React 展示交互，Qt 把它装进 Windows 窗口。操作通过桥交给本机 Python，流程和数据由本机程序处理，结果再返回页面。”
+
 ### React 页面怎样让 Python 办事？
 
-- 参考要点：React 负责显示交互，Python 宿主处理学习业务与本地状态。
-- 参考要点：QWebChannel 把带编号、方法名和参数的请求交给宿主处理器。
-- 参考要点：宿主返回响应或事件，页面据此更新画面。
+- React 负责显示交互，Python 宿主处理学习业务与本地状态。
+
+- QWebChannel 把带编号、方法名和参数的请求交给宿主处理器。
+
+- 宿主返回响应或事件，页面据此更新画面。
 
 ### 学习路线：本节出处
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
 | T01 | PySide6、WebEngine 与 React 角色 | `refactor/learning/app/window.py:270-300`；[ARCH-01]；[Qt](https://doc.qt.io/qtforpython-6/)、[React](https://react.dev/learn) |
-| T02 | 宿主桥注册、请求协议 | `refactor/learning/app/bridge.py:3-14,72-73`；`refactor/learning/app/window.py:282-299` |
-| T03 | 前端依赖、构建、app/course 分工 | `refactor/learning/web/package.json:6-8,21-22`；[ARCH-02]，`docs/project/CURRENT_STATE.md:233-236`；[Vite](https://vite.dev/guide/) |
+| T02 | 宿主桥注册、请求协议 | `refactor/learning/app/bridge.py:130-228`；`refactor/learning/app/window.py:282-305` |
+| T03 | 前端依赖、构建、app/course 分工 | `refactor/learning/web/package.json:6-8,21-22`；[ARCH-02]，`docs/project/CURRENT_STATE.md`；[Vite](https://vite.dev/guide/) |
 
-## 2. 谁办业务，谁查身份？｜常被问
+## 2. 业务与身份｜常被问
+
+身份、业务各有分工。[T04,T05]
 
 客户端仍主要是 Python；正式在线的服务器是 Java 21 + Spring Boot，旧 FastAPI 服务停流量、留作回退。不是整个软件都改成 Java。**一句话层。**[T04]
 
 迁移的背景是用户求职方向 Java + AI，客户端请求和响应约定保持兼容。Spring Boot 是 Java 服务的运行骨架，项目业务类办理账号、同步、目录和检索。身份交给 Keycloak，请求进入业务前由 Spring Security 处理认证。**三句话层。** 没有证据说换语言是因为 Python 性能不够。[T04,T05]
 
-把“通行证”讲准：OIDC 是获取身份的协议，JWT 是可携带声明、可签名验证的令牌格式。只做签名的 JWT，其内容通常可以读取；JWT 也可以采用加密形式，不能一概说都公开。签名本身不等于加密。但桌面常用的 mfn1_a_ 原生访问令牌是随机不透明令牌，由服务器查会话，不能拿 JWT 解码器硬拆。**深一层。**[T06]
+把“通行证”讲准：OIDC 是获取身份的协议，JWT 是可携带声明、可签名验证的令牌格式。只做签名的 JWT，其内容通常可以读取；JWT 也可以采用加密形式，不能一概说都公开。签名本身不等于加密。但桌面常用的原生访问令牌是随机不透明令牌，由服务器查会话，不能拿 JWT 解码器硬拆。**深一层。**[T06]
 
 柜台接待员像业务服务，查证件的人像认证层；“证件有效”不等于“能读所有账号数据”。Java 切换曾因未恢复代理传来的 HTTPS 协议而使认证返回 403。修正后记录了真实客户端登录、同步、上课与接口日志；邮件类流程当时尚未线上真人走全，不能把健康检查说成全部验收。[T07]
 
+JWT 携带声明；签名验证来源与完整性，不负责保密，JWT 另有加密形式。[T06] 本项目原生访问令牌是不透明随机令牌，由服务器校验会话。[T06] 认证通过后，仍要按账号和数据归属限制业务访问。[T05] **三句话层。**
+
+当前正式流量已切到 Java，客户端 Python 仍在使用。[T04] 旧 Python 服务停流量但保留作回退，代码退场与切流量是两件事。[T04] 不是整个软件都改成 Java。[T04] **三句话层。**
+
+迁移沿用 HTTP 契约，并修正了代理 HTTPS 识别导致的认证失败。[T07] 记录了真实客户端登录、同步、上课和接口日志。[T07] 当时邮件类账号流程尚未线上真人走全，不能概括成所有流程已验收。[T07] **三句话层。**
+
+**你可以这样跟面试官说：**“桌面客户端仍用 Python，正式服务器已切到 Java 和 Spring Boot。Keycloak 核验身份，Java 的业务代码继续检查账号和数据权限；身份有效与业务有权访问是两层检查。”
+
 ### JWT 和本项目原生访问令牌有什么区别？
 
-- 参考要点：JWT 携带声明；签名验证来源与完整性，不负责保密，JWT 另有加密形式。
-- 参考要点：本项目原生访问令牌是不透明随机令牌，由服务器校验会话。
-- 参考要点：认证通过后，仍要按账号和数据归属限制业务访问。
+- JWT 携带声明；签名验证来源与完整性，不负责保密，JWT 另有加密形式。
 
-### 为什么旧 FastAPI 服务没有立刻删掉？
+- 本项目原生访问令牌是不透明随机令牌，由服务器校验会话。
 
-- 参考要点：当前正式流量已切到 Java，客户端 Python 仍在使用。
-- 参考要点：旧 Python 服务停流量但保留作回退，代码退场与切流量是两件事。
-- 参考要点：未找到可以直接删掉回退实现的验收证据。[T04]
+- 认证通过后，仍要按账号和数据归属限制业务访问。
+
+### 迁移后哪些部分仍保留原技术？
+
+- 当前正式流量已切到 Java，客户端 Python 仍在使用。
+
+- 旧 Python 服务停流量但保留作回退，代码退场与切流量是两件事。
+
+- 不是整个软件都改成 Java。[T04]
 
 ### Java 迁移成功有什么证据，哪些还不能保证？
 
-- 参考要点：迁移沿用 HTTP 契约，并修正了代理 HTTPS 识别导致的认证失败。
-- 参考要点：记录了真实客户端登录、同步、上课和接口日志。
-- 参考要点：当时邮件类账号流程尚未线上真人走全，不能概括成所有流程已验收。[T07]
+- 迁移沿用 HTTP 契约，并修正了代理 HTTPS 识别导致的认证失败。
+
+- 记录了真实客户端登录、同步、上课和接口日志。
+
+- 当时邮件类账号流程尚未线上真人走全，不能概括成所有流程已验收。[T07]
 
 ### 学习路线：本节出处
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| T04 | Java、Spring Boot、旧 FastAPI 与迁移决策 | `refactor/server-java/pom.xml:4-15`；`refactor/server/app.py:97`；[ARCH-09]，`docs/project/CURRENT_STATE.md:9,284-290` |
-| T05 | 认证过滤与 Keycloak | `refactor/server-java/src/main/java/win/clannad/mentorflow/identity/IdentitySecurity.java:42-84`；[ARCH-09]，`docs/project/CURRENT_STATE.md:9,284-290`；[Spring Boot](https://docs.spring.io/spring-boot/reference/)、[Keycloak](https://www.keycloak.org/documentation) |
+| T04 | Java、Spring Boot、旧 FastAPI 与迁移决策 | `refactor/server-java/pom.xml:4-15`；`refactor/server/app.py:97`；[ARCH-09]，`docs/project/CURRENT_STATE.md` |
+| T05 | 认证过滤与 Keycloak | `refactor/server-java/src/main/java/win/clannad/mentorflow/identity/IdentitySecurity.java:42-84`；[ARCH-09]，`docs/project/CURRENT_STATE.md`；[Spring Boot](https://docs.spring.io/spring-boot/reference/)、[Keycloak](https://www.keycloak.org/documentation) |
 | T06 | OIDC、JWT、原生不透明令牌 | `docs/interview/java-backend-rewrite.md:28`；[RFC 7519](https://www.rfc-editor.org/rfc/rfc7519)、[OIDC Core](https://openid.net/specs/openid-connect-core-1_0.html) |
-| T07 | 协议故障、修正验证、邮件流程边界 | [ARCH-09]、[ACC-02]；`docs/project/CURRENT_STATE.md:284-285,510-513` |
+| T07 | 协议故障、修正验证、邮件流程边界 | [ARCH-09]、[ACC-02]；`docs/project/CURRENT_STATE.md` |
 
-## 3. 两本账，为什么不放一起？｜常被问
+## 3. 两本数据账｜常被问
+
+本机、服务器各存账。[T08]
 
 学生手里的笔记本和资料室的共享档案职责不同：本机 SQLite 保存学习数据，服务器 PostgreSQL 保存服务器数据；同步传递相关记录，不是每次点击都直接写服务器库。**一句话层。**[T08]
 
@@ -79,70 +105,102 @@ RLS 是数据库按行访问策略，像每份档案上的可见名单；RAG 表
 
 “流水页稍后誊回账本”只是 WAL 的比喻，不表示没有锁，也不保证只复制主库文件就是完整备份。未找到 SQLite 对其他本地库、JDBC 对 ORM 的正式比较，不讲成全面胜出。
 
+认证确认身份，不自动授予读取所有记录的权限。[T05] 事务控制一组写入的提交或撤回，保存点控制局部撤回。[T10] RLS 按数据库策略限制行访问，还要配合普通 SQL 权限。[T11] **三句话层。**
+
+不是，WAL 是先写日志再通过检查点合入主库的日志模式。[T08] 事务和连接的正确使用仍需由应用管理，不代表没有锁。[T08] 备份不能想当然只复制主库文件，还要考虑日志中的修改。[T08] **三句话层。**
+
+表所有者默认通常能够绕过行级策略。[T11] FORCE 让表所有者执行普通访问时也受策略约束。[T11] 超级用户、BYPASSRLS 和普通 SQL 权限仍需分别理解。[T11] **三句话层。**
+
+**你可以这样跟面试官说：**“本机 SQLite 保存课程记录，服务器 PostgreSQL 保存服务端数据。事务决定一组写入一起提交还是撤回，数据库行级策略再限制每个账号能看哪些行。”
+
 ### 认证、事务和行级策略各管什么？
 
-- 参考要点：认证确认身份，不自动授予读取所有记录的权限。
-- 参考要点：事务控制一组写入的提交或撤回，保存点控制局部撤回。
-- 参考要点：RLS 按数据库策略限制行访问，还要配合普通 SQL 权限。
+- 认证确认身份，不自动授予读取所有记录的权限。
+
+- 事务控制一组写入的提交或撤回，保存点控制局部撤回。
+
+- RLS 按数据库策略限制行访问，还要配合普通 SQL 权限。
 
 ### WAL 就是多线程锁吗？
 
-- 参考要点：不是，WAL 是先写日志再通过检查点合入主库的日志模式。
-- 参考要点：事务和连接的正确使用仍需由应用管理，不代表没有锁。
-- 参考要点：备份不能想当然只复制主库文件，还要考虑日志中的修改。[T08]
+- 不是，WAL 是先写日志再通过检查点合入主库的日志模式。
+
+- 事务和连接的正确使用仍需由应用管理，不代表没有锁。
+
+- 备份不能想当然只复制主库文件，还要考虑日志中的修改。[T08]
 
 ### RLS 为什么还要 FORCE？
 
-- 参考要点：表所有者默认通常能够绕过行级策略。
-- 参考要点：FORCE 让表所有者执行普通访问时也受策略约束。
-- 参考要点：超级用户、BYPASSRLS 和普通 SQL 权限仍需分别理解。[T11]
+- 表所有者默认通常能够绕过行级策略。
+
+- FORCE 让表所有者执行普通访问时也受策略约束。
+
+- 超级用户、BYPASSRLS 和普通 SQL 权限仍需分别理解。[T11]
 
 ### 学习路线：本节出处
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| T08 | 本地库、WAL 与服务器库 | `refactor/learning/course/store.py:170-174`；`refactor/learning/app/rag.py:102-112`；[ARCH-03]、[RAG-01]，`docs/project/CURRENT_STATE.md:239-243,595-607`；[SQLite WAL](https://www.sqlite.org/wal.html) |
+| T08 | 本地库、WAL 与服务器库 | `refactor/learning/course/store.py:170-174`；`refactor/learning/app/rag.py:102-112`；[ARCH-03]、[RAG-01]，`docs/project/CURRENT_STATE.md`；[SQLite WAL](https://www.sqlite.org/wal.html) |
 | T09 | JDBC、Maven、PostgreSQL 岗位 | `refactor/server-java/pom.xml:4-22`；`refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java:59-81`；[JDBC](https://docs.spring.io/spring-framework/reference/data-access/jdbc/core.html)、[Maven](https://maven.apache.org/what-is-maven.html)、[PostgreSQL](https://www.postgresql.org/docs/17/) |
 | T10 | 事务、NESTED 保存点和异常处理 | `refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java:97-183`；[Spring NESTED](https://docs.spring.io/spring-framework/reference/data-access/transaction/declarative/tx-propagation.html) |
-| T11 | RAG RLS、FORCE、绕过边界 | `refactor/server/migrations/versions/0044_rag_documents.py:142-143`；[PostgreSQL RLS](https://www.postgresql.org/docs/17/ddl-rowsecurity.html) |
+| T11 | RAG RLS、FORCE、绕过边界 | `refactor/server/migrations/versions/0044_rag_documents.py:142-146`；[PostgreSQL RLS](https://www.postgresql.org/docs/17/ddl-rowsecurity.html) |
 
-## 4. 找资料的人和讲课的人｜常被问
+## 4. 检索与生成｜常被问
+
+先找原文，再作答。[T12]
 
 你问：“资料里的向量检索怎么做？”跑腿员先找有关的卡片，老师再组织解释。Java 服务找原文，客户端用用户选择的模型生成回答。**一句话层。**[T12]
 
-服务器用 LangChain4j 的量化中文模型 BGE，把文字转成 512 个数字组成的向量。pgvector 是 PostgreSQL 的向量扩展，存向量、按距离找候选，服务再结合关键词重排。客户端用自己的 Key 直连生成模型；项目配置了 DeepSeek 提供商及其默认模型，Key 放 Windows 凭据里。**三句话层。**[T12,T13]
+服务器用 LangChain4j 的量化中文模型 BGE，把文字转成 512 个数字组成的向量。pgvector 是 PostgreSQL 的向量扩展，存向量、按距离找候选，服务再结合关键词重排。客户端用自己的 Key 直连生成模型；项目配置了 DeepSeek 提供商及其默认模型，Key 从本机操作系统的凭据库读取。**三句话层。**[T12,T13]
 
 embedding 像“意思地图”上的坐标，生成模型负责写回答。项目有 HNSW 余弦索引，但邻近不等于正确；一次 MDN 中文小样本的20个问题，相关段落全部进入前五结果，只说明那次样本，不是永久准确率。**深一层。** [04 RAG](04-rag-from-upload-to-answer.md) 会带你走完整条链。[T14]
 
 坐标不能完整表达意思，跑腿员找对一页也不保证老师绝不答错。LangChain4j 是工具箱，不是整个系统自动生成。未找到它与 Spring AI、BGE 与其他向量模型、DeepSeek 与其他生成模型的完整对比。
 
+embedding 把文本转成数字向量，帮助检索相关资料。[T13] 生成模型根据问题和资料组织答案，本项目由客户端调用。[T12] 检索相近不等于答案正确，仍需核对原文。[T14] **三句话层。**
+
+用户定模型由客户端用自己的 Key 直连。[T12] Java 服务在资料问答中检索文字片段，客户端调用生成模型。[T12] 这是项目的职责边界，不能编成供应商性能评测得出的结论。[T12] **三句话层。**
+
+不是，分数用于本次候选的相对排序。[T14] 检索相近的内容仍可能不充分，生成模型也可能读错。[T14] 20问前五命中是小样本检索结果，不等于回答准确率。[T14] **三句话层。**
+
+**你可以这样跟面试官说：**“Java 把资料转成向量并检索相关原文，客户端再直连用户选择的模型组织回答。检索分数只是相对排序，最后仍要看引用原文能不能支持回答。”
+
 ### embedding 和生成模型是一回事吗？
 
-- 参考要点：embedding 把文本转成数字向量，帮助检索相关资料。
-- 参考要点：生成模型根据问题和资料组织答案，本项目由客户端调用。
-- 参考要点：检索相近不等于答案正确，仍需核对原文。
+- embedding 把文本转成数字向量，帮助检索相关资料。
+
+- 生成模型根据问题和资料组织答案，本项目由客户端调用。
+
+- 检索相近不等于答案正确，仍需核对原文。
 
 ### 为什么模型请求不经过自家的 Java 服务？
 
-- 参考要点：用户定模型由客户端用自己的 Key 直连。
-- 参考要点：Java 服务在资料问答中检索文字片段，客户端调用生成模型。
-- 参考要点：这是项目的职责边界，不能编成供应商性能评测得出的结论。[T12]
+- 用户定模型由客户端用自己的 Key 直连。
+
+- Java 服务在资料问答中检索文字片段，客户端调用生成模型。
+
+- 这是项目的职责边界，不能编成供应商性能评测得出的结论。[T12]
 
 ### 向量检索分数是回答正确率吗？
 
-- 参考要点：不是，分数用于本次候选的相对排序。
-- 参考要点：检索相近的内容仍可能不充分，生成模型也可能读错。
-- 参考要点：20问前五命中是小样本检索结果，不等于回答准确率。[T14]
+- 不是，分数用于本次候选的相对排序。
+
+- 检索相近的内容仍可能不充分，生成模型也可能读错。
+
+- 20问前五命中是小样本检索结果，不等于回答准确率。[T14]
 
 ### 学习路线：本节出处
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
 | T12 | 模型直连、文字上传、服务器检索 | [RAG-01]、[DATA-02]；`refactor/learning/connections/providers/registry.py:20-24`；[DeepSeek API](https://api-docs.deepseek.com/) |
-| T13 | LangChain4j、512维、pgvector、Key存储 | `refactor/server-java/pom.xml:6,15`；`refactor/server-java/RAG_API.md:60-68`；[ARCH-02]，`docs/project/CURRENT_STATE.md:236,527`；[LangChain4j](https://docs.langchain4j.dev/tutorials/rag/)、[pgvector](https://github.com/pgvector/pgvector) |
-| T14 | HNSW、重排、小样本命中边界 | `refactor/server-java/RAG_API.md:56,64`；[RAG-01]，`docs/project/CURRENT_STATE.md:596` |
+| T13 | LangChain4j、512维、pgvector、Key存储 | `refactor/server-java/pom.xml:6,15`；`refactor/server-java/RAG_API.md:60-68`；[ARCH-02]，`docs/project/CURRENT_STATE.md`；[LangChain4j](https://docs.langchain4j.dev/tutorials/rag/)、[pgvector](https://github.com/pgvector/pgvector) |
+| T14 | HNSW、重排、小样本命中边界 | `refactor/server-java/RAG_API.md:56,64`；[RAG-01]，`docs/project/CURRENT_STATE.md` |
 
-## 5. 软件怎么送到你手上？｜偶尔问
+## 5. 打包与交付｜偶尔问
+
+打包不等于验收。[T15,T17]
 
 房间装修好了，不等于学生家里能开门。PyInstaller 把 Python 程序冻结成可交付目录，Inno Setup 再做成 Windows 安装程序。**一句话层。** 一个备货，一个装箱；安装器细节基本不问。[T15]
 
@@ -152,11 +210,17 @@ Ed25519 是数字签名：私钥签、公钥验，验证来源与完整性，不
 
 装箱成功、能启动、能从旧版更新到新版，是不同检查。项目要求真打包走通旧版到新版，再请用户验收。不要背工作流运行编号或安装器像素。[T17]
 
+私钥签、公钥验，用于验证来源与完整性。[T16] 签名不隐藏内容，也不证明软件没有漏洞。[T16] 更新还要验证替换和失败恢复，不能只看下载成功。[T16] **三句话层。**
+
+**你可以这样跟面试官说：**“PyInstaller 冻结程序，Inno Setup 生成安装程序。更新用公钥验签确认来源和完整性，之后还要验证替换、启动和失败恢复，真包走通才算交付证据。”
+
 ### 更新签名为什么不是加密？
 
-- 参考要点：私钥签、公钥验，用于验证来源与完整性。
-- 参考要点：签名不隐藏内容，也不证明软件没有漏洞。
-- 参考要点：更新还要验证替换和失败恢复，不能只看下载成功。
+- 私钥签、公钥验，用于验证来源与完整性。
+
+- 签名不隐藏内容，也不证明软件没有漏洞。
+
+- 更新还要验证替换和失败恢复，不能只看下载成功。
 
 ### 学习路线：本节出处
 
@@ -166,7 +230,9 @@ Ed25519 是数字签名：私钥签、公钥验，验证来源与完整性，不
 | T16 | 构建/本机签名/发布/增量/公钥验签 | [SYS-06]；`.github/workflows/mf-build.yml:1-6`、`.github/workflows/mf-publish.yml:1-6`；`refactor/desktop/delivery/update_protocol.py:13,146`；`scripts/release/README.md:89-105`；[RFC8032](https://www.rfc-editor.org/rfc/rfc8032) |
 | T17 | 真打包更新验收、已知更新问题 | `AGENTS.md` 第11条；[SYS-06]、[BUG-110]、[BUG-111]（基线状态，不冒充已修） |
 
-## 6. 服务器房间怎么接线？｜偶尔问
+## 6. 服务运行与迁移｜偶尔问
+
+换代码，数据仍在。[T19]
 
 nginx 接外部请求转给后端，Docker 把服务和运行环境做成容器，Compose 描述服务如何一起运行。**一句话层。** 像接待台、工作间和接线图，但容器不是互不影响的小宇宙。[T18]
 
@@ -176,11 +242,17 @@ Maven 构建 Java 包，Dockerfile 把包放进运行镜像；数据库另外沿
 
 HTTPX/asyncio 是 Python 模型请求的 HTTP 与任务工具；ONNX Runtime 是离线 OCR 经 RapidOCR 使用的推理依赖。知道岗位就够，不把引库说成自己实现了推理引擎。[T21]
 
+代码镜像与数据库记录是两类状态，迁移有独立步骤。[T19] 恢复旧快照可能覆盖切换后产生的业务数据。[T19] 健康检查之外，还要验证带账号的实际链路。[T20] **三句话层。**
+
+**你可以这样跟面试官说：**“nginx 接请求，Java 容器执行业务，数据库迁移单独进行。换回旧代码镜像不会让数据库自动倒回去，所以恢复时必须分清代码与数据。”
+
 ### 服务器换镜像为什么不等于回滚数据库？
 
-- 参考要点：代码镜像与数据库记录是两类状态，迁移有独立步骤。
-- 参考要点：恢复旧快照可能覆盖切换后产生的业务数据。
-- 参考要点：健康检查之外，还要验证带账号的实际链路。
+- 代码镜像与数据库记录是两类状态，迁移有独立步骤。
+
+- 恢复旧快照可能覆盖切换后产生的业务数据。
+
+- 健康检查之外，还要验证带账号的实际链路。
 
 ### 学习路线：本节出处
 

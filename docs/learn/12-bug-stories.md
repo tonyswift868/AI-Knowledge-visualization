@@ -1,6 +1,6 @@
 # BUG 故事：学习资料室的十次抢修
 
-事实基线：`7df4f6ea`（2026-10-18）。本篇用“经营一家学习资料室”串起十次技术故障：收据、分馆账、钥匙、换门、清仓、交班、抽屉、答题员、维修场地和送书车。频率标签只是本篇的面试复习优先级判断，不是概率统计。先学前三个，再选与你投递岗位接近的故事；早期版本只作为故障发生时的处境，不代表当前实现。
+事实核验基线：`e61fd00d`（2026-10-18）。本篇用“经营一家学习资料室”串起十次技术故障：收据、分馆账、钥匙、换门、清仓、交班、抽屉、答题员、维修场地和送书车。频率标签只是本篇的面试复习优先级判断，不是概率统计。先学前三个，再选与你投递岗位接近的故事。文中数量、耗时和版本均为当时的历史观测；早期版本只作为故障发生时的处境，不代表当前实现。
 
 读法：先读每节的一句话层，再讲三句话层，最后用深一层应对追问。文中的“我”口述指你能据证据复述的排查与工程判断；面试时如实说明自己负责需求、组织、核对还是实现，不把 AI 员工完成的代码冒充亲手逐行编写。比喻只帮助理解，实际机制以每节出处为准。
 
@@ -33,8 +33,8 @@
 
 | 编号 | 具体说法 | 出处 |
 |---|---|---|
-| B01 | 检测结算与课堂保存的中断窗口、恢复、测试及锁边界 | `docs/project/CURRENT_STATE.md:1654-1663` [BUG-23]；`refactor/learning/course/mastery.py:183-188`；`refactor/learning/app/classroom.py:1597,1747-1748` |
-| B02 | 判定1→2、固定编号、保存失败如实报错 | `docs/project/CURRENT_STATE.md:1676-1685` [BUG-25]；`tests/refactor/app/test_app_classroom.py:51` |
+| B01 | 检测结算与课堂保存的中断窗口、恢复、测试及锁边界 | `docs/project/CURRENT_STATE.md` [BUG-23]；`refactor/learning/course/mastery.py:179-184`；`refactor/learning/app/classroom.py`（恢复与收尾） |
+| B02 | 判定1→2、固定编号、保存失败如实报错 | `docs/project/CURRENT_STATE.md` [BUG-25]；`tests/refactor/app/test_app_classroom.py::test_answer_event_is_idempotent_after_interrupted_classroom_save` |
 
 ## 2. 两家分馆改同一本账：离线修改不能被同步抹掉｜常被问
 
@@ -65,8 +65,8 @@
 
 | 编号 | 具体说法 | 出处 |
 |---|---|---|
-| B03 | 丢失复现、用户冲突规则、验证与时钟局限 | `docs/project/CURRENT_STATE.md:1665-1674` [BUG-24]、[DATA-02] |
-| B04 | 字段时标写入和合并实现；双Store测试 | `refactor/learning/course/store.py:560-569,2143-2156`；`tests/refactor/course_integration/test_store_sync_roundtrip.py:104,122` |
+| B03 | 丢失复现、用户冲突规则、验证与时钟局限 | `docs/project/CURRENT_STATE.md` [BUG-24][DATA-02] |
+| B04 | 字段时标写入和合并实现；双Store测试 | `refactor/learning/course/store.py:565,1427-1511`；`tests/refactor/course_integration/test_store_sync_roundtrip.py::test_concurrent_plan_fields_merge_without_losing_offline_edit`、`::test_concurrent_same_field_keeps_later_edit_and_reports_conflict` |
 
 ## 3. 维修员是会员，却没有房门钥匙：迁移权限与发布失败｜常被问
 
@@ -97,7 +97,7 @@
 
 | 编号 | 具体说法 | 出处 |
 |---|---|---|
-| B05 | 权限故障、管道误判、复现及本机/线上数字 | `docs/project/CURRENT_STATE.md:1117-1126` [BUG-107]；修复提交 `e3247021`；`tests/refactor/server_java/test_migration_roles157.py` |
+| B05 | 权限故障、管道误判、复现及本机/线上数字 | `docs/project/CURRENT_STATE.md` [BUG-107]；`tests/refactor/server_java/test_migration_roles157.py` |
 | B06 | 现有授权内的角色切换 | `refactor/server/migrations/versions/0045_account_closure_rag.py:31-33` |
 
 ## 4. 抽屉刚打开就自己关：前端副作用竞态｜常被问
@@ -129,7 +129,7 @@
 
 | 编号 | 具体说法 | 出处 |
 |---|---|---|
-| B11 | 11次4失败、时序定位、修复和验证边界 | `docs/project/CURRENT_STATE.md:1166-1175` [BUG-103] |
+| B11 | 11次4失败、时序定位、修复和验证边界（历史观测） | `docs/project/CURRENT_STATE.md` [BUG-103] |
 | B12 | 按小要点/导航变化在布局副作用关闭旧浮层 | `refactor/learning/web/src/classroom/Conversation.tsx:42` |
 
 ## 5. 草稿很多，正文为空：模型响应分层｜常被问
@@ -161,7 +161,7 @@ HTTP 成功、事件流结束和用户拿到正文，是三件不同的事。[B1
 
 | 编号 | 具体说法 | 出处 |
 |---|---|---|
-| B13 | thinking-only故障、条件/次数、82项和发布边界 | `docs/project/CURRENT_STATE.md:1136-1145` [BUG-105]；`tests/refactor/reject138/test_teacher_empty_retry105.py` |
+| B13 | thinking-only故障、条件/次数、82项和发布边界（历史观测） | `docs/project/CURRENT_STATE.md` [BUG-105]；`tests/refactor/reject138/test_teacher_empty_retry105.py` |
 | B14 | 首次空回复重试日志 | `refactor/learning/app/classroom.py:1397` |
 
 ## 6. 门挡住了，搬家师傅一直等：真实更新不能只测替身｜常被问
@@ -192,7 +192,7 @@ HTTP 成功、事件流结束和用户拿到正文，是三件不同的事。[B1
 
 | 编号 | 具体说法 | 出处 |
 |---|---|---|
-| B07 | 模态窗口根因、交接/回退与真包验证及前台边界 | `docs/project/CURRENT_STATE.md:1501-1522` [BUG-71]；修复 `13032a9f`；`refactor/desktop/delivery/per_user_install.py:596` |
+| B07 | 模态窗口根因、交接/回退与真包验证及前台边界 | `docs/project/CURRENT_STATE.md` [BUG-71]；`refactor/desktop/delivery/per_user_install.py`（shutdown/ack 交接流程） |
 
 ## 7. 搬完店，纸箱不能永远堆着：更新垃圾清理｜偶尔问
 
@@ -222,7 +222,7 @@ HTTP 成功、事件流结束和用户拿到正文，是三件不同的事。[B1
 
 | 编号 | 具体说法 | 出处 |
 |---|---|---|
-| B08 | 11GB构成、锁重试、67文件不变与用户清理结果 | `docs/project/CURRENT_STATE.md:1490-1500` [BUG-73]；`refactor/desktop/delivery/per_user_install.py:347-371` |
+| B08 | 11GB构成、锁重试、67文件不变与用户清理结果（历史观测） | `docs/project/CURRENT_STATE.md` [BUG-73]；`refactor/desktop/delivery/per_user_install.py:347-371` |
 
 ## 8. 店面换新，维修工具却没换：更新器的交班竞态｜偶尔问
 
@@ -252,7 +252,7 @@ App 更新成功，不代表负责下次更新的 Updater 也更新成功。[B09
 
 | 编号 | 具体说法 | 出处 |
 |---|---|---|
-| B09 | 旧更新器、只试一次、修复与真包/用户证据 | `docs/project/CURRENT_STATE.md:1430-1440` [BUG-79]；`tests/refactor/delivery/test_updater_schedule104.py` |
+| B09 | 旧更新器、只试一次、修复与真包/用户证据 | `docs/project/CURRENT_STATE.md` [BUG-79]；`tests/refactor/delivery/test_updater_schedule104.py` |
 | B10 | 后台刷新重试、串行和最终状态写入 | `refactor/desktop/delivery/per_user_install.py:319-344` |
 
 ## 9. 维修场地被别人占了：测试夹具污染全进程｜偶尔问
@@ -284,8 +284,8 @@ App 更新成功，不代表负责下次更新的 Updater 也更新成功。[B09
 
 | 编号 | 具体说法 | 出处 |
 |---|---|---|
-| B15 | 全局环境污染、缓存/临时区修法、遗留常量与11项验证 | `docs/project/CURRENT_STATE.md:1107-1116` [BUG-108]；修复 `c5026a64` |
-| B16 | 测试环境设置和恢复；共享缓存根 | `tests/refactor/server_java/conftest.py:10-14,96-142` |
+| B15 | 全局环境污染、缓存/临时区修法、遗留常量与11项验证（历史验证） | `docs/project/CURRENT_STATE.md` [BUG-108] |
+| B16 | 测试环境设置和恢复；共享缓存根 | `tests/refactor/server_java/conftest.py:24-36,87-145`（`pytest_collection_finish`、`pytest_runtest_protocol`） |
 
 ## 10. 送书车还在路上，先把订单扔了：网络超时与降级｜偶尔问
 
@@ -316,8 +316,8 @@ App 更新成功，不代表负责下次更新的 Updater 也更新成功。[B09
 
 | 编号 | 具体说法 | 出处 |
 |---|---|---|
-| B17 | 18/42→42/42、时限、重试、回退及验证边界 | `docs/project/CURRENT_STATE.md:1280-1290` [BUG-92]；`tests/refactor/site128/test_selected_read128.py`、`test_transport128.py` |
-| B18 | robots错误分类、节奏与请求重试 | `refactor/learning/course/site_book.py:72-94,121-124`；`refactor/learning/course/research_pipeline.py` 的 retry_selected |
+| B17 | 18/42→42/42、时限、重试、回退及验证边界（历史验证） | `docs/project/CURRENT_STATE.md` [BUG-92]；`tests/refactor/site128/test_selected_read128.py`、`test_transport128.py`；`refactor/learning/course/research_pipeline.py:223-299`（用户自选资料路径） |
+| B18 | robots错误分类、节奏与请求重试 | `refactor/learning/course/site_book.py:78-89,118-124`；`refactor/learning/course/research_pipeline.py:197-245`（重试），`:223-299`（用户自选资料） |
 
 ## 学习路线：不用背｜基本不问
 

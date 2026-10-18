@@ -1,6 +1,6 @@
 # 安装与启动：从下载安装包到登录窗口
 
-基线：`7df4f6ea`。本篇的“偶尔问”是面试复习优先级判断，不是面试频率统计；先读一句话层，再用三句话讲流程，最后挑一处机制或故障深入。[D01]
+事实核验基线：`e61fd00d`。本篇的“偶尔问”是面试复习优先级判断，不是面试频率统计；先读一句话层，再用三句话讲流程，最后挑一处机制或故障深入。[D01]
 
 贯穿全篇的场景是给新同学布置一间学习室：安装器像搬运员，把装备放齐；启动器像门口接待员，先招呼同学，再确认能不能开门；登录窗口像可以坐下来用的学习桌。这个比喻只说明职责和先后关系，不能代替实际程序的验签、文件校验和更新恢复。[I01][I04][I07]
 
@@ -8,7 +8,7 @@
 
 安装器把可运行的 App 和它需要的启动入口放到用户选定的位置，让用户不用手工拼文件就能打开学习软件。[I01] **一句话层。**
 
-Inno Setup 是 Windows 安装向导工具，本项目按当前用户安装，默认位置在该用户的本地应用目录，升级时优先沿用已登记的位置。[I02] 安装包带学习 App 和一个负责安装、启动、更新的小助手 UserRuntime；向导把整套待安装文件（payload）与签名清单解到临时目录，再交给小助手预检和安装。[I03] 向导按用户选择建立桌面入口，开始菜单入口也交给这个小助手启动。[I06] **三句话层。**
+Inno Setup 是 Windows 安装向导工具，本项目按当前用户安装，默认位置在该用户的本地应用目录；只有识别为本产品的既有安装时才沿用已登记位置。[I02] 安装包带学习 App 和一个负责安装、启动、更新的小助手 UserRuntime；向导把整套待安装文件（payload）与签名清单解到临时目录，再交给小助手预检和安装。[I03] 向导按用户选择建立桌面入口，开始菜单入口也交给这个小助手启动。[I16][I06] **三句话层。**
 
 打包脚本确认 App 与 UserRuntime 使用同一发布授权，再验签清单、逐文件核对待安装文件，最后调用 Inno Setup 编出安装程序。[I01] 冻结版的学习数据目录位于安装目录的 `Data` 子目录，签名 App 文件与学习数据分开放。[I04] 安装核心先核对暂存文件，再切换目录；新窗口可见且响应才记为健康状态 HEALTHY，失败则走恢复路径。[I05] **深一层。**
 
@@ -27,13 +27,13 @@ Inno Setup 是 Windows 安装向导工具，本项目按当前用户安装，默
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| D01 | 频率标签是学习优先级判断，正文用三层讲法 | `docs/project/CURRENT_STATE.md:227-237` [DOC-01]；提交 `7df4f6ea` |
-| I01 | 安装器将 App 与启动入口放进用户选定位置；打包时核对 App 与 UserRuntime 授权、验签发布清单、逐文件校验 payload | `refactor/desktop/packaging/inno/MentorFlow.iss:79-90`；`scripts/build_learning_installer.py:296-311`；提交 `7df4f6ea` |
-| I02 | 默认安装位置、最低权限、复用安装位置与安装器身份 | `refactor/desktop/packaging/inno/MentorFlow.iss:8-20,42-45`；`refactor/desktop/packaging/inno/directory-policy.iss:85-105`；提交 `7df4f6ea` |
-| I03 | 安装包带 UserRuntime；向导临时解包、预检并调用安装核心 | `scripts/build_learning_installer.py:143-180,321-330`；`refactor/desktop/packaging/inno/MentorFlow.iss:75-83,140-149`；`refactor/desktop/packaging/inno/per-user-core.iss:20-53`；提交 `7df4f6ea` |
-| I06 | 桌面快捷方式按用户选择创建；开始菜单快捷方式启动 UserRuntime | `refactor/desktop/packaging/inno/MentorFlow.iss:79-90`；`refactor/desktop/packaging/inno/finish-options.iss:30-36`；提交 `7df4f6ea` |
-| I04 | 冻结版数据目录在安装根的 Data，缓存和运行路径另行配置 | `refactor/desktop/shell_paths.py:98-129`；提交 `7df4f6ea` |
-| I05 | 暂存校验、切换、健康握手、HEALTHY 记录与失败恢复 | `refactor/desktop/delivery/per_user_install.py:900-975,977-1000`；`refactor/desktop/delivery/per_user_install.py:1038-1065`；提交 `7df4f6ea` |
+| D01 | 频率标签是学习优先级判断，正文用三层讲法 | `docs/project/CURRENT_STATE.md` [DOC-01] |
+| I01 | 安装器将 App 与启动入口放进用户选定位置；打包时核对 App 与 UserRuntime 授权、验签发布清单、逐文件校验 payload | `refactor/desktop/packaging/inno/MentorFlow.iss:9-20,79-90`；`scripts/build_learning_installer.py:296-311` |
+| I02 | 默认安装位置、最低权限、复用安装位置与安装器身份；只接受识别为本产品的升级/修复目录 | `refactor/desktop/packaging/inno/MentorFlow.iss:13,20`；`refactor/desktop/packaging/inno/directory-policy.iss:61-105` |
+| I03 | 安装包带 UserRuntime；向导临时解包、预检并调用安装核心 | `scripts/build_learning_installer.py`（freeze 与安装器入口）；`refactor/desktop/packaging/inno/MentorFlow.iss:75-83,140-149`；`refactor/desktop/packaging/inno/per-user-core.iss:20-53` |
+| I16 | 桌面快捷方式按用户选择创建 | `refactor/desktop/packaging/inno/MentorFlow.iss:79-90`；`refactor/desktop/packaging/inno/finish-options.iss` |
+| I04 | 冻结版数据目录在安装根的 Data，缓存和运行路径另行配置 | `refactor/desktop/shell_paths.py:98-129` |
+| I05 | 暂存校验、切换、健康握手、HEALTHY 记录与失败恢复 | `refactor/desktop/delivery/per_user_install.py:900-1000,1038-1065` |
 
 ## 2. 启动器先反馈，完整校验在后台｜偶尔问
 
@@ -59,17 +59,17 @@ UserRuntime 在加载 Qt 或启动监视窗口前先画出“正在启动…”�
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| I06 | 快捷方式启动 UserRuntime 的 launch 命令 | `refactor/desktop/packaging/inno/MentorFlow.iss:79-83`；`refactor/desktop/packaging/inno/finish-options.iss:30-36`；提交 `7df4f6ea` |
-| I07 | Win32 启动窗先于 Qt 与隐藏监视窗口显示，并记录可见和前台状态 | `refactor/desktop/delivery/per_user_install.py:20-26`；`refactor/desktop/delivery/startup_window.py:15-95`；提交 `7df4f6ea` |
-| I08 | 启动前恢复事务、处理待装版本、记录失败原因并按恢复状态决定是否继续启动 | `refactor/desktop/delivery/per_user_launcher.py:44-109`；`refactor/desktop/delivery/per_user_update_core.py:622-694`；提交 `7df4f6ea` |
-| I09 | App 快速检查启动文件；后台扫描目录并比较文件状态，仅对变化文件重算指纹，新版本/无记录全量重算 | `refactor/desktop/packaged_main.py:16-30`；`refactor/desktop/delivery/per_user_install.py:171-180`；`refactor/desktop/delivery/startup_integrity.py:1-5,90-126`；提交 `7df4f6ea` |
-| I10 | 后台校验使用较低优先级；发现文件损坏显示修复提示 | `refactor/desktop/delivery/startup_integrity.py:54-68,129-171`；提交 `7df4f6ea` |
+| I06 | 快捷方式启动 UserRuntime 的 launch 命令 | `refactor/desktop/packaging/inno/MentorFlow.iss:79-83`；`refactor/desktop/packaging/inno/finish-options.iss:30-36` |
+| I07 | Win32 启动窗先于 Qt 与隐藏监视窗口显示，并记录可见和前台状态 | `refactor/desktop/delivery/startup_window.py:15-95`；`refactor/desktop/delivery/per_user_launcher.py`（启动协调） |
+| I08 | 启动前恢复事务、处理待装版本、记录失败原因并按恢复状态决定是否继续启动 | `refactor/desktop/delivery/per_user_launcher.py:44-109`；`refactor/desktop/delivery/per_user_update_core.py:622-694` |
+| I09 | App 快速检查启动文件；后台扫描目录并比较文件状态，仅对变化文件重算指纹，新版本/无记录全量重算 | `refactor/desktop/packaged_main.py:16-30`；`refactor/desktop/delivery/per_user_install.py:171-180`；`refactor/desktop/delivery/startup_integrity.py`（`verify_background` 与缓存） |
+| I10 | 后台校验使用较低优先级；发现文件损坏显示修复提示 | `refactor/desktop/delivery/startup_integrity.py:129-171` |
 
 ## 3. 登录窗的响应、绘制与验证｜偶尔问
 
 健康握手要确认新 App 的登录窗口已经可见、能响应，而不是只确认进程存在。[I11] **一句话层。**
 
-账号外壳先创建并显示登录窗，里面可以继续准备页面。[I12] 更新检查在这里后台开始，表单能填，提交登录要等检查结果。[I12] 检查失败或等待上限到期时，只按本机已验签的策略决定能不能继续，已有强制更新仍拦登录。[I13] **三句话层。**
+账号外壳先创建并显示登录窗，里面可以继续准备页面。[I12] 登录前会启动更新检查，表单能填，提交登录要等检查结果；软件运行期间还会每 30 分钟自动检查一次更新。[I12][I13] 检查失败或启动等待到期时，只按本机已验签的策略决定能不能继续，已知强制更新仍拦登录。[I13] **三句话层。**
 
 闪烁曾是绘制方式变化造成的：Qt 是桌面窗口框架，网页使用的 OpenGL 是一种图形绘制方式；登录窗显示后才加入这类控件，Qt 重建了顶层窗口。[I14] 现在窗口第一次显示前就带一个常驻的小绘图控件，注册页也在同一个窗体里准备，避免中途切换窗口绘制方式。[I14] 启动日志分别记录进程启动、Qt 就绪、登录窗显示和可输入几个阶段，便于复核不同入口的耗时。[I15] 闪烁修复则用连续截图和窗口隐藏、显示事件来验证。[I15] **深一层。**
 
@@ -88,11 +88,11 @@ UserRuntime 在加载 Qt 或启动监视窗口前先画出“正在启动…”�
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| I11 | 健康证明验证进程身份与可见、响应窗口 | `refactor/desktop/delivery/per_user_install.py:1038-1065`；`refactor/desktop/delivery/windows_process_peer.py`；提交 `7df4f6ea` |
-| I12 | 登录窗先创建显示，记录窗口状态并启动更新检查 | `refactor/desktop/account_shell_main.py:1930-2008`；`refactor/desktop/updates.py:63-74`；`refactor/desktop/account_shell_main.py:607-618`；提交 `7df4f6ea` |
-| I13 | 15 秒有界更新检查等待、缓存回退与已知强制更新处理 | `refactor/desktop/updates.py:20-22,63-122,328-345`；提交 `7df4f6ea` |
-| I14 | OpenGL 锚点在登录窗首次显示前创建，账号页表面在窗内准备 | `refactor/desktop/login_shell.py:231-280`；`refactor/desktop/account_shell_main.py:166-177,1972-1989`；提交 `7df4f6ea`；`docs/project/CURRENT_STATE.md:1523-1528` [BUG-72] |
-| I15 | 启动分段日志与冻结包一次热启动数据；BUG-72 三次无隐藏的回归验证 | `refactor/desktop/delivery/per_user_launcher.py:130-183,190-217`；`refactor/desktop/account_shell_main.py:1988-2005`；`docs/project/CURRENT_STATE.md:1523-1528,1533-1542` [BUG-61][BUG-72]；提交 `7df4f6ea` |
+| I11 | 健康证明验证进程身份与可见、响应窗口 | `refactor/desktop/delivery/per_user_install.py:1038-1090`；`refactor/desktop/delivery/windows_process_peer.py` |
+| I12 | 登录窗先创建显示，记录窗口状态并启动更新检查 | `refactor/desktop/account_shell_main.py:607-618,1930-2008`；`refactor/desktop/updates.py:63-74` |
+| I13 | 启动检查等待到期时按缓存/策略回退；已知强制更新仍阻止登录；软件运行期间每 30 分钟复查 | `refactor/desktop/updates.py:14-15,21,55-58,76-120,118-147,328-345` |
+| I14 | OpenGL 锚点在登录窗首次显示前创建，账号页表面在窗内准备 | `refactor/desktop/login_shell.py:231-280`；`refactor/desktop/account_shell_main.py:166-190,1972-1989`；[BUG-72] |
+| I15 | 启动分段日志与热启动时长、BUG-72 三次无隐藏回归（历史测试记录） | `refactor/desktop/delivery/per_user_launcher.py:130-217`；`refactor/desktop/account_shell_main.py:1988-2005`；[BUG-61][BUG-72] |
 
 ## 学习路线：不用背｜基本不问
 

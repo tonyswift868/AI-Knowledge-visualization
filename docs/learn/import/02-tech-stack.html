@@ -1,154 +1,186 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
-<title>技术栈：带你开一家学习资料室</title>
-<style>body{max-width:54rem;margin:2rem auto;padding:0 1rem;font:18px/1.8 system-ui}aside{background:#f4f5f7;font-size:.8em;padding:1rem}table{border-collapse:collapse;width:100%}td,th{border:1px solid #bbb;padding:.4rem}a{color:#165baa}code{overflow-wrap:anywhere}</style></head><body><main><header>
-<h1>技术栈：带你开一家学习资料室</h1>
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>技术栈：带你开一家学习资料室</title><style>body{max-width:54rem;margin:2rem auto;padding:0 1rem;font:18px/1.8 system-ui;color:#242424;background:#fff}h2{margin-top:2.2em}h3,h4{margin-top:1.6em}aside{background:#f4f5f7;font-size:.8em;padding:1rem;overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.9em}td,th{border:1px solid #bbb;padding:.4rem;overflow-wrap:anywhere}a{color:#165baa}code{overflow-wrap:anywhere}pre{white-space:pre-wrap;overflow-wrap:anywhere}img,svg{max-width:100%;height:auto}@media(prefers-color-scheme:dark){body{color:#eee;background:#1d1e24}aside{background:#292b33}a{color:#9bc8ff}td,th{border-color:#666}}</style></head><body><main>
+<header><h1>技术栈：带你开一家学习资料室</h1>
 <p>先读 <a href="00-from-zero-to-one.html">00 主线</a>，知道为什么要开这间资料室，再来认识里面的工具。别一进门就背二十个英文名：先跟着用户走一趟——打开窗口、登录、拿资料、学习、保存、更新。</p>
-<p>“常被问／偶尔问／基本不问”只表示本课按 Java + AI 副项目给出的复习优先级，不是概率统计。项目事实按 <code>69f30f2b</code> 核对；概念见各节出处表。先用一句话认工具，再用三句话讲流程，最后挑值得追问的机制深入。没有选型比较，就说没有，不替团队编理由。</p>
+<p>“常被问／偶尔问／基本不问”只表示本课按 Java + AI 副项目给出的复习优先级，不是概率统计。项目事实按 <code>e61fd00d</code> 核对；概念见各节出处表。先用一句话认工具，再用三句话讲流程，最后挑值得追问的机制深入。没有选型比较，就说没有，不替团队编理由。</p>
 </header>
-<h2>1. 窗口与界面｜偶尔问</h2>
+<h2>1. 窗口与界面<span role="complementary">｜偶尔问</span></h2>
 <p>窗口里有网页。<span role="complementary">[T01]</span></p>
 <p>你打开 MentorFlow，看到的是 Windows 窗口；里面的按钮、资料卡片和课堂画面，却由网页技术绘制。想成资料室里装了一块电子白板：房间容纳它，白板显示画面，后面的控制台办事。<span role="complementary">[T01]</span></p>
-<p>PySide6 让 Python 使用 Qt 做桌面窗口；Qt WebEngine 在窗口里显示网页；React 把页面拆成会随状态变化的组件。<strong>一句话层。</strong><span role="complementary">[T01]</span></p>
-<p>用户点按钮，React 页面把请求交给 QWebChannel 这座桥；Python 宿主找到对应处理器，处理学习业务和本地数据；结果回到页面，画面随之更新。<strong>三句话层。</strong> 桥传递带编号、方法名和参数的请求，方便把回答对应回原来的动作。<span role="complementary">[T02]</span></p>
-<p>Vite 是网页的开发与打包工具，TypeScript 帮开发时检查类型。它们像白板的制作工作台，不是学习业务的裁判。当前前端用 React 19.2.7、Vite 8.1.4，版本不用背。Python 的 app 层编排操作，course 层管学习数据和规则；界面不直接接管账本。<strong>深一层。</strong><span role="complementary">[T03]</span></p>
+<p>PySide6 让 Python 使用 Qt 做桌面窗口；Qt WebEngine 在窗口里显示网页；React 把页面拆成会随状态变化的组件。<strong role="complementary">一句话层。</strong><span role="complementary">[T01]</span></p>
+<p>用户点按钮，React 页面把请求交给 QWebChannel 这座桥；Python 宿主找到对应处理器，处理学习业务和本地数据；结果回到页面，画面随之更新。<strong role="complementary">三句话层。</strong> 桥传递带编号、方法名和参数的请求，方便把回答对应回原来的动作。<span role="complementary">[T02]</span></p>
+<p>Vite 是网页的开发与打包工具，TypeScript 帮开发时检查类型。它们像白板的制作工作台，不是学习业务的裁判。当前前端用 React 19.2.7、Vite 8.1.4，版本不用背。Python 的 app 层编排操作，course 层管学习数据和规则；界面不直接接管账本。<strong role="complementary">深一层。</strong><span role="complementary">[T03]</span></p>
 <p>房间、白板和控制台不代表三个独立进程；桥也不代表任意网页都能改本地数据库。仓库能证明这些工具在用，未找到与其他桌面或前端方案的正式比较。</p>
-<p>React 负责显示交互，Python 宿主处理学习业务与本地状态。<span role="complementary">[T01]</span> QWebChannel 把带编号、方法名和参数的请求交给宿主处理器。<span role="complementary">[T02]</span> 宿主返回响应或事件，页面据此更新画面。<span role="complementary">[T02]</span> <strong>三句话层。</strong></p>
+<p>React 负责显示交互，Python 宿主处理学习业务与本地状态。<span role="complementary">[T01]</span> QWebChannel 把带编号、方法名和参数的请求交给宿主处理器。<span role="complementary">[T02]</span> 宿主返回响应或事件，页面据此更新画面。<span role="complementary">[T02]</span> <strong role="complementary">三句话层。</strong></p>
+<p><strong>你可以这样跟面试官说：</strong>“页面用 React 展示交互，Qt 把它装进 Windows 窗口。操作通过桥交给本机 Python，流程和数据由本机程序处理，结果再返回页面。”</p>
 <h3>React 页面怎样让 Python 办事？</h3>
-<ul><li>React 负责显示交互，Python 宿主处理学习业务与本地状态。</li></ul>
-<ul><li>QWebChannel 把带编号、方法名和参数的请求交给宿主处理器。</li></ul>
-<ul><li>宿主返回响应或事件，页面据此更新画面。</li></ul>
+<ul><li><p>React 负责显示交互，Python 宿主处理学习业务与本地状态。</p>
+</li>
+<li><p>QWebChannel 把带编号、方法名和参数的请求交给宿主处理器。</p>
+</li>
+<li><p>宿主返回响应或事件，页面据此更新画面。</p>
+</li>
+</ul>
 <h3>学习路线：本节出处</h3>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>具体说法</td><td>出处</td></tr>
-<tr><td>T01</td><td>PySide6、WebEngine 与 React 角色</td><td><code>refactor/learning/app/window.py:270-300</code>；<span role="complementary">[ARCH-01]</span>；<a href="https://doc.qt.io/qtforpython-6/">Qt</a>、<a href="https://react.dev/learn">React</a></td></tr>
-<tr><td>T02</td><td>宿主桥注册、请求协议</td><td><code>refactor/learning/app/bridge.py:3-14,72-73</code>；<code>refactor/learning/app/window.py:282-299</code></td></tr>
-<tr><td>T03</td><td>前端依赖、构建、app/course 分工</td><td><code>refactor/learning/web/package.json:6-8,21-22</code>；<span role="complementary">[ARCH-02]</span>，<code>docs/project/CURRENT_STATE.md:250-253</code>；<a href="https://vite.dev/guide/">Vite</a></td></tr>
-</table></aside>
-<h2>2. 业务与身份｜常被问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>具体说法</th><th>出处</th></tr></thead><tbody><tr><td>T01</td><td>PySide6、WebEngine 与 React 角色</td><td><code>refactor/learning/app/window.py:270-300</code>；<span role="complementary">[ARCH-01]</span>；<a href="https://doc.qt.io/qtforpython-6/">Qt</a>、<a href="https://react.dev/learn">React</a></td></tr><tr><td>T02</td><td>宿主桥注册、请求协议</td><td><code>refactor/learning/app/bridge.py:130-228</code>；<code>refactor/learning/app/window.py:282-305</code></td></tr><tr><td>T03</td><td>前端依赖、构建、app/course 分工</td><td><code>refactor/learning/web/package.json:6-8,21-22</code>；<span role="complementary">[ARCH-02]</span>，<code>docs/project/CURRENT_STATE.md</code>；<a href="https://vite.dev/guide/">Vite</a></td></tr></tbody></table>
+</aside>
+<h2>2. 业务与身份<span role="complementary">｜常被问</span></h2>
 <p>身份、业务各有分工。<span role="complementary">[T04,T05]</span></p>
-<p>客户端仍主要是 Python；正式在线的服务器是 Java 21 + Spring Boot，旧 FastAPI 服务停流量、留作回退。不是整个软件都改成 Java。<strong>一句话层。</strong><span role="complementary">[T04]</span></p>
-<p>迁移的背景是用户求职方向 Java + AI，客户端请求和响应约定保持兼容。Spring Boot 是 Java 服务的运行骨架，项目业务类办理账号、同步、目录和检索。身份交给 Keycloak，请求进入业务前由 Spring Security 处理认证。<strong>三句话层。</strong> 没有证据说换语言是因为 Python 性能不够。<span role="complementary">[T04,T05]</span></p>
-<p>把“通行证”讲准：OIDC 是获取身份的协议，JWT 是可携带声明、可签名验证的令牌格式。只做签名的 JWT，其内容通常可以读取；JWT 也可以采用加密形式，不能一概说都公开。签名本身不等于加密。但桌面常用的 mfn1_a_ 原生访问令牌是随机不透明令牌，由服务器查会话，不能拿 JWT 解码器硬拆。<strong>深一层。</strong><span role="complementary">[T06]</span></p>
+<p>客户端仍主要是 Python；正式在线的服务器是 Java 21 + Spring Boot，旧 FastAPI 服务停流量、留作回退。不是整个软件都改成 Java。<strong role="complementary">一句话层。</strong><span role="complementary">[T04]</span></p>
+<p>迁移的背景是用户求职方向 Java + AI，客户端请求和响应约定保持兼容。Spring Boot 是 Java 服务的运行骨架，项目业务类办理账号、同步、目录和检索。身份交给 Keycloak，请求进入业务前由 Spring Security 处理认证。<strong role="complementary">三句话层。</strong> 没有证据说换语言是因为 Python 性能不够。<span role="complementary">[T04,T05]</span></p>
+<p>把“通行证”讲准：OIDC 是获取身份的协议，JWT 是可携带声明、可签名验证的令牌格式。只做签名的 JWT，其内容通常可以读取；JWT 也可以采用加密形式，不能一概说都公开。签名本身不等于加密。但桌面常用的原生访问令牌是随机不透明令牌，由服务器查会话，不能拿 JWT 解码器硬拆。<strong role="complementary">深一层。</strong><span role="complementary">[T06]</span></p>
 <p>柜台接待员像业务服务，查证件的人像认证层；“证件有效”不等于“能读所有账号数据”。Java 切换曾因未恢复代理传来的 HTTPS 协议而使认证返回 403。修正后记录了真实客户端登录、同步、上课与接口日志；邮件类流程当时尚未线上真人走全，不能把健康检查说成全部验收。<span role="complementary">[T07]</span></p>
-<p>JWT 携带声明；签名验证来源与完整性，不负责保密，JWT 另有加密形式。<span role="complementary">[T06]</span> 本项目原生访问令牌是不透明随机令牌，由服务器校验会话。<span role="complementary">[T06]</span> 认证通过后，仍要按账号和数据归属限制业务访问。<span role="complementary">[T05]</span> <strong>三句话层。</strong></p>
-<p>当前正式流量已切到 Java，客户端 Python 仍在使用。<span role="complementary">[T04]</span> 旧 Python 服务停流量但保留作回退，代码退场与切流量是两件事。<span role="complementary">[T04]</span> 不是整个软件都改成 Java。<span role="complementary">[T04]</span><span role="complementary">[T04]</span> <strong>三句话层。</strong></p>
-<p>迁移沿用 HTTP 契约，并修正了代理 HTTPS 识别导致的认证失败。<span role="complementary">[T07]</span> 记录了真实客户端登录、同步、上课和接口日志。<span role="complementary">[T07]</span> 当时邮件类账号流程尚未线上真人走全，不能概括成所有流程已验收。<span role="complementary">[T07]</span><span role="complementary">[T07]</span> <strong>三句话层。</strong></p>
+<p>JWT 携带声明；签名验证来源与完整性，不负责保密，JWT 另有加密形式。<span role="complementary">[T06]</span> 本项目原生访问令牌是不透明随机令牌，由服务器校验会话。<span role="complementary">[T06]</span> 认证通过后，仍要按账号和数据归属限制业务访问。<span role="complementary">[T05]</span> <strong role="complementary">三句话层。</strong></p>
+<p>当前正式流量已切到 Java，客户端 Python 仍在使用。<span role="complementary">[T04]</span> 旧 Python 服务停流量但保留作回退，代码退场与切流量是两件事。<span role="complementary">[T04]</span> 不是整个软件都改成 Java。<span role="complementary">[T04]</span> <strong role="complementary">三句话层。</strong></p>
+<p>迁移沿用 HTTP 契约，并修正了代理 HTTPS 识别导致的认证失败。<span role="complementary">[T07]</span> 记录了真实客户端登录、同步、上课和接口日志。<span role="complementary">[T07]</span> 当时邮件类账号流程尚未线上真人走全，不能概括成所有流程已验收。<span role="complementary">[T07]</span> <strong role="complementary">三句话层。</strong></p>
+<p><strong>你可以这样跟面试官说：</strong>“桌面客户端仍用 Python，正式服务器已切到 Java 和 Spring Boot。Keycloak 核验身份，Java 的业务代码继续检查账号和数据权限；身份有效与业务有权访问是两层检查。”</p>
 <h3>JWT 和本项目原生访问令牌有什么区别？</h3>
-<ul><li>JWT 携带声明；签名验证来源与完整性，不负责保密，JWT 另有加密形式。</li></ul>
-<ul><li>本项目原生访问令牌是不透明随机令牌，由服务器校验会话。</li></ul>
-<ul><li>认证通过后，仍要按账号和数据归属限制业务访问。</li></ul>
+<ul><li><p>JWT 携带声明；签名验证来源与完整性，不负责保密，JWT 另有加密形式。</p>
+</li>
+<li><p>本项目原生访问令牌是不透明随机令牌，由服务器校验会话。</p>
+</li>
+<li><p>认证通过后，仍要按账号和数据归属限制业务访问。</p>
+</li>
+</ul>
 <h3>迁移后哪些部分仍保留原技术？</h3>
-<ul><li>当前正式流量已切到 Java，客户端 Python 仍在使用。</li></ul>
-<ul><li>旧 Python 服务停流量但保留作回退，代码退场与切流量是两件事。</li></ul>
-<ul><li>不是整个软件都改成 Java。<span role="complementary">[T04]</span></li></ul>
+<ul><li><p>当前正式流量已切到 Java，客户端 Python 仍在使用。</p>
+</li>
+<li><p>旧 Python 服务停流量但保留作回退，代码退场与切流量是两件事。</p>
+</li>
+<li><p>不是整个软件都改成 Java。<span role="complementary">[T04]</span></p>
+</li>
+</ul>
 <h3>Java 迁移成功有什么证据，哪些还不能保证？</h3>
-<ul><li>迁移沿用 HTTP 契约，并修正了代理 HTTPS 识别导致的认证失败。</li></ul>
-<ul><li>记录了真实客户端登录、同步、上课和接口日志。</li></ul>
-<ul><li>当时邮件类账号流程尚未线上真人走全，不能概括成所有流程已验收。<span role="complementary">[T07]</span></li></ul>
+<ul><li><p>迁移沿用 HTTP 契约，并修正了代理 HTTPS 识别导致的认证失败。</p>
+</li>
+<li><p>记录了真实客户端登录、同步、上课和接口日志。</p>
+</li>
+<li><p>当时邮件类账号流程尚未线上真人走全，不能概括成所有流程已验收。<span role="complementary">[T07]</span></p>
+</li>
+</ul>
 <h3>学习路线：本节出处</h3>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>具体说法</td><td>出处</td></tr>
-<tr><td>T04</td><td>Java、Spring Boot、旧 FastAPI 与迁移决策</td><td><code>refactor/server-java/pom.xml:4-15</code>；<code>refactor/server/app.py:97</code>；<span role="complementary">[ARCH-09]</span>，<code>docs/project/CURRENT_STATE.md:301-306</code></td></tr>
-<tr><td>T05</td><td>认证过滤与 Keycloak</td><td><code>refactor/server-java/src/main/java/win/clannad/mentorflow/identity/IdentitySecurity.java:42-84</code>；<span role="complementary">[ARCH-09]</span>，<code>docs/project/CURRENT_STATE.md:301-306</code>；<a href="https://docs.spring.io/spring-boot/reference/">Spring Boot</a>、<a href="https://www.keycloak.org/documentation">Keycloak</a></td></tr>
-<tr><td>T06</td><td>OIDC、JWT、原生不透明令牌</td><td><code>docs/interview/java-backend-rewrite.md:28</code>；<a href="https://www.rfc-editor.org/rfc/rfc7519">RFC 7519</a>、<a href="https://openid.net/specs/openid-connect-core-1_0.html">OIDC Core</a></td></tr>
-<tr><td>T07</td><td>协议故障、修正验证、邮件流程边界</td><td><span role="complementary">[ARCH-09]</span>、<span role="complementary">[ACC-02]</span>；<code>docs/project/CURRENT_STATE.md:301,527-530</code></td></tr>
-</table></aside>
-<h2>3. 两本数据账｜常被问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>具体说法</th><th>出处</th></tr></thead><tbody><tr><td>T04</td><td>Java、Spring Boot、旧 FastAPI 与迁移决策</td><td><code>refactor/server-java/pom.xml:4-15</code>；<code>refactor/server/app.py:97</code>；<span role="complementary">[ARCH-09]</span>，<code>docs/project/CURRENT_STATE.md</code></td></tr><tr><td>T05</td><td>认证过滤与 Keycloak</td><td><code>refactor/server-java/src/main/java/win/clannad/mentorflow/identity/IdentitySecurity.java:42-84</code>；<span role="complementary">[ARCH-09]</span>，<code>docs/project/CURRENT_STATE.md</code>；<a href="https://docs.spring.io/spring-boot/reference/">Spring Boot</a>、<a href="https://www.keycloak.org/documentation">Keycloak</a></td></tr><tr><td>T06</td><td>OIDC、JWT、原生不透明令牌</td><td><code>docs/interview/java-backend-rewrite.md:28</code>；<a href="https://www.rfc-editor.org/rfc/rfc7519">RFC 7519</a>、<a href="https://openid.net/specs/openid-connect-core-1_0.html">OIDC Core</a></td></tr><tr><td>T07</td><td>协议故障、修正验证、邮件流程边界</td><td><span role="complementary">[ARCH-09]</span>、<span role="complementary">[ACC-02]</span>；<code>docs/project/CURRENT_STATE.md</code></td></tr></tbody></table>
+</aside>
+<h2>3. 两本数据账<span role="complementary">｜常被问</span></h2>
 <p>本机、服务器各存账。<span role="complementary">[T08]</span></p>
-<p>学生手里的笔记本和资料室的共享档案职责不同：本机 SQLite 保存学习数据，服务器 PostgreSQL 保存服务器数据；同步传递相关记录，不是每次点击都直接写服务器库。<strong>一句话层。</strong><span role="complementary">[T08]</span></p>
-<p>SQLite 可由应用直接使用，课程库和本地 RAG 会话库启用 WAL，先写日志再通过检查点合入主库；服务器 PostgreSQL 提供关系数据、事务和访问策略；Spring JDBC 的 JdbcTemplate 执行 SQL，Maven 管依赖和构建，各有岗位。<strong>三句话层。</strong><span role="complementary">[T08,T09]</span></p>
-<p>一组必须一起成功的修改，不能只记半本账，这就是事务边界。项目同步批量写入还有保存点：外层是一轮事务，单条业务冲突只撤回该条，数据库或未捕获异常撤回外层。认证工具和构建工具不能替它决定提交。<strong>深一层。</strong><span role="complementary">[T10]</span></p>
+<p>学生手里的笔记本和资料室的共享档案职责不同：本机 SQLite 保存学习数据，服务器 PostgreSQL 保存服务器数据；同步传递相关记录，不是每次点击都直接写服务器库。<strong role="complementary">一句话层。</strong><span role="complementary">[T08]</span></p>
+<p>SQLite 可由应用直接使用，课程库和本地 RAG 会话库启用 WAL，先写日志再通过检查点合入主库；服务器 PostgreSQL 提供关系数据、事务和访问策略；Spring JDBC 的 JdbcTemplate 执行 SQL，Maven 管依赖和构建，各有岗位。<strong role="complementary">三句话层。</strong><span role="complementary">[T08,T09]</span></p>
+<p>一组必须一起成功的修改，不能只记半本账，这就是事务边界。项目同步批量写入还有保存点：外层是一轮事务，单条业务冲突只撤回该条，数据库或未捕获异常撤回外层。认证工具和构建工具不能替它决定提交。<strong role="complementary">深一层。</strong><span role="complementary">[T10]</span></p>
 <p>RLS 是数据库按行访问策略，像每份档案上的可见名单；RAG 表启用并强制 RLS。但超级用户或 BYPASSRLS 角色可绕过普通策略，策略也替代不了 SQL 权限。<span role="complementary">[T11]</span></p>
 <p>“流水页稍后誊回账本”只是 WAL 的比喻，不表示没有锁，也不保证只复制主库文件就是完整备份。未找到 SQLite 对其他本地库、JDBC 对 ORM 的正式比较，不讲成全面胜出。</p>
-<p>认证确认身份，不自动授予读取所有记录的权限。<span role="complementary">[T05]</span> 事务控制一组写入的提交或撤回，保存点控制局部撤回。<span role="complementary">[T10]</span> RLS 按数据库策略限制行访问，还要配合普通 SQL 权限。<span role="complementary">[T11]</span> <strong>三句话层。</strong></p>
-<p>不是，WAL 是先写日志再通过检查点合入主库的日志模式。<span role="complementary">[T08]</span> 事务和连接的正确使用仍需由应用管理，不代表没有锁。<span role="complementary">[T08]</span> 备份不能想当然只复制主库文件，还要考虑日志中的修改。<span role="complementary">[T08]</span><span role="complementary">[T08]</span> <strong>三句话层。</strong></p>
-<p>表所有者默认通常能够绕过行级策略。<span role="complementary">[T11]</span> FORCE 让表所有者执行普通访问时也受策略约束。<span role="complementary">[T11]</span> 超级用户、BYPASSRLS 和普通 SQL 权限仍需分别理解。<span role="complementary">[T11]</span><span role="complementary">[T11]</span> <strong>三句话层。</strong></p>
+<p>认证确认身份，不自动授予读取所有记录的权限。<span role="complementary">[T05]</span> 事务控制一组写入的提交或撤回，保存点控制局部撤回。<span role="complementary">[T10]</span> RLS 按数据库策略限制行访问，还要配合普通 SQL 权限。<span role="complementary">[T11]</span> <strong role="complementary">三句话层。</strong></p>
+<p>不是，WAL 是先写日志再通过检查点合入主库的日志模式。<span role="complementary">[T08]</span> 事务和连接的正确使用仍需由应用管理，不代表没有锁。<span role="complementary">[T08]</span> 备份不能想当然只复制主库文件，还要考虑日志中的修改。<span role="complementary">[T08]</span> <strong role="complementary">三句话层。</strong></p>
+<p>表所有者默认通常能够绕过行级策略。<span role="complementary">[T11]</span> FORCE 让表所有者执行普通访问时也受策略约束。<span role="complementary">[T11]</span> 超级用户、BYPASSRLS 和普通 SQL 权限仍需分别理解。<span role="complementary">[T11]</span> <strong role="complementary">三句话层。</strong></p>
+<p><strong>你可以这样跟面试官说：</strong>“本机 SQLite 保存课程记录，服务器 PostgreSQL 保存服务端数据。事务决定一组写入一起提交还是撤回，数据库行级策略再限制每个账号能看哪些行。”</p>
 <h3>认证、事务和行级策略各管什么？</h3>
-<ul><li>认证确认身份，不自动授予读取所有记录的权限。</li></ul>
-<ul><li>事务控制一组写入的提交或撤回，保存点控制局部撤回。</li></ul>
-<ul><li>RLS 按数据库策略限制行访问，还要配合普通 SQL 权限。</li></ul>
+<ul><li><p>认证确认身份，不自动授予读取所有记录的权限。</p>
+</li>
+<li><p>事务控制一组写入的提交或撤回，保存点控制局部撤回。</p>
+</li>
+<li><p>RLS 按数据库策略限制行访问，还要配合普通 SQL 权限。</p>
+</li>
+</ul>
 <h3>WAL 就是多线程锁吗？</h3>
-<ul><li>不是，WAL 是先写日志再通过检查点合入主库的日志模式。</li></ul>
-<ul><li>事务和连接的正确使用仍需由应用管理，不代表没有锁。</li></ul>
-<ul><li>备份不能想当然只复制主库文件，还要考虑日志中的修改。<span role="complementary">[T08]</span></li></ul>
+<ul><li><p>不是，WAL 是先写日志再通过检查点合入主库的日志模式。</p>
+</li>
+<li><p>事务和连接的正确使用仍需由应用管理，不代表没有锁。</p>
+</li>
+<li><p>备份不能想当然只复制主库文件，还要考虑日志中的修改。<span role="complementary">[T08]</span></p>
+</li>
+</ul>
 <h3>RLS 为什么还要 FORCE？</h3>
-<ul><li>表所有者默认通常能够绕过行级策略。</li></ul>
-<ul><li>FORCE 让表所有者执行普通访问时也受策略约束。</li></ul>
-<ul><li>超级用户、BYPASSRLS 和普通 SQL 权限仍需分别理解。<span role="complementary">[T11]</span></li></ul>
+<ul><li><p>表所有者默认通常能够绕过行级策略。</p>
+</li>
+<li><p>FORCE 让表所有者执行普通访问时也受策略约束。</p>
+</li>
+<li><p>超级用户、BYPASSRLS 和普通 SQL 权限仍需分别理解。<span role="complementary">[T11]</span></p>
+</li>
+</ul>
 <h3>学习路线：本节出处</h3>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>具体说法</td><td>出处</td></tr>
-<tr><td>T08</td><td>本地库、WAL 与服务器库</td><td><code>refactor/learning/course/store.py:170-174</code>；<code>refactor/learning/app/rag.py:102-112</code>；<span role="complementary">[ARCH-03]</span>、<span role="complementary">[RAG-01]</span>，<code>docs/project/CURRENT_STATE.md:256-260,612-625</code>；<a href="https://www.sqlite.org/wal.html">SQLite WAL</a></td></tr>
-<tr><td>T09</td><td>JDBC、Maven、PostgreSQL 岗位</td><td><code>refactor/server-java/pom.xml:4-22</code>；<code>refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java:59-81</code>；<a href="https://docs.spring.io/spring-framework/reference/data-access/jdbc/core.html">JDBC</a>、<a href="https://maven.apache.org/what-is-maven.html">Maven</a>、<a href="https://www.postgresql.org/docs/17/">PostgreSQL</a></td></tr>
-<tr><td>T10</td><td>事务、NESTED 保存点和异常处理</td><td><code>refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java:97-183</code>；<a href="https://docs.spring.io/spring-framework/reference/data-access/transaction/declarative/tx-propagation.html">Spring NESTED</a></td></tr>
-<tr><td>T11</td><td>RAG RLS、FORCE、绕过边界</td><td><code>refactor/server/migrations/versions/0044_rag_documents.py:142-143</code>；<a href="https://www.postgresql.org/docs/17/ddl-rowsecurity.html">PostgreSQL RLS</a></td></tr>
-</table></aside>
-<h2>4. 检索与生成｜常被问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>具体说法</th><th>出处</th></tr></thead><tbody><tr><td>T08</td><td>本地库、WAL 与服务器库</td><td><code>refactor/learning/course/store.py:170-174</code>；<code>refactor/learning/app/rag.py:102-112</code>；<span role="complementary">[ARCH-03]</span>、<span role="complementary">[RAG-01]</span>，<code>docs/project/CURRENT_STATE.md</code>；<a href="https://www.sqlite.org/wal.html">SQLite WAL</a></td></tr><tr><td>T09</td><td>JDBC、Maven、PostgreSQL 岗位</td><td><code>refactor/server-java/pom.xml:4-22</code>；<code>refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java:59-81</code>；<a href="https://docs.spring.io/spring-framework/reference/data-access/jdbc/core.html">JDBC</a>、<a href="https://maven.apache.org/what-is-maven.html">Maven</a>、<a href="https://www.postgresql.org/docs/17/">PostgreSQL</a></td></tr><tr><td>T10</td><td>事务、NESTED 保存点和异常处理</td><td><code>refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java:97-183</code>；<a href="https://docs.spring.io/spring-framework/reference/data-access/transaction/declarative/tx-propagation.html">Spring NESTED</a></td></tr><tr><td>T11</td><td>RAG RLS、FORCE、绕过边界</td><td><code>refactor/server/migrations/versions/0044_rag_documents.py:142-146</code>；<a href="https://www.postgresql.org/docs/17/ddl-rowsecurity.html">PostgreSQL RLS</a></td></tr></tbody></table>
+</aside>
+<h2>4. 检索与生成<span role="complementary">｜常被问</span></h2>
 <p>先找原文，再作答。<span role="complementary">[T12]</span></p>
-<p>你问：“资料里的向量检索怎么做？”跑腿员先找有关的卡片，老师再组织解释。Java 服务找原文，客户端用用户选择的模型生成回答。<strong>一句话层。</strong><span role="complementary">[T12]</span></p>
-<p>服务器用 LangChain4j 的量化中文模型 BGE，把文字转成 512 个数字组成的向量。pgvector 是 PostgreSQL 的向量扩展，存向量、按距离找候选，服务再结合关键词重排。客户端用自己的 Key 直连生成模型；项目配置了 DeepSeek 提供商及其默认模型，Key 放 Windows 凭据里。<strong>三句话层。</strong><span role="complementary">[T12,T13]</span></p>
-<p>embedding 像“意思地图”上的坐标，生成模型负责写回答。项目有 HNSW 余弦索引，但邻近不等于正确；一次 MDN 中文小样本的20个问题，相关段落全部进入前五结果，只说明那次样本，不是永久准确率。<strong>深一层。</strong> <a href="04-rag-from-upload-to-answer.html">04 RAG</a> 会带你走完整条链。<span role="complementary">[T14]</span></p>
+<p>你问：“资料里的向量检索怎么做？”跑腿员先找有关的卡片，老师再组织解释。Java 服务找原文，客户端用用户选择的模型生成回答。<strong role="complementary">一句话层。</strong><span role="complementary">[T12]</span></p>
+<p>服务器用 LangChain4j 的量化中文模型 BGE，把文字转成 512 个数字组成的向量。pgvector 是 PostgreSQL 的向量扩展，存向量、按距离找候选，服务再结合关键词重排。客户端用自己的 Key 直连生成模型；项目配置了 DeepSeek 提供商及其默认模型，Key 从本机操作系统的凭据库读取。<strong role="complementary">三句话层。</strong><span role="complementary">[T12,T13]</span></p>
+<p>embedding 像“意思地图”上的坐标，生成模型负责写回答。项目有 HNSW 余弦索引，但邻近不等于正确；一次 MDN 中文小样本的20个问题，相关段落全部进入前五结果，只说明那次样本，不是永久准确率。<strong role="complementary">深一层。</strong> <a href="04-rag-from-upload-to-answer.html">04 RAG</a> 会带你走完整条链。<span role="complementary">[T14]</span></p>
 <p>坐标不能完整表达意思，跑腿员找对一页也不保证老师绝不答错。LangChain4j 是工具箱，不是整个系统自动生成。未找到它与 Spring AI、BGE 与其他向量模型、DeepSeek 与其他生成模型的完整对比。</p>
-<p>embedding 把文本转成数字向量，帮助检索相关资料。<span role="complementary">[T13]</span> 生成模型根据问题和资料组织答案，本项目由客户端调用。<span role="complementary">[T12]</span> 检索相近不等于答案正确，仍需核对原文。<span role="complementary">[T14]</span> <strong>三句话层。</strong></p>
-<p>用户定模型由客户端用自己的 Key 直连。<span role="complementary">[T12]</span> Java 服务在资料问答中检索文字片段，客户端调用生成模型。<span role="complementary">[T12]</span> 这是项目的职责边界，不能编成供应商性能评测得出的结论。<span role="complementary">[T12]</span><span role="complementary">[T12]</span> <strong>三句话层。</strong></p>
-<p>不是，分数用于本次候选的相对排序。<span role="complementary">[T14]</span> 检索相近的内容仍可能不充分，生成模型也可能读错。<span role="complementary">[T14]</span> 20问前五命中是小样本检索结果，不等于回答准确率。<span role="complementary">[T14]</span><span role="complementary">[T14]</span> <strong>三句话层。</strong></p>
+<p>embedding 把文本转成数字向量，帮助检索相关资料。<span role="complementary">[T13]</span> 生成模型根据问题和资料组织答案，本项目由客户端调用。<span role="complementary">[T12]</span> 检索相近不等于答案正确，仍需核对原文。<span role="complementary">[T14]</span> <strong role="complementary">三句话层。</strong></p>
+<p>用户定模型由客户端用自己的 Key 直连。<span role="complementary">[T12]</span> Java 服务在资料问答中检索文字片段，客户端调用生成模型。<span role="complementary">[T12]</span> 这是项目的职责边界，不能编成供应商性能评测得出的结论。<span role="complementary">[T12]</span> <strong role="complementary">三句话层。</strong></p>
+<p>不是，分数用于本次候选的相对排序。<span role="complementary">[T14]</span> 检索相近的内容仍可能不充分，生成模型也可能读错。<span role="complementary">[T14]</span> 20问前五命中是小样本检索结果，不等于回答准确率。<span role="complementary">[T14]</span> <strong role="complementary">三句话层。</strong></p>
+<p><strong>你可以这样跟面试官说：</strong>“Java 把资料转成向量并检索相关原文，客户端再直连用户选择的模型组织回答。检索分数只是相对排序，最后仍要看引用原文能不能支持回答。”</p>
 <h3>embedding 和生成模型是一回事吗？</h3>
-<ul><li>embedding 把文本转成数字向量，帮助检索相关资料。</li></ul>
-<ul><li>生成模型根据问题和资料组织答案，本项目由客户端调用。</li></ul>
-<ul><li>检索相近不等于答案正确，仍需核对原文。</li></ul>
+<ul><li><p>embedding 把文本转成数字向量，帮助检索相关资料。</p>
+</li>
+<li><p>生成模型根据问题和资料组织答案，本项目由客户端调用。</p>
+</li>
+<li><p>检索相近不等于答案正确，仍需核对原文。</p>
+</li>
+</ul>
 <h3>为什么模型请求不经过自家的 Java 服务？</h3>
-<ul><li>用户定模型由客户端用自己的 Key 直连。</li></ul>
-<ul><li>Java 服务在资料问答中检索文字片段，客户端调用生成模型。</li></ul>
-<ul><li>这是项目的职责边界，不能编成供应商性能评测得出的结论。<span role="complementary">[T12]</span></li></ul>
+<ul><li><p>用户定模型由客户端用自己的 Key 直连。</p>
+</li>
+<li><p>Java 服务在资料问答中检索文字片段，客户端调用生成模型。</p>
+</li>
+<li><p>这是项目的职责边界，不能编成供应商性能评测得出的结论。<span role="complementary">[T12]</span></p>
+</li>
+</ul>
 <h3>向量检索分数是回答正确率吗？</h3>
-<ul><li>不是，分数用于本次候选的相对排序。</li></ul>
-<ul><li>检索相近的内容仍可能不充分，生成模型也可能读错。</li></ul>
-<ul><li>20问前五命中是小样本检索结果，不等于回答准确率。<span role="complementary">[T14]</span></li></ul>
+<ul><li><p>不是，分数用于本次候选的相对排序。</p>
+</li>
+<li><p>检索相近的内容仍可能不充分，生成模型也可能读错。</p>
+</li>
+<li><p>20问前五命中是小样本检索结果，不等于回答准确率。<span role="complementary">[T14]</span></p>
+</li>
+</ul>
 <h3>学习路线：本节出处</h3>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>具体说法</td><td>出处</td></tr>
-<tr><td>T12</td><td>模型直连、文字上传、服务器检索</td><td><span role="complementary">[RAG-01]</span>、<span role="complementary">[DATA-02]</span>；<code>refactor/learning/connections/providers/registry.py:20-24</code>；<a href="https://api-docs.deepseek.com/">DeepSeek API</a></td></tr>
-<tr><td>T13</td><td>LangChain4j、512维、pgvector、Key存储</td><td><code>refactor/server-java/pom.xml:6,15</code>；<code>refactor/server-java/RAG_API.md:60-68</code>；<span role="complementary">[ARCH-02]</span>，<code>docs/project/CURRENT_STATE.md:252-253,542-545</code>；<a href="https://docs.langchain4j.dev/tutorials/rag/">LangChain4j</a>、<a href="https://github.com/pgvector/pgvector">pgvector</a></td></tr>
-<tr><td>T14</td><td>HNSW、重排、小样本命中边界</td><td><code>refactor/server-java/RAG_API.md:56,64</code>；<span role="complementary">[RAG-01]</span>，<code>docs/project/CURRENT_STATE.md:612-623</code></td></tr>
-</table></aside>
-<h2>5. 打包与交付｜偶尔问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>具体说法</th><th>出处</th></tr></thead><tbody><tr><td>T12</td><td>模型直连、文字上传、服务器检索</td><td><span role="complementary">[RAG-01]</span>、<span role="complementary">[DATA-02]</span>；<code>refactor/learning/connections/providers/registry.py:20-24</code>；<a href="https://api-docs.deepseek.com/">DeepSeek API</a></td></tr><tr><td>T13</td><td>LangChain4j、512维、pgvector、Key存储</td><td><code>refactor/server-java/pom.xml:6,15</code>；<code>refactor/server-java/RAG_API.md:60-68</code>；<span role="complementary">[ARCH-02]</span>，<code>docs/project/CURRENT_STATE.md</code>；<a href="https://docs.langchain4j.dev/tutorials/rag/">LangChain4j</a>、<a href="https://github.com/pgvector/pgvector">pgvector</a></td></tr><tr><td>T14</td><td>HNSW、重排、小样本命中边界</td><td><code>refactor/server-java/RAG_API.md:56,64</code>；<span role="complementary">[RAG-01]</span>，<code>docs/project/CURRENT_STATE.md</code></td></tr></tbody></table>
+</aside>
+<h2>5. 打包与交付<span role="complementary">｜偶尔问</span></h2>
 <p>打包不等于验收。<span role="complementary">[T15,T17]</span></p>
-<p>房间装修好了，不等于学生家里能开门。PyInstaller 把 Python 程序冻结成可交付目录，Inno Setup 再做成 Windows 安装程序。<strong>一句话层。</strong> 一个备货，一个装箱；安装器细节基本不问。<span role="complementary">[T15]</span></p>
-<p>GitHub Actions 工作流构建产物；本项目随后在本机完成签名，再走发布流程；更新器下载、验签、替换并处理失败恢复。<strong>三句话层。</strong> 日常默认发布增量文件，不等于每次重编安装包。<span role="complementary">[T16]</span></p>
-<p>Ed25519 是数字签名：私钥签、公钥验，验证来源与完整性，不加密内容。签名有效也不能证明软件没有漏洞。<strong>深一层。</strong> 印章的比喻只说明谁签谁验，不表示拿公钥就能伪造印章。<span role="complementary">[T16]</span></p>
+<p>房间装修好了，不等于学生家里能开门。PyInstaller 把 Python 程序冻结成可交付目录，Inno Setup 再做成 Windows 安装程序。<strong role="complementary">一句话层。</strong> 一个备货，一个装箱；安装器细节基本不问。<span role="complementary">[T15]</span></p>
+<p>GitHub Actions 工作流构建产物；本项目随后在本机完成签名，再走发布流程；更新器下载、验签、替换并处理失败恢复。<strong role="complementary">三句话层。</strong> 日常默认发布增量文件，不等于每次重编安装包。<span role="complementary">[T16]</span></p>
+<p>Ed25519 是数字签名：私钥签、公钥验，验证来源与完整性，不加密内容。签名有效也不能证明软件没有漏洞。<strong role="complementary">深一层。</strong> 印章的比喻只说明谁签谁验，不表示拿公钥就能伪造印章。<span role="complementary">[T16]</span></p>
 <p>装箱成功、能启动、能从旧版更新到新版，是不同检查。项目要求真打包走通旧版到新版，再请用户验收。不要背工作流运行编号或安装器像素。<span role="complementary">[T17]</span></p>
-<p>私钥签、公钥验，用于验证来源与完整性。<span role="complementary">[T16]</span> 签名不隐藏内容，也不证明软件没有漏洞。<span role="complementary">[T16]</span> 更新还要验证替换和失败恢复，不能只看下载成功。<span role="complementary">[T16]</span> <strong>三句话层。</strong></p>
+<p>私钥签、公钥验，用于验证来源与完整性。<span role="complementary">[T16]</span> 签名不隐藏内容，也不证明软件没有漏洞。<span role="complementary">[T16]</span> 更新还要验证替换和失败恢复，不能只看下载成功。<span role="complementary">[T16]</span> <strong role="complementary">三句话层。</strong></p>
+<p><strong>你可以这样跟面试官说：</strong>“PyInstaller 冻结程序，Inno Setup 生成安装程序。更新用公钥验签确认来源和完整性，之后还要验证替换、启动和失败恢复，真包走通才算交付证据。”</p>
 <h3>更新签名为什么不是加密？</h3>
-<ul><li>私钥签、公钥验，用于验证来源与完整性。</li></ul>
-<ul><li>签名不隐藏内容，也不证明软件没有漏洞。</li></ul>
-<ul><li>更新还要验证替换和失败恢复，不能只看下载成功。</li></ul>
+<ul><li><p>私钥签、公钥验，用于验证来源与完整性。</p>
+</li>
+<li><p>签名不隐藏内容，也不证明软件没有漏洞。</p>
+</li>
+<li><p>更新还要验证替换和失败恢复，不能只看下载成功。</p>
+</li>
+</ul>
 <h3>学习路线：本节出处</h3>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>具体说法</td><td>出处</td></tr>
-<tr><td>T15</td><td>PyInstaller、Inno 分工</td><td><code>scripts/build_learning_installer.py:143-175</code>；<code>refactor/desktop/packaging/inno/MentorFlow.iss</code>；<a href="https://pyinstaller.org/en/stable/">PyInstaller</a>、<a href="https://jrsoftware.org/isinfo.php">Inno</a></td></tr>
-<tr><td>T16</td><td>构建/本机签名/发布/增量/公钥验签</td><td><span role="complementary">[SYS-06]</span>；<code>.github/workflows/mf-build.yml:1-6</code>、<code>.github/workflows/mf-publish.yml:1-6</code>；<code>refactor/desktop/delivery/update_protocol.py:13,146</code>；<code>scripts/release/README.md:89-105</code>；<a href="https://www.rfc-editor.org/rfc/rfc8032">RFC8032</a></td></tr>
-<tr><td>T17</td><td>真打包更新验收、已知更新问题</td><td><code>AGENTS.md</code> 第11条；<span role="complementary">[SYS-06]</span>、<span role="complementary">[BUG-110]</span>、<span role="complementary">[BUG-111]</span>（基线状态，不冒充已修）</td></tr>
-</table></aside>
-<h2>6. 服务运行与迁移｜偶尔问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>具体说法</th><th>出处</th></tr></thead><tbody><tr><td>T15</td><td>PyInstaller、Inno 分工</td><td><code>scripts/build_learning_installer.py:143-175</code>；<code>refactor/desktop/packaging/inno/MentorFlow.iss</code>；<a href="https://pyinstaller.org/en/stable/">PyInstaller</a>、<a href="https://jrsoftware.org/isinfo.php">Inno</a></td></tr><tr><td>T16</td><td>构建/本机签名/发布/增量/公钥验签</td><td><span role="complementary">[SYS-06]</span>；<code>.github/workflows/mf-build.yml:1-6</code>、<code>.github/workflows/mf-publish.yml:1-6</code>；<code>refactor/desktop/delivery/update_protocol.py:13,146</code>；<code>scripts/release/README.md:89-105</code>；<a href="https://www.rfc-editor.org/rfc/rfc8032">RFC8032</a></td></tr><tr><td>T17</td><td>真打包更新验收、已知更新问题</td><td><code>AGENTS.md</code> 第11条；<span role="complementary">[SYS-06]</span>、<span role="complementary">[BUG-110]</span>、<span role="complementary">[BUG-111]</span>（基线状态，不冒充已修）</td></tr></tbody></table>
+</aside>
+<h2>6. 服务运行与迁移<span role="complementary">｜偶尔问</span></h2>
 <p>换代码，数据仍在。<span role="complementary">[T19]</span></p>
-<p>nginx 接外部请求转给后端，Docker 把服务和运行环境做成容器，Compose 描述服务如何一起运行。<strong>一句话层。</strong> 像接待台、工作间和接线图，但容器不是互不影响的小宇宙。<span role="complementary">[T18]</span></p>
-<p>Maven 构建 Java 包，Dockerfile 把包放进运行镜像；数据库另外沿用 Alembic 迁移链；Java 启动不自动升级库。<strong>三句话层。</strong> 换镜像不等于数据库倒带，恢复旧快照可能丢掉切换后的同步、会话与注销记录。<span role="complementary">[T19]</span></p>
-<p>健康检查只说明进程或依赖的部分状态，不能替代带账号走完整业务；代理协议和迁移权限都出过真实问题。<strong>深一层。</strong> “灯亮了”不代表每个柜台都能正常办事。<span role="complementary">[T20]</span></p>
+<p>nginx 接外部请求转给后端，Docker 把服务和运行环境做成容器，Compose 描述服务如何一起运行。<strong role="complementary">一句话层。</strong> 像接待台、工作间和接线图，但容器不是互不影响的小宇宙。<span role="complementary">[T18]</span></p>
+<p>Maven 构建 Java 包，Dockerfile 把包放进运行镜像；数据库另外沿用 Alembic 迁移链；Java 启动不自动升级库。<strong role="complementary">三句话层。</strong> 换镜像不等于数据库倒带，恢复旧快照可能丢掉切换后的同步、会话与注销记录。<span role="complementary">[T19]</span></p>
+<p>健康检查只说明进程或依赖的部分状态，不能替代带账号走完整业务；代理协议和迁移权限都出过真实问题。<strong role="complementary">深一层。</strong> “灯亮了”不代表每个柜台都能正常办事。<span role="complementary">[T20]</span></p>
 <p>HTTPX/asyncio 是 Python 模型请求的 HTTP 与任务工具；ONNX Runtime 是离线 OCR 经 RapidOCR 使用的推理依赖。知道岗位就够，不把引库说成自己实现了推理引擎。<span role="complementary">[T21]</span></p>
-<p>代码镜像与数据库记录是两类状态，迁移有独立步骤。<span role="complementary">[T19]</span> 恢复旧快照可能覆盖切换后产生的业务数据。<span role="complementary">[T19]</span> 健康检查之外，还要验证带账号的实际链路。<span role="complementary">[T20]</span> <strong>三句话层。</strong></p>
+<p>代码镜像与数据库记录是两类状态，迁移有独立步骤。<span role="complementary">[T19]</span> 恢复旧快照可能覆盖切换后产生的业务数据。<span role="complementary">[T19]</span> 健康检查之外，还要验证带账号的实际链路。<span role="complementary">[T20]</span> <strong role="complementary">三句话层。</strong></p>
+<p><strong>你可以这样跟面试官说：</strong>“nginx 接请求，Java 容器执行业务，数据库迁移单独进行。换回旧代码镜像不会让数据库自动倒回去，所以恢复时必须分清代码与数据。”</p>
 <h3>服务器换镜像为什么不等于回滚数据库？</h3>
-<ul><li>代码镜像与数据库记录是两类状态，迁移有独立步骤。</li></ul>
-<ul><li>恢复旧快照可能覆盖切换后产生的业务数据。</li></ul>
-<ul><li>健康检查之外，还要验证带账号的实际链路。</li></ul>
+<ul><li><p>代码镜像与数据库记录是两类状态，迁移有独立步骤。</p>
+</li>
+<li><p>恢复旧快照可能覆盖切换后产生的业务数据。</p>
+</li>
+<li><p>健康检查之外，还要验证带账号的实际链路。</p>
+</li>
+</ul>
 <h3>学习路线：本节出处</h3>
-<aside aria-label="阅读版出处，不进入课程"><table>
-<tr><td>编号</td><td>具体说法</td><td>出处</td></tr>
-<tr><td>T18</td><td>nginx、Docker、Compose</td><td><code>refactor/server-java/Dockerfile:1-18</code>；<code>refactor/server-java/deploy/compose.yml:3-58</code>；<a href="https://nginx.org/en/docs/beginners_guide.html">nginx</a>、<a href="https://docs.docker.com/compose/">Compose</a></td></tr>
-<tr><td>T19</td><td>构建、迁移、回滚数据边界</td><td><code>refactor/server-java/deploy/migrate.sh:1-3,29-50</code>；<code>refactor/server-java/RAG_API.md:60-66</code>；<code>refactor/server-java/CUTOVER148.md</code>；<a href="https://alembic.sqlalchemy.org/en/latest/">Alembic</a></td></tr>
-<tr><td>T20</td><td>协议与迁移权限问题</td><td><span role="complementary">[ARCH-09]</span>、<span role="complementary">[BUG-107]</span></td></tr>
-<tr><td>T21</td><td>HTTPX/asyncio、ONNX</td><td><code>refactor/learning/connections/providers/_http.py:84-100</code>；<code>refactor/learning/connections/transport.py:63-133</code>；<code>refactor/learning/course/ocr.py:1-8,48-65</code>；<code>refactor/desktop/requirements-account-shell.txt:43-46</code></td></tr>
-</table></aside>
-<h2>学习路线：不用背，怎么查｜基本不问</h2>
+<aside aria-label="阅读版出处，不进入课程">
+<table><thead><tr><th>编号</th><th>具体说法</th><th>出处</th></tr></thead><tbody><tr><td>T18</td><td>nginx、Docker、Compose</td><td><code>refactor/server-java/Dockerfile:1-18</code>；<code>refactor/server-java/deploy/compose.yml:3-58</code>；<a href="https://nginx.org/en/docs/beginners_guide.html">nginx</a>、<a href="https://docs.docker.com/compose/">Compose</a></td></tr><tr><td>T19</td><td>构建、迁移、回滚数据边界</td><td><code>refactor/server-java/deploy/migrate.sh:1-3,29-50</code>；<code>refactor/server-java/RAG_API.md:60-66</code>；<code>refactor/server-java/CUTOVER148.md</code>；<a href="https://alembic.sqlalchemy.org/en/latest/">Alembic</a></td></tr><tr><td>T20</td><td>协议与迁移权限问题</td><td><span role="complementary">[ARCH-09]</span>、<span role="complementary">[BUG-107]</span></td></tr><tr><td>T21</td><td>HTTPX/asyncio、ONNX</td><td><code>refactor/learning/connections/providers/_http.py:84-100</code>；<code>refactor/learning/connections/transport.py:63-133</code>；<code>refactor/learning/course/ocr.py:1-8,48-65</code>；<code>refactor/desktop/requirements-account-shell.txt:43-46</code></td></tr></tbody></table>
+</aside>
+<h2>学习路线：不用背，怎么查<span role="complementary">｜基本不问</span></h2>
 <p>不背版本号、Qt 控件名、Spring 全部类名、ONNX 算子、HNSW 参数、SQL 每个列名、Actions 运行编号、临时容器名、安装器坐标。要能说的是：一条请求谁接，数据谁管，模型谁调，失败怎么发现，说法凭什么。</p>
 <p>明确记录过的取舍包括 Java + AI 求职方向、自己的 Key 直连、原件不上服务器、安装 pgvector、日常增量更新。其他工具没有横向比较证据，就答“采用了它，职责是这些；没有正式对比证据”。后续计划、课堂、同步、账号、账本、更新与 BUG 专题，见 <a href="../README.md">README</a>。</p>
 </main></body></html>

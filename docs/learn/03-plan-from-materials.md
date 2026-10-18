@@ -1,12 +1,12 @@
 # 专题：从一摞资料到一张能照着学的计划
 
-事实基线：`7df4f6ea`。本篇按当前项目代码和需求状态说明；“常被问／偶尔问／基本不问”是面试复习优先级，不是面试频率统计。[P01]
+事实基线：`e61fd00d`。本篇按当前项目代码和需求状态说明；“常被问／偶尔问／基本不问”是面试复习优先级，不是面试频率统计。[P01]
 
 想象你要替朋友安排一门“从没下过厨，到能独立做一道菜”的短课：先问他想做到什么、现在会什么、哪天有空；再挑菜谱；然后把章节排成课；最后把每次练习放进日历。这个比喻帮助理解计划流程，不表示软件真的在教做菜，也不表示 AI 可以凭空编菜谱。[P01]
 
 ## 1. 先问清楚想学到哪里｜常被问
 
-先定目标，再排计划。
+用户先定目标，再排计划。
 
 计划先问清楚学什么、学到什么程度，以及能投入多少时间。表单收集学习目标、最终目标、当前水平、开始和结束日期、每天上限、每周可学日、特殊日期和补充说明；程序校验必填内容、日期和权重，格式不合就要求修正。[P02] **一句话层。**
 
@@ -28,13 +28,13 @@
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| P01 | 项目学习资料的目的、最新版本和讲法 | `docs/project/CURRENT_STATE.md:227-239`（DOC-01）；`docs/project/CURRENT_STATE.md:220-225`（PROD-01 起源） |
-| P02 | 表单字段、日期和学习日权重校验 | `refactor/learning/app/plan_flow.py:72-124`；`docs/project/CURRENT_STATE.md:277-289`（ARCH-06） |
-| P03 | 先摘要与粗模块、再选资料、用户确认后继续 | `refactor/learning/app/plan_flow.py:447-510,1748-1805`；`docs/project/CURRENT_STATE.md:277-289`（ARCH-06）、`340-344`（PLAN-02） |
+| P01 | 项目学习资料的目的、最新版本和讲法 | [DOC-01]；[PROD-01] |
+| P02 | 表单字段、日期和学习日权重校验 | `refactor/learning/app/plan_flow.py:72-124`；[ARCH-06] |
+| P03 | 先摘要与粗模块、再选资料、用户确认后继续 | `refactor/learning/app/plan_flow.py:447-510,1748-1805`；[ARCH-06]、[PLAN-02] |
 
 ## 2. 先挑完整资料，再把正文请进来｜常被问
 
-推荐候选，采用才读。
+采用资料后才读取正文。
 
 推荐资料只是候选，不代表正文已读取或覆盖已确认。AI 推荐完整资料，例如教材、课程、完整文档或 GitHub 文字仓库；它给出名称、链接、简短理由和大致覆盖模块。[P04] **一句话层。**
 
@@ -56,13 +56,13 @@
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| P04 | AI 推荐完整教材、课程、仓库或文档；不声称已读正文 | `refactor/learning/course/planner_agents.py:192-204`；`docs/project/CURRENT_STATE.md:364-373`（PLAN-06） |
+| P04 | AI 推荐完整教材、课程、仓库或文档；不声称已读正文 | `refactor/learning/course/planner_agents.py:192-204`；[PLAN-06] |
 | P05 | 采用后读取与抽取资料；失败有明确状态 | `refactor/learning/app/plan_flow.py:760-820`；`refactor/learning/course/materials.py:141-170,212-226` |
-| P06 | 用户资料的采用规则、用户选择推荐资料 | `docs/project/CURRENT_STATE.md:209-217`（DIR-01）、`364-373`（PLAN-06）；`refactor/learning/app/plan_flow.py:760-820` |
+| P06 | 用户资料的采用规则、用户选择推荐资料 | [DIR-01]、[PLAN-06]；`refactor/learning/app/plan_flow.py:760-820` |
 
 ## 3. 先看资料目录，再画路线图｜常被问
 
-先看目录，再定范围。
+用户先看目录，再定范围。
 
 先让用户看资料目录和覆盖范围，再确认要学的路线。系统把原文标题、层级和段落整理成目录视图，展示大致模块、资料覆盖和目标中的资料缺口。[P07] **一句话层。**
 
@@ -84,12 +84,12 @@
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| P07 | 目录结构预览、覆盖缺口和范围调整 | `refactor/learning/app/plan_flow.py:883-897,1044-1064`；`refactor/learning/course/planner_agents.py:226-241`；`docs/project/CURRENT_STATE.md:277-289`（ARCH-06）、`340-344`（PLAN-02） |
+| P07 | 目录结构预览、覆盖缺口和范围调整 | `refactor/learning/app/plan_flow.py:883-897,1044-1064`；`refactor/learning/course/planner_agents.py:226-241`；[ARCH-06]、[PLAN-02] |
 | P08 | 以采用资料和确认的模块章节生成地图，结构由宿主控制 | `refactor/learning/app/plan_flow.py:1044-1129`；`refactor/learning/course/planner_agents.py:1698-1719` |
 
 ## 4. 知识结构与参考资料的分工｜常被问
 
-正文成课，导航作参考。
+知识正文成课，导航作参考。
 
 资料目录不是课程本身，书单和路线可留作导航，不必变成要讲、要考的知识点。[P09] **一句话层。**
 
@@ -116,14 +116,14 @@
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| P09 | 导航与教学知识的区别 | `docs/project/CURRENT_STATE.md:346-352`（PLAN-04）、`1339-1343`（BUG-86） |
+| P09 | 导航与教学知识的区别 | [PLAN-04]、[BUG-86] |
 | P10 | 标题导航识别、模糊段落分类、编号解析校验 | `refactor/learning/course/planner_agents.py:1133-1141,1402-1446,1548-1575` |
-| P11 | 主题大小无上下限的用户要求及其已有计划重组实现；新计划目录初始结构；重组后小要点换父点会改 ID | `docs/project/CURRENT_STATE.md:1154-1162`（BUG-104）；`refactor/learning/course/planner_agents.py:1449-1545,1698-1719`；`refactor/learning/course/restructure.py:119-245,292-352` |
-| P12 | 新式点、小要点和原文出处 | `refactor/learning/course/planner_agents.py:1548-1575,1698-1719`；`docs/project/CURRENT_STATE.md:346-352`（PLAN-04） |
+| P11 | 主题大小无上下限的用户要求及其已有计划重组实现；新计划目录初始结构；重组后小要点换父点会改 ID | [BUG-104]；`refactor/learning/course/planner_agents.py:1449-1545,1698-1719`；`refactor/learning/course/restructure.py:119-245,292-352` |
+| P12 | 新式点、小要点和原文出处 | `refactor/learning/course/planner_agents.py:1548-1575,1698-1719`；[PLAN-04] |
 
 ## 5. 估时不是拍脑袋，日历也不是番茄钟｜常被问
 
-程序估时，按权重排日。
+程序按学习内容估时。
 
 时长从学习内容和检测需求估算，再按可学日排进计划，不是先拍个总数。[P13,P14] **一句话层。**
 
@@ -146,12 +146,12 @@
 
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
-| P13 | 旧点指标与难度、结构点分钟计算和初建时默认难度/分钟求和 | `refactor/learning/course/planner_agents.py:66-95,1219-1246,1698-1719`；`refactor/learning/app/plan_flow.py:1138-1174`；`docs/project/CURRENT_STATE.md:346-352`（PLAN-04） |
-| P14 | 周与特殊日权重、按权重分配、欠账和超前 | `refactor/learning/course/ledger.py:64-113,242-265,393-423`；`docs/project/CURRENT_STATE.md:354-362`（PLAN-05） |
+| P13 | 旧点指标与难度、结构点分钟计算和初建时默认难度/分钟求和 | `refactor/learning/course/planner_agents.py:66-95,1219-1246,1698-1719`；`refactor/learning/app/plan_flow.py:1138-1174`；[PLAN-04] |
+| P14 | 周与特殊日权重、按权重分配、欠账和超前 | `refactor/learning/course/ledger.py:64-113,242-265,393-423`；[PLAN-05] |
 
 ## 6. 提示词和上下文：把当前资料交给 AI，把流程留给程序｜常被问
 
-任务清楚，资料可核。
+模型只处理当前步骤的信息。
 
 提示词就是给 AI 的任务说明；上下文是这次要看的原文、目标和相关资料。请求只带完成当前任务所需的内容和明确编号，不把整本书塞进去。目录分类请求以章节 ID、标题和段落为输入；知识点讲义请求只带相关知识点、小要点及其出处段落。[P15] **一句话层。**
 
@@ -178,8 +178,8 @@ AI 只处理本次要看的段落和清楚的任务；程序检查编号、原�
 | 编号 | 具体说法 | 出处 |
 | --- | --- | --- |
 | P15 | 目录分类、知识点讲义请求与摘句来源校验 | `refactor/learning/course/planner_agents.py:890-895,1004-1007,1193-1216,1402-1446,1652-1695,1698-1719` |
-| P16 | 追加历史、缓存边界、命中率证据 | `refactor/learning/course/request_layout.py:7-61`；`docs/project/CURRENT_STATE.md:559-566`（SYS-05） |
-| P17 | AI 与程序职责、题目来源 | `docs/project/CURRENT_STATE.md:209-217`（DIR-01）；`refactor/learning/course/plan_intent.py:58-60` |
+| P16 | 追加历史、缓存边界、命中率证据 | `refactor/learning/course/request_layout.py:7-61`；[SYS-05] |
+| P17 | AI 与程序职责、题目来源 | [DIR-01]；`refactor/learning/course/plan_intent.py:58-60` |
 
 ## 学习路线：不用背｜基本不问
 
