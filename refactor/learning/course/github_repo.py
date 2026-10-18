@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import re
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from .extract import ExtractedDocument, ExtractError, TextBlock, chunk_blocks, extract_bytes
 from .research_pipeline import VerifiedSource
@@ -43,7 +43,7 @@ def parse(url: str):
     if not match or match.group(1).lower() in {"orgs", "topics", "search", "settings", "marketplace", "sponsors", "features", "about"}:
         return None
     owner, repo, branch, sub = match.groups()
-    return owner, repo, branch, (sub or "").strip("/")
+    return owner, repo, unquote(branch) if branch else None, unquote(sub or "").strip("/")
 
 
 def _natural(path):
@@ -170,8 +170,15 @@ def _clean(heading):
 
 
 def _json(fetch, url, cancel):
+    from .research import ResearchFetchError
     try:
         return json.loads(fetch(url, cancel).decode("utf-8"))
+    except ResearchFetchError as exc:
+        if exc.status_code == 404:
+            raise RepoImportError("GITHUB_NOT_FOUND", "找不到这个仓库或分支，或它不是公开仓库；请确认链接正确。") from None
+        if exc.status_code in {403, 429}:
+            raise RepoImportError("GITHUB_RATE_LIMIT", "GitHub 公开接口访问受限，请确认仓库公开，或稍后重试。") from None
+        raise
     except (ValueError, UnicodeDecodeError):
         raise RepoImportError("GITHUB_BAD_RESPONSE", "GitHub 返回的数据无法识别，请稍后重试。") from None
 
@@ -194,8 +201,39 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
     meta = _json(fetch, f"https://api.github.com/repos/{owner}/{repo}", cancel)
     if not isinstance(meta, dict) or not meta.get("full_name"):
         raise RepoImportError("GITHUB_NOT_FOUND", "找不到这个仓库，或它不是公开仓库。")
-    branch = branch or meta.get("default_branch") or "main"
-    tree = _json(fetch, f"https://api.github.com/repos/{owner}/{repo}/git/trees/{quote(branch, safe='')}?recursive=1", cancel)
+    default_branch = meta.get("default_branch") or "main"
+    if branch and "/" in default_branch:
+        requested = branch + ("/" + subpath if subpath else "")
+        if requested == default_branch or requested.startswith(default_branch + "/"):
+            branch, subpath = default_branch, requested[len(default_branch):].strip("/")
+    branch = branch or default_branch
+
+    def read_tree(ref):
+        value = _json(fetch, f"https://api.github.com/repos/{owner}/{repo}/git/trees/{quote(ref, safe='')}?recursive=1", cancel)
+        if not isinstance(value, dict) or not isinstance(value.get("tree"), list):
+            raise RepoImportError("GITHUB_BAD_RESPONSE", "GitHub 返回的目录树无法识别，请稍后重试。")
+        return value
+
+    try:
+        tree = read_tree(branch)
+    except RepoImportError as exc:
+        if exc.code != "GITHUB_NOT_FOUND" or not subpath:
+            raise
+        # /tree/feature/new/docs is ambiguous until GitHub confirms the ref.
+        # Normal main/docs links keep the original single tree request.
+        tail, original = subpath.split("/"), exc
+        for length in range(len(tail), 0, -1):
+            candidate = "/".join([branch, *tail[:length]])
+            try:
+                tree = read_tree(candidate)
+            except RepoImportError as trial:
+                if trial.code == "GITHUB_NOT_FOUND":
+                    continue
+                raise
+            branch, subpath = candidate, "/".join(tail[length:])
+            break
+        else:
+            raise original
     entries = [item for item in (tree.get("tree") or []) if isinstance(item, dict) and item.get("type") == "blob"
                and isinstance(item.get("path"), str)]
     files = pick_files([e["path"] for e in entries], subpath,
