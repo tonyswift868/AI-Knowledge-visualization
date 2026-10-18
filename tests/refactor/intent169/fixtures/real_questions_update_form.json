@@ -1,0 +1,14 @@
+{
+  "baseline": "6823365a",
+  "source": "169-MF06 post-fix live PlanFlow.chat, streaming call 13",
+  "response": {
+    "intents": [
+      {
+        "kind": "update_form",
+        "only_mine": true,
+        "notes_append": "按模块串讲一遍。资料我自己提供，只用这个仓库里的资料，不用另外找：https://github.com/tonyswift868/mentorflow-guide"
+      }
+    ],
+    "reply": ""
+  }
+}

@@ -40,6 +40,13 @@ def model_fault(error, provider_id='', *, repeated=False):
         category, message, short = 'interrupted', '回复中断了，可以重试', '模型回复中断'
     elif code in {'MODEL_CONNECTION_FAILED','MODEL_TIMEOUT'}:
         category, message, short = 'network', '连不上模型服务，请检查网络', '模型连接失败'
+    elif code == 'AGENT_FORMAT':
+        # Callers assign a safe, purpose-specific message after exhausting the
+        # agent's format repair. Preserve it instead of presenting a software
+        # fault as if it were a transport/vendor failure or user misunderstanding.
+        category = 'format'
+        message = getattr(error, 'message', '').strip() or 'AI 返回内容格式不正确，请重试。'
+        short = 'AI 回复格式不正确'
     else:
         category, message, short = 'software', ('还是不行，请把这个情况告诉开发者。' if repeated else
             '软件出了点问题，没拿到回复（不是网络，也不是模型服务的问题），已自动记录。请点重试'), '模型回复异常'
