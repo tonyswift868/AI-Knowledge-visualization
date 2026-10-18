@@ -76,8 +76,18 @@ class ScriptedModel:
             ids = re.findall(r"\[(r\d+)\]", user)
             text = json.dumps({"scores": [{"id": i, "relevance": 5, "credibility": 5, "note": "Python 官方教程包含目标中的类、异常和模块，可核对章节。"} for i in ids]})
         elif purpose == 'outline' and system == __import__('refactor.learning.course.planner_agents',fromlist=['MATERIAL_STRUCTURE_SYSTEM']).MATERIAL_STRUCTURE_SYSTEM:
-            packet=json.loads(user);section=packet['directory'][0]
-            text=json.dumps(dict(summary='按资料调整结构',modules=[dict(key=f'm{i}',title='改过的模块1' if i==1 and packet.get('instruction') else f'模块{i}',summary='理解资料',refs=[section['id']],chapters=[section['title']]) for i in range(1,4)],missing=[]),ensure_ascii=False)
+            # Keep this end-to-end fixture realistic under canonical coverage:
+            # each selected directory alias has exactly one owning module.
+            # The request may include a format-repair message after the original
+            # JSON, so read the initial user payload rather than that repair hint.
+            packet=json.loads(next(m['content'] for m in messages if m['role']=='user' and m['content'].lstrip().startswith('{')))
+            directory=packet['directory']
+            assert len(directory) >= 3
+            groups=[directory[i::3] for i in range(3)]
+            text=json.dumps(dict(summary='按资料调整结构',modules=[
+                dict(key=f'm{i}',title='改过的模块1' if i==1 and packet.get('instruction') else f'模块{i}',
+                     summary='理解资料',refs=[row['id'] for row in groups[i-1]])
+                for i in range(1,4)],missing=[],excluded=[]),ensure_ascii=False)
         elif purpose == 'generate' and messages[0]['content'].lstrip().startswith('{'):
             packet=json.loads(messages[0]['content'])
             text=json.dumps([dict(id=s['id'],reason='章节讲知识',knowledge=[p['id'] for p in s['paragraphs']],navigation=[])
@@ -221,7 +231,7 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root, request):
     model.intents = [[{"kind": "proceed", "step": "generate"}]]
     draft = ask("plan.say", plan_id=pid, text="开始生成吧")["draft"]     # a paid step: show the estimate, never start it
     assert draft["estimate"]["modules"] == 3 and "amount" not in draft["estimate"]
-    assert draft["estimate"]["points"] == 3
+    assert draft["estimate"]["points"] == 6  # each module now owns its complete source range
     assert draft["phase"] == "outline" and sum(c[0] == 'generate' for c in model.calls) == 9
 
     draft = ask("plan.generate", plan_id=pid)["draft"]
@@ -232,7 +242,8 @@ def test_new_plan_chain_from_form_to_start(qapp, tmp_root, request):
 
     detail = ask("plan.detail", plan_id=pid)
     mods = [m for s in detail["stages"] for m in s["modules"]]
-    assert len(mods) == 3 and all(len(m["points"]) == 1 for m in mods) and detail["plan"]["state"] == "ready"
+    assert len(mods) == 3 and detail["plan"]["state"] == "ready", mods
+    assert all(len(m["points"]) == 2 for m in mods)
     assert len(detail["sources"]) == 2 and detail["daily"]["cap"] == 120
     # This part tests persisted dependency editing. Point generation no longer
     # returns structure or prerequisites; seed the explicit dependency fixture.

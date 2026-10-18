@@ -14,7 +14,8 @@ from tests.refactor.plan51.test_plan51_selected_material_flow import flow, URL
 def original():
     data = json.loads(Path(__file__).with_name('small55_structure_request.json').read_text(encoding='utf-8'))
     payload = json.loads(data['messages'][0]['content'])
-    sections = [SimpleNamespace(id=s['id'], source_title=s['source'], title=s['title']) for s in payload['directory']]
+    sections = [agents.Section(s['id'], s['source'], s['source'], s['title'], (), 0, i, i)
+                for i, s in enumerate(payload['directory'])]
     return data, payload, sections
 
 

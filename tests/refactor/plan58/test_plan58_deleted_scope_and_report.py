@@ -35,6 +35,9 @@ def test_plan58_small57_change_persists_removed_chapters_on_reopen(flow, monkeyp
     monkeypatch.setattr(model, 'complete', lambda *a, **k: SimpleNamespace(text=json.dumps(data['selected'])))
     d = f.load(pid)
     d['material_structure'] = copy.deepcopy(data['previous'])
+    # Replay the learner's explicit excluded scope. A bare incomplete model
+    # reply is now rejected instead of silently turning omitted refs into scope.
+    d['removed_content'] = removed(data)
     d['phase'] = 'material_preview'
     f.material_structure(d, ctx, data['instructions'][0])
     reopened = PlanFlow(f.services, f.push, f.study_day, fetcher=f.fetcher).load(pid)
@@ -102,11 +105,13 @@ def test_plan58_all_removed_uses_existing_single_format_retry(flow, monkeypatch)
     assert '删除' in count[-1][-1]['content'] or '范围' in count[-1][-1]['content']
 
 
-def test_plan58_number_selection_records_only_actually_removed_modules(flow):
+def test_plan58_number_selection_records_only_actually_removed_modules(flow, monkeypatch):
     f, _, pid, _ = flow
     data = evidence()
+    monkeypatch.setattr(f, '_sections', lambda d: (data['sources'], sections(data)))
     d = f.load(pid)
     d['material_structure'] = copy.deepcopy(data['selected'])
+    d['removed_content'] = removed(data)
     d['phase'] = 'material_preview'
     f._select_material_modules(d, dict(include=[1, 3], exclude=[], ignored=[]))
     assert any(r['title'] == '硬件与软件' for r in d['removed_content'])

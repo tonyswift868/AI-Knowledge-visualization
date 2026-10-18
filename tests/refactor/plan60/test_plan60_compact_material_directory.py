@@ -66,7 +66,11 @@ def test_plan60_small57_request_and_host_chapters_unchanged():
     sections = agents.build_sections(data['sources'], {data['sources'][0]['id']: data['chunks']}, max_depth=None)
     request = agents.material_structure_request('认识计算机', {}, None, sections)
     assert [s['id'] for s in json.loads(request[1][0]['content'])['directory']] == [s.id for s in sections]
-    result = agents.parse_material_structure(json.dumps(data['selected']), sections)
+    # This capture is a learner scope deletion, not an uncovered input. Supply
+    # its recorded instruction as explicit removed branches before expansion.
+    removed = [dict(kind='chapter', source_id=sections[0].source_id, title=s.title)
+               for s in sections if s.id in ('s1.9', 's1.10')]
+    result = agents.parse_material_structure(json.dumps(data['selected']), sections, removed_content=removed)
     assert result['modules'] == [{k: v for k, v in row.items() if k in ('key','title','summary','refs','chapters')}
                                   for row in data['selected']['modules']]
 

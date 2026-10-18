@@ -137,8 +137,10 @@ def test_guide165_fake_gateway_contract_preserves_sections_and_course_store_stag
     store.close()
 
 
-def test_guide165_invalid_url_returns_human_import_code_without_traceback(capsys):
-    result = main(["--url", "not-a-github-url", "--output", str(SCRATCH / "invalid-url")])
+def test_guide165_invalid_url_returns_human_import_code_without_traceback(capsys, tmp_path, monkeypatch):
+    from tests.refactor.guide165 import check_guide_import165 as checker
+    monkeypatch.setattr(checker, "SCRATCH", tmp_path)
+    result = main(["--url", "not-a-github-url", "--output", str(tmp_path / "invalid-url")])
     captured = capsys.readouterr()
     assert result == 2
     assert '"code": "NOT_A_REPO"' in captured.err

@@ -241,10 +241,14 @@ def test_material70_removed_generation_paths_have_no_switch_or_callable():
 
 
 def test_material70_structure_counts_are_program_only(material_store70):
+    from refactor.learning.course.planner_agents import Section
     s=material_store70;flow=object.__new__(PlanFlow)
     sources=s.records('sources','p');chunks=s.records('source_chunks','p')
     flow._adopted=lambda d:(sources,{'s':chunks})
-    flow._sections=lambda d:(sources,[SimpleNamespace(id='with',chunk_ids=['c']),SimpleNamespace(id='without',chunk_ids=['empty'])])
+    flow._sections=lambda d:(sources,[
+        Section('with','s','用户资料','正文',('c',),len(TEXT70),0,0),
+        Section('without','s','用户资料','无题',('empty',),12,1,1),
+    ])
     flow._window=lambda d:PlanWindow(date(2026,10,6),date(2026,10,30),600)
     modules,ranges=flow.structure_ranges({'material_structure':{'modules':[dict(key='m',title='有题',refs=['with']),dict(key='n',title='无题',refs=['without'])]}})
     assert [m['estimated_question_count'] for m in modules]==[2,0]
