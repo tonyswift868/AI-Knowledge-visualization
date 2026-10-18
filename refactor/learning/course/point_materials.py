@@ -1,4 +1,4 @@
-"""Original exercises for legacy points; one source-backed question per concept subpoint."""
+"""Original exercises for legacy points and source-backed concept subpoints."""
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -351,7 +351,7 @@ def _processed_marker_ids(previous, subpoints):
 
 
 def _prepare_concept_point(store, plan_id, point, ctx):
-    """One original exercise or reviewed original-span gap per concept subpoint."""
+    """Own-scope original exercises, or a reviewed gap when none compile."""
     with _lock(store,plan_id,point['id']):
         _check(ctx)
         passages=_passages(store,plan_id,ctx);by_id={p['id']:p for p in passages}
@@ -381,6 +381,8 @@ def _prepare_concept_point(store, plan_id, point, ctx):
                 continue
             # Preserve the existing material exercise parser and literal compiler.
             candidates=mq.for_module(mq.candidates(own,sources),[dict(point,chunk_ids=sub['chunk_ids'])])
+            # Keep the existing one-objective rule and also retain every
+            # distinct original recall question in this subpoint's chunks.
             for candidate in candidates:
                 if candidate['candidate_type']!='objective':continue
                 try:
@@ -391,6 +393,38 @@ def _prepare_concept_point(store, plan_id, point, ctx):
                     row['subpoint_id']=sub['id']
                     grading_question(row);validate_question(row)
                     found.append(row);ready.add(sub['id']);break
+                except (ValueError,KeyError,TypeError):continue
+            for candidate in candidates:
+                if candidate['candidate_type']!='recall':continue
+                try:
+                    units=mq.answer_units(candidate['reference'])
+                    ids=list(range(1,min(5,len(units))+1)) if len(units)>5 else None
+                    if len(units)>5:
+                        packet=dict(module_id=point['module_id'],module_title=point.get('title',''),
+                            candidates=[mq.request_candidate(candidate)])
+                        _check(ctx)
+                        if ctx.get('question_splitter'):
+                            output=ctx['question_splitter'](packet,cancel=ctx.get('cancel'))
+                        elif ctx.get('gateway'):
+                            response=ctx['gateway'].complete('point_materials',
+                                [dict(role='user',content=json.dumps(packet,ensure_ascii=False))],
+                                system=mq.SYSTEM,plan_id=plan_id,cancel=ctx.get('cancel'),enable_search=False)
+                            if ctx.get('on_call'):ctx['on_call']('point_materials',response)
+                            try:output=_json(response.text)
+                            except ValueError:output={}
+                        else:
+                            output={}
+                        rows=output.get('questions',[]) if isinstance(output,dict) else []
+                        matches=[r for r in rows if isinstance(r,dict) and r.get('candidate_id')==candidate['id']]
+                        if len(matches)==1:
+                            try:mq.selected_units(candidate['reference'],matches[0].get('key_point_ids'))
+                            except ValueError:pass
+                            else:ids=matches[0]['key_point_ids']
+                    row=mq.compile_question(dict(kind='recall',stem=candidate['stem'],key_point_ids=ids),
+                        candidate,point['module_id'])
+                    row['subpoint_id']=sub['id']
+                    validate_question(row)
+                    found.append(row);ready.add(sub['id'])
                 except (ValueError,KeyError,TypeError):continue
             if sub['id'] not in ready:waiting.append(sub)
         proposed=[]
@@ -445,21 +479,24 @@ def _prepare_concept_point(store, plan_id, point, ctx):
             # evidence and update it by ID so a later regroup can map it via
             # ``legacy_subpoint_ids`` without asking the model again.
             terminal=dict(processed)
-            for q in final:
-                terminal[q['subpoint_id']]=dict(subpoint_id=q['subpoint_id'],status='valid')
             for q in all_bank:
                 if q.get('role')=='retired' and q.get('subpoint_id') in valid:
                     terminal[q['subpoint_id']]=dict(subpoint_id=q['subpoint_id'],status='retired')
             for row in rejections:
                 sid=row.get('subpoint_id')
                 if sid: terminal[sid]=dict(row,status='rejected')
+            # Candidate-level rejection evidence must not override a terminal
+            # success when another question for this subpoint was admitted.
+            for q in final:
+                terminal[q['subpoint_id']]=dict(subpoint_id=q['subpoint_id'],status='valid')
             merged_rejections=[];seen=set()
             for row in list(previous.get('rejections',()))+rejections:
                 key=(row.get('subpoint_id'),row.get('reason'),json.dumps(row.get('details'),ensure_ascii=False,sort_keys=True,default=str)) if isinstance(row,dict) else None
                 if key in seen:continue
                 seen.add(key);merged_rejections.append(row)
+            prepared={q['subpoint_id'] for q in final}
             result=dict(passages=len(point['chunk_ids']),questions=len(final),
-                cloze=sum(q['origin']=='cloze' for q in final),skipped=len(valid)-len(final))
+                cloze=sum(q['origin']=='cloze' for q in final),skipped=len(valid-prepared))
             current=store._get('points',plan_id,point['id'])
             current['subpoint_preparation']=dict(state='done',fingerprint=fingerprint,result=result,
                 rejections=merged_rejections,processed_subpoints=terminal)
@@ -482,9 +519,10 @@ def _prepare_concept_module(store,plan_id,module_id,points,ctx,progress):
         rows=assessment_questions(store.records('question_bank',plan_id),module_id)
         rejected=[r for p in store.records('points',plan_id) if p['module_id']==module_id
                   for r in p.get('subpoint_preparation',{}).get('rejections',[])]
+        cloze_points={pid for q in rows if q.get('origin')=='cloze' for pid in q.get('point_ids',[])}
         result=dict(points=len(points),questions=len(rows),objective=sum(q['kind']!='recall' for q in rows),
             recall=sum(q['kind']=='recall' for q in rows),rejected=len(rejected),question_extraction_done=True,
-            cloze_points=sum(p.get('structure')=='concept_v1' for p in points),cloze_heavy=False)
+            cloze_points=len(cloze_points),cloze_heavy=False)
         with store.transaction():
             _check(ctx)
             current=store._get('modules',plan_id,module_id)

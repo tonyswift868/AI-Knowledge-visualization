@@ -327,14 +327,26 @@ def assessment_question(row):
 
 def assessment_questions(rows, module_id=None):
     eligible = [q for q in rows if assessment_question(q) and (module_id is None or q['module_id']==module_id)]
-    # A concept has one assessed question per subpoint, never a two-question cap
-    # per parent point. Historical question-based assessments are unchanged.
-    seen = set(); result = []
+    # Concepts retain one objective and one cloze per subpoint. A subpoint may
+    # also have several distinct source recall questions.
+    selected = {}; recall_content = set(); result = []
     for q in eligible:
-        key = (q['module_id'], q.get('subpoint_id'))
-        if q.get('subpoint_id'):
-            if key in seen: continue
-            seen.add(key)
+        sid=q.get('subpoint_id')
+        if sid:
+            group=(q['module_id'],sid)
+            recall=q.get('kind')=='recall' and q.get('origin')=='found'
+            cloze=q.get('origin')=='cloze'
+            state=selected.setdefault(group,dict(objective=False,cloze=False))
+            if recall:
+                content=(group,original_text(q.get('stem','')),original_text(q.get('reference','')))
+                if content in recall_content: continue
+                recall_content.add(content)
+            elif cloze:
+                if state['cloze']: continue
+                state['cloze']=True
+            else:
+                if state['objective']: continue
+                state['objective']=True
         result.append(q)
     return result
 
