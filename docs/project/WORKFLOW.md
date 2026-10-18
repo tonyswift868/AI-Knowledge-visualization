@@ -30,6 +30,7 @@
 - **往服务器传源码**：`git -c core.autocrlf=false -c core.eol=lf archive --format=tar -o <tar> <提交> refactor/server refactor/server-java`，scp 上去解到 /opt/mentorflow/releases/java-<提交>/，再核对关键文件 sha256；不加这两个参数 .sh 会带 Windows 换行，跑不了（[BUG-107]）。
 - **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，mentorflow-admin，sudo -n）。Python 后端 mentorflow-slim-backend:MF-76（已停，留作回退；切换与回滚脚本 /opt/mentorflow/state/mf76/switch.sh：无参数切换、check 只查配置、rollback 回到 MF-75；上一版 mf75 目录保留）；入口 nginx 容器 mentorflow-e1-preview-edge-1（配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf）；更新与下载目录 /opt/mentorflow/update-static/e108/app/；资料白名单 /opt/mentorflow/state/mentorflow-e1-preview/catalog/。 后端是 Java（[ARCH-09]，2026-10-16 起）：容器 mentorflow-java-backend、mentorflow-java-oidc，部署与切换、回滚、停用和恢复 Python 的脚本在 /opt/mentorflow/releases/java-539ab610/refactor/server-java/deploy（README 有步骤）；compose 需 BACKEND_ENV=/opt/mentorflow/state/mentorflow-e1-preview/account-core-21337c1/runtime.env；Python 后端已停，镜像 mentorflow-slim-backend:MF-76 保留。 数据库容器镜像为 mentorflow-postgres-pgvector:17（[RAG-01]，2026-10-16）。它的 compose 标签指向已不存在的旧目录，以后用 compose 操作 postgres，要用后端容器标签里的文件组，加上 --profile account-core-mvp、-f /opt/mentorflow/backups/pgvector-20261016/pgvector.override.yml，最后再加 BUG-45 override。 2026-10-10 起两个 docker 网络设了 ip_range（BUG-45）：以后用 Compose 操作这些容器，命令末尾必须追加 -f /opt/mentorflow/state/bug45-20261010/network45.override.yml。
 - **自动等回执（用户 2026-10-14 定）**：只挂一个后台等待：`.local/tmp/receipt_watch.sh wait`（每 30 秒查整个 .local/receipts，和 .local/tmp/receipts.seen 比，有新的或改过的回执就列出并结束），收到就直接读回执、审查合入、清理、更新文档，处理完用 `receipt_watch.sh ack <任务号>` 记为已处理，再挂一次 wait；不用等用户转告，不按任务分别挂多个。
+- **排练产物（2026-10-19）**：员工的真打包排练每次留下几十 GB（160 约 70 GB、168 约 25 GB），而且员工的递归删除会被系统拦住；收到这类回执后，架构师先把任务目录里除 report.md 和截图以外的都删掉，再做别的。
 - **磁盘（用户 2026-10-10 定）**：测试与临时产物在 .local/test-tmp/ 下；冒烟测试、构建、中间文件用完就自动删，不留着等以后分类。员工删除被系统拦住时，架构师合入后直接删（只留 report.md 和截图），不用再问用户。
 
 ## 当前基线
@@ -50,14 +51,14 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 168-MF04 有新版时登录不等完整清单、更新框被截、预下载误报（已起草，待转发） | runtime |
+| MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
 ## 待派队列
 
-- 168-MF04（runtime，基线 a42d978d）：[BUG-114] 必须更新信息放进小指针、可选更新登录不等完整清单；[BUG-110] 更新框被截；[BUG-111] 预下载撞锁误报。真打包三个场景。任务文件 D:\MentorFlow\.local\tasks\168-MF04.md，已起草，待转发。新指针格式随下次发版上线。
+- 168-MF04 已合入（e8807e50）：[BUG-114]、[BUG-110]、[BUG-111] 已修未发布；员工留下 25 GB 排练产物（删除被系统拦），架构师已删；测试日期时间炸弹已修（c1a05202）。架构师全量重跑中，过了发 2.0.27。发布后核对公网上有 stable/login-policy.json。
 - 第一百六十五批已合入（5c823cf5）：165-MF05 资料完整复审；165-MF06 [BUG-112] 已修未发布；165-MF02 GitHub 导入修了中文路径、分支、错误提示，写了导出和检查脚本，查出 [BUG-113]。架构师已建公开仓库 tonyswift868/mentorflow-guide 并推送（导出目录 .local/guide-export/mentorflow-guide，是独立 git 仓库），真实链接只取文复核通过。
 - 166-MF06 已合入（2c2c809f）：[BUG-113] 覆盖修好（216/216），14 模块 80 大点。架构师合入后全量 4331 通过、0 失败（2026-10-18）。
 - 167-MF06 已合入（0adcf4b9）：问答原题进新式点题库，真实链接整套 14/79/96/96；员工全量 4356 通过，架构师相关 149 项通过。2.0.26 已发布（2026-10-18 23:00）。
