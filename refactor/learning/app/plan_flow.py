@@ -427,7 +427,11 @@ class PlanFlow:
                 return parse(result.text), result
             except agents.AgentFormatError as exc:
                 last = exc
-                log.info("agent %s returned an invalid format (%s), attempt %s", purpose, exc, attempt + 1)
+                from ...runtime_logging import event
+                diagnostic = (plan_intent.format_error_diagnostic(exc) if purpose == 'plan_intent' else
+                              dict(field='response', reason='invalid_format'))
+                event('model', purpose=purpose, state='FORMAT_INVALID', code='AGENT_FORMAT',
+                      count=attempt + 1, **diagnostic)
                 if format_retried:
                     break
                 format_retried = True
@@ -1723,7 +1727,7 @@ class PlanFlow:
     # ----------------------------------------------------------- chat box (ARCH-06 intents)
     def _intent_context(self, draft):
         phase = draft["phase"]
-        form = {k: v for k, v in (draft["form"] or {}).items() if k != "only_mine"}
+        form = dict(draft["form"] or {})
         recent = dialogue_tail([{"role": m["role"], "text": m["text"][:1500]} for m in draft["messages"]
                                 if m["role"] in ("ai", "user") and m.get("text")], max_rows=6)
         cards = [{"n": n, "title": c["title"], "site": c.get("site") or "", "summary": (c.get("summary") or "")[:200],
@@ -2073,7 +2077,8 @@ class PlanFlow:
 
     _FORM_LABELS = {"goal": "学习目标", "final_goal": "最终目标", "level": "当前水平", "level_note": "水平说明",
                     "start": "开始日期", "end": "结束日期", "daily_cap": "每天最多学习时长",
-                    "weekday_weights": "每周学习安排", "special_days": "特殊日期", "notes_append": "补充说明"}
+                    "weekday_weights": "每周学习安排", "special_days": "特殊日期", "notes_append": "补充说明",
+                    "only_mine": "只用自己提供的资料"}
 
     def _update_form(self, draft, ctx, params):
         phase, old = draft["phase"], draft["form"]
@@ -2085,12 +2090,14 @@ class PlanFlow:
                 raw[key] = value
         form, window = validate_form(raw, self.study_day())
         about = ("goal", "final_goal", "level", "level_note", "notes")
-        if phase == "ready" and any(form[k] != old[k] for k in about):
+        requirements_changed = (any(form[k] != old[k] for k in about)
+                                or form['only_mine'] != old.get('only_mine', False))
+        if phase == "ready" and requirements_changed:
             return self._say(draft, "路线已经按原来的目标生成好了，现在只能改日期和每天的时间。想换目标需要重新新建计划。")
         intake = {k: form[k] for k in ("goal", "final_goal", "level", "notes")} if phase != "ready" else {}
         self.services.store.save_intake(draft["plan_id"], window=window, today=self.study_day(),
                                         reason="新建计划时在对话中修改", **intake)
-        draft["form"] = dict(form, only_mine=old.get("only_mine", False))
+        draft["form"] = form
         if "goal" in params:
             draft["name"] = short_plan_name(form["goal"])
             draft["goal"] = form["goal"]
@@ -2104,12 +2111,13 @@ class PlanFlow:
         shown = []
         for key in params:
             value = {"level": LEVEL_NAMES.get(form["level"]), "daily_cap": f"{form['daily_cap']} 分钟",
-                     "start": form["start"], "end": form["end"]}.get(key)
+                     "start": form["start"], "end": form["end"],
+                     "only_mine": '是' if form['only_mine'] else '否'}.get(key)
             shown.append(f"{self._FORM_LABELS[key]}改为 {value}" if value else f"更新了{self._FORM_LABELS[key]}")
         self._say(draft, "已修改：" + "，".join(shown) + "。")
-        if phase == 'outline' and not any(form[k] != old[k] for k in about):
+        if phase == 'outline' and not requirements_changed:
             self.estimate(draft, annotate=False)
-        if phase in ('questions', 'preview', 'sources', 'outline') and any(form[k] != old[k] for k in about):
+        if phase in ('questions', 'preview', 'sources', 'outline') and requirements_changed:
             draft['outline'] = None
             draft.pop('preview', None)
             draft.pop('accepted_preview', None)

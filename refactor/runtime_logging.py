@@ -61,7 +61,7 @@ class DiagnosticFormatter(logging.Formatter):
         event = getattr(record, 'mf_event', None)
         if event in _EVENTS:
             payload['event'] = event
-            for field in ('state', 'code', 'purpose', 'reason', 'window'):
+            for field in ('state', 'code', 'purpose', 'reason', 'window', 'field'):
                 if field in record.mf_fields:
                     payload[field] = _label(record.mf_fields[field])
             elapsed = record.mf_fields.get('elapsed_seconds')

@@ -40,8 +40,8 @@ intents 必须有 1～3 个；同一种 kind 只出现一次（同类要求合�
 种类和唯一允许的参数（? 表示可选，其他字段必须给出）：
 - import_sources {urls:[网址,...]}：仅 sources/outline 阶段，导入本轮明确提供的 http/https 网址（最多10个）。网址已经由宿主导入、当前文本不再含网址时不要重复返回此项。
 - answer {}：仅 questions 阶段，用户正在回答最近 AI 的追问，宿主会把用户原话交给需求核对，不要复制原话到参数。
-- supplement {instruction}：questions/preview/sources/outline 阶段补充用途、范围、深度、讲法或改大致模块。保留用户的原要求，最多2000字；宿主重新理解需求并出模块预览，不直接找资料或生成。预览时“不要硬件，想加人工智能”等用此项；sources/outline 时“只想了解术语，不做练习”等也用此项，不能当闲聊或只口头答应。
-- update_form {goal?,final_goal?,level?,level_note?,start?,end?,daily_cap?,weekday_weights?,special_days?,notes_append?}：明确修改表单；只给明确要改的字段，至少一个。
+- supplement {instruction}：questions/preview/sources/outline 阶段补充用途、范围、深度、讲法或改大致模块。保留用户的原要求，最多2000字；宿主重新理解需求并出模块预览，不直接找资料或生成。用户在 questions 阶段提供资料链接并明确只用自己提供的资料/不要另找资料时，只用一个 update_form 设置 only_mine=true 且 notes_append 原样保留要求和完整 URL；不要同时返回 answer 或 supplement，以免重复核对。不要返回 import_sources，也不要声称来源已导入或读取。普通补充仍用 supplement。预览时“不要硬件，想加人工智能”等用此项；sources/outline 时“只想了解术语，不做练习”等也用此项，不能当闲聊或只口头答应。
+- update_form {goal?,final_goal?,level?,level_note?,start?,end?,daily_cap?,weekday_weights?,special_days?,notes_append?,only_mine?}：明确修改表单；只给明确要改的字段，至少一个。用户明确说只用自己提供的资料、不要另找资料时设 only_mine=true；明确要求推荐/另找资料时设 false。不可从“提供了链接”本身推断只用自有资料，需有明确表述。
   goal/final_goal 各 1～300 字；level 只能 zero（零基础）/beginner（入门）/intermediate（有一定基础）/advanced（比较熟练），按这四个中文名对应，例如“比较熟练、挺熟了”是 advanced；level_note 最多 300 字，可空；notes_append 为追加的说明，追加后 notes 不超过 1000 字。
   日期用具体 YYYY-MM-DD，依据 ctx.today 和 form 计算，不能输出“明天/下个月”等相对文字。单说“截止日期推迟两周”是 form.end 加 14 天；明确整体推迟才同时改 start/end。“12 月底”是 today 所在年的 12-31，若已过去则下一年；缺少能确定的基准先问。新的起止日期均不早于 today，end >= start，跨度不超过三年。
   daily_cap 为至少 10 的整数分钟；weekday_weights 为周一到周日 7 个 0/0.5/1；special_days 为 [{"date":"YYYY-MM-DD","weight":0或0.5}]，最多 120 项，日期唯一且在合并后的计划起止范围内。列表字段给修改后的完整列表，保留用户未要求改变的项；不要凭空清掉其他特殊日。改日期会使既有特殊日越界且用户没说明如何处理时先 ask_user。
@@ -72,7 +72,7 @@ _FIELDS = {
     "import_sources": {"urls"},
     "answer": set(), "chat": set(), "supplement": {"instruction"},
     "update_form": {"goal", "final_goal", "level", "level_note", "start", "end", "daily_cap",
-                    "weekday_weights", "special_days", "notes_append"},
+                    "weekday_weights", "special_days", "notes_append", "only_mine"},
     "find_sources": {"instruction"}, "decide_sources": {"adopt", "reject"},
     "limit_scope": {"include", "exclude"}, "select_modules": {"include", "exclude"},
     "delete_map": {"modules", "points", "unknown"},
@@ -81,6 +81,108 @@ _FIELDS = {
     "question": {"answer"}, "ask_user": {"question"}, "refuse": {"reason"},
 }
 _CONTEXT_FIELDS = ("phase", "today", "form", "recent", "cards", "sections", "modules", "facts")
+
+
+_FORMAT_DIAGNOSTICS = {
+    "invalid JSON object": ("response", "invalid_json"),
+    "no JSON object": ("response", "invalid_json"),
+    "duplicate JSON key": ("response", "invalid_json"),
+    "non-finite JSON number": ("response", "invalid_json"),
+    "response fields": ("response", "invalid_fields"),
+    "intent count": ("intents", "invalid_fields"),
+    "intent kind": ("intents", "invalid_fields"),
+    "duplicate intent kind": ("intents", "invalid_fields"),
+    "intent parameters": ("intents", "invalid_fields"),
+    "empty update_form": ("update_form", "empty_update"),
+    "combined notes too long": ("notes_append", "limit_exceeded"),
+    "special day fields": ("special_days", "invalid_fields"),
+    "special day range/duplicate": ("special_days", "invalid_range_or_duplicate"),
+    "answer phase": ("phase", "answer_not_allowed"),
+    "supplement phase": ("phase", "supplement_not_allowed"),
+    "select_modules phase": ("phase", "select_modules_not_allowed"),
+    "module selections": ("modules", "invalid_selection"),
+    "delete_map phase": ("phase", "delete_map_not_allowed"),
+    "delete_map selections": ("delete_map", "invalid_selection"),
+    "delete_map point": ("points", "invalid_selection"),
+    "empty delete_map": ("delete_map", "empty_selection"),
+    "edit_modules phase": ("phase", "edit_modules_not_allowed"),
+    "module moves": ("modules", "invalid_moves"),
+    "module move fields": ("moves", "invalid_fields"),
+    "module move reference/position": ("moves", "invalid_reference_or_position"),
+    "proceed step": ("step", "invalid_value"),
+    "ask one question": ("question", "multiple_questions"),
+    "abandon scope items": ("items", "invalid_selection"),
+    "refuse reason must be Chinese": ("reason", "invalid_language"),
+    "empty or contradictory selections": ("selection", "empty_or_contradictory"),
+    "invalid adopt list": ("adopt", "invalid_selection"),
+    "invalid reject list": ("reject", "invalid_selection"),
+    "invalid include list": ("include", "invalid_selection"),
+    "invalid exclude list": ("exclude", "invalid_selection"),
+    "unknown/duplicate adopt id": ("adopt", "unknown_or_duplicate_id"),
+    "unknown/duplicate reject id": ("reject", "unknown_or_duplicate_id"),
+    "unknown/duplicate include id": ("include", "unknown_or_duplicate_id"),
+    "unknown/duplicate exclude id": ("exclude", "unknown_or_duplicate_id"),
+    "invalid context cards": ("context_cards", "invalid_shape"),
+    "invalid context cards id": ("context_cards", "invalid_id"),
+    "duplicate context cards id": ("context_cards", "duplicate_id"),
+    "invalid context sections": ("context_sections", "invalid_shape"),
+    "invalid context sections id": ("context_sections", "invalid_id"),
+    "duplicate context sections id": ("context_sections", "duplicate_id"),
+    "invalid context modules": ("context_modules", "invalid_shape"),
+    "invalid context modules id": ("context_modules", "invalid_id"),
+    "duplicate context modules id": ("context_modules", "duplicate_id"),
+    "context fields": ("context", "invalid_fields"),
+    "context phase": ("context_phase", "invalid_value"),
+    "context form/facts": ("context", "invalid_shape"),
+    "context recent": ("context_recent", "invalid_shape"),
+    "context recent message": ("context_recent", "invalid_message"),
+    "context is not finite JSON data": ("context", "invalid_json_data"),
+    "context too large": ("context", "too_large"),
+    "level": ("level", "invalid_value"),
+    "daily_cap": ("daily_cap", "invalid_value"),
+    "weekday_weights": ("weekday_weights", "invalid_value"),
+    "special_days": ("special_days", "invalid_value"),
+    "only_mine": ("only_mine", "invalid_value"),
+    "date range": ("dates", "invalid_range"),
+    "invalid goal": ("goal", "invalid_value"),
+    "invalid final_goal": ("final_goal", "invalid_value"),
+    "invalid level_note": ("level_note", "invalid_value"),
+    "invalid notes_append": ("notes_append", "invalid_value"),
+    "invalid reply": ("reply", "invalid_value"),
+    "invalid instruction": ("instruction", "invalid_value"),
+    "invalid question": ("question", "invalid_value"),
+    "invalid question answer": ("answer", "invalid_value"),
+    "invalid user text": ("user_text", "invalid_value"),
+    "invalid reason": ("reason", "invalid_value"),
+    "invalid unknown name": ("unknown", "invalid_value"),
+    "invalid existing notes": ("context_form_notes", "invalid_value"),
+    "invalid today date": ("today", "invalid_date"),
+    "invalid start date": ("start", "invalid_date"),
+    "invalid end date": ("end", "invalid_date"),
+    "invalid special day date": ("special_days", "invalid_date"),
+    "invalid adopt id": ("adopt", "invalid_id"),
+    "invalid reject id": ("reject", "invalid_id"),
+    "invalid include id": ("include", "invalid_id"),
+    "invalid exclude id": ("exclude", "invalid_id"),
+    "invalid modules list": ("modules", "invalid_selection"),
+    "invalid delete list": ("delete", "invalid_selection"),
+    "invalid modules id": ("modules", "invalid_id"),
+    "unknown/duplicate modules id": ("modules", "unknown_or_duplicate_id"),
+    "invalid delete id": ("delete", "invalid_id"),
+    "unknown/duplicate delete id": ("delete", "unknown_or_duplicate_id"),
+    "import sources phase": ("phase", "import_sources_not_allowed"),
+    "import sources urls": ("urls", "invalid_url_list"),
+}
+
+
+def format_error_diagnostic(exc):
+    """Return a safe, static diagnostic for parser errors; never expose exception text."""
+    if not isinstance(exc, AgentFormatError):
+        return {"field": "response", "reason": "invalid_format"}
+    args = getattr(exc, "args", ())
+    message = args[0] if args and isinstance(args[0], str) else None
+    field, reason = _FORMAT_DIAGNOSTICS.get(message, ("response", "invalid_format"))
+    return {"field": field, "reason": reason}
 
 
 def _string(value, name, limit, *, empty=False):
@@ -208,6 +310,8 @@ def _update(params, ctx):
             _string(params[key], key, 1000 if key == "notes_append" else 300, empty=key == "level_note")
     if "level" in params and (not isinstance(params["level"], str) or params["level"] not in LEVELS):
         raise AgentFormatError("level")
+    if "only_mine" in params and type(params["only_mine"]) is not bool:
+        raise AgentFormatError("only_mine")
     if "daily_cap" in params and (type(params["daily_cap"]) is not int or params["daily_cap"] < 10):
         raise AgentFormatError("daily_cap")
     form = dict(ctx["form"], **params)
@@ -260,9 +364,11 @@ def parse_intents(answer: str, ctx: dict, *, user_text=None) -> list[Intent]:
             raise AgentFormatError("answer phase")
         if kind == "import_sources":
             urls = params["urls"]
-            if (ctx["phase"] not in ("sources", "material_preview", "outline") or not isinstance(urls, list) or not 1 <= len(urls) <= 10
+            if ctx["phase"] not in ("sources", "material_preview", "outline"):
+                raise AgentFormatError("import sources phase")
+            if (not isinstance(urls, list) or not 1 <= len(urls) <= 10
                     or any(not isinstance(u, str) or not re.fullmatch(r"https?://[^\s]+", u) for u in urls)):
-                raise AgentFormatError("import sources")
+                raise AgentFormatError("import sources urls")
         elif kind == "update_form":
             _update(params, ctx)
         elif kind == "supplement":
