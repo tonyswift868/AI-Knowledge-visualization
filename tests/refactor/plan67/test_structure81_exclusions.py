@@ -58,7 +58,8 @@ def test_structure81_mixed_navigation_keeps_learning_children_and_explicit_user_
     rows = sections(('导航 / 学习路线', '导航 / 如何使用本资料', '求职 / 简历撰写'))
     system, messages = agents.material_structure_request('Java求职', {}, None, rows,
         removed_content=[dict(kind='module', title='用户明确不学的旧模块')])
-    assert '不能为排除资料说明而丢掉同条目下的学习内容' in system
+    assert '不能用父编号代指其中一个无关小标题' in system
+    assert 'refs留空，保留父编号用于知识模块' in system
     assert '不得因目录或概述中还有这些内容就重新加入' in system
     packet = json.loads(messages[0]['content'])
     assert packet['removed_content'] == [dict(kind='module', title='用户明确不学的旧模块')]

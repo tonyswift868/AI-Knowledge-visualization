@@ -900,6 +900,14 @@ class PlanFlow:
         """No model: estimate only expanded selected sections, counting each block once per module."""
         from ..connections.pricing import _bounds
         _, sections = self._sections(draft)
+        # A material preview is still the active directory structure and must
+        # use the canonical coverage contract. Once a knowledge outline exists,
+        # its material_structure is historical context: old drafts may contain
+        # shared refs, so leave that snapshot untouched when projecting ranges.
+        if not draft.get('outline') and draft['material_structure'].get('modules'):
+            draft['material_structure'] = agents.normalize_material_structure(
+                draft['material_structure'], sections,
+                removed_content=draft.get('removed_content', ()))
         by_id = {s.id: s for s in sections}
         _, chunks = self._adopted(draft)
         texts = {c['id']: c['text'] for rows in chunks.values() for c in rows}
@@ -957,6 +965,13 @@ class PlanFlow:
         value['modules'] = [m for m in value['modules']
                             if original_text(m['title']).casefold() not in deleted_names]
         self._remember_removed_content(draft, previous, value, sections)
+        # Filtering a learner-deleted module changes the retained directory
+        # scope. Recompute that scope from the newly recorded chapter removals
+        # before saving, so the stored coverage summary describes exactly the
+        # material that remains available to the learner.
+        _, retained_sections = self._sections(draft)
+        value = agents.normalize_material_structure(
+            value, retained_sections, removed_content=draft.get('removed_content', ()))
         # Classroom already reads the plan's original goal/final_goal. Preserve
         # note/chat-only preferences there too, without changing account presets
         # or introducing another persisted preference schema.
@@ -1054,6 +1069,13 @@ class PlanFlow:
         structure = draft.get('material_structure')
         if not structure:
             raise BridgeError('STRUCTURE_REQUIRED', '请先按资料调整并确认结构。')
+        # Drafts may have been saved before a newer section tree was loaded.
+        # Normalize before narrowing the section list so the same coverage
+        # contract protects both preview counts and actual chunk selection.
+        if structure.get('modules'):
+            structure = agents.normalize_material_structure(
+                structure, sections, removed_content=draft.get('removed_content', ()))
+        draft['material_structure'] = structure
         matched = {r for m in structure['modules'] for r in m['refs']}
         sections = [s for s in sections if s.id in matched]
         window = self._window(draft)

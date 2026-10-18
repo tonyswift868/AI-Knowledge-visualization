@@ -18,7 +18,7 @@ from urllib.parse import unquote, urlparse
 
 from refactor.learning.course import github_repo
 
-SCRATCH = Path(r"D:\MentorFlow\.local\test-tmp\guide165\check")
+SCRATCH = Path(r"D:\MentorFlow\.local\test-tmp")
 DEFAULT_URL = "https://github.com/tonyswift868/mentorflow-guide"
 
 
@@ -77,7 +77,7 @@ def build_parser():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--local", type=Path, help="本地导出目录")
     mode.add_argument("--url", help="公开 GitHub 仓库链接，可含 /tree/<分支>/<目录>")
-    parser.add_argument("--output", required=True, type=Path, help="证据目录，必须位于 guide165/check 下")
+    parser.add_argument("--output", required=True, type=Path, help="证据目录，必须位于 D:/MentorFlow/.local/test-tmp 下")
     parser.add_argument("--import-only", action="store_true", help="只检查抓取/选文/合并，默认模式，零模型费用")
     parser.add_argument("--live", action="store_true", help="继续调用当前切点、讲义和原题流程；会产生模型费用")
     parser.add_argument("--account-id", default="guide165-live")
@@ -195,7 +195,8 @@ def main(argv=None):
                   f"- 讲义小要点：有摘录 {live.get('notes', {}).get('with_notes', 0)}，空 {live.get('notes', {}).get('empty', 0)}",
                   "- 原题候选和题库题分别统计；本批 `concept_v1` 备题可能包括挖空题，不与 164 批上传 HTML 的原题数量等同。",
                   "- 付费阶段检查点已逐步写入 live-progress.json。", ""]
-        lines += [f"- {m['title']}：{m['point_count']} 大点，{m['minutes']} 分钟" for m in live['modules']]
+        lines += [f"- {m['title']}：{m['point_count']} 大点，{m['minutes']} 分钟；第二级目录："
+                  + "、".join(m.get("directory_levels", {}).get("level2", [])) for m in live['modules']]
     (output / "import-only.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 1 if live and "error" in live else 0
@@ -225,6 +226,9 @@ def _run_live(verified, args):
     account = args.account_id
     data_root = args.output.resolve() / "data"
     data_root.mkdir(parents=True, exist_ok=True)
+    existing_calls = args.output.resolve() / "evidence" / "model"
+    if existing_calls.exists() and any(existing_calls.glob("call-*.json")):
+        raise RuntimeError("该输出目录已有模型调用记录（含进行中的请求）；请换新的 --output，避免覆盖付费证据。")
     services = SimpleNamespace(data_root=data_root)
     real = live_factory(args.preset_root, account)(services)
     evidence = Evidence(args.output.resolve() / "evidence")
@@ -254,16 +258,19 @@ def _run_live(verified, args):
             max_per_source=max(40, len(chunks)), max_chars=max(9000, sum(len(c["text"]) for c in chunks)), max_depth=None)
         form = dict(goal="学习 MentorFlow 项目指南", final_goal="掌握指南中的项目知识",
                     notes="按资料原目录整理", level="初学者", level_note="")
-        structure = _classify_sections(sections, form, gateway, plan_id)
-        section_ids = [s.id for s in sections]
+        structure_attempts = []
+        structure = _classify_sections(sections, form, gateway, plan_id,
+                                       on_attempt=structure_attempts.append)
         assigned = [ref for module in structure["modules"] for ref in module["refs"]]
         refs_flat = [ref for module in structure["modules"] for ref in module["refs"]]
         duplicate_refs = sorted({ref for ref in refs_flat if refs_flat.count(ref) > 1})
-        unassigned = [s.id for s in sections if s.id not in set(assigned)]
+        excluded_refs = {ref for row in structure.get("excluded", []) for ref in row.get("refs", [])}
+        unassigned = [s.id for s in sections if s.id not in set(assigned) | excluded_refs]
         structure_evidence = dict(summary=structure.get("summary"), sections=[dict(id=s.id, title=s.title) for s in sections],
             modules=[dict(key=m["key"], title=m["title"], refs=m["refs"], chapters=m.get("chapters", []))
-                     for m in structure["modules"]], unassigned_sections=unassigned,
-            duplicate_module_refs=duplicate_refs)
+                     for m in structure["modules"]], excluded=structure.get("excluded", []),
+            coverage=structure.get("coverage", {}), unassigned_sections=unassigned,
+            duplicate_module_refs=duplicate_refs, response_attempts=structure_attempts)
         checkpoint("structure_parsed", section_count=len(sections), sections=[s.title for s in sections],
                    structure=structure_evidence, module_titles=[m["title"] for m in structure["modules"]])
         by_section = {s.id: s for s in sections}
@@ -300,7 +307,9 @@ def _run_live(verified, args):
             reply = gateway.complete("point_materials", messages, system=system, plan_id=plan_id, max_tokens=8192)
             return reply if isinstance(reply, str) else reply.text
         all_points = store.records("points", plan_id)
-        note_rows = agents.prepare_directory_notes(all_points, store.records("source_chunks", plan_id), note_complete)
+        note_rows, notes_error = _optional_note_preparation(
+            gateway, all_points, store.records("source_chunks", plan_id), agents.prepare_directory_notes,
+            note_complete)
         with store.transaction():
             for current in store.records("points", plan_id):
                 changed = False
@@ -312,7 +321,8 @@ def _run_live(verified, args):
                     store._put("points", plan_id, current)
         note_subpoints = [sub for point in store.records("points", plan_id) for sub in point.get("subpoints", [])]
         note_stats = dict(with_notes=sum(bool(sub.get("notes")) for sub in note_subpoints),
-                          empty=sum(not bool(sub.get("notes")) for sub in note_subpoints))
+                          empty=sum(not bool(sub.get("notes")) for sub in note_subpoints),
+                          optional_preparation_error=notes_error)
         checkpoint("notes_saved", point_count=len(store.records("points", plan_id)), notes=note_stats)
 
         question_results = {}
@@ -341,10 +351,20 @@ def _run_live(verified, args):
             key = f"{question.get('kind', 'unknown')} / {question.get('origin', 'unknown')}"
             by_point_type_origin[key] = by_point_type_origin.get(key, 0) + 1
         module_refs = {m["title"]: m["refs"] for m in prepared}
+        module_directory = {m["title"]: _module_directory_levels(m.get("chapters", [])) for m in prepared}
+        calls_by_purpose = {}
+        from decimal import Decimal
+        for call in evidence.calls:
+            purpose = call.get("purpose", "unknown")
+            row = calls_by_purpose.setdefault(purpose, dict(calls=0, peak_cost_cny="0", charged_bound_cny="0"))
+            row["calls"] += 1
+            row["peak_cost_cny"] = str(Decimal(row["peak_cost_cny"]) + Decimal(call.get("peak_cost_cny", "0")))
+            row["charged_bound_cny"] = str(Decimal(row["charged_bound_cny"]) + Decimal(call.get("charged_bound", "0")))
         reloaded_plan = store.get_plan(plan_id)
         learning_minutes = sum(m["learning_minutes"] for m in modules)
         result = dict(modules=[dict(title=m["title"], refs=module_refs.get(m["title"], []),
-                                    minutes=m["learning_minutes"], point_count=m["point_count"])
+                                    minutes=m["learning_minutes"], point_count=m["point_count"],
+                                    directory_levels=module_directory.get(m["title"], {}))
                              for m in modules], big_points=len(points),
                     small_points=sum(len(p.get("subpoints", [])) for p in points), questions=len(questions),
                     learning_minutes=learning_minutes, total_minutes=reloaded_plan["total_minutes"],
@@ -356,6 +376,10 @@ def _run_live(verified, args):
                     notes=note_stats, structure=structure_evidence,
                     proposed_module_count=proposed_module_count, navigation_only_modules=navigation_only,
                     question_results=question_results, cost_cny=str(gateway.spent),
+                    calls_by_purpose=calls_by_purpose,
+                    calls=[dict(id=c.get("id"), purpose=c.get("purpose"), peak_cost_cny=c.get("peak_cost_cny"),
+                                charged_bound_cny=c.get("charged_bound"), seconds=c.get("seconds"), evidence=c.get("evidence"))
+                           for c in evidence.calls],
                     evidence=str(evidence.root), reopened=True)
         checkpoint("reopened_and_counted", result=result, state="complete")
         return result
@@ -369,21 +393,78 @@ def _run_live(verified, args):
         gateway.close()
 
 
-def _classify_sections(sections, form, gateway, plan_id):
-    """Run PlanFlow's section request and parser with an injectable gateway."""
+def _optional_note_preparation(gateway, points, chunks, prepare, complete):
+    """Mirror PlanFlow's optional notes behavior in the test-only live harness."""
+    try:
+        return prepare(points, chunks, complete), None
+    except Exception as exc:
+        if getattr(exc, "code", None) != "MODEL_FIRST_EVENT_TIMEOUT":
+            raise
+        # Product PlanFlow continues after optional notes timeouts. Only the
+        # recorder's timeout stop is cleared; its budget ledger remains intact.
+        if gateway.halted.is_set():
+            gateway.halted.clear()
+        return {}, dict(code=getattr(exc, "code", type(exc).__name__), message=str(exc))
+
+
+def _classify_sections(sections, form, gateway, plan_id, *, on_attempt=None):
+    """Run PlanFlow's section request and parser, including its one format repair."""
     from refactor.learning.course import planner_agents as agents
     request = agents.material_structure_request(form["goal"], form, None, sections)
-    response = gateway.complete("outline", request[1], system=request[0], plan_id=plan_id,
-                                max_tokens=32768, enable_search=False)
-    return agents.parse_material_structure(response.text, sections)
+    system, messages = request[0], list(request[1])
+    for attempt in range(2):
+        response = gateway.complete("outline", messages, system=system, plan_id=plan_id,
+                                    max_tokens=32768, enable_search=False)
+        try:
+            structure = agents.parse_material_structure(response.text, sections)
+        except agents.AgentFormatError as exc:
+            if on_attempt:
+                on_attempt(dict(attempt=attempt + 1, raw_response=response.text,
+                                parsed=False, error=str(exc)))
+            if attempt:
+                raise
+            reason = str(exc)
+            if exc.__cause__:
+                reason += "：" + str(exc.__cause__)
+            messages.extend([
+                {"role": "assistant", "content": response.text},
+                {"role": "user", "content": "上一条格式校验失败：" + reason +
+                 "。请依据原输出结构修正一次，返回完整合法JSON，检查括号、字段层级及引用；不执行任何动作。"},
+            ])
+            continue
+        if on_attempt:
+            on_attempt(dict(attempt=attempt + 1, raw_response=response.text, parsed=True,
+                            coverage=structure.get("coverage", {}),
+                            excluded=structure.get("excluded", [])))
+        return structure
+    raise AssertionError("unreachable")
+
+
+def _module_directory_levels(section_paths):
+    """Return concise chapter and child-heading titles for the trial report."""
+    level1, level2 = [], []
+    for value in section_paths:
+        parts = [part.strip() for part in value.split(" / ") if part.strip()]
+        if parts and parts[0] not in level1:
+            level1.append(parts[0])
+        if len(parts) > 1 and parts[1] not in level2:
+            level2.append(parts[1])
+    return {"level1": level1, "level2": level2}
+
+
 
 
 def _save_module_headers(store, plan_id, modules, stage_id="guide165-stage"):
     """Persist stage/module headers using CourseStore's product outline contract."""
     stages = [dict(id=stage_id, title="学习路线")]
-    rows = [dict(id=m["id"], stage_id=stage_id, title=m["title"], prerequisites=[],
-                 learning_minutes=sum(p["minutes"] for p in m.get("points", [])), check_minutes=0,
-                 point_count=len(m.get("points", []))) for m in modules]
+    rows = []
+    for module in modules:
+        row = dict(id=module["id"], stage_id=stage_id, title=module["title"], prerequisites=[],
+                   learning_minutes=sum(p["minutes"] for p in module.get("points", [])), check_minutes=0,
+                   point_count=len(module.get("points", [])))
+        if "navigation" in module:
+            row["navigation"] = list(module["navigation"])
+        rows.append(row)
     store.save_outline(plan_id, stages, rows)
     return store.records("modules", plan_id)
 

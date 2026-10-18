@@ -76,8 +76,11 @@ def test_plan63_legacy_local_map_reestimates_without_discarding_content(fixture)
     draft['outline']['ranges']['learning'] = 15
     before = copy.deepcopy(draft)
     view = flow.public(draft)
-    assert view['outline']['ranges']['learning'] == 3
-    assert view['outline']['stages'][0]['modules'][0]['minutes'] == [3,3]
+    # BUG-113 now includes the selected parent's full teaching body rather
+    # than its three-minute heading fragment; legacy projection still uses
+    # the saved points and never rewrites the draft.
+    assert view['outline']['ranges']['learning'] == 14
+    assert view['outline']['stages'][0]['modules'][0]['minutes'] == [14,14]
     assert draft == before
 
 
@@ -87,7 +90,7 @@ def test_plan63_late_preparation_view_after_account_db_closes_does_not_reopen(fi
     flow.services.store.close()
     view = flow.public(draft)
     assert view['material_structure'] == draft['material_structure']
-    assert view['outline']['ranges']['learning'] == 3
+    assert view['outline']['ranges']['learning'] == 14
 
 
 def test_plan63_warning_does_not_block_user_confirming(fixture):

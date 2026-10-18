@@ -228,13 +228,15 @@ MATERIAL_STRUCTURE_SYSTEM = """按用户提供的资料目录修改学习结构�
 讲法、例子、类比、语气、讲解深浅类要求不是学习内容：生活化例子、少用术语、不上手操作等由老师讲课时落实，不要求资料另有对应章节，不要列入missing。
 不要把“用例子区分硬件与软件”变成需要一章“生活化例子”；要核对的是硬件与软件。真正的内容（例如数据库）没有讲到时仍须列出，不因存在讲法偏好而漏掉。
 本步只快速给出大致模块，不展开知识点或逐小节安排。目录已按层级收拢，每个编号包含它下面的全部章节；只按编号分模块，程序会展开章节和正文，不需要逐章思考或抄写目录。
+选中父级编号即包含同一资料下该目录的全部后代；可另选更深的小节单独成模块，程序按最深的明确选择归属，不重复计入父模块。所有未排除的目录都必须有归属，不能只取父级的介绍段而漏掉正文。
+目录条目若带chapter，表示多文件合并资料中的原文章名：按这些章分别成模块，保留章名与原顺序，不把多章压成少数大模块；同章内部再按小标题切点。普通单份上传资料没有chapter，沿用按内容分模块。
 每个条目的headings是下面的小标题名，按层级从上往下列；sources给出资料名称。分模块和判断覆盖必须同时看title与headings，不能因上层标题宽泛就漏掉整块相关内容。
 只有目标内容在整份目录（含所有条目的小标题）中都找不到才列入missing；例如小标题有Agent、ReAct、MCP、RAG或Java并发、JVM、Spring、MySQL时，不能再说这些内容没讲到。more表示另有小标题未展开，不是没有内容；仅因摘要未展开而无法确定的，不断言缺失，可在summary说明待核实。
-只纳入与用户目标相关的章节，按提供的资料顺序和章节顺序排。模块对应一个或多个目录条目，refs必须来自目录id。几份资料讲同一内容可合并，不纳入无关章节。模块说明一两句即可。
+只纳入与用户目标相关的章节，按提供的资料顺序和章节顺序排。模块对应一个或多个目录条目，refs必须来自目录id。几份资料讲同一内容可合并，不纳入无关章节。因用户明确缩小范围或与目标无关而不纳入的分支，也必须在excluded列出refs并写明范围原因，不能只省略编号。模块说明一两句即可。
 目标里资料没讲到的内容单列missing，不编造资料、章节或知识点，不自动删目标、不自动补搜。
 只排除和学习无关的资料自身说明：如何使用本资料、目录说明、关于作者、推广与赞助、资料本身的常见问答（例如有没有 PDF、能不能转载、怎么贡献）。把这些内容单列excluded，每项写name、reason和对应目录refs，不列为missing；不要把学习内容的问答误当作资料自身的常见问答。
 学习路线、求职、简历、面试准备、项目表达、面试心态与流程都是可学习的知识内容，与用户学习目标相关时作为知识模块保留；不能因为标题带“导航”“学习路线”“求职”“面试”，或资料里没有题，就自动排除。资料里没有题的模块只学不考，不因此删模块。例如“Java学习路线”“如何准备Java面试”“项目中如何用Redis”都要按学习内容核对。
-excluded.refs只列整项都是上述无关说明的目录编号；混合条目仍可用于知识模块，把无关说明的小标题写在excluded.name里并说明不纳入，不能为排除资料说明而丢掉同条目下的学习内容。用户明确说“把某内容也加进来”时遵从最新调整，将该内容恢复为模块并从excluded移除；自动排除不是不可恢复的用户删除。
+排除资料自身说明时，excluded.refs只列整项都是上述无关说明的目录编号；混合条目仍可用于知识模块。只有小标题有独立目录id时才能按该id排除；没有独立id时，把无关说明的小标题写在excluded.name、refs留空，保留父编号用于知识模块，后续按原文切点时再分类。绝不能用父编号代指其中一个无关小标题，否则会排掉整枝学习内容。用户明确说“把某内容也加进来”时遵从最新调整，将该内容恢复为模块并从excluded移除；自动排除不是不可恢复的用户删除。
 用户在聊天里调整结构时遵从最新要求。removed_content是学习者已删的模块/章节，不得因目录或概述中还有这些内容就重新加入。
 只返回完整JSON：
 {"summary":"按资料调整的简短说明","modules":[{"key":"m1","title":"模块名称","summary":"学什么","refs":["s1.1"]}],"missing":["所选资料没讲到的目标部分"],"excluded":[{"name":"非知识内容名称","reason":"一句排除原因","refs":["s1.2"]}]}。没有排除项时excluded为[]。不返回chapters，章节名称由程序按编号填写。
@@ -252,15 +254,21 @@ _TEACHING_REQUIREMENT = re.compile(
 
 def material_structure_request(goal, form, preview, sections, *, previous=None, instruction='', removed_content=()):
     directory = build_sections((), {}, directory_sections=sections, removed_content=removed_content)
-    # A folded title alone cannot establish coverage. Keep names from its
-    # canonical members (already scope-filtered), ordered breadth-first.
-    by_id = {s.id: s for s in sections}
+    # Show descendants of selected parents as well as folded members.
+    available = build_sections((), {}, directory_sections=sections,
+                               directory_limit=max(150, len(sections)), removed_content=removed_content)
+    by_id = {s.id: s for s in available}
     source_ids = dict.fromkeys(getattr(s, 'source_id', s.source_title) for s in directory)
     source_aliases = {sid: f'r{i}' for i, sid in enumerate(source_ids, 1)}
     source_names = {source_aliases[getattr(s, 'source_id', s.source_title)]: s.source_title for s in directory}
     child_names = {}
     for section in directory:
-        paths = [tuple(by_id[r].title.split(' / ')) for r in (getattr(section, 'members', ()) or (section.id,))]
+        seeds = [tuple(by_id[r].title.split(' / ')) for r in (section.members or (section.id,))]
+        paths = [tuple(s.title.split(' / ')) for s in available if s.source_id == section.source_id
+                 and s.chapter == section.chapter
+                 and any(tuple(s.title.split(' / '))[:len(p)] == p for p in seeds)]
+        if not paths:
+            paths = seeds
         common = list(paths[0])
         for path in paths[1:]:
             common = common[:next((i for i, (a, b) in enumerate(zip(common, path)) if a != b), min(len(common), len(path)))]
@@ -279,6 +287,8 @@ def material_structure_request(goal, form, preview, sections, *, previous=None, 
             names = child_names[section.id]
             shown = names[:name_limit]
             row = dict(id=section.id, source=source_aliases[getattr(section, 'source_id', section.source_title)], title=section.title[:label_limit])
+            if section.chapter:
+                row['chapter'] = section.chapter[:label_limit]
             if shown: row['headings'] = shown
             if len(names) > len(shown): row['more'] = f'等共{len(names)}个小标题（还有{len(names)-len(shown)}个未展开）'
             rows.append(row)
@@ -331,19 +341,16 @@ def material_structure_request(goal, form, preview, sections, *, previous=None, 
 
 def parse_material_structure(text, sections, *, removed_content=()):
     data = parse_json(text)
-    by_id = {s.id: s for s in sections}
     directory = {s.id: s for s in build_sections((), {}, directory_sections=sections, removed_content=removed_content)}
     excluded = data.get('excluded', [])  # Older local drafts/replies remain readable.
     if not isinstance(excluded, list): raise AgentFormatError('excluded material content')
-    excluded_rows, excluded_refs = [], set()
+    excluded_rows = []
     for row in excluded:
         if not isinstance(row, dict): raise AgentFormatError('excluded material content')
         refs = row.get('refs', [])
         if not isinstance(refs, list) or any(not isinstance(r, str) or r not in directory for r in refs):
             raise AgentFormatError('excluded material refs')
-        refs = list(dict.fromkeys(r for alias in refs for r in (directory[alias].members or (alias,))))
         excluded_rows.append(dict(name=_text(row.get('name'), 160), reason=_text(row.get('reason'), 300), refs=refs))
-        excluded_refs.update(refs)
     if not isinstance(data.get('modules'), list) or not data['modules']:
         raise AgentFormatError('no matched material chapters')
     modules, keys = [], set()
@@ -355,24 +362,116 @@ def parse_material_structure(text, sections, *, removed_content=()):
             raise AgentFormatError('material refs/key')
         # Persist canonical IDs, not the request-only folded aliases. No model
         # chapter names are trusted or needed, including legacy responses.
-        refs = list(dict.fromkeys(r for alias in refs for r in (getattr(directory[alias], 'members', ()) or (alias,))))
         keys.add(key)
-        refs = [r for r in refs if r not in excluded_refs]
-        if not refs: continue  # Even a contradictory reply cannot re-add an excluded whole chapter.
         modules.append(dict(key=key, title=_text(row.get('title'), 80), summary=_text(row.get('summary'), 300),
                             refs=refs))
     if not modules: raise AgentFormatError('资料中没有可纳入的知识章节，请提供知识资料或明确调整结构。')
     missing = data.get('missing')
     if not isinstance(missing, list) or any(not isinstance(v, str) or not v.strip() for v in missing):
         raise AgentFormatError('missing material goals')
-    order = {s.id: index for index, s in enumerate(sections)}
-    for module in modules:
-        module['refs'].sort(key=order.get)
-        module['chapters'] = [by_id[r].title for r in module['refs']]
-    modules.sort(key=lambda m: min(order[r] for r in m['refs']))
     excluded_names = {r['name'] for r in excluded_rows}
-    return dict(summary=_text(data.get('summary'), 1000), modules=modules,
-                missing=list(dict.fromkeys(v for v in missing if v not in excluded_names)), excluded=excluded_rows)
+    return normalize_material_structure(dict(summary=_text(data.get('summary'), 1000), modules=modules,
+                missing=list(dict.fromkeys(v for v in missing if v not in excluded_names)), excluded=excluded_rows),
+                sections, removed_content=removed_content)
+
+
+def normalize_material_structure(structure, sections, *, removed_content=()):
+    """Expand selected directory branches and require one host-owned assignment.
+
+    Request aliases are only a projection. Coverage is checked on canonical
+    sections after learner removals; deeper explicit selections own their branch.
+    The same pure check protects a saved new-plan draft before taking its chunks.
+    """
+    available = build_sections((), {}, directory_sections=sections,
+                               directory_limit=max(150, len(sections)), removed_content=removed_content)
+    by_id = {s.id: s for s in available}
+    directory = {s.id: s for s in build_sections((), {}, directory_sections=sections,
+                                                removed_content=removed_content)}
+    paths = {s.id: tuple(s.title.split(' / ')) for s in available}
+    order = {s.id: i for i, s in enumerate(available)}
+
+    def seeds(refs):
+        selected = []
+        for ref in refs:
+            # Host drafts have canonical refs; model replies were validated
+            # against the request directory by parse_material_structure.
+            if ref in by_id:
+                selected.append(ref)
+            elif ref in directory:
+                selected.extend(r for r in directory[ref].members or (ref,) if r in by_id)
+            elif not any(s.id == ref for s in sections):
+                raise AgentFormatError('material refs/key')
+        return list(dict.fromkeys(selected))
+
+    def contains(parent, child):
+        return (by_id[parent].source_id == by_id[child].source_id
+                and by_id[parent].chapter == by_id[child].chapter
+                and paths[child][:len(paths[parent])] == paths[parent])
+
+    excluded_rows = []
+    excluded = set()
+    for row in structure.get('excluded', []):
+        selected = seeds(row.get('refs', []))
+        refs = [s.id for s in available if any(contains(r, s.id) for r in selected)]
+        excluded.update(refs)
+        excluded_rows.append(dict(row, refs=refs))
+    deleted_names = {original_text(row['title']).casefold() for row in removed_content
+                     if row.get('kind') == 'module'}
+    retained = [m for m in structure['modules']
+                if original_text(m['title']).casefold() not in deleted_names]
+    modules = [dict(m, refs=[], chapters=[]) for m in retained]
+    selections = [seeds(m['refs']) for m in retained]
+    missing = []
+    for section in available:
+        if section.id in excluded:
+            continue
+        candidates = [(max(len(paths[r]) for r in selected if contains(r, section.id)), i)
+                      for i, selected in enumerate(selections)
+                      if any(contains(r, section.id) for r in selected)]
+        if not candidates:
+            missing.append(section.id); continue
+        deepest = max(depth for depth, _ in candidates)
+        owners = [i for depth, i in candidates if depth == deepest]
+        if len(owners) != 1:
+            raise AgentFormatError('资料小节重复分配：' + section.id)
+        modules[owners[0]]['refs'].append(section.id)
+    if missing:
+        raise AgentFormatError('资料小节未分配，请完整分配目录后重答：' + '、'.join(missing))
+
+    # Repository import supplies a file's chapter as its first source heading.
+    # Never infer a book/chapter contract for an ordinary HTML upload.
+    result = []; chapters = {}; used_keys = set()
+    for module in modules:
+        grouped = {}
+        for ref in module['refs']:
+            section = by_id[ref]
+            key = (section.source_id, section.chapter) if section.chapter else None
+            grouped.setdefault(key, []).append(ref)
+        for n, (chapter, refs) in enumerate(grouped.items(), 1):
+            if chapter is not None and chapter in chapters:
+                chapters[chapter]['refs'].extend(refs)
+                continue
+            key = module['key'] if len(grouped) == 1 else f"{module['key']}-c{n}"
+            while key in used_keys:
+                key += '-c'
+            used_keys.add(key)
+            row = dict(module, key=key, refs=refs,
+                       title=chapter[1] if chapter else module['title'])
+            result.append(row)
+            if chapter is not None:
+                chapters[chapter] = row
+    if not result:
+        raise AgentFormatError('资料中没有可纳入的知识章节，请提供知识资料或明确调整结构。')
+    for module in result:
+        module['refs'] = sorted(set(module['refs']), key=order.get)
+        module['chapters'] = [by_id[r].title for r in module['refs']]
+    result.sort(key=lambda m: min(order[r] for r in m['refs']))
+    assigned = [r for m in result for r in m['refs']]
+    if len(set(assigned)) != len(assigned) or set(assigned) | excluded != set(by_id):
+        raise AgentFormatError('资料目录覆盖检查失败')
+    return dict(structure, modules=result, excluded=excluded_rows,
+                coverage=dict(total=len(available), assigned=len(assigned),
+                              excluded=len(excluded), unassigned=0, duplicates=0))
 
 
 class AgentFormatError(ValueError):
@@ -573,6 +672,7 @@ class Section:
     first: int  # chunk positions within the source, inclusive
     last: int
     members: tuple[str, ...] = ()  # canonical section IDs behind a folded alias
+    chapter: str | None = None  # file-level chapter in a merged repository source
 
 
 def build_sections(sources, chunks_by_source, *, max_per_source=40, max_chars=9000, max_depth=2,
@@ -602,7 +702,8 @@ def build_sections(sources, chunks_by_source, *, max_per_source=40, max_chars=90
             groups = []
             for section in available:
                 prefix = tuple(section.title.split(' / ')[:depth])
-                if groups and groups[-1][0] == section.source_id and groups[-1][1] == prefix:
+                if (groups and groups[-1][0] == section.source_id and groups[-1][1] == prefix
+                        and groups[-1][2][0].chapter == section.chapter):
                     groups[-1][2].append(section)
                 else:
                     groups.append([section.source_id, prefix, [section]])
@@ -612,7 +713,8 @@ def build_sections(sources, chunks_by_source, *, max_per_source=40, max_chars=90
         # Flat documents can have >150 unrelated headings. Merge adjacent
         # entries of the same source, retaining every canonical member.
         while len(groups) > directory_limit:
-            pairs = [i for i in range(len(groups)-1) if groups[i][0] == groups[i+1][0]]
+            pairs = [i for i in range(len(groups)-1) if groups[i][0] == groups[i+1][0]
+                     and groups[i][2][0].chapter == groups[i+1][2][0].chapter]
             if not pairs:  # >150 distinct sources: keep at least one per source
                 break
             index = min(pairs, key=lambda i: len(groups[i][2]) + len(groups[i+1][2]))
@@ -621,12 +723,17 @@ def build_sections(sources, chunks_by_source, *, max_per_source=40, max_chars=90
             first[1] = (first[2][0].title.split(' / ')[0] + ' … ' + first[2][-1].title.split(' / ')[0],)
         return [Section(f'd{index}', source_id, rows[0].source_title, ' / '.join(prefix),
                         tuple(c for s in rows for c in s.chunk_ids), sum(s.chars for s in rows),
-                        rows[0].first, rows[-1].last, tuple(s.id for s in rows))
+                        rows[0].first, rows[-1].last, tuple(s.id for s in rows),
+                        rows[0].chapter if all(s.chapter == rows[0].chapter for s in rows) else None)
                 for index, (source_id, prefix, rows) in enumerate(groups, 1)]
     sections: list[Section] = []
     for s_index, source in enumerate(sources, 1):
         groups: list[list] = []
-        for chunk in chunks_by_source.get(source["id"], []):
+        source_chunks = chunks_by_source.get(source["id"], [])
+        roots = {tuple(c.get('section') or ())[0] for c in source_chunks if c.get('section')}
+        repository = (source.get('category') == 'repository' or 'github_docs' in source.get('reasons', ()))
+        merged_chapters = repository and len(roots) > 1
+        for chunk in source_chunks:
             path = tuple(chunk.get("section") or ())[:max_depth]
             size = len(chunk["text"])
             if groups and groups[-1][0] == path and groups[-1][2] + size <= max_chars:
@@ -635,14 +742,19 @@ def build_sections(sources, chunks_by_source, *, max_per_source=40, max_chars=90
                 groups[-1][5] = chunk["position"]
             else:
                 groups.append([path, [chunk["id"]], size, chunk.get("page_start"), chunk["position"], chunk["position"]])
-        while len(groups) > max_per_source:  # merge the smallest neighbouring pair
-            index = min(range(len(groups) - 1), key=lambda i: groups[i][2] + groups[i + 1][2])
+        while len(groups) > max_per_source:  # retain file-level chapter boundaries
+            pairs = [i for i in range(len(groups)-1) if not merged_chapters
+                     or groups[i][0][:1] == groups[i+1][0][:1]]
+            if not pairs:
+                break
+            index = min(pairs, key=lambda i: groups[i][2] + groups[i + 1][2])
             a, b = groups[index], groups.pop(index + 1)
             a[1].extend(b[1]); a[2] += b[2]; a[5] = b[5]
         for g_index, (path, ids, size, page, first, last) in enumerate(groups, 1):
             title = " / ".join(path) if path else (f"第 {page} 页起" if page else f"片段 {g_index}")
             sections.append(Section(f"s{s_index}.{g_index}", source["id"], source.get("title") or source.get("url") or "资料",
-                                    title if max_depth is None else title[:120], tuple(ids), size, first, last))
+                                    title if max_depth is None else title[:120], tuple(ids), size, first, last,
+                                    chapter=path[0] if merged_chapters and path else None))
     return sections
 
 
