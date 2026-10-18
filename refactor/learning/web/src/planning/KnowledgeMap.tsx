@@ -6,6 +6,7 @@ import { Background, BackgroundVariant, Controls, Handle, MarkerType, MiniMap, P
 import { ArrowLeft, BookOpen, LocateFixed, X } from "lucide-react"
 import { ClassroomMarkdown } from "../classroom/Markdown"
 import { useApp, type KnowledgeDetail, type KnowledgeModule, type KnowledgePoint } from "../store"
+import { graphStructureKey, refreshGraphNodes } from "./PlanGraph"
 import "@xyflow/react/dist/style.css"
 import "./plan-graph.css"
 import "./knowledge-map.css"
@@ -111,10 +112,16 @@ export function KnowledgeMap({detail,onRetry,busy}:{detail:KnowledgeDetail;onRet
   const [pointId,showPoint]=React.useState<string|null>(null)
   const reduce = useApp(s=>s.settings?.reduce_motion) || matchMedia('(prefers-reduced-motion: reduce)').matches
   const view = React.useMemo(()=>knowledgeLayout(detail,moduleId),[detail,moduleId])
+  const structureKey = graphStructureKey(view.nodes,view.edges)
+  const previousStructure = React.useRef(structureKey)
   const [nodes,setNodes]=React.useState(view.nodes)
   const [instance,setInstance]=React.useState<ReactFlowInstance|null>(null)
   const canvas = React.useRef<HTMLDivElement>(null)
-  React.useEffect(()=>{setNodes(view.nodes)},[view])
+  React.useEffect(()=>{
+    const unchanged = previousStructure.current === structureKey
+    previousStructure.current = structureKey
+    setNodes(current=>refreshGraphNodes(current,view.nodes,unchanged))
+  },[view,structureKey])
   const point=view.selected?.points.find(p=>p.id===pointId)
   const status=detail.point_links_status??"none"
   function center(x:number,y:number,zoom:number) {
