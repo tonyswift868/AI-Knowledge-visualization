@@ -113,9 +113,11 @@ def test_plan_dialogue_url_path_import_and_source_search_are_distinct(dialogue_t
         assert all(c["passed"] for c in evaluate(case, before, after, [], []))
         assert not gateway.calls
         h.call("plan.say", plan_id=pid, text="请找有练习的入门资料")
-        # No qualifying new source: a second round that adds nothing stops the search (16-MF04), then shortage is reported.
+        # The scripted research reply repeats the just-imported CSV URL.
+        # BUG-116: it is not a new recommendation or a reason to search again.
         assert [c["purpose"] for c in gateway.calls] == ["plan_intent", "research"]
-        assert h.snapshot(pid)["draft"]["recommendations"]
+        assert h.snapshot(pid)["draft"]["recommendations"] == []
+        assert h.snapshot(pid)["records"]["sources"] == after["records"]["sources"]
         assert not h.snapshot(pid)["records"]["points"]
         assert all(c["mode"] == "offline_synthetic_html" for c in h.web.calls)
     finally:

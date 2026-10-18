@@ -546,15 +546,33 @@ class PlanFlow:
         self._recommend(draft, ctx)
 
     # ----------------------------------------------------------- 2 research
+    def _prune_recommendations(self, draft):
+        """A learner's imported material must not also be offered as a new pick."""
+        from ..course.source_filter import github_recommendation_key, normalize_url, is_noncontent_github_url
+        own = {github_recommendation_key(c.get('url')) or normalize_url(c.get('url') or '')
+               for c in draft['sources'] if c.get('user_provided') or c.get('kind') == 'file'} - {None}
+        draft['recommendations'] = [c for c in draft.get('recommendations', [])
+            if not is_noncontent_github_url(c.get('final_url') or c['url'])
+            and not ({github_recommendation_key(u) or normalize_url(u or '')
+                      for u in (c.get('url'), c.get('final_url'))} - {None}) & own]
+
     def _recommend(self, draft, ctx, instruction=""):
+        self._prune_recommendations(draft)
         self.status(draft['plan_id'], '正在推荐完整资料链接…')
         rows, _ = self._ask('research', agents.recommendation_request(
             draft['goal'], self._effective_form(draft), draft.get('accepted_preview') or draft.get('preview'),
             self._lists(), instruction=instruction, previous=draft.get('recommendations', [])),
             agents.parse_recommendations, ctx, plan_id=draft['plan_id'], max_tokens=12288)
+        from ..course.source_filter import github_recommendation_key, normalize_url, recommendation_rejection
+        known = {github_recommendation_key(c.get('final_url') or c.get('url'))
+                 or normalize_url(c.get('final_url') or c.get('url') or '')
+                 for c in [*draft['sources'], *draft.get('recommendations', [])]} - {None}
         cards = []
         for row in rows:
             if ctx.cancel.is_set(): raise ModelCancelled()
+            key = github_recommendation_key(row['url']) or normalize_url(row['url'])
+            if key in known or recommendation_rejection(row['url'], lists=self._lists(), allow_video=True):
+                continue
             evidence = {}
             if self.fetcher is not None:
                 # Offline adapters replace HTTP only, not extraction or scoring.
@@ -583,7 +601,8 @@ class PlanFlow:
             self._stars = GithubStars(self.services.account_id, self.services.data_root)
         try:
             cards = prepare_recommendations(cards, lists=self._lists(), stars=self._stars,
-                                            cancel=ctx.cancel, previous=draft.get('recommendations', []))
+                                            cancel=ctx.cancel, previous=draft.get('recommendations', []),
+                                            provided=draft['sources'])
         except ResearchCancelled:
             raise ModelCancelled() from None
         if ctx.cancel.is_set(): raise ModelCancelled()
@@ -597,7 +616,7 @@ class PlanFlow:
         draft.setdefault('recommendations', []).extend(cards)
         draft['messages'].append(_msg('ai', 'recommendations',
             '勾选“认可并采用”后会读取这份资料的正文；也可以直接贴网址或 GitHub 仓库。推荐时还没有读取正文。'
-            if cards else '这次没有找到更多可用文字资料：候选链接暂时打不开，或只有视频。可以上传自己的资料，或让我换一批推荐。',
+            if cards else '这次没有找到更多可用文字资料：候选与已有资料重复、暂时打不开，或不是可读取的文字正文。可以上传自己的资料，或让我换一批推荐。',
             cards=[c['card_id'] for c in cards]))
         self.save(draft)
 
@@ -636,7 +655,7 @@ class PlanFlow:
         self.status(draft['plan_id'], '正在读取你提供的资料…')
         outcome = self._read_links(draft, ctx, urls, discover_book=True)
         if outcome['cancelled']: raise ModelCancelled()
-        cards = []
+        cards, shown = [], []
         stored = {s['id']: s for s in self.services.store.records('sources', draft['plan_id'])}
         for result in outcome['results']:
             if result['status']=='directory':
@@ -646,19 +665,24 @@ class PlanFlow:
                     relevance=None,credibility=None,note='请勾选网站目录后确认读取。',user_provided=True,status='new',chars=0)
                 card.update(site_book=result['site_book'],read_status='selecting',read_error='',status='new')
                 if not existing: cards.append(card)
+                shown.append(card['card_id'])
             elif result['status'] in ('imported', 'existing'):
                 source = stored[result['source_id']]
                 existing = next((c for c in draft['sources'] if c.get('source_id') == source['id']), None)
                 if existing:
-                    existing['status'] = 'adopted'
+                    existing.update(status='adopted', user_provided=True, tier='user',
+                        note='由你提供，正文已读取。', read_status='ready', read_error='', chars=result['char_count'])
+                    shown.append(existing['card_id'])
                 else:
                     cards.append(dict(card_id=_new_id()[:12], kind='url', url=source['url'],
                         title=source['title'], site=source['url'], tier='user', summary='', relevance=None,
                         credibility=None, note='由你提供，正文已读取。', user_provided=True, status='adopted',
                         source_id=source['id'], chars=result['char_count'], sha=source.get('sha256')))
+                    shown.append(cards[-1]['card_id'])
             else:
                 draft['messages'].append(_msg('ai', 'error', result['original_url']+'：'+result['message']))
         draft['sources'].extend(cards)
+        self._prune_recommendations(draft)
         if any(r['status'] in ('imported', 'existing') for r in outcome['results']):
             self._invalidate_material_structure(draft)
         imported = any(r['status'] in ('imported', 'existing') for r in outcome['results'])
@@ -666,7 +690,7 @@ class PlanFlow:
             '已读取你提供的资料。请按这些资料调整结构。' if imported else
             '找到网页书目录，请在卡片勾选章节并确认读取。' if any(r['status']=='directory' for r in outcome['results']) else
             '这次资料未能导入，请检查链接，或下载后上传文件。',
-            cards=[c['card_id'] for c in cards]))
+            cards=list(dict.fromkeys(shown))))
         self.save(draft)
 
     def _read_links(self, draft, ctx, urls, *, recommended=False, discover_book=False,
