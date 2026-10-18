@@ -1,13 +1,13 @@
 """Refresh cached PyInstaller builds after a UAT hook/web-resource correction."""
 import argparse,json,shutil,sys
-from common import TASK,ROOT,environment
+from common import TASK,ROOT,APP_ID,environment
 environment();sys.path.insert(0,str(ROOT))
 from build import b,stage
-parser=argparse.ArgumentParser();parser.add_argument('label',choices=['O','X','X-final','X-verified','X-persist','X-release160','X-release160b','P','Q'])
+parser=argparse.ArgumentParser();parser.add_argument('label',choices=['O','X','X-final','X-final3','X-verified','X-persist','X-release160','X-release160b','P','Q'])
 parser.add_argument('--check-only',action='store_true')
 parser.add_argument('--source-root',type=__import__('pathlib').Path,help='Also compare frozen update code with this final source tree')
 args=parser.parse_args()
-work=TASK/('freeze-'+args.label)
+work=TASK/('freeze-X-final' if args.label=='X-final3' else 'freeze-'+args.label)
 payload=work/'app/MentorFlow'
 def check():
     config=json.loads((payload/'_internal/refactor/desktop/resources/public-runtime.json').read_bytes())
@@ -28,10 +28,12 @@ def check():
             names=['refactor.desktop.delivery.per_user_install',
                    'refactor.desktop.delivery.per_user_update_core',
                    'refactor.desktop.delivery.update_download',
+                   'refactor.desktop.delivery.update_protocol',
                    'refactor.desktop.delivery.prepared_update',
                    'refactor.desktop.delivery.update_service']
             if exe.name=='MentorFlow.exe':
                 names.extend(['refactor.desktop.updates',
+                              'refactor.desktop.update_dialog',
                               'refactor.desktop.account_shell_main',
                               'refactor.learning.app.handlers'])
             for name in names:
@@ -39,6 +41,10 @@ def check():
                 source=args.source_root/(name.replace('.', '/')+'.py')
                 expected=compile(source.read_bytes(),code.co_filename,'exec',dont_inherit=True,optimize=0)
                 assert code==expected,('frozen code is not final source',exe,name)
+            authority=pyz.extract('mentorflow_delivery_authority')
+            assert APP_ID in authority.co_consts, 'wrong frozen app identity'
+            key_id=json.loads((TASK/'test-public.json').read_bytes())['key_id']
+            assert repr(key_id) in repr(authority.co_consts), 'wrong frozen preview key identity'
     print('verified local-only configuration and frozen hook:',args.label)
 if args.check_only:
     check();sys.exit(0)

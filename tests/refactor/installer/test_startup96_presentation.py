@@ -33,7 +33,7 @@ class Feed96:
         self.state, self.cached = state, cached
         self.entered, self.release = threading.Event(), threading.Event()
     def attach_shutdown_guard(self, app): pass
-    def get_startup_update_state(self, root, *, full, check_feed, cancel):
+    def get_startup_update_state(self, root, *, full, check_feed, cancel, on_pointer_policy=None):
         if check_feed:
             self.entered.set()
             while not self.release.wait(.005):

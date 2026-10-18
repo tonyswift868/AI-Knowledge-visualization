@@ -37,7 +37,7 @@ class Core160:
     def attach_shutdown_guard(self, _app):
         pass
 
-    def get_startup_update_state(self, _root, *, full, check_feed, cancel):
+    def get_startup_update_state(self, _root, *, full, check_feed, cancel, on_pointer_policy=None):
         assert full is False
         if check_feed:
             self.entered.set()
@@ -124,7 +124,7 @@ def test_login_gate160_network_result_resolves_policy(app160, tmp_path, monkeypa
         gate.close()
 
 
-def test_login_gate160_timeout_uses_verified_cache_then_late_mandatory_closes_gate(
+def test_login_gate160_timeout_waits_for_manifest_then_mandatory_keeps_gate_closed(
         app160, tmp_path, monkeypatch):
     disable_housekeeping(monkeypatch)
     monkeypatch.setattr(DesktopUpdates, 'STARTUP_LOGIN_WAIT_MS', 35)
@@ -135,9 +135,12 @@ def test_login_gate160_timeout_uses_verified_cache_then_late_mandatory_closes_ga
     try:
         ui.start()
         pump160(app160, lambda: core.entered.is_set() and ui._startup_cached is not None)
-        pump160(app160, lambda: ui.snapshot().get('login_check_status') == 'offline_fallback')
-        assert ui.snapshot()['login_allowed'] is True
-        assert ui.snapshot()['offline_fallback'] is True
+        # Batch 168: a slow/missing pointer is not proof the feed is offline.
+        # An unfinished signed check cannot be bypassed using old HEALTHY cache.
+        pump160(app160, lambda: not ui._login_wait_timer.isActive())
+        assert ui.snapshot()['login_check_pending'] is True
+        assert not ui.snapshot().get('login_allowed', False)
+        assert not ui.snapshot().get('offline_fallback', False)
         assert gate.isEnabled()
 
         core.release.set()

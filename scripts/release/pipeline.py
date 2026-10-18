@@ -22,7 +22,7 @@ from scripts import build_learning_installer as builder
 from scripts.release import server_ops
 from scripts.release.transport import LocalServer, SSHServer, fetched
 from scripts.server_installer.assemble_payload import assemble_payload, verified_release
-from refactor.desktop.delivery.update_protocol import version_key
+from refactor.desktop.delivery.update_protocol import version_key, make_login_policy
 
 PUBLIC = Path(__file__).parent / 'inputs/public-key.json'
 ORIGIN = 'https://89.45.45.28/mentorflow/updates/app/objects/'
@@ -127,13 +127,14 @@ def promote(server, version, work, *, public_key=PUBLIC):
         if version_key(release.signed['min_supported_version']) < version_key(prior.signed['min_supported_version']):
             raise ValueError('mandatory floor cannot be lowered')
     return server.call('promote', version, manifest=base64.b64encode(stable.read_bytes()).decode(),
-                       rows=rows_of(release))
+                       rows=rows_of(release), login_policy=make_login_policy(release))
 
 
 def stage_manifest(server, stable, public_key):
     release = verified_release(stable, public_key)
     return server.call('stage_manifest', release.version, transfer=server.upload(stable),
-        sha256=builder.digest(stable), manifest=base64.b64encode(Path(stable).read_bytes()).decode())
+        sha256=builder.digest(stable), manifest=base64.b64encode(Path(stable).read_bytes()).decode(),
+        login_policy=make_login_policy(release))
 
 
 def provision_inno(work):

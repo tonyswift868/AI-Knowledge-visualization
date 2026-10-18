@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication
 
 # User 2026-10-17: re-check every 30 minutes so a mandatory release reaches apps left open.
 AUTOMATIC_CHECK_SECONDS = 30 * 60
+BACKGROUND_PREPARE_RETRY_DELAYS = (2, 3, 5, 10, 20, 40)
 
 
 class DesktopUpdates(QObject):
@@ -49,13 +50,19 @@ class DesktopUpdates(QObject):
         self._next_automatic = 0
         self._continuing_download = False
         self._background_preparing = False
+        self._background_prepare_attempt = 0
+        self._background_retry_suppressed = False
+        self._background_retry = QTimer(self)
+        self._background_retry.setSingleShot(True)
+        self._background_retry.timeout.connect(self._prepare_in_background)
         self._login_blocked = True
         self._startup_cached = None
+        self._startup_pointer_policy = None
         self._startup_started = None
         self._login_wait_timer = QTimer(self)
         self._login_wait_timer.setSingleShot(True)
         self._login_wait_timer.setInterval(self.STARTUP_LOGIN_WAIT_MS)
-        self._login_wait_timer.timeout.connect(self._allow_cached_startup)
+        self._login_wait_timer.timeout.connect(self._startup_wait_elapsed)
         app.aboutToQuit.connect(self.close)
         app.commitDataRequest.connect(self._defer_session)
         core.attach_shutdown_guard(app)
@@ -73,31 +80,59 @@ class DesktopUpdates(QObject):
                        'message': '正在检查更新…'})
         QTimer.singleShot(0, lambda: self.run("startup"))
 
-    def _allow_cached_startup(self):
-        """After the bounded network wait, apply only the locally verified policy."""
+    def _startup_wait_elapsed(self):
+        """Slow/absent hints must not turn an unfinished check into permission."""
         if self._closed or not self.state.get('login_check_pending'):
             return
-        # The check worker may still be waiting on the network. The UI gate is
-        # now resolved by its deadline; later results remain authoritative.
-        self._busy = False
-        cached = self._startup_cached
-        if cached is None:
-            # No verified local policy exists to authorize normal use. Resolve
-            # the wait with a repair state instead of either inventing a policy
-            # or keeping the startup gate spinning forever.
-            result = {'state': 'REPAIR_REQUIRED', 'login_allowed': False,
-                      'message': '无法读取本机已验证的更新状态，请修复或重新安装。',
-                      'feed': 'UNAVAILABLE_RECOVERABLE', 'offline_fallback': True,
-                      'reason': 'verified_cache_unavailable'}
-        else:
-            result = {**cached, 'offline_fallback': True,
-                      'feed': 'OFFLINE_TIMEOUT',
-                      'message': cached.get('message') or '暂时无法检查更新，按本机已验证状态继续。'}
+        # Optional paired hints already resolve the gate and stop this timer.
+        # Otherwise the existing network deadlines/retries finish the worker.
+        # A confirmed unavailable feed may use verified cached policy there;
+        # merely waiting 15 seconds cannot stand in for that result.
         from .delivery.per_user_install import maintenance_log
-        maintenance_log(self.root, 'startup_login_gate', outcome='offline_fallback',
+        maintenance_log(self.root, 'startup_login_gate', outcome='awaiting_signed_manifest',
                         elapsed_ms=round((time.monotonic() - (self._startup_started or time.monotonic())) * 1000),
-                        cached=bool(cached), state=result.get('state'))
-        self._apply_startup_result(result, status='offline_fallback')
+                        paired_policy=bool(self._startup_pointer_policy))
+
+    def _pointer_allows_current(self, policy):
+        from .delivery.update_protocol import version_key, SecurityError
+        cached = self._startup_cached
+        try:
+            return (policy['mandatory'] is False and cached is not None
+                    and version_key(cached['current']) >= version_key(policy['mandatory_floor']))
+        except (KeyError, TypeError, ValueError, SecurityError):
+            return False
+
+    def _receive_pointer_policy(self, policy):
+        """Release only the cached authorized login, never an unsigned offer."""
+        self._startup_pointer_policy = dict(policy)
+        cached = self._startup_cached
+        if (cached is None or not cached.get('login_allowed')
+                or cached.get('state') not in ('HEALTHY', 'OPTIONAL_UPDATE')
+                or not self._pointer_allows_current(policy)):
+            self._login_blocked = True
+            self._publish({**self.state, 'login_allowed': False,
+                           'login_check_pending': True,
+                           'login_check_message': '正在核实更新要求…'})
+            getattr(self.gate, 'set_login_available', self.gate.setEnabled)(False)
+            from .delivery.per_user_install import maintenance_log
+            maintenance_log(self.root, 'startup_login_gate', outcome='pointer_wait_manifest',
+                            pointer_version=policy['version'])
+            return
+        self._login_wait_timer.stop()
+        self._login_blocked = False
+        # Retain the running check and its busy flag. Its signed result still
+        # arrives on this same worker, including a contradictory mandatory one.
+        self._publish({**self.state, 'state': 'CHECKING',
+                       'login_allowed': True, 'mandatory': False,
+                       'login_check_pending': False,
+                       'login_check_status': 'optional_pointer',
+                       'login_check_message': '', 'feed': 'POINTER_HINT',
+                       'message': '正在后台核实新版本…'})
+        getattr(self.gate, 'set_login_available', self.gate.setEnabled)(True)
+        from .delivery.per_user_install import maintenance_log
+        maintenance_log(self.root, 'startup_login_gate', outcome='optional_pointer',
+                        elapsed_ms=round((time.monotonic() - (self._startup_started or time.monotonic())) * 1000),
+                        pointer_version=policy['version'])
 
     def _apply_startup_result(self, result, *, status='ready'):
         self._login_wait_timer.stop()
@@ -147,6 +182,10 @@ class DesktopUpdates(QObject):
             action = "check"
         if action not in {"startup", "check", "install"}:
             raise ValueError("unknown update operation")
+        if action == 'install':
+            # The user action takes priority over a delayed, optional prefetch.
+            self._background_retry.stop()
+            self._background_retry_suppressed = True
         # HWND must be captured on the GUI thread, even though apply runs on
         # the worker. The existing native coordinator closes and relaunches us.
         if window is not None:
@@ -171,7 +210,8 @@ class DesktopUpdates(QObject):
                                                                cancel=self._cancel.is_set)
                     self._send({'cached': cached})
                     result = self.core.get_startup_update_state(self.root, full=False, check_feed=True,
-                                                               cancel=self._cancel.is_set)
+                        cancel=self._cancel.is_set,
+                        on_pointer_policy=lambda policy: self._send({'pointer_policy': policy}))
                 elif action == "check":
                     result = self.core.check_latest(self.root, cancel=self._cancel.is_set)
                 else:
@@ -236,18 +276,32 @@ class DesktopUpdates(QObject):
         if self._background_preparing or self._closed:
             return
         self._background_preparing = True
+        self._background_prepare_attempt += 1
+        attempt = self._background_prepare_attempt
         def work():
             from .delivery.startup_integrity import background_io
+            from .delivery.per_user_install import _maintenance_lock, maintenance_log
             try:
-                with background_io():
-                    prepared = self.core.download_latest(self.root,
-                        progress=lambda value: self._send({'background_progress': value}),
-                        cancel=self._cancel.is_set, reuse_prepared=True)
+                # Serialize with cleanup and Updater refresh off the GUI thread.
+                while not self._cancel.is_set() and not self._closed:
+                    if _maintenance_lock.acquire(timeout=.2):
+                        try:
+                            with background_io():
+                                prepared = self.core.download_latest(self.root,
+                                    progress=lambda value: self._send({'background_progress': value}),
+                                    cancel=self._cancel.is_set, reuse_prepared=True)
+                        finally:
+                            _maintenance_lock.release()
+                        break
+                else:
+                    prepared = {'state': 'CANCELLED', 'cancelled': True}
+                maintenance_log(self.root, 'background_update_prepare_attempt', attempt=attempt,
+                                outcome=prepared.get('code') or prepared.get('state', 'unknown'))
             except Exception as error:
-                from .delivery.per_user_install import maintenance_log
-                maintenance_log(self.root, 'background_update_prepare_deferred', detail=str(error))
-                prepared = {}
-            self._send({'background_ready': prepared})
+                maintenance_log(self.root, 'background_update_prepare_attempt', attempt=attempt,
+                                outcome='error', error_type=type(error).__name__, detail=str(error))
+                prepared = {'state': 'FAILED_RECOVERABLE', 'code': 'BACKGROUND_PREPARE_ERROR'}
+            self._send({'background_ready': prepared, 'attempt': attempt})
         self._pool.submit(work)
 
     def _install_progress(self, value):
@@ -308,20 +362,48 @@ class DesktopUpdates(QObject):
     def _receive(self, value):
         if self._closed:
             return
+        if 'pointer_policy' in value:
+            self._receive_pointer_policy(value['pointer_policy'])
+            return
         if 'background_progress' in value or 'background_ready' in value:
             finished = 'background_ready' in value
             progress = value.get('background_ready', value.get('background_progress', {}))
             if finished:
                 self._background_preparing = False
+                if progress.get('prepared'):
+                    self._background_prepare_attempt = 0
+                    self._background_retry_suppressed = False
+                elif (progress.get('code') == 'UPDATE_LOCK_BUSY'
+                      and not self._closed and not self._cancel.is_set()
+                      and not self._background_retry_suppressed):
+                    retry_index = self._background_prepare_attempt - 1
+                    from .delivery.per_user_install import maintenance_log
+                    if retry_index < len(BACKGROUND_PREPARE_RETRY_DELAYS):
+                        delay = BACKGROUND_PREPARE_RETRY_DELAYS[retry_index]
+                        maintenance_log(self.root, 'background_update_prepare_retry_scheduled',
+                                        attempt=self._background_prepare_attempt + 1,
+                                        delay_seconds=delay)
+                        self._background_retry.start(delay * 1000)
+                    else:
+                        maintenance_log(self.root, 'background_update_prepare_deferred',
+                                        attempts=self._background_prepare_attempt,
+                                        reason='update_lock_busy')
             phase = progress.get('ui_state') or progress.get('state', 'PREPARING')
             ready = bool(progress.get('prepared') or phase == 'READY_TO_APPLY')
-            message = ('已下载好，点一下就能更新。' if ready else progress.get('message')
-                       or '后台下载暂时中断，点更新可继续。')
+            lock_busy = finished and progress.get('code') == 'UPDATE_LOCK_BUSY'
+            message = ('已下载好，点一下就能更新。' if ready else
+                       self.state.get('message', '') if lock_busy or (
+                           finished and progress.get('state') in {
+                               'FAILED_RECOVERABLE', 'FAILED_SECURITY', 'CANCELLED',
+                               'DOWNLOAD_PAUSED_OR_INTERRUPTED'
+                           }) else
+                       progress.get('message') or '后台准备暂时中断，点更新可继续。')
             # Background work does not consume user consent or hide the offer.
             fields = {key: progress[key] for key in ('downloaded_bytes', 'actual_downloaded_bytes',
                 'expected_download_bytes', 'downloaded_files', 'total_download_files') if key in progress}
             self._publish({**self.state, **fields, 'download_state': phase,
-                           'prepared': ready, 'background_downloading': not finished,
+                           'prepared': ready,
+                           'background_downloading': not finished or self._background_retry.isActive(),
                            'message': message})
             self._update_prompt()
             return
@@ -370,6 +452,13 @@ class DesktopUpdates(QObject):
         self._busy = False
         result = value["result"]
         if value['action'] == 'startup':
+            if (result.get('feed') != 'VERIFIED' and self._startup_pointer_policy is not None
+                    and not self._pointer_allows_current(self._startup_pointer_policy)):
+                # Do not mislabel an unsigned hint as a verified mandatory
+                # policy. Failed verification has its own blocked retry state.
+                result = {**result, 'state': 'REPAIR_REQUIRED', 'login_allowed': False,
+                          'message': '暂时无法核实更新要求，请重试检查更新或重新安装。',
+                          'reason': 'pointer_policy_awaits_signed_manifest'}
             result = {**result, 'mandatory': result.get('state') == 'MANDATORY_UPDATE'}
             status = ('offline_fallback' if result.get('offline_fallback') or
                       result.get('feed') != 'VERIFIED' else 'ready')
@@ -397,6 +486,9 @@ class DesktopUpdates(QObject):
         self._update_prompt()
         if value['action'] in ('startup', 'check') and result.get('state') in (
                 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE', 'UPDATE_AVAILABLE'):
+            if not self._background_preparing and not self._background_retry.isActive():
+                self._background_prepare_attempt = 0
+                self._background_retry_suppressed = False
             self._prepare_in_background()
 
     def _finish_handoff(self):
@@ -488,6 +580,7 @@ class DesktopUpdates(QObject):
         self._closed = True
         if self._prompt is not None: self._prompt.hide()
         self._retry.stop()
+        self._background_retry.stop()
         self._login_wait_timer.stop()
         self._cancel.set()
         self._session.close()

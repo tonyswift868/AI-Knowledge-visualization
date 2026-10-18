@@ -170,7 +170,7 @@ class MatureUpdateService:
             from refactor.desktop.delivery.per_user_install import maintenance_log
             maintenance_log(self.install_root, 'update_check_stage', stage=name, elapsed_ms=elapsed)
 
-    def check(self, *, manual=True, cancel=None):
+    def check(self, *, manual=True, cancel=None, on_pointer_policy=None):
         import logging
         import time
         from refactor.desktop.delivery.update_download import InstallUpdateLock
@@ -206,7 +206,8 @@ class MatureUpdateService:
                             validated[value] = verify_release(value, self.keys, current=self.current,
                                 channel=self.channel, highest_seen=highest)
                     return validated[value]
-                raw = self._fetch_metadata(cancel, validate=validate_metadata, cached=previous)
+                raw = self._fetch_metadata(cancel, validate=validate_metadata, cached=previous,
+                                           on_pointer_policy=on_pointer_policy)
                 self.telemetry.totals['bytes_read'] += len(raw)
                 release = validate_metadata(raw)
                 from refactor.desktop.delivery.runtime_path_budget import budget
@@ -310,11 +311,13 @@ class MatureUpdateService:
         self.snapshot = {**self.snapshot, 'check_timings_ms': dict(getattr(self, '_check_timings', {}))}
         return dict(self.snapshot)
 
-    def _fetch_metadata(self, cancel=None, *, validate=None, cached=None):
+    def _fetch_metadata(self, cancel=None, *, validate=None, cached=None,
+                        on_pointer_policy=None):
         import logging
         from refactor.desktop.delivery.update_download import HTTPTransport, retry_wait
         from refactor.desktop.delivery.update_protocol import MAX_METADATA, RecoverableError, DownloadCancelled, SecurityError
-        from refactor.desktop.delivery.update_protocol import release_pointer, pointer_matches
+        from refactor.desktop.delivery.update_protocol import (release_pointer, release_pointer_policy,
+                                                                pointer_matches)
         cancelled = cancel or (lambda: self._closed or self.cancel_event.is_set())
         transport = self.cache.transport
         pointer = None
@@ -326,9 +329,30 @@ class MatureUpdateService:
                     pointer = release_pointer(transport.fetch_metadata(url, 2048, cancel=cancelled,
                                                                      validate=release_pointer, deadline=5.0))
                 if cached is not None and pointer_matches(pointer, cached):
-                    validate(cached.envelope)  # Recheck expiration, signature and high-water policy NOW.
+                    # The exact signed envelope is already cached and its
+                    # fingerprint is unchanged. It is the stronger policy
+                    # evidence, so keep the original one-request fast path.
+                    validate(cached.envelope)
                     self.snapshot = {**self.snapshot, 'pointer_status':'unchanged_verified_cache'}
                     return cached.envelope
+                if on_pointer_policy is not None:
+                    try:
+                        policy_url = url.rsplit('/', 1)[0] + '/login-policy.json'
+                        with self._check_stage('pointer_policy'):
+                            policy = release_pointer_policy(
+                                transport.fetch_metadata(policy_url, 2048, cancel=cancelled,
+                                    validate=lambda raw: release_pointer_policy(raw, pointer), deadline=5.0),
+                                pointer)
+                        # This is deliberately only a presentation hint. Do not
+                        # cache it, reconcile it with the signed witness, or
+                        # let it affect the final update state.
+                        on_pointer_policy(policy)
+                    except DownloadCancelled:
+                        raise
+                    except Exception:
+                        logging.getLogger(__name__).info(
+                            'paired login policy hint unavailable or invalid; signed manifest remains authoritative',
+                            exc_info=True)
                 self.snapshot = {**self.snapshot, 'pointer_status':'changed'}
             except DownloadCancelled:
                 raise

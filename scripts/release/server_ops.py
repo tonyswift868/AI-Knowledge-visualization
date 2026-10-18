@@ -93,6 +93,27 @@ def version(value):
     return value
 
 
+def login_policy(raw):
+    """Derive the paired early-login hint from the signed envelope contents.
+
+    Signature verification remains in the existing publisher/client contract;
+    this helper only mirrors the signed fields and binds them to exact bytes.
+    """
+    envelope = json.loads(raw)
+    signed = envelope['signed']
+    target = version(signed['version'])
+    supported = version(signed['min_supported_version'])
+    floor = max((target if signed['mandatory'] else '0.0.0', supported),
+                key=lambda item: tuple(map(int, item.split('.'))))
+    return dict(version=target, metadata_version=signed['metadata_version'],
+                sha256=hashlib.sha256(raw).hexdigest(), size=len(raw),
+                mandatory=signed['mandatory'], mandatory_floor=floor)
+
+
+def policy_bytes(policy):
+    return (json.dumps(policy, sort_keys=True, separators=(',', ':')) + '\n').encode('utf-8')
+
+
 def atomic_bytes(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_name('.' + path.name + '-' + uuid.uuid4().hex)
@@ -176,8 +197,14 @@ def dispatch(request):
             if action == 'stage_manifest':
                 if sha(transfer) != request['sha256']:
                     raise ValueError('manifest transfer hash mismatch')
-                atomic_bytes(stage / 'stable/stable.json', transfer.read_bytes())
-                return dict(status='SIGNED_MANIFEST_STAGED')
+                if transfer.read_bytes() != raw:
+                    raise ValueError('manifest transfer differs from verified envelope')
+                expected_policy = login_policy(raw)
+                if request.get('login_policy') != expected_policy:
+                    raise ValueError('staged login policy differs from signed envelope')
+                atomic_bytes(stage / 'stable/login-policy.json', policy_bytes(expected_policy))
+                atomic_bytes(stage / 'stable/stable.json', raw)
+                return dict(status='SIGNED_MANIFEST_STAGED', login_policy=expected_policy)
             checked(transfer, request['installer'])
             releases = app / 'releases'
             releases.mkdir(parents=True, exist_ok=True)
@@ -242,6 +269,18 @@ def dispatch(request):
         raw = base64.b64decode(request['manifest'])
         if (stage / 'stable/stable.json').read_bytes() != raw:
             raise ValueError('staged manifest changed after verification')
+        expected_policy = login_policy(raw)
+        staged_policy_path = stage / 'stable/login-policy.json'
+        if staged_policy_path.exists():
+            staged_policy = json.loads(staged_policy_path.read_bytes())
+        else:
+            # A manifest may have been staged by the immediately previous
+            # publisher before paired hints existed. Derive from its exact
+            # signed bytes and let the current publisher carry it forward.
+            atomic_bytes(staged_policy_path, policy_bytes(expected_policy))
+            staged_policy = expected_policy
+        if staged_policy != expected_policy or request.get('login_policy') != expected_policy:
+            raise ValueError('staged login policy changed or differs from signed envelope')
         rows = request['rows']
         archived = app / 'releases' / v / 'stable.json'
         if archived.exists() and archived.read_bytes() != raw:
@@ -268,14 +307,19 @@ def dispatch(request):
         if not archived.exists():
             atomic_bytes(archived, raw)
         atomic_bytes(live, raw)
-        signed = json.loads(raw)['signed']
-        pointer = dict(version=v, metadata_version=signed['metadata_version'],
-                       sha256=hashlib.sha256(raw).hexdigest(), size=len(raw))
+        # Publish the optional login-gate hint before the unchanged four-field
+        # latest pointer. Readers pair them by the manifest fingerprint; during
+        # either atomic replacement, an old client remains compatible and a
+        # new client safely falls back to the signed manifest.
+        atomic_bytes(live.with_name('login-policy.json'), policy_bytes(expected_policy))
+        pointer = {key: expected_policy[key]
+                   for key in ('version', 'metadata_version', 'sha256', 'size')}
         # The manifest is authoritative. Publish the hint AFTER it, atomically;
         # readers spanning the two renames may see a mismatch and use the signed manifest.
         atomic_bytes(live.with_name('latest.json'),
                      (json.dumps(pointer, separators=(',', ':')) + '\n').encode('utf-8'))
         return dict(status='STABLE_PUBLISHED', version=v, files=len(rows),
+                    login_policy=expected_policy,
                     time=datetime.now(timezone.utc).isoformat())
     raise ValueError('unknown server operation: ' + action)
 
