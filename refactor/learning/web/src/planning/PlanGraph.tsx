@@ -19,6 +19,22 @@ type ModuleData = { module: GraphModule; number: number; mode: "structure" | "ou
 type ModuleNode = Node<ModuleData, "module">
 type DeleteMap = (module: string, point?: number) => void
 const WIDTH = 294, HEIGHT = 204, GAP = 44, PAD = 26
+
+// Host refreshes replace the payload objects even when the graph is unchanged.
+// Only topology (including stage membership) owns layout/viewport resets.
+export function graphStructureKey(nodes: Node[], edges: { id: string; source: string; target: string }[]) {
+  return JSON.stringify([
+    nodes.map(n => JSON.stringify([n.id, n.parentId ?? null])).sort(),
+    edges.map(e => JSON.stringify([e.id, e.source, e.target])).sort(),
+  ])
+}
+export function refreshGraphNodes<N extends Node>(current: N[], next: N[], preservePositions: boolean): N[] {
+  const previous = new Map(current.map(n => [n.id, n]))
+  return next.map(n => {
+    const old = previous.get(n.id)
+    return preservePositions && old ? { ...n, position: old.position, selected: old.selected, dragging: old.dragging } : n
+  })
+}
 function pointCount(m: GraphModule) {
   const points=m.points??[]
   return points.some(p=>p.structure==='concept_v1') ? `${points.length} 个大知识点 · ${points.reduce((n,p)=>n+(p.subpoints?.length??0),0)} 个小要点` : `${points.length} 个点`
@@ -112,6 +128,8 @@ function ModuleDetails({ module: m, stages, mode, close, onDelete, busy }: { mod
 
 export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages: GraphStage[]; mode?: "structure" | "outline"; onDelete?: DeleteMap; busy?: boolean }) {
   const layout = React.useMemo(() => graphLayout(stages, mode), [stages, mode])
+  const structureKey = graphStructureKey(layout.nodes, layout.edges)
+  const previousStructure = React.useRef(structureKey)
   const [nodes, setNodes] = React.useState(layout.nodes)
   const [selected, select] = React.useState<string | null>(null)
   const [hovered, hover] = React.useState<string | null>(null)
@@ -120,7 +138,12 @@ export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages
   const returnFocus = React.useRef<HTMLButtonElement>(null)
   // Host draft refreshes and parent input renders create a new stages array.
   // Layout updates must not discard the module the user is reading.
-  React.useEffect(() => { setNodes(layout.nodes); hover(null) }, [layout])
+  React.useEffect(() => {
+    const unchanged = previousStructure.current === structureKey
+    previousStructure.current = structureKey
+    setNodes(current => refreshGraphNodes(current, layout.nodes, unchanged))
+    hover(null)
+  }, [layout, structureKey])
   React.useEffect(() => {
     if (!fullscreen) return
     const old = document.body.style.overflow
@@ -136,7 +159,11 @@ export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages
     document.addEventListener("keydown", esc, true)
     return () => document.removeEventListener("keydown", esc, true)
   }, [selected, fullscreen])
-  React.useEffect(() => { if (instance) requestAnimationFrame(() => instance.fitView({ padding: .12, duration: 220, minZoom: .025, maxZoom: 1 })) }, [instance, layout, fullscreen])
+  React.useEffect(() => {
+    if (!instance) return
+    const frame = requestAnimationFrame(() => instance.fitView({ padding: .12, duration: 220, minZoom: .025, maxZoom: 1 }))
+    return () => cancelAnimationFrame(frame)
+  }, [instance, structureKey, fullscreen])
   const all = stages.flatMap(s => s.modules)
   const detail = all.find(m => m.key === selected)
   const active = hovered ?? selected
@@ -149,7 +176,7 @@ export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages
       <div className="pg-canvas"><ReactFlow nodes={viewNodes} edges={edges} nodeTypes={nodeTypes} onInit={setInstance}
         onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, n) => { if (n.type === "module") select(n.id === selected ? null : n.id) }}
         onNodeMouseEnter={(_, n) => { if (n.type === "module") hover(n.id) }} onNodeMouseLeave={() => hover(null)}
-        nodesConnectable={false} deleteKeyCode={null} fitView fitViewOptions={{ padding: .12, minZoom: .025, maxZoom: 1 }} minZoom={.025} maxZoom={2.5} onlyRenderVisibleElements>
+        nodesConnectable={false} deleteKeyCode={null} fitViewOptions={{ padding: .12, minZoom: .025, maxZoom: 1 }} minZoom={.025} maxZoom={2.5} onlyRenderVisibleElements>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="var(--border-strong)" />
         <Controls position="bottom-right" showInteractive={false} aria-label="地图缩放与适配" />
       </ReactFlow></div>
