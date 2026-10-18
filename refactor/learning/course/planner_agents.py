@@ -1244,6 +1244,8 @@ def rebuild_concept_module(module, old_points, chunks, complete, *, checkpoint=N
 # Round 113 remains a proposal-only API; existing generation is not connected.
 SECTION_PURPOSE_SYSTEM = """先判断资料这一节在做什么，不抽概念。按原始章节标题、层级和整节语境判断。
 navigation：书单、书籍简介、学习路线、推荐/取舍资料、学习方法建议。书中包含哪些技术不是此节在教这些技术；
+章节导言如果只列工具名、阅读顺序或复习优先级，没有解释含义、职责或用法，应整节归navigation；仅点名窗口、登录、取资料、学习、保存、更新等步骤，不构成真实流程教学。
+若同一节包含真实定义、职责或系统流程，应逐段分类：导读和复习方法归navigation，实际讲解归knowledge；不得因其位于章节开头就把整节当作导航。
 书单节即使有技术名词和少量背景介绍，也整节归navigation，不能因一句技术描述拆出知识。
 knowledge：正文直接解释概念、关系、操作或技能。面试/求职/表达技能的实际教学仍是knowledge。
 真正先解释知识再推荐书的混合节，按给定c段落分开，不能拿“这本书讲了什么”的章节清单当知识。
@@ -1744,7 +1746,10 @@ def directory_structure(paragraphs, old_points, required, questions):
 
 def validate_directory_structure(structure, paragraphs):
     """Only source ownership, navigation, coverage and literal notes are hard gates."""
-    owners = {}; seen = set(); errors = []
+    # Chunk IDs can contain several separately classified paragraphs. Track
+    # paragraph refs across both destinations so mixed chunks stay usable while
+    # a single source paragraph can never be taught and navigated twice.
+    owners = {}; ref_owners = {}; seen = set(); errors = []
     for section in directory_sections(paragraphs):
         if section['decision']=='structure' and any(paragraphs[r].get('purpose')!='navigation' for r in section['refs']):
             errors.append('书单/路线必须整节导航：'+section['title'])
@@ -1752,11 +1757,19 @@ def validate_directory_structure(structure, paragraphs):
         for ref in nav['refs']:
             if ref not in paragraphs or paragraphs[ref].get('purpose') != 'navigation':
                 errors.append('导航出处或分类错误：'+ref)
+            if ref in ref_owners:
+                errors.append('正文段落重复归属：'+ref)
+            else:
+                ref_owners[ref] = ('navigation', nav.get('id'))
             seen.add(ref)
     for point in structure['points']:
         if point['minutes'] != sum(s['minutes'] for s in point['subpoints']): errors.append('分钟求和不一致')
         for sub in point['subpoints']:
             for ref in sub['refs']:
+                if ref in ref_owners:
+                    errors.append('正文段落重复归属：'+ref)
+                else:
+                    ref_owners[ref] = ('knowledge', sub['id'])
                 if ref not in paragraphs or paragraphs[ref].get('purpose') != 'knowledge':
                     errors.append('知识出处或分类错误：'+ref); continue
                 cid = paragraphs[ref]['parent_chunk_id']

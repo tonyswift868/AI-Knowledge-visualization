@@ -77,6 +77,8 @@ def build_parser():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--local", type=Path, help="本地导出目录")
     mode.add_argument("--url", help="公开 GitHub 仓库链接，可含 /tree/<分支>/<目录>")
+    mode.add_argument("--cached-source", type=Path,
+                      help="使用此前真实导入且哈希核实的 VerifiedSource JSON，不重新抓取")
     parser.add_argument("--output", required=True, type=Path, help="证据目录，必须位于 D:/MentorFlow/.local/test-tmp 下")
     parser.add_argument("--import-only", action="store_true", help="只检查抓取/选文/合并，默认模式，零模型费用")
     parser.add_argument("--live", action="store_true", help="继续调用当前切点、讲义和原题流程；会产生模型费用")
@@ -84,6 +86,16 @@ def build_parser():
     parser.add_argument("--preset-root", type=Path, default=Path(r"D:\MentorFlowData\account-shell"))
     parser.add_argument("--budget", default="8")
     return parser
+
+
+def _validated_live_budget(value):
+    try:
+        budget = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("--budget 必须是人民币数字") from None
+    if not 0 < budget <= 15:
+        raise ValueError("本任务真实模型预算范围为大于 0 且不超过 15 元")
+    return budget
 
 
 def main(argv=None):
@@ -98,16 +110,16 @@ def main(argv=None):
         parser.error("--import-only 与 --live 不能同时使用")
     if args.live:
         try:
-            budget = float(args.budget)
-        except ValueError:
-            parser.error("--budget 必须是人民币数字")
-        if not 0 < budget <= 8:
-            parser.error("本任务真实模型预算范围为大于 0 且不超过 8 元")
+            _validated_live_budget(args.budget)
+        except ValueError as exc:
+            parser.error(str(exc))
 
     fetched_paths = []
     local_state = None
     try:
-        if args.local:
+        if args.cached_source:
+            source, fetched_paths = _load_verified_source(args.cached_source)
+        elif args.local:
             fetch, local_state = local_fetcher(args.local)
             url = DEFAULT_URL
         else:
@@ -136,7 +148,8 @@ def main(argv=None):
                 if path:
                     fetched_paths.append(path)
                 return body
-        source = github_repo.import_repo(url, fetch=fetch)
+        if not args.cached_source:
+            source = github_repo.import_repo(url, fetch=fetch)
     except github_repo.RepoImportError as exc:
         _write_import_error(output, exc.code, exc.message)
         return 2
@@ -213,6 +226,34 @@ def _write_import_error(output, code, message):
     print(json.dumps(dict(error=payload["error"]), ensure_ascii=False), file=sys.stderr)
 
 
+def _load_verified_source(path):
+    """Replay captured public GitHub responses through the real repo importer."""
+    import base64
+    from dataclasses import asdict
+    from refactor.learning.course import github_repo
+
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    responses = {row["url"]: base64.b64decode(row["body_b64"], validate=True)
+                 for row in payload["fetch_responses"]}
+
+    def cached_fetch(url, cancel=None):
+        if cancel is not None and cancel.is_set():
+            raise RuntimeError("cached source import cancelled")
+        try:
+            return responses[url]
+        except KeyError:
+            raise ValueError("cached source is missing importer request: " + url) from None
+
+    source = github_repo.import_repo(payload["url"], fetch=cached_fetch)
+    if (source.content_sha256 != payload.get("content_sha256")
+            or source.content_sha256 != payload.get("verified_import_sha256")):
+        raise ValueError("重放导入器得到的内容 SHA256 与原始导入不一致")
+    normalized_document = json.loads(json.dumps(asdict(source.document), ensure_ascii=False))
+    if normalized_document != payload.get("document"):
+        raise ValueError("重放导入器得到的文档块与缓存文档不一致")
+    return source, list(payload["selected_files"])
+
+
 def _run_live(verified, args):
     """Use product CourseStore and the same outline/point/note/question functions as PlanFlow."""
     from types import SimpleNamespace
@@ -233,6 +274,7 @@ def _run_live(verified, args):
     real = live_factory(args.preset_root, account)(services)
     evidence = Evidence(args.output.resolve() / "evidence")
     gateway = RecordedGateway(real, evidence, budget=args.budget)
+    _install_streaming_gateway(gateway)
     store = CourseStore(account, data_root)
     progress_path = args.output.resolve() / "live-progress.json"
     progress_record = dict(state="running", stage="initialized", plan_id=None, cost_cny="0", modules=[], checkpoints=[])
@@ -350,6 +392,11 @@ def _run_live(verified, args):
             by_origin[question.get("origin", "unknown")] = by_origin.get(question.get("origin", "unknown"), 0) + 1
             key = f"{question.get('kind', 'unknown')} / {question.get('origin', 'unknown')}"
             by_point_type_origin[key] = by_point_type_origin.get(key, 0) + 1
+        question_types = _question_type_counts(questions)
+        question_types_by_module = {
+            module['id']: _question_type_counts([q for q in questions if q.get('module_id') == module['id']])
+            for module in modules
+        }
         module_refs = {m["title"]: m["refs"] for m in prepared}
         module_directory = {m["title"]: _module_directory_levels(m.get("chapters", [])) for m in prepared}
         calls_by_purpose = {}
@@ -375,7 +422,8 @@ def _run_live(verified, args):
                     questions_by_origin=by_origin, questions_by_type_origin=by_point_type_origin,
                     notes=note_stats, structure=structure_evidence,
                     proposed_module_count=proposed_module_count, navigation_only_modules=navigation_only,
-                    question_results=question_results, cost_cny=str(gateway.spent),
+                    question_results=question_results, question_types=question_types,
+                    question_types_by_module=question_types_by_module, cost_cny=str(gateway.spent),
                     calls_by_purpose=calls_by_purpose,
                     calls=[dict(id=c.get("id"), purpose=c.get("purpose"), peak_cost_cny=c.get("peak_cost_cny"),
                                 charged_bound_cny=c.get("charged_bound"), seconds=c.get("seconds"), evidence=c.get("evidence"))
@@ -405,6 +453,38 @@ def _optional_note_preparation(gateway, points, chunks, prepare, complete):
         if gateway.halted.is_set():
             gateway.halted.clear()
         return {}, dict(code=getattr(exc, "code", type(exc).__name__), message=str(exc))
+
+
+def _install_streaming_gateway(gateway):
+    """Make every live harness request use the provider streaming path.
+
+    Product requests assembled through PlanFlow may already pass on_text;
+    point preparation has direct gateway calls. Defaulting the callback at the
+    recorded-gateway boundary covers both without changing prompts, purpose,
+    token limits, or the product gateway implementation.
+    """
+    if getattr(gateway, "_guide165_streaming_installed", False):
+        return gateway
+    original_complete = gateway.complete
+
+    def complete_streaming(purpose, messages, **kwargs):
+        if kwargs.get("on_text") is None:
+            kwargs["on_text"] = lambda _text: None
+        return original_complete(purpose, messages, **kwargs)
+
+    gateway.complete = complete_streaming
+    gateway._guide165_streaming_installed = True
+    return gateway
+
+
+def _question_type_counts(questions):
+    """Separate source-backed originals from generated cloze rows by stored fields."""
+    rows = list(questions)
+    return {
+        "original_recall": sum(q.get("origin") == "found" and q.get("kind") == "recall" for q in rows),
+        "original_objective": sum(q.get("origin") == "found" and q.get("kind") == "objective" for q in rows),
+        "cloze": sum(q.get("origin") == "cloze" for q in rows),
+    }
 
 
 def _classify_sections(sections, form, gateway, plan_id, *, on_attempt=None):
