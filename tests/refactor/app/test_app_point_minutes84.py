@@ -59,7 +59,7 @@ def test_minutes_atomic_total_frozen_ledger_and_sync(store,tmp_path):
     store.add_credit(PLAN,'learn:m00','m00',15,DAY)
     store.add_credit(PLAN,'relearn:m01:1','m01',15,DAY)
     before = {entity: store.records(entity,PLAN) for entity in ('credits','ledger_events')}
-    assert store.save_point_minutes(PLAN,state['fingerprint'],labels(state))
+    assert store.save_point_minutes(PLAN,state['fingerprint'],labels(state),today=DAY)
     after = store.point_minutes_snapshot(PLAN)
     assert after['ready'] and sum(p['minutes'] for p in after['points']) < 180
     assert {p['id']:p['minutes'] for p in after['points'] if p['id'] in ('m00','m01')} == {'m00':15,'m01':15}
@@ -84,7 +84,7 @@ def test_minutes_failed_write_rolls_back_every_point_and_version(store,monkeypat
         if entity == 'modules': raise OSError('disk write failed')
         return put(entity,plan,payload,**kwargs)
     monkeypatch.setattr(store,'_put',fail)
-    with pytest.raises(OSError): store.save_point_minutes(PLAN,state['fingerprint'],labels(state))
+    with pytest.raises(OSError): store.save_point_minutes(PLAN,state['fingerprint'],labels(state),today=DAY)
     assert store.point_minutes_snapshot(PLAN) == state
 
 
@@ -92,7 +92,7 @@ def test_minutes_stale_reply_preserves_values(store):
     state = store.point_minutes_snapshot(PLAN)
     with store.transaction():
         p = store._get('points',PLAN,'m00'); p['summary']='改变后的知识点'; store._put('points',PLAN,p)
-    assert not store.save_point_minutes(PLAN,state['fingerprint'],labels(state))
+    assert not store.save_point_minutes(PLAN,state['fingerprint'],labels(state),today=DAY)
     assert all(p['minutes']==15 for p in store.records('points',PLAN))
 
 
