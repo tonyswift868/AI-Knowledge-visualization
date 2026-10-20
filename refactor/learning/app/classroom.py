@@ -40,6 +40,10 @@ PURPOSE = {"module_test": "module", "skip_test": "direct",
            "retest": "retest", "check": "final", "practice": "free"}
 
 
+class _SupersededOperation(Exception):
+    """A newer classroom action owns the position; this worker must not commit."""
+
+
 def _now():
     return datetime.now(timezone.utc)
 
@@ -47,6 +51,8 @@ def _now():
 class Classroom:
     _mutex = threading.Lock()
     _room_locks = {}
+    _active_operations = {}
+    _operation_generations = {}
 
     def __init__(self, services, study_day, *, now=_now, rng=None):
         self.services, self.study_day, self.now = services, study_day, now
@@ -95,8 +101,7 @@ class Classroom:
                 state['concept'].update(subpoint_id=point['subpoints'][index+1]['id'],rounds=0)
                 return self._teacher_context(course,state,CONCEPT_START,[point['id']])
             points=course.points_of(state['module_id'])
-            if (state['index']+1>=len(points) or self._target_met_after_point(course,state,point)
-                    or not self._ready(course,state['module_id'])):
+            if state['index']+1>=len(points) or self._target_met_after_point(course,state,point):
                 return None
             recap=self._recap_content(point)
             state.update(index=state['index']+1,step='teach',pending=None)
@@ -196,6 +201,58 @@ class Classroom:
         with self._mutex:
             return self._room_locks.setdefault(key, threading.Lock())
 
+    def _operation_is_current(self):
+        key=getattr(self._local,'operation_key',None)
+        token=getattr(self._local,'operation_token',None)
+        if key is None or token is None:return True
+        with self._mutex:
+            active=self._active_operations.get(key)
+            return bool(active and active['token']==token and active['generation']==self._local.operation_generation
+                        and not active['cancel'].is_set())
+
+    def _operation_was_superseded(self):
+        key=getattr(self._local,'operation_key',None)
+        token=getattr(self._local,'operation_token',None)
+        if key is None or token is None:return False
+        with self._mutex:
+            active=self._active_operations.get(key)
+            return not active or active['token']!=token or active['generation']!=self._local.operation_generation
+
+    def _stream_current(self, ctx, delta):
+        if ctx and not ctx.cancel.is_set() and self._operation_is_current():ctx.stream(delta)
+
+    def _slow_call(self, course, ctx, call):
+        """Run blocking model/material work without holding the per-plan lock."""
+        lock=getattr(self._local,'room_lock',None)
+        if lock is None or not getattr(self._local,'lock_held',False):return call()
+        if ctx and ctx.cancel.is_set():raise ModelCancelled()
+        if not self._operation_is_current():raise _SupersededOperation()
+        store_lock=getattr(course.store,'_lock',None)
+        owned=getattr(store_lock,'_is_owned',None)
+        if callable(owned) and owned():
+            raise RuntimeError('classroom slow call entered while this thread owns a store transaction')
+        # Publish the complete decision point before yielding the lock. A new
+        # action can now continue from this position while the old worker exits.
+        state=getattr(self._local,'room_state',None)
+        if state is not None:
+            checkpoint=copy.deepcopy(state)
+            self._save(course,checkpoint)
+            self._local.slow_checkpoint=checkpoint
+        self._local.lock_held=False
+        lock.release()
+        result=None;error=None
+        try:result=call()
+        except BaseException as exc:error=exc
+        if self._operation_was_superseded():raise _SupersededOperation() from error
+        lock.acquire()
+        self._local.lock_held=True
+        if self._operation_was_superseded():
+            self._local.lock_held=False;lock.release()
+            raise _SupersededOperation() from error
+        if error is not None:raise error
+        if ctx and ctx.cancel.is_set():raise ModelCancelled()
+        return result
+
     def perform(self, plan_id, action, ctx, args=(), request_id=None):
         if request_id is not None and (not isinstance(request_id, str) or not re.fullmatch(r"[\w-]{1,100}", request_id)):
             raise BridgeError("PARAM_INVALID", "请求编号无效。")
@@ -205,14 +262,33 @@ class Classroom:
         finally:
             self._local.action = None
 
-    def run(self, plan_id, work, ctx=None):
+    def run(self, plan_id, work, ctx=None, *, readonly=False):
         lock = self._lock(plan_id)
         if not lock.acquire(False):
             message = "课堂正在处理，请稍后再发；已有内容和位置保留。"
             raise BridgeError("CLASS_BUSY", message)
+        self._local.room_lock=lock;self._local.lock_held=True
+        self._local.room_state=None;self._local.operation_key=None;self._local.operation_token=None
+        self._local.operation_generation=None;self._local.slow_checkpoint=None
+        key=self._activity_key(plan_id);token=None
         try:
+            if readonly:
+                # Polling must only observe the durable position. It must not
+                # resume preparation, settle an attempt, or consume a prefetch.
+                course=self._course(plan_id);state=self._load(course)
+                return self.snapshot(course,state)
+            with self._mutex:
+                generation=self._operation_generations.get(key,0)+1
+                self._operation_generations[key]=generation
+                previous=self._active_operations.get(key)
+                if previous:previous['cancel'].set()
+                cancel=ctx.cancel if ctx else threading.Event()
+                token=uuid.uuid4().hex
+                self._active_operations[key]=dict(token=token,generation=generation,cancel=cancel)
+            self._local.operation_key=key;self._local.operation_token=token;self._local.operation_generation=generation
             course = self._course(plan_id)
             state = self._load(course)
+            self._local.room_state=state
             action = getattr(self._local, "action", None)
             if action and action[2] in state.get("completed_requests", []):
                 return self.snapshot(course, state)
@@ -231,7 +307,7 @@ class Classroom:
                     if not action or action[0]!='leave':
                         self._resume_materials(course, state, ctx)
                         if original.get('phase') != 'practice' and state.get('phase') != 'practice' and not (action and action[0]=='start_practice'):
-                            self._prepare_next_module(course, state, entering=bool(action and action[0]=='enter'))
+                            self._schedule_next_module_safely(course, state, entering=bool(action and action[0]=='enter'))
                 previous_fault=(original.get('failure') or {}).get('model_fault')
                 clear=getattr(self.services,'clear_model_fault_scope',None)
                 if previous_fault and callable(clear):clear(previous_fault.get('purpose','teacher'),plan_id)
@@ -240,9 +316,13 @@ class Classroom:
                     retried=getattr(self._local,'action',None)
                     state["completed_requests"] = (state.get("completed_requests", []) + [action[2]] + ([retried[2]] if retried else []))[-40:]
             except ModelCancelled:
+                if self._operation_was_superseded():
+                    raise BridgeError('CANCELLED','课堂已切换到最新操作。') from None
                 if ctx: ctx.stream(RESET)
-                self._save(course, self._local.point_checkpoint or original)
+                self._save(course, self._local.point_checkpoint or self._local.slow_checkpoint or original)
                 raise BridgeError("CANCELLED", "已停止，当前题目和位置保留。") from None
+            except _SupersededOperation:
+                raise BridgeError("CANCELLED", "课堂已切换到最新操作。") from None
             except (ModelError, AgentFormatError, StoreError, BridgeError) as exc:
                 state = self._local.point_checkpoint or original
                 action=getattr(self._local,'action',None) or action
@@ -274,7 +354,13 @@ class Classroom:
             if selected:selected['cancel'].set()
             self._local.prefetched=None
             self._local.point_checkpoint=None
-            lock.release()
+            self._local.slow_checkpoint=None
+            with self._mutex:
+                active=self._active_operations.get(key)
+                if token and active and active['token']==token:self._active_operations.pop(key,None)
+            self._local.room_state=None;self._local.room_lock=None;self._local.operation_key=None;self._local.operation_token=None
+            if getattr(self._local,'lock_held',False):lock.release()
+            self._local.lock_held=False
 
     def _load(self, course):
         try:
@@ -428,22 +514,59 @@ class Classroom:
                 rounds=(state.get('concept') or {}).get('rounds',0),notes=[dict(text=n['text'],source=course.passage_card(n['chunk_id'])) for n in sub.get('notes',[])])
         navigation=[dict(id=n['id'],title=n['title'],reason=n.get('reason',''),
             sources=[course.passage_card(cid) for cid in n.get('chunk_ids',[])]) for n in module.get('navigation',[])]
-        preparing = self._jobs.get((course.plan_id, module['id']))
+        # A slow teacher call can release the room lock while the shared
+        # preparation worker updates module readiness. Keep teaching delivery
+        # on its request snapshot, but project readiness from a fresh store read.
+        readiness_course=self._course(course.plan_id)
+        all_questions=self._questions(readiness_course)
+        questions_by_module={m['id']:[] for m in readiness_course.modules}
+        for item in all_questions:questions_by_module.setdefault(item['module_id'],[]).append(item)
+        resumes=state.get('module_resumes',{})
+        notice=state.get('material_notice')
+        check_gate=state.get('step') in ('check_offer','checking') or state.get('phase')=='check'
+        readiness_targets={module['id'],*(entry.get('module_id') for entry in resumes.values() if isinstance(entry,dict))}
+        if notice:readiness_targets.add(notice.get('module_id'))
+        if check_gate:readiness_targets.update(m['id'] for m in readiness_course.modules)
+        ready_by_module={mid:self._ready(readiness_course,mid,questions=questions_by_module.get(mid,[]))
+            for mid in readiness_targets if mid in questions_by_module}
+        if notice and ready_by_module.get(notice.get('module_id'),False):notice=None
+        notice_module=(notice or {}).get('module_id',module['id'])
+        preparing = self._jobs.get((course.plan_id, notice_module)) or self._jobs.get((course.plan_id,module['id']))
         current_preparation = ({k:preparing[k] for k in ('module_id','done','total','text','error')}
             if preparing and preparing['status'] in ('running','queued','failed') and not preparing['cancel'].is_set()
             and state.get('phase')=='learning' else None)
+        deferred=[];module_options=[]
+        for candidate in course.modules:
+            mid=candidate['id'];module_state=book.module(mid).state
+            if module_state in ('passed','skipped'):continue
+            saved=resumes.get(mid)
+            if mid!=module['id']:
+                if saved and (saved.get('step')=='test_offer'
+                              or saved.get('step')=='test_done' and module_state=='failed'):
+                    saved_step=saved.get('step','teach')
+                    kind='module_test' if saved_step=='test_offer' else 'retest' if saved_step=='test_done' and module_state=='failed' else 'skip_test'
+                    row=dict(module_id=mid,title=candidate['title'],ready=ready_by_module.get(mid),kind=kind,step=saved_step)
+                    deferred.append(row)
+            module_options.append(dict(module_id=mid,title=candidate['title'],current=mid==module['id'],
+                ready=ready_by_module.get(mid),state=module_state,step=state['step'] if mid==module['id'] else (saved or {}).get('step','teach')))
         return dict(plan={k:course.plan.get(k) for k in ('id','goal','state')},
             module=dict(id=module['id'],title=module['title'],number=course.modules.index(module)+1,total=len(course.modules),state=book.module(module['id']).state,navigation=navigation),
             points=[dict(id=p['id'],title=p['title'],minutes=p['minutes'],taught=p['id'] in taught,state=book.point(p['id']).state,current=i==state['index']) for i,p in enumerate(points)],
             step=state['step'],question=question,messages=messages,conversation=state.get('conversation'),concept=concept_view,
-            teaching_version=self._teaching_version(course,state),
-            preparation=state.get('material_wait') or current_preparation,failure=state.get('failure'),explanation=state.get('answer_explanation'),
+            teaching_version=self._teaching_version(readiness_course,state),
+            preparation=state.get('material_wait') or current_preparation,material_notice=notice,
+            preparation_error=state.get('preparation_error'),
+            test_readiness=dict(module_test=ready_by_module.get(module['id'],False),
+                skip_test=ready_by_module.get(module['id'],False),retest=ready_by_module.get(module['id'],False),
+                check=all(ready_by_module.get(m['id'],False) for m in course.modules) if check_gate else False),
+            deferred_module_tests=deferred,module_options=module_options,
+            failure=state.get('failure'),explanation=state.get('answer_explanation'),
             can_skip=self._can_direct(course,state),
             direct_review=self._direct_view(course,state),
             red=[p['title'] for p in points if book.point(p['id']).state=='red'],
             more_modules=any(book.module(m['id']).state=='untested' for m in course.modules if m['id']!=module['id']),
             recall_result=state.get('recall_result'),
-            check=dict(passed=sum(book.question(q['id']).passed for q in self._questions(course)),total=len(self._questions(course))) if state.get('phase')=='check' or state['step'] in ('check_offer','completed') else None,today=today)
+            check=dict(passed=sum(book.question(q['id']).passed for q in all_questions),total=len(all_questions)) if state.get('phase')=='check' or state['step'] in ('check_offer','completed') else None,today=today)
 
     @staticmethod
     def _materials():
@@ -497,14 +620,45 @@ class Classroom:
         self._preparation_flow()._prepare_remaining(course.plan_id,
             [dict(m, points=course.points_of(m['id'])) for m in remaining], self._materials().prepare_module)
 
+    def _schedule_next_module_safely(self, course, state, *, entering=False):
+        """Queue optional background materials without rolling back lesson work."""
+        try:
+            # Preparation state may have advanced while this action was in a
+            # slow teacher call. Scheduling uses current persisted module data;
+            # teacher/source delivery keeps the caller's original Course.
+            self._prepare_next_module(self._course(course.plan_id),state,entering=entering)
+            state.pop('preparation_error',None)
+        except Exception:  # noqa: BLE001 - only this optional queue submission is isolated
+            log.exception('optional classroom material scheduling failed for %s/%s',
+                          course.plan_id,state.get('module_id'))
+            state['preparation_error']=dict(module_id=state.get('module_id'),
+                message='题目准备没有启动，课堂可以继续；需要检测时可重试。')
+
     def _wait(self, course, state, action, args=()):
+        """Legacy resumable foreground wait; teaching no longer enters this path."""
+        if action not in ('start_test','start_check'):
+            raise AssertionError('foreground material waits are reserved for legacy assessment actions')
         mid=state['module_id'];job=self._prepare(course,mid)
         state['material_wait']=dict(module_id=mid,action=action,args=list(args),previous_step=state['step'],done=job['done'],total=job['total'],text=job['text'],error=job['error'])
         state['step']='preparing_materials'
 
+    @staticmethod
+    def _normalize_unknown_material_wait(state):
+        wait=state.get('material_wait')
+        if not wait or wait.get('action') in ('start_test','start_check'):
+            return False
+        previous=wait.get('previous_step')
+        valid=('teach','opening','teaching','closing','test_offer','test_done','check_offer','checking',
+               'direct_review','direct_choice','practice','completed')
+        state['step']=previous if previous in valid else 'teach'
+        state.pop('material_wait',None)
+        log.warning('discarded unsupported legacy material wait action %r',wait.get('action'))
+        return True
+
     def _resume_materials(self, course, state, ctx):
         wait=state.get('material_wait')
         if not wait:return
+        if self._normalize_unknown_material_wait(state):return
         job=self._jobs.get((course.plan_id,wait['module_id'])) or self._prepare(course,wait['module_id'])
         wait.update(done=job['done'],total=job['total'],text=job['text'],error=job['error'])
         # Preserve the existing per-point shortage fallback after a completed
@@ -518,6 +672,7 @@ class Classroom:
             getattr(self,wait['action'])(course,state,ctx,*wait['args'])
 
     def enter(self, course, state, ctx):
+        self._normalize_unknown_material_wait(state)
         if (course.book().check_complete() and not self._questions(course) and course.plan['state']!='completed'
                 and all(self._ready(course,m['id']) for m in course.modules)):
             return self._complete(course,state,ctx)
@@ -528,12 +683,15 @@ class Classroom:
 
     def leave(self, course, state, ctx):
         self._entered_plans.discard(course.plan_id)
-        self.cancel_materials(course.plan_id)
+        # Leaving a lesson cancels speculative replies, not the shared module
+        # preparation queue. The next visit must reuse its in-flight work.
+        self.cancel_prefetch(course.plan_id)
         state['in_session']=False;state['day']=None
         self._profile(course)
 
     def retry(self, course, state, ctx):
         state.pop('materials_paused',None)
+        preparation_error=state.pop('preparation_error',None)
         failure=state.pop('failure',None)
         if failure:
             self._local.action=(failure['action'],failure['args'],failure['request_id'])
@@ -543,6 +701,13 @@ class Classroom:
             job=self._jobs.pop((course.plan_id,wait['module_id']),None)
             if job:job['cancel'].set()
             self._prepare(course,wait['module_id'],retry=True)
+        elif state.get('material_notice'):
+            mid=state['material_notice']['module_id']
+            job=self._jobs.get((course.plan_id,mid))
+            if not job or job['status'] in ('failed','cancelled','ready'):
+                self._prepare(course,mid,retry=True)
+        elif preparation_error:
+            self._prepare(course,preparation_error['module_id'],retry=True)
         elif (self._jobs.get((course.plan_id,state['module_id'])) or {}).get('status')=='failed':
             self._prepare(course,state['module_id'],retry=True)
 
@@ -552,6 +717,7 @@ class Classroom:
         state.pop('materials_paused',None)
         wait=state.pop('material_wait',None)
         if wait:state['step']=wait['previous_step']
+        state.pop('material_notice',None)
 
     def next(self, course, state, ctx):
         state.pop('materials_paused',None)
@@ -582,16 +748,17 @@ class Classroom:
             if state['step']!='teach':return
             if self._target_met(course,state):return
         if state['step']!='teach':raise BridgeError('STEP_INVALID','请先完成当前的对话或题目。')
-        if not self._ready(course,state['module_id']) and state.get('materials_attempted',{}).get(state['module_id'])!=self._fingerprint(course,state['module_id']):return self._wait(course,state,'next')
         point=course.points_of(state['module_id'])[state['index']]
         if not course.passages([point['id']]):
-            self._prepare_one(course,point['id'],ctx)
-            course = self._course(course.plan_id)
-            if not course.passages([point['id']]):
-                self._skip_question(course,state,point['id'],'learning','没有关联的原文段落')
-                state['index']+=1
-                state['step']='teach' if state['index']<len(course.points_of(state['module_id'])) else 'test_offer'
-                return
+            # Lesson progression may use only already available source material.
+            # Never start slow question/material generation just to enter a lesson.
+            state.setdefault('question_gaps',[]).append(dict(point_id=point['id'],title=point['title'],
+                purpose='learning',reason='没有关联的原文或讲义，未计入学习进度',kind='material_gap',
+                code='POINT_SOURCE_MISSING',day=self._day(state)))
+            self._say(course,state,f"{point['title']}：目前没有可用的原文或讲义，暂时无法讲解；未计入学习进度。",role='system')
+            state['index']+=1
+            state['step']='teach' if state['index']<len(course.points_of(state['module_id'])) else 'test_offer'
+            return
         if point.get('structure')=='concept_v1' and point.get('subpoints'):
             return self._concept_begin(course,state,ctx,0)
         teaching=self._teacher(course,state,ctx,self._opening_director(course,state),[point['id']],opening=True)
@@ -976,11 +1143,12 @@ class Classroom:
     def _prepare_one(self, course, point_id, ctx, *, exclude_ids=()):
         cancel=ctx.cancel if ctx else threading.Event()
         if cancel.is_set():raise ModelCancelled()
-        if ctx:ctx.stream(MATERIAL_EVENT+json.dumps(dict(text='正在找题…',done=0,total=1),ensure_ascii=False))
+        if ctx:self._stream_current(ctx,MATERIAL_EVENT+json.dumps(dict(text='正在找题…',done=0,total=1),ensure_ascii=False))
         try:
-            self._materials().prepare_point(course.store,course.plan_id,course.point(point_id),dict(
-                gateway=self.services.gateway,cancel=cancel,exclude_ids=exclude_ids,on_status=lambda text: ctx.stream(MATERIAL_EVENT+json.dumps(dict(text=text,done=0,total=1),ensure_ascii=False)) if ctx else None))
+            self._slow_call(course,ctx,lambda:self._materials().prepare_point(course.store,course.plan_id,course.point(point_id),dict(
+                gateway=self.services.gateway,cancel=cancel,exclude_ids=exclude_ids,on_status=lambda text:self._stream_current(ctx,MATERIAL_EVENT+json.dumps(dict(text=text,done=0,total=1),ensure_ascii=False)) if ctx else None)))
         except Exception as exc:
+            if isinstance(exc,_SupersededOperation):raise
             if cancel.is_set() or isinstance(exc,ModelCancelled):raise ModelCancelled() from None
             log.info('point preparation did not produce a question',exc_info=True)
             if getattr(exc,'code','') in ('CLOZE_FAILED','POINT_SOURCE_MISSING'):
@@ -1087,11 +1255,32 @@ class Classroom:
         if kind=='skip_test' and not self._can_direct(course,state):
             raise BridgeError('STEP_INVALID','请先完成当前答题，再直接考这个模块。')
         if kind=='module_test' and state['step']!='test_offer':raise BridgeError('STEP_INVALID','模块还没讲完。')
-        if course.module(mid).get('material_preparation',{}).get('state') is not None and not self._ready(course,mid):
-            return self._wait(course,state,'start_test',(kind,))
+        if kind=='retest' and (state['step']!='test_done' or book.module(mid).state!='failed'):
+            raise BridgeError('STEP_INVALID','现在没有待重测的题。')
+        ready=self._ready(course,mid)
+        if not ready:
+            module=course.module(mid)
+            # Before readiness metadata existed, persisted subjective-only
+            # banks were already considered prepared. Keep their historical
+            # direct-review fallback; a genuinely empty/unmarked bank still
+            # waits for preparation.
+            legacy_unscored=(kind=='skip_test'
+                and module.get('material_preparation',{}).get('state') is None
+                and not self._questions(course,mid)
+                and any(q.get('module_id')==mid and q.get('kind') in ('short','essay')
+                        and q.get('role','bank')=='bank'
+                        for q in course.store.records('question_bank',course.plan_id)))
+        else:
+            legacy_unscored=False
+        if not ready and not legacy_unscored:
+            job=self._jobs.get((course.plan_id,mid))
+            if not job or job['status'] in ('failed','cancelled','ready'):
+                job=self._prepare(course,mid,retry=True)
+            state['material_notice']=dict(module_id=mid,kind=kind,message='这个模块的题还在准备，好了再考。')
+            return
+        state.pop('material_notice',None)
         queue=self._questions(course,mid)
         if kind=='retest':
-            if state['step']!='test_done' or book.module(mid).state!='failed':raise BridgeError('STEP_INVALID','现在没有待重测的题。')
             queue=[q for q in queue if book.question(q['id']).module_correct is False]
         if not queue:
             if kind=='skip_test':
@@ -1228,11 +1417,12 @@ class Classroom:
         if state['step'] not in ('check_offer','checking') or state.get('pending'):raise BridgeError('STEP_INVALID','请先完成当前步骤。')
         pending = next((m['id'] for m in course.modules if not self._ready(course,m['id'])),None)
         if pending is not None:
-            job=self._prepare(course,pending)
-            state['material_wait']=dict(module_id=pending,action='start_check',args=[],previous_step=state['step'],
-                done=job['done'],total=job['total'],text=job['text'],error=job['error'])
-            state['step']='preparing_materials'
+            job=self._jobs.get((course.plan_id,pending))
+            if not job or job['status'] in ('failed','cancelled','ready'):
+                self._prepare(course,pending,retry=True)
+            state['material_notice']=dict(module_id=pending,kind='check',message='还有模块的题目正在准备，备好后即可开始最终检验。')
             return
+        state.pop('material_notice',None)
         if course.plan['state']=='active':
             course.store.start_checking(course.plan_id);course.plan=course.store.get_plan(course.plan_id)
         state.setdefault('check_session',uuid.uuid4().hex)
@@ -1334,34 +1524,40 @@ class Classroom:
         if selected and selected.get('failed_before_click'):
             selected['cancel'].set();selected=None
         if selected and selected['request']==request and not selected['cancel'].is_set():
-            offset=0
             try:
-                while True:
-                    if ctx and ctx.cancel.is_set():selected['cancel'].set();raise ModelCancelled()
-                    # A finished prediction is already parsed. Do not replay
-                    # rejected draft chunks (or restart speech) on a cache hit.
-                    if offset==0 and selected['done'] and not selected['error']:
-                        if ctx:ctx.stream(selected['result'][0].speech)
-                        break
-                    with selected['condition']:
-                        chunks=selected['chunks'][offset:];offset+=len(chunks)
-                        done=selected['done']
-                        if not chunks and not done:selected['condition'].wait(.025)
-                    for chunk in chunks:
-                        if ctx:ctx.stream(chunk)
-                    if done:break
-                if selected['error']:raise selected['error']
-                result=selected['result']
+                def consume_prefetch():
+                    offset=0
+                    while True:
+                        if ctx and ctx.cancel.is_set():selected['cancel'].set();raise ModelCancelled()
+                        if not self._operation_is_current():raise _SupersededOperation()
+                        # A finished prediction is already parsed. Do not replay
+                        # rejected draft chunks (or restart speech) on a cache hit.
+                        if offset==0 and selected['done'] and not selected['error']:
+                            self._stream_current(ctx,selected['result'][0].speech)
+                            break
+                        with selected['condition']:
+                            chunks=selected['chunks'][offset:];offset+=len(chunks)
+                            done=selected['done']
+                            if not chunks and not done:selected['condition'].wait(.025)
+                        for chunk in chunks:self._stream_current(ctx,chunk)
+                        if done:break
+                    if selected['error']:raise selected['error']
+                    return selected['result']
+                result=self._slow_call(course,ctx,consume_prefetch)
                 log.info('classroom prefetch hit plan=%s ready=%s',course.plan_id,selected['done'])
             except ModelCancelled:raise
+            except _SupersededOperation:raise
             except (ModelError, AgentFormatError):raise
             except Exception:
                 log.info('classroom prefetch unavailable; generating current reply',exc_info=True)
-                if ctx:ctx.stream(RESET)
-                result=self._generate_teacher(course.plan_id,tctx,request,ctx.cancel if ctx else None,ctx.stream if ctx else lambda d:None)
+                self._stream_current(ctx,RESET)
+                emit=lambda delta:self._stream_current(ctx,delta)
+                result=self._slow_call(course,ctx,lambda:self._generate_teacher(course.plan_id,tctx,request,ctx.cancel if ctx else None,emit))
         else:
             if selected:selected['cancel'].set()
-            result=self._generate_teacher(course.plan_id,tctx,request,ctx.cancel if ctx else None,ctx.stream if ctx else lambda d:None)
+            emit=lambda delta:self._stream_current(ctx,delta)
+            result=self._slow_call(course,ctx,lambda:self._generate_teacher(course.plan_id,tctx,request,ctx.cancel if ctx else None,emit))
+        if not self._operation_is_current():raise _SupersededOperation()
         teaching,cache_request,accepted=result
         if tctx.get('request_page') is not None:
             self._teacher_request_page.accept(cache_request[0],cache_request[1],teacher_agent._dialogue(tctx['dialogue']),teacher_agent.history_text(accepted))
@@ -1651,27 +1847,133 @@ class Classroom:
                     and today["today_confirmed"] + today["today_tentative"] >= today["today_target"])
 
 
-    def next_module(self, course, state, ctx):
-        if state["step"] not in ("test_done",):
-            raise BridgeError("STEP_INVALID", "请先完成这个模块的检测。")
-        book = course.book()
-        after = [m for m in course.modules if book.module(m["id"]).state == "untested"
-                 and m['id'] not in state.get('skipped_modules', [])]
-        if after:
-            state.update(module_id=after[0]["id"], index=0, step="teach", pending=None, test=None, stems=[])
+    @staticmethod
+    def _module_resume(state):
+        keys=('module_id','index','step','phase','conversation','concept','material_notice','material_wait')
+        return {key:copy.deepcopy(state[key]) for key in keys if key in state}
+
+    def _reconcile_module_resume(self, course, module_id, resume):
+        resume=copy.deepcopy(resume)
+        if (resume.get('phase','learning')!='learning'
+                or resume.get('step') not in ('teach','opening','teaching','closing')
+                or course.book().module(module_id).state in ('passed','skipped')):
+            return resume
+        points=course.points_of(module_id)
+        index=resume.get('index',0)
+        if not isinstance(index,int) or index<0:index=0
+        taught=course.taught()
+        if index<len(points) and points[index]['id'] in taught:
+            # Another device may have advanced this saved module while this
+            # device was learning elsewhere. Resume from its first unfinished
+            # point without rebuilding the account-wide classroom location.
+            index=next((i for i,point in enumerate(points) if point['id'] not in taught),len(points))
+            resume.update(index=index,step=('teach' if index<len(points) else
+                'test_done' if course.book().module(module_id).state=='failed' else 'test_offer'))
+            for key in ('conversation','concept','material_wait','material_notice','answer_explanation',
+                        'recall_result','preparation_error'):
+                resume.pop(key,None)
+        return resume
+
+    def _restore_module_resume(self, course, state, resume):
+        # A module change replaces its teaching scene. Preserve the shared
+        # resume map while clearing only ephemeral state from the old module.
+        for key in ('conversation','concept','material_notice','material_wait','pending','test','check',
+                    'direct_review','answer_explanation','recall_result','failure','stems','preparation_error'):
+            state.pop(key,None)
+        state.update(self._reconcile_module_resume(course,resume['module_id'],resume))
+
+    def next_module(self, course, state, ctx, module_id=None):
+        book=course.book();taught=course.taught()
+        states=state.setdefault('module_resumes',{})
+        valid_states=('teach','opening','teaching','closing','test_offer','test_done')
+        if state.get('pending') or state.get('direct_review') or state.get('phase') in ('check','practice') or state['step'] in ('testing','retesting','checking'):
+            raise BridgeError('STEP_INVALID','请先完成当前答题。')
+        if state['step']=='preparing_materials':
+            wait=state.pop('material_wait',None)
+            if wait:
+                state['step']=wait['previous_step']
+                if wait.get('action')=='start_test':
+                    state['material_notice']=dict(module_id=wait['module_id'],kind=(wait.get('args') or ['module_test'])[0],
+                        message='这个模块的题还在准备，好了再考。')
+        if module_id is not None:
+            if module_id not in {m['id'] for m in course.modules} or book.module(module_id).state in ('passed','skipped'):
+                raise BridgeError('PARAM_INVALID','所选模块当前不可继续学习。')
+            if module_id==state['module_id']:return
+            states[state['module_id']]=self._module_resume(state)
+            saved=states.get(module_id)
+            if saved:self._restore_module_resume(course,state,saved)
+            else:
+                points=course.points_of(module_id)
+                index=next((i for i,p in enumerate(points) if p['id'] not in taught),len(points))
+                step=('teach' if index<len(points) else 'test_offer')
+                if book.module(module_id).state=='failed':step='test_done'
+                self._restore_module_resume(course,state,dict(module_id=module_id,index=index,step=step,phase='learning'))
+                states[module_id]=self._module_resume(state)
             return
-        failed = [m for m in course.modules if book.module(m["id"]).state == "failed"]
-        if failed:
-            state.update(module_id=failed[0]["id"], index=len(course.points_of(failed[0]["id"])), step="test_done",
-                         pending=None, test=None)
-            self._say(course, state, "所有模块都学过了。这个模块还有没过的题，重测答错的题后才能进入最终检验。", role="system")
+
+        # An unfinished module can be parked at its exact subpoint or offer
+        # state while the learner works elsewhere. No lesson marker or credit
+        # is written by this navigation action.
+        if state['step']!='test_done' and state['step'] not in valid_states:
+            raise BridgeError('STEP_INVALID','请先完成当前答题。')
+        if state['step']=='test_done' and not state.get('material_notice'):
+            after=[m for m in course.modules if book.module(m['id']).state=='untested'
+                   and m['id'] not in state.get('skipped_modules',[])]
+            failed=[m for m in course.modules if book.module(m['id']).state=='failed']
+            if after:
+                # Prefer a module that still has unlearned points over a
+                # parked assessment offer, retaining plan order within each tier.
+                after.sort(key=lambda m: 0 if any(p['id'] not in taught
+                    for p in course.points_of(m['id'])) else 1)
+                module=after[0];points=course.points_of(module['id'])
+                index=next((i for i,p in enumerate(points) if p['id'] not in taught),len(points))
+                state.update(module_id=module['id'],index=index,step='teach' if index<len(points) else 'test_offer',
+                    phase='learning',pending=None,test=None,stems=[])
+                states[module['id']]=self._module_resume(state)
+                return
+            if failed:
+                state.update(module_id=failed[0]['id'],index=len(course.points_of(failed[0]['id'])),step='test_done',
+                             phase='learning',pending=None,test=None)
+                self._say(course,state,'所有模块都学过了。这个模块还有没过的题，重测答错的题后才能进入最终检验。',role='system')
+                return
+            if not book.check_ready():
+                self._say(course,state,'本次可学模块已结束。出题失败的点未算通过，稍后重试检测；可以继续学习其他模块。',role='system')
+                return
+            # Keep the current learning channel visible through the offer;
+            # start_check switches to the global check channel when testing
+            # actually begins.
+            state.update(step='check_offer',pending=None,test=None)
+            if not self._questions(course) and all(self._ready(course,m['id']) for m in course.modules):return self._complete(course,state,ctx)
+            self._say(course,state,'全部模块都学完或通过了。最终检验会考全部题；答错过的题需连续答对两遍。',role='system')
             return
-        if not book.check_ready():
-            self._say(course, state, '本次可学模块已结束。出题失败的点未算通过，稍后重试检测；可以继续学习其他模块。', role='system')
+
+        current=state['module_id']
+        if state.get('material_notice') and state['step'] not in valid_states:
+            raise BridgeError('STEP_INVALID','当前步骤不能切换模块。')
+        lesson_candidates=[];assessment_candidates=[]
+        for candidate in course.modules:
+            mid=candidate['id']
+            if mid==current or book.module(mid).state in ('passed','skipped'):continue
+            points=course.points_of(mid)
+            idx=next((i for i,p in enumerate(points) if p['id'] not in taught),len(points))
+            resume=states.get(mid)
+            if resume or idx<len(points) or book.module(mid).state=='failed':
+                (lesson_candidates if idx<len(points) else assessment_candidates).append(candidate)
+        candidates=lesson_candidates or assessment_candidates
+        if not candidates:
+            self._say(course,state,'没有其他可先学习的模块；当前模块保持原位置，题目备好后可继续检测。',role='system')
             return
-        state.update(step="check_offer", pending=None, test=None)
-        if not self._questions(course) and all(self._ready(course,m['id']) for m in course.modules):return self._complete(course,state,ctx)
-        self._say(course,state,'全部模块都学完或通过了。最终检验会考全部题；答错过的题需连续答对两遍。',role='system')
+        states[current]=self._module_resume(state)
+        target=candidates[0]['id']
+        saved=states.get(target)
+        if saved:self._restore_module_resume(course,state,saved)
+        else:
+            points=course.points_of(target)
+            index=next((i for i,p in enumerate(points) if p['id'] not in taught),len(points))
+            step='teach' if index<len(points) else ('test_done' if book.module(target).state=='failed' else 'test_offer')
+            self._restore_module_resume(course,state,dict(module_id=target,index=index,step=step,phase='learning'))
+            states[state['module_id']]=self._module_resume(state)
+        return
 
 
     def _complete(self, course, state, ctx):
@@ -1881,7 +2183,7 @@ def register(bridge, services, study_day, *, presence=lambda active,plan_id=None
     def enter(p,c):
         result=invoke('enter',p,c);presence(True,p.get('plan_id'));return result
     def leave(p,c):
-        room().cancel_materials(p.get('plan_id'))
+        room().cancel_prefetch(p.get('plan_id'))
         result=invoke('leave',p,c);presence(False);return result
     def source(p,c):
         co=room()._course(p.get('plan_id'));cid=p.get('chunk_id')
@@ -1902,7 +2204,7 @@ def register(bridge, services, study_day, *, presence=lambda active,plan_id=None
         'class.recall_draft':lambda p,c:invoke('recall_draft',p,c,p.get('question_id'),p.get('ticked')),
         'classroom.wrong_answers':lambda p,c:room().services.store.wrong_answers(p.get('plan_id')),
         'classroom.enter':enter,'classroom.leave':leave,'classroom.source':source,
-        'classroom.state':lambda p,c:room().run(p.get('plan_id'),lambda *args:None,c),
+        'classroom.state':lambda p,c:room().run(p.get('plan_id'),lambda *args:None,c,readonly=True),
         'classroom.next':lambda p,c:invoke('next',p,c),
         'classroom.skip_point':lambda p,c:invoke('skip_point',p,c),
         'classroom.prefetch':lambda p,c:room().prefetch(p.get('plan_id'),p.get('version')),
@@ -1920,7 +2222,7 @@ def register(bridge, services, study_day, *, presence=lambda active,plan_id=None
         'classroom.test':test,
         'classroom.direct_next':lambda p,c:invoke('direct_next',p,c),
         'classroom.direct_choice':lambda p,c:invoke('direct_choice',p,c,p.get('skip')),
-        'classroom.next_module':lambda p,c:invoke('next_module',p,c),
+        'classroom.next_module':lambda p,c:invoke('next_module',p,c,p.get('module_id')),
         'classroom.check':lambda p,c:invoke('start_check',p,c),
         'classroom.practice':lambda p,c:invoke('start_practice',p,c,p.get('module_id'),p.get('point_id'),p.get('count',5)),
     }
