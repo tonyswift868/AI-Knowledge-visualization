@@ -61,7 +61,7 @@ import time
 import uuid
 
 from ..preferences.storage import account_directory
-from .ledger import Ledger, PlanWindow, Credit, replan_preserves_past
+from .ledger import Ledger, PlanWindow, Credit, replan_preserves_past, learning_day_slices
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
@@ -153,6 +153,127 @@ def _atomic(method):
         with self.transaction():
             return method(self, *args, **kwargs)
     return wrapped
+
+
+def _legacy_learning_day_projection(operations):
+    """Project old aggregate restore credits onto revoked source study days.
+
+    This is a read-only interpretation of immutable journal rows. New restore
+    credits carry a ``source-day`` suffix and already have the right
+    ``credit.day``. Old restore IDs are matched, in event order, only to earlier
+    revoked learn/subpoint credits for the same point. The historical direct
+    skip path that reused ``learn:<point>`` is recognized only immediately
+    after its explicit ``confirm-direct`` event. Untraceable portions remain
+    on the recorded recovery day.
+    """
+    active = {}
+    revoked_sources = {}
+    projection = {}
+    source_attribution = {}
+    direct_pending = None
+
+    def is_recovery(credit_id):
+        parts = credit_id.split(':')
+        marked = len(parts) >= 5 and parts[-2] == 'source-day'
+        return credit_id.startswith(('relearn:concept:', 'relearn:direct:')) and not marked
+
+    def is_learning_source(credit_id):
+        return credit_id.startswith(('learn:', 'subpoint:'))
+
+    def consume(pool, amount):
+        source_amount = min(amount, sum(item['minutes'] for item in pool))
+        slices = learning_day_slices(
+            [(item['day'], item['minutes']) for item in pool], source_amount
+        ) if source_amount else []
+        left = source_amount
+        while left:
+            used = min(left, pool[0]['minutes'])
+            pool[0]['minutes'] -= used
+            left -= used
+            if pool[0]['minutes'] == 0:
+                pool.pop(0)
+        return source_amount, slices
+
+    def consume_day(pool, day, amount):
+        """Consume an explicitly source-attributed row from that source day."""
+        left = amount
+        consumed = []
+        for item in list(pool):
+            item_day = (date.fromisoformat(item['day'])
+                        if isinstance(item['day'], str) else item['day'])
+            if item_day != day or left <= 0:
+                continue
+            used = min(left, item['minutes'])
+            item['minutes'] -= used
+            left -= used
+            consumed.append((item_day, used))
+            if item['minutes'] == 0:
+                pool.remove(item)
+        return consumed
+
+    ordered = sorted(operations)
+    for index, (_, identifier, op, payload) in enumerate(ordered):
+        seq = ordered[index][0]
+        if direct_pending and not (op == 'credit' and seq == direct_pending[0] + 1):
+            direct_pending = None
+        if op == 'credit':
+            credit = payload['credit']
+            credit_id = credit['credit_id']
+            active[credit_id] = dict(credit)
+            unit_id = credit['unit_id']
+            legacy_recovery = is_recovery(credit_id)
+            if (credit_id.startswith(('relearn:concept:', 'relearn:direct:'))
+                    and not legacy_recovery):
+                # New source-day rows already carry their attribution in their
+                # recorded day, but still consume the revoked pool so a later
+                # legacy aggregate cannot claim those minutes again.
+                consumed = consume_day(revoked_sources.setdefault(unit_id, []),
+                                       date.fromisoformat(credit['day']), credit['minutes'])
+                if consumed:
+                    source_attribution[credit_id] = consumed
+                direct_pending = None
+                continue
+            legacy_direct_learn = (direct_pending is not None and credit_id == f'learn:{unit_id}'
+                                   and direct_pending[1] == unit_id)
+            if not legacy_recovery and not legacy_direct_learn:
+                direct_pending = None
+                continue
+            pool = revoked_sources.setdefault(unit_id, [])
+            source_amount, slices = consume(pool, credit['minutes'])
+            if source_amount:
+                source_attribution[credit_id] = slices
+            by_day = dict(slices)
+            remainder = credit['minutes'] - source_amount
+            if remainder:
+                recovery_day = date.fromisoformat(credit['day'])
+                by_day[recovery_day] = by_day.get(recovery_day, 0) + remainder
+            if source_amount:
+                projection[credit_id] = sorted(by_day.items())
+            direct_pending = None
+        elif op == 'confirm' and identifier.startswith('confirm-direct:'):
+            direct_pending = (seq, payload['unit_id'])
+            for credit in active.values():
+                if credit['unit_id'] == payload['unit_id'] and credit['state'] == 'tentative':
+                    credit['state'] = 'confirmed'
+        elif op == 'confirm':
+            for credit in active.values():
+                if credit['unit_id'] == payload['unit_id'] and credit['state'] == 'tentative':
+                    credit['state'] = 'confirmed'
+        elif op == 'revoke':
+            unit_id = payload['unit_id']
+            pool = revoked_sources.setdefault(unit_id, [])
+            for credit_id, credit in list(active.items()):
+                if credit['unit_id'] != unit_id or credit['state'] != 'tentative':
+                    continue
+                attributed_source = source_attribution.pop(credit_id, None)
+                if attributed_source:
+                    pool.extend(dict(day=day.isoformat(), minutes=amount)
+                                for day, amount in attributed_source)
+                    projection.pop(credit_id, None)
+                elif is_learning_source(credit_id):
+                    pool.append(dict(day=credit['day'], minutes=credit['minutes']))
+                del active[credit_id]
+    return projection
 
 
 class CourseStore:
@@ -1429,8 +1550,8 @@ class CourseStore:
         for _, _, op, payload in sorted(operations):
             if op == 'credit':
                 c = payload['credit']
-                method = ledger.add_confirmed if c['state'] == 'confirmed' else ledger.add_tentative
-                method(c['credit_id'], c['unit_id'], c['minutes'], _day(c['day']))
+                ledger._add_journal_credit(c['credit_id'], c['unit_id'], c['minutes'],
+                                           _day(c['day']), c['state'])
             elif op == 'replan':
                 key = payload.get('point_minutes_key')
                 if key and payload['id'] != estimate_events.get(key): continue
@@ -1439,6 +1560,7 @@ class CourseStore:
             elif op == 'confirm': ledger.confirm(payload['unit_id'])
             elif op == 'revoke': ledger.revoke(payload['unit_id'])
             elif op == 'release': ledger.release_unused(payload['minutes'])
+        ledger.set_learning_day_projection(_legacy_learning_day_projection(operations))
         return ledger
 
     def point_minutes_snapshot(self, plan_id):
@@ -1711,13 +1833,50 @@ class CourseStore:
     def add_credit(self, plan_id, credit_id, unit_id=None, minutes=None, day=None, state='tentative'):
         if isinstance(credit_id, Credit):
             c = credit_id; credit_id, unit_id, minutes, day, state = c.credit_id, c.unit_id, c.minutes, c.day, c.state
+        return self._add_credit_record(plan_id, credit_id, unit_id, minutes, day, state,
+                                       allow_recovery=False)
+
+    @_atomic
+    def add_restored_learning(self, plan_id, credit_prefix, unit_id, minutes, recovery_day,
+                              state='confirmed', *, allow_current_remainder=False):
+        """Append source-day recovery credits derived by the ledger itself.
+
+        Concept-test recovery must be fully backed by revoked learning sources.
+        Direct module completion may additionally earn the point's genuinely
+        unlearned remainder on ``recovery_day``.
+        """
         plan = self._get('plans', plan_id, plan_id)
         ledger = self._load_ledger(plan)
+        restored = ledger.add_restored_learning(
+            credit_prefix, unit_id, minutes, _day(recovery_day), state,
+            allow_current_remainder=allow_current_remainder)
+        for credit in restored:
+            self._add_credit_record(plan_id, credit.credit_id, credit.unit_id,
+                                    credit.minutes, credit.day, credit.state,
+                                    allow_recovery=True)
+        return [dict(credit_id=c.credit_id, day=c.day.isoformat(), minutes=c.minutes)
+                for c in restored]
+
+    def _add_credit_record(self, plan_id, credit_id, unit_id, minutes, day, state,
+                           *, allow_recovery):
+        plan = self._get('plans', plan_id, plan_id)
         if state not in ('tentative', 'confirmed'): raise StoreError('INVALID_CREDIT')
-        method = ledger.add_confirmed if state == 'confirmed' else ledger.add_tentative
-        method(credit_id, unit_id, minutes, _day(day))
-        original = next(c for c in ledger.to_dict()['submissions'] if c['credit_id'] == credit_id)
         existing = next((p for p in self._rows('credits', plan_id) if p['id'] == credit_id), None)
+        if credit_id.startswith(('relearn:concept:', 'relearn:direct:')) and not allow_recovery:
+            if existing is None:
+                raise StoreError('LEARNING_SOURCE_REQUIRED', '恢复学习时间必须由账本按原来源日生成。')
+            requested = dict(credit_id=credit_id, unit_id=unit_id, minutes=minutes,
+                             day=_day(day).isoformat(), state=state)
+            if existing['credit'] != requested:
+                raise StoreError('CREDIT_CONFLICT')
+            return self._put('credits', plan_id, existing)
+        ledger = self._load_ledger(plan)
+        if allow_recovery:
+            ledger._add_unchecked(credit_id, unit_id, minutes, _day(day), state)
+        else:
+            method = ledger.add_confirmed if state == 'confirmed' else ledger.add_tentative
+            method(credit_id, unit_id, minutes, _day(day))
+        original = next(c for c in ledger.to_dict()['submissions'] if c['credit_id'] == credit_id)
         if existing:
             return self._put('credits', plan_id, existing)
         sequence = existing['operation_seq'] if existing else self._op_seq(plan_id)
@@ -1883,27 +2042,46 @@ class CourseStore:
         with self.transaction():
             identifier = _id(report_id or plan_id)
             document = self._get('reports', plan_id, identifier)['document']
-            if _REPORT_STORAGE not in document: return document
-            if document[_REPORT_STORAGE] != 'chunks.v1': raise StoreError('INVALID_REPORT')
-            try:
-                parts = []
-                ids = document['parts']
-                if (not isinstance(ids, list) or not ids
-                        or any(not isinstance(key, str) or not key.startswith(_REPORT_PART_PREFIX) for key in ids)
-                        or len(ids) != len(set(ids))): raise ValueError()
-                for index, part_id in enumerate(ids):
-                    part = self._get('reports', plan_id, part_id)['document']
-                    if (part.get(_REPORT_STORAGE) != 'part.v1' or part.get('report_id') != identifier
-                            or type(part.get('index')) is not int or part['index'] != index): raise ValueError()
-                    parts.append(base64.b64decode(part['data'], validate=True))
-                raw = b''.join(parts)
-                if hashlib.sha256(raw).hexdigest() != document['sha256']: raise ValueError()
-                result = json.loads(raw.decode('utf-8'))
-                if not isinstance(result, dict) or _REPORT_STORAGE in result: raise ValueError()
-                if _json(result, bounded=False).encode('utf-8') != raw: raise ValueError()
-                return result
-            except (StoreError, ValueError, TypeError, KeyError, UnicodeError):
-                raise StoreError('REPORT_INCOMPLETE', '报告分块尚未全部同步或校验失败。') from None
+            if _REPORT_STORAGE not in document:
+                result = document
+            else:
+                if document[_REPORT_STORAGE] != 'chunks.v1': raise StoreError('INVALID_REPORT')
+                try:
+                    parts = []
+                    ids = document['parts']
+                    if (not isinstance(ids, list) or not ids
+                            or any(not isinstance(key, str) or not key.startswith(_REPORT_PART_PREFIX) for key in ids)
+                            or len(ids) != len(set(ids))): raise ValueError()
+                    for index, part_id in enumerate(ids):
+                        part = self._get('reports', plan_id, part_id)['document']
+                        if (part.get(_REPORT_STORAGE) != 'part.v1' or part.get('report_id') != identifier
+                                or type(part.get('index')) is not int or part['index'] != index): raise ValueError()
+                        parts.append(base64.b64decode(part['data'], validate=True))
+                    raw = b''.join(parts)
+                    if hashlib.sha256(raw).hexdigest() != document['sha256']: raise ValueError()
+                    result = json.loads(raw.decode('utf-8'))
+                    if not isinstance(result, dict) or _REPORT_STORAGE in result: raise ValueError()
+                    if _json(result, bounded=False).encode('utf-8') != raw: raise ValueError()
+                except (StoreError, ValueError, TypeError, KeyError, UnicodeError):
+                    raise StoreError('REPORT_INCOMPLETE', '报告分块尚未全部同步或校验失败。') from None
+            return self._project_report_learning_days(plan_id, result)
+
+    def _project_report_learning_days(self, plan_id, document):
+        """Apply legacy source-day display compatibility without rewriting reports."""
+        timing = document.get('time') if isinstance(document, dict) else None
+        if not isinstance(timing, dict) or not isinstance(timing.get('days'), list):
+            return document
+        try:
+            ledger = self._load_ledger(self._get('plans', plan_id, plan_id))
+        except StoreError as exc:
+            if exc.code in ('NOT_FOUND', 'PLAN_NOT_READY'): return document
+            raise
+        if not ledger.to_dict().get('learning_day_projection'):
+            return document
+        from .report import reproject_cached_time_series
+        result = dict(document)
+        result['time'] = reproject_cached_time_series(timing, ledger)
+        return result
 
     @_atomic
     def append_usage(self, plan_id, usage_id, *, provider, model, purpose, input_tokens=0, cache_hit_tokens=0,
