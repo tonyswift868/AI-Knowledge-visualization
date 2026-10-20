@@ -217,7 +217,7 @@ def test_positions105_v9_database_upgrade_and_plan_delete_cascades(pair):
         db.execute('DROP TABLE classroom_positions');db.execute('UPDATE schema_version SET version=9')
     a.store=CourseStore(a.services.account_id,a.services.data_root);a.services.store=a.store
     assert a.store.get_plan(PLAN)['state']=='active'
-    assert a.store._db.execute('SELECT version FROM schema_version').fetchone()[0]==SCHEMA_VERSION==10
+    assert a.store._db.execute('SELECT version FROM schema_version').fetchone()[0]==SCHEMA_VERSION==11
     h.act(a,'enter');assert a.store.classroom_position(PLAN)
     a.store.delete_plan(PLAN);assert a.store.classroom_position(PLAN) is None
 

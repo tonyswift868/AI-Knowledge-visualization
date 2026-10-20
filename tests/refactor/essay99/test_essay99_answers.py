@@ -91,7 +91,7 @@ def test_essay99_v8_upgrade_keeps_old_payload_and_verdict(env,tmp_path):
     legacy._db.execute('UPDATE schema_version SET version=8');legacy.close()
     reopened=CourseStore('question70',root)
     try:
-        assert SCHEMA_VERSION==10 and reopened._db.execute('SELECT version FROM schema_version').fetchone()[0]==SCHEMA_VERSION
+        assert SCHEMA_VERSION==11 and reopened._db.execute('SELECT version FROM schema_version').fetchone()[0]==SCHEMA_VERSION
         assert reopened._db.execute('SELECT payload FROM question_answers').fetchone()[0]==raw
         saved=reopened.wrong_answers(PLAN)[0]['attempts'][0]
         assert saved['correct'] is False and saved['self_correct'] is None

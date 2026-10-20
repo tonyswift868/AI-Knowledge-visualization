@@ -214,7 +214,7 @@ def test_chat_propagates_truncation_without_saving_turn(tmp_path, monkeypatch):
     connect(monkeypatch, lambda *_: httpx.Response(200, json=truncated('gemini')))
     def commit(*args, **kwargs):
         pytest.fail('Truncated chat turn must not be saved')
-    store = SimpleNamespace(get=lambda _: SimpleNamespace(messages=[], session_id='chat', version=1), commit_turn=commit)
+    store = SimpleNamespace(get=lambda _: SimpleNamespace(messages=[], session_id='chat', version=1, archived=False), commit_turn=commit)
     services = SimpleNamespace(gateway=g, chat=store, settings=SimpleNamespace(load=lambda: {'chat_persona': ''}))
     chat.register(SimpleNamespace(register=lambda name, fn: handlers.__setitem__(name, fn)), lambda: services)
     with pytest.raises(ModelError) as exc:

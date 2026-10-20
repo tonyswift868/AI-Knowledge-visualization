@@ -33,7 +33,8 @@ may carry an explicit study date. Legacy records without these remain readable.
 Sync entity names are table names. For plan-owned records, wire entity_id is
 length-prefixed '<len(plan_key)>:<plan_key><id>'; payload.id is the original ID
 (in particular extract's chunk_id). plans use their plan ID directly. Chat
-records use an empty plan_key. All wire schemas are mentorflow.course.<entity>.v1.
+records use an empty plan_key. Chat sessions carry additive `archived` metadata
+since schema v11; all wire schemas remain mentorflow.course.<entity>.v1.
 
 _records is the durable revision/outbox journal. Hard deletion removes business
 rows and report payloads; unsent progress stays intact in this journal. Remote
@@ -64,7 +65,7 @@ from .ledger import Ledger, PlanWindow, Credit, replan_preserves_past
 from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 POINT_MINUTES_VERSION = 2  # Content totals, replacing v1's fixed-budget allocation.
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
@@ -332,6 +333,21 @@ class CourseStore:
                 FOREIGN KEY(plan_key) REFERENCES plans(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
                 PRIMARY KEY(plan_key,id))''')
             self._db.execute('UPDATE schema_version SET version=10')
+            version = 10
+        if version == 10:
+            # Archive is additive session metadata. Keep messages untouched and
+            # do not enqueue a mass sync just to backfill the default value.
+            rows = self._db.execute("SELECT entity_id,payload FROM _records WHERE entity='chat_sessions' AND deleted=0").fetchall()
+            for row in rows:
+                payload = json.loads(row['payload'])
+                if 'archived' in payload:
+                    continue
+                payload['archived'] = False
+                raw = _json(payload)
+                self._db.execute("UPDATE _records SET payload=? WHERE entity='chat_sessions' AND entity_id=?", (raw, row['entity_id']))
+                projected = _json({key: value for key, value in payload.items() if key != _FIELD_VERSIONS})
+                self._db.execute('UPDATE chat_sessions SET payload=? WHERE plan_key=? AND id=?', (projected, '', payload['id']))
+            self._db.execute('UPDATE schema_version SET version=11')
 
     def _revision(self):
         self._db.execute("UPDATE _meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
@@ -435,6 +451,7 @@ class CourseStore:
             if not isinstance(payload['document'], dict): raise StoreError('INVALID_DOCUMENT')
         elif entity == 'chat_sessions':
             if not isinstance(payload['title'], str): raise StoreError('INVALID_SESSION')
+            if 'archived' in payload and type(payload['archived']) is not bool: raise StoreError('INVALID_SESSION')
         elif entity == 'usage':
             for key in ('input_tokens', 'cache_hit_tokens', 'cache_miss_tokens', 'output_tokens', 'search_count'): _number(payload[key])
         elif entity == 'question_bank':
@@ -1902,7 +1919,7 @@ class CourseStore:
         if self._db.execute("SELECT 1 FROM _records WHERE entity='chat_sessions' AND entity_id=?",
                             (_wire_id('chat_sessions', '', identifier),)).fetchone():
             raise StoreError('CHAT_EXISTS')
-        payload = dict(id=identifier, title=title)
+        payload = dict(id=identifier, title=title, archived=False)
         if created_at is not None:
             payload.update(created_at=_at(created_at), updated_at=_at(created_at))
         self._put('chat_sessions', '', payload)
@@ -1910,6 +1927,14 @@ class CourseStore:
 
     def get_chat_session(self, session_id):
         with self._lock: return self._get('chat_sessions', '', session_id)
+
+    @_atomic
+    def set_chat_session_archived(self, session_id, archived):
+        """Archive or restore one account-scoped chat session."""
+        if type(archived) is not bool: raise StoreError('INVALID_SESSION')
+        payload = self._get('chat_sessions', '', session_id)
+        payload['archived'] = archived
+        return self._put('chat_sessions', '', payload)
 
     @_atomic
     def touch_chat_session(self, session_id, *, title, updated_at):
@@ -1956,6 +1981,8 @@ class CourseStore:
         if existing and existing['deleted']:
             self.mark_legacy_chat_imported(source_key)
             return
+        session = dict(session)
+        session.setdefault('archived', False)
         for entity, payload in [('chat_sessions', session), *[('chat_messages', m) for m in messages]]:
             wire = _wire_id(entity, '', _id(payload['id']))
             if not self._db.execute('SELECT 1 FROM _records WHERE entity=? AND entity_id=?', (entity, wire)).fetchone():
@@ -2097,6 +2124,18 @@ class CourseStore:
             if record.entity in ('chat_sessions', 'chat_messages', 'account_settings') and record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
             if record.entity not in ('chat_sessions', 'chat_messages', 'account_settings'): _id(record.plan_key)
             old = self._db.execute('SELECT * FROM _records WHERE entity=? AND entity_id=?', (record.entity, record.entity_id)).fetchone()
+            repair_archive = False
+            if record.entity == 'chat_sessions' and not record.deleted and 'archived' not in payload:
+                # Older clients omit this field. Absence is not a restore:
+                # preserve local archive state whether or not this row is pending.
+                local_session = json.loads(old['payload']) if old and not old['deleted'] else {}
+                payload['archived'] = local_session.get('archived', False)
+                repair_archive = bool(local_session.get('archived', False))
+                local_versions = local_session.get(_FIELD_VERSIONS, {})
+                if 'archived' in local_versions:
+                    remote_versions = dict(payload.get(_FIELD_VERSIONS, {}))
+                    remote_versions['archived'] = local_versions['archived']
+                    payload[_FIELD_VERSIONS] = remote_versions
             if record.entity in PROGRESS:
                 if record.deleted: continue  # Never erase even an already-synced event.
                 self._validate(record.entity, record.plan_key, payload, references=False)
@@ -2176,7 +2215,7 @@ class CourseStore:
                 DO UPDATE SET payload=excluded.payload,deleted=excluded.deleted,local_revision=excluded.local_revision,
                 server_revision=excluded.server_revision,pending=excluded.pending''',
                              (record.entity, record.entity_id, record.plan_key, _json(payload), int(deleted),
-                              self._revision(), server_revision, int(repair_answered or merged)))
+                              self._revision(), server_revision, int(repair_answered or merged or repair_archive)))
             if old is None or old['deleted'] != int(deleted) or old['payload'] != _json(payload):
                 self._changed('remote', record.entity)
         self._project_records()
