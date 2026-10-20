@@ -531,6 +531,11 @@ function TimeAndReminders() {
             <p className="sub">到点还没完成今天的任务，会在软件里提醒你一次。软件关着时不会提醒。</p></div>
           <Toggle label="学习提醒" on={settings.reminder_enabled} onChange={(v) => save({ reminder_enabled: v })} />
         </div>
+        <div className="row between">
+          <div><b>通知里显示计划名</b><p className="sub">关闭时通知只显示“该学习了”。</p></div>
+          <Toggle label="通知里显示计划名" on={settings.show_plan_name_in_notification ?? false}
+                  onChange={(v) => save({ show_plan_name_in_notification: v })} />
+        </div>
         {settings.reminder_enabled && (
           <div className="row fade-in">
             <span className="muted">提醒时间</span>

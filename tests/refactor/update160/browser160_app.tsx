@@ -12,5 +12,5 @@ fixture160.bootstrapAccount=null
 ;(window as any).makeMandatory160=()=>{fixture160.appMandatory=true}
 ;(window as any).setReady160=(ready:boolean)=>useApp.getState().set({ready})
 ;(window as any).setRoute160=(route:"home"|"classroom")=>useApp.getState().go(route)
-;(window as any).setAccount160=(name:string|null)=>useApp.getState().set({account:name?{name,role_label:"学习者"}:null})
+;(window as any).setAccount160=(name:string|null)=>{fixture160.accountId=name;useApp.getState().set({account:name?{name,account_id:name,role_label:"学习者"}:null})}
 connect().then(connected=>{useApp.getState().set({connected});createRoot(document.getElementById("root")!).render(<App/>);(window as any).ready160=true})

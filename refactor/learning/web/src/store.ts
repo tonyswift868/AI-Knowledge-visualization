@@ -24,12 +24,13 @@ export type Settings = {
   refresh_time: string
   reminder_enabled: boolean
   reminder_time: string
+  show_plan_name_in_notification: boolean
   chat_persona: string
   teacher_presets?: TeacherPreset[]
   default_teacher_preset_id?: string
 }
 
-export type Account = { name: string; role_label: string; settings_available?: boolean }
+export type Account = { name: string; account_id?: string; role_label: string; settings_available?: boolean }
 export type Notice = { message: string; show_verify: boolean } | null
 export type SyncStatus = { state: "syncing" | "synced" | "failed" | "reauth" | "superseded"; at: string | null; message: string; phase?: string; show_progress?: boolean } | null
 export type Toast = { id: number; kind: "ok" | "error" | "info"; text: string }
