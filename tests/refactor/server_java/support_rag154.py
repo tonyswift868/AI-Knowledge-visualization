@@ -243,6 +243,18 @@ def _start_java(jwks, database_url: str, directory: Path, *, truststore: Path, t
                "-Dloader.path=" + str(TEST_CLASSES),
                "-Dloader.main=win.clannad.mentorflow.ServerApplication", "-cp", str(JAR),
                "org.springframework.boot.loader.launch.PropertiesLauncher"]
+    if os.environ.get("MENTORFLOW_TEST_FIXED_EMBEDDING") == "1":
+        # RAG178: opt-in contract/isolation runs must never initialize BGE.
+        # Keep the production vector store (or existing BYTEA test profile)
+        # unchanged; only the embedding adapter is a verified classpath shadow.
+        from support_rag178 import compile_embedding_shadow178
+        dependencies = CLASSPATH_FILE.read_text(encoding="utf-8").strip()
+        classes = JAR.parent / "classes"
+        shadow = compile_embedding_shadow178(classes, dependencies, JAVA_HOME,
+                                              directory / "fixed-embedding178")
+        classpath = os.pathsep.join((str(shadow), str(classes), str(TEST_CLASSES), dependencies))
+        command = command[:command.index("-Dloader.path=" + str(TEST_CLASSES))] + [
+            "-cp", classpath, "win.clannad.mentorflow.ServerApplication"]
     process = subprocess.Popen(command, cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
                                stdout=log, stderr=subprocess.STDOUT)
     base_url = f"http://127.0.0.1:{port}"
