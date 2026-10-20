@@ -56,8 +56,14 @@ return this.resolve(s,path.join(deps,'package.json'),{{...o,skipSelf:true}})
 
 
 def browser(directory):
+    inherited = {key: value for key, value in os.environ.items()
+                 if key.startswith(('QT_', 'QTWEBENGINE_', 'QSG_')) or key == 'NODE_OPTIONS'}
     os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
     os.environ.setdefault('QTWEBENGINE_CHROMIUM_FLAGS','--disable-gpu')
+    (directory/'browser-environment179.json').write_text(json.dumps(dict(
+        inherited=inherited, effective={key: value for key, value in os.environ.items()
+        if key.startswith(('QT_', 'QTWEBENGINE_', 'QSG_')) or key == 'NODE_OPTIONS'}),
+        ensure_ascii=False, indent=2), encoding='utf-8')
     from PySide6.QtCore import QUrl
     from PySide6.QtWidgets import QApplication
     from PySide6.QtWebEngineCore import QWebEnginePage,QWebEngineProfile,QWebEngineUrlRequestInterceptor
@@ -102,7 +108,7 @@ def browser(directory):
 
 def test_direct97_real_classroom_buttons_sources_choices_and_screenshots(tmp_path):
     build(tmp_path)
-    result=subprocess.run([sys.executable,'-B',str(Path(__file__)),'--browser',str(tmp_path)],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=80)
+    result=subprocess.run([sys.executable,'-B',str(Path(__file__)),'--browser',str(tmp_path)],env=dict(os.environ,PYTHONIOENCODING='utf-8'),capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=80)
     assert result.returncode==0,result.stdout+result.stderr
 
 

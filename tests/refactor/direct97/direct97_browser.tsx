@@ -3,13 +3,20 @@ import { createRoot } from 'react-dom/client'
 import { Classroom } from '../../../refactor/learning/web/src/pages/Classroom'
 import { useApp } from '../../../refactor/learning/web/src/store'
 import '../../../refactor/learning/web/src/theme.css'
-import { show, calls } from './direct97_bridge'
+import { show, calls, diagnosticRoom } from './direct97_bridge'
 
 declare global { interface Window { direct97Result?: object; direct97Show: (stage: 'entry' | 'original' | 'choice' | 'graded') => void } }
 const root = createRoot(document.getElementById('root')!)
 const wait = () => new Promise(resolve => setTimeout(resolve, 20))
 const content = () => document.body.textContent ?? ''
 const checks: string[] = []
+const browserErrors: { type: string; message: string }[] = []
+window.addEventListener('error', event => {
+  browserErrors.push({ type: 'error', message: String(event.message || event.error || 'window error') })
+})
+window.addEventListener('unhandledrejection', event => {
+  browserErrors.push({ type: 'unhandledrejection', message: String(event.reason ?? 'unhandled rejection') })
+})
 function button(text: string) {
   const value = [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === text)
   if (!value) throw new Error(`Missing button: ${text}`)
@@ -66,4 +73,21 @@ async function run() {
   checks.push('选择接着学/跳过分别传 false/true；计分答题中不显示直接考入口')
   window.direct97Result = { ok: true, checks }
 }
-run().catch(error => { window.direct97Result = { ok: false, checks, error: String(error.stack || error) } })
+run().catch(error => {
+  const labels = ['确认，进入直接考', '跳过该模块', '跳过该知识点', '切换为跳过该模块', '切换为跳过该知识点', '发送']
+  const buttons = labels.map(label => {
+    const button = [...document.querySelectorAll<HTMLButtonElement>('button')]
+      .find(item => item.textContent?.trim() === label || item.getAttribute('aria-label') === label)
+    return { label, present: !!button, disabled: button?.disabled ?? null }
+  })
+  window.direct97Result = {
+    ok: false,
+    checks,
+    error: String(error.stack || error),
+    browserErrors,
+    calls: structuredClone(calls),
+    room: diagnosticRoom(),
+    dom: { bodyText: content(), buttons },
+    browser: { isSecureContext: window.isSecureContext, randomUUID: typeof globalThis.crypto?.randomUUID },
+  }
+})
