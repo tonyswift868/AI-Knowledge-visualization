@@ -48,20 +48,21 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲 | server |
+| MF-01 | 176-MF01 注册邮箱统一提示（已起草，待转发） | server |
 | MF-02 | 175-MF02 开工：闲聊归档与收起列表（已起草，待转发） | client |
-| MF-03 | 空闲 | classroom |
-| MF-04 | 174-MF04 调研中：服务器挂掉时的表现与恢复 | runtime |
+| MF-03 | 177-MF03 提醒默认不显示计划名、课堂草稿键改 account_id（已起草，待转发） | classroom |
+| MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
-| MF-07 | 空闲 | library |
+| MF-07 | 178-MF07 资料问答在真 pgvector 上补测隔离（已起草，待转发） | library |
 
 ## 待派队列
 
 - 169-MF06、170-MF02、171-MF03 已合入并随 2.0.28 发布（2026-10-19；合入后全量 4443 通过、0 失败）。
 - 172-MF02 调研完成；175-MF02（client，基线 e5725db1）开工闲聊归档与收起列表（[UI-02]），¥0。任务文件 D:\MentorFlow\.local\tasks\175-MF02.md，已起草，待转发。
 - 173-MF01 调研完成（[ACC-03]，没有发现跨账号读写；4 个问题待用户定；报告 .local/test-tmp/isolation173/report.md，残留文件架构师已删）。
-- 174-MF04（runtime，基线 99526a93）：调研服务器不可用时的表现与恢复（[SYS-08]、[BUG-118]），只查不改、不碰线上，¥0。任务文件 D:\MentorFlow\.local\tasks\174-MF04.md，进行中。和 172、173 可并行。
+- 176-MF01（server，基线 195befdf）、177-MF03（classroom）、178-MF07（library）：173 的三项开工与补测，任务文件 D:\MentorFlow\.local\tasks\<任务号>.md，已起草，待转发；互不改同一处，可和 175 并行。
+- 174-MF04 调研完成（[SYS-08]，报告 .local/test-tmp/outage174/report.md），等用户定 3 个问题后开工。
 - 其余员工空闲（2026-10-19）。第一百五十八～一百六十八批都已合入并随 2.0.22～2.0.27 发布，过程在 git 和 CURRENT_STATE 的 BUG 条目里。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）。
 
