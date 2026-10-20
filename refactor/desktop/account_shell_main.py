@@ -63,12 +63,11 @@ class AccountShell:
         self._warm_pane = None
         self._account_form_state = None
         self._remembered_profile = None
+        self._offline_bootstrap_result = None
         self._login_result = None
         self._session_credentials = None
         self._update_login_token = None
         self._update_restore_pending = False
-        self._update_auto_pending = False
-        self._update_interactive_pending = False
         self._update_handoff_account = None
         self._generation = 0
         self._cancelled = threading.Event()
@@ -87,6 +86,7 @@ class AccountShell:
         # identity. Keep this separate from the feature-session guard so a
         # short outage can be retried without making the UI look logged out.
         self._session_refresh_degraded = False
+        self._offline_mode = False
         self._session_refresh_busy = False
         self._logout_pending = False
         self._switch_pending = False
@@ -279,10 +279,12 @@ class AccountShell:
         # A handoff takes precedence even when automatic login is disabled.
         # Invalid/expired handoffs lead to the normal gate, not saved auto-login.
         take_handoff = getattr(self.session, 'take_update_login', None)
+        rejected_update_handoff = False
         if take_handoff is not None:
             present, handoff_profile, token = take_handoff()
             if present:
                 automatic = bool(token)
+                rejected_update_handoff = not bool(token)
                 if token:
                     profile = self._remembered_profile = handoff_profile
                     self._update_login_token = token
@@ -300,9 +302,14 @@ class AccountShell:
             self.gate.state_title.setText(profile.safe_account_label)
             self.gate.state_detail.setText("已记住此账号，点击登录可安全继续。")
             self.gate.primary_button.setText("登录")
-            if automatic:
+            # A vaulted session can enter locally even when the optional
+            # password auto-login checkbox is off. Saved-password-only accounts
+            # keep the existing explicit-login behavior.
+            self._offline_bootstrap_result = (
+                None if rejected_update_handoff else self.session.load_offline_snapshot(profile)
+            )
+            if automatic or self._offline_bootstrap_result is not None:
                 from PySide6.QtCore import QTimer
-
                 QTimer.singleShot(0, self._begin_remembered_login)
         else:
             from refactor.desktop.login_shell import LoginGateState
@@ -422,6 +429,7 @@ class AccountShell:
         if not account_id:
             return
         self._invalidate_login_jobs()
+        self._offline_bootstrap_result = None
         try:
             row = self.session.select(account_id)
         except Exception:
@@ -496,10 +504,7 @@ class AccountShell:
         update_restore = getattr(self, '_update_restore_pending', False)
         self._update_restore_pending = False
         self._update_login_token = None
-        if update_restore:
-            self._update_auto_pending = False
-        self._update_interactive_pending = False
-        self._update_auto_pending = False
+        self._offline_bootstrap_result = None
         self._invalidate_login_jobs()
         self._remembered_profile = None
         self._login_result = None
@@ -526,46 +531,28 @@ class AccountShell:
         if adapter is None:
             return True
         state = adapter.state
-        return not state.get('login_check_pending') and bool(
-            state.get('login_allowed') and not state.get('mandatory'))
-
-    def _resume_update_login(self, value) -> None:
-        if value.get('login_check_pending'):
-            return
-        allowed = AccountShell._updates_allow_login(self)
-        if not allowed:
-            if getattr(self, '_update_interactive_pending', False):
-                self._update_interactive_pending = False
-                from refactor.desktop.login_shell import LoginGateState
-                self.gate.set_state(LoginGateState.LOGIN_READY,
-                                    detail='当前版本需要先更新，更新完成后才能登录。')
-            return
-        waiting_for_optional_choice = (
-            value.get('state') == 'OPTIONAL_UPDATE' and not value.get('deferred'))
-        if getattr(self, '_update_auto_pending', False) and not waiting_for_optional_choice:
-            self._update_auto_pending = False
-            self._begin_remembered_login()
-        elif (getattr(self, '_update_interactive_pending', False)
-              and (value.get('state') != 'OPTIONAL_UPDATE' or value.get('deferred'))):
-            self._update_interactive_pending = False
-            from refactor.desktop.login_shell import LoginGateState
-            self.gate.set_state(LoginGateState.LOGIN_READY)
-            self._begin_interactive_login()
+        return state.get('login_allowed') is not False and not bool(state.get('mandatory'))
 
     def _begin_remembered_login(self) -> None:
         from refactor.desktop.login_shell import LoginGateState
 
         if not AccountShell._updates_allow_login(self):
-            self._update_auto_pending = True
-            adapter = getattr(self.app, '_mentorflow_updates', None)
-            if adapter is not None and adapter.state.get('login_check_pending'):
-                self.gate.set_state(LoginGateState.AUTHENTICATING, detail='正在检查更新…')
             return
         profile = self._remembered_profile
         if self._closing or profile is None:
             return
         generation, cancelled = self._new_request()
         update_token = getattr(self, '_update_login_token', None)
+        offline = None if update_token else getattr(self, '_offline_bootstrap_result', None)
+        if offline is not None and offline.identity.account_id != profile.account_id:
+            offline = None
+        if offline is None and not update_token:
+            offline = self.session.load_offline_snapshot(profile)
+        self._offline_bootstrap_result = None
+        if offline is not None:
+            self._offline_mode = True
+            self.gate.background_succeeded.emit(f"{generation}:offline_restore", offline)
+            return
         self._update_login_token = None
         self._loading_action = 'restore'
         self._release_account_prewarm()
@@ -611,10 +598,6 @@ class AccountShell:
         if self._closing:
             return
         if not AccountShell._updates_allow_login(self):
-            adapter = getattr(self.app, '_mentorflow_updates', None)
-            if adapter is not None and adapter.state.get('login_check_pending'):
-                self._update_interactive_pending = True
-                self.gate.set_state(LoginGateState.AUTHENTICATING, detail='正在检查更新…')
             return
         selected = (
             self.session.registry.get(self._remembered_profile.account_id)
@@ -674,7 +657,7 @@ class AccountShell:
 
         threading.Thread(target=work, name="mentorflow-shell-login", daemon=True).start()
 
-    def _accept_login(self, result, *, username=None, password=None, remember=None, automatic=None, update_handoff=False):
+    def _accept_login(self, result, *, username=None, password=None, remember=None, automatic=None, update_handoff=False, offline=False):
         from refactor.desktop.account_protocol import AccountLoginResult
         from refactor.desktop.login_shell import LoginGateState
 
@@ -690,7 +673,7 @@ class AccountShell:
                 remember = self.gate.remember_box.isChecked()
             if automatic is None:
                 automatic = self.gate.auto_box.isChecked()
-            if not update_handoff:
+            if not update_handoff and not offline:
                 self.session.accept(
                     result,
                     remember=remember,
@@ -709,7 +692,14 @@ class AccountShell:
         finally:
             password = None
 
+        if update_handoff and not offline:
+            try:
+                self.session.save_offline_snapshot(result)
+            except Exception:
+                pass
+
         self._login_result = result
+        self._offline_mode = bool(offline)
         account_id = result.identity.profile().account_id
         if self._confirmed_role_account_id != account_id:
             self._confirmed_server_role = None
@@ -729,7 +719,7 @@ class AccountShell:
             if row is not None and row["remember_session"]
             else self._EphemeralCredentials(result)
         )
-        self._session_refresh_degraded = False
+        self._session_refresh_degraded = bool(offline)
         self._refresh_local_accounts()
         appearance = self._loading_appearance(account_id)
         self._release_account_prewarm()
@@ -757,9 +747,14 @@ class AccountShell:
         home.bind_account_settings(self._open_account_settings)
         old_home = self.home
         self.home = home
+        home.set_session_offline(bool(offline))
+        if offline:
+            self.home.set_session_notice('当前离线，已使用此设备上次验证的账号进入；连接恢复后会自动核对并同步。')
         self._session_epoch += 1
         self._session_refresh_busy = False
-        self._feature_session_confirmed = True
+        self._feature_session_confirmed = not offline and not bool(
+            getattr(result.identity, '_local_only', False)
+        )
         # Bind the account services (and let LearningWindow prewarm its
         # WebEngine-backed planning page) before the signed-in window becomes
         # visible.  The first native Chromium surface can otherwise make the
@@ -1321,6 +1316,7 @@ class AccountShell:
             self._confirmed_role_account_id = refreshed.identity.profile().account_id
         self._feature_session_confirmed = True
         self._session_refresh_degraded = False
+        self._offline_mode = False
         if scope_changed:
             self._close_account_settings()
         if row["remember_session"]:
@@ -1337,6 +1333,7 @@ class AccountShell:
         if self._confirmed_role_account_id == refreshed.identity.profile().account_id:
             self.home.set_server_role(self._confirmed_server_role)
         self.home.clear_session_notice()
+        self.home.set_session_offline(False)
         self._hide_login_windows()
         diagnostic_event('refresh', state='RECOVERED')
         self.home.session_recovered()
@@ -1367,6 +1364,7 @@ class AccountShell:
         self._switch_pending = False
         row = self.session.registry.get(profile.account_id)
         try:
+            self.session.clear_offline_snapshot(profile)
             if row is not None and row["remember_session"]:
                 self.session.credentials.logout(profile)
             self.session.registry.set_options(
@@ -1492,7 +1490,7 @@ class AccountShell:
             finally:
                 password = None
             return
-        if job in {"restore", "update_restore"}:
+        if job in {"restore", "update_restore", "offline_restore"}:
             if job == 'update_restore':
                 self._update_restore_pending = False
             if (
@@ -1505,7 +1503,9 @@ class AccountShell:
                     "登录会话与所选账号不匹配，请重新登录。",
                 )
                 return
-            self._accept_login(result, **({'update_handoff': True} if job == 'update_restore' else {}))
+            self._accept_login(result, **({'update_handoff': True} if job == 'update_restore' else {'offline': True} if job == 'offline_restore' else {}))
+            if job == 'offline_restore' and self.home is not None:
+                self._refresh_active_session()
             return
         if job == "logout":
             self._finish_logout(bool(result))
@@ -1722,6 +1722,17 @@ class AccountShell:
             return
         self._close_account_closure()
         self._close_account_settings()
+        result = self._login_result
+        profile = result.identity.profile()
+        refresh_token = self._refresh_token_for_logout(profile, result)
+        try:
+            local_logout_clean = self.session.prepare_explicit_logout(profile)
+        except Exception:
+            if self.home is not None:
+                self.home.set_session_notice('本机退出状态未能安全保存，请重试退出。')
+            return
+        if not local_logout_clean:
+            diagnostic_event('logout', state='LOCAL_CLEANUP_DEFERRED')
         if self._session_refresh_busy:
             self._switch_pending = False
             self._logout_pending = True
@@ -1730,9 +1741,6 @@ class AccountShell:
             return
         from refactor.desktop.login_shell import LoginGateState
 
-        result = self._login_result
-        profile = result.identity.profile()
-        refresh_token = self._refresh_token_for_logout(profile, result)
         if isinstance(self._session_credentials, self._EphemeralCredentials):
             self._session_credentials.logout(profile)
         self._login_result = None
@@ -1995,7 +2003,6 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
             app._mentorflow_updates = DesktopUpdates(app, install_root, shell.gate, login_handoff=shell)
             app._mentorflow_updates.changed.connect(
                 lambda value: diagnostic_event('update', state=value.get('state', 'UNKNOWN')))
-            app._mentorflow_updates.changed.connect(shell._resume_update_login)
             readiness_logged = [False]
             def record_login_ready(value):
                 if not readiness_logged[0] and value.get('login_allowed'):

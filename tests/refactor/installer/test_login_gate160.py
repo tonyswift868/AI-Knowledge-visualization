@@ -76,7 +76,7 @@ def show_gate160(app, gate, monkeypatch):
     app.processEvents()
 
 
-def test_login_gate160_cached_healthy_does_not_release_before_network(app160, tmp_path, monkeypatch):
+def test_login_gate160_login_continues_during_background_network_check(app160, tmp_path, monkeypatch):
     disable_housekeeping(monkeypatch)
     gate = QWidget()
     show_gate160(app160, gate, monkeypatch)
@@ -86,9 +86,9 @@ def test_login_gate160_cached_healthy_does_not_release_before_network(app160, tm
         ui.start()
         pump160(app160, lambda: core.entered.is_set() and ui._startup_cached is not None)
         assert gate.isEnabled()
-        assert ui.snapshot()['login_check_pending'] is True
-        assert ui.snapshot()['login_check_status'] == 'checking'
-        assert 'login_allowed' not in ui.snapshot()
+        assert ui.snapshot()['login_check_pending'] is False
+        assert ui.snapshot()['login_check_status'] == 'background'
+        assert ui.snapshot()['login_allowed'] is True
         assert ui.snapshot()['cached_login_allowed'] is True
     finally:
         core.release.set()
@@ -109,7 +109,7 @@ def test_login_gate160_network_result_resolves_policy(app160, tmp_path, monkeypa
     ui = DesktopUpdates(app160, tmp_path, gate, core=Core160(state))
     try:
         ui.start()
-        pump160(app160, lambda: not ui.snapshot().get('login_check_pending', True))
+        pump160(app160, lambda: ui.snapshot().get('login_check_status') == 'ready')
         assert ui.snapshot()['login_check_status'] == 'ready'
         assert ui.snapshot()['login_allowed'] is allowed
         assert ui.snapshot()['mandatory'] is mandatory
@@ -124,10 +124,9 @@ def test_login_gate160_network_result_resolves_policy(app160, tmp_path, monkeypa
         gate.close()
 
 
-def test_login_gate160_timeout_waits_for_manifest_then_mandatory_keeps_gate_closed(
+def test_login_gate160_background_check_can_later_block_with_signed_mandatory(
         app160, tmp_path, monkeypatch):
     disable_housekeeping(monkeypatch)
-    monkeypatch.setattr(DesktopUpdates, 'STARTUP_LOGIN_WAIT_MS', 35)
     gate = QWidget()
     show_gate160(app160, gate, monkeypatch)
     core = Core160('MANDATORY_UPDATE', hold=True)
@@ -135,11 +134,10 @@ def test_login_gate160_timeout_waits_for_manifest_then_mandatory_keeps_gate_clos
     try:
         ui.start()
         pump160(app160, lambda: core.entered.is_set() and ui._startup_cached is not None)
-        # Batch 168: a slow/missing pointer is not proof the feed is offline.
-        # An unfinished signed check cannot be bypassed using old HEALTHY cache.
-        pump160(app160, lambda: not ui._login_wait_timer.isActive())
-        assert ui.snapshot()['login_check_pending'] is True
-        assert not ui.snapshot().get('login_allowed', False)
+        # User 2026-10-20: never wait for network discovery to log in.
+        # The signed result still constrains the account once it arrives.
+        assert ui.snapshot()['login_check_pending'] is False
+        assert ui.snapshot().get('login_allowed', False)
         assert not ui.snapshot().get('offline_fallback', False)
         assert gate.isEnabled()
 
@@ -155,41 +153,20 @@ def test_login_gate160_timeout_waits_for_manifest_then_mandatory_keeps_gate_clos
         gate.close()
 
 
-def test_login_gate160_shell_queues_manual_and_remembered_login_until_resolved():
-    adapter = SimpleNamespace(state={'login_check_pending': True, 'login_allowed': False})
+def test_login_gate160_shell_only_blocks_explicit_verified_restriction():
+    adapter = SimpleNamespace(state={'login_check_pending': True})
     gate_calls = []
     shell = SimpleNamespace(app=SimpleNamespace(_mentorflow_updates=adapter),
                             _update_auto_pending=False, _update_interactive_pending=False,
                             _closing=False, gate=SimpleNamespace(
                                 set_state=lambda *args, **kwargs: gate_calls.append((args, kwargs))))
+    assert AccountShell._updates_allow_login(shell)
+    adapter.state.update(login_allowed=False, mandatory=True, state='MANDATORY_UPDATE')
     assert not AccountShell._updates_allow_login(shell)
     AccountShell._begin_interactive_login(shell)
-    assert shell._update_interactive_pending is True
-    assert gate_calls[-1][1]['detail'] == '正在检查更新…'
     AccountShell._begin_remembered_login(shell)
-    assert shell._update_auto_pending is True
-    assert gate_calls[-1][1]['detail'] == '正在检查更新…'
+    assert shell._update_interactive_pending is False and shell._update_auto_pending is False
+    assert gate_calls == []
     adapter.state = {'login_check_pending': False, 'login_allowed': True,
                      'mandatory': False, 'state': 'HEALTHY'}
     assert AccountShell._updates_allow_login(shell)
-
-    resumed = []
-    shell._begin_remembered_login = lambda: resumed.append('automatic')
-    shell._begin_interactive_login = lambda: resumed.append('manual')
-    shell._update_auto_pending = True
-    shell._update_interactive_pending = True
-    AccountShell._resume_update_login(shell, {'login_check_pending': True})
-    assert resumed == []
-    AccountShell._resume_update_login(shell, {'login_check_pending': False,
-                                               'state': 'HEALTHY', 'login_allowed': True})
-    assert resumed == ['automatic']
-
-    shell._update_interactive_pending = True
-    AccountShell._resume_update_login(shell, {'login_check_pending': False,
-                                               'state': 'OPTIONAL_UPDATE', 'login_allowed': True,
-                                               'deferred': False})
-    assert resumed == ['automatic']
-    AccountShell._resume_update_login(shell, {'login_check_pending': False,
-                                               'state': 'OPTIONAL_UPDATE', 'login_allowed': True,
-                                               'deferred': True})
-    assert resumed == ['automatic', 'manual']

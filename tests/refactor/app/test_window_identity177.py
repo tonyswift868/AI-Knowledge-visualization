@@ -9,7 +9,8 @@ from refactor.learning.preferences.storage import AccountJSON
 def test_window_account_info177_keeps_stable_ids_for_identical_display_names():
     def info(identifier):
         window = SimpleNamespace(_account_id=identifier, _display_name="同名学习者",
-                                 _role=None, _api_label="offline", _settings_bound=False)
+                                 _role=None, _api_label="offline", _settings_bound=False,
+                                 _session_offline=False)
         return LearningWindow.account_info(window)
 
     first, second = info("account-a-177"), info("account-b-177")

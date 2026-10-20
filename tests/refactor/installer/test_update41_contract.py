@@ -91,21 +91,18 @@ def test_update41_optional_and_repair_use_theme():
 
 def test_update41_automatic_and_late_login_cannot_bypass_mandatory_gate():
     from refactor.desktop.account_shell_main import AccountShell
-    state={};adapter=SimpleNamespace(state=state)
+    state={'login_allowed':False,'mandatory':True};adapter=SimpleNamespace(state=state)
     calls=[]
     shell=SimpleNamespace(app=SimpleNamespace(_mentorflow_updates=adapter),_closing=False,
         _discard_login_result=lambda result:calls.append('discard'),
         _begin_remembered_login=lambda:calls.append('resume'))
     AccountShell._begin_remembered_login(shell)
-    assert shell._update_auto_pending and not calls
-    state.update(login_allowed=False,mandatory=True)
+    assert not calls
     AccountShell._begin_interactive_login(shell)
     AccountShell._accept_login(shell,object())
-    AccountShell._resume_update_login(shell,state)
-    assert calls==['discard'] and shell._update_auto_pending
+    assert calls==['discard']
     state.update(login_allowed=True,mandatory=False)
-    AccountShell._resume_update_login(shell,state)
-    assert calls==['discard','resume'] and not shell._update_auto_pending
+    assert AccountShell._updates_allow_login(shell)
 
 
 def test_update41_launch_grant_precedes_popen_and_normal_startup(monkeypatch):
