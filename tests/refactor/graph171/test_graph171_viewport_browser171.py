@@ -118,7 +118,8 @@ def browser(root: Path) -> None:
 
 def test_graph171_viewport_does_not_reset_on_same_content_parent_rerender(tmp_path):
     build_fixture(tmp_path)
-    env = dict(os.environ, GRAPH171_ROOT="D:/MentorFlow/.local/test-tmp/graph171", TEMP=tmp_path.as_posix(), TMP=tmp_path.as_posix())
+    # Per-run artifacts: a fixed shared folder collided when workers ran full suites concurrently.
+    env = dict(os.environ, GRAPH171_ROOT=(tmp_path / "artifacts").as_posix(), TEMP=tmp_path.as_posix(), TMP=tmp_path.as_posix())
     env["PATH"] = str(Path("D:/MentorFlow/.local/node")) + os.pathsep + env.get("PATH", "")
     result = subprocess.run([sys.executable, "-B", str(Path(__file__)), str(tmp_path)], env=env,
                                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90)
