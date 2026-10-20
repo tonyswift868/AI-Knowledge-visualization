@@ -70,7 +70,22 @@ PURPOSE_MIN_OUTPUT = {
 MODEL_MAX_OUTPUT = {'deepseek-v4-flash': 384000, 'deepseek-v4-pro': 384000}
 # Total wall-clock limit for background calls; long thinking must be able to finish.
 BACKGROUND_TIMEOUT = 1800.
-BACKGROUND_PURPOSES = frozenset({'research', 'point_materials', 'source_identity', 'profile', 'check_profile', 'coverage_check', 'outline', 'generate', 'distractor_check', 'point_links', 'point_difficulty'})
+BACKGROUND_PURPOSES = frozenset({
+    'research', 'point_materials', 'source_identity', 'profile', 'check_profile',
+    'coverage_check', 'outline', 'generate', 'distractor_check', 'point_links',
+    'point_difficulty', 'source_scoring', 'plan_additions_generate',
+    # These are structured planning decisions, not conversational streaming;
+    # retain the full result even when the provider's first text delta is slow.
+    'plan_intent', 'sufficiency',
+})
+# Only these user-facing, latency-sensitive uses retain the preset network
+# timeout and foreground first-event behavior. Unknown/new purposes default to
+# the safe background policy so a new backend caller cannot silently re-enable
+# the short first-event timeout by forgetting to update an allowlist.
+FOREGROUND_PURPOSES = frozenset({
+    'teacher', 'free_chat', 'rag_qa',
+    'asr_correction', 'connection_test',
+})
 
 
 def _storage_error():
@@ -572,17 +587,26 @@ class ModelGateway:
                     secret = self._secret(config)
                 if not secret:
                     raise ModelError('MODEL_KEY_REQUIRED', '当前模型还没有 API Key：请到 设置 → 模型连接 填入 API Key 并保存。')
-                timeout = BACKGROUND_TIMEOUT if purpose in BACKGROUND_PURPOSES else config['timeout']
+                background = purpose not in FOREGROUND_PURPOSES
+                timeout = BACKGROUND_TIMEOUT if background else config['timeout']
                 if purpose in PURPOSE_MAX_TOKENS:
                     max_tokens = PURPOSE_MAX_TOKENS[purpose]
                 elif purpose != 'connection_test':  # the explicit "Reply OK" probe stays tiny
                     max_tokens = MODEL_MAX_OUTPUT.get(config['model'], max_tokens)
                 deadline = time.monotonic() + timeout
                 emitted = False
+                # Background work consumes the complete structured response;
+                # use the provider's streaming adapter where available, but
+                # never make it fail merely because the first text delta is
+                # slow. The caller still receives only the adapter's complete
+                # ModelResult.text. Foreground callbacks remain unchanged.
+                provider_on_text = on_text
+                if background and provider_on_text is None:
+                    provider_on_text = lambda _text: None
                 def receive(text):
                     nonlocal emitted
                     emitted = True  # Even an empty callback makes replay unsafe.
-                    on_text(text)
+                    provider_on_text(text)
                 for retry in range(3):
                     if token.is_set():
                         exc = ModelCancelled()
@@ -593,9 +617,9 @@ class ModelGateway:
                         result = providers.complete(config['provider_id'], base_url=config['base_url'], model=config['model'],
                                                     api_key=secret, messages=messages, system=system, enable_search=enable_search,
                                                     temperature=config['temperature'], timeout=max(.001, deadline-time.monotonic()),
-                                                    cancel=token, on_text=receive if on_text is not None else None,
+                                                    cancel=token, on_text=receive if provider_on_text is not None else None,
                                                     max_tokens=max_tokens, reasoning_effort=effort,
-                                                    first_event_timeout=self.first_event_timeout)
+                                                    first_event_timeout=None if background else self.first_event_timeout)
                         break
                     except ModelError as exc:
                         # A probe tests reachability/authentication, not answer

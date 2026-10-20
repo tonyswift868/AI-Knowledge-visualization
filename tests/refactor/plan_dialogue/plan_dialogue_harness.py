@@ -127,6 +127,11 @@ class DirectBridge:
     def __init__(self):
         self.handlers = {}
         self.events = []
+        self.event = SimpleNamespace(connect=self._connect_event)
+        self._event_callbacks = []
+
+    def _connect_event(self, callback):
+        self._event_callbacks.append(callback)
 
     def register(self, name, fn, **_):
         self.handlers[name] = fn

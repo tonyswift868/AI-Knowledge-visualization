@@ -84,7 +84,7 @@ def test_121_note_failure_retries_once_and_worker_still_prepares(env,monkeypatch
     observed=[]
     def prepare(store,plan,mid,ctx,progress):
         observed.append(store.records('points',plan));return {}
-    monkeypatch.setattr(env.flow,'_record_preparation',lambda *a,**k:None)
+    monkeypatch.setattr(env.flow,'_record_preparation',lambda *a,**k:{'state':a[2]})
     monkeypatch.setattr(env.flow,'_save_material_summary',lambda *a:None)
     monkeypatch.setattr(env.flow,'_module_ready',lambda *a:bool(observed))
     monkeypatch.setattr(env.flow,'ensure_point_minutes',lambda *a,**k:'ready')

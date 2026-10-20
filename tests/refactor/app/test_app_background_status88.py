@@ -55,8 +55,13 @@ def test_status88_failure_visible_until_explicit_retry_and_bridge_registered(tmp
         finish(f)
         assert f.detail(PLAN)['point_minutes_status'] == 'ready'
         methods = {}
-        register(SimpleNamespace(register=lambda name, fn, **kwargs: methods.setdefault(name, fn)),
-                 lambda: f.services, lambda *args: None, lambda: DAY)
+        class Signal:
+            def connect(self, callback): self.callback = callback
+        bridge = SimpleNamespace(register=lambda name, fn, **kwargs: methods.setdefault(name, fn),
+                                 event=Signal(), closing=Signal(), push=lambda *_args: None)
+        # Register handlers before account services are ready; the ready event
+        # lifecycle is covered by the dedicated recovery test.
+        register(bridge, lambda: None, lambda *args: None, lambda: DAY)
         assert 'plan.retry_point_minutes' in methods
     finally:
         finish(f); store.close()
@@ -84,7 +89,7 @@ def test_status88_preparation_queue_completion_failure_and_stale_running(tmp_pat
         assert f.detail(PLAN)['preparation_status'] == 'failed'
         finish(f)
         for mid in ('m0', 'm1'): store.save_module_preparation(PLAN, mid, dict(state='running'))
-        assert f.detail(PLAN)['preparation_status'] == 'none', 'a crashed process cannot still be running'
+        assert f.detail(PLAN)['preparation_status'] == 'running', 'durable running work resumes after account readiness'
     finally:
         finish(f); store.close()
 

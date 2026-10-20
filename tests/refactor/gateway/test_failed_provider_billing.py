@@ -14,11 +14,30 @@ from refactor.learning.connections import providers
 from refactor.learning.connections.errors import ModelError
 from refactor.learning.connections.gateway import ModelGateway
 from refactor.learning.connections.pricing import PriceCatalog
-from tests.refactor.providers.failure_samples import OFFICIAL, expected_tokens, set_text, truncated
-from tests.refactor.providers.samples import anthro, ordinary
+from tests.refactor.providers.failure_samples import OFFICIAL, expected_tokens, set_text, truncated, wire_frames
+from tests.refactor.providers.samples import anthro, frame, ordinary, sse
 from .test_gateway import END, KEY, MESSAGES, START
 
 REAL_COMPLETE = providers.complete
+
+
+def background_response(data, provider='deepseek'):
+    """Background purposes use the provider's normal SSE adapter path."""
+    return sse(wire_frames(data, provider))
+
+
+def unreported_anthropic_response():
+    # A syntactically complete second response with no meter fields. The
+    # adapter must reject it while preserving the first tool round's receipt.
+    model = providers.REGISTRY['deepseek'].default_model
+    frames = [
+        frame({'type': 'message_start', 'message': {'id': 'msg_unreported', 'type': 'message',
+            'role': 'assistant', 'model': model, 'content': [], 'stop_reason': None, 'usage': {}}},
+            'message_start'),
+        frame({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn'}, 'usage': {}}, 'message_delta'),
+        frame({'type': 'message_stop'}, 'message_stop'),
+    ]
+    return sse(frames)
 
 
 def gateway(tmp_path, provider='deepseek'):
@@ -95,7 +114,7 @@ def test_search_excess_keeps_vendor_count_and_sums_failed_and_successful_costs(t
     g = gateway(tmp_path)
     data = anthro(True, provider='deepseek')
     data['usage']['server_tool_use']['web_search_requests'] = 10
-    connect(monkeypatch, lambda *_: httpx.Response(200, json=data))
+    connect(monkeypatch, lambda *_: background_response(data))
     with pytest.raises(ModelError) as exc:
         g.complete('search', MESSAGES, enable_search=True)
     assert exc.value.code == 'MODEL_RESPONSE_INVALID'
@@ -115,10 +134,10 @@ def test_unreported_second_round_does_not_erase_known_first_round_or_claim_compl
     def handle(*_):
         requests.append(True)
         if len(requests) == 1:
-            return httpx.Response(200, json=anthro(True, provider='deepseek', reason='pause_turn'))
+            return background_response(anthro(True, provider='deepseek', reason='pause_turn'))
         if not second_response:
             raise httpx.ReadTimeout(KEY)
-        return httpx.Response(200, json={'content': [], 'stop_reason': 'end_turn'})
+        return unreported_anthropic_response()
     connect(monkeypatch, handle)
     with pytest.raises(ModelError):
         g.complete('search', MESSAGES, enable_search=True)
@@ -168,10 +187,16 @@ def test_concurrent_success_and_cancelled_receipts_are_not_mixed(tmp_path, monke
     def handle(_, kwargs):
         barrier.wait(timeout=2)
         data = ordinary('deepseek')
-        if kwargs['messages'][0]['content'] == 'cancel':
+        cancelled = kwargs['messages'][0]['content'] == 'cancel'
+        if cancelled:
             data['usage']['input_tokens'] = 900
-            kwargs['cancel'].set()
-        return httpx.Response(200, json=data)
+        chunks = wire_frames(data, 'deepseek')
+        class CancelAfterStream(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield b''.join(chunks)
+                if cancelled:
+                    kwargs['cancel'].set()
+        return httpx.Response(200, headers={'content-type': 'text/event-stream'}, stream=CancelAfterStream())
     connect(monkeypatch, handle)
     def run(label):
         try:

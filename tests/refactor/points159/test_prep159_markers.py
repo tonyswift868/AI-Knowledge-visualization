@@ -29,6 +29,12 @@ def _store(tmp_path, *, point_id='old', subpoints=None, marker=None):
     if marker:
         point['subpoint_preparation'] = marker
     store.save_generated_module('p', 'm', [point], check_minutes=5, today=today)
+    if marker:
+        saved = store._get('points', 'p', point_id)
+        _, chunks = pm._material_chunks(store, 'p')
+        saved['subpoint_preparation']['fingerprint'] = pm._legacy_fingerprint([saved], chunks)
+        with store.transaction():
+            store._put('points', 'p', saved)
     return store
 
 
@@ -80,5 +86,5 @@ def test_prep159_unprocessed_subpoint_still_reaches_finder(tmp_path):
         calls.append([s['id'] for s in packet['subpoints']])
         return {'subpoints': []}
     pm.prepare_point(store, 'p', store.records('points', 'p')[0], {'finder': finder})
-    assert calls and set(calls[0]) == {'old-s1', 'old-s2'}
+    assert calls == [['old-s1', 'old-s2']]
     store.close()

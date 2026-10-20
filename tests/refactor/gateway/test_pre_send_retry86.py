@@ -10,7 +10,8 @@ from refactor.learning.connections import providers
 from refactor.learning.connections import gateway as gateway_module
 from refactor.learning.connections.errors import ModelError
 from tests.refactor.providers.failure_samples import OFFICIAL, wire_frames
-from tests.refactor.providers.samples import ordinary, anthro
+from tests.refactor.providers.samples import ordinary, anthro, sse
+from tests.refactor.providers.failure_samples import wire_frames
 from .test_failed_provider_billing import gateway, ledger_row
 from .test_gateway import MESSAGES, START, END, KEY
 
@@ -166,7 +167,7 @@ def test_retry86_prior_tool_receipt_blocks_replay_on_next_connect_failure(tmp_pa
     def handle(*_):
         sends.append(True)
         if len(sends) == 1:
-            return httpx.Response(200, json=anthro(True, provider='deepseek', reason='pause_turn'))
+            return sse(wire_frames(anthro(True, provider='deepseek', reason='pause_turn'), 'deepseek'))
         raise httpx.ConnectError(KEY)
     calls = wire(monkeypatch, handle)
     with pytest.raises(ModelError) as caught:

@@ -345,7 +345,7 @@ class Accounting:
             receipt.first_event_ms = round((time.monotonic()-receipt.sent_at)*1000, 3)
 
     def first_expired(self):
-        return bool(self.receipts and self.receipts[-1].first_event_ms is None and
+        return bool(self.first_event_timeout is not None and self.receipts and self.receipts[-1].first_event_ms is None and
                     time.monotonic()-self.receipts[-1].sent_at >= self.first_event_timeout)
 
     def start(self, body=None):

@@ -8,6 +8,7 @@ settings, CourseStore, mastery and ledger are production implementations.
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+import os
 import tempfile
 from types import SimpleNamespace
 
@@ -21,7 +22,7 @@ from refactor.learning.course.mastery import AttemptClosed, Judgement
 from refactor.learning.course.store import CourseStore, StoreError
 
 
-ROOT = Path('D:/MentorFlow/.local/test-tmp/timeline')
+ROOT = Path(os.environ.get('MF_TIMELINE_TEST_ROOT', 'D:/MentorFlow/.local/test-tmp/timeline'))
 ACCOUNT = 'mfa1_' + '3' * 64
 EAST = timezone(timedelta(hours=8))
 WEST = timezone(timedelta(hours=-7))
@@ -59,9 +60,28 @@ class InjectedClock:
 class HandlerRegistry:
     def __init__(self):
         self.methods = {}
+        self.event = _Signal()
+        self.closing = _Signal()
+
+    def push(self, name, data):
+        # Handler registration binds PlanFlow's account-ready recovery callback;
+        # these offline ledger scenarios never need to emit RPC events.
+        return None
 
     def register(self, name, fn, **options):
         self.methods[name] = fn
+
+
+class _Signal:
+    def __init__(self):
+        self.listeners = []
+
+    def connect(self, listener):
+        self.listeners.append(listener)
+
+    def emit(self, *args):
+        for listener in tuple(self.listeners):
+            listener(*args)
 
 
 @dataclass

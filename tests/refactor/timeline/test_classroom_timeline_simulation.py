@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 import json
 from pathlib import Path
+import os
 import tempfile
 import threading
 from types import SimpleNamespace
@@ -24,7 +25,7 @@ from refactor.learning.course.ledger import PlanWindow, study_day
 from refactor.learning.course.store import CourseStore
 
 
-ROOT = Path(r"D:/MentorFlow/.local/test-tmp/timeline")
+ROOT = Path(os.environ.get('MF_TIMELINE_TEST_ROOT', r"D:/MentorFlow/.local/test-tmp/timeline"))
 ACCOUNT = "mfa8_" + "d" * 64
 PLAN = "b" * 32
 EAST = timezone(timedelta(hours=8))

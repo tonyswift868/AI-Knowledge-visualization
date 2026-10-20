@@ -8,6 +8,7 @@ from tests.refactor.objective44.support import objective_bank, scripted_answer
 from collections import Counter
 from datetime import date, time, timedelta, timezone
 from pathlib import Path
+import os
 import tempfile
 import threading
 from types import SimpleNamespace
@@ -27,7 +28,7 @@ from test_course_timeline_simulation import InjectedClock, HandlerRegistry
 from test_classroom_timeline_simulation import FakeAgent
 
 
-ROOT = Path(r"D:/MentorFlow/.local/test-tmp/timeline")
+ROOT = Path(os.environ.get('MF_TIMELINE_TEST_ROOT', r"D:/MentorFlow/.local/test-tmp/timeline"))
 START = date(2026, 10, 5)  # Monday
 END = START + timedelta(days=41)
 PLAN = "a" * 32
