@@ -83,7 +83,7 @@ def test_restructure114_preview_apply_preserve_facts_navigation_retire_position_
     ledger=store.load_ledger('p')
     assert ledger.status(DAY).debt_minutes==report['after']['debt_minutes']
     assert {d.isoformat():n for d,n in ledger.targets.items()}==report['after']['targets']
-    assert store._db.execute('SELECT version FROM schema_version').fetchone()[0]==SCHEMA_VERSION==10
+    assert store._db.execute('SELECT version FROM schema_version').fetchone()[0]==SCHEMA_VERSION==11
 
 
 @pytest.mark.parametrize('evidence',['credit','judgement','answer','practice','skip','taught','message'])

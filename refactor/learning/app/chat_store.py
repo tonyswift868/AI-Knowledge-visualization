@@ -34,6 +34,7 @@ def title_from(text):
 @dataclass(frozen=True, slots=True)
 class ChatSession(FreeChatSession):
     title: str = '新对话'
+    archived: bool = False
 
 
 class CourseChatStore:
@@ -59,9 +60,14 @@ class CourseChatStore:
                 raise FreeChatSessionNotFoundError(session_id) from None
             raise
         rows = self.store.chat_messages(session_id)
+        # Archive is a synchronized filing preference, not conversation
+        # content. A remote archive/unarchive must not invalidate a reply that
+        # is being generated against an otherwise unchanged message history.
+        version_row = dict(row)
+        version_row.pop('archived', None)
         # Content identity detects remote edits/deletes too, without adding a
         # second revision authority or modifying the RecordStore wire contract.
-        version = int.from_bytes(hashlib.sha256(json.dumps([row, rows], sort_keys=True,
+        version = int.from_bytes(hashlib.sha256(json.dumps([version_row, rows], sort_keys=True,
                                 ensure_ascii=False, separators=(',', ':')).encode()).digest(), 'big')
         messages = tuple(FreeChatMessage(m['role'], m['content'], datetime.fromisoformat(m['at']), i)
                          for i, m in enumerate(rows, 1))
@@ -70,18 +76,32 @@ class CourseChatStore:
         updated = max([created, *(m.timestamp for m in messages),
                        datetime.fromisoformat(row['updated_at']) if row.get('updated_at') else created])
         return ChatSession(session_id, messages, created, updated, version,
-                           title=row.get('title') or '新对话')
+                           title=row.get('title') or '新对话', archived=bool(row.get('archived', False)))
 
     def get(self, session_id):
         self._ensure_import()
         with self.store.transaction():
             return self._snapshot(session_id)
 
-    def list_sessions(self):
+    def list_sessions(self, *, archived=False):
         self._ensure_import()
         with self.store.transaction():
-            return tuple(sorted((self._snapshot(row['id']) for row in self.store.records('chat_sessions')),
+            sessions = (self._snapshot(row['id']) for row in self.store.records('chat_sessions'))
+            if archived is not None:
+                sessions = (session for session in sessions if session.archived is archived)
+            return tuple(sorted(sessions,
                                 key=lambda s: (s.updated_at, s.session_id), reverse=True))
+
+    def set_archived(self, session_id, archived):
+        self._ensure_import()
+        with self.store.transaction():
+            try:
+                self.store.set_chat_session_archived(session_id, archived)
+            except StoreError as exc:
+                if exc.code == 'NOT_FOUND':
+                    raise FreeChatSessionNotFoundError(session_id) from None
+                raise
+            return self._snapshot(session_id)
 
     def create(self, *, session_id, created_at):
         self._ensure_import()

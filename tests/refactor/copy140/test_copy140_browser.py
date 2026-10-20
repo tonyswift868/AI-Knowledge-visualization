@@ -45,10 +45,13 @@ def host140(root):
     settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,False)
     settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptCanOpenWindows,False)
     bridge=AppBridge(page);channel=QWebChannel(page);channel.registerObject('mf',bridge);page.setWebChannel(channel)
-    session=dict(id='copy140',title='教师闲聊 · 复制验证',updated_at='2026-10-15T10:00:00',count=2,
+    session=dict(id='copy140',title='教师闲聊 · 复制验证',updated_at='2026-10-15T10:00:00',count=2,archived=False,
         messages=[dict(role='user',content='请解释向量检索。',seq=1),dict(role='assistant',content=MARKDOWN,seq=2)])
-    bridge.register('chat.list',lambda p,c:dict(sessions=[{k:v for k,v in session.items() if k!='messages'}]))
+    bridge.register('chat.list',lambda p,c:dict(sessions=[{k:v for k,v in session.items() if k!='messages'}] if bool(p.get('archived',False))==session['archived'] else []))
     bridge.register('chat.get',lambda p,c:dict(session=session))
+    bridge.register('chat.archive',lambda p,c:(session.update(archived=bool(p['archived'])) or dict(session=session)))
+    bridge.register('chat.ui_get',lambda p,c:dict(list_collapsed=False,available=True))
+    bridge.register('chat.ui_set',lambda p,c:dict(list_collapsed=bool(p['list_collapsed']),saved=True))
     def send(params,context):
         context.stream('这是**尚未完成**的回复。')
         while not (root/'finish').exists():
