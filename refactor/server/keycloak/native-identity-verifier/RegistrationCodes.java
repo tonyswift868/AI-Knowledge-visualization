@@ -70,6 +70,41 @@ final class RegistrationCodes {
         }
         return Map.of("status", "CODE_SENT", "credential", credential, "expires_in", "600", "resend_after", "60");
     }
+    private static Map<String,String> issueExistingEmailNotice(KeycloakSession s, UserModel u) throws Exception {
+        String credential = token(), digest = hash(credential);
+        String key = prefix(s) + "code:" + digest;
+        int expires = Time.currentTime() + TTL;
+        String email = Objects.toString(u.getEmail(), "");
+        // This opaque ticket only permits a uniform resend flow. It cannot verify or mutate the account.
+        s.singleUseObjects().put(key, TTL + 60, Map.of("kind", "registered-email-notice",
+            "subject", u.getId(), "email", hash(email.toLowerCase(Locale.ROOT)),
+            "expires", Integer.toString(expires)));
+        String text = "这个邮箱已经注册过，可以直接登录或找回密码。\n"
+            + "如果这不是您本人操作，请忽略此邮件。";
+        try {
+            s.getProvider(EmailSenderProvider.class).send(s.getContext().getRealm().getSmtpConfig(), u,
+                "MentorFlow 注册验证码", text, null);
+        } catch (Exception failure) {
+            s.singleUseObjects().remove(key);
+            s.getTransactionManager().setRollbackOnly();
+            throw failure;
+        }
+        return Map.of("status", "CODE_SENT", "credential", credential, "expires_in", "600", "resend_after", "60");
+    }
+    private static UserModel noticeBound(KeycloakSession s, Map<String,String> row) {
+        if (row == null || !"registered-email-notice".equals(row.get("kind"))) return null;
+        UserModel user = s.users().getUserById(s.getContext().getRealm(), row.get("subject"));
+        if (user == null || user.getEmail() == null
+                || !hash(user.getEmail().toLowerCase(Locale.ROOT)).equals(row.get("email"))) return null;
+        return user;
+    }
+    private static Map<String,String> wrongCode(KeycloakSession s, String key) {
+        var store = s.singleUseObjects();
+        if (store.contains(key + ":try:4")) return result("EXHAUSTED");
+        for (int i=0; i<5; i++) if (store.putIfAbsent(key + ":try:" + i, TTL + 60))
+            return result(i == 4 ? "EXHAUSTED" : "WRONG_CODE");
+        return result("EXHAUSTED");
+    }
     static Map<String,String> start(KeycloakSession s, String username, String email, String password) throws Exception {
         if (username == null || username.isBlank() || username.length()>255 || !username.equals(username.trim())
                 || username.codePoints().anyMatch(Character::isISOControl) || email == null || email.length()>254
@@ -81,26 +116,33 @@ final class RegistrationCodes {
         if (action == null || !action.isEnabled() || action.isDefaultAction() || realm.isDuplicateEmailsAllowed())
             return result("UNAVAILABLE");
         var user = s.users().getUserByUsername(realm, username);
-        var byEmail = s.users().getUserByEmail(realm, email);
+        UserModel byEmail;
         boolean restart = false;
         if (user != null) {
+            byEmail = s.users().getUserByEmail(realm, email);
             var entity = lock(s, user);
             restart = pending(s, user, entity) && byEmail != null && byEmail.getId().equals(user.getId())
                 && email.equalsIgnoreCase(entity.getEmail())
                 && Long.parseLong(attribute(entity, EXPIRES)) <= Time.currentTime();
             if (!restart) return result("USERNAME_ALREADY_IN_USE");
-        } else if (byEmail != null) return result("EMAIL_ALREADY_IN_USE");
+            // Preserve the existing pending-registration restart policy, which can include user history.
+            if (s.getProvider(PasswordPolicyManagerProvider.class).validate(realm, user, password) != null)
+                return result("PASSWORD_POLICY_REJECTED");
+        } else {
+            // Validate with the submitted username before looking up email, so password policy cannot
+            // become an alternate registered-email oracle and does not use a stored account's history.
+            if (s.getProvider(PasswordPolicyManagerProvider.class).validate(username, password) != null)
+                return result("PASSWORD_POLICY_REJECTED");
+            byEmail = s.users().getUserByEmail(realm, email);
+        }
         String limit = sendLimit(s, email); if (!"OK".equals(limit)) return result(limit);
+        if (byEmail != null && !restart) return issueExistingEmailNotice(s, byEmail);
         if (!restart) {
             user = s.users().addUser(realm, username);
             user.setEnabled(true); user.setEmail(email); user.setEmailVerified(false);
             user.addRequiredAction(UserModel.RequiredAction.VERIFY_EMAIL);
             user.setSingleAttribute(MARKER, "pending");
             user.setAttribute(ACTIONS, user.getRequiredActionsStream().toList());
-        }
-        if (s.getProvider(PasswordPolicyManagerProvider.class).validate(realm, user, password) != null) {
-            s.getTransactionManager().setRollbackOnly();
-            return result("PASSWORD_POLICY_REJECTED");
         }
         // Password + marker + ticket binding live in the same identity transaction.
         user.credentialManager().updateCredential(UserCredentialModel.password(password, false));
@@ -121,6 +163,13 @@ final class RegistrationCodes {
         String key = prefix(s) + "code:" + hash(credential);
         var row = s.singleUseObjects().get(key);
         if (row == null || Integer.parseInt(row.get("expires"))<=Time.currentTime()) return result("EXPIRED");
+        var noticeUser = noticeBound(s, row);
+        if (noticeUser != null) {
+            String limit = sendLimit(s, noticeUser.getEmail()); if (!"OK".equals(limit)) return result(limit);
+            var response = issueExistingEmailNotice(s, noticeUser);
+            s.singleUseObjects().remove(key); // Rotate the opaque notice ticket just like a registration ticket.
+            return response;
+        }
         var u = bound(s, credential, row);
         if (u == null || s.singleUseObjects().contains(key + ":used")) return result("INVALID");
         String limit = sendLimit(s, u.getEmail()); if (!"OK".equals(limit)) return result(limit);
@@ -132,14 +181,14 @@ final class RegistrationCodes {
         if (!EmailCodeReset.token(credential) || code == null || !code.matches("[0-9]{6}")) return result("INVALID");
         String key = prefix(s) + "code:" + hash(credential); var store = s.singleUseObjects(); var row = store.get(key);
         if (row == null || Integer.parseInt(row.get("expires"))<=Time.currentTime()) return result("EXPIRED");
+        var noticeUser = noticeBound(s, row);
+        if (noticeUser != null) return wrongCode(s, key);
         var u = bound(s, credential, row);
         if (u == null || store.contains(key + ":used")) return result("INVALID");
         if (store.contains(key + ":try:4")) return result("EXHAUSTED");
         if (!MessageDigest.isEqual(hash(credential + "\0" + code).getBytes(StandardCharsets.US_ASCII),
                 row.get("code").getBytes(StandardCharsets.US_ASCII))) {
-            for (int i=0; i<5; i++) if (store.putIfAbsent(key + ":try:" + i, TTL+60))
-                return result(i == 4 ? "EXHAUSTED" : "WRONG_CODE");
-            return result("EXHAUSTED");
+            return wrongCode(s, key);
         }
         if (!AtomicActionTokens.claim(s, key + ":used", Integer.parseInt(row.get("expires")))) return result("INVALID");
         u.setEmailVerified(true);

@@ -28,8 +28,6 @@ export function mountAccountLifecycle(root, options = {}) {
     const validateRegister = () => {
         const usernameTaken = model.registrationAvailability.username.state === 'taken'
             && model.registrationAvailability.username.value === username.value.trim();
-        const emailTaken = model.registrationAvailability.email.state === 'taken'
-            && model.registrationAvailability.email.value === email.value.trim();
         // Availability remains advisory: an expired, incomplete self-registration
         // can be safely restarted only by the server with both fields matching.
         const usernameValid = !!username.value.trim();
@@ -37,11 +35,10 @@ export function mountAccountLifecycle(root, options = {}) {
         const length = Array.from(first.value).length;
         const policyValid = length >= FUTURE_PASSWORD_PRESENTATION.minimum && length <= FUTURE_PASSWORD_PRESENTATION.maximum;
         find('#mf-username-error').textContent = model.registrationError === 'USERNAME_TAKEN' || usernameTaken ? '账号名已被使用；若是尚未完成的注册，10 分钟后可用相同账号名和邮箱重新开始。' : '';
-        find('#mf-email-error').textContent = model.registrationError === 'EMAIL_TAKEN' || emailTaken ? '这个邮箱已被使用，请更换邮箱或返回登录。'
-            : email.value && !email.validity.valid ? '请输入有效的邮箱地址。' : '';
+        find('#mf-email-error').textContent = email.value && !email.validity.valid ? '请输入有效的邮箱地址。' : '';
         find('#mf-register-policy-error').textContent = length && !policyValid ? '密码长度需要为 8–128 个字符。' : '';
         username.setAttribute('aria-invalid', String(model.registrationError === 'USERNAME_TAKEN' || usernameTaken));
-        email.setAttribute('aria-invalid', String(model.registrationError === 'EMAIL_TAKEN' || emailTaken || (!!email.value && !email.validity.valid)));
+        email.setAttribute('aria-invalid', String(!!email.value && !email.validity.valid));
         first.setAttribute('aria-invalid', String(!!length && !policyValid));
         return usernameValid && emailValid && policyValid;
     };
@@ -49,7 +46,7 @@ export function mountAccountLifecycle(root, options = {}) {
         const entry = model.registrationAvailability[field];
         const target = find(selector);
         const text = entry.state === 'checking' ? '正在检查可用性…'
-            : entry.state === 'available' ? (field === 'username' ? '账号名可用。' : '邮箱可用。')
+            : entry.state === 'available' ? '账号名可用。'
             : entry.state === 'taken' ? ''
             : entry.state === 'failed' ? (entry.message || '暂时无法检查可用性，注册时会再次确认。') : '';
         target.textContent = text;
@@ -126,8 +123,8 @@ export function mountAccountLifecycle(root, options = {}) {
         find('#mf-auto-login').checked = model.autoLogin;
         find('#mf-auto-login').disabled = !model.rememberPassword;
         find('#mf-masked-email').textContent = model.maskedEmail;
-        find('#mf-verification-summary').textContent = '注册验证码已发送至：';
-        find('#mf-verification-help').textContent = '请在此输入邮件中的 6 位验证码，10 分钟内有效。未收到时请查看垃圾邮件或重新发送。';
+        find('#mf-verification-summary').textContent = '如果这个邮箱可以使用，我们已发送验证邮件，请查收。';
+        find('#mf-verification-help').textContent = '收到验证码时，请在此输入邮件中的 6 位验证码，10 分钟内有效；若邮件提示邮箱已有账号，可返回登录或找回密码。';
         const registrationCode = find('#mf-registration-code');
         registrationCode.disabled = !model.registrationCodeValid || !!model.pendingRequest;
         find('#mf-registration-code-submit').disabled = registrationCode.disabled || !/^[0-9]{6}$/.test(registrationCode.value);
@@ -141,8 +138,9 @@ export function mountAccountLifecycle(root, options = {}) {
         find('#mf-resend-status').textContent = resend.hidden ? '' : model.resendState === 'FAILED' ? '暂时无法重新发送，请稍后再试。'
             : model.resendSeconds ? '请稍候再尝试重新发送。' : '';
         find('#mf-register-status').textContent = model.screen === 'REGISTER_SUBMITTING' ? '正在提交注册申请…'
-            : ['USERNAME_TAKEN', 'EMAIL_TAKEN'].includes(model.registrationError) ? ''
-            : model.registrationMessage || (model.registrationError === 'ACCOUNT_IN_USE' ? '账号名或邮箱已被使用，请更换后重试；已有账号可返回登录或找回密码。'
+            : model.registrationError === 'USERNAME_TAKEN' ? ''
+            : model.registrationMessage || (['EMAIL_SUBMISSION_UNAVAILABLE', 'ACCOUNT_SUBMISSION_UNAVAILABLE'].includes(model.registrationError)
+                ? '暂时无法开始验证，请核对填写信息后重试。'
                 : model.registrationError === 'REQUEST_FAILED' ? '暂时无法确认注册结果，请返回登录尝试或稍后重试。' : '');
         find('#mf-register-status').classList.toggle('mf-error', !!model.registrationError);
         register.querySelectorAll('input, [data-mf-password-reveal]').forEach(input => input.disabled = model.screen === 'REGISTER_SUBMITTING');
@@ -166,7 +164,6 @@ export function mountAccountLifecycle(root, options = {}) {
         reset.querySelectorAll('input, [data-mf-password-reveal]').forEach(input => input.disabled = model.resetState !== 'valid' || model.screen === 'RESET_WAITING');
         validateRegister(); registerPair.refresh(); resetPair.refresh();
         renderAvailability('username', '#mf-username-availability');
-        renderAvailability('email', '#mf-email-availability');
     };
     root.querySelectorAll('[data-navigate]').forEach(button => on(button, 'click', () => model.navigate(button.dataset.navigate)));
     on(find('[data-intent="login"]'), 'click', () => emit('login'));
@@ -175,9 +172,8 @@ export function mountAccountLifecycle(root, options = {}) {
     on(find('#mf-auto-login'), 'change', event => model.setAutoLogin(event.target.checked));
     on(username, 'input', () => { model.usernameEdited(username.value); scheduleRegistrationCheck('username', username); validateRegister(); registerPair.refresh(); });
     on(username, 'blur', () => scheduleRegistrationCheck('username', username, true));
-    on(email, 'input', () => { model.emailEdited(email.value); scheduleRegistrationCheck('email', email); validateRegister(); registerPair.refresh(); });
-    on(email, 'change', () => { model.emailEdited(email.value); scheduleRegistrationCheck('email', email, true); validateRegister(); registerPair.refresh(); });
-    on(email, 'blur', () => scheduleRegistrationCheck('email', email, true));
+    on(email, 'input', () => { model.emailEdited(); validateRegister(); registerPair.refresh(); });
+    on(email, 'change', () => { model.emailEdited(); validateRegister(); registerPair.refresh(); });
     on(identity, 'input', render);
     on(identity, 'change', render);
     on(register, 'submit', event => {

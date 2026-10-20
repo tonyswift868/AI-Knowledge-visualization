@@ -100,6 +100,9 @@ class FakeLifecycleKeycloak146:
         self.operations: list[dict] = []
         self.http_events: list[dict] = []
         self.next_registration_status: str | None = None
+        # Optional protocol override used only by isolated mixed-version
+        # compatibility tests; production and ordinary fixtures leave it unset.
+        self.registration_start_override = None
         self.next_reset_status: str | None = None
         self.reset_observation_status: str | None = None
         self.reset_observation_schema: str | None = None
@@ -173,6 +176,8 @@ class FakeLifecycleKeycloak146:
                         "transaction_id": value.get("transaction_id", ""),
                         "status": owner.reset_observation_status or "PENDING"}
                 if op in ("registration-start", "registration-resend"):
+                    if op == "registration-start" and owner.registration_start_override is not None:
+                        return owner.registration_start_override(value)
                     if op == "registration-resend" and owner.next_registration_resend_status:
                         status = owner.next_registration_resend_status
                         owner.next_registration_resend_status = None
