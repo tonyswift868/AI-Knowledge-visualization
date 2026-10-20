@@ -226,8 +226,8 @@ class Bridge(QObject):
                 self.registration_credential = None; self.registration_deadline = 0
             if error == 'REGISTRATION_COOLDOWN': self.registration_resend_deadline = time.monotonic() + 60
             if error == 'REGISTRATION_SEND_LIMIT': self.registration_resend_deadline = time.monotonic() + 3600
-            outcome = {'USERNAME_ALREADY_IN_USE': 'username_taken', 'EMAIL_ALREADY_IN_USE': 'email_taken',
-                       'ACCOUNT_ALREADY_IN_USE': 'account_in_use'}.get(error, 'failed')
+            outcome = {'USERNAME_ALREADY_IN_USE': 'username_taken', 'EMAIL_ALREADY_IN_USE': 'email_unavailable',
+                       'ACCOUNT_ALREADY_IN_USE': 'account_unavailable'}.get(error, 'failed')
             self._registration_publish(kind, request_id, error, outcome=outcome); return
         if operation in ('start', 'resend'):
             self.registration_credential = value['credential']

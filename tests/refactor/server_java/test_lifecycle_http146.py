@@ -160,6 +160,12 @@ def _exercise146(pair, backend):
     smtp = pair["smtps"][backend]
     authority = pair["identities"][backend]
     trace = []
+    # 176 intentionally changes Java's email-registration check to a uniform
+    # response. Python still performs an account lookup, which prewarms the
+    # cached admin token; Java obtains that token on its later first admin call.
+    # Exclude only the email lookup below and compare token acquisition
+    # separately. All other admin requests remain ordered and exact.
+    excluded_authority_http = set()
     with _client(pair, backend) as c:
         cap = c.get(LIFECYCLE + "/capabilities")
         assert cap.status_code == 200
@@ -194,9 +200,19 @@ def _exercise146(pair, backend):
         verified = c.post(LIFECYCLE + "/register/verify", json={"credential": credential, "code": "123456"})
         assert verified.status_code == 200 and _json_body(verified)["state"] == "VERIFIED"
         trace.append(_http_projection(verified))
+        lookup_http_start = len(authority.http_events)
         checked = c.post(LIFECYCLE + "/register/check", json={"field": "email", "value": "new146@fixture.invalid"})
-        assert checked.status_code == 200 and _json_body(checked)["available"] is False
-        trace.append(_http_projection(checked))
+        # This is a semantic exception to Python/Java parity by design: Java
+        # must not expose registration status; legacy JSON fields still exist.
+        checked_body = _json_body(checked)
+        assert checked.status_code == 200
+        assert checked_body == {"field": "email", "available": backend == "java"}
+        if backend == "python":
+            for index in range(lookup_http_start, len(authority.http_events)):
+                row = authority.http_events[index]
+                if row["method"] == "GET" and row["path"] == "/admin/realms/mentorflow/users" \
+                        and "email" in row["query_fields"]:
+                    excluded_authority_http.add(index)
 
         # Password reset sends only into local SMTP, confirms the new credential,
         # and invalidates the pre-reset native bearer.
@@ -283,10 +299,13 @@ def _exercise146(pair, backend):
     for _recipient, subject_line, body in normalized_mail:
         if subject_line in expected_bodies:
             assert body.strip().replace("\r\n", "\n") == expected_bodies[subject_line]
+    admin_tokens = [row for row in authority.http_events if row["route"] == "admin_token"]
     return {"trace": trace, "mail": normalized_mail,
         "db": _db_projection(pair["servers"][backend]),
         "operations": [row["operation"] for row in authority.operations],
-        "admin_trace": authority.http_events}
+        "admin_tokens": admin_tokens,
+        "admin_trace": [row for index, row in enumerate(authority.http_events)
+            if index not in excluded_authority_http and row["route"] != "admin_token"]}
 
 
 def test_lifecycle146_same_http_contract_mail_and_postgres_projection(lifecycle_http146):
@@ -295,6 +314,12 @@ def test_lifecycle146_same_http_contract_mail_and_postgres_projection(lifecycle_
     assert outcomes["python"]["mail"] == outcomes["java"]["mail"]
     assert outcomes["python"]["db"] == outcomes["java"]["db"]
     assert outcomes["python"]["operations"] == outcomes["java"]["operations"]
+    for backend in ("python", "java"):
+        tokens = outcomes[backend]["admin_tokens"]
+        assert len(tokens) == 1
+        assert tokens[0]["method"] == "POST"
+        assert tokens[0]["path"] == "/realms/mentorflow/protocol/openid-connect/token"
+        assert tokens[0]["status"] == 200
     assert outcomes["python"]["admin_trace"] == outcomes["java"]["admin_trace"]
 
 
@@ -443,8 +468,8 @@ def test_lifecycle146_reset_observation_valid_errors_and_boundary_contract(lifec
             assert available.status_code == 200 and _json_body(available)["available"] is True
             trace.append(_http_projection(available))
             unavailable = c.post(LIFECYCLE + "/register/check", json={"field": "email", "value": "alice146@fixture.invalid"})
-            assert unavailable.status_code == 200 and _json_body(unavailable)["available"] is False
-            trace.append(_http_projection(unavailable))
+            assert unavailable.status_code == 200
+            assert _json_body(unavailable) == {"field": "email", "available": backend == "java"}
             invalid_check = c.post(LIFECYCLE + "/register/check", content=b'{"field":"username","value":"x","extra":1}',
                 headers={"Content-Type": "application/json"})
             assert invalid_check.status_code == 400 and _json_body(invalid_check)["code"] == "REGISTRATION_INPUT_INVALID"

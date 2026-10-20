@@ -40,7 +40,6 @@ export class AccountLifecycleState {
         this.resetState = 'invalid';
         this.registrationAvailability = {
             username: {value: '', state: 'idle', available: null, requestId: 0, message: ''},
-            email: {value: '', state: 'idle', available: null, requestId: 0, message: ''},
         };
         this.rememberPassword = false;
         this.autoLogin = false;
@@ -104,9 +103,6 @@ export class AccountLifecycleState {
         if (field === 'username' && ['USERNAME_TAKEN', 'ACCOUNT_IN_USE', 'REQUEST_FAILED'].includes(this.registrationError)) {
             this.registrationError = ''; this.registrationMessage = '';
         }
-        if (field === 'email' && ['EMAIL_TAKEN', 'ACCOUNT_IN_USE', 'REQUEST_FAILED'].includes(this.registrationError)) {
-            this.registrationError = ''; this.registrationMessage = '';
-        }
         this.changed(); return true;
     }
     beginRegistrationCheck(field, value) {
@@ -137,20 +133,23 @@ export class AccountLifecycleState {
             this.setCooldown(retryAfter);
         } else {
             this.screen = 'REGISTER';
-            this.registrationError = ({username_taken: 'USERNAME_TAKEN', email_taken: 'EMAIL_TAKEN', account_in_use: 'ACCOUNT_IN_USE'})[outcome] || 'REQUEST_FAILED';
+            this.registrationError = ({username_taken: 'USERNAME_TAKEN', email_unavailable: 'EMAIL_SUBMISSION_UNAVAILABLE',
+                account_unavailable: 'ACCOUNT_SUBMISSION_UNAVAILABLE'})[outcome] || 'REQUEST_FAILED';
             this.registrationMessage = typeof message === 'string' ? message : '';
             if (outcome === 'username_taken') {
                 this.registrationAvailability.username.state = 'taken';
                 this.registrationAvailability.username.available = false;
-            } else if (outcome === 'email_taken') {
-                this.registrationAvailability.email.state = 'taken';
-                this.registrationAvailability.email.available = false;
             }
         }
         this.changed(); return true;
     }
     usernameEdited(value = '') { return this.registrationFieldEdited('username', value); }
-    emailEdited(value = '') { return this.registrationFieldEdited('email', value); }
+    emailEdited() {
+        if (['EMAIL_SUBMISSION_UNAVAILABLE', 'ACCOUNT_SUBMISSION_UNAVAILABLE', 'REQUEST_FAILED'].includes(this.registrationError)) {
+            this.registrationError = ''; this.registrationMessage = '';
+        }
+        this.changed(); return true;
+    }
     get resendSeconds() { return Math.max(0, Math.ceil((this.resendDeadline - this.now()) / 1000)); }
     setCooldown(seconds) {
         const bounded = Number.isFinite(seconds) ? Math.max(0, Math.min(3600, Math.ceil(seconds))) : 60;

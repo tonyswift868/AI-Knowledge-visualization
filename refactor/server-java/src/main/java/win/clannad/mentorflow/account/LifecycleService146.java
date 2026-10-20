@@ -78,9 +78,13 @@ public final class LifecycleService146 {
         if(field.equals("username")) {if(candidate.isEmpty()||cp(candidate)>255||!candidate.equals(IdentitySettings.stripIdentityWhitespace(candidate))||candidate.codePoints().anyMatch(c->c<32))return inputCheckError();}
         else if(field.equals("email")){if(cp(candidate)>254||!email(candidate))return inputCheckError();}
         else return inputCheckError();
+        if(field.equals("email")) {
+            // Email availability is confirmed through the mailbox flow, never by this public check.
+            return ok(obj("field","email","available",true));
+        }
         try {
-            String subject=findAccount(b,field.equals("username")?"username":"email",candidate);
-            return ok(obj("field",field,"available",subject==null));
+            String subject=findAccount(b,"username",candidate);
+            return ok(obj("field","username","available",subject==null));
         } catch(Exception e){return new Result(503,obj("code","REGISTRATION_CHECK_UNAVAILABLE"),false);}
         finally{value.clear();}
     }
@@ -214,7 +218,7 @@ public final class LifecycleService146 {
     private String findAccount(NativeIdentityBridge b,String field,String value){Map<String,String> params=field.equals("username")?Map.of("username",value,"exact","true","max","2"):Map.of("email",value,"exact","true","max","2");JsonNode rows=admin(b,"GET","/users",null,params);if(!rows.isArray()||rows.size()>1)throw new IllegalStateException();if(rows.isEmpty())return null;JsonNode row=rows.get(0);String candidate=text(row,field),subject=text(row,"id");if(candidate.isEmpty()||!candidate.equalsIgnoreCase(value)||!subject.matches("[A-Za-z0-9_-]{1,255}"))throw new IllegalStateException();return subject;}
 
     private static Result registrationSent(JsonNode result,int status){if(!"CODE_SENT".equals(text(result,"status"))||!token43(text(result,"credential"))||!"600".equals(text(result,"expires_in"))||!"60".equals(text(result,"resend_after")))return registrationError(text(result,"status"));return new Result(status,obj("state","CODE_SENT","credential",text(result,"credential"),"expires_in",600,"resend_after",60),false);}
-    private static Result registrationError(String code){Map<String,Object[]> errors=Map.ofEntries(Map.entry("USERNAME_ALREADY_IN_USE",new Object[]{409,"账号名已被使用；如刚注册但未验证，请在 10 分钟后用相同账号名和邮箱重新开始。"}),Map.entry("EMAIL_ALREADY_IN_USE",new Object[]{409,"邮箱已被使用，请更换邮箱或返回登录。"}),Map.entry("INPUT_INVALID",new Object[]{400,"请检查账号名、邮箱和密码。"}),Map.entry("PASSWORD_POLICY_REJECTED",new Object[]{400,"密码不符合规则，请使用 8–128 个字符并重试。"}),Map.entry("WRONG_CODE",new Object[]{400,"验证码错误，请重新输入。"}),Map.entry("EXPIRED",new Object[]{400,"注册凭据已过期，请用相同账号名和邮箱重新注册并获取验证码。"}),Map.entry("EXHAUSTED",new Object[]{400,"验证码错误已达 5 次，请重新发送验证码。"}),Map.entry("INVALID",new Object[]{400,"注册凭据无效或已使用，请返回登录或重新注册。"}),Map.entry("COOLDOWN",new Object[]{429,"请在 60 秒后重新发送验证码。"}),Map.entry("SEND_LIMIT",new Object[]{429,"发送次数已达每小时上限，请稍后重试。"}),Map.entry("UNAVAILABLE",new Object[]{503,"注册结果暂未确认，请稍后重试；若账号已创建，10 分钟后可重新开始。"}));if(!errors.containsKey(code))code="UNAVAILABLE";Object[] e=errors.get(code);String output=Set.of("USERNAME_ALREADY_IN_USE","EMAIL_ALREADY_IN_USE","PASSWORD_POLICY_REJECTED").contains(code)?code:"REGISTRATION_"+code;return new Result((int)e[0],obj("code",output,"message",e[1]),false);}
+    private static Result registrationError(String code){Map<String,Object[]> errors=Map.ofEntries(Map.entry("USERNAME_ALREADY_IN_USE",new Object[]{409,"账号名已被使用；如刚注册但未验证，请在 10 分钟后用相同账号名和邮箱重新开始。"}),Map.entry("INPUT_INVALID",new Object[]{400,"请检查账号名、邮箱和密码。"}),Map.entry("PASSWORD_POLICY_REJECTED",new Object[]{400,"密码不符合规则，请使用 8–128 个字符并重试。"}),Map.entry("WRONG_CODE",new Object[]{400,"验证码错误，请重新输入。"}),Map.entry("EXPIRED",new Object[]{400,"注册凭据已过期，请用相同账号名和邮箱重新注册并获取验证码。"}),Map.entry("EXHAUSTED",new Object[]{400,"验证码错误已达 5 次，请重新发送验证码。"}),Map.entry("INVALID",new Object[]{400,"注册凭据无效或已使用，请返回登录或重新注册。"}),Map.entry("COOLDOWN",new Object[]{429,"请在 60 秒后重新发送验证码。"}),Map.entry("SEND_LIMIT",new Object[]{429,"发送次数已达每小时上限，请稍后重试。"}),Map.entry("UNAVAILABLE",new Object[]{503,"注册结果暂未确认，请稍后重试；若账号已创建，10 分钟后可重新开始。"}));if(!errors.containsKey(code))code="UNAVAILABLE";Object[] e=errors.get(code);String output=Set.of("USERNAME_ALREADY_IN_USE","PASSWORD_POLICY_REJECTED").contains(code)?code:"REGISTRATION_"+code;return new Result((int)e[0],obj("code",output,"message",e[1]),false);}
     private static Result inputCheckError(){return new Result(400,obj("code","REGISTRATION_INPUT_INVALID","message","请检查账号名或邮箱。"),false);}
     private static Result resetError(String code,String message){return new Result(400,obj("code",code,"message",message),false);}
     private NativeSessionService requireSessions(){NativeSessionService value=sessions.getIfAvailable();if(value==null)throw failure(503,"NATIVE_AUTH_NOT_READY","账号服务尚未准备好，请稍后重试。");return value;}
