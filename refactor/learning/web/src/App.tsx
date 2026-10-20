@@ -155,7 +155,7 @@ export function App() {
               {s.sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
             </button>
             <div className="grow" />
-            <span className={`chip ${s.ready ? "" : "warn"}`}><span className="dot" />{s.ready ? "账号已连接" : "正在连接账号服务…"}</span>
+            <span className={`chip ${!s.ready || s.account?.offline ? "warn" : ""}`}><span className="dot" />{!s.ready ? "正在连接账号服务…" : s.account?.offline ? "离线学习" : "已登录"}</span>
             <button className={`chip model-status ${s.modelStatus.state}`} title={s.modelStatus.fault?.message ?? '以最近一次模型请求结果为准'}
               onClick={()=>s.modelStatus.fault ? s.set({modelFault:s.modelStatus.fault}) : s.toast('info',s.modelStatus.state === 'ok' ? '最近一次模型请求正常。' : '还没有模型请求结果，可到设置测试连接。')}>
               <span className="dot"/>{s.modelStatus.short}</button>

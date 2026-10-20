@@ -1,4 +1,4 @@
-"""Paired unsigned hints can unblock cached optional login, not authorize updates."""
+"""Hints never authorize updates; batch 181 keeps discovery off the login path."""
 from types import SimpleNamespace
 import threading
 import time
@@ -77,7 +77,7 @@ def policy168(*, mandatory=False, floor='2.0.3'):
 
 def test_optional_pointer168_releases_login_before_manifest_without_offer(harness168):
     app, gate, core, ui, prompts = harness168(policy168())
-    pump168(app, lambda: ui.state.get('login_check_status') == 'optional_pointer')
+    assert ui.state.get('login_check_status') == 'background'
     assert ui.state['login_allowed'] and not ui.state['login_check_pending']
     assert ui.snapshot()['busy'] and not core.exited.is_set()
     assert AccountShell._updates_allow_login(SimpleNamespace(app=SimpleNamespace(_mentorflow_updates=ui)))
@@ -89,14 +89,11 @@ def test_optional_pointer168_releases_login_before_manifest_without_offer(harnes
 
 @pytest.mark.parametrize('policy', [None, policy168(mandatory=True, floor='2.0.27'),
                                   policy168(floor='2.0.27')])
-def test_missing_or_mandatory_pointer168_waits_for_signed_manifest(harness168, policy):
+def test_missing_or_mandatory_pointer168_cannot_block_before_signed_manifest(harness168, policy):
     app, gate, core, ui, prompts = harness168(policy, final='MANDATORY_UPDATE')
-    assert ui.state['login_check_pending'] and not ui.state.get('login_allowed', False)
+    assert not ui.state['login_check_pending'] and ui.state.get('login_allowed', False)
     assert prompts == []
-    if policy is not None:
-        assert not gate.isEnabled()
-        ui._startup_wait_elapsed()
-        assert ui.state['login_check_pending']  # deadline cannot erase a known minimum hint
+    assert gate.isEnabled()  # unsigned hints do not constrain the logged-in account
     core.release.set()
     pump168(app, lambda: ui.state.get('feed') == 'VERIFIED')
     assert ui.state['mandatory'] and not ui.state['login_allowed']
@@ -107,7 +104,7 @@ def test_optional_pointer168_cannot_override_cached_mandatory(harness168):
     app, _gate, core, ui, prompts = harness168(policy168(), cached='MANDATORY_UPDATE',
                                              final='MANDATORY_UPDATE')
     assert ui.state['mandatory'] and not ui.state['login_allowed']
-    assert ui.state['login_check_pending']
+    assert not ui.state['login_check_pending']
     core.release.set()
     pump168(app, lambda: ui.state.get('feed') == 'VERIFIED')
     assert ui.state['mandatory'] and not ui.state['login_allowed']
@@ -115,7 +112,7 @@ def test_optional_pointer168_cannot_override_cached_mandatory(harness168):
 
 def test_optional_pointer168_signed_contradiction_blocks_after_login(harness168):
     app, _gate, core, ui, prompts = harness168(policy168(), final='MANDATORY_UPDATE')
-    pump168(app, lambda: ui.state.get('login_check_status') == 'optional_pointer')
+    assert ui.state.get('login_check_status') == 'background'
     assert AccountShell._updates_allow_login(SimpleNamespace(app=SimpleNamespace(_mentorflow_updates=ui)))
     observed = []
     ui.changed.connect(lambda status: observed.append(status))
@@ -126,31 +123,28 @@ def test_optional_pointer168_signed_contradiction_blocks_after_login(harness168)
     assert prompts[-1]['mandatory']
 
 
-def test_mandatory_pointer168_failed_verification_does_not_fall_back_to_healthy(harness168):
+def test_mandatory_pointer168_failed_verification_uses_signed_cached_policy(harness168):
     app, _gate, core, ui, _prompts = harness168(policy168(mandatory=True, floor='2.0.27'),
                                               final='HEALTHY', feed='UNAVAILABLE_RECOVERABLE')
     core.release.set()
-    pump168(app, lambda: not ui.state.get('login_check_pending'))
-    assert not ui.state['login_allowed']
-    assert ui.state['state'] == 'REPAIR_REQUIRED' and not ui.state['mandatory']
-    assert ui.state['reason'] == 'pointer_policy_awaits_signed_manifest'
+    pump168(app, lambda: ui.state.get('feed') == 'UNAVAILABLE_RECOVERABLE')
+    assert ui.state['login_allowed']
+    assert ui.state['state'] == 'HEALTHY' and not ui.state['mandatory']
 
 
-def test_missing_pointer168_elapsed_time_cannot_replace_signed_check(harness168):
+def test_missing_pointer168_does_not_hold_login_or_cancel_signed_check(harness168):
     app, _gate, core, ui, _prompts = harness168(None, final='MANDATORY_UPDATE')
-    ui._startup_wait_elapsed()
-    assert ui.state['login_check_pending'] and not ui.state.get('login_allowed', False)
+    assert not ui.state['login_check_pending'] and ui.state.get('login_allowed', False)
     assert ui.snapshot()['busy'] and not core.exited.is_set()
     core.release.set()
     pump168(app, lambda: ui.state.get('mandatory') is True)
     assert not ui.state['login_allowed']
 
 
-def test_unavailable_feed168_uses_verified_cache_only_after_worker_result(harness168):
+def test_unavailable_feed168_retains_verified_cache_after_worker_result(harness168):
     app, _gate, core, ui, _prompts = harness168(None, final='HEALTHY',
                                               feed='UNAVAILABLE_RECOVERABLE')
-    ui._startup_wait_elapsed()
-    assert ui.state['login_check_pending'] and not ui.state.get('login_allowed', False)
+    assert not ui.state['login_check_pending'] and ui.state.get('login_allowed', False)
     core.release.set()
-    pump168(app, lambda: not ui.state.get('login_check_pending'))
+    pump168(app, lambda: ui.state.get('login_check_status') == 'offline_fallback')
     assert ui.state['login_allowed'] and ui.state['login_check_status'] == 'offline_fallback'

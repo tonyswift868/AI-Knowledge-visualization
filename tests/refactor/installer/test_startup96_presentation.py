@@ -45,7 +45,7 @@ class Feed96:
 
 
 @pytest.mark.parametrize('logged_in', [False, True])
-def test_startup96_pending_network_keeps_form_usable_but_waits_for_policy_and_offer_uses_current_window(app96, tmp_path, monkeypatch, logged_in):
+def test_startup96_pending_network_does_not_hold_login_and_offer_uses_current_window(app96, tmp_path, monkeypatch, logged_in):
     from refactor.desktop.delivery import per_user_install
     monkeypatch.setattr(per_user_install, 'schedule_updater_refresh', lambda _: None)
     gate, home = QWidget(), QWidget()
@@ -55,8 +55,8 @@ def test_startup96_pending_network_keeps_form_usable_but_waits_for_policy_and_of
     try:
         ui.start()
         pump(app96, lambda: feed.entered.is_set() and gate.isEnabled())
-        assert ui.snapshot()['busy'] and ui.state['login_check_pending']
-        assert not ui.state.get('login_allowed', False)
+        assert ui.snapshot()['busy'] and not ui.state['login_check_pending']
+        assert ui.state.get('login_allowed', False)
         if logged_in:
             owner.home = home; gate.hide(); home.show()
         feed.release.set()

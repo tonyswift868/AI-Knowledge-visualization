@@ -250,6 +250,7 @@ class LearningWindow(QWidget):
         self._data_root = Path(data_root)
         self._display_name = display_name or "MentorFlow 账号"
         self._role = server_role
+        self._session_offline = False
         self._api_label = api_base_url
         self._settings_bound = False
         self.services: AppServices | None = None
@@ -310,7 +311,14 @@ class LearningWindow(QWidget):
         return {"name": self._display_name, "account_id": self._account_id,
                 "role": self._role if isinstance(self._role, str) else None,
                 "role_label": _ROLE_LABELS.get(self._role, "待确认"), "api": self._api_label,
-                "settings_available": self._settings_bound}
+                "settings_available": self._settings_bound,
+                "offline": self._session_offline}
+
+    def set_session_offline(self, offline: bool) -> None:
+        """Account connectivity survives independent sync/notice updates."""
+        if not self._disposed:
+            self._session_offline = bool(offline)
+            self.bridge.push("account", self.account_info())
 
     def request_account_action(self, action):
         if action in {'switch', 'logout'}:

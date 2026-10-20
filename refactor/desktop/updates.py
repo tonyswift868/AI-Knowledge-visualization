@@ -19,8 +19,6 @@ BACKGROUND_PREPARE_RETRY_DELAYS = (2, 3, 5, 10, 20, 40)
 class DesktopUpdates(QObject):
     changed = Signal(object)
     _finished = Signal(object)
-    STARTUP_LOGIN_WAIT_MS = 15_000
-
     def __init__(self, app, root, gate, *, core=None, login_handoff=None):
         super().__init__(app)
         if core is None:
@@ -55,87 +53,35 @@ class DesktopUpdates(QObject):
         self._background_retry = QTimer(self)
         self._background_retry.setSingleShot(True)
         self._background_retry.timeout.connect(self._prepare_in_background)
-        self._login_blocked = True
+        self._login_blocked = False
         self._startup_cached = None
         self._startup_pointer_policy = None
         self._startup_started = None
-        self._login_wait_timer = QTimer(self)
-        self._login_wait_timer.setSingleShot(True)
-        self._login_wait_timer.setInterval(self.STARTUP_LOGIN_WAIT_MS)
-        self._login_wait_timer.timeout.connect(self._startup_wait_elapsed)
         app.aboutToQuit.connect(self.close)
         app.commitDataRequest.connect(self._defer_session)
         core.attach_shutdown_guard(app)
 
     def start(self):
-        # Keep the account form usable while the small update check runs. A
-        # submitted login is queued by AccountShell until this gate resolves.
+        # User 2026-10-20: login never waits for network update discovery.
+        # Locally verified mandatory policy and later signed results still apply.
         getattr(self.gate, 'set_login_available', self.gate.setEnabled)(True)
         self._startup_started = time.monotonic()
-        self._login_wait_timer.start()
         self._publish({**self.state, 'state': 'CHECKING',
-                       'login_check_pending': True,
-                       'login_check_status': 'checking',
-                       'login_check_message': '正在检查更新…',
-                       'message': '正在检查更新…'})
+                       'login_allowed': True, 'login_check_pending': False,
+                       'login_check_status': 'background',
+                       'login_check_message': '',
+                       'message': '正在后台检查更新…'})
         QTimer.singleShot(0, lambda: self.run("startup"))
 
-    def _startup_wait_elapsed(self):
-        """Slow/absent hints must not turn an unfinished check into permission."""
-        if self._closed or not self.state.get('login_check_pending'):
-            return
-        # Optional paired hints already resolve the gate and stop this timer.
-        # Otherwise the existing network deadlines/retries finish the worker.
-        # A confirmed unavailable feed may use verified cached policy there;
-        # merely waiting 15 seconds cannot stand in for that result.
-        from .delivery.per_user_install import maintenance_log
-        maintenance_log(self.root, 'startup_login_gate', outcome='awaiting_signed_manifest',
-                        elapsed_ms=round((time.monotonic() - (self._startup_started or time.monotonic())) * 1000),
-                        paired_policy=bool(self._startup_pointer_policy))
-
-    def _pointer_allows_current(self, policy):
-        from .delivery.update_protocol import version_key, SecurityError
-        cached = self._startup_cached
-        try:
-            return (policy['mandatory'] is False and cached is not None
-                    and version_key(cached['current']) >= version_key(policy['mandatory_floor']))
-        except (KeyError, TypeError, ValueError, SecurityError):
-            return False
-
     def _receive_pointer_policy(self, policy):
-        """Release only the cached authorized login, never an unsigned offer."""
+        """Hints are diagnostics; only verified policy can restrict login."""
         self._startup_pointer_policy = dict(policy)
-        cached = self._startup_cached
-        if (cached is None or not cached.get('login_allowed')
-                or cached.get('state') not in ('HEALTHY', 'OPTIONAL_UPDATE')
-                or not self._pointer_allows_current(policy)):
-            self._login_blocked = True
-            self._publish({**self.state, 'login_allowed': False,
-                           'login_check_pending': True,
-                           'login_check_message': '正在核实更新要求…'})
-            getattr(self.gate, 'set_login_available', self.gate.setEnabled)(False)
-            from .delivery.per_user_install import maintenance_log
-            maintenance_log(self.root, 'startup_login_gate', outcome='pointer_wait_manifest',
-                            pointer_version=policy['version'])
-            return
-        self._login_wait_timer.stop()
-        self._login_blocked = False
-        # Retain the running check and its busy flag. Its signed result still
-        # arrives on this same worker, including a contradictory mandatory one.
-        self._publish({**self.state, 'state': 'CHECKING',
-                       'login_allowed': True, 'mandatory': False,
-                       'login_check_pending': False,
-                       'login_check_status': 'optional_pointer',
-                       'login_check_message': '', 'feed': 'POINTER_HINT',
-                       'message': '正在后台核实新版本…'})
-        getattr(self.gate, 'set_login_available', self.gate.setEnabled)(True)
         from .delivery.per_user_install import maintenance_log
-        maintenance_log(self.root, 'startup_login_gate', outcome='optional_pointer',
-                        elapsed_ms=round((time.monotonic() - (self._startup_started or time.monotonic())) * 1000),
+        maintenance_log(self.root, 'startup_login_gate', outcome='background_pointer',
+                        hinted_mandatory=policy['mandatory'],
                         pointer_version=policy['version'])
 
     def _apply_startup_result(self, result, *, status='ready'):
-        self._login_wait_timer.stop()
         result = {**result,
                   'login_check_pending': False,
                   'login_check_status': status,
@@ -414,14 +360,15 @@ class DesktopUpdates(QObject):
             maintenance_log(self.root, 'startup_login_gate', outcome='verified_cache_ready',
                             elapsed_ms=round((time.monotonic() - (self._startup_started or time.monotonic())) * 1000),
                             state=result.get('state'))
-            # Cached status is a fallback only. In particular, cached HEALTHY
-            # must not release the login gate before the current feed check.
+            # Discovery stays in the background. Known signed local restrictions
+            # still apply immediately without waiting for a network response.
             self._publish({**self.state, 'cached_login_allowed': bool(result.get('login_allowed'))})
-            if result.get('state') == 'MANDATORY_UPDATE':
+            if not result.get('login_allowed', False):
                 # An already verified mandatory floor can be shown immediately;
                 # it never needs a fresh network request to remain binding.
-                self._publish({**self.state, **result, 'mandatory': True,
-                               'login_check_pending': True, 'login_allowed': False})
+                self._publish({**self.state, **result,
+                               'mandatory': result.get('state') == 'MANDATORY_UPDATE',
+                               'login_check_pending': False, 'login_allowed': False})
                 self._login_blocked = True
                 getattr(self.gate, 'set_login_available', self.gate.setEnabled)(False)
                 self._show_prompt()
@@ -452,13 +399,6 @@ class DesktopUpdates(QObject):
         self._busy = False
         result = value["result"]
         if value['action'] == 'startup':
-            if (result.get('feed') != 'VERIFIED' and self._startup_pointer_policy is not None
-                    and not self._pointer_allows_current(self._startup_pointer_policy)):
-                # Do not mislabel an unsigned hint as a verified mandatory
-                # policy. Failed verification has its own blocked retry state.
-                result = {**result, 'state': 'REPAIR_REQUIRED', 'login_allowed': False,
-                          'message': '暂时无法核实更新要求，请重试检查更新或重新安装。',
-                          'reason': 'pointer_policy_awaits_signed_manifest'}
             result = {**result, 'mandatory': result.get('state') == 'MANDATORY_UPDATE'}
             status = ('offline_fallback' if result.get('offline_fallback') or
                       result.get('feed') != 'VERIFIED' else 'ready')
@@ -581,7 +521,6 @@ class DesktopUpdates(QObject):
         if self._prompt is not None: self._prompt.hide()
         self._retry.stop()
         self._background_retry.stop()
-        self._login_wait_timer.stop()
         self._cancel.set()
         self._session.close()
         self._pool.shutdown(wait=False, cancel_futures=True)

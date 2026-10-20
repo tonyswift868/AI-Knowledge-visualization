@@ -166,6 +166,82 @@ class LoginSession:
         self.preferences.settings.sync()
         return bool(self.preferences.settings.value('account/reauth_required/' + profile.account_id, ''))
 
+    def save_offline_snapshot(self, result):
+        """Keep only the last server-validated identity/scope; never persist tokens."""
+        profile = result.identity.profile()
+        row = self.registry.get(profile.account_id)
+        if row is None or not row['remember_session']:
+            self.clear_offline_snapshot(profile)
+            return
+        try:
+            self.credentials.load_oauth_tokens(profile)
+        except Exception:
+            self.clear_offline_snapshot(profile)
+            return
+        state = getattr(result, 'server_state', {})
+        role = None
+        if isinstance(state, dict):
+            account = state.get('account') if isinstance(state.get('account'), dict) else {}
+            role = next((item for item in (state.get('role'), state.get('application_role'),
+                account.get('role'), account.get('application_role')) if item in {'SUPER_ADMIN','LEARNER'}), None)
+        identity = result.identity
+        value = dict(issuer=identity.issuer, subject=identity.subject,
+            display_name=identity.display_name, organization_id=identity.organization_id,
+            workspace_id=identity.workspace_id, role=role)
+        self.credentials.store_offline_identity(
+            identity, json.dumps(value, ensure_ascii=False, separators=(',', ':')))
+
+    def clear_offline_snapshot(self, profile):
+        if profile is None or not profile.account_id:
+            return
+        try:
+            self.credentials.delete_offline_identity(profile)
+        except Exception as exc:
+            if getattr(exc, 'code', '') != 'CREDENTIAL_NOT_FOUND':
+                raise
+
+    def load_offline_snapshot(self, profile):
+        """Build a tokenless local shell result for the selected vaulted account."""
+        from .account_identity import LocalOnlyIdentity
+        from .account_protocol import AccountIdentity, AccountLoginResult
+        if (profile is None or not profile.account_id or self.closure_blocks_login(profile)
+                or self.requires_reauthentication(profile)):
+            return None
+        try:
+            registry = self.registry.snapshot()
+            row = self.registry.get(profile.account_id)
+            if (registry['current_account_id'] != profile.account_id or row is None
+                    or not row['remember_session']):
+                return None
+            self.credentials.load_oauth_tokens(profile)
+            local_result = lambda: AccountLoginResult(LocalOnlyIdentity(profile), '', '', {}, restored=True)
+            try:
+                raw = self.credentials.load_offline_identity(profile)
+            except Exception as exc:
+                if getattr(exc, 'code', '') == 'CREDENTIAL_NOT_FOUND':
+                    return local_result()
+                return None
+            try:
+                if not isinstance(raw, str) or len(raw) > 8192:
+                    return local_result()
+                value = json.loads(raw)
+                if not isinstance(value, dict) or set(value) != {
+                    'issuer', 'subject', 'display_name', 'organization_id', 'workspace_id', 'role'
+                }:
+                    return local_result()
+                identity = AccountIdentity(value['issuer'], value['subject'], value['display_name'],
+                    value.get('organization_id'), value.get('workspace_id'))
+                if identity.profile().account_id != profile.account_id:
+                    return local_result()
+                state = {'role': value.get('role')} if value.get('role') else {}
+                return AccountLoginResult(identity, '', '', state, restored=True)
+            except Exception:
+                # A legacy install has no scope snapshot.  Keep it local-only;
+                # never infer subject or workspace from the one-way hashes.
+                return local_result()
+        except Exception:
+            return None
+
     def revocation_pending(self, profile):
         self.preferences.settings.sync()
         return str(self.preferences.settings.value('account/revocation_pending/' + profile.account_id, '') or '')
@@ -200,6 +276,13 @@ class LoginSession:
         status = settings.status() if hasattr(settings, 'status') else None
         if status is not None and status.value != 0:
             raise AccountError('LOCAL_REAUTH_STATE_UNAVAILABLE', '无法保存重新登录状态，尚未提交修改，请稍后重试。')
+        if required:
+            try:
+                self.clear_offline_snapshot(profile)
+            except Exception:
+                # The durable reauthentication marker already blocks offline
+                # restoration, even if Locker cleanup needs a later retry.
+                pass
 
     def invalidate_saved_login(self, profile):
         """Clear only this account, retaining a restore block if any cleanup fails."""
@@ -289,6 +372,7 @@ class LoginSession:
                                          remember_me=remember, auto_login=remember and automatic)
             if not result.restored:
                 self.set_reauthentication_required(profile, False)
+            self.save_offline_snapshot(result)
         except Exception:
             # A failed metadata write must not leave a newly saved password
             # invisible to the consent controls. Never fall back to a disk store.
@@ -299,6 +383,7 @@ class LoginSession:
         with account_session_lock(profile):
             self.passwords.delete(profile)
             self.credentials.logout(profile)
+            self.clear_offline_snapshot(profile)
             self.registry.set_options(profile.account_id,remember_password=False,remember_session=False,auto_login=False)
             if self.registry.snapshot()['current_account_id']==profile.account_id:
                 self.preferences.disable_restore()
@@ -376,6 +461,7 @@ class LoginSession:
         # Called after the current UI/service has drained back to LoginGate.
         with account_session_lock(profile):
             self.credentials.logout(profile)
+            self.clear_offline_snapshot(profile)
             self.passwords.delete(profile)
             self.registry.remove(account_id)
 
@@ -410,9 +496,26 @@ class LoginSession:
                 except Exception:
                     remote_ended = False
             self.credentials.logout(profile)
+            self.clear_offline_snapshot(profile)
             if forget_password: self.passwords.delete(profile)
             self.registry.set_options(profile.account_id,auto_login=False,remember_session=False,
                                       **({'remember_password':False} if forget_password else {}))
             if self.registry.snapshot()['current_account_id']==profile.account_id:
                 self.preferences.disable_restore()
             return remote_ended
+
+    def prepare_explicit_logout(self, profile):
+        """Durably deny local restoration before an asynchronous remote logout."""
+        # This is the authoritative fence. Even if a refresh owns the account
+        # lock, Locker cleanup fails, or the process exits before remote
+        # end_session returns, restart cannot restore the old session.
+        self.set_reauthentication_required(profile, True)
+        self.preferences.disable_restore()
+        try:
+            with account_session_lock(profile, blocking=False):
+                self.registry.set_options(profile.account_id, remember_session=False,
+                                          auto_login=False)
+                self.credentials.logout(profile)
+                return True
+        except Exception:
+            return False

@@ -82,6 +82,7 @@
 .rag-composer .input { min-height: 50px; max-height: 160px; resize: vertical; }
 .rag-composer .btn { min-height: 42px; }
 .rag-composer-hint { grid-column: 1 / -1; margin: 0; color: var(--text-3); font-size: .72rem; }
+.rag-send-failure { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border: 1px solid var(--warn); border-radius: 10px; background: color-mix(in srgb, var(--warn) 8%, var(--surface-solid)); color: var(--text-2); font-size: .76rem; line-height: 1.5; }
 .rag-thinking { display: inline-flex; align-items: center; gap: 4px; color: var(--text-3); }
 .rag-thinking i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-3); animation: rag-dot 1.1s ease-in-out infinite; }
 .rag-thinking i:nth-child(2) { animation-delay: .13s; } .rag-thinking i:nth-child(3) { animation-delay: .26s; }

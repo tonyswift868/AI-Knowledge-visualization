@@ -51,6 +51,7 @@ def shell_fixture(qapp):
                _account_settings=None, _closure=None, _session_timer=Mock(), _session_epoch=4,
                _logout_pending=False, _switch_pending=False, _confirmed_role_account_id=ACCOUNT,
                _confirmed_server_role='LEARNER', _session_credentials=Mock())
+    shell.home.set_session_offline = Mock()
     shell._EphemeralCredentials = AccountShell._EphemeralCredentials
     shell._session_credentials.load_oauth_tokens.side_effect = OSError('synthetic vault timeout')
     shell.session = NS(closure_blocks_login=lambda profile: False,

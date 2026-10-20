@@ -29,34 +29,92 @@ export function Rag() {
   const [session, setSession] = React.useState<Session | null>(null)
   const [question, setQuestion] = React.useState("")
   const [pending, setPending] = React.useState<{ text: string; reply: string } | null>(null)
+  const [sendFailure, setSendFailure] = React.useState<{ text: string; message: string } | null>(null)
   const [busy, setBusy] = React.useState<"ingest" | "import" | "session" | "send" | "" >("")
   const [progress, setProgress] = React.useState<Record<string, Partial<Document>>>({})
   const [sourceOpen, setSourceOpen] = React.useState<{ messageId: string; number: number } | null>(null)
   const abort = React.useRef<AbortController | null>(null)
+  const mounted = React.useRef(false)
+  const sourcesFlight = React.useRef<Promise<SourcesResponse> | null>(null)
+  const probeRagStatus = React.useRef<(() => void) | null>(null)
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const beginRound = useRoundScroll(scrollRef, session?.id)
   useModelRetry(() => { void send() }, (fault) => fault.purpose === "rag_qa" || fault.purpose === "rag.send")
 
+  function clearSendFailure() {
+    setSendFailure(null)
+    const fault = useApp.getState().modelFault
+    if (fault && (fault.purpose === "rag_qa" || fault.purpose === "rag.send")) {
+      useApp.getState().set({ modelFault: null })
+    }
+  }
+
   const refresh = React.useCallback(async () => {
-    const result = await call<SourcesResponse>("rag.sources")
-    setSources(result)
-    setLoadError("")
-    return result
+    if (sourcesFlight.current) return sourcesFlight.current
+    const flight = call<SourcesResponse>("rag.sources").then((result) => {
+      if (mounted.current) {
+        setSources(result)
+        setLoadError("")
+      }
+      return result
+    })
+    sourcesFlight.current = flight
+    try {
+      return await flight
+    } finally {
+      if (sourcesFlight.current === flight) sourcesFlight.current = null
+    }
   }, [])
   React.useEffect(() => {
     let alive = true
-    refresh().then((result) => {
-      if (!alive) return
-      const first = result.sessions[0]
-      if (first) void openSession(first.id)
-    }).catch((e) => { if (alive) setLoadError((e as Error).message) })
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let inFlight = false
+    let pollRequired = false
+    let delay = 1500
+    mounted.current = true
+    const clearScheduled = () => {
+      if (timer !== null) clearTimeout(timer)
+      timer = null
+    }
+    const schedule = () => {
+      if (!alive || !pollRequired || timer !== null || inFlight) return
+      const jittered = delay * (0.8 + Math.random() * 0.4)
+      timer = setTimeout(() => {
+        timer = null
+        void load(false)
+      }, jittered)
+      delay = Math.min(delay * 2, 60_000)
+    }
+    const load = async (initial: boolean) => {
+      if (!alive || inFlight) return
+      inFlight = true
+      try {
+        const result = await refresh()
+        if (!alive) return
+        if (initial && result.sessions[0]) void openSession(result.sessions[0].id)
+        pollRequired = result.server_status?.state === "unavailable"
+        if (!pollRequired) delay = 1500
+      } catch (e) {
+        if (!alive) return
+        pollRequired = true
+        if (initial) setLoadError((e as Error).message)
+      } finally {
+        inFlight = false
+        schedule()
+      }
+    }
+    probeRagStatus.current = () => {
+      clearScheduled()
+      if (!inFlight) void load(false)
+    }
+    void load(true)
     const off = on("rag.progress", (event) => {
       const id = String(event?.id ?? event?.document_id ?? "")
       if (!id) return
       setProgress((old) => ({ ...old, [id]: event }))
       setSources((old) => old ? { ...old, documents: old.documents.map((doc) => doc.id === id ? { ...doc, ...event, id } : doc) } : old)
     })
-    return () => { alive = false; off(); abort.current?.abort() }
+    return () => { alive = false; mounted.current = false; probeRagStatus.current = null; clearScheduled(); off(); abort.current?.abort() }
   }, [refresh])
 
   async function openSession(id: string) {
@@ -64,18 +122,22 @@ export function Rag() {
       const result = await call<{ session: Session }>("rag.get", { session_id: id })
       setSession(result.session)
       setSelected(result.session.document_ids)
+      clearSendFailure()
     } catch (e) { toast("error", (e as Error).message) }
   }
   function toggleDocument(id: string) {
+    clearSendFailure()
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
   }
   function selectPlan(id: string) {
+    clearSendFailure()
     setPlanId(id)
     if (!id) return
     const plan = sources?.plans.find((item) => item.id === id)
     if (plan) setSelected((current) => [...new Set([...current, ...plan.document_ids])])
   }
   function togglePlan(id: string) {
+    clearSendFailure()
     const ids = sources?.plans.find((item) => item.id === id)?.document_ids ?? []
     setSelected((current) => ids.length && ids.every((docId) => current.includes(docId))
       ? current.filter((docId) => !ids.includes(docId)) : [...new Set([...current, ...ids])])
@@ -116,6 +178,7 @@ export function Rag() {
     try {
       const result = await call<{ session: Session }>("rag.create", { document_ids: selected })
       setSession(result.session)
+      clearSendFailure()
       await refresh()
     } catch (e) { toast("error", (e as Error).message) }
     finally { setBusy("") }
@@ -132,8 +195,8 @@ export function Rag() {
     setSession(result.session)
     return result.session
   }
-  async function send() {
-    const text = question.trim()
+  async function send(retryText?: string) {
+    const text = (retryText ?? question).trim()
     if (!text || !selected.length || pending || busy) return
     const notReady = selected.some((id) => docById(id)?.status !== "ready")
     if (notReady) {
@@ -141,6 +204,7 @@ export function Rag() {
       return
     }
     setSourceOpen(null)
+    clearSendFailure()
     setBusy("send")
     try {
       const activeSession = await ensureSession()
@@ -156,16 +220,28 @@ export function Rag() {
       setSession(result.session)
       await refresh()
     } catch (e) {
-      const error = e as Error & { code?: string }
+      const error = e as Error & { code?: string; model_fault?: { category?: string; purpose?: string } }
       setQuestion((current) => current || text)
       if (error.code === "CANCELLED") toast("info", error.message)
-      else toast("error", error.message)
+      else {
+        const fault = error.model_fault
+        const retryable = fault?.category === "network" || error.code === "RAG_UNAVAILABLE"
+          || (error.code === "RAG_HTTP" && /HTTP (408|429|5\d\d)/.test(error.message))
+        if (retryable) {
+          setSendFailure({ text, message: error.message })
+          if (fault && (fault.purpose === "rag_qa" || fault.purpose === "rag.send")) useApp.getState().set({ modelFault: null })
+          probeRagStatus.current?.()
+        } else {
+          setSendFailure(null)
+        }
+        toast("error", error.message)
+      }
     } finally { abort.current = null; setPending(null); setBusy("") }
   }
   async function deleteSession(id: string) {
     try {
       await call("rag.delete", { session_id: id })
-      if (session?.id === id) setSession(null)
+      if (session?.id === id) { setSession(null); clearSendFailure() }
       await refresh()
     } catch (e) { toast("error", (e as Error).message) }
   }
@@ -234,7 +310,7 @@ export function Rag() {
       </aside>
 
       <section className="card rag-chat" aria-label="资料问答对话">
-        {ragFault && <div className="rag-model-fault" data-testid="rag-model-fault"><ModelFaultPanel fault={ragFault} onRetry={() => { void send() }} /></div>}
+        {ragFault && !sendFailure && <div className="rag-model-fault" data-testid="rag-model-fault"><ModelFaultPanel fault={ragFault} onRetry={() => { void send() }} /></div>}
         <header className="rag-chat-head">
           <div><span className="rag-step">02</span><div><h2>{session?.title || "开始提问"}</h2><p>{selectedDocuments.length ? `当前使用 ${selectedDocuments.length} 份资料` : "请先选择资料"}</p></div></div>
           <Button small kind="ghost" data-testid="rag-new-session" disabled={!selected.length || !!busy || !!pending} onClick={newSession}><MessageSquarePlus />新建会话</Button>
@@ -257,8 +333,12 @@ export function Rag() {
         </div>
         <div className="rag-composer">
           {!selectedDocuments.length && <p className="rag-composer-hint">选择一份或多份资料后即可提问。</p>}
+          {sendFailure && <div className="rag-send-failure" role="status" data-testid="rag-send-failure">
+            <span>{sendFailure.message} 这条问题没有自动重发。</span>
+            <Button small data-testid="rag-retry-send" disabled={!!busy || !!pending} onClick={() => void send(sendFailure.text)}>重试这条问题</Button>
+          </div>}
           <textarea className="input" rows={2} data-testid="rag-question" aria-label="输入资料问题" value={question} disabled={!!pending || !!busy}
-            placeholder="例如：这份资料是怎样解释这个概念的？" onChange={(event) => setQuestion(event.target.value)}
+            placeholder="例如：这份资料是怎样解释这个概念的？" onChange={(event) => { const value = event.target.value; setQuestion(value); if (value.trim() !== question.trim() && (sendFailure || ragFault)) clearSendFailure() }}
             onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }} />
           {pending ? <Button data-testid="rag-cancel" onClick={() => abort.current?.abort()}><Square />取消回答</Button>
             : <Button kind="primary" data-testid="rag-send" disabled={!question.trim() || !selected.length || !!busy} onClick={() => void send()}>{busy === "send" ? <><LoaderCircle className="spin" />准备会话…</> : busy === "session" ? <><LoaderCircle className="spin" />建立会话…</> : <><SendHorizontal />提问</>}</Button>}

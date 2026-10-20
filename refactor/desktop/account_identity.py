@@ -141,6 +141,37 @@ class AccountIdentity:
         return account_id_from_hashes(self.issuer_hash, self.subject_hash)
 
 
+class LocalOnlyIdentity:
+    """Stable local account binding with no fabricated online identity scope."""
+    __slots__ = ('_profile', 'issuer', 'subject', 'organization_id', 'workspace_id', '_local_only')
+
+    def __init__(self, profile: AccountProfile):
+        if profile.mode is not ProfileMode.ENTERPRISE_ACCOUNT or not profile.account_id:
+            raise ValueError('ENTERPRISE_PROFILE_REQUIRED')
+        self._profile = profile
+        self.issuer = self.subject = self.organization_id = self.workspace_id = None
+        self._local_only = True
+
+    @property
+    def account_id(self):
+        return self._profile.account_id
+
+    @property
+    def display_name(self):
+        return self._profile.safe_account_label
+
+    @property
+    def issuer_hash(self):
+        return self._profile.issuer_hash
+
+    @property
+    def subject_hash(self):
+        return self._profile.subject_hash
+
+    def profile(self):
+        return self._profile
+
+
 NONSECRET_ACCOUNT_PREFERENCE_KEYS = frozenset(
     {
         "account/profile_mode",
@@ -242,6 +273,7 @@ class AccountCredentialVault:
 
     ACCESS_TOKEN_PURPOSE = "oauth-access-token"
     REFRESH_TOKEN_PURPOSE = "oauth-refresh-token"
+    OFFLINE_IDENTITY_PURPOSE = "offline-identity-v1"
 
     def store_oauth_tokens(
         self,
@@ -326,7 +358,8 @@ class AccountCredentialVault:
         if profile.mode is not ProfileMode.ENTERPRISE_ACCOUNT:
             return
         assert profile.issuer_hash is not None and profile.subject_hash is not None
-        for purpose in (self.ACCESS_TOKEN_PURPOSE, self.REFRESH_TOKEN_PURPOSE):
+        for purpose in (self.ACCESS_TOKEN_PURPOSE, self.REFRESH_TOKEN_PURPOSE,
+                        self.OFFLINE_IDENTITY_PURPOSE):
             try:
                 delete_account_secret(
                     issuer_hash=profile.issuer_hash,
@@ -337,10 +370,32 @@ class AccountCredentialVault:
                 if exc.code != "CREDENTIAL_NOT_FOUND":
                     raise
 
+    def store_offline_identity(self, identity: AccountIdentity, value: str) -> None:
+        from .credential_store import store_account_secret
+        store_account_secret(value, issuer_hash=identity.issuer_hash,
+                             subject_hash=identity.subject_hash,
+                             purpose=self.OFFLINE_IDENTITY_PURPOSE)
+
+    def load_offline_identity(self, profile: AccountProfile) -> str:
+        from .credential_store import get_account_secret
+        if profile.mode is not ProfileMode.ENTERPRISE_ACCOUNT:
+            raise CredentialStoreError("CREDENTIAL_NAMESPACE_INVALID", "Enterprise Account profile is required")
+        return get_account_secret(issuer_hash=profile.issuer_hash,
+                                  subject_hash=profile.subject_hash,
+                                  purpose=self.OFFLINE_IDENTITY_PURPOSE)
+
+    def delete_offline_identity(self, profile: AccountProfile) -> None:
+        from .credential_store import delete_account_secret
+        if profile.mode is ProfileMode.ENTERPRISE_ACCOUNT:
+            delete_account_secret(issuer_hash=profile.issuer_hash,
+                                  subject_hash=profile.subject_hash,
+                                  purpose=self.OFFLINE_IDENTITY_PURPOSE)
+
 
 __all__ = [
     "AccountCredentialVault",
     "AccountIdentity",
+    "LocalOnlyIdentity",
     "AccountPreferenceStore",
     "AccountProfile",
     "NONSECRET_ACCOUNT_PREFERENCE_KEYS",

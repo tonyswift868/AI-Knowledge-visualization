@@ -163,6 +163,7 @@ class _MemorySettings:
 class _MemoryCredentialVault:
     def __init__(self):
         self.tokens = {}
+        self.offline_identities = {}
 
     def store_oauth_tokens(self, identity, *, access_token, refresh_token):
         self.tokens[identity.profile().account_id] = (access_token, refresh_token)
@@ -172,6 +173,20 @@ class _MemoryCredentialVault:
 
     def logout(self, profile):
         self.tokens.pop(profile.account_id, None)
+        self.offline_identities.pop(profile.account_id, None)
+
+    def store_offline_identity(self, identity, value):
+        self.offline_identities[identity.account_id] = value
+
+    def load_offline_identity(self, profile):
+        from refactor.desktop.account_protocol import AccountError
+        try:
+            return self.offline_identities[profile.account_id]
+        except KeyError:
+            raise AccountError('CREDENTIAL_NOT_FOUND', 'missing offline identity')
+
+    def delete_offline_identity(self, profile):
+        self.offline_identities.pop(profile.account_id, None)
 
 
 def _set_desktop_env(monkeypatch, base_url, ca):

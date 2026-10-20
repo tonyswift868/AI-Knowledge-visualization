@@ -322,7 +322,7 @@ def test_update42_cancel_startup_handoff_keeps_user_options(tmp_path, vault, qap
     shell._update_auto_pending = True
     try:
         shell._cancel_login()
-        assert shell._update_login_token is None and not shell._update_auto_pending
+        assert shell._update_login_token is None and not shell._update_restore_pending
         assert settings_snapshot(session) == before
         assert session.take_update_login()[0] is False
     finally:

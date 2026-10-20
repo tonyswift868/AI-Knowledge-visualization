@@ -180,13 +180,14 @@ def capture_live155(root, preview_json):
         finally:(root/'done155').touch();child.wait(timeout=15)
 
 
-def test_rag155_real_react_qt_bridge_three_selection_paths_stream_citations_sessions_and_themes():
-    OUT.mkdir(parents=True,exist_ok=True)
+def test_rag155_real_react_qt_bridge_three_selection_paths_stream_citations_sessions_and_themes(tmp_path):
+    out = tmp_path / 'browser155'
+    out.mkdir(parents=True,exist_ok=True)
     for name in ('done155','release-ingest155','release-stream155','result155.json','bridge-trace155.txt','sakura155.png','aurora155.png'):
-        try:(OUT/name).unlink()
+        try:(out/name).unlink()
         except FileNotFoundError:pass
-    build155(OUT)
-    result=drive155(OUT)
+    build155(out)
+    result=drive155(out)
     assert result['ok'],result
 
 

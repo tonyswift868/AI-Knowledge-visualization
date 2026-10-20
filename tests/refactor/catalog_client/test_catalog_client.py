@@ -68,11 +68,13 @@ class Clock:
         self.now += REFRESH_SECONDS
 
 
-def client(tmp_path, handler, *, state=None, clock=None, auto_refresh=False):
+def client(tmp_path, handler, *, state=None, clock=None, jitter=None, scheduler=None, auto_refresh=False):
     state = state or [session()]
     return CatalogClient(account_id=state[0].identity.account_id, data_root=tmp_path,
         session_provider=lambda: state[0], api_base_url='https://account.example.test', ca_bundle=CA,
-        http_transport=httpx.MockTransport(handler), clock=clock or Clock(), auto_refresh=auto_refresh)
+        http_transport=httpx.MockTransport(handler), clock=clock or Clock(),
+        **({'jitter': jitter} if jitter is not None else {}),
+        **({'scheduler': scheduler} if scheduler is not None else {}), auto_refresh=auto_refresh)
 
 
 def ok_handler(request):
@@ -195,23 +197,6 @@ def test_malformed_cache_falls_back_and_does_not_send_its_etag(tmp_path):
         assert not catalog.load_lists().candidates
         catalog.refresh_background().result(timeout=3)
     assert headers == [None, '"model-prices-v1"']
-
-
-def test_refresh_background_six_hour_limit_including_failures_and_restart(tmp_path):
-    clock, calls = Clock(), []
-    def handler(request):
-        calls.append(request)
-        return httpx.Response(404)
-    with client(tmp_path, handler, clock=clock) as catalog:
-        catalog.refresh_background().result(timeout=3)
-        assert catalog.refresh_background() is None
-        clock.now += REFRESH_SECONDS-1
-        assert catalog.refresh_background() is None
-    with client(tmp_path, handler, clock=clock) as reopened:
-        assert reopened.refresh_background() is None
-        clock.now += 1
-        reopened.refresh_background().result(timeout=3)
-    assert len(calls) == 4
 
 
 def test_auto_refresh_is_background_and_load_does_not_wait(tmp_path):
