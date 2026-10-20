@@ -5,7 +5,7 @@ export const fixture = {
   status: { available: true, busy: false, state: "HEALTHY", version: "2.0.1", current: "2.0.1", message: "尚未检查更新。" } as any,
 }
 export async function call(method: string) {
-  if (method === "app.bootstrap") return { version: "2.0.1", ready: false, account: { name: "合成用户", role_label: "学习者" },
+  if (method === "app.bootstrap") return { version: "2.0.1", ready: false, account: { name: "合成用户", account_id: "synthetic-update37", role_label: "学习者" },
     settings: { theme: "sakura", reduce_motion: true, detail: "brief", analogy_domains: ["life"], refresh_time: "04:00", font_scale: 1 }, options: {}, notice: null }
   if (method === "plans.list") return { plans: [], today: { target_minutes: 0, confirmed_minutes: 0 } }
   if (method === "sync.status") return null

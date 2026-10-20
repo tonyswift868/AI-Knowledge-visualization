@@ -2,6 +2,7 @@ export const fixture160: any = {
   checks: 0, stateCalls: 0, stateSaved: false, releaseState: null as null | (() => void),
   appMandatory: false, appStatusCalls: 0,
   bootstrapAccount: {name:"account-A",role_label:"学习者"},
+  accountId: "account-A",
   draftGetCalls: 0, draftSetCalls: 0, draftSetFail: false, durableDraft: "", events: [] as string[],
   status: {available:false,busy:false,state:"HEALTHY",version:"9.160.0",current:"9.160.0",message:"尚未检查更新。"},
 }

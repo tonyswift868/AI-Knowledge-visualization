@@ -35,6 +35,7 @@ DEFAULTS = {
     "refresh_time": "04:00",
     "reminder_enabled": False,
     "reminder_time": "20:00",
+    "show_plan_name_in_notification": False,
     "chat_persona": "",
 }
 
@@ -103,6 +104,7 @@ def validate(values: dict) -> dict:
         isinstance(merged["refresh_time"], str) and bool(_TIME.fullmatch(merged["refresh_time"])),
         type(merged["reminder_enabled"]) is bool,
         isinstance(merged["reminder_time"], str) and bool(_TIME.fullmatch(merged["reminder_time"])),
+        type(merged["show_plan_name_in_notification"]) is bool,
         isinstance(merged["chat_persona"], str) and len(merged["chat_persona"]) <= 6000,
         merged["version"] == 1,
     )

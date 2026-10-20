@@ -88,11 +88,13 @@ def row(plan_id, label, *, target=60, confirmed=0, tentative=0, state="active"):
 def setup(qt_app, tmp_path):
     made = []
 
-    def create(rows, *, at="2026-09-27T19:59:55+08:00", reminder="20:00", enabled=True, window=None):
+    def create(rows, *, at="2026-09-27T19:59:55+08:00", reminder="20:00", enabled=True,
+               show_plan_name=False, window=None):
         source = FakeTime(at)
         store = FakeStore(rows)
         notifier = FakeNotifier()
-        settings = dict(DEFAULTS, refresh_time="04:00", reminder_enabled=enabled, reminder_time=reminder)
+        settings = dict(DEFAULTS, refresh_time="04:00", reminder_enabled=enabled, reminder_time=reminder,
+                        show_plan_name_in_notification=show_plan_name)
         service = ReminderService("account-a", Path(tmp_path), lambda: store, settings=settings,
                                   now=source, timezone=EAST, notifier=notifier, window=window)
         made.append((service, source, store, notifier))
@@ -111,7 +113,8 @@ def tick(service, source, value):
 
 
 def test_due_notification_combines_plans_and_is_once_per_day(setup):
-    service, source, _, notifier = setup({"p1": row("p1", "物理基础"), "p2": row("p2", "英语阅读")})
+    service, source, _, notifier = setup({"p1": row("p1", "物理基础"), "p2": row("p2", "英语阅读")},
+                                         show_plan_name=True)
     tick(service, source, "2026-09-27T20:00:00+08:00")
     tick(service, source, "2026-09-27T20:10:00+08:00")
     assert len(notifier.calls) == 1
@@ -188,7 +191,7 @@ def test_notification_click_restores_window_and_opens_home(setup, qt_app):
 
 
 def test_service_reads_the_shared_store_provider_on_each_day(setup):
-    service, source, store, notifier = setup({"p1": row("p1", "首日计划")})
+    service, source, store, notifier = setup({"p1": row("p1", "首日计划")}, show_plan_name=True)
     tick(service, source, "2026-09-27T20:00:00+08:00")
     store.rows["p1"]["status"]["today_confirmed"] = 60
     store.rows["p2"] = row("p2", "第二日计划")

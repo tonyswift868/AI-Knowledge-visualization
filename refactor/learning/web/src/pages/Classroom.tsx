@@ -58,10 +58,9 @@ function live(text: string) {
 
 export function Classroom() {
   const planId = useApp((s) => s.planId)
-  // The frontend account object currently exposes the authenticated account's
-  // stable login name (not its display label). Include it in draft keys so
-  // accounts that happen to use the same plan id cannot see each other's text.
-  const accountScope = useApp((s) => s.account?.name || "anonymous")
+  // Draft storage must wait for the authenticated stable identity. Display
+  // names and anonymous storage keys do not prove which account owns a draft.
+  const accountScope = useApp((s) => s.account?.account_id || null)
   const [wrongAnswers, setWrongAnswers] = React.useState(false)
   const go = useApp((s) => s.go)
   const toast = useApp((s) => s.toast)
@@ -74,9 +73,7 @@ export function Classroom() {
   const [text, setText] = React.useState("")
   const inputDraft = React.useRef("")
   const draftEditVersion = React.useRef(0)
-  const lastDraftScope = React.useRef(accountScope)
-  const lastDraftPlan = React.useRef(planId)
-  const hasResolvedDraftScope = React.useRef(accountScope !== "anonymous")
+  const draftContextVersion = React.useRef(0)
   const [source, setSource] = React.useState<Source | null>(null)
   const [askMode, setAskMode] = React.useState(false)
   const [pointsExpanded, setPointsExpanded] = React.useState(false)
@@ -108,19 +105,21 @@ export function Classroom() {
     else idleWaiters.current.push(resolve)
   }), [])
   const draftStorageKey = React.useCallback((targetPlan: string) =>
-    `mf.classroom.unsent.${encodeURIComponent(accountScope)}.${encodeURIComponent(targetPlan)}`,
+    accountScope ? `mf.classroom.unsent.v2:${encodeURIComponent(accountScope)}.${encodeURIComponent(targetPlan)}` : null,
   [accountScope])
   const setDraftText = React.useCallback((value: string, targetPlan = planId) => {
+    const state = useApp.getState()
+    if ((state.account?.account_id || null) !== accountScope || (targetPlan && state.planId !== targetPlan)) return
     draftEditVersion.current++
     inputDraft.current = value
     setText(value)
-    if (!targetPlan) return
+    if (!targetPlan || !accountScope) return
     try {
       const key = draftStorageKey(targetPlan)
-      if (value) localStorage.setItem(key, value)
-      else localStorage.removeItem(key)
+      if (key && value) localStorage.setItem(key, value)
+      else if (key) localStorage.removeItem(key)
     } catch { /* keep the live input even if browser storage is unavailable */ }
-  }, [draftStorageKey, planId])
+  }, [accountScope, draftStorageKey, planId])
   const lessonRefresh = React.useRef<(() => void) | null>(null)
   const lessonChanged = React.useRef(false)
   const scroller = React.useRef<HTMLDivElement>(null)
@@ -157,59 +156,68 @@ export function Classroom() {
     if (!planId) return
     let active = true
     let draft = ""
-    const resolvingInitialAccount = accountScope !== "anonymous" && !hasResolvedDraftScope.current
-      && lastDraftPlan.current === planId && lastDraftScope.current === "anonymous"
-    if (resolvingInitialAccount && inputDraft.current) {
-      // The account identity can arrive after the route/input during startup.
-      // Move that live draft into the account namespace instead of replacing
-      // it with the (possibly empty) account-local copy.
-      draft = inputDraft.current
-      try {
-        localStorage.setItem(draftStorageKey(planId), draft)
-        localStorage.removeItem(`mf.classroom.unsent.anonymous.${encodeURIComponent(planId)}`)
-      } catch { /* the live ref remains authoritative until durable save */ }
-    } else {
-      try { draft = localStorage.getItem(draftStorageKey(planId)) || "" } catch { /* storage can be disabled */ }
-      inputDraft.current = draft
-      setText(draft)
+    const identityIsCurrent = !!accountScope && useApp.getState().account?.account_id === accountScope
+    const key = identityIsCurrent ? draftStorageKey(planId) : null
+    if (key) {
+      try { draft = localStorage.getItem(key) || "" } catch { /* storage can be disabled */ }
     }
-    lastDraftScope.current = accountScope
-    lastDraftPlan.current = planId
-    if (accountScope !== "anonymous") hasResolvedDraftScope.current = true
+    // A draft typed before identity resolution is live only in memory. Once
+    // identity/plan changes, do not adopt it into another account's namespace.
+    inputDraft.current = draft
+    setText(draft)
+    if (!identityIsCurrent) return () => { active = false }
     const editVersion = draftEditVersion.current
-    void call<{text?: string}>("classroom.draft_get", { plan_id: planId }).then((saved) => {
-      if (!active || draftEditVersion.current !== editVersion || inputDraft.current !== draft) return
+    const requestedAccount = accountScope!
+    const requestedPlan = planId
+    void call<{text?: string}>("classroom.draft_get", { plan_id: requestedPlan }).then((saved) => {
+      if (!active || draftEditVersion.current !== editVersion || inputDraft.current !== draft
+        || useApp.getState().account?.account_id !== requestedAccount || useApp.getState().planId !== requestedPlan) return
       const persisted = typeof saved?.text === "string" ? saved.text : ""
-      // Local storage is the freshest live copy when available. The account
-      // scoped durable draft is the fallback after process/browser storage loss.
-      if (!draft && persisted) setDraftText(persisted, planId)
+      // Local storage is freshest when available; this durable fallback is
+      // read only after the stable account identity has resolved.
+      if (!draft && persisted) setDraftText(persisted, requestedPlan)
     }).catch(() => undefined)
     return () => { active = false }
   }, [accountScope, draftStorageKey, planId, setDraftText])
 
   React.useLayoutEffect(() => registerMandatoryUpdateGuard(async () => {
     const currentPlan = planId
-    if (!currentPlan) return
+    const currentAccount = useApp.getState().account?.account_id
+    if (!currentPlan || !accountScope || currentAccount !== accountScope) return
+    const contextVersion = draftContextVersion.current
     try {
       const key = draftStorageKey(currentPlan)
-      if (inputDraft.current) localStorage.setItem(key, inputDraft.current)
-      else localStorage.removeItem(key)
+      if (key && inputDraft.current) localStorage.setItem(key, inputDraft.current)
+      else if (key) localStorage.removeItem(key)
     } catch { /* account scoped classroom.draft_set below is durable storage */ }
     await waitForClassroomIdle()
+    const draftContextStillCurrent = () => {
+      const latest = useApp.getState()
+      return draftContextVersion.current === contextVersion && (latest.account?.account_id || null) === accountScope
+        && latest.planId === currentPlan
+    }
+    if (!draftContextStillCurrent()) return
     const persisted = await call<{saved?: boolean}>("classroom.draft_set", {
       plan_id: currentPlan, text: inputDraft.current,
     })
+    if (!draftContextStillCurrent()) return
     if (persisted?.saved !== true) throw new Error("未发送的课堂输入暂未保存，请重试后继续更新。")
     // A state read also goes through Classroom.run and persists the current
     // position. Retry only the transient lock held by its periodic refresh.
     for (let attempt = 0; ; attempt++) {
+      if (!draftContextStillCurrent()) return
       try { await call("classroom.state", { plan_id: currentPlan }); return }
       catch (error) {
         if (!(error instanceof BridgeFailure) || error.code !== "CLASS_BUSY" || attempt >= 20) throw error
+        if (!draftContextStillCurrent()) return
         await new Promise(resolve => window.setTimeout(resolve, 50))
       }
     }
-  }), [draftStorageKey, planId, waitForClassroomIdle])
+  }), [accountScope, draftStorageKey, planId, waitForClassroomIdle])
+
+  React.useLayoutEffect(() => {
+    draftContextVersion.current++
+  }, [accountScope, planId])
 
   React.useEffect(() => { if (askMode) input.current?.focus() }, [askMode])
   React.useEffect(() => { setAskMode(false) }, [room?.question?.id, room?.module.id])
@@ -432,9 +440,10 @@ export function Classroom() {
     try {
       const ok = await act(questionMessage ? "classroom.ask" : numericAnswer ? "classroom.answer" : "classroom.reply",
         numericAnswer ? { value: t } : { text: t }, numericAnswer ? "正在核对数值…" : "老师在看你的回答…")
-      if (value === undefined && inputDraft.current === beforeDraft) {
+      if (value === undefined && inputDraft.current === beforeDraft
+        && (useApp.getState().account?.account_id || null) === accountScope && useApp.getState().planId === planId) {
         setDraftText(ok ? "" : beforeDraft || t)
-        if (ok && planId) {
+        if (ok && planId && accountScope) {
           try {
             const cleared = await call<{saved?: boolean}>("classroom.draft_set", { plan_id: planId, text: "" })
             if (cleared?.saved !== true) throw new Error("草稿清理未确认")

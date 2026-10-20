@@ -196,14 +196,17 @@ class ReminderService(QObject):
         self._candidate_plans = []
         if not plans:
             return
-        if len(plans) == 1:
-            detail = plans[0]
-        elif len(plans) == 2:
-            detail = "、".join(plans)
+        if not self._settings["show_plan_name_in_notification"]:
+            title, message = "MentorFlow", "该学习了"
         else:
-            detail = "、".join(plans[:2]) + f" 等 {len(plans)} 个计划"
-        title = "该开始今天的学习了"
-        message = f"今天有学习任务尚未开始：{detail}。打开 MentorFlow 开始学习。"
+            if len(plans) == 1:
+                detail = plans[0]
+            elif len(plans) == 2:
+                detail = "、".join(plans)
+            else:
+                detail = "、".join(plans[:2]) + f" 等 {len(plans)} 个计划"
+            title = "该开始今天的学习了"
+            message = f"今天有学习任务尚未开始：{detail}。打开 MentorFlow 开始学习。"
         self.reminder_sent.emit(title, message)
         try:
             notify = getattr(self._notifier, "notify", self._notifier)

@@ -352,6 +352,9 @@ def test_audit_classroom_refresh_failure_retest_and_skip(env, audit):
 
 
 def make_reminder(env, *, at="2026-10-06T19:59:00+08:00"):
+    # These timing audits identify eligible plans by their notification names.
+    # Opt in explicitly; privacy-default copy is covered by reminder_privacy177.
+    env.settings.save({"show_plan_name_in_notification": True})
     env.clock.set(at)
     notices = []
     service = ReminderService("clock_audit", env.root, lambda: env.store, settings=env.settings.load(),

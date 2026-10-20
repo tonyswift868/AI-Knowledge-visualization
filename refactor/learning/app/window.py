@@ -307,7 +307,8 @@ class LearningWindow(QWidget):
 
     # ------------------------------------------------------------ for handlers
     def account_info(self):
-        return {"name": self._display_name, "role": self._role if isinstance(self._role, str) else None,
+        return {"name": self._display_name, "account_id": self._account_id,
+                "role": self._role if isinstance(self._role, str) else None,
                 "role_label": _ROLE_LABELS.get(self._role, "待确认"), "api": self._api_label,
                 "settings_available": self._settings_bound}
 
