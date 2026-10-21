@@ -52,7 +52,7 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 194-MF04（检查更新重复显示 + 主线全量，[BUG-126]）进行中 | runtime |
+| MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
