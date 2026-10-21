@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useUpdates, checkUpdate, installUpdate, UpdateProgress, offered as updateOffered } from "../updates/UpdateNotice"
+import { useUpdates, checkUpdate, installUpdate, UpdateProgress, UpdateStatusSummary, offered as updateOffered } from "../updates/UpdateNotice"
 import {
   BellRing, BookOpenText, Bot, CheckCircle2, Clock3, Coins, GraduationCap, HeartHandshake, KeyRound, Laugh, LogOut, Palette, PlugZap, RefreshCw,
   ShieldCheck, Target, Trash2, UserRound, Users, Waypoints,
@@ -63,21 +63,16 @@ export function Settings() {
 }
 
 function AboutUpdates() {
-  const { status, error, later } = useUpdates()
+  const { status, error, open, later } = useUpdates()
   const [logError, setLogError] = React.useState("")
-  const offered = updateOffered(status)
-  const message = status?.message || (status ? ({ UP_TO_DATE: "已是最新版本。", UPDATE_AVAILABLE: "有新版本可用。",
-    APPLYING: "正在安装更新，完成后将自动重启。", UPDATE_DOWNLOADED: "下载完成，正在准备安装。" } as Record<string, string>)[status.state] : "正在读取版本…")
   return <section className="card" aria-label="关于 MentorFlow" style={{ marginTop: 20, padding: 20 }}>
     <h3>关于 MentorFlow {later && <span aria-label="有新版本" style={{ color: "#f24b63" }}>●</span>}</h3>
     <p>版本 {status?.version ?? "…"}</p>
-    {offered && <p>发现新版本 {status?.latest || status?.target}</p>}
-    <Loading active={!status || !!status.busy} label={message || '正在读取版本…'}/>
-    <p className="small muted" role="status">{logError || error || message}</p>
-    <UpdateProgress status={status}/>
+    {!open && <UpdateStatusSummary status={status} error={logError || error}/>}
+    {!open && <UpdateProgress status={status}/>}
     <div className="row">
       <Button small disabled={!status?.available || status.busy} onClick={() => void checkUpdate()}><RefreshCw />检查更新</Button>
-      {offered && <Button small kind="primary" disabled={status.busy} onClick={() => void installUpdate()}>更新并自动重启</Button>}
+      {updateOffered(status) && <Button small kind="primary" disabled={status.busy} onClick={() => void installUpdate()}>更新并自动重启</Button>}
       <Button small onClick={() => call("logs.open").then(() => setLogError(""), (e: Error) => setLogError(e.message))}>打开日志文件夹</Button>
     </div>
   </section>
