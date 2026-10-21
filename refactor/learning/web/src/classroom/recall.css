@@ -7,6 +7,9 @@
 .recall-own > label { display:block; font-size:.88rem; font-weight:600; margin-bottom:8px; }
 .recall-own textarea { display:block; width:100%; box-sizing:border-box; resize:vertical; min-height:120px; max-height:260px; margin-bottom:12px; line-height:1.65; }
 .recall-own textarea[readonly] { background:var(--surface-2); }
+.recall-answer-actions { display:flex; flex-wrap:wrap; align-items:flex-start; gap:10px; }
+.recall-answer-actions > [data-testid="recall-answer-mic"] { min-width:0; }
+.recall-answer-actions .mf-voice-status { max-width:min(420px, calc(100vw - 48px)); }
 .recall-reference { border:1px solid var(--border); border-radius:12px; padding:10px 12px; }
 .recall-reference summary { cursor:pointer; font-weight:600; }
 .recall-reference > div { margin-top:10px; white-space:pre-wrap; }
