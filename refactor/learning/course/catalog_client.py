@@ -298,6 +298,11 @@ class CatalogClient(AuthenticatedPlanSource):
                 break
             self._refresh_one(kind, now)
         with self._lock:
+            # close() shares this lock. If it won the race with an in-flight
+            # request, do not let the late worker persist retry state after
+            # account teardown has returned.
+            if self._closed.is_set():
+                return dict(self._statuses)
             statuses = dict(self._statuses)
             if all(statuses[kind].code in {'UPDATED', 'NOT_MODIFIED'} for kind in _KINDS):
                 self._last_attempt, self._failures, self._retry_at = now, 0, 0

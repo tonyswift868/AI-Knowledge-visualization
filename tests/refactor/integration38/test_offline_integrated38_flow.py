@@ -107,6 +107,9 @@ def build_plan(root, events):
         catalog=SimpleNamespace(load_lists=load_lists),_closed=False,
         settings=SimpleNamespace(load=lambda:dict(teacher_style='warm',detail='brief',examples='few',analogy_domains=['life'],refresh_time='04:00')))
     flow=PlanFlow(services,lambda kind,data:events.append((kind,data)),lambda:DAY,fetcher=fetch)
+    # Background preparation shares the fixture's pinned weekend clock, just
+    # like the generated plan and classroom; the host weekday is irrelevant.
+    flow._material_peak_now=lambda now=None:PlanFlow._material_peak_now(NOW())
     ctx=CallContext('offline38',threading.Event(),lambda _:None)
     pid=flow.current()['plan_id']
     def run(fn):

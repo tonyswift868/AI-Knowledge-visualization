@@ -2,6 +2,7 @@
 import copy
 import json
 import threading
+import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -93,9 +94,23 @@ def env(tmp_path,monkeypatch):
     e=make_environment(tmp_path)
     monkeypatch.setattr(Classroom,'_materials',staticmethod(lambda:e.materials))
     yield e
-    for j in e.room._jobs.values():j['cancel'].set()
-    for t in threading.enumerate():
-        if t.name=='classroom-materials':t.join(3)
+    # Material preparation is owned by PlanFlow's shared per-account worker,
+    # not by the old classroom-materials thread. Close the fixture before
+    # cancelling so a cancelled job cannot enter the product's resume/retry path.
+    e.services._closed=True
+    flow=getattr(e.services,'_material_flow',None)
+    e.room.cancel_materials(PLAN)
+    if flow is not None:
+        jobs=flow._material_jobs
+        with jobs['guard']:
+            timer=jobs['timers'].pop(PLAN,None)
+            if timer is not None:timer.cancel()
+            for (pid,_),job in list(jobs['jobs'].items()):
+                if pid==PLAN:job['cancel'].set()
+            jobs['queued'].pop(PLAN,None)
+        deadline=time.monotonic()+3
+        while PLAN in jobs['active'] and time.monotonic()<deadline:time.sleep(.005)
+        assert PLAN not in jobs['active'], 'PlanFlow worker did not stop before Store close'
     e.store.close()
 
 def act(e,name,*args,token=None):
@@ -270,12 +285,17 @@ def test_materials_progress_does_not_block_learning_and_leave_keeps_background_w
 
 def test_preparation_failure_is_visible_and_retryable(env,monkeypatch):
     import time
+    flow=env.room._preparation_flow()
+    # Keep the worker's three-attempt behavior, but remove wall-clock backoff;
+    # retry cadence itself is covered by plan187.
+    monkeypatch.setattr(flow,'_material_retry_delay',lambda attempt:0)
     env.materials.bank=[]
     monkeypatch.setattr(env.materials,'prepare_module',lambda *a:(_ for _ in ()).throw(RuntimeError('failure')))
     v=act(env,'next')
     deadline=time.monotonic()+2
     while env.room._jobs[(PLAN,'m0')]['status']!='failed' and time.monotonic()<deadline:
         time.sleep(.005)
+    assert env.room._jobs[(PLAN,'m0')]['status']=='failed'
     v=env.room.run(PLAN,lambda *a:None)
     assert v['step']=='opening' and v['preparation']['error']
     old=env.room._jobs[(PLAN,'m0')];act(env,'retry')

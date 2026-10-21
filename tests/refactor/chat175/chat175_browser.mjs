@@ -106,7 +106,7 @@ try {
   await until('document.querySelectorAll(".chat-session-open").length===2');
 
   await cdp('Emulation.setDeviceMetricsOverride',{width:600,height:820,deviceScaleFactor:1,mobile:false});
-  await until('innerWidth===600');
+  await until('innerWidth===600 && document.querySelector(".chat-list")?.getAttribute("aria-hidden")==="true" && !!document.querySelector("button[aria-label=\\"打开对话列表\\"]")');
   check(await js('document.documentElement.scrollWidth<=innerWidth'), 'narrow chat layout has no horizontal overflow', checks);
   await until('!document.querySelector(".chat-list").classList.contains("drawer-open")');
   check(await js('getComputedStyle(document.querySelector(".chat-list")).display==="none"'), 'narrow layout starts with its conversation drawer closed', checks);
