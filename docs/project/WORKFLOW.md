@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 的「当前阶段」和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-21）：线上客户端 2.0.29；服务器 Java cdc8640e（注册邮箱统一提示），数据库迁移 0045；每天自动备份已运行。员工全部空闲。
+- **现在在做的事**（2026-10-21 交班）：线上客户端 2.0.29；main 上已合入 186～188（[BUG-120] [BUG-121]，未发布）；服务器 Java cdc8640e，数据库迁移 0045；每天自动备份已运行。189-MF05（合入后全量复核）用户正在转发，其余员工空闲。接班后挂上等回执（见操作手册“自动等回执”），189 全绿后问用户发不发 2.0.30。
 
 ## 固定做法（规则见 AGENTS.md）
 
@@ -19,10 +19,11 @@
 
 ## 架构师操作手册
 
-- **合入员工分支**：主目录 `git merge --no-ff office/<工位>`（或 `git diff --binary <基线> <员工提交> | git apply --index --3way`），逐文件看改动是否在任务范围内；跑本批改动相关的测试（`pytest $(git diff --name-only <基线> HEAD | grep '^tests/.*test_.*\.py$')`），两份以上改动合在一起时再跑一次全量。
-- **全量测试**（2026-10-17 约 4230 项、40～45 分钟）：`TMP=D:/MentorFlow/.local/test-tmp/<子目录> TEMP=同上 .venv/Scripts/python.exe -m pytest tests/refactor -q -p no:cacheprovider --basetemp=D:/MentorFlow/.local/test-tmp/<子目录>/pt`，输出重定向到文件、放后台跑，跑完删子目录。Java 构建缓存在 .local/test-tmp/java-cache（共享、加锁，不要删），不用再设 SHIP156_TMP（[BUG-108]）。
+- **合入员工分支**：主目录 `git merge --no-ff office/<工位>`（或 `git diff --binary <基线> <员工提交> | git apply --index --3way`），逐文件看改动是否在任务范围内；合入后只做改动文件的编译检查（`py_compile`），相关测试、全量和查失败原因交给下一份任务顺带跑或单独派员工（AGENTS 第 9 条）。
+- **全量测试**（员工跑，架构师不跑；2026-10-21 约 4580 项、约 55 分钟）：`TMP=D:/MentorFlow/.local/test-tmp/<子目录> TEMP=同上 .venv/Scripts/python.exe -m pytest tests/refactor -q -p no:cacheprovider --basetemp=D:/MentorFlow/.local/test-tmp/<子目录>/pt`，输出重定向到文件、放后台跑，跑完删子目录。Java 构建缓存在 .local/test-tmp/java-cache（共享、加锁，不要删），不用再设 SHIP156_TMP（[BUG-108]）。
 - **基线**：合入并提交后 `git rev-parse --short HEAD` 就是下一批任务的基线。
 - **发布新版**（[SYS-06]）：①合入并推送 main；②手动运行 GitHub 工作流 mf-build（版本号、更新说明、是否必须及原因、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机 `.venv/Scripts/python.exe -B scripts/release/sign_and_stage.py --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity E:/Codex/Secrets/MentorFlow/ssh/mentorflow-e1-ops-ed25519`；④手动运行 mf-publish（版本号；build_installer 默认 false 只发更新约 1～3 分钟，要新安装程序时设 true 约 10 分钟，或事后单独跑 mf-installer）；⑤用客户端代码对公网 stable.json 验签，看 aiteacher.clannad.win/download。触发和查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（.local/tmp/watch_run.sh 轮询到结束）。工作流只能手动触发，额度红线见 scripts/release/README.md。
+- **发版辅助脚本**（.local/tools/release/，不进仓库）：`dispatch_build.py <版本> <基线版本> <更新说明>` 触发 mf-build（非必须）；`gh_release.py latest <工作流文件>` 看最近一次运行，`gh_release.py download <运行号> unsigned-<版本> <zip路径>` 下载产物（GitHub 跳转到存储地址时不能带认证头），`gh_release.py publish <版本>` 触发 mf-publish。令牌运行时从 Git Credential Manager 取，不落盘。核对 stable.json 用 `curl -A Mozilla/5.0`（Cloudflare 对 Python 默认 UA 回 403）。
 - **启动/重启用户的源代码版**：`Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden`。重启前一定先问用户（可能在上课）。
 - **查用户软件的问题**：装好的软件日志 D:\MentorFlowApp\MentorFlow\Data\logs\mentorflow.log，源代码版日志 D:\MentorFlowData\account-shell\logs\mentorflow.log（JSON 行，只读）；数据库在对应的 learning\accounts\<账号>\*.sqlite3，只读查看用 `sqlite3.connect('file:...?mode=ro', uri=True)`。
 - **界面构建**：PATH 加 `/d/MentorFlow/.local/node`，`node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 不进仓库。
@@ -37,8 +38,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| main | 以 `git rev-parse --short HEAD` 为准；2.0.27 = 8b19ae46 已推送并发布 |
-| 已发布 | 2.0.27 = 8b19ae46（2026-10-19，非必须，只发软件内更新）；下载站安装程序 2.0.15；强制线 2.0.3 |
+| main | 以 `git rev-parse --short HEAD` 为准；GitHub 上的 main 到 1aba95a0（2.0.29 发布后），之后的提交还没推送 |
+| 已发布 | 2.0.29（2026-10-20 23:53，非必须，只发软件内更新，[SYS-06]）；下载站安装程序 2.0.15；强制线 2.0.3 |
 | GitHub | main 已推送（私有仓库），远端只有 main 一个分支（9-26 遗留的 15 个 Dependabot 升级请求与分支 2026-10-12 经用户同意已关闭并删除，它们的配置已随旧代码删除，不会再生成）；发版需要的推送由架构师做，其余推送要用户说 |
 | 工位分支 | office/* 只在本地，永不推送；每条任务第一步把工位 reset 到基线 |
 
@@ -52,14 +53,14 @@
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
-| MF-05 | 189-MF05 合入后全量复核（已起草，待转发） | platform |
+| MF-05 | 189-MF05 合入后全量复核（已起草，用户正在转发） | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
 ## 待派队列
 
 - 186-MF07（[BUG-120]）、187-MF06、188-MF03（[BUG-121]）已合入 88f47567（2026-10-21），三人各自全量都没全绿；任务目录只留报告和截图。
-- 189-MF05（platform，基线 f17220d9）：合入后全量复核，查清并修掉所有失败和错误，核对 187 和 188 的接口，¥0。任务文件 D:\MentorFlow\.local\tasks\189-MF05.md，已起草，待转发。全量过后问用户发不发 2.0.30。
+- 189-MF05（platform，基线 f17220d9）：合入后全量复核，查清并修掉所有失败和错误，核对 187 和 188 的接口，¥0。任务文件 D:\MentorFlow\.local\tasks\189-MF05.md，已起草，用户正在转发（2026-10-21）。全量过后问用户发不发 2.0.30。
 - [BUG-87] direct97 偶发：179 已加诊断、原因未找到，下次全量失败时看诊断。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）。
 
