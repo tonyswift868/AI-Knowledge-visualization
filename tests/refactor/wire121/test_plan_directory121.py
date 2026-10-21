@@ -79,6 +79,8 @@ def test_121_module_notes_persist_sync_and_skip_existing(env):
 
 
 def test_121_note_failure_retries_once_and_worker_still_prepares(env,monkeypatch):
+    # Exercise note retries, independent of the host's peak-hour queue policy.
+    monkeypatch.setattr(env.flow,'_material_peak_now',lambda now=None:False)
     def bad(*args,**kw):env.calls.append('failure');raise RuntimeError('offline transport')
     env.services.gateway.complete=bad
     observed=[]

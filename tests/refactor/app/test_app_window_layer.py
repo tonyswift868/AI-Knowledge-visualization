@@ -12,18 +12,14 @@ from refactor.learning.app.bridge import AppBridge, BridgeError
 from refactor.learning.app import handlers
 from refactor.learning.app.settings import AppSettings, DEFAULTS, validate
 
-SCRATCH = Path("D:/MentorFlow/.local/test-tmp/app-layer")
-
-
 @pytest.fixture(scope="module")
 def qapp():
     return QApplication.instance() or QApplication([])
 
 
 @pytest.fixture
-def tmp_root():
-    SCRATCH.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=SCRATCH) as d:
+def tmp_root(tmp_path):
+    with tempfile.TemporaryDirectory(dir=tmp_path) as d:
         yield Path(d)
         # Starting a plan now also persists bank-review drafts in a background
         # worker. Finish those test workers before deleting their data root.
