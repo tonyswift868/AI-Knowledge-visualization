@@ -1,6 +1,7 @@
 import * as React from "react"
 import { CheckCircle2, ChevronRight, ClipboardCheck } from "lucide-react"
 import { Button } from "../ui"
+import { MicButton, useVoiceInput } from "../voice"
 import type { BankQuestion } from "./Conversation"
 import "./recall.css"
 import { Loading } from '../loading/Loading'
@@ -10,8 +11,10 @@ type Verdict = { correct: boolean; missed: number[] }
 export type RecallRequest = <T>(method: string, params: Record<string, unknown>) => Promise<T>
 
 /** Only reveal or an explicitly revealed persisted snapshot can show answers. */
-export function RecallQuestion({ question, request, busy, next, selfJudge = true }: {
+export function RecallQuestion({ question, request, busy, next, selfJudge = true, voiceContext, voiceScopeKey }: {
   question: BankQuestion; request: RecallRequest; busy: boolean; next: () => void; selfJudge?: boolean;
+  voiceContext?: { plan_id: string; module_id: string; point_id?: string };
+  voiceScopeKey?: string;
 }) {
   const [answer, setAnswer] = React.useState(question.revealed ? question.answer ?? "" : "")
   const [reference, setReference] = React.useState<Reference | null>(question.revealed && question.reference && question.key_points ? {reference: question.reference, key_points: question.key_points} : null)
@@ -22,10 +25,25 @@ export function RecallQuestion({ question, request, busy, next, selfJudge = true
   const [error, setError] = React.useState("")
   const locked = React.useRef(false)
   const active = React.useRef(true)
+  // The callback can arrive between a successful reveal response and React's
+  // next effect. Keep this synchronous fence so an immutable answer never
+  // receives a late ASR transcript.
+  const answerEditable = React.useRef(!question.revealed)
+  const onVoiceChange = React.useCallback((value: string) => {
+    if (answerEditable.current) setAnswer(value)
+  }, [])
+  const answerVoice = useVoiceInput({
+    value: answer,
+    onChange: onVoiceChange,
+    context: voiceContext,
+    scopeKey: voiceScopeKey ?? question.id,
+    disabled: saved || pending || busy,
+  })
+  const voiceBusy = ["checking", "starting", "recording", "finishing"].includes(answerVoice.state)
   React.useEffect(() => { active.current = true; return () => { active.current = false } }, [])
 
   async function run(submit: boolean, correct?: boolean) {
-    if (locked.current || busy || verdict || (!submit && !answer.trim())) return
+    if (locked.current || busy || verdict || (!submit && (!answer.trim() || voiceBusy))) return
     locked.current = true; setPending(true); setError("")
     try {
       if (submit) {
@@ -37,6 +55,7 @@ export function RecallQuestion({ question, request, busy, next, selfJudge = true
       } else {
         const result = await request<Reference>("class.recall_reveal", { question_id: question.id, answer })
         if (!active.current) return
+        answerEditable.current = false
         setSaved(true)
         if (typeof result.reference !== "string" || !result.reference.trim() || !Array.isArray(result.key_points) ||
           result.key_points.length < 1 || result.key_points.some((point) => typeof point !== "string" || !point.trim())) {
@@ -71,8 +90,11 @@ export function RecallQuestion({ question, request, busy, next, selfJudge = true
         <textarea id={`recall-answer-${question.id}`} aria-label="先写下你的回答" className="input" rows={5}
           value={answer} readOnly={saved} disabled={pending || busy} placeholder="先凭记忆回答，再对照原文检查要点。"
           onChange={(e) => { if (!saved) setAnswer(e.target.value) }} />
-        {!reference && <Button kind="primary" disabled={!answer.trim() || pending || busy} onClick={() => run(false)}>
-          写好了，看参考答案</Button>}
+        {!reference && <div className="recall-answer-actions">
+          <div data-testid="recall-answer-mic" role="group" aria-label="问答题作答语音输入"><MicButton voice={answerVoice} /></div>
+          <Button kind="primary" disabled={!answer.trim() || pending || busy || voiceBusy} onClick={() => run(false)}>
+            写好了，看参考答案</Button>
+        </div>}
       </div>
       {reference && <div className="recall-review">
         <details open className="recall-reference"><summary>原文参考答案</summary><div data-selectable>{reference.reference}</div></details>

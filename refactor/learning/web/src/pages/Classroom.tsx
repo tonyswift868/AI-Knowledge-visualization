@@ -632,7 +632,11 @@ export function Classroom() {
           {!busy && room.failure?.model_fault && <div data-turn-key={`model-failure:${room.failure.model_fault.id}`} data-turn-role="assistant">
             <ModelFaultPanel fault={room.failure.model_fault} onRetry={retryModel}/></div>}
           {q?.kind === "recall" && <RecallQuestion key={`${planId}:${q.id}:${q.purpose}:${q.number ?? ""}:${recallAttempt}`}
-            question={q} request={recallRequest} busy={!!busy} next={() => {
+            question={q} request={recallRequest} busy={!!busy}
+            voiceContext={planId && room ? { plan_id: planId, module_id: room.module.id,
+              point_id: (q as BankQuestion & { point_ids?: string[] }).point_ids?.[0] ?? currentPoint } : undefined}
+            voiceScopeKey={`${planId ?? ""}:${room?.module.id ?? ""}:${q.id}:${q.purpose}:${q.number ?? ""}:${recallAttempt}`}
+            next={() => {
               void act("classroom.state", {}, "正在读取下一题…").then((ok) => { if (ok) setRecallAttempt((value) => value + 1) })
             }} />}
         </div>
