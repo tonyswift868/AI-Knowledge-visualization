@@ -52,10 +52,10 @@
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
-| MF-04 | 194-MF04（检查更新重复显示 + 主线全量，[BUG-126]）已起草，待转发 | runtime |
+| MF-04 | 194-MF04（检查更新重复显示 + 主线全量，[BUG-126]）进行中 | runtime |
 | MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
-| MF-07 | 195-MF07（项目学习资料整份重写，[DOC-01]）已起草，待转发 | library |
+| MF-07 | 195-MF07（项目学习资料整份重写，[DOC-01]）进行中 | library |
 
 ## 待派队列
 
