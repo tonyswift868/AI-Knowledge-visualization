@@ -51,11 +51,11 @@
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 191-MF03（问答题语音作答，[BUG-124]）已起草，待转发 | classroom |
-| MF-04 | 空闲 | runtime |
-| MF-05 | 193-MF05（图谱全屏共用同一 Flow，[BUG-123]）已起草，待转发 | platform |
+| MF-03 | 空闲 | classroom |
+| MF-04 | 194-MF04（检查更新重复显示 + 主线全量，[BUG-126]）已起草，待转发 | runtime |
+| MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
-| MF-07 | 192-MF07（项目学习资料调研，[BUG-125]）已起草，待转发 | library |
+| MF-07 | 空闲（192 样稿待用户看） | library |
 
 ## 待派队列
 
