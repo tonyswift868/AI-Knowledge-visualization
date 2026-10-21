@@ -146,6 +146,8 @@ export function NewPlan() {
     let alive=true
     let receivedCurrentDraft=false
     idRef.current=planId
+    setDraft(null)
+    setStatus(null)
     setLoadError('')
     const offs = [
       on("plan_draft", (d: Draft) => {
@@ -155,7 +157,18 @@ export function NewPlan() {
       on("plan_status", (d: { plan_id: string; text: string }) => { if (d.plan_id === idRef.current) setStatus(d.text || null) }),
     ]
     const load = planId ? call<{ draft: Draft }>("plan.get", { plan_id: planId }) : call<{ draft: Draft }>("plan.current")
-    load.then((r) => {if(alive && !receivedCurrentDraft)accept(r.draft)}).catch((e) => {if(alive && !receivedCurrentDraft)setLoadError(e.message)})
+    load.then((r) => {if(alive && !receivedCurrentDraft)accept(r.draft)}).catch((e: BridgeFailure) => {
+      if (!alive || receivedCurrentDraft) return
+      if (planId && e.code === "DRAFT_NOT_FOUND") {
+        // A selected plan can outlive its device-local creation draft. Clear
+        // only the view's stale selection; plan.current will open the normal
+        // intake page without changing the existing plan or its progress.
+        idRef.current=null
+        set({ planId: null })
+        return
+      }
+      setLoadError(e.message)
+    })
     return () => {alive=false;offs.forEach((off) => off());abort.current?.abort()}
   }, [planId, accept, toast, set,loadAttempt])
 

@@ -53,7 +53,7 @@ export function Plans() {
         <div className="row">
           <Segmented value={filter} onChange={setFilter}
                      options={[{ value: "current", label: "进行中" }, { value: "all", label: "全部" }, { value: "archived", label: "已归档" }]} />
-          <Button kind="primary" onClick={() => go("new-plan")}><Plus />新建计划</Button>
+          <Button kind="primary" onClick={() => { set({ planId: null }); go("new-plan") }}><Plus />新建计划</Button>
         </div>
       </div>
 
@@ -69,7 +69,7 @@ export function Plans() {
             <SakuraArt />
             <h3>{filter === "archived" ? "没有归档的计划" : "这里还没有计划"}</h3>
             <p>{filter === "archived" ? "归档的计划可以随时还原，不会丢失进度。" : "新建计划后，路线图、每天的进度和学习报告都会出现在这里。"}</p>
-            {filter !== "archived" && <Button kind="primary" onClick={() => go("new-plan")}><Plus />新建计划</Button>}
+            {filter !== "archived" && <Button kind="primary" onClick={() => { set({ planId: null }); go("new-plan") }}><Plus />新建计划</Button>}
           </div>
         ) : (
           <div className="grid two stagger">

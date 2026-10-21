@@ -27,6 +27,7 @@ function minutes(n: number) {
 export function Home() {
   const account = useApp((s) => s.account)
   const go = useApp((s) => s.go)
+  const set = useApp((s) => s.set)
   const ready = useApp((s) => s.ready)
   const [plans, setPlans] = React.useState<PlanItem[] | null>(null)
   const [loadError, setLoadError] = React.useState(false)
@@ -63,7 +64,7 @@ export function Home() {
             ? `今天有 ${running.length} 份计划在进行。按自己的节奏来，学会一点就记下一点。`
             : "从一个想学的东西开始：告诉我你的目标，我会帮你找资料、搭好路线，再陪你一节一节学完。"}</p>
           <div className="row wrap" style={{ marginTop: 18 }}>
-            <Button kind="primary" onClick={() => go("new-plan")}><Plus />新建计划</Button>
+            <Button kind="primary" onClick={() => { set({ planId: null }); go("new-plan") }}><Plus />新建计划</Button>
             <Button onClick={() => go("plans")}>查看全部计划</Button>
           </div>
         </div>
@@ -91,7 +92,7 @@ export function Home() {
           <h3>今天还没有要学的内容</h3>
           <p>{plans.length ? "你的计划还没有开始。进入计划，确认路线后点“开始计划”，这里就会出现每天的学习目标。"
                             : "还没有学习计划。新建一个计划，AI 会根据你的目标和时间，把每天要学多久安排好。"}</p>
-          <Button kind="primary" onClick={() => go(plans.length ? "plans" : "new-plan")}>
+          <Button kind="primary" onClick={() => { if (!plans.length) set({ planId: null }); go(plans.length ? "plans" : "new-plan") }}>
             {plans.length ? <><CalendarClock />去看我的计划</> : <><Sparkles />开始第一个计划</>}
           </Button>
         </div>
