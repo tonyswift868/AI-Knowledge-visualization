@@ -13,7 +13,8 @@ try{
  for(const theme of ['sakura','aurora'])for(const phase of ['offer','download','prepare','ready']){
   await js(`window.phase137('${phase}','${theme}')`);
   const text=phase==='offer'?'发现新版本 9.137.2':phase==='download'?'正在下载 2/5 个文件（3.00 MB / 10.00 MB）':phase==='prepare'?'正在准备新版本…':'已下载好，点一下就能更新。';
-  await until(`document.querySelector('[aria-label="关于 MentorFlow"]').textContent.includes(${JSON.stringify(text)}) && document.querySelector('[role="dialog"]').textContent.includes(${JSON.stringify(text)})`);
+  await until(`document.querySelector('[role="dialog"]')?.textContent.includes(${JSON.stringify(text)}) && !document.querySelector('[aria-label="关于 MentorFlow"]').textContent.includes(${JSON.stringify(text)})`);
+  assert(await js(`document.querySelectorAll('[data-testid="update-status"]').length===1 && !!document.querySelector('[role="dialog"] [data-testid="update-status"]')`),'one update status is presented in the active dialog');
   assert(await js(`![...document.querySelectorAll('[role="dialog"] button')].find(b=>b.textContent.includes('立即更新并重启')).disabled`),'background work must allow consent');
   if(phase==='download')assert(await js(`document.querySelector('[role="dialog"] progress').value===3*1048576 && document.querySelector('[role="dialog"] progress').max===10*1048576`),'byte progress');
   const shot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,`update137-${theme}-${phase}.png`),Buffer.from(shot.data,'base64'));

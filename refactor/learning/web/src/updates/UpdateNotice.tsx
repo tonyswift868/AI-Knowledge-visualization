@@ -1,5 +1,4 @@
 import * as React from "react"
-import { Loading } from '../loading/Loading'
 import { create } from "zustand"
 import { call } from "../bridge"
 import { useApp } from "../store"
@@ -25,20 +24,40 @@ export function registerMandatoryUpdateGuard(guard: MandatoryUpdateGuard) {
 }
 async function prepareMandatoryUpdate() { await mandatoryUpdateGuard?.() }
 export const hasUpdate = () => offered(useUpdates.getState().status) || useUpdates.getState().later
-export function UpdateProgress({status}: {status: UpdateStatus | null}) {
-  if (!status) return null
+export function UpdateProgress({status, error = ""}: {status: UpdateStatus | null; error?: string}) {
+  if (!status || error || ["FAILED_RECOVERABLE", "FAILED_SECURITY", "UNPACKAGED", "APPLYING", "RESTART_REQUIRED", "UPDATE_DOWNLOADED", "UP_TO_DATE"].includes(status.state)) return null
   const phase = status.download_state || status.state
-  const active = !!status.busy || !!status.background_downloading
-  if (!active && !status.prepared && phase !== 'READY_TO_APPLY') return null
+  if (phase !== 'DOWNLOADING' && phase !== 'PREPARING') return null
   const total = status.expected_download_bytes || 0
   const received = status.downloaded_bytes ?? status.actual_downloaded_bytes ?? 0
-  const message = status.prepared ? '已下载好，点一下就能更新。' : phase === 'PREPARING' ? '正在准备新版本…'
-    : phase === 'DOWNLOADING' ? `正在下载 ${status.downloaded_files || 0}/${status.total_download_files || 0} 个文件（${(received/1048576).toFixed(2)} MB / ${(total/1048576).toFixed(2)} MB）`
-    : status.message || '正在检查更新…'
-  return <div aria-label="更新进度"><p role="status">{message}</p>
-    <Loading active={active} label={message}/>
-    {(phase === 'DOWNLOADING' || phase === 'PREPARING') && <progress aria-label="下载进度" max={Math.max(1,total)} value={Math.min(total,received)} style={{width:'100%'}}/>}
+  return <div aria-label="更新进度" data-testid="update-progress">
+    <progress aria-label="下载进度" max={Math.max(1,total)} value={Math.min(total,received)} style={{width:'100%'}}/>
   </div>
+}
+
+/** One concise, accessible description of the current update state. */
+export function UpdateStatusSummary({status, error = ""}: {status: UpdateStatus | null; error?: string}) {
+  const phase = status?.download_state || status?.state || ""
+  const active = !!status?.busy || !!status?.background_downloading
+  const received = status?.downloaded_bytes ?? status?.actual_downloaded_bytes ?? 0
+  const total = status?.expected_download_bytes || 0
+  const version = status?.latest || status?.target
+  let message = error
+  if (!message && !status) message = "正在检查更新…"
+  else if (!message && ["FAILED_RECOVERABLE", "FAILED_SECURITY", "UNPACKAGED"].includes(status?.state || "")) message = status?.message || "暂时无法检查更新。"
+  else if (!message && status?.state === "APPLYING") message = status?.message || "正在安装更新，完成后将自动重启。"
+  else if (!message && status?.state === "RESTART_REQUIRED") message = status?.message || "正在重新启动…"
+  else if (!message && status?.state === "UPDATE_DOWNLOADED") message = status?.prepared ? "已下载好，点一下就能更新。" : status?.message || "下载完成，正在准备安装。"
+  else if (!message && status?.state === "DOWNLOAD_PAUSED_OR_INTERRUPTED") message = status?.message || "下载已暂停，可继续。"
+  else if (!message && status?.state === "UP_TO_DATE") message = status.current || status.version ? `已是最新版本 ${status.current || status.version}` : "已是最新版本。"
+  else if (!message && active && phase === "DOWNLOADING")
+    message = `正在下载 ${status?.downloaded_files || 0}/${status?.total_download_files || 0} 个文件（${(received / 1048576).toFixed(2)} MB / ${(total / 1048576).toFixed(2)} MB）`
+  else if (!message && active && phase === "PREPARING") message = "正在准备新版本…"
+  else if (!message && status?.prepared) message = "已下载好，点一下就能更新。"
+  else if (!message && offered(status)) message = status?.message || `发现新版本 ${version || ""}`.trim()
+  else if (!message) message = status?.message || (active ? "正在检查更新…" : "")
+  if (!message) return null
+  return <p data-testid="update-status" role="status" aria-live="polite">{message}</p>
 }
 let started = false
 let nextAutomaticAt = 0
@@ -150,7 +169,7 @@ export function UpdateNotice() {
     } else {
       if (status.state === "UP_TO_DATE" && (notice.open || notice.later)) useUpdates.setState({ open: false, later: false })
       if (!notice.manual || !["UP_TO_DATE", "FAILED_RECOVERABLE", "FAILED_SECURITY", "UNPACKAGED"].includes(status.state)) return
-      toast(status.state === "UP_TO_DATE" ? "ok" : "info", status.state === "UP_TO_DATE"
+      if (route !== "settings") toast(status.state === "UP_TO_DATE" ? "ok" : "info", status.state === "UP_TO_DATE"
         ? `已是最新版本 ${status.current || status.version}` : status.message || "暂时无法检查更新。")
       useUpdates.setState({ manual: false })
     }
@@ -181,13 +200,12 @@ export function UpdateNotice() {
   return <div role="presentation" style={{ position: "fixed", inset: 0, background: "#0008", display: "grid", placeItems: "center", zIndex: 1000 }}>
     <section role="dialog" aria-modal="true" aria-label="MentorFlow 更新" className="card stack" tabIndex={-1} autoFocus style={{ width: "min(540px, 90vw)", padding: 28, maxHeight: "80vh", overflowY: "auto" }}>
       <h2>MentorFlow 更新</h2>
-      <h3>发现新版本 {status?.latest || status?.target}</h3>
       <p>当前版本 {status?.current || status?.version} → 新版本 {status?.latest || status?.target}</p>
       <p style={{ whiteSpace: "pre-wrap" }}>{status?.release_notes || "此版本未提供更新说明。"}</p>
       <p>更新完成后会自动重启，并继续当前登录（仅这一次）。</p>
       {mandatory(status) && <p>版本 {status?.mandatory_floor || status?.min_supported_version || status?.latest} 必须安装：{({security:"安全修复",protocol:"更新协议兼容要求",data_compatibility:"数据兼容要求",support_floor:"版本兼容要求"} as Record<string,string>)[status?.mandatory_reason || "support_floor"] || status?.mandatory_reason}</p>}
-      <p role="status">{notice.error || status?.message}</p>
-      <UpdateProgress status={status}/>
+      <UpdateStatusSummary status={status} error={notice.error}/>
+      <UpdateProgress status={status} error={notice.error}/>
       <div className="row">
         <Button kind="primary" busy={!!status?.busy} disabled={downloading || status?.state === "FAILED_SECURITY"} onClick={() => void installUpdate()}>
           {status?.state === "DOWNLOAD_PAUSED_OR_INTERRUPTED" ? "继续" : mandatory(status) ? "立即更新" : "立即更新并重启"}

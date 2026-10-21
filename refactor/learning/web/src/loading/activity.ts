@@ -16,7 +16,7 @@ export function streamActivity(id: string, delta: string) {
 export function endActivity(id: string) { snapshot = snapshot.filter(a => a.id !== id); publish() }
 
 // These operations have placeholders where their content will appear.
-export const LOCAL_WAITS = new Set(['app.bootstrap', 'plans.list', 'plan.get', 'plan.current', 'plan.detail', 'plan.report',
+export const LOCAL_WAITS = new Set(['app.bootstrap', 'plans.list', 'plan.get', 'plan.current', 'plan.detail', 'plan.report', 'update.check', 'update.install',
   'plan.say', 'plan.submit', 'plan.decide', 'plan.missing', 'plan.map_delete', 'plan.map_delete_confirm', 'plan.more', 'plan.outline', 'plan.estimate', 'plan.generate', 'plan.confirm_structure', 'plan.upload',
   'plan.add_analyze', 'plan.add_preview', 'plan.add_generate', 'plan.add_apply', 'chat.list', 'chat.send', 'models.providers', 'models.list', 'models.test', 'models.save', 'usage.summary', 'usage.spend', 'selftest.list', 'selftest.import'])
 export function waitLabel(method: string) {
