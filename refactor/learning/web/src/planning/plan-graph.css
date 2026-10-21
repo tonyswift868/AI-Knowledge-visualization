@@ -55,6 +55,11 @@
 .pg-legend .pg-arrow { position: relative; opacity: .7; }
 .pg-arrow::after { content: ''; position: absolute; right: 0; top: -2px; border-left: 4px solid var(--accent); border-top: 3px solid transparent; border-bottom: 3px solid transparent; }
 .pg-legend select { margin-left: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-solid); color: var(--text); padding: 4px; max-width: 180px; font-size: 11px; }
+.shell:has(.pg-fullscreen) { z-index: 100; }
+.content:has(.pg-fullscreen), .chat-scroll:has(.pg-fullscreen), .plan-main:has(.pg-fullscreen) { overflow: visible; }
+.page.plan-page:has(.plan-graph), .plan-block:has(.plan-graph) { animation-fill-mode: backwards; }
+.page.plan-page:has(.pg-fullscreen) { position: relative; z-index: 10001; transform: none !important; opacity: 1 !important; }
+.plan-block:has(.pg-fullscreen) { transform: none !important; opacity: 1 !important; }
 .pg-fullscreen { position: fixed; inset: 12px; width: auto; z-index: 10000; display: flex; flex-direction: column; }
 .pg-fullscreen .pg-workspace { flex: 1; height: auto; min-height: 0; }
 .material-missing { padding: 12px 16px; background: var(--accent-soft); border: 1px solid var(--border); border-radius: 12px; font-size: 13px; line-height: 1.7; }

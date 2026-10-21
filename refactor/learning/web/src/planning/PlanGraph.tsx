@@ -1,5 +1,4 @@
 import * as React from "react"
-import { createPortal } from "react-dom"
 import dagre from "@dagrejs/dagre"
 import { Background, BackgroundVariant, Controls, Handle, MarkerType, MiniMap, Position,
   ReactFlow, ReactFlowProvider, applyNodeChanges, type BuiltInEdge, type Node, type NodeProps, type ReactFlowInstance } from "@xyflow/react"
@@ -136,6 +135,9 @@ export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages
   const [fullscreen, full] = React.useState(false)
   const [instance, setInstance] = React.useState<ReactFlowInstance | null>(null)
   const returnFocus = React.useRef<HTMLButtonElement>(null)
+  const canvas = React.useRef<HTMLDivElement>(null)
+  const detailsVisible = React.useRef(selected !== null)
+  detailsVisible.current = selected !== null
   // Host draft refreshes and parent input renders create a new stages array.
   // Layout updates must not discard the module the user is reading.
   React.useEffect(() => {
@@ -144,8 +146,18 @@ export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages
     setNodes(current => refreshGraphNodes(current, layout.nodes, unchanged))
     hover(null)
   }, [layout, structureKey])
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!fullscreen) return
+    // If fullscreen is opened during the page entrance, finish that same
+    // animation so returning to the inline layout cannot resume its transform.
+    let ancestor = returnFocus.current?.parentElement ?? null
+    while (ancestor) {
+      ancestor.getAnimations().forEach(animation => {
+        if ((animation as CSSAnimation).animationName === "pageIn" && animation.playState === "running") animation.finish()
+      })
+      if (ancestor.classList.contains("shell")) break
+      ancestor = ancestor.parentElement
+    }
     const old = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => { document.body.style.overflow = old }
@@ -161,8 +173,36 @@ export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages
   }, [selected, fullscreen])
   React.useEffect(() => {
     if (!instance) return
-    const frame = requestAnimationFrame(() => instance.fitView({ padding: .12, duration: 220, minZoom: .025, maxZoom: 1 }))
-    return () => cancelAnimationFrame(frame)
+    let frame = 0
+    const fit = (duration = 220) => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        instance.fitView({ padding: .12, duration, minZoom: .025, maxZoom: 1 })
+      })
+    }
+    const target = canvas.current
+    let priorWidth = target?.clientWidth ?? 0
+    let priorHeight = target?.clientHeight ?? 0
+    let priorDetailsVisible = detailsVisible.current
+    const resizeObserver = fullscreen && target ? new ResizeObserver(() => {
+      const width = target.clientWidth, height = target.clientHeight
+      const changed = width !== priorWidth || height !== priorHeight
+      const detailsChanged = detailsVisible.current !== priorDetailsVisible
+      priorWidth = width
+      priorHeight = height
+      priorDetailsVisible = detailsVisible.current
+      if (changed && !detailsChanged && !detailsVisible.current) fit(0)
+    }) : null
+    if (target) resizeObserver?.observe(target)
+    const onWindowResize = () => fit(0)
+    window.addEventListener("resize", onWindowResize)
+    fit()
+    return () => {
+      resizeObserver?.disconnect()
+      window.removeEventListener("resize", onWindowResize)
+      cancelAnimationFrame(frame)
+    }
   }, [instance, structureKey, fullscreen])
   const all = stages.flatMap(s => s.modules)
   const detail = all.find(m => m.key === selected)
@@ -173,10 +213,10 @@ export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages
     <div className="pg-toolbar"><div><GitBranch size={16} /><b>{mode === "structure" ? "学习结构" : "知识地图"}</b><span>{all.length} 个模块{mode === "outline" ? ` · ${all.reduce((n, m) => n + (m.points?.length ?? 0), 0)} 个点` : ""}</span></div>
       <button className="pg-expand" ref={returnFocus} onClick={() => full(!fullscreen)}>{fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}{fullscreen ? "退出全屏" : "全屏查看"}</button></div>
     <div className={`pg-workspace ${detail ? "pg-has-details" : ""}`}>
-      <div className="pg-canvas"><ReactFlow nodes={viewNodes} edges={edges} nodeTypes={nodeTypes} onInit={setInstance}
+      <div className="pg-canvas" ref={canvas}><ReactFlow nodes={viewNodes} edges={edges} nodeTypes={nodeTypes} onInit={setInstance}
         onNodesChange={changes => setNodes(ns => applyNodeChanges(changes, ns))} onNodeClick={(_, n) => { if (n.type === "module") select(n.id === selected ? null : n.id) }}
         onNodeMouseEnter={(_, n) => { if (n.type === "module") hover(n.id) }} onNodeMouseLeave={() => hover(null)}
-        nodesConnectable={false} deleteKeyCode={null} fitViewOptions={{ padding: .12, minZoom: .025, maxZoom: 1 }} minZoom={.025} maxZoom={2.5} onlyRenderVisibleElements>
+        nodesConnectable={false} deleteKeyCode={null} fitViewOptions={{ padding: .12, minZoom: .025, maxZoom: 1 }} minZoom={.025} maxZoom={2.5}>
         <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} color="var(--border-strong)" />
         <Controls position="bottom-right" showInteractive={false} aria-label="地图缩放与适配" />
       </ReactFlow></div>
@@ -190,5 +230,5 @@ export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages
       </select>
     </footer>
   </section></ReactFlowProvider>
-  return fullscreen ? createPortal(content, document.body) : content
+  return content
 }
