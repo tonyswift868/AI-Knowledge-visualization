@@ -38,6 +38,11 @@ type Room = {
   concept?: Concept | null
   direct_review?: ReviewEntry & { total: number; entries?: ReviewEntry[] } | null
   preparation?: Preparation | null
+  preparation_error?: { module_id: string; message: string } | null
+  test_readiness?: { module_test: boolean; skip_test: boolean; retest?: boolean; check: boolean }
+  material_notice?: { module_id: string; message: string } | null
+  deferred_module_tests?: { module_id: string; title: string; ready: boolean }[]
+  module_options?: { module_id: string; title: string; current: boolean; ready: boolean; state: string; step: string }[]
   failure?: { message: string; model_fault?: ModelFault } | null
   explanation?: { text: string; source: { title: string; url: string; locator: string }; label: string; open: boolean; message_id: string } | null
   today: (StudyProgress & { needs_rest?: boolean; is_late_night?: boolean }) | null
@@ -152,6 +157,19 @@ export function Classroom() {
     void voice.stop()
   }, [voice.stop])
 
+  // A fresh user action takes over from an unfinished foreground action. The
+  // bridge cancellation stops its model work; generation fencing below keeps
+  // any late stream or snapshot from replacing the newer classroom state.
+  const supersedeCurrent = React.useCallback(() => {
+    if (!acting.current) return
+    generation.current++
+    abort.current?.abort()
+    stopReading()
+    acting.current = false
+    setBusy(null); setStream(null); setPendingUser(null); setVerdictPreview(null)
+    notifyClassroomIdle()
+  }, [stopReading, notifyClassroomIdle])
+
   React.useEffect(() => {
     if (!planId) return
     let active = true
@@ -202,8 +220,8 @@ export function Classroom() {
     })
     if (!draftContextStillCurrent()) return
     if (persisted?.saved !== true) throw new Error("未发送的课堂输入暂未保存，请重试后继续更新。")
-    // A state read also goes through Classroom.run and persists the current
-    // position. Retry only the transient lock held by its periodic refresh.
+    // Classroom.run has already persisted the last completed checkpoint. A
+    // read verifies it without resuming work; retry only a brief state lock.
     for (let attempt = 0; ; attempt++) {
       if (!draftContextStillCurrent()) return
       try { await call("classroom.state", { plan_id: currentPlan }); return }
@@ -239,8 +257,16 @@ export function Classroom() {
   }
 
   const act = React.useCallback(async (method: string, params: Record<string, unknown> = {}, label = "老师在想…") => {
-    // A ref locks immediately, including two clicks before React has rendered.
-    if (!planId || acting.current) return false
+    // State reads never interrupt teaching. Only an explicit message, wait
+    // exit, or module switch may take over a slow foreground request. Scoring
+    // actions keep their double-submit guard.
+    if (!planId) return false
+    if (acting.current) {
+      const scoredContext = !!room?.question || !!room?.direct_review
+      const canSendMessage = method === "classroom.ask" || (method === "classroom.reply" && !scoredContext)
+      if (!canSendMessage && !["classroom.cancel_preparation", "classroom.next_module"].includes(method)) return false
+      supersedeCurrent()
+    }
     acting.current = true
     if (method !== "classroom.state") beginRound()
     const ownGeneration = generation.current
@@ -330,7 +356,7 @@ export function Classroom() {
       if (lessonChanged.current) lessonRefresh.current?.()
       notifyClassroomIdle()
     }
-  }, [planId, room, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading, notifyClassroomIdle])
+  }, [planId, room, toast, reading, voice.availability?.ready, voice.startStream, voice.appendStream, voice.endStream, voice.stop, stopReading, notifyClassroomIdle, supersedeCurrent])
 
   const retryModel = React.useCallback(()=>{
     if(room?.failure)void act('classroom.retry',{},'重试这一步…')
@@ -372,12 +398,22 @@ export function Classroom() {
     const refresh = () => {
       if (!active || !planId) return
       lessonChanged.current = true
-      if (acting.current || pending) return
+      if (pending) return
       pending = true
       lessonChanged.current = false
       call<Room>("classroom.state", { plan_id: planId }).then((r) => {
-        if (active && !acting.current) setRoom(r)
-        else if (active) lessonChanged.current = true
+        if (active) setRoom(previous => {
+          if (!previous || previous.plan.id !== r.plan.id || previous.module.id !== r.module.id) return previous
+          if (!acting.current) return r
+          // A readiness event is an auxiliary update. Merge only preparation
+          // fields into the live room so a read-only poll never replaces a
+          // teacher stream, current step, question, or classroom position.
+          lessonChanged.current = true
+          return { ...previous, preparation: r.preparation, preparation_error: r.preparation_error,
+            material_notice: r.material_notice, test_readiness: r.test_readiness,
+            module_options: r.module_options, deferred_module_tests: r.deferred_module_tests,
+            more_modules: r.more_modules }
+        })
       }).catch(() => { if (active) lessonChanged.current = true }).finally(() => { pending = false })
     }
     lessonRefresh.current = refresh
@@ -429,7 +465,8 @@ export function Classroom() {
 
   async function send(value?: string) {
     const t = (value ?? text).trim()
-    if (!t || acting.current || (room?.question?.kind === "recall" && !askMode)) return
+    if (!t || (room?.question?.kind === "recall" && !askMode)
+      || (acting.current && (room?.question || room?.direct_review) && !askMode)) return
     stopReading()
     const beforeDraft = inputDraft.current
     pendingSend.current = true
@@ -467,6 +504,10 @@ export function Classroom() {
   const q = room.question
   const done = room.points.filter((p) => p.taught).length
   const t = room.today
+  const deferredTests = room.deferred_module_tests ?? []
+  const moduleOptions = room.module_options ?? []
+  const canSwitchModule = !q && !room.direct_review && !room.check
+    && ["teach", "opening", "teaching", "closing", "test_offer", "test_done"].includes(room.step)
   const markdown = (content: string, showSource: (id: string) => void = openSource, messageKey?: React.Key, focus = false) => (
     <ClassroomMarkdown content={content} onSource={showSource} focus={focus} messageKey={messageKey} />
   )
@@ -493,8 +534,22 @@ export function Classroom() {
           <div className="class-status129">
             {t && <ProgressStatus value={t} />}
             {room.preparation && <PreparationBadge preparation={room.preparation} busy={!!busy} act={act} reducedMotion={reduceMotion}/>}
+            {room.preparation_error && <span className="class-preparation-error188" role="alert" title={room.preparation_error.message}>
+              <CircleAlert size={13}/><span>题目准备失败</span>
+              <Button small kind="ghost" disabled={!!busy} onClick={() => void act("classroom.retry", {}, "重新准备题目…")}>重试</Button>
+            </span>}
             {t?.is_late_night && <span className="class-late129" title="已经很晚了，注意休息。今天学的内容会记在开课那天。">夜深了，注意休息</span>}
           </div>
+          {canSwitchModule && (moduleOptions.some(option => !option.current) || room.more_modules) && <details className="class-switch-module188">
+            <summary>换个模块</summary>
+            <div role="group" aria-label="切换学习模块">
+              {moduleOptions.filter(option => !option.current).map(option => <Button key={option.module_id} small kind="ghost"
+                onClick={() => void act("classroom.next_module", { module_id: option.module_id }, "正在切换模块…")}>
+                {option.title}{option.state === "deferred" ? " · 待检测" : ""}</Button>)}
+              {!moduleOptions.length && room.more_modules && <Button small kind="ghost"
+                onClick={() => void act("classroom.next_module", {}, "正在切换模块…")}>先学下一个模块</Button>}
+            </div>
+          </details>}
         </header>
           {pointsExpanded && !room.check && <div className="class-points class-points-popup129" id="classroom-points">
           {room.points.map((p, i) => (
@@ -506,13 +561,26 @@ export function Classroom() {
           </div>}
         {room.failure && !room.failure.model_fault && <div className="class-failure129" role="alert"><span title={room.failure.message}>{room.failure.message}</span> <Button small disabled={!!busy}
           onClick={() => act("classroom.retry", {}, "重试这一步…")}>重试</Button></div>}
+        {room.material_notice && <div className="class-material-notice188" role="status" data-testid="material-notice188">
+          <span>{room.material_notice.message || "这个模块的题还在准备，好了再考"}</span>
+          <Button small kind="ghost" disabled={false}
+            onClick={() => void act("classroom.cancel_preparation", {}, "正在更新课堂…")}>知道了</Button>
+        </div>}
+        {deferredTests.length > 0 && <div className="class-deferred-tests188" role="group" aria-label="待检测模块">
+          {deferredTests.map(entry => <Button key={entry.module_id} small kind="ghost" disabled={!entry.ready}
+            title={entry.ready ? "返回完成这个模块的检测" : "题目还在准备"}
+            onClick={() => void act("classroom.next_module", { module_id: entry.module_id }, "正在返回待检测模块…")}>
+            {entry.ready ? "回去检测" : "题目准备中"} · {entry.title}</Button>)}
+        </div>}
         <MaterialToolbar key={room.module.id} concept={room.concept} entries={room.module.navigation ?? []}/>
         <div className="class-scroll" ref={scroller}>
-          {room.step === 'preparing_materials' && <PreparationWait preparation={room.preparation} busy={!!busy} act={act}/>}
+          {room.step === 'preparing_materials' && <PreparationWait preparation={room.preparation} busy={false} act={act}/>}
           {room.messages.length === 0 && !busy && room.step === "teach" && (
             <div className="class-empty">
               <BookOpen size={28} />
-              <p>这个模块有 {room.points.length} 个知识点。点“开始上课”，老师一个点一个点地讲，依据原文解释，再用题库题确认。</p>
+              <p>{room.test_readiness?.module_test === false
+                ? `这个模块有 ${room.points.length} 个知识点，题目还在准备。可以先开始学习，老师会依据原文和讲义讲解，题好了再检测。`
+                : `这个模块有 ${room.points.length} 个知识点。点“开始上课”，老师一个点一个点地讲，依据原文解释，之后可以用题库题确认。`}</p>
             </div>
           )}
           {room.messages.map((m) => {
@@ -597,9 +665,9 @@ export function Classroom() {
                       void send()
                     } }} />
           <MicButton voice={mic} />
-          {busy
-            ? <Button onClick={() => { stopReading(); abort.current?.abort() }}><Square />停止</Button>
-            : <Button kind="primary" onClick={() => send()} disabled={!text.trim() || (q?.kind === "recall" && !askMode) || !!room.direct_review?.answered}><SendHorizontal />发送</Button>}
+          {busy && <Button kind="ghost" onClick={() => { stopReading(); abort.current?.abort() }}><Square />停止</Button>}
+          <Button kind="primary" onClick={() => send()} disabled={!text.trim() || (q?.kind === "recall" && !askMode)
+            || (!!busy && (!!q || !!room.direct_review) && !askMode) || !!room.direct_review?.answered}><SendHorizontal />发送</Button>
         </div>
       </section>
 
@@ -630,7 +698,9 @@ export function Classroom() {
       {wrongAnswers && <WrongAnswers planId={planId!} onClose={() => setWrongAnswers(false)} />}
       {skipConfirm && <section className="class-source" role="dialog" aria-modal="true" aria-label="确认跳过该模块">
         <h3>跳过该模块？</h3><p>有题会进入整个模块的直接考；没有题会随口聊三个点，再由你决定是否跳过。</p>
-        <div className="row"><Button kind="primary" onClick={()=>{setSkipConfirm(false);void act('classroom.test',{kind:'skip_test'},'正在准备直接考…').then(ok=>{if(ok)setSkipModule(false)})}}>确认，进入直接考</Button>
+        <div className="row"><Button kind="primary" disabled={room.test_readiness?.skip_test === false}
+          onClick={()=>{setSkipConfirm(false);void act('classroom.test',{kind:'skip_test'},'正在准备直接考…').then(ok=>{if(ok)setSkipModule(false)})}}>
+          {room.test_readiness?.skip_test === false ? "题目还在准备" : "确认，进入直接考"}</Button>
         <Button kind="ghost" onClick={()=>setSkipConfirm(false)}>取消</Button></div>
       </section>}
       {source && (
@@ -665,12 +735,17 @@ function Actions({ room, act, busy }: { room: Room; busy: boolean; act: (m: stri
   )
   if (step === "test_offer") return (
     <div className="plan-actions">
-      <Button kind="primary" disabled={busy} onClick={() => act("classroom.test", { kind: "module_test" }, "正在出题…")}><ClipboardCheck />开始模块检测</Button>
+      <Button kind="primary" disabled={busy || room.test_readiness?.module_test === false}
+        onClick={() => act("classroom.test", { kind: "module_test" }, "正在出题…")}><ClipboardCheck />开始模块检测</Button>
+      {room.test_readiness?.module_test === false && <span className="class-test-gate188" role="status">{room.material_notice?.message || "这个模块的题还在准备，好了再考"}</span>}
+      {room.test_readiness?.module_test === false && room.more_modules && <Button kind="ghost" disabled={false}
+        onClick={() => act("classroom.next_module", {}, "正在切换模块…")}>先学下一个模块</Button>}
     </div>
   )
   if (step === "test_done") return (
     <div className="plan-actions">
-      {room.red.length > 0 && <Button kind="primary" disabled={busy} onClick={() => act("classroom.test", { kind: "retest" }, "正在出题…")}><RotateCcw />只重测答错的题</Button>}
+      {room.red.length > 0 && <Button kind="primary" disabled={busy || room.test_readiness?.retest === false}
+        onClick={() => act("classroom.test", { kind: "retest" }, "正在出题…")}><RotateCcw />只重测答错的题</Button>}
       <Button kind={room.red.length ? undefined : "primary"} disabled={busy} onClick={() => act("classroom.next_module", {}, "正在准备…")}>
         <ChevronRight />{room.more_modules ? "学下一个模块" : "结束模块学习"}</Button>
     </div>
@@ -678,7 +753,9 @@ function Actions({ room, act, busy }: { room: Room; busy: boolean; act: (m: stri
   if (step === "check_offer") return (
     <div className="plan-actions">
       <span className="muted small">最终检验：每个点换角度问，答对升级，全部通过就完成计划。</span>
-      <Button kind="primary" disabled={busy} onClick={() => act("classroom.check", {}, "正在出题…")}><ClipboardCheck />开始最终检验</Button>
+      <Button kind="primary" disabled={busy || room.test_readiness?.check === false}
+        onClick={() => act("classroom.check", {}, "正在出题…")}><ClipboardCheck />开始最终检验</Button>
+      {room.test_readiness?.check === false && <span className="class-test-gate188" role="status">{room.material_notice?.message || "最终检验题还在准备，好了再考"}</span>}
     </div>
   )
   if (step === "checking" && !room.question) return (

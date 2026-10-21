@@ -84,8 +84,10 @@ def env(tmp_path, monkeypatch):
 
 
 
-def test_foreground_wait_is_nonblocking_and_deduplicates_generation_job(env):
+def test_foreground_learning_does_not_wait_and_deduplicates_generation_job(env):
     e = env; started = threading.Event(); release = threading.Event(); events=[]
+    from tests.refactor.integration38.support import Agents
+    e.services.gateway = Agents()
     def prepare(store, pid, mid, ctx, progress):
         e.calls.append(mid); started.set()
         assert release.wait(2)
@@ -98,7 +100,7 @@ def test_foreground_wait_is_nonblocking_and_deduplicates_generation_job(env):
     entered_view=e.room.run(PLAN, lambda co, st, cx: st.update(module_id='m1', index=0, step='teach'), context())
     assert '这个模块的题还在准备' in entered_view['preparation']['text']
     begin=time.monotonic(); view=e.room.perform(PLAN, 'next', context())
-    assert time.monotonic()-begin < 1 and view['step']=='preparing_materials'
+    assert time.monotonic()-begin < 1 and view['step']=='opening'
     assert '这个模块的题还在准备' in view['preparation']['text']
     assert e.calls == ['m1']
     release.set(); wait_for(lambda: PLAN not in e.flow._preparing)

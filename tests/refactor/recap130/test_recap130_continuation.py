@@ -116,15 +116,17 @@ def test_recap130_prediction_declines_uncertain_path_and_actual_uses_normal_path
         if barrier=='not_ready':
             monkeypatch.setattr(e.room,'_ready',lambda *args,**kw:False)
             waits=[]
-            def wait(co,st,action,args=()):waits.append(action);st.update(step='preparing_materials')
+            def wait(co,st,action,args=()):raise AssertionError('讲课不应等待题库')
             monkeypatch.setattr(e.room,'_wait',wait)
         else:
             course.point('p2')['chunk_ids']=[]
-        assert e.room._predicted_teacher(course,state,'next',()) is None
         if barrier=='not_ready':
+            assert e.room._predicted_teacher(course,state,'next',()) is not None
             view=act(e,'next')
-            assert not view['failure'] and view['step']=='preparing_materials' and waits==['next']
-            assert view['messages'][-1]['kind']=='recap' and len(e.store.records('credits',PLAN))==3
+            assert not view['failure'] and view['step']=='teaching' and waits==[]
+            assert view['messages'][-2]['kind']=='recap' and len(e.store.records('credits',PLAN))==3
+        else:
+            assert e.room._predicted_teacher(course,state,'next',()) is None
     finally:close130(e)
 
 

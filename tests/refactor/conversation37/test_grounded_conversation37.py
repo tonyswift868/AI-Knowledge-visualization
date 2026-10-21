@@ -202,15 +202,27 @@ def test_test_final_retest_and_practice_are_selected_not_generated(env):
     assert {'direct','module','retest','final','free'}<=set(p for _,p in e.materials.used)
     assert set(e.gateway.calls)<={'teacher'}
 
-def test_active_teacher_only_blocks_concurrent_turn(env,monkeypatch):
+def test_active_teacher_yields_to_new_question_without_late_commit(env,monkeypatch):
     pending(env);started=threading.Event();finish=threading.Event();original=env.gateway.complete
-    def gateway(*args,**kwargs):started.set();assert finish.wait(3);return original(*args,**kwargs)
+    outcomes=[]
+    def gateway(*args,**kwargs):
+        if not started.is_set():
+            started.set();assert finish.wait(10)
+        return original(*args,**kwargs)
     monkeypatch.setattr(env.gateway,'complete',gateway)
-    t=threading.Thread(target=lambda:act(env,'ask','问一下'))
+    def first():
+        try:act(env,'ask','先问一下')
+        except BridgeError as exc:outcomes.append(exc.code)
+    t=threading.Thread(target=first)
     t.start();assert started.wait(3)
     try:
-        with pytest.raises(BridgeError,match='正在处理'):act(env,'ask','问一下')
-    finally:finish.set();t.join(3)
+        view=act(env,'ask','再问一下')
+        assert not view['failure']
+        latest=[m['id'] for m in view['messages']]
+    finally:finish.set();t.join(10)
+    assert not t.is_alive() and outcomes==['CANCELLED']
+    current=env.room.run(PLAN,lambda *_:None,readonly=True)
+    assert [m['id'] for m in current['messages']]==latest
 
 def test_report_uses_actual_explained_points_not_old_drafts(env):
     act(env,'next');assert not env.store.records('teacher_profile',PLAN)
@@ -231,7 +243,7 @@ def test_missing_point_sources_not_guessed(env):
     assert not co.passages(['p0'])
     with pytest.raises(BridgeError,match='没有关联'):co.excerpts(['p0'])
 
-def test_materials_wait_progress_auto_resume_and_leave_cancel(env,monkeypatch):
+def test_materials_progress_does_not_block_learning_and_leave_keeps_background_work(env,monkeypatch):
     import time
     bank=env.materials.bank;env.materials.bank=[];started=threading.Event();release=threading.Event()
     def prepare(store,plan_id,module_id,ctx,progress):
@@ -241,25 +253,31 @@ def test_materials_wait_progress_auto_resume_and_leave_cancel(env,monkeypatch):
         env.materials.bank=bank;progress(1,1,'备好原文与题目')
     monkeypatch.setattr(env.materials,'prepare_module',prepare)
     act(env,'enter');assert started.wait(1)
-    begin=time.monotonic();v=act(env,'next');assert time.monotonic()-begin<1 and v['step']=='preparing_materials'
+    begin=time.monotonic();v=act(env,'next');assert time.monotonic()-begin<1 and v['step']=='opening'
     assert v['preparation']['total']==1
     release.set()
     deadline=time.monotonic()+2
-    while v['step']=='preparing_materials' and time.monotonic()<deadline:
+    while v['preparation'] and time.monotonic()<deadline:
         time.sleep(.005);v=env.room.run(PLAN,lambda *args:None,SimpleNamespace(cancel=threading.Event(),stream=env.stream.append))
     assert v['step']=='opening',v
     env.materials.bank=[];release.clear();act(env,'enter')
     jobs=list(env.room._jobs.values());act(env,'leave')
-    assert not env.room._jobs and all(j['cancel'].is_set() for j in jobs)
+    assert env.room._jobs and all(not j['cancel'].is_set() for j in jobs)
     assert not getattr(env.gateway,'closed',False)
+    release.set()
+    from tests.refactor.plan66.test_plan66_just_in_time_materials import wait_for
+    wait_for(lambda:PLAN not in env.services._material_flow._preparing)
 
 def test_preparation_failure_is_visible_and_retryable(env,monkeypatch):
     import time
     env.materials.bank=[]
     monkeypatch.setattr(env.materials,'prepare_module',lambda *a:(_ for _ in ()).throw(RuntimeError('failure')))
     v=act(env,'next')
-    time.sleep(.02);v=env.room.run(PLAN,lambda *a:None)
-    assert v['step']=='preparing_materials' and v['preparation']['error']
+    deadline=time.monotonic()+2
+    while env.room._jobs[(PLAN,'m0')]['status']!='failed' and time.monotonic()<deadline:
+        time.sleep(.005)
+    v=env.room.run(PLAN,lambda *a:None)
+    assert v['step']=='opening' and v['preparation']['error']
     old=env.room._jobs[(PLAN,'m0')];act(env,'retry')
     assert old['cancel'].is_set() and old is not env.room._jobs[(PLAN,'m0')]
 
