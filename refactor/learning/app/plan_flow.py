@@ -13,15 +13,17 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import hashlib
 import json
 import logging
 import math
+import random
 import sqlite3
 from statistics import median
 import re
 import threading
+import time
 import uuid
 
 from ..connections.errors import MODEL_OUTPUT_TRUNCATED, ModelCancelled, ModelError
@@ -234,6 +236,8 @@ class PlanFlow:
             if services is not None:
                 services._point_minute_jobs = self._point_minute_jobs
         self._preparing = self._material_jobs['active']
+        self._material_jobs.setdefault('timers', {})
+        self._material_jobs.setdefault('last_requested_plan', None)
 
     # ----------------------------------------------------------- drafts
     def _file(self, plan_id):
@@ -1448,38 +1452,130 @@ class PlanFlow:
         if (type(summary['points']) is not int or type(summary['cloze_points']) is not int
                 or not 0 <= summary['cloze_points'] <= summary['points'] or type(summary['cloze_heavy']) is not bool):
             raise BridgeError('PREPARATION_FORMAT', '资料准备结果不完整，请重试。')
-        self.services.store.save_module_preparation(plan_id, module_id, summary)
+        self.services.store.save_module_preparation(plan_id, module_id, summary, merge=True)
 
-    def _prepare_remaining(self, plan_id, modules, prepare, *, retry=False, notify=None, fingerprint=None, priority=False):
+    def _note_plan_requested(self, plan_id):
+        """Revisit this plan's unfinished preparations once when selection changes."""
+        state = self._material_jobs
+        with state['guard']:
+            previous = state.get('last_requested_plan')
+            state['last_requested_plan'] = plan_id
+            switched = previous is not None and previous != plan_id
+        if switched and not getattr(self.services, '_closed', False):
+            threading.Thread(target=self._resume_requested_plan,
+                args=(plan_id,), name='plan-material-plan-switch', daemon=True).start()
+
+    def _resume_requested_plan(self, plan_id):
+        try:
+            return self._resume_plan_preparations(plan_id)
+        except Exception:
+            log.warning('selected-plan material recovery failed plan=%s', plan_id, exc_info=True)
+
+    def _mark_material_ready(self, plan_id, module_id, summary=None):
+        """Reconcile durable/runtime status when current outputs already pass readiness."""
+        summary = dict(summary or {})
+        if summary.get('state') == 'stopped':
+            return summary
+        previous_state = summary.get('state')
+        state = self._material_jobs
+        with state['guard']:
+            job = state['jobs'].get((plan_id, module_id))
+            if job and (job.get('explicit_stop') or job.get('status') == 'stopped'):
+                return summary
+        if summary.get('state') != 'done':
+            details = {'resume_stopped': False}
+            if summary.get('attempts') is not None:
+                details['attempts'] = summary['attempts']
+            summary = self.services.store.update_module_preparation_state(
+                plan_id, module_id, 'done', **details)
+        if summary.get('state') != 'done':
+            return summary
+        with state['guard']:
+            job = state['jobs'].get((plan_id, module_id))
+            if job and (job.get('explicit_stop') or job.get('status') == 'stopped'):
+                return summary
+            previous_job_status = job.get('status') if job else None
+            worker_pending = bool(job and job.get('worker_running'))
+            if job:
+                job.setdefault('listeners', [])
+                job.update(status='ready', cancel=threading.Event(), explicit_stop=False,
+                           resume_ready=worker_pending, error=None, error_code=None,
+                           text='这个模块的题已准备好', done=job.get('total', 0))
+                notification = job
+            else:
+                notification = dict(module_id=module_id, done=0, total=0,
+                    status='ready', text='这个模块的题已准备好', error=None,
+                    cancel=threading.Event(), listeners=[])
+            state['queued'][plan_id] = [entry for entry in state['queued'].get(plan_id, [])
+                                        if entry[0]['id'] != module_id]
+        if previous_state != 'done' or previous_job_status not in (None, 'ready'):
+            self._notify_preparation(plan_id, notification)
+        return summary
+
+    def _prepare_remaining(self, plan_id, modules, prepare, *, retry=False, notify=None, fingerprint=None,
+                           priority=False, recovering=False):
         """One sequential queue per plan; classroom demand moves a job to its head."""
         if not modules or getattr(self.services, '_closed', False):
             return None
+        if not recovering:
+            self._note_plan_requested(plan_id)
         state = self._material_jobs
+        priority_id = modules[0]['id'] if priority else None
+        persisted = {m['id']: m.get('material_preparation') or {}
+                     for m in self.services.store.records('modules', plan_id)}
+        ready_by_id = {}
+        for module in modules:
+            mid = module['id']
+            if persisted.get(mid, {}).get('state') == 'stopped':
+                ready_by_id[mid] = False
+                continue
+            ready = self._module_ready(plan_id, mid)
+            ready_by_id[mid] = ready
+            if ready:
+                persisted[mid] = self._mark_material_ready(plan_id, mid, persisted.get(mid))
         with state['guard']:
             queue = state['queued'].setdefault(plan_id, [])
-            persisted = {m['id']: m.get('material_preparation') or {} for m in self.services.store.records('modules', plan_id)}
             first_job = None
             for module in modules:
                 mid = module['id']; key = (plan_id, mid)
+                is_priority = mid == priority_id
                 job = state['jobs'].get(key)
+                ready = ready_by_id.get(mid, False) and persisted.get(mid, {}).get('state') == 'done'
+                if ready and job and job['status'] in ('failed', 'cancelled'):
+                    job.update(status='ready', cancel=threading.Event(), explicit_stop=False,
+                               error=None, error_code=None, text='这个模块的题已准备好',
+                               done=job.get('total', 0))
                 if job and job['status'] in ('running', 'queued') and not job['cancel'].is_set():
                     if job['fingerprint'] is None: job['fingerprint'] = fingerprint
                 else:
-                    ready = self._module_ready(plan_id, mid) and (not job or fingerprint is None or job['fingerprint'] in (None, fingerprint))
-                    failed = (job and job['status']=='failed') or persisted.get(mid, {}).get('state')=='failed'
+                    ready = ready and (not job or fingerprint is None or job['fingerprint'] in (None, fingerprint))
+                    saved_state = persisted.get(mid, {}).get('state')
+                    stopped = (job and job['status'] == 'stopped') or saved_state == 'stopped'
+                    failed = (job and job['status']=='failed') or saved_state=='failed'
+                    if stopped:
+                        if job is None:
+                            job = dict(module_id=mid, status='stopped', done=0,
+                                total=len(module.get('points', [])), text='备题已由你停止',
+                                error=None, fingerprint=fingerprint, cancel=threading.Event(), listeners=[])
+                            state['jobs'][key] = job
+                        if first_job is None: first_job = job
+                        continue
                     if not job or not (ready or failed and not retry):
                         if job: job['cancel'].set()
                         job = dict(module_id=mid, status='ready' if ready else 'failed' if failed and not retry else 'queued',
                             done=0, total=len(module.get('points', [])), text='这个模块的题还在准备',
                             error=persisted.get(mid, {}).get('error') if failed and not retry else None,
-                            fingerprint=fingerprint, cancel=threading.Event(), listeners=[])
+                            error_code=persisted.get(mid, {}).get('error_code') if failed and not retry else None,
+                            fingerprint=fingerprint, cancel=threading.Event(), listeners=[],
+                            explicit_stop=False, attempts=0, priority=False, cancel_retries=0)
                         state['jobs'][key] = job
                     if job['status']=='queued':
                         queue[:] = [entry for entry in queue if entry[0]['id']!=mid]
                         queue.append((module, prepare, job))
+                job['priority'] = bool(job.get('priority') or is_priority)
                 if job['fingerprint'] is None: job['fingerprint'] = fingerprint
                 if notify and notify not in job['listeners']: job['listeners'].append(notify)
-                if priority and job['status']=='queued':
+                if is_priority and job['status']=='queued':
                     entries = [entry for entry in queue if entry[2] is job]
                     queue[:] = entries + [entry for entry in queue if entry[2] is not job]
                 if first_job is None: first_job = job
@@ -1491,6 +1587,7 @@ class PlanFlow:
     def _prepare_worker(self, plan_id):
         state = self._material_jobs
         while True:
+            wake_later = False
             with state['guard']:
                 queue = state['queued'].get(plan_id, [])
                 if not queue:
@@ -1512,8 +1609,22 @@ class PlanFlow:
                                 log.exception('point minutes preparation hook failed plan=%s', plan_id)
                                 self._point_minutes_event(plan_id, 'failed')
                     return
-                module, prepare, job = queue.pop(0)
+                if self._material_peak_now():
+                    priority_index = next((i for i, entry in enumerate(queue)
+                                           if entry[2].get('priority') and not entry[2]['cancel'].is_set()), None)
+                    if priority_index is None:
+                        state['active'].discard(plan_id)
+                        wake_later = True
+                    else:
+                        module, prepare, job = queue.pop(priority_index)
+                else:
+                    module, prepare, job = queue.pop(0)
+            if wake_later:
+                self._schedule_material_wakeup(plan_id)
+                return
+            with state['guard']:
                 job['status'] = 'running'
+                job['worker_running'] = True
             mid = module['id']
             def progress(done, total, text):
                 job.update(done=done, total=total, text='这个模块的题还在准备' + (f' · {text}' if text else ''))
@@ -1521,27 +1632,167 @@ class PlanFlow:
             ctx = CallContext('plan-materials', job['cancel'], lambda _: None)
             try:
                 if job['cancel'].is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
-                self._record_preparation(plan_id, mid, 'running')
-                with self._background_material_lock(plan_id):
-                    if job['cancel'].is_set(): raise ModelCancelled()
-                    self._prepare_notes(plan_id, mid, ctx)
-                    result = prepare(self.services.store, plan_id, mid, self._material_context(ctx), progress)
+                result = None
+                ready_resumed = False
+                for attempt in range(1, 4):
+                    with state['guard']:
+                        if job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
+                        job.update(status='running', attempts=attempt, error=None, error_code=None)
+                    saved = self._record_preparation(plan_id, mid, 'running', attempts=attempt,
+                        fingerprint=job.get('fingerprint'), unless_stopped=True)
+                    if saved.get('state') == 'stopped':
+                        with state['guard']:
+                            if job.get('resume_ready'):
+                                # An explicit resume may have observed that the
+                                # outputs are already complete while this worker
+                                # was crossing the stop boundary. Do not revive
+                                # the old stop or regenerate the ready module.
+                                job.update(explicit_stop=False, resume_ready=False,
+                                           status='ready', cancel=threading.Event())
+                                ready_resumed = True
+                            else:
+                                job['explicit_stop'] = True
+                                job['status'] = 'stopped'
+                        if ready_resumed:
+                            break
+                        raise ModelCancelled()
+                    with state['guard']:
+                        if job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
+                    try:
+                        with self._background_material_lock(plan_id):
+                            if job['cancel'].is_set(): raise ModelCancelled()
+                            self._prepare_notes(plan_id, mid, ctx)
+                            result = prepare(self.services.store, plan_id, mid, self._material_context(ctx), progress)
+                        if job['cancel'].is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
+                        self._save_material_summary(plan_id, mid, result)
+                        if not self._module_ready(plan_id, mid):
+                            raise BridgeError('MATERIALS_INCOMPLETE', '这个模块的原文或题目不足，进入模块时可重试。')
+                        break
+                    except ModelCancelled:
+                        raise
+                    except Exception as exc:
+                        code = getattr(exc, 'code', None) or type(exc).__name__
+                        message = getattr(exc, 'message', None) or '这个模块的题未备好，系统会自动重试。'
+                        if code == 'RESEARCH_CANCELLED':
+                            raise ModelCancelled() from None
+                        job.update(error=message, error_code=code)
+                        if (attempt >= 3 or not self._retryable_material_error(code)
+                                or job['cancel'].is_set() or getattr(self.services, '_closed', False)):
+                            raise
+                        delay = self._material_retry_delay(attempt)
+                        with state['guard']:
+                            if job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
+                        saved = self._record_preparation(plan_id, mid, 'running', error=message,
+                            error_code=code, attempts=attempt, fingerprint=job.get('fingerprint'),
+                            retry_at=time.time()+delay, unless_stopped=True)
+                        if saved.get('state') == 'stopped':
+                            with state['guard']:
+                                job['explicit_stop'] = True
+                                job['status'] = 'stopped'
+                            raise ModelCancelled()
+                        self._notify_preparation(plan_id, job)
+                        if job['cancel'].wait(delay): raise ModelCancelled()
+                if ready_resumed:
+                    continue
                 if job['cancel'].is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
-                self._save_material_summary(plan_id, mid, result)
-                if not self._module_ready(plan_id, mid):
-                    raise BridgeError('MATERIALS_INCOMPLETE', '这个模块的原文或题目不足，进入模块时可重试。')
-                job['status'] = 'ready'
-                self._record_preparation(plan_id, mid, 'done')
+                with state['guard']:
+                    if job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
+                saved = self._record_preparation(plan_id, mid, 'done', attempts=job.get('attempts', 1),
+                    fingerprint=job.get('fingerprint'), unless_stopped=True)
+                if saved.get('state') != 'done':
+                    if saved.get('state') == 'stopped':
+                        with state['guard']:
+                            if job.get('resume_ready'):
+                                job.update(explicit_stop=False, resume_ready=False,
+                                           status='ready', cancel=threading.Event())
+                                ready_resumed = True
+                            else:
+                                job['explicit_stop'] = True
+                                job['status'] = 'stopped'
+                                ready_resumed = False
+                        if ready_resumed:
+                            continue
+                    raise ModelCancelled()
+                with state['guard']:
+                    if job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
+                    job['status'] = 'ready'
             except ModelCancelled:
-                job['status'] = 'cancelled'
+                with state['guard']:
+                    if job.get('resume_ready'):
+                        job.update(status='ready', resume_ready=False, explicit_stop=False,
+                                   cancel=threading.Event())
+                        resumed_ready = True
+                    else:
+                        resumed_ready = False
+                if resumed_ready:
+                    continue
+                is_closed = getattr(self.services, '_closed', False)
+                explicit_stop = bool(job.get('explicit_stop'))
+                if is_closed:
+                    # Leave the durable running marker: next account-ready recovery
+                    # treats it as interrupted work, without racing store.close().
+                    job['status'] = 'cancelled'
+                elif explicit_stop:
+                    with state['guard']:
+                        job['status'] = 'stopped'
+                        should_persist = state['jobs'].get((plan_id, mid)) is job
+                    if should_persist:
+                        try:
+                            self._record_preparation(plan_id, mid, 'stopped',
+                                attempts=job.get('attempts', 0))
+                        except Exception:
+                            log.warning('could not persist stopped preparation', exc_info=True)
+                else:
+                    with state['guard']:
+                        job['status'] = 'cancelled'
+                        should_persist = state['jobs'].get((plan_id, mid)) is job
+                    if should_persist:
+                        try:
+                            self._record_preparation(plan_id, mid, 'cancelled',
+                                attempts=job.get('attempts', 0), unless_stopped=True)
+                        except Exception:
+                            log.warning('could not persist cancelled preparation', exc_info=True)
+                    cancelled_retries = int(job.get('cancel_retries', 0)) + 1
+                    if cancelled_retries <= 3:
+                        delay = self._material_retry_delay(cancelled_retries)
+                        time.sleep(delay)
+                        with state['guard']:
+                            if (not getattr(self.services, '_closed', False)
+                                    and not job.get('explicit_stop')
+                                    and state['jobs'].get((plan_id, mid)) is job):
+                                job.update(cancel=threading.Event(), status='queued',
+                                           cancel_retries=cancelled_retries,
+                                           text='备题已恢复，正在继续')
+                                if not any(entry[2] is job for entry in state['queued'].setdefault(plan_id, [])):
+                                    state['queued'][plan_id].append((module, prepare, job))
+                    else:
+                        with state['guard']:
+                            job.update(status='failed', error='备题多次被取消，已暂停；重新打开计划后会继续。',
+                                       error_code='PREPARATION_CANCELLED_REPEATED')
+                        try:
+                            saved = self._record_preparation(plan_id, mid, 'failed', error=job['error'],
+                                error_code=job['error_code'], attempts=job.get('attempts', 0),
+                                unless_stopped=True)
+                            if saved.get('state') == 'stopped':
+                                with state['guard']:
+                                    job['explicit_stop'] = True
+                                    job['status'] = 'stopped'
+                        except Exception:
+                            log.warning('could not persist repeated cancellation', exc_info=True)
             except Exception as exc:
                 log.warning('module preparation failed: %s', type(exc).__name__)
                 job.update(status='failed', error=getattr(exc, 'message', '这个模块的题未备好，进入模块时可重试。'),
                            code=getattr(exc, 'code', None))
                 if not getattr(self.services, '_closed', False):
-                    try: self._record_preparation(plan_id, mid, 'failed', error=job['error'])
+                    try:
+                        saved = self._record_preparation(plan_id, mid, 'failed', error=job['error'],
+                            error_code=job.get('code'), attempts=job.get('attempts', 3),
+                            fingerprint=job.get('fingerprint'), unless_stopped=True)
+                        if saved.get('state') == 'stopped': job['status'] = 'stopped'
                     except Exception: log.warning('could not persist module preparation failure', exc_info=True)
             finally:
+                with state['guard']:
+                    job['worker_running'] = False
                 self._notify_preparation(plan_id, job)
 
     def _background_material_lock(self, plan_id):
@@ -1560,23 +1811,214 @@ class PlanFlow:
             try: notify(data)
             except Exception: log.info('preparation listener closed', exc_info=True)
 
-    def _record_preparation(self, plan_id, module_id, state, *, error=None):
+    @staticmethod
+    def _material_retry_delay(attempt):
+        """Existing transient retry cadence (1s, 3s) with bounded jitter."""
+        base = (1, 3)[min(max(int(attempt) - 1, 0), 1)]
+        return base * random.uniform(.8, 1.2)
+
+    @staticmethod
+    def _material_peak_now(now=None):
+        """Use the established TEACH-08 weekday peak windows."""
+        now = now or datetime.now()
+        return now.weekday() < 5 and (9 <= now.hour < 12 or 14 <= now.hour < 18)
+
+    @staticmethod
+    def _material_off_peak_delay(now=None):
+        now = now or datetime.now()
+        if not PlanFlow._material_peak_now(now): return 0
+        end_hour = 12 if 9 <= now.hour < 12 else 18
+        boundary = now.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+        return max(1.0, (boundary - now).total_seconds())
+
+    def _schedule_material_wakeup(self, plan_id):
+        state = self._material_jobs
+        delay = self._material_off_peak_delay()
+        if delay <= 0 or getattr(self.services, '_closed', False): return
+        with state['guard']:
+            existing = state['timers'].get(plan_id)
+            if existing is not None and existing.is_alive(): return
+            def wake():
+                with state['guard']:
+                    state['timers'].pop(plan_id, None)
+                    if (getattr(self.services, '_closed', False) or not state['queued'].get(plan_id)
+                            or plan_id in state['active']):
+                        return
+                    state['active'].add(plan_id)
+                threading.Thread(target=self._prepare_worker, args=(plan_id,),
+                                 name='plan-materials', daemon=True).start()
+            timer = threading.Timer(delay, wake)
+            timer.daemon = True
+            state['timers'][plan_id] = timer
+            timer.start()
+
+    @staticmethod
+    def _retryable_material_error(code):
+        return code not in {'SOURCE_MISSING', 'POINT_SOURCE_MISSING', 'MODULE_NOT_FOUND', 'STORE_CLOSED',
+                            'PREPARATION_FORMAT', 'MATERIALS_INCOMPLETE', 'MODEL_INSUFFICIENT_BALANCE',
+                            'MODEL_OUTPUT_TRUNCATED', 'RESEARCH_INPUT_INVALID'}
+
+    def stop_background(self, plan_id, module_id=None):
+        """Persist an explicit user stop; ordinary cancellation stays resumable."""
+        modules = self.services.store.records('modules', plan_id)
+        requested = {m['id'] for m in modules} if module_id is None else {module_id}
+        if not requested or not requested.issubset({m['id'] for m in modules}):
+            raise BridgeError('MODULE_NOT_FOUND', '找不到要停止备题的模块。')
+        # A valid completed preparation is not part of the pending queue. A
+        # stop-all action must not regress its durable ready state.
+        selected = set()
+        by_id = {m['id']: m for m in modules}
+        for mid in requested:
+            summary = by_id[mid].get('material_preparation') or {}
+            if summary.get('state') == 'done' and self._module_ready(plan_id, mid):
+                continue
+            selected.add(mid)
+        if not selected:
+            return {'stopped': 0}
+        state = self._material_jobs
+        with state['guard']:
+            for mid in selected:
+                job = state['jobs'].get((plan_id, mid))
+                if job is not None:
+                    job['explicit_stop'] = True
+                    job['status'] = 'stopped'
+                    job['cancel'].set()
+                state['queued'][plan_id] = [entry for entry in state['queued'].get(plan_id, [])
+                                            if entry[0]['id'] != mid]
+        if getattr(self.services, '_closed', False):
+            return {'stopped': len(selected)}
+        for mid in selected:
+            self.services.store.update_module_preparation_state(plan_id, mid, 'stopped', attempts=0)
+            try: self.push('plan_preparation', dict(plan_id=plan_id, module_id=mid,
+                status='stopped', done=0, total=0, text='备题已由你停止', error=None))
+            except Exception: log.info('preparation stop notification unavailable', exc_info=True)
+        return {'stopped': len(selected)}
+
+    def resume_background(self, plan_id, module_id=None):
+        """Explicit user action to resume a stopped module or retry failures."""
+        modules = self.services.store.records('modules', plan_id)
+        selected = [m for m in modules if module_id is None or m['id'] == module_id]
+        if not selected or (module_id is not None and len(selected) != 1):
+            raise BridgeError('MODULE_NOT_FOUND', '找不到要恢复备题的模块。')
+        state = self._material_jobs
+        prepare = self._prepare_callable()
+        to_prepare = []
+        for module in selected:
+            mid = module['id']
+            saved = module.get('material_preparation') or {}
+            with state['guard']:
+                job = state['jobs'].get((plan_id, mid))
+            if self._module_ready(plan_id, mid):
+                # An explicit resume can race a stop just before the worker's
+                # done commit. If the outputs already pass the current readiness
+                # check, persist completion and clear the stopped in-memory job
+                # instead of regenerating those outputs.
+                with state['guard']:
+                    job = state['jobs'].get((plan_id, mid))
+                    worker_pending = bool(job and job.get('worker_running'))
+                    if job:
+                        job.update(status='ready', cancel=threading.Event(), explicit_stop=False,
+                                   resume_ready=worker_pending, error=None, error_code=None,
+                                   text='这个模块的题已准备好', done=job.get('total', 0))
+                    state['queued'][plan_id] = [entry for entry in state['queued'].get(plan_id, [])
+                                                if entry[0]['id'] != mid]
+                self.services.store.update_module_preparation_state(
+                    plan_id, mid, 'done', resume_stopped=True,
+                    **({'attempts': saved['attempts']} if saved.get('attempts') is not None else {}))
+                continue
+            if saved.get('state') == 'stopped':
+                self.services.store.update_module_preparation_state(plan_id, module['id'], 'pending', resume_stopped=True)
+            if job and job.get('status') == 'stopped':
+                with state['guard']:
+                    queue = state['queued'].setdefault(plan_id, [])
+                    if plan_id in state['active']:
+                        replacement = dict(module_id=mid, status='queued', done=0,
+                            total=len(module.get('points', [])), text='这个模块的题还在准备', error=None,
+                            error_code=None, fingerprint=None, cancel=threading.Event(), listeners=[],
+                            explicit_stop=False, attempts=0, priority=(mid == selected[0]['id']), cancel_retries=0)
+                        state['jobs'][(plan_id, mid)] = replacement
+                        queue[:] = [entry for entry in queue if entry[0]['id'] != mid]
+                        queue.insert(0, (module, prepare, replacement))
+                    else:
+                        state['jobs'].pop((plan_id, mid), None)
+            to_prepare.append(module)
+        if to_prepare:
+            self._prepare_remaining(plan_id, to_prepare, prepare, retry=True, priority=True)
+        return {'queued': len(to_prepare)}
+
+    def resume_started_preparations(self):
+        """Resume unfinished work once the account services are ready."""
+        if getattr(self.services, '_closed', False): return 0
+        prepare = self._prepare_callable()
+        plans = self.services.store.list_plans()
+        resumed = 0
+        failure = False
+        for plan in plans:
+            if getattr(self.services, '_closed', False): break
+            try:
+                resumed += self._resume_plan_preparations(plan['id'])
+            except Exception:
+                failure = True
+                log.warning('interrupted module preparation recovery failed plan=%s', plan.get('id'), exc_info=True)
+        if failure:
+            raise RuntimeError('one or more plans could not be resumed')
+        return resumed
+
+    def _resume_plan_preparations(self, plan_id):
+        """Recover one selected plan; stopped work stays stopped."""
+        if getattr(self.services, '_closed', False):
+            return 0
+        plan = self.services.store.get_plan(plan_id)
+        if not plan or plan.get('state') not in ('active', 'checking'):
+            return 0
+        prepare = self._prepare_callable()
+        modules = self.services.store.records('modules', plan_id)
+        persisted = {m['id']: m.get('material_preparation') or {} for m in modules}
+        points = self.services.store.records('points', plan_id)
+        pending = []
+        for module in modules:
+            state = persisted.get(module['id'], {}).get('state')
+            if state == 'stopped':
+                continue
+            if self._module_ready(plan_id, module['id']):
+                self._mark_material_ready(plan_id, module['id'], persisted.get(module['id']))
+                continue
+            if state == 'done':
+                self.services.store.update_module_preparation_state(plan_id, module['id'], 'pending')
+            pending.append(dict(module, points=[p for p in points if p['module_id'] == module['id']]))
+        if not pending:
+            return 0
+        position = self.services.store.classroom_position(plan_id)
+        state = position.get('state') if position and isinstance(position.get('state'), dict) else {}
+        current = state.get('module_id')
+        priority = next((m for m in pending if m['id'] == current), pending[0])
+        tail = [m for m in pending if m['id'] != priority['id']]
+        self._prepare_remaining(plan_id, [priority, *tail], prepare,
+                                retry=True, priority=True, recovering=True)
+        return len(pending)
+
+    def _record_preparation(self, plan_id, module_id, state, *, error=None, error_code=None,
+                            attempts=None, fingerprint=None, retry_at=None, unless_stopped=False):
         # The draft is removed when learning starts. Keep module state in the
         # existing persisted summary as well, so reopen never loses completion.
+        saved = {}
         for module in self.services.store.records('modules', plan_id):
             if module['id'] == module_id:
                 if state=='done':
                     from ..course.question_bank import assessment_questions
                     count=len(assessment_questions(self.services.store.records('question_bank',plan_id),module_id))
                     self.services.store.set_question_estimate(plan_id,module_id,count,today=self.study_day())
-                summary = dict(module.get('material_preparation') or {}, state=state, error=error)
-                self.services.store.save_module_preparation(plan_id, module_id, summary)
+                details = {k: v for k, v in dict(error=error, error_code=error_code, attempts=attempts,
+                    fingerprint=fingerprint, retry_at=retry_at).items() if v is not None}
+                saved = self.services.store.update_module_preparation_state(plan_id, module_id, state,
+                    unless_stopped=unless_stopped, **details)
+                state, error = saved['state'], saved.get('error')
                 break
         # Read the latest draft under the foreground operation's lock. Starting
         # or deleting a plan removes the draft; background work must not recreate it.
         with self._lock(plan_id):
             if not self._file(plan_id).path.exists():
-                return
+                return saved
             draft = self.load(plan_id)
             if module_id in draft.get("generation", {}):
                 draft["generation"][module_id] = state
@@ -1584,6 +2026,7 @@ class PlanFlow:
                 if error: errors[module_id] = error
                 else: errors.pop(module_id, None)
                 self.save(draft)
+        return saved
 
     def _generate_module(self, draft, module, chunks, ctx):
         points = self._generate_module_batches(draft, module, chunks, ctx)
@@ -2342,11 +2785,13 @@ class PlanFlow:
                 job = self._material_jobs['jobs'].get((plan_id, module['id']))
                 saved = (module.get('material_preparation') or {}).get('state')
                 state = job['status'] if job and not job['cancel'].is_set() else (
-                    'ready' if saved == 'done' else 'failed' if saved == 'failed' else 'none')
+                    'ready' if saved == 'done' else
+                    saved if saved in ('running', 'queued', 'pending', 'cancelled', 'stopped', 'failed') else 'none')
                 states.append(state)
         done, failed = states.count('ready'), states.count('failed')
         status = ('running' if any(s in ('running', 'queued') for s in states) else
                   'ready' if states and done == len(states) else
+                  'stopped' if states and all(s in ('ready', 'stopped') for s in states) and 'stopped' in states else
                   'failed' if states and failed == len(states) else 'partial' if failed else 'none')
         return dict(status=status, done=done, failed=failed, total=len(states))
 
@@ -2694,14 +3139,60 @@ class PlanFlow:
 
 def register(bridge, services, window, study_day, *, fetcher=None):
     flows: dict[int, PlanFlow] = {}
+    flows_lock = threading.RLock()
+    recovery_lock = threading.Lock()
+    recovery_started = set()
+    registration_closed = threading.Event()
 
     def flow():
         current = services()
+        if current is None or getattr(current, '_closed', False):
+            raise BridgeError('ACCOUNT_CLOSED', '账号服务尚未就绪，请稍后重试。')
         key = id(current)
-        if key not in flows:
-            flows.clear()
-            flows[key] = PlanFlow(current, bridge.push, lambda: study_day(current.settings.load()), fetcher=fetcher)
-        return flows[key]
+        with flows_lock:
+            if key not in flows:
+                flows.clear()
+                flows[key] = PlanFlow(current, bridge.push, lambda: study_day(current.settings.load()), fetcher=fetcher)
+            return flows[key]
+
+    def recover_ready_account():
+        if registration_closed.is_set(): return
+        def work():
+            try:
+                current = services()
+                if current is None or getattr(current, '_closed', False) or registration_closed.is_set(): return
+                key = id(current)
+                with recovery_lock:
+                    if key in recovery_started: return
+                    recovery_started.add(key)
+                try:
+                    flow().resume_started_preparations()
+                except Exception:
+                    with recovery_lock: recovery_started.discard(key)
+                    raise
+            except Exception:
+                log.warning('ready-account material recovery could not start', exc_info=True)
+        threading.Thread(target=work, name='plan-material-recovery', daemon=True).start()
+
+    def on_bridge_event(raw):
+        try:
+            event = json.loads(raw)
+        except (TypeError, json.JSONDecodeError):
+            return
+        if event.get('type') == 'event' and event.get('name') == 'ready':
+            recover_ready_account()
+
+    bridge.event.connect(on_bridge_event)
+    if hasattr(bridge, 'closing'):
+        bridge.closing.connect(registration_closed.set)
+    # Some hosts bind the account before feature registration; use the same
+    # recovery path without waiting for a second ready notification.
+    try:
+        already_ready = services()
+    except Exception:
+        already_ready = None
+    if already_ready is not None and not getattr(already_ready, '_closed', False):
+        recover_ready_account()
 
     def plan_id(params):
         value = params.get("plan_id")
@@ -2716,6 +3207,24 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         if not isinstance(value, list) or len(value) > 50 or any(not isinstance(v, str) or len(v) > 40 for v in value):
             raise BridgeError("PARAM_INVALID", "选择的模块无效。")
         return value
+
+    def stop_preparation(params):
+        mid = params.get('module_id')
+        if mid is not None and (not isinstance(mid, str) or not mid or len(mid) > 64):
+            raise BridgeError('PARAM_INVALID', '模块编号无效。')
+        return flow().stop_background(plan_id(params), mid)
+
+    def resume_preparation(params):
+        mid = params.get('module_id')
+        if mid is not None and (not isinstance(mid, str) or not mid or len(mid) > 64):
+            raise BridgeError('PARAM_INVALID', '模块编号无效。')
+        return flow().resume_background(plan_id(params), mid)
+
+    def plan_detail(params, _ctx=None):
+        selected_plan = plan_id(params)
+        current_flow = flow()
+        current_flow._note_plan_requested(selected_plan)
+        return current_flow.detail(selected_plan)
 
     def text(params, key="text", limit=2000):
         value = params.get(key)
@@ -2759,9 +3268,11 @@ def register(bridge, services, window, study_day, *, fetcher=None):
             d, "delete" if p.get("action") == "delete" else "move", text(p, "module_id", 40), p.get("direction", 0)), c),
         "plan.extend": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().extend_end(d, p.get("end")), c),
         "plan.start": lambda p, c: flow().start_request(plan_id(p)),
-        "plan.detail": lambda p, c: flow().detail(plan_id(p)),
+        "plan.detail": plan_detail,
         "plan.retry_point_links": lambda p, c: flow().retry_point_links(plan_id(p)),
         "plan.retry_point_minutes": lambda p, c: flow().retry_point_minutes(plan_id(p)),
+        "plan.stop_preparation": lambda p, c: stop_preparation(p),
+        "plan.resume_preparation": lambda p, c: resume_preparation(p),
         "plan.window": lambda p, c: flow().change_window(plan_id(p), p),
         "plan.rename": lambda p, c: services().store.rename_plan(plan_id(p), text(p, "title", 80)) or {"ok": True},
         "plan.archive": lambda p, c: (services().store.archive_plan(plan_id(p)) if p.get("archived") is True

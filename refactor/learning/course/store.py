@@ -833,11 +833,41 @@ class CourseStore:
             return [p for p in values if include_archived or not p['archived']]
 
     @_atomic
-    def save_module_preparation(self, plan_id, module_id, summary):
-        """Persist the material component's per-module summary with normal sync."""
+    def save_module_preparation(self, plan_id, module_id, summary, *, merge=False):
+        """Persist the material summary; optionally merge output counts atomically."""
         row = self._get('modules', plan_id, module_id)
-        row['material_preparation'] = dict(summary)
+        value = dict(row.get('material_preparation') or {}) if merge else {}
+        value.update(dict(summary))
+        row['material_preparation'] = value
         return self._put('modules', plan_id, row)
+
+    @_atomic
+    def update_module_preparation_state(self, plan_id, module_id, state, **details):
+        """Update durable queue state without replacing preparation outputs."""
+        if state not in {'pending', 'queued', 'running', 'cancelled', 'stopped', 'failed', 'done'}:
+            raise StoreError('PREPARATION_STATE_INVALID', '备题状态无效。')
+        row = self._get('modules', plan_id, module_id)
+        summary = dict(row.get('material_preparation') or {})
+        unless_stopped = bool(details.pop('unless_stopped', False))
+        resume_stopped = bool(details.pop('resume_stopped', False))
+        if summary.get('state') == 'stopped' and unless_stopped:
+            return summary
+        if summary.get('state') == 'stopped' and state != 'stopped' and not resume_stopped:
+            return summary
+        summary['state'] = state
+        for key in ('error', 'error_code', 'attempts', 'fingerprint', 'retry_at'):
+            if key in details:
+                summary[key] = details[key]
+        if state == 'running' and 'error' not in details:
+            summary['error'] = summary['error_code'] = None
+        if state != 'running' or 'retry_at' not in details:
+            summary['retry_at'] = None
+        if state == 'done':
+            summary['error'] = summary['error_code'] = None
+            summary['retry_at'] = None
+        row['material_preparation'] = summary
+        self._put('modules', plan_id, row)
+        return summary
 
     def records(self, entity, plan_id=''):
         """Read detached payloads; deterministic position/ID order for consumers."""

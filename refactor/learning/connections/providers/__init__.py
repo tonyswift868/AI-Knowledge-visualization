@@ -67,7 +67,9 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
             or type(max_tokens) is not int or max_tokens < 1
             or type(enable_search) is not bool
             or type(timeout) not in {int, float} or not math.isfinite(timeout) or timeout <= 0
-            or type(first_event_timeout) not in {int, float} or not math.isfinite(first_event_timeout) or first_event_timeout <= 0
+            or (first_event_timeout is not None and
+                (type(first_event_timeout) not in {int, float} or not math.isfinite(first_event_timeout)
+                 or first_event_timeout <= 0))
             or (temperature is not None and (type(temperature) not in {int, float}
                 or not math.isfinite(temperature)))):
         raise ModelError('MODEL_CONFIG_INVALID', '模型调用参数无效。')

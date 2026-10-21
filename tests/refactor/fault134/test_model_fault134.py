@@ -140,7 +140,7 @@ def request134(gateway,base,provider,*,stream=True,purpose='connection_test'):
 
 @pytest.mark.parametrize('provider',['deepseek','relay_openai'])
 @pytest.mark.parametrize('mode,stream',[('keepalive',True),('blank',False),('ping',True)])
-@pytest.mark.parametrize('purpose',['teacher','connection_test','outline'])
+@pytest.mark.parametrize('purpose',['teacher','connection_test'])
 def test_first_event134_heartbeat_is_not_response_and_never_retries(gateway134,monkeypatch,provider,mode,stream,purpose):
     calls, clock, accounts = scripted_first_event134(monkeypatch, provider, mode)
     with pytest.raises(ModelError) as caught:

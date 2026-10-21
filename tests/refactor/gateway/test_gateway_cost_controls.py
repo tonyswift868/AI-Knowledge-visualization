@@ -61,18 +61,21 @@ def test_timeout_keeps_larger_preset_and_foreground_unchanged(tmp_path,monkeypat
 
 
 @pytest.mark.parametrize('effort',['none','low','high','max'])
-@pytest.mark.parametrize('stream',[False,True])
-def test_deepseek_wire_and_journal_show_actual_parameters(tmp_path,monkeypatch,effort,stream):
+def test_deepseek_backend_wire_and_journal_show_actual_parameters(tmp_path,monkeypatch,effort):
     from tests.refactor.providers.samples import anthro_frames,sse
     real=_REAL_COMPLETE
     g,p=configured(tmp_path)
-    bodies=[]
+    bodies=[]; provider_callbacks=[]
     def wire(request):
         bodies.append(json.loads(request.content))
         data=anthro(provider='deepseek')
-        return sse(anthro_frames(data)) if stream else httpx.Response(200,json=data)
-    monkeypatch.setattr(providers,'complete',lambda p,**kw:real(p,http_client=httpx.MockTransport(wire),**kw))
-    result=g.complete('profile',MESSAGES,reasoning_effort=effort,on_text=(lambda t:None) if stream else None)
+        return sse(anthro_frames(data))
+    def complete(provider,**kwargs):
+        provider_callbacks.append(kwargs.get('on_text'))
+        return real(provider,http_client=httpx.MockTransport(wire),**kwargs)
+    monkeypatch.setattr(providers,'complete',complete)
+    result=g.complete('profile',MESSAGES,reasoning_effort=effort)
+    assert result.text and provider_callbacks[0] is not None
     body=bodies[0]
     expected={'thinking':{'type':'disabled' if effort=='none' else 'enabled'}}
     if effort!='none':expected['output_config']={'effort':effort}

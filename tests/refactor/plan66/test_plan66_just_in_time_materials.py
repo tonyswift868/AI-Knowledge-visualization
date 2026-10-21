@@ -49,7 +49,9 @@ def wait_for(predicate, timeout=3):
 
 
 @pytest.fixture
-def env(tmp_path):
+def env(tmp_path, monkeypatch):
+    # Queue behavior is independent of real-time peak windows (tested in 187).
+    monkeypatch.setattr(PlanFlow, '_material_peak_now', staticmethod(lambda now=None: False))
     store = CourseStore(ACCOUNT, tmp_path)
     store.create_plan(PLAN, goal='资料备题节奏', final_goal='理解定义', level='beginner', window=PlanWindow(DAY, DAY+timedelta(days=10), 120))
     store.add_sources(PLAN, [dict(id='s', kind='url', url='https://docs.python.org/3/tutorial/', title='Python官方资料', adopted=True,

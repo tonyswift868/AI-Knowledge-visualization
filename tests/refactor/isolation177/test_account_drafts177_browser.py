@@ -145,9 +145,16 @@ def test_durable_classroom_draft_fallback177_is_account_scoped(tmp_path):
 
     def handler(account_id):
         methods = {}
-        bridge = SimpleNamespace(register=lambda name, fn, **kw: methods.update({name: fn}), push=lambda *a: None)
+        class Signal:
+            def __init__(self): self.callbacks = []
+            def connect(self, callback): self.callbacks.append(callback)
+            def emit(self, value=None):
+                for callback in tuple(self.callbacks): callback(value)
+        bridge = SimpleNamespace(register=lambda name, fn, **kw: methods.update({name: fn}), push=lambda *a: None,
+                                 event=Signal(), closing=Signal())
         services = SimpleNamespace(account_id=account_id, data_root=tmp_path,
-            store=SimpleNamespace(get_plan=lambda key: {"id": "plan177"} if key == "plan177" else None))
+            store=SimpleNamespace(get_plan=lambda key: {"id": "plan177"} if key == "plan177" else None,
+                                  list_plans=lambda: []))
         register(bridge, SimpleNamespace(services=services))
         return lambda method, **params: methods[method](params, None)
 

@@ -83,8 +83,29 @@ def preparation_done(store, plan_id, module_id):
 
 def _fingerprint(points, chunks):
     base = mq.source_fingerprint(points, chunks)
+    # Only fields that are inputs to concept-question preparation belong here.
+    # In particular, notes are generated output and must not invalidate their
+    # own preparation marker when the deferred notes worker fills them in.
+    concepts = [(p['id'], p.get('module_id'), [
+        {k: sub.get(k) for k in ('id', 'title', 'chunk_ids')}
+        for sub in p.get('subpoints', ())])
+        for p in points if p.get('structure') == 'concept_v1']
+    return hashlib.sha256((base + json.dumps(concepts, ensure_ascii=False, sort_keys=True)).encode()).hexdigest() if concepts else base
+
+
+def _legacy_fingerprint(points, chunks):
+    """Recognize markers written before output-only notes left the signature."""
+    base = mq.source_fingerprint(points, chunks)
     concepts = [(p['id'], p.get('subpoints')) for p in points if p.get('structure') == 'concept_v1']
     return hashlib.sha256((base + json.dumps(concepts, ensure_ascii=False, sort_keys=True)).encode()).hexdigest() if concepts else base
+
+
+def _subpoint_fingerprint(subpoint, chunks):
+    wanted = set(subpoint.get('chunk_ids', ()))
+    source = [(row['id'], row.get('text', ''), row.get('block_fragments'))
+              for row in chunks if row['id'] in wanted]
+    payload = {k: subpoint.get(k) for k in ('title', 'chunk_ids')}
+    return hashlib.sha256(json.dumps([payload, source], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
 def _repair_legacy_sources(store, plan_id, points, chunks, ctx):
@@ -322,7 +343,7 @@ def _subpoint_aliases(subpoint):
     return {value for value in values if isinstance(value, str) and value}
 
 
-def _processed_marker_ids(previous, subpoints):
+def _processed_marker_ids(previous, subpoints, chunks, *, allow_legacy=False):
     """Map current subpoint IDs to prior preparation status.
 
     ``processed_subpoints`` is deliberately small and data-only.  It records
@@ -344,7 +365,14 @@ def _processed_marker_ids(previous, subpoints):
         for alias in aliases:
             item = raw.get(alias) or rejected.get(alias)
             if isinstance(item, str): item = {'status': item}
-            if isinstance(item, dict) and item.get('status') in ('valid', 'rejected', 'retired'):
+            expected = _subpoint_fingerprint(sub, chunks)
+            fingerprint_matches = (isinstance(item, dict) and item.get('input_fingerprint') == expected)
+            # Pre-187 markers had only a module fingerprint. Reuse them only
+            # when that full preparation input still matches exactly.
+            fingerprint_matches = fingerprint_matches or (allow_legacy and isinstance(item, dict)
+                                                          and not item.get('input_fingerprint'))
+            if (fingerprint_matches and isinstance(item, dict)
+                    and item.get('status') in ('valid', 'rejected', 'retired')):
                 out[sub['id']] = dict(item, subpoint_id=sub['id'])
                 break
     return out
@@ -352,156 +380,262 @@ def _processed_marker_ids(previous, subpoints):
 
 def _prepare_concept_point(store, plan_id, point, ctx):
     """Own-scope original exercises, or a reviewed gap when none compile."""
-    with _lock(store,plan_id,point['id']):
+    with _lock(store, plan_id, point['id']):
         _check(ctx)
-        passages=_passages(store,plan_id,ctx);by_id={p['id']:p for p in passages}
-        _,chunks=_material_chunks(store,plan_id)
-        fingerprint=_fingerprint([point],chunks)
-        previous=point.get('subpoint_preparation',{})
-        valid={s['id'] for s in point['subpoints']}
-        existing=[q for q in assessment_questions(store.records('question_bank',plan_id))
-                  if point['id'] in q['point_ids'] and q.get('subpoint_id') in valid]
-        if previous.get('fingerprint')==fingerprint and previous.get('state')=='done':
+        point = store._get('points', plan_id, point['id'])
+        passages = _passages(store, plan_id, ctx)
+        by_id = {p['id']: p for p in passages}
+        sources, chunks = _material_chunks(store, plan_id)
+        fingerprint = _fingerprint([point], chunks)
+        previous = point.get('subpoint_preparation', {})
+        valid = {s['id'] for s in point['subpoints']}
+        if previous.get('fingerprint') == fingerprint and previous.get('state') == 'done':
             return dict(previous['result'])
-        # A question may be valid, explicitly rejected, or retired.  All three
-        # are terminal preparation outcomes.  Count them before looking at the
-        # model so regrouping a point does not requeue work that already ran.
-        all_bank=[q for q in store.records('question_bank',plan_id)
-                  if point['id'] in q.get('point_ids',[]) and q.get('subpoint_id') in valid]
-        ready={q['subpoint_id'] for q in all_bank}
-        processed=_processed_marker_ids(previous, point['subpoints'])
-        ready.update(processed)
-        found=[];waiting=[];rejections=[]
-        sources,_=_material_chunks(store,plan_id)
+        exact_legacy_input = previous.get('fingerprint') in (fingerprint, _legacy_fingerprint([point], chunks))
+        processed = _processed_marker_ids(
+            previous, point['subpoints'], chunks,
+            allow_legacy=exact_legacy_input)
+        terminal = dict(processed)
+        prior_rejections = []
+        if exact_legacy_input:
+            prior_rejections = list(previous.get('rejections', ()))
+        else:
+            for row in previous.get('rejections', ()):
+                if not isinstance(row, dict):
+                    continue
+                mapped = next((sid for sid, marker in processed.items()
+                               if row.get('subpoint_id') in _subpoint_aliases(
+                                   next(s for s in point['subpoints'] if s['id'] == sid))), None)
+                if mapped:
+                    prior_rejections.append(dict(row, subpoint_id=mapped))
+        all_bank = [q for q in store.records('question_bank', plan_id)
+                    if point['id'] in q.get('point_ids', []) and q.get('subpoint_id') in valid]
+        # Current questions are authoritative only when the marker says that
+        # their subpoint input still matches. A regroup can move a stale bank
+        # row to a new subpoint ID, so ID membership alone is insufficient.
+        if previous.get('fingerprint') in (fingerprint, _legacy_fingerprint([point], chunks)):
+            for q in assessment_questions(all_bank):
+                terminal[q['subpoint_id']] = dict(subpoint_id=q['subpoint_id'], status='valid',
+                    input_fingerprint=_subpoint_fingerprint(
+                        next(s for s in point['subpoints'] if s['id'] == q['subpoint_id']), chunks))
+        for q in all_bank:
+            sid = q.get('subpoint_id')
+            if q.get('role') == 'retired' and sid in valid and (sid in processed or exact_legacy_input):
+                terminal[sid] = dict(processed.get(sid, dict(subpoint_id=sid)), status='retired',
+                                     input_fingerprint=_subpoint_fingerprint(
+                                         next(s for s in point['subpoints'] if s['id'] == sid), chunks))
+
+        rejections = list(prior_rejections)
+        # Drop outcomes whose inputs no longer match before resuming. Retain
+        # only explicitly fingerprinted subpoint results (or an exact legacy
+        # module match reconstructed above).
+        with store.transaction():
+            current = store._get('points', plan_id, point['id'])
+            current['subpoint_preparation'] = dict(state='partial', fingerprint=fingerprint,
+                rejections=list(rejections), processed_subpoints=dict(terminal))
+            store._put('points', plan_id, current)
+
+        def checkpoint(sub, questions, rejection_rows):
+            """Atomically save one subpoint's bank rows and terminal marker."""
+            sid = sub['id']
+            subfp = _subpoint_fingerprint(sub, chunks)
+            _check(ctx)
+            with store.transaction():
+                _check(ctx)
+                ids = store.add_bank_questions(plan_id, point['module_id'], questions)
+                saved = {q['id']: q for q in store.records('question_bank', plan_id)}
+                rejected_rows = [dict(row, subpoint_id=row.get('subpoint_id') or sid)
+                                 for row in rejection_rows]
+                for q in questions:
+                    if q['id'] not in ids or saved[q['id']].get('subpoint_id') != sid:
+                        rejected_rows.append(dict(subpoint_id=sid, reason='题干重复，现有入库规则跳过'))
+                # Do not let a stale bank row with the same subpoint ID bless
+                # a new input fingerprint. Only a question accepted by this
+                # checkpoint can establish the current input's valid state;
+                # old rows remain in history and are reused only through a
+                # matching, verified preparation marker above.
+                admitted = [q for q in questions if q['id'] in ids
+                            and saved.get(q['id']) == q
+                            and point['id'] in q.get('point_ids', [])
+                            and q.get('subpoint_id') == sid
+                            and q.get('role') != 'retired'
+                            and assessment_questions([q])]
+                if admitted:
+                    status = 'valid'
+                    row = dict(subpoint_id=sid, status=status, input_fingerprint=subfp)
+                elif rejected_rows:
+                    status = 'rejected'
+                    row = dict(rejected_rows[-1], status=status, input_fingerprint=subfp)
+                else:
+                    # No terminal outcome (e.g. transient model failure); do
+                    # not record completion so this subpoint is retried.
+                    return
+                current = store._get('points', plan_id, point['id'])
+                marker = current.get('subpoint_preparation', {})
+                saved_terminal = dict(marker.get('processed_subpoints', {}))
+                saved_terminal[sid] = row
+                saved_rejections = list(marker.get('rejections', ()))
+                saved_rejections = [r for r in saved_rejections if r.get('subpoint_id') != sid]
+                saved_rejections.extend(rejected_rows)
+                current['subpoint_preparation'] = dict(state='partial', fingerprint=fingerprint,
+                    rejections=saved_rejections, processed_subpoints=saved_terminal)
+                _check(ctx)
+                store._put('points', plan_id, current)
+                terminal[sid] = row
+                rejections[:] = saved_rejections
+
+        # Keep deterministic material exercises, but commit each result before
+        # beginning any model request so a later failure cannot erase it.
         for sub in point['subpoints']:
-            if sub['id'] in ready:continue
-            own=[c for c in chunks if c['id'] in sub['chunk_ids']]
-            if not own:
-                rejections.append(dict(subpoint_id=sub['id'],reason='小要点没有可用的自有原文'))
+            sid = sub['id']
+            if sid in terminal:
                 continue
-            # Preserve the existing material exercise parser and literal compiler.
-            candidates=mq.for_module(mq.candidates(own,sources),[dict(point,chunk_ids=sub['chunk_ids'])])
-            # Keep the existing one-objective rule and also retain every
-            # distinct original recall question in this subpoint's chunks.
+            own = [c for c in chunks if c['id'] in sub['chunk_ids']]
+            if not own:
+                checkpoint(sub, [], [dict(subpoint_id=sid, reason='小要点没有可用的自有原文')])
+                continue
+            candidates = mq.for_module(mq.candidates(own, sources),
+                                       [dict(point, chunk_ids=sub['chunk_ids'])])
+            found = []
             for candidate in candidates:
-                if candidate['candidate_type']!='objective':continue
+                if candidate['candidate_type'] != 'objective':
+                    continue
                 try:
                     from .question_bank import grading_question
-                    subtype=('choice' if candidate['options'] else 'fill' if re.search(r'_{2,}|（\s*）|\(\s*\)|□+',candidate['stem']) else 'calc')
-                    row=mq.compile_question(dict(kind='objective',stem=candidate['stem'],options=candidate['options'],
-                        answer=candidate['answer'],objective_kind=subtype),candidate,point['module_id'])
-                    row['subpoint_id']=sub['id']
-                    grading_question(row);validate_question(row)
-                    found.append(row);ready.add(sub['id']);break
-                except (ValueError,KeyError,TypeError):continue
+                    subtype = ('choice' if candidate['options'] else 'fill' if re.search(
+                        r'_{2,}|（\s*）|\(\s*\)|□+', candidate['stem']) else 'calc')
+                    row = mq.compile_question(dict(kind='objective', stem=candidate['stem'],
+                        options=candidate['options'], answer=candidate['answer'], objective_kind=subtype),
+                        candidate, point['module_id'])
+                    row['subpoint_id'] = sid
+                    grading_question(row); validate_question(row)
+                    found.append(row)
+                    break
+                except (ValueError, KeyError, TypeError):
+                    continue
             for candidate in candidates:
-                if candidate['candidate_type']!='recall':continue
+                if candidate['candidate_type'] != 'recall':
+                    continue
                 try:
-                    units=mq.answer_units(candidate['reference'])
-                    ids=list(range(1,min(5,len(units))+1)) if len(units)>5 else None
-                    if len(units)>5:
-                        packet=dict(module_id=point['module_id'],module_title=point.get('title',''),
-                            candidates=[mq.request_candidate(candidate)])
+                    units = mq.answer_units(candidate['reference'])
+                    ids = list(range(1, min(5, len(units)) + 1)) if len(units) > 5 else None
+                    if len(units) > 5:
+                        packet = dict(module_id=point['module_id'], module_title=point.get('title', ''),
+                                      candidates=[mq.request_candidate(candidate)])
                         _check(ctx)
                         if ctx.get('question_splitter'):
-                            output=ctx['question_splitter'](packet,cancel=ctx.get('cancel'))
+                            output = ctx['question_splitter'](packet, cancel=ctx.get('cancel'))
                         elif ctx.get('gateway'):
-                            response=ctx['gateway'].complete('point_materials',
-                                [dict(role='user',content=json.dumps(packet,ensure_ascii=False))],
-                                system=mq.SYSTEM,plan_id=plan_id,cancel=ctx.get('cancel'),enable_search=False)
-                            if ctx.get('on_call'):ctx['on_call']('point_materials',response)
-                            try:output=_json(response.text)
-                            except ValueError:output={}
+                            response = ctx['gateway'].complete('point_materials', [dict(
+                                role='user', content=json.dumps(packet, ensure_ascii=False))],
+                                system=mq.SYSTEM, plan_id=plan_id, cancel=ctx.get('cancel'), enable_search=False)
+                            if ctx.get('on_call'): ctx['on_call']('point_materials', response)
+                            try: output = _json(response.text)
+                            except ValueError: output = {}
                         else:
-                            output={}
-                        rows=output.get('questions',[]) if isinstance(output,dict) else []
-                        matches=[r for r in rows if isinstance(r,dict) and r.get('candidate_id')==candidate['id']]
-                        if len(matches)==1:
-                            try:mq.selected_units(candidate['reference'],matches[0].get('key_point_ids'))
-                            except ValueError:pass
-                            else:ids=matches[0]['key_point_ids']
-                    row=mq.compile_question(dict(kind='recall',stem=candidate['stem'],key_point_ids=ids),
-                        candidate,point['module_id'])
-                    row['subpoint_id']=sub['id']
+                            output = {}
+                        rows = output.get('questions', []) if isinstance(output, dict) else []
+                        matches = [r for r in rows if isinstance(r, dict) and r.get('candidate_id') == candidate['id']]
+                        if len(matches) == 1:
+                            try: mq.selected_units(candidate['reference'], matches[0].get('key_point_ids'))
+                            except ValueError: pass
+                            else: ids = matches[0]['key_point_ids']
+                    row = mq.compile_question(dict(kind='recall', stem=candidate['stem'], key_point_ids=ids),
+                                              candidate, point['module_id'])
+                    row['subpoint_id'] = sid
                     validate_question(row)
-                    found.append(row);ready.add(sub['id'])
-                except (ValueError,KeyError,TypeError):continue
-            if sub['id'] not in ready:waiting.append(sub)
-        proposed=[]
+                    found.append(row)
+                except (ValueError, KeyError, TypeError):
+                    continue
+            if found:
+                checkpoint(sub, found, [])
+
+        # Preserve the module-sized model call (and its shared fixed-prefix
+        # cost). Clean generated-note fields out of its input. Once the batch
+        # comes back, validate and checkpoint each subpoint independently.
+        waiting = [s for s in point['subpoints'] if s['id'] not in terminal
+                   and any(cid in by_id for cid in s['chunk_ids'])]
         if waiting:
-            visible={cid for s in waiting for cid in s['chunk_ids']}
-            packet=dict(point_id=point['id'],subpoints=waiting,
-                        passages=[dict(id=p['id'],text=p['text']) for p in passages if p['id'] in visible])
             _check(ctx)
+            visible = {cid for sub in waiting for cid in sub['chunk_ids']}
+            packet = dict(point_id=point['id'],
+                subpoints=[{k: sub.get(k) for k in ('id', 'title', 'chunk_ids')} for sub in waiting],
+                passages=[dict(id=p['id'], text=p['text']) for p in passages if p['id'] in visible])
             if ctx.get('finder'):
-                output=ctx['finder'](packet,packet['passages'],mode='concept_subpoints',cancel=ctx.get('cancel'))
+                output = ctx['finder'](packet, packet['passages'], mode='concept_subpoints', cancel=ctx.get('cancel'))
             else:
-                if ctx.get('gateway') is None:raise StoreError('QUESTION_SPLITTER_REQUIRED','小要点原文定位模型尚未接入。')
-                response=ctx['gateway'].complete('point_materials',[dict(role='user',content=json.dumps(packet,ensure_ascii=False))],
-                    system=_CONCEPT_SYSTEM,plan_id=plan_id,cancel=ctx.get('cancel'),enable_search=False,max_tokens=24576)
-                if ctx.get('on_call'):ctx['on_call']('point_materials',response)
-                output=_json(response.text)
-            _check(ctx)
-            rows=output.get('subpoints',[]) if isinstance(output,dict) else []
+                if ctx.get('gateway') is None:
+                    raise StoreError('QUESTION_SPLITTER_REQUIRED', '小要点原文定位模型尚未接入。')
+                response = ctx['gateway'].complete('point_materials', [dict(
+                    role='user', content=json.dumps(packet, ensure_ascii=False))], system=_CONCEPT_SYSTEM,
+                    plan_id=plan_id, cancel=ctx.get('cancel'), enable_search=False, max_tokens=24576)
+                if ctx.get('on_call'): ctx['on_call']('point_materials', response)
+                output = _json(response.text)
+            rows = output.get('subpoints', []) if isinstance(output, dict) else []
+            proposed_by_id = {}
+            reasons_by_id = {}
             for sub in waiting:
-                matches=[r for r in rows if isinstance(r,dict) and r.get('id')==sub['id']]
-                local=[by_id[cid] for cid in sub['chunk_ids'] if cid in by_id]
-                reasons=[]
-                raw=matches[0].get('cloze',[]) if len(matches)==1 else []
-                if not isinstance(raw,list):raw=[]
-                expanded=_expand_output(dict(cloze=raw),local,reasons)
+                sid = sub['id']
+                matches = [r for r in rows if isinstance(r, dict) and r.get('id') == sid]
+                local = [by_id[cid] for cid in sub['chunk_ids'] if cid in by_id]
+                reasons = []
+                raw = matches[0].get('cloze', []) if len(matches) == 1 else []
+                if not isinstance(raw, list): raw = []
+                expanded = _expand_output(dict(cloze=raw), local, reasons)
+                proposed = []
                 for item in expanded['cloze']:
-                    proxy=dict(point,subpoint_id=sub['id'],chunk_ids=sub['chunk_ids'])
-                    try:q=_concept_cloze(item,proxy,{p['id']:p for p in local},local,rejected=reasons)
-                    except (ValueError,KeyError,TypeError):
-                        reasons.append(dict(reason='原文候选字段无效'));continue
-                    if q is not None:proposed.append(q)
-                if not any(q['subpoint_id']==sub['id'] for q in proposed):
-                    rejections.append(dict(subpoint_id=sub['id'],reason='没有合格的原文挖空候选',details=reasons))
-        if proposed:
-            checked=check_distractors(proposed,[point],passages,dict(ctx,plan_id=plan_id))
+                    proxy = dict(point, subpoint_id=sid, chunk_ids=sub['chunk_ids'])
+                    try: q = _concept_cloze(item, proxy, {p['id']: p for p in local}, local, rejected=reasons)
+                    except (ValueError, KeyError, TypeError):
+                        reasons.append(dict(reason='原文候选字段无效'))
+                        continue
+                    if q is not None: proposed.append(q)
+                proposed_by_id[sid] = proposed
+                reasons_by_id[sid] = reasons
+            proposed = [q for rows_for_subpoint in proposed_by_id.values() for q in rows_for_subpoint]
+            # A valid locator response with no usable candidate is a completed
+            # local decision. Save it before the checker call, which can fail
+            # due to transport or model availability.
             for sub in waiting:
-                choices=[q for q in checked if q['subpoint_id']==sub['id']]
-                good=next((q for q in choices if checked_question(q)),None)
-                if good:found.append(good)
-                elif choices:rejections.append(dict(subpoint_id=sub['id'],reason='干扰项核对未通过',
-                    details=[q['distractor_check'] for q in choices]))
+                sid = sub['id']
+                if not proposed_by_id[sid]:
+                    checkpoint(sub, [], [dict(subpoint_id=sid,
+                        reason='没有合格的原文挖空候选', details=reasons_by_id[sid])])
+            checked = check_distractors(proposed, [point], passages, dict(ctx, plan_id=plan_id)) if proposed else []
+            for sub in waiting:
+                sid = sub['id']
+                if not proposed_by_id[sid]:
+                    continue
+                choices = [q for q in checked if q.get('subpoint_id') == sid]
+                good = next((q for q in choices if checked_question(q)), None)
+                if good:
+                    checkpoint(sub, [good], [])
+                    continue
+                reasons = reasons_by_id[sid]
+                if choices:
+                    reasons.append(dict(reason='干扰项核对未通过',
+                                        details=[q.get('distractor_check') for q in choices]))
+                reason = '干扰项核对未通过' if choices else '没有合格的原文挖空候选'
+                checkpoint(sub, [], [dict(subpoint_id=sid, reason=reason, details=reasons)])
+
+        saved_point = store._get('points', plan_id, point['id'])
+        complete_terminal = set(saved_point.get('subpoint_preparation', {}).get('processed_subpoints', {}))
+        if not valid.issubset(complete_terminal):
+            raise StoreError('POINT_MATERIALS_INCOMPLETE', '仍有小要点未完成备题，可从未完成处继续。')
+        final = assessment_questions(store.records('question_bank', plan_id))
+        final = [q for q in final if point['id'] in q.get('point_ids', []) and q.get('subpoint_id') in valid]
+        prepared = {q['subpoint_id'] for q in final}
+        result = dict(passages=len(point['chunk_ids']), questions=len(final),
+                      cloze=sum(q.get('origin') == 'cloze' for q in final), skipped=len(valid - prepared))
+        current = store._get('points', plan_id, point['id'])
+        marker = current.get('subpoint_preparation', {})
+        marker.update(state='done', fingerprint=fingerprint, result=result,
+                      rejections=rejections, processed_subpoints=terminal)
+        current['subpoint_preparation'] = marker
+        if current.get('question_preparation') == 'pending': current['question_preparation'] = 'done'
         with store.transaction():
             _check(ctx)
-            ids=store.add_bank_questions(plan_id,point['module_id'],found)
-            saved={q['id']:q for q in store.records('question_bank',plan_id)}
-            for q in found:
-                if q['id'] not in ids or saved[q['id']].get('subpoint_id')!=q['subpoint_id']:
-                    rejections.append(dict(subpoint_id=q['subpoint_id'],reason='题干重复，现有入库规则跳过'))
-            final=[q for q in assessment_questions(list(saved.values()))
-                   if point['id'] in q['point_ids'] and q.get('subpoint_id') in valid]
-            # Persist a per-subpoint terminal marker.  Keep old rejection
-            # evidence and update it by ID so a later regroup can map it via
-            # ``legacy_subpoint_ids`` without asking the model again.
-            terminal=dict(processed)
-            for q in all_bank:
-                if q.get('role')=='retired' and q.get('subpoint_id') in valid:
-                    terminal[q['subpoint_id']]=dict(subpoint_id=q['subpoint_id'],status='retired')
-            for row in rejections:
-                sid=row.get('subpoint_id')
-                if sid: terminal[sid]=dict(row,status='rejected')
-            # Candidate-level rejection evidence must not override a terminal
-            # success when another question for this subpoint was admitted.
-            for q in final:
-                terminal[q['subpoint_id']]=dict(subpoint_id=q['subpoint_id'],status='valid')
-            merged_rejections=[];seen=set()
-            for row in list(previous.get('rejections',()))+rejections:
-                key=(row.get('subpoint_id'),row.get('reason'),json.dumps(row.get('details'),ensure_ascii=False,sort_keys=True,default=str)) if isinstance(row,dict) else None
-                if key in seen:continue
-                seen.add(key);merged_rejections.append(row)
-            prepared={q['subpoint_id'] for q in final}
-            result=dict(passages=len(point['chunk_ids']),questions=len(final),
-                cloze=sum(q['origin']=='cloze' for q in final),skipped=len(valid-prepared))
-            current=store._get('points',plan_id,point['id'])
-            current['subpoint_preparation']=dict(state='done',fingerprint=fingerprint,result=result,
-                rejections=merged_rejections,processed_subpoints=terminal)
-            if current.get('question_preparation')=='pending':current['question_preparation']='done'
-            store._put('points',plan_id,current)
+            store._put('points', plan_id, current)
         return result
 
 
@@ -721,9 +855,14 @@ def check_distractors(questions, points, passages, ctx):
         output=reply if isinstance(reply,dict) else _json(reply)
         if not isinstance(output,dict) or set(output)!= {'questions'} or not isinstance(output['questions'],list):raise ValueError('检查响应格式无效')
         outputs=output['questions']
-    except (ModelError,ValueError,KeyError,TypeError,OSError) as exc:
+    except ModelError:
+        # A failed transport/model call is not evidence that the question is
+        # unsuitable. Let the durable worker record failure and retry it.
+        raise
+    except OSError:
+        raise
+    except (ValueError,KeyError,TypeError) as exc:
         _check(ctx)
-        if getattr(exc,'code','')=='MODEL_CANCELLED':raise
         failure='检查未能确定：'+getattr(exc,'code',type(exc).__name__)
     _check(ctx)
     by_question={}

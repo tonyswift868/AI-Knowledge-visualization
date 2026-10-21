@@ -16,8 +16,17 @@ from tests.refactor.conversation37.test_grounded_conversation37 import make_envi
 def test_classroom81_formal_single_teacher_call_no_grading(tmp_path, monkeypatch, method, text):
     e=make_environment(tmp_path)
     monkeypatch.setattr(Classroom,'_materials',staticmethod(lambda:e.materials))
+    # Ready-account recovery is covered by plan187; keep this direct handler
+    # exercise deterministic instead of racing its seeded preparation job.
+    from refactor.learning.app.plan_flow import PlanFlow
+    monkeypatch.setattr(PlanFlow, 'resume_started_preparations', lambda self: 0)
+    class Signal:
+        def __init__(self): self.callbacks=[]
+        def connect(self, callback): self.callbacks.append(callback)
+        def emit(self, value=None):
+            for callback in tuple(self.callbacks): callback(value)
     class Bridge:
-        def __init__(self):self.actions={}
+        def __init__(self):self.actions={};self.event=Signal();self.closing=Signal()
         def register(self,name,fn,**kwargs):self.actions[name]=fn
         def push(self,*args):pass
     bridge=Bridge();handlers.register(bridge,SimpleNamespace(services=e.services))

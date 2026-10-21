@@ -7,6 +7,7 @@ from collections import Counter
 from datetime import date, time, timedelta, timezone
 import json
 from pathlib import Path
+import os
 import re
 import tempfile
 import threading
@@ -28,7 +29,7 @@ from tests.refactor.integration38.support import Agents, seed_bank, to_question
 from test_course_timeline_simulation import InjectedClock, HandlerRegistry
 
 
-ROOT = Path(r'D:/MentorFlow/.local/test-tmp/timeline')
+ROOT = Path(os.environ.get('MF_TIMELINE_TEST_ROOT', r'D:/MentorFlow/.local/test-tmp/timeline'))
 PLAN = 'a' * 32
 DAY = date(2026, 10, 5)
 FIELDS = ('today_target', 'today_confirmed', 'today_tentative', 'debt_minutes',

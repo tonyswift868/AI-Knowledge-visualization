@@ -89,7 +89,9 @@ class Model:
 
 
 @pytest.fixture
-def fixture(tmp_path):
+def fixture(tmp_path, monkeypatch):
+    # Functional scheduler fixtures run off-peak regardless of the wall clock.
+    monkeypatch.setattr(PlanFlow, '_material_peak_now', staticmethod(lambda now=None: False))
     store = CourseStore(ACCOUNT, tmp_path)
     model = Model()
     events, prepared = [], []
@@ -295,6 +297,12 @@ def test_plan37_other_modules_prepare_in_background(fixture):
     draft["generation"] = {"second": "pending"}
     flow.save(draft)
     pid = draft["plan_id"]
+    # Durable preparation-state writes require the module row to exist. The
+    # old scheduling-only fixture queued a draft-only module, which is no
+    # longer a valid persisted worker job.
+    flow.services.store.create_plan(pid, goal='后台备题测试', window=PlanWindow(TODAY, TODAY + timedelta(days=2), 60))
+    flow.services.store.save_outline(pid, [dict(id='stage', title='阶段')],
+                                     [dict(id='second', stage_id='stage', title='第二模块')])
     flow._prepare_remaining(pid, [{"id": "second"}], prepare)
     assert entered.wait(1) and thread_ids == [thread_ids[0]]
     assert thread_ids[0] != threading.get_ident()
