@@ -18,6 +18,42 @@ from math import isfinite, lcm
 from types import MappingProxyType
 
 
+def learning_day_slices(sources, minutes: int) -> list[tuple[date, int]]:
+    """Return source-day portions for a restored amount, consuming source facts in order.
+
+    ``sources`` is an ordered iterable of ``(day, minutes)`` pairs (or mappings
+    with those keys). It deliberately consumes original evidence instead of
+    assigning a recovery to the day on which recovery happened. A partial
+    restoration takes earlier source records first; equal days are coalesced.
+    """
+    _integer(minutes, positive=True)
+    by_day: dict[date, int] = {}
+    available = 0
+    parsed = []
+    for source in sources:
+        if isinstance(source, Mapping):
+            day, amount = source['day'], source['minutes']
+        else:
+            day, amount = source
+        if isinstance(day, str):
+            day = date.fromisoformat(day)
+        _date(day)
+        _integer(amount, positive=True)
+        parsed.append((day, amount))
+        available += amount
+    if minutes > available:
+        raise LedgerError('INSUFFICIENT_LEARNING_SOURCE', '恢复时长超过了可追溯的原学习记录。')
+    left = minutes
+    for day, amount in parsed:
+        used = min(left, amount)
+        if used:
+            by_day[day] = by_day.get(day, 0) + used
+            left -= used
+        if not left:
+            break
+    return sorted(by_day.items())
+
+
 def replan_preserves_past(cause: str | None) -> bool:
     """Shared policy for live commands, stored-event replay and report peaks.
 
@@ -272,6 +308,9 @@ class Ledger:
         self._active_start = window.start
         self._credits: dict[str, Credit] = {}
         self._submissions: dict[str, Credit] = {}
+        # A read projection for legacy aggregate recovery credits. It never
+        # changes the journal, live Credit objects, FIFO order or totals.
+        self._learning_day_projection: dict[str, tuple[tuple[date, int], ...]] = {}
         self._segments: dict[str, int] = {}
         self._history: list[_History] = []
         self._relearning_minutes = 0
@@ -331,6 +370,95 @@ class Ledger:
         return targets
 
     def _add(self, credit_id, unit_id, minutes, day, state):
+        self._validate_recovery_day(credit_id, day, allow_legacy=False)
+        self._add_unchecked(credit_id, unit_id, minutes, day, state)
+
+    def add_tentative(self, credit_id, unit_id, minutes, day):
+        self._add(credit_id, unit_id, minutes, day, "tentative")
+
+    def add_confirmed(self, credit_id, unit_id, minutes, day):
+        self._add(credit_id, unit_id, minutes, day, "confirmed")
+
+    @staticmethod
+    def _validate_recovery_day(credit_id, day, *, allow_legacy):
+        if not isinstance(credit_id, str) or not credit_id.startswith(('relearn:concept:', 'relearn:direct:')):
+            return
+        if allow_legacy:
+            return
+        raise LedgerError('LEARNING_SOURCE_REQUIRED', '恢复学习时间必须由账本根据撤销来源生成。')
+
+    def _add_journal_credit(self, credit_id, unit_id, minutes, day, state):
+        """Replay an immutable journal row, including pre-BUG-120 IDs."""
+        self._validate_recovery_day(credit_id, day, allow_legacy=True)
+        self._add_unchecked(credit_id, unit_id, minutes, day, state)
+
+    def restored_learning_slices(self, unit_id, minutes: int, recovery_day: date,
+                                 *, allow_current_remainder: bool = False):
+        """Derive unconsumed revoked learning sources for a recovery request.
+
+        Only learn/subpoint submissions absent from the live credit set qualify.
+        Existing active recovery slices consume the corresponding source-day
+        budget, preventing a later retry from restoring the same minutes twice.
+        """
+        _identifier(unit_id); _integer(minutes, positive=True); _date(recovery_day)
+        source_rows = [c for c in sorted(self._submissions.values(), key=lambda c: c.seq)
+                       if c.unit_id == unit_id and c.credit_id.startswith(('learn:', 'subpoint:'))
+                       and c.credit_id not in self._credits]
+        remaining = {c.credit_id: c.minutes for c in source_rows}
+        # Consume already-live recovery attribution from the source pool by day.
+        active_recovery = []
+        for credit in sorted(self._credits.values(), key=lambda c: c.seq):
+            if credit.unit_id == unit_id and (
+                    credit.credit_id.startswith(('relearn:concept:', 'relearn:direct:'))
+                    or credit.credit_id in self._learning_day_projection):
+                active_recovery.extend(self._learning_day_projection.get(
+                    credit.credit_id, ((credit.day, credit.minutes),)))
+        for day, amount in active_recovery:
+            left = amount
+            for source in source_rows:
+                if source.day != day or remaining[source.credit_id] == 0:
+                    continue
+                used = min(left, remaining[source.credit_id])
+                remaining[source.credit_id] -= used
+                left -= used
+                if not left: break
+        source_slices = [(c.day, remaining[c.credit_id]) for c in source_rows
+                         if remaining[c.credit_id] > 0]
+        available = sum(amount for _, amount in source_slices)
+        from_sources = min(minutes, available)
+        slices = learning_day_slices(source_slices, from_sources) if from_sources else []
+        remainder = minutes - from_sources
+        if remainder and allow_current_remainder:
+            by_day = dict(slices)
+            by_day[recovery_day] = by_day.get(recovery_day, 0) + remainder
+            slices = sorted(by_day.items())
+        if not slices:
+            return []
+        return slices
+
+    def add_restored_learning(self, credit_prefix, unit_id, minutes, recovery_day,
+                              state='confirmed', *, allow_current_remainder=False):
+        """Add recovery credits only on source days proven by the ledger."""
+        if state not in ('tentative', 'confirmed'):
+            raise LedgerError('INVALID_CREDIT')
+        if not isinstance(credit_prefix, str) or not credit_prefix.startswith(('relearn:concept:', 'relearn:direct:')):
+            raise LedgerError('LEARNING_SOURCE_REQUIRED')
+        existing = [c for c in self._credits.values()
+                    if c.credit_id.startswith(f'{credit_prefix}:source-day:')]
+        if existing:
+            if any(c.unit_id != unit_id or c.state != state for c in existing):
+                raise LedgerError('CREDIT_CONFLICT')
+            return existing
+        slices = self.restored_learning_slices(
+            unit_id, minutes, recovery_day, allow_current_remainder=allow_current_remainder)
+        result = []
+        for day, amount in slices:
+            credit_id = f'{credit_prefix}:source-day:{day.isoformat()}'
+            self._add_unchecked(credit_id, unit_id, amount, day, state)
+            result.append(self._credits[credit_id])
+        return result
+
+    def _add_unchecked(self, credit_id, unit_id, minutes, day, state):
         submitted = Credit(credit_id, unit_id, minutes, day, state, self._next_seq)
         previous = self._submissions.get(credit_id)
         if previous is not None:
@@ -340,12 +468,6 @@ class Ledger:
         self._credits[credit_id] = self._submissions[credit_id] = submitted
         self._segments[credit_id] = len(self._history)
         self._next_seq += 1
-
-    def add_tentative(self, credit_id, unit_id, minutes, day):
-        self._add(credit_id, unit_id, minutes, day, "tentative")
-
-    def add_confirmed(self, credit_id, unit_id, minutes, day):
-        self._add(credit_id, unit_id, minutes, day, "confirmed")
 
     def confirm(self, unit_id) -> int:
         _identifier(unit_id)
@@ -362,7 +484,42 @@ class Ledger:
                 self._relearning_minutes += credit.minutes
             del self._credits[credit.credit_id]
             del self._segments[credit.credit_id]
+            self._learning_day_projection.pop(credit.credit_id, None)
         return sum(c.minutes for c in matched)
+
+    def set_learning_day_projection(self, projection: Mapping[str, list[tuple[date, int]]]) -> None:
+        """Install source-day slices for displayed attribution only.
+
+        Each projected credit must remain active and its slices must sum to
+        the original amount. It does not affect allocation, remaining time,
+        target calendars, history snapshots or original credit/journal facts.
+        Snapshots include the projection so in-memory clones keep this view.
+        """
+        if not isinstance(projection, Mapping):
+            raise LedgerError('INVALID_LEARNING_PROJECTION')
+        parsed = {}
+        for credit_id, slices in projection.items():
+            credit = self._credits.get(credit_id)
+            if credit is None or not isinstance(slices, (list, tuple)):
+                raise LedgerError('INVALID_LEARNING_PROJECTION')
+            normalized = []
+            total = 0
+            for day, amount in slices:
+                if isinstance(day, str): day = date.fromisoformat(day)
+                _date(day); _integer(amount, positive=True)
+                normalized.append((day, amount)); total += amount
+            if total != credit.minutes:
+                raise LedgerError('INVALID_LEARNING_PROJECTION')
+            parsed[credit_id] = tuple(normalized)
+        self._learning_day_projection = parsed
+
+    def attributed_credits(self) -> list[tuple[Credit, date, int]]:
+        """Current credits split by effective learning day for display/reporting."""
+        result = []
+        for key, credit in self._credits.items():
+            slices = self._learning_day_projection.get(key, ((credit.day, credit.minutes),))
+            result.extend((credit, day, amount) for day, amount in slices)
+        return result
 
     def _allocation(self):
         return _fill(self._targets, [c for key, c in self._credits.items()
@@ -383,11 +540,14 @@ class Ledger:
         credits = [c for key, c in self._credits.items()
                    if self._segments[key] == len(self._history)]
         for credit in sorted(credits, key=lambda c: (c.state != "confirmed", c.seq)):
-            if credit.day == today:
-                amount = max(0, min(offset + credit.minutes, past) - offset)
-                if credit.state == "confirmed": confirmed += amount
-                else: tentative += amount
-            offset += credit.minutes
+            slices = self._learning_day_projection.get(
+                credit.credit_id, ((credit.day, credit.minutes),))
+            for day, minutes in slices:
+                amount = max(0, min(offset + minutes, past) - offset)
+                if day == today:
+                    if credit.state == "confirmed": confirmed += amount
+                    else: tentative += amount
+                offset += minutes
         return confirmed, tentative
 
     def status(self, today: date) -> LedgerStatus:
@@ -521,6 +681,10 @@ class Ledger:
                         for c in sorted(self._credits.values(), key=lambda c: c.seq)],
             "submissions": [_credit_data(c) for c in sorted(self._submissions.values(), key=lambda c: c.seq)],
             "next_seq": self._next_seq,
+            **({'learning_day_projection': {
+                credit_id: [[day.isoformat(), amount] for day, amount in slices]
+                for credit_id, slices in sorted(self._learning_day_projection.items())
+            }} if self._learning_day_projection else {}),
         }
 
     @classmethod
@@ -576,6 +740,7 @@ def _restore(cls, data):
     data = dict(data)
     estimate_start = data.pop('estimate_start', None)
     settlement = data.pop('settlement', {'released': 0, 'active_released': 0})
+    learning_day_projection = data.pop('learning_day_projection', {})
     _fields(settlement, {'released', 'active_released'})
     _fields(data, {"version", "window", "total_minutes", "active_start", "targets", "relearning_minutes", "history", "credits", "submissions", "next_seq"})
     if type(data["version"]) is not int or data["version"] != 1:
@@ -652,6 +817,7 @@ def _restore(cls, data):
             or {c.seq for c in ledger._submissions.values()} != set(range(1, ledger._next_seq))):
         raise ValueError()
     ledger._credits, ledger._segments = {}, {}
+    ledger._learning_day_projection = {}
     for raw in data["credits"]:
         _fields(raw, {"credit_id", "unit_id", "minutes", "day", "state", "seq", "segment"})
         credit = _credit_from({key: value for key, value in raw.items() if key != "segment"})
@@ -663,6 +829,14 @@ def _restore(cls, data):
         if segment < len(ledger._history) and credit.day >= ledger._history[segment].closed_on:
             raise ValueError()
         ledger._credits[credit.credit_id], ledger._segments[credit.credit_id] = credit, segment
+    if learning_day_projection:
+        if not isinstance(learning_day_projection, dict):
+            raise ValueError()
+        projection = {}
+        for credit_id, raw_slices in learning_day_projection.items():
+            if not isinstance(raw_slices, list): raise ValueError()
+            projection[credit_id] = [(date.fromisoformat(day), amount) for day, amount in raw_slices]
+        ledger.set_learning_day_projection(projection)
     return ledger
 
 

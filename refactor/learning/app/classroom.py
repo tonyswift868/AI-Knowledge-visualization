@@ -1190,18 +1190,26 @@ class Classroom:
 
     def _direct_credits(self,course,state,attempt):
         live=course.store.load_ledger(course.plan_id).to_dict()['credits']
-        existing={r['id'] for r in course.store.records('credits',course.plan_id)}
+        history=course.store.records('credits',course.plan_id)
         for point in course.points_of(state['module_id']):
             credited=sum(c['minutes'] for c in live if c['unit_id']==point['id'])
             course.store.confirm_credits(course.plan_id,point['id'],event_id=f"confirm-direct:{attempt}:{point['id']}",today=self._day(state))
             missing=max(0,point['minutes']-credited)
             if missing:
-                credit_id=f"learn:{point['id']}" if f"learn:{point['id']}" not in existing else f"relearn:direct:{attempt}:{point['id']}"
-                course.store.add_credit(course.plan_id,credit_id,point['id'],missing,self._day(state),'confirmed')
+                has_history=any(row['credit']['unit_id']==point['id'] for row in history)
+                if not has_history:
+                    # Keep the established fresh-learning ID when direct skip
+                    # awards a point that has never had any learning credit.
+                    course.store.add_credit(course.plan_id,f"learn:{point['id']}",point['id'],
+                                            missing,self._day(state),'confirmed')
+                else:
+                    token=hashlib.sha256(point['id'].encode('utf-8')).hexdigest()
+                    course.store.add_restored_learning(course.plan_id,
+                        f"relearn:direct:{attempt}:{token}",point['id'],missing,self._day(state),
+                        allow_current_remainder=True)
 
     def _restore_concept_learning(self,course,state,attempt):
         rows=course.store.records('credits',course.plan_id)
-        existing={row['id'] for row in rows}
         live=course.store.load_ledger(course.plan_id).to_dict()['credits']
         for point in course.points_of(state['module_id']):
             if point.get('structure')!='concept_v1' or not point.get('subpoints'):
@@ -1213,10 +1221,10 @@ class Classroom:
                 continue
             credited=sum(item['minutes'] for item in live if item['unit_id']==point['id'])
             missing=max(0,point['minutes']-credited)
-            token=hashlib.sha256(point['id'].encode('utf-8')).hexdigest()
-            credit_id=f"relearn:concept:{attempt}:{token}"
-            if missing and credit_id not in existing:
-                course.store.add_credit(course.plan_id,credit_id,point['id'],missing,self._day(state),'confirmed')
+            if missing:
+                token=hashlib.sha256(point['id'].encode('utf-8')).hexdigest()
+                course.store.add_restored_learning(course.plan_id,
+                    f"relearn:concept:{attempt}:{token}",point['id'],missing,self._day(state))
 
     def _ask_next(self, course, state, ctx=None):
         test=state['test']

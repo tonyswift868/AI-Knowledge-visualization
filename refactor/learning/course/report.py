@@ -26,6 +26,7 @@ completion dates and their early/late day counts remain null, not report.today.
 """
 from __future__ import annotations
 
+import copy
 from datetime import date, datetime
 
 from .ledger import Ledger, PlanWindow, replan_preserves_past
@@ -84,8 +85,8 @@ def _peaks(plan, operations, through):
         sample(current)
         if op == 'credit':
             credit = raw['credit']
-            method = ledger.add_confirmed if credit['state'] == 'confirmed' else ledger.add_tentative
-            method(credit['credit_id'], credit['unit_id'], credit['minutes'], _day(credit['day']))
+            ledger._add_journal_credit(credit['credit_id'], credit['unit_id'], credit['minutes'],
+                                       _day(credit['day']), credit['state'])
         elif op == 'replan':
             ledger.replan(_day(raw['today']), _window(raw['window']), raw['total_minutes'],
                           preserve_past=replan_preserves_past(raw.get('cause')))
@@ -126,10 +127,12 @@ def _time_series(ledger, judgements, through):
     segments.append(dict(segment=len(segments), closed_on=None, history_debt_minutes=0,
                          relearning_minutes=snapshot['relearning_minutes'],
                          relearning_filled_minutes=snapshot['relearning_minutes'] - start_status.debt_minutes))
-    for credit in snapshot['credits']:
-        row(credit['day'])['credited_' + credit['state'] + '_minutes'] += credit['minutes']
     for credit in snapshot['submissions']:
         row(credit['day'])['submitted_minutes'] += credit['minutes']
+    # Seed the immutable recorded-day view. The helper replaces only the
+    # attributed-credit columns for a freshly built report.
+    for credit in snapshot['credits']:
+        row(credit['day'])['credited_' + credit['state'] + '_minutes'] += credit['minutes']
     for judgement in judgements:
         day = datetime.fromisoformat(judgement['event']['at']).date().isoformat()
         row(day)['judgement_count'] += 1
@@ -138,13 +141,84 @@ def _time_series(ledger, judgements, through):
     last = max([ledger.window.end, through] + [_day(d) for d in days])
     for ordinal in range(first.toordinal(), last.toordinal() + 1):
         row(date.fromordinal(ordinal).isoformat())
-    activity_days = sorted(d for d, r in days.items() if r['submitted_minutes'] or r['judgement_count'])
-    return dict(days=[days[d] for d in sorted(days)], segments=segments,
-                learning_days=len(activity_days), activity_dates=activity_days,
-                learning_day_basis='original_credit_day_or_judgement_local_date',
-                through_date=through.isoformat(),
-                history_debt_minutes=ledger.status(through).history_debt_minutes,
-                overflow_minutes=ledger.status(through).overflow_minutes)
+    result = dict(days=[days[d] for d in sorted(days)], segments=segments,
+                  learning_days=0, activity_dates=[],
+                  learning_day_basis='original_credit_day_or_judgement_local_date',
+                  through_date=through.isoformat(),
+                  history_debt_minutes=ledger.status(through).history_debt_minutes,
+                  overflow_minutes=ledger.status(through).overflow_minutes)
+    return project_time_series_learning_days(result, ledger)
+
+
+def project_time_series_learning_days(timing, ledger):
+    """Return report timing with ledger-authoritative learning-day attribution."""
+    result = copy.deepcopy(timing)
+    if not isinstance(result, dict) or not isinstance(result.get('days'), list):
+        return result
+    defaults = dict(day='', segment=None, frozen=False, target_minutes=0,
+                    confirmed_minutes=0, tentative_minutes=0,
+                    credited_confirmed_minutes=0, credited_tentative_minutes=0,
+                    submitted_minutes=0, judgement_count=0)
+    by_day = {row['day']: row for row in result['days']
+              if isinstance(row, dict) and isinstance(row.get('day'), str)}
+    for row in by_day.values():
+        row['credited_confirmed_minutes'] = 0
+        row['credited_tentative_minutes'] = 0
+    for credit, day, minutes in ledger.attributed_credits():
+        key = day.isoformat()
+        row = by_day.setdefault(key, dict(defaults, day=key))
+        row['credited_' + credit.state + '_minutes'] += minutes
+    result['days'] = [by_day[key] for key in sorted(by_day)]
+    snapshot = ledger.to_dict()
+    projected_ids = set(snapshot.get('learning_day_projection', {}))
+    activity = {credit['day'] for credit in snapshot['submissions']
+                if credit['credit_id'] not in projected_ids}
+    activity.update(day.isoformat() for credit, day, _ in ledger.attributed_credits()
+                    if credit.credit_id in projected_ids)
+    activity.update(row['day'] for row in result['days'] if row.get('judgement_count'))
+    result['activity_dates'] = sorted(activity)
+    result['learning_days'] = len(result['activity_dates'])
+    return result
+
+
+def reproject_cached_time_series(timing, ledger):
+    """Project a complete raw or already-correct cached daily breakdown once."""
+    if not isinstance(timing, dict) or not isinstance(timing.get('days'), list):
+        return timing
+    snapshot = ledger.to_dict()
+    projection = snapshot.get('learning_day_projection', {})
+    if not projection:
+        return timing
+    def daily(rows):
+        totals = {}
+        for day, state, amount in rows:
+            if amount:
+                key = (day, state)
+                totals[key] = totals.get(key, 0) + amount
+        return {key: value for key, value in totals.items() if value}
+
+    raw = daily((credit['day'], credit['state'], credit['minutes'])
+                for credit in snapshot['credits'])
+    attributed = daily((day.isoformat(), credit.state, minutes)
+                       for credit, day, minutes in ledger.attributed_credits())
+    saved_totals = {'confirmed': 0, 'tentative': 0}
+    for row in timing['days']:
+        for state in saved_totals:
+            saved_totals[state] += row.get(f'credited_{state}_minutes', 0)
+    raw_totals = {state: sum(value for (_, item_state), value in raw.items()
+                             if item_state == state) for state in saved_totals}
+    # A partial sync or older snapshot is left untouched. Exact raw equality
+    # also makes repeat reads idempotent after an in-memory compatibility view.
+    if saved_totals != raw_totals:
+        return timing
+    saved = daily((row['day'], state, row.get(f'credited_{state}_minutes', 0))
+                  for row in timing['days'] if isinstance(row, dict) and isinstance(row.get('day'), str)
+                  for state in ('confirmed', 'tentative'))
+    if saved == attributed:
+        return timing
+    if saved != raw:
+        return timing
+    return project_time_series_learning_days(timing, ledger)
 
 
 def build_report(store, plan_id, *, today) -> dict:
