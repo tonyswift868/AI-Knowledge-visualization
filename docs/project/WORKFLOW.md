@@ -53,7 +53,7 @@
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
-| MF-05 | 189-MF05 合入后全量复核（已起草，用户正在转发） | platform |
+| MF-05 | 190-MF05（全量补跑 + BUG-123 调研）已起草，待转发 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
