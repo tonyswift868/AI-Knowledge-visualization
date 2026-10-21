@@ -50,7 +50,7 @@
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
-| MF-02 | 空闲 | client |
+| MF-02 | 196-MF02（新建计划进不去，[BUG-127]）已起草，待转发 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 空闲 | platform |
