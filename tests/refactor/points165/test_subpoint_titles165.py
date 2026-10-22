@@ -192,11 +192,11 @@ def test_165_code_and_table_kind_paragraphs_cannot_supply_subpoint_names():
 
 @pytest.mark.parametrize(
     "filename",
-    ("00-from-zero-to-one.html", "07-account-and-login.html", "12-bug-stories.html"),
+    ("00-project-story.md", "06-authentication-and-authorization.md", "13-incident-and-contribution.md"),
 )
-def test_165_imported_learning_html_does_not_generate_fragment_titles(filename):
-    path = Path(__file__).resolve().parents[3] / "docs" / "learn" / "import" / filename
-    document = extract.extract_html(path.read_bytes(), path.as_uri())
+def test_165_current_learning_markdown_does_not_generate_fragment_titles(filename):
+    path = Path(__file__).resolve().parents[3] / "docs" / "learn" / filename
+    document = extract.extract_file(path)
 
     assert document.blocks
     for block in document.blocks:

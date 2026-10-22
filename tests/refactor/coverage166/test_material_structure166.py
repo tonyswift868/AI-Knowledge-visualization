@@ -7,16 +7,19 @@ import pytest
 from refactor.learning.course import planner_agents as agents
 
 
-def _imported_html_sources():
-    """Run the real extractor/import projection on the 14 checked-in HTML guides."""
+def _imported_markdown_sources():
+    """Project the current exported guide text through the real Markdown importer."""
     from refactor.learning.course import extract, materials
+    from scripts.learn.export_guide import _strip_provenance
 
     root = Path(__file__).resolve().parents[3]
-    files = sorted((root / "docs" / "learn" / "import").glob("*.html"))
+    files = sorted((root / "docs" / "learn").glob("[0-9][0-9]-*.md"))
+    assert len(files) == 14
     sources, chunks_by_source, all_chunks = [], {}, []
     for index, path in enumerate(files, 1):
-        source_id = f"html-{index:02d}"
-        document = extract.extract_html(path.read_bytes(), path.name)
+        source_id = f"markdown-{index:02d}"
+        text = _strip_provenance(path.read_text(encoding="utf-8"))
+        document = extract.extract_bytes(text.encode("utf-8"), path.name)
         source_chunks = []
         for position, stored in enumerate(materials._document_chunks(document, source_id)):
             chunk = dict(stored)
@@ -34,7 +37,7 @@ def _offline_knowledge_classifier(stage, system, messages):
     """Deterministic fixture: classify ambiguous teaching sections as knowledge.
 
     This deliberately does not pretend to reproduce model decisions. Host-side
-    navigation rules still run against the actual imported HTML.
+    navigation rules still run against the actual imported Markdown.
     """
     request = json.loads(messages[-1]["content"])
     if stage != "classify":
@@ -302,12 +305,12 @@ def test_166_html_sections_without_chapter_metadata_keep_original_module():
     assert parsed["modules"][0]["chapters"] == ["第一部分 / 小节甲", "第二部分 / 小节乙"]
 
 
-def test_166_real_import_html_replay_preserves_module_point_and_question_counts():
-    """Static regression over the repository's 14 HTML import fixtures; no model/network."""
+def test_166_real_import_markdown_replay_preserves_module_point_and_question_counts():
+    """Replay all 14 current chapters and their 20 precise original questions offline."""
     from refactor.learning.course import planner_agents as agents
     from refactor.learning.course import material_questions
 
-    sources, chunks_by_source, chunks = _imported_html_sources()
+    sources, chunks_by_source, chunks = _imported_markdown_sources()
     assert len(sources) == 14
 
     # Exercise both directory projection and parser expansion. One model module
@@ -324,7 +327,9 @@ def test_166_real_import_html_replay_preserves_module_point_and_question_counts(
         selected_modules.append(module(f"m{index}", source["title"], *refs))
     parsed = agents.parse_material_structure(reply(selected_modules), sections)
     assert len(parsed["modules"]) == 14
-    assert parsed["coverage"]["unassigned"] == 0
+    assert parsed["coverage"] == dict(
+        total=len(sections), assigned=len(sections), excluded=0, unassigned=0, duplicates=0
+    )
     section_by_id = {row.id: row for row in sections}
 
     modules = []
@@ -343,22 +348,29 @@ def test_166_real_import_html_replay_preserves_module_point_and_question_counts(
 
     big_points = sum(len(module["points"]) for module in modules)
     subpoints = sum(len(point["subpoints"]) for module in modules for point in module["points"])
-    question_candidates = len(material_questions.candidates(chunks, sources))
+    candidates = material_questions.candidates(chunks, sources)
+    question_candidates = len(candidates)
+    assert len({candidate["stem"] for candidate in candidates}) == 20
+    assert all(candidate["candidate_type"] == "recall" for candidate in candidates)
+    assert all(len(material_questions.answer_units(candidate["reference"])) == 3
+               for candidate in candidates)
+    assert not any("追问加练" in candidate["reference"] or "refactor/" in candidate["reference"]
+                   for candidate in candidates)
+    assert [sum(candidate["source_id"] == source["id"] for candidate in candidates)
+            for source in sources] == [5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2]
 
-    # These totals are the checked-in fixture replay under explicit offline
-    # knowledge classification. Historical user-model replay was 87/95/95;
-    # the two-point difference reflects ambiguous sections deliberately assigned
-    # to knowledge here instead of preserving historical model classifications.
+    # These totals describe the current checked-in Markdown under explicit
+    # offline knowledge classification, not a claim about paid model decisions.
     assert len(modules) == 14
     per_module = [
         (len(module["points"]), sum(len(point["subpoints"]) for point in module["points"]))
         for module in modules
     ]
     assert per_module == [
-        (9, 9), (4, 4), (6, 12), (6, 6), (4, 6), (6, 6), (5, 5),
-        (5, 5), (5, 5), (5, 5), (3, 3), (5, 5), (10, 10), (16, 16),
+        (7, 27), (2, 4), (2, 4), (2, 4), (2, 4), (2, 4), (2, 4),
+        (2, 4), (2, 4), (1, 2), (1, 2), (2, 4), (1, 2), (2, 10),
     ]
-    assert (big_points, subpoints, question_candidates) == (89, 97, 95), (
+    assert (big_points, subpoints, question_candidates) == (30, 79, 20), (
         f"sections={len(sections)}, points={big_points}, subpoints={subpoints}, "
         f"question_candidates={question_candidates}; per_module="
         f"{[(len(m['points']), sum(len(p['subpoints']) for p in m['points'])) for m in modules]}"
