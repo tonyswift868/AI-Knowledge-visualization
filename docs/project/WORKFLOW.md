@@ -53,7 +53,7 @@
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
-| MF-05 | 198-MF05（结构图卡片不显示，[BUG-128]）已起草，待转发 | platform |
+| MF-05 | 空闲 | platform |
 | MF-06 | 空闲 | tools |
 | MF-07 | 空闲 | library |
 
