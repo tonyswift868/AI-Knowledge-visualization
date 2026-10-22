@@ -13,6 +13,12 @@ import tempfile
 import uuid
 
 
+def _clear_readonly(func, path, _exc):
+    """Git marks object files read-only on Windows; clear the flag and retry."""
+    os.chmod(path, 0o666)
+    func(path)
+
+
 class GuideExportError(Exception):
     """Raised when source material is incomplete or contains sensitive information."""
 
@@ -141,8 +147,11 @@ def export_guide(source_dir: str | os.PathLike, output_dir: str | os.PathLike, *
         for chapter in chapters:
             title = next((line[2:].strip() for line in (stage / chapter["path"]).read_text(encoding="utf-8").splitlines() if line.startswith("# ")), chapter["source"])
             intro.append(f"- [{title}]({chapter['path']})")
-        intro.extend(["", "## 在 MentorFlow 中使用", "", "在 MentorFlow 新建计划时，把本仓库的 GitHub 链接粘贴到资料来源，即可导入整套指南。", ""])
+        intro.extend(["", "## 在 MentorFlow 中使用", "", "在 MentorFlow 新建计划时，把本仓库的 GitHub 链接粘贴到资料来源，即可导入整套指南。", "",
+                      "## 许可证", "", "MIT，见 [LICENSE](LICENSE)。", ""])
         (stage / "README.md").write_text("\n".join(intro), encoding="utf-8", newline="\n")
+        # Same MIT license as the main repository; the importer skips LICENSE files.
+        shutil.copy2(Path(__file__).resolve().parents[2] / "LICENSE", stage / "LICENSE")
         citations = ["# 出处核对", "", "本文件用于核对课文出处。文件名以下划线开头，GitHub 导入器会跳过它。", ""]
         for source_path, text in sources:
             citations.extend([f"## {source_path.name}", "", *(_provenance_only(text) or ["出处表不存在。"]), ""])
@@ -159,7 +168,7 @@ def export_guide(source_dir: str | os.PathLike, output_dir: str | os.PathLike, *
                 backup.rename(output)
             raise
         if backup and backup.exists():
-            shutil.rmtree(backup)
+            shutil.rmtree(backup, onexc=_clear_readonly)
     except Exception:
         if stage.exists():
             shutil.rmtree(stage, ignore_errors=True)
