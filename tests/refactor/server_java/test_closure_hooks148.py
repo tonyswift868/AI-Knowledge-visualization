@@ -4,9 +4,35 @@ from __future__ import annotations
 from pathlib import Path
 
 import psycopg
+import pytest
 
 import contract_support147 as support
 from contract_support144 import OLD_ISSUER
+
+
+@pytest.fixture(scope="module")
+def closure_hooks148_backends(tmp_path_factory):
+    # These tests exercise a real 20/minute peer throttle. A session-wide
+    # server lets unrelated login tests consume the same localhost bucket.
+    prior_root, prior_artifacts = support.TASK_ROOT, support.ARTIFACTS
+    prior_pg_root, prior_pg_artifacts = support.c145.TASK_ROOT, support.c145.ARTIFACTS
+    root = tmp_path_factory.mktemp("closure-hooks148")
+    support.TASK_ROOT, support.ARTIFACTS = root, root / "build"
+    backends = support.closure147_backends.__wrapped__(tmp_path_factory)
+    try:
+        # The Java-only revocation hook inherits this trace directory when
+        # its process starts; keep its log with this fixture's fresh servers.
+        with pytest.MonkeyPatch.context() as paths:
+            paths.setenv("JAVA144_TMP", str(root))
+            fixture = next(backends)
+        fixture["hooks148_root"] = root
+        yield fixture
+    finally:
+        try:
+            backends.close()
+        finally:
+            support.TASK_ROOT, support.ARTIFACTS = prior_root, prior_artifacts
+            support.c145.TASK_ROOT, support.c145.ARTIFACTS = prior_pg_root, prior_pg_artifacts
 
 
 def _add_identity(identity, username, subject):
@@ -38,8 +64,8 @@ def _prepare(client, token, request_id):
             "X-Request-ID": request_id})
 
 
-def test_closure_native_throttle_matches_python_fifth_vs_sixth_attempt148(closure147_backends):
-    fixture = closure147_backends
+def test_closure_native_throttle_matches_python_fifth_vs_sixth_attempt148(closure_hooks148_backends):
+    fixture = closure_hooks148_backends
     for kind in ("python", "java"):
         username = "closure_throttle_" + kind
         subject = "user-closure-throttle-" + kind
@@ -56,8 +82,8 @@ def test_closure_native_throttle_matches_python_fifth_vs_sixth_attempt148(closur
             _cleanup(identity, username, subject, previous)
 
 
-def test_closure_oidc_revocation_receives_canonical_subject_and_blocks_completion148(closure147_backends):
-    fixture = closure147_backends
+def test_closure_oidc_revocation_receives_canonical_subject_and_blocks_completion148(closure_hooks148_backends):
+    fixture = closure_hooks148_backends
     identity = fixture["identities"]["java"]
     client = fixture["clients"]["java"]
     rows = []
@@ -83,7 +109,7 @@ def test_closure_oidc_revocation_receives_canonical_subject_and_blocks_completio
         finally:
             _cleanup(identity, username, subject, previous)
 
-    trace_path = Path(support.TASK_ROOT) / "closure-oidc-revocations.log"
+    trace_path = Path(fixture["hooks148_root"]) / "closure-oidc-revocations.log"
     calls = [line.split("\t", 1) for line in trace_path.read_text(encoding="utf-8").splitlines()]
     for subject, _operation, _ in rows:
         assert [OLD_ISSUER, subject] in calls, (subject, calls)

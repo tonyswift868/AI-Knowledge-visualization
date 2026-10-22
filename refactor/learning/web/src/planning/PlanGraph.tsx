@@ -174,10 +174,17 @@ export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages
   React.useEffect(() => {
     if (!instance) return
     let frame = 0
+    let fitted = false
+    let resizeObserver: ResizeObserver | null = null
     const fit = (duration = 220) => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         frame = 0
+        // A hidden host can mount the Flow before it has a usable canvas.
+        // Leave the first fit pending until ResizeObserver sees it revealed.
+        if (!canvas.current?.clientWidth || !canvas.current.clientHeight) return
+        fitted = true
+        if (!fullscreen) resizeObserver?.disconnect()
         instance.fitView({ padding: .12, duration, minZoom: .025, maxZoom: 1 })
       })
     }
@@ -185,19 +192,19 @@ export function PlanGraph({ stages, mode = "outline", onDelete, busy }: { stages
     let priorWidth = target?.clientWidth ?? 0
     let priorHeight = target?.clientHeight ?? 0
     let priorDetailsVisible = detailsVisible.current
-    const resizeObserver = fullscreen && target ? new ResizeObserver(() => {
+    resizeObserver = target ? new ResizeObserver(() => {
       const width = target.clientWidth, height = target.clientHeight
       const changed = width !== priorWidth || height !== priorHeight
       const detailsChanged = detailsVisible.current !== priorDetailsVisible
       priorWidth = width
       priorHeight = height
       priorDetailsVisible = detailsVisible.current
-      if (changed && !detailsChanged && !detailsVisible.current) fit(0)
+      if (changed && ((!fullscreen && !fitted) || (fullscreen && !detailsChanged && !detailsVisible.current))) fit(0)
     }) : null
     if (target) resizeObserver?.observe(target)
     const onWindowResize = () => fit(0)
     window.addEventListener("resize", onWindowResize)
-    fit()
+    fit(fullscreen ? 220 : 0)
     return () => {
       resizeObserver?.disconnect()
       window.removeEventListener("resize", onWindowResize)

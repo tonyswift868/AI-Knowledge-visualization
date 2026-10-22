@@ -132,7 +132,12 @@ export function KnowledgeMap({detail,onRetry,busy}:{detail:KnowledgeDetail;onRet
   }
   React.useEffect(()=>{
     if (!instance) return
-    const frame=requestAnimationFrame(()=>{
+    let frame=0, fitted=false
+    const fit=()=>{
+      frame=0
+      if (!canvas.current?.clientWidth || !canvas.current.clientHeight) return
+      fitted=true
+      observer?.disconnect()
       if (view.selected) {
         const target=view.nodes.find(n=>n.id===(view.selected?.points.find(p=>!p.taught)?.id))??view.nodes[0]
         if (target) center(target.position.x+W/2,target.position.y+H/2,.85)
@@ -144,8 +149,15 @@ export function KnowledgeMap({detail,onRetry,busy}:{detail:KnowledgeDetail;onRet
         const zoom=Math.max(.04,Math.min(1,(canvas.current?.clientWidth??800)/((maxX-minX)*1.2),(canvas.current?.clientHeight??520)/((maxY-minY)*1.2)))
         center((minX+maxX)/2,(minY+maxY)/2,zoom)
       }
-    })
-    return ()=>cancelAnimationFrame(frame)
+    }
+    const schedule=()=>{if(!fitted){cancelAnimationFrame(frame);frame=requestAnimationFrame(fit)}}
+    // Observe only the pending initial fit. Drawer changes and relationship
+    // updates must not move a viewport the learner is already reading.
+    const target=canvas.current
+    const observer=target?new ResizeObserver(schedule):null
+    if(target)observer?.observe(target)
+    schedule()
+    return ()=>{observer?.disconnect();cancelAnimationFrame(frame)}
     // Relationship events update the graph, but must not move the viewport
     // away from the point or source the user is currently reading.
   },[instance,moduleId,reduce])
