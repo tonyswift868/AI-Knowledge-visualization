@@ -127,6 +127,8 @@ class ModelGateway:
             self._lock = self._storage.lock
             self._closed = False
             self._requests = set()
+            self._connection_checks = set()
+            self._configuration_revision = 0
             self._balance_client = BalanceClient()
             self.balance_history = BalanceHistory(account_id, data_root)
             self._balance_revision = 0
@@ -150,6 +152,12 @@ class ModelGateway:
         with self._lock:
             return copy.deepcopy(self._model_status)
 
+    def cancel_connection_checks(self):
+        """Stop in-flight probes when their configured provider/key is replaced."""
+        with self._lock:
+            for request in tuple(self._connection_checks):
+                request.set()
+
     @contextmanager
     def defer_errors(self):
         """The caller publishes only after its existing format/transport retries."""
@@ -161,9 +169,14 @@ class ModelGateway:
             self._presentation.deferred=before
 
     def _publish_status(self, value):
+        self._publish_status_for_revision(value)
+
+    def _publish_status_for_revision(self, value, revision=None):
         with self._lock:
             if self._closed:
-                return  # A late result from the previous account cannot paint the retained window.
+                return False  # A late result from the previous account cannot paint the retained window.
+            if revision is not None and revision != self._configuration_revision:
+                return False  # An old provider/key must not overwrite the current connection status.
             self._model_status = value
             listener = self.status_listener
         if callable(listener):
@@ -171,8 +184,14 @@ class ModelGateway:
                 listener(copy.deepcopy(value))
             except Exception:
                 logging.getLogger(__name__).warning('model status observer failed')
+        return True
 
-    def report_error(self, error, *, purpose='model', plan_id=''):
+    def _configuration_changed_locked(self):
+        self._configuration_revision += 1
+        for request in tuple(self._connection_checks):
+            request.set()
+
+    def report_error(self, error, *, purpose='model', plan_id='', configuration_revision=None):
         if getattr(error, 'model_fault', None):
             return error.model_fault
         if error.code == 'MODEL_CANCELLED': return None
@@ -193,7 +212,8 @@ class ModelGateway:
         error.model_fault = fault
         error.message = fault['message']
         error.args = (error.message,)
-        self._publish_status(dict(state='error', short=fault['short'], fault=fault))
+        self._publish_status_for_revision(dict(state='error', short=fault['short'], fault=fault),
+                                          configuration_revision)
         return fault
 
     def clear_fault_scope(self, purpose, plan_id=''):
@@ -313,6 +333,18 @@ class ModelGateway:
             data = self._load()
             return self._public(next((p for p in data['presets'] if p['id'] == data['active_id']), None))
 
+    def get_configuration_snapshot(self):
+        """Return active preset metadata and revision from the same locked read."""
+        with self._lock:
+            self._ensure_open()
+            data = self._load()
+            config = self._public(next((p for p in data['presets'] if p['id'] == data['active_id']), None))
+            return config, self._configuration_revision
+
+    def configuration_version(self):
+        with self._lock:
+            return self._configuration_revision
+
     def save_preset(self, provider_id, *, display_name=None, base_url=None, model=None,
                     temperature=_UNSET, timeout=_UNSET, api_key=None, preset_id=None):
         """Create/update and select. None fields preserve existing same-provider values.
@@ -362,6 +394,7 @@ class ModelGateway:
                     data['retired_credentials'].append(old['credential_id'])
                 data['active_id'] = identifier
                 self._write(data)
+                self._configuration_changed_locked()
             except ModelError:
                 if changed:
                     if previous is None:
@@ -385,6 +418,7 @@ class ModelGateway:
                 raise ModelError('PRESET_NOT_FOUND', '模型预设已不存在，请重新选择。')
             data['active_id'] = preset_id
             self._write(data)
+            self._configuration_changed_locked()
 
     def delete_preset(self, preset_id):
         with self._lock:
@@ -399,9 +433,12 @@ class ModelGateway:
             if old['credential_owner'] == 'owned':
                 self._credentials.delete(old['credential_id'])
             data['presets'] = [p for p in data['presets'] if p['id'] != preset_id]
-            if data['active_id'] == preset_id:
+            active_deleted = data['active_id'] == preset_id
+            if active_deleted:
                 data['active_id'] = data['presets'][0]['id'] if data['presets'] else None
             self._write(data)
+            if active_deleted:
+                self._configuration_changed_locked()
 
     def _secret(self, config):
         if config['credential_owner'] == 'legacy':
@@ -500,10 +537,10 @@ class ModelGateway:
                               on_text=on_text, cancel=cancel, plan_id=plan_id, max_tokens=max_tokens,
                               reasoning_effort=reasoning_effort)
 
-    def test_connection(self):
-        """Explicit user action only. No probe during construction/save/select."""
+    def test_connection(self, *, cancel=None):
+        """Small, non-thinking connectivity probe; cancellation is optional."""
         return self._complete('connection_test', [{'role': 'user', 'content': 'Reply OK.'}],
-                              system=None, enable_search=False, on_text=None, cancel=None, plan_id='', max_tokens=32,
+                              system=None, enable_search=False, on_text=None, cancel=cancel, plan_id='', max_tokens=32,
                               reasoning_effort='none')
 
     def _log_failure(self, error, config, secret, messages, system, identifier, purpose):
@@ -560,7 +597,10 @@ class ModelGateway:
                 self._ensure_open()
             except ModelError as exc:
                 setup_error = exc
+            configuration_revision = self._configuration_revision
             self._requests.add(token)
+            if purpose == 'connection_test':
+                self._connection_checks.add(token)
         identifier = None
         observed, result, error, secret = None, None, None, None
         attempted = False
@@ -730,20 +770,28 @@ class ModelGateway:
                 # Outline/module generation owns its existing truncation/split retry.
                 # Only its exhausted result should reach the user's error banner.
                 if not getattr(self._presentation,'deferred',False) and (error.code != 'MODEL_OUTPUT_TRUNCATED' or purpose == 'connection_test'):
-                    self.report_error(error, purpose=purpose, plan_id=plan_id)
+                    self.report_error(error, purpose=purpose, plan_id=plan_id,
+                                      configuration_revision=configuration_revision)
                 raise error
             self.clear_fault_scope(purpose, plan_id)
-            self._publish_status(dict(state='ok', short='模型正常', message='最近一次模型请求成功。',
-                                      provider_id=config['provider_id'], id=identifier))
+            published = self._publish_status_for_revision(
+                dict(state='ok', short='模型正常', message='最近一次模型请求成功。',
+                     provider_id=config['provider_id'], id=identifier), configuration_revision)
+            if published and purpose != 'connection_test':
+                # A genuine model use already proved the active configuration;
+                # stop an unnecessary parallel background connectivity probe.
+                self.cancel_connection_checks()
             return result
         finally:
             secret = None
             with self._lock:
                 self._requests.discard(token)
+                self._connection_checks.discard(token)
 
     def close(self):
         with self._lock:
             self._closed = True
             for token in tuple(self._requests):
                 token.set()
+            self._connection_checks.clear()
             self._balance_client.clear()
