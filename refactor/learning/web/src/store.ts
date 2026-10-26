@@ -36,7 +36,7 @@ export type SyncStatus = { state: "syncing" | "synced" | "failed" | "reauth" | "
 export type Toast = { id: number; kind: "ok" | "error" | "info"; text: string }
 export type ModelFault = { id?: string; category: string; code: string; message: string; short: string; purpose?: string; plan_id?: string;
   actions: { id: string; label: string; url?: string }[] }
-export type ModelStatus = { state: 'unknown' | 'ok' | 'error'; short: string; fault?: ModelFault }
+export type ModelStatus = { state: 'unknown' | 'checking' | 'unconfigured' | 'ok' | 'error'; short: string; fault?: ModelFault; account_id?: string }
 
 type State = {
   route: Route
@@ -82,7 +82,9 @@ export const useApp = create<State>((set) => ({
   modelFault: null,
   modelRetry: null,
   setModelStatus: (status) => set((s) => ({modelStatus:status,
-    modelFault: status.state === 'ok' ? null : status.fault && status.fault.id !== s.modelStatus.fault?.id ? status.fault : s.modelFault})),
+    modelFault: status.state === 'error' && status.fault
+      ? status.fault.id !== s.modelStatus.fault?.id ? status.fault : s.modelFault
+      : null})),
   go: (route, tab) => set((s) => ({ route, settingsTab: tab ?? s.settingsTab })),
   set: (patch) => set(patch),
   toast: (kind, text) => {

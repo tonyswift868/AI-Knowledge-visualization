@@ -3,7 +3,7 @@ import { ChevronsUpDown, CirclePlus, Cloud, CloudOff, House, LayoutGrid, LogOut,
   Repeat2, Route as RouteIcon, Settings2, ShieldCheck } from "lucide-react"
 import { call, on } from "./bridge"
 import { useApp, type Route } from "./store"
-import { Ambient, BrandMark, Button, Toasts } from "./ui"
+import { Ambient, BrandMark, Button, ModelFaultPanel, Toasts } from "./ui"
 import { Home } from "./pages/Home"
 import { Plans } from "./pages/Plans"
 import { NewPlan } from "./pages/NewPlan"
@@ -84,6 +84,18 @@ export function App() {
   const theme = s.settings?.theme ?? "sakura"
   const [bootstrapError, setBootstrapError] = React.useState('')
   const [bootstrapAttempt, bootstrapRetry] = React.useReducer(n => n+1, 0)
+  const [modelFaultOpen, setModelFaultOpen] = React.useState(false)
+  const modelScopeEpoch = React.useRef(0)
+  const modelStatusRevision = React.useRef(0)
+  const currentModelFault = s.modelStatus.state === 'error' ? s.modelStatus.fault : undefined
+  const retryModelConnection = React.useCallback(() => {
+    const accountId = useApp.getState().account?.account_id
+    useApp.getState().setModelStatus({ state: 'checking', short: '正在检查模型', account_id: accountId })
+    void call('models.test').catch(() => {})
+  }, [])
+  React.useEffect(() => {
+    if (s.modelStatus.state !== 'error') setModelFaultOpen(false)
+  }, [s.modelStatus.state, s.modelStatus.fault?.id])
   const [previewHash, setPreviewHash] = React.useState(window.location.hash)
   React.useEffect(() => {
     const changed = () => setPreviewHash(window.location.hash)
@@ -93,19 +105,36 @@ export function App() {
 
   React.useEffect(() => {
     let alive = true
-    const load = () => call("app.bootstrap").then((r) => {if(alive){s.set({ account: r.account, settings: r.settings, options: r.options,
+    const readModelStatus = () => {
+      const epoch = modelScopeEpoch.current
+      const revision = modelStatusRevision.current
+      call("models.status").then(d => {
+        const activeAccountId = useApp.getState().account?.account_id
+        if (alive && epoch === modelScopeEpoch.current && revision === modelStatusRevision.current && d?.state &&
+            (!d.account_id || !activeAccountId || d.account_id === activeAccountId)) s.setModelStatus(d)
+      }).catch(() => {})
+    }
+    const load = () => {
+      const epoch = modelScopeEpoch.current
+      call("app.bootstrap").then((r) => {if(alive && epoch === modelScopeEpoch.current){s.set({ account: r.account, settings: r.settings, options: r.options,
                                                                   notice: r.notice, ready: r.ready });setBootstrapError('')}}).catch(e => {if(alive)setBootstrapError(e.message)})
+    }
     load()
     call("sync.status").then((d) => s.set({ sync: d })).catch(() => {})
-    call("models.status").then(d=>{if(d?.state)s.setModelStatus(d)}).catch(()=>{})
+    readModelStatus()
     const offs = [
-      on("ready", (d) => { s.set({ ready: true, account: d.account }); call("settings.get").then((r) => s.set({ settings: r.settings })) }),
+      on("ready", (d) => { s.set({ ready: true, account: d.account }); call("settings.get").then((r) => s.set({ settings: r.settings })); readModelStatus() }),
       on("account", (d) => s.set({ account: d })),
+      on("model_status", () => { modelStatusRevision.current++ }),
       on("settings", (d) => s.set({ settings: d })),
       on("session_notice", (d) => s.set({ notice: d })),
       on("window", (d) => s.set({ fullscreen: !!d.fullscreen })),
       on("navigate", (d) => { if (d?.route === "home") s.go("home") }),
-      on("scope_changed", () => s.set({ ready: false, sync: null, modelStatus:{state:'unknown',short:'模型待验证'},modelFault:null,modelRetry:null })),
+      on("scope_changed", () => {
+        modelScopeEpoch.current++
+        modelStatusRevision.current++
+        s.set({ ready: false, sync: null, modelStatus:{state:'unknown',short:'模型待验证'},modelFault:null,modelRetry:null })
+      }),
       on("sync_status", (d) => s.set({ sync: d })),
       on("sync_conflict", (d) => s.toast("info", d.message)),
     ]
@@ -156,8 +185,12 @@ export function App() {
             </button>
             <div className="grow" />
             <span className={`chip ${!s.ready || s.account?.offline ? "warn" : ""}`}><span className="dot" />{!s.ready ? "正在连接账号服务…" : s.account?.offline ? "离线学习" : "已登录"}</span>
-            <button className={`chip model-status ${s.modelStatus.state}`} title={s.modelStatus.fault?.message ?? '以最近一次模型请求结果为准'}
-              onClick={()=>s.modelStatus.fault ? s.set({modelFault:s.modelStatus.fault}) : s.toast('info',s.modelStatus.state === 'ok' ? '最近一次模型请求正常。' : '还没有模型请求结果，可到设置测试连接。')}>
+            <button className={`chip model-status ${s.modelStatus.state}`} aria-live="polite" aria-busy={s.modelStatus.state === 'checking'}
+              aria-expanded={!!currentModelFault && modelFaultOpen} aria-controls="model-status-details"
+              title={s.modelStatus.fault?.message ?? (s.modelStatus.state === 'checking' ? '正在后台检查当前模型连接。' : s.modelStatus.state === 'unconfigured' ? '请到设置 → 模型连接配置 API Key。' : '以最近一次模型请求结果为准')}
+              onClick={()=>s.modelStatus.state === 'checking' ? undefined : s.modelStatus.state === 'unconfigured' ? s.go('settings','models') :
+                currentModelFault ? (s.set({ modelFault: currentModelFault }), setModelFaultOpen(open => !open)) :
+                s.toast('info',s.modelStatus.state === 'ok' ? '最近一次模型请求正常。' : '还没有模型请求结果，可到设置测试连接。')}>
               <span className="dot"/>{s.modelStatus.short}</button>
             {s.ready && s.sync && (
               <button className={`chip sync ${s.sync.state}`} title={s.sync.state === "failed" ? "点一下重试" : "点一下立即同步"}
@@ -173,6 +206,12 @@ export function App() {
               {s.fullscreen ? <Minimize2 /> : <Maximize2 />}
             </button>
           </header>
+          {currentModelFault && modelFaultOpen && <div id="model-status-details" className="model-status-details" role="region" aria-label="模型连接问题详情">
+            <ModelFaultPanel fault={currentModelFault} onRetry={retryModelConnection}/>
+            <div className="row" style={{ justifyContent: 'flex-end' }}>
+              <Button small kind="ghost" onClick={() => setModelFaultOpen(false)}>收起</Button>
+            </div>
+          </div>}
           {s.notice && (
             <div className="banner fade-in">
               <span className="grow">{s.notice.message}</span>

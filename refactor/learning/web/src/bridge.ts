@@ -48,7 +48,14 @@ function handle(text: string) {
     streamActivity(msg.id, msg.delta ?? '')
     pending.get(msg.id)?.onStream?.(msg.delta)
   } else if (msg.type === "event") {
-    if (msg.name === 'model_status') useApp.getState().setModelStatus(msg.data)
+    if (msg.name === 'model_status') {
+      const activeAccountId = useApp.getState().account?.account_id
+      const statusAccountId = msg.data?.account_id
+      // A worker from a session that has just been switched away may finish late.
+      // Do not let its status replace the new account's chip or notify its listeners.
+      if (activeAccountId && statusAccountId && activeAccountId !== statusAccountId) return
+      useApp.getState().setModelStatus(msg.data)
+    }
     listeners.get(msg.name)?.forEach((fn) => fn(msg.data))
   }
 }

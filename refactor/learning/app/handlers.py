@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
+import json
+import logging
 import sys
 import time as monotonic
 
@@ -15,6 +17,7 @@ from .bridge import BridgeError, CallContext
 from .settings import AppSettings
 
 APP_VERSION = "2.0-preview"
+log = logging.getLogger(__name__)
 if getattr(sys, "frozen", False):
     from refactor.desktop.delivery.version import load_version_manifest
     APP_VERSION = load_version_manifest()["version"]
@@ -50,12 +53,40 @@ def _local_study_day(settings: dict):
 def register(bridge, window):
     """``window`` provides account info, Qt actions and the bound services."""
 
+    def bind_model_status(current):
+        if hasattr(current, 'bind_model_status'):
+            def publish(data):
+                if window.services is current and not getattr(current, '_closed', False):
+                    bridge.push('model_status', {**data, 'account_id': current.account_id})
+            current.bind_model_status(publish)
+
+    def model_ready(current, *, recovered=False):
+        if current is None:
+            return
+        bind_model_status(current)
+        action = getattr(current, 'on_network_restored' if recovered else 'start_model_auto_check', None)
+        if callable(action):
+            try:
+                action()
+            except Exception:
+                log.warning('automatic model check could not start', exc_info=True)
+
+    def model_account_event(raw):
+        try:
+            event = json.loads(raw)
+        except (TypeError, ValueError):
+            return
+        if event.get('type') == 'event' and event.get('name') in {'ready', 'session_recovered'}:
+            model_ready(window.services, recovered=event['name'] == 'session_recovered')
+
+    if hasattr(bridge, 'event'):
+        bridge.event.connect(model_account_event)
+
     def services():
         current = window.services
         if current is None:
             raise BridgeError("NOT_READY", "账号服务还在连接，请稍候。")
-        if hasattr(current, 'bind_model_status'):
-            current.bind_model_status(lambda data: bridge.push('model_status', data))
+        bind_model_status(current)
         return current
 
     def report_model_error(error, method, params):
@@ -66,8 +97,7 @@ def register(bridge, window):
     # ---------------------------------------------------------------- app
     def bootstrap(params, ctx: CallContext):
         current = window.services
-        if current is not None and hasattr(current, 'bind_model_status'):
-            current.bind_model_status(lambda data: bridge.push('model_status', data))
+        model_ready(current)
         settings = current.settings.load() if current else AppSettings.defaults_copy()
         return {"version": APP_VERSION, "account": window.account_info(), "settings": settings,
                 "options": AppSettings.options(), "notice": window.session_notice,
@@ -166,7 +196,8 @@ def register(bridge, window):
                 "search_supported": gateway.search_supported() if active else False}
 
     def model_save(params, ctx):
-        gateway = services().gateway
+        current = services()
+        gateway = current.gateway
         provider_id = _text(params, "provider_id", limit=32)
         kwargs = {}
         for key, limit in (("display_name", 80), ("base_url", 2048), ("model", 256)):
@@ -192,14 +223,19 @@ def register(bridge, window):
                 else:
                     raise BridgeError("PARAM_INVALID", "温度须为 0–2，请求时限须为 1–300 秒。")
         saved = gateway.save_preset(provider_id, **kwargs)
+        current.model_configuration_changed()
         return {"preset": saved, **model_list({}, ctx)}
 
     def model_select(params, ctx):
-        services().gateway.select_preset(_text(params, "preset_id", limit=128))
+        current = services()
+        current.gateway.select_preset(_text(params, "preset_id", limit=128))
+        current.model_configuration_changed()
         return model_list({}, ctx)
 
     def model_delete(params, ctx):
-        services().gateway.delete_preset(_text(params, "preset_id", limit=128))
+        current = services()
+        current.gateway.delete_preset(_text(params, "preset_id", limit=128))
+        current.model_configuration_changed()
         return model_list({}, ctx)
 
     def model_test(params, ctx):
@@ -222,7 +258,11 @@ def register(bridge, window):
     bridge.register("models.select", model_select)
     bridge.register("models.delete", model_delete)
     bridge.register("models.test", model_test)
-    bridge.register('models.status', lambda p,c: services().model_status())
+    def model_status(params, ctx):
+        current = services()
+        return {**current.model_status(), 'account_id': current.account_id}
+
+    bridge.register('models.status', model_status)
     bridge.register("models.balance", model_balance)
 
     # -------------------------------------------------------------- usage
@@ -314,3 +354,4 @@ def register(bridge, window):
     bridge.register('classroom.draft_set', lambda p, c: classroom_draft(p, save=True))
     from ..connections.balance import register as register_balance
     register_balance(bridge, services)
+    model_ready(window.services)
