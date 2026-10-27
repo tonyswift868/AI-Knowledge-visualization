@@ -1,7 +1,8 @@
 type Listener = (data: any) => void
 const listeners = new Map<string, Set<Listener>>()
 let status: any = { state: "retrying", at: "2026-10-27T08:15:00Z", message: "", pending: 7,
-  retry_at: "2026-10-27T08:16:00Z", last_error: { code: "SYNC_UNAVAILABLE", message: "网络暂时不可用", at: "2026-10-27T08:15:20Z" } }
+  retry_at: new Date(Date.now() + 60_000).toISOString(),
+  last_error: { code: "SYNC_UNAVAILABLE", message: "网络暂时不可用", at: "2026-10-27T08:15:20Z" } }
 let retryCalls = 0
 const settings = { version: 1, theme: "sakura", font_scale: 1, reduce_motion: true, teacher_style: "warm", detail: "normal",
   examples: "normal", analogy_domains: [], refresh_time: "04:00", reminder_enabled: false, reminder_time: "20:00",
@@ -31,5 +32,6 @@ export function on(name: string, listener: Listener): () => void {
 }
 ;(window as any).sync203 = {
   setStatus(next: any) { status = next; push("sync_status", next) },
+  currentStatus() { return status },
   retryCalls() { return retryCalls },
 }

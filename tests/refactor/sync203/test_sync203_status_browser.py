@@ -10,7 +10,6 @@ REPO = Path(__file__).resolve().parents[3]
 WEB = REPO / "refactor/learning/web"
 NODE = Path("D:/MentorFlow/.local/node/node.exe")
 DEPS = Path("D:/MentorFlow/.local/web-deps")
-ARTIFACTS = Path(os.environ.get("SYNC203_ARTIFACTS", "D:/MentorFlow/.local/test-tmp/sync203/ui-final"))
 sys.path.insert(0, str(REPO))
 
 
@@ -33,6 +32,8 @@ def _build(root: Path) -> None:
 
 
 def _browser(root: Path) -> dict:
+    ARTIFACTS = Path(os.environ.get("SYNC203_ARTIFACTS", str(root / "screenshots")))
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
     from PySide6.QtCore import QUrl
@@ -82,12 +83,19 @@ def _browser(root: Path) -> dict:
         js("document.querySelector('.chip.sync').click()")
         until("!!document.querySelector('#sync-status-details')", "details open")
         detail = js("document.querySelector('#sync-status-details').innerText")
-        expected_last_success = js("new Date('2026-10-27T08:15:00Z').toLocaleString()")
-        expected_retry = js("new Date('2026-10-27T08:16:00Z').toLocaleString()")
+        initial_status = json.loads(js("JSON.stringify(window.sync203.currentStatus())"))
+        expected_last_success = js("new Date(" + json.dumps(initial_status["at"]) + ").toLocaleString()")
+        expected_retry = js("new Date(" + json.dumps(initial_status["retry_at"]) + ").toLocaleString()")
         assert expected_last_success in detail, detail
         assert "7 条" in detail and expected_retry in detail and "网络暂时不可用" in detail, detail
         assert "模型正常" in js("document.querySelector('.chip.model-status').textContent")
         view.grab().save(str(ARTIFACTS / "details.png"))
+        js("const retryDeadline=Date.parse(window.sync203.currentStatus().retry_at); " +
+           "Date.now=()=>retryDeadline+60000; " +
+           "window.sync203.setStatus(window.sync203.currentStatus())")
+        until("document.querySelector('#sync-status-details')?.innerText.includes('正在尝试')",
+              "old retry deadline is active after advancing the browser clock")
+        assert "正在重试" in js("document.querySelector('.chip.sync').textContent")
         js("document.querySelector('.sync-detail-retry').click()")
         until("!!document.querySelector('.chip.sync.synced')", "retry success status")
         assert "已同步" in js("document.querySelector('.chip.sync').textContent")
@@ -112,9 +120,6 @@ def _browser(root: Path) -> dict:
         js("window.sync203.setStatus({state:'waiting',at:null,message:'',pending:null,retry_at:null,last_error:null})")
         until("!!document.querySelector('.chip.sync.waiting')", "waiting distinct")
         assert "等待账号连接" in js("document.querySelector('.chip.sync').textContent")
-        js("window.sync203.setStatus({state:'retrying',at:null,message:'',pending:null,retry_at:'2000-01-01T00:00:00Z',last_error:null})")
-        until("document.querySelector('.chip.sync')?.textContent.includes('正在重试')", "retrying chip text stays constant")
-        until("document.querySelector('#sync-status-details')?.innerText.includes('正在尝试')", "past retry time shows active attempt in details")
         js("window.sync203.setStatus({state:'retrying',at:null,message:'',pending:null,retry_at:null,last_error:null})")
         until("document.querySelector('#sync-status-details')?.innerText.includes('正在尝试')", "missing retry time shows active attempt")
         assert "正在重试" in js("document.querySelector('.chip.sync').textContent")
@@ -129,6 +134,7 @@ def _browser(root: Path) -> dict:
 
 
 def test_sync203_status_chip_details_retry_and_auth_states(tmp_path):
+    ARTIFACTS = Path(os.environ.get("SYNC203_ARTIFACTS", str(tmp_path / "screenshots")))
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     _build(tmp_path)
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONDONTWRITEBYTECODE="1",
@@ -143,5 +149,55 @@ def test_sync203_status_chip_details_retry_and_auth_states(tmp_path):
     assert all((ARTIFACTS / name).is_file() for name in ("retrying.png", "details.png", "synced.png"))
 
 
-if __name__ == "__main__" and len(sys.argv) == 3 and sys.argv[1] == "--browser":
-    _browser(Path(sys.argv[2]))
+def _browser_expired_retry(root: Path) -> None:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu")
+    from PySide6.QtCore import QUrl
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+    app = QApplication([])
+    view = QWebEngineView()
+    view.resize(1000, 700)
+    view.setUrl(QUrl.fromLocalFile(str(root / "dist/index.html")))
+    view.show()
+
+    def js(expression):
+        replies = []
+        view.page().runJavaScript(expression, replies.append)
+        end = time.monotonic() + 5
+        while not replies and time.monotonic() < end:
+            app.processEvents()
+            time.sleep(.005)
+        assert replies, "browser JS evaluation timed out"
+        return replies[0]
+
+    def until(expression, label):
+        end = time.monotonic() + 15
+        while time.monotonic() < end:
+            if js(expression):
+                return
+            app.processEvents()
+            time.sleep(.02)
+        raise AssertionError(f"{label}; page={js('document.body.innerText.slice(0,900)')}")
+
+    try:
+        until("!!document.querySelector('.chip.sync.retrying')", "retrying chip appears")
+        js("window.sync203.setStatus({state:'retrying',at:null,message:'',pending:3," +
+           "retry_at:new Date(Date.now()-60000).toISOString(),last_error:null})")
+        until("!!document.querySelector('.chip.sync.retrying')", "expired retry remains retrying")
+        assert "正在重试" in js("document.querySelector('.chip.sync').textContent")
+        js("document.querySelector('.chip.sync').click()")
+        until("!!document.querySelector('#sync-status-details')", "details open")
+        until("document.querySelector('#sync-status-details')?.innerText.includes('正在尝试')",
+              "past retry time displays active attempt")
+        assert "正在尝试" in js("document.querySelector('#sync-status-details').innerText")
+    finally:
+        view.close()
+        app.processEvents()
+
+
+if __name__ == "__main__" and len(sys.argv) == 3:
+    if sys.argv[1] == "--browser":
+        _browser(Path(sys.argv[2]))
+    elif sys.argv[1] == "--browser-expired":
+        _browser_expired_retry(Path(sys.argv[2]))
