@@ -51,7 +51,7 @@
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
 | MF-02 | 空闲 | client |
-| MF-03 | 209-MF03 204/205/206 联合核对、副本演练工具（已起草，待转发） | classroom |
+| MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 210-MF05 用 Process Monitor 查 WinError 5（已起草，待转发） | platform |
 | MF-06 | 空闲 | tools |
@@ -60,7 +60,7 @@
 ## 待派队列
 
 - 199-MF04（[BUG-129]）、203-MF02（[BUG-130]）已合入 b53d3abf、79e8f1d7。203 改过 tests/refactor/graph198/test_graph198_module_graph_browser.py 的测试数据，202 合入时注意冲突。用户 2026-10-27 定：都修完一起发 2.0.34，[BUG-87] WinError 5 也要修好再发。
-- 205-MF06、204-MF03、206-MF07 已合入 81ef9597、e4661556、ae07e1c8（[BUG-131]、[BUG-132]）；202-MF05 已合入 7c8de15e（部分完成，WinError 5 见 [BUG-87]）。208-MF02 已合入 7a42b8c0（[BUG-133]、[BUG-134]）。209-MF03（classroom，联合核对和副本演练）基线 15836e3b，任务文件 D:\MentorFlow\.local\tasks\209-MF03.md，已起草，待转发；可以和 207 同时做，不改同一处。
+- 205-MF06、204-MF03、206-MF07 已合入 81ef9597、e4661556、ae07e1c8（[BUG-131]、[BUG-132]）；202-MF05 已合入 7c8de15e（部分完成，WinError 5 见 [BUG-87]）。208-MF02、209-MF03 已合入 7a42b8c0、7ef0d3de（[BUG-133]、[BUG-134]；联合核对和副本演练，发版后执行步骤在 .local/test-tmp/joint209/report.md）。
 - 207-MF05 回执已到（Handle 没抓到占用者，见 [BUG-87]）；210-MF05（platform，Process Monitor，只查不改，基线 9effc333，任务文件 D:\MentorFlow\.local\tasks\210-MF05.md）已起草，待转发，会弹一次管理员确认。208、209 合入、210 查清并修好后统一跑一次全量，再发 2.0.34。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）。
 
