@@ -7,7 +7,6 @@ import subprocess
 import sys
 
 REPO = Path(__file__).resolve().parents[3]
-OUT = Path('D:/MentorFlow/.local/test-tmp/offline181/rag')
 NODE = 'D:/MentorFlow/.local/node/node.exe'
 WEB = REPO / 'refactor/learning/web'
 sys.path.insert(0, str(REPO))
@@ -155,7 +154,8 @@ def drive181(root):
     return json.loads((root/'result181.json').read_text(encoding='utf-8'))
 
 
-def test_rag181_browser_offline_recovery_and_manual_question_retry():
+def test_rag181_browser_offline_recovery_and_manual_question_retry(tmp_path):
+    OUT = tmp_path / 'rag'
     OUT.mkdir(parents=True,exist_ok=True)
     for name in ('done181','recover-marker181','fail-next-send181','key-next-send181','release-stream181','result181.json','bridge-trace181.txt','sources-count181.json'):
         try:(OUT/name).unlink()

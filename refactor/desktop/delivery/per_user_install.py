@@ -36,6 +36,7 @@ from refactor.desktop.delivery.update_protocol import RecoverableError
 from refactor.desktop.delivery.install_location import existing_parent
 from refactor.desktop.delivery.install_location import low_space_message
 from refactor.desktop.delivery.install_product import configured
+from refactor.filesystem_ops import RenameStateChangedError, rename_with_retry
 
 CURRENT = 'current-release.json'
 UPDATER_RELEASE = 'updater-release.json'
@@ -227,19 +228,37 @@ def _recover_updater_swap(root, public_keys, *, snapshot=None):
                 old = historical(read(work / 'old-release.json'), public_keys)
                 verify_tree(backup if backup.exists() else active, _runtime_release(old))
             if backup.exists():
-                if active.exists(): os.replace(active, work / 'discarded')
-                os.replace(backup, active)
+                if active.exists(): _recovery_rename(root, active, work / 'discarded', component='UPDATER_RECOVER_DISCARD')
+                _recovery_rename(root, backup, active, component='UPDATER_RECOVER_RESTORE')
         elif active.exists():
             if snapshot is None:
                 new = historical(read(work / 'new-release.json'), public_keys)
                 verify_tree(active, _runtime_release(new))
-            os.replace(active, work / 'discarded')
+            _recovery_rename(root, active, work / 'discarded', component='UPDATER_RECOVER_DISCARD')
         if state['had_binding']:
             atomic(binding, read(work / 'old-release.json'))
         else:
             binding.unlink(missing_ok=True)
     # COPYING has not touched the live pair. COMMITTED keeps the new pair.
     shutil.rmtree(work)
+
+
+def _rename_directory(root, source, target, *, component):
+    def record(state, phase, count, elapsed):
+        # UserRuntime has no desktop logging configuration. Its existing
+        # short-lived maintenance writer also records retries in mentorflow.log.
+        maintenance_log(root, 'directory_rename', state=state, step=phase,
+                        count=count, elapsed_seconds=round(elapsed, 3))
+    return rename_with_retry(source, target, component=component, on_event=record)
+
+
+def _recovery_rename(root, source, target, *, component):
+    try:
+        _rename_directory(root, source, target, component=component)
+    except (OSError, RenameStateChangedError) as error:
+        maintenance_log(root, 'recovery_incomplete', step=component,
+                        code='DIRECTORY_RENAME_RETRY_EXHAUSTED')
+        raise RecoverableError('恢复没完成，下次启动再试') from error
 
 
 def replace_updater(root, release, *, public_keys=None, fault=lambda phase: None):
@@ -273,9 +292,9 @@ def replace_updater(root, release, *, public_keys=None, fault=lambda phase: None
         state['phase'] = 'PREPARED'; atomic(work / 'state.json', canonical(state))
         # Recheck just before the swap, in case an independent shortcut started.
         require_updater_stopped(root)
-        if active.exists(): os.replace(active, work / 'old')
+        if active.exists(): _rename_directory(root, active, work / 'old', component='UPDATER_SWAP_OLD')
         fault('OLD_MOVED')
-        os.replace(work / 'next', active); fault('NEW_ACTIVE')
+        _rename_directory(root, work / 'next', active, component='UPDATER_SWAP_NEW'); fault('NEW_ACTIVE')
         atomic(binding, release.envelope); fault('BOUND')
         verify_tree(active, incoming)
         state['phase'] = 'COMMITTED'; atomic(work / 'state.json', canonical(state))
@@ -651,7 +670,7 @@ def uninstall_per_user(root):
     with InstallUpdateLock(root):
         verify_tree(root/'App', release)
         quarantine = root/('uninstalled-' + uuid.uuid4().hex); quarantine.mkdir()
-        os.replace(root/'App', quarantine/'App')
+        _rename_directory(root, root/'App', quarantine/'App', component='UNINSTALL_APP')
         for name in (CURRENT, STATE, HIGHEST, JOURNAL, 'pending-update.json'):
             if (root/name).exists(): os.replace(root/name, quarantine/name)
     return dict(status='UNINSTALLED', quarantine=str(quarantine), unknown_files_preserved=True,
@@ -799,6 +818,49 @@ def _copy(source, destination, release, progress):
                 progress(min(80, int(copied * 80 / max(1, total))))
 
 
+def _restore_transaction_runtime(root, attempt, public_keys=None):
+    """Restore the runtime backup named by this transaction's fixed attempt."""
+    if attempt is None: return  # Compatibility with pre-marker transaction journals.
+    if not isinstance(attempt, str) or re.fullmatch(r'[0-9a-f]{32}', attempt) is None:
+        raise SecurityError('invalid transaction attempt')
+    stage = plain(root / ('staging-' + attempt))
+    marker = plain(stage / 'previous-updater.json')
+    if not marker.is_file(): return
+    state = strict_json(read(marker))
+    if type(state) is not dict or set(state) != {'had_binding'} or type(state['had_binding']) is not bool:
+        raise SecurityError('invalid runtime recovery marker')
+    backup = plain(stage / 'previous-updater')
+    active = plain(root / 'Updater')
+    binding_backup = plain(stage / 'previous-updater-release.json')
+    if not binding_backup.is_file():
+        raise RecoverableError('恢复没完成，下次启动再试')
+    old_release = historical(read(binding_backup), public_keys if public_keys is not None else keys())
+    old_runtime = _runtime_release(old_release)
+    if backup.exists():
+        verify_tree(backup, old_runtime)
+        failed = plain(stage / 'failed-updater')
+        if active.exists():
+            if failed.exists(): failed = plain(stage / ('failed-updater-' + uuid.uuid4().hex))
+            _recovery_rename(root, active, failed, component='UPDATER_TRANSACTION_DISCARD')
+        _recovery_rename(root, backup, active, component='UPDATER_TRANSACTION_RESTORE')
+    elif not active.exists():
+        raise RecoverableError('恢复没完成，下次启动再试')
+    else:
+        # Recovery may resume after the directory move succeeded but before
+        # restoring its binding. Only accept the signed runtime from that phase.
+        verify_tree(active, old_runtime)
+
+    binding = plain(root / UPDATER_RELEASE)
+    if state['had_binding']:
+        if not binding_backup.is_file():
+            raise RecoverableError('恢复没完成，下次启动再试')
+        atomic(binding, read(binding_backup))
+    else:
+        binding.unlink(missing_ok=True)
+    marker.unlink(missing_ok=True)
+    binding_backup.unlink(missing_ok=True)
+
+
 def recover(root, public_keys=None):
     """Recover interrupted swaps using only fixed owned paths and signed releases."""
     root = target(root); public_keys = public_keys if public_keys is not None else keys()
@@ -808,17 +870,28 @@ def recover(root, public_keys=None):
     if doc.get('schema') != 'mentorflow.per-user-transaction.v1':
         raise SecurityError('unknown transaction journal')
     if doc.get('phase') in ('HEALTHY', 'ROLLED_BACK'): return False
+    try:
+        _restore_transaction_runtime(root, doc.get('attempt'), public_keys)
+    except (OSError, RenameStateChangedError, RecoverableError) as error:
+        maintenance_log(root, 'recovery_incomplete', code='DIRECTORY_RENAME_RETRY_EXHAUSTED')
+        raise RecoverableError('恢复没完成，下次启动再试') from error
     previous = root / 'previous'
     if previous.is_dir() and (previous / 'release.json').is_file():
         old = historical(read(previous / 'release.json'), public_keys)
         # An earlier healthy update may already have left a previous version.
         # Do not confuse that older generation with THIS transaction's base.
         if old.version == doc.get('base') and digest(old.manifest_bytes) == doc.get('base_manifest'):
-            verify_tree(previous / 'App', old)
-            if (root / 'App').exists():
-                failed = root / ('failed-' + uuid.uuid4().hex)
-                os.replace(root / 'App', failed)
-            os.replace(previous / 'App', root / 'App')
+            if (previous / 'App').exists():
+                verify_tree(previous / 'App', old)
+                if (root / 'App').exists():
+                    failed = root / ('failed-' + uuid.uuid4().hex)
+                    _recovery_rename(root, root / 'App', failed, component='APP_ROLLBACK_DISCARD')
+                _recovery_rename(root, previous / 'App', root / 'App', component='APP_ROLLBACK_RESTORE')
+            else:
+                # OLD_MOVED may never have happened, or the restore rename
+                # finished before its binding write. Only the signed old tree
+                # at the live path proves either case; CURRENT can still be new.
+                verify_tree(root / 'App', old)
             atomic(root / CURRENT, old.envelope)
             atomic(journal, canonical({**doc, 'phase': 'ROLLED_BACK'}))
             return True
@@ -876,9 +949,14 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
         journal = dict(schema='mentorflow.per-user-transaction.v1', attempt=attempt, phase='PREPARING', target=release.version,
                        base=current.version if current else None, base_manifest=digest(current.manifest_bytes) if current else None)
         atomic(root / JOURNAL, canonical(journal))
+        committed = False
         def mark(phase):
-            journal['phase'] = phase; atomic(root / JOURNAL, canonical(journal)); fault(phase)
+            nonlocal committed
+            journal['phase'] = phase; atomic(root / JOURNAL, canonical(journal))
+            if phase == 'HEALTHY': committed = True
+            fault(phase)
         moved = False; base_closed = False; activated = False
+        recovery_incomplete = False
         try:
             if reuse:
                 from refactor.desktop.delivery.prepared_update import RECEIPT
@@ -888,7 +966,7 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
                 # the cache/install writer locks still own the whole operation.
                 verified_files.close()
                 move_started = time.perf_counter()
-                os.replace(source, stage / 'App')
+                _rename_directory(root, source, stage / 'App', component='APP_STAGING_MOVE')
                 maintenance_log(root, 'prepared_tree_moved', files=len(release.rows),
                                 bytes=sum(r['size'] for r in release.rows.values()),
                                 seconds=time.perf_counter()-move_started)
@@ -924,12 +1002,14 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
                 # signed App, never move unknown content out of the user's way.
                 verify_tree(root / 'App', release)
                 require_app_stopped(root)
-                os.replace(root / 'App', root / ('failed-' + uuid.uuid4().hex))
+                _rename_directory(root, root / 'App', root / ('failed-' + uuid.uuid4().hex),
+                                  component='APP_REPAIR_QUARANTINE')
             if current:
                 previous = root / 'previous'
                 if previous.exists():
                     # Retain older known versions; cleanup is a later operation.
-                    os.replace(previous, root / ('retired-' + uuid.uuid4().hex))
+                    _rename_directory(root, previous, root / ('retired-' + uuid.uuid4().hex),
+                                      component='APP_PREVIOUS_RETIRE')
                 previous.mkdir(); atomic(previous / 'release.json', current.envelope)
                 if app_path(root) == root:
                     # Migrate only through the existing transaction. Preserve
@@ -937,9 +1017,9 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
                     # paths; materialize a signed previous without deleting them.
                     _copy(root, previous / 'App', current, lambda _: None)
                 else:
-                    os.replace(root / 'App', previous / 'App')
+                    _rename_directory(root, root / 'App', previous / 'App', component='APP_PREVIOUS_SAVE')
                 moved = True; mark('OLD_MOVED')
-            os.replace(stage / 'App', root / 'App'); moved = True; activated = True
+            _rename_directory(root, stage / 'App', root / 'App', component='APP_ACTIVATE'); moved = True; activated = True
             atomic(root / CURRENT, release.envelope)
             atomic(root / STATE, canonical(dict(schema=SCHEMA, mode='per_user', app_id=configured().app_id)))
             if not (root / 'Updater').exists():
@@ -953,6 +1033,13 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             runtime_backup_ready = False
             if refresh_runtime:
                 shutil.copytree(root / 'Updater', old_runtime)
+                if old_binding is not None:
+                    atomic(stage / 'previous-updater-release.json', old_binding)
+                elif current is not None:
+                    atomic(stage / 'previous-updater-release.json', current.envelope)
+                else:
+                    atomic(stage / 'previous-updater-release.json', release.envelope)
+                atomic(stage / 'previous-updater.json', canonical({'had_binding': old_binding is not None}))
                 runtime_backup_ready = True
             runtime = replace_updater(root, release, public_keys=public_keys) if refresh_runtime else None
             from refactor.desktop.delivery.startup_integrity import remember_verified, verified_stat_snapshot
@@ -961,6 +1048,9 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             proof = (health or launch_health)(root, release)
             if not isinstance(proof, dict) or proof.get('ready') is not True:
                 raise RecoverableError('new version did not become ready')
+            successful_result = dict(status='HEALTHY', version=release.version, health=proof,
+                                     install_uac_count=0, update_uac_count=0,
+                                     **({'updater': runtime} if runtime else {}))
             mark('HEALTHY'); progress(100)
             try:
                 remember_verified(root, release, stats=verified_stats)
@@ -972,35 +1062,44 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             if old_runtime.exists():
                 try: shutil.rmtree(old_runtime)
                 except OSError: pass  # committed install; cleanup cannot undo health
-            return dict(status='HEALTHY', version=release.version, health=proof,
-                        install_uac_count=0, update_uac_count=0, **({'updater': runtime} if runtime else {}))
-        except BaseException:
-            if refresh_runtime and locals().get('runtime_backup_ready'):
-                failed_runtime = stage / 'failed-updater'
-                os.replace(root / 'Updater', failed_runtime)
-                os.replace(old_runtime, root / 'Updater')
-                if old_binding is not None: atomic(root / UPDATER_RELEASE, old_binding)
-                else: (root / UPDATER_RELEASE).unlink(missing_ok=True)
-            if current and moved:
-                recover(root, public_keys)
-                # A bad target must not leave the user with a closed application.
-                recovery = (health or launch_health)(root, current)
-                if not isinstance(recovery, dict) or recovery.get('ready') is not True:
-                    raise RecoverableError('previous restored but health not confirmed')
-                atomic(root / 'last-recovery.json', canonical(dict(attempt=journal['attempt'], version=current.version, health=recovery)))
-            elif current:
-                atomic(root / JOURNAL, canonical({**journal, 'phase': 'ROLLED_BACK'}))
-                from refactor.desktop.delivery.per_user_update_core import unsafe_teardown
-                if base_closed and not unsafe_teardown(): (health or launch_health)(root, current)
-            else:
-                # Never publish a usable installation state after failed first
-                # health. Preserve only this attempt's generated files for repair.
-                if activated and (root / 'App').exists():
-                    os.replace(root / 'App', root / ('failed-' + uuid.uuid4().hex))
-                if activated:
-                    (root / STATE).unlink(missing_ok=True)
-                    (root / CURRENT).unlink(missing_ok=True)
-                atomic(root / JOURNAL, canonical({**journal, 'phase': 'INITIAL_FAILED'}))
+            return successful_result
+        except BaseException as operation_error:
+            if committed:
+                # Visible health and the durable commit already agree. A late
+                # progress/cancellation/diagnostic failure cannot roll back just
+                # the runtime while recover() correctly keeps the healthy App.
+                maintenance_log(root, 'healthy_post_commit_failure',
+                                error_type=type(operation_error).__name__)
+                if not isinstance(operation_error, Exception): raise
+                return successful_result
+            try:
+                if refresh_runtime and locals().get('runtime_backup_ready'):
+                    _restore_transaction_runtime(root, attempt, public_keys)
+                if current and moved:
+                    recover(root, public_keys)
+                    # A bad target must not leave the user with a closed application.
+                    recovery = (health or launch_health)(root, current)
+                    if not isinstance(recovery, dict) or recovery.get('ready') is not True:
+                        raise RecoverableError('previous restored but health not confirmed')
+                    atomic(root / 'last-recovery.json', canonical(dict(attempt=journal['attempt'], version=current.version, health=recovery)))
+                elif current:
+                    if isinstance(operation_error, (OSError, RenameStateChangedError)):
+                        raise RecoverableError('恢复没完成，下次启动再试') from operation_error
+                    atomic(root / JOURNAL, canonical({**journal, 'phase': 'ROLLED_BACK'}))
+                    from refactor.desktop.delivery.per_user_update_core import unsafe_teardown
+                    if base_closed and not unsafe_teardown(): (health or launch_health)(root, current)
+                else:
+                    if activated and (root / 'App').exists():
+                        _recovery_rename(root, root / 'App', root / ('failed-' + uuid.uuid4().hex),
+                                          component='APP_INITIAL_QUARANTINE')
+                    if activated:
+                        (root / STATE).unlink(missing_ok=True)
+                        (root / CURRENT).unlink(missing_ok=True)
+                    atomic(root / JOURNAL, canonical({**journal, 'phase': 'INITIAL_FAILED'}))
+            except (OSError, RenameStateChangedError, RecoverableError) as recovery_error:
+                recovery_incomplete = True
+                maintenance_log(root, 'recovery_incomplete', code='DIRECTORY_RENAME_RETRY_EXHAUSTED')
+                raise RecoverableError('恢复没完成，下次启动再试') from recovery_error
             raise
 
         finally:
@@ -1009,10 +1108,10 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             # content just because the App could not close.
             verified_files.close()
             if reuse and not activated and (stage / 'App').exists() and not source.exists():
-                os.replace(stage / 'App', source)
+                _recovery_rename(root, stage / 'App', source, component='APP_STAGING_RESTORE')
             # This attempt's copy is never needed for resume; the independently
             # verified download remains outside the installation until applied.
-            if stage.exists() and not (stage / 'previous-updater').exists():
+            if stage.exists() and not recovery_incomplete and not (stage / 'previous-updater').exists():
                 _remove_program_tree(root, stage)
 
 
