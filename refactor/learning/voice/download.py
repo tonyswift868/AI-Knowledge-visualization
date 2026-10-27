@@ -26,6 +26,8 @@ import urllib.parse
 import urllib.request
 import zipfile
 
+from refactor.filesystem_ops import RenameStateChangedError, rename_with_retry
+
 CHUNK_SIZE = 256 * 1024
 _LOCKS: dict[str, threading.Lock] = {}
 _LOCKS_GUARD = threading.Lock()
@@ -41,9 +43,10 @@ def filesystem_path(path: Path) -> Path:
 
 
 class DownloadError(RuntimeError):
-    """Stable Chinese codes: 网络失败 / 校验失败 / 磁盘不足 / 已取消.
+    """Stable Chinese codes include 网络失败 / 校验失败 / 磁盘不足 / 已取消.
 
-    下载忙 and 安装失败 describe local concurrency/permission failures.
+    下载忙 and 安装失败 describe local concurrency/permission failures;
+    恢复未完成 means the previous complete asset set remains for next launch.
     """
     def __init__(self, code: str, message: str):
         self.code, self.message = code, message
@@ -386,13 +389,20 @@ class AssetDownloader:
         # cannot replace nonempty directories: retain the old set for rollback.
         had_old = self.path.exists()
         if had_old:
-            os.replace(self.path, self.backup)
+            rename_with_retry(self.path, self.backup, component="VOICE_PUBLISH_BACKUP")
         try:
-            os.replace(ready, self.path)
-        except BaseException:
+            rename_with_retry(ready, self.path, component="VOICE_PUBLISH_READY")
+        except BaseException as publish_error:
             if had_old:
-                os.replace(self.backup, self.path)
-            raise
+                try:
+                    rename_with_retry(self.backup, self.path, component="VOICE_PUBLISH_ROLLBACK")
+                except BaseException as restore_error:
+                    # Keep both the complete backup and prepared candidate. A
+                    # later explicit download can restore the backup safely.
+                    raise DownloadError(
+                        "恢复未完成", "资源替换失败，旧资源仍保留；恢复没完成，下次启动再试。"
+                    ) from restore_error
+            raise publish_error
         if had_old:
             shutil.rmtree(filesystem_path(self.backup))
 
@@ -406,8 +416,28 @@ class AssetDownloader:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             if self.backup.exists():
                 if not self.path.exists():
-                    os.replace(self.backup, self.path)  # Recover an interrupted replacement.
+                    try:
+                        rename_with_retry(self.backup, self.path, component="VOICE_RESTORE_BACKUP")
+                    except (OSError, RenameStateChangedError) as exc:
+                        raise DownloadError(
+                            "恢复未完成", "语音资源恢复没完成，下次启动再试。"
+                        ) from exc
                 else:
+                    # A backup and active path can coexist after an interrupted
+                    # publish. Delete the backup only when the active tree has
+                    # both its expected receipt and every verified asset.
+                    current_is_complete = self.status()["installed"]
+                    if current_is_complete:
+                        try:
+                            self.verify(cancel=cancel)
+                        except DownloadError as exc:
+                            if exc.code == "已取消":
+                                raise
+                            current_is_complete = False
+                    if not current_is_complete:
+                        raise DownloadError(
+                            "恢复未完成", "当前语音资源未通过完整校验，旧备份已保留；恢复没完成，下次启动再试。"
+                        )
                     shutil.rmtree(filesystem_path(self.backup))
             if self.status()["installed"]:
                 try:
@@ -443,7 +473,7 @@ class AssetDownloader:
             self._clear_staging()
             progress(self.size_bytes, self.size_bytes)
         except DownloadError as exc:
-            if exc.code != "网络失败" or not self.keep_partial_on_network_error:
+            if exc.code != "恢复未完成" and (exc.code != "网络失败" or not self.keep_partial_on_network_error):
                 self._clear_staging()
             raise
         except (zipfile.BadZipFile, tarfile.TarError, EOFError) as exc:

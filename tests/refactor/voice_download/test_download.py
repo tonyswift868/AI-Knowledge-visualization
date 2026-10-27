@@ -211,14 +211,14 @@ def test_publish_failure_rolls_back_entire_old_directory(tmp_path, server, monke
     manager = AssetDownloader(tmp_path / "models", (raw(server),))
     manager.path.mkdir()
     (manager.path / "old").write_text("previous complete set")
-    original = module.os.replace
-    def replace(source, destination):
+    original = module.rename_with_retry
+    def replace(source, destination, **kwargs):
         if Path(source).name == "ready":
             assert (manager.backup / "old").read_text() == "previous complete set"
             assert (Path(source) / "installed.json").is_file()
             raise PermissionError("explicit simulated publish failure")
-        return original(source, destination)
-    monkeypatch.setattr(module.os, "replace", replace)
+        return original(source, destination, **kwargs)
+    monkeypatch.setattr(module, "rename_with_retry", replace)
     with pytest.raises(DownloadError):
         manager.download(lambda *_: None, threading.Event())
     assert (manager.path / "old").read_text() == "previous complete set"
