@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from threading import Event, Lock
+from uuid import uuid4
 
 pytest.importorskip('PySide6')
 from PySide6.QtCore import QSettings
@@ -54,7 +55,10 @@ def make_session(tmp_path):
     settings = QSettings(str(tmp_path / 'accounts.ini'), QSettings.IniFormat)
     vault = Vault()
     session = LoginSession(AccountPreferenceStore(settings), credentials=vault, passwords=Passwords())
-    identity = AccountIdentity('https://identity.example.test/realms/mf', 'subject-181', 'Test user',
+    # The OS mutex is deliberately shared by every process for one identity.
+    # Give each test run a separate synthetic subject so parallel pytest runs
+    # on the same machine never contend for a single fixture account.
+    identity = AccountIdentity('https://identity.example.test/realms/mf', f'subject-181-{uuid4().hex}', 'Test user',
                                'org-1', 'workspace-2')
     result = AccountLoginResult(identity, 'access-secret', 'refresh-secret', {'role': 'LEARNER'})
     session.accept(result, remember=True, automatic=False, remember_password=False)
