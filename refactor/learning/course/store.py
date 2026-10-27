@@ -2232,6 +2232,27 @@ class CourseStore:
         if hashlib.sha256(data).hexdigest() != sha256: raise StoreError('CORRUPT_ORIGINAL')
         return data
 
+    def pending_count(self) -> int:
+        """Count the live outbox without loading student record payloads."""
+        with self._lock:
+            return self._db.execute('SELECT count(*) FROM _records WHERE pending=1').fetchone()[0]
+
+    def get_sync_success_at(self):
+        with self._lock:
+            row = self._db.execute("SELECT value FROM _meta WHERE key='sync_success_at'").fetchone()
+            if row is None:
+                return None
+            try:
+                return _at(row[0])
+            except (ValueError, StoreError):
+                return None
+
+    @_atomic
+    def set_sync_success_at(self, value):
+        # Device-local status only: no schema change, record revision or upload.
+        self._db.execute("INSERT INTO _meta(key,value) VALUES('sync_success_at',?) "
+                         "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (_at(value),))
+
     def pending_records(self, limit) -> list[SyncRecord]:
         _number(limit)
         with self._lock:

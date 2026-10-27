@@ -6,7 +6,7 @@ be rewritten to emit signals. notify_local_change() is an optional fast hook.
 The injected store, transport and SessionGuard remain owned by the caller.
 """
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from threading import Event
 import time
 
@@ -25,12 +25,14 @@ class CourseSyncService(QObject):
 
     def __init__(self, record_store, transport, session_guard=None, parent=None, *,
                  clock=time.monotonic, wall_clock=datetime.now, auto_start=True,
-                 executor=None, sync_factory=CourseSync):
+                 executor=None, sync_factory=CourseSync, session_ready=None):
         super().__init__(parent)
         self._store = record_store
         self._sync = sync_factory(record_store, transport)
         self._guard = session_guard
         self._clock, self._wall_clock = clock, wall_clock
+        self._session_ready = session_ready
+        self._last_error = None
         self._executor = executor or ThreadPoolExecutor(max_workers=1, thread_name_prefix="mf-course-sync")
         self._future = None
         self._cancel = Event()
@@ -39,7 +41,14 @@ class CourseSyncService(QObject):
         self._due = self._probe_at = float("inf")
         self._local_due = None
         self._retry_at = 0
-        self._status = dict(state='failed', at=None, message='同步尚未开始。')
+        previous = getattr(record_store, 'get_sync_success_at', None)
+        try:
+            last_success = previous() if callable(previous) else None
+        except Exception:
+            last_success = None
+        if not isinstance(last_success, str):
+            last_success = None
+        self._status = dict(state='waiting', at=last_success, message='正在等待账号连接…')
         self._timer = QTimer(self)
         # Future completion must not add two one-second polling waits to the
         # three-second debounce. Store probes remain spaced about one second.
@@ -55,6 +64,9 @@ class CourseSyncService(QObject):
     def start(self):
         """Start immediately after login, or resume after an explicit re-login."""
         if self._closed or self._active:
+            return
+        if self._session_ready is not None and not self._session_ready():
+            self._publish('waiting', '正在等待账号连接…')
             return
         self._active = True
         self._epoch += 1
@@ -92,15 +104,51 @@ class CourseSyncService(QObject):
 
     def status(self):
         """Stable UI contract; credentials and transport details never enter it."""
-        return dict(self._status)
+        status = dict(self._status)
+        try:
+            count = getattr(self._store, 'pending_count', None)
+            status['pending'] = count() if callable(count) else len(self._store.pending_records(2**31-1))
+            if type(status['pending']) is not int or status['pending'] < 0:
+                status['pending'] = None
+        except Exception:
+            status['pending'] = None  # Unavailable is not the same as an empty queue.
+        remaining = max(0, self._retry_at - self._clock()) if self._active else 0
+        status['retry_at'] = ((self._wall_clock().astimezone() + timedelta(seconds=remaining)).isoformat()
+                              if remaining else None)
+        status['last_error'] = dict(self._last_error) if self._last_error else None
+        if status['state'] == 'synced' and status['pending']:
+            status.update(state='syncing', message='本机有新的学习记录等待同步')
+        return status
+
+    def _remember_error(self, code):
+        if code in TRANSIENT_SESSION_CODES:
+            message = ('账号会话暂未就绪，正在等待连接恢复。' if code == 'SESSION_UNAVAILABLE'
+                       else '网络连接暂时不可用，将自动重试。')
+        else:
+            message = {
+                'REAUTH_REQUIRED': '账号验证未通过，需要重新登录。',
+                'ENTERPRISE_SESSION_REAUTH_REQUIRED': '账号验证未通过，需要重新登录。',
+                'NATIVE_SESSION_SUPERSEDED': SUPERSEDED_MESSAGE,
+                'SYNC_RESPONSE_INVALID': '服务器的同步回执无法确认，本机记录仍保留。',
+                'SYNC_RECORD_TOO_LARGE': '有一条记录过大，尚未同步。',
+            }.get(code, '学习记录暂未同步，将自动重试；本机记录仍保留。')
+        self._last_error = dict(code=code, message=message, at=self._wall_clock().astimezone().isoformat())
 
     def _publish(self, state, message, *, at=None, merged_conflicts=0):
-        event('sync', state=state)
+        if state == 'synced' and at is not None:
+            save = getattr(self._store, 'set_sync_success_at', None)
+            if callable(save):
+                try:
+                    save(at)
+                except Exception:
+                    event('sync', state='DETAILS_UNAVAILABLE', code='SYNC_STATUS_SAVE_FAILED')
         self._status = dict(state=state, at=at or self._status['at'], message=message)
         if merged_conflicts:
             self._status['merged_conflicts'] = merged_conflicts
-        self.status_changed.emit(message)
-        self.state_changed.emit(self.status())
+        status = self.status()
+        event('sync', state=status['state'])
+        self.status_changed.emit(status['message'])
+        self.state_changed.emit(status)
 
     def sync_now(self):
         if self._active and not self._closed:
@@ -121,19 +169,22 @@ class CourseSyncService(QObject):
     @Slot()
     def _superseded(self):
         if self._active:
+            self._remember_error('NATIVE_SESSION_SUPERSEDED')
             self.stop()
             self._publish('superseded', SUPERSEDED_MESSAGE)
 
     @Slot()
     def _reauth(self):
         if self._active:
+            self._remember_error('REAUTH_REQUIRED')
             self.stop()
             self._publish('reauth', "需要重新登录")
 
     def _finish(self, kind, result, error):
         now = self._clock()
         if error is not None:
-            code = getattr(error, "code", "")
+            code = getattr(error, "code", "") or ('SYNC_UNAVAILABLE' if isinstance(error, OSError) else 'SYNC_FAILED')
+            self._remember_error(code)
             if code == "NATIVE_SESSION_SUPERSEDED":
                 self._superseded()
                 if self._guard is not None:
@@ -149,7 +200,7 @@ class CourseSyncService(QObject):
             self._retry_at = now + min(30 * 2 ** (self._failures - 1), 300)
             self._due = self._retry_at
             event('sync', code=code, exc_info=(type(error), error, error.__traceback__))
-            self._publish('failed', CONNECTION_UNSTABLE if code in TRANSIENT_SESSION_CODES else "同步失败，可重试")
+            self._publish('retrying', '正在重试')
         elif kind == "probe":
             if result:
                 self._on_change()
@@ -195,7 +246,7 @@ class CourseSyncService(QObject):
         if now >= due:
             self._local_due = None
             self._due = float("inf")
-            self._publish('syncing', "同步中")
+            self._publish('retrying' if self._failures else 'syncing', '正在重试' if self._failures else '同步中')
             future = self._executor.submit(self._sync.sync, cancel=self._cancel)
             self._future = (future, "sync", self._epoch)
         elif now >= self._probe_at and self._local_due is None:

@@ -61,9 +61,13 @@ class DiagnosticFormatter(logging.Formatter):
         event = getattr(record, 'mf_event', None)
         if event in _EVENTS:
             payload['event'] = event
-            for field in ('state', 'code', 'purpose', 'reason', 'window', 'field'):
+            for field in ('state', 'code', 'purpose', 'reason', 'window', 'field', 'phase', 'error_type'):
                 if field in record.mf_fields:
                     payload[field] = _label(record.mf_fields[field])
+            for field in ('request_id', 'client_request_id', 'response_request_id', 'operation_id'):
+                value = record.mf_fields.get(field)
+                if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', value):
+                    payload[field] = value
             elapsed = record.mf_fields.get('elapsed_seconds')
             if isinstance(elapsed, (int, float)) and 0 <= elapsed < float('inf'):
                 payload['elapsed_seconds'] = round(elapsed, 3)

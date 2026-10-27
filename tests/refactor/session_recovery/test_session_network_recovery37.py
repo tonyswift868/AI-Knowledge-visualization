@@ -5,7 +5,7 @@ import hashlib
 import logging
 import time
 from pathlib import Path
-from threading import Event
+from threading import Event, Lock
 from types import SimpleNamespace as NS, MethodType
 from unittest.mock import Mock
 
@@ -46,8 +46,10 @@ def login():
 
 def shell_fixture(qapp):
     current = login()
+    refresh_done = Event(); refresh_done.set()
     shell = NS(app=qapp, home=Mock(), gate=LoginGateWindow(), _closing=False, _login_result=current,
                _feature_session_confirmed=True, _session_refresh_degraded=False, _session_refresh_busy=False,
+               _session_refresh_wait_lock=Lock(), _session_refresh_done=refresh_done,
                _account_settings=None, _closure=None, _session_timer=Mock(), _session_epoch=4,
                _logout_pending=False, _switch_pending=False, _confirmed_role_account_id=ACCOUNT,
                _confirmed_server_role='LEARNER', _session_credentials=Mock())
@@ -58,6 +60,8 @@ def shell_fixture(qapp):
                        registry=NS(get=lambda account: {'remember_session': False}))
     shell._confirmed_role_from_result = lambda result: 'LEARNER'
     shell._hide_login_windows = MethodType(AccountShell._hide_login_windows, shell)
+    shell._start_session_refresh_waiters = MethodType(AccountShell._start_session_refresh_waiters, shell)
+    shell._finish_session_refresh_waiters = MethodType(AccountShell._finish_session_refresh_waiters, shell)
     return shell
 
 
@@ -85,23 +89,32 @@ def test_refresh_timeout_missing_feature_session_recovers_without_login(qapp):
             return {'ok': True}
         def cancel(self): pass
         def close(self): pass
+    def session_ready():
+        try:
+            source._session()
+            return True
+        except PlanError as exc:
+            if exc.code == 'SESSION_UNAVAILABLE':
+                return False
+            raise
     service = CourseSyncService(NS(pending_records=lambda limit: []), None, auto_start=False,
-                                clock=lambda: clock.now, executor=Immediate(), sync_factory=Engine)
+                                clock=lambda: clock.now, executor=Immediate(), sync_factory=Engine,
+                                session_ready=session_ready)
     try:
         AccountShell._retry_session_refresh(shell)
         service.start(); service._tick()
-        assert service._active and service.status()['state'] == 'failed'
-        assert service.status()['message'] == CONNECTION_UNSTABLE and service._retry_at == 30
+        assert not service._active and service.status()['state'] == 'waiting'
+        assert service._sync.calls == 0 and service.status()['pending'] == 0
         shell.home.set_session_notice.assert_called_with(CONNECTION_UNSTABLE, show_verify=False)
         assert not shell.gate.isVisible()
         shell._session_credentials.load_oauth_tokens.side_effect = None
         shell._session_credentials.load_oauth_tokens.return_value = ('synthetic-access', 'synthetic-refresh')
         AccountShell._accept_session_refresh(shell, shell._login_result, login())
         assert not shell._session_refresh_degraded
-        clock.now = 29; service._tick(); assert service._sync.calls == 1
-        clock.now = 30; service._tick(); service._tick()
+        service.start()  # The recovered-session notification restarts the waiting service.
+        service._tick()
         assert service.status()['state'] == 'synced' and service._active
-        assert service._sync.calls == 2 and service._failures == 0
+        assert service._sync.calls == 1 and service._failures == 0
     finally:
         service.dispose(); source.close(); shell.gate.deleteLater()
 
@@ -222,7 +235,8 @@ def test_server_refusal_not_replayed_and_cancel_does_not_replay(qapp):
 
 def test_window_transient_notice_does_not_pause_and_clears_on_sync(qapp):
     home = NS(session_notice=None, set_session_notice=Mock(), clear_session_notice=Mock())
-    owner = NS(_closed=False, _paused=False, guard=Mock(), window=home, bridge=Mock())
+    owner = NS(_closed=False, _paused=False, _sync_notice=CONNECTION_UNSTABLE,
+               guard=Mock(), window=home, bridge=Mock())
     WindowSync.note_error(owner, 'SESSION_UNAVAILABLE')
     owner.guard.note_error.assert_called_once_with('SESSION_UNAVAILABLE')
     home.set_session_notice.assert_called_with(CONNECTION_UNSTABLE, show_verify=False)

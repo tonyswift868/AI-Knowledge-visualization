@@ -125,8 +125,9 @@ def test_sync95_partial_failure_backoff_and_progress_are_not_round_failure(windo
     sent.clear(); win.sync_now()
     spin(qapp, win, lambda: win._sync.service._future is None and '待重试' in win.sync_status()['message'])
     spin(qapp, win, lambda: any(s.get('completed') == 1 and s.get('total') == 2 for s in states(sent)))
-    assert win.sync_status()['state'] == 'syncing'
+    assert win.sync_status()['state'] == 'retrying'
     assert not any(s['state'] == 'failed' for s in states(sent))
+    assert any(s['state'] == 'retrying' for s in states(sent))
     assert any(s.get('completed') == 1 and s.get('total') == 2 for s in states(sent)), states(sent)
     assert len(win.services.store.pending_records(100)) == 1
     assert win._sync.service._retry_at == 30
@@ -149,7 +150,9 @@ def test_sync95_stale_progress_cannot_revive_stopped_session(window, qapp):
 
 def test_bind_immediate_sync_local_debounce_manual_and_fresh_token(window, qapp):
     win, server, transport, login, clock, mode, requests, sent = window
-    assert states(sent)[0] == dict(state='syncing', at=None, message='同步中')
+    initial = states(sent)[0]
+    assert initial['state'] == 'syncing' and initial['at'] is None and initial['message'] == '同步中'
+    assert initial['pending'] >= 0 and initial['retry_at'] is None and initial['last_error'] is None
     first = win.sync_status()
     assert first['state'] == 'synced' and datetime.fromisoformat(first['at']).tzinfo
     assert win._sync.guard._timer.interval() == 60_000
@@ -237,7 +240,7 @@ def test_reauth_and_network_failure_status_keep_last_success(window, qapp):
     last = win.sync_status()['at']
     server.before = lambda req: httpx.Response(503)
     win.sync_now()
-    spin(qapp, win, lambda: win.sync_status()['state'] == 'failed')
+    spin(qapp, win, lambda: win.sync_status()['state'] == 'retrying')
     assert win.sync_status()['at'] == last
     calls = len(requests)
     clock.value = 29; win._sync.service._tick()
@@ -248,7 +251,7 @@ def test_reauth_and_network_failure_status_keep_last_success(window, qapp):
     assert win.session_notice['show_verify'] and not win._sync.service._active
     assert win.sync_status()['at'] == last
     qapp.processEvents()  # bridge notifications are queued onto Qt
-    assert 'failed' in {s['state'] for s in states(sent)} and 'reauth' in {s['state'] for s in states(sent)}
+    assert 'retrying' in {s['state'] for s in states(sent)} and 'reauth' in {s['state'] for s in states(sent)}
 
 
 @pytest.mark.parametrize('action', ['logout', 'switch'])
@@ -304,8 +307,8 @@ def test_guarded_provider_rejects_another_account_before_any_http(window, qapp):
     win.services.store.create_chat_session('当前账号数据', session_id='pending', created_at=NOW)
     calls = len(requests)
     assert win.rebind_feature_context(session_provider=lambda: other, api_base_url='https://api.invalid', ca_bundle=certifi.where())
-    spin(qapp, win, lambda: win.sync_status()['state'] == 'failed')
-    assert win._sync.service._active and not win.session_notice['show_verify']
+    spin(qapp, win, lambda: win.sync_status()['state'] == 'waiting')
+    assert not win._sync.service._active and win.session_notice is None
     assert len(requests) == calls and win.services.store.pending_records(100)
 
 

@@ -65,7 +65,9 @@ def _data(cases):
         source_modules = [{"key": f"m{i + 1}", "title": f"模块{i + 1:02}｜示例知识主题", "summary": "理解资料里的主要概念和设计取舍。",
                            "refs": [f"s1.{i + 1}"], "chapters": [f"第 {i + 1} 章"]} for i in range(14)]
         raw = {"version": 1, "plan_id": "graph198-test", "phase": "material_preview", "name": "14 模块图谱测试",
-               "goal": "按资料理解 14 个模块", "form": None, "messages": [], "sources": [], "outline": None,
+               "goal": "按资料理解 14 个模块", "form": None,
+               "messages": [{"id": "graph198-structure", "role": "ai", "kind": "material_preview",
+                             "text": "已按资料整理结构。", "version": 1}], "sources": [], "outline": None,
                "generation": {}, "material_structure": {"version": 1, "modules": source_modules, "missing": []}}
     modules = _make_graph_modules(raw)
     # Step 3 is the copied draft byte-for-byte as JSON. Only the step-4 outline

@@ -78,6 +78,71 @@ function AccountMenu() {
   )
 }
 
+function syncTime(value: string | null | undefined): string {
+  if (!value) return "暂无记录"
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? "暂无记录" : date.toLocaleString()
+}
+
+function SyncStatusChip({status, open, onOpenChange}: {
+  status: NonNullable<ReturnType<typeof useApp.getState>['sync']>
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const [retrying, setRetrying] = React.useState(false)
+  const ref = React.useRef<HTMLDivElement>(null)
+  const needsAuth = status.state === "reauth" || status.state === "superseded"
+  const retryTime = status.retry_at ? new Date(status.retry_at) : null
+  const retryDue = retryTime !== null && !Number.isNaN(retryTime.getTime()) && retryTime.getTime() <= Date.now()
+  const label = status.state === "waiting" ? "等待账号连接"
+    : status.state === "retrying" ? "正在重试"
+    : status.state === "syncing" ? (status.message || "正在同步")
+    : status.state === "failed" ? "同步失败"
+    : status.state === "reauth" ? "需要重新登录"
+    : status.state === "superseded" ? "已在别处登录"
+    : status.at ? `已同步 ${new Date(status.at).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}` : "已同步"
+  React.useEffect(() => {
+    if (!open) return
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") onOpenChange(false) }
+    const outside = (event: MouseEvent) => { if (!ref.current?.contains(event.target as Node)) onOpenChange(false) }
+    document.addEventListener("keydown", escape)
+    document.addEventListener("mousedown", outside)
+    return () => { document.removeEventListener("keydown", escape); document.removeEventListener("mousedown", outside) }
+  }, [open, onOpenChange])
+  const retry = async () => {
+    if (needsAuth || retrying) return
+    setRetrying(true)
+    try { useApp.getState().set({sync: await call("sync.now")}) }
+    catch { /* The sync_status event remains the source of truth on failures. */ }
+    finally { setRetrying(false) }
+  }
+  return <div className="sync-status-wrap" ref={ref}>
+    <button className={`chip sync ${status.state}`} title="查看同步详情" aria-expanded={open} aria-controls="sync-status-details"
+      aria-live="polite" aria-busy={status.state === "syncing" || status.state === "retrying" || status.state === "waiting"}
+      onClick={() => onOpenChange(!open)}>
+      {status.state === "synced" || status.state === "syncing" ? <Cloud /> : <CloudOff />}
+      {label}
+    </button>
+    {open && <section id="sync-status-details" className="sync-status-details" role="region" aria-label="同步详情">
+      <header><b>同步详情</b><button className="sync-detail-close" aria-label="关闭同步详情" onClick={() => onOpenChange(false)}>×</button></header>
+      <dl>
+        <div><dt>上次同步成功</dt><dd>{syncTime(status.at)}</dd></div>
+        <div><dt>待同步记录</dt><dd>{status.pending == null ? "未知" : `${status.pending} 条`}</dd></div>
+        <div><dt>下次重试</dt><dd>{status.state === "retrying" && (!retryTime || Number.isNaN(retryTime.getTime()) || retryDue)
+          ? "正在尝试" : syncTime(status.retry_at)}</dd></div>
+        <div className="sync-detail-error"><dt>最近一次错误</dt><dd>{status.last_error
+          ? <>{status.last_error.message}<small>{syncTime(status.last_error.at)}</small></>
+          : status.state === "failed" ? status.message : "暂无错误记录"}</dd></div>
+      </dl>
+      {status.state === "synced" && status.last_error && <p className="sync-recovered">已恢复</p>}
+      {needsAuth ? <p className="sync-auth-note">{status.state === "reauth" ? "请重新登录后再同步。" : "账号已在其他位置登录，请切回此设备后再同步。"}</p>
+        : <button className="btn primary sync-detail-retry" disabled={retrying || status.state === "syncing"} onClick={() => void retry()}>
+          {retrying ? "正在发起…" : "立即重试"}
+        </button>}
+    </section>}
+  </div>
+}
+
 export function App() {
   const s = useApp()
   const update = useUpdates()
@@ -85,6 +150,7 @@ export function App() {
   const [bootstrapError, setBootstrapError] = React.useState('')
   const [bootstrapAttempt, bootstrapRetry] = React.useReducer(n => n+1, 0)
   const [modelFaultOpen, setModelFaultOpen] = React.useState(false)
+  const [syncDetailsOpen, setSyncDetailsOpen] = React.useState(false)
   const modelScopeEpoch = React.useRef(0)
   const modelStatusRevision = React.useRef(0)
   const currentModelFault = s.modelStatus.state === 'error' ? s.modelStatus.fault : undefined
@@ -192,15 +258,7 @@ export function App() {
                 currentModelFault ? (s.set({ modelFault: currentModelFault }), setModelFaultOpen(open => !open)) :
                 s.toast('info',s.modelStatus.state === 'ok' ? '最近一次模型请求正常。' : '还没有模型请求结果，可到设置测试连接。')}>
               <span className="dot"/>{s.modelStatus.short}</button>
-            {s.ready && s.sync && (
-              <button className={`chip sync ${s.sync.state}`} title={s.sync.state === "failed" ? "点一下重试" : "点一下立即同步"}
-                      onClick={() => call("sync.now").then((d) => s.set({ sync: d })).catch(() => {})}>
-                {s.sync.state === "syncing" || s.sync.state === "synced" ? <Cloud /> : <CloudOff />}
-                {s.sync.state === "synced" && s.sync.at ? `已同步 ${new Date(s.sync.at).toTimeString().slice(0, 5)}`
-                  : s.sync.state === 'syncing' ? s.sync.message
-                  : { failed: "同步失败", reauth: "需要重新登录", superseded: "已在别处登录", synced: "已同步" }[s.sync.state]}
-              </button>
-            )}
+            {s.ready && s.sync && <SyncStatusChip status={s.sync} open={syncDetailsOpen} onOpenChange={setSyncDetailsOpen} />}
             <button className="icon-btn" aria-label={s.fullscreen ? "退出全屏" : "全屏"} title="全屏（F11）"
                     onClick={() => call("app.window", { action: "toggle_fullscreen" })}>
               {s.fullscreen ? <Minimize2 /> : <Maximize2 />}

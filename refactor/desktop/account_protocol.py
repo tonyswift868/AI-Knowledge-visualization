@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import re
+from uuid import uuid4
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -22,6 +24,16 @@ class AccountError(RuntimeError):
         self.code = code
         self.message = message
         super().__init__(message)
+
+
+def _attach_request_diagnostic(error, error_type, client_request_id, response=None):
+    """Attach bounded correlation metadata without retaining request/response text."""
+    error.diagnostic_error_type = error_type
+    error.client_request_id = client_request_id
+    value = response.headers.get('X-Request-ID', '') if response is not None else ''
+    error.response_request_id = (value if isinstance(value, str)
+                                 and re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', value) else '')
+    return error
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +151,10 @@ class AccountStateClient:
             await self._http.aclose()
 
     async def _state_request(self, path, access_token, *, selected=None, initialize=False):
+        client_request_id = uuid4().hex
+        response = None
         headers = {'Accept': 'application/json', 'Authorization': f'Bearer {access_token}'}
+        headers['X-Request-ID'] = client_request_id
         if selected is not None:
             headers['X-MentorFlow-Organization-ID'] = selected['organization_id']
             headers['X-MentorFlow-Workspace-ID'] = selected['id']
@@ -149,10 +164,18 @@ class AccountStateClient:
                 headers=headers, **({'json': {}} if initialize else {}), follow_redirects=False,
             )
             if response.status_code == 401:
-                raise AccountError('ENTERPRISE_SESSION_REAUTH_REQUIRED', '登录已失效或账号无权访问，请重新登录。')
+                error = AccountError('ENTERPRISE_SESSION_REAUTH_REQUIRED', '登录已失效或账号无权访问，请重新登录。')
+                raise _attach_request_diagnostic(error, 'HTTPStatusError', client_request_id, response)
             response.raise_for_status()
-        except httpx.HTTPError:
-            raise AccountError('ENTERPRISE_ACCOUNT_STATE_UNAVAILABLE', '暂时无法确认账号身份，请稍后重试。') from None
+        except AccountError as exc:
+            if not hasattr(exc, 'client_request_id'):
+                _attach_request_diagnostic(exc, 'AccountError', client_request_id, response)
+            raise
+        except httpx.HTTPError as exc:
+            error = AccountError('ENTERPRISE_ACCOUNT_STATE_UNAVAILABLE', '暂时无法确认账号身份，请稍后重试。')
+            _attach_request_diagnostic(error, type(exc).__name__, client_request_id,
+                                       getattr(exc, 'response', None) or response)
+            raise error from None
         return _json_object(response, '账号服务')
 
     async def _discover_workspace(self, access_token):

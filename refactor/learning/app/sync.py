@@ -56,7 +56,8 @@ class _WindowCourseSyncService(CourseSyncService):
                 message += f"，{progress['failed']} 条待重试"
             values = dict(phase='upload', completed=completed, total=total, failed=progress['failed'],
                           show_progress=progress['total'] > 0)
-        self._status = dict(state='syncing', at=self._status['at'], message=message, **values)
+        self._status = dict(state='retrying' if self._failures else 'syncing',
+                            at=self._status['at'], message=message, **values)
         self.status_changed.emit(message)
         self.state_changed.emit(self.status())
 
@@ -64,7 +65,7 @@ class _WindowCourseSyncService(CourseSyncService):
         status = super().status()
         if status.get('merged_conflicts'):
             status['merge_messages'] = self._receipt.get('merge_messages', [])
-        if status['state'] == 'syncing' and self._future is None and self._receipt.get('failed'):
+        if status['state'] == 'retrying' and self._future is None and self._receipt.get('failed'):
             status.update(completed=self._completed,
                           total=self._progress_base + self._receipt['total'], failed=self._receipt['failed'])
         return status
@@ -87,8 +88,9 @@ class _WindowCourseSyncService(CourseSyncService):
                 self._retry_at = self._clock() + min(30 * 2**(self._failures-1), 300)
                 self._due, self._local_due = self._retry_at, None
                 self._probe_at = self._retry_at
+                self._remember_error((result.get('failure_codes') or ['SYNC_PARTIAL_FAILURE'])[0])
                 total = self._progress_base + result['total']
-                self._publish('syncing', f"正在同步 已完成 {self._completed} / 共 {total} 条，{result['failed']} 条待重试；本机记录已保留。",
+                self._publish('retrying', f"正在重试 已完成 {self._completed} / 共 {total} 条，{result['failed']} 条待重试；本机记录已保留。",
                               merged_conflicts=result.get('merged_conflicts', 0))
                 return
         super()._finish(kind, result, error)
@@ -106,13 +108,16 @@ class WindowSync(QObject):
         self.window, self.bridge = window, window.bridge
         self.settings = services.settings
         self._closed = self._paused = False
+        self._sync_notice = None
         store = services.store
+        self._session_provider = services.session_provider
         context = dict(account_id=services.account_id, session_provider=services.session_provider,
                        api_base_url=services.api_base_url, ca_bundle=services.ca_bundle)
-        self.transport = SyncTransport(**context, http_transport=http_transport)
+        self.transport = SyncTransport(**context, http_transport=http_transport,
+                                       session_refresh_waiter=getattr(services, 'session_refresh_waiter', None))
         self.guard = SessionGuard(context, self, http_transport=http_transport)
         self.service = _WindowCourseSyncService(store, self.transport, self.guard, self,
-                                         auto_start=False, **(sync_options or {}))
+                                         auto_start=False, session_ready=self._session_ready, **(sync_options or {}))
         self._unsubscribe = store.subscribe(self._store_changed)
         self.service.state_changed.connect(self._status_changed)
         self.bridge.request_failed.connect(self.note_error)
@@ -120,11 +125,18 @@ class WindowSync(QObject):
         self._remote_settings.connect(self._settings_changed, Qt.ConnectionType.QueuedConnection)
         self._remote_plans.connect(self._plans_changed, Qt.ConnectionType.QueuedConnection)
 
+    def _session_ready(self):
+        try:
+            return self._session_provider() is not None
+        except Exception:
+            return False
+
     def start(self):
         if self._closed: return
         self._paused = False
         self.service.start()
-        self.guard.start()
+        if self.service._active:
+            self.guard.start()
 
     def stop(self):
         self._paused = True
@@ -150,7 +162,10 @@ class WindowSync(QObject):
 
     def sync_now(self):
         if not self._closed and not self._paused:
-            self.service.sync_now()
+            if self.service.status()['state'] == 'waiting':
+                self.start()  # Still validates readiness; never bypasses a stopped auth state.
+            else:
+                self.service.sync_now()
         return self.status()
 
     @Slot(str)
@@ -194,10 +209,14 @@ class WindowSync(QObject):
             self.bridge.cancel_pending()
             message = (SUPERSEDED_MESSAGE if status['state'] == 'superseded' else '登录已失效，请重新验证账号。')
             self.window.set_session_notice(message, show_verify=True)
-        elif status['state'] == 'failed' and status['message'] == CONNECTION_UNSTABLE:
-            self.window.set_session_notice(CONNECTION_UNSTABLE, show_verify=False)
-        elif status['state'] == 'synced' and (self.window.session_notice or {}).get('message') == CONNECTION_UNSTABLE:
-            self.window.clear_session_notice()
+        elif status['state'] == 'retrying':
+            self._sync_notice = (status.get('last_error') or {}).get('message') or CONNECTION_UNSTABLE
+            self.window.set_session_notice(self._sync_notice, show_verify=False)
+        elif status['state'] == 'synced':
+            notice = (self.window.session_notice or {}).get('message')
+            if notice and notice in {self._sync_notice, CONNECTION_UNSTABLE}:
+                self.window.clear_session_notice()
+            self._sync_notice = None
         self.bridge.push('sync_status', status)
         if status.get('merged_conflicts'):
             for message in status.get('merge_messages') or ['同步已合并两端修改；本机未发送的修改仍保留。']:

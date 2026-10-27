@@ -11,7 +11,7 @@ def test_sync106_no_empty_pull_banner_then_actual_upload_and_pull():
     class Signal:
         def emit(self, value): published.append(value)
     round_id=object();cancel=Event()
-    fake=SimpleNamespace(_closed=False,_active=True,_cancel=cancel,_progress_round=round_id,
+    fake=SimpleNamespace(_closed=False,_active=True,_failures=0,_cancel=cancel,_progress_round=round_id,
         _finished_progress_round=None,_status={'at':None},status_changed=Signal(),state_changed=Signal())
     fake.status=lambda:dict(fake._status)
     def show(phase,completed,total=0):
@@ -24,6 +24,9 @@ def test_sync106_no_empty_pull_banner_then_actual_upload_and_pull():
     assert show('upload',100,479)['show_progress']
     assert '100 / 共 479' in fake._status['message'] and '读取' not in fake._status['message']
     assert not show('upload',0,0)['show_progress']
+    assert fake._status['state'] == 'syncing'
+    fake._failures = 1
+    assert show('upload',1,2)['state'] == 'retrying'
 
 
 def test_sync106_log_formatter_retains_counts_without_record_contents():
