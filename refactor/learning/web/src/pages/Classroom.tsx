@@ -508,6 +508,15 @@ export function Classroom() {
   const done = room.points.filter((p) => p.taught).length
   const t = room.today
   const deferredTests = room.deferred_module_tests ?? []
+  const explanationVerdictIndex = room.explanation
+    ? room.messages.findIndex((message) => message.id === room.explanation?.message_id) : -1
+  const explanationHasAnswerSource = explanationVerdictIndex >= 0
+    && room.messages[explanationVerdictIndex + 1]?.kind === "answer_source"
+    && room.messages[explanationVerdictIndex + 1]?.content === room.explanation?.text
+  const explanationAlreadyInRevealedAnswer = explanationVerdictIndex >= 0
+    && room.question?.kind === "recall" && room.question.revealed === true
+    && room.question.reference === room.explanation?.text
+  const explanationAlreadyVisible = explanationHasAnswerSource || explanationAlreadyInRevealedAnswer
   const moduleOptions = room.module_options ?? []
   const canSwitchModule = !q && !room.direct_review && !room.check
     && ["teach", "opening", "teaching", "closing", "test_offer", "test_done"].includes(room.step)
@@ -627,6 +636,11 @@ export function Classroom() {
               </>}
             </div>)}
           </div>}
+          {room.explanation && !explanationAlreadyVisible && <div className="answer-explanation" data-testid="answer-explanation">
+            {room.explanation.open && <><div>{markdown(room.explanation.text)}</div><small className="muted">
+              {room.explanation.label} · {room.explanation.source.title} · {room.explanation.source.locator}</small>
+              {room.explanation.source.url && <a href={room.explanation.source.url} target="_blank" rel="noreferrer"> 查看答案出处</a>}</>}
+          </div>}
           {pendingUser && <div className="bubble user" data-turn-key="pending-student" data-turn-role="user" data-selectable>{pendingUser}</div>}
           {verdictPreview && <div className={`class-verdict ${verdictPreview.correct ? "ok" : "bad"}`}>{verdictPreview.text}</div>}
           {stream !== null && (live(stream)
@@ -657,11 +671,6 @@ export function Classroom() {
         <Actions room={room} act={act} busy={!!busy} />
         {!room.direct_review && <ConversationActions step={room.step} conversation={room.conversation} busy={!!busy} act={act}
           ask={() => { cancelPrefetch(); setAskMode(!!q); input.current?.focus() }} />}
-        {room.explanation && <div className="answer-explanation">
-          {room.explanation.open && <><div>{markdown(room.explanation.text)}</div><small className="muted">
-            {room.explanation.label} · {room.explanation.source.title} · {room.explanation.source.locator}</small>
-            {room.explanation.source.url && <a href={room.explanation.source.url} target="_blank" rel="noreferrer"> 查看答案出处</a>}</>}
-        </div>}
         {q && q.kind !== "recall" && <QuestionInputs question={q} act={act} busy={!!busy} />}
         {askMode && <div className="class-question-tag" role="status">这句是提问 · <button onClick={() => setAskMode(false)}>取消</button></div>}
         <div className="composer">

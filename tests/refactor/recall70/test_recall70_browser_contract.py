@@ -98,7 +98,7 @@ def browser(root, shots=None):
             if shots and width in (1000,390):
                 js('document.querySelector(".class-scroll").scrollTop=0;true');pump(.1)
                 shots.mkdir(exist_ok=True);view.grab().save(str(shots/f'{theme}-recall-{width}.png'))
-    click('继续'); wait('!!document.querySelector(".class-options")')
+    click('下一题'); wait('!!document.querySelector(".class-options")')
     assert not js('!!document.querySelector(".recall-question")')
     click('A键盘');wait('document.body.textContent.includes("✓ 答对了")')
     assert js('JSON.stringify(window.recall70.calls.find(c=>c.method==="classroom.answer").params.value)')=='[0]'

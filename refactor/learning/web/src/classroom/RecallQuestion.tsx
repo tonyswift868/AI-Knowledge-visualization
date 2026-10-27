@@ -116,7 +116,7 @@ export function RecallQuestion({ question, request, busy, next, selfJudge = true
     {error && <p className="recall-error" role="alert">{error}</p>}
     {verdict && <div className={`recall-result ${verdict.correct ? "correct" : "missed"}`} role="status">
       <span>{verdict.correct && <CheckCircle2 size={18} />}{selfJudge ? (verdict.correct ? "你选择：算我答对" : "你选择：算我答错") : (verdict.correct ? "全部答到，算对" : `漏了 ${verdict.missed.length} 条`)}</span>
-      <Button disabled={pending || busy} onClick={next}><ChevronRight size={16} />继续</Button>
+      <Button disabled={pending || busy} onClick={next}><ChevronRight size={16} />{selfJudge ? "下一题" : "继续"}</Button>
     </div>}
   </section>
 }

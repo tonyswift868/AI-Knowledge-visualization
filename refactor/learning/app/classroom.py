@@ -416,6 +416,29 @@ class Classroom:
                        or self._questions(course,state['module_id'])):
             # A bank/source edit must not leave an obsolete unscored scene open.
             self._restore_direct(state,review['resume'])
+        return self._reconcile_kept_check(course,state)
+
+    def _reconcile_kept_check(self, course, state):
+        """An explicit keep-one grant may supersede a saved, already-passed card.
+
+        Reconcile only this operator action, not ordinary spacing questions or
+        any answer history. An existing keep card retains its reveal/ticks.
+        """
+        if state.get('phase')!='check' or state.get('step')!='checking':return state
+        grants=[row for row in course.store.records('judgements',course.plan_id)
+                if (row.get('details') or {}).get('user_override') is True
+                and (row.get('details') or {}).get('grant_scope')=='except_question']
+        if not grants:return state
+        latest=max(grants,key=lambda row:(row['event']['seq'],row['id']))
+        details=latest['details'];grant_id=details['grant_id'];keep=details['keep_question_id']
+        if state.get('keep_question_grant')==grant_id:return state
+        book=course.book()
+        unresolved=[q['id'] for q in self._questions(course) if not book.question(q['id']).passed]
+        if unresolved!=[keep]:return state
+        state['keep_question_grant']=grant_id
+        if (state.get('pending') or {}).get('question',{}).get('id')==keep:return state
+        state.update(pending=None,check=None,check_used=0,resume_kept_check=True)
+        state.pop('failure',None);state.pop('recall_result',None)
         return state
 
     def _reconcile_position(self, course, state):
@@ -684,6 +707,7 @@ class Classroom:
 
     def enter(self, course, state, ctx):
         self._normalize_unknown_material_wait(state)
+        if state.pop('resume_kept_check',False):self._next_check(course,state,ctx)
         if (course.book().check_complete() and not self._questions(course) and course.plan['state']!='completed'
                 and all(self._ready(course,m['id']) for m in course.modules)):
             return self._complete(course,state,ctx)
