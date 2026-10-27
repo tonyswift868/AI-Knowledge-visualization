@@ -1348,12 +1348,54 @@ class CourseStore:
             modules.update(points[pid]['module_id'] for pid in learnt)
             return {'module_ids': sorted(modules), 'point_ids': sorted(learnt)}
 
+    def _supplement_point(self, plan_id, point, chunk_ids):
+        """Attach point-level source additions without changing learned units or time."""
+        added = [cid for cid in dict.fromkeys(chunk_ids) if cid not in point['chunk_ids']]
+        if not added:
+            return point
+        if point.get('structure') != 'concept_v1':
+            return dict(point, chunk_ids=point['chunk_ids'] + added)
+        from .planner_agents import material_paragraphs
+        chunks = {c['id']: c for c in self._rows('source_chunks', plan_id)}
+        subs = point['subpoints']
+        for cid in added:
+            chunk = chunks[cid]
+            path = chunk.get('section') or []
+            scores = []
+            for sub in subs:
+                title_depth = max((i + 1 for i, title in enumerate(path) if title == sub['title']), default=0)
+                shared = 0
+                for old_id in sub['chunk_ids']:
+                    common = 0
+                    for left, right in zip(path, chunks[old_id].get('section') or []):
+                        if left != right: break
+                        common += 1
+                    shared = max(shared, common)
+                scores.append((title_depth, shared))
+            best = max(scores)
+            matches = [i for i, score in enumerate(scores) if score == best]
+            # shortcut: PLAN-10 supplies only a point ID. Until its analyzer
+            # supplies a child mapping, ambiguous point-level supplements use
+            # the first child as a stable display attachment, not a semantic guess.
+            owner = subs[matches[0] if len(matches) == 1 and best != (0, 0) else 0]
+            owner['chunk_ids'].append(cid)
+            # Notes are output: retain existing excerpts and add bounded literal
+            # prose. Full text remains available through this child's source map.
+            prose = next((p['text'].strip() for p in material_paragraphs([chunk])
+                          if p['kind'] != 'heading' and p['text'].strip()), '')
+            if prose:
+                sentence = re.split(r'(?<=[。！？.!?])\s+', prose, maxsplit=1)[0]
+                owner['notes'].append(dict(text=sentence[:300], chunk_id=cid))
+        point['chunk_ids'] = list(dict.fromkeys(cid for sub in subs for cid in sub['chunk_ids']))
+        point['question_preparation'] = 'pending'
+        return point
+
     @_atomic
     def append_material_additions(self, plan_id, modules, supplements, module_order, *, today, new_window=None):
         """Atomic PLAN-10 addition, never a general started-plan edit API.
 
         modules contain NEW IDs, points/check_minutes and optional required_by.
-        supplements only union chunk_ids onto existing points. Old wording,
+        supplements attach new chunks to their owning subpoints. Old wording,
         minutes and progress are immutable; old module relative order remains.
         A studied prefix cannot move. All writes/outbox/replan roll back together.
         """
@@ -1409,7 +1451,7 @@ class CourseStore:
             point = self._get('points', plan_id, item['point_id'])
             if not item['chunk_ids']: raise StoreError('MISSING_PROVENANCE')
             for cid in item['chunk_ids']: self._get('source_chunks', plan_id, cid)
-            point['chunk_ids'] = list(dict.fromkeys(point['chunk_ids'] + item['chunk_ids']))
+            point = self._supplement_point(plan_id, point, item['chunk_ids'])
             self._put('points', plan_id, point)
         if incoming:
             plan['module_count'] = len(module_order)
@@ -2512,6 +2554,22 @@ class CourseStore:
                     combined[_FIELD_VERSIONS] = {**remote_versions, **{
                         field: max(local_versions.get(field, [0, '']), remote_versions.get(field, [0, '']))
                         for field in set(local_versions) | set(remote_versions)}}
+                    if record.entity == 'points' and (
+                            local.get('structure') == 'concept_v1' or payload.get('structure') == 'concept_v1'):
+                        # Source union, child minutes and goal equality describe
+                        # one structure. Field-wise splicing can make two valid
+                        # snapshots invalid (e.g. new parent refs plus old notes).
+                        fields = ('structure', 'summary', 'goal', 'minutes', 'chunk_ids', 'subpoints')
+                        def versioned_structure(row, versions):
+                            data = {field: row[field] for field in fields if field in row}
+                            stamp = max((versions.get(field, [0, '']) for field in fields))
+                            return stamp, _json(data), data
+                        stamp, _, structure = max(versioned_structure(local, local_versions),
+                                                   versioned_structure(payload, remote_versions), key=lambda v: v[:2])
+                        for field in fields:
+                            if field in structure: combined[field] = structure[field]
+                            else: combined.pop(field, None)
+                            combined[_FIELD_VERSIONS][field] = stamp
                     payload = combined
                     deleted = False
                 else:
