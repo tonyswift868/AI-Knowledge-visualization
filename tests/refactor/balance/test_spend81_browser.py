@@ -52,10 +52,16 @@ def browser(directory):
     from PySide6.QtWebEngineWidgets import QWebEngineView
     app = QApplication([])
     view = QWebEngineView(); view.resize(1400, 1120); view.show()
+    load_results = []
+    view.loadFinished.connect(load_results.append)
     view.setUrl(QUrl.fromLocalFile(str(directory / 'dist/index.html')))
     result = None
     captured = set()
     end = time.monotonic() + 40
+    while not load_results and time.monotonic() < end:
+        app.processEvents()
+    assert load_results, 'Qt WebEngine page load did not finish'
+    assert load_results[-1], 'Qt WebEngine page load failed'
     while time.monotonic() < end:
         app.processEvents(); time.sleep(.005); pending = []
         view.page().runJavaScript('JSON.stringify({result:window.result||null,capture:window.captureReady||null})', pending.append)
@@ -65,9 +71,7 @@ def browser(directory):
         state = json.loads(pending[0])
         name = state['capture']
         if name and name not in captured:
-            settle = time.monotonic() + .6
-            while time.monotonic() < settle: app.processEvents(); time.sleep(.01)
-            view.grab().save(str(directory / f'{name}.png'))
+            assert view.grab().save(str(directory / f'{name}.png'))
             captured.add(name)
             view.page().runJavaScript('window.captured=' + json.dumps(name))
         if state['result']:

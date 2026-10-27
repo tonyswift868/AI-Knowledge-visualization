@@ -66,15 +66,33 @@ def test_startup101_update_refreshes_record_before_visible_health(runtime94):
     assert integrity.verify_background(f.root)['rehashed'] == 0
 
 
-def test_startup101_background_waits_for_install_writer_without_false_damage(runtime94):
+def test_startup101_background_waits_for_install_writer_without_false_damage(runtime94, monkeypatch):
     from refactor.desktop.delivery.update_download import InstallUpdateLock
+    from refactor.desktop.delivery.update_protocol import RecoverableError
     f = runtime94; result = {}
+    contention_seen = threading.Event()
+    original_enter = InstallUpdateLock.__enter__
+
+    def observe_contention(lock):
+        try:
+            return original_enter(lock)
+        except RecoverableError:
+            # Signal only after the background worker actually attempted the
+            # OS lock and observed the install writer holding it.
+            contention_seen.set()
+            raise
+
+    monkeypatch.setattr(InstallUpdateLock, '__enter__', observe_contention)
     with InstallUpdateLock(f.root):
         worker = threading.Thread(target=lambda: result.update(integrity.verify_background(f.root)))
         worker.start()
-        time.sleep(.05)
-        assert worker.is_alive() and not result
+        saw_contention = contention_seen.wait(1)
+        waiting_before_release = worker.is_alive() and not result
     worker.join(3)
+    # Release the writer before assertions so even a failed handshake leaves
+    # no test-owned background thread waiting on the fixture.
+    assert saw_contention
+    assert waiting_before_release
     assert not worker.is_alive() and result['rehashed'] == 0
 
 
