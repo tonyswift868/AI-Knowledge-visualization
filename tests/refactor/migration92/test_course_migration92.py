@@ -112,15 +112,23 @@ def test_migration92_history_mastery_and_passed_detection_are_retained(tmp_path)
         book=s.load_mastery(PLAN)
         assert book.module('m').state=='passed' and book.module('m').module_test_count==1
         assert (book.point('point').state,book.point('point').level)==('green',3)
-        assert book.stats()['check_questions']==0 and not book.stats()['questions']
+        # The retired qid stays a question-level historical check, not a
+        # point-only legacy event; it remains outside today's final pool.
+        assert book.stats()['check_questions']==1 and not book.stats()['questions']
+        assert book.question('old-0').check_questions==1
         assert len(s.records('judgements',PLAN))==2 and len(s.records('attempt_closed',PLAN))==1
         assert len(s.records('credits',PLAN))==1
         assert MasteryBook.from_dict(book.to_dict()).to_dict()==book.to_dict()
         # Adding fresh material Qs cannot undo the historical passed test.
-        s.add_bank_questions(PLAN,'m',[modern()])
+        fresh=modern()
+        s.add_bank_questions(PLAN,'m',[fresh])
         assert s.load_mastery(PLAN).module('m').state=='passed'
-        assert s.load_mastery(PLAN).point('point').level==3
-        assert not s.load_mastery(PLAN).question(modern()['id']).passed
+        point=s.load_mastery(PLAN).point('point')
+        assert (point.state,point.level)==('green',3)
+        book=s.load_mastery(PLAN)
+        assert book.question(fresh['id']).module_correct is None
+        assert not book.question(fresh['id']).passed
+        assert fresh['id'] in book.next_check_questions()
 
 
 def test_migration92_repeat_is_identical_and_no_model_is_used(tmp_path):

@@ -240,7 +240,11 @@ def build_report(store, plan_id, *, today) -> dict:
         mastery, ledger = store.load_mastery(plan_id), store.load_ledger(plan_id)
         if not mastery.check_complete():
             raise StoreError('PLAN_NOT_COMPLETE', '整份计划和检验完成后才能生成报告。')
-        judgements = store.records('judgements', plan_id)
+        # User-granted mastery overrides are grading decisions, not learner
+        # study activity. Keep them in the synced audit log but out of the
+        # report's answer/day totals.
+        judgements = [row for row in store.records('judgements', plan_id)
+                      if (row.get('details') or {}).get('user_override') is not True]
         credits = store.records('credits', plan_id)
         commands = store.records('ledger_events', plan_id)
         operations = _operations(credits, commands)
@@ -289,8 +293,13 @@ def build_report(store, plan_id, *, today) -> dict:
         module_rows = []
         for module in modules:
             mid = module['id']
+            # Frozen assessment manifests are replay metadata, not report
+            # content. Keeping their tuple-valued IDs here would also make
+            # the returned report differ from its JSON-persisted form.
+            mastery_module = {key: value for key, value in stats['modules'][mid].items()
+                              if key not in ('assessment_id', 'assessment_ids')}
             module_rows.append(dict(module_id=mid, stage_id=module['stage_id'], title=module['title'],
-                                    position=module['position'], **stats['modules'][mid]))
+                                    position=module['position'], **mastery_module))
         module_order = {m['id']: i for i, m in enumerate(modules)}
         point_rows = []
         for position, point in enumerate(sorted(points, key=lambda p: (module_order[p['module_id']], p['position'], p['id']))):

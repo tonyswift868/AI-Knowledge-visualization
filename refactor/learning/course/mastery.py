@@ -154,23 +154,78 @@ class ModuleState:
 
 class MasteryBook:
     """Replay immutable question outcomes. Free practice never changes completion."""
-    def __init__(self, points, questions=(), taught=(), *, historical_event_ids=()):
+    def __init__(self, points, questions=(), taught=(), *, historical_event_ids=(),
+                 final_question_ids=None):
         self._points = tuple(p if isinstance(p, PointRef) else PointRef(**p) for p in points)
         self._refs = {p.point_id:p for p in self._points}
         if len(self._refs)!=len(self._points):raise MasteryError('DUPLICATE_POINT')
         self._modules = dict.fromkeys(p.module_id for p in self._points)
-        self._questions = {q['id']:{k:copy.deepcopy(q[k]) for k in ('id','module_id','point_ids')} for q in questions}
+        self._questions = {q['id']:{k:copy.deepcopy(q[k]) for k in ('id','module_id','point_ids')}
+                           for q in questions}
+        self._final_question_ids = (set(self._questions) if final_question_ids is None
+                                    else set(final_question_ids))
+        if not self._final_question_ids <= set(self._questions):
+            raise MasteryError('UNKNOWN_QUESTION')
         self._taught = set(taught)
         self._events = {}
+        self._event_details = {}
         self._historical_event_ids = set(historical_event_ids)
         self._cache = None
 
-    def apply(self, event):
+    @classmethod
+    def from_course_records(cls, points, modules, bank, taught, event_rows, answer_rows=()):
+        """Build the same projection from plain record payloads (including RO snapshots)."""
+        from .question_bank import assessment_questions
+        module_order={m['id']:i for i,m in enumerate(modules)}
+        ordered_points=sorted(points,key=lambda p:(module_order.get(p['module_id'],10**9),p['position'],p['id']))
+        current=assessment_questions(bank)
+        final_ids={q['id'] for q in current}
+        questions=[q for q in bank if q.get('module_id') in module_order and isinstance(q.get('point_ids'),list)]
+        known={q['id'] for q in questions}
+        for row in answer_rows:
+            qid=row.get('question_id')
+            if qid and qid not in known and row.get('module_id') in module_order:
+                questions.append(dict(id=qid,module_id=row['module_id'],point_ids=list(row.get('point_ids') or [])))
+                known.add(qid)
+        events=[];details={}
+        for row in event_rows:
+            event=event_from_dict(row['event']);events.append(event)
+            row_details=row.get('details') or {}
+            if isinstance(event,AttemptClosed):
+                manifest={k:row_details[k] for k in ('assessment_id','question_ids') if k in row_details}
+                if manifest:details[event.event_id]=manifest
+            elif row_details.get('user_override') is True:
+                details[event.event_id]=copy.deepcopy(row_details)
+            if isinstance(event,Judgement) and event.question_id and event.question_id not in known:
+                questions.append(dict(id=event.question_id,module_id=event.module_id,
+                                      point_ids=[pid for pid,_ in event.results]))
+                known.add(event.question_id)
+        for event in events:
+            if isinstance(event,AttemptClosed):
+                for qid in details.get(event.event_id,{}).get('question_ids',[]):
+                    if qid not in known:
+                        questions.append(dict(id=qid,module_id=event.module_id,point_ids=[]));known.add(qid)
+        # Only question-less events use the pre-question point reducer. A qid
+        # can be absent from today's final-check pool while still belonging to
+        # a frozen module assessment manifest (including duplicate/retired rows).
+        legacy=[e for e in events if isinstance(e,Judgement) and e.question_id is None]
+        legacy_attempts={(e.module_id,e.attempt_id) for e in legacy if e.context in ('module_test','skip_test','retest')}
+        historical={e.event_id for e in legacy}
+        historical.update(e.event_id for e in events if isinstance(e,AttemptClosed)
+                          and (e.module_id,e.attempt_id) in legacy_attempts)
+        book=cls((PointRef(p['id'],p['module_id']) for p in ordered_points),questions,taught,
+                 historical_event_ids=historical,final_question_ids=final_ids)
+        for event in events:book.apply(event,details=details.get(event.event_id))
+        return book
+
+    def apply(self, event, *, details=None):
         if isinstance(event,dict):event=event_from_dict(event)
         if not isinstance(event,(Judgement,AttemptClosed)):raise MasteryError('INVALID_EVENT')
         previous=self._events.get(event.event_id)
         if previous is not None:
             if event_to_dict(previous)!=event_to_dict(event):raise MasteryError('EVENT_CONFLICT')
+            prior_details = self._event_details.get(event.event_id, {})
+            if details is not None and prior_details != details:raise MasteryError('EVENT_CONFLICT')
             return
         if event.module_id not in self._modules:raise MasteryError('UNKNOWN_MODULE')
         if isinstance(event,Judgement):
@@ -182,7 +237,39 @@ class MasteryBook:
                     raise MasteryError('UNKNOWN_QUESTION')
         if isinstance(event,AttemptClosed) and self.attempt_closed(event.module_id,event.attempt_id):
             raise MasteryError('ATTEMPT_ALREADY_CLOSED')
-        self._events[event.event_id]=event;self._cache=None
+        if details is not None and not isinstance(details, dict):raise MasteryError('INVALID_EVENT_DETAILS')
+        self._events[event.event_id]=event
+        if details:self._event_details[event.event_id]=copy.deepcopy(details)
+        self._cache=None
+
+    def preview_question_override(self, question_ids, *, kind='question_passed'):
+        """Purely project an explicit pass grant without creating an event.
+
+        This is used by the one-time administrator tool's read-only preview.
+        It deliberately changes no answer, error, check-count, or credit data.
+        """
+        if kind not in ('question_passed', 'final_check_passed'):
+            raise MasteryError('INVALID_OVERRIDE')
+        ids=list(dict.fromkeys(question_ids))
+        if not ids or any(qid not in self._questions for qid in ids):
+            raise MasteryError('UNKNOWN_QUESTION')
+        questions,modules,_=self._project()
+        projected={qid:dict(row) for qid,row in questions.items()}
+        projected_modules={mid:dict(row) for mid,row in modules.items()}
+        for qid in ids:
+            if kind=='question_passed':
+                projected[qid].update(passed=True,streak=max(1,projected[qid]['streak']))
+                if projected[qid]['module_correct'] is False:
+                    projected[qid]['module_correct']=True
+            else:
+                projected[qid].update(passed=True,streak=max(1,projected[qid]['streak']))
+        if kind=='question_passed':
+            for mid,module in projected_modules.items():
+                target=[qid for qid in module.get('assessment_ids',()) if qid in projected]
+                if (module['state']=='failed' and target and
+                        sum(projected[qid]['module_correct'] is True for qid in target)*10>=len(target)*9):
+                    module['state']='passed'
+        return {'questions':{qid:projected[qid] for qid in ids},'modules':projected_modules}
 
     def attempt_closed(self, module_id, attempt_id):
         return any(isinstance(e,AttemptClosed) and (e.module_id,e.attempt_id)==(module_id,attempt_id) for e in self._events.values())
@@ -193,12 +280,25 @@ class MasteryBook:
             check_correct=0,last_question=None,module_errors=0,check_errors_before_pass=0,check_passed_at=None) for qid in self._questions}
         modules={mid:dict(state='untested',module_test_count=0,skip_test_count=0,retest_count=0,first_test=None,
             skip_test_passed=False) for mid in self._modules}
-        old_points, old_modules = _historical_progress(self._points,
-            [e for e in self._events.values() if e.event_id in self._historical_event_ids])
+        # Only genuinely point-only legacy events feed the old point reducer.
+        # Retired question events retain their question identity and frozen
+        # assessment; never reinterpret them as point-level judgements.
+        legacy_attempts={(e.module_id,e.attempt_id) for e in self._events.values()
+                         if isinstance(e,Judgement) and e.event_id in self._historical_event_ids
+                         and e.question_id is None and e.context in ('module_test','skip_test','retest')}
+        point_history = [e for e in self._events.values() if e.event_id in self._historical_event_ids and
+                         (isinstance(e, Judgement) and e.question_id is None or
+                          isinstance(e, AttemptClosed) and (e.module_id,e.attempt_id) in legacy_attempts)]
+        old_points, old_modules = _historical_progress(self._points, point_history)
         self._historical_points = old_points
         for mid, prior in old_modules.items(): modules[mid].update(prior)
+        closed_modules={e.module_id for e in self._events.values() if isinstance(e,AttemptClosed)
+                        and e.event_id not in self._historical_event_ids}
         for mid,m in modules.items():
-            if mid not in old_modules and not any(q['module_id']==mid for q in self._questions.values()) and all(p.point_id in self._taught for p in self._points if p.module_id==mid):
+            has_current_questions=any(qid in self._final_question_ids and q['module_id']==mid
+                                      for qid,q in self._questions.items())
+            if (mid not in old_modules and mid not in closed_modules and not has_current_questions
+                    and all(p.point_id in self._taught for p in self._points if p.module_id==mid)):
                 m['state']='passed'
         attempts={};closed=set();history=[]
         for event in sorted(self._events.values(),key=lambda e:(e.seq,e.event_id)):
@@ -206,7 +306,26 @@ class MasteryBook:
             m=modules[event.module_id];key=(event.module_id,event.attempt_id)
             if isinstance(event,AttemptClosed):
                 answers=attempts.get(key,{})
-                ids=[qid for qid,q in self._questions.items() if q['module_id']==event.module_id]
+                details=self._event_details.get(event.event_id,{})
+                assessment_id=details.get('assessment_id')
+                manifest=details.get('question_ids')
+                if event.kind=='retest':
+                    # Retests revisit the original module-test manifest. Older
+                    # records have no details, so the first test's judged IDs
+                    # provide a deterministic frozen denominator.
+                    if not m.get('assessment_ids'):
+                        m['assessment_ids']=tuple(sorted(qid for qid,q in self._questions.items()
+                            if q['module_id']==event.module_id and q['module_correct'] is not None))
+                    ids=list(m.get('assessment_ids',()))
+                else:
+                    ids=list(manifest) if isinstance(manifest,list) else sorted(answers)
+                    if not ids:
+                        ids=[qid for qid,q in self._questions.items()
+                             if qid in self._final_question_ids and q['module_id']==event.module_id]
+                    if event.kind in ('module_test','skip_test'):
+                        m['assessment_id']=assessment_id or event.attempt_id
+                        m['assessment_ids']=tuple(dict.fromkeys(ids))
+                ids=[qid for qid in ids if qid in questions]
                 # No-question direct review is a learner's skip decision, not
                 # an assessment. Credits and this close are committed together;
                 # retain the existing skipped projection without fake answers.
@@ -222,11 +341,31 @@ class MasteryBook:
                         correct_questions=sum(answers.get(qid,False) for qid in ids),total_questions=len(ids),
                         mastery_ratio=sum(answers.get(qid,False) for qid in ids)/len(ids) if ids else 0)
                 direct=event.kind=='skip_test' or event.kind=='retest' and m['skip_test_count']>0 and m['module_test_count']==0
-                m['state']=('skipped' if direct else 'passed') if passed else 'failed'
+                # A completed module assessment is a durable achievement.
+                # New bank questions are for final check and cannot revoke it.
+                if m['state'] not in ('passed','skipped'):
+                    m['state']=('skipped' if direct else 'passed') if passed else 'failed'
                 if direct and passed:m['skip_test_passed']=True
                 closed.add(key);continue
             qid=event.question_id
             if qid not in questions:continue  # Keep old events readable; never reinterpret them as new assessment.
+            details=self._event_details.get(event.event_id,{})
+            if details.get('user_override') is True:
+                # Apply at its replay position: checks after an administrator
+                # grant must see the newly passed module, while earlier checks
+                # must remain gated. This is mastery metadata, not an answer.
+                kind=details.get('override_kind')
+                q=questions[qid]
+                if kind=='question_passed':
+                    q.update(passed=True,streak=max(1,q['streak']))
+                    if q['module_correct'] is False:
+                        q['module_correct']=True
+                    target=[target_id for target_id in m.get('assessment_ids',()) if target_id in questions]
+                    if target and sum(questions[target_id]['module_correct'] is True for target_id in target)*10>=len(target)*9:
+                        m['state']='passed'
+                elif kind=='final_check_passed':
+                    q.update(passed=True,streak=max(1,q['streak']))
+                continue
             q=questions[qid];correct=all(v for _,v in event.results)
             if event.context in ('module_test','skip_test','retest') and key not in closed:
                 attempts.setdefault(key,{})[qid]=correct
@@ -253,23 +392,33 @@ class MasteryBook:
     def point(self, point_id):
         if point_id not in self._refs:raise MasteryError('UNKNOWN_POINT')
         qs,ms,_=self._project();mid=self._refs[point_id].module_id
-        rows=[qs[qid] for qid,q in self._questions.items() if point_id in q.get('point_ids',[])]
-        state=('green' if rows and all(q['module_correct'] is True for q in rows) else
-               'red' if ms[mid]['state']=='failed' and any(q['module_correct'] is False for q in rows) else
-               'weak' if any(q['module_correct'] is False for q in rows) else 'untested')
-        if not rows and point_id in self._taught:state='green'
+        all_rows=[qs[qid] for qid,q in self._questions.items() if point_id in q.get('point_ids',[])]
+        module_rows=[row for row in all_rows if row['module_correct'] is not None]
+        # Preserve the module result when a later bank refresh adds untouched
+        # final-check questions. Once answered, those questions join the level
+        # projection and a new wrong answer can still lower it.
+        state_rows=module_rows if ms[mid]['state'] in ('passed','skipped') and module_rows else all_rows
+        state=('green' if state_rows and all(q['module_correct'] is True for q in state_rows) else
+               'red' if ms[mid]['state']=='failed' and any(q['module_correct'] is False for q in state_rows) else
+               'weak' if any(q['module_correct'] is False for q in state_rows) else 'untested')
+        if not state_rows and point_id in self._taught:state='green'
+        level_rows=[row for row in all_rows if row['module_correct'] is not None or row['check_questions']>0 or row['passed']]
+        if ms[mid]['state'] in ('passed','skipped') and level_rows:
+            level_source=level_rows
+        else:
+            level_source=all_rows
         casual_errors=sum(not correct for event in self._events.values() if isinstance(event,Judgement)
                           and event.context in ('casual','quick_confirm') for pid,correct in event.results if pid==point_id)
         prior = self._historical_points.get(point_id)
-        if prior and not any(q['module_correct'] is not None or q['check_questions'] for q in rows):
+        if prior and not any(q['module_correct'] is not None or q['check_questions'] for q in all_rows):
             # Keep attained mastery visible, without turning old questions into
             # current assessment/statistics or manufacturing correct answers.
             return PointState(point_id,mid,prior['state'],casual_errors=casual_errors,
                 module_errors=prior['module_errors'],level=prior['level'])
-        return PointState(point_id,mid,state,casual_errors=casual_errors,module_errors=sum(q['module_errors'] for q in rows),
-            level=3 if rows and all(q['passed'] for q in rows) or not rows and point_id in self._taught else 1,
-            check_questions=sum(q['check_questions'] for q in rows),check_correct=sum(q['check_correct'] for q in rows),
-            last_question=max((q['last_question'] for q in rows if q['last_question'] is not None),default=None))
+        return PointState(point_id,mid,state,casual_errors=casual_errors,module_errors=sum(q['module_errors'] for q in all_rows),
+            level=3 if level_source and all(q['passed'] for q in level_source) or not level_source and point_id in self._taught else 1,
+            check_questions=sum(q['check_questions'] for q in all_rows),check_correct=sum(q['check_correct'] for q in all_rows),
+            last_question=max((q['last_question'] for q in all_rows if q['last_question'] is not None),default=None))
 
     def module(self, module_id):
         _,ms,_=self._project()
@@ -283,13 +432,13 @@ class MasteryBook:
 
     def check_complete(self):
         qs,_,_=self._project()
-        return self.check_ready() and all(q['passed'] for q in qs.values())
+        return self.check_ready() and all(qs[qid]['passed'] for qid in self._final_question_ids)
 
     def next_check_questions(self, min_gap=3):
         if type(min_gap) is not int or min_gap<0:raise MasteryError('INVALID_QUERY')
         if not self.check_ready():return []
         qs,_,history=self._project();order={qid:i for i,qid in enumerate(qs)}
-        pending=[qid for qid,q in qs.items() if not q['passed']]
+        pending=[qid for qid in self._final_question_ids if not qs[qid]['passed']]
         if not pending:return []
         def rank(qid):
             last=qs[qid]['last_question'];gap=len(history)-last-1 if last is not None else len(history)+min_gap
@@ -298,22 +447,24 @@ class MasteryBook:
         if eligible:return sorted(eligible,key=rank)
         # Passed questions can separate repeats too. A small bank rotates all
         # other questions before returning to the still-pending one.
-        others=[qid for qid in qs if not history or qid!=history[-1]]
+        others=[qid for qid in self._final_question_ids if not history or qid!=history[-1]]
         return sorted(others or pending,key=lambda qid:(qs[qid]['last_question'] is not None,
             qs[qid]['last_question'] if qs[qid]['last_question'] is not None else -1,order[qid]))
 
     def stats(self):
         qs,ms,history=self._project()
-        return dict(check_questions=len(history),questions={qid:dict(q) for qid,q in qs.items()},
+        return dict(check_questions=len(history),
+            questions={qid:dict(qs[qid]) for qid in self._final_question_ids},
             points={p.point_id:dict(casual_errors=self.point(p.point_id).casual_errors,module_errors=self.point(p.point_id).module_errors,
                 check_questions=self.point(p.point_id).check_questions,check_correct=self.point(p.point_id).check_correct,
                 check_accuracy=self.point(p.point_id).check_correct/self.point(p.point_id).check_questions if self.point(p.point_id).check_questions else 0)
-                for p in self._points},modules={mid:dict(m,test_count=m['module_test_count']+m['skip_test_count']) for mid,m in ms.items()})
+                for p in self._points},modules={mid:dict(m,assessment_ids=list(m.get('assessment_ids',())),
+                    test_count=m['module_test_count']+m['skip_test_count']) for mid,m in ms.items()})
 
     def report_stats(self):
         result=self.stats();qs,_,_=self._project()
         for pid,p in result['points'].items():
-            rows=[qs[qid] for qid,q in self._questions.items() if pid in q.get('point_ids',[])]
+            rows=[qs[qid] for qid,q in self._questions.items() if qid in self._final_question_ids and pid in q.get('point_ids',[])]
             p.update(ever_weak=any(q['ever_wrong'] for q in rows),ever_red=any(q['ever_wrong'] for q in rows),
                 check_errors_before_pass=sum(q['check_errors_before_pass'] for q in rows),
                 check_passed_at=max((q['check_passed_at'] for q in rows if q['check_passed_at']),default=None))
@@ -322,6 +473,8 @@ class MasteryBook:
     def to_dict(self):
         data = dict(version=2,points=[asdict(p) for p in self._points],questions=list(self._questions.values()),taught=sorted(self._taught),
             events=[event_to_dict(e) for e in sorted(self._events.values(),key=lambda e:(e.seq,e.event_id))])
+        if self._event_details:data['event_details']=copy.deepcopy(self._event_details)
+        if self._final_question_ids != set(self._questions):data['final_question_ids']=sorted(self._final_question_ids)
         if self._historical_event_ids: data['historical_event_ids'] = sorted(self._historical_event_ids)
         return data
 
@@ -329,8 +482,10 @@ class MasteryBook:
     def from_dict(cls,data):
         try:
             if data['version']!=2:raise ValueError()
-            book=cls(data['points'],data['questions'],data['taught'],historical_event_ids=data.get('historical_event_ids',()))
-            for event in data['events']:book.apply(event)
+            book=cls(data['points'],data['questions'],data['taught'],historical_event_ids=data.get('historical_event_ids',()),
+                     final_question_ids=data.get('final_question_ids'))
+            details=data.get('event_details',{})
+            for event in data['events']:book.apply(event,details=details.get(event['event_id']))
             return book
         except (ValueError,TypeError,KeyError):raise MasteryError('INVALID_DATA') from None
 
