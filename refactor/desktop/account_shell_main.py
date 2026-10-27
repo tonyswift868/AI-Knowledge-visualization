@@ -305,13 +305,13 @@ class AccountShell:
             self.gate.state_title.setText(profile.safe_account_label)
             self.gate.state_detail.setText("已记住此账号，点击登录可安全继续。")
             self.gate.primary_button.setText("登录")
-            # A vaulted session can enter locally even when the optional
-            # password auto-login checkbox is off. Saved-password-only accounts
-            # keep the existing explicit-login behavior.
+            # Keep the saved session available when the user clicks Login.
+            # Normal startup enters only with automatic login enabled; a valid
+            # one-shot update handoff sets automatic above.
             self._offline_bootstrap_result = (
                 None if rejected_update_handoff else self.session.load_offline_snapshot(profile)
             )
-            if automatic or self._offline_bootstrap_result is not None:
+            if automatic:
                 from PySide6.QtCore import QTimer
                 QTimer.singleShot(0, self._begin_remembered_login)
         else:
