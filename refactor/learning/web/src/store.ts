@@ -32,7 +32,18 @@ export type Settings = {
 
 export type Account = { name: string; account_id?: string; role_label: string; settings_available?: boolean; offline?: boolean }
 export type Notice = { message: string; show_verify: boolean } | null
-export type SyncStatus = { state: "syncing" | "synced" | "failed" | "reauth" | "superseded"; at: string | null; message: string; phase?: string; show_progress?: boolean } | null
+export type SyncStatus = {
+  state: "syncing" | "waiting" | "retrying" | "synced" | "failed" | "reauth" | "superseded"
+  at: string | null
+  message: string
+  phase?: string
+  show_progress?: boolean
+  /** Null means the backend does not know the queue size. */
+  pending?: number | null
+  /** Backend-provided wall-clock retry time; the UI must not estimate one. */
+  retry_at?: string | null
+  last_error?: { code: string; message: string; at: string } | null
+} | null
 export type Toast = { id: number; kind: "ok" | "error" | "info"; text: string }
 export type ModelFault = { id?: string; category: string; code: string; message: string; short: string; purpose?: string; plan_id?: string;
   actions: { id: string; label: string; url?: string }[] }

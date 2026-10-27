@@ -5,13 +5,14 @@ import json
 import hashlib
 import re
 import time
+from uuid import uuid4
 from contextlib import nullcontext, contextmanager
 
 import httpx
 
 from refactor.learning.sync_identity import PlanError
 from refactor.learning.sync_source import AuthenticatedPlanSource, SNAPSHOT_PATH, MAX_SNAPSHOT_BYTES, validate_snapshot
-from refactor.learning.sync_source import sync_auth_error
+from refactor.learning.sync_source import sync_auth_error, NETWORK_RETRY_MESSAGE
 from .sync_records.contract import envelope_for
 from refactor.runtime_logging import event
 
@@ -36,8 +37,9 @@ def _resource_response_envelope(payload):
 
 
 class SyncTransport(AuthenticatedPlanSource):
-    def __init__(self, **kwargs):
+    def __init__(self, session_refresh_waiter=None, **kwargs):
         super().__init__(**kwargs)
+        self._session_refresh_waiter = session_refresh_waiter
         # One window-owned pool; credentials remain per-request and are never
         # retained in client defaults. See https://www.python-httpx.org/advanced/clients/
         self._client = httpx.Client(verify=self._ssl, timeout=20,
@@ -55,26 +57,103 @@ class SyncTransport(AuthenticatedPlanSource):
         request IDs/bodies remain unchanged, including after a lost receipt.
         """
         for attempt in range(2):
+            request_kwargs = dict(kwargs)
+            body = request_kwargs.get('json')
+            operation_id = body.get('request_id', '') if isinstance(body, dict) else ''
+            if not isinstance(operation_id, str) or not re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', operation_id):
+                operation_id = ''
             scope, token = self._session()
             self._scope = scope
             headers = self._object_headers(scope, token)
+            headers.update(request_kwargs.pop('headers', {}) or {})
+            request_timeout = request_kwargs.pop('timeout', self._sync_timeout)
+            client_request_id = uuid4().hex
+            headers['X-Request-ID'] = client_request_id
             try:
                 with self._client.stream(method, self._base_url + path, headers=headers,
-                                         timeout=self._sync_timeout, **kwargs) as response:
+                                         timeout=request_timeout, **request_kwargs) as response:
                     if response.status_code in (401, 403):
                         error = sync_auth_error(response, '学习记录尚未同步，请重新验证账号。')
-                        event('sync', state='HTTP_AUTH_REJECTED', http_status=response.status_code, code=error.code)
+                        self._log_response(path, response, state='HTTP_AUTH_REJECTED', code=error.code,
+                                           phase=self._phase(path, method),
+                                           client_request_id=client_request_id,
+                                           operation_id=operation_id)
                         if attempt == 0 and response.status_code == 401 and error.code == 'REAUTH_REQUIRED':
+                            response.close()
+                            waited_for_refresh = False
+                            if self._session_refresh_waiter is not None:
+                                try:
+                                    waited_for_refresh = bool(self._session_refresh_waiter(self._closed))
+                                except Exception as exc:
+                                    event('sync', state='REFRESH_WAITER_FAILED', phase='refresh',
+                                          error_type=type(exc).__name__,
+                                          client_request_id=client_request_id)
+                                    self.require_current()
+                                    raise PlanError('SESSION_UNAVAILABLE', NETWORK_RETRY_MESSAGE) from None
+                                self.require_current()
                             _, fresh = self._session()
                             if fresh != token:
-                                event('sync', state='AUTH_ROTATED_RETRY')
+                                event('sync', state='AUTH_ROTATED_RETRY',
+                                      phase=self._phase(path, method),
+                                      client_request_id=client_request_id,
+                                      response_request_id=self._response_request_id(response),
+                                      operation_id=operation_id)
                                 continue
+                            if waited_for_refresh:
+                                event('sync', state='REFRESH_COMPLETED_WITHOUT_TOKEN_ROTATION',
+                                      phase='refresh', client_request_id=client_request_id,
+                                      response_request_id=self._response_request_id(response),
+                                      operation_id=operation_id)
+                                raise PlanError('SESSION_UNAVAILABLE', NETWORK_RETRY_MESSAGE)
+                        phase = self._phase(path, method)
+                        event('sync', state='REQUEST_FAILED', phase=phase,
+                              error_type='HTTPStatusError', http_status=response.status_code,
+                              client_request_id=client_request_id,
+                              response_request_id=self._response_request_id(response),
+                              operation_id=operation_id)
                         raise error
                     yield response
                     return
+            except (httpx.HTTPError, OSError) as exc:
+                event('sync', state='REQUEST_FAILED', phase=self._phase(path, method),
+                      error_type=type(exc).__name__, client_request_id=client_request_id,
+                      operation_id=operation_id)
+                raise
             finally:
                 token = ''
                 headers.clear()
+
+    @staticmethod
+    def _response_request_id(response):
+        value = response.headers.get('X-Request-ID', '')
+        return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', value) else ''
+
+    @staticmethod
+    def _client_trace_id(response):
+        try:
+            value = response.request.headers.get('X-Request-ID', '')
+        except (AttributeError, RuntimeError):
+            return ''
+        return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', value) else ''
+
+    @staticmethod
+    def _phase(path, method=None):
+        if path.endswith('/snapshot'):
+            return 'snapshot'
+        if '/changes' in path or ('/objects/' in path and method != 'PUT'):
+            return 'pull'
+        return 'upload'
+
+    def _log_response(self, path, response, *, state, code='OK', client_request_id='',
+                      operation_id='', phase=None):
+        fields = dict(state=state, phase=phase or self._phase(path), code=code,
+                      http_status=response.status_code,
+                      client_request_id=client_request_id or self._client_trace_id(response),
+                      response_request_id=self._response_request_id(response),
+                      operation_id=operation_id)
+        if response.status_code >= 400:
+            fields['error_type'] = 'HTTPStatusError'
+        event('sync', **fields)
 
     def write_many(self, records):
         """A bounded CAS batch; the course queue handles explicit size rejection."""
@@ -93,6 +172,8 @@ class SyncTransport(AuthenticatedPlanSource):
             with self._sync_response('POST', '/api/enterprise/sync/v1/entities/bulk',
                                      json={'records': records}) as response:
                 status = response.status_code
+                self._log_response('/api/enterprise/sync/v1/entities/bulk', response,
+                                   state='BATCH_HTTP_RESPONSE')
                 if status in (401, 403):
                     raise sync_auth_error(response, '学习记录尚未同步，请重新验证账号。')
                 if status in (404, 405):
@@ -121,7 +202,7 @@ class SyncTransport(AuthenticatedPlanSource):
         except PlanError as exc:
             code = exc.code
             raise
-        except (httpx.HTTPError, OSError):
+        except (httpx.HTTPError, OSError) as exc:
             code = 'SYNC_UNAVAILABLE'
             error = PlanError(code, '学习记录暂未同步，稍后会重试。')
             error.network_unavailable = True
@@ -142,10 +223,13 @@ class SyncTransport(AuthenticatedPlanSource):
     def read_snapshot(self):
         scope, token = self._session()
         self._scope = scope
-        headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/json', 'X-MentorFlow-Organization-ID': scope.organization_id, 'X-MentorFlow-Workspace-ID': scope.workspace_id}
+        headers = self._object_headers(scope, token)
         try:
             with nullcontext(self._client) as client:
-                with client.stream('GET', self._base_url + SNAPSHOT_PATH, headers=headers) as response:
+                # Preserve the snapshot's previous 20-second client timeout;
+                # only ordinary sync page reads use the 60-second proxy window.
+                with self._sync_response('GET', SNAPSHOT_PATH, timeout=20) as response:
+                    self._log_response(SNAPSHOT_PATH, response, state='SNAPSHOT_RESPONSE')
                     if response.status_code in (401, 403):
                         raise sync_auth_error(response, '计划读取的登录状态已失效，请使用账号入口重新验证。')
                     if response.status_code != 200:
@@ -171,7 +255,7 @@ class SyncTransport(AuthenticatedPlanSource):
             return snapshot
         except PlanError:
             raise
-        except (httpx.HTTPError, OSError):
+        except (httpx.HTTPError, OSError) as exc:
             raise PlanError('SOURCE_UNAVAILABLE', '计划读取失败，请检查网络或服务器状态后重试。') from None
         except (ValueError, TypeError, UnicodeError, RecursionError):
             raise PlanError('INVALID_SNAPSHOT', '计划服务返回的数据无法验证。') from None
@@ -192,6 +276,8 @@ class SyncTransport(AuthenticatedPlanSource):
             with nullcontext(self._client) as client:
                 with self._sync_response("GET", "/api/enterprise/sync/v1/changes",
                                         params=dict(since=since, kind=kind, limit=limit)) as response:
+                    self._log_response('/api/enterprise/sync/v1/changes', response,
+                                       state='PULL_HTTP_RESPONSE')
                     self.require_current()
                     if response.status_code in (401, 403):
                         raise sync_auth_error(response, "登录已失效，本机内容仍保留，请重新登录。")
@@ -235,7 +321,7 @@ class SyncTransport(AuthenticatedPlanSource):
             return page
         except PlanError:
             raise
-        except (httpx.HTTPError, OSError):
+        except (httpx.HTTPError, OSError) as exc:
             raise PlanError("SYNC_UNAVAILABLE", "学习记录暂未同步，稍后会重试。") from None
         except (ValueError, TypeError, AttributeError):
             raise PlanError("SYNC_RESPONSE_INVALID", "增量同步回执无法验证，未推进游标。") from None
@@ -249,13 +335,16 @@ class SyncTransport(AuthenticatedPlanSource):
                 "X-MentorFlow-Workspace-ID": scope.workspace_id}
 
     def upload_original(self, sha256: str, data: bytes):
-        scope, token = self._session()
-        headers = self._object_headers(scope, token)
-        headers.update({"Content-Type": "application/octet-stream",
-                        "X-MentorFlow-SHA256": sha256, "X-MentorFlow-Size": str(len(data))})
+        token = ''
+        headers = {"Content-Type": "application/octet-stream",
+                   "X-MentorFlow-SHA256": sha256, "X-MentorFlow-Size": str(len(data))}
         try:
             with nullcontext(self._client) as client:
-                response = client.put(self._base_url + f"/api/enterprise/sync/v1/objects/{sha256}", headers=headers, content=data, timeout=60)
+                with self._sync_response('PUT', f"/api/enterprise/sync/v1/objects/{sha256}",
+                                         headers=headers, content=data, timeout=60) as response:
+                    response.read()
+                    self._log_response(f"/api/enterprise/sync/v1/objects/{sha256}",
+                                       response, state='OBJECT_UPLOAD_RESPONSE', phase='upload')
             self.require_current()
             if response.status_code in (401, 403):
                 raise PlanError("REAUTH_REQUIRED", "资料原件尚未同步，请重新验证账号。")
@@ -276,11 +365,14 @@ class SyncTransport(AuthenticatedPlanSource):
         return self.upload_original(sha256, data)
 
     def download_original(self, sha256: str, *, max_bytes: int = 8 * 1024 * 1024) -> bytes:
-        scope, token = self._session()
-        headers = self._object_headers(scope, token)
+        token = ''
         try:
             with nullcontext(self._client) as client:
-                response = client.get(self._base_url + f"/api/enterprise/sync/v1/objects/{sha256}", headers=headers, timeout=60)
+                with self._sync_response('GET', f"/api/enterprise/sync/v1/objects/{sha256}",
+                                         timeout=60) as response:
+                    response.read()
+                    self._log_response(f"/api/enterprise/sync/v1/objects/{sha256}",
+                                       response, state='OBJECT_PULL_RESPONSE')
             self.require_current()
             if response.status_code in (401, 403):
                 raise PlanError("REAUTH_REQUIRED", "资料原件尚未下载，请重新验证账号。")
@@ -303,7 +395,7 @@ class SyncTransport(AuthenticatedPlanSource):
         except (httpx.HTTPError, OSError, ValueError, TypeError) as exc:
             raise PlanError("SYNC_OBJECT_UNAVAILABLE", "资料原件暂时无法下载。") from exc
         finally:
-            token = ""; headers.clear()
+            token = ""
 
     def download_history_blob(self, sha256: str, *, max_bytes: int = 8 * 1024 * 1024) -> bytes:
         return self.download_original(sha256, max_bytes=max_bytes)
@@ -343,6 +435,8 @@ class SyncTransport(AuthenticatedPlanSource):
             with nullcontext(self._client) as client:
                 path = f"/api/enterprise/sync/v1/entities/{kind}/{entity_id}" + ("/delete" if deleting else "")
                 with self._sync_response("POST" if deleting else "PUT", path, json=body) as response:
+                    self._log_response(path, response, state='UPLOAD_HTTP_RESPONSE',
+                                       operation_id=request_id)
                     raw = bytearray()
                     for chunk in response.iter_bytes():
                         self.require_current()
@@ -373,7 +467,7 @@ class SyncTransport(AuthenticatedPlanSource):
             return result
         except PlanError:
             raise
-        except (httpx.HTTPError, OSError):
+        except (httpx.HTTPError, OSError) as exc:
             error = PlanError("SYNC_UNAVAILABLE", "学习记录暂未同步，已保留本机内容，稍后会重试。")
             error.network_unavailable = True
             raise error from None

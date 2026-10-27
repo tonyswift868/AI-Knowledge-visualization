@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import asyncio
 import re
+from uuid import uuid4
 from urllib.parse import urlsplit
 
 import httpx
 
 from .account_identity import AccountIdentity, issuer_hash
 from .account_protocol import (AccountConfig, AccountStateClient,
-    AccountError, AccountLoginResult, ValidatedTokenIdentity)
+    AccountError, AccountLoginResult, ValidatedTokenIdentity, _attach_request_diagnostic)
 
 PREFIX = '/api/enterprise/auth/native'
 ACCESS_PREFIX, REFRESH_PREFIX = 'mfn1_a_', 'mfn1_r_'
@@ -41,9 +42,12 @@ class NativeCredentialClient(AccountStateClient):
         super().__init__(config, http_client=http_client)
 
     async def _session_request(self, operation, payload):
+        client_request_id = uuid4().hex
+        response = None
         try:
             response = await self._http.post(self.config.api_base_url + PREFIX + '/' + operation,
-                json=payload, headers={'Accept': 'application/json'})
+                json=payload, headers={'Accept': 'application/json',
+                                       'X-Request-ID': client_request_id})
             if response.status_code != 200:
                 code = ('NATIVE_CREDENTIALS_INVALID' if operation == 'login'
                         else 'ENTERPRISE_SESSION_REAUTH_REQUIRED') if response.status_code == 401 else ''
@@ -53,17 +57,25 @@ class NativeCredentialClient(AccountStateClient):
                         code = candidate if candidate in MESSAGES and candidate != 'ENTERPRISE_SESSION_REAUTH_REQUIRED' else ''
                     except Exception:
                         pass
-                raise AccountError(code or 'NATIVE_AUTH_UNAVAILABLE',
+                error = AccountError(code or 'NATIVE_AUTH_UNAVAILABLE',
                     MESSAGES.get(code, '账号服务暂不可用，请稍后重试。'))
+                raise _attach_request_diagnostic(error, 'HTTPStatusError', client_request_id, response)
             if len(response.content) > 8192:
                 raise ValueError()
             return response.json()
-        except AccountError:
+        except AccountError as exc:
+            if not hasattr(exc, 'client_request_id'):
+                _attach_request_diagnostic(exc, 'AccountError', client_request_id, response)
             raise
-        except httpx.HTTPError:
-            raise AccountError('NATIVE_NETWORK_UNAVAILABLE', MESSAGES['NATIVE_NETWORK_UNAVAILABLE']) from None
-        except Exception:
-            raise AccountError('NATIVE_RESPONSE_INVALID', '账号服务响应无法验证。') from None
+        except httpx.HTTPError as exc:
+            error = AccountError('NATIVE_NETWORK_UNAVAILABLE', MESSAGES['NATIVE_NETWORK_UNAVAILABLE'])
+            _attach_request_diagnostic(error, type(exc).__name__, client_request_id,
+                                       getattr(exc, 'response', None))
+            raise error from None
+        except Exception as exc:
+            error = AccountError('NATIVE_RESPONSE_INVALID', '账号服务响应无法验证。')
+            _attach_request_diagnostic(error, type(exc).__name__, client_request_id, response)
+            raise error from None
         finally:
             payload.clear()
 

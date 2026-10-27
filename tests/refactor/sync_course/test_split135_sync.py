@@ -218,8 +218,9 @@ def test_split135_partial_rejection_ui_keeps_syncing_and_pending_count(local135)
         while not service._receipt.get('failed') and time.monotonic()<deadline:
             app.processEvents();time.sleep(.002)
         assert service._receipt['failure_codes']==['SYNC_RECORD_TOO_LARGE']
-        assert service.status()['state']=='syncing' and '1 条待重试' in service.status()['message']
-        assert all(s['state']=='syncing' for s in states)
+        assert service.status()['state']=='retrying' and '1 条待重试' in service.status()['message']
+        assert any(s['state']=='retrying' for s in states)
+        assert all(s['state'] in {'syncing', 'retrying'} for s in states)
         # Existing UI omits per-row failure reasons; report this scope gap.
         assert '413' not in service.status()['message']
     finally:service.dispose()

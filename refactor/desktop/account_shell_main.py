@@ -88,6 +88,9 @@ class AccountShell:
         self._session_refresh_degraded = False
         self._offline_mode = False
         self._session_refresh_busy = False
+        self._session_refresh_wait_lock = threading.Lock()
+        self._session_refresh_done = threading.Event()
+        self._session_refresh_done.set()
         self._logout_pending = False
         self._switch_pending = False
         self._capabilities_loading = False
@@ -751,7 +754,7 @@ class AccountShell:
         if offline:
             self.home.set_session_notice('当前离线，已使用此设备上次验证的账号进入；连接恢复后会自动核对并同步。')
         self._session_epoch += 1
-        self._session_refresh_busy = False
+        self._finish_session_refresh_waiters()
         self._feature_session_confirmed = not offline and not bool(
             getattr(result.identity, '_local_only', False)
         )
@@ -843,6 +846,28 @@ class AccountShell:
                 return None
         return current
 
+    def _wait_for_session_refresh(self, cancel_event):
+        """Wait only for the refresh already in flight; never start one here."""
+        with self._session_refresh_wait_lock:
+            if not self._session_refresh_busy:
+                return False
+            done = self._session_refresh_done
+        while not done.is_set():
+            if cancel_event is not None and cancel_event.is_set():
+                return True
+            done.wait(0.1)
+        return True
+
+    def _finish_session_refresh_waiters(self):
+        with self._session_refresh_wait_lock:
+            self._session_refresh_busy = False
+            self._session_refresh_done.set()
+
+    def _start_session_refresh_waiters(self):
+        with self._session_refresh_wait_lock:
+            self._session_refresh_done = threading.Event()
+            self._session_refresh_busy = True
+
     def _bind_learning_features(self, home, *, rebind=False):
         from .account_protocol import AccountConfig
         account_id = self._login_result.identity.account_id
@@ -852,6 +877,7 @@ class AccountShell:
                 session_provider=lambda: self._feature_session(home, account_id),
                 api_base_url=AccountConfig.from_env().api_base_url,
                 ca_bundle=self.runtime.ca_bundle,
+                session_refresh_waiter=self._wait_for_session_refresh,
             )
         except Exception:
             # Account entry remains available with an older learning baseline
@@ -956,7 +982,7 @@ class AccountShell:
             login_name = self.gate.username_field.text().strip()
             self._close_account_settings()
             self._session_epoch += 1
-            self._session_refresh_busy = False
+            self._finish_session_refresh_waiters()
             self._session_timer.stop()
             self._logout_pending = self._switch_pending = False
             self._session_credentials = None
@@ -1074,7 +1100,7 @@ class AccountShell:
         self._login_result = None
         self._remembered_profile = None
         self._session_epoch += 1
-        self._session_refresh_busy = False
+        self._finish_session_refresh_waiters()
         self._logout_pending = self._switch_pending = False
         self._session_timer.stop()
         self._cancel_login()
@@ -1227,7 +1253,7 @@ class AccountShell:
             self._retry_session_refresh()
             return
 
-        self._session_refresh_busy = True
+        self._start_session_refresh_waiters()
         session_epoch = self._session_epoch
 
         def work():
@@ -1245,7 +1271,11 @@ class AccountShell:
                     f"{session_epoch}:session_refresh", (source, refreshed)
                 )
             except Exception as exc:
-                diagnostic_event('refresh', state='FAILED', code=getattr(exc, 'code', 'NETWORK_UNAVAILABLE'), exc_info=True)
+                diagnostic_event('refresh', state='FAILED', phase='refresh',
+                                 error_type=getattr(exc, 'diagnostic_error_type', type(exc).__name__),
+                                 client_request_id=getattr(exc, 'client_request_id', ''),
+                                 response_request_id=getattr(exc, 'response_request_id', ''),
+                                 code=getattr(exc, 'code', 'NETWORK_UNAVAILABLE'), exc_info=True)
                 code = getattr(exc, "code", "")
                 expired = code in {
                     "ENTERPRISE_SESSION_REAUTH_REQUIRED",
@@ -1262,7 +1292,7 @@ class AccountShell:
         if self._account_settings is not None and self._account_settings.password_pending:
             # Rotation is already in the captured credential store. Do not
             # re-enable restore preferences while a password mutation is pending.
-            self._session_refresh_busy = False
+            self._finish_session_refresh_waiters()
             return
         if ((self._closure is not None and self._closure._busy)
                 or self.session.closure_blocks_login(source.identity.profile())):
@@ -1322,7 +1352,7 @@ class AccountShell:
         if row["remember_session"]:
             self._session_credentials = self.session.credentials
         self._session_epoch += 1
-        self._session_refresh_busy = False
+        self._finish_session_refresh_waiters()
         self._session_timer.setInterval(240_000)
         self._session_timer.start()
         if scope_changed:
@@ -1357,7 +1387,7 @@ class AccountShell:
 
         profile = source.identity.profile()
         self._session_epoch += 1
-        self._session_refresh_busy = False
+        self._finish_session_refresh_waiters()
         self._session_timer.stop()
         self._logout_pending = False
         switch_pending = self._switch_pending
@@ -1409,7 +1439,7 @@ class AccountShell:
                 "账号连接不稳，正在重试；当前学习不受影响",
                 show_verify=False,
             )
-        self._session_refresh_busy = False
+        self._finish_session_refresh_waiters()
         if self._logout_pending:
             from PySide6.QtCore import QTimer
 
@@ -1463,8 +1493,10 @@ class AccountShell:
                     )
                 return
             source, refreshed = result
-            self._session_refresh_busy = False
-            self._accept_session_refresh(source, refreshed)
+            try:
+                self._accept_session_refresh(source, refreshed)
+            finally:
+                self._finish_session_refresh_waiters()
             return
         is_current = generation_number == self._generation and not self._closing
         if not is_current:
@@ -1684,7 +1716,7 @@ class AccountShell:
         self._switch_pending = False
         self._logout_pending = False
         self._session_epoch += 1
-        self._session_refresh_busy = False
+        self._finish_session_refresh_waiters()
         self._session_timer.stop()
         self._capabilities_retry_timer.stop()
         if self._login_result is not None:
@@ -1748,7 +1780,7 @@ class AccountShell:
         self._confirmed_role_account_id = None
         self._session_credentials = None
         self._session_epoch += 1
-        self._session_refresh_busy = False
+        self._finish_session_refresh_waiters()
         self._session_timer.stop()
         self._logout_pending = False
         self._switch_pending = False
@@ -1854,6 +1886,7 @@ class AccountShell:
             return
         if self._update_exit_pending:
             self._closing = True
+            self._finish_session_refresh_waiters()
             self._session_timer.stop()
             self._capabilities_retry_timer.stop()
             self._invalidate_login_jobs()
@@ -1866,6 +1899,7 @@ class AccountShell:
         self._close_account_closure()
         self._close_account_settings()
         self._closing = True
+        self._finish_session_refresh_waiters()
         self._update_login_token = None
         if self.home is not None:
             self.home.dispose()

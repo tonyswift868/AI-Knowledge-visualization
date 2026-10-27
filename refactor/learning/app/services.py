@@ -16,10 +16,12 @@ log = logging.getLogger(__name__)
 
 
 class AppServices:
-    def __init__(self, *, account_id: str, data_root, session_provider, api_base_url: str, ca_bundle):
+    def __init__(self, *, account_id: str, data_root, session_provider, api_base_url: str, ca_bundle,
+                 session_refresh_waiter=None):
         self.account_id = account_id
         self.data_root = Path(data_root)
         self.session_provider = session_provider
+        self.session_refresh_waiter = session_refresh_waiter
         self.api_base_url = api_base_url
         self.ca_bundle = ca_bundle
         self.settings = AppSettings(account_id, data_root, store_provider=lambda: self.store)

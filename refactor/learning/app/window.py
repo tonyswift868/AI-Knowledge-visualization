@@ -396,7 +396,7 @@ class LearningWindow(QWidget):
             old.close()
 
     # --------------------------------------------------- account shell API
-    def bind_feature_context(self, *, session_provider, api_base_url, ca_bundle):
+    def bind_feature_context(self, *, session_provider, api_base_url, ca_bundle, session_refresh_waiter=None):
         if self._disposed:
             return False
         try:
@@ -414,21 +414,22 @@ class LearningWindow(QWidget):
         self._close_services()
         guarded = self._guarded_session(session_provider)
         self.services = AppServices(account_id=self._account_id, data_root=self._data_root,
-                                    session_provider=guarded, api_base_url=endpoint[0], ca_bundle=Path(ca_bundle))
+                                    session_provider=guarded, api_base_url=endpoint[0], ca_bundle=Path(ca_bundle),
+                                    session_refresh_waiter=session_refresh_waiter)
         self.services.refresh_catalog()
         self._apply_theme(self.services.settings.load().get("theme", "sakura"))
         self._start_sync()
         self.bridge.push("ready", {"account": self.account_info()})
         return True
 
-    def rebind_feature_context(self, *, session_provider, api_base_url, ca_bundle):
+    def rebind_feature_context(self, *, session_provider, api_base_url, ca_bundle, session_refresh_waiter=None):
         if self._disposed:
             return False
         self._close_services()
         self._bound_endpoint = None
         self.bridge.push("scope_changed", None)
         return self.bind_feature_context(session_provider=session_provider, api_base_url=api_base_url,
-                                         ca_bundle=ca_bundle)
+                                         ca_bundle=ca_bundle, session_refresh_waiter=session_refresh_waiter)
 
     def _guarded_session(self, provider):
         account_id = self._account_id

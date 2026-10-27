@@ -117,7 +117,8 @@ def test_failure_backoff_not_bypassed_by_pending_changes(setup):
     s, c, store, guard, statuses = setup
     s._sync.failure = OSError('offline')
     s.start(); tick(s, c, 0)
-    assert statuses[-1] == '同步失败，可重试'
+    assert s.status()['state'] == 'retrying'
+    assert statuses[-1] == '正在重试'
     s._on_change()
     tick(s, c, 29); assert s._sync.calls == 1
     tick(s, c, 30); assert s._sync.calls == 2

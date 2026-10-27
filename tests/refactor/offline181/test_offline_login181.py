@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from threading import Event, Lock
 
 pytest.importorskip('PySide6')
 from PySide6.QtCore import QSettings
@@ -166,6 +167,8 @@ def test_offline_server_rejection_expires_local_session_without_deleting_progres
     shell._session_epoch = 4
     shell._closing = False
     shell._session_refresh_busy = True
+    shell._session_refresh_wait_lock = Lock()
+    shell._session_refresh_done = Event()
     shell._logout_pending = False
     shell._switch_pending = False
     shell._session_timer = SimpleNamespace(stop=lambda: None)
@@ -186,6 +189,7 @@ def test_offline_server_rejection_expires_local_session_without_deleting_progres
     # Both server outcomes are classified as session_expired by the refresh worker.
     assert server_outcome in {'NATIVE_SESSION_SUPERSEDED', 'ENTERPRISE_SESSION_REAUTH_REQUIRED'}
     shell._background_failed('4:session_expired', '')
+    assert shell._session_refresh_done.is_set()
     assert shell.home.disposed and shell.home.hidden and shell.gate.visible
     assert session.load_offline_snapshot(profile) is None
     assert session.registry.get(profile.account_id)['remember_session'] is False

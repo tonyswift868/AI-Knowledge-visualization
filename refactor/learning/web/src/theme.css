@@ -595,9 +595,26 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .gen-item.running { background: var(--accent-soft); color: var(--accent); }
 .gen-item.done { background: rgba(47, 158, 116, 0.12); color: var(--ok); }
 .gen-item.failed { background: rgba(207, 75, 91, 0.12); color: var(--danger); }
+.sync-status-wrap { position: relative; flex: none; }
 .chip.sync { cursor: pointer; font: inherit; font-size: 0.82rem; }
 .chip.sync svg { width: 14px; height: 14px; }
 .chip.sync.failed, .chip.sync.reauth, .chip.sync.superseded { color: var(--warn); border-color: rgba(207, 139, 46, 0.35); }
+.chip.sync.retrying, .chip.sync.waiting { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
+.chip.sync.retrying .dot, .chip.sync.waiting .dot { background: var(--accent); }
+.sync-status-details { position:absolute; z-index:35; top:calc(100% + 9px); right:0; width:min(360px,calc(100vw - 24px)); padding:16px;
+  border:1px solid var(--border-strong); border-radius:16px; background:var(--surface-solid); color:var(--text); box-shadow:var(--shadow-hover); }
+.sync-status-details > header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.sync-detail-close { border:0; background:transparent; color:var(--text-2); font-size:1.35rem; line-height:1; cursor:pointer; }
+.sync-status-details dl { display:grid; gap:9px; margin:0; }
+.sync-status-details dl > div { display:grid; grid-template-columns:minmax(105px, .8fr) minmax(0, 1.2fr); gap:10px; align-items:start; font-size:.84rem; line-height:1.45; }
+.sync-status-details dt { color:var(--text-3); }
+.sync-status-details dd { margin:0; overflow-wrap:anywhere; }
+.sync-detail-error dd { color:var(--warn); }
+.sync-detail-error small { display:block; margin-top:3px; color:var(--text-3); font-size:.76rem; }
+.sync-recovered { margin:10px 0 0; color:var(--ok); font-size:.82rem; }
+.sync-auth-note { margin:12px 0 0; color:var(--warn); font-size:.86rem; line-height:1.5; }
+.sync-detail-retry { width:100%; margin-top:14px; }
+@media(max-width:640px) { .sync-status-details { right:-8px; } }
 @media (max-width: 1100px) { .stage { grid-template-columns: 1fr; } .stage-label { position: static; } .form-card .grid.three { grid-template-columns: 1fr 1fr; } }
 
 /* ---------- hover help ---------- */
