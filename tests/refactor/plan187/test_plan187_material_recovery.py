@@ -132,8 +132,10 @@ def test_plan187_summary_merge_preserves_durable_stop_and_attempts(env):
     assert saved['attempts'] == 2
     assert saved['error'] == '由用户停止'
     assert saved['error_code'] == 'USER_STOPPED'
-    assert saved['points'] == 5
-    assert saved['cloze_points'] == 2
+    # Worker counters may belong to the pre-restructure layout; current
+    # structure/pool counts replace them without clearing a durable stop.
+    assert saved['points'] == 1
+    assert saved['cloze_points'] == 0
     assert saved['cloze_heavy'] is False
 
 

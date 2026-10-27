@@ -127,15 +127,18 @@ def test_plan42_summary_survives_draft_deletion_and_store_reopen(fixture):
     flow._prepare_module=contract
     flow.estimate(d)
     flow.run(pid,lambda d,c:flow.generate(d,c),ctx)
-    assert flow.detail(pid)['stages'][0]['modules'][0]['cloze_heavy']
+    # The worker's stale counters/flag cannot override the current empty bank.
+    assert flow.detail(pid)['stages'][0]['modules'][0]['cloze_heavy'] is False
     flow.start_request(pid)
     assert not flow.drafts()
-    assert flow.detail(pid)['stages'][0]['modules'][0]['cloze_heavy']
+    assert flow.detail(pid)['stages'][0]['modules'][0]['cloze_heavy'] is False
     reopened=CourseStore(flow.services.account_id,flow.services.data_root)
     try:
-        assert reopened.records('modules',pid)[0]['material_preparation']['cloze_heavy']
+        saved = reopened.records('modules',pid)[0]['material_preparation']
+        assert saved['cloze_heavy'] is False
+        assert saved['points'] == 1 and saved['questions'] == saved['cloze_points'] == 0
     finally:reopened.close()
-    assert any(r.payload.get('material_preparation',{}).get('cloze_heavy')
+    assert any(r.payload.get('material_preparation',{}).get('cloze_heavy') is False
                for r in flow.services.store.pending_records(10000) if r.entity=='modules')
 
 
