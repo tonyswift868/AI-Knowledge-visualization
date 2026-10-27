@@ -77,7 +77,7 @@ def _compile_guide(module_impl, sources, expected, root):
             chunk_ids=[chunk["chunk_id"] for chunk in chunks],
         )], check_minutes=0, today=today)
 
-        # Three source bullets explaining one answer stay together; direct
+        # Each sibling source bullet is an independent answer idea; direct
         # recall compilation still needs no model splitter.
         result = module_impl.prepare_module(store, "plan", "module", {}, lambda *args: None)
         bank = store.records("question_bank", "plan")
@@ -88,11 +88,11 @@ def _compile_guide(module_impl, sources, expected, root):
         assert all(row["origin"] == "found" for row in bank)
         assert {row["stem"] for row in bank} == set(expected)
         for row in bank:
-            assert row["key_points"] == ['\n'.join(expected[row["stem"]])]
-            assert len(row["key_points"]) == 1
+            assert row["key_points"] == expected[row["stem"]]
+            assert len(row["key_points"]) == 3
             assert all(point in row["reference"] for point in row["key_points"])
 
-        fields = ("id", "kind", "stem", "options", "answer", "reference", "key_points",
+        fields = ("id", "kind", "stem", "options", "answer", "reference",
                   "source", "answer_source", "origin")
         return result, [tuple(row.get(field) for field in fields) for row in bank]
     finally:

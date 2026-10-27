@@ -7,7 +7,7 @@ import sys
 import time
 
 REPO = Path(__file__).resolve().parents[3]
-SCRATCH = Path('D:/MentorFlow/.local/test-tmp/stuck212/ui')
+SCRATCH = Path(os.environ.get('MF_TEST_SCRATCH', 'D:/MentorFlow/.local/test-tmp/stuck212/ui'))
 FIXTURE = Path(__file__).parent
 
 

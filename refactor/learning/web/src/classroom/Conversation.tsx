@@ -78,7 +78,8 @@ export function MaterialToolbar({ concept, entries }: { concept?: Concept | null
 }
 export type Preparation = { done: number; total: number; text: string; error?: string | null }
 export type BankQuestion = { id: string; kind: "choice" | "multi" | "fill" | "short" | "essay" | "calc" | "recall" | "objective";
-  question_type?: "choice" | "multi" | "fill" | "calc"; revealed?: boolean; ticked?: number[]; reference?: string; key_points?: string[]; answer?: string;
+  question_type?: "choice" | "multi" | "fill" | "calc"; revealed?: boolean; ticked?: number[]; reference?: string; key_points?: string[];
+  key_point_headings?: (string | null)[]; answer?: string;
   stem: string; options: string[]; source: { title: string; url: string | null; locator: string }; origin: string;
   purpose: string; blanks?: number; number?: number; total?: number }
 export type Act = (method: string, params?: Record<string, unknown>, label?: string) => Promise<boolean>

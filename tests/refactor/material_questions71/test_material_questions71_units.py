@@ -29,12 +29,13 @@ def test_material71_ten_saved_questions_keep_literal_answer_with_numbered_units(
     assert material_store70.records('question_bank','p')[0]['reference']==c['reference']
 
 
-def test_material71_units_group_paragraph_list_and_table_by_complete_meaning():
+def test_material71_units_split_sibling_list_items_and_table_data_rows():
     reference = '定义。第二句。\n\n1. 第一阶段。包括两件事。\n- 第二阶段\n\n| 类型 | 说明 |\n| --- | --- |\n| 键值 | 用键取值 |'
     units = mq.answer_units(reference)
-    assert units == ['定义。第二句。', '1. 第一阶段。包括两件事。\n- 第二阶段',
-                     '| 类型 | 说明 |\n| --- | --- |\n| 键值 | 用键取值 |']
-    assert mq.selected_units(reference, [1, 2, 3]) == units
+    assert units == ['定义。第二句。', '1. 第一阶段。包括两件事。', '- 第二阶段',
+                     '| 键值 | 用键取值 |']
+    assert mq.answer_groups(reference)[-1]['heading'] == '| 类型 | 说明 |'
+    assert mq.selected_units(reference, [1, 2, 3, 4]) == units
 
 
 def test_material71_bold_numbered_items_are_whole_units_not_formatting_fragments():

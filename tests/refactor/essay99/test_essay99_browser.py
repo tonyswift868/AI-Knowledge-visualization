@@ -61,7 +61,7 @@ def browser(root,shots=None):
         wait('!!document.querySelector(".recall-own textarea") && !document.querySelector(".recall-own textarea").readOnly')
         js('(()=>{let e=document.querySelector(".recall-own textarea");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(e,"接收输入，按程序处理，再输出结果。");e.dispatchEvent(new Event("input",{bubbles:true}));return true})()');pump()
         click('写好了，看参考答案');wait('document.querySelectorAll(".recall-point").length===10')
-        for i in range(7):
+        for i in range(7,10):
             js(f'document.querySelectorAll(".recall-point input")[{i}].click();true')
             wait('!document.querySelector(".recall-point input").disabled')
         shot(theme+'-self-verdict')

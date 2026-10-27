@@ -7,7 +7,8 @@ import type { BankQuestion } from "../classroom/Conversation"
 import "./self-test.css"
 import { Loading } from '../loading/Loading'
 
-type SourceQuestion = { id: string; stem: string; kind: string; options: string[]; reference?: string; answer?: string; key_points?: string[]; reason?: string; warning?: string }
+type SourceQuestion = { id: string; stem: string; kind: string; options: string[]; reference?: string; answer?: string; key_points?: string[];
+  key_point_headings?: (string | null)[]; ticked?: number[]; reason?: string; warning?: string }
 type SetSummary = { id: string; name: string; count: number; missing: number; draft: boolean; state: string }
 type QuestionSet = { id: string; name: string; draft: boolean; questions: SourceQuestion[]; missing: SourceQuestion[]; rejected: {stem: string; reason: string}[]; warnings: string[]; run: any }
 type TestView = { id: string; name: string; question: BankQuestion | null; passed: number; total: number;
@@ -98,7 +99,8 @@ export function SelfTest({ back, request = call }: {back: () => void; request?: 
     const result = await request<TestView>(method === "class.recall_reveal" ? "selftest.reveal" : "selftest.submit",
       {set_id: view!.id, attempt_id: view!.run.current!.attempt_id, ...params})
     if (live.current) setView(result)
-    return (method === "class.recall_reveal" ? {reference: result.question!.reference, key_points: result.question!.key_points}
+    return (method === "class.recall_reveal" ? {reference: result.question!.reference, key_points: result.question!.key_points,
+      key_point_headings: result.question!.key_point_headings, ticked: result.question!.ticked}
       : result.run.current!.verdict) as T
   }
   const q = view?.question
@@ -110,7 +112,7 @@ export function SelfTest({ back, request = call }: {back: () => void; request?: 
       if (view || selected || importing) await leave(); else back()
     })}><ArrowLeft size={16} />{view || selected || importing ? "返回题集" : "更多工具"}</Button>
       <h2><ClipboardList size={24} />上传题目自测</h2></div>
-    <p className="muted">只测你提供的题与答案。客观题由程序判，问答题由你对照参考答案逐条勾要点。</p>
+    <p className="muted">只测你提供的题与答案。客观题由程序判，问答题由你对照参考答案，把没答到的要点点成叉。</p>
     {error && <p role="alert" className="self-test-error">{error}{!busy && <Button small onClick={()=>void refresh().then(()=>setError('')).catch(e=>{setError(e.message);setLoading(false)})}>重试读取题集</Button>}</p>}
     {view ? <>
       <div className="card self-test-progress"><b>{view.name}</b><span>已达标 {view.passed} / {view.total} · 每题连续答对 {view.run.required} 遍</span></div>
@@ -124,7 +126,7 @@ export function SelfTest({ back, request = call }: {back: () => void; request?: 
         {verdict ? <div className="card self-test-verdict" role="status"><h3>{q.stem}</h3>
           <b>{verdict.correct ? "答对了" : q.kind === "recall" ? `漏了 ${verdict.missed.length} 条要点，连续计数清零` : "答错了，连续计数清零"}</b>
           <p>你的回答：{q.answer}</p><details open><summary>原文参考答案</summary><div className="self-test-original">{q.reference}</div></details>
-          {q.key_points?.map((point, i) => <p key={i} className={verdict.missed.includes(i) ? "self-test-error" : ""}>要点 {i+1}：{point}{verdict.missed.includes(i) ? "（未勾选）" : ""}</p>)}
+          {q.key_points?.map((point, i) => <p key={i} className={verdict.missed.includes(i) ? "self-test-error" : ""}>要点 {i+1}：{point}{verdict.missed.includes(i) ? "（✗ 没答到）" : ""}</p>)}
           <Button kind="primary" disabled={busy} onClick={next}>继续</Button>
         </div> : q.kind === "recall" ? <RecallQuestion key={view.run.current!.attempt_id} question={q} request={recall} busy={busy} next={next} selfJudge={false} />
           : <div className="card self-test-objective"><h3>{q.stem}</h3>

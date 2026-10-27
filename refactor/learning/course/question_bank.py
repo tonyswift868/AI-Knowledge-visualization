@@ -273,11 +273,11 @@ def _validate_material_question(row):
     if not isinstance(row['options'], list) or any(not isinstance(v, str) or not v for v in row['options']): raise ValueError('原文选项无效')
     if not isinstance(row['answer'], str) or not isinstance(row['reference'], str): raise ValueError('原文答案无效')
     if row['kind'] == 'recall':
-        from .material_questions import answer_units, legacy_answer_units
+        from .material_questions import answer_units, legacy_answer_units, previous_answer_units
         points = row['key_points']
         # Accept saved literal fragments as well as current complete meaning
         # groups. Existing immutable answers still refer to their old indices.
-        units = answer_units(row['reference']) + legacy_answer_units(row['reference'])
+        units = answer_units(row['reference']) + legacy_answer_units(row['reference']) + previous_answer_units(row['reference'])
         if (not row['reference'].strip() or row['answer'] or row['options'] or row['objective_kind'] is not None
                 or not isinstance(points, list) or not points
                 or any(not isinstance(p, str) or not p or p not in row['reference'] for p in points)
@@ -337,40 +337,69 @@ def with_recall_key_points(row):
     """
     if row.get('kind') != 'recall' or not row.get('reference'):
         return row
-    from .material_questions import answer_units, legacy_answer_units
-    groups = answer_units(row['reference'])
+    from .material_questions import _answer_group_metadata, legacy_answer_units, previous_answer_units
+    group_rows = _answer_group_metadata(row['reference'])
+    groups = [group['text'] for group in group_rows]
     selected = row.get('key_points') or []
     spans = []
-    cursor = 0
-    for group in groups:
-        start = row['reference'].find(group, cursor)
-        spans.append((start, start + len(group)))
-        cursor = start + len(group)
+    for group in group_rows:
+        start, end = group.get('text_span') or (0, len(row['reference']))
+        # The parser spans include indentation/newlines that its literal text
+        # strips for display. Trim only those boundaries, not source content.
+        while start < end and row['reference'][start].isspace():
+            start += 1
+        while end > start and row['reference'][end - 1].isspace():
+            end -= 1
+        spans.append((start, end))
     indices = set()
+    unmatched = False
     for part in selected:
-        # Legacy units were de-duplicated at their first source occurrence.
-        # A short label such as ASCII must not select every later paragraph
-        # that mentions it. Prefer an unchanged group, otherwise the first
-        # containing group, and keep the original source order.
-        match = next((i for i, group in enumerate(groups) if part == group), None)
-        if match is None:
+        exact = next((i for i, group in enumerate(groups) if part == group), None)
+        if exact is not None:
+            indices.add(exact)
+            continue
+        # A 213 checklist block can contain several independent sibling items.
+        # Expand only the items in that literal source span, never all later
+        # mentions of a short label. Old title-only selections have no span in
+        # the new answer text, so contribute context, not another checkbox.
+        position = None
+        if part in previous_answer_units(row['reference']):
+            position = row['reference'].find(part)
+        else:
             offset = 0
             for line in row['reference'].splitlines(keepends=True):
-                # Match an old unit, not a token inside a different sentence.
-                # ASCII in an introductory sentence is not the later ASCII
-                # heading that the original selector chose.
                 if part in legacy_answer_units(line):
                     position = offset + line.index(part)
-                    match = next((i for i, (start, end) in enumerate(spans)
-                                  if start <= position < end and part in groups[i]), None)
                     break
                 offset += len(line)
-        if match is None:
-            match = next((i for i, group in enumerate(groups) if part in group), None)
-        if match is not None:
-            indices.add(match)
-    points = [group for i, group in enumerate(groups) if i in indices] or groups
+        if position is None:
+            unmatched = True
+            continue
+        end_position = position + len(part)
+        covered = [i for i, (start, end) in enumerate(spans)
+                   if (position <= start and end <= end_position)
+                   or (start <= position < end and part in groups[i])]
+        if not covered:
+            # Selected old headings identify their own following explanation or
+            # sibling list via original heading offsets, never all later
+            # occurrences of a common label or the whole answer.
+            covered = [i for i, group in enumerate(group_rows)
+                       if any(start <= position < end for start, end, _ in group['heading_spans'])]
+        indices.update(covered)
+        if not covered:
+            unmatched = True
+    # Unknown older selections must not silently remove part of a question.
+    # Preserve access to the complete literal answer groups in that case;
+    # already revealed cards/history never pass through this projection.
+    points = ([group for i, group in enumerate(groups) if i in indices] if not unmatched else groups) or groups
     return dict(row, key_points=points)
+
+
+def recall_key_point_headings(row):
+    """Display-only context aligned to current strings, never a sync field."""
+    from .material_questions import answer_groups
+    headings = {group['text']: group.get('heading') for group in answer_groups(row.get('reference', ''))}
+    return [headings.get(point) for point in row.get('key_points', [])]
 
 
 def assessment_questions(rows, module_id=None):

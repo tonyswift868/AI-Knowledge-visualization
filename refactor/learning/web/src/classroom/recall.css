@@ -15,6 +15,8 @@
 .recall-reference > div { margin-top:10px; white-space:pre-wrap; }
 .recall-review fieldset { padding:0; border:0; margin:16px 0; min-width:0; }
 .recall-review legend { padding:0; margin-bottom:10px; font-size:.88rem; color:var(--text-2); }
+.recall-point-heading { margin:14px 0 8px; font-weight:700; color:var(--text); }
+.recall-point-heading:first-of-type { margin-top:0; }
 .recall-point { display:flex; align-items:flex-start; gap:10px; padding:10px 12px; margin-bottom:8px; border:1px solid var(--border); border-radius:12px; cursor:pointer; }
 .recall-point input { flex:none; width:18px; height:18px; margin:4px 0 0; accent-color:var(--accent); }
 .recall-point span { min-width:0; white-space:pre-wrap; }

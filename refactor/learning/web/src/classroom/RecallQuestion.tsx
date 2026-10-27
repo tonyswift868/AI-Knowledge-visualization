@@ -6,7 +6,7 @@ import type { BankQuestion } from "./Conversation"
 import "./recall.css"
 import { Loading } from '../loading/Loading'
 
-type Reference = { reference: string; key_points: string[] }
+type Reference = { reference: string; key_points: string[]; ticked?: number[]; key_point_headings?: (string | null)[] }
 type Verdict = { correct: boolean; missed: number[] }
 export type RecallRequest = <T>(method: string, params: Record<string, unknown>) => Promise<T>
 
@@ -17,7 +17,9 @@ export function RecallQuestion({ question, request, busy, next, selfJudge = true
   voiceScopeKey?: string;
 }) {
   const [answer, setAnswer] = React.useState(question.revealed ? question.answer ?? "" : "")
-  const [reference, setReference] = React.useState<Reference | null>(question.revealed && question.reference && question.key_points ? {reference: question.reference, key_points: question.key_points} : null)
+  const [reference, setReference] = React.useState<Reference | null>(question.revealed && question.reference && question.key_points ? {
+    reference: question.reference, key_points: question.key_points, key_point_headings: question.key_point_headings,
+  } : null)
   const [saved, setSaved] = React.useState(!!question.revealed)
   const [ticked, setTicked] = React.useState<number[]>(question.ticked ?? [])
   const [verdict, setVerdict] = React.useState<Verdict | null>(null)
@@ -62,6 +64,11 @@ export function RecallQuestion({ question, request, busy, next, selfJudge = true
           throw new Error("参考答案或要点未能读取，请重试。")
         }
         setReference(result)
+        // New reveals start with every point acknowledged. Persisted revealed
+        // snapshots keep their original ticked array (including an empty one).
+        setTicked(Array.isArray(result.ticked)
+          ? result.ticked
+          : result.key_points.map((_, index) => index))
       }
     } catch (e) { if (active.current) setError(e instanceof Error ? e.message : "操作未完成，请重试。") }
     finally { locked.current = false; if (active.current) setPending(false) }
@@ -99,12 +106,20 @@ export function RecallQuestion({ question, request, busy, next, selfJudge = true
       {reference && <div className="recall-review">
         <details open className="recall-reference"><summary>原文参考答案</summary><div data-selectable>{reference.reference}</div></details>
         <fieldset disabled={pending || busy || !!verdict}>
-          <legend>对照你的回答，勾出你答到的要点</legend>
-          {reference.key_points.map((point, i) => <label key={i} className={`recall-point ${verdict?.missed.includes(i) ? "missed" : ""}`}>
-            <input type="checkbox" checked={ticked.includes(i)} aria-label={`要点 ${i + 1}`} onChange={(e) =>
-              void tick(i, e.target.checked)} />
-            <span><b>要点 {i + 1}</b>{point}{verdict?.missed.includes(i) && <em>✗ 没答到</em>}</span>
-          </label>)}
+          <legend>对照参考答案，把没答到的要点点成叉</legend>
+          {reference.key_points.map((point, i) => {
+            const heading = reference.key_point_headings?.[i]?.trim() || null
+            const previousHeading = i > 0 ? reference.key_point_headings?.[i - 1]?.trim() || null : null
+            const missed = verdict?.missed.includes(i) ?? !ticked.includes(i)
+            return <React.Fragment key={i}>
+              {heading && heading !== previousHeading && <p className="recall-point-heading">{heading}</p>}
+              <label className={`recall-point ${missed ? "missed" : ""}`}>
+                <input type="checkbox" checked={ticked.includes(i)} aria-label={`要点 ${i + 1}`} onChange={(e) =>
+                  void tick(i, e.target.checked)} />
+                <span><b>要点 {i + 1}</b>{point}{missed && <em>✗ 没答到</em>}</span>
+              </label>
+            </React.Fragment>
+          })}
         </fieldset>
         {!verdict && (selfJudge ? <div className="row" role="group" aria-label="自己判断这次作答">
           <Button kind="primary" disabled={pending || busy} onClick={() => run(true, true)}>算我答对</Button>
@@ -112,7 +127,7 @@ export function RecallQuestion({ question, request, busy, next, selfJudge = true
         </div> : <Button kind="primary" disabled={pending || busy} onClick={() => run(true)}>提交</Button>)}
       </div>}
     </div>
-    <Loading active={pending} label={reference ? '正在记录答到的要点…' : '正在保存回答并展开参考答案…'}/>
+    <Loading active={pending} label={reference ? '正在保存要点记录…' : '正在保存回答并展开参考答案…'}/>
     {error && <p className="recall-error" role="alert">{error}</p>}
     {verdict && <div className={`recall-result ${verdict.correct ? "correct" : "missed"}`} role="status">
       <span>{verdict.correct && <CheckCircle2 size={18} />}{selfJudge ? (verdict.correct ? "你选择：算我答对" : "你选择：算我答错") : (verdict.correct ? "全部答到，算对" : `漏了 ${verdict.missed.length} 条`)}</span>
