@@ -3,6 +3,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 from PySide6.QtCore import QObject, QSettings, Signal
+from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication, QWidget
 
 from refactor.desktop.account_identity import AccountPreferenceStore
@@ -98,11 +99,15 @@ def test_flicker102_surface_is_created_before_login_window_and_reused(shell, app
     gate.show()
     app.processEvents()
     assert gate.lifecycle == ['shown']
+    shell._capability_fetcher = lambda: {'register': True, 'forgot_password': True}
+    capabilities = QSignalSpy(gate.capabilities_received)
     shell.show()
+    if not capabilities.count():
+        assert capabilities.wait()
     app.processEvents()
+    assert shell._capabilities_loaded and gate.account_capabilities['register'] is True
     assert gate.lifecycle == ['shown']
 
-    gate.set_account_capabilities({'register': True, 'forgot_password': True})
     shell._prewarm_account_page()
     app.processEvents()
     assert gate.isVisible()
