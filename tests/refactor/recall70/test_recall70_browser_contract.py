@@ -82,8 +82,8 @@ def browser(root, shots=None):
     js('document.querySelectorAll(".recall-point input")[0].click();true')
     pump(.1);click('算我答错');wait('!!document.querySelector(".recall-result")')
     assert js('document.querySelector(".recall-result").textContent.includes("你选择：算我答错")')
-    assert js('document.querySelectorAll(".recall-point.missed").length') == 2
-    assert js('[...document.querySelectorAll(".recall-point.missed b")].map(e=>e.textContent).join(",")') == '要点 2,要点 3'
+    assert js('document.querySelectorAll(".recall-point.missed").length') == 1
+    assert js('[...document.querySelectorAll(".recall-point.missed b")].map(e=>e.textContent).join(",")') == '要点 1'
     assert js('[...document.querySelectorAll(".recall-point input")].every(e=>e.matches(":disabled"))')
     results=[]
     for theme in ('sakura','aurora'):
@@ -105,7 +105,7 @@ def browser(root, shots=None):
     js('window.recall70.reset("recall70-all");true'); wait('!!document.querySelector(".recall-question")')
     assert not js('!!document.querySelector(".recall-reference")')
     answer('输入、处理、输出。');click('写好了，看参考答案');wait('!!document.querySelector(".recall-reference")')
-    for i in range(3): js(f'document.querySelectorAll(".recall-point input")[{i}].click();true');pump()
+    assert js('[...document.querySelectorAll(".recall-point input")].every(e=>e.checked)')
     click('算我答对');wait('!!document.querySelector(".recall-result.correct")')
     assert js('document.querySelector(".recall-result").textContent.includes("你选择：算我答对")')
     assert js('JSON.stringify(window.recall70.calls.filter(c=>c.method==="class.recall_submit").at(-1).params.ticked)')=='[0,1,2]'

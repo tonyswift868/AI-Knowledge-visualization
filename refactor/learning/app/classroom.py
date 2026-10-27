@@ -525,7 +525,9 @@ class Classroom:
             question['revealed']=bool(pending.get('revealed'))
             if isinstance(question.get('source'),dict):
                 question['source']={k:v for k,v in question['source'].items() if k!='text'}
-            if pending.get('revealed'):question.update(reference=q['reference'],key_points=q['key_points'],answer=pending['learner_answer'],ticked=pending.get('ticked',[]))
+            if pending.get('revealed'):question.update(reference=q['reference'],key_points=q['key_points'],
+                key_point_headings=question_bank.recall_key_point_headings(q),
+                answer=pending['learner_answer'],ticked=pending.get('ticked',[]))
         if question:question.update(purpose=PURPOSE[pending['kind']],number=pending.get('number'),total=pending.get('total'))
         today = self._today(course,state)
         concept=self._concept(course,state)
@@ -1119,7 +1121,8 @@ class Classroom:
             # Reopened, not-yet-revealed cards use the current meaning groups.
             # Revealed cards keep their snapshot and already saved tick indices.
             pending['question'] = question_bank.with_recall_key_points(pending['question'])
-            pending.update(learner_answer=answer,revealed=True)
+            pending.update(learner_answer=answer,revealed=True,
+                           ticked=list(range(len(pending['question']['key_points']))))
             self._user(course,state,answer)
 
     def recall_draft(self, course, state, ctx, question_id, ticked):
@@ -2404,7 +2407,8 @@ def register(bridge, services, study_day, *, presence=lambda active,plan_id=None
         result=invoke('recall_reveal',p,c,p.get('question_id'),p.get('answer'))
         if result.get('failure'):return result
         q=result.get('question') or {}
-        return dict(result,reference=q.get('reference'),key_points=q.get('key_points'))
+        return dict(result,reference=q.get('reference'),key_points=q.get('key_points'),
+                    key_point_headings=q.get('key_point_headings'),ticked=q.get('ticked'))
     def submit(p,c):
         result=invoke('recall_submit',p,c,p.get('question_id'),p.get('ticked'),p.get('correct'))
         if result.get('failure'):return result

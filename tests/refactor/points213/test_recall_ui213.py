@@ -89,6 +89,7 @@ def browser(root, screenshot=None):
     click("写好了，看参考答案")
     wait('document.querySelectorAll(".recall-point").length===6')
     assert js('document.querySelectorAll(".recall-point input").length') == 6
+    assert js('[...document.querySelectorAll(".recall-point input")].every(input=>input.checked)')
     first_text = json.loads(js('JSON.stringify([...document.querySelectorAll(".recall-point")[0].querySelector("span").childNodes].map(n=>n.textContent))'))
     assert first_text[1].count("\n") == 1
     assert first_text[1].startswith("分片键特点：")
@@ -111,9 +112,9 @@ def browser(root, screenshot=None):
     click("算我答错")
     wait('!!document.querySelector(".recall-result.missed")')
     assert js('window.recall213.calls.filter(c=>c.method==="class.recall_submit").at(-1).params.correct') is False
-    assert js('JSON.stringify(window.recall213.calls.filter(c=>c.method==="class.recall_submit").at(-1).params.ticked)') == "[1,5]"
+    assert js('JSON.stringify(window.recall213.calls.filter(c=>c.method==="class.recall_submit").at(-1).params.ticked)') == "[0,2,3,4]"
     assert js('document.querySelector(".recall-result").textContent.includes("你选择：算我答错")')
-    assert js('document.querySelectorAll(".recall-point.missed").length') == 4
+    assert js('document.querySelectorAll(".recall-point.missed").length') == 2
 
     # An in-flight legacy snapshot owns its old six strings and tick indices after restoration.
     js('window.recall213.restoreLegacy();true')

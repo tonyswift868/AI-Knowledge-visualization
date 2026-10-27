@@ -278,8 +278,10 @@ def _answer_is_heading(lines, index):
                     and _ANSWER_TABLE_RULE.fullmatch(lines[following + 1].rstrip('\r\n'))))
 
 
-def answer_units(reference):
-    """Return literal, continuous units grouped by complete source ideas.
+def previous_answer_units(reference):
+    """213 grouping algorithm, retained for legacy block projection.
+
+    Return literal, continuous units grouped by complete source ideas.
 
     This small source-preserving adapter follows the Markdown structure already
     recognized by ``course.extract``. That parser does not retain source
@@ -414,6 +416,338 @@ def answer_units(reference):
     # Repeated literal paragraphs remain in the reference, but are one checklist
     # item. The bank schema has always required unique key-point strings.
     return list(dict.fromkeys(value for _, _, value in merged)) or [reference.strip()]
+
+
+_ANSWER_SHORT_TITLE = re.compile(r'(?:特点|特性|特征|要求|原则|条件|要素|如下|包括|构成)$')
+_ANSWER_SQL_LINE = re.compile(r'^\s*(?:SELECT|WITH|INSERT\s+INTO|UPDATE\s+\S|DELETE\s+FROM|CREATE\s+TABLE|EXPLAIN)\b', re.I)
+
+
+def _answer_substantive_colon(value):
+    """A colon may follow a complete definition, not only a section lead-in."""
+    body = value.rstrip().rstrip('：:').strip()
+    return bool(re.search(
+        r'(?:称为|叫做|叫作|定义为|指的是|意味着|导致|会导致|造成|使得|属于|代表|在于|是)[^，,：:]+',
+        body,
+    ))
+
+
+def _answer_is_heading214(lines, index):
+    """214-local structural classifier; keep the archived 213 rules untouched."""
+    value = lines[index].rstrip('\r\n').strip()
+    if not value:
+        return False
+    if _answer_list(value):
+        return False
+    if _ANSWER_SQL_LINE.match(value):
+        return False
+    if _ANSWER_HEADING.fullmatch(value):
+        # In JavaGuide, a Markdown # line immediately preceding SQL is a code
+        # comment, not a document section heading.
+        following = index + 1
+        while following < len(lines) and not lines[following].strip():
+            following += 1
+        if following < len(lines) and _ANSWER_SQL_LINE.match(lines[following].strip()):
+            return False
+        return True
+    if _ANSWER_BOLD_HEADING.fullmatch(value):
+        return True
+    if re.search(r'[。！？!?；;]$', value):
+        return False
+    if value.endswith(('：', ':')):
+        return not _answer_substantive_colon(value)
+    following = index + 1
+    while following < len(lines) and not lines[following].strip():
+        following += 1
+    if following >= len(lines):
+        return False
+    next_value = lines[following].rstrip('\r\n').strip()
+    return bool(following > index + 1 or _answer_list(next_value)
+                or _ANSWER_FENCE.match(next_value)
+                or ('|' in next_value and following + 1 < len(lines)
+                    and _ANSWER_TABLE_RULE.fullmatch(lines[following + 1].rstrip('\r\n'))))
+
+
+def _answer_clean_heading(value):
+    value = re.sub(r'^\s{0,3}#{1,6}\s*', '', value.strip())
+    value = re.sub(r'^(?:\*\*|__)(.*?)(?:\*\*|__)$', r'\1', value)
+    return value.rstrip('#').strip()
+
+
+def _answer_groups_with_metadata(reference):
+    """Return source-literal answer ideas and display-only context headings.
+
+    Sibling list items are independent ideas. Nested items and indented
+    continuation lines stay with their parent. A title or lead-in is metadata,
+    never a checkbox item. Table data rows are separate ideas, with the column
+    header carried as display context. Every ``text`` remains one contiguous
+    slice of ``reference`` so callers can locate it without rewritten text.
+    """
+    if not isinstance(reference, str) or not reference.strip():
+        return []
+
+    lines = reference.splitlines(keepends=True)
+    offsets = []
+    position = 0
+    for line in lines:
+        offsets.append(position)
+        position += len(line)
+    groups = []
+    heading_lines = []
+    i = 0
+
+    def emit(start_line, end_line, heading=None, heading_spans=()):
+        start = offsets[start_line]
+        end = offsets[end_line] if end_line < len(lines) else len(reference)
+        text = reference[start:end].strip()
+        if text:
+            groups.append({'text': text, 'heading': heading or None, '_start': start, '_end': end,
+                           '_heading_spans': list(heading_spans)})
+
+    def skip_blank(index):
+        while index < len(lines) and not lines[index].strip():
+            index += 1
+        return index
+
+    def raw_heading(start, end):
+        return ' '.join(_answer_clean_heading(lines[n]) for n in range(start, end)
+                        if lines[n].strip() and not re.match(
+                            r'^\s*(?:style|classDef|linkStyle)\s+\S+\s+.*(?:fill|stroke|color)\s*:', lines[n]))
+
+    def line_span(start, end):
+        return (offsets[start], offsets[end] if end < len(lines) else len(reference))
+
+    while i < len(lines):
+        line = lines[i].rstrip('\r\n')
+        if not line.strip():
+            i += 1
+            continue
+        if _answer_is_heading214(lines, i):
+            heading_lines.append(i)
+            i += 1
+            continue
+
+        heading = raw_heading(heading_lines[0], heading_lines[-1] + 1) if heading_lines else None
+        heading_spans = [line_span(heading_lines[0], heading_lines[-1] + 1)] if heading_lines else []
+        heading_lines.clear()
+
+        # Java/MySQL examples commonly use an unfenced `#` comment followed by
+        # SQL. Keep both source lines intact and let the following merge step
+        # attach the example to its preceding definition/explanation.
+        sql_line = i if _ANSWER_SQL_LINE.match(line.strip()) else None
+        if line.lstrip().startswith('#'):
+            probe = skip_blank(i + 1)
+            if probe < len(lines) and _ANSWER_SQL_LINE.match(lines[probe].strip()):
+                sql_line = probe
+        if sql_line is not None:
+            end = sql_line + 1
+            while end < len(lines) and lines[end].strip():
+                end += 1
+            emit(i, end, heading, heading_spans)
+            groups[-1]['_example'] = True
+            i = end
+            continue
+
+        if _ANSWER_FENCE.match(line):
+            fence = _ANSWER_FENCE.match(line).group(1)
+            close = re.compile(r'^\s{0,3}' + re.escape(fence[0]) + r'{' + str(len(fence)) + r',}\s*$')
+            end = i + 1
+            while end < len(lines) and not close.fullmatch(lines[end].rstrip('\r\n')):
+                end += 1
+            if end < len(lines):
+                end += 1
+            emit(i, end, heading, heading_spans)
+            i = end
+            continue
+
+        # A table row is a distinct answer idea; its column headings describe
+        # the row and are kept as non-checkbox context.
+        if ('|' in line and i + 1 < len(lines)
+                and _ANSWER_TABLE_RULE.fullmatch(lines[i + 1].rstrip('\r\n'))):
+            table_heading = lines[i].strip()
+            table_heading_span = line_span(i, i + 1)
+            end = i + 2
+            while end < len(lines) and lines[end].strip() and '|' in lines[end]:
+                emit(end, end + 1, ' · '.join(v for v in (heading, table_heading) if v),
+                     [*heading_spans, table_heading_span])
+                end += 1
+            i = end
+            continue
+
+        if _answer_list(line):
+            indent = len(line) - len(line.lstrip())
+            items = []
+            cursor = i
+            while cursor < len(lines):
+                current = lines[cursor].rstrip('\r\n')
+                marker = _answer_list(current)
+                if marker and len(marker.group(1)) == indent:
+                    item_start = cursor
+                    cursor += 1
+                    while cursor < len(lines):
+                        value = lines[cursor].rstrip('\r\n')
+                        next_marker = _answer_list(value)
+                        if next_marker and len(next_marker.group(1)) <= indent:
+                            break
+                        if _answer_is_heading214(lines, cursor) or _ANSWER_FENCE.match(value):
+                            break
+                        if not value.strip():
+                            probe = skip_blank(cursor)
+                            probe_line = lines[probe].rstrip('\r\n') if probe < len(lines) else ''
+                            probe_marker = _answer_list(probe_line)
+                            if probe >= len(lines) or (probe_marker and len(probe_marker.group(1)) <= indent):
+                                cursor = probe
+                                break
+                            # Keep blank-separated nested/continuation text with
+                            # this parent, but do not absorb a fresh paragraph.
+                            if probe_marker or (probe_line[:1].isspace()):
+                                cursor = probe
+                                continue
+                            cursor = probe
+                            break
+                        cursor += 1
+                    items.append((item_start, cursor))
+                    continue
+                if not current.strip():
+                    cursor += 1
+                    continue
+                break
+
+            # Some documents encode a list title as its first bullet. Promote
+            # only generic title words without descriptive punctuation and
+            # only when another sibling supplies the actual list content.
+            list_heading = heading
+            list_heading_spans = list(heading_spans)
+            if len(items) > 1:
+                first_text = lines[items[0][0]].strip()
+                first_value = _answer_list(first_text).string[_answer_list(first_text).end():].strip()
+                compact = re.sub(r'[*_`]', '', first_value).strip().rstrip('：:')
+                descriptive_punctuation = re.search(r'[，。；：,.;!?！？]', compact)
+                if _ANSWER_SHORT_TITLE.search(compact) and not descriptive_punctuation:
+                    list_heading = ' · '.join(v for v in (heading, compact) if v)
+                    list_heading_spans.append(line_span(items[0][0], items[0][0] + 1))
+                    items.pop(0)
+
+            for item_start, item_end in items:
+                # Exclude blanks between sibling items from the source span.
+                while item_end > item_start and not lines[item_end - 1].strip():
+                    item_end -= 1
+                emit(item_start, item_end, list_heading, list_heading_spans)
+            i = max(cursor, i + 1)
+            continue
+
+        # Ordinary prose is grouped by paragraph, never by sentence.
+        end = i + 1
+        while end < len(lines) and lines[end].strip():
+            value = lines[end].rstrip('\r\n')
+            if (_answer_is_heading214(lines, end) or _answer_list(value) or _ANSWER_FENCE.match(value)
+                    or ('|' in value and end + 1 < len(lines)
+                        and _ANSWER_TABLE_RULE.fullmatch(lines[end + 1].rstrip('\r\n')))):
+                break
+            end += 1
+        emit(i, end, heading, heading_spans)
+        i = end
+
+    if heading_lines:
+        # A reference consisting only of a heading remains answerable as a
+        # single literal point; do not silently discard its original text.
+        start = heading_lines[0]
+        emit(start, len(lines), None)
+
+    # A bare list label followed by its explanation is one answer idea, even
+    # when extraction removed the list indentation. Keep the label and prose
+    # in one literal source span; otherwise the label becomes a pointless
+    # checkbox separated from the facts that explain it.
+    attached = []
+    index = 0
+    while index < len(groups):
+        group = groups[index]
+        first_line = group['text'].splitlines()[0] if group['text'].splitlines() else ''
+        marker = _answer_list(first_line)
+        label = first_line[marker.end():].strip() if marker else ''
+        is_label = bool(marker and label and not re.search(r'[，。；：,.;!?！？]', label))
+        if not is_label or index + 1 >= len(groups):
+            attached.append(group); index += 1; continue
+
+        end_index = index + 1
+        last = groups[index]
+        while end_index < len(groups):
+            following = groups[end_index]
+            next_line = following['text'].splitlines()[0] if following['text'].splitlines() else ''
+            if (following.get('heading') or _answer_list(next_line)
+                    or reference[last['_end']:following['_start']].strip()):
+                break
+            last = following
+            end_index += 1
+        if last is groups[index]:
+            attached.append(group); index += 1; continue
+        group['_end'] = last['_end']
+        group['text'] = reference[group['_start']:group['_end']].strip()
+        attached.append(group)
+        index = end_index
+    groups = attached
+
+    # A code block illustrates adjacent prose; keep it attached rather than
+    # exposing a code-only checkbox unless the answer itself is just code.
+    merged = []
+    for index, group in enumerate(groups):
+        content_lines = [line for line in group['text'].splitlines() if line.strip()]
+        is_code = bool(group.get('_example') or
+                       (content_lines and _ANSWER_FENCE.match(content_lines[0])))
+        if is_code and group.get('heading'):
+            # A title/lead-in is explanatory context for the example. Keep the
+            # code as its own literal group and the explanation as metadata.
+            merged.append(group)
+        elif is_code and merged:
+            previous = merged[-1]
+            previous['_end'] = group['_end']
+            previous['text'] = reference[previous['_start']:previous['_end']].strip()
+        elif is_code and index + 1 < len(groups):
+            # A leading example belongs with the following explanation.
+            following = groups[index + 1]
+            following['_start'] = group['_start']
+            following['text'] = reference[following['_start']:following['_end']].strip()
+            if group.get('heading') and not following.get('heading'):
+                following['heading'] = group['heading']
+        else:
+            merged.append(group)
+
+    # Drop exact duplicate groups, as the previous behavior did for duplicate
+    # literal paragraphs. Do not deduplicate semantically similar content.
+    unique = []
+    seen = set()
+    for group in merged:
+        key = group['text']
+        if key not in seen:
+            unique.append({'text': group['text'], 'heading': group.get('heading'),
+                           '_text_span': (group['_start'], group['_end']),
+                           '_heading_spans': group.get('_heading_spans', [])})
+            seen.add(key)
+    return unique or [{'text': reference.strip(), 'heading': None}]
+
+
+def answer_groups(reference):
+    """Public answer groups; heading and source offsets stay out of stored rows."""
+    return [{'text': group['text'], 'heading': group.get('heading')}
+            for group in _answer_groups_with_metadata(reference)]
+
+
+def _answer_group_metadata(reference):
+    """Internal text/heading source spans for runtime projections and display."""
+    groups = _answer_groups_with_metadata(reference)
+    return [{
+        'text': group['text'],
+        'heading': group.get('heading'),
+        'text_span': group.get('_text_span'),
+        'heading_spans': [
+            (start, end, reference[start:end])
+            for start, end in group.get('_heading_spans', [])
+        ],
+    } for group in groups]
+
+
+def answer_units(reference):
+    """Compatibility projection: checkbox point text without display headings."""
+    return [group['text'] for group in answer_groups(reference)]
 
 
 def selected_units(reference, ids):

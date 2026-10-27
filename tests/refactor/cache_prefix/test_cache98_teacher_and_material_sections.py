@@ -51,10 +51,10 @@ def test_cache98_page_moves_between_points_without_stale_aliases_or_lost_turns()
 
 @pytest.mark.parametrize('reference,omitted', [
     ('第一句。\n 第二句。\t第三句。', True),
-    ('# 标题\n正文第一句。第二句。', True),
+    ('# 标题\n正文第一句。第二句。', False),
     ('```python\nx = 1\n```\n解释。', True),
     ('第一句。\n第一句。', True),
-    ('| 类型 | 说明 |\n| --- | --- |\n| 键 | 值 |', True),
+    ('| 类型 | 说明 |\n| --- | --- |\n| 键 | 值 |', False),
     ('第一句。\u3000第二句。', True),
 ])
 def test_cache98_reference_omitted_only_for_exact_nonwhitespace_equality(reference, omitted):

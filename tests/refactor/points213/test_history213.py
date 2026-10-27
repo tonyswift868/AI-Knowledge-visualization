@@ -25,9 +25,9 @@ def test_history213_current_question_regroups_without_mutating_wire_or_id():
     before = copy.deepcopy(old)
     current = qb.assessment_questions([old])[0]
     assert current['id'] == old['id']
-    assert len(current['key_points']) == 2
+    assert len(current['key_points']) == 3
     assert all(point in REFERENCE for point in current['key_points'])
-    assert '分布均匀' in current['key_points'][0] and '保持稳定' in current['key_points'][0]
+    assert '分布均匀' in current['key_points'][0] and '保持稳定' in current['key_points'][1]
     assert old == before
     assert qb.with_recall_key_points(current) == current
     qb.validate_question(old)
@@ -59,7 +59,8 @@ def test_history213_short_legacy_label_does_not_expand_to_every_mention():
     row = legacy_question()
     row.update(reference=reference, key_points=['ASCII'])
     grouped = qb.with_recall_key_points(row)
-    assert grouped['key_points'] == ['ASCII\n\nASCII编码的定义。']
+    assert grouped['key_points'] == ['ASCII编码的定义。']
+    assert qb.recall_key_point_headings(grouped) == ['ASCII']
     assert qb.with_recall_key_points(grouped) == grouped
 
 
@@ -68,7 +69,7 @@ def test_history213_reveal_migrates_only_unrevealed_pending_and_freezes_indices(
     room._user = lambda *args, **kwargs: None
     state = dict(pending=dict(question=legacy_question()))
     room.recall_reveal(None, state, None, 'original213', '根据查询来选')
-    assert len(state['pending']['question']['key_points']) == 2
+    assert len(state['pending']['question']['key_points']) == 3
     state['pending']['ticked'] = [1]
     frozen = copy.deepcopy(state)
     room.recall_reveal(None, state, None, 'original213', '重试')
@@ -99,7 +100,7 @@ def test_history213_saved_history_and_outbox_unchanged_after_reopen(tmp_path):
     store.close()
     store = CourseStore('history213', tmp_path)
     try:
-        assert len(qb.assessment_questions(store.records('question_bank', 'p'))[0]['key_points']) == 2
+        assert len(qb.assessment_questions(store.records('question_bank', 'p'))[0]['key_points']) == 3
         assert store.wrong_answers('p') == history
         attempt = history[0]['attempts'][0]
         assert attempt['ticked'] == [2] and attempt['missed'] == [0, 1]

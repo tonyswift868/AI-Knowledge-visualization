@@ -317,7 +317,10 @@ class SelfTestStore:
             if q['kind'] != 'recall' or current['verdict'] is not None or not isinstance(answer, str) or not answer.strip():
                 raise ValueError('请先写回答，再看参考答案。')
             if not current['revealed']:
-                current.update(answer=answer, revealed=True)
+                from .question_bank import with_recall_key_points
+                points = with_recall_key_points(q)['key_points']
+                current.update(answer=answer, revealed=True, key_points=points,
+                               ticked=list(range(len(points))))
             self._tick(body)
         return self.view(self.update(key, change))
 
@@ -338,9 +341,11 @@ class SelfTestStore:
             if q['kind'] == 'recall':
                 if not current['revealed']:
                     raise ValueError('请先写回答并查看参考答案。')
-                if not isinstance(ticked, list) or any(type(i) is not int or not 0 <= i < len(q['key_points']) for i in ticked):
+                points = current.get('key_points', q['key_points'])
+                if not isinstance(ticked, list) or any(type(i) is not int or not 0 <= i < len(points) for i in ticked):
                     raise ValueError('要点勾选无效。')
-                missed = [i for i in range(len(q['key_points'])) if i not in ticked]
+                missed = [i for i in range(len(points)) if i not in ticked]
+                current['ticked'] = sorted(ticked)
                 correct, saved = not missed, current['answer']
             else:
                 correct, saved = grade(q['grading'], answer)
@@ -386,7 +391,11 @@ class SelfTestStore:
                 source=dict(title='上传题目', url=None, locator='原题'), origin='found', purpose='self_test',
                 revealed=current['revealed'], number=len(run['history'])+(current['verdict'] is None), total=None)
             if current['revealed']:
-                question.update(reference=q['reference'], key_points=q['key_points'], answer=current['answer'])
+                from .question_bank import recall_key_point_headings
+                points = current.get('key_points', q['key_points'])
+                question.update(reference=q['reference'], key_points=points,
+                    key_point_headings=recall_key_point_headings(dict(q, key_points=points)),
+                    ticked=current.get('ticked', []), answer=current['answer'])
             if current['verdict'] and q['kind'] == 'objective':
                 question.update(reference=q['answer'], answer=current['answer'])
         return dict(id=body['id'], name=body['name'], run=run, question=question,

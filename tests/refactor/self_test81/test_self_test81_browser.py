@@ -122,8 +122,7 @@ def browser(root, output):
                 click('写好了，看参考答案');wait('!!document.querySelector(".recall-reference")')
                 if not keypoint_shots:
                     shots('keypoints');keypoint_shots=True
-                js('document.querySelectorAll(".recall-point input").forEach(e=>e.click());true')
-                wait('[...document.querySelectorAll(".recall-point input")].every(e=>e.checked)')
+                assert js('[...document.querySelectorAll(".recall-point input")].every(e=>e.checked)')
                 click('提交')
             elif js('!!document.querySelector("input[type=radio]")'):
                 js('document.querySelector("input[type=radio]").click();true');click('提交答案')

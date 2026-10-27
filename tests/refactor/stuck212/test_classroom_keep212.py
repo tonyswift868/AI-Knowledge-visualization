@@ -64,4 +64,6 @@ def test_212_kept_recall_reveal_and_ticks_survive_grant_then_finish_normally(env
     assert e.store.load_report(PLAN)['schema']=='mentorflow.course.report.v1'
     facts=e.store.records('question_answers',PLAN)
     assert len(facts)==1 and facts[0]['answer']=='我自己的理解原话'
-    assert facts[0]['ticked']==[0] and facts[0]['missed']==[1,2] and facts[0]['self_correct'] is True
+    assert facts[0]['question']['key_points'] == saved['question']['key_points']
+    missed = [i for i in range(len(saved['question']['key_points'])) if i != 0]
+    assert facts[0]['ticked']==[0] and facts[0]['missed']==missed and facts[0]['self_correct'] is True

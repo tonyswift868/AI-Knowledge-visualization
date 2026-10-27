@@ -70,7 +70,7 @@ async function run() {
   button('算我答错').click()
   await until(() => !!document.querySelector('.recall-result'), 'self-judgement result')
   const submit = calls.filter(call => call.method === 'class.recall_submit').at(-1)?.params
-  if (submit?.correct !== false || JSON.stringify(submit.ticked) !== '[0]') throw new Error('self judgement and checked-point record mismatch')
+  if (submit?.correct !== false || JSON.stringify(submit.ticked) !== '[1]') throw new Error('self judgement and checked-point record mismatch')
   const actual = metrics()
   results['interactive-check-wrong'] = actual
   const resultScroll = document.querySelector<HTMLElement>('.class-scroll')!
