@@ -50,18 +50,18 @@
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
-| MF-02 | 空闲 | client |
-| MF-03 | 空闲 | classroom |
+| MF-02 | 208-MF02 修 sync203 写死日期、查修 offline181 锁（已起草，待转发） | client |
+| MF-03 | 209-MF03 204/205/206 联合核对、副本演练工具（已起草，待转发） | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 207-MF05 调研 WinError 5（Handle，已起草，待转发） | platform |
 | MF-06 | 空闲 | tools |
-| MF-07 | 206-MF07 修加资料入口 BUG-132（已起草，待转发） | library |
+| MF-07 | 空闲 | library |
 
 ## 待派队列
 
 - 199-MF04（[BUG-129]）、203-MF02（[BUG-130]）已合入 b53d3abf、79e8f1d7。203 改过 tests/refactor/graph198/test_graph198_module_graph_browser.py 的测试数据，202 合入时注意冲突。用户 2026-10-27 定：都修完一起发 2.0.34，[BUG-87] WinError 5 也要修好再发。
-- 205-MF06 已合入 81ef9597（[BUG-131] 备题部分；提供 question_bank.supplemental_question_ids，204 要用它，不另做一套）。204-MF03 已合入 e4661556（[BUG-131] 课堂与成绩、一次性工具 scripts/grant_mastery204.py；它按冻结题集判断补题，没用 205 的补题标记，联合核对时看两边是否一致）；206-MF07（library，[BUG-132] 加资料入口，基线 819538eb，任务文件 D:\MentorFlow\.local\tasks\206-MF07.md）已起草，待转发；store.py 204、206 各改各的函数，合入时注意。202-MF05 已合入 7c8de15e（部分完成：direct97 产品竞态、graph198 夹具已修；WinError 5 一类未明，见 [BUG-87]）。
-- 207-MF05（platform，[BUG-87] 目录改名 WinError 5 调研，只查不改，基线 54ba0153，任务文件 D:\MentorFlow\.local\tasks\207-MF05.md）已起草，待转发；Handle 要管理员权限时会弹一次 Windows 管理员确认，要用户点“是”。206 合入后再派一人：跑合并后全量、核对 204 和 205 的补题判断一致、在新副本上用工具把第 6 模块 30 道题和第 8 模块 1 道题算过并走到最终检验。
+- 205-MF06、204-MF03、206-MF07 已合入 81ef9597、e4661556、ae07e1c8（[BUG-131]、[BUG-132]）；202-MF05 已合入 7c8de15e（部分完成，WinError 5 见 [BUG-87]）。208-MF02（client，[BUG-133]、[BUG-134]）、209-MF03（classroom，联合核对和副本演练）基线 15836e3b，任务文件 D:\MentorFlow\.local	asks8-MF02.md、209-MF03.md，已起草，待转发；可以和 207 同时做，不改同一处。
+- 207-MF05（platform，[BUG-87] 目录改名 WinError 5 调研，只查不改，基线 54ba0153，任务文件 D:\MentorFlow\.local\tasks\207-MF05.md）已起草，待转发；Handle 要管理员权限时会弹一次 Windows 管理员确认，要用户点“是”。207、208、209 合入后统一跑一次全量，再发 2.0.34。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）。
 
 ## 回执格式
