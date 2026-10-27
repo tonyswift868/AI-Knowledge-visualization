@@ -51,16 +51,8 @@ def _complete(gateway, packet, system, cancel):
 
 
 def _points(reference, gateway, cancel):
-    units = mq.answer_units(reference)
-    if len(units) <= 5:
-        return units, None
-    try:
-        result = _complete(gateway, {'units': [dict(id=i+1, text=t) for i, t in enumerate(units)]},
-            '只从本题参考答案的原文单位中选3–5个最关键编号。只返回JSON {"key_point_ids":[1,2,3]}，不要抄写、补充或改写文字。', cancel)
-        return mq.selected_units(reference, result.get('key_point_ids')), None
-    except (ValueError, KeyError, TypeError):
-        # Batch 71's fallback: malformed selection must not throw a real Q away.
-        return units[:5], '要点编号未能读取，暂用前五条原文单位。'
+    _check(cancel)
+    return mq.answer_units(reference), None
 
 
 def compile_row(raw, original, gateway, cancel=None):

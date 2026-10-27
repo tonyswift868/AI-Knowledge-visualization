@@ -38,7 +38,7 @@ def test_recall167_concept_compiles_own_recall_question(recall167_store,monkeypa
     assert row['kind']=='recall' and row['origin']=='found'
     assert row['stem']=='小要点原题是什么？'
     assert row['reference']=='原文第一点。原文第二点。原文第三点。'
-    assert row['key_points']==['原文第一点。','原文第二点。','原文第三点。']
+    assert row['key_points']==[row['reference']]
     assert row['subpoint_id']=='point-s1' and row['source']['chunk_ids']==['c1']
     qb.validate_question(row)
 
@@ -100,7 +100,7 @@ def test_recall167_mixed_subpoint_keeps_objective_and_all_recalls(recall167_stor
     assert len(qb.assessment_questions([objective_row,recall_row],'m'))==2
 
 
-def test_recall167_long_answer_reuses_original_key_point_selector(recall167_store,monkeypatch):
+def test_recall167_long_answer_keeps_whole_meaning_without_selector(recall167_store,monkeypatch):
     from refactor.learning.course import material_questions as mq
     candidate=recall167_candidate(reference='原文第一点。原文第二点。原文第三点。原文第四点。原文第五点。原文第六点。')
     monkeypatch.setattr(mq,'candidates',lambda chunks,sources: [candidate])
@@ -111,8 +111,8 @@ def test_recall167_long_answer_reuses_original_key_point_selector(recall167_stor
         return dict(questions=[dict(candidate_id=candidate['id'],key_point_ids=[2,4,6])])
     pm.prepare_point(recall167_store,'p',recall167_store.records('points','p')[0],{'question_splitter':splitter})
     row=qb.assessment_questions(recall167_store.records('question_bank','p'),'m')[0]
-    assert len(calls)==1
-    assert row['key_points']==['原文第二点。','原文第四点。','原文第六点。']
+    assert calls == []
+    assert row['key_points']==[candidate['reference']]
 
 
 def test_recall167_bad_long_answer_selector_json_keeps_original(recall167_store,monkeypatch):
@@ -130,8 +130,8 @@ def test_recall167_bad_long_answer_selector_json_keeps_original(recall167_store,
     monkeypatch.setattr(pm,'_concept_cloze',lambda *a,**k: pytest.fail('bad selector JSON must keep recall'))
     pm.prepare_point(recall167_store,'p',recall167_store.records('points','p')[0],{'gateway':gateway})
     row=qb.assessment_questions(recall167_store.records('question_bank','p'),'m')[0]
-    assert gateway.calls==1
-    assert row['key_points']==['原文第一点。','原文第二点。','原文第三点。','原文第四点。','原文第五点。']
+    assert gateway.calls==0
+    assert row['key_points']==[candidate['reference']]
 
 
 def test_recall167_cloze_points_count_parent_points_and_planflow_saves(recall167_store,monkeypatch):

@@ -189,7 +189,9 @@ def prepare_module(store, plan_id, module_id, ctx, progress):
         candidates = mq.for_module(mq.candidates(chunks, sources), points)
         accepted, rejected = [], []
         progress(0, len(candidates), '正在拆出资料自带的题')
-        direct = [c for c in candidates if c['candidate_type'] == 'recall' and len(mq.answer_units(c['reference'])) <= 5]
+        # Recall stems/answers are already literal source spans. Structural
+        # meaning groups need no model selecting a fixed number of fragments.
+        direct = [c for c in candidates if c['candidate_type'] == 'recall']
         for candidate in direct:
             accepted.append(mq.compile_question(dict(kind='recall', stem=candidate['stem']), candidate, module_id))
         remaining = [c for c in candidates if c not in direct]
@@ -206,33 +208,15 @@ def prepare_module(store, plan_id, module_id, ctx, progress):
                 response = gateway.complete('point_materials', [dict(role='user', content=json.dumps(packet, ensure_ascii=False))],
                     system=mq.SYSTEM, plan_id=plan_id, cancel=ctx.get('cancel'), enable_search=False)
                 if ctx.get('on_call'): ctx['on_call']('point_materials', response)
-                try:
-                    output = _json(response.text)
-                except ValueError as exc:
-                    # Recall content is already wholly owned by the program;
-                    # malformed selection JSON must not throw those questions away.
-                    if any(c['candidate_type'] != 'recall' for c in group):
-                        raise
-                    _log.info('material key selection JSON fallback: %s', exc)
-                    output = {}
+                output = _json(response.text)
             _check(ctx)
             rows = output.get('questions', []) if isinstance(output, dict) else []
             for candidate in group:
                 matches = [r for r in rows if isinstance(r, dict) and r.get('candidate_id') == candidate['id']]
                 try:
-                    if candidate['candidate_type'] == 'recall':
-                        raw = matches[0] if len(matches)==1 else {}
-                        try:
-                            mq.selected_units(candidate['reference'], raw.get('key_point_ids'))
-                        except ValueError as exc:
-                            # Keep the source question even if model selection is malformed.
-                            _log.info('material key selection fallback: candidate=%s reason=%s', candidate['id'], exc)
-                            raw = dict(raw, key_point_ids=list(range(1, min(5, len(mq.answer_units(candidate['reference'])))+1)))
-                        raw = dict(raw, kind='recall', stem=candidate['stem'])
-                    else:
-                        if len(matches) != 1: raise ValueError('模型漏题或重复拆同一道题')
-                        raw = matches[0]
-                        if raw.get('reject_reason'): raise ValueError(str(raw['reject_reason']))
+                    if len(matches) != 1: raise ValueError('模型漏题或重复拆同一道题')
+                    raw = matches[0]
+                    if raw.get('reject_reason'): raise ValueError(str(raw['reject_reason']))
                     question = mq.compile_question(raw, candidate, module_id)
                     from .question_bank import validate_question
                     validate_question(question)
@@ -544,30 +528,7 @@ def _prepare_concept_point(store, plan_id, point, ctx):
                 if candidate['candidate_type'] != 'recall':
                     continue
                 try:
-                    units = mq.answer_units(candidate['reference'])
-                    ids = list(range(1, min(5, len(units)) + 1)) if len(units) > 5 else None
-                    if len(units) > 5:
-                        packet = dict(module_id=point['module_id'], module_title=point.get('title', ''),
-                                      candidates=[mq.request_candidate(candidate)])
-                        _check(ctx)
-                        if ctx.get('question_splitter'):
-                            output = ctx['question_splitter'](packet, cancel=ctx.get('cancel'))
-                        elif ctx.get('gateway'):
-                            response = ctx['gateway'].complete('point_materials', [dict(
-                                role='user', content=json.dumps(packet, ensure_ascii=False))],
-                                system=mq.SYSTEM, plan_id=plan_id, cancel=ctx.get('cancel'), enable_search=False)
-                            if ctx.get('on_call'): ctx['on_call']('point_materials', response)
-                            try: output = _json(response.text)
-                            except ValueError: output = {}
-                        else:
-                            output = {}
-                        rows = output.get('questions', []) if isinstance(output, dict) else []
-                        matches = [r for r in rows if isinstance(r, dict) and r.get('candidate_id') == candidate['id']]
-                        if len(matches) == 1:
-                            try: mq.selected_units(candidate['reference'], matches[0].get('key_point_ids'))
-                            except ValueError: pass
-                            else: ids = matches[0]['key_point_ids']
-                    row = mq.compile_question(dict(kind='recall', stem=candidate['stem'], key_point_ids=ids),
+                    row = mq.compile_question(dict(kind='recall', stem=candidate['stem']),
                                               candidate, point['module_id'])
                     row['subpoint_id'] = sid
                     validate_question(row)

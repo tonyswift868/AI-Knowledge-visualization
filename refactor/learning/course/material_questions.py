@@ -216,8 +216,8 @@ def literal(value, original):
     return original[left:right]
 
 
-def answer_units(reference):
-    """Literal sentences, list items and table rows; never rewrite the answer."""
+def legacy_answer_units(reference):
+    """The former sentence/list/table-row splitter for saved legacy questions."""
     units = []
     for line in reference.splitlines():
         value = line.strip()
@@ -236,14 +236,193 @@ def answer_units(reference):
     return units or [reference.strip()]
 
 
+_ANSWER_HEADING = re.compile(r'^\s{0,3}#{1,6}\s+.+?\s*#*\s*$')
+_ANSWER_BOLD_HEADING = re.compile(r'^\s*(?:\*\*|__)[^\n]+?(?:\*\*|__)\s*$')
+_ANSWER_LIST = re.compile(r'^(\s*)(?:(?:\*\*|__)\s*)?(?:[-+*]|\d+[.)、])\s+')
+_ANSWER_FENCE = re.compile(r'^\s{0,3}(`{3,}|~{3,})')
+_ANSWER_TABLE_RULE = re.compile(r'^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$')
+
+
+def _answer_heading(line):
+    value = line.rstrip('\r\n')
+    if _ANSWER_HEADING.fullmatch(value):
+        return True
+    if _answer_list(value):
+        return False
+    return bool(_ANSWER_BOLD_HEADING.fullmatch(value)
+                or (value.strip().endswith(('：', ':')) and '|' not in value))
+
+
+def _answer_list(line):
+    return _ANSWER_LIST.match(line.rstrip('\r\n'))
+
+
+def _answer_is_heading(lines, index):
+    line = lines[index].rstrip('\r\n')
+    if _answer_heading(line):
+        return True
+    value = line.strip()
+    if not value or _answer_list(value) or '|' in value or re.search(r'[。！？!?；;]$', value):
+        return False
+    following = index + 1
+    while following < len(lines) and not lines[following].strip():
+        following += 1
+    if following >= len(lines):
+        return False
+    next_line = lines[following].rstrip('\r\n')
+    # Extracted documents also contain plain labels (e.g. ASCII) without # or
+    # bold markers. An unterminated stand-alone line introduces the next block;
+    # keep its explanation with it rather than making a label-only checkbox.
+    return bool(following > index + 1 or _answer_list(next_line) or _ANSWER_FENCE.match(next_line)
+                or ('|' in next_line and following + 1 < len(lines)
+                    and _ANSWER_TABLE_RULE.fullmatch(lines[following + 1].rstrip('\r\n'))))
+
+
+def answer_units(reference):
+    """Return literal, continuous units grouped by complete source ideas.
+
+    This small source-preserving adapter follows the Markdown structure already
+    recognized by ``course.extract``. That parser does not retain source
+    offsets or list nesting, so scan the supplied reference itself to keep each
+    result an exact contiguous span. Headings and colon-ended introductions
+    attach to their following content; a contiguous list or table stays whole;
+    sentences within one paragraph are not split.
+    """
+    if not isinstance(reference, str) or not reference.strip():
+        return []
+
+    lines = reference.splitlines(keepends=True)
+    offsets = []
+    position = 0
+    for line in lines:
+        offsets.append(position)
+        position += len(line)
+
+    spans = []
+    pending_heading = None
+    i = 0
+
+    def emit(start, end):
+        value = reference[start:end].strip()
+        if value:
+            spans.append((start, end, value))
+
+    while i < len(lines):
+        line = lines[i].rstrip('\r\n')
+        if not line.strip():
+            i += 1
+            continue
+        if _answer_is_heading(lines, i):
+            if pending_heading is None:
+                pending_heading = i
+            i += 1
+            continue
+
+        start = offsets[pending_heading if pending_heading is not None else i]
+        fence = _ANSWER_FENCE.match(line)
+        if fence:
+            marker_char = re.escape(fence.group(1)[0])
+            close = re.compile(r'^\s{0,3}' + marker_char + r'{' + str(len(fence.group(1))) + r',}\s*$')
+            end = i + 1
+            while end < len(lines) and not close.fullmatch(lines[end].rstrip('\r\n')):
+                end += 1
+            if end < len(lines):
+                end += 1
+            emit(start, offsets[end] if end < len(lines) else len(reference))
+            pending_heading = None
+            i = end
+            continue
+
+        if ('|' in line and i + 1 < len(lines)
+                and _ANSWER_TABLE_RULE.fullmatch(lines[i + 1].rstrip('\r\n'))):
+            end = i + 2
+            while end < len(lines) and lines[end].strip() and '|' in lines[end]:
+                end += 1
+            emit(start, offsets[end] if end < len(lines) else len(reference))
+            pending_heading = None
+            i = end
+            continue
+
+        if _answer_list(line):
+            # A list is one checklist idea: keep sibling items, nested bullets,
+            # and their unmarked explanatory/continuation lines together.
+            end = i + 1
+            while end < len(lines):
+                value = lines[end].rstrip('\r\n')
+                if _answer_is_heading(lines, end) or _ANSWER_FENCE.match(value):
+                    break
+                if value.strip() and '|' in value and end + 1 < len(lines) and _ANSWER_TABLE_RULE.fullmatch(lines[end + 1].rstrip('\r\n')):
+                    break
+                if not value.strip():
+                    probe = end + 1
+                    while probe < len(lines) and not lines[probe].strip():
+                        probe += 1
+                    if probe >= len(lines):
+                        break
+                    # Blank lines inside a list do not separate its siblings.
+                    if _answer_list(lines[probe]) or lines[probe][:1].isspace():
+                        end = probe
+                        continue
+                    break
+                end += 1
+            emit(start, offsets[end] if end < len(lines) else len(reference))
+            pending_heading = None
+            i = end
+            continue
+
+        end = i + 1
+        while end < len(lines) and lines[end].strip():
+            value = lines[end].rstrip('\r\n')
+            if (_answer_is_heading(lines, end) or _answer_list(value) or _ANSWER_FENCE.match(value)
+                    or ('|' in value and end + 1 < len(lines)
+                        and _ANSWER_TABLE_RULE.fullmatch(lines[end + 1].rstrip('\r\n')))):
+                break
+            end += 1
+        emit(start, offsets[end] if end < len(lines) else len(reference))
+        pending_heading = None
+        i = end
+
+    # A fenced example illustrates nearby prose. Attach its literal span to an
+    # adjacent idea rather than presenting a bare code sample as a checklist
+    # item. If the complete answer is only code, preserve it as one unit.
+    code = []
+    titled_code = []
+    for _, _, value in spans:
+        content_lines = [line for line in value.splitlines() if line.strip()]
+        had_title = False
+        while content_lines and _answer_heading(content_lines[0]):
+            had_title = True
+            content_lines.pop(0)
+        code.append(bool(content_lines and _ANSWER_FENCE.match(content_lines[0])))
+        titled_code.append(had_title)
+    merged = []
+    i = 0
+    while i < len(spans):
+        start, end, value = spans[i]
+        if code[i] and titled_code[i]:
+            merged.append((start, end, value))
+        elif code[i] and merged:
+            previous_start, _, _ = merged[-1]
+            merged[-1] = (previous_start, end, reference[previous_start:end].strip())
+        elif code[i] and i + 1 < len(spans):
+            next_end = spans[i + 1][1]
+            merged.append((start, next_end, reference[start:next_end].strip()))
+            i += 1
+        else:
+            merged.append((start, end, value))
+        i += 1
+    # Repeated literal paragraphs remain in the reference, but are one checklist
+    # item. The bank schema has always required unique key-point strings.
+    return list(dict.fromkeys(value for _, _, value in merged)) or [reference.strip()]
+
+
 def selected_units(reference, ids):
     units = answer_units(reference)
-    if len(units) <= 5:
+    if not isinstance(ids, list):
         return units
-    if (not isinstance(ids, list) or not 3 <= len(ids) <= 5
-            or any(type(i) is not int or not 1 <= i <= len(units) for i in ids)
+    if (not ids or any(type(i) is not int or not 1 <= i <= len(units) for i in ids)
             or len(set(ids)) != len(ids)):
-        raise ValueError('要点编号须为3–5个不同的本题原文单位编号')
+        raise ValueError('要点编号须为不同且有效的本题完整意思块编号')
     return [units[i-1] for i in ids]
 
 
@@ -299,7 +478,7 @@ SYSTEM = '''你只按原文拆题，不出题、不改写、不补答案、不�
 返回JSON {"questions":[{"candidate_id":"原id","kind":"recall或objective","stem":"完整原题干",
 "options":["完整原选项"],"answer":"原标准答案","objective_kind":"choice/multi/fill/calc",
 "key_point_ids":[1,2,3]}]}。
-问答题的完整题干与参考答案由程序保留，不要抄参考答案或要点。units是程序从参考答案切出的原文单位（句子、列表项、表格行）；只选3–5个编号作为直接回答题干、覆盖核心结论的要点。不能选题外细节凑数。
+问答题的完整题干与参考答案由程序保留，不要抄参考答案或要点。units是程序按标题、段落、列表和表格结构整理的完整意思块；只选择能直接回答题干的必要要点，不能把一个意思块拆开或为了凑数多选，条数不设固定目标。
 若未附reference，units按编号拼接就是完整参考答案（仅空白可能不同）；若附reference，保留其中未切成单位的标题、代码等上下文。要点仍只选择units编号。
 客观题kind=objective，stem/options/answer逐字照输入，原来没答案不补。
 长stem可用唯一原文指针 {"quote":"开头短片段","end_quote":"末尾短片段"}，程序展开完整原文。

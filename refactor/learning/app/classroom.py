@@ -1092,6 +1092,9 @@ class Classroom:
         if not isinstance(answer,str) or not answer.strip() or len(answer)>20000:
             raise BridgeError('PARAM_INVALID','先写下自己的回答，才能查看参考答案。')
         if not pending.get('revealed'):
+            # Reopened, not-yet-revealed cards use the current meaning groups.
+            # Revealed cards keep their snapshot and already saved tick indices.
+            pending['question'] = question_bank.with_recall_key_points(pending['question'])
             pending.update(learner_answer=answer,revealed=True)
             self._user(course,state,answer)
 

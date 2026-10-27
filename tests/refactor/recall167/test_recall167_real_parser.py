@@ -32,7 +32,8 @@ def test_recall167_real_parser_compiles_all_own_questions_and_reuses_saved_bank(
     assert {q['stem'] for q in bank} == {'队列是什么？', '栈是什么？'}
     assert all(q['origin'] == 'found' and q['subpoint_id'] == 'point-s1' for q in bank)
     for q in bank:
-        assert len(q['key_points']) == 3
+        assert len(q['key_points']) == 1  # One complete explanation, not three checklist fragments.
+        assert q['key_points'][0].count('- 参考要点：') == 3
         assert all(part in text for part in q['key_points'])
         assert q['source']['chunk_ids'] == ['c1']
     before = recall167_store.records('question_bank', 'p')

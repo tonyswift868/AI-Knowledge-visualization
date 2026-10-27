@@ -51,10 +51,10 @@ def test_cache98_page_moves_between_points_without_stale_aliases_or_lost_turns()
 
 @pytest.mark.parametrize('reference,omitted', [
     ('第一句。\n 第二句。\t第三句。', True),
-    ('# 标题\n正文第一句。第二句。', False),
-    ('```python\nx = 1\n```\n解释。', False),
-    ('第一句。\n第一句。', False),
-    ('| 类型 | 说明 |\n| --- | --- |\n| 键 | 值 |', False),
+    ('# 标题\n正文第一句。第二句。', True),
+    ('```python\nx = 1\n```\n解释。', True),
+    ('第一句。\n第一句。', True),
+    ('| 类型 | 说明 |\n| --- | --- |\n| 键 | 值 |', True),
     ('第一句。\u3000第二句。', True),
 ])
 def test_cache98_reference_omitted_only_for_exact_nonwhitespace_equality(reference, omitted):
@@ -82,9 +82,9 @@ def test_cache98_wire_dedup_keeps_full_answer_and_selected_ids_in_store(material
         row = packet['candidates'][0]
         assert 'reference' not in row
         assert ''.join(u['text'] for u in row['units']) == ''.join(reference.split())
-        return dict(questions=[dict(candidate_id=row['id'], key_point_ids=[1, 3, 6])])
+        return dict(questions=[dict(candidate_id=row['id'], key_point_ids=[1])])
     result = pm.prepare_module(store, 'p', 'm', dict(question_splitter=splitter), lambda *a: None)
     saved = store.records('question_bank', 'p')[0]
     assert result['questions'] == 1 and result['rejected'] == 0
     assert saved['reference'] == reference
-    assert saved['key_points'] == ['第一句。', '第三句。', '第六句。']
+    assert saved['key_points'] == mq.answer_units(reference)
