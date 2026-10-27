@@ -1,6 +1,7 @@
 import states from './states191.json'
 
 export const requests: {method:string;params:any}[] = []
+export const voiceStatusTrace191: {at:number; result:any}[] = []
 const listeners = new Map<string, Set<(data:any)=>void>>()
 let room:any = structuredClone((states as any).recall)
 let voiceSession = ''
@@ -17,7 +18,11 @@ export function emit191(name:string,data:any) { for(const fn of listeners.get(na
 export function enter191(mode:'recall'|'teaching') { room=structuredClone((states as any)[mode]) }
 export async function call(method:string,params:any={},_opts:any={}) {
   requests.push({method,params})
-  if(method==='voice.status') return {state:'ready',installed:true,size_bytes:32}
+  if(method==='voice.status') {
+    const result = {state:'ready',installed:true,size_bytes:32}
+    voiceStatusTrace191.push({at:performance.now(),result})
+    return result
+  }
   if(method==='voice.context') { voiceContext=params; return {terms:['压强'],question:'课堂问答',protected:[]} }
   if(method==='voice.start') {
     voiceStarts++

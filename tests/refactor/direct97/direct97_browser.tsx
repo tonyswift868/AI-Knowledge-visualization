@@ -3,9 +3,9 @@ import { createRoot } from 'react-dom/client'
 import { Classroom } from '../../../refactor/learning/web/src/pages/Classroom'
 import { useApp } from '../../../refactor/learning/web/src/store'
 import '../../../refactor/learning/web/src/theme.css'
-import { show, calls, diagnosticRoom } from './direct97_bridge'
+import { show, calls, diagnosticRoom, advancePoint } from './direct97_bridge'
 
-declare global { interface Window { direct97Result?: object; direct97Show: (stage: 'entry' | 'original' | 'choice' | 'graded') => void } }
+declare global { interface Window { direct97Result?: object; direct97Show: (stage: 'entry' | 'original' | 'choice' | 'graded') => void; direct97AdvancePoint: () => void; direct97CurrentPoint: () => string | null } }
 const root = createRoot(document.getElementById('root')!)
 const wait = () => new Promise(resolve => setTimeout(resolve, 20))
 const content = () => document.body.textContent ?? ''
@@ -34,6 +34,8 @@ function fill(text: string) {
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 let generation = 0
+window.direct97CurrentPoint = () => diagnosticRoom().current_point as string | null
+window.direct97AdvancePoint = advancePoint
 window.direct97Show = stage => {
   show(stage)
   root.render(<main style={{ height: '100%', padding: 18 }}><Classroom key={++generation}/></main>)
@@ -44,6 +46,15 @@ async function run() {
   window.direct97Show('entry')
   await until(() => content().includes('跳过该知识点'))
   checks.push('讲到一半仍有直接考入口')
+  document.querySelector<HTMLButtonElement>('[aria-label="切换为跳过该模块"]')!.click()
+  await until(() => document.querySelector<HTMLButtonElement>('.skip127-handle')?.getAttribute('aria-checked') === 'true')
+  button('跳过该模块').click()
+  await until(() => !!document.querySelector('[role="dialog"][aria-label="确认跳过该模块"]'))
+  window.direct97AdvancePoint()
+  await until(() => window.direct97CurrentPoint() === 'p2' &&
+    document.querySelector<HTMLButtonElement>('.skip127-handle')?.getAttribute('aria-checked') === 'false' &&
+    !document.querySelector('[role="dialog"][aria-label="确认跳过该模块"]'))
+  checks.push('首次切换后范围保留；真实点切换重置范围并关闭确认')
   document.querySelector<HTMLButtonElement>('[aria-label="切换为跳过该模块"]')!.click()
   await until(() => content().includes('跳过该模块'))
   button('跳过该模块').click()

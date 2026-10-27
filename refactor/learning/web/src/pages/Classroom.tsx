@@ -241,7 +241,7 @@ export function Classroom() {
   React.useEffect(() => { setAskMode(false) }, [room?.question?.id, room?.module.id])
   React.useEffect(() => { setPointsExpanded(false) }, [room?.module.id])
   const currentPoint = room?.points.find(p=>p.current)?.id
-  React.useEffect(() => { setSkipModule(false); setSkipConfirm(false) }, [planId, currentPoint])
+  React.useLayoutEffect(() => { setSkipModule(false); setSkipConfirm(false) }, [planId, currentPoint])
   React.useEffect(() => {
     if (!planId || !room?.teaching_version) return
     const version = room.teaching_version

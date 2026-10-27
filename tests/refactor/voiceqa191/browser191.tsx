@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client'
 import {Classroom} from '../../../refactor/learning/web/src/pages/Classroom'
 import {useApp} from '../../../refactor/learning/web/src/store'
 import '../../../refactor/learning/web/src/theme.css'
-import {enter191,emit191,requests,lastVoiceSession191} from './bridge191'
+import {enter191,emit191,requests,lastVoiceSession191,voiceStatusTrace191} from './bridge191'
 
 declare global { interface Window { result191?:any; debug191?:any; mount191:(mode:'recall'|'teaching')=>void; screenshotReady191?:boolean; resumeAfterScreenshot191?:boolean } }
 const root=createRoot(document.getElementById('root')!)
@@ -83,4 +83,10 @@ async function run(){
 
   window.result191={ok:true,checks}
 }
-run().catch(e=>window.result191={ok:false,checks,error:String(e.stack||e),dom:text(),requests})
+run().catch(e=>window.result191={ok:false,checks,error:String(e.stack||e),dom:text(),requests,
+  voiceStatusTrace:voiceStatusTrace191,
+  voiceWidgets:[...document.querySelectorAll<HTMLElement>('.mf-voice')].map((widget,index)=>{
+    const mic=widget.querySelector<HTMLButtonElement>('.mf-voice-mic'),dialog=widget.querySelector<HTMLDialogElement>('.mf-voice-dialog')
+    return {index,state:widget.dataset.voiceState,micDisabled:mic?.disabled,micLabel:mic?.getAttribute('aria-label'),
+      dialogOpen:dialog?.open,dialogText:dialog?.innerText,widgetText:widget.innerText}
+  }),qtTransportAvailable:!!window.qt?.webChannelTransport})
