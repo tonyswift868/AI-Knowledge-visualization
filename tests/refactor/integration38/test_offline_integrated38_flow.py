@@ -183,8 +183,10 @@ def test_new_plan_through_report_pdf_and_free_check(tmp_path,monkeypatch,qapp):
         while v['question']:
             if v['question']['kind']=='recall':
                 qid=v['question']['id'];v=registry.methods['class.recall_reveal'](dict(plan_id=pid,question_id=qid,answer='先进先出与后进先出'),ctx)
-                assert v['reference'] and len(v['key_points'])==3
-                v=registry.methods['class.recall_submit'](dict(plan_id=pid,question_id=qid,ticked=[0,1,2],correct=True),ctx)
+                assert v['reference'] and v['key_points']==[v['reference']]
+                assert all(part in v['key_points'][0] for part in ('栈遵循后进先出。','队列遵循先进先出。','删除元素的位置不同。'))
+                v=registry.methods['class.recall_submit'](dict(plan_id=pid,question_id=qid,
+                    ticked=list(range(len(v['key_points']))),correct=True),ctx)
             else:v=act('answer',value=[0])
         assert v['module']['state']=='skipped'
         act('next_module');act('next');act('choose',option=0)
