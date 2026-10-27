@@ -62,7 +62,7 @@ import uuid
 
 from ..preferences.storage import account_directory
 from .ledger import Ledger, PlanWindow, Credit, replan_preserves_past, learning_day_slices
-from .mastery import MasteryBook, PointRef, Judgement, AttemptClosed, event_to_dict, event_from_dict
+from .mastery import MasteryBook, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
 SCHEMA_VERSION = 11
@@ -1148,7 +1148,9 @@ class CourseStore:
             # Pre-answer-fact versions may only have the judgement event. Project
             # those too without rewriting or re-uploading immutable history.
             for j in judgements:
-                e=j['event'];d=j.get('details',{});qid=e.get('question_id') or d.get('question_id')
+                e=j['event'];d=j.get('details') or {};qid=e.get('question_id') or d.get('question_id')
+                if d.get('user_override') is True:
+                    continue  # An authorized mastery grant is not a learner answer fact.
                 if j['id'] in known or not qid:continue
                 facts.append(dict(id=j['id'],question_id=qid,module_id=e['module_id'],context=e['context'],
                     attempt_id=e.get('attempt_id'),at=e['at'],correct=all(good for _,good in e['results'])))
@@ -1688,29 +1690,12 @@ class CourseStore:
         with self.transaction():
             self._get('plans', plan_id, plan_id)
             modules = sorted(self._rows('modules', plan_id), key=lambda m: (m['position'], m['id']))
-            positions = {m['id']: i for i, m in enumerate(modules)}
-            points = sorted(self._rows('points', plan_id), key=lambda p: (positions[p['module_id']], p['position'], p['id']))
-            from .question_bank import assessment_questions
+            points = self._rows('points', plan_id)
             taught = self.learning_credit_projection(plan_id)['taught']
             bank = self.records('question_bank',plan_id)
-            active = assessment_questions(bank)
-            active_ids = {q['id'] for q in active}
-            historical_ids = {q['id'] for q in bank if q.get('role')=='retired'}
-            historical_ids.update(json.loads(r[0])['id'] for r in self._db.execute(
-                "SELECT payload FROM _records WHERE entity='question_bank' AND plan_key=? AND deleted=1",(plan_id,)))
-            # Some old clients already dropped legacy bank rows during sync.
-            # Immutable saved answers still identify those historical questions.
-            historical_ids.update(a['question_id'] for a in self._rows('question_answers',plan_id)
-                                  if a.get('question_id') not in active_ids)
-            events = [event_from_dict(p['event']) for entity in ('judgements', 'attempt_closed') for p in self._rows(entity, plan_id)]
-            historic = [e for e in events if isinstance(e,Judgement) and (e.question_id is None or e.question_id in historical_ids)]
-            attempts = {(e.module_id,e.attempt_id) for e in historic if e.context in ('module_test','skip_test','retest')}
-            historical_events = {e.event_id for e in historic}
-            historical_events.update(e.event_id for e in events if isinstance(e,AttemptClosed) and (e.module_id,e.attempt_id) in attempts)
-            book = MasteryBook((PointRef(p['id'], p['module_id']) for p in points),active,taught,
-                              historical_event_ids=historical_events)
-            for event in events: book.apply(event)
-            return book
+            event_rows = [p for entity in ('judgements', 'attempt_closed') for p in self._rows(entity, plan_id)]
+            return MasteryBook.from_course_records(points,modules,bank,taught,event_rows,
+                                                    self._rows('question_answers',plan_id))
 
     def learning_credit_projection(self, plan_id):
         """Return immutable learning-credit markers used by mastery and estimates.
@@ -1769,13 +1754,16 @@ class CourseStore:
             self._get('plans', plan_id, plan_id)
             if any(_day(row['credit']['day']) == day for row in self._rows('credits', plan_id)):
                 return True
-            return any(study_day(datetime.fromisoformat(row['event']['at']), refresh, tz) == day
+            return any((row.get('details') or {}).get('user_override') is not True and
+                       study_day(datetime.fromisoformat(row['event']['at']), refresh, tz) == day
                        for row in self._rows('judgements', plan_id))
 
     def _append_mastery(self, plan_id, event, entity, details=None):
         self._get('plans', plan_id, plan_id)
         if not isinstance(event, Judgement if entity == 'judgements' else AttemptClosed): raise StoreError('INVALID_EVENT')
-        book = self.load_mastery(plan_id); book.apply(event)
+        book = self.load_mastery(plan_id)
+        projection_details=details if isinstance(event,AttemptClosed) or (details or {}).get('user_override') is True else None
+        book.apply(event,details=projection_details)
         payload = dict(id=event.event_id, event=event_to_dict(event), details=details or {})
         self._put(entity, plan_id, payload)
 
@@ -1806,8 +1794,88 @@ class CourseStore:
             self.add_credit(plan_id, f'check:{event.event_id}:{pid}', f'check:{pid}', minutes, credit_day, 'confirmed')
 
     @_atomic
-    def append_attempt_closed(self, plan_id, event: AttemptClosed):
-        self._append_mastery(plan_id, event, 'attempt_closed')
+    def append_attempt_closed(self, plan_id, event: AttemptClosed, *, details=None):
+        self._append_mastery(plan_id, event, 'attempt_closed', details)
+
+    def _override_judgement(self, plan_id, question, grant_id, kind):
+        seq = max((row['event']['seq'] for entity in ('judgements','attempt_closed')
+                   for row in self._rows(entity,plan_id)), default=0) + 1
+        event_id=f'manual:{grant_id}:{question["id"]}'
+        event=Judgement(event_id,seq,datetime.now(timezone.utc),'check',question['module_id'],
+                        results=tuple((pid,True) for pid in question['point_ids']),question_id=question['id'])
+        details=dict(user_override=True,override_kind=kind,grant_id=grant_id,module_id=question['module_id'])
+        self._append_mastery(plan_id,event,'judgements',details)
+        return event_id
+
+    @_atomic
+    def grant_questions_as_passed(self, plan_id, module_id, question_ids, *, grant_id):
+        """Record an explicit administrator mastery override, not an answer.
+
+        The immutable Judgement envelope is tagged and projected separately;
+        no learner answer fact, error history, check statistic, or credit is made.
+        """
+        _id(grant_id); self._get('modules',plan_id,module_id)
+        ids=list(question_ids)
+        if not ids or any(not isinstance(qid,str) or not qid for qid in ids) or len(ids)!=len(set(ids)):
+            raise StoreError('INVALID_OVERRIDE')
+        existing=[row for row in self._rows('judgements',plan_id)
+                  if (row.get('details') or {}).get('user_override') is True and
+                  (row.get('details') or {}).get('grant_id')==grant_id]
+        if any((row.get('details') or {}).get('override_kind')!='question_passed' or
+               (row.get('details') or {}).get('module_id')!=module_id or
+               row['event'].get('module_id')!=module_id for row in existing):
+            raise StoreError('OVERRIDE_CONFLICT')
+        existing_ids={row.get('details',{}).get('question_id') or row['event'].get('question_id') for row in existing}
+        if existing and existing_ids!=set(ids): raise StoreError('OVERRIDE_CONFLICT')
+        from .question_bank import assessment_questions
+        admitted={q['id']:q for q in assessment_questions(self.records('question_bank',plan_id),module_id)}
+        questions=[]
+        for qid in ids:
+            q=admitted.get(qid)
+            if q is None: raise StoreError('UNKNOWN_QUESTION')
+            questions.append(q)
+        prior=set(existing_ids)
+        for q in questions:
+            if q['id'] in prior:continue
+            self._override_judgement(plan_id,q,grant_id,'question_passed')
+        book=self.load_mastery(plan_id)
+        return dict(id=grant_id,module_id=module_id,question_ids=ids,
+                    newly_granted=[q['id'] for q in questions if q['id'] not in prior],
+                    already_granted=[q['id'] for q in questions if q['id'] in prior],
+                    module_state=book.module(module_id).state)
+
+    def preview_questions_as_passed(self, plan_id, module_id, question_ids):
+        """Read-only in-memory preview helper for the administrator utility."""
+        self._get('modules',plan_id,module_id)
+        from .question_bank import assessment_questions
+        admitted={q['id']:q for q in assessment_questions(self.records('question_bank',plan_id),module_id)}
+        ids=list(question_ids)
+        if not ids or any(qid not in admitted for qid in ids):raise StoreError('UNKNOWN_QUESTION')
+        return self.load_mastery(plan_id).preview_question_override(ids,kind='question_passed')
+
+    @_atomic
+    def grant_final_check_passed(self, plan_id, *, grant_id, today):
+        """Explicitly grant every admitted final-check item, then use normal completion."""
+        _id(grant_id)
+        plan=self._get('plans',plan_id,plan_id)
+        book=self.load_mastery(plan_id)
+        if not book.check_ready():raise StoreError('CHECK_NOT_READY')
+        from .question_bank import assessment_questions
+        questions=assessment_questions(self.records('question_bank',plan_id))
+        if not questions:raise StoreError('CHECK_NOT_READY')
+        existing=[row for row in self._rows('judgements',plan_id)
+                  if (row.get('details') or {}).get('user_override') is True and
+                  (row.get('details') or {}).get('grant_id')==grant_id]
+        if any((row.get('details') or {}).get('override_kind')!='final_check_passed' or
+               (row.get('details') or {}).get('module_id')!=row['event'].get('module_id') for row in existing):
+            raise StoreError('OVERRIDE_CONFLICT')
+        existing_ids={row['event'].get('question_id') for row in existing}
+        if existing and existing_ids!={q['id'] for q in questions}:raise StoreError('OVERRIDE_CONFLICT')
+        for q in questions:
+            if q['id'] not in existing_ids:self._override_judgement(plan_id,q,grant_id,'final_check_passed')
+        self.complete_plan(plan_id,today=today)
+        return dict(id=grant_id,state=self._get('plans',plan_id,plan_id)['state'],
+                    completed_on=self._get('plans',plan_id,plan_id).get('completed_on'))
 
     @_atomic
     def set_question_estimate(self, plan_id, module_id, count, *, today):

@@ -134,7 +134,7 @@ def test_188_switching_modules_preserves_exact_subpoint_and_does_not_credit(env,
     assert reopened_state['conversation']==state['conversation']
 
 
-def test_188_final_check_wait_does_not_enter_preparing_step(env, monkeypatch):
+def test_188_stale_final_check_offer_returns_to_a_module_action(env, monkeypatch):
     e=env;room=e.room;course=room._course(PLAN);calls=[]
     monkeypatch.setattr(room,'_ready',lambda _c,mid,**_k:mid!='m1')
     monkeypatch.setattr(room,'_prepare',_prepare_stub(room,calls))
@@ -142,10 +142,10 @@ def test_188_final_check_wait_does_not_enter_preparing_step(env, monkeypatch):
     state=room._rebuild(course);state.update(module_id='m0',step='check_offer',phase='learning')
     room._save(course,state)
     view=room.perform(PLAN,'start_check',context())
-    assert view['step']=='check_offer'
-    assert view['material_notice']['kind']=='check'
-    assert view['test_readiness']['check'] is False
-    assert calls==[('m1',True)]
+    assert view['step']=='teach'
+    assert view['module']['id']=='m0'
+    assert not view.get('material_notice')
+    assert calls==[]
 
 
 def test_188_legacy_next_wait_is_normalized_on_enter(env):

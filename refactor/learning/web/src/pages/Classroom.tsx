@@ -32,6 +32,9 @@ type Room = {
   plan: { id: string; goal: string; state: string }
   module: { id: string; title: string; number: number; total: number; state: string; navigation?: NavigationEntry[] }
   points: Point[]; step: string; question: BankQuestion | null; messages: Msg[]; can_skip: boolean; red: string[]
+  retestable?: boolean
+  module_assessment?: { correct: number; total: number; passed: boolean } | null
+  module_continuation?: "next" | "retest" | "module_test" | "prepare"
   more_modules: boolean; check: { passed: number; total: number } | null
   conversation?: Conversation | null
   teaching_version?: string | null
@@ -40,7 +43,7 @@ type Room = {
   preparation?: Preparation | null
   preparation_error?: { module_id: string; message: string } | null
   test_readiness?: { module_test: boolean; skip_test: boolean; retest?: boolean; check: boolean }
-  material_notice?: { module_id: string; message: string } | null
+  material_notice?: { module_id: string; kind?: string; message: string } | null
   deferred_module_tests?: { module_id: string; title: string; ready: boolean }[]
   module_options?: { module_id: string; title: string; current: boolean; ready: boolean; state: string; step: string }[]
   failure?: { message: string; model_fault?: ModelFault } | null
@@ -563,6 +566,8 @@ export function Classroom() {
           onClick={() => act("classroom.retry", {}, "重试这一步…")}>重试</Button></div>}
         {room.material_notice && <div className="class-material-notice188" role="status" data-testid="material-notice188">
           <span>{room.material_notice.message || "这个模块的题还在准备，好了再考"}</span>
+          {room.material_notice.kind && <Button small kind="ghost" disabled={!!busy}
+            onClick={() => void act("classroom.retry", {}, "正在重试准备…")}>重试准备</Button>}
           <Button small kind="ghost" disabled={false}
             onClick={() => void act("classroom.cancel_preparation", {}, "正在更新课堂…")}>知道了</Button>
         </div>}
@@ -748,8 +753,13 @@ function Actions({ room, act, busy }: { room: Room; busy: boolean; act: (m: stri
   )
   if (step === "test_done") return (
     <div className="plan-actions">
+      {room.module_assessment && <span className="small muted" role="status" data-testid="module-assessment-status204">
+        本模块检测：{room.module_assessment.passed ? "已通过" : "未通过"} · {room.module_assessment.correct}/{room.module_assessment.total}
+      </span>}
       {room.red.length > 0 && <Button kind="primary" disabled={busy || room.test_readiness?.retest === false}
         onClick={() => act("classroom.test", { kind: "retest" }, "正在出题…")}><RotateCcw />只重测答错的题</Button>}
+      {room.module.state === "failed" && room.test_readiness?.retest === false && <Button kind="primary" disabled={busy || room.test_readiness?.module_test === false}
+        onClick={() => act("classroom.test", { kind: "module_test" }, "正在重新检测…")}><RotateCcw />重新检测本模块题目</Button>}
       <Button kind={room.red.length ? undefined : "primary"} disabled={busy} onClick={() => act("classroom.next_module", {}, "正在准备…")}>
         <ChevronRight />{room.more_modules ? "学下一个模块" : "结束模块学习"}</Button>
     </div>

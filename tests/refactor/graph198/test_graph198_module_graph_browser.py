@@ -71,7 +71,12 @@ def _data(cases):
     # Step 3 is the copied draft byte-for-byte as JSON. Only the step-4 outline
     # and committed-plan projection are derived because the copied draft has no
     # outline or saved plan detail yet.
-    drafts = {"structure": raw, "outline": _draft(raw, "outline", modules)}
+    # The portable fallback has no persisted material_preview message. Add the
+    # same display event as a real saved draft, otherwise NewPlan correctly
+    # renders no graph and this test only times out after scratch was cleaned.
+    # A supplied user draft remains byte-for-byte unchanged as before.
+    drafts = {"structure": raw if source_bytes else _draft(raw, "material_preview", modules),
+              "outline": _draft(raw, "outline", modules)}
     detail_modules = [{"id": m["key"], "title": m["title"], "summary": m["summary"], "prerequisites": m["prerequisites"],
                        "question_count": 1 if i % 3 else 0, "passed_questions": 0, "learning_minutes": 24, "check_minutes": 8,
                        "state": "untested", "points": [{"id": f"p{i + 1}", "title": m["points"][0]["title"],

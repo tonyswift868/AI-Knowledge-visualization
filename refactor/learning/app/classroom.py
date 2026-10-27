@@ -18,7 +18,7 @@ from types import SimpleNamespace
 from ..connections.errors import ModelCancelled, ModelError
 from ..course import judge_agent, teacher_agent, question_bank, answer_compare
 from ..course.request_layout import AppendOnlyPage, dialogue_tail
-from ..course.mastery import AttemptClosed, Judgement
+from ..course.mastery import AttemptClosed, Judgement, MasteryError
 from ..course.planner_agents import LEVELS, AgentFormatError
 from ..course.store import StoreError
 from ..preferences.storage import AccountJSON, StorageError
@@ -531,6 +531,9 @@ class Classroom:
             for mid in readiness_targets if mid in questions_by_module}
         if notice and ready_by_module.get(notice.get('module_id'),False):notice=None
         notice_module=(notice or {}).get('module_id',module['id'])
+        continuation=self._module_continuation(book,module['id'],
+            questions_by_module.get(module['id'],[]),ready_by_module.get(module['id'],False))
+        retestable=continuation=='retest'
         preparing = self._jobs.get((course.plan_id, notice_module)) or self._jobs.get((course.plan_id,module['id']))
         current_preparation = ({k:preparing[k] for k in ('module_id','done','total','text','error')}
             if preparing and preparing['status'] in ('running','queued','failed') and not preparing['cancel'].is_set()
@@ -556,17 +559,25 @@ class Classroom:
             teaching_version=self._teaching_version(readiness_course,state),
             preparation=state.get('material_wait') or current_preparation,material_notice=notice,
             preparation_error=state.get('preparation_error'),
+            retestable=retestable,
+            module_continuation=continuation,
             test_readiness=dict(module_test=ready_by_module.get(module['id'],False),
-                skip_test=ready_by_module.get(module['id'],False),retest=ready_by_module.get(module['id'],False),
-                check=all(ready_by_module.get(m['id'],False) for m in course.modules) if check_gate else False),
+                skip_test=ready_by_module.get(module['id'],False),retest=retestable,
+                # The final-check control remains actionable; start_check
+                # routes a stale offer back to the module that still needs work.
+                check=check_gate),
             deferred_module_tests=deferred,module_options=module_options,
             failure=state.get('failure'),explanation=state.get('answer_explanation'),
+            module_assessment=(self._module_assessment_status(book,module['id'])
+                               if state.get('step')=='test_done' else None),
             can_skip=self._can_direct(course,state),
             direct_review=self._direct_view(course,state),
             red=[p['title'] for p in points if book.point(p['id']).state=='red'],
             more_modules=any(book.module(m['id']).state=='untested' for m in course.modules if m['id']!=module['id']),
             recall_result=state.get('recall_result'),
-            check=dict(passed=sum(book.question(q['id']).passed for q in all_questions),total=len(all_questions)) if state.get('phase')=='check' or state['step'] in ('check_offer','completed') else None,today=today)
+            check=dict(passed=sum(status is not None and status.passed
+                for status in (self._question_state(book,q['id']) for q in all_questions)),
+                total=len(all_questions)) if state.get('phase')=='check' or state['step'] in ('check_offer','completed') else None,today=today)
 
     @staticmethod
     def _materials():
@@ -1117,6 +1128,42 @@ class Classroom:
     def _questions(course, module_id=None):
         return question_bank.assessment_questions(course.store.records('question_bank',course.plan_id),module_id)
 
+    @staticmethod
+    def _question_state(book, question_id):
+        try:return book.question(question_id)
+        except MasteryError as exc:
+            if exc.code=='UNKNOWN_QUESTION':return None
+            raise
+
+    @classmethod
+    def _has_wrong_questions(cls, book, questions):
+        return any((status:=cls._question_state(book,q['id'])) is not None
+                   and status.module_correct is False for q in questions)
+
+    @classmethod
+    def _module_continuation(cls, book, module_id, questions, ready):
+        """Single decision for the next useful action on this module."""
+        state=book.module(module_id).state
+        if state in ('passed','skipped'):return 'next'
+        if state=='failed':
+            # A stale ready marker cannot make an empty current bank testable;
+            # route to preparation instead of presenting an impossible button.
+            if not questions:return 'prepare'
+            if cls._has_wrong_questions(book,questions):return 'retest'
+            return 'module_test' if ready else 'prepare'
+        return 'next'
+
+    @classmethod
+    def _module_assessment_status(cls, book, module_id):
+        module=book.module(module_id)
+        manifest=book.stats().get('modules',{}).get(module_id,{})
+        question_ids=manifest.get('assessment_ids') or ()
+        if not question_ids:return None
+        correct=sum((state:=cls._question_state(book,qid)) is not None
+                    and state.module_correct is True for qid in question_ids)
+        return dict(correct=correct,total=len(question_ids),
+                    passed=module.state in ('passed','skipped'))
+
     def _replace_subjective(self, course, state, ctx):
         pending=state['pending'];old=pending['question']
         self._say(course,state,'旧主观题不计分，换一道可由程序判定的题。',role='system')
@@ -1254,10 +1301,22 @@ class Classroom:
         mid=state['module_id'];book=course.book();points=course.points_of(mid)
         if kind=='skip_test' and not self._can_direct(course,state):
             raise BridgeError('STEP_INVALID','请先完成当前答题，再直接考这个模块。')
-        if kind=='module_test' and state['step']!='test_offer':raise BridgeError('STEP_INVALID','模块还没讲完。')
+        retryable_now=[q for q in self._questions(course,mid)
+                       if (self._question_state(book,q['id']) is not None
+                           and self._question_state(book,q['id']).module_correct is False)]
+        retry_module_test=(kind=='module_test' and state['step']=='test_done'
+                           and book.module(mid).state=='failed' and not retryable_now)
+        if kind=='module_test' and state['step']!='test_offer' and not retry_module_test:
+            raise BridgeError('STEP_INVALID','模块还没讲完。')
         if kind=='retest' and (state['step']!='test_done' or book.module(mid).state!='failed'):
             raise BridgeError('STEP_INVALID','现在没有待重测的题。')
-        ready=self._ready(course,mid)
+        queue=self._questions(course,mid)
+        # Existing missed questions remain answerable even if the bank's
+        # preparation metadata changed after the assessment was closed.
+        retest_queue=([q for q in queue if (self._question_state(book,q['id']) is not None
+                                            and self._question_state(book,q['id']).module_correct is False)]
+                      if kind=='retest' else None)
+        ready=bool(retest_queue) if kind=='retest' else self._ready(course,mid)
         if not ready:
             module=course.module(mid)
             # Before readiness metadata existed, persisted subjective-only
@@ -1279,9 +1338,8 @@ class Classroom:
             state['material_notice']=dict(module_id=mid,kind=kind,message='这个模块的题还在准备，好了再考。')
             return
         state.pop('material_notice',None)
-        queue=self._questions(course,mid)
         if kind=='retest':
-            queue=[q for q in queue if book.question(q['id']).module_correct is False]
+            queue=retest_queue or []
         if not queue:
             if kind=='skip_test':
                 untaught=[p for p in points if p['id'] not in course.taught()]
@@ -1297,9 +1355,68 @@ class Classroom:
             return self.next_module(course,state,ctx)
         resume=self._direct_position(state) if kind=='skip_test' else None
         if resume:state.pop('conversation',None)
+        attempt=uuid.uuid4().hex[:16]
+        parent,assessment_ids=self._latest_module_assessment(course,mid) if kind=='retest' else (None,[])
+        assessment_id=parent or attempt
+        if kind!='retest':assessment_ids=[q['id'] for q in queue]
+        elif not assessment_ids:assessment_ids=[q['id'] for q in queue]
         state.update(step='retesting' if kind=='retest' else 'testing',
-            test=dict(kind=kind,attempt=uuid.uuid4().hex[:16],queue=queue,index=0,targets=[q['id'] for q in queue],resume=resume))
+            test=dict(kind=kind,attempt=attempt,queue=queue,index=0,targets=[q['id'] for q in queue],
+                      question_ids=[q['id'] for q in queue],assessment_id=assessment_id,
+                      assessment_question_ids=assessment_ids,resume=resume))
         self._ask_next(course,state,ctx)
+
+    @staticmethod
+    def _latest_module_assessment(course, module_id):
+        """Find a stable parent ID and its frozen question IDs."""
+        candidates=[]
+        for row in course.store.records('attempt_closed',course.plan_id):
+            event=row.get('event',{})
+            if event.get('module_id')!=module_id or event.get('kind') not in ('module_test','skip_test'):
+                continue
+            details=row.get('details') or {}
+            attempt_id=details.get('assessment_id') or event.get('attempt_id')
+            ids=details.get('question_ids')
+            if not isinstance(ids,list):ids=[]
+            candidates.append((event.get('seq',0),attempt_id,ids))
+        if not candidates:return None,[]
+        _,attempt_id,ids=max(candidates,key=lambda row:row[0])
+        if not ids:
+            # Legacy event history can still reconstruct the fixed first-test
+            # denominator from the questions actually answered in that attempt.
+            ids=list(dict.fromkeys(row['event'].get('question_id')
+                for row in course.store.records('judgements',course.plan_id)
+                if row.get('event',{}).get('attempt_id')==attempt_id
+                and row.get('event',{}).get('question_id')))
+        return attempt_id,ids
+
+    def _assessment_summary(self, course, test, book):
+        ids=list(test.get('assessment_question_ids') or test.get('question_ids') or test.get('targets') or [])
+        parent=test.get('assessment_id') or test.get('attempt')
+        attempt_ids={parent,test.get('attempt')}
+        for row in course.store.records('attempt_closed',course.plan_id):
+            event=row.get('event',{});details=row.get('details') or {}
+            if (event.get('module_id')==test.get('module_id') and event.get('kind')=='retest'
+                    and details.get('assessment_id')==parent):
+                attempt_ids.add(event.get('attempt_id'))
+        latest={}
+        for row in course.store.records('judgements',course.plan_id):
+            event=row.get('event',{});qid=event.get('question_id')
+            if (event.get('module_id')!=test.get('module_id') or qid not in ids
+                    or event.get('attempt_id') not in attempt_ids
+                    or event.get('context') not in ('module_test','skip_test','retest')):
+                continue
+            seq=event.get('seq',0)
+            correct=all(result[1] for result in event.get('results',[]))
+            if qid not in latest or seq>latest[qid][0]:latest[qid]=(seq,correct)
+        correct=0
+        for qid in ids:
+            if qid in latest:
+                correct+=latest[qid][1]
+                continue
+            state=self._question_state(book,qid)
+            correct+=bool(state and state.module_correct is True)
+        return correct,len(ids)
 
     @staticmethod
     def _direct_position(state):
@@ -1423,13 +1540,11 @@ class Classroom:
 
     def start_check(self, course, state, ctx):
         if state['step'] not in ('check_offer','checking') or state.get('pending'):raise BridgeError('STEP_INVALID','请先完成当前步骤。')
-        pending = next((m['id'] for m in course.modules if not self._ready(course,m['id'])),None)
-        if pending is not None:
-            job=self._jobs.get((course.plan_id,pending))
-            if not job or job['status'] in ('failed','cancelled','ready'):
-                self._prepare(course,pending,retry=True)
-            state['material_notice']=dict(module_id=pending,kind='check',message='还有模块的题目正在准备，备好后即可开始最终检验。')
-            return
+        if not course.book().check_ready():
+            # A stale check offer recovers to a concrete module action instead
+            # of hiding behind preparation or a generic failure.
+            state.update(phase='learning',step='test_done',pending=None,test=None)
+            return self.next_module(course,state,ctx)
         state.pop('material_notice',None)
         if course.plan['state']=='active':
             course.store.start_checking(course.plan_id);course.plan=course.store.get_plan(course.plan_id)
@@ -1443,8 +1558,27 @@ class Classroom:
         if state.get('check_used',0)>=CHECK_BATCH:
             state['check']=None;return self._say(course,state,'这组已答完，点继续检验开始下一组。')
         ids=book.next_check_questions(min_gap=3)
-        if not ids:raise BridgeError('CHECK_PENDING','请先学完或检测通过所有模块。')
         bank={q['id']:q for q in self._questions(course)}
+        ids=[qid for qid in ids if qid in bank]
+        if not ids:
+            # A changed bank may invalidate a saved selector result. Recover
+            # from the actual current unresolved pool before showing a blocker.
+            ids=[qid for qid in bank if (self._question_state(book,qid) is not None
+                                         and not self._question_state(book,qid).passed)]
+        if not ids:
+            pending=next((m['id'] for m in course.modules if not self._ready(course,m['id'])),None)
+            if pending is not None:
+                job=self._jobs.get((course.plan_id,pending))
+                if not job or job['status'] in ('failed','cancelled','ready'):
+                    try:self._prepare(course,pending,retry=True)
+                    except Exception:log.exception('final check preparation retry failed for %s/%s',course.plan_id,pending)
+                state['material_notice']=dict(module_id=pending,kind='check',
+                    message='最终检验还缺题目；后台正在重试准备，随后点“继续检验”。')
+            else:
+                state['material_notice']=dict(module_id=state['module_id'],kind='check',
+                    message='当前题库与检验进度不一致；点“继续检验”重新读取题目，或重新进入课堂。')
+            state['check']=None
+            return
         state['check']=dict(queue=[bank[ids[0]]],index=0)
         self._ask_check(course,state)
 
@@ -1903,6 +2037,11 @@ class Classroom:
                 if wait.get('action')=='start_test':
                     state['material_notice']=dict(module_id=wait['module_id'],kind=(wait.get('args') or ['module_test'])[0],
                         message='这个模块的题还在准备，好了再考。')
+        notice=state.get('material_notice')
+        if notice and notice.get('module_id') in {m['id'] for m in course.modules}:
+            if (book.module(notice['module_id']).state in ('passed','skipped')
+                    or self._ready(course,notice['module_id'])):
+                state.pop('material_notice',None)
         if module_id is not None:
             if module_id not in {m['id'] for m in course.modules} or book.module(module_id).state in ('passed','skipped'):
                 raise BridgeError('PARAM_INVALID','所选模块当前不可继续学习。')
@@ -1924,6 +2063,20 @@ class Classroom:
         # is written by this navigation action.
         if state['step']!='test_done' and state['step'] not in valid_states:
             raise BridgeError('STEP_INVALID','请先完成当前答题。')
+        if state['step']=='test_done' and state.get('material_notice'):
+            # Keep the preparation retry visible. Falling through to ordinary
+            # module navigation would append the same generic blocker on every
+            # Continue click when no other module remains.
+            return
+        if book.check_ready():
+            if not self._questions(course) and all(self._ready(course,m['id']) for m in course.modules):
+                return self._complete(course,state,ctx)
+            if state['step']!='check_offer':
+                state.update(step='check_offer',phase='learning',pending=None,test=None)
+                notice=state.get('material_notice')
+                if notice and notice.get('kind')!='check':state.pop('material_notice',None)
+                self._say(course,state,'全部模块都学完或通过了。最终检验会考全部题；答错过的题需连续答对两遍。',role='system')
+            return
         if state['step']=='test_done' and not state.get('material_notice'):
             after=[m for m in course.modules if book.module(m['id']).state=='untested'
                    and m['id'] not in state.get('skipped_modules',[])]
@@ -1940,18 +2093,36 @@ class Classroom:
                 states[module['id']]=self._module_resume(state)
                 return
             if failed:
-                state.update(module_id=failed[0]['id'],index=len(course.points_of(failed[0]['id'])),step='test_done',
+                decisions={m['id']:self._module_continuation(book,m['id'],self._questions(course,m['id']),
+                    self._ready(course,m['id'])) for m in failed}
+                retryable=[m for m in failed if decisions[m['id']]=='retest']
+                target=(retryable or failed)[0]
+                continuation=decisions[target['id']]
+                changed=state['module_id']!=target['id'] or state['step']!='test_done'
+                state.update(module_id=target['id'],index=len(course.points_of(target['id'])),step='test_done',
                              phase='learning',pending=None,test=None)
-                self._say(course,state,'所有模块都学过了。这个模块还有没过的题，重测答错的题后才能进入最终检验。',role='system')
-                return
-            if not book.check_ready():
-                self._say(course,state,'本次可学模块已结束。出题失败的点未算通过，稍后重试检测；可以继续学习其他模块。',role='system')
+                # The test_done view exposes the real retest control. Explain
+                # navigation only when it actually changed modules so repeated
+                # continue clicks do not append the same blocking notice.
+                count=sum(self._question_state(book,q['id']) is not None
+                          and self._question_state(book,q['id']).module_correct is False
+                          for q in self._questions(course,target['id']))
+                if continuation=='retest' and count and changed:
+                    self._say(course,state,f'已切到 {target["title"]}：下面可以重测 {count} 道答错的题。',role='system')
+                elif continuation=='prepare':
+                    job=self._jobs.get((course.plan_id,target['id']))
+                    if not job or job['status'] in ('failed','cancelled','ready'):
+                        try:self._prepare(course,target['id'],retry=True)
+                        except Exception:log.exception('module assessment retry failed for %s/%s',course.plan_id,target['id'])
+                    state['material_notice']=dict(module_id=target['id'],kind='module_test',
+                        message=f'{target["title"]} 暂时没有可重测的现成题；正在重新准备，可继续其他步骤或点“重试准备”。')
+                elif continuation=='module_test' and changed:
+                    self._say(course,state,f'{target["title"]} 的检测状态需要重新核对；可重新检测本模块题目。',role='system')
                 return
             # Keep the current learning channel visible through the offer;
             # start_check switches to the global check channel when testing
             # actually begins.
             state.update(step='check_offer',pending=None,test=None)
-            if not self._questions(course) and all(self._ready(course,m['id']) for m in course.modules):return self._complete(course,state,ctx)
             self._say(course,state,'全部模块都学完或通过了。最终检验会考全部题；答错过的题需连续答对两遍。',role='system')
             return
 
@@ -2055,7 +2226,10 @@ class Classroom:
     def _finish_test(self, course, state, ctx):
         test=state['test'];mid=state['module_id'];store=course.store;day=self._day(state)
         if not course.book().attempt_closed(mid,test['attempt']):
-            store.append_attempt_closed(course.plan_id,AttemptClosed(uuid.uuid4().hex,course.next_seq(),mid,test['attempt'],test['kind']))
+            details={'question_ids':list(test.get('question_ids') or test.get('targets') or []),
+                     'assessment_id':test.get('assessment_id') or test['attempt']}
+            store.append_attempt_closed(course.plan_id,
+                AttemptClosed(uuid.uuid4().hex,course.next_seq(),mid,test['attempt'],test['kind']),details=details)
         with store.transaction():
             store.settle_module_test(course.plan_id,mid,test['attempt'],today=day)
             book=course.book();passed=book.module(mid).state in ('passed','skipped')
@@ -2070,7 +2244,8 @@ class Classroom:
                         store.confirm_credits(course.plan_id,p['id'],event_id=f"confirm:{test['attempt']}:{p['id']}",today=day)
                 if passed and test['kind']=='retest':
                     self._restore_concept_learning(course,state,test['attempt'])
-        correct=sum(book.question(q['id']).module_correct is True for q in self._questions(course,mid));total=len(self._questions(course,mid))
+        test['module_id']=mid
+        correct,total=self._assessment_summary(course,test,book)
         state.update(step='test_done',pending=None,test=None)
         if not passed and test['kind']=='skip_test' and test.get('resume'):
             explanation=state.get('answer_explanation')
