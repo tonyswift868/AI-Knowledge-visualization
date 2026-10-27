@@ -17,7 +17,7 @@ CASES = json.loads(Path(__file__).with_name('discarded70.json').read_text(encodi
 def test_material71_ten_saved_questions_keep_literal_answer_with_numbered_units(case, material_store70):
     c = case['candidate']
     units = mq.answer_units(c['reference'])
-    ids = list(range(1, min(5, len(units))+1))
+    ids = list(range(1, len(units)+1))
     q = mq.compile_question(dict(kind='recall', stem=c['stem'], key_point_ids=ids), c, case['module_id'])
     assert validate_question(q) == q
     assert q['reference'] == c['reference'] and q['stem'] == c['stem']
@@ -29,14 +29,17 @@ def test_material71_ten_saved_questions_keep_literal_answer_with_numbered_units(
     assert material_store70.records('question_bank','p')[0]['reference']==c['reference']
 
 
-def test_material71_units_keep_list_items_and_table_rows_literal():
+def test_material71_units_group_paragraph_list_and_table_by_complete_meaning():
     reference = '定义。第二句。\n\n1. 第一阶段。包括两件事。\n- 第二阶段\n\n| 类型 | 说明 |\n| --- | --- |\n| 键值 | 用键取值 |'
-    assert mq.answer_units(reference) == ['定义。', '第二句。', '1. 第一阶段。包括两件事。', '- 第二阶段', '| 类型 | 说明 |', '| 键值 | 用键取值 |']
-    assert mq.selected_units(reference, [1, 3, 6]) == ['定义。', '1. 第一阶段。包括两件事。', '| 键值 | 用键取值 |']
+    units = mq.answer_units(reference)
+    assert units == ['定义。第二句。', '1. 第一阶段。包括两件事。\n- 第二阶段',
+                     '| 类型 | 说明 |\n| --- | --- |\n| 键值 | 用键取值 |']
+    assert mq.selected_units(reference, [1, 2, 3]) == units
 
 
 def test_material71_bold_numbered_items_are_whole_units_not_formatting_fragments():
-    assert mq.answer_units('**1. 键值数据库。支持按键查值。**\n>\n**\n**2. 文档数据库。**') == [
+    # Keep the former literal splitter available to validate saved legacy rows.
+    assert mq.legacy_answer_units('**1. 键值数据库。支持按键查值。**\n>\n**\n**2. 文档数据库。**') == [
         '**1. 键值数据库。支持按键查值。**', '**2. 文档数据库。**']
 
 
@@ -46,21 +49,18 @@ def test_material71_short_reference_no_model_or_format_gate(material_store70):
     assert result['questions'] == 2 and result['rejected'] == 0
 
 
-@pytest.mark.parametrize('ids', [[1,1,2], [1,2,99], [], ['1',2,3]])
-def test_material71_invalid_selection_keeps_question_with_logged_fallback(material_store70, ids, caplog):
+def test_material71_direct_recall_uses_complete_group_without_selector_or_model(material_store70):
     s = material_store70
     c = s._get('source_chunks', 'p', 'c')
     c['text'] = '# 什么是队列？\n\n第一句。第二句。第三句。第四句。第五句。第六句。'
     with s.transaction(): s._put('source_chunks', 'p', c)
-    def select(packet, **kwargs):
-        candidate = packet['candidates'][0]
-        assert len(candidate['units']) >= 6
-        return dict(questions=[dict(candidate_id=candidate['id'], key_point_ids=ids)])
-    with caplog.at_level('INFO'):
-        result = pm.prepare_module(s, 'p', 'm', dict(question_splitter=select), lambda *a: None)
+    answer = mq.candidates(s.records('source_chunks', 'p'), s.records('sources', 'p'))[0]['reference']
+    fail = lambda *a, **k: pytest.fail('complete source recall groups need neither model nor selector')
+    result = pm.prepare_module(s, 'p', 'm', dict(
+        gateway=SimpleNamespace(complete=fail), question_splitter=fail), lambda *a: None)
     assert result['questions'] == 1 and result['rejected'] == 0
-    assert 'selection fallback' in caplog.text
-    assert s.records('question_bank', 'p')[0]['key_points'] == mq.answer_units(c['text'].split('\n\n')[1])[:5]
+    saved = s.records('question_bank', 'p')[0]
+    assert saved['reference'] == answer and saved['key_points'] == mq.answer_units(answer)
 
 
 def test_material71_single_unit_is_not_rejected_for_fewer_than_three_points():
@@ -70,14 +70,14 @@ def test_material71_single_unit_is_not_rejected_for_fewer_than_three_points():
     assert validate_question(q)['key_points'] == ['队列遵循先进先出。']
 
 
-def test_material71_invalid_selection_json_keeps_original_recall(material_store70, caplog):
+def test_material71_long_original_recall_compiles_without_model(material_store70):
     s=material_store70
     c=s._get('source_chunks','p','c')
     c['text']='# 什么是队列？\n\n第一句。第二句。第三句。第四句。第五句。第六句。'
     with s.transaction():s._put('source_chunks','p',c)
-    with caplog.at_level('INFO'):
-        result=pm.prepare_module(s,'p','m',dict(gateway=SimpleNamespace(complete=lambda *a,**k:SimpleNamespace(text='{bad JSON'))),lambda *a:None)
+    result=pm.prepare_module(s,'p','m',dict(gateway=SimpleNamespace(
+        complete=lambda *a,**k:pytest.fail('a structurally complete answer must compile directly'))),lambda *a:None)
     assert result['questions']==1 and result['rejected']==0
-    assert 'JSON fallback' in caplog.text
     original=mq.candidates(s.records('source_chunks','p'),s.records('sources','p'))[0]['reference']
-    assert s.records('question_bank','p')[0]['reference']==original
+    saved=s.records('question_bank','p')[0]
+    assert saved['reference']==original and saved['key_points']==mq.answer_units(original)

@@ -13,8 +13,13 @@ def begin(e):
     position(e,'m0')
     v=act(e,'start_test','module_test')
     qid=v['question']['id']
-    act(e,'recall_reveal',qid,'学生自己写的七条理解；不是参考答案。')
+    revealed=act(e,'recall_reveal',qid,'学生自己写的七条理解；不是参考答案。')
+    e.recall_key_points=revealed['question']['key_points']
     return qid
+
+
+def all_recall_ticks(e):
+    return list(range(len(e.recall_key_points)))
 
 
 def test_essay99_seven_of_ten_can_self_pass_and_draft_survives_restart(env):
@@ -37,7 +42,7 @@ def test_essay99_seven_of_ten_can_self_pass_and_draft_survives_restart(env):
 
 def test_essay99_full_ticks_can_self_fail_and_notebook_all_attempts(env):
     e=env;qid=begin(e)
-    v=act(e,'recall_submit',qid,[0,1,2],False)
+    v=act(e,'recall_submit',qid,all_recall_ticks(e),False)
     assert e.store.load_mastery(PLAN).question(qid).module_correct is False
     assert v['recall_result']==dict(question_id=qid,correct=False,missed=[])
     while v['question']:v=answer(e,v)
@@ -101,14 +106,15 @@ def test_essay99_v8_upgrade_keeps_old_payload_and_verdict(env,tmp_path):
 
 def test_essay99_no_verdict_does_not_autograde_and_atomic_failure(env,monkeypatch):
     e=env;qid=begin(e)
-    bad=e.room.perform(PLAN,'recall_submit',None,(qid,[0,1,2],None))
+    ticks=all_recall_ticks(e)
+    bad=e.room.perform(PLAN,'recall_submit',None,(qid,ticks,None))
     assert bad['failure'] and not e.store.records('judgements',PLAN)
     original=e.store.append_question_answer
     monkeypatch.setattr(e.store,'append_question_answer',lambda *a,**kw:(_ for _ in ()).throw(RuntimeError('disk simulation')))
-    bad=e.room.perform(PLAN,'recall_submit',None,(qid,[0,1,2],False))
+    bad=e.room.perform(PLAN,'recall_submit',None,(qid,ticks,False))
     assert bad['failure'] and not e.store.records('judgements',PLAN)
     monkeypatch.setattr(e.store,'append_question_answer',original)
-    act(e,'recall_submit',qid,[0,1,2],False)
+    act(e,'recall_submit',qid,ticks,False)
     assert len(e.store.records('judgements',PLAN))==len(e.store.records('question_answers',PLAN))==1
 
 
@@ -123,7 +129,7 @@ def test_essay99_final_levels_follow_self_choice_and_not_ticks(env):
     while not v['question'] or v['question']['id']!=qid:
         v=answer(e,v) if v['question'] else act(e,'start_check')
     act(e,'recall_reveal',qid,'本次写了所有要点')
-    v=act(e,'recall_submit',qid,[0,1,2],False)
+    v=act(e,'recall_submit',qid,all_recall_ticks(e),False)
     assert not e.store.load_mastery(PLAN).question(qid).passed
     for n in range(2):
         while not v['question'] or v['question']['id']!=qid:

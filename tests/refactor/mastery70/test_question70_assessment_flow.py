@@ -117,8 +117,9 @@ def position(e,mid,step='test_offer'):
 
 def answer(e,v,good=True):
     if v['question']['kind']=='recall':
-        qid=v['question']['id'];act(e,'recall_reveal',qid,'学生自己的原文回答')
-        return act(e,'recall_submit',qid,[0,1,2] if good else [0,1],good)
+        qid=v['question']['id'];revealed=act(e,'recall_reveal',qid,'学生自己的原文回答')
+        indices=list(range(len(revealed['question']['key_points'])))
+        return act(e,'recall_submit',qid,indices if good else indices[:-1],good)
     return act(e,'answer',[0] if good else [1])
 
 
@@ -133,17 +134,17 @@ def test_recall_bridge_contract_and_interrupted_submit_are_idempotent(env,monkey
     failed = registry.methods['class.recall_reveal'](dict(plan_id=PLAN,question_id=qid,answer=''),ctx)
     assert failed['failure'] and 'reference' not in failed
     revealed=registry.methods['class.recall_reveal'](dict(plan_id=PLAN,question_id=qid,answer='我的答案原文'),ctx)
-    assert revealed['reference'] and len(revealed['key_points'])==3
+    assert revealed['reference'] and revealed['key_points']==[revealed['reference']]
     assert not e.store.records('judgements',PLAN)
     original=e.room._save
     monkeypatch.setattr(e.room,'_save',lambda *a:(_ for _ in ()).throw(RuntimeError('interrupted save')))
-    with pytest.raises(RuntimeError):act(e,'recall_submit',qid,[0,1],False,token='submit70')
+    with pytest.raises(RuntimeError):act(e,'recall_submit',qid,[],False,token='submit70')
     monkeypatch.setattr(e.room,'_save',original)
     # A changed retry cannot replace a judgement that already committed.
-    v=act(e,'recall_submit',qid,[0,1,2],True,token='submit70')
-    assert v['recall_result']==dict(question_id=qid,correct=False,missed=[2])
+    v=act(e,'recall_submit',qid,[0],True,token='submit70')
+    assert v['recall_result']==dict(question_id=qid,correct=False,missed=[0])
     rows=e.store.records('question_answers',PLAN)
-    assert len(rows)==1 and rows[0]['answer']=='我的答案原文' and rows[0]['ticked']==[0,1]
+    assert len(rows)==1 and rows[0]['answer']=='我的答案原文' and rows[0]['ticked']==[]
     failed = registry.methods['class.recall_submit'](dict(plan_id=PLAN,question_id='wrong-id',ticked=[]),ctx)
     assert failed['failure'] and 'correct' not in failed
 
@@ -171,13 +172,13 @@ def test_real_room_recall_reveal_missing_ticks_restart_and_retest(env):
     assert bad['failure'] and not e.store.records('judgements',PLAN)
     v=act(e,'recall_reveal',qid,'第一条，第二条');assert v['question']['reference'] and v['question']['answer']=='第一条，第二条'
     e.room=Classroom(e.services,lambda:DAY,now=lambda:NOW);e.room._prepare_next_module=lambda *a,**k:None
-    v=act(e,'recall_submit',qid,[0,1],False);assert v['recall_result']==dict(question_id=qid,correct=False,missed=[2])
+    v=act(e,'recall_submit',qid,[],False);assert v['recall_result']==dict(question_id=qid,correct=False,missed=[0])
     while v['question']:v=answer(e,v)
     assert v['module']['state']=='failed'
     v=act(e,'start_test','retest');assert v['question']['id']==qid and v['question']['total']==1
     v=answer(e,v);assert v['module']['state']=='passed'
     saved=next(r['details'] for r in e.store.records('judgements',PLAN) if r['details']['question_id']==qid and not all(v for _,v in r['event']['results']))
-    assert saved['answer']=='第一条，第二条' and saved['ticked']==[0,1]
+    assert saved['answer']=='第一条，第二条' and saved['ticked']==[]
 
 def test_whole_course_final_and_question_report_free_no_mutation(env):
     e=env

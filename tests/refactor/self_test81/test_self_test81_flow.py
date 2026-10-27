@@ -44,11 +44,11 @@ def test_self_test81_import_counts_missing_literal_and_existing_recognition():
     assert len(result['missing']) == 1 and result['missing'][0]['stem'] == MISSING
     assert not result['rejected']
     assert result['questions'][0]['grading']['answer'] == [0]
-    assert result['questions'][1]['key_points'] == ['队列遵循先进先出。', '元素从队尾加入，从队首移除。']
+    assert result['questions'][1]['key_points'] == ['队列遵循先进先出。元素从队尾加入，从队首移除。']
     assert gateway.calls[0][1]['recognized']
     assert any(row['kind']=='recall' for row in gateway.calls[0][1]['recognized'])
     assert gateway.calls[0][2]['enable_search'] is False
-    assert len(gateway.calls) == 1  # <=5 answer units do not call a selector
+    assert len(gateway.calls) == 1  # Meaning grouping does not call a selector.
 
 
 @pytest.mark.parametrize('field,value', [('stem','改写的题干'), ('answer','人工补出的答案'), ('options',['A. 改写','B. 3']), ('source','不存在的原文')])
@@ -69,13 +69,13 @@ def test_self_test81_literal_range_pointers_and_long_answer_units():
     span = '# 六条结论是什么？\n\n'+reference
     class Pick:
         def complete(self, *args, **kwargs):
-            return SimpleNamespace(text='{"key_point_ids":[2,4,6]}')
+            pytest.fail('Literal paragraph grouping needs no selector')
     raw = dict(kind='recall', stem='六条结论是什么？', options=[], answer={'quote':'一号结论。','end_quote':'六号结论。'},
                source={'quote':'# 六条结论是什么？','end_quote':'六号结论。'})
     q = compile_row(raw, span, Pick())
-    assert q['reference'] == reference and q['key_points'] == ['二号结论。','四号结论。','六号结论。']
+    assert q['reference'] == reference and q['key_points'] == [reference]
     q = compile_row(raw, span, Locator([]))
-    assert len(q['key_points']) == 5 and q['warning']
+    assert q['key_points'] == [reference] and not q.get('warning')
 
 
 @pytest.mark.parametrize('filename,data', [
@@ -188,11 +188,11 @@ def test_self_test81_recall_requires_answer_then_reveal_all_points(tmp_path):
     assert reopened.resume(key)['question']['answer']=='先进先出'
     reopened.reveal(key,attempt,'事后改答案')
     assert reopened.get(key)['run']['current']['answer']=='先进先出'
-    result=reopened.submit(key,attempt,ticked=[0])
-    assert result['run']['current']['verdict']==dict(correct=False,missed=[1])
+    result=reopened.submit(key,attempt,ticked=[])
+    assert result['run']['current']['verdict']==dict(correct=False,missed=[0])
     view=reopened.next(key,attempt); attempt=view['run']['current']['attempt_id']
     reopened.reveal(key,attempt,'先进先出，队尾加入，队首移除')
-    result=reopened.submit(key,attempt,ticked=[0,1])
+    result=reopened.submit(key,attempt,ticked=[0])
     assert result['run']['current']['verdict']['correct']
 
 

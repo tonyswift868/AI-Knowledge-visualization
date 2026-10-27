@@ -77,8 +77,8 @@ def _compile_guide(module_impl, sources, expected, root):
             chunk_ids=[chunk["chunk_id"] for chunk in chunks],
         )], check_minutes=0, today=today)
 
-        # All current questions have three source units, so the real compiler's
-        # direct recall path should compile them without invoking a model splitter.
+        # Three source bullets explaining one answer stay together; direct
+        # recall compilation still needs no model splitter.
         result = module_impl.prepare_module(store, "plan", "module", {}, lambda *args: None)
         bank = store.records("question_bank", "plan")
         assert result["candidates"] == 20
@@ -88,8 +88,8 @@ def _compile_guide(module_impl, sources, expected, root):
         assert all(row["origin"] == "found" for row in bank)
         assert {row["stem"] for row in bank} == set(expected)
         for row in bank:
-            assert row["key_points"] == expected[row["stem"]]
-            assert len(row["key_points"]) == 3
+            assert row["key_points"] == ['\n'.join(expected[row["stem"]])]
+            assert len(row["key_points"]) == 1
             assert all(point in row["reference"] for point in row["key_points"])
 
         fields = ("id", "kind", "stem", "options", "answer", "reference", "key_points",
