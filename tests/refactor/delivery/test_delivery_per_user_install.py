@@ -181,8 +181,10 @@ def test_initial_retry_reparse_refused(case, monkeypatch, location):
     source, raw = initial_failure(case, monkeypatch)
     outside = base / 'outside'; outside.mkdir()
     (outside / 'sentinel').write_bytes(b'do not traverse or modify')
+    install_parent = base
     if location == 'root':
-        root.rename(base / 'retained-root'); junction = root
+        install_parent = base / 'root-alias-parent'; install_parent.mkdir()
+        junction = install_parent / 'MentorFlow'
     elif location == 'Updater':
         (root / 'Updater').rename(root / 'retained-updater'); junction = root / 'Updater'
     elif location == 'failed':
@@ -192,7 +194,7 @@ def test_initial_retry_reparse_refused(case, monkeypatch, location):
     try:
         before = file_snapshot(outside)
         with pytest.raises(SecurityError, match='reparse'):
-            engine.install_per_user(base, source, raw, health=ready)
+            engine.install_per_user(install_parent, source, raw, health=ready)
         assert file_snapshot(outside) == before
     finally:
         # Remove only this exact test-created junction, never its destination.

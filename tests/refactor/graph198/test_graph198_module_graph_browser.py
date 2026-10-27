@@ -53,8 +53,11 @@ def _draft(raw, phase, modules):
 
 
 def _data(cases):
-    source = Path(os.environ.get("GRAPH198_DRAFT", r"D:\MentorFlow\.local\test-tmp\graph198\data\user-draft.json"))
-    if source.exists():
+    draft_path = os.environ.get("GRAPH198_DRAFT")
+    if draft_path is not None:
+        source = Path(draft_path)
+        if not source.is_file():
+            raise FileNotFoundError(f"GRAPH198_DRAFT does not exist: {source}")
         source_bytes = source.read_bytes()
         raw = json.loads(source_bytes.decode("utf-8"))
         if raw.get("phase") != "material_preview" or len(raw.get("material_structure", {}).get("modules", [])) != 14:
@@ -69,10 +72,10 @@ def _data(cases):
                "messages": [{"id": "graph198-structure", "role": "ai", "kind": "material_preview",
                              "text": "已按资料整理结构。", "version": 1}], "sources": [], "outline": None,
                "generation": {}, "material_structure": {"version": 1, "modules": source_modules, "missing": []}}
+    raw_snapshot = json.loads(json.dumps(raw, ensure_ascii=False))
     modules = _make_graph_modules(raw)
-    # Step 3 is the copied draft byte-for-byte as JSON. Only the step-4 outline
-    # and committed-plan projection are derived because the copied draft has no
-    # outline or saved plan detail yet.
+    # The material-preview step must render precisely the copied draft. The
+    # deterministic fallback above is already a valid structure-step draft.
     drafts = {"structure": raw, "outline": _draft(raw, "outline", modules)}
     detail_modules = [{"id": m["key"], "title": m["title"], "summary": m["summary"], "prerequisites": m["prerequisites"],
                        "question_count": 1 if i % 3 else 0, "passed_questions": 0, "learning_minutes": 24, "check_minutes": 8,
@@ -86,7 +89,7 @@ def _data(cases):
     return {"defaultPhase": cases, "drafts": drafts, "detail": detail,
             "moduleTitles": [m["title"] for m in modules], "cases": [cases],
             "structureDraftSha256": hashlib.sha256(source_bytes).hexdigest() if source_bytes else None,
-            "structureDraftUnmodified": drafts["structure"] == raw}
+            "structureDraftUnmodified": drafts["structure"] == raw_snapshot}
 
 
 def build(root: Path, case: str):
@@ -127,6 +130,8 @@ def browser(root: Path):
     view = QWebEngineView()
     view.resize(1280, 900)
     view.show()
+    load_results = []
+    view.loadFinished.connect(load_results.append)
     view.setUrl(QUrl.fromLocalFile(str(root / "dist/index.html")))
     artifacts = Path(os.environ.get("GRAPH198_ARTIFACTS", str(root / "artifacts")))
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -145,6 +150,10 @@ def browser(root: Path):
         return values[0]
 
     end = time.monotonic() + 60
+    while not load_results and time.monotonic() < end:
+        pump()
+    assert load_results, "Qt WebEngine page load did not finish"
+    assert load_results[-1], "Qt WebEngine page load failed"
     while not js("!!window.graph198Result"):
         name = js("window.graph198Capture || null")
         if name and js("window.graph198CaptureAck !== " + json.dumps(name)):
@@ -180,6 +189,45 @@ def test_graph198_real_newplan_and_detail_graphs(case, tmp_path):
     assert evidence["ok"]
     if case == "structure" and evidence["structureDraftSha256"]:
         assert evidence["structureDraftUnmodified"]
+
+
+def test_graph198_fallback_has_a_renderable_structure_without_private_temp_data(monkeypatch, tmp_path):
+    monkeypatch.delenv("GRAPH198_DRAFT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    data = _data("structure")
+    draft = data["drafts"]["structure"]
+    assert draft["phase"] == "material_preview"
+    assert len(draft["material_structure"]["modules"]) == 14
+    assert any(message["kind"] == "material_preview" for message in draft["messages"])
+    assert data["structureDraftSha256"] is None
+    assert data["structureDraftUnmodified"]
+
+
+def test_graph198_explicit_draft_is_read_as_is_and_bad_path_fails(monkeypatch, tmp_path):
+    modules = [{"key": f"m{i + 1}", "title": f"模块{i + 1}", "summary": "本模块的学习目标。",
+                "chapters": [f"第{i + 1}章"], "refs": [f"s1.{i + 1}"], "prerequisites": []}
+               for i in range(14)]
+    raw = {"version": 1, "plan_id": "copied", "phase": "material_preview", "name": "copy",
+           "goal": "test", "form": None,
+           "messages": [{"id": "copied-structure", "role": "ai", "kind": "material_preview",
+                         "text": "原始结构内容", "version": 1}],
+           "sources": [], "outline": None, "generation": {},
+           "material_structure": {"version": 1, "modules": modules, "missing": [],
+                                  "ranges": {"estimated_question_count": 0, "modules_with_questions": 0}}}
+    source = tmp_path / "copied-draft.json"
+    source.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    original = source.read_bytes()
+    monkeypatch.setenv("GRAPH198_DRAFT", str(source))
+    data = _data("structure")
+    assert source.read_bytes() == original
+    assert data["drafts"]["structure"] == raw
+    assert data["structureDraftSha256"] == hashlib.sha256(original).hexdigest()
+    assert data["structureDraftUnmodified"]
+    assert any(message["kind"] == "material_preview" for message in data["drafts"]["structure"]["messages"])
+
+    monkeypatch.setenv("GRAPH198_DRAFT", str(tmp_path / "missing.json"))
+    with pytest.raises(FileNotFoundError, match="GRAPH198_DRAFT does not exist"):
+        _data("structure")
 
 
 if __name__ == "__main__":

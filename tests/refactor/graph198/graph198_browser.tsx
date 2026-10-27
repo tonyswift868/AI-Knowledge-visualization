@@ -82,6 +82,7 @@ function visibleSample(kind: string, label: string) {
 }
 
 async function capture(name: string) {
+  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
   window.graph198Capture = name
   await until(() => (window as any).graph198CaptureAck === name, `Qt capture ${name}`)
 }

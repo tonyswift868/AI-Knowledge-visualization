@@ -7,6 +7,7 @@ import { fixture, emit } from './spend81_browser_bridge'
 declare global { interface Window { result?: any; captureReady?: string; captured?: string } }
 const checks: string[] = []
 const wait = (ms=25) => new Promise((r)=>setTimeout(r,ms))
+const nextPaintFrames = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
 async function until(fn: ()=>boolean, label: string) {
   const end = Date.now()+6000
   while (Date.now()<end) { if (fn()) { checks.push(label); return }; await wait() }
@@ -14,6 +15,11 @@ async function until(fn: ()=>boolean, label: string) {
 }
 const text = (s: string) => document.body.textContent?.includes(s) ?? false
 async function capture(name: string) {
+  const pageAnimations = [...document.querySelectorAll<HTMLElement>('.page')]
+    .flatMap(page => page.getAnimations())
+    .filter(animation => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+  await Promise.all(pageAnimations.map(animation => animation.finished.catch(() => undefined)))
+  await nextPaintFrames()
   window.captureReady = name
   await until(()=>window.captured === name, '截图 '+name)
   window.captureReady = ''
