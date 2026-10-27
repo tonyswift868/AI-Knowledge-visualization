@@ -51,16 +51,16 @@
 | --- | --- | --- |
 | MF-01 | 空闲 | server |
 | MF-02 | 203-MF02 修同步并显示“正在重试”（已起草，待转发） | client |
-| MF-03 | 空闲 | classroom |
+| MF-03 | 204-MF03 BUG-131 课堂与成绩、一次性工具（已起草，待转发） | classroom |
 | MF-04 | 空闲 | runtime |
 | MF-05 | 202-MF05 全量不稳定测试修复（已起草，待转发） | platform |
-| MF-06 | 空闲 | tools |
+| MF-06 | 205-MF06 BUG-131 备题（已起草，待转发） | tools |
 | MF-07 | 空闲 | library |
 
 ## 待派队列
 
 - 199-MF04 已合入 b53d3abf（[BUG-129]）。203-MF02（client，[BUG-130] 根上修同步、显示“正在重试”，¥0）：基线 19aed97b，任务文件 D:\MentorFlow\.local\tasks\203-MF02.md，已起草，待转发；和 201、202 不改同一处，可并行。用户 2026-10-27 定：都修完一起发 2.0.34。
-- 201-MF03 调研完成（[BUG-131]，报告 .local/test-tmp/final201/report.md），等用户定 1 个问题后派修。202-MF05（platform，修全量里的 graph198 和文件占用等不稳定测试，顺带跑合入 199 后的全量）：基线 7c30ce6d，任务文件 D:\MentorFlow\.local\tasks\<任务号>.md，已起草，待转发；两份不改同一处，可并行。
+- 204-MF03（classroom，[BUG-131] 课堂与成绩、不卡死规则、一次性“算过”工具）、205-MF06（tools，[BUG-131] 备题状态超 256 KiB、重排后摘题）：基线 9a2f57e7，任务文件 D:\MentorFlow\.local\tasks\<任务号>.md，已起草，待转发；store.py 两人各改各的函数，合入时注意。202-MF05（platform，修全量里的 graph198 和文件占用等不稳定测试，顺带跑合入 199 后的全量）的通知已和 201、203 一起给用户，回执还没到。
 - [BUG-87] direct97 偶发：179 已加诊断、原因未找到，下次全量失败时看诊断。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）。
 
