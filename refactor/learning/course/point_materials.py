@@ -6,6 +6,7 @@ import logging
 import re
 from threading import Lock, RLock
 from weakref import WeakKeyDictionary
+from . import question_bank
 from .question_bank import assessment_question, select_question
 from .research import ResearchCancelled
 from .store import StoreError
@@ -181,6 +182,10 @@ def prepare_module(store, plan_id, module_id, ctx, progress):
         old = module.get('question_extraction', {})
         if old.get('state') == 'done' and old.get('source_fingerprint') == fingerprint:
             return dict(old['result'])
+        boundary = (dict(at=old['supplemental_after'], basis=old.get('supplemental_after_basis', 'stored'))
+                    if old.get('supplemental_after') else
+                    question_bank.module_supplemental_cutoff(store, plan_id, module_id))
+        supplemental_after = boundary.get('at') if boundary else None
         candidates = mq.for_module(mq.candidates(chunks, sources), points)
         accepted, rejected = [], []
         progress(0, len(candidates), '正在拆出资料自带的题')
@@ -253,9 +258,13 @@ def prepare_module(store, plan_id, module_id, ctx, progress):
                 # Existing summary consumers retain these zero-valued fields;
                 # there is no gap generator or configurable fallback behind them.
                 cloze_points=0, cloze_heavy=False)
+            result['supplemental_questions'] = len(question_bank.supplemental_question_ids(
+                store, plan_id, module_id, cutoff=supplemental_after))
             current = next(m for m in store.records('modules', plan_id) if m['id'] == module_id)
             current['question_extraction'] = dict(state='done', source_fingerprint=fingerprint,
-                result=result, rejections=rejected, at=datetime.now(timezone.utc).isoformat())
+                result=result, rejection_count=len(rejected), supplemental_after=supplemental_after,
+                supplemental_after_basis=boundary.get('basis') if boundary else None,
+                at=datetime.now(timezone.utc).isoformat())
             store._put('modules', plan_id, current)
             for point in points:
                 if point.get('question_preparation')=='pending':
@@ -287,6 +296,24 @@ def pick_question(store,plan_id,point_id,purpose,exclude_ids=()):
         rows=[q for q in rows if q.get('subpoint_id') in valid]
     if not rows:return None
     return select_question(rows,point_id,purpose,exclude_ids)
+
+
+def preparation_summary(store, plan_id, module_id):
+    """Project current preparation counts from the active structure and bank."""
+    points = [p for p in store.records('points', plan_id) if p['module_id'] == module_id]
+    module = next((m for m in store.records('modules', plan_id) if m['id'] == module_id), {})
+    marker = module.get('question_extraction', {})
+    rows = assessment_questions(store.records('question_bank', plan_id), module_id)
+    point_rejections = sum(len(p.get('subpoint_preparation', {}).get('rejections', ())) for p in points)
+    has_concepts = any(p.get('structure') == 'concept_v1' for p in points)
+    result = dict(points=len(points), questions=len(rows), objective=sum(q['kind'] != 'recall' for q in rows),
+        recall=sum(q['kind'] == 'recall' for q in rows),
+        rejected=point_rejections if has_concepts else marker.get('rejection_count', point_rejections),
+        question_extraction_done=preparation_done(store, plan_id, module_id),
+        cloze_points=len({pid for q in rows if q.get('origin') == 'cloze' for pid in q.get('point_ids', [])}),
+        cloze_heavy=False,
+        supplemental_questions=len(question_bank.supplemental_question_ids(store, plan_id, module_id)))
+    return result
 
 
 
@@ -645,6 +672,10 @@ def _prepare_concept_module(store,plan_id,module_id,points,ctx,progress):
         module=next(m for m in store.records('modules',plan_id) if m['id']==module_id)
         marker=module.get('question_extraction',{})
         if marker.get('state')=='done' and marker.get('source_fingerprint')==fingerprint:return dict(marker['result'])
+        boundary = (dict(at=marker['supplemental_after'], basis=marker.get('supplemental_after_basis', 'stored'))
+                    if marker.get('supplemental_after') else
+                    question_bank.module_supplemental_cutoff(store, plan_id, module_id))
+        supplemental_after = boundary.get('at') if boundary else None
         if any(p.get('structure')!='concept_v1' for p in points):
             prepare_module(store,plan_id,module_id,dict(ctx,_original_points_only=True),progress)
         for i,point in enumerate(points):
@@ -657,13 +688,18 @@ def _prepare_concept_module(store,plan_id,module_id,points,ctx,progress):
         result=dict(points=len(points),questions=len(rows),objective=sum(q['kind']!='recall' for q in rows),
             recall=sum(q['kind']=='recall' for q in rows),rejected=len(rejected),question_extraction_done=True,
             cloze_points=len(cloze_points),cloze_heavy=False)
+        result['supplemental_questions'] = len(question_bank.supplemental_question_ids(
+            store, plan_id, module_id, cutoff=supplemental_after))
         with store.transaction():
             _check(ctx)
             current=store._get('modules',plan_id,module_id)
-            # Preserve original-question rejection evidence in mixed modules.
-            old=current.get('question_extraction',{}).get('rejections',[])
+            # Rejection detail is kept on each point's small preparation
+            # checkpoint. Aggregating it here made this one module record grow
+            # with every subpoint and exceed the sync record limit.
             current['question_extraction']=dict(state='done',source_fingerprint=fingerprint,result=result,
-                rejections=old+rejected,at=datetime.now(timezone.utc).isoformat())
+                rejection_count=len(rejected),supplemental_after=supplemental_after,
+                supplemental_after_basis=boundary.get('basis') if boundary else None,
+                at=datetime.now(timezone.utc).isoformat())
             store._put('modules',plan_id,current)
         return result
 

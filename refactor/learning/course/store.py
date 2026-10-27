@@ -688,8 +688,20 @@ class CourseStore:
             self._db.execute('DELETE FROM point_sources WHERE plan_key=? AND point_id=?', (plan, identifier))
             self._db.executemany('INSERT INTO point_sources VALUES(?,?,?)', [(plan, identifier, cid) for cid in payload['chunk_ids']])
 
-    def _put(self, entity, plan, payload, *, modified_ns=None):
-        payload = json.loads(_json(payload))
+    def _put(self, entity, plan, payload, *, modified_ns=None, _inside_module_migration=False):
+        # Module prep writers may hand us the legacy aggregate before its
+        # detailed rejection rows are folded back onto their current points.
+        # It is only an in-memory input here; the normalized wire row below is
+        # still checked against MAX_PAYLOAD before it can be persisted.
+        payload = json.loads(_json(payload, bounded=entity != 'modules'))
+        if entity == 'modules':
+            extraction = payload.get('question_extraction')
+            if (not _inside_module_migration and isinstance(extraction, dict)
+                    and isinstance(extraction.get('rejections'), list) and extraction['rejections']):
+                with self.transaction():
+                    return self._put(entity, plan, payload, modified_ns=modified_ns,
+                                     _inside_module_migration=True)
+            payload = self._compact_module_preparation_rejections(plan, payload)
         self._validate(entity, plan, payload)
         identifier = _wire_id(entity, plan, payload['id'])
         raw = _json(payload)
@@ -713,6 +725,79 @@ class CourseStore:
         self._materialize(entity, plan, payload, revision)
         self._changed('local', entity)
         return {key: value for key, value in payload.items() if key != _FIELD_VERSIONS}
+
+    def _compact_module_preparation_rejections(self, plan, payload):
+        """Keep detailed prep rejections with their point, not duplicated on a module.
+
+        Module summaries were accumulating the same detailed evidence on every
+        preparation pass. A growing module record then exceeded the sync
+        record limit even though each point's checkpoint was small. Move rows
+        that still identify a current subpoint to its existing point marker;
+        stale/unknown rows are represented by a bounded count only.
+        """
+        extraction = payload.get('question_extraction')
+        if not isinstance(extraction, dict):
+            return payload
+        rejected = extraction.get('rejections')
+        if not isinstance(rejected, list) or not rejected:
+            return payload
+
+        point_rows = self._db.execute(
+            'SELECT payload FROM points WHERE plan_key=? AND module_id=?',
+            (plan, payload['id'])).fetchall()
+        points = [json.loads(row[0]) for row in point_rows]
+        by_subpoint = {
+            sub.get('id'): point for point in points
+            for sub in point.get('subpoints', [])
+            if isinstance(sub, dict) and isinstance(sub.get('id'), str)
+        }
+        point_updates = {}
+        for item in rejected:
+            sid = item.get('subpoint_id') if isinstance(item, dict) else None
+            point = by_subpoint.get(sid)
+            if point is None:
+                continue
+            target = point_updates.get(point['id'], point)
+            marker = target.get('subpoint_preparation')
+            if not isinstance(marker, dict):
+                marker = {}
+            existing = marker.get('rejections', [])
+            if not isinstance(existing, list):
+                # Don't overwrite an invalid checkpoint that could contain
+                # useful state. The module still retains its aggregate count.
+                continue
+            fingerprint = _json(item, bounded=False)
+            if any(_json(saved, bounded=False) == fingerprint for saved in existing):
+                continue
+            if point['id'] not in point_updates:
+                target = dict(point)
+                target_marker = dict(marker)
+                target_marker['rejections'] = list(existing)
+                target['subpoint_preparation'] = target_marker
+                point_updates[point['id']] = target
+            target_marker = point_updates[point['id']]['subpoint_preparation']
+            target_marker['rejections'].append(item)
+
+        result = extraction.get('result')
+        result_count = result.get('rejected', 0) if isinstance(result, dict) else 0
+        previous_count = extraction.get('rejection_count', 0)
+        previous_count = previous_count if type(previous_count) is int and previous_count >= 0 else 0
+        extraction = dict(extraction)
+        # Detail rows that cannot be tied to the current structure are stale
+        # diagnostics. The count remains, while current-point detail survives
+        # on its own point record.
+        extraction['rejections'] = []
+        extraction['rejection_count'] = max(previous_count, len(rejected),
+                                             result_count if type(result_count) is int and result_count >= 0 else 0)
+
+        # All related point writes and the compact module write participate in
+        # the caller's transaction, so a too-large point record rolls back the
+        # migration instead of losing its source evidence.
+        for point in point_updates.values():
+            self._put('points', plan, point)
+        payload = dict(payload)
+        payload['question_extraction'] = extraction
+        return payload
 
     def classroom_position(self, plan_id):
         with self._lock:
@@ -833,12 +918,15 @@ class CourseStore:
             return [p for p in values if include_archived or not p['archived']]
 
     @_atomic
-    def save_module_preparation(self, plan_id, module_id, summary, *, merge=False):
+    def save_module_preparation(self, plan_id, module_id, summary, *, merge=False, question_count=None):
         """Persist the material summary; optionally merge output counts atomically."""
         row = self._get('modules', plan_id, module_id)
         value = dict(row.get('material_preparation') or {}) if merge else {}
         value.update(dict(summary))
         row['material_preparation'] = value
+        if question_count is not None:
+            _number(question_count)
+            row['question_count'] = question_count
         return self._put('modules', plan_id, row)
 
     @_atomic

@@ -204,7 +204,9 @@ def test_material70_rejections_are_recorded_and_module_is_still_done(material_st
     def reject(packet,**kwargs):return {'questions':[dict(candidate_id=c['id'],reject_reason='原文不足三句') for c in packet['candidates']]}
     result=pm.prepare_module(s,'p','m',dict(question_splitter=reject),lambda *a:None)
     assert result['rejected']==0 and result['questions']==2 and pm.preparation_done(s,'p','m')
-    assert not s.records('modules','p')[0]['question_extraction']['rejections']
+    summary = s.records('modules','p')[0]['question_extraction']
+    assert not summary.get('rejections')
+    assert summary['rejection_count'] == 0
 
 
 def test_material70_cancel_fences_all_admission(material_store70):

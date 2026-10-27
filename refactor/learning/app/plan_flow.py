@@ -1440,19 +1440,40 @@ class PlanFlow:
         return preparation_done(self.services.store, plan_id, module_id)
 
     def _save_material_summary(self, plan_id, module_id, result):
-        from ..course.question_bank import assessment_questions
-        count = len(assessment_questions(self.services.store.records('question_bank', plan_id), module_id))
-        if any(m['id']==module_id for m in self.services.store.records('modules', plan_id)):
-            self.services.store.set_question_estimate(plan_id, module_id, count, today=self.study_day())
+        from ..course.point_materials import preparation_summary
+        store = self.services.store
+        module = next((m for m in store.records('modules', plan_id) if m['id'] == module_id), None)
+        if module is None:
+            return
+        current = preparation_summary(store, plan_id, module_id)
+        count = current['questions']
+        metadata_count = None
+        if module.get('question_count') != count:
+            plan = store.get_plan(plan_id)
+            expired = bool(plan.get('window') and _day(plan['window']['end'], '截止日期') < self.study_day())
+            tested = any(row['event']['module_id'] == module_id
+                         for row in store.records('attempt_closed', plan_id))
+            if tested or expired or plan.get('state') == 'completed':
+                # Supplementary preparation does not rewrite a closed test's
+                # reserve, or move an expired plan's historical schedule.
+                metadata_count = count
+            else:
+                store.set_question_estimate(plan_id, module_id, count, today=self.study_day())
         if not isinstance(result, dict) or not any(k in result for k in ('points', 'cloze_points', 'cloze_heavy')):
-            # The integrated baseline still returns aggregate question counts.
-            # MF-02's new summary will be exercised through the agreed test stub.
+            if metadata_count is not None:
+                store.save_module_preparation(plan_id, module_id, {}, merge=True, question_count=metadata_count)
             return
         summary = {k: result.get(k) for k in ('points', 'cloze_points', 'cloze_heavy')}
         if (type(summary['points']) is not int or type(summary['cloze_points']) is not int
                 or not 0 <= summary['cloze_points'] <= summary['points'] or type(summary['cloze_heavy']) is not bool):
             raise BridgeError('PREPARATION_FORMAT', '资料准备结果不完整，请重试。')
-        self.services.store.save_module_preparation(plan_id, module_id, summary, merge=True)
+        # A cached worker may still carry the former 80-point summary. The
+        # actual structure and eligible bank rows are the display authority.
+        summary = {k: current[k] for k in ('points', 'questions', 'objective', 'recall',
+            'rejected', 'cloze_points', 'cloze_heavy', 'supplemental_questions')}
+        saved = module.get('material_preparation') or {}
+        if metadata_count is not None or any(saved.get(k) != v for k, v in summary.items()):
+            store.save_module_preparation(plan_id, module_id, summary, merge=True, question_count=metadata_count)
 
     def _note_plan_requested(self, plan_id):
         """Revisit this plan's unfinished preparations once when selection changes."""
@@ -1482,6 +1503,9 @@ class PlanFlow:
             job = state['jobs'].get((plan_id, module_id))
             if job and (job.get('explicit_stop') or job.get('status') == 'stopped'):
                 return summary
+        from ..course.point_materials import preparation_summary
+        self._save_material_summary(plan_id, module_id,
+                                    preparation_summary(self.services.store, plan_id, module_id))
         if summary.get('state') != 'done':
             details = {'resume_stopped': False}
             if summary.get('attempts') is not None:
@@ -1913,6 +1937,9 @@ class PlanFlow:
                 # done commit. If the outputs already pass the current readiness
                 # check, persist completion and clear the stopped in-memory job
                 # instead of regenerating those outputs.
+                from ..course.point_materials import preparation_summary
+                self._save_material_summary(plan_id, mid,
+                    preparation_summary(self.services.store, plan_id, mid))
                 with state['guard']:
                     job = state['jobs'].get((plan_id, mid))
                     worker_pending = bool(job and job.get('worker_running'))
@@ -2007,7 +2034,10 @@ class PlanFlow:
                 if state=='done':
                     from ..course.question_bank import assessment_questions
                     count=len(assessment_questions(self.services.store.records('question_bank',plan_id),module_id))
-                    self.services.store.set_question_estimate(plan_id,module_id,count,today=self.study_day())
+                    if module.get('question_count') != count:
+                        from ..course.point_materials import preparation_summary
+                        self._save_material_summary(plan_id, module_id,
+                            preparation_summary(self.services.store, plan_id, module_id))
                 details = {k: v for k, v in dict(error=error, error_code=error_code, attempts=attempts,
                     fingerprint=fingerprint, retry_at=retry_at).items() if v is not None}
                 saved = self.services.store.update_module_preparation_state(plan_id, module_id, state,

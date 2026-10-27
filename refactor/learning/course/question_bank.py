@@ -351,6 +351,74 @@ def assessment_questions(rows, module_id=None):
     return result
 
 
+def _first_closed_detection(store, plan_id, module_id):
+    """Return the earliest closed module/skip detection for this module."""
+    rows = [row['event'] for row in store.records('attempt_closed', plan_id)
+            if row.get('event', {}).get('module_id') == module_id
+            and row.get('event', {}).get('kind') in ('module_test', 'skip_test')]
+    return min(rows, key=lambda row: (row['seq'], row['event_id'])) if rows else None
+
+
+def module_supplemental_cutoff(store, plan_id, module_id):
+    """Get the first detection boundary without inventing a close timestamp.
+
+    ``AttemptClosed`` intentionally has no timestamp or question list. The
+    associated judgement times identify the last answer. A close without
+    judgements has no reliable historical time, so its boundary is explicitly
+    the current preparation start.
+    """
+    closed = _first_closed_detection(store, plan_id, module_id)
+    if not closed:
+        return None
+    attempt_id, kind = closed['attempt_id'], closed['kind']
+    answered_at = []
+    for row in store.records('judgements', plan_id):
+        event = row.get('event', {})
+        if (event.get('module_id') == module_id and event.get('attempt_id') == attempt_id
+                and event.get('context') == kind and event.get('at')):
+            answered_at.append(event['at'])
+    for row in store.records('question_answers', plan_id):
+        if (row.get('module_id') == module_id and row.get('attempt_id') == attempt_id
+                and row.get('context') == kind and row.get('at')):
+            answered_at.append(row['at'])
+    if answered_at:
+        return dict(at=max(answered_at, key=_time), basis='last_answer')
+    return dict(at=datetime.now().astimezone().isoformat(), basis='preparation_start')
+
+
+def supplemental_question_ids(store, plan_id, module_id, *, cutoff=None):
+    """Return valid post-detection questions not present in its original answers.
+
+    This is a read projection for final-check routing. It adds no field to
+    question rows and never changes the frozen detection question set.
+    """
+    module = next((row for row in store.records('modules', plan_id)
+                   if row['id'] == module_id), None)
+    cutoff = cutoff or (module or {}).get('question_extraction', {}).get('supplemental_after')
+    closed = _first_closed_detection(store, plan_id, module_id)
+    if not cutoff and closed:
+        # Older modules may have a closed attempt but predate the persisted
+        # preparation cutoff. A real last-answer instant is sufficient to
+        # recover late questions read-only; a skip with no answers is not.
+        boundary = module_supplemental_cutoff(store, plan_id, module_id)
+        if boundary and boundary['basis'] == 'last_answer':
+            cutoff = boundary['at']
+    if not cutoff or not closed:
+        return set()
+    tested = set()
+    for row in store.records('question_answers', plan_id):
+        if (row.get('module_id') == module_id and row.get('attempt_id') == closed['attempt_id']
+                and row.get('context') == closed['kind'] and row.get('question_id')):
+            tested.add(row['question_id'])
+    for row in store.records('judgements', plan_id):
+        event = row.get('event', {})
+        if (event.get('module_id') == module_id and event.get('attempt_id') == closed['attempt_id']
+                and event.get('context') == closed['kind'] and event.get('question_id')):
+            tested.add(event['question_id'])
+    return {q['id'] for q in assessment_questions(store.records('question_bank', plan_id), module_id)
+            if q['id'] not in tested and q.get('created_at') and _time(q['created_at']) > _time(cutoff)}
+
+
 def grading_question(row):
     """Adapt literal objective answers to the existing deterministic grader."""
     if row.get('kind')!='objective':return row

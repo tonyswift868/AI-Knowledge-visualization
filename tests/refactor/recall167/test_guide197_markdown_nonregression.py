@@ -116,5 +116,6 @@ def test_guide197_markdown_original_question_compiler_matches_baseline_on_14_cha
 
     baseline_result, baseline_bank = _compile_guide(baseline, sources, expected, tmp_path / "baseline")
     current_result, current_bank = _compile_guide(point_materials, sources, expected, tmp_path / "current")
-    assert baseline_result == current_result
+    assert {key: current_result[key] for key in baseline_result} == baseline_result
+    assert current_result["supplemental_questions"] == 0
     assert baseline_bank == current_bank
