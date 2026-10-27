@@ -1927,13 +1927,15 @@ class CourseStore:
     def append_attempt_closed(self, plan_id, event: AttemptClosed, *, details=None):
         self._append_mastery(plan_id, event, 'attempt_closed', details)
 
-    def _override_judgement(self, plan_id, question, grant_id, kind):
+    def _override_judgement(self, plan_id, question, grant_id, kind, *, extra_details=None):
         seq = max((row['event']['seq'] for entity in ('judgements','attempt_closed')
                    for row in self._rows(entity,plan_id)), default=0) + 1
         event_id=f'manual:{grant_id}:{question["id"]}'
         event=Judgement(event_id,seq,datetime.now(timezone.utc),'check',question['module_id'],
                         results=tuple((pid,True) for pid in question['point_ids']),question_id=question['id'])
         details=dict(user_override=True,override_kind=kind,grant_id=grant_id,module_id=question['module_id'])
+        if extra_details:
+            details.update(extra_details)
         self._append_mastery(plan_id,event,'judgements',details)
         return event_id
 
@@ -2006,6 +2008,88 @@ class CourseStore:
         self.complete_plan(plan_id,today=today)
         return dict(id=grant_id,state=self._get('plans',plan_id,plan_id)['state'],
                     completed_on=self._get('plans',plan_id,plan_id).get('completed_on'))
+
+    @_atomic
+    def grant_final_check_questions_except(self, plan_id, keep_question_id, *, grant_id):
+        """Grant all currently unpassed final-check items except one preserved item.
+
+        This is mastery metadata only: it appends the same immutable
+        ``final_check_passed`` judgement override used by the operator grant,
+        but deliberately does not complete the plan, save a report, add answer
+        facts, or award study credits. The kept question must still be
+        unpassed so the learner can finish the check normally.
+        """
+        _id(grant_id)
+        plan = self._get('plans', plan_id, plan_id)
+        from .question_bank import assessment_questions
+        questions = assessment_questions(self.records('question_bank', plan_id))
+        by_id = {question['id']: question for question in questions}
+        keep = by_id.get(keep_question_id)
+        if keep is None:
+            raise StoreError('UNKNOWN_QUESTION', '保留题不属于当前最终检验题库。')
+        existing = [row for row in self._rows('judgements', plan_id)
+                    if (row.get('details') or {}).get('user_override') is True and
+                    (row.get('details') or {}).get('grant_id') == grant_id]
+        for row in existing:
+            details = row.get('details') or {}
+            event = row.get('event') or {}
+            question = by_id.get(event.get('question_id'))
+            if (details.get('override_kind') != 'final_check_passed' or
+                    details.get('grant_scope') != 'except_question' or
+                    details.get('keep_question_id') != keep_question_id or
+                    question is None or event.get('module_id') != question.get('module_id') or
+                    details.get('module_id') != event.get('module_id')):
+                raise StoreError('OVERRIDE_CONFLICT', '授权编号已用于其他操作。')
+        already_granted = {row['event'].get('question_id') for row in existing}
+        eligible_ids = set(by_id) - {keep_question_id}
+        if not already_granted <= eligible_ids:
+            raise StoreError('OVERRIDE_CONFLICT', '已有授权与本次保留题不一致。')
+
+        book = self.load_mastery(plan_id)
+        if existing:
+            changed_targets = [qid for qid in eligible_ids
+                               if not book.question(qid).passed]
+            if changed_targets:
+                raise StoreError('GRANT_SCOPE_CHANGED',
+                    '授权后出现了新的未通过题，或已有授权题再次变成未通过；请先核对进度，不能静默重复或扩大原授权。')
+            # A repeat invocation remains a no-op after the kept question was
+            # answered or the plan completed. Never undo that learner result.
+            return dict(id=grant_id, keep_question_id=keep_question_id,
+                        newly_granted=[], already_granted=sorted(already_granted),
+                        preserved_passed=sorted(eligible_ids - already_granted),
+                        check_ready=book.check_ready(), keep_passed=book.question(keep_question_id).passed,
+                        already_applied=True)
+        if plan.get('state') == 'completed':
+            raise StoreError('PLAN_ALREADY_COMPLETED', '计划已经完成，拒绝改变既有成绩。')
+        if not book.check_ready():
+            raise StoreError('CHECK_NOT_READY', '仍有模块未通过或跳过。')
+        if book.question(keep_question_id).passed:
+            raise StoreError('KEEP_QUESTION_ALREADY_PASSED', '保留题已经通过；不会撤销或降级既有成绩。')
+
+        # A repeat run sees earlier grants as passed; retain those event IDs
+        # and only append items that remain unpassed for other reasons.
+        newly_granted = []
+        for question in questions:
+            qid = question['id']
+            if qid == keep_question_id or book.question(qid).passed or qid in already_granted:
+                continue
+            self._override_judgement(plan_id, question, grant_id, 'final_check_passed',
+                extra_details=dict(grant_scope='except_question', keep_question_id=keep_question_id))
+            newly_granted.append(qid)
+
+        # Ensure this operation actually covers every other item; passed
+        # learner results are preserved and need no synthetic override.
+        after = self.load_mastery(plan_id)
+        outstanding = [qid for qid in eligible_ids if not after.question(qid).passed]
+        if outstanding:
+            raise StoreError('GRANT_INCOMPLETE', '仍有其他最终检验题未通过，未完成授权。')
+        return dict(id=grant_id, keep_question_id=keep_question_id,
+                    newly_granted=newly_granted,
+                    already_granted=sorted(already_granted),
+                    preserved_passed=sorted(qid for qid in eligible_ids - already_granted
+                                             if book.question(qid).passed),
+                    check_ready=after.check_ready(), keep_passed=after.question(keep_question_id).passed,
+                    already_applied=False)
 
     @_atomic
     def set_question_estimate(self, plan_id, module_id, count, *, today):

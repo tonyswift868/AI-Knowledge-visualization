@@ -10,6 +10,7 @@ Examples (close MentorFlow before a confirmed run):
   python scripts/grant_mastery204.py --data-root COPY --account-id ACCOUNT --plan-id PLAN --module-id MODULE --question-id Q1 --question-id Q2
   python scripts/grant_mastery204.py --data-root COPY --account-id ACCOUNT --plan-id PLAN --module-id MODULE --question-id Q1 --confirm
   python scripts/grant_mastery204.py --data-root COPY --account-id ACCOUNT --plan-id PLAN --final-check-passed --confirm
+  python scripts/grant_mastery204.py --data-root COPY --account-id ACCOUNT --plan-id PLAN --keep-question-id QID
 
 The plan/module/question IDs are explicit operator choices.  In particular,
 this tool never auto-selects or silently grants the Module 8 question.
@@ -168,6 +169,82 @@ def preview(data_root: Path, account_id: str, plan_id: str, module_id: str | Non
         return result
 
 
+def preview_keep_question(data_root: Path, account_id: str, plan_id: str,
+                          keep_question_id: str) -> dict:
+    """Read-only preview for granting every unpassed final item except keep."""
+    account, path = _db_path(data_root, account_id)
+    with _readonly(path) as db:
+        db.row_factory = sqlite3.Row
+        if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+            raise ValueError("课程库完整性检查失败，未继续。")
+        tables = _tables(db)
+        if not {"plans", "modules", "question_bank", "judgements", "attempt_closed"} <= tables:
+            raise ValueError("课程库结构不完整，无法预演。")
+        plan_row = db.execute("SELECT payload FROM plans WHERE id=?", (plan_id,)).fetchone()
+        if plan_row is None:
+            raise ValueError(f"找不到计划：{plan_id}")
+        plan = json.loads(plan_row[0])
+        completed = plan.get("state") == "completed"
+        questions = assessment_questions(_payloads(db, "question_bank", plan_id))
+        questions_by_id = {row["id"]: row for row in questions}
+        keep = questions_by_id.get(keep_question_id)
+        if keep is None:
+            raise ValueError("保留题不属于当前最终检验题库。")
+        book = _readonly_mastery(db, plan_id)
+        keep_state = book.question(keep_question_id)
+        stats = book.stats().get("questions", {})
+        final_ids = set(questions_by_id)
+        grant_id = _grant_id("keep", plan_id, None, [keep_question_id])
+        matching = [row for row in _payloads(db, "judgements", plan_id)
+                    if (row.get("details") or {}).get("user_override") is True and
+                    (row.get("details") or {}).get("grant_id") == grant_id]
+        if any((row.get("details") or {}).get("override_kind") != "final_check_passed" or
+               (row.get("details") or {}).get("grant_scope") != "except_question" or
+               (row.get("details") or {}).get("keep_question_id") != keep_question_id
+               for row in matching):
+            raise ValueError("授权记录与本次操作不匹配。")
+        previously_granted = {row.get("event", {}).get("question_id") for row in matching}
+        if not previously_granted <= final_ids - {keep_question_id}:
+            raise ValueError("已有授权与本次保留题不一致。")
+        if matching:
+            changed_targets = [qid for qid in final_ids - {keep_question_id}
+                               if not book.question(qid).passed]
+            if changed_targets:
+                raise ValueError("授权后出现了新的未通过题，或已有授权题再次变成未通过；请先核对进度，不能静默重复或扩大原授权。")
+        elif completed:
+            raise ValueError("计划已经完成；没有可验证的本次授权记录。")
+        elif not book.check_ready():
+            raise ValueError("仍有模块未通过或跳过，无法授权最终检验。")
+        elif keep_state.passed:
+            raise ValueError("保留题已经通过；不会撤销或降级既有成绩。")
+        candidates = []
+        for qid, question in questions_by_id.items():
+            state = book.question(qid)
+            if qid == keep_question_id or state.passed:
+                continue
+            candidates.append(dict(question_id=qid, stem=question.get("stem", ""),
+                ever_wrong=stats.get(qid, {}).get("ever_wrong", False),
+                module_correct=state.module_correct,
+                projected_passed=True, already_granted=qid in previously_granted))
+        keep_stats = stats.get(keep_question_id, {})
+        correct_answers_required = (0 if keep_state.passed else
+            max(0, 2 - keep_stats.get("streak", 0)) if keep_stats.get("ever_wrong") else 1)
+        return dict(account_id=account_id, account_directory=str(account), plan_id=plan_id,
+            plan_title=plan.get("title", ""), plan_state=plan.get("state"), mode="keep-question",
+            grant_id=grant_id, keep_question=dict(question_id=keep_question_id,
+                stem=keep.get("stem", ""), current_passed=keep_state.passed,
+                module_correct=keep_state.module_correct,
+                ever_wrong=keep_stats.get("ever_wrong", False),
+                streak=keep_stats.get("streak", 0),
+                correct_answers_required=correct_answers_required),
+            final_question_count=len(final_ids), currently_unpassed_count=sum(
+                not book.question(qid).passed for qid in final_ids),
+            questions_to_grant=candidates, grant_count=len(candidates),
+            already_applied=bool(matching),
+            no_write_needed=not candidates,
+            check_ready=book.check_ready(), will_complete_plan=False, will_save_report=False)
+
+
 def _source_fingerprint(db: Path) -> str:
     digest = hashlib.sha256()
     for candidate in (db, Path(str(db) + "-wal"), Path(str(db) + "-shm")):
@@ -244,6 +321,36 @@ def execute(data_root: Path, account_id: str, plan_id: str, module_id: str | Non
     return result
 
 
+def execute_keep_question(data_root: Path, account_id: str, plan_id: str,
+                          keep_question_id: str) -> dict:
+    """Back up, then grant final-check mastery except one learner-owned item."""
+    account, db_path = _db_path(data_root, account_id)
+    before = preview_keep_question(data_root, account_id, plan_id, keep_question_id)
+    grant_id = before["grant_id"]
+    if before["already_applied"] or before["no_write_needed"]:
+        result = dict(before)
+        result.update(backup=None, already_applied=True, report_saved=False)
+        return result
+    backup = make_backup(account, db_path, grant_id)
+    with CourseStore(account_id, data_root) as store:
+        granted = store.grant_final_check_questions_except(
+            plan_id, keep_question_id, grant_id=grant_id)
+        plan = store.get_plan(plan_id)
+    if granted.get("already_applied"):
+        return dict(mode="keep-question", grant_id=grant_id,
+            keep_question_id=keep_question_id, newly_granted=[],
+            already_granted=granted["already_granted"],
+            preserved_passed=granted["preserved_passed"], check_ready=granted["check_ready"],
+            keep_passed=granted["keep_passed"], plan_state=plan["state"],
+            report_saved=False, backup=str(backup), already_applied=True)
+    return dict(mode="keep-question", grant_id=grant_id,
+        keep_question_id=keep_question_id, newly_granted=granted["newly_granted"],
+        already_granted=granted["already_granted"],
+        preserved_passed=granted["preserved_passed"], check_ready=granted["check_ready"],
+        keep_passed=granted["keep_passed"], plan_state=plan["state"],
+        report_saved=False, backup=str(backup), already_applied=False)
+
+
 def parser() -> argparse.ArgumentParser:
     cli = argparse.ArgumentParser(description=__doc__)
     cli.add_argument("--data-root", required=True, type=Path,
@@ -254,6 +361,8 @@ def parser() -> argparse.ArgumentParser:
     cli.add_argument("--question-id", action="append", default=[], dest="question_ids")
     cli.add_argument("--final-check-passed", action="store_true",
                      help="select the separate final-check completion operation")
+    cli.add_argument("--keep-question-id",
+                     help="grant all unpassed final-check questions except this learner-owned question")
     cli.add_argument("--confirm", action="store_true",
                      help="write the selected user override after creating an account-local SQLite backup")
     return cli
@@ -261,7 +370,10 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
-    if args.final_check_passed:
+    if args.keep_question_id:
+        if args.module_id or args.question_ids or args.final_check_passed:
+            parser().error("--keep-question-id cannot be combined with module/question/final-completion modes")
+    elif args.final_check_passed:
         if args.module_id or args.question_ids:
             parser().error("--final-check-passed cannot be combined with module/question selection")
     elif not args.module_id or not args.question_ids:
@@ -270,6 +382,17 @@ def main(argv=None) -> int:
         parser().error("question IDs must be unique")
 
     try:
+        if args.keep_question_id:
+            if not args.confirm:
+                result = preview_keep_question(args.data_root, args.account_id, args.plan_id,
+                                               args.keep_question_id)
+                print(json.dumps({"dry_run": True, **result}, ensure_ascii=False, indent=2))
+                print("预演未写数据库。确认执行前先退出 MentorFlow，再添加 --confirm。")
+                return 0
+            result = execute_keep_question(args.data_root, args.account_id, args.plan_id,
+                                           args.keep_question_id)
+            print(json.dumps({"dry_run": False, **result}, ensure_ascii=False, indent=2))
+            return 0
         if not args.confirm:
             result = preview(args.data_root, args.account_id, args.plan_id, args.module_id,
                              args.question_ids, args.final_check_passed)
