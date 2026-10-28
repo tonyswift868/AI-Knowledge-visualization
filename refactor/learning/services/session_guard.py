@@ -21,8 +21,8 @@ SUPERSEDED_MESSAGE = "账号已在另一台设备登录"
 class SessionGuard(QObject):
     superseded = Signal()
     reauth_required = Signal()
-    _finished = Signal(int, object)
-    _noted = Signal(str)
+    _finished = Signal(int, int, object)
+    _noted = Signal(str, int, int)
 
     def __init__(self, context, parent=None, *, http_transport=None):
         super().__init__(parent)
@@ -33,6 +33,7 @@ class SessionGuard(QObject):
         self._active = self._closed = False
         self._notified = False
         self._epoch = self._failures = 0
+        self._session_epoch = 0
         self._future = None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mf-session-guard")
         self._timer = QTimer(self)
@@ -55,6 +56,10 @@ class SessionGuard(QObject):
         self._epoch += 1
         self._timer.stop()
 
+    def set_session_epoch(self, epoch):
+        """Set the login generation used to reject already queued auth errors."""
+        self._session_epoch = int(epoch)
+
     def dispose(self):
         if self._closed:
             return
@@ -63,15 +68,21 @@ class SessionGuard(QObject):
         self._source.close()
         self._executor.shutdown(wait=False, cancel_futures=True)
 
-    def note_error(self, code):
+    def note_error(self, code, session_epoch=None):
         """Thread-safe notification hook; never refresh or clear shared tokens."""
         if not self._closed and code in {"NATIVE_SESSION_SUPERSEDED", "REAUTH_REQUIRED",
                                         "ENTERPRISE_SESSION_REAUTH_REQUIRED"}:
-            self._noted.emit(code)
+            session_generation = self._session_epoch if session_epoch is None else int(session_epoch)
+            # ``start``/``stop`` delimit checks even when this guard is used
+            # without WindowSync (for example, per-lesson guards). Fence both
+            # the account session and this guard lifecycle at enqueue time.
+            guard_generation = self._epoch
+            self._noted.emit(code, session_generation, guard_generation)
 
-    @Slot(str)
-    def _handle_error(self, code):
-        if self._closed or self._notified:
+    @Slot(str, int, int)
+    def _handle_error(self, code, session_epoch, guard_epoch):
+        if (self._closed or self._notified or session_epoch != self._session_epoch
+                or guard_epoch != self._epoch):
             return
         self._notified = True
         self.stop()
@@ -121,6 +132,7 @@ class SessionGuard(QObject):
             return
         self._timer.stop()
         epoch = self._epoch
+        session_epoch = self._session_epoch
         self._future = self._executor.submit(self._probe)
         def done(future):
             try:
@@ -128,21 +140,23 @@ class SessionGuard(QObject):
             except Exception:
                 result = "retry"
             try:
-                self._finished.emit(epoch, result)
+                self._finished.emit(epoch, session_epoch, result)
             except RuntimeError:
                 pass  # Parent QObject was destroyed after dispose().
         self._future.add_done_callback(done)
 
-    @Slot(int, object)
-    def _complete(self, epoch, result):
+    @Slot(int, int, object)
+    def _complete(self, epoch, session_epoch, result):
         self._future = None
-        if self._closed or not self._active:
+        if self._closed:
             return
-        if epoch != self._epoch:
+        if epoch != self._epoch or session_epoch != self._session_epoch:
             self._launch()  # A stopped request cannot affect a restarted lesson.
             return
+        if not self._active:
+            return
         if result in {"NATIVE_SESSION_SUPERSEDED", "REAUTH_REQUIRED", "ENTERPRISE_SESSION_REAUTH_REQUIRED"}:
-            self._handle_error(result)
+            self._handle_error(result, session_epoch, epoch)
             return
         if result == "active":
             self._failures = 0
