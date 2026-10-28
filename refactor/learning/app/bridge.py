@@ -48,6 +48,7 @@ class CallContext:
     request_id: str
     cancel: threading.Event
     stream: Callable[[str], None]
+    session_epoch: int = 0
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,7 @@ class AppBridge(QObject):
 
     event = Signal(str)
     request_failed = Signal(str)
+    request_failed_for_session = Signal(str, int)
     request_completed = Signal(str)
     closing = Signal()
     _deliver = Signal(str)
@@ -83,6 +85,7 @@ class AppBridge(QObject):
         self._handlers: dict[str, _Handler] = {}
         self._pending: dict[str, threading.Event] = {}
         self._lock = threading.Lock()
+        self._session_epoch = 0
         self._closed = False
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mf-bridge")
         # Worker threads hand results to the GUI thread through this queued
@@ -118,6 +121,12 @@ class AppBridge(QObject):
         if not _METHOD.fullmatch(method) or method in self._handlers:
             raise ValueError(f"invalid or duplicate bridge method: {method}")
         self._handlers[method] = _Handler(function, ui, method)
+
+    def begin_session_epoch(self):
+        """Fence failures from requests started under the previous login."""
+        with self._lock:
+            self._session_epoch += 1
+            return self._session_epoch
 
     def push(self, name: str, data=None):
         """Python-initiated notification (thread-safe)."""
@@ -162,8 +171,10 @@ class AppBridge(QObject):
         cancel = threading.Event()
         with self._lock:
             self._pending[request_id] = cancel
+            session_epoch = self._session_epoch
         context = CallContext(request_id, cancel,
-                              lambda delta: self._send({"type": "stream", "id": request_id, "delta": str(delta)}))
+                              lambda delta: self._send({"type": "stream", "id": request_id, "delta": str(delta)}),
+                              session_epoch)
         if handler.ui:
             self._run(request_id, handler, params, context)
         else:
@@ -223,6 +234,7 @@ class AppBridge(QObject):
         # guard now attached to this retained bridge after re-verification.
         if not self._closed and not context.cancel.is_set() and not response['ok']:
             self.request_failed.emit(response['error']['code'])
+            self.request_failed_for_session.emit(response['error']['code'], context.session_epoch)
         if context.cancel.is_set() and not response["ok"]:
             response["error"] = {"code": "CANCELLED", "message": "已取消。"}
         self._send(response)

@@ -109,6 +109,7 @@ class WindowSync(QObject):
         self.settings = services.settings
         self._closed = self._paused = False
         self._sync_notice = None
+        self._session_epoch = 0
         store = services.store
         self._session_provider = services.session_provider
         context = dict(account_id=services.account_id, session_provider=services.session_provider,
@@ -120,7 +121,8 @@ class WindowSync(QObject):
                                          auto_start=False, session_ready=self._session_ready, **(sync_options or {}))
         self._unsubscribe = store.subscribe(self._store_changed)
         self.service.state_changed.connect(self._status_changed)
-        self.bridge.request_failed.connect(self.note_error)
+        self._request_failed_signal = self.bridge.request_failed_for_session
+        self._request_failed_signal.connect(self.note_error)
         self._remote_chat.connect(self._chat_changed, Qt.ConnectionType.QueuedConnection)
         self._remote_settings.connect(self._settings_changed, Qt.ConnectionType.QueuedConnection)
         self._remote_plans.connect(self._plans_changed, Qt.ConnectionType.QueuedConnection)
@@ -134,6 +136,8 @@ class WindowSync(QObject):
     def start(self):
         if self._closed: return
         self._paused = False
+        self._session_epoch = self.bridge.begin_session_epoch()
+        self.guard.set_session_epoch(self._session_epoch)
         self.service.start()
         if self.service._active:
             self.guard.start()
@@ -149,7 +153,7 @@ class WindowSync(QObject):
         if self._closed: return
         self._closed = True
         self._unsubscribe()
-        self.bridge.request_failed.disconnect(self.note_error)
+        self._request_failed_signal.disconnect(self.note_error)
         self.service.dispose()
         self.guard.dispose()
         self.transport.close()
@@ -169,9 +173,15 @@ class WindowSync(QObject):
         return self.status()
 
     @Slot(str)
-    def note_error(self, code):
+    @Slot(str, int)
+    def note_error(self, code, session_epoch=None):
         if not self._closed and not self._paused:
-            self.guard.note_error(code)
+            if session_epoch is not None and session_epoch != self._session_epoch:
+                return
+            if session_epoch is None:
+                self.guard.note_error(code)
+            else:
+                self.guard.note_error(code, session_epoch)
             if code in TRANSIENT_SESSION_CODES:
                 self.window.set_session_notice(CONNECTION_UNSTABLE, show_verify=False)
 

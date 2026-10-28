@@ -201,6 +201,9 @@ def test_sync203_window_start_does_not_probe_until_provider_is_ready(app, monkey
         def start(self):
             calls['guard_start'] += 1
 
+        def set_session_epoch(self, _epoch):
+            pass
+
         def stop(self):
             pass
 
@@ -208,7 +211,10 @@ def test_sync203_window_start_does_not_probe_until_provider_is_ready(app, monkey
             pass
 
     class Bridge(QObject):
-        request_failed = Signal(str)
+        request_failed_for_session = Signal(str, int)
+
+        def begin_session_epoch(self):
+            return 1
 
         def __init__(self):
             super().__init__()

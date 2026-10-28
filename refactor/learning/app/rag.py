@@ -60,6 +60,27 @@ def _section_text(value):
     return str(value) if value else ""
 
 
+def _source_content_digest(chunks):
+    """Fingerprint the exact ordered text and citation structure sent to RAG."""
+    normalized = [{"text": str(chunk.get("text") or ""),
+                   "page": chunk.get("page"),
+                   "section": _section_text(chunk.get("section"))}
+                  for chunk in chunks]
+    return hashlib.sha256(_json(normalized).encode("utf-8")).hexdigest()
+
+
+def _source_version_id(document_id, content_digest):
+    """Immutable remote ID for a changed body; local source IDs stay stable."""
+    value = hashlib.sha256(f"{document_id}\0{content_digest}".encode("utf-8")).hexdigest()
+    return "content-v1-" + value
+
+
+def _fresh_source_version_id(document_id, content_digest):
+    nonce = uuid.uuid4().hex
+    value = hashlib.sha256(f"{document_id}\0{content_digest}\0{nonce}".encode("utf-8")).hexdigest()
+    return "content-v1r-" + value
+
+
 def _cancel(cancel):
     if cancel is not None and cancel.is_set():
         raise BridgeError("CANCELLED", "已取消。")
@@ -83,6 +104,9 @@ class RagTransport(SyncTransport):
                 self.require_current()
                 _cancel(cancel)
                 if not 200 <= response.status_code < 300:
+                    if response.status_code == 409:
+                        raise BridgeError("RAG_DOCUMENT_CONFLICT",
+                            "资料服务中已有同编号但内容不同的资料，需要安全建立新版本。")
                     raise BridgeError("RAG_HTTP", f"资料服务暂时无法完成请求（HTTP {response.status_code}）。")
             if not raw:
                 return {}
@@ -118,6 +142,9 @@ class RagLocalStore:
                 status TEXT NOT NULL DEFAULT 'not_uploaded', error TEXT NOT NULL DEFAULT '',
                 canonical_id TEXT NOT NULL DEFAULT '',
                 canonical_total_chunks INTEGER,
+                current_content_sha256 TEXT NOT NULL DEFAULT '',
+                uploaded_content_sha256 TEXT NOT NULL DEFAULT '',
+                remote_upload_id TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS rag_chunks(
@@ -141,6 +168,25 @@ class RagLocalStore:
             self._db.execute("ALTER TABLE rag_documents ADD COLUMN canonical_id TEXT NOT NULL DEFAULT ''")
         if "canonical_total_chunks" not in columns:
             self._db.execute("ALTER TABLE rag_documents ADD COLUMN canonical_total_chunks INTEGER")
+        if "current_content_sha256" not in columns:
+            self._db.execute("ALTER TABLE rag_documents ADD COLUMN current_content_sha256 TEXT NOT NULL DEFAULT ''")
+        if "uploaded_content_sha256" not in columns:
+            self._db.execute("ALTER TABLE rag_documents ADD COLUMN uploaded_content_sha256 TEXT NOT NULL DEFAULT ''")
+        if "remote_upload_id" not in columns:
+            self._db.execute("ALTER TABLE rag_documents ADD COLUMN remote_upload_id TEXT NOT NULL DEFAULT ''")
+        # One-time migration for pre-fingerprint ready rows. Their content
+        # cannot be verified from counts, so mark them stale and bind them to
+        # a content-version ID after hashing their locally stored chunks.
+        legacy_rows = self._db.execute("""SELECT id FROM rag_documents
+            WHERE status='ready' AND current_content_sha256=''""").fetchall()
+        for legacy in legacy_rows:
+            document_id = legacy["id"]
+            chunks = [dict(row) for row in self._db.execute(
+                "SELECT text,page,section FROM rag_chunks WHERE document_id=? ORDER BY seq", (document_id,))]
+            digest = _source_content_digest(chunks)
+            self._db.execute("""UPDATE rag_documents SET current_content_sha256=?,
+                remote_upload_id=?,status='not_uploaded',uploaded_chunks=0,error=''
+                WHERE id=?""", (digest, _source_version_id(document_id, digest), document_id))
 
     def close(self):
         with self._lock:
@@ -153,13 +199,39 @@ class RagLocalStore:
         with self._lock:
             self._ensure_open()
             now = _now()
+            content_digest = _source_content_digest(chunks)
             self._db.execute("BEGIN IMMEDIATE")
             try:
-                self._db.execute("""INSERT INTO rag_documents(id,title,source,total_chunks,status,canonical_id,updated_at)
-                    VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
-                    title=excluded.title,source=excluded.source,total_chunks=excluded.total_chunks,
-                    updated_at=excluded.updated_at""",
-                    (document_id, title, source, len(chunks), status, "", now))
+                old = self._db.execute("SELECT * FROM rag_documents WHERE id=?", (document_id,)).fetchone()
+                if old is None:
+                    self._db.execute("""INSERT INTO rag_documents(
+                        id,title,source,total_chunks,status,canonical_id,remote_upload_id,
+                        current_content_sha256,updated_at)
+                        VALUES(?,?,?,?,?,?,?,?,?)""",
+                        (document_id, title, source, len(chunks), status, "", document_id,
+                         content_digest, now))
+                else:
+                    previous_current = old["current_content_sha256"] or ""
+                    uploaded_digest = old["uploaded_content_sha256"] or ""
+                    current_changed = previous_current and previous_current != content_digest
+                    # A pre-versioning database has no confirmed content digest.
+                    # Never treat its old ready ID as the current body: use one
+                    # immutable version ID and confirm/upload it once.
+                    legacy_ready = old["status"] == "ready" and not uploaded_digest
+                    needs_new_version = legacy_ready or bool(current_changed and (
+                        (old["uploaded_content_sha256"] or "") or
+                        (old["remote_upload_id"] or document_id) != document_id or
+                        old["status"] in {"uploading", "failed"}))
+                    upload_id = (_source_version_id(document_id, content_digest) if needs_new_version
+                                 else old["remote_upload_id"] or document_id)
+                    stale = needs_new_version or bool(uploaded_digest and uploaded_digest != content_digest)
+                    self._db.execute("""UPDATE rag_documents SET title=?,source=?,total_chunks=?,
+                        current_content_sha256=?,remote_upload_id=?,
+                        status=CASE WHEN ? THEN 'not_uploaded' ELSE status END,
+                        uploaded_chunks=CASE WHEN ? THEN 0 ELSE uploaded_chunks END,
+                        error=CASE WHEN ? THEN '' ELSE error END,updated_at=? WHERE id=?""",
+                        (title, source, len(chunks), content_digest, upload_id,
+                         int(stale), int(stale), int(stale), now, document_id))
                 self._db.execute("DELETE FROM rag_chunks WHERE document_id=?", (document_id,))
                 for seq, chunk in enumerate(chunks):
                     self._db.execute("INSERT INTO rag_chunks(document_id,seq,text,page,section) VALUES(?,?,?,?,?)",
@@ -180,6 +252,19 @@ class RagLocalStore:
             self._ensure_open()
             self._db.execute("UPDATE rag_documents SET canonical_id=?,canonical_total_chunks=?,status=?,uploaded_chunks=?,error=?,updated_at=? WHERE id=?",
                              (canonical_id or document_id, canonical_total, status, uploaded, error, _now(), document_id))
+
+    def set_uploaded_content(self, document_id, content_digest):
+        with self._lock:
+            self._ensure_open()
+            self._db.execute("UPDATE rag_documents SET uploaded_content_sha256=?,updated_at=? WHERE id=?",
+                             (content_digest, _now(), document_id))
+
+    def set_remote_upload_id(self, document_id, remote_upload_id):
+        with self._lock:
+            self._ensure_open()
+            self._db.execute("""UPDATE rag_documents SET remote_upload_id=?,status='not_uploaded',
+                uploaded_chunks=0,error='',updated_at=? WHERE id=?""",
+                (remote_upload_id, _now(), document_id))
 
     def document(self, document_id):
         with self._lock:
@@ -389,6 +474,14 @@ class RagService:
         total = int(row.get("canonical_total_chunks") or row.get("total_chunks", 0))
         uploaded = int(row.get("uploaded_chunks", 0))
         status = row.get("status", "not_uploaded")
+        current_digest = row.get("current_content_sha256") or ""
+        uploaded_digest = row.get("uploaded_content_sha256") or ""
+        if (current_digest and uploaded_digest != current_digest
+                and status not in {"uploading", "failed"}):
+            # A previous remote version may remain available for rollback or
+            # shared canonical references, but it is not the current document.
+            status, uploaded = "not_uploaded", 0
+            remote = {}
         remote_status = remote.get("status")
         if remote:
             remote_uploaded = remote.get("uploaded_chunks")
@@ -445,6 +538,7 @@ class RagService:
 
     def _send_repair_batches(self, row, *, cancel=None, on_progress=None):
         chunks = row["chunks"]
+        uploaded_digest = row.get("current_content_sha256") or _source_content_digest(chunks)
         manifest = [self._repair_chunk_digest(chunk) for chunk in chunks]
         base = {"title": row["title"], "source": row["source"], "total_chunks": len(chunks),
                 "repair_existing": True, "repair_manifest": manifest,
@@ -482,9 +576,10 @@ class RagService:
             if receipt["repair_complete"]:
                 if received != total:
                     raise BridgeError("RAG_RESPONSE_INVALID", "资料服务报告补传完成但块数不一致。")
-                ready = self._doc_view({**(self.local.document(row["id"]) or row),
-                    "canonical_id": row["id"], "canonical_total_chunks": total,
-                    "uploaded_chunks": received, "status": "ready"}, row.get("plan_ids", ()))
+                self.local.set_uploaded_content(row["id"],
+                    uploaded_digest)
+                ready = self._doc_view(self.local.document(row["id"]) or row,
+                    row.get("plan_ids", ()))
                 if on_progress:
                     on_progress(ready)
                 return ready
@@ -524,11 +619,28 @@ class RagService:
             remote = {}
             server_status = {"state": "unavailable", "message": str(exc)}
         repair_errors = {}
+        # A ready remote row at the original source ID is not proof that its
+        # body matches this device's extracted content. This also handles a
+        # newly created local RAG database with an older server-side document.
+        for doc_id, row in current.items():
+            state = remote.get(doc_id)
+            saved = self.local.document(doc_id) or row
+            total = len(row.get("chunks", ()))
+            if (state and state.get("status") == "ready" and state.get("total_chunks") == total
+                    and (saved.get("uploaded_content_sha256") or "")
+                        != (saved.get("current_content_sha256") or "")
+                    and (saved.get("remote_upload_id") or doc_id) == doc_id):
+                version_id = _source_version_id(doc_id, saved.get("current_content_sha256") or
+                                                _source_content_digest(row.get("chunks", ())))
+                self.local.set_remote_upload_id(doc_id, version_id)
         if "append_only_chunk_repair_v1" in self._remote_capabilities:
             for doc_id, row in current.items():
                 state = remote.get(doc_id)
                 if (doc_id in self._incomplete_documents or doc_id in self._repair_verified_documents
                         or not state or state.get("id") != doc_id or state.get("status") != "ready"):
+                    continue
+                local_row = self.local.document(doc_id) or row
+                if (local_row.get("remote_upload_id") or doc_id) != doc_id:
                     continue
                 local_total = len(row.get("chunks", ()))
                 remote_total = state.get("total_chunks")
@@ -545,10 +657,40 @@ class RagService:
                 except BridgeError as exc:
                     if exc.code == "CANCELLED":
                         raise
+                    version_id = _source_version_id(doc_id, local_row.get("current_content_sha256") or
+                                                    _source_content_digest(row.get("chunks", ())))
+                    self.local.set_remote_upload_id(doc_id, version_id)
+                    repair_errors[doc_id] = exc.message
+        # A previously uploaded source whose parsed content changed gets a new
+        # immutable remote ID. This avoids mutating a ready ID (and avoids
+        # append-only repair retaining old text). Old remote rows are retained.
+        changed_ids = [doc_id for doc_id in current
+            if (saved := self.local.document(doc_id)) is not None
+            and saved.get("remote_upload_id") not in ("", doc_id)
+            and (saved.get("uploaded_content_sha256") or "")
+                != (saved.get("current_content_sha256") or "")]
+        if changed_ids and server_status["state"] == "ready":
+            try:
+                outcome = self.ingest(changed_ids, cancel=cancel)
+                for item in outcome["documents"]:
+                    if item.get("status") != "ready" and item.get("error"):
+                        repair_errors[item["id"]] = item["error"]
+                # Refresh aliases/canonical IDs after uploads. Do not infer a
+                # successful mapping from the pre-upload listing.
+                remote = self._remote_documents(cancel=cancel)
+                all_local = {item["id"]: item for item in self.local.documents()}
+            except BridgeError as exc:
+                if exc.code == "CANCELLED":
+                    raise
+                for doc_id in changed_ids:
                     repair_errors[doc_id] = exc.message
         for doc_id, row in list(all_local.items()):
+            row = self.local.document(doc_id) or row
             canonical_id = row.get("canonical_id") or doc_id
-            remote_row = remote.get(doc_id) or remote.get(canonical_id)
+            content_current = ((row.get("current_content_sha256") or "")
+                               == (row.get("uploaded_content_sha256") or ""))
+            lookup_id = row.get("remote_upload_id") or doc_id
+            remote_row = (remote.get(lookup_id) or remote.get(canonical_id)) if content_current else None
             if remote_row:
                 # The same remote row is indexed by canonical ID and aliases.
                 # Its counters are authoritative and survive restart.
@@ -557,13 +699,19 @@ class RagService:
                     int(remote_row.get("uploaded_chunks", 0) or 0),
                     int(remote_row.get("total_chunks", 0) or 0),
                     str(remote_row.get("error") or ""))
-            elif server_status["state"] == "ready":
+            elif server_status["state"] == "ready" and content_current:
                 # A successful authoritative listing that omits both requested
                 # and canonical IDs means the server no longer has this doc.
                 self.local.set_remote_state(doc_id, doc_id, "not_uploaded", 0)
             all_local[doc_id] = self.local.document(doc_id)
-        docs = [self._doc_view(row, plan_refs.get(doc_id, ()), remote.get(doc_id))
-                for doc_id, row in all_local.items()]
+        docs = []
+        for doc_id, row in all_local.items():
+            if row is None:
+                continue
+            is_current = ((row.get("current_content_sha256") or "")
+                          == (row.get("uploaded_content_sha256") or ""))
+            remote_row = remote.get(row.get("remote_upload_id") or doc_id) if is_current else None
+            docs.append(self._doc_view(row, plan_refs.get(doc_id, ()), remote_row))
         for item in docs:
             if item["id"] in repair_errors:
                 item["error"] = repair_errors[item["id"]]
@@ -585,6 +733,8 @@ class RagService:
 
     def _send_batches(self, row, cancel=None, on_progress=None):
         chunks = row["chunks"]
+        uploaded_digest = row.get("current_content_sha256") or _source_content_digest(chunks)
+        target_id = row.get("remote_upload_id") or row["id"]
         batches, batch = [], []
         for chunk in chunks:
             payload_chunk = {key: chunk.get(key) for key in ("seq", "text", "page", "section")}
@@ -606,12 +756,12 @@ class RagService:
             _cancel(cancel)
             payload = {"title": row["title"], "source": row["source"],
                        "total_chunks": len(chunks), "chunks": part}
-            receipt = self.transport.request_json("POST", f"{API}/documents/{row['id']}/chunks",
+            receipt = self.transport.request_json("POST", f"{API}/documents/{target_id}/chunks",
                                         payload=payload, cancel=cancel)
             if not isinstance(receipt, dict):
                 raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的入库状态无效。")
             canonical_id = receipt.get("document_id")
-            requested_id = receipt.get("requested_document_id")
+            response_requested_id = receipt.get("requested_document_id")
             status = receipt.get("status")
             received = receipt.get("received_chunks")
             total = receipt.get("total_chunks")
@@ -619,7 +769,8 @@ class RagService:
             counts_match = total == len(chunks)
             canonical_duplicate_ready = deduplicated and status == "ready" and received == total
             if (not isinstance(canonical_id, str) or not canonical_id
-                    or requested_id != row["id"] or status not in {"uploading", "ready"}
+                    or response_requested_id != target_id
+                    or status not in {"uploading", "ready"}
                     or type(received) is not int or type(total) is not int
                     or not 0 < total or not 0 <= received <= total
                     or status == "ready" and received != total
@@ -633,6 +784,10 @@ class RagService:
             if on_progress:
                 on_progress(progress)
         final_row = self.local.document(row["id"])
+        if final_row and final_row.get("status") == "ready":
+            # Record exactly the snapshot sent, never a newer concurrent edit.
+            self.local.set_uploaded_content(row["id"], uploaded_digest)
+            final_row = self.local.document(row["id"])
         ready = self._doc_view({**final_row, "plan_ids": row.get("plan_ids", ())},
                                row.get("plan_ids", ()))
         if on_progress:
@@ -651,7 +806,7 @@ class RagService:
                 row = self.local.document(doc_id)
                 if row is None:
                     raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "所选资料仍在同步中，请稍后刷新。")
-                remote_row = remote.get(doc_id)
+                remote_row = remote.get(row.get("remote_upload_id") or doc_id)
                 view = self._doc_view(row, row.get("plan_ids", ()), remote_row)
                 view["error"] = "本地资料仍在同步；保留远端现有状态，等本地完整后再补传。"
                 result.append(view)
@@ -659,7 +814,19 @@ class RagService:
                     on_progress(view)
                 continue
             row = self._document_chunks(doc_id)
-            remote_row = remote.get(doc_id)
+            target_id = row.get("remote_upload_id") or doc_id
+            remote_row = remote.get(target_id)
+            if (remote_row and remote_row.get("id") == doc_id
+                    and remote_row.get("status") == "ready"
+                    and remote_row.get("total_chunks") == len(row["chunks"])
+                    and (row.get("uploaded_content_sha256") or "")
+                        != (row.get("current_content_sha256") or "")
+                    and target_id == doc_id):
+                target_id = _source_version_id(doc_id, row.get("current_content_sha256") or
+                                               _source_content_digest(row["chunks"]))
+                self.local.set_remote_upload_id(doc_id, target_id)
+                row = self.local.document(doc_id)
+                remote_row = remote.get(target_id)
             remote_total = remote_row.get("total_chunks") if remote_row else None
             remote_uploaded = remote_row.get("uploaded_chunks") if remote_row else None
             remote_status = remote_row.get("status") if remote_row else None
@@ -670,35 +837,59 @@ class RagService:
                     and remote_uploaded < remote_total)
                 or remote_status == "uploading" and remote_total != len(row["chunks"])))
             if needs_repair:
-                if "append_only_chunk_repair_v1" not in self._remote_capabilities:
-                    message = "资料服务尚不支持安全补传；本地资料和远端现有内容均保留。"
-                    view = self._doc_view({**row, "status": remote_status,
-                        "uploaded_chunks": int(remote_uploaded or 0),
-                        "canonical_total_chunks": int(remote_total or 0), "error": message},
-                        row.get("plan_ids", ()))
-                else:
+                if "append_only_chunk_repair_v1" in self._remote_capabilities:
                     try:
                         view = self._send_repair_batches(row, cancel=cancel, on_progress=on_progress)
                     except BridgeError as exc:
                         if exc.code == "CANCELLED":
                             raise
-                        message = exc.message
-                        self.local.set_remote_state(doc_id, doc_id, remote_status,
-                            int(remote_uploaded or 0), int(remote_total or 0), message)
-                        view = self._doc_view({**row, "status": remote_status,
-                            "uploaded_chunks": int(remote_uploaded or 0),
-                            "canonical_total_chunks": int(remote_total or 0), "error": message},
+                        # A conflict proves that existing ready chunks are not
+                        # a subset of this source snapshot; preserve them and
+                        # fall back to an immutable content-version upload.
+                        target_id = _source_version_id(doc_id, row.get("current_content_sha256") or
+                                                       _source_content_digest(row["chunks"]))
+                        self.local.set_remote_upload_id(doc_id, target_id)
+                        row = self.local.document(doc_id)
+                        self.local.set_status(doc_id, "uploading", 0)
+                        try:
+                            view = self._send_batches(row, cancel=cancel, on_progress=on_progress)
+                        except BridgeError as upload_exc:
+                            if upload_exc.code == "CANCELLED":
+                                raise
+                            self.local.set_status(doc_id, "failed", 0, upload_exc.message)
+                            view = self._doc_view({**(self.local.document(doc_id) or row),
+                                "status": "failed", "error": upload_exc.message},
+                                row.get("plan_ids", ()))
+                else:
+                    target_id = _source_version_id(doc_id, row.get("current_content_sha256") or
+                                                   _source_content_digest(row["chunks"]))
+                    self.local.set_remote_upload_id(doc_id, target_id)
+                    row = self.local.document(doc_id)
+                    self.local.set_status(doc_id, "uploading", 0)
+                    try:
+                        view = self._send_batches(row, cancel=cancel, on_progress=on_progress)
+                    except BridgeError as upload_exc:
+                        if upload_exc.code == "CANCELLED":
+                            raise
+                        self.local.set_status(doc_id, "failed", 0, upload_exc.message)
+                        view = self._doc_view({**(self.local.document(doc_id) or row),
+                            "status": "failed", "error": upload_exc.message},
                             row.get("plan_ids", ()))
                 result.append(view)
                 if on_progress:
                     on_progress(view)
                 continue
-            if self._remote_complete(remote_row, len(row["chunks"])):
+            current_digest = row.get("current_content_sha256") or _source_content_digest(row["chunks"])
+            uploaded_digest = row.get("uploaded_content_sha256") or ""
+            verified_target = bool(uploaded_digest and uploaded_digest == current_digest)
+            if verified_target and self._remote_complete(remote_row, len(row["chunks"])):
                 state = remote_row
                 received = int(state.get("uploaded_chunks", len(row["chunks"])) or 0)
                 self.local.set_remote_state(doc_id, state.get("id", doc_id), "ready", received,
                                             int(state.get("total_chunks", len(row["chunks"])) or 0))
-                view = self._doc_view({**row, "canonical_id": state.get("id", doc_id),
+                self.local.set_uploaded_content(doc_id, current_digest)
+                view = self._doc_view({**(self.local.document(doc_id) or row),
+                                       "canonical_id": state.get("id", doc_id),
                                        "status": "ready", "uploaded_chunks": received},
                                       row.get("plan_ids", ()), state)
                 result.append(view)
@@ -716,9 +907,28 @@ class RagService:
                 if exc.code == "CANCELLED":
                     raise
                 current = self.local.document(doc_id) or row
-                self.local.set_status(doc_id, "failed", current.get("uploaded_chunks", 0), exc.message)
-                view = self._doc_view({**current, "status": "failed", "error": exc.message},
-                                      current.get("plan_ids", ()))
+                if exc.code == "RAG_DOCUMENT_CONFLICT":
+                    # Even a deterministic version ID is not accepted as
+                    # evidence on its own. If it was already occupied by a
+                    # different body, keep it and retry under a fresh ID.
+                    fresh_id = _fresh_source_version_id(doc_id,
+                        current.get("current_content_sha256") or _source_content_digest(current["chunks"]))
+                    self.local.set_remote_upload_id(doc_id, fresh_id)
+                    current = self.local.document(doc_id) or current
+                    self.local.set_status(doc_id, "uploading", 0)
+                    try:
+                        view = self._send_batches(current, cancel=cancel, on_progress=on_progress)
+                    except BridgeError as retry_exc:
+                        if retry_exc.code == "CANCELLED":
+                            raise
+                        self.local.set_status(doc_id, "failed", 0, retry_exc.message)
+                        view = self._doc_view({**(self.local.document(doc_id) or current),
+                            "status": "failed", "error": retry_exc.message},
+                            current.get("plan_ids", ()))
+                else:
+                    self.local.set_status(doc_id, "failed", current.get("uploaded_chunks", 0), exc.message)
+                    view = self._doc_view({**(self.local.document(doc_id) or current),
+                        "status": "failed", "error": exc.message}, current.get("plan_ids", ()))
                 if on_progress:
                     on_progress(view)
             result.append(view)
@@ -802,6 +1012,23 @@ class RagService:
             raise BridgeError("PARAM_INVALID", f"问题不能为空，也不能超过 {MAX_QUESTION} 字。")
         question = text.strip()
         session = self.local.get_session(session_id)
+        # Existing sessions retain stable local IDs. Before every question,
+        # refresh adopted content and ensure changed content has its current
+        # immutable remote version; if sync is unavailable no model call occurs.
+        self._course_documents()
+        selected = [self.local.document(doc_id) for doc_id in session["document_ids"]]
+        if any(row is not None and
+               (row.get("uploaded_content_sha256") or "") !=
+               (row.get("current_content_sha256") or "") for row in selected):
+            refreshed = self.ingest(session["document_ids"], cancel=cancel)
+            if any(item.get("status") != "ready" for item in refreshed["documents"]):
+                raise BridgeError("RAG_DOCUMENT_NOT_READY", "资料内容更新尚未完成，请稍后重试。")
+            session = self.local.get_session(session_id)
+        selected = [self.local.document(doc_id) for doc_id in session["document_ids"]]
+        if any(row is None or row.get("status") != "ready" or
+               (row.get("uploaded_content_sha256") or "") !=
+               (row.get("current_content_sha256") or "") for row in selected):
+            raise BridgeError("RAG_DOCUMENT_NOT_READY", "所选资料尚未完成入库，请先完成资料同步。")
         _cancel(cancel)
         search = self.transport.request_json("POST", API + "/search",
             payload={"document_ids": list(dict.fromkeys(
