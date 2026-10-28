@@ -55,7 +55,9 @@ class FakeServices:
     def __init__(self, account_id):
         self.account_id = account_id
         self._closed = False
-        self.settings = SimpleNamespace(load=lambda: {"theme": "sakura"})
+        self.settings = SimpleNamespace(snapshot=lambda: {
+            "settings": {"theme": "sakura"}, "settings_revision": 1, "account_id": account_id,
+        })
         self.gateway = FakeGateway()
         self.status = {"state": "unknown", "short": "模型待验证"}
         self.status_listener = None
@@ -131,6 +133,9 @@ def test_model_handlers199_ready_bootstrap_recovery_and_switch(monkeypatch):
     assert first.probes == [("start", False)]
     bootstrap = bridge.handlers["app.bootstrap"]({}, ctx)
     assert bootstrap["ready"] is True
+    assert bootstrap["account_id"] == first.account_id
+    assert bootstrap["settings_revision"] == 1
+    assert bootstrap["settings"] == {"theme": "sakura"}
     bridge.event.emit(_event("ready"))
     assert first.probes == [("start", False)]
 

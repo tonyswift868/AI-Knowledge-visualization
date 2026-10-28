@@ -45,7 +45,7 @@ def test_content_local_preview_does_not_call_model_and_cancel_discards_labels(st
     f.save = lambda draft: None
     point = dict(title='说明', summary='说明', citations=[dict(chunk_id='c', quote='学'*900)])
     draft = dict(plan_id=PLAN,phase='outline',form=dict(start=DAY.isoformat(),end='2026-10-18',
-        daily_cap=180,weekday_weights=[1]*7,special_days=[]),messages=[],
+        daily_cap=180,weekday_weights=[1]*7,special_days=[]),messages=[],sources=[],
         outline=dict(stages=[dict(title='阶段',modules=[dict(key='m0',title='模块',points=[point])])]))
     f.estimate(draft, annotate=False)
     assert not model.calls and point['minutes'] == 6
@@ -70,7 +70,7 @@ def test_content_refined_old_preview_requires_confirmation_before_generation(sto
     draft = dict(plan_id=PLAN,phase='outline',form=dict(start=DAY.isoformat(),end='2026-10-18',
         daily_cap=180,weekday_weights=[1]*7,special_days=[]),messages=[],sources=[],
         outline=dict(grounded=True,stages=[dict(title='阶段',modules=[dict(key='m0',title='模块',points=[point])])]))
-    f._adopted = lambda d: ([dict(id='s')],None)
+    f._adopted = lambda d: ([dict(id='s')],{})
     f.estimate(draft, annotate=False)
     from types import SimpleNamespace
     import threading
@@ -132,20 +132,21 @@ def test_content_preview_labels_cached_dates_change_and_new_save_agree(store):
               dict(title='长', summary='长段', citations=[dict(chunk_id='c',quote='学'*1500)])]
     module = dict(id='m0',key='m0',title='模块',points=points)
     draft = dict(plan_id=PLAN,phase='outline',form=dict(start=DAY.isoformat(),end='2026-10-18',
-        daily_cap=180,weekday_weights=[1]*7,special_days=[]),messages=[],
+        daily_cap=180,weekday_weights=[1]*7,special_days=[]),messages=[],sources=[],
         outline=dict(stages=[dict(title='阶段',modules=[module])]))
     f.estimate(draft)
     preview = draft['outline']['ranges']
     assert preview['learning'] == 3+8
-    # Before preparation, total includes two provisional module-test
-    # questions (4 minutes) and their final-check reserve (5 minutes).
-    assert preview['total'] == [20,20]
-    assert preview['daily'] == [2,2]
+    # The source has no original assessment questions, so there is no
+    # provisional test reserve: the plan only budgets study time.
+    assert preview['total'] == [11,11]
+    assert preview['daily'] == [1,1]
+    assert preview['estimated_question_count'] == 0
     assert '平均 8' not in draft['messages'][-1]['text']
     draft['form']['end'] = '2026-10-12'
     f.estimate(draft)
     assert model.calls == ['point_difficulty']
-    assert draft['outline']['ranges']['daily'] == [4,4]
+    assert draft['outline']['ranges']['daily'] == [3,3]
     store.delete_module(PLAN,'m1',today=DAY)
     store.save_generated_module(PLAN, 'm0', [dict(p, id=f'm0-{i:02d}',chunk_ids=['c']) for i,p in enumerate(points,1)],
                                 today=DAY,check_minutes=0)
