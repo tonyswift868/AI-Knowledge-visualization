@@ -53,7 +53,7 @@
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
 | MF-01 | 238-MF01（修 Python 备用并切换演练，[BUG-193]）在做（用户 2026-10-29 已转发） | server |
-| MF-02 | 空闲 | client |
+| MF-02 | 239-MF02（个人资料页 3 套设计稿 + 头像裁剪，只出稿）已起草，待转发 | client |
 | MF-03 | 239-MF03（最终检验：已过关不再出、只剩一道直接连问、修 19/20，[BUG-196]）已起草，待转发 | classroom |
 | MF-04 | 239-MF04（照新规则改更新提示、不点不装、打开时装更新提速和窗口到最前，[BUG-195] [BUG-74]）已起草，待转发 | runtime |
 | MF-05 | 空闲 | platform |
@@ -63,7 +63,7 @@
 ## 待派队列
 
 - 报告存档：两轮源码复盘 .local/review217/、.local/review218/；219 修复 .local/fix219/；220～228 各批报告 .local/r220/～.local/r228/（224、226、228 内测在 .local/r224/、.local/r226/、.local/r228/）。
-- 已起草，待转发（2026-10-29）：239-MF03（D:\MentorFlow\.local\tasks\239-MF03.md）、239-MF04（D:\MentorFlow\.local\tasks\239-MF04.md），可并行；238-MF03、238-MF04 作废。
+- 已起草，待转发（2026-10-29）：239-MF03（D:\MentorFlow\.local\tasks\239-MF03.md）、239-MF04（D:\MentorFlow\.local	asks9-MF04.md）、239-MF02（D:\MentorFlow\.local	asks9-MF02.md），可并行；238-MF03、238-MF04 作废。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）；用户学完“MentorFlow 项目面试讲解”后的模拟面试官（[DOC-01]）。
 
 ## 找问题积分
