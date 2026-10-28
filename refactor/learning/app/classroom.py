@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 import contextlib
 import copy
+from dataclasses import replace
 import hashlib
 import importlib
 import json
@@ -29,6 +30,7 @@ _PLAN_ID = re.compile(r"[a-f0-9]{32}")
 PREF_KEYS = ("teacher_style", "detail", "examples", "analogy_domains")
 DIALOGUE_ROWS, DIALOGUE_CHARS, CHECK_BATCH = 40, 60000, 4
 CONCEPT_WRAP_CONTEXT_CHARS = 8000
+SUPPLEMENT_PREFIX = '讲义里没有，下面是补充'
 RESET, VERDICT_EVENT = "\x00", "\x01VERDICT:"
 MATERIAL_EVENT = "\x01MATERIAL:"
 TODAY_EVENT = "\x01TODAY:"
@@ -1085,30 +1087,30 @@ class Classroom:
 
     def ask(self, course, state, ctx, text):
         if not state.get('pending') and state['step'] in ('opening','teaching','closing'):
-            self._student_message(course,state,ctx,text)
+            self._student_message(course,state,ctx,text,question_only=True)
             if state.get('conversation'):state['conversation']['interrupted']=True
             return
         # A pending answer is not an active grading request. The explicit ask
         # action never goes through the grader and never changes the position.
         point_ids=self._focus(course,state)
-        director='正常回答学生追问，依据本点和本计划已采用资料；没有依据就直说“资料里没讲到”，可在计划里补充资料。回答完回到原来的位置，不出题、不判分。'
+        director='回答学生主动追问：先用本计划检索证据，足够就依据资料回答并选真实出处；证据不足就用自己的知识直接解释，声明supplement由程序标明补充。回答完回到原来的位置，不出题、不判分。'
         if state.get('pending'):
             director+='当前屏幕上正在检测，学生这句明确是提问，不是作答。只解答这个疑问，不继续讲课、不讲当前题的答案或必答要点、不提示如何答题。题目与检测仍保留。'
             director+='软件操作事实：客观题在选项或输入框作答、程序判；问答题用上方卡片先写自己的回答，再点看答案，要点默认全部勾上，把没答到的点成叉，由学生自己点〔算我答对〕或〔算我答错〕，与勾选数量无关。你只回答提问，不代替卡片、不改变软件的判法。'
             director+='说“继续”不会跳过检测题，也不会退回讲课；不要建议这样跳题，不编造操作。回答完请学生回到当前卡片作答。'
-        teaching=self._teacher(course,state,ctx,director,point_ids,user=text,allow_plan=True)
+        teaching=self._teacher(course,state,ctx,director,point_ids,user=text,allow_plan=True,question_only=True)
         self._deliver(course,state,teaching,user=text)
         if state.get('conversation'):state['conversation']['interrupted']=True
 
-    def _student_message(self, course, state, ctx, text):
+    def _student_message(self, course, state, ctx, text, *, question_only=False):
         # One teacher call handles replies and questions without grading or
         # moving the teaching position. The same sources serve both routes.
         teaching=self._teacher(course,state,ctx,
             '根据刚才对话自行辨别学生这句话是在回答理解性问题，还是新问题或没懂的地方。'
             '是回答：理解一致就简单肯定，偏了对照原文说明；口误或表达不完整不纠缠。'
-            '是提问：依据本点和本计划已采用资料解答，没有依据直说资料里没讲到。'
+            '是提问：先用整个计划的已采用资料检索证据，足够就照资料答；不足就用自己的知识直接答，声明supplement，由程序标明补充。'
             '一条回复完成，不另作分类；答完仍在当前讲解位置，不打分、不说答对或答错，不出题卡。',
-            self._focus(course,state),user=text,allow_plan=True)
+            self._focus(course,state),user=text,allow_plan=True,question_only=question_only)
         self._deliver(course,state,teaching,user=text,explained=state['step']=='opening')
         if state['step']=='opening':
             state['step']='teaching'
@@ -1700,27 +1702,25 @@ class Classroom:
         pid=q['point_ids'][0];state['index']=next(i for i,p in enumerate(course.points_of(q['module_id'])) if p['id']==pid)
         self._show_question(course,state,q,'practice',number=practice['index']+1,total=practice['count'])
 
-    def _teacher_context(self, course, state, director, point_ids, *, user='',opening=False,allow_plan=False):
+    def _teacher_context(self, course, state, director, point_ids, *, user='',opening=False,allow_plan=False,question_only=False):
         concept=self._concept(course,state)
         scoped=self._concept_context(course,state,point_ids)
         wrapping=bool(concept and (state.get('concept') or {}).get('wrapping'))
         plan,module=self._skeleton(course,state,point_ids)
         excerpts=self._teaching_excerpts(course,state,point_ids)
-        # A concept turn is grounded in its current subpoint (or bounded notes
-        # for wrap-up). Plan-wide retrieval is reserved for explicit questions
-        # on legacy points so it cannot re-expand concept context.
-        if allow_plan and not wrapping:
-            available=self._related_passages(course,excerpts,user,
-                max_chars=4000 if scoped else 16000,max_passages=3 if scoped else 12)
-        else:available=excerpts
+        # Teaching retains its point scope. Free student input can ask about
+        # any adopted material, including chunks not linked to a point.
+        available=self._related_passages(course,excerpts,user) if allow_plan else excerpts
         document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
         tctx=dict(plan=plan,module=module,prefs=self._prefs(course),profile=document.get('text','')[:6000],dialogue=self._dialogue(course,state),
             current_points=[dict(id=pid,title=course.point(pid)['title']) for pid in point_ids],
             director=director,user=user,excerpts=excerpts,plan_passages=available,opening=opening)
+        if allow_plan:
+            tctx.update(qa=True,question_only=question_only,excerpts=available,plan_passages=available)
         # An append-only page can retain old source blocks. Concept requests
         # must start from their exact bounded source map each time.
-        tctx['request_page']=None if scoped else self._teacher_request_page
-        if scoped and not concept:
+        tctx['request_page']=None if scoped or allow_plan else self._teacher_request_page
+        if scoped and not concept and not allow_plan:
             point,sub,_,_=scoped
             director=(director+'\n本次只围绕小要点“'+sub['title']+'”回应；不要把它扩展为整个大知识点。')
             tctx['director']=director
@@ -1744,8 +1744,11 @@ class Classroom:
                 previous_intro_ending=None if wrapping else intros[-1]['ending'] if intros else None)
         return tctx
 
-    def _teacher(self, course, state, ctx, director, point_ids, *, user='',opening=False,allow_plan=False):
-        tctx=self._teacher_context(course,state,director,point_ids,user=user,opening=opening,allow_plan=allow_plan)
+    def _teacher(self, course, state, ctx, director, point_ids, *, user='',opening=False,allow_plan=False,question_only=False):
+        tctx=self._teacher_context(course,state,director,point_ids,user=user,opening=opening,allow_plan=allow_plan,question_only=question_only)
+        if allow_plan:
+            evidence=self._slow_call(course,ctx,lambda:self._qa_passages(course,user,tctx['excerpts'],ctx.cancel if ctx else None))
+            tctx.update(excerpts=evidence,plan_passages=evidence)
         request=teacher_agent.teacher_request(tctx)
         selected=getattr(self._local,'prefetched',None)
         self._local.prefetched=None
@@ -1804,7 +1807,22 @@ class Classroom:
                 nonlocal raw,visible
                 if cancel and cancel.is_set():raise ModelCancelled()
                 raw+=delta
-                body=teacher_agent.streaming_body(raw)
+                wire=raw
+                prefix=''
+                if tctx.get('qa'):
+                    # Never stream protocol or unclassified text before its
+                    # source is known. Invalid headers are retried after the
+                    # complete response, using the normal RESET mechanism.
+                    try:header=teacher_agent.qa_response_header(raw,tctx)
+                    except AgentFormatError:return
+                    if header is None:return
+                    wire=teacher_agent.qa_response_body(raw)
+                    if header[0]=='supplement':
+                        prefix=SUPPLEMENT_PREFIX+'：\n\n'
+                        # Do not double-display a model-echoed host label.
+                        if SUPPLEMENT_PREFIX.startswith(wire):return
+                        wire=wire.removeprefix(SUPPLEMENT_PREFIX).lstrip('：: \n')
+                body=prefix+teacher_agent.streaming_body(wire)
                 if body!=visible:
                     if body.startswith(visible):emit(body[len(visible):])
                     else:emit(RESET);emit(body)
@@ -1826,6 +1844,7 @@ class Classroom:
             try:
                 teaching=teacher_agent.parse_teaching(result.text,tctx)
                 teacher_agent.validate_presentation(teaching.speech,tctx)
+                teaching=self._label_supplement(teaching)
                 cache_request=original_request if concept else request
                 if visible!=teaching.speech:emit(RESET);emit(teaching.speech)
                 return teaching,cache_request,teaching.speech if concept else result.text
@@ -1841,6 +1860,7 @@ class Classroom:
                     kept_ctx=dict(tctx)
                     if concept:kept_ctx['concept']=dict(concept,rewrite_exhausted=True)
                     teaching=teacher_agent.parse_teaching(kept,kept_ctx)
+                    teaching=self._label_supplement(teaching)
                     emit(teaching.speech)
                     return teaching,original_request,teaching.speech
                 else:raise
@@ -1852,39 +1872,79 @@ class Classroom:
         for part in re.findall(r'[\u3400-\u9fff]+',user):
             words.update(part[i:i+n] for n in (2,3,4) for i in range(len(part)-n+1))
         if not words:return dict(excerpts)
-        ranked=[];seen=set(excerpts)
-        # Fetch and score one point at a time; do not materialize the whole
-        # plan's source corpus before deciding which small passages to attach.
-        for point in course.points:
-            for cid,row in course.passages([point['id']]).items():
-                if cid in seen:continue
-                seen.add(cid)
-                text=row['text'];lower=text.lower()
-                score=sum(len(word) for word in words if word in lower)
-                if score:
-                    ranked.append((-score,cid,text));ranked.sort()
-                    if len(ranked)>12:ranked.pop()
+        ranked=[]
+        chunks,sources=course._source_rows()
+        for cid,row in chunks.items():
+            if cid in excerpts or not sources.get(row['source_id'],{}).get('adopted'):continue
+            text=row['text'];lower=text.lower()
+            hits=[(len(word),lower.find(word)) for word in words if word in lower]
+            if hits:
+                score=sum(length for length,_ in hits)
+                # Use the longest matched term, then its earliest occurrence;
+                # the evidence must survive the bounded prompt window.
+                at=min(hits,key=lambda hit:(-hit[0],hit[1]))[1]
+                ranked.append((-score,cid,text,at));ranked.sort()
+                if len(ranked)>max_passages:ranked.pop()
         result=dict(excerpts);remaining=max_chars
-        for _,cid,text in sorted(ranked):
+        for _,cid,text,at in sorted(ranked):
             if remaining<=0 or len(result)-len(excerpts)>=max_passages:break
             limit=min(4000,remaining)
-            # Preserve the legacy retrieval contract: a long paragraph without
-            # sentence punctuation still contributes its bounded source prefix.
-            # Whole-sentence selection is only for the concept wrap bundle.
-            bounded=text[:limit]
+            start=max(0,min(at-limit//3,len(text)-limit))
+            bounded=text[start:start+limit]
             if bounded:
                 result[cid]=bounded;remaining-=len(bounded)
         return result
 
+    def _qa_passages(self, course, user, local, cancel):
+        """Reuse RAG search; local adopted-plan evidence remains the fallback."""
+        if cancel and cancel.is_set():raise ModelCancelled()
+        try:
+            rag=getattr(self.services,'rag',None)
+            result=rag.search_plan(course.plan_id,user,cancel=cancel) if rag else None
+        except ModelCancelled:raise
+        except BridgeError as exc:
+            if exc.code=='CANCELLED':raise ModelCancelled() from exc
+            result=None
+        except Exception:
+            log.warning('classroom plan search unavailable; using local adopted material',exc_info=True)
+            result=None
+        if cancel and cancel.is_set():raise ModelCancelled()
+        if not result or result.get('status') not in ('ready','partial'):
+            return local
+        chunks,sources=course._source_rows()
+        merged=dict(local);remaining=16000
+        for row in result.get('passages',[])[:8]:
+            cid=row.get('chunk_id');chunk=chunks.get(cid)
+            if not chunk or not sources.get(chunk['source_id'],{}).get('adopted'):continue
+            # The local hit is already windowed around the student's terms.
+            # A remote full-chunk hit must not replace it with the paragraph head.
+            if cid in merged:continue
+            text=row.get('text','').strip()
+            if not text or text not in chunk['text'] or remaining<=0:continue
+            merged[cid]=text[:min(4000,remaining)];remaining-=len(merged[cid])
+        return merged
+
+    @staticmethod
+    def _label_supplement(teaching):
+        if teaching.answer_basis!='supplement':return teaching
+        text=teacher_agent.strip_source_footer(teaching.speech)
+        text=text.removeprefix(SUPPLEMENT_PREFIX).lstrip('：: \n')
+        return replace(teaching,speech=SUPPLEMENT_PREFIX+'：\n\n'+text,cited_chunks=())
+
     def _deliver(self, course, state, teaching, user=None, explained=False):
-        mapping={f'c{i}':cid for i,cid in enumerate(sorted(self._teaching_excerpts(course,state,self._focus(course,state))),1)}
+        mapping=(dict(teaching.citation_aliases) if teaching.citation_aliases else
+                 {f'c{i}':cid for i,cid in enumerate(sorted(self._teaching_excerpts(course,state,self._focus(course,state))),1)})
+        if teaching.answer_basis=='supplement':mapping={}
         with course.store.transaction():
             if user is not None:self._user(course,state,user)
             body=teacher_agent.strip_source_footer(teaching.speech)
             speech=_link_citations(body,mapping)
-            if mapping and (body!=teaching.speech or not teaching.cited_chunks):
+            if teaching.answer_basis=='material':
+                speech+='\n\n看原文：'+' '.join(_link_citations(f'[{alias}]',mapping)
+                    for alias,cid in mapping.items() if cid in teaching.cited_chunks)
+            elif mapping and (body!=teaching.speech or not teaching.cited_chunks):
                 speech+='\n\n看原文：'+' '.join(_link_citations(f'[{alias}]',mapping) for alias in mapping)
-            self._say(course,state,speech,role='assistant',kind='teach')
+            self._say(course,state,speech,role='assistant',kind='teach_supplement' if teaching.answer_basis=='supplement' else 'teach')
             concept=self._concept(course,state)
             if concept:
                 saved=state.setdefault('concept',dict(point_id=concept[0]['id'],subpoint_id=concept[1]['id'],rounds=0))
@@ -1895,7 +1955,7 @@ class Classroom:
                     if saved.get('rounds',0)==0:
                         saved['intro_endings']=(saved.get('intro_endings',[])+[dict(subpoint_id=concept[1]['id'],ending=style['ending'])])[-8:]
                 saved['rounds']=saved.get('rounds',0)+1
-            if explained:
+            if explained and teaching.answer_basis=='lesson':
                 document=(course.store.records('teacher_profile',course.plan_id) or [{}])[0].get('document',{})
                 points=dict(document.get('teaching_points',{}));pid=self._focus(course,state)[0]
                 points[pid]=dict(point_id=pid,title=course.point(pid)['title'],chunk_ids=list(teaching.cited_chunks or mapping.values()),at=self.now().isoformat())

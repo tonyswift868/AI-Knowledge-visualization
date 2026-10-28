@@ -358,6 +358,95 @@ class RagService:
         self._incomplete_documents = incomplete_documents - documents.keys()
         return plans, documents
 
+    def search_plan(self, plan_id, query, cancel=None):
+        """Search adopted material for one plan without creating a QA session.
+
+        Search is deliberately limited to documents already indexed by RAG;
+        callers can use their local plan corpus when this index is unavailable.
+        """
+        self._check_open()
+        _cancel(cancel)
+        if not isinstance(plan_id, str) or not plan_id:
+            return {"status": "unavailable", "passages": []}
+        if not isinstance(query, str) or not query.strip() or len(query) > MAX_QUESTION:
+            raise BridgeError("PARAM_INVALID", f"问题不能为空，也不能超过 {MAX_QUESTION} 字。")
+        plans, _ = self._course_documents()
+        plan = next((item for item in plans if item.get("id") == plan_id), None)
+        if plan is None:
+            return {"status": "unavailable", "passages": []}
+
+        local_docs = {}
+        for doc_id in plan.get("document_ids", ()):
+            _cancel(cancel)
+            doc = self.local.document(doc_id)
+            if doc is None:
+                continue
+            local_docs[doc_id] = doc
+        ready_ids = [doc_id for doc_id, doc in local_docs.items() if doc.get("status") == "ready"]
+        if not ready_ids:
+            return {"status": "not_ready", "passages": []}
+        canonical_to_local = {}
+        for doc_id in ready_ids:
+            canonical_id = local_docs[doc_id].get("canonical_id") or doc_id
+            canonical_to_local.setdefault(canonical_id, doc_id)
+        incomplete = set(getattr(self, "_incomplete_documents", ()))
+        partial = any(doc_id not in ready_ids or doc_id in incomplete
+                      for doc_id in plan.get("document_ids", ()))
+
+        # Search results become citations only when their returned text exactly
+        # matches an adopted source chunk owned by this plan.
+        sources = [source for source in self.store.records("sources", plan_id)
+                   if source.get("adopted") is True]
+        chunks = self.store.records("source_chunks", plan_id)
+        chunks_by_source = {}
+        for chunk in chunks:
+            chunks_by_source.setdefault(chunk["source_id"], []).append(chunk)
+        source_chunk_ids = {}
+        for source in sources:
+            source_chunks = sorted(chunks_by_source.get(source["id"], []),
+                                   key=lambda row: (row.get("position", 0), row["id"]))
+            body = "\n\n".join(str(row.get("text") or "") for row in source_chunks)
+            doc_id = source.get("sha256")
+            if not isinstance(doc_id, str) or not re.fullmatch(r"[0-9a-f]{64}", doc_id):
+                doc_id = hashlib.sha256(body.encode("utf-8")).hexdigest()
+            for chunk in source_chunks:
+                text = str(chunk.get("text") or "")
+                if text.strip():
+                    source_chunk_ids.setdefault((doc_id, text), chunk["id"])
+        canonical_ids = list(dict.fromkeys(local_docs[doc_id].get("canonical_id") or doc_id
+                                           for doc_id in ready_ids))
+        try:
+            result = self.transport.request_json("POST", API + "/search", payload={
+                "document_ids": canonical_ids, "query": query.strip(), "k": 8,
+            }, cancel=cancel)
+        except BridgeError as exc:
+            if exc.code == "CANCELLED":
+                raise
+            return {"status": "unavailable", "passages": []}
+        except Exception:
+            _cancel(cancel)
+            return {"status": "unavailable", "passages": []}
+        _cancel(cancel)
+        rows = result.get("passages", []) if isinstance(result, dict) else []
+        if not isinstance(rows, list):
+            return {"status": "unavailable", "passages": []}
+        passages = []
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("text"), str):
+                continue
+            doc_id = canonical_to_local.get(row.get("document_id"))
+            if doc_id not in ready_ids:
+                continue
+            chunk_id = source_chunk_ids.get((doc_id, row["text"]))
+            if chunk_id is None:
+                continue
+            doc = local_docs[doc_id]
+            passages.append({"chunk_id": chunk_id, "text": row["text"],
+                "title": doc.get("title") or row.get("title") or "资料",
+                "page": row.get("page"), "section": row.get("section"),
+                "document_id": doc_id, "seq": row.get("seq")})
+        return {"status": "partial" if partial else "ready", "passages": passages}
+
     def _remote_documents(self, cancel=None):
         value = self.transport.request_json("GET", API + "/documents", cancel=cancel)
         capabilities = value.get("capabilities", []) if isinstance(value, dict) else []

@@ -64,8 +64,11 @@ class Gateway:
         if purpose=='teacher':
             explicit=bool(self.replies)
             text=self.replies.pop(0) if self.replies else ('这一章看压力与面积，针尖和手指你觉得哪个压强大？[c1]\n【选项】\n针尖\n手指\n不知道\n【/选项】' if task['opening'] else
-                ('资料里没讲到硬度相同，可以在计划里补充资料；它只比较面积。[c1]' if '硬度' in task['user'] else '压力相同，面积越小压强越大，我们顺着面积看。[c1]'))
+                ('硬度与材料有关，不能只凭受力面积推断硬度相同。' if '硬度' in task['user'] else '压力相同，面积越小压强越大，我们顺着面积看。[c1]'))
             if not explicit:text='==压力相同时，受力面积越小，压强越大。==\n'+text
+            if task.get('qa') and not text.startswith('【依据】'):
+                text=('【依据】supplement【/依据】' if '硬度' in task['user'] else
+                      '【依据】material:c1【/依据】' if task.get('question_only') else '【依据】lesson【/依据】')+text
             if kw.get('on_text'):
                 for char in text:kw['on_text'](char)
         else:raise AssertionError('计分不得调用模型：'+purpose)
@@ -132,7 +135,7 @@ def test_open_branch_original_cards_and_conversation(env):
     v=act(e,'choose',0);assert v['step']=='teaching' and not v['question']
     assert not e.store.records('judgements',PLAN)
     act(e,'confused');v=act(e,'ask','硬度相同吗？')
-    assert '资料里没讲到' in v['messages'][-1]['content']
+    assert '讲义里没有，下面是补充' in v['messages'][-1]['content']
     assert v['step']=='teaching' and v['conversation']['interrupted']
     assert not act(e,'back')['conversation']['interrupted']
     assert e.gateway.calls==['teacher']*4
