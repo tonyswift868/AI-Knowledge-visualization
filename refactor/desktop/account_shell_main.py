@@ -398,14 +398,39 @@ class AccountShell:
         selector.blockSignals(True)
         typed = self.gate.username_field.text()
         selector.clear()
-        labels = [(row.get("username") or "").strip() or friendly_name(row) for row in snapshot["accounts"]]
+        from .account_profile import cached_profile
+        from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor
+        from PySide6.QtCore import Qt, QSize
+        import base64
+        profiles = [cached_profile(row['account_id'], self.runtime.data_root) for row in snapshot['accounts']]
+        usernames = [(row.get("username") or "").strip() or friendly_name(row) for row in snapshot["accounts"]]
+        labels = [f"{profile['nickname']} · {username}" if profile['nickname'] else username
+                  for profile, username in zip(profiles, usernames)]
+        selector.setIconSize(QSize(32, 32))
         for index, row in enumerate(snapshot["accounts"]):
             label = labels[index]
             if labels.count(label) > 1:   # same name on two local accounts: number them, never show ids
                 label += f"（{labels[:index + 1].count(label)}）"
-            selector.addItem(label, row["account_id"])
+            pixmap = QPixmap()
+            uri = profiles[index]['avatar_url']
+            if uri:
+                try:
+                    pixmap.loadFromData(base64.b64decode(uri.split(',', 1)[1], validate=True), 'JPEG')
+                except (ValueError, TypeError):
+                    pass
+            if pixmap.isNull():
+                pixmap = QPixmap(32, 32)
+                pixmap.fill(QColor('#8c6477'))
+                painter = QPainter(pixmap)
+                painter.setPen(QColor('white'))
+                painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, label[:1])
+                painter.end()
+            selector.addItem(QIcon(pixmap), label, row["account_id"])
         selector.setCurrentIndex(selector.findData(snapshot["current_account_id"]))
-        if selector.currentIndex() < 0:
+        if selector.currentIndex() >= 0:
+            # The popup label is not the credential username.
+            self.gate.username_field.setText(snapshot['accounts'][selector.currentIndex()].get('username', ''))
+        else:
             self.gate.username_field.setText(typed)   # refreshing the list never wipes what was typed
         selector.blockSignals(False)
         self.gate.remove_account_button.setEnabled(bool(snapshot["accounts"]))
@@ -472,6 +497,8 @@ class AccountShell:
             return
         self._invalidate_login_jobs()
         try:
+            from .account_profile import remove_cached_profile
+            remove_cached_profile(account_id, self.runtime.data_root)
             self.session.remove_local(account_id)
         except Exception:
             self.gate.notice_label.setText("本机凭据未能清除，账号未移除。请稍后重试。")

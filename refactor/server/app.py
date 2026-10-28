@@ -22,6 +22,10 @@ from refactor.server.enterprise.contracts_v1 import TenantMode
 from refactor.server.enterprise.account_workspaces import (
     ACCOUNT_WORKSPACE_PATHS, authenticate_account, router as account_workspace_router,
 )
+from refactor.server.enterprise.account_profiles import (
+    PROFILE_PATHS, AccountProfileService, authenticate_profile_account,
+    router as account_profile_router,
+)
 from refactor.server.enterprise_tenancy.workspace_bootstrap import AccountWorkspaceBootstrap
 from refactor.server.enterprise.identity.config import EnterpriseIdentityConfig
 from refactor.server.enterprise.identity.context import IdentityContextError
@@ -76,6 +80,7 @@ async def lifespan(app: FastAPI):
         app.state.account_workspace_bootstrap = AccountWorkspaceBootstrap(
             engine, issuer=config.keycloak.canonical_identity_issuer
         )
+        app.state.account_profile_service = AccountProfileService(engine)
         identity_runtime = build_enterprise_identity_runtime(engine=engine)
         app.state.enterprise_identity_runtime = identity_runtime
         app.state.admin_overview_service = overview_from_env(
@@ -104,6 +109,7 @@ app = FastAPI(
 )
 install_enterprise_identity(app, account_core_only=True)
 app.include_router(account_workspace_router)
+app.include_router(account_profile_router)
 app.include_router(structured_sync_router)
 app.include_router(catalog_router)
 
@@ -159,6 +165,8 @@ async def account_core_identity_boundary(request: Request, call_next):
                 )
             if path in ACCOUNT_WORKSPACE_PATHS:
                 await authenticate_account(request, runtime)
+            elif path in PROFILE_PATHS:
+                await authenticate_profile_account(request, runtime)
             elif not runtime.is_public_path(path):
                 binding = await runtime.authenticate_request(request)
                 request.state.enterprise_identity = binding
@@ -194,6 +202,8 @@ async def account_core_identity_boundary(request: Request, call_next):
     response.headers["X-MentorFlow-Runtime-Profile"] = RUNTIME_PROFILE
     if request.url.path in ACCOUNT_WORKSPACE_PATHS:
         response.headers["Cache-Control"] = "no-store"
+    elif request.url.path in PROFILE_PATHS:
+        response.headers.setdefault("Cache-Control", "private, no-cache")
     return response
 
 

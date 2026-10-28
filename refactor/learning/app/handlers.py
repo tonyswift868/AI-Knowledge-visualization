@@ -53,6 +53,9 @@ def _local_study_day(settings: dict):
 def register(bridge, window):
     """``window`` provides account info, Qt actions and the bound services."""
 
+    from .account_profile import register as register_profile
+    refresh_profile = register_profile(bridge, window)
+
     def bind_model_status(current):
         if hasattr(current, 'bind_model_status'):
             def publish(data):
@@ -78,6 +81,7 @@ def register(bridge, window):
             return
         if event.get('type') == 'event' and event.get('name') in {'ready', 'session_recovered'}:
             model_ready(window.services, recovered=event['name'] == 'session_recovered')
+            refresh_profile()
 
     if hasattr(bridge, 'event'):
         bridge.event.connect(model_account_event)

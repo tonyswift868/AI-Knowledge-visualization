@@ -22,4 +22,9 @@ public final class AccountRoutes146 {
         return "/api/enterprise/account/workspaces".equals(path)
             ||"/api/enterprise/account/workspaces/initialize".equals(path);
     }
+    /** Authenticated account profile routes do not depend on a selected workspace. */
+    public static boolean isAccountProfile(String path) {
+        return "/api/enterprise/account/profile".equals(path)
+            || "/api/enterprise/account/profile/avatar".equals(path);
+    }
 }

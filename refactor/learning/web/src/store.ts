@@ -30,7 +30,7 @@ export type Settings = {
   default_teacher_preset_id?: string
 }
 
-export type Account = { name: string; account_id?: string; role_label: string; settings_available?: boolean; offline?: boolean }
+export type Account = { name: string; nickname?: string; signature?: string; avatar_url?: string | null; account_id?: string; role_label: string; settings_available?: boolean; offline?: boolean }
 export type Notice = { message: string; show_verify: boolean } | null
 export type SyncStatus = {
   state: "syncing" | "waiting" | "retrying" | "synced" | "failed" | "reauth" | "superseded"

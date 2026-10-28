@@ -251,6 +251,8 @@ class LearningWindow(QWidget):
         self._display_name = display_name or "MentorFlow 账号"
         self._role = server_role
         self._session_offline = False
+        from refactor.desktop.account_profile import cached_profile
+        self._personal_profile = cached_profile(account_id, self._data_root)
         self._api_label = api_base_url
         self._settings_bound = False
         self.services: AppServices | None = None
@@ -308,7 +310,9 @@ class LearningWindow(QWidget):
 
     # ------------------------------------------------------------ for handlers
     def account_info(self):
+        personal = getattr(self, '_personal_profile', {})
         return {"name": self._display_name, "account_id": self._account_id,
+                **{key: personal.get(key, '') for key in ('nickname', 'signature', 'avatar_url')},
                 "role": self._role if isinstance(self._role, str) else None,
                 "role_label": _ROLE_LABELS.get(self._role, "待确认"), "api": self._api_label,
                 "settings_available": self._settings_bound,
