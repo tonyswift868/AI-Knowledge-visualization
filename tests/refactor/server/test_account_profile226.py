@@ -200,14 +200,18 @@ def test_profile226_postgres_migration_closure_and_downgrade(tmp_path, monkeypat
     from sqlalchemy import create_engine
     from refactor.server.account_identity_contract import account_id
 
+    ready, reason = java_build.ensure_java_build()
+    assert ready, reason
     root = tmp_path / "postgres226"
     root.mkdir()
+    # Keep only the disposable PostgreSQL instance under this test's tmp_path.
+    # Java builds are shared by the server_java fixture and ensure_java_build()
+    # caches its result for the pytest process; replacing its build/classpath
+    # paths here can make this test request a classpath file that was never
+    # generated when another fixture initialized the shared build first.
     monkeypatch.setattr(support, "TASK_ROOT", root)
-    monkeypatch.setattr(support, "BUILD", root / "build")
-    monkeypatch.setattr(support, "CLASSPATH_FILE", root / "build" / "test-classpath.txt")
-    monkeypatch.setattr(java_build, "TASK_ROOT", root)
-    monkeypatch.setattr(java_build, "BUILD", root / "build")
-    monkeypatch.setattr(java_build, "CLASSPATH_FILE", support.CLASSPATH_FILE)
+    monkeypatch.setattr(support, "BUILD", java_build.BUILD)
+    monkeypatch.setattr(support, "CLASSPATH_FILE", java_build.CLASSPATH_FILE)
     classpath_file = support._ensure_classpath()
     classpath = classpath_file.read_text(encoding="utf-8").strip()
     if not classpath:

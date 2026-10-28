@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import uuid
 
 import psycopg
 import pytest
@@ -14,6 +15,7 @@ from support_rag154 import (
     chunk_payload,
     rag154_backends,
     rag154_headers,
+    _prepare_database,
 )
 
 
@@ -36,8 +38,12 @@ def _tables(url: str):
 
 
 def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
-    """Alembic creates the RAG schema, fully removes it, and can recreate it."""
-    url = rag154_backends["rollback_url"]
+    """The reversible 0045 chain round-trips before forward-only 0046."""
+    postgres = rag154_backends["postgres"]
+    name = "rag154_legacy_" + uuid.uuid4().hex[:12]
+    _app_url, _admin_url, url = _prepare_database(
+        postgres, name, rag154_backends["issuer"], target="0045_account_closure_rag"
+    )
     assert all(_tables(url))
     # An already-current database remains current when upgrade is repeated.
     run_dir = rag154_backends["directory"]
@@ -56,33 +62,59 @@ def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
         else:
             assert embedding_type == "bytea"
             assert hnsw_count == 0
-    _run_alembic(url, ["upgrade", "head"], run_dir / "migration-idempotent-test.log", rag154_backends["issuer"])
+    _run_alembic(url, ["upgrade", "0045_account_closure_rag"], run_dir / "migration-idempotent-test.log", rag154_backends["issuer"])
     with psycopg.connect(url.replace("postgresql+psycopg://", "postgresql://")) as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0045_account_closure_rag"
     _run_alembic(url, ["downgrade", "0043_native_sessions"], run_dir / "migration-down-test.log", rag154_backends["issuer"])
     assert _tables(url) == (None, None, None)
-    _run_alembic(url, ["upgrade", "head"], run_dir / "migration-up-test.log", rag154_backends["issuer"])
+    _run_alembic(url, ["upgrade", "0045_account_closure_rag"], run_dir / "migration-up-test.log", rag154_backends["issuer"])
     assert all(_tables(url))
+
+    # Current production-schema migration is intentionally forward-only.
+    # An existing profile row must remain after Alembic refuses the downgrade.
+    current_url = rag154_backends["rollback_url"]
+    admin = current_url.replace("mentorflow_migrator:local-migrator-154", "postgres")
+    admin = admin.replace("postgresql+psycopg://", "postgresql://")
+    with psycopg.connect(admin) as connection:
+        connection.execute(
+            "INSERT INTO public.account_profiles(account_scope,nickname) VALUES (%s,%s)",
+            ("a" * 64, "keep-profile-0046"),
+        )
+    with pytest.raises(RuntimeError, match="Forward only: dropping account_profiles"):
+        _run_alembic(
+            current_url, ["downgrade", "0045_account_closure_rag"],
+            run_dir / "migration-0046-refused-downgrade.log", rag154_backends["issuer"],
+        )
+    with psycopg.connect(admin) as connection:
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0046_account_profiles"
+        assert connection.execute(
+            "SELECT nickname FROM public.account_profiles WHERE account_scope=%s", ("a" * 64,)
+        ).fetchone()[0] == "keep-profile-0046"
 
 
 def test_rag154_migration_requires_pgvector_to_be_preinstalled(rag154_backends):
     if os.environ.get("RAG154_VECTOR_BACKEND", "local-test") != "pgvector":
         pytest.skip("production pgvector requirement is exercised only with the official local pgvector build")
-    url = rag154_backends["rollback_url"]
     run_dir = rag154_backends["directory"]
+    postgres = rag154_backends["postgres"]
+    name = "rag154_vector_" + uuid.uuid4().hex[:12]
+    _app_url, _admin_url, url = _prepare_database(
+        postgres, name, rag154_backends["issuer"], target="0045_account_closure_rag"
+    )
     _run_alembic(url, ["downgrade", "0043_native_sessions"], run_dir / "vector-required-down.log", rag154_backends["issuer"])
     admin = url.replace("mentorflow_migrator:local-migrator-154", "postgres")
     admin = admin.replace("postgresql+psycopg://", "postgresql://")
     with psycopg.connect(admin, autocommit=True) as connection:
         connection.execute("DROP EXTENSION vector")
     try:
-        with pytest.raises(RuntimeError, match="Alembic upgrade head failed"):
-            _run_alembic(url, ["upgrade", "head"], run_dir / "vector-required-failure.log", rag154_backends["issuer"])
-        assert "RAG_PGVECTOR_REQUIRED" in (run_dir / "vector-required-failure.log").read_text(encoding="utf-8")
+        with pytest.raises(RuntimeError, match="Alembic upgrade .* failed"):
+            _run_alembic(url, ["upgrade", "0045_account_closure_rag"], run_dir / "vector-required-failure.log", rag154_backends["issuer"])
+        with (run_dir / "vector-required-failure.log").open(encoding="utf-8") as log:
+            assert any("RAG_PGVECTOR_REQUIRED" in line for line in log)
     finally:
         with psycopg.connect(admin, autocommit=True) as connection:
             connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    _run_alembic(url, ["upgrade", "head"], run_dir / "vector-required-restore.log", rag154_backends["issuer"])
+    _run_alembic(url, ["upgrade", "0045_account_closure_rag"], run_dir / "vector-required-restore.log", rag154_backends["issuer"])
     assert all(_tables(url))
 
 
