@@ -11,7 +11,8 @@ import pytest
 WEB = Path(__file__).resolve().parents[3] / "refactor/learning/web"
 NODE = Path(r"D:\MentorFlow\.local\node\node.exe")
 DEPS = Path(r"D:\MentorFlow\.local\web-deps")
-ARTIFACTS = Path(r"D:\MentorFlow\.local\test-tmp\fix219\MF03\ui")
+ARTIFACTS = (Path(os.environ["MF_TEST_SCRATCH"]) / "report219"
+             if os.environ.get("MF_TEST_SCRATCH") else Path(r"D:\MentorFlow\.local\test-tmp\fix219\MF03\ui"))
 
 
 def build(directory: Path):

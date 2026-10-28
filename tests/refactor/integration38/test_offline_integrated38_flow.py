@@ -131,7 +131,10 @@ def build_plan(root, events):
                 for field in ('structure','subpoints','goal'):point.pop(field,None)
     flow.save(legacy)
     assert all(p['citations'] for s in d['outline']['stages'] for m in s['modules'] for p in m['points'])
-    d=run(lambda d,c:flow.estimate(d));estimate=d['outline']['ranges']['total'][1]
+    d=run(lambda d,c:flow.estimate(d));estimate=d['outline']['ranges']['learning']
+    # Three provisional questions reserve 6 module-test + 9 final-check
+    # minutes; compare refined learning with learning, not that total.
+    assert d['outline']['ranges']['total'][1] == estimate + 15
     d=run(lambda d,c:flow.generate(d,c));assert d['phase']=='ready'
     join_workers()
     # Prepared question associations refine the same content formula, rather than preserving the initial preview budget.

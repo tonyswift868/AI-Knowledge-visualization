@@ -319,7 +319,7 @@ export function App() {
             {s.settings && !s.ready && s.route !== 'home' && <Loading label="正在连接账号服务…"/>}
             <Loading active={s.sync?.state==='syncing' && s.sync?.show_progress===true} label={s.sync?.message || '正在同步学习记录…'} slowHint={false}/>
             <PageErrorBoundary key={`${s.route}:${s.planId}:${s.settingsTab}:${scopeRevision}`} back={()=>s.go(s.route === "plan" || s.route === "home" ? "plans" : "home")}>
-              {s.settings && s.ready ? <Page key={`${s.route}:${scopeRevision}`} /> : <div className="page">{bootstrapError ? <div className="card" role="alert">{bootstrapError}<Button onClick={bootstrapRetry}>重试</Button></div>
+              {s.settings && !scopedSettingsPending.current ? <Page key={`${s.route}:${scopeRevision}`} /> : <div className="page">{bootstrapError ? <div className="card" role="alert">{bootstrapError}<Button onClick={bootstrapRetry}>重试</Button></div>
                 : <Loading shape="page" label="正在准备学习空间…" resetKey={bootstrapAttempt} onRetry={bootstrapRetry}/>}</div>}
             </PageErrorBoundary>
           </div>

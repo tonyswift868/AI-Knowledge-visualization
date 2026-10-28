@@ -224,9 +224,11 @@ class BalanceClient:
                                 flight['event'].set()
 
                     threading.Thread(target=fetch, daemon=True).start()
-            end = time.monotonic() + TIMEOUT
+            # _bounded owns the shared deadline and closes the HTTP request
+            # before signalling completion. A second caller-side deadline can
+            # race that cleanup; cancellation still releases only this waiter.
             while not flight['event'].wait(.02):
-                if time.monotonic() >= end or (cancel and cancel.is_set()):
+                if cancel and cancel.is_set():
                     return None
             if cancel and cancel.is_set():
                 return None

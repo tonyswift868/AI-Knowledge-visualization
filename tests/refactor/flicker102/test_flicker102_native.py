@@ -103,7 +103,7 @@ def test_flicker102_surface_is_created_before_login_window_and_reused(shell, app
     capabilities = QSignalSpy(gate.capabilities_received)
     shell.show()
     if not capabilities.count():
-        assert capabilities.wait()
+        assert capabilities.wait(5000)
     app.processEvents()
     assert shell._capabilities_loaded and gate.account_capabilities['register'] is True
     assert gate.lifecycle == ['shown']
