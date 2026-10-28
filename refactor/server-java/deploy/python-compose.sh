@@ -40,7 +40,11 @@ done
 [ -n "$compose_files" ] || { echo "Compose labels contain no base config files" >&2; exit 1; }
 
 set -- -p "$project" --project-directory "$working_dir"
-profiles=${PYTHON_COMPOSE_PROFILES:-}
+# The production backend and its readiness helpers share the
+# account-core-mvp profile. Activating only the explicitly named backend is
+# insufficient: Compose can then omit nested depends_on services. Let an
+# operator override this profile list for other deployments.
+profiles=${PYTHON_COMPOSE_PROFILES:-account-core-mvp}
 if [ -n "$profiles" ]; then
   old_ifs=$IFS
   IFS=,
