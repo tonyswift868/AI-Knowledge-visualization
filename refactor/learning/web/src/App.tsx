@@ -186,11 +186,13 @@ export function App() {
     const readSettings = (accountId?: string, waitsForScopedSettings = false) => {
       const epoch = modelScopeEpoch.current
       const revision = ++settingsReadRevision.current
+      const settingsScope = useApp.getState().settingsScopeRevision
       call("settings.get").then((r) => {
         const activeAccountId = useApp.getState().account?.account_id
         if (!alive || epoch !== modelScopeEpoch.current || revision !== settingsReadRevision.current ||
             (accountId && activeAccountId !== accountId)) return
-        s.set({ settings: r.settings, ...(r.options ? { options: r.options } : {}), ...(waitsForScopedSettings ? { ready: true } : {}) })
+        useApp.getState().applySettingsSnapshot(r, settingsScope)
+        s.set({ ...(r.options ? { options: r.options } : {}), ...(waitsForScopedSettings ? { ready: true } : {}) })
         if (waitsForScopedSettings) scopedSettingsPending.current = false
         setBootstrapError('')
       }).catch(() => {
@@ -202,9 +204,11 @@ export function App() {
     const load = () => {
       const epoch = modelScopeEpoch.current
       const settingsRevision = settingsReadRevision.current
+      const settingsScope = useApp.getState().settingsScopeRevision
       call("app.bootstrap").then((r) => {
         if (!alive || epoch !== modelScopeEpoch.current || settingsRevision !== settingsReadRevision.current) return
-        s.set({ account: r.account, settings: r.settings, options: r.options, notice: r.notice, ready: r.ready })
+        s.set({ options: r.options, notice: r.notice, ready: r.ready })
+        useApp.getState().applySettingsSnapshot(r, settingsScope, r.account)
         setBootstrapError('')
         scopedSettingsPending.current = false
       }).catch(e => {
@@ -238,6 +242,7 @@ export function App() {
         modelStatusRevision.current++
         setScopeRevision((revision) => revision + 1)
         setBootstrapError('')
+        useApp.getState().resetSettingsScope()
         s.set({ ready: false, account: null, settings: null, planId: null, sync: null, modelStatus:{state:'unknown',short:'模型待验证'},modelFault:null,modelRetry:null })
       }),
       on("sync_status", (d) => s.set({ sync: d })),

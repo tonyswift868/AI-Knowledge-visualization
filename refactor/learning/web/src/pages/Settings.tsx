@@ -8,6 +8,7 @@ import { call, on, BridgeFailure } from "../bridge"
 import { useApp, type Settings as S, type SettingsTab, type TeacherPreset } from "../store"
 import { Button, Field, Segmented, Toggle, ModelFaultPanel, useModelRetry } from "../ui"
 import { Loading, MODEL_SLOW_MESSAGE } from '../loading/Loading'
+import { saveSettings } from "../settingsSave"
 
 const TABS: { id: SettingsTab; label: string; icon: any }[] = [
   { id: "models", label: "模型连接", icon: PlugZap },
@@ -19,27 +20,14 @@ const TABS: { id: SettingsTab; label: string; icon: any }[] = [
 ]
 
 export function useSaveSettings() {
-  const set = useApp((s) => s.set)
   const toast = useApp((s) => s.toast)
-  const scopeRevision = React.useRef(0)
-  React.useEffect(() => {
-    const off = on("scope_changed", () => { scopeRevision.current++ })
-    return () => { scopeRevision.current++; off() }
-  }, [])
   return React.useCallback(async (changes: Partial<S>) => {
-    const revision = scopeRevision.current
-    const prev = useApp.getState().settings
-    if (prev) set({ settings: { ...prev, ...changes } })
     try {
-      const r = await call<{ settings: S }>("settings.save", { changes })
-      if (revision !== scopeRevision.current) return
-      set({ settings: r.settings })
+      await saveSettings(changes)
     } catch (e) {
-      if (revision !== scopeRevision.current) return
-      if (prev) set({ settings: prev })
       toast("error", (e as Error).message)
     }
-  }, [set, toast])
+  }, [toast])
 }
 
 export function Settings() {
@@ -139,6 +127,8 @@ function Models() {
   const [providers, setProviders] = React.useState<Provider[] | null>(null)
   const [presets, setPresets] = React.useState<Preset[]>([])
   const [activeId, setActiveId] = React.useState<string | null>(null)
+  const [modelMutationBusy, setModelMutationBusy] = React.useState(false)
+  const modelMutationLock = React.useRef(false)
   const [form, setForm] = React.useState({ provider_id: "deepseek", preset_id: "" as string | null, display_name: "", base_url: "", model: "", api_key: "", timeout: 120 })
   const loadRevision = React.useRef(0)
   const scopeRevision = React.useRef(0)
@@ -177,7 +167,7 @@ function Models() {
     } catch (e) { if (revision === loadRevision.current) setLoadError((e as Error).message) }
   }, [fill])
   React.useEffect(() => {
-    const off = on("scope_changed", () => { scopeRevision.current++; loadRevision.current++; setProviders(null); setPresets([]); setActiveId(null) })
+    const off = on("scope_changed", () => { scopeRevision.current++; loadRevision.current++; modelMutationLock.current = false; setModelMutationBusy(false); setSaving(false); setProviders(null); setPresets([]); setActiveId(null) })
     void load()
     return () => { scopeRevision.current++; loadRevision.current++; testCancel.current?.abort(); off() }
   }, [load])
@@ -188,6 +178,9 @@ function Models() {
   const relay = isRelay(form.provider_id)
 
   async function save() {
+    if (modelMutationLock.current) return
+    modelMutationLock.current = true
+    setModelMutationBusy(true)
     const revision = scopeRevision.current
     setSaving(true)
     try {
@@ -202,7 +195,7 @@ function Models() {
       toast("ok", "已保存并设为当前使用的模型。")
     } catch (e) {
       if (revision === scopeRevision.current) toast("error", (e as Error).message)
-    } finally { if (revision === scopeRevision.current) setSaving(false) }
+    } finally { if (revision === scopeRevision.current) { modelMutationLock.current = false; setModelMutationBusy(false); setSaving(false) } }
   }
 
   async function test() {
@@ -224,6 +217,9 @@ function Models() {
 
   useModelRetry(test,f=>f.purpose === 'connection_test' || f.purpose === 'models.test' || !f.purpose)
   async function action(method: "models.select" | "models.delete", id: string) {
+    if (modelMutationLock.current) return
+    modelMutationLock.current = true
+    setModelMutationBusy(true)
     const revision = scopeRevision.current
     try {
       const r = await call<{ presets: Preset[]; active_id: string | null }>(method, { preset_id: id })
@@ -232,6 +228,7 @@ function Models() {
       setActiveId(r.active_id)
       if (method === "models.delete") toast("ok", "已删除该模型预设及其保存的 Key。")
     } catch (e) { if (revision === scopeRevision.current) toast("error", (e as Error).message) }
+    finally { if (revision === scopeRevision.current) { modelMutationLock.current = false; setModelMutationBusy(false) } }
   }
 
   if (!providers) return loadError ? <div className="card" role="alert">{loadError}<Button onClick={()=>void load()}>重试</Button></div>
@@ -288,7 +285,7 @@ function Models() {
           </Field>
         </div>
         <div className="row">
-          <Button kind="primary" onClick={save} busy={saving}><Bot />保存并使用</Button>
+          <Button kind="primary" onClick={save} busy={saving || modelMutationBusy}><Bot />保存并使用</Button>
         </div>
       </div>
 
@@ -306,8 +303,8 @@ function Models() {
                   <td><ApiBalance preset={p} reload={balanceReload} /></td>
                   <td style={{ textAlign: "right" }}>
                     <div className="row" style={{ justifyContent: "flex-end" }}>
-                      {p.id !== activeId && <Button small onClick={() => action("models.select", p.id)}>使用</Button>}
-                      <Button small kind="danger" onClick={() => action("models.delete", p.id)}><Trash2 />删除</Button>
+                      {p.id !== activeId && <Button small disabled={modelMutationBusy} onClick={() => action("models.select", p.id)}>使用</Button>}
+                      <Button small kind="danger" disabled={modelMutationBusy} onClick={() => action("models.delete", p.id)}><Trash2 />删除</Button>
                     </div>
                   </td>
                 </tr>
@@ -468,23 +465,24 @@ function Learning() {
   const settings = useApp((s) => s.settings)!
   const toast = useApp((s) => s.toast)
   const [group, setGroup] = React.useState<PresetGroup>({ presets: [], default_id: "" })
+  const [presetsLoaded, setPresetsLoaded] = React.useState(false)
   const [edit, setEdit] = React.useState<TeacherPreset | null>(null)
   const [busy, setBusy] = React.useState(false)
   const loadRevision = React.useRef(0)
   const [confirm, setConfirm] = React.useState<{ group: PresetGroup; message: string } | null>(null)
   React.useEffect(() => {
-    if (settings.teacher_presets) setGroup({ presets: settings.teacher_presets, default_id: settings.default_teacher_preset_id! })
+    if (settings.teacher_presets) { setGroup({ presets: settings.teacher_presets, default_id: settings.default_teacher_preset_id! }); setPresetsLoaded(true) }
   }, [settings.teacher_presets, settings.default_teacher_preset_id])
   React.useEffect(() => {
     let live = true
     const revision = ++loadRevision.current
-    const off = on("scope_changed", () => { loadRevision.current++; setGroup({ presets: [], default_id: "" }) })
-    call<PresetGroup>("settings.teacher_presets").then((r) => { if (live && revision === loadRevision.current) setGroup(r) })
+    const off = on("scope_changed", () => { loadRevision.current++; setGroup({ presets: [], default_id: "" }); setPresetsLoaded(false); setEdit(null); setConfirm(null); setBusy(false) })
+    call<PresetGroup>("settings.teacher_presets").then((r) => { if (live && revision === loadRevision.current) { setGroup(r); setPresetsLoaded(true) } })
       .catch((e) => { if (live && revision === loadRevision.current) toast("error", e.message) })
     return () => { live = false; loadRevision.current++; off() }
   }, [toast])
   const save = async (next: PresetGroup, confirmed = false) => {
-    const revision = loadRevision.current
+    const revision = ++loadRevision.current
     setBusy(true)
     try {
       const r = await call<PresetGroup & { confirmation_required?: boolean; message?: string }>("settings.save_teacher_presets", { ...next, confirm_delete: confirmed })
@@ -502,7 +500,7 @@ function Learning() {
   return (
     <div className="stack" data-teacher-presets>
       <div className="row between"><div><h2>老师预设</h2><p className="sub">新计划使用默认预设；每个计划可以随时换老师。人设只影响讲课措辞，教学规则优先。</p></div>
-        <Button onClick={create} disabled={busy || !!edit || group.presets.length >= 4}>新建预设</Button></div>
+        <Button onClick={create} disabled={!presetsLoaded || busy || !!edit || group.presets.length >= 4}>新建预设</Button></div>
       {group.presets.length >= 4 && <p className="muted">最多 4 个预设</p>}
       {group.presets.map((p) => (
         <div key={p.id} className="card stack" data-preset-id={p.id}>

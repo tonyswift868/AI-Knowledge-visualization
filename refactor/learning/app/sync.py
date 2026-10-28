@@ -203,8 +203,11 @@ class WindowSync(QObject):
 
     @Slot()
     def _settings_changed(self):
-        if not self._closed and not self._paused:
-            self.window.settings_changed(self.settings.load())
+        # Share the save/publication lock: a remote refresh must not publish an
+        # old read after a newer local save has already notified the window.
+        with self.settings._file.lock:
+            if not self._closed and not self._paused:
+                self.window.settings_changed(self.settings.load())
 
     @Slot()
     def _chat_changed(self):

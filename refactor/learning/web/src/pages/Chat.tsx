@@ -8,6 +8,7 @@ import "katex/dist/katex.min.css"
 import { Archive, ArchiveRestore, ArrowLeft, Check, Copy, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, SendHorizontal, Square, Trash2, UserRoundPen, X } from "lucide-react"
 import { BridgeFailure, call, on } from "../bridge"
 import { useApp } from "../store"
+import { saveSettings } from "../settingsSave"
 import { Button, SakuraArt, useModelRetry } from "../ui"
 import { Loading, MODEL_SLOW_MESSAGE } from '../loading/Loading'
 import './chat-copy.css'
@@ -416,16 +417,14 @@ function CopyReply({ text }: { text: string }) {
 }
 
 function Persona({ onClose }: { onClose: () => void }) {
-  const settings = useApp((s) => s.settings)
-  const set = useApp((s) => s.set)
   const toast = useApp((s) => s.toast)
+  const settings = useApp((s) => s.settings)
   const [text, setText] = React.useState(settings?.chat_persona ?? "")
   const [busy, setBusy] = React.useState(false)
   async function save() {
     setBusy(true)
     try {
-      const r = await call<{ settings: any }>("settings.save", { changes: { chat_persona: text } })
-      set({ settings: r.settings })
+      if (!await saveSettings({ chat_persona: text })) return
       toast("ok", text.trim() ? "人设已保存，下一句开始生效。" : "已清空人设。")
       onClose()
     } catch (e) { toast("error", (e as Error).message) } finally { setBusy(false) }
