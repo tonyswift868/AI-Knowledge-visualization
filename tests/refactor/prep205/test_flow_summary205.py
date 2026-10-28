@@ -17,18 +17,19 @@ def test_summary205_worker_cannot_restore_obsolete_80_point_counts(material_stor
     store = material_store70
     pm.prepare_module(store, 'p', 'm', {}, lambda *_: None)
     flow = flow_for(store, tmp_path)
-    flow._save_material_summary('p', 'm', dict(points=80, cloze_points=80, cloze_heavy=False))
+    flow._save_material_summary('p', 'm', dict(points=1, questions=2, objective=2, recall=0, rejected=0, supplemental_questions=0))
     module = next(m for m in store.records('modules', 'p') if m['id'] == 'm')
     assert module['material_preparation']['points'] == 1
-    assert module['material_preparation']['cloze_points'] == 0
+    assert 'cloze_points' not in module['material_preparation']
+    assert 'cloze_heavy' not in module['material_preparation']
     assert module['material_preparation']['questions'] == module['question_count'] == 2
 
 
 def test_summary205_ready_recovery_repairs_counts_without_repreparing(material_store70, tmp_path):
     store = material_store70
     pm.prepare_module(store, 'p', 'm', {}, lambda *_: None)
-    store.save_module_preparation('p', 'm', dict(state='failed', points=80,
-        cloze_points=80, error='PAYLOAD_TOO_LARGE', attempts=3))
+    store.save_module_preparation('p', 'm', dict(state='failed', points=1, questions=2,
+        error='PAYLOAD_TOO_LARGE', attempts=3))
     flow = flow_for(store, tmp_path)
     assert flow._module_ready('p', 'm')
     old = next(m for m in store.records('modules', 'p') if m['id'] == 'm')
@@ -36,7 +37,8 @@ def test_summary205_ready_recovery_repairs_counts_without_repreparing(material_s
     module = next(m for m in store.records('modules', 'p') if m['id'] == 'm')
     assert module['material_preparation']['state'] == 'done'
     assert module['material_preparation']['points'] == 1
-    assert module['material_preparation']['cloze_points'] == 0
+    assert 'cloze_points' not in module['material_preparation']
+    assert 'cloze_heavy' not in module['material_preparation']
     assert module['question_count'] == module['material_preparation']['questions'] == 2
     before = store.pending_records(1000)
     events = store.records('ledger_events', 'p')
@@ -48,12 +50,12 @@ def test_summary205_ready_recovery_repairs_counts_without_repreparing(material_s
 def test_summary205_expired_plan_can_refresh_without_rewriting_timing(material_store70, tmp_path):
     store = material_store70
     pm.prepare_module(store, 'p', 'm', {}, lambda *_: None)
-    store.save_module_preparation('p', 'm', dict(state='failed', points=80, cloze_points=80))
+    store.save_module_preparation('p', 'm', dict(state='failed', points=1, questions=2))
     flow = flow_for(store, tmp_path)
     flow.study_day = lambda: date(2026, 10, 27)  # The plan ended on Oct 11.
     old_module = next(m for m in store.records('modules', 'p') if m['id'] == 'm')
     events = store.records('ledger_events', 'p')
-    flow._save_material_summary('p', 'm', dict(points=80, cloze_points=80, cloze_heavy=False))
+    flow._save_material_summary('p', 'm', dict(points=1, questions=2, objective=2, recall=0, rejected=0, supplemental_questions=0))
     module = next(m for m in store.records('modules', 'p') if m['id'] == 'm')
     assert module['question_count'] == module['material_preparation']['questions'] == 2
     assert module['material_preparation']['points'] == 1

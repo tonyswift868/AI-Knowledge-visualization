@@ -231,7 +231,12 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
     e.registry.methods['plan.window'](dict(plan_id=PLAN,end='2026-10-12'),None)
     assert e.store.get_plan(PLAN)['window']['end']=='2026-10-12'
     for job in list(e.flow.services._point_minute_jobs['jobs'].values()): job['thread'].join(5)
-    assert e.store.get_plan(PLAN)['total_minutes']==79  # Frozen 30; unlearned 21; unchanged checks 28.
+    # Frozen learned points keep 30 minutes. Each unlearned point now has
+    # one original exercise, not the retired synthetic quick/cloze as well:
+    # 3 base + 1 original x 2 = 5 minutes; check reserves still total 28.
+    assert e.store.get_plan(PLAN)['total_minutes']==73
+    assert [p['minutes'] for p in e.store.records('points', PLAN) if p['module_id']=='m0']==[10,10,10]
+    assert [p['minutes'] for p in e.store.records('points', PLAN) if p['module_id']=='m1']==[5,5,5]
     act(e,'start_test','retest');assert snapshot(e)['question']['total']==1
     answer(e)
     assert sum(c['minutes'] for c in e.store.load_ledger(PLAN).to_dict()['credits'])==38  # Just one wrong question, no relearning.
@@ -240,7 +245,7 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
         view=answer(e)
         if view['step']!='testing':break
     assert view['module']['state']=='skipped'
-    assert sum(c['minutes'] for c in e.store.load_ledger(PLAN).to_dict()['credits'])==65
+    assert sum(c['minutes'] for c in e.store.load_ledger(PLAN).to_dict()['credits'])==59
     act(e,'next_module');act(e,'start_check');act(e,'leave')
     e.clock.set(DAY+timedelta(days=9));act(e,'enter')
     assert snapshot(e)['today']['overdue_days']==2
@@ -258,7 +263,7 @@ def test_full_flow_clock_dates_fail_retest_skip_and_report(flow_env, audit):
     assert errors==2 and view['plan']['state']=='completed'
     assert home(e)['state']=='completed' and snapshot(e)['today']['remaining_minutes']==0
     join_profiles();report=e.registry.methods['plan.report'](dict(plan_id=PLAN),None)['report']
-    assert report['plan']['confirmed_minutes']==65+answered*2
+    assert report['plan']['confirmed_minutes']==59+answered*2
     assert report['plan']['actual_completion_date']=='2026-10-14'
     assert len(report['questions'])==6 and all(q['passed'] for q in report['questions'])
     assert e.store.load_report(PLAN)==report

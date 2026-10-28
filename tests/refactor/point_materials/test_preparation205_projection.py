@@ -37,8 +37,12 @@ def test_205_module_marker_keeps_summary_not_unbounded_rejection_rows(seeded_sto
 
 def test_205_supplemental_ids_are_new_valid_questions_not_original_test_answers(seeded_store):
     point = seeded_store.records('points', 'p')[0]
-    pm.prepare_point(seeded_store, 'p', point, ctx())
+    point['subpoints'][0]['chunk_ids'].append('found')
+    point['chunk_ids']=list(dict.fromkeys(cid for sub in point['subpoints'] for cid in sub['chunk_ids']))
+    _put(seeded_store, 'points', point)
+    pm.prepare_point(seeded_store, 'p', point, {})
     original = qb.assessment_questions(seeded_store.records('question_bank', 'p'), 'm')[0]
+    assert original['origin'] == 'found'
     answered_at = datetime(2026, 10, 27, 12, tzinfo=timezone.utc)
     seeded_store.append_judgement('p', Judgement('answer-original', 1, answered_at,
         'module_test', 'm', 'attempt-1', (('point', True),), question_id=original['id']))
@@ -52,11 +56,15 @@ def test_205_supplemental_ids_are_new_valid_questions_not_original_test_answers(
         supplemental_after_basis=boundary['basis'])
     _put(seeded_store, 'modules', module)
 
-    supplemental = dict(original, id='new-after-close', stem='新增资料里的另一道检查题？',
-        created_at=(answered_at + timedelta(seconds=1)).isoformat())
-    assert seeded_store.add_bank_questions('p', 'm', [supplemental]) == ['new-after-close']
-    assert qb.supplemental_question_ids(seeded_store, 'p', 'm') == {'new-after-close'}
-    assert original['id'] not in qb.supplemental_question_ids(seeded_store, 'p', 'm')
+    # Add a genuine source exercise on a different subpoint after detection.
+    chunk = seeded_store._get('source_chunks', 'p', 'c2')
+    chunk['text'] = '1. 2+2=____。\n答案：4'
+    _put(seeded_store, 'source_chunks', chunk)
+    pm.prepare_point(seeded_store, 'p', seeded_store.records('points', 'p')[0], {})
+    new_questions = [q for q in qb.assessment_questions(
+        seeded_store.records('question_bank', 'p'), 'm') if q['id'] != original['id']]
+    assert len(new_questions) == 1 and new_questions[0]['origin'] == 'found'
+    assert qb.supplemental_question_ids(seeded_store, 'p', 'm') == {new_questions[0]['id']}
 
     # Old module summaries have no persisted cutoff. A recorded answer gives
     # enough evidence to project later questions without writing metadata.
@@ -64,7 +72,7 @@ def test_205_supplemental_ids_are_new_valid_questions_not_original_test_answers(
     module['question_extraction'].pop('supplemental_after')
     module['question_extraction'].pop('supplemental_after_basis')
     _put(seeded_store, 'modules', module)
-    assert qb.supplemental_question_ids(seeded_store, 'p', 'm') == {'new-after-close'}
+    assert qb.supplemental_question_ids(seeded_store, 'p', 'm') == {new_questions[0]['id']}
 
 
 def test_205_skip_close_without_answers_is_explicitly_preparation_start(seeded_store):
@@ -120,6 +128,7 @@ def test_205_reprepare_after_material_addition_keeps_answered_original_question_
     point = seeded_store.records('points', 'p')[0]
     pm.prepare_module(seeded_store, 'p', 'm', dict(finder=no_cloze), lambda *args: None)
     original = qb.assessment_questions(seeded_store.records('question_bank', 'p'), 'm')[0]
+    assert original['origin'] == 'found'
     answered_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     seeded_store.append_judgement('p', Judgement('answer-original', 1, answered_at,
         'module_test', 'm', 'attempt-1', (('point', True),), question_id=original['id']))
@@ -156,6 +165,7 @@ def test_205_regroup_then_reprepare_keeps_question_and_answers_only_new_question
         dict(id=sub['id'], cloze=[]) for sub in packet['subpoints']])
     pm.prepare_module(seeded_store, 'p', 'm', dict(finder=no_cloze), lambda *args: None)
     original = qb.assessment_questions(seeded_store.records('question_bank', 'p'), 'm')[0]
+    assert original['origin'] == 'found'
 
     incoming = copy.deepcopy(old_point)
     incoming.update(id='regrouped', title='按原文结构重组', summary='掌握同一批原文',

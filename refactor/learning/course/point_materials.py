@@ -11,9 +11,7 @@ from .question_bank import assessment_question, select_question
 from .research import ResearchCancelled
 from .store import StoreError
 from . import material_questions as mq
-from .question_bank import (validate_question, checked_question, overlapping_options,
-    blank_rejection, parallel_answer_parts, assessment_questions)
-from ..connections.errors import ModelError
+from .question_bank import validate_question, assessment_questions
 
 _locks = WeakKeyDictionary()
 _locks_guard = Lock()
@@ -238,10 +236,7 @@ def prepare_module(store, plan_id, module_id, ctx, progress):
                     rejected.append(dict(candidate_id=q['id'], stem=q['stem'], reason='现有题库去重：题干已入库', source_chunks=q['source']['chunk_ids']))
             result = dict(points=len(points), questions=len(admitted), objective=sum(q['kind']=='objective' for q in admitted),
                 recall=sum(q['kind']=='recall' for q in admitted), candidates=len(candidates), rejected=len(rejected),
-                question_extraction_done=True,
-                # Existing summary consumers retain these zero-valued fields;
-                # there is no gap generator or configurable fallback behind them.
-                cloze_points=0, cloze_heavy=False)
+                question_extraction_done=True)
             result['supplemental_questions'] = len(question_bank.supplemental_question_ids(
                 store, plan_id, module_id, cutoff=supplemental_after))
             current = next(m for m in store.records('modules', plan_id) if m['id'] == module_id)
@@ -269,7 +264,7 @@ def prepare_point(store, plan_id, point, ctx):
         return _prepare_concept_point(store, plan_id, current, ctx)
     prepare_module(store, plan_id, current['module_id'], ctx, lambda *args: None)
     rows = [q for q in store.records('question_bank', plan_id) if assessment_question(q) and current['id'] in q['point_ids']]
-    return dict(passages=len(current['chunk_ids']), questions=len(rows), cloze=0)
+    return dict(passages=len(current['chunk_ids']), questions=len(rows))
 
 def pick_question(store,plan_id,point_id,purpose,exclude_ids=()):
     store.require_material_plan(plan_id)
@@ -294,8 +289,6 @@ def preparation_summary(store, plan_id, module_id):
         recall=sum(q['kind'] == 'recall' for q in rows),
         rejected=point_rejections if has_concepts else marker.get('rejection_count', point_rejections),
         question_extraction_done=preparation_done(store, plan_id, module_id),
-        cloze_points=len({pid for q in rows if q.get('origin') == 'cloze' for pid in q.get('point_ids', [])}),
-        cloze_heavy=False,
         supplemental_questions=len(question_bank.supplemental_question_ids(store, plan_id, module_id)))
     return result
 
@@ -309,28 +302,6 @@ def mark_used(store,plan_id,question_id,purpose):
 def uncovered_points(store, plan_id, ctx):
     eligible = {c['id'] for c in _material_chunks(store, plan_id)[1]}
     return [p['id'] for p in store.records('points', plan_id) if not eligible.intersection(p['chunk_ids'])]
-
-
-_CONCEPT_SYSTEM = '''只指出小要点自己原文里的挖空位置，不出题、不编写答案或干扰项。
-返回 JSON {"subpoints":[{"id":"输入小要点id","cloze":[{"target":"检验此小要点掌握目标的问题",
-"chunk_id":"原文id","sentence":"完整逐字原句或唯一quote/end_quote指针","word":"逐字答案片段",
-"subject":"原句本题对象","contrasts":[{"chunk_id":"原文id","contrast_quote":"逐字对照句",
-"contrast_subject":"对照对象","contrast_value":"对照值"}]}]}]}。
-每个小要点只定位一道客观题，可给最多三个候选。句子、答案、对照只许来自该小要点自己的chunk_ids。
-对照至少两个：另一对象的同一属性、不同取值；不能拿本题对象也成立的说法凑干扰项。
-不定位书单、学习路线或导航；找不到足够对照就cloze=[]。不要拿同一大点其他小要点的原文。
-并列项只有完整连续列举时可给answer_parts（全部逐字片段）；其余单选。'''
-
-
-def _base(point, kind, stem, answer, origin, question, answer_source, *, options, target, subject, contrasts):
-    row=dict(module_id=point['module_id'],point_ids=[point['id']],subpoint_id=point['subpoint_id'],
-        kind=kind,stem=stem,answer=answer,origin=origin,source=dict(question['source']),
-        answer_source=dict(answer_source['source']),options=options,target=target,cloze_subject=subject,
-        contrast_evidence=contrasts,importance='normal',role='bank',uses=[],explanation='',
-        created_at=datetime.now(timezone.utc).isoformat())
-    row['id']='subpoint-question-'+hashlib.sha256(json.dumps(
-        [point['id'],point['subpoint_id'],stem,answer],ensure_ascii=False).encode()).hexdigest()[:24]
-    return row
 
 
 def _subpoint_aliases(subpoint):
@@ -390,7 +361,7 @@ def _processed_marker_ids(previous, subpoints, chunks, *, allow_legacy=False):
 
 
 def _prepare_concept_point(store, plan_id, point, ctx):
-    """Own-scope original exercises, or a reviewed gap when none compile."""
+    """Prepare source exercises for each subpoint; points without exercises stay study-only."""
     with _lock(store, plan_id, point['id']):
         _check(ctx)
         point = store._get('points', plan_id, point['id'])
@@ -538,73 +509,11 @@ def _prepare_concept_point(store, plan_id, point, ctx):
             if found:
                 checkpoint(sub, found, [])
 
-        # Preserve the module-sized model call (and its shared fixed-prefix
-        # cost). Clean generated-note fields out of its input. Once the batch
-        # comes back, validate and checkpoint each subpoint independently.
-        waiting = [s for s in point['subpoints'] if s['id'] not in terminal
-                   and any(cid in by_id for cid in s['chunk_ids'])]
-        if waiting:
-            _check(ctx)
-            visible = {cid for sub in waiting for cid in sub['chunk_ids']}
-            packet = dict(point_id=point['id'],
-                subpoints=[{k: sub.get(k) for k in ('id', 'title', 'chunk_ids')} for sub in waiting],
-                passages=[dict(id=p['id'], text=p['text']) for p in passages if p['id'] in visible])
-            if ctx.get('finder'):
-                output = ctx['finder'](packet, packet['passages'], mode='concept_subpoints', cancel=ctx.get('cancel'))
-            else:
-                if ctx.get('gateway') is None:
-                    raise StoreError('QUESTION_SPLITTER_REQUIRED', '小要点原文定位模型尚未接入。')
-                response = ctx['gateway'].complete('point_materials', [dict(
-                    role='user', content=json.dumps(packet, ensure_ascii=False))], system=_CONCEPT_SYSTEM,
-                    plan_id=plan_id, cancel=ctx.get('cancel'), enable_search=False, max_tokens=24576)
-                if ctx.get('on_call'): ctx['on_call']('point_materials', response)
-                output = _json(response.text)
-            rows = output.get('subpoints', []) if isinstance(output, dict) else []
-            proposed_by_id = {}
-            reasons_by_id = {}
-            for sub in waiting:
-                sid = sub['id']
-                matches = [r for r in rows if isinstance(r, dict) and r.get('id') == sid]
-                local = [by_id[cid] for cid in sub['chunk_ids'] if cid in by_id]
-                reasons = []
-                raw = matches[0].get('cloze', []) if len(matches) == 1 else []
-                if not isinstance(raw, list): raw = []
-                expanded = _expand_output(dict(cloze=raw), local, reasons)
-                proposed = []
-                for item in expanded['cloze']:
-                    proxy = dict(point, subpoint_id=sid, chunk_ids=sub['chunk_ids'])
-                    try: q = _concept_cloze(item, proxy, {p['id']: p for p in local}, local, rejected=reasons)
-                    except (ValueError, KeyError, TypeError):
-                        reasons.append(dict(reason='原文候选字段无效'))
-                        continue
-                    if q is not None: proposed.append(q)
-                proposed_by_id[sid] = proposed
-                reasons_by_id[sid] = reasons
-            proposed = [q for rows_for_subpoint in proposed_by_id.values() for q in rows_for_subpoint]
-            # A valid locator response with no usable candidate is a completed
-            # local decision. Save it before the checker call, which can fail
-            # due to transport or model availability.
-            for sub in waiting:
-                sid = sub['id']
-                if not proposed_by_id[sid]:
-                    checkpoint(sub, [], [dict(subpoint_id=sid,
-                        reason='没有合格的原文挖空候选', details=reasons_by_id[sid])])
-            checked = check_distractors(proposed, [point], passages, dict(ctx, plan_id=plan_id)) if proposed else []
-            for sub in waiting:
-                sid = sub['id']
-                if not proposed_by_id[sid]:
-                    continue
-                choices = [q for q in checked if q.get('subpoint_id') == sid]
-                good = next((q for q in choices if checked_question(q)), None)
-                if good:
-                    checkpoint(sub, [good], [])
-                    continue
-                reasons = reasons_by_id[sid]
-                if choices:
-                    reasons.append(dict(reason='干扰项核对未通过',
-                                        details=[q.get('distractor_check') for q in choices]))
-                reason = '干扰项核对未通过' if choices else '没有合格的原文挖空候选'
-                checkpoint(sub, [], [dict(subpoint_id=sid, reason=reason, details=reasons)])
+        # No generated gap questions: unresolved subpoints are terminal only
+        # after original exercises have been searched, and remain study-only.
+        for sub in point['subpoints']:
+            if sub['id'] not in terminal:
+                checkpoint(sub, [], [dict(subpoint_id=sub['id'], reason='资料中没有原题')])
 
         saved_point = store._get('points', plan_id, point['id'])
         complete_terminal = set(saved_point.get('subpoint_preparation', {}).get('processed_subpoints', {}))
@@ -614,7 +523,7 @@ def _prepare_concept_point(store, plan_id, point, ctx):
         final = [q for q in final if point['id'] in q.get('point_ids', []) and q.get('subpoint_id') in valid]
         prepared = {q['subpoint_id'] for q in final}
         result = dict(passages=len(point['chunk_ids']), questions=len(final),
-                      cloze=sum(q.get('origin') == 'cloze' for q in final), skipped=len(valid - prepared))
+                      skipped=len(valid - prepared))
         current = store._get('points', plan_id, point['id'])
         marker = current.get('subpoint_preparation', {})
         marker.update(state='done', fingerprint=fingerprint, result=result,
@@ -645,10 +554,8 @@ def _prepare_concept_module(store,plan_id,module_id,points,ctx,progress):
         rows=assessment_questions(store.records('question_bank',plan_id),module_id)
         rejected=[r for p in store.records('points',plan_id) if p['module_id']==module_id
                   for r in p.get('subpoint_preparation',{}).get('rejections',[])]
-        cloze_points={pid for q in rows if q.get('origin')=='cloze' for pid in q.get('point_ids',[])}
         result=dict(points=len(points),questions=len(rows),objective=sum(q['kind']!='recall' for q in rows),
-            recall=sum(q['kind']=='recall' for q in rows),rejected=len(rejected),question_extraction_done=True,
-            cloze_points=len(cloze_points),cloze_heavy=False)
+            recall=sum(q['kind']=='recall' for q in rows),rejected=len(rejected),question_extraction_done=True)
         result['supplemental_questions'] = len(question_bank.supplemental_question_ids(
             store, plan_id, module_id, cutoff=supplemental_after))
         with store.transaction():
@@ -663,236 +570,3 @@ def _prepare_concept_module(store,plan_id,module_id,points,ctx,progress):
                 at=datetime.now(timezone.utc).isoformat())
             store._put('modules',plan_id,current)
         return result
-
-
-# Original-span compiler and distractor review reused from c95b0032.
-def _quote(value, text):
-    """Expand short, unique anchors using only the selected original chunk."""
-    if isinstance(value, str): return value  # Existing offline locator contract.
-    if not isinstance(value, dict) or set(value) - {'quote', 'end_quote'}:
-        raise ValueError('原文指针无效')
-    start = value.get('quote')
-    end = value.get('end_quote')
-    # Prefer <=160-character anchors in the prompt; accept one whole original
-    # sentence up to 512 when the locator sends it. Uniqueness still applies.
-    if not isinstance(start, str) or not start or len(start)>512 or text.count(start)!=1:
-        raise ValueError('原文起点不唯一或不存在')
-    left = text.index(start)
-    if end is None: return start
-    if not isinstance(end, str) or not end or len(end)>512 or text.count(end)!=1:
-        raise ValueError('原文终点不唯一或不存在')
-    right = text.index(end)+len(end)
-    if right < left+len(start): raise ValueError('原文终点在起点之前')
-    return text[left:right]
-
-
-def _literal_member(value, sentence):
-    # Subject/value fields name literal fragments, not occurrence offsets. A
-    # subject may also occur inside its value (栈 / 压栈); containment suffices.
-    if isinstance(value,dict) and set(value)=={'quote'}:
-        quote=value['quote']
-        if not isinstance(quote,str) or not quote.strip() or len(quote)>512 or quote not in sentence:
-            raise ValueError('对象或对照值不在原句中')
-        return quote
-    return _quote(value,sentence)
-
-
-def _keyword_quote(value, passages):
-    """Resolve an original distractor anchor in its visible source chunks.
-
-    The answer chunk is not the distractor's source. Identical expansions in
-    multiple chunks are harmless; different expansions are ambiguous. Actual
-    chapter/point eligibility is still checked by the cloze compiler.
-    """
-    matches=set()
-    for passage in passages:
-        try:matches.add(_quote(value,passage['text']))
-        except ValueError:continue
-    if len(matches)!=1:raise ValueError('干扰片段原文指针不存在或展开不唯一')
-    return matches.pop()
-
-
-def _expand_output(output, passages, rejected=None):
-    by_id={p['id']:p['text'] for p in passages}
-    rows=[]
-    for raw in output.get('found',[])[:8]:
-        try:
-            item=dict(raw);question=by_id[item['question_chunk']];answer=by_id[item['answer_chunk']]
-            item['stem']=_quote(item['stem'],question)
-            item['options']=[_quote(v,question) for v in item.get('options',[])]
-            item['answer_quote']=_quote(item['answer_quote'],answer)
-            item['explanation']=_quote(item.get('explanation',''),answer)
-            if item['kind']=='fill':
-                item['answer']=[[_quote(v,answer) for v in group] if isinstance(group,list)
-                                else [_quote(group,answer)] for group in item['answer']]
-            elif item['kind'] not in ('choice','multi'):item['answer']=_quote(item['answer'],answer)
-            rows.append(item)
-        except (ValueError,KeyError,TypeError):continue
-    cloze=[]
-    for raw in output.get('cloze',[])[:3]:
-        try:
-            item=dict(raw);text=by_id[item['chunk_id']]
-            item['sentence']=_quote(item['sentence'],text)
-            item['word']=_quote(item['word'],item['sentence'])
-            if 'subject' in item:item['subject']=_literal_member(item['subject'],item['sentence'])
-            if isinstance(item.get('answer_parts'),list):item['answer_parts']=[_quote(v,item['sentence']) for v in item['answer_parts']]
-            contrasts=[]
-            for contrast in item.get('contrasts',[]):
-                try:
-                    c=dict(contrast);quote=_quote(c['contrast_quote'],by_id[c['chunk_id']])
-                    c['contrast_quote']=quote
-                    for key in ('contrast_subject','contrast_value'):c[key]=_literal_member(c[key],quote)
-                    contrasts.append(c)
-                except (ValueError,KeyError,TypeError) as exc:
-                    if rejected is not None:rejected.append(dict(pointer=raw,contrast=contrast,reason='对照指针无效：'+str(exc)))
-            item['contrasts']=contrasts
-            keywords=[]
-            for value in item.get('keywords',[]):
-                try:keywords.append(_keyword_quote(value,passages) if isinstance(value,dict) else value)
-                except ValueError as exc:
-                    if rejected is not None:rejected.append(dict(pointer=raw,keyword=value,reason=str(exc)))
-            item['keywords']=keywords
-            cloze.append(item)
-        except (ValueError,KeyError,TypeError) as exc:
-            if rejected is not None:rejected.append(dict(pointer=raw,reason='原文指针无效：'+str(exc)))
-    return dict(passages=[v for v in output.get('passages',[]) if isinstance(v,str) and v in by_id],found=rows,cloze=cloze)
-
-
-def _concept_cloze(item,point,by_id,passages,*,minimum_distractors=2,allow_sentence_terms=False,rejected=None):
-    def reject(reason):
-        if rejected is not None:rejected.append(dict(pointer=item,role='quick' if allow_sentence_terms else 'bank',reason=reason))
-        return None
-    if not isinstance(item.get('target'),str) or not item['target'].strip():return reject('缺少掌握目标问题 target')
-    if item.get('chunk_id') not in by_id:return reject('原文段落不在本点关联范围')
-    chunk=by_id[item['chunk_id']]
-    sentence,word=item.get('sentence'),item.get('word')
-    # Exact quote and exact original word: even punctuation is retained in stem.
-    if not isinstance(sentence,str) or sentence not in chunk['text']:return reject('原句不在原文中')
-    reason=blank_rejection(sentence,word)
-    if reason:return reject(reason)
-    if '____' in sentence:return reject('原句已含空位，无法唯一定位本次空')
-    parts=parallel_answer_parts(sentence,word,item.get('answer_parts')) if not allow_sentence_terms else ()
-    # A phrase-length gap needs the goal question on the card as well: the
-    # remaining clause alone may not tell the learner what is being asked.
-    stem=item['target'].strip()+'\n'+sentence.replace(word,'____',1)
-    subject=item.get('subject')
-    if not isinstance(subject,str) or not subject.strip() or subject not in sentence:return reject('本题对象不在答案原句中')
-    candidates=[];evidence=[]
-    option_reasons=[]
-    originals={p['id']:p for p in passages}
-    for contrast in item.get('contrasts',[]):
-        if not isinstance(contrast,dict):option_reasons.append('对照字段无效');continue
-        original=originals.get(contrast.get('chunk_id'));quote=contrast.get('contrast_quote');other=contrast.get('contrast_subject');term=contrast.get('contrast_value')
-        if not original or original['source_id']!=chunk['source_id']:option_reasons.append('对照不在同一资料');continue
-        if not all(isinstance(v,str) and v.strip() for v in (quote,other,term)) or quote not in original['text'] or other not in quote or term not in quote:
-            option_reasons.append('对照句、对象或值对不上逐字原文');continue
-        if overlapping_options(subject,other):option_reasons.append('对照对象与本题对象相同或包含');continue
-        if any(overlapping_options(term,answer) for answer in (parts or (word,))):option_reasons.append('选项与答案重叠或同义');continue
-        if any(overlapping_options(term,other) for other in candidates):option_reasons.append('选项之间重叠或同义');continue
-        candidates.append(term);evidence.append({key:contrast[key] for key in ('chunk_id','contrast_quote','contrast_subject','contrast_value')})
-    if len(candidates)<minimum_distractors:return reject('可用干扰片段不足：'+'；'.join(dict.fromkeys(option_reasons or ['未提供足够同类原文片段'])))
-    options=sorted([*(parts or (word,)),*candidates[:3]])
-    return _base(point,'multi' if parts else 'choice',stem,[options.index(p) for p in (parts or (word,))],
-        'cloze',chunk,chunk,options=options,target=item['target'].strip(),subject=subject,
-        contrasts=[e for e in evidence if e['contrast_value'] in options])
-
-
-_DISTRACTOR_SYSTEM = '''你是原文检查员，只检查给出的题目干扰项，不出题、不解题、不改任何题目。
-逐题逐个检查不是正确答案的选项：原文有没有说它对本题对象也成立？只返回严格JSON：
-{"questions":[{"id":"原id","checks":[{"index":原选项下标,"verdict":"also_supported或not_supported","quote":"逐字原文或空字符串"}]}]}。
-also_supported必须给出本题原文中的逐字quote作为证据；not_supported的quote必须为空。没把握不要猜，可漏答该题，程序会整题丢弃。
-每道题必须完整列出所有干扰项的下标且仅列干扰项。不要增删改写题面、答案、选项，不给替代选项。原文中的其他对象具有此值不等于本题对象具有此值。注意同一时间的不同表示、地点上下位范围、同义说法也可能对本题对象成立。'''
-
-
-def check_distractors(questions, points, passages, ctx):
-    """One delete-only batch, with immutable original options in the audit.
-
-    Invalid/missing answers reject only the affected question. Rejected records
-    persist as evidence but cannot be selected, nor be silently rechecked.
-    """
-    pending=[q for q in questions if 'distractor_check' not in q]
-    if not pending:return list(questions)
-    point_ids={p['id']:p for p in points};originals={p['id']:p for p in passages}
-    packets=[];visible=set()
-    for q in pending:
-        ids={cid for pid in q['point_ids'] for cid in point_ids.get(pid,{}).get('chunk_ids',[])}
-        if q.get('subpoint_id'):
-            ids={cid for pid in q['point_ids'] for s in point_ids.get(pid,{}).get('subpoints',[])
-                 if s['id']==q['subpoint_id'] for cid in s['chunk_ids']}
-        # Found questions also retain their question/answer text. A contrast
-        # from elsewhere in the same material can also support this object;
-        # the checker needs that paragraph, not just the point's own paragraph.
-        ids.update(p['id'] for p in passages if p['source']['locator'] in (q['source']['locator'],q['answer_source']['locator']))
-        ids &= set(originals)
-        source_ids={originals[cid]['source_id'] for cid in ids}
-        distractors=[]
-        for index,option in enumerate(q.get('options',[])):
-            if index in q['answer']:continue
-            refs={c['chunk_id'] for c in q.get('contrast_evidence',[])
-                if c.get('contrast_value')==option and c.get('chunk_id') in originals
-                and originals[c['chunk_id']]['source_id'] in source_ids}
-            if not refs:
-                refs={p['id'] for p in passages if p['source_id'] in source_ids and option in p['text']}
-            distractors.append(dict(index=index,passage_ids=sorted(refs)))
-            ids.update(refs)
-        visible.update(ids)
-        packets.append(dict(id=q['id'],point_ids=q['point_ids'],
-            kind=q['kind'],stem=q['stem'],answer=q['answer'],options=q.get('options',[]),passage_ids=sorted(ids),
-            distractor_passages=distractors))
-    packet=dict(questions=packets,passages=[dict(id=cid,text=originals[cid]['text']) for cid in sorted(visible)])
-    failure='';outputs=[]
-    _check(ctx)
-    try:
-        if ctx.get('distractor_checker'):reply=ctx['distractor_checker'](packet,cancel=ctx.get('cancel'))
-        else:
-            result=ctx['gateway'].complete('distractor_check',[dict(role='user',content=json.dumps(packet,ensure_ascii=False,sort_keys=True,separators=(',',':')))],
-                system=_DISTRACTOR_SYSTEM,cancel=ctx.get('cancel'),plan_id=ctx.get('plan_id',''),max_tokens=24576)
-            if ctx.get('on_call'):ctx['on_call']('distractor_check',result)
-            reply=result.text if hasattr(result,'text') else str(result)
-        output=reply if isinstance(reply,dict) else _json(reply)
-        if not isinstance(output,dict) or set(output)!= {'questions'} or not isinstance(output['questions'],list):raise ValueError('检查响应格式无效')
-        outputs=output['questions']
-    except ModelError:
-        # A failed transport/model call is not evidence that the question is
-        # unsuitable. Let the durable worker record failure and retry it.
-        raise
-    except OSError:
-        raise
-    except (ValueError,KeyError,TypeError) as exc:
-        _check(ctx)
-        failure='检查未能确定：'+getattr(exc,'code',type(exc).__name__)
-    _check(ctx)
-    by_question={}
-    for result in outputs:
-        if isinstance(result,dict) and isinstance(result.get('id'),str):by_question.setdefault(result['id'],[]).append(result)
-    checked=[]
-    for q,request in zip(pending,packets):
-        audit=[];reason=failure;remove=set();row=dict(q)
-        expected=set(range(len(q.get('options',[]))))-set(q['answer']) if q['kind'] in ('choice','multi') else set()
-        candidates=by_question.get(q['id'],[])
-        if not reason:
-            try:
-                if len(candidates)!=1:raise ValueError('漏答或重复回答本题')
-                result=candidates[0]
-                if set(result)!= {'id','checks'} or not isinstance(result['checks'],list):raise ValueError('本题检查格式无效')
-                seen=set();texts=[originals[cid]['text'] for cid in request['passage_ids']]
-                for item in result['checks']:
-                    if not isinstance(item,dict) or set(item)!= {'index','verdict','quote'}:raise ValueError('逐项检查格式无效')
-                    i=item['index'];verdict=item['verdict'];quote=item['quote']
-                    if type(i) is not int or i not in expected or i in seen:raise ValueError('检查漏项、重复或包含正确答案')
-                    if verdict not in ('also_supported','not_supported') or not isinstance(quote,str):raise ValueError('检查结论无效')
-                    if verdict=='also_supported' and (not quote.strip() or not any(quote in text for text in texts)):raise ValueError('也成立的quote对不上逐字原文')
-                    if verdict=='not_supported' and quote!='':raise ValueError('没有说成立不能附伪造quote')
-                    seen.add(i);removed=verdict=='also_supported'
-                    if removed:remove.add(i)
-                    audit.append(dict(option=q['options'][i],index=i,verdict=verdict,quote=quote,removed=removed))
-                if seen!=expected:raise ValueError('漏答干扰项')
-                if expected and len(expected-remove)<2:raise ValueError('删除后不足两个干扰项')
-                if remove:
-                    keep=[i for i in range(len(q['options'])) if i not in remove]
-                    row['options']=[q['options'][i] for i in keep]
-                    row['answer']=[keep.index(i) for i in q['answer']]
-            except (ValueError,KeyError,TypeError) as exc:reason=str(exc)
-        row['distractor_check']=dict(state='rejected' if reason else 'passed',checks=audit,reason=reason,at=datetime.now(timezone.utc).isoformat())
-        validate_question(row);checked.append(row)
-    return [q for q in questions if 'distractor_check' in q]+checked

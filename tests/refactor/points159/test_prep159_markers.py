@@ -86,5 +86,6 @@ def test_prep159_unprocessed_subpoint_still_reaches_finder(tmp_path):
         calls.append([s['id'] for s in packet['subpoints']])
         return {'subpoints': []}
     pm.prepare_point(store, 'p', store.records('points', 'p')[0], {'finder': finder})
-    assert calls == [['old-s1', 'old-s2']]
+    assert calls == []
+    assert pm.prepare_point(store, 'p', store.records('points', 'p')[0], {})['skipped'] == 2
     store.close()

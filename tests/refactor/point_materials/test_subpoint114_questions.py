@@ -57,17 +57,14 @@ def put(store,entity,row):
 
 def test_subpoint114_generate_tag_skip_persist_and_reopen(store,tmp_path):
     point=store.records('points','p')[0]
-    result=pm.prepare_point(store,'p',point,ctx())
-    assert result['questions']==1 and result['skipped']==2  # strict historical contrast containment rejects queue/priority queue
-    rows=store.records('question_bank','p')
-    assert rows[0]['subpoint_id']=='point-s2'
-    assert rows[0]['source']['locator'].endswith('[c2]')
-    assert qb.checked_question(rows[0]) and qb.assessment_question(rows[0])
+    result=pm.prepare_point(store,'p',point,dict(finder=lambda *a,**k:pytest.fail('must not generate cloze'),
+        distractor_checker=lambda *a,**k:pytest.fail('must not review cloze')))
+    assert result['questions']==0 and result['skipped']==3
+    assert store.records('question_bank','p')==[]
     reasons=store.records('points','p')[0]['subpoint_preparation']['rejections']
-    assert {r['subpoint_id'] for r in reasons}=={'point-s1','point-s3'}
+    assert {r['subpoint_id'] for r in reasons}=={'point-s1','point-s2','point-s3'}
     with CourseStore(store.account_id,tmp_path) as reopened:
-        assert pm.prepare_point(reopened,'p',point,{'finder':lambda *a,**k:pytest.fail('repeat locator')})==result
-        assert qb.assessment_question(reopened.records('question_bank','p')[0])
+        assert pm.prepare_point(reopened,'p',point,{'finder':lambda *a,**k:pytest.fail('repeat generation')})==result
 
 
 def test_subpoint114_three_subpoints_get_three_not_two_questions(store):
@@ -88,17 +85,13 @@ def test_subpoint114_three_subpoints_get_three_not_two_questions(store):
     assert pm.preparation_done(store,'p','m')
 
 
-def test_subpoint114_out_of_scope_pointer_is_rejected(store):
-    def bad(packet,*a,**k):return dict(subpoints=[dict(id=s['id'],cloze=[pointer('c1')]) for s in packet['subpoints']])
-    result=pm.prepare_point(store,'p',store.records('points','p')[0],dict(finder=bad,distractor_checker=reviewer))
+def test_subpoint114_cloze_candidates_are_ignored(store):
+    result=pm.prepare_point(store,'p',store.records('points','p')[0],dict(
+        finder=lambda *a,**k:pytest.fail('locator must not run'),
+        distractor_checker=lambda *a,**k:pytest.fail('checker must not run')))
     assert result['questions']==0
-    assert len(store.records('points','p')[0]['subpoint_preparation']['rejections'])==3
-
-
-def test_subpoint114_also_supported_or_missing_review_cannot_enter_bank(store):
-    result=pm.prepare_point(store,'p',store.records('points','p')[0],dict(finder=locator,distractor_checker=lambda *a,**k:dict(questions=[])))
-    assert result['questions']==0
-    assert any(r['reason']=='干扰项核对未通过' for r in store.records('points','p')[0]['subpoint_preparation']['rejections'])
+    assert all(r['reason']=='资料中没有原题'
+        for r in store.records('points','p')[0]['subpoint_preparation']['rejections'])
 
 
 def test_subpoint114_legacy_point_still_only_extracts_material_questions(store):
@@ -132,14 +125,12 @@ def test_subpoint114_mixed_module_preserves_legacy_questions_and_grading(store):
             options=c.get('options',[]),answer=c['answer'],objective_kind='fill') for c in packet['candidates']])
     pm.prepare_module(store,'p','m',dict(finder=locator,distractor_checker=reviewer,question_splitter=splitter),lambda *a:None)
     rows=qb.assessment_questions(store.records('question_bank','p'),'m')
-    assert len(rows)==2
-    assert len([q for q in rows if q.get('subpoint_id')=='point-s2'])==1
+    assert len(rows)==1
+    assert not any(q.get('subpoint_id')=='point-s2' for q in rows)
     old=next(q for q in rows if 'old' in q['point_ids'])
     assert 'subpoint_id' not in old
     from refactor.learning.course.answer_compare import grade
     assert grade(qb.grading_question(old),'2')[0]
-    new=next(q for q in rows if q.get('subpoint_id'))
-    assert grade(new,new['answer'])[0]
 
 
 def test_subpoint114_shared_original_exercise_counts_only_actual_admission(store):

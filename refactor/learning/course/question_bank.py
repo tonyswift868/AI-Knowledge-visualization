@@ -12,18 +12,7 @@ PURPOSES = frozenset(('quick', 'module', 'direct', 'final', 'retest', 'free'))
 FIELDS = frozenset(('id', 'module_id', 'point_ids', 'kind', 'stem', 'answer',
     'explanation', 'origin', 'source', 'answer_source', 'importance', 'uses', 'created_at'))
 OBJECTIVE_KINDS = frozenset(('choice', 'multi', 'fill', 'calc'))
-_SYNONYMS = (
-    ('协议','网络协议','protocol','network protocol'),
-    ('私有地址','私有IP地址','私网地址','内网地址','private','local','private IP','private IP address','local IP'),
-    ('CPU','中央处理器','处理器','central processing unit','processor'),
-    ('OS','操作系统','operating system'),
-    ('RAM','随机存取存储器','random access memory'),
-    ('数据库','database'), ('神经网络','neural network'),
-    ('防火墙','firewall'), ('Pa','帕','帕斯卡'), ('N','牛顿','newton'),
-    ('先进先出','FIFO','first in first out'), ('后进先出','LIFO','last in first out'),
-)
-# Ambiguity groups deliberately include overlapping concepts (e.g. protocol /
-# network protocol and processor / CPU). They are NOT acceptable fill answers.
+# Used by legacy original fill-answer grading.
 _SPELLINGS = (
     ('CPU','中央处理器','central processing unit'),
     ('OS','操作系统','operating system'),
@@ -38,67 +27,9 @@ def _term(value):
     return ' '.join(unicodedata.normalize('NFKC',value).casefold().split())
 
 
-def aliases(value):
-    normalized=_term(value)
-    return next((group for group in _SYNONYMS if normalized in {_term(x) for x in group}), (value,))
-
-
 def answer_spellings(value):
     normalized=_term(value)
     return next((group for group in _SPELLINGS if normalized in {_term(x) for x in group}), (value,))
-
-
-def overlapping_options(left, right):
-    """Conservative containment/synonym exclusion, never semantic guessing."""
-    a,b=_term(left),_term(right)
-    return not a or not b or a in b or b in a or bool({_term(x) for x in aliases(left)} & {_term(x) for x in aliases(right)})
-
-
-def _occurs(term, text):
-    pattern=re.escape(term)
-    if re.search(r'[a-zA-Z]',term):pattern=r'(?<![a-zA-Z0-9])'+pattern+r'(?![a-zA-Z0-9])'
-    return bool(re.search(pattern,text,re.I))
-
-
-def safe_blank(sentence, word):
-    return blank_rejection(sentence,word) is None
-
-
-def parallel_answer_parts(sentence, word, parts):
-    """Verify a complete, contiguous coordination, never infer meaning/types.
-
-    Missing/partial lists, separate clauses and repeated/overlapping spans
-    fall back to a single original-span answer. The locator only points to
-    terms; conjunctions and complete coverage are checked here.
-    """
-    if blank_rejection(sentence,word) or not isinstance(parts,list) or len(parts)<2:return ()
-    if any(not isinstance(p,str) or not p.strip() or sentence.count(p)!=1 for p in parts):return ()
-    ordered=sorted(parts,key=word.find)
-    if any(p not in word for p in ordered) or any(overlapping_options(a,b) for i,a in enumerate(ordered) for b in ordered[i+1:]):return ()
-    if not word.startswith(ordered[0]) or not word.endswith(ordered[-1]):return ()
-    gaps=[]
-    for left,right in zip(ordered,ordered[1:]):
-        end=word.find(left)+len(left);start=word.find(right)
-        if start<end:return ()
-        gaps.append(word[end:start].strip())
-    chinese=all(re.fullmatch(r'、|(?:、)?(?:以及|和|及|与)',g) for g in gaps)
-    english=all(g==',' for g in gaps[:-1]) and bool(re.fullmatch(r',?\s*and',gaps[-1],re.I))
-    if not (chinese or english):return ()
-    before,after=sentence.split(word,1)
-    # A claimed answer cannot hide another sibling immediately outside it.
-    if re.search(r'(?:、|,|以及|和|及|与|\band)\s*$',before,re.I):return ()
-    if re.match(r'\s*(?:、|,\s*(?![;.]|$)|以及|和|及|与|\band\b)',after,re.I):return ()
-    return tuple(ordered)
-
-
-def blank_rejection(sentence, word):
-    """Literal/ambiguity check for any span, without semantic-role restrictions."""
-    if not isinstance(sentence,str) or not isinstance(word,str) or not word.strip():return '原句或答案片段为空'
-    if word not in sentence:return '答案片段不在原句中'
-    if sentence.count(word)!=1:return '答案片段在句中出现多次'
-    rest=sentence.replace(word,'',1)
-    if any(_occurs(alias,rest) for alias in aliases(word)):return '句子其余部分含答案别称或重复写法'
-    return None
 
 
 def fixed_answer(value):
@@ -149,6 +80,12 @@ def contains_original(quote, text):
 
 def retire_legacy_question(row):
     if row.get('role') == 'retired': return row
+    # The explicit origin is the provenance contract for generated cloze rows.
+    # Preserve the row for answer/history rendering, but never admit it to a
+    # current module, retest, or final assessment after migration.
+    if row.get('origin') == 'cloze':
+        return dict(row, role='retired', retirement=dict(version=8, preparation_reset=False,
+            previous_role=row.get('role', 'bank'), reason='原文挖空题已退出考核，历史作答保留。'))
     if row.get('subpoint_id') and checked_question(row): return row
     if row.get('kind') in ('objective', 'recall') and row.get('origin') == 'found': return row
     return dict(row, role='retired', retirement=dict(version=8, preparation_reset=False, previous_role=row.get('role', 'bank'),
@@ -322,7 +259,7 @@ def select_question(rows, point_id, purpose, exclude_ids=()):
 def assessment_question(row):
     """Only material-provided questions participate in question-based assessment."""
     return (row.get('kind') in ('objective','recall','choice','multi','fill','calc') and row.get('role','bank')=='bank'
-            and (row.get('origin')!='cloze' or bool(row.get('subpoint_id')) and checked_question(row))
+            and row.get('origin')!='cloze'
             and row.get('question_origin')!='web'
             and (row.get('kind') in ('objective','recall') or answer_compare.can_grade(row))
             and row.get('distractor_check',{}).get('state')!='rejected')
@@ -404,23 +341,18 @@ def recall_key_point_headings(row):
 
 def assessment_questions(rows, module_id=None):
     eligible = [q for q in rows if assessment_question(q) and (module_id is None or q['module_id']==module_id)]
-    # Concepts retain one objective and one cloze per subpoint. A subpoint may
-    # also have several distinct source recall questions.
+    # Concepts retain one objective per subpoint and distinct source recall questions.
     selected = {}; recall_content = set(); result = []
     for q in eligible:
         sid=q.get('subpoint_id')
         if sid:
             group=(q['module_id'],sid)
             recall=q.get('kind')=='recall' and q.get('origin')=='found'
-            cloze=q.get('origin')=='cloze'
-            state=selected.setdefault(group,dict(objective=False,cloze=False))
+            state=selected.setdefault(group,dict(objective=False))
             if recall:
                 content=(group,original_text(q.get('stem','')),original_text(q.get('reference','')))
                 if content in recall_content: continue
                 recall_content.add(content)
-            elif cloze:
-                if state['cloze']: continue
-                state['cloze']=True
             else:
                 if state['objective']: continue
                 state['objective']=True
