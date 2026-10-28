@@ -392,7 +392,10 @@ class MasteryBook:
             elif event.context=='check' and all(m['state'] in ('passed','skipped') for m in modules.values()):
                 history.append(qid);q['last_question']=len(history)-1
                 q['check_questions']+=1;q['check_correct']+=int(correct)
-                if not q['passed'] or not correct:
+                # Old clients could re-ask a passed question as a spacing
+                # filler. Keep that immutable answer in history and statistics,
+                # but never let a stale post-pass answer revoke mastery.
+                if not q['passed']:
                     if correct:q['streak']+=1
                     else:q['ever_wrong']=True;q['streak']=0;q['check_errors_before_pass']+=1;q['check_passed_at']=None
                     q['passed']=q['streak'] >= (2 if q['ever_wrong'] else 1)
@@ -467,9 +470,12 @@ class MasteryBook:
             return (gap<min_gap,last is not None,last if last is not None else -1,order[qid])
         eligible=[qid for qid in pending if not rank(qid)[0]]
         if eligible:return sorted(eligible,key=rank)
-        # Passed questions can separate repeats too. A small bank rotates all
-        # other questions before returning to the still-pending one.
-        others=[qid for qid in self._final_question_ids if not history or qid!=history[-1]]
+        # Passed questions are outside the pending pool, even as spacing
+        # fillers. Repeat the sole remaining question immediately; otherwise
+        # keep rotating among pending questions when the preferred gap cannot
+        # be met.
+        if len(pending)==1:return pending
+        others=[qid for qid in pending if not history or qid!=history[-1]]
         return sorted(others or pending,key=lambda qid:(qs[qid]['last_question'] is not None,
             qs[qid]['last_question'] if qs[qid]['last_question'] is not None else -1,order[qid]))
 

@@ -56,12 +56,18 @@ def test_exact_ninety_percent_can_pass_with_one_wrong():
     close(b,'m0');assert b.module('m0').state=='passed'
 
 
-def test_passed_separator_question_wrong_requires_two_again():
+def test_stale_wrong_after_pass_is_historical_and_unpassed_wrong_needs_two_correct():
     b=book();detect(b)
     judge(b,'q0-1',True,'check');assert b.question('q0-1').passed
-    judge(b,'q0-1',False,'check');assert not b.question('q0-1').passed
-    judge(b,'q0-1',True,'check');assert not b.question('q0-1').passed
-    judge(b,'q0-1',True,'check');assert b.question('q0-1').passed
+    judge(b,'q0-1',False,'check')  # An old-client spacer result cannot revoke mastery.
+    assert b.question('q0-1').passed and not b.question('q0-1').ever_wrong
+    assert b.question('q0-1').check_questions==2 and b.question('q0-1').check_correct==1
+    assert b.stats()['questions']['q0-1']['check_errors_before_pass']==0
+
+    judge(b,'q0-0',False,'check')  # A genuine pending question still resets its streak.
+    assert not b.question('q0-0').passed and b.question('q0-0').ever_wrong
+    judge(b,'q0-0',True,'check');assert not b.question('q0-0').passed
+    judge(b,'q0-0',True,'check');assert b.question('q0-0').passed
 
 def test_first_correct_once_wrong_twice_and_reset():
     b=book();detect(b,('q0-0',));judge(b,'q0-0',True,'retest','r');close(b,'m0','r','retest')
@@ -222,7 +228,12 @@ def test_real_room_final_wrong_streak_spacing_and_restart(env):
         if not v['question']:
             v = act(e, 'start_check'); continue
         qid = v['question']['id']
-        if qid in last: assert len(asked) - last[qid] - 1 >= 3
+        pending = e.store.load_mastery(PLAN).next_check_questions()
+        assert qid == pending[0]
+        # The usual gap applies only while another unresolved question can
+        # fill it; a sole remaining question is asked again immediately.
+        if qid in last and len(pending) > 1:
+            assert len(asked) - last[qid] - 1 >= 3
         last[qid] = len(asked); asked.append(qid)
         good = qid != 'q0-2' or intentionally_wrong
         intentionally_wrong |= not good

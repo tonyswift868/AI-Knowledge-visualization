@@ -475,12 +475,22 @@ class Classroom:
         reconcile(state)
 
     def _reconcile_kept_check(self, course, state):
-        """An explicit keep-one grant may supersede a saved, already-passed card.
+        """Reconcile stale final-check cards against synchronized mastery.
 
-        Reconcile only this operator action, not ordinary spacing questions or
-        any answer history. An existing keep card retains its reveal/ticks.
+        An older client may have saved a passed question as a spacing filler.
+        Drop that unanswered card and resume the actual pending pool. Also
+        retain the explicit keep-one grant reconciliation below.
         """
         if state.get('phase')!='check' or state.get('step')!='checking':return state
+        book=course.book()
+        pending=(state.get('pending') or {}).get('question') or {}
+        pending_id=pending.get('id')
+        if pending_id:
+            status=self._question_state(book,pending_id)
+            if status is not None and status.passed:
+                state.update(pending=None,check=None,check_used=0,resume_kept_check=True)
+                state.pop('failure',None);state.pop('recall_result',None)
+                return state
         grants=[row for row in course.store.records('judgements',course.plan_id)
                 if (row.get('details') or {}).get('user_override') is True
                 and (row.get('details') or {}).get('grant_scope')=='except_question']
@@ -488,7 +498,6 @@ class Classroom:
         latest=max(grants,key=lambda row:(row['event']['seq'],row['id']))
         details=latest['details'];grant_id=details['grant_id'];keep=details['keep_question_id']
         if state.get('keep_question_grant')==grant_id:return state
-        book=course.book()
         unresolved=[q['id'] for q in self._questions(course) if not book.question(q['id']).passed]
         if unresolved!=[keep]:return state
         state['keep_question_grant']=grant_id
