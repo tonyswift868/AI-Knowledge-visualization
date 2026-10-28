@@ -282,6 +282,9 @@ class RagService:
         self._closed = False
         self._picked_paths = set()
         self._plan_documents = {}
+        self._incomplete_documents = set()
+        self._remote_capabilities = set()
+        self._repair_verified_documents = set()
 
     def close(self):
         with self._lock:
@@ -299,6 +302,7 @@ class RagService:
     def _course_documents(self):
         plans = []
         documents = {}
+        incomplete_documents = set()
         for plan in self.store.list_plans(include_archived=True):
             plan_id = plan["id"]
             plan_docs = []
@@ -315,12 +319,11 @@ class RagService:
                     continue
                 rows = sorted(chunks_by_source.get(source["id"], []),
                               key=lambda row: (row.get("position", 0), row["id"]))
-                if not rows:
-                    continue
                 body = "\n\n".join(str(row.get("text") or "") for row in rows)
                 digest = source.get("sha256")
                 if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
                     digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+                declared_chunks = source.get("chunk_count")
                 source_name = (source.get("final_url") or source.get("url") or source.get("filename")
                                or source.get("title") or "计划资料")
                 title = source.get("title") or Path(str(source_name).split("?", 1)[0]).name or "计划资料"
@@ -328,7 +331,15 @@ class RagService:
                     "page": row.get("page_start", row.get("page")),
                     "section": _section_text(row.get("section"))}
                     for row in rows if str(row.get("text") or "").strip()]
-                if not normalized:
+                if (not rows or not normalized or type(declared_chunks) is int
+                        and (len(rows) != declared_chunks or len(normalized) != declared_chunks)):
+                    incomplete_documents.add(digest)
+                    saved = self.local.document(digest)
+                    if saved is None or (type(declared_chunks) is int
+                            and len(saved.get("chunks", ())) < declared_chunks):
+                        self.local.save_document(digest, title, str(source_name), normalized)
+                    if digest not in plan_docs:
+                        plan_docs.append(digest)
                     continue
                 existing = documents.get(digest)
                 if existing is None:
@@ -344,10 +355,14 @@ class RagService:
                           or plan.get("final_goal") or "未命名计划",
                           "document_ids": plan_docs})
         self._plan_documents = documents
+        self._incomplete_documents = incomplete_documents - documents.keys()
         return plans, documents
 
     def _remote_documents(self, cancel=None):
         value = self.transport.request_json("GET", API + "/documents", cancel=cancel)
+        capabilities = value.get("capabilities", []) if isinstance(value, dict) else []
+        self._remote_capabilities = {item for item in capabilities if isinstance(item, str)} \
+            if isinstance(capabilities, list) else set()
         rows = value if isinstance(value, list) else value.get("documents", [])
         if not isinstance(rows, list):
             raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的资料列表无效。")
@@ -405,13 +420,80 @@ class RagService:
     def _remote_complete(remote, total):
         if not remote:
             return False
+        if remote.get("repair_complete") is False:
+            return False
         status = remote.get("status")
         if status is not None:
-            return status in {"ready", "complete", "completed"}
+            if status not in {"ready", "complete", "completed"}:
+                return False
+            uploaded, remote_total = remote.get("uploaded_chunks"), remote.get("total_chunks")
+            return not (type(uploaded) is int and type(remote_total) is int
+                        and uploaded < remote_total)
         if remote.get("ready") is True:
             return True
         uploaded, remote_total = remote.get("uploaded_chunks"), remote.get("total_chunks", total)
         return type(uploaded) is int and type(remote_total) is int and remote_total > 0 and uploaded >= remote_total
+
+    @staticmethod
+    def _repair_chunk_digest(chunk):
+        return hashlib.sha256(str(chunk.get("text") or "").encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _document_content_digest(chunks):
+        return hashlib.sha256("".join(str(chunk.get("text") or "") for chunk in chunks)
+                              .encode("utf-8")).hexdigest()
+
+    def _send_repair_batches(self, row, *, cancel=None, on_progress=None):
+        chunks = row["chunks"]
+        manifest = [self._repair_chunk_digest(chunk) for chunk in chunks]
+        base = {"title": row["title"], "source": row["source"], "total_chunks": len(chunks),
+                "repair_existing": True, "repair_manifest": manifest,
+                "repair_content_sha256": self._document_content_digest(chunks)}
+        if len(_json({**base, "chunks": []}).encode("utf-8")) >= BATCH_BYTES:
+            raise BridgeError("RAG_REPAIR_MANIFEST_TOO_LARGE", "资料分块清单超过单次补传容量，无法安全补齐。")
+        batches, batch = [], []
+        for seq, chunk in enumerate(chunks):
+            # Course-source chunks have no persisted RAG seq yet; the manifest
+            # always uses this complete source's ordered zero-based positions.
+            payload_chunk = {key: chunk.get(key) for key in ("text", "page", "section")}
+            payload_chunk["seq"] = seq
+            candidate = batch + [payload_chunk]
+            if len(_json({**base, "chunks": candidate}).encode("utf-8")) > BATCH_BYTES and batch:
+                batches.append(batch)
+                batch = [payload_chunk]
+            else:
+                batch = candidate
+            if len(_json({**base, "chunks": batch}).encode("utf-8")) > BATCH_BYTES:
+                raise BridgeError("RAG_CHUNK_TOO_LARGE", "资料分块超过单次补传容量，无法安全补齐。")
+        if batch:
+            batches.append(batch)
+        for part in batches:
+            _cancel(cancel)
+            receipt = self.transport.request_json("POST", f"{API}/documents/{row['id']}/chunks",
+                payload={**base, "chunks": part}, cancel=cancel)
+            if (not isinstance(receipt, dict) or receipt.get("requested_document_id") != row["id"]
+                    or receipt.get("document_id") != row["id"] or receipt.get("status") != "ready"
+                    or type(receipt.get("received_chunks")) is not int
+                    or type(receipt.get("total_chunks")) is not int
+                    or type(receipt.get("repair_complete")) is not bool):
+                raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的补传状态无效。")
+            received, total = receipt["received_chunks"], receipt["total_chunks"]
+            self.local.set_remote_state(row["id"], row["id"], "ready", received, total)
+            if receipt["repair_complete"]:
+                if received != total:
+                    raise BridgeError("RAG_RESPONSE_INVALID", "资料服务报告补传完成但块数不一致。")
+                ready = self._doc_view({**(self.local.document(row["id"]) or row),
+                    "canonical_id": row["id"], "canonical_total_chunks": total,
+                    "uploaded_chunks": received, "status": "ready"}, row.get("plan_ids", ()))
+                if on_progress:
+                    on_progress(ready)
+                return ready
+            # The server keeps the previous ready data searchable during repair.
+            if on_progress:
+                on_progress(self._doc_view({**row, "status": "ready",
+                    "uploaded_chunks": received, "canonical_total_chunks": total},
+                    row.get("plan_ids", ())))
+        raise BridgeError("RAG_REPAIR_INCOMPLETE", "资料服务尚未确认所有本地分块，旧资料仍保留，请稍后重试。")
 
     def sources(self, cancel=None):
         self._check_open()
@@ -441,6 +523,29 @@ class RagService:
             # documents or saved sessions. Keep the distinction visible.
             remote = {}
             server_status = {"state": "unavailable", "message": str(exc)}
+        repair_errors = {}
+        if "append_only_chunk_repair_v1" in self._remote_capabilities:
+            for doc_id, row in current.items():
+                state = remote.get(doc_id)
+                if (doc_id in self._incomplete_documents or doc_id in self._repair_verified_documents
+                        or not state or state.get("id") != doc_id or state.get("status") != "ready"):
+                    continue
+                local_total = len(row.get("chunks", ()))
+                remote_total = state.get("total_chunks")
+                received = state.get("uploaded_chunks")
+                if (type(remote_total) is int and remote_total == local_total
+                        and type(received) is int and received == remote_total):
+                    continue
+                try:
+                    repaired = self._send_repair_batches(row, cancel=cancel)
+                    state["total_chunks"] = repaired["total_chunks"]
+                    state["uploaded_chunks"] = repaired["uploaded_chunks"]
+                    state["status"] = "ready"
+                    self._repair_verified_documents.add(doc_id)
+                except BridgeError as exc:
+                    if exc.code == "CANCELLED":
+                        raise
+                    repair_errors[doc_id] = exc.message
         for doc_id, row in list(all_local.items()):
             canonical_id = row.get("canonical_id") or doc_id
             remote_row = remote.get(doc_id) or remote.get(canonical_id)
@@ -459,6 +564,13 @@ class RagService:
             all_local[doc_id] = self.local.document(doc_id)
         docs = [self._doc_view(row, plan_refs.get(doc_id, ()), remote.get(doc_id))
                 for doc_id, row in all_local.items()]
+        for item in docs:
+            if item["id"] in repair_errors:
+                item["error"] = repair_errors[item["id"]]
+        for item in docs:
+            if item["id"] in self._incomplete_documents:
+                item["error"] = "本地资料仍在同步；当前远端状态保留，本次不会覆盖或重复上传。"
+                continue
         docs.sort(key=lambda item: (item["title"].casefold(), item["id"]))
         return {"plans": plans, "documents": docs, "sessions": self.local.list_sessions(),
                 "server_status": server_status}
@@ -530,13 +642,59 @@ class RagService:
     def ingest(self, document_ids, *, cancel=None, on_progress=None):
         self._check_open()
         ids = self._ids(document_ids)
+        self._course_documents()
         remote = self._remote_documents(cancel=cancel)
         result = []
         for doc_id in ids:
             _cancel(cancel)
+            if doc_id in self._incomplete_documents:
+                row = self.local.document(doc_id)
+                if row is None:
+                    raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "所选资料仍在同步中，请稍后刷新。")
+                remote_row = remote.get(doc_id)
+                view = self._doc_view(row, row.get("plan_ids", ()), remote_row)
+                view["error"] = "本地资料仍在同步；保留远端现有状态，等本地完整后再补传。"
+                result.append(view)
+                if on_progress:
+                    on_progress(view)
+                continue
             row = self._document_chunks(doc_id)
-            if self._remote_complete(remote.get(doc_id), len(row["chunks"])):
-                state = remote[doc_id]
+            remote_row = remote.get(doc_id)
+            remote_total = remote_row.get("total_chunks") if remote_row else None
+            remote_uploaded = remote_row.get("uploaded_chunks") if remote_row else None
+            remote_status = remote_row.get("status") if remote_row else None
+            needs_repair = bool(remote_row and remote_row.get("id") == doc_id and (
+                remote_status == "ready" and (
+                    remote_total != len(row["chunks"])
+                    or type(remote_uploaded) is int and type(remote_total) is int
+                    and remote_uploaded < remote_total)
+                or remote_status == "uploading" and remote_total != len(row["chunks"])))
+            if needs_repair:
+                if "append_only_chunk_repair_v1" not in self._remote_capabilities:
+                    message = "资料服务尚不支持安全补传；本地资料和远端现有内容均保留。"
+                    view = self._doc_view({**row, "status": remote_status,
+                        "uploaded_chunks": int(remote_uploaded or 0),
+                        "canonical_total_chunks": int(remote_total or 0), "error": message},
+                        row.get("plan_ids", ()))
+                else:
+                    try:
+                        view = self._send_repair_batches(row, cancel=cancel, on_progress=on_progress)
+                    except BridgeError as exc:
+                        if exc.code == "CANCELLED":
+                            raise
+                        message = exc.message
+                        self.local.set_remote_state(doc_id, doc_id, remote_status,
+                            int(remote_uploaded or 0), int(remote_total or 0), message)
+                        view = self._doc_view({**row, "status": remote_status,
+                            "uploaded_chunks": int(remote_uploaded or 0),
+                            "canonical_total_chunks": int(remote_total or 0), "error": message},
+                            row.get("plan_ids", ()))
+                result.append(view)
+                if on_progress:
+                    on_progress(view)
+                continue
+            if self._remote_complete(remote_row, len(row["chunks"])):
+                state = remote_row
                 received = int(state.get("uploaded_chunks", len(row["chunks"])) or 0)
                 self.local.set_remote_state(doc_id, state.get("id", doc_id), "ready", received,
                                             int(state.get("total_chunks", len(row["chunks"])) or 0))

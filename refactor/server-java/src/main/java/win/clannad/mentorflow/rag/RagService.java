@@ -40,6 +40,20 @@ public final class RagService {
         String source = required(body.get("source"), "source", 4096);
         int total = positiveInt(body.get("total_chunks"), "total_chunks", MAX_CHUNKS_PER_DOCUMENT);
         List<Map<String, Object>> chunks = chunkBatch(body.get("chunks"), total);
+        if (Boolean.TRUE.equals(body.get("repair_existing"))) {
+            List<String> manifest = repairManifest(body.get("repair_manifest"), total, chunks);
+            String contentDigest = required(body.get("repair_content_sha256"), "repair_content_sha256", 64);
+            if (!contentDigest.matches("[0-9a-f]{64}"))
+                throw invalid("repair_content_sha256", "must be a SHA-256 digest");
+            try {
+                return repository.transaction(scope, true, jdbc -> repairBatch(
+                        jdbc, scope, requestedId, title, source, manifest, contentDigest, chunks));
+            } catch (RagFailure failure) {
+                throw failure;
+            } catch (RuntimeException failure) {
+                throw new RagFailure("RAG_EMBEDDING_UNAVAILABLE", "Could not calculate chunk embeddings", 503);
+            }
+        }
         try {
             return repository.transaction(scope, true, jdbc -> uploadBatch(jdbc, scope, requestedId, title, source, total, chunks));
         } catch (RagFailure failure) {
@@ -47,6 +61,120 @@ public final class RagService {
         } catch (RuntimeException failure) {
             throw new RagFailure("RAG_EMBEDDING_UNAVAILABLE", "Could not calculate chunk embeddings", 503);
         }
+    }
+
+    /** Append only missing content while preserving every previously stored chunk row. */
+    private Map<String, Object> repairBatch(JdbcTemplate jdbc, String scope, String requestedId,
+            String title, String source, List<String> manifest, String contentDigest,
+            List<Map<String, Object>> chunks) {
+        String canonicalId = resolve(jdbc, scope, requestedId);
+        Map<String, Object> document = findDocument(jdbc, scope, canonicalId);
+        if (document == null || !requestedId.equals(canonicalId))
+            throw new RagFailure("RAG_DOCUMENT_ID_CONFLICT", "Append repair requires the original document ID", 409);
+        if (!"ready".equals(document.get("status")))
+            throw new RagFailure("RAG_DOCUMENT_ID_CONFLICT", "Append repair requires an already-ready document", 409);
+        if (!title.equals(document.get("title")) || !source.equals(document.get("source")))
+            throw new RagFailure("RAG_DOCUMENT_METADATA_CONFLICT", "Document metadata changed during repair", 409);
+
+        String existingContentDigest = documentDigest(jdbc, scope, canonicalId);
+        if (contentDigest.equals(existingContentDigest)) {
+            long received = jdbc.queryForObject(
+                    "SELECT count(*) FROM rag_chunks WHERE account_scope=? AND document_id=?",
+                    Long.class, scope, canonicalId);
+            int total = ((Number) document.get("total_chunks")).intValue();
+            LinkedHashMap<String, Object> result = new LinkedHashMap<>(
+                    uploadResponse(canonicalId, requestedId, "ready", received, total, false));
+            result.put("repair_complete", true);
+            return result;
+        }
+        List<String> duplicateContent = jdbc.query("SELECT document_id FROM rag_documents WHERE account_scope=? "
+                + "AND content_sha256=? AND document_id<>? LIMIT 1",
+                (rs, index) -> rs.getString(1), scope, contentDigest, canonicalId);
+        if (!duplicateContent.isEmpty())
+            throw new RagFailure("RAG_DOCUMENT_REPAIR_CONFLICT",
+                    "Complete local content already belongs to another canonical document", 409);
+
+        Map<String, Long> desiredCounts = new LinkedHashMap<>();
+        for (String digest : manifest) desiredCounts.merge(digest, 1L, Long::sum);
+        List<String> storedDigests = jdbc.query(
+                "SELECT text FROM rag_chunks WHERE account_scope=? AND document_id=? ORDER BY seq",
+                (rs, index) -> textDigest(rs.getString("text")), scope, canonicalId);
+        Map<String, Long> presentCounts = new LinkedHashMap<>();
+        for (String digest : storedDigests) presentCounts.merge(digest, 1L, Long::sum);
+        boolean existingIsSubset = presentCounts.entrySet().stream()
+                .allMatch(entry -> entry.getValue() <= desiredCounts.getOrDefault(entry.getKey(), 0L));
+        if (!existingIsSubset)
+            throw new RagFailure("RAG_DOCUMENT_REPAIR_CONFLICT",
+                    "Existing document chunks are not a subset of the complete local source", 409);
+        long missing = desiredCounts.entrySet().stream()
+                .mapToLong(entry -> Math.max(0L, entry.getValue() - presentCounts.getOrDefault(entry.getKey(), 0L)))
+                .sum();
+        Integer next = jdbc.queryForObject(
+                "SELECT COALESCE(max(seq),-1)+1 FROM rag_chunks WHERE account_scope=? AND document_id=?",
+                Integer.class, scope, canonicalId);
+        int nextSeq = next == null ? 0 : next;
+        long target = storedDigests.size() + missing;
+        if (target > MAX_CHUNKS_PER_DOCUMENT)
+            throw invalid("repair_manifest", "would exceed the maximum document chunk count");
+        jdbc.update("UPDATE rag_documents SET total_chunks=? WHERE account_scope=? AND document_id=?",
+                (int) target, scope, canonicalId);
+
+        for (Map<String, Object> chunk : chunks) {
+            String digest = chunkDigest(chunk);
+            long wanted = desiredCounts.getOrDefault(digest, 0L);
+            long present = presentCounts.getOrDefault(digest, 0L);
+            if (present >= wanted) continue;
+            String text = (String) chunk.get("text");
+            String page = (String) chunk.get("page");
+            String section = (String) chunk.get("section");
+            float[] vector = vectorStore.findReusable(jdbc, scope, text);
+            if (vector == null) vector = embedding.embed(text);
+            require512(vector);
+            vectorStore.upsert(jdbc, scope, canonicalId, nextSeq++, text, page, section, vector);
+            presentCounts.put(digest, present + 1L);
+        }
+
+        boolean complete = desiredCounts.entrySet().stream()
+                .allMatch(entry -> presentCounts.getOrDefault(entry.getKey(), 0L) >= entry.getValue());
+        long received = jdbc.queryForObject(
+                "SELECT count(*) FROM rag_chunks WHERE account_scope=? AND document_id=?",
+                Long.class, scope, canonicalId);
+        if (complete) {
+            String digest = documentDigest(jdbc, scope, canonicalId);
+            List<String> conflict = jdbc.query("SELECT document_id FROM rag_documents WHERE account_scope=? "
+                    + "AND content_sha256=? AND document_id<>? LIMIT 1",
+                    (rs, index) -> rs.getString(1), scope, digest, canonicalId);
+            if (!conflict.isEmpty())
+                throw new RagFailure("RAG_DOCUMENT_REPAIR_CONFLICT",
+                        "Append repair would duplicate another canonical document; no existing document was removed", 409);
+            jdbc.update("UPDATE rag_documents SET total_chunks=?,content_sha256=?,status='ready',updated_at=CURRENT_TIMESTAMP "
+                    + "WHERE account_scope=? AND document_id=?", (int) received, digest, scope, canonicalId);
+        }
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>(
+                uploadResponse(canonicalId, requestedId, "ready", received, (int) target, false));
+        result.put("repair_complete", complete);
+        return result;
+    }
+
+    private static List<String> repairManifest(Object value, int total, List<Map<String, Object>> chunks) {
+        if (!(value instanceof List<?> list) || list.size() != total)
+            throw invalid("repair_manifest", "must contain one digest per local chunk");
+        List<String> manifest = new ArrayList<>(total);
+        for (Object item : list) {
+            if (!(item instanceof String digest) || !digest.matches("[0-9a-f]{64}"))
+                throw invalid("repair_manifest", "contains an invalid digest");
+            manifest.add(digest);
+        }
+        for (Map<String, Object> chunk : chunks) {
+            int seq = (Integer) chunk.get("seq");
+            if (!manifest.get(seq).equals(chunkDigest(chunk)))
+                throw invalid("repair_manifest", "does not match the supplied chunk");
+        }
+        return manifest;
+    }
+
+    private static String chunkDigest(Map<String, Object> chunk) {
+        return textDigest((String) chunk.get("text"));
     }
 
     private Map<String, Object> uploadBatch(JdbcTemplate jdbc, String scope, String requestedId,

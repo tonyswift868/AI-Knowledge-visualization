@@ -233,11 +233,22 @@ class CourseSync:
     def _pull(self, cursor, pending, cancel):
         self._fence(cancel)
         total = 0
+        replay_since = cursor["since"]
+        needs_replay = getattr(self.store, "needs_sync_replay", None)
+        if callable(needs_replay) and any(
+                not meta.get("deleted") and "entity" in meta
+                and needs_replay(meta["entity"], meta["entity_id"])
+                for meta in cursor["records"].values()):
+            # Old clients kept identity metadata but advanced past an unknown
+            # record. Re-read the feed only while a now-supported identity is
+            # still absent locally; this also repairs cursors written before
+            # the unapplied marker existed.
+            replay_since = "0"
         while True:
             started = time.monotonic()
             event('sync', state='PULL_PAGE_START', completed=total)
             try:
-                page = self.transport.read_changes(since=cursor["since"], limit=DEFAULT_BATCH_SIZE)
+                page = self.transport.read_changes(since=replay_since, limit=DEFAULT_BATCH_SIZE)
             except PlanError as exc:
                 if exc.code != "SYNC_CHANGES_UNSUPPORTED":
                     raise
@@ -250,6 +261,7 @@ class CourseSync:
                 return cursor, total + count
             self._fence(cancel)
             cursor, count = self._apply_page(cursor, pending, page["entities"], page["next_cursor"], cancel)
+            replay_since = cursor["since"]
             total += count
             event('sync', state='PULL_PAGE_END', count=len(page['entities']), completed=total,
                   elapsed_seconds=time.monotonic()-started)
@@ -302,8 +314,11 @@ class CourseSync:
             if values is not None and "entity" not in previous:
                 identities["records"][wire_id] = dict(next_cursor["records"][wire_id], unapplied=True)
                 new_identity = True
+            needs_replay = getattr(self.store, "needs_sync_replay", None)
+            missing_local = (values is not None and not deleted and callable(needs_replay)
+                             and needs_replay(values["entity"], values["entity_id"]))
             if values is not None and (revision != previous.get("revision") or "entity" not in previous
-                                       or previous.get("unapplied")):
+                                       or previous.get("unapplied") or missing_local):
                 changes.append((_record(values, deleted), revision))
             candidate = local.get(wire_id)
             if candidate is not None and candidate.deleted == deleted and (deleted or _values(candidate) == values):

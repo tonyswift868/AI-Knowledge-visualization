@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import org.springframework.dao.DataAccessException;
 import org.springframework.web.bind.annotation.*;
@@ -27,7 +28,8 @@ public final class RagController {
     }
     @GetMapping("/documents")
     public Object documents(HttpServletRequest request, HttpServletResponse response) {
-        return run(response, () -> Map.of("documents",service.documents(actor(request))));
+        return run(response, () -> Map.of("documents", service.documents(actor(request)),
+                "capabilities", List.of("append_only_chunk_repair_v1")));
     }
     @DeleteMapping("/documents/{doc_id}")
     public Object delete(HttpServletRequest request, HttpServletResponse response,

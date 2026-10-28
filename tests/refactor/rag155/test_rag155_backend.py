@@ -24,6 +24,10 @@ def rag155_session(subject="rag155-user", token="rag155-token"):
         "context": {"organization_id": identity.organization_id, "workspace_id": identity.workspace_id}})
 
 
+def rag155_chunk_digest(chunk):
+    return sha256(str(chunk.get("text") or "").encode("utf-8")).hexdigest()
+
+
 class FakeRagServer:
     """Callable httpx.MockTransport server implementing the RAG API draft."""
     def __init__(self):
@@ -44,7 +48,8 @@ class FakeRagServer:
                     "status": state["status"], "total_chunks": state["total"],
                     "received_chunks": len(state["chunks"]),
                     "aliases": [alias for alias, canonical in self.aliases.items() if canonical == document_id]})
-            return httpx.Response(200, json={"documents": rows})
+            return httpx.Response(200, json={"documents": rows,
+                "capabilities": ["append_only_chunk_repair_v1"]})
         if request.method == "POST" and "/documents/" in path and path.endswith("/chunks"):
             if self.fail_upload_status is not None:
                 status, self.fail_upload_status = self.fail_upload_status, None
@@ -54,6 +59,51 @@ class FakeRagServer:
             body = json.loads(request.content)
             state = self.documents.setdefault(canonical, {"title": body["title"], "source": body["source"],
                 "total": body["total_chunks"], "chunks": {}, "status": "uploading"})
+            if body.get("repair_existing") is True:
+                for chunk in body["chunks"]:
+                    seq = chunk.get("seq")
+                    if (type(seq) is not int or not 0 <= seq < body["total_chunks"]
+                            or body["repair_manifest"][seq] != rag155_chunk_digest(chunk)):
+                        return httpx.Response(400, json={"error": "invalid repair chunk manifest"})
+                desired = {}
+                for digest in body["repair_manifest"]:
+                    desired[digest] = desired.get(digest, 0) + 1
+                current_text = "".join(chunk.get("text", "") for _, chunk in sorted(state["chunks"].items()))
+                if sha256(current_text.encode("utf-8")).hexdigest() == body["repair_content_sha256"]:
+                    return httpx.Response(200, json={"document_id": canonical,
+                        "requested_document_id": document_id, "status": "ready",
+                        "received_chunks": len(state["chunks"]), "total_chunks": len(state["chunks"]),
+                        "deduplicated": False, "repair_complete": True})
+                present = {}
+                for chunk in state["chunks"].values():
+                    digest = rag155_chunk_digest(chunk)
+                    present[digest] = present.get(digest, 0) + 1
+                if any(count > desired.get(digest, 0) for digest, count in present.items()):
+                    return httpx.Response(409, json={"error": "RAG_DOCUMENT_REPAIR_CONFLICT"})
+                present = {}
+                for chunk in state["chunks"].values():
+                    digest = rag155_chunk_digest(chunk)
+                    present[digest] = present.get(digest, 0) + 1
+                target = len(state["chunks"]) + sum(
+                    max(0, count - present.get(digest, 0)) for digest, count in desired.items())
+                state["total"] = target
+                next_seq = max(state["chunks"], default=-1) + 1
+                for chunk in body["chunks"]:
+                    digest = rag155_chunk_digest(chunk)
+                    if present.get(digest, 0) < desired.get(digest, 0):
+                        state["chunks"][next_seq] = {**chunk, "seq": next_seq}
+                        next_seq += 1
+                        present[digest] = present.get(digest, 0) + 1
+                complete = all(present.get(digest, 0) >= count for digest, count in desired.items())
+                if complete:
+                    state["total"] = len(state["chunks"])
+                    state["status"] = "ready"
+                    text = "".join(state["chunks"][i]["text"] for i in sorted(state["chunks"]))
+                    state["content_sha256"] = sha256(text.encode("utf-8")).hexdigest()
+                return httpx.Response(200, json={"document_id": canonical,
+                    "requested_document_id": document_id, "status": "ready",
+                    "received_chunks": len(state["chunks"]), "total_chunks": state["total"],
+                    "deduplicated": False, "repair_complete": complete})
             state["total"] = body["total_chunks"]
             for chunk in body["chunks"]:
                 if type(chunk.get("seq")) is not int or not 0 <= chunk["seq"] < state["total"]:
@@ -73,6 +123,7 @@ class FakeRagServer:
                     deduplicated = True
                 else:
                     state["status"] = "ready"
+                    state["content_sha256"] = digest
                     if document_id != canonical:
                         self.aliases[document_id] = canonical
                     deduplicated = False
