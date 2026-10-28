@@ -52,7 +52,7 @@ def test_updated_public_roots_keep_account_ca219(tmp_path):
     content = bundle.read_bytes()
     assert content.startswith(Path(certifi.where()).read_bytes().rstrip())
     assert content.endswith(shell_paths.ACCOUNT_API_TRUST.read_bytes().strip() + b'\n')
-    assert b'emSign Root CA - G3' not in Path(certifi.where()).read_bytes()
+    assert b'emSign ECC Root CA - G3' not in Path(certifi.where()).read_bytes()
 
 
 def test_image_to_pdf_roundtrip219():
