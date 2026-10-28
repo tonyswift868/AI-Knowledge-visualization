@@ -123,22 +123,24 @@ def test_plan42_summary_survives_draft_deletion_and_store_reopen(fixture):
     prepare=flow._prepare_module
     def contract(store,pid,mid,ctx,progress):
         prepare(store,pid,mid,ctx,progress)
-        return dict(points=1,cloze_points=1,cloze_heavy=True)
+        return dict(points=1,questions=0)
     flow._prepare_module=contract
     flow.estimate(d)
     flow.run(pid,lambda d,c:flow.generate(d,c),ctx)
     # The worker's stale counters/flag cannot override the current empty bank.
-    assert flow.detail(pid)['stages'][0]['modules'][0]['cloze_heavy'] is False
+    assert 'cloze_heavy' not in flow.detail(pid)['stages'][0]['modules'][0]
     flow.start_request(pid)
     assert not flow.drafts()
-    assert flow.detail(pid)['stages'][0]['modules'][0]['cloze_heavy'] is False
+    assert 'cloze_heavy' not in flow.detail(pid)['stages'][0]['modules'][0]
     reopened=CourseStore(flow.services.account_id,flow.services.data_root)
     try:
         saved = reopened.records('modules',pid)[0]['material_preparation']
-        assert saved['cloze_heavy'] is False
-        assert saved['points'] == 1 and saved['questions'] == saved['cloze_points'] == 0
+        assert saved['points'] == 1 and saved['questions'] == 0
+        assert 'cloze_points' not in saved and 'cloze_heavy' not in saved
     finally:reopened.close()
-    assert any(r.payload.get('material_preparation',{}).get('cloze_heavy') is False
+    assert any(r.payload.get('material_preparation',{}).get('points') == 1
+               and r.payload.get('material_preparation',{}).get('questions') == 0
+               and 'cloze_heavy' not in r.payload.get('material_preparation',{})
                for r in flow.services.store.pending_records(10000) if r.entity=='modules')
 
 
