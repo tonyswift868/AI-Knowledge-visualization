@@ -105,22 +105,27 @@ if args[0] == "inspect":
 elif args[0] == "compose":
     profiles = {args[i + 1] for i, item in enumerate(args[:-1]) if item == "--profile"}
     files = [args[i + 1] for i, item in enumerate(args[:-1]) if item == "-f"]
-    if files != fixture["config_files"] and not (
+    python_fallback = (
         len(files) == len(fixture["config_files"]) + 1
         and files[:-2] == fixture["config_files"][:-1]
         and files[-2].endswith("python226.override.yml")
         and files[-1] == fixture["config_files"][-1]
-    ):
+    )
+    java_overlay = (
+        len(files) == len(fixture["config_files"]) + 2
+        and files[:-3] == fixture["config_files"][:-1]
+        and files[-3].endswith("compose.yml")
+        and files[-2].endswith("compose.generated.yml")
+        and files[-1] == fixture["config_files"][-1]
+    )
+    if files != fixture["config_files"] and not python_fallback and not java_overlay:
         raise SystemExit("compose config file combination/order differs from production fixture")
     if files[-1] != fixture["config_files"][-1]:
         raise SystemExit("network45 override must remain the last base config")
     action_index = next((i for i, item in enumerate(args) if item in {"start", "up", "stop"}), None)
     if action_index is not None:
         action = args[action_index]
-        if action == "up":
-            targets = args[action_index + 4:]
-        else:
-            targets = args[action_index + 1:]
+        targets = [item for item in args[action_index + 1:] if not item.startswith("-")]
         services = fixture["services"]
         visited = set()
         def require_enabled(name, parent=None):
@@ -136,9 +141,15 @@ elif args[0] == "compose":
             for dependency in item["depends_on"]:
                 require_enabled(dependency, name)
         try:
+            no_deps = "--no-deps" in args[action_index + 1:]
             for target in targets:
                 if target in services:
-                    require_enabled(target)
+                    if no_deps:
+                        item = services[target]
+                        if item["profiles"] and not profiles.intersection(item["profiles"]):
+                            raise SystemExit(f"service {target} is disabled by profiles")
+                    else:
+                        require_enabled(target)
         except SystemExit as exc:
             print(str(exc), file=sys.stderr)
             raise SystemExit(42)
@@ -234,12 +245,13 @@ def test_restore_python_activates_profile_and_can_return_to_java(sandbox):
     assert "server java-backend:8080 resolve;" in edge.read_text(encoding="utf-8")
 
     calls = log.read_text(encoding="utf-8").splitlines()
-    compose = next(row for row in calls if row.startswith("compose ") and " start backend " in row)
+    compose = next(row for row in calls if row.startswith("compose ") and " up -d --no-deps backend " in row)
     assert "--profile account-core-mvp" in compose
-    assert compose.endswith("-f " + NETWORK_OVERRIDE + " start backend oidc-loopback-proxy")
+    assert compose.endswith("-f " + NETWORK_OVERRIDE + " up -d --no-deps backend oidc-loopback-proxy")
     assert calls.index(compose) < calls.index(next(row for row in calls if "nginx -s reload" in row))
-    assert all(row.split().count("--profile") >= 1 for row in calls if row.startswith("compose ") and "start backend oidc-loopback-proxy" in row)
-    assert compose.endswith("-f " + NETWORK_OVERRIDE + " start backend oidc-loopback-proxy")
+    assert all(row.split().count("--profile") >= 1 for row in calls if row.startswith("compose ") and "up -d --no-deps backend oidc-loopback-proxy" in row)
+    assert " postgres " not in compose and " migrate " not in compose
+    assert "runtime-secrets-ready" not in compose and "backend-tls-ready" not in compose
 
 
 def test_python_compose_recreate_keeps_fallback_profile(sandbox):

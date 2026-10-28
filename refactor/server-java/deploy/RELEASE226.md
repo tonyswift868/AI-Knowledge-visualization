@@ -1,181 +1,84 @@
-# 226 账号资料功能：部署及应用回退（235 修订）
+# 226账号资料：部署、核验与旧Java回退（237修订）
 
-235 只读调查服务器、修改本地脚本并本机演练，**没有重新部署或起停容器**。后续执行须有新的上线任务。234 留下的当前状态：Java 是 `rollback226`（与旧219同一镜像），数据库已为 `0046_account_profiles`，Python226备用停止；候选 Java226/Python226及本次备份保留。新流程不把 SSH 退出码当部署结果。
+237已通过“直接换Java”分支上线：运行 `mentorflow-java-server:226`，JAR SHA256为 `39419dc9e31d7f60577547b2fb63aa9ee6395b556fd0ec08a61b96a7375a8077`；数据库0046保留。Python226备用镜像存在且停止，**备用启动仍待修，不能称可用**。用户已登录后的资料读写/头像上传由用户亲测后再核访问计数，不用无令牌401代替验收。
 
-## 0. 只读定位与已有 0046
+实际源码工具目录 `/opt/mentorflow/releases/java-profile-237/refactor/server-java/deploy`，任务证据 `/opt/mentorflow/state/release237`。已结束的job目录不得拿来再次上线。以后服务器操作仍按新的用户任务执行。
 
-通过 `ssh -F "D:/MentorFlow/.local/server/ssh_config" -o ServerAliveInterval=15 -o ServerAliveCountMax=6 mentorflow`，使用现有 `sudo -n`，不改权限。先核对容器 labels/mounts 和以下路径，不打印 env/secret 内容。234 证据的实际时间为 **2026-10-28 20:32–20:38 UTC**（客户端日期10月29日）。
+## 0. 从现状开始，不重复迁移
 
 ```sh
-BACKEND_CONTAINER=mentorflow-e1-preview-backend-1
-POSTGRES_CONTAINER=mentorflow-e1-preview-postgres-1
+DEPLOY=/opt/mentorflow/releases/java-profile-237/refactor/server-java/deploy
+STATE=/opt/mentorflow/state/release237
 BACKUP=/opt/mentorflow/state/release226
-OLD_DEPLOY=/opt/mentorflow/releases/java-70c282ec-222/refactor/server-java/deploy
 BACKEND_ENV=/opt/mentorflow/state/mentorflow-e1-preview/account-core-21337c1/runtime.env
-TRUST_DIR=/opt/mentorflow/state/java-shadow/trust
-schema=$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d mentorflow -Atc 'SELECT version_num FROM alembic_version')
-case "$schema" in
-  0046_account_profiles)
-    test "$(docker exec "$POSTGRES_CONTAINER" psql -U postgres -d mentorflow -Atc "SELECT to_regclass('public.account_profiles')")" = account_profiles
-    echo '0046 already present; skip migration, retain profile data' ;;
-  0045_account_closure_rag) echo 'Requires the approved backup/migration branch below' ;;
-  *) echo 'Unexpected schema; stop without downgrade' >&2; exit 1 ;;
-esac
-docker image inspect --format '{{.Id}} {{.Size}}' mentorflow-java-server:226 mentorflow-slim-backend:226-python-fallback mentorflow-java-server:rollback226
-docker image inspect --format '{{ index .Config.Labels "org.mentorflow.jar.sha256" }}' mentorflow-java-server:226
+schema=$(docker exec mentorflow-e1-preview-postgres-1 psql -U postgres -d mentorflow -Atc 'SELECT version_num FROM alembic_version')
+test "$schema" = 0046_account_profiles
+test "$(docker exec mentorflow-e1-preview-postgres-1 psql -U postgres -d mentorflow -Atc "SELECT to_regclass('public.account_profiles')")" = account_profiles
 test -s "$BACKUP/mentorflow-before226.dump"
-docker exec -i "$POSTGRES_CONTAINER" pg_restore --list < "$BACKUP/mentorflow-before226.dump" >/dev/null
+docker exec -i mentorflow-e1-preview-postgres-1 pg_restore --list < "$BACKUP/mentorflow-before226.dump" >/dev/null
 ```
 
-当前必须走已0046分支。候选Java JAR应为 `39419dc9e31d7f60577547b2fb63aa9ee6395b556fd0ec08a61b96a7375a8077`，与234构建记录一致。直接复用234的候选镜像、备份和已完成的0046；**不覆盖备份、不重建旧tag、不再迁移、不降级**。
+0046已存在，跳过迁移，不downgrade、不恢复整库、不覆盖release226备份。Python219要求精确0045，不能作为0046的备用；Python226要求0046，版本门槛相符但不代表启动命令已可用。旧Java219没有对应Alembic门槛，234/236已实际回退，保留 `mentorflow-java-server:rollback226` 标签与原配置。
 
-仅尚处0045且另有明确迁移授权的环境才需要：先按旧流程保留镜像tag、env/Compose/edge配置；在新的独立备份目录做 `pg_dump -U postgres -d mentorflow -Fc --no-owner --no-privileges`，`pg_restore --list` 核对成功后运行既有 migrate.sh upgrade。迁移脚本所需现存卷是 `mentorflow-e1-preview_migrate_secrets`，路径 `/run/secrets/postgres_migrator_password`；默认OIDC卷仅有TLS文件，不能用app密码代替。迁移依旧是0046，不因BUG-189/191新增迁移。
+候选已构建，无需重建。核对Java226标签及实际JAR，Python226镜像ID应为 `sha256:2adb3d025759308a6f312cd25db0f804cc168bdf38ffaddc53003fe42549d83c`；不一致就停止核实。迁移工具仍保留原migrate.sh；本次不调用。
 
-## 1. 可靠执行：短连接启动，后台完成后查询
+## 1. 长任务独立于SSH
 
-现有工具不能记录跨SSH会话的最终结果，因此只加最薄的一层：`job.sh` 用系统 `nohup` 脱离连接（stdin `/dev/null`，stdout/stderr均到日志），不改 build/Compose/migrate 的行为。任务目录使用原子mkdir认领，重复start同目录只查状态，不重新部署。
-
-服务器调用：
-
-```sh
-sh /path/to/deploy/job.sh start /path/to/state/jobs/build sh /path/to/deploy/build.sh 226
-sh /path/to/deploy/job.sh status /path/to/state/jobs/build
-```
-
-每项有 `output.log`、`pid`、`started`、`exit_code`、最后写入的 `done`。只有同时有done和退出码0才是 `SUCCEEDED 0`；命令确实非零才是 `FAILED N`。RUNNING、UNKNOWN、MISSING或SSH故障都不是失败，不可回退。UNKNOWN可能是任务未启动、机器重启或被强杀，先核实，不自行重新执行。状态查询本身成功不代表任务成功。
-
-本机统一用 `remote-job.py`（标准库subprocess调用既有ssh）：
+既有job.sh用系统nohup启动命令，stdin为/dev/null，stdout/stderr写output.log，最后依次发布exit_code、done。只有done和退出码0才SUCCEEDED；UNKNOWN/MISSING/连接错误都不能推断部署失败。重复start同job-dir只查状态，不再次执行。
 
 ```powershell
-& D:/MentorFlow/.venv/Scripts/python.exe refactor/server-java/deploy/remote-job.py --ssh-config D:/MentorFlow/.local/server/ssh_config --runner /opt/mentorflow/releases/java-profile-retry/refactor/server-java/deploy/job.sh --job-dir /opt/mentorflow/state/release226-retry/jobs/switch start -- sh /opt/mentorflow/releases/java-profile-retry/refactor/server-java/deploy/checked-step.sh /opt/mentorflow/state/release226-retry/switch.sh /opt/mentorflow/state/release226-retry/rollback.sh
+& D:/MentorFlow/.venv/Scripts/python.exe refactor/server-java/deploy/remote-job.py --ssh-config D:/MentorFlow/.local/server/ssh_config --runner /opt/mentorflow/releases/java-profile-237/refactor/server-java/deploy/job.sh --job-dir /opt/mentorflow/state/release237/jobs/switch wait
 ```
 
-中断本机SSH/轮询或关掉本机脚本后，原命令保留同一 `--job-dir`，把 `start -- ...` 改为 `wait`即可重连。客户端自动带 ServerAliveInterval=15 / ServerAliveCountMax=6；SSH断开会重试查询，不调用回滚。返回0=远端成功，1=远端明确失败，2=仍未决/等待到期；即使本机返回1，也只读取远端回退结果，不能再重复回滚。
+这是查询已完成237任务的命令。新任务使用新的state/job目录，以 `start -- sh <动作脚本>` 启动；断线后对**同一个**目录wait。remote-job设置ServerAliveInterval=15、ServerAliveCountMax=6；返回0=远端成功、1=远端明确失败、2=仍未决。不得把SSH非零当作应用失败后再次切换。checked-step.sh只在服务器action真正非零时执行rollback，保留action原失败码并记录ROLLBACK_EXIT。
 
-`checked-step.sh ACTION_SCRIPT ROLLBACK_SCRIPT` 在**服务器后台job内**执行：仅action真实非零才运行rollback；输出ACTION_EXIT/ROLLBACK_EXIT。回退成功也保留原失败退出码，不能掩盖失败。构建、迁移、应用切换与必要回退全部放job内；不要再把长命令通过 `ssh sh -s` 前台执行，更不要在本机 `ssh != 0` 分支里回滚。
+## 2. 备用的新方法与真实dry-run门槛
 
-官方依据：[GNU nohup](https://www.gnu.org/software/coreutils/manual/html_node/nohup-invocation.html)、[OpenSSH ServerAlive](https://man.openbsd.org/ssh_config)。保活只检测失联，后台进程与结果标记才解决断线后判断问题。没有新增库、常驻守护进程或部署平台。
+234成功基准是 `python-compose.sh recreate`，实际为 `up -d --no-deps --force-recreate backend oidc-loopback-proxy`，当时未设置PYTHON_COMPOSE_PROFILES。235仅增加profile默认值，236的裸 `compose start`仍报初始化依赖缺失。因此start分支现在复用 `up -d --no-deps backend oidc-loopback-proxy`，不强制无谓重建；recreate仍保留force-recreate。
 
-## 2. 下一次重上的准备（获得上线任务后）
+所有Compose参数沿用backend容器labels确定的项目、项目目录、九层文件及BACKEND_ENV；account-core-mvp保持显式启用，network45最后。只明确协调backend/proxy或java-backend/java-oidc，不启动postgres、migrate或初始化服务。
 
-1. 从已审定的含235脚本提交用 `git -c core.autocrlf=false archive` 导出 server/server-java；放到新的 `/opt/mentorflow/releases/java-profile-retry`，不要覆盖234源码和配置。解包检查shell LF与 `sh -n`。用该目录的新job/Compose/统计工具；业务镜像仍复用已验证的226。
-2. 新工作目录 `/opt/mentorflow/state/release226-retry`，不复用已完成job目录、不覆盖234备份。在该目录准备以下context、switch、rollback脚本（0600）。动作脚本保存在服务器，job启动后不再依赖本机连接。
-3. 新deploy先执行 prepare-config.sh，确认挂载/TTL=0；指定MF_JAVA_VERSION=226。prepare-config、config检查可作为一个短job。若候选不存在/哈希不符，先停止核查；确需重建时Python docker build和Java build.sh也各自通过job启动，当前重试无需构建。
-
-`context.sh` 只含路径/标签，不含密码：
+先确认服务器Compose版本和 `--help` 的 `--dry-run`，同一wrapper提供 `COMPOSE_DRY_RUN=1`：
 
 ```sh
-export DEPLOY=/opt/mentorflow/releases/java-profile-retry/refactor/server-java/deploy
-export STATE=/opt/mentorflow/state/release226-retry
-export BACKUP=/opt/mentorflow/state/release226
-export OLD_DEPLOY=/opt/mentorflow/releases/java-70c282ec-222/refactor/server-java/deploy
-export BACKEND_ENV=/opt/mentorflow/state/mentorflow-e1-preview/account-core-21337c1/runtime.env
-export PYTHON_FALLBACK_OVERRIDE=/opt/mentorflow/state/release226/python226.override.yml
-export MF_JAVA_VERSION=226
-export PYTHON_COMPOSE_PROFILES=account-core-mvp
-export JAVA_COMPOSE_PROFILES=account-core-mvp
-export MIGRATION_IMAGE=mentorflow-slim-backend:226-python-fallback
-export MIGRATION_TOOL_IMAGE=mentorflow-migration-tool:226
-export MIGRATION_SECRETS_VOLUME=mentorflow-e1-preview_migrate_secrets
-export MF_MIGRATION_PASSWORD_FILE=/run/secrets/postgres_migrator_password
+. /opt/mentorflow/state/release237/context.sh
+COMPOSE_DRY_RUN=1 sh "$DEPLOY/python-compose.sh" start
+COMPOSE_DRY_RUN=1 sh "$DEPLOY/python-compose.sh" stop
+COMPOSE_DRY_RUN=1 sh "$DEPLOY/python-compose.sh" recreate
+COMPOSE_DRY_RUN=1 MF_JAVA_VERSION=226 sh "$DEPLOY/java-compose.sh" up
+COMPOSE_DRY_RUN=1 MF_JAVA_VERSION=rollback226 sh "$STATE/rollback-deploy/java-compose.sh" up
 ```
 
-准备job的动作文件：
+237服务器为Compose5.5.0，支持该参数。实际结果：Python start/recreate仍退出1，输出backend exited的健康依赖错误（不再是missing runtime-secrets-ready）；Python stop退出0；Java候选和旧Java回退均退出0，动作仅两个Java容器。未执行dry-run失败的备用启动，也未据dry-run失败断言备用镜像业务代码有错。
+
+**config通过或假Docker成功不代替真实dry-run，更不代替实际healthy。** dry-run不能过的命令不执行；备用仍不行时按任务批准走直接Java，备用单独待修。依据：[Docker Compose dry-run](https://docs.docker.com/reference/cli/docker/compose/)、[up --no-deps](https://docs.docker.com/reference/cli/docker/compose/up/)。
+
+## 3. 上线与回退分支
+
+在新的源码工具目录运行prepare-config.sh，保留现有5个只读挂载、OIDC代理镜像/config、SESSION_TTL=0。版本号可由context的MF_JAVA_VERSION传入；复用候选时没有运行build.sh，不应假定.env里必有该行。准备步骤也放后台job。
+
+回退配置先从release226的previous-java.env、previous-java-runtime.env、previous-compose.generated.yml与旧compose.yml复制到state/rollback-deploy，只将MF_JAVA_DEPLOY_DIR指向该副本，保留其余值。放入同一新java-compose.sh，让回退使用与dry-run相同的wrapper、配置和 `MF_JAVA_VERSION=rollback226`，不改原备份。
+
+本次动作记录在 `state/switch.sh`、`rollback.sh`、`run-switch.sh`，它们的执行顺序如下：
+
+1. Java候选与旧Java回退的dry-run均成功；备用若dry-run/实际healthy失败，记录原因选择Java-only，不能因此立即回退或阻挡头像上线。
+2. 若备用验证成功，先恢复Python并probe；否则不执行备用start。执行 `java-compose.sh up`（仅两个Java容器）。
+3. 等既有probe.py通过：带备用时两端对照，不带备用时 `--java-only`；核9/9、内部ready及email。再用cutover.sh指向Java（先nginx -t；已指向则不重复reload）。
+4. 核公网 `/health/live`、`/health/startup`、`/health/ready`全部200、实际容器image ID和JAR sha256；最后执行已dry-run通过的stop-python.sh路径。
+5. 只有服务器action真正失败才由checked-step执行旧Java回退：回退目录的java-compose up → Java-only probe → cutover Java → 三健康和镜像校验 → 停Python。保留0046。回退后停下交回，不在同一任务第三次上线。
+
+不注册账号、不调用用户profile写接口，不打印令牌、配置秘密或资料内容。probe使用无账号/虚假令牌合同检查，不是用户读写验收。
+
+## 4. 健康采样、日志计数和清理
+
+从任何实际切换之前起独立后台采样job，到成功或回退恢复后的几秒结束；任务设最大时长，三健康并发请求，约0.5秒间隔，只保存UTC/请求开始结束/状态码，不保存响应体。逐路径报告坏样本段及最后成功请求开始到恢复成功请求结束的包围窗口；多路径不能相加。操作用时、SSH等待用时均不是停机时间。
+
+edge关闭access_log；真正的安全访问格式来自Java RequestAccessLog149Filter（method/route/status），统计必须用现有access-counts.py：
 
 ```sh
-set -eu
-. /opt/mentorflow/state/release226-retry/context.sh
-cd "$DEPLOY"
-sh prepare-config.sh mentorflow-e1-preview-backend-1 /opt/mentorflow/state/java-shadow/trust
-sh java-compose.sh config
+docker logs --since 2026-10-28T21:59:45Z mentorflow-java-backend 2>&1 | python3 "$DEPLOY/access-counts.py"
 ```
 
-Python219的 canonical revision 是0045，orm.py:46–57严格要求相等，在0046上不能启动；Python226要求0046，与当前数据库相符（仍需运行健康检查确认其他依赖）。旧Java无revision gate，可保留0046回退应用。**绝不恢复旧Python219备用**。
+时间参数改为要核验的实际窗口；只输出profile/avatar白名单的方法、路径、状态码和次数。237即时计数为空，不能声称已登录读写成功。用户用2.0.37打开个人资料后，由后续任务再核。
 
-## 3. 切换动作与核验
-
-切换脚本 source context 后，以下顺序全在同一个后台job内，用 `checked-step.sh` 包住该脚本。以下命令组成switch.sh；不要直接在本机逐条通过短SSH连接执行长步骤。
-
-```sh
-set -eu
-. /opt/mentorflow/state/release226-retry/context.sh
-cd "$DEPLOY"
-sh python-compose.sh start
-healthy=no
-for attempt in $(seq 1 45); do
-  if [ "$(docker inspect --format '{{.State.Health.Status}}' mentorflow-e1-preview-backend-1)" = healthy ]; then healthy=yes; break; fi
-  sleep 2
-done
-[ "$healthy" = yes ]
-docker run --rm --network mentorflow-e1-preview_internal -v "$PWD/probe.py:/tmp/probe.py:ro" --entrypoint python mentorflow-slim-backend:226-python-fallback /tmp/probe.py
-sh java-compose.sh config
-sh java-compose.sh up
-ready=no
-for attempt in $(seq 1 45); do
-  if docker run --rm --network mentorflow-e1-preview_internal -v "$PWD/probe.py:/tmp/probe.py:ro" --entrypoint python mentorflow-slim-backend:226-python-fallback /tmp/probe.py > "$STATE/probe.log" 2>&1; then ready=yes; break; fi
-  sleep 2
-done
-[ "$ready" = yes ]
-cat "$STATE/probe.log"
-test "$(sh cutover.sh status)" = java || sh cutover.sh java
-for endpoint in live startup ready; do curl --fail --silent --show-error --max-time 10 --output /dev/null --write-out "$endpoint %{http_code}\n" "https://89.45.45.28/health/$endpoint"; done
-expected=$(docker image inspect --format '{{index .Config.Labels "org.mentorflow.jar.sha256"}}' mentorflow-java-server:226)
-actual=$(docker exec mentorflow-java-backend sha256sum /app/mentorflow-server.jar | awk '{print $1}')
-test "$expected" = "$actual"
-sh stop-python.sh
-```
-
-`python-compose.sh` 默认启用account-core-mvp，因为线上backend→backend-tls-ready→runtime-secrets-ready都在此profile；只显式target backend不会激活所有同profile辅助服务。start只启动既有backend/proxy，不运行上游初始化任务；network45仍最后加载，调用者可覆盖profile列表。该修法由 [Docker profiles说明](https://docs.docker.com/compose/how-tos/profiles/) 与实际脱敏依赖图支撑。
-
-预先另起一个后台观测job：从Java up前连续到最终成功/回退恢复后，对API入口三个health按约0.5–1秒采样（每次带超时），保存时间和状态码，不取响应内容；观测有最大时长并在两个结局都停止。234首次ready异常样本跨度10.085秒、成功样本包围11.201秒，仅作过去观测，**不承诺下一次停机时长**。下次将上线及回退两个窗口都纳入采样，不能把SSH等待时间当不可用秒数。
-
-不注册账号、不调用用户profile写接口。probe是无账号合同检查（9/9、双方ready、email），认证后的资料/头像200必须等待用户使用后看统计。
-
-## 4. 远端应用回退（rollback.sh）
-
-只由服务器checked-step的实际失败触发，或后续明确人工回退任务触发。旧Java镜像tag/配置从234备份恢复，数据库始终保留0046；不覆盖表，不自动pg_restore整库，不downgrade。
-
-```sh
-set -eu
-. /opt/mentorflow/state/release226-retry/context.sh
-cd "$DEPLOY"
-sh restore-python.sh
-cd "$OLD_DEPLOY"
-cp "$BACKUP/previous-java.env" .env
-sed 's/^MF_JAVA_VERSION=.*/MF_JAVA_VERSION=rollback226/' .env > "$STATE/rollback-java.env"
-cat "$STATE/rollback-java.env" > .env
-cp "$BACKUP/previous-java-runtime.env" .java.env
-cp "$BACKUP/previous-compose.generated.yml" compose.generated.yml
-export MF_JAVA_VERSION=rollback226
-sh java-compose.sh config
-sh java-compose.sh up
-cd "$DEPLOY"
-ready=no
-for attempt in $(seq 1 45); do
-  if docker run --rm --network mentorflow-e1-preview_internal -v "$PWD/probe.py:/tmp/probe.py:ro" --entrypoint python mentorflow-slim-backend:226-python-fallback /tmp/probe.py --java-only > "$STATE/rollback-probe.log" 2>&1; then ready=yes; break; fi
-  sleep 2
-done
-[ "$ready" = yes ]
-cat "$STATE/rollback-probe.log"
-sh cutover.sh java
-for endpoint in live startup ready; do curl --fail --silent --show-error --max-time 10 --output /dev/null --write-out "$endpoint %{http_code}\n" "https://89.45.45.28/health/$endpoint"; done
-sh stop-python.sh
-```
-
-Python恢复实际失败时不得称备用可用；按已批准的直接旧Java回退路径恢复，不临时改数据库、账号或Compose机制。远端任务done及退出码、日志内ROLLBACK_EXIT和最终health/probe共同决定结果，客户端重连不重复触发回退。
-
-## 5. 只输出访问统计、交付及清理
-
-edge配置 `access_log off`，Docker edge日志是错误日志，不能拿combined格式去解析。实际入口是Java `RequestAccessLog149Filter`，固定格式 `http method=... route=... status=... elapsed_ms=...`。只通过Docker日志接口流式读取，不输出原始行：
-
-```sh
-docker logs --since 2026-10-29T00:00:00Z mentorflow-java-backend 2>&1 | python3 "$DEPLOY/access-counts.py"
-```
-
-`--since` 设为本次实际执行的UTC起始时间，不照抄示例日期。脚本仅输出profile/avatar白名单的方法、路径、状态码和计数，不输出查询串、邮箱、令牌、IP或正文；空计数不能证明无人请求，也不能算已登录读写验证通过。
-
-本次后续上线成功并完成证据归档后，才在服务器核实路径并删除 `/tmp/mentorflow-source-149b53ed-234.tar`（234的1,935,360字节上传包）；源码根、运行挂载配置、备份及候选/回退镜像仍保留。235只读任务不执行这一步。
-
-## 本机验证边界
-
-沿用226/219的fake Docker和Git自带shell，不安装Docker、不假称验证真实容器生命周期。deploy235使用线上九层配置的脱敏profiles/depends_on闭包复现缺profile；真实shell wrapper顺序、后台任务脱离被杀本地轮询、重连识别结果、服务端检查失败才回退及隐私计数均由离线测试覆盖。下一次生产任务仍须核验实际容器healthy、probe和认证后用户访问。
+只有上线成功并核对完后，才删除任务指定的/tmp源码/actions tar，不删除运行源码/挂载、state日志、release226备份或rollback226标签。237已清理234、236、237的5个临时tar，共4,003,840B；保留本次任务日志、当前源码及旧Java回退配置。

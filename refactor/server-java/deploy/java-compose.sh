@@ -35,6 +35,7 @@ working_dir=$("$docker_bin" inspect --format '{{ index .Config.Labels "com.docke
 
 set -- --env-file "$backend_env" --env-file "$deploy_dir/.env" \
   -p "$project" --project-directory "$working_dir"
+if [ "${COMPOSE_DRY_RUN:-0}" = 1 ]; then set -- --dry-run "$@"; fi
 profiles=${JAVA_COMPOSE_PROFILES:-${PYTHON_COMPOSE_PROFILES:-}}
 if [ -n "$profiles" ]; then
   old_ifs=$IFS
