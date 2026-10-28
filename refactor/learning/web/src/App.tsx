@@ -152,7 +152,10 @@ export function App() {
   const [modelFaultOpen, setModelFaultOpen] = React.useState(false)
   const [syncDetailsOpen, setSyncDetailsOpen] = React.useState(false)
   const modelScopeEpoch = React.useRef(0)
+  const settingsReadRevision = React.useRef(0)
+  const scopedSettingsPending = React.useRef(false)
   const modelStatusRevision = React.useRef(0)
+  const [scopeRevision, setScopeRevision] = React.useState(0)
   const currentModelFault = s.modelStatus.state === 'error' ? s.modelStatus.fault : undefined
   const retryModelConnection = React.useCallback(() => {
     const accountId = useApp.getState().account?.account_id
@@ -180,26 +183,62 @@ export function App() {
             (!d.account_id || !activeAccountId || d.account_id === activeAccountId)) s.setModelStatus(d)
       }).catch(() => {})
     }
+    const readSettings = (accountId?: string, waitsForScopedSettings = false) => {
+      const epoch = modelScopeEpoch.current
+      const revision = ++settingsReadRevision.current
+      call("settings.get").then((r) => {
+        const activeAccountId = useApp.getState().account?.account_id
+        if (!alive || epoch !== modelScopeEpoch.current || revision !== settingsReadRevision.current ||
+            (accountId && activeAccountId !== accountId)) return
+        s.set({ settings: r.settings, ...(r.options ? { options: r.options } : {}), ...(waitsForScopedSettings ? { ready: true } : {}) })
+        if (waitsForScopedSettings) scopedSettingsPending.current = false
+        setBootstrapError('')
+      }).catch(() => {
+        if (alive && epoch === modelScopeEpoch.current && revision === settingsReadRevision.current &&
+            (waitsForScopedSettings || !useApp.getState().settings))
+          setBootstrapError("读取当前账号设置失败，请重试连接。")
+      })
+    }
     const load = () => {
       const epoch = modelScopeEpoch.current
-      call("app.bootstrap").then((r) => {if(alive && epoch === modelScopeEpoch.current){s.set({ account: r.account, settings: r.settings, options: r.options,
-                                                                  notice: r.notice, ready: r.ready });setBootstrapError('')}}).catch(e => {if(alive)setBootstrapError(e.message)})
+      const settingsRevision = settingsReadRevision.current
+      call("app.bootstrap").then((r) => {
+        if (!alive || epoch !== modelScopeEpoch.current || settingsRevision !== settingsReadRevision.current) return
+        s.set({ account: r.account, settings: r.settings, options: r.options, notice: r.notice, ready: r.ready })
+        setBootstrapError('')
+        scopedSettingsPending.current = false
+      }).catch(e => {
+        if (alive && epoch === modelScopeEpoch.current && settingsRevision === settingsReadRevision.current) setBootstrapError(e.message)
+      })
     }
     load()
-    call("sync.status").then((d) => s.set({ sync: d })).catch(() => {})
+    const syncEpoch = modelScopeEpoch.current
+    call("sync.status").then((d) => {if(alive && syncEpoch === modelScopeEpoch.current)s.set({ sync: d })}).catch(() => {})
     readModelStatus()
     const offs = [
-      on("ready", (d) => { s.set({ ready: true, account: d.account }); call("settings.get").then((r) => s.set({ settings: r.settings })); readModelStatus() }),
+      on("ready", (d) => {
+        const waitsForScopedSettings = scopedSettingsPending.current
+        s.set({ ready: !waitsForScopedSettings, account: d.account })
+        readSettings(d.account?.account_id, waitsForScopedSettings)
+        readModelStatus()
+      }),
       on("account", (d) => s.set({ account: d })),
       on("model_status", () => { modelStatusRevision.current++ }),
-      on("settings", (d) => s.set({ settings: d })),
+      on("settings", () => {
+        const current = useApp.getState()
+        if (current.ready && current.account) readSettings(current.account.account_id)
+      }),
       on("session_notice", (d) => s.set({ notice: d })),
       on("window", (d) => s.set({ fullscreen: !!d.fullscreen })),
       on("navigate", (d) => { if (d?.route === "home") s.go("home") }),
       on("scope_changed", () => {
         modelScopeEpoch.current++
+        settingsReadRevision.current++
+        scopedSettingsPending.current = true
         modelStatusRevision.current++
-        s.set({ ready: false, sync: null, modelStatus:{state:'unknown',short:'模型待验证'},modelFault:null,modelRetry:null })
+        setScopeRevision((revision) => revision + 1)
+        setBootstrapError('')
+        s.set({ ready: false, account: null, settings: null, planId: null, sync: null, modelStatus:{state:'unknown',short:'模型待验证'},modelFault:null,modelRetry:null })
       }),
       on("sync_status", (d) => s.set({ sync: d })),
       on("sync_conflict", (d) => s.toast("info", d.message)),
@@ -279,8 +318,8 @@ export function App() {
           <div className="content">
             {s.settings && !s.ready && s.route !== 'home' && <Loading label="正在连接账号服务…"/>}
             <Loading active={s.sync?.state==='syncing' && s.sync?.show_progress===true} label={s.sync?.message || '正在同步学习记录…'} slowHint={false}/>
-            <PageErrorBoundary key={`${s.route}:${s.planId}:${s.settingsTab}`} back={()=>s.go(s.route === "plan" || s.route === "home" ? "plans" : "home")}>
-              {s.settings ? <Page key={s.route} /> : <div className="page">{bootstrapError ? <div className="card" role="alert">{bootstrapError}<Button onClick={bootstrapRetry}>重试</Button></div>
+            <PageErrorBoundary key={`${s.route}:${s.planId}:${s.settingsTab}:${scopeRevision}`} back={()=>s.go(s.route === "plan" || s.route === "home" ? "plans" : "home")}>
+              {s.settings && s.ready ? <Page key={`${s.route}:${scopeRevision}`} /> : <div className="page">{bootstrapError ? <div className="card" role="alert">{bootstrapError}<Button onClick={bootstrapRetry}>重试</Button></div>
                 : <Loading shape="page" label="正在准备学习空间…" resetKey={bootstrapAttempt} onRetry={bootstrapRetry}/>}</div>}
             </PageErrorBoundary>
           </div>

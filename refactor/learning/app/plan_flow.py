@@ -295,8 +295,10 @@ class PlanFlow:
                     # Late background notifications must not reopen an account.
                     return view  # Keep the last preview; don't query the closed account again.
                 known=[saved.get(m.get('id')) for m in modules]
+                question_counts = ([n if n is not None else len(m['points'])
+                                    for m, n in zip(modules, known)] if saved else None)
                 view['outline']['ranges'] = self._content_ranges(draft, modules,
-                    question_counts=[n or 0 for n in known] if saved else ())
+                    question_counts=question_counts)
                 view['outline']['ranges']['checks_pending']=any(n is None for n in known)
         return view
 
@@ -1190,7 +1192,7 @@ class PlanFlow:
         self.save(draft)
 
     # ----------------------------------------------------------- 4 estimate + generate
-    def _content_ranges(self, draft, modules, *, annotate=False, question_counts=()):
+    def _content_ranges(self, draft, modules, *, annotate=False, question_counts=None):
         """Preview and persisted points use the same estimates and cached labels.
 
         Annotating runs only in the bridge's estimate worker, never in a view.
@@ -1224,6 +1226,8 @@ class PlanFlow:
                     sum(s['minutes'] for s in p['subpoints']) if p.get('structure') == 'concept_v1' else
                     agents.estimate_point_minutes(**metrics[row['id']], difficulty=p.get('difficulty', '中')))
             module['minutes'] = [sum(p['minutes'] for p in originals)] * 2
+        if question_counts is None:
+            question_counts = [len(module['points']) for module in modules]
         return map_ranges(self._window(draft), len(rows), module_counts=[len(m['points']) for m in modules],
                           question_counts=question_counts, learning_minutes=sum(m['minutes'][0] for m in modules))
 
@@ -1231,19 +1235,24 @@ class PlanFlow:
         if draft["phase"] != "outline" or not draft.get("outline"):
             raise BridgeError("PHASE_INVALID", "请先生成路线轮廓。")
         modules = agents.outline_modules(draft["outline"])
-        ranges = self._content_ranges(draft, modules, annotate=annotate)
+        # Before preparation creates the question bank, use a conservative
+        # provisional estimate of one assessment question per point. Actual
+        # prepared counts later replace this preview reserve.
+        ranges = self._content_ranges(draft, modules, annotate=annotate,
+                                      question_counts=[len(module['points']) for module in modules])
         draft["outline"]["ranges"] = ranges
         draft["estimate"] = {"modules": len(modules), "points": ranges["points"],
             "input_tokens": [0, 0], "output_tokens": [0, 0], "model": "",
-            "note": "知识地图已核验；保存时不再生成知识点。只采用资料自带的题，检测时长按备好的实际题数计算。",
+            "note": "知识地图已核验；保存时不再生成知识点。总时长含暂估的检测储备，备题后按实际题量调整。",
             "blocked": False}
         if ranges["over_cap"]:
             text = (f"按现在日期每天需要 {ranges['daily'][1]} 分钟，超过你填写的 {ranges['cap']} 分钟。"
                     f"建议延长到 {ranges['suggested_end']}（共 {ranges['suggested_days']} 天），或缩小学习范围。"
-                    "可以提高每天时长、延长周期或调整内容，也可以按当前安排继续。")
+                    "检测储备为暂估，备题后按实际题量调整。可以提高每天时长、延长周期或调整内容，也可以按当前安排继续。")
         else:
             text = (f"共 {ranges['points']} 个知识点，按原文分量和难度预估学习 {ranges['learning']} 分钟；"
-                    f"目前学习约 {ranges['total'][1]} 分钟，每天约 {ranges['daily'][1]} 分钟；检测时长待实际题数确定。确认后保存计划并准备第 1 模块。")
+                    f"含暂估检测储备的总时长约 {ranges['total'][1]} 分钟，每天约 {ranges['daily'][1]} 分钟。"
+                    "备题后按实际题量调整。确认后保存计划并准备第 1 模块。")
         draft["messages"].append(_msg("ai", "estimate", text))
         self.save(draft)
 
@@ -1342,6 +1351,12 @@ class PlanFlow:
             self._prepare_notes(plan_id, first['id'], ctx)
             preparation = prepare(store, plan_id, first["id"], self._material_context(ctx), progress)
             self._save_material_summary(plan_id, first["id"], preparation)
+            prepared = {m['id']: m.get('question_count') for m in store.records('modules', plan_id)}
+            counts = [prepared.get(m.get('id')) for m in modules]
+            draft['outline']['ranges'] = self._content_ranges(
+                draft, modules, question_counts=[n if n is not None else len(m['points'])
+                                                 for m, n in zip(modules, counts)])
+            draft['outline']['ranges']['checks_pending'] = any(n is None for n in counts)
             if ctx.cancel.is_set():
                 raise ModelCancelled()
             if not self._module_ready(plan_id, first['id']):
@@ -3277,6 +3292,14 @@ def register(bridge, services, window, study_day, *, fetcher=None):
                 raise
         return run
 
+    def plan_window(params, ctx):
+        # The same bridge method serves both the new-plan estimate actions
+        # and PLAN-08 changes on an already-started plan. `changes` is the
+        # draft contract used by NewPlan; active-plan calls send fields flat.
+        if isinstance(params.get('changes'), dict):
+            return flow().run(plan_id(params), lambda d, x: flow().adjust_window(d, x, params['changes']), ctx)
+        return flow().change_window(plan_id(params), params)
+
     handlers = {
         "plan.current": lambda p, c: {"draft": flow().public(flow().current())},
         "plan.get": lambda p, c: {"draft": flow().get_draft(plan_id(p))},
@@ -3292,7 +3315,7 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.missing": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().resolve_missing(d, x, text(p, 'action', 20)), c),
         "plan.outline": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().make_outline(d, x), c),
         "plan.estimate": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().estimate(d), c),
-        "plan.window": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().adjust_window(d, x, p.get('changes')), c),
+        "plan.window": plan_window,
         "plan.generate": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().generate(d, x), c),
         "plan.module": lambda p, c: flow().run(plan_id(p), lambda d, x: flow().edit_module(
             d, "delete" if p.get("action") == "delete" else "move", text(p, "module_id", 40), p.get("direction", 0)), c),
@@ -3303,7 +3326,6 @@ def register(bridge, services, window, study_day, *, fetcher=None):
         "plan.retry_point_minutes": lambda p, c: flow().retry_point_minutes(plan_id(p)),
         "plan.stop_preparation": lambda p, c: stop_preparation(p),
         "plan.resume_preparation": lambda p, c: resume_preparation(p),
-        "plan.window": lambda p, c: flow().change_window(plan_id(p), p),
         "plan.rename": lambda p, c: services().store.rename_plan(plan_id(p), text(p, "title", 80)) or {"ok": True},
         "plan.archive": lambda p, c: (services().store.archive_plan(plan_id(p)) if p.get("archived") is True
                                       else services().store.restore_plan(plan_id(p))) or {"ok": True},

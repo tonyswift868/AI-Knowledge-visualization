@@ -136,6 +136,7 @@ export function NewPlan() {
   function adjustContent(value: string) { setText(value); chatInput.current?.focus() }
   const idRef = React.useRef<string | null>(null)
   const abort = React.useRef<AbortController | null>(null)
+  const draftScopeRevision = React.useRef(0)
   const lastModelAction = React.useRef<{method:string;params:Record<string,unknown>}|null>(null)
   const [loadError,setLoadError] = React.useState('')
   const [loadAttempt,retryLoad] = React.useReducer(n=>n+1,0)
@@ -144,6 +145,7 @@ export function NewPlan() {
 
   React.useEffect(() => {
     let alive=true
+    const scope = ++draftScopeRevision.current
     let receivedCurrentDraft=false
     idRef.current=planId
     setDraft(null)
@@ -151,14 +153,16 @@ export function NewPlan() {
     setLoadError('')
     const offs = [
       on("plan_draft", (d: Draft) => {
+        if (scope !== draftScopeRevision.current) return
         const expectedPlanId = planId ?? idRef.current
         if (expectedPlanId && d.plan_id === expectedPlanId) { receivedCurrentDraft=true; accept(d) }
       }),
-      on("plan_status", (d: { plan_id: string; text: string }) => { if (d.plan_id === idRef.current) setStatus(d.text || null) }),
+      on("plan_status", (d: { plan_id: string; text: string }) => { if (scope === draftScopeRevision.current && d.plan_id === idRef.current) setStatus(d.text || null) }),
+      on("scope_changed", () => { draftScopeRevision.current++; abort.current?.abort() }),
     ]
     const load = planId ? call<{ draft: Draft }>("plan.get", { plan_id: planId }) : call<{ draft: Draft }>("plan.current")
-    load.then((r) => {if(alive && !receivedCurrentDraft)accept(r.draft)}).catch((e: BridgeFailure) => {
-      if (!alive || receivedCurrentDraft) return
+    load.then((r) => {if(alive && scope===draftScopeRevision.current && !receivedCurrentDraft)accept(r.draft)}).catch((e: BridgeFailure) => {
+      if (!alive || scope!==draftScopeRevision.current || receivedCurrentDraft) return
       if (planId && e.code === "DRAFT_NOT_FOUND") {
         // A selected plan can outlive its device-local creation draft. Clear
         // only the view's stale selection; plan.current will open the normal
@@ -169,23 +173,25 @@ export function NewPlan() {
       }
       setLoadError(e.message)
     })
-    return () => {alive=false;offs.forEach((off) => off());abort.current?.abort()}
+    return () => {alive=false;if(scope===draftScopeRevision.current)draftScopeRevision.current++;offs.forEach((off) => off());abort.current?.abort()}
   }, [planId, accept, toast, set,loadAttempt])
 
   async function act(method: string, params: Record<string, unknown> = {}) {
     if (!draft) return
+    const scope = draftScopeRevision.current
     lastModelAction.current={method,params}
     beginRound()
     setPending(true)
     abort.current=new AbortController()
     try {
       const r = await call<{ draft?: Draft }>(method, { plan_id: draft.plan_id, ...params }, {signal:abort.current.signal})
+      if (scope !== draftScopeRevision.current) return
       if (r?.draft) accept(r.draft)
       return true
     } catch (e) {
-      toast("error", (e as BridgeFailure).message)
+      if (scope === draftScopeRevision.current) toast("error", (e as BridgeFailure).message)
       return false
-    } finally { setPending(false);abort.current=null }
+    } finally { if(scope===draftScopeRevision.current){setPending(false);abort.current=null} }
   }
 
   useModelRetry(()=>{const previous=lastModelAction.current;if(previous && !pending)void act(previous.method,previous.params)},
@@ -194,17 +200,19 @@ export function NewPlan() {
     const value = text.trim()
     if (!value) return
     setText("")
-    if (!(await act("plan.say", { text: value }))) setText(value)
+    if ((await act("plan.say", { text: value })) === false) setText(value)
   }
 
   async function discard() {
     if (!draft) return
+    const scope = draftScopeRevision.current
     try {
       await call("plan.discard", { plan_id: draft.plan_id })
+      if (scope !== draftScopeRevision.current) return
       toast("ok", "已删除这份计划。")
       set({ planId: null })
       go("plans")
-    } catch (e) { toast("error", (e as Error).message) }
+    } catch (e) { if(scope===draftScopeRevision.current)toast("error", (e as Error).message) }
   }
 
   if (!draft) return <div className="page">{loadError ? <div className="card" role="alert">{loadError}<Button onClick={retryLoad}>重试</Button></div>

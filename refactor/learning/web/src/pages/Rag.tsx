@@ -35,6 +35,9 @@ export function Rag() {
   const [sourceOpen, setSourceOpen] = React.useState<{ messageId: string; number: number } | null>(null)
   const abort = React.useRef<AbortController | null>(null)
   const mounted = React.useRef(false)
+  const sessionReadRevision = React.useRef(0)
+  const sourcesReadRevision = React.useRef(0)
+  const accountScopeRevision = React.useRef(0)
   const sourcesFlight = React.useRef<Promise<SourcesResponse> | null>(null)
   const probeRagStatus = React.useRef<(() => void) | null>(null)
   const scrollRef = React.useRef<HTMLDivElement>(null)
@@ -51,8 +54,9 @@ export function Rag() {
 
   const refresh = React.useCallback(async () => {
     if (sourcesFlight.current) return sourcesFlight.current
+    const revision = ++sourcesReadRevision.current
     const flight = call<SourcesResponse>("rag.sources").then((result) => {
-      if (mounted.current) {
+      if (mounted.current && revision === sourcesReadRevision.current) {
         setSources(result)
         setLoadError("")
       }
@@ -87,15 +91,16 @@ export function Rag() {
     }
     const load = async (initial: boolean) => {
       if (!alive || inFlight) return
+      const scope = accountScopeRevision.current
       inFlight = true
       try {
         const result = await refresh()
-        if (!alive) return
+        if (!alive || scope !== accountScopeRevision.current) return
         if (initial && result.sessions[0]) void openSession(result.sessions[0].id)
         pollRequired = result.server_status?.state === "unavailable"
         if (!pollRequired) delay = 1500
       } catch (e) {
-        if (!alive) return
+        if (!alive || scope !== accountScopeRevision.current) return
         pollRequired = true
         if (initial) setLoadError((e as Error).message)
       } finally {
@@ -114,16 +119,28 @@ export function Rag() {
       setProgress((old) => ({ ...old, [id]: event }))
       setSources((old) => old ? { ...old, documents: old.documents.map((doc) => doc.id === id ? { ...doc, ...event, id } : doc) } : old)
     })
-    return () => { alive = false; mounted.current = false; probeRagStatus.current = null; clearScheduled(); off(); abort.current?.abort() }
+    const offScope = on("scope_changed", () => {
+      accountScopeRevision.current++
+      sourcesReadRevision.current++
+      sourcesFlight.current = null
+      sessionReadRevision.current++
+      setSources(null)
+      setSession(null)
+      setSelected([])
+      clearSendFailure()
+    })
+    return () => { alive = false; mounted.current = false; sessionReadRevision.current++; probeRagStatus.current = null; clearScheduled(); off(); offScope(); abort.current?.abort() }
   }, [refresh])
 
   async function openSession(id: string) {
+    const revision = ++sessionReadRevision.current
     try {
       const result = await call<{ session: Session }>("rag.get", { session_id: id })
+      if (!mounted.current || revision !== sessionReadRevision.current) return
       setSession(result.session)
       setSelected(result.session.document_ids)
       clearSendFailure()
-    } catch (e) { toast("error", (e as Error).message) }
+    } catch (e) { if (mounted.current && revision === sessionReadRevision.current) toast("error", (e as Error).message) }
   }
   function toggleDocument(id: string) {
     clearSendFailure()

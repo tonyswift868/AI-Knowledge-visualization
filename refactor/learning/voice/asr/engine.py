@@ -5,6 +5,7 @@ from collections import deque
 from concurrent.futures import Future
 from dataclasses import dataclass
 from pathlib import Path
+import tempfile
 import threading
 import time
 
@@ -22,16 +23,17 @@ WHOLE_CHUNK_SECONDS = 25.0
 LONG_PAUSE_SECONDS = 1.5
 
 
-def _whole_chunks(audio: np.ndarray, speech_ranges, max_seconds=WHOLE_CHUNK_SECONDS):
-    """Split only inside long VAD gaps; choose the longest reachable pause.
+def _whole_chunk_ranges(sample_count: int, speech_ranges, max_seconds=None):
+    """Return bounded contiguous sample ranges split only at long VAD gaps.
 
     A continuous utterance exceeding the limit has no safe boundary: the final
     pass falls back, rather than cutting a word or inventing an endpoint.
     """
+    max_seconds = WHOLE_CHUNK_SECONDS if max_seconds is None else max_seconds
     limit = int(max_seconds * SAMPLE_RATE)
     merged = []
     for start, end in sorted(speech_ranges):
-        start, end = max(0, start), min(len(audio), end)
+        start, end = max(0, start), min(sample_count, end)
         if end <= start:
             continue
         if merged and start <= merged[-1][1]:
@@ -41,17 +43,23 @@ def _whole_chunks(audio: np.ndarray, speech_ranges, max_seconds=WHOLE_CHUNK_SECO
     gaps = [(left[1], right[0]) for left, right in zip(merged, merged[1:])
             if right[0] - left[1] >= LONG_PAUSE_SECONDS * SAMPLE_RATE]
     chunks, offset = [], 0
-    while len(audio) - offset > limit:
+    while sample_count - offset > limit:
         available = [(a, b) for a, b in gaps if offset < a < offset + limit]
         if not available:
             raise ValueError("no_long_pause")
         a, b = max(available, key=lambda gap: (gap[1] - gap[0], gap[0]))
         cut = min((a + b) // 2, offset + limit)
-        chunks.append(audio[offset:cut])
+        chunks.append((offset, cut))
         offset = cut
-    if offset < len(audio):
-        chunks.append(audio[offset:])
+    if offset < sample_count:
+        chunks.append((offset, sample_count))
     return chunks
+
+
+def _whole_chunks(audio: np.ndarray, speech_ranges, max_seconds=WHOLE_CHUNK_SECONDS):
+    """Array convenience wrapper used by focused segmentation tests."""
+    return [audio[start:end] for start, end in
+            _whole_chunk_ranges(len(audio), speech_ranges, max_seconds)]
 
 
 @dataclass(frozen=True)
@@ -153,6 +161,7 @@ class AsrEngine:
         self.whole_outcome = "pending"
         self.whole_seconds = 0.0
         self.whole_block_seconds: list[float] = []
+        self._recording_lock = threading.Lock()
         self._thread = threading.Thread(target=self._run, name="mf-sensevoice", daemon=True)
         self._thread.start()
 
@@ -232,7 +241,7 @@ class AsrEngine:
             else:
                 self._partial = text
 
-    def _whole_final(self, backend, recording: list[bytes], fallback: str) -> str:
+    def _whole_final(self, backend, recording, sample_count: int, fallback: str) -> str:
         """Use the same loaded recognizer, handing it off after VAD is flushed.
 
         Native inference cannot be interrupted. A daemon holds its own backend
@@ -244,21 +253,29 @@ class AsrEngine:
             self.whole_outcome = "silence"
             return fallback
         start = max(0, (first or 0) - round(PRE_SPEECH_SECONDS * SAMPLE_RATE))
-        audio = np.frombuffer(b"".join(recording), dtype="<i2")[start:].astype(np.float32) / 32768.0
+        available_samples = max(0, sample_count - start)
         ranges = [(a - start, b - start) for a, b in getattr(backend, "speech_ranges", [])]
         try:
-            chunks = _whole_chunks(audio, ranges)
+            chunks = _whole_chunk_ranges(available_samples, ranges)
         except ValueError:
             self.whole_outcome = "fallback_no_long_pause"
             return fallback
-        self.whole_block_seconds = [len(chunk) / SAMPLE_RATE for chunk in chunks]
+        self.whole_block_seconds = [(end - begin) / SAMPLE_RATE for begin, end in chunks]
         done, box = threading.Event(), {}
         stopped = threading.Event()
         cancelled = self._cancel
         def recognize():
             try:
                 texts = []
-                for chunk in chunks:
+                for begin, end in chunks:
+                    with self._recording_lock:
+                        if cancelled.is_set() or stopped.is_set():
+                            return
+                        recording.seek((start + begin) * 2)
+                        raw = recording.read((end - begin) * 2)
+                    if len(raw) != (end - begin) * 2:
+                        raise ValueError("incomplete_recording")
+                    chunk = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
                     if cancelled.is_set() or stopped.is_set():
                         return
                     text = backend.decode(chunk).strip()
@@ -289,7 +306,8 @@ class AsrEngine:
             self.load_seconds = getattr(backend, "load_seconds", 0.0)
             self.ready.set()
             tail = np.empty(0, dtype=np.float32)
-            recording: list[bytes] = []
+            recording = tempfile.TemporaryFile(mode="w+b")
+            sample_count = 0
             last_partial_at = 0.0
             last_partial_size = 0
             while not self._cancel.is_set():
@@ -312,7 +330,7 @@ class AsrEngine:
                     self.first_speech_sample = getattr(backend, "first_speech_sample", None)
                     fallback = " ".join(self._sentences)
                     try:
-                        text = self._whole_final(backend, recording, fallback)
+                        text = self._whole_final(backend, recording, sample_count, fallback)
                     except Exception:
                         # Optional second-pass setup is also allowed to fail.
                         self.whole_outcome = "fallback_failed"
@@ -326,7 +344,8 @@ class AsrEngine:
                             self._result.set_result(text)
                     break
                 if pcm:
-                    recording.append(pcm)
+                    recording.write(pcm)
+                    sample_count += len(pcm) // 2
                 audio = np.concatenate((tail, np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0))
                 end = len(audio) - len(audio) % backend.window_size
                 for offset in range(0, end, backend.window_size):
@@ -355,6 +374,9 @@ class AsrEngine:
                     self._accepting = False
                     self._result.set_exception(self._failure)
         finally:
+            if "recording" in locals():
+                with self._recording_lock:
+                    recording.close()
             with self._condition:
                 self._queue.clear()
                 self._buffered = 0
