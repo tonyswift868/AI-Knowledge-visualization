@@ -2,6 +2,8 @@
 
 状态：234-MF01 已获用户部署授权，源码固定从 `149b53ed` 以 `git -c core.autocrlf=false archive` 导出；解包后先检查全部 `.sh` 为 LF 并执行 `sh -n`，本机运行 `tests/refactor/deploy219/test_server_deploy219.py`。BUG-189、BUG-191 仅改应用代码，没有增加迁移，以下镜像标签仍沿用 `226`。实际执行结果以 234-MF01 回执为准。迁移新增 `0046_account_profiles`。该表含用户昵称、签名和头像，不得通过常规 downgrade 删除。
 
+234 当前结果（2026-10-29）：0046 已迁移；候选 Java 226 和 Python 226 探针曾通过，但执行连接被远端关闭，按任务失败分支回退。最终 Java 为 `rollback226`（与上线前 219 同一镜像 ID），0046 和资料表保留，新 Python 226 备用已停止。`restore-python.sh` 的实际启动报 `backend-tls-ready is missing dependency runtime-secrets-ready`，因此不能把语法检查通过当成备用恢复可用；本次没有越界修改 Compose 依赖。按本节第 4 节的直接旧 Java 应用回退恢复后，探针 9/9、公网三健康检查 200。下一次执行前须另行解决备用启动配置；不要重跑本次迁移或覆盖本次备份。
+
 只通过任务指定的 SSH 命令行执行；普通 SSH 用户无 Docker 权限时使用服务器已有的 `sudo -n`，不改 sudo/Docker 权限、不输入或输出密码。下面各步共用已核实的环境变量。
 
 ## 发布范围
