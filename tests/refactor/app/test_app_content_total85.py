@@ -136,17 +136,22 @@ def test_content_preview_labels_cached_dates_change_and_new_save_agree(store):
         outline=dict(stages=[dict(title='阶段',modules=[module])]))
     f.estimate(draft)
     preview = draft['outline']['ranges']
-    assert preview['learning'] == preview['total'][0] == 3+8
-    assert preview['daily'][0] == 1
+    assert preview['learning'] == 3+8
+    # Before preparation, total includes two provisional module-test
+    # questions (4 minutes) and their final-check reserve (5 minutes).
+    assert preview['total'] == [20,20]
+    assert preview['daily'] == [2,2]
     assert '平均 8' not in draft['messages'][-1]['text']
     draft['form']['end'] = '2026-10-12'
     f.estimate(draft)
     assert model.calls == ['point_difficulty']
-    assert draft['outline']['ranges']['daily'] == [3,3]
+    assert draft['outline']['ranges']['daily'] == [4,4]
     store.delete_module(PLAN,'m1',today=DAY)
     store.save_generated_module(PLAN, 'm0', [dict(p, id=f'm0-{i:02d}',chunk_ids=['c']) for i,p in enumerate(points,1)],
                                 today=DAY,check_minutes=0)
     state = store.point_minutes_snapshot(PLAN)
     store.save_point_minutes(PLAN,state['fingerprint'],{p['id']:p['difficulty'] for p in state['points']},today=DAY)
-    assert store.get_plan(PLAN)['total_minutes'] == preview['total'][0]
+    # This saved fixture explicitly has zero prepared questions: only the
+    # learning estimate remains, rather than the provisional test reserve.
+    assert store.get_plan(PLAN)['total_minutes'] == preview['learning']
     assert f.ensure_point_minutes(PLAN) == 'ready'

@@ -1,1 +1,2 @@
 refactor/server/** text=auto eol=lf
+refactor/server-java/deploy/*.sh text eol=lf
