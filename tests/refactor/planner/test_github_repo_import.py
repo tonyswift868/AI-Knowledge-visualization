@@ -83,10 +83,10 @@ def test_size_cap_stops_reading_and_says_so(monkeypatch):
     assert any("超过上限" in w for w in source.document.warnings)
 
 
-def test_translations_are_recognised_without_a_language_list():
+def test_translations_require_a_registered_language_code():
     from refactor.learning.course.github_repo import drop_translations
     assert drop_translations(["book/ch1.md", "book-hu/ch1.md", "book-xx/ch1.md", "README.md", "README.ja.md"]) == [
-        "book/ch1.md", "README.md"]
+        "book/ch1.md", "book-xx/ch1.md", "README.md"]
     # a Chinese copy wins over the original
     assert drop_translations(["guide/a.md", "guide-zh/a.md", "README.md", "README.zh-CN.md"]) == ["guide-zh/a.md", "README.zh-CN.md"]
 

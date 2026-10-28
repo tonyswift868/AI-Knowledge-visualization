@@ -62,6 +62,20 @@ def _msg(role, kind, text="", **data):
     return {"id": _new_id()[:12], "role": role, "kind": kind, "text": text, **data}
 
 
+def _read_warning(result, source=None):
+    warnings = result.get('warnings') or (source or {}).get('warnings') or []
+    return '\n'.join(str(warning) for warning in warnings if warning) or None
+
+
+def _remember_read_warning(draft, url, result, source=None):
+    warning = _read_warning(result, source)
+    if not warning:
+        return
+    warnings = draft.setdefault('source_read_warnings', {})
+    current = warnings.get(url, '')
+    warnings[url] = '\n'.join(dict.fromkeys([*current.splitlines(), *warning.splitlines()]))
+
+
 def _day(value, name):
     if not isinstance(value, str) or not _DAY.fullmatch(value):
         raise BridgeError("FORM_INVALID", f"{name}格式不对。")
@@ -681,12 +695,15 @@ class PlanFlow:
                 if existing:
                     existing.update(status='adopted', user_provided=True, tier='user',
                         note='由你提供，正文已读取。', read_status='ready', read_error='', chars=result['char_count'])
+                    _remember_read_warning(draft, existing['url'], result, source)
                     shown.append(existing['card_id'])
                 else:
-                    cards.append(dict(card_id=_new_id()[:12], kind='url', url=source['url'],
+                    card = dict(card_id=_new_id()[:12], kind='url', url=source['url'],
                         title=source['title'], site=source['url'], tier='user', summary='', relevance=None,
                         credibility=None, note='由你提供，正文已读取。', user_provided=True, status='adopted',
-                        source_id=source['id'], chars=result['char_count'], sha=source.get('sha256')))
+                        source_id=source['id'], chars=result['char_count'], sha=source.get('sha256'))
+                    _remember_read_warning(draft, card['url'], result, source)
+                    cards.append(card)
                     shown.append(cards[-1]['card_id'])
             else:
                 draft['messages'].append(_msg('ai', 'error', result['original_url']+'：'+result['message']))
@@ -830,6 +847,7 @@ class PlanFlow:
                             read_status='ready',read_error='',read_seconds=result['elapsed_seconds'],
                             failed_pages=result.get('failed_pages',[]),read_total=result.get('total_pages',0),
                             read_done=result.get('done_pages',0),read_success=result.get('successful_pages',0))
+                _remember_read_warning(draft, card['url'], result, source)
                 if not any(c.get('source_id')==source['id'] for c in draft['sources']):
                     draft['sources'].append(card)
             except ModelCancelled:
