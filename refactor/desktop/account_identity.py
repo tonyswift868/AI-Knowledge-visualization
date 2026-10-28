@@ -223,6 +223,8 @@ class AccountPreferenceStore:
         for key, value in values.items():
             self.settings.setValue(key, value)
         self.settings.sync()
+        if hasattr(self.settings, "status") and self.settings.status().value != 0:
+            raise RuntimeError("ACCOUNT_PREFERENCES_WRITE_FAILED")
 
     def login_options(self) -> tuple[bool, bool]:
         remember = str(self.settings.value("account/remember_me", "0")) == "1"

@@ -1013,12 +1013,15 @@ class AccountShell:
         panel = self._closure_recovery = QWidget(self.gate)
         box = QVBoxLayout(panel)
         try:
-            records = ClosureStore(self.session.preferences.settings).records()
+            store = ClosureStore(self.session.preferences.settings)
+            records = store.records()
             for record in records:
                 profile = ClosureStore.profile(record)
                 button = QPushButton('继续注销 / 本机清理：' + profile.safe_account_label)
                 button.clicked.connect(lambda _checked=False, p=profile: self._open_closure(p))
                 box.addWidget(button)
+            if store.invalid_record_count:
+                self.gate.notice_label.setText('部分注销恢复记录无法读取；已保留原记录，请勿重新发起删除。')
         except Exception:
             records = []
             self.gate.notice_label.setText('注销恢复记录无法读取；请保留本机记录，不要重新发起删除。')
