@@ -10,11 +10,13 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 import os
 import tempfile
+import threading
 from types import SimpleNamespace
 
 import pytest
 
 from refactor.learning.app import handlers
+from refactor.learning.app.bridge import CallContext
 from refactor.learning.app.settings import AppSettings
 from tests.refactor.mastery70.support import seed_assessment
 from refactor.learning.course.ledger import Ledger, PlanWindow
@@ -266,7 +268,10 @@ class Simulation:
                               'tentative' if tentative else 'confirmed')
 
     def settings_save(self, **changes):
-        result = self.registry.methods['settings.save']({'changes': changes}, None)
+        # Match the real bridge contract: settings.save receives a cancellation
+        # event even for these synchronous, offline timeline simulations.
+        context = CallContext('timeline-settings-save', threading.Event(), lambda _delta: None)
+        result = self.registry.methods['settings.save']({'changes': changes}, context)
         assert result['settings'] == self.changed_settings[-1] == self.settings.load()
 
     def detect(self, *, correct=True):

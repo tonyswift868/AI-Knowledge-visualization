@@ -202,7 +202,7 @@ def test_minutes_new_generation_initial_weights_before_preparation(store):
     draft['sources']=[dict(source_id='s',status='adopted')]
     for i,p in enumerate(draft['outline']['stages'][0]['modules'][0]['points'],1):
         p['citations']=[dict(chunk_id='c',paragraph_id=f'c@0:{i*500}',paragraph_start=0,paragraph_end=i*500)]
-    f._adopted=lambda d:([dict(id='s')],None)
+    f._adopted=lambda d:([dict(id='s')],{})
     # Existing other module would inflate budget; remove it before new generation.
     store.delete_module(PLAN,'m1',today=DAY)
     with pytest.raises(RuntimeError,match='materials stub'):
