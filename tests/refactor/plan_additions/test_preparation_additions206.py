@@ -51,7 +51,9 @@ def test_concept_addition_resumes_only_changed_child_and_syncs(seeded_store, tmp
     original = qb.assessment_questions(store.records('question_bank', 'p'), 'm')
     assert len(original) == 1 and original[0]['subpoint_id'] == 'point-s3'
     original_id = original[0]['id']
-    assert finder_calls == [('point-s1', 'point-s2')]
+    # Source-only preparation must not invoke the retired cloze finder, even
+    # for children whose source contains no original exercise (BUG-175).
+    assert finder_calls == []
 
     # Record a completed detection after the first preparation. Make its
     # chronology deterministic relative to the new question created below.
@@ -103,7 +105,7 @@ def test_concept_addition_resumes_only_changed_child_and_syncs(seeded_store, tmp
     # New-source fingerprints must make the module and selected child stale,
     # while the untouched children's checkpoints remain reusable.
     result = pm.prepare_module(store, 'p', 'm', preparation, lambda *_args: None)
-    assert finder_calls == [('point-s1', 'point-s2')]
+    assert finder_calls == []
     prepared = store._get('points', 'p', 'point')
     after_markers = prepared['subpoint_preparation']['processed_subpoints']
     assert after_markers[expected_subpoint]['input_fingerprint'] != before_markers[
