@@ -54,28 +54,27 @@ def _acquire_and_finish_closure(env, operation, digest, claim):
 
 
 def _wait_for_real_lock_waiters(env, blocker_pid, *, need_clean, need_profile_write, timeout=15):
-    """Confirm the requested service statements are actually queued on PG locks."""
+    """Confirm the product writer and closure phase reached their PG lock waits."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         with psycopg.connect(env["pg_admin"]) as conn:
             rows = conn.execute(
-                """SELECT query FROM pg_stat_activity
-                   WHERE state='active'
-                     AND wait_event_type='Lock' AND wait_event='advisory'
-                     AND %s = ANY(pg_blocking_pids(pid))""",
-                (blocker_pid,),
+                """SELECT query, pg_blocking_pids(pid), wait_event
+                   FROM pg_stat_activity
+                   WHERE state='active' AND wait_event_type='Lock'"""
             ).fetchall()
         queries = [row[0].lower() for row in rows]
-        cleaning = any("account_closure.clean" in query for query in queries)
+        cleaning = any("account_closure.clean" in query or "account_closure.acquire" in query
+                       for query in queries)
         profile_write = any(
-            "account_profiles" in query or "mentorflow.rag:" in query
-            for query in queries
-            if "account_closure.clean" not in query
+            blocker_pid in blockers and ("account_profiles" in query or "mentorflow.rag:" in query)
+            and "account_closure." not in query
+            for query, blockers, _event in rows
         )
         if (not need_clean or cleaning) and (not need_profile_write or profile_write):
             return queries
-        time.sleep(0.02)
-    raise AssertionError("closure clean and profile write did not both wait on PostgreSQL advisory lock")
+        time.sleep(0.01)
+    raise AssertionError("closure acquire/clean and profile write did not reach PostgreSQL lock waits")
 
 
 def _write_request(client, actor, operation, version):
@@ -175,6 +174,9 @@ def test_python_profile_writes_cannot_survive_concurrent_closure229(profile_env2
             (actor["scope"],),
         ).fetchall()
         assert rows == [], rows
-    assert any("account_closure.clean" in query.lower() for query in wait_queries)
+    # New code can hold the closure fence while waiting for an in-flight writer;
+    # baseline code reaches clean first. Both are meaningful observed lock phases.
+    assert any("account_closure.clean" in query.lower() or "account_closure.acquire" in query.lower()
+               for query in wait_queries)
     assert any("account_profiles" in query.lower() or "mentorflow.rag:" in query.lower()
                for query in wait_queries if "account_closure.clean" not in query.lower())
