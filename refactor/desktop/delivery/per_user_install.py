@@ -47,6 +47,10 @@ UPDATER_SWAP = 'updater-swap'
 SCHEMA = 'mentorflow.per-user-install.v1'
 
 
+class RecoveryEvidenceMissing(RecoverableError):
+    """A transaction cannot be restored because its signed evidence is absent."""
+
+
 def keys():
     # Shared authority, not the protected helper's dependency graph. The real
     # desktop PYZ must not import a high-privilege preflight just to read keys.
@@ -833,7 +837,7 @@ def _restore_transaction_runtime(root, attempt, public_keys=None):
     active = plain(root / 'Updater')
     binding_backup = plain(stage / 'previous-updater-release.json')
     if not binding_backup.is_file():
-        raise RecoverableError('恢复没完成，下次启动再试')
+        raise RecoveryEvidenceMissing('恢复证据缺失：previous-updater-release.json')
     old_release = historical(read(binding_backup), public_keys if public_keys is not None else keys())
     old_runtime = _runtime_release(old_release)
     if backup.exists():
@@ -844,7 +848,7 @@ def _restore_transaction_runtime(root, attempt, public_keys=None):
             _recovery_rename(root, active, failed, component='UPDATER_TRANSACTION_DISCARD')
         _recovery_rename(root, backup, active, component='UPDATER_TRANSACTION_RESTORE')
     elif not active.exists():
-        raise RecoverableError('恢复没完成，下次启动再试')
+        raise RecoveryEvidenceMissing('恢复证据缺失：Updater 与 previous-updater 均不存在')
     else:
         # Recovery may resume after the directory move succeeded but before
         # restoring its binding. Only accept the signed runtime from that phase.
@@ -853,7 +857,7 @@ def _restore_transaction_runtime(root, attempt, public_keys=None):
     binding = plain(root / UPDATER_RELEASE)
     if state['had_binding']:
         if not binding_backup.is_file():
-            raise RecoverableError('恢复没完成，下次启动再试')
+            raise RecoveryEvidenceMissing('恢复证据缺失：previous-updater-release.json')
         atomic(binding, read(binding_backup))
     else:
         binding.unlink(missing_ok=True)
@@ -872,8 +876,11 @@ def recover(root, public_keys=None):
     if doc.get('phase') in ('HEALTHY', 'ROLLED_BACK'): return False
     try:
         _restore_transaction_runtime(root, doc.get('attempt'), public_keys)
+    except RecoveryEvidenceMissing as error:
+        maintenance_log(root, 'recovery_incomplete', code='RECOVERY_EVIDENCE_MISSING')
+        raise RecoverableError('恢复证据缺失，保留现场并等待修复') from error
     except (OSError, RenameStateChangedError, RecoverableError) as error:
-        maintenance_log(root, 'recovery_incomplete', code='DIRECTORY_RENAME_RETRY_EXHAUSTED')
+        maintenance_log(root, 'recovery_incomplete', code='RECOVERY_INCOMPLETE')
         raise RecoverableError('恢复没完成，下次启动再试') from error
     previous = root / 'previous'
     if previous.is_dir() and (previous / 'release.json').is_file():

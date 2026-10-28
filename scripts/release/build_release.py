@@ -195,6 +195,37 @@ def commands(repo,out,public):
         installer=prefix+'installer --payload '+quote(out/'payload')+' --release '+quote(signed)+
         ' --work '+quote(out/'inno')+' --output '+quote(out/'installer')+' --compiler '+quote(COMPILER))
 
+def ensure_release_source(repo, *, allow_dirty=False):
+    """Return whether inputs are dirty; dirty inputs may only produce local evidence."""
+    dirty = git(repo, 'status', '--porcelain')
+    if dirty:
+        if not allow_dirty:
+            raise ValueError('工位不干净，停止打包')
+        return True
+    return False
+
+def local_development_evidence(out, *, recipe, parent_head, package, smoke_result, created_at):
+    """Persist dirty build/smoke evidence without release metadata or signing commands."""
+    result = dict(recipe=recipe, source=dict(dirty=True, parent_head=parent_head),
+                  package=package, smoke=smoke_result, local_only=True,
+                  created_at=created_at)
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    save(out / 'build-evidence.json', result)
+    return result
+
+def publish_frozen_payload(built, target):
+    from refactor.desktop.packaging.payload import rename_payload_with_retry
+    rename_payload_with_retry(built, target, component='release-build-payload')
+
+def release_or_record_local(*, source_dirty, out, recipe, parent_head, package,
+                            smoke_result, created_at, create_release):
+    if source_dirty:
+        return local_development_evidence(out, recipe=recipe, parent_head=parent_head,
+            package=package, smoke_result=smoke_result, created_at=created_at)
+    create_release()
+    return None
+
 def cleanup(out,work):
     """One native PowerShell attempt; never bypass a refusal with another API."""
     script=out/'cleanup.ps1'
@@ -239,7 +270,7 @@ def main():
     parser.add_argument('--keep-work',action='store_true',help='retain objects until upload finishes')
     parser.add_argument('--base-release',action='append',default=[],help='其它基线：VERSION=已签名清单路径')
     args=parser.parse_args();repo=args.repo.resolve();out=args.output_dir.resolve()
-    if not args.allow_dirty and git(repo,'status','--porcelain'):raise ValueError('工位不干净，停止打包')
+    source_dirty=ensure_release_source(repo, allow_dirty=args.allow_dirty)
     baseline=git(repo,'rev-parse',args.baseline)
     if git(repo,'rev-parse','HEAD')!=baseline:raise ValueError('请先同步工位到指定基线')
     if not 1<=args.valid_days<=1100:raise ValueError('有效天数必须符合当前客户端上限1100天')
@@ -248,11 +279,12 @@ def main():
     print('Exact build pins verified: '+str(check(NODE/'node.exe')),flush=True)
     auth,inputs=pinned_reference(ref);key_id,key=build.read_key(args.public_key)
     if auth['PUBLIC_KEYS']!={key_id:key}:raise ValueError('公钥与2.0.1冻结程序不一致')
-    recipe=dict(build_only=args.build_only,version=args.version,baseline=baseline,valid_days=args.valid_days,base_versions=args.base_versions,
+    recipe=dict(build_only=args.build_only,version=args.version,baseline=baseline,source_dirty=source_dirty,
+        parent_head=baseline if source_dirty else None,valid_days=args.valid_days,base_versions=args.base_versions,
         notes=args.notes,mandatory=args.mandatory,mandatory_reason=args.mandatory_reason,
         repo=str(repo),reference_payload=str(ref),feed=args.feed,public_key=str(args.public_key.resolve()))
     evidence=out/'build-evidence.json'
-    if evidence.exists() and (out/'payload').exists() and (out/'unsigned-release.json').exists():
+    if evidence.exists() and (out/'payload').exists() and (out/'unsigned-release.json').exists() and not source_dirty:
         old=json.loads(evidence.read_text(encoding='utf-8'))
         if old['recipe']!=recipe:raise ValueError('输出已有不同配方，请指定新目录')
         validate_payload(repo,out/'payload',ref,args.public_key,build)
@@ -292,14 +324,23 @@ def main():
     # One shell moves only this task's completed freeze payload, not a copy.
     built=(freeze_work/'app/MentorFlow').resolve();target=(out/'payload').resolve()
     if not built.is_relative_to(out) or not target.is_relative_to(out):raise ValueError('移动目标超出本任务输出目录')
-    built.rename(target)
+    publish_frozen_payload(built,target)
     package=validate_payload(repo,out/'payload',ref,args.public_key,build)
     ready=smoke(out/'payload',work)
-    build.release(argparse.Namespace(payload=out/'payload',public_key=args.public_key,output=work/'publish',
-        feed=args.feed,app_id=auth['APP_ID'],epoch=epoch,minimum_version=policy['min_supported_version'],
-        mandatory=args.mandatory,mandatory_reason=args.mandatory_reason,previous_release=previous_snapshot,
-        base_versions=args.base_versions,valid_days=args.valid_days,notes=args.notes))
-    (work/'publish/unsigned-release.json').rename(out/'unsigned-release.json')
+    def create_release():
+        build.release(argparse.Namespace(payload=out/'payload',public_key=args.public_key,output=work/'publish',
+            feed=args.feed,app_id=auth['APP_ID'],epoch=epoch,minimum_version=policy['min_supported_version'],
+            mandatory=args.mandatory,mandatory_reason=args.mandatory_reason,previous_release=previous_snapshot,
+            base_versions=args.base_versions,valid_days=args.valid_days,notes=args.notes))
+        (work/'publish/unsigned-release.json').rename(out/'unsigned-release.json')
+    result=release_or_record_local(source_dirty=source_dirty,out=out,recipe=recipe,parent_head=baseline,
+        package=package,smoke_result=ready,created_at=datetime.now(timezone.utc).isoformat(),
+        create_release=create_release)
+    if result is not None:
+        result['cleanup']=dict(success=False,path=str(work),retained=True) if args.keep_work else cleanup(out,work)
+        save(evidence,result)
+        print(json.dumps({'local_only':True,'package':package,'smoke':ready,'cleanup':result['cleanup']},ensure_ascii=False),flush=True)
+        return
     unsigned=json.loads((out/'unsigned-release.json').read_bytes())
     if unsigned['source_sha']!=baseline:raise ValueError('release source_sha 与指定基线不一致')
     if datetime.fromisoformat(unsigned['expires_at'])-datetime.fromisoformat(unsigned['issued_at'])!=timedelta(days=args.valid_days):

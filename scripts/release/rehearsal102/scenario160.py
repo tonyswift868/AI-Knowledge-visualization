@@ -352,6 +352,9 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     setup = args.setup.resolve()
+    task_root = TASK.resolve()
+    if root == task_root or not root.is_relative_to(task_root):
+        raise ValueError('install root must be a child of the rehearsal task directory')
     result = None
     if args.action == 'core-install':
         publish('X')

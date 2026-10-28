@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 from scripts.build_learning_installer import digest, read_key
 from refactor.desktop.delivery.update_protocol import verify_release, SecurityError
 from refactor.desktop.delivery.per_user_install import verify_tree
+from refactor.desktop.packaging.payload import rename_payload_with_retry
 
 
 def verified_release(path, public_key):
@@ -53,7 +54,7 @@ def assemble_payload(release_path, objects, output, *, public_key):
                 shutil.copyfile(source, target)
                 copied += 1
         verify_tree(staged, release)
-        staged.rename(output)
+        rename_payload_with_retry(staged, output, component='assemble-payload')
     except BaseException:
         shutil.rmtree(staged)
         raise

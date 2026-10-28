@@ -4,13 +4,11 @@ Namespaces determine authority. A JSON object's shape never promotes an
 evidence record into an installed receipt. Legacy records have explicit schema
 adapters; existing bootstrap bytes are never migrated in place.
 """
-import hashlib
 import json
 from pathlib import Path
 import re
 import time
 
-RECEIPT_NAME = 'installation-receipt.json'
 INSTALLED_KIND = 'mentorflow-installed-receipt'
 BOOTSTRAP_KIND = 'mentorflow-uat-acl-bootstrap'
 TRANSACTION_KIND = 'mentorflow-update-transaction'
@@ -134,39 +132,6 @@ def transition(current, event_record):
             not re.fullmatch('[0-9a-f]{32}',event_record.get('attempt_id','')) or not re.fullmatch('[0-9a-f]{64}',event_record.get('nonce',''))):
         raise ReceiptStateError('invalid transaction transition')
     return event_record['to_state']
-
-
-def inspect_root(root):
-    from refactor.desktop.delivery import windows_install_trust as trust
-    from refactor.desktop.delivery import package_verification as v
-    root=Path(root).absolute()
-    authority=root/RECEIPT_NAME
-    if not root.exists():return dict(state='UNINITIALIZED',can_seed_base=False,canonical_receipt=str(authority))
-    trust._root(root);trust.assert_protected(root)
-    if authority.exists():
-        v._validate_package_entry(authority,root,directory=False)
-        trust.assert_protected(authority)
-        doc=validate_installed_record(read_document(authority),root)
-        ids={k:doc['binding'][k] for k in ('source_sha','tree_sha','manifest_sha256')}
-        trust.verify_installation(root,**ids)
-        return dict(state='PENDING_HEALTH' if doc.get('state') == 'PENDING_HEALTH' else 'BASE_INSTALLED_HEALTHY',
-            can_seed_base=False,canonical_receipt=str(authority),receipt=doc)
-    bootstrap=root/'.uat-control/acl-bootstrap-result.json'
-    v._validate_package_entry(bootstrap,root,directory=False)
-    trust.assert_protected(bootstrap);trust.assert_protected(bootstrap.parent)
-    record=bootstrap_record(read_document(bootstrap,65536),root)
-    app=root/'App';trust.assert_protected(app)
-    v._validate_package_entry(app,root,directory=True)
-    # App presence alone is not installation: this exact bootstrap sentinel is
-    # a typed pre-seed fixture. Any real/unknown payload without receipt fails.
-    children=list(app.iterdir())
-    sentinel=app/'payload-sentinel.txt'
-    if children!=[sentinel]:raise ReceiptStateError('INCONSISTENT: App payload exists without canonical receipt')
-    v._validate_package_entry(sentinel,app,directory=False);trust.assert_protected(sentinel)
-    if sentinel.read_bytes()!=record['evidence']['SENTINEL_TEXT'].encode():raise ReceiptStateError('bootstrap sentinel changed')
-    return dict(state='ACL_READY_NO_BASE',can_seed_base=True,canonical_receipt=str(authority),
-        acl_bootstrap_evidence_valid=True,root_identity=[root.stat().st_dev,root.stat().st_ino],
-        bootstrap_sha256=hashlib.sha256(bootstrap.read_bytes()).hexdigest())
 
 
 def validate_evidence_namespace(root):

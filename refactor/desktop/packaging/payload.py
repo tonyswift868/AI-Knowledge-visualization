@@ -3,6 +3,13 @@ from __future__ import annotations
 
 import re
 
+from refactor.filesystem_ops import rename_with_retry
+
+
+def rename_payload_with_retry(source, target, *, component='payload-publish'):
+    """Publish a fully verified payload despite short Windows sharing locks."""
+    return rename_with_retry(source, target, component=component)
+
 def collect_payload(payload):
     files, directories = [], []
     for path in sorted(payload.rglob('*')):

@@ -231,6 +231,8 @@ def release_policy(version, previous, *, mandatory=False, reason='', minimum=Non
 
 
 def release(args):
+    if subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip():
+        raise ValueError("dirty source cannot be attributed to HEAD for a signed release")
     from refactor.desktop.delivery.gui_manifest import collect_closure
     from refactor.desktop.delivery.package_verification import build_manifest
     payload = args.payload.resolve()

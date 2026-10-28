@@ -4,7 +4,7 @@ cffi==2.1.1
 cryptography==46.0.7
 packaging==26.3
 pefile==2023.2.7
-pillow==12.3.0
+pillow==13.0.0
 pycparser==3.0
 pyinstaller==6.16.0
 pyinstaller-hooks-contrib==2026.7
