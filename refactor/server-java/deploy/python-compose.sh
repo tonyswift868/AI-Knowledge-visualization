@@ -45,7 +45,9 @@ if [ "${COMPOSE_DRY_RUN:-0}" = 1 ]; then set -- --dry-run "$@"; fi
 # account-core-mvp profile. Activating only the explicitly named backend is
 # insufficient: Compose can then omit nested depends_on services. Let an
 # operator override this profile list for other deployments.
-profiles=${PYTHON_COMPOSE_PROFILES:-account-core-mvp}
+# An explicitly empty value reproduces 234's verified no-profile command;
+# an unset value retains the existing deployment default.
+profiles=${PYTHON_COMPOSE_PROFILES-account-core-mvp}
 if [ -n "$profiles" ]; then
   old_ifs=$IFS
   IFS=,
