@@ -52,55 +52,116 @@ CHAPTER = re.compile(r"(?i)(chapter|chap|ch|lesson|lecture|part|unit|week|day)[-
 INTRO = re.compile(r"(?i)^(readme|index|intro|introduction|preface|前言|序言|简介|引言)\.m")
 
 
-VARIANT = re.compile(r"(?i)^(?P<base>.+?)[-_.](?P<code>[a-z]{2}(?:[-_][a-z]{2,4})?|[a-z]{4})$")
-CHINESE_CODE = re.compile(r"(?i)^(zh|zh[-_]?(cn|hans|sc)|cn|chs)$")
+# Registered, non-deprecated two-letter languages, scripts and regions from
+# https://www.iana.org/assignments/language-subtag-registry/language-subtag-registry
+# (checked 2026-10-28). Support language[-Script][-Region], plus common underscore
+# filenames; other BCP 47 forms stay independent. Never guess an unknown subtag.
+LANGUAGE_CODES = frozenset("""
+aa ab ae af ak am an ar as av ay az ba be bg bi bm bn bo br bs ca ce ch co cr cs
+cu cv cy da de dv dz ee el en eo es et eu fa ff fi fj fo fr fy ga gd gl gn gu gv
+ha he hi ho hr ht hu hy hz ia id ie ig ii ik io is it iu ja jv ka kg ki kj kk kl
+km kn ko kr ks ku kv kw ky la lb lg li ln lo lt lu lv mg mh mi mk ml mn mr ms mt
+my na nb nd ne ng nl nn no nr nv ny oc oj om or os pa pi pl ps pt qu rm rn ro ru
+rw sa sc sd se sg sh si sk sl sm sn so sq sr ss st su sv sw ta te tg th ti tk tl
+tn to tr ts tt tw ty ug uk ur uz ve vi vo wa wo xh yi yo za zh zu
+""".split())
+LANGUAGE_SCRIPTS = frozenset("""
+adlm afak aghb ahom arab aran armi armn avst bali bamu bass batk beng berf bhks blis
+bopo brah brai bugi buhd cakm cans cari cham cher chis chrs cirt copt cpmn cprt cyrl
+cyrs deva diak dogr dsrt dupl egyd egyh egyp elba elym ethi gara geok geor glag gong
+gonm goth gran grek gujr gukh guru hanb hang hani hano hans hant hatr hebr hira hluw
+hmng hmnp hntl hrkt hung inds ital jamo java jpan jurc kali kana kawi khar khmr khoj
+kitl kits knda kore kpel krai kthi lana laoo latf latg latn leke lepc limb lina linb
+lisu loma lyci lydi mahj maka mand mani marc maya medf mend merc mero mlym modi mong
+moon mroo mtei mult mymr nagm nand narb nbat newa nkdb nkgb nkoo nshu ogam olck onao
+orkh orya osge osma ougr palm pauc pcun pelm perm phag phli phlp phlv phnx piqd plrd
+prti psin ranj rjng rohg roro runr samr sara sarb saur seal sgnw shaw shrd shui sidd
+sidt sind sinh sogd sogo sora soyo sund sunu sylo syrc syre syrj syrn tagb takr tale
+talu taml tang tavt tayo telu teng tfng tglg thaa thai tibt tirh tnsa todr tols toto
+tutg ugar vaii visp vith wara wcho wole xpeo xsux yezi yiii zanb zinh zmth zsye zsym
+zxxx zyyy zzzz
+""".split())
+LANGUAGE_REGIONS = frozenset("""
+001 002 003 005 009 011 013 014 015 017 018 019 021 029 030 034 035 039 053 054
+057 061 142 143 145 150 151 154 155 202 419 aa ac ad ae af ag ai al am ao aq ar
+as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bv bw by bz
+ca cc cd cf cg ch ci ck cl cm cn co cp cq cr cu cv cw cx cy cz de dg dj dk dm do
+dz ea ec ee eg eh er es et eu ez fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm
+gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu ic id ie il im in io iq ir is it je
+jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc
+md me mf mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni
+nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw
+sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st sv sx sy sz ta tc td tf tg th
+tj tk tl tm tn to tr tt tv tw tz ua ug um un us uy uz va vc ve vg vi vn vu wf ws
+ye yt za zm zw zz
+""".split())
 
 
-def _variant(name, siblings):
-    """(base, code) when `name` is a language copy of a sibling, e.g. book-hu next to book."""
-    m = VARIANT.match(name)
-    if m and m.group("base") in siblings:
-        return m.group("base"), m.group("code")
-    return None
+def _language_tag(value):
+    parts = value.lower().replace("_", "-").split("-")
+    if parts[0] not in LANGUAGE_CODES:
+        return None
+    tail = parts[1:]
+    if tail and tail[0] in LANGUAGE_SCRIPTS:
+        tail = tail[1:]
+    if tail and tail[0] in LANGUAGE_REGIONS:
+        tail = tail[1:]
+    return "-".join(parts) if not tail else None
 
 
-def drop_translations(paths):
-    """Keep one language per book: the Chinese copy when there is one, otherwise the original.
+def _variant(name, *, filename=False):
+    """Strip only a complete registered language suffix, never technical words."""
+    for match in re.finditer(r"[-_.]", name):
+        base, suffix = name[:match.start()], name[match.end():]
+        if base and (code := _language_tag(suffix)):
+            # A bare hyphenated slug can be technical even when it is a language
+            # code (sql-as, book-id). Dot locales, compound tags and _EN-style
+            # suffixes are explicit; keep other file names rather than guessing.
+            if (filename and match.group() != "." and "-" not in code
+                    and not (match.group() == "_" and suffix.isupper())):
+                continue
+            return base, code
+    return name, None
 
-    Generic, no language list: "X-code" / "X.code" / "X_code" is a copy of X when X also
-    exists next to it (folders: book vs book-hu; files: README.md vs README.ja.md).
+
+def drop_translations(paths, *, skipped=None):
+    """Pair individual documents by their paths after removing explicit language tags.
+
+    A translated directory does not prove every chapter has a translated copy.
+    Files without a matching counterpart remain, regardless of their language.
     """
-    dirs_by_parent, files_by_parent = {}, {}
+    groups = {}
     for path in paths:
-        parts = path.split("/")
-        for i in range(len(parts) - 1):
-            dirs_by_parent.setdefault("/".join(parts[:i]), set()).add(parts[i])
-        stem = parts[-1].rsplit(".", 1)[0]
-        files_by_parent.setdefault("/".join(parts[:-1]), set()).add(stem)
+        parts, key, codes = path.split("/"), [], []
+        for name in parts[:-1]:
+            code = _language_tag(name)
+            base, code = ("", code) if code else _variant(name)
+            if base:
+                key.append(base)
+            if code:
+                codes.append(code)
+        stem, extension = parts[-1].rsplit(".", 1)
+        base, code = _variant(stem, filename=True)
+        key.append(base + "." + extension)
+        if code:
+            codes.append(code)
+        # Conflicting locale annotations are ambiguous; keep the whole path.
+        if len({c.split("-")[0] for c in codes}) > 1:
+            key, codes = parts, []
+        groups.setdefault(tuple(key), []).append((path, codes))
 
-    def keep_dir(parent, name):
-        siblings = dirs_by_parent.get(parent, set())
-        hit = _variant(name, siblings)
-        if hit:                                  # a copy: keep only if it is the Chinese one
-            return bool(CHINESE_CODE.match(hit[1]))
-        chinese = [n for n in siblings if (v := _variant(n, siblings)) and v[0] == name and CHINESE_CODE.match(v[1])]
-        return not chinese                       # an original with a Chinese copy gives way
-
-    def keep_file(parent, stem):
-        siblings = files_by_parent.get(parent, set())
-        hit = _variant(stem, siblings)
-        if hit:
-            return bool(CHINESE_CODE.match(hit[1]))
-        chinese = [n for n in siblings if (v := _variant(n, siblings)) and v[0] == stem and CHINESE_CODE.match(v[1])]
-        return not chinese
-
-    kept = []
-    for path in paths:
-        parts = path.split("/")
-        if all(keep_dir("/".join(parts[:i]), parts[i]) for i in range(len(parts) - 1)) and \
-                keep_file("/".join(parts[:-1]), parts[-1].rsplit(".", 1)[0]):
-            kept.append(path)
-    return kept
+    kept = set()
+    for variants in groups.values():
+        def preference(item):
+            path, codes = item
+            languages = {c.split("-")[0] for c in codes}
+            return (0 if "zh" in languages else 1 if not codes else 2 if "en" in languages else 3,
+                    path.lower(), path)
+        chosen = min(variants, key=preference)[0]
+        kept.add(chosen)
+        if skipped is not None:
+            skipped.extend((path, chosen) for path, _ in variants if path != chosen)
+    return [path for path in paths if path in kept]
 
 
 def _chapterish(path, root):
@@ -109,7 +170,7 @@ def _chapterish(path, root):
     return len(rest) <= 2 and any(CHAPTER.search(part) for part in rest)
 
 
-def pick_files(paths, subpath="", sizes=None):
+def pick_files(paths, subpath="", sizes=None, *, warnings=None):
     """The book's Markdown files in reading order.
 
     Translations are dropped when an untranslated copy exists. Without a subpath,
@@ -120,24 +181,40 @@ def pick_files(paths, subpath="", sizes=None):
     """
     sizes = sizes or {}
     md = [p for p in paths if p.lower().endswith((".md", ".markdown")) and not SKIP_NAMES.search(p) and not SKIP_DIRS.search(p)]
-    md = drop_translations(md) or md
     if subpath:
         md = [p for p in md if p == subpath or p.startswith(subpath + "/")]
-    else:
+    skipped = []
+    md = drop_translations(md, skipped=skipped)
+    if not subpath:
+        def book_root(path):
+            root = path.split("/", 1)[0] if "/" in path else ""
+            return "" if _language_tag(root) else _variant(root)[0]
+
+        def chapter_in_root(path):
+            root = path.split("/", 1)[0] if "/" in path else ""
+            return _chapterish(path, root)
+
         roots = {}
         for path in md:
-            roots.setdefault(path.split("/", 1)[0] if "/" in path else "", []).append(path)
-        scored = sorted(((sum(sizes.get(p, 1) for p in items if _chapterish(p, r)),
-                          sum(_chapterish(p, r) for p in items), r)
+            roots.setdefault(book_root(path), []).append(path)
+        # A partially translated book can retain chapters from both directories.
+        # Score those together, or selecting the base directory loses its translations.
+        scored = sorted(((sum(sizes.get(p, 1) for p in items if chapter_in_root(p)),
+                          sum(chapter_in_root(p) for p in items), r)
                          for r, items in roots.items() if r and not CHAPTER.search(r)), reverse=True)
         if scored and scored[0][1] >= 2:
             md = roots[scored[0][2]]
         else:
             for folder in DOC_DIRS:
-                inside = [p for p in md if p.lower().startswith(folder + "/")]
+                inside = [p for p in md if book_root(p).lower() == folder]
                 if len(inside) >= 2:
                     md = inside
                     break
+    if warnings is not None:
+        selected = set(md)
+        notices = [f"{path} → 保留 {chosen}" for path, chosen in skipped if chosen in selected]
+        if notices:
+            warnings.append("按明确语言标识和对应文档路径跳过译本（优先中文，否则原文或英文）：" + "；".join(notices))
     def order(path):
         name = path.rsplit("/", 1)[-1]
         rank = 0 if INTRO.match(name) else 1 if CHAPTER.search(path) else 2   # afterword / answers go last
@@ -248,11 +325,12 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
         tree = read_subpath_tree(subpath)
     entries = [item for item in (tree.get("tree") or []) if isinstance(item, dict) and item.get("type") == "blob"
                and isinstance(item.get("path"), str)]
+    warnings = []
     files = pick_files([e["path"] for e in entries], subpath,
-                       {e["path"]: e["size"] for e in entries if type(e.get("size")) is int})
+                       {e["path"]: e["size"] for e in entries if type(e.get("size")) is int},
+                       warnings=warnings)
     if not files:
         raise RepoImportError("NO_DOCS", "这个仓库里没有找到 Markdown 文档。")
-    warnings = []
     if len(files) > MAX_FILES:
         warnings.append(f"文档共 {len(files)} 篇，只读取了前 {MAX_FILES} 篇。")
         files = files[:MAX_FILES]
