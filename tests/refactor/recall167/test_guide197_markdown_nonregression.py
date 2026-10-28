@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 from refactor.learning.course import extract, materials, point_materials
 from refactor.learning.course.ledger import PlanWindow
@@ -99,23 +100,36 @@ def _compile_guide(module_impl, sources, expected, root):
         store.close()
 
 
-def test_guide197_markdown_original_question_compiler_matches_baseline_on_14_chapters(tmp_path):
+def test_guide197_markdown_original_question_compiler_matches_baseline_on_14_chapters(tmp_path, monkeypatch):
     """Compare historical and current compilers on the same clean Markdown sources."""
     sources, expected = _fixture_sources()
     assert len(sources) == 14
-    baseline_file = tmp_path / "point_materials_baseline197.py"
-    baseline_bytes = subprocess.run(
-        ["git", "show", "2c2c809f:refactor/learning/course/point_materials.py"],
-        cwd=Path(__file__).resolve().parents[3], check=True, capture_output=True,
-    ).stdout
-    baseline_file.write_bytes(baseline_bytes)
-    spec = importlib.util.spec_from_file_location(
-        "refactor.learning.course._point_materials_baseline197", baseline_file)
-    baseline = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(baseline)
+    def historical_module(name):
+        baseline_file = tmp_path / f"{name}_baseline197.py"
+        with baseline_file.open("wb") as output:
+            subprocess.run(
+                ["git", "show", f"2c2c809f:refactor/learning/course/{name}.py"],
+                cwd=Path(__file__).resolve().parents[3], check=True, stdout=output,
+            )
+        spec = importlib.util.spec_from_file_location(
+            f"refactor.learning.course._{name}_baseline197", baseline_file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
 
-    baseline_result, baseline_bank = _compile_guide(baseline, sources, expected, tmp_path / "baseline")
+    # The historical compiler imports cloze helpers retired in 223. Load its
+    # matching question-bank snapshot, without restoring obsolete product APIs.
+    # Scope runtime imports too; restore the current module before comparison.
+    with monkeypatch.context() as imports:
+        imports.setitem(sys.modules, "refactor.learning.course.question_bank",
+                        historical_module("question_bank"))
+        baseline = historical_module("point_materials")
+        baseline_result, baseline_bank = _compile_guide(baseline, sources, expected, tmp_path / "baseline")
     current_result, current_bank = _compile_guide(point_materials, sources, expected, tmp_path / "current")
+    # Retired cloze counters are not part of the original-question contract.
+    assert baseline_result.pop("cloze_points") == 0
+    assert baseline_result.pop("cloze_heavy") is False
+    assert not {"cloze_points", "cloze_heavy"}.intersection(current_result)
     assert {key: current_result[key] for key in baseline_result} == baseline_result
     assert current_result["supplemental_questions"] == 0
     assert baseline_bank == current_bank

@@ -148,7 +148,9 @@ def test_context158_pending_question_uses_its_subpoint_in_actual_teacher_request
         assert set(current['excerpts']) == {'c1'}
         assert current['request_page'] is None
         request = teacher_agent.teacher_request(current)
-        assert '定义压强' in '\n'.join(row['content'] for row in request[1])
+        # The QA request should carry the selected subpoint's source text.
+        # The title is not itself source content and need not be sent verbatim.
+        assert '单位面积上的压力叫压强。' in '\n'.join(row['content'] for row in request[1])
     finally:
         env.room.cancel_materials()
         env.store.close()

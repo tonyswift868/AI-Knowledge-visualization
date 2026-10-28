@@ -75,7 +75,8 @@ def test_classroom77_formal_handlers_date_opening_and_reopen(tmp_path,monkeypatc
 def test_classroom77_interruption_uses_bounded_related_sources():
     rows={'focus':{'text':'本点原文。'},'rag':{'text':'RAG 检索资料。'*1000}}
     rows.update({f'other{i}':{'text':'无关原文。'*1000} for i in range(150)})
-    course=SimpleNamespace(points=[{'id':'p'}],passages=lambda ids:rows)
+    chunks={cid:dict(source_id='adopted',**row) for cid,row in rows.items()}
+    course=SimpleNamespace(points=[{'id':'p'}],_source_rows=lambda:(chunks,{'adopted':{'adopted':True}}))
     result=Classroom._related_passages(course,{'focus':'本点原文。'},'RAG 如何检索资料？')
     assert result['focus']=='本点原文。' and 'rag' in result
     assert sum(len(t) for cid,t in result.items() if cid!='focus')<=16000

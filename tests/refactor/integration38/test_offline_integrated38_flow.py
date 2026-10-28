@@ -132,9 +132,10 @@ def build_plan(root, events):
     flow.save(legacy)
     assert all(p['citations'] for s in d['outline']['stages'] for m in s['modules'] for p in m['points'])
     d=run(lambda d,c:flow.estimate(d));estimate=d['outline']['ranges']['learning']
-    # Three provisional questions reserve 6 module-test + 9 final-check
-    # minutes; compare refined learning with learning, not that total.
-    assert d['outline']['ranges']['total'][1] == estimate + 15
+    # The fixture has five original questions across three modules (2, 3, 0).
+    # Module-test reserve is 10 minutes; final-check reserve rounds per module
+    # to 5 + 8 + 0 = 13 minutes. Compare the total with the pinned source data.
+    assert d['outline']['ranges']['total'][1] == estimate + 23
     d=run(lambda d,c:flow.generate(d,c));assert d['phase']=='ready'
     join_workers()
     # Prepared question associations refine the same content formula, rather than preserving the initial preview budget.

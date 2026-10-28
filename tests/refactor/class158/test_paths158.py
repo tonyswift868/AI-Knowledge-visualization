@@ -176,11 +176,10 @@ def test_related_passage_ranking_deduplicates_shared_chunks(tmp_path):
     class FakeCourse:
         points = [dict(id=f"p{i}") for i in range(13)]
 
-        def passages(self, point_ids):
-            rows = {"aa_shared": {"text": common}}
-            if point_ids[0] == "p12":
-                rows["zz_unique"] = {"text": unique}
-            return copy.deepcopy(rows)
+        def _source_rows(self):
+            chunks = {"aa_shared": {"source_id": "adopted", "text": common},
+                      "zz_unique": {"source_id": "adopted", "text": unique}}
+            return copy.deepcopy(chunks), {"adopted": {"adopted": True}}
 
     related = Classroom._related_passages(FakeCourse(), {}, "needle concept alpha beta", max_chars=100, max_passages=2)
 
@@ -194,5 +193,6 @@ def test_related_passages158_preserves_legacy_long_paragraph_prefix():
     text='needle '+('无标点长段落'*1000)
     class FakeCourse:
         points=[dict(id='p0')]
-        def passages(self,point_ids):return {'long':{'text':text}}
+        def _source_rows(self):
+            return {'long':{'source_id':'adopted','text':text}}, {'adopted':{'adopted':True}}
     assert Classroom._related_passages(FakeCourse(),{},'needle') == {'long':text[:4000]}

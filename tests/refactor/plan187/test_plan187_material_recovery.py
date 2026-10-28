@@ -124,7 +124,7 @@ def test_plan187_summary_merge_preserves_durable_stop_and_attempts(env):
         error='由用户停止', error_code='USER_STOPPED')
 
     env.flow._save_material_summary(PLAN, 'm0', {
-        'points': 5, 'cloze_points': 2, 'cloze_heavy': False,
+        'points': 5, 'questions': 0,
     })
 
     saved = env.store.records('modules', PLAN)[0]['material_preparation']
@@ -135,8 +135,9 @@ def test_plan187_summary_merge_preserves_durable_stop_and_attempts(env):
     # Worker counters may belong to the pre-restructure layout; current
     # structure/pool counts replace them without clearing a durable stop.
     assert saved['points'] == 1
-    assert saved['cloze_points'] == 0
-    assert saved['cloze_heavy'] is False
+    # CLOZE preparation metadata was retired; summaries keep current counts.
+    assert saved['questions'] == 0
+    assert 'cloze_points' not in saved and 'cloze_heavy' not in saved
 
 
 def test_plan187_recovery_repairs_durable_state_when_outputs_are_already_ready(env, monkeypatch):
