@@ -102,7 +102,8 @@ def test_121_note_failure_retries_once_and_worker_still_prepares(env,monkeypatch
 
 
 def test_121_content_preview_and_saved_ledger_match_without_big_point_cap(env):
-    draft=dict(plan_id=PLAN,phase='outline',form=dict(start=DAY.isoformat(),end=(DAY+timedelta(days=5)).isoformat(),
+    draft=dict(plan_id=PLAN,phase='outline',sources=[dict(source_id='source',status='adopted')],
+        form=dict(start=DAY.isoformat(),end=(DAY+timedelta(days=5)).isoformat(),
         daily_cap=60,weekday_weights=[1]*7,special_days=[]))
     ranges=env.flow._content_ranges(draft,[env.module],annotate=True)
     expected=sum(s['minutes'] for p in env.module['points'] for s in p['subpoints'])
