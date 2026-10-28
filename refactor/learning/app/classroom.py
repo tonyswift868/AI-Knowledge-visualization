@@ -1854,7 +1854,8 @@ class Classroom:
                       count=attempt+1,code='PREFETCH' if prefetched else 'FOREGROUND',purpose='teacher')
                 emit(RESET)
                 if attempt==0:
-                    request=(request[0],request[1]+([dict(role='assistant',content=result.text)] if concept else [])+[dict(role='user',content=f'上一条回复格式不合格：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])
+                    feedback='上一条回复需要修正' if tctx.get('qa') else '上一条回复格式不合格'
+                    request=(request[0],request[1]+([dict(role='assistant',content=result.text)] if concept or tctx.get('qa') else [])+[dict(role='user',content=f'{feedback}：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])
                 elif str(exc).startswith(('concept','presentation')):
                     kept=teacher_agent.concept_fallback(result.text,tctx)
                     kept_ctx=dict(tctx)

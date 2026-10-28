@@ -124,7 +124,8 @@ def test_teacher81_switch_next_classroom_request_and_stable_system_prefix(wired)
     ok(call,'classroom.confused',plan_id=PLAN)
     assert agents.requests[-1]['system']==initial
     assert agents.requests[-1]['messages'][:len(prefix)]==prefix
-    ok(call,'classroom.ask',plan_id=PLAN,text='请解释队列。')
+    reply=ok(call,'classroom.ask',plan_id=PLAN,text='请解释队列。')
+    assert not reply.get('failure')
     qa_initial=agents.requests[-1]['system']
     assert '主动答疑协议' in qa_initial and '教学规则始终优先于人设' in qa_initial
     ok(call,'plan.set_teacher_preset',plan_id=PLAN,preset_id='teacher-2')

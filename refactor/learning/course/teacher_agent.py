@@ -150,7 +150,96 @@ def qa_response_body(raw):
     first, _, body = raw.partition('\n')
     if '【/依据】' in first:
         body = raw.split('【/依据】', 1)[1]
-    return body.lstrip()
+    body = body.lstrip()
+    # A closing marker on its own line is still protocol, not visible prose.
+    if body.startswith('【/依据】'):
+        body = body[len('【/依据】'):].lstrip()
+    return body
+
+
+def _qa_claims(text, ctx, basis, aliases):
+    """Catch observable source inconsistencies, not semantic truth scoring.
+
+    Paraphrases and bounded examples remain allowed. Check citation association,
+    explicit quotations, strong exclusivity and inconsistent analogy labels.
+    The existing single rewrite handles a rejected draft; no text is relabelled
+    or silently cut by this check.
+    """
+    def normalized(value):
+        return re.sub(r'[\W_]+', '', _CITATION.sub('', value)).casefold()
+
+    def terms(value):
+        value = _CITATION.sub('', value).casefold()
+        result = set(re.findall(r'[a-z0-9_]+', value))
+        for part in re.findall(r'[\u3400-\u9fff]+', value):
+            result.update(part[i:i+2] for i in range(len(part)-1))
+        return result - {'原文','资料','讲义','可以','这个','一个','这里','我们','所以','因此'}
+
+    def related(claim, source):
+        claim_terms = terms(claim)
+        source_terms = terms(source)
+        overlap = claim_terms & source_terms
+        # A small lexical floor catches unrelated citations, not entailment.
+        # It allows paraphrase; factual correctness still needs human review.
+        return bool(overlap) and len(overlap) >= min(2,len(claim_terms)) and len(overlap)/min(len(claim_terms),len(source_terms)) >= .15
+
+    mapping = citation_map(ctx)
+    prose = ''.join(text[a:b] for a,b in _prose_spans(text))
+    if basis == 'supplement':
+        cited = [a for a in _CITATION.findall(prose) if a in mapping]
+        new_knowledge = re.search(r'(?:以下|下面|接下来).{0,8}(?:资料外|原文以外|资料未涉及|新知识)', prose)
+        if cited and not new_knowledge and re.search(r'例子|举例|类比|比方', ctx.get('user','')) and re.search(r'原文|资料|讲义', prose):
+            # Acknowledging a real source while explaining it with an example
+            # is different from answering an unrelated, uncovered question.
+            raise QAParseError('QA_ANALOGY_BASIS', 'qa: 类比若只是解释所引原文，应标 material 并保留出处；只有确实新增资料外知识才用 supplement，不要仅因举例就说讲义没有')
+        return
+    if basis != 'material':
+        return
+    # The header declares the main basis. Inline references can also point to
+    # another retrieved chunk (e.g. returning to the current lesson afterward).
+    selected = dict(aliases)
+    selected.update((a,mapping[a]) for a in _CITATION.findall(prose) if a in mapping)
+    evidence = {a:ctx['excerpts'][cid] for a,cid in selected.items()}
+    joined = [normalized(s) for s in evidence.values()]
+    content = strip_source_footer(prose).replace('==','').replace('**','')
+    references = list(_CITATION.finditer(content))
+    if not references and not any(related(content, source) for source in evidence.values()):
+        raise QAParseError('QA_CITATION', 'qa: 回答与所列出处无可核对的内容关联；重新核对资料，不能借真实编号给无关结论作出处')
+    grounded = set()
+    for ref in references:
+        # Citations may precede or follow a sentence. Ignore other aliases in
+        # a citation run when locating the sentence they refer to.
+        before = _CITATION.sub('', content[:ref.start()]).rstrip(' 。！？!?\n\r\t”"')
+        claim = re.split(r'[。！？!?\n]', before)[-1] if before else ''
+        if not terms(claim):
+            claim = re.split(r'[。！？!?\n]', _CITATION.sub('', content[ref.end():]).lstrip())[0]
+        source = evidence.get(ref[1])
+        # A source already anchored in an earlier fact can be referred to by a
+        # later analogy-boundary note ("这个类比对应的是原文那两点"). It cannot
+        # borrow a different, unrelated source or stand alone without a fact.
+        back_reference = ref[1] in grounded and re.search(r'(?:这个|该)类比对应.{0,12}(?:原文|讲义|资料)', claim)
+        if source is None or not (related(claim, source) or back_reference):
+            raise QAParseError('QA_CITATION', 'qa: 带编号的这句话与对应出处不符；出处只贴在它能支持的事实后，类比另作解释，不冒充原文')
+        grounded.add(ref[1])
+    # A quoted original sentence must actually be in its stated source. Plain
+    # reformulations need not reproduce original wording.
+    for quote in re.finditer(r'(?:原文|资料|讲义)(?:中)?(?:说|写道|写着|指出)?[：:]\s*[“"]([^”"]+)[”"]\s*(?:\[(c\d+)\])?', prose):
+        claim = normalized(quote[1])
+        sources = [normalized(evidence.get(quote[2],''))] if quote[2] else joined
+        if claim and not any(claim in source for source in sources):
+            raise QAParseError('QA_QUOTE', 'qa: 标成原话的引文不在所标资料中；用真实原话或明确改成解释，不编造原文')
+    # Strong universal/exclusive assertions need the source's actual claim;
+    # otherwise ask the teacher to explain without overstating that source.
+    for sentence in re.findall(r'[^。！？!?\n]+[。！？!?]?', prose):
+        if sentence.endswith(('？','?')):
+            continue
+        for clause in re.split(r'[，,；;：:]', sentence):
+            if re.search(r'只能|仅能|唯一|必然|不可能|一律|永远|完全不能|一定(?:会|是|要|能|不能)', clause):
+                if re.search(r'(?:没有|未|不能|不宜|不应).{0,8}(?:说|说明|认定|表示|声称|意味着)', clause):
+                    continue
+                claim = normalized(clause)
+                if not any(claim in source for source in joined):
+                    raise QAParseError('QA_ABSOLUTE', 'qa: 资料不支持这处绝对或排他结论；保留事实，改成不夸大的解释，不把“资料没有写”推成“不可能、只能或禁止”')
 
 def _reject_state_claims(text):
     # A conservative check for explicit first-person/completed actions, not a
@@ -232,8 +321,11 @@ def teacher_request(ctx):
             '首行协议后换行写正常中文 Markdown 正文。禁止把 supplement 内容写成原文事实、出题或考核依据。')
         if ctx.get('question_only') is True:
             system += '\n【显式主动提问】本轮是学生提出的新问题，没有回应或复述前文的情形；依据证据选择 material 或 supplement，不能选择 lesson。'
-        system += ('\n【material证据边界】material 只能表达 excerpts 明确支持的事实和限定；类比只能帮助理解，不得借常识扩展成资料结论。'
-            '无证据的额外部分必须标为 supplement；也可以删去无证据部分，只保留有据内容并标 material。'
+        system += ('\n【material证据边界】先简短回答资料支持的结论，在这句话末尾放对应[cN]；引用必须支持紧邻的这句话，不能挂在没有关系的句子或整段自行发挥后面。'
+            '允许多说一点正确的解释和合理延伸，用“可以这样理解”说明是解释，不声称是原文规定。没有写不等于禁止；不能把“便于”变成“必需”，把一种用途变成唯一用途，把一个例子变成行业通则。'
+            '尤其检查排他和绝对词：只能、唯一、必然、不可能；原文未明确支持就不用这些断言。标为原文说、资料写道的引号内容须是对应片段原话，改述不用原话引号。'
+            '类比仍选 material：先标明所解释的原文事实[cN]，再用“类比（帮助理解）：”给例子，并说清对应关系；不是因为用了例子就选 supplement。例子不冒充原文事件，也不靠比方推导新规则。'
+            '只有问题确实需要资料之外的新知识且本次没有足够依据时才用 supplement；不把资料中能回答的问题说成讲义没有。'
             '原文短就短答，200～300字不是最低长度，不为凑长度补例子。')
     system+='\n【精炼与重点，适用于新旧知识点】每次回复用==重点句==标出1～3句最关键的结论，只标完整结论，不把整段都涂满、不标问句；加粗仍用于术语。普通回复约200～300字，开场或简单回应可更短，不为凑字重复。学生明确要求展开、详细点时可以长。不要大段搬原文，想看全文指向“原文出处”。只有普通回复超过350字且学生未要求展开时，请精炼重写一次；仍长就完整保留，任何时候不截断老师的话。荧光标注、开头与收尾方式只是表达偏好，不因这些样式问题打回重写。大知识点的要点卡由程序提供，你不要重复输出长总结。\n【本次输出自查】普通回复的全部可见正文（含开头、比喻、列表、结尾）合计不超过350字；200～300字已经包含这些部分，不是先讲300字再添例子。“多例子”也只选最有用的一例，其余留给后续对话。尽量有一句陈述结论用成对的==包住，最多三句，不把提问放在==里；选项不算荧光结论。'
     task['presentation']=dict(highlight_sentences=[1,3],target_characters=[200,300],expanded=wants_expansion(task['user']))
@@ -384,6 +476,7 @@ def _parse_teaching(text,ctx):
             raise QAParseError('QA_HEADER', 'qa: 依据协议头缺失或不完整，请按协议重写')
         answer_basis, header_aliases = parsed_header
         text = qa_response_body(text)
+        _qa_claims(text, ctx, answer_basis, header_aliases)
     options=();fallback=False
     if ctx.get('opening'):
         match=re.search(r'【选项】\s*(.*?)\s*【/选项】\s*$',text,re.S)
@@ -430,6 +523,6 @@ def _parse_teaching(text,ctx):
     _reject_state_claims(text)
     cited=tuple(dict.fromkeys(mapping[a] for a in _CITATION.findall(visible)))
     if qa and answer_basis == 'material':
-        cited=tuple(dict.fromkeys(mapping[alias] for alias, _ in header_aliases))
+        cited=tuple(dict.fromkeys([cid for _,cid in header_aliases]+list(cited)))
     aliases = tuple(citation_map(ctx).items()) if qa else ()
     return Teaching(text,cited,options,answer_basis,aliases)

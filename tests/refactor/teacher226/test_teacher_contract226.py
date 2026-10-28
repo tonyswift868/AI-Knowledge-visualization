@@ -18,7 +18,7 @@ def test_226_only_explicit_qa_context_selects_qa_mode():
 ])
 def test_226_qa_protocol_is_removed_and_basis_recorded(protocol, basis):
     ctx = context(qa=True, allow_plan=True)
-    body = '答案正文[c1]' if basis != 'material' else '答案正文'
+    body = '答案正文[c1]' if basis != 'material' else '传感器接收环境信息，执行器改变环境。'
     result = agent.parse_teaching(f'【依据】{protocol}【/依据】\n{body}', ctx)
     assert result.answer_basis == basis
     assert result.speech == body if basis != 'supplement' else result.speech == '答案正文'
@@ -70,7 +70,7 @@ def test_226_question_only_context_forbids_lesson_protocol_and_prompt_says_so():
     ctx = context(qa=True, question_only=True)
     with pytest.raises(agent.QAParseError):
         agent.parse_teaching('【依据】lesson【/依据】\n已讲内容。', ctx)
-    result = agent.parse_teaching('【依据】material:c1【/依据】\n依据材料回答。', ctx)
+    result = agent.parse_teaching('【依据】material:c1【/依据】\n传感器接收环境信息。', ctx)
     assert result.answer_basis == 'material'
     system, _ = agent.teacher_request(ctx)
     assert '显式主动提问' in system
@@ -84,11 +84,11 @@ def test_226_unrestricted_qa_still_accepts_lesson_for_reply_classification():
 
 def test_226_material_prompt_limits_claims_to_evidence_and_does_not_pad_short_answers():
     system, _ = agent.teacher_request(context(qa=True))
-    assert 'material 只能表达 excerpts 明确支持的事实和限定' in system
-    assert '不得借常识扩展成资料结论' in system
+    assert '允许多说一点正确的解释和合理延伸' in system
+    assert '引用必须支持紧邻的这句话' in system
     assert '200～300字不是最低长度' in system
     assert '原文短就短答' in system and '不为凑长度补例子' in system
-    assert '无证据的额外部分必须标为 supplement' in system
+    assert '只有问题确实需要资料之外的新知识' in system
     assert '使用自身知识直接回答' in system
 
 
@@ -102,7 +102,7 @@ def test_226_stream_header_parser_waits_for_complete_header():
 @pytest.mark.parametrize('basis', ['material:c1', 'supplement'])
 def test_226_live_missing_closing_marker_keeps_explicit_first_line_basis(basis):
     ctx = context(qa=True, question_only=True)
-    raw = f'【依据】{basis}\n\n这是实际返回的中文正文。[c1]'
+    raw = f'【依据】{basis}\n\n传感器接收环境信息。[c1]'
     result = agent.parse_teaching(raw, ctx)
     assert result.answer_basis == basis.split(':')[0]
     assert '【依据】' not in result.speech

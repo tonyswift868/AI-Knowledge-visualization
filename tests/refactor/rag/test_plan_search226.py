@@ -128,6 +128,10 @@ def test_plan_search_maps_only_exact_adopted_chunks_and_marks_partial(tmp_path, 
         plans, _ = service._course_documents()
         assert plans[0]["id"] == plan_id
         service.local.set_remote_state(ready_digest, "canonical-ready", "ready", 1, 1)
+        # A matching chunk count/status alone is no longer enough. This fixture
+        # represents a server-confirmed upload of the exact local content hash.
+        ready_local = service.local.document(ready_digest)
+        service.local.set_uploaded_content(ready_digest, ready_local["current_content_sha256"])
         service.local.set_remote_state(waiting_digest, "canonical-waiting", "uploading", 0, 1)
         service.transport.request_json = lambda method, path, *, payload=None, cancel=None: {
             "passages": [
