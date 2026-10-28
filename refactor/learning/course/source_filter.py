@@ -623,9 +623,10 @@ def directory_matches(query, *, stage='', subject='', lists=None, limit=8):
         return key in text
     scored = []
     for entry in type_catalog(lists).directory:
-        score = sum(4 for k in entry['subjects'] if matches(k))
-        score += sum(2 for k in entry['stages'] if matches(k))
-        score += sum(6 for k in entry['keywords'] if matches(k))
+        # Repeated labels in a reviewed list must not multiply ranking weight.
+        score = sum(4 for k in dict.fromkeys(entry['subjects']) if matches(k))
+        score += sum(2 for k in dict.fromkeys(entry['stages']) if matches(k))
+        score += sum(6 for k in dict.fromkeys(entry['keywords']) if matches(k))
         # A stage alone must not suggest another discipline's textbook.
         match = any(matches(k) for k in (*entry['subjects'],*entry['keywords']))
         if score and match: scored.append((score,entry))

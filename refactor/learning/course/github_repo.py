@@ -24,8 +24,6 @@ REPO_URL = re.compile(r"^https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?
 DOC_DIRS = ("docs", "doc", "book", "chapters", "tutorial", "tutorials", "content", "notes", "course")
 SKIP_NAMES = re.compile(r"(?i)(^|/)((changelog|contributing|code_of_conduct|security|license|authors|pull_request_template|issue_template)[^/]*|_[^/]*)$")
 SKIP_DIRS = re.compile(r"(?i)(^|/)(\.github|node_modules|vendor|site-packages|dist|build|\.vitepress|\.vuepress)/")
-ENGLISH = re.compile(r"(?i)(^|[/_.-])(en|en-us|english)([/_.-]|\.md$)")
-CJK = re.compile(r"[一-鿿]")
 MAX_FILES = 80
 MAX_TOTAL = 4 * 1024 * 1024
 
@@ -117,7 +115,7 @@ def pick_files(paths, subpath="", sizes=None):
     Translations are dropped when an untranslated copy exists. Without a subpath,
     the top-level folder whose chapter-like files hold the most text is the book
     (docs/, book/, …; a folder that is itself one chapter, e.g. chapter3/, is not);
-    a Chinese copy wins over an English one in bilingual folders. sizes maps path
+    Language copies are dropped only when the path identifies a paired variant. sizes maps path
     to bytes (from the tree listing); without it every file counts as 1.
     """
     sizes = sizes or {}
@@ -140,28 +138,11 @@ def pick_files(paths, subpath="", sizes=None):
                 if len(inside) >= 2:
                     md = inside
                     break
-    non_english = [p for p in md if not ENGLISH.search(p)]
-    if non_english and len(non_english) < len(md):
-        md = non_english
-    # Bilingual folders (e.g. "Chapter1-Intro.md" next to "第一章 初识.md"): keep the Chinese-named files.
-    folders = {}
-    for path in md:
-        folders.setdefault(path.rsplit("/", 1)[0] if "/" in path else "", []).append(path)
-    kept = []
-    for items in folders.values():
-        chinese = [p for p in items if CJK.search(p.rsplit("/", 1)[-1])]
-        kept.extend(chinese if chinese and len(chinese) < len(items) else items)
-
     def order(path):
         name = path.rsplit("/", 1)[-1]
         rank = 0 if INTRO.match(name) else 1 if CHAPTER.search(path) else 2   # afterword / answers go last
         return path.count("/"), rank, _natural(path)
-    return sorted(kept, key=order)
-
-
-def cjk_share(text):
-    letters = sum(1 for ch in text if ch.isalpha())
-    return len(CJK.findall(text)) / letters if letters else 0.0
+    return sorted(md, key=order)
 
 
 def _clean(heading):
@@ -208,11 +189,38 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
             branch, subpath = default_branch, requested[len(default_branch):].strip("/")
     branch = branch or default_branch
 
-    def read_tree(ref):
-        value = _json(fetch, f"https://api.github.com/repos/{owner}/{repo}/git/trees/{quote(ref, safe='')}?recursive=1", cancel)
+    def read_tree(ref, *, recursive=True):
+        suffix = "?recursive=1" if recursive else ""
+        value = _json(fetch, f"https://api.github.com/repos/{owner}/{repo}/git/trees/{quote(ref, safe='')}{suffix}", cancel)
         if not isinstance(value, dict) or not isinstance(value.get("tree"), list):
             raise RepoImportError("GITHUB_BAD_RESPONSE", "GitHub 返回的目录树无法识别，请稍后重试。")
         return value
+
+    def truncated_tree_error():
+        return RepoImportError(
+            "GITHUB_TREE_TRUNCATED",
+            "GitHub 返回的目录树仍不完整，且没有提供缺失路径清单，无法确认具体缺少哪些文档；请下载该目录后上传，或改贴更小的子目录地址重试。",
+        )
+
+    def read_subpath_tree(path):
+        tree = read_tree(branch, recursive=False)
+        current_sha = None
+        segments = path.split("/")
+        for index, segment in enumerate(segments):
+            entry = next((item for item in tree["tree"] if isinstance(item, dict)
+                          and item.get("path") == segment and item.get("type") == "tree"), None)
+            if not entry or not isinstance(entry.get("sha"), str):
+                raise truncated_tree_error()
+            current_sha = entry["sha"]
+            if index < len(segments) - 1:
+                tree = read_tree(current_sha, recursive=False)
+        subtree = read_tree(current_sha)
+        if subtree.get("truncated") is True:
+            raise truncated_tree_error()
+        return {**subtree, "tree": [
+            {**item, "path": f"{path}/{item['path']}"}
+            for item in subtree["tree"] if isinstance(item, dict) and isinstance(item.get("path"), str)
+        ]}
 
     try:
         tree = read_tree(branch)
@@ -234,6 +242,10 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
             break
         else:
             raise original
+    if tree.get("truncated") is True:
+        if not subpath:
+            raise truncated_tree_error()
+        tree = read_subpath_tree(subpath)
     entries = [item for item in (tree.get("tree") or []) if isinstance(item, dict) and item.get("type") == "blob"
                and isinstance(item.get("path"), str)]
     files = pick_files([e["path"] for e in entries], subpath,
@@ -244,7 +256,7 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
     if len(files) > MAX_FILES:
         warnings.append(f"文档共 {len(files)} 篇，只读取了前 {MAX_FILES} 篇。")
         files = files[:MAX_FILES]
-    blocks, raw_total, digest, chinese_seen = [], 0, hashlib.sha256(), False
+    blocks, raw_total, digest = [], 0, hashlib.sha256()
     for path in files:
         body = fetch(f"https://raw.githubusercontent.com/{owner}/{repo}/{quote(branch, safe='')}/{quote(path)}", cancel)
         raw_total += len(body)
@@ -255,12 +267,6 @@ def import_repo(url: str, *, fetch=default_fetch, cancel=None, lists=None) -> Ve
             doc = extract_bytes(body, path.rsplit("/", 1)[-1])
         except ExtractError:
             warnings.append(f"{path} 没有可用正文，已跳过。")
-            continue
-        share = cjk_share(" ".join(b.text for b in doc.blocks[:40]))
-        if share > 0.2:
-            chinese_seen = True
-        elif chinese_seen and share < 0.02:
-            warnings.append(f"{path} 是另一种语言的重复版本，已跳过。")
             continue
         chapter = _clean(doc.title or path)[:80]
         digest.update(path.encode("utf-8") + b"\0" + body + b"\0")

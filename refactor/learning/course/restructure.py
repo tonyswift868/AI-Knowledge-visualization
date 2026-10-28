@@ -13,7 +13,7 @@ from datetime import date
 import hashlib
 import json
 
-from .ledger import Ledger, LedgerError
+from .ledger import Ledger, LedgerError, weight_of
 from .store import StoreError, _window, _window_json
 
 
@@ -442,14 +442,18 @@ def _prepare(store, plan_id, structure, *, end_date=None):
     token = _digest(token_input)
     future = {day: minutes for day, minutes in after['targets'].items()
               if today.isoformat() <= day <= requested_end.isoformat()}
-    over_cap = [dict(day=day, target=minutes, excess_minutes=minutes-600)
-                for day, minutes in future.items() if minutes > 600]
+    daily_cap = new_window.daily_cap_minutes
+    full_weight_days = [day for day in future if weight_of(new_window, date.fromisoformat(day)) == 1]
+    capped_days = full_weight_days or list(future)
+    over_cap = [dict(day=day, target=future[day], excess_minutes=future[day]-daily_cap)
+                for day in capped_days if future[day] > daily_cap]
     allocation = after_ledger._allocation()
     outstanding = after['overdue_to_repay'] + sum(max(0, minutes
         - allocation.confirmed.get(date.fromisoformat(day), 0)
         - allocation.tentative.get(date.fromisoformat(day), 0)) for day, minutes in future.items())
     remaining_days = max(0, (requested_end-max(today, original_window.start)).days+1)
-    capacity = remaining_days * 600
+    future_study_days = sum(weight_of(new_window, date.fromisoformat(day)) > 0 for day in future)
+    capacity = future_study_days * daily_cap
     daily_excess = sum(row['excess_minutes'] for row in over_cap)
     capacity_excess = max(0, outstanding-capacity)
     report = dict(plan_id=plan_id, title=plan.get('title') or plan['goal'], today=today.isoformat(),
@@ -471,7 +475,7 @@ def _prepare(store, plan_id, structure, *, end_date=None):
                   end_date_before=original_window.end.isoformat(), end_date_after=requested_end.isoformat(),
                   remaining_days=remaining_days,
                   deadline_change_supported=True,
-                  daily_cap=dict(minutes=600, fits=not over_cap and not capacity_excess, over_cap_days=over_cap,
+                  daily_cap=dict(minutes=daily_cap, fits=not over_cap and not capacity_excess, over_cap_days=over_cap,
                                  excess_minutes=max(daily_excess, capacity_excess),
                                  daily_target_excess_minutes=daily_excess,
                                  total_capacity_excess_minutes=capacity_excess,

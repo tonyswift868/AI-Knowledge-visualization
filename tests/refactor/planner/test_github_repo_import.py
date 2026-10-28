@@ -7,12 +7,12 @@ from refactor.learning.course import github_repo
 from refactor.learning.course.github_repo import RepoImportError, import_repo, parse, pick_files
 
 TREE = ["README.md", "README_EN.md", "CHANGELOG.md", ".github/ISSUE_TEMPLATE.md", "docs/_sidebar.md", "docs/前言.md",
-        "docs/chapter10/Chapter10-Protocols.md", "docs/chapter10/第十章 通信协议.md",
-        "docs/chapter2/Chapter2-History.md", "docs/chapter2/第二章 发展史.md", "code/main.py"]
+        "docs/chapter10/Chapter10-Protocols.md", "docs/chapter10/Chapter10-Protocols.zh-CN.md",
+        "docs/chapter2/Chapter2-History.md", "docs/chapter2/Chapter2-History.zh-CN.md", "code/main.py"]
 BODY = {
     "docs/前言.md": "# 前言 {.unnumbered}\n\n这本书讲智能体。" * 3,
-    "docs/chapter2/第二章 发展史.md": "# 第二章 发展史\n\n## 早期\n\n符号主义智能体的历史与局限。\n\n## 现代\n\n大模型驱动的智能体。",
-    "docs/chapter10/第十章 通信协议.md": "# 第十章 通信协议\n\n## MCP\n\nMCP 让模型调用外部工具。",
+    "docs/chapter2/Chapter2-History.zh-CN.md": "# 第二章 发展史\n\n## 早期\n\n符号主义智能体的历史与局限。\n\n## 现代\n\n大模型驱动的智能体。",
+    "docs/chapter10/Chapter10-Protocols.zh-CN.md": "# 第十章 通信协议\n\n## MCP\n\nMCP 让模型调用外部工具。",
     "docs/chapter2/Chapter2-History.md": "# Chapter 2 History\n\nEnglish only text about agents.",
 }
 
@@ -41,8 +41,8 @@ def test_parse_accepts_repo_and_tree_urls_only():
 
 
 def test_pick_prefers_docs_folder_chinese_copies_and_skips_meta_files():
-    assert pick_files(TREE) == ["docs/前言.md", "docs/chapter2/第二章 发展史.md", "docs/chapter10/第十章 通信协议.md"]
-    assert pick_files(TREE, "docs/chapter10") == ["docs/chapter10/第十章 通信协议.md"]
+    assert pick_files(TREE) == ["docs/前言.md", "docs/chapter2/Chapter2-History.zh-CN.md", "docs/chapter10/Chapter10-Protocols.zh-CN.md"]
+    assert pick_files(TREE, "docs/chapter10") == ["docs/chapter10/Chapter10-Protocols.zh-CN.md"]
     assert pick_files(["README.md", "README_EN.md", "guide.md"]) == ["README.md", "guide.md"]
 
 
