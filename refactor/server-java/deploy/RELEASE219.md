@@ -92,10 +92,16 @@ docker run --rm --network mentorflow-e1-preview_internal \
   "$PYTHON_IMAGE" /tmp/probe.py
 edge_state=$(sh cutover.sh status)
 if [ "$edge_state" != java ]; then sh cutover.sh java; fi
-curl --fail --silent --show-error https://aiteacher.clannad.win/health/live
-curl --fail --silent --show-error https://aiteacher.clannad.win/health/startup
-curl --fail --silent --show-error https://aiteacher.clannad.win/health/ready
+curl --fail --silent --show-error https://89.45.45.28/health/live
+curl --fail --silent --show-error https://89.45.45.28/health/startup
+curl --fail --silent --show-error https://89.45.45.28/health/ready
 ```
+
+公网健康检查使用客户端的 API 入口 `https://89.45.45.28`；
+`aiteacher.clannad.win` 是下载站，其 `/health/` 返回 404，不能用于这个门禁。
+curl 沿用服务器现有 CA 信任配置，正常校验证书链及 IP 主机名；
+221 的只读检查在未使用 `-k`、未额外指定 `--cacert` 时返回 200。
+本清单同样不跳过证书验证，也不安装或替换 CA；若校验失败，停止并按回退步骤处理。
 
 探针成功必须为 `9/9`、双方 READY true、email matches true；closure/prepare 和
 native/refresh 均模拟 edge 的 HTTPS 转发头。无效令牌探针不代替真实登录。
