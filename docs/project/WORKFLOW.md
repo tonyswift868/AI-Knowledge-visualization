@@ -49,7 +49,7 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲 | server |
+| MF-01 | 221-MF01（照 RELEASE219 部署服务器），已起草，待转发 | server |
 | MF-02 | 空闲 | client |
 | MF-03 | 空闲 | classroom |
 | MF-04 | 空闲 | runtime |
@@ -61,7 +61,7 @@
 
 - 2.0.34 要发的都已合入并发布（2026-10-28）；联合核对和副本演练报告在 .local/test-tmp/joint209/report.md。
 - 212～216 已合入（[BUG-137] [BUG-138] [BUG-139]），215 全量 4771 通过、3 失败（1 项已改、[BUG-140] [BUG-141] 无关）；2.0.35 已发布（2026-10-28）。发版后执行步骤在 .local/test-tmp/final215/report.md 末尾。
-- 两轮源码复盘报告在 .local/review217/、.local/review218/；219 修复报告在 .local/fix219/，220 报告在 .local/r220/。212～220 都已合入（9b6ab7c5），全量结果见 CURRENT_STATE「当前阶段」；发 2.0.36，然后派 221-MF01 部署服务器。
+- 两轮源码复盘报告在 .local/review217/、.local/review218/；219 修复报告在 .local/fix219/，220 报告在 .local/r220/。212～220 都已合入（9b6ab7c5），全量结果见 CURRENT_STATE「当前阶段」；2.0.36 已发布（2026-10-28）。221-MF01 已起草，待转发：照 RELEASE219 部署服务器（用户 2026-10-28 已同意）。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）。
 
 ## 回执格式
