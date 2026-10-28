@@ -42,7 +42,7 @@ export function PlanDetail() {
       if (event.plan_id !== planId) return
       const revision = ++linksRead.current
       call<Detail>("plan.detail",{plan_id:planId}).then(d=>{if(live&&revision===linksRead.current){setDetail(d);setLinksError("")}})
-        .catch(e=>{if(live)setLinksError(e.message||"读取知识点关系失败")})
+        .catch(e=>{if(live&&revision===linksRead.current)setLinksError(e.message||"读取知识点关系失败")})
     }
     const off = on('plan.point_links_changed', refresh)
     const offMinutes = on('plan.point_minutes_changed', refresh)

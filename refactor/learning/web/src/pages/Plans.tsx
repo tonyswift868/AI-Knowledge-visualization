@@ -38,6 +38,7 @@ export function Plans() {
   }, [])
 
   React.useEffect(() => { if (ready) reload() }, [ready, reload])
+  React.useEffect(() => on("scope_changed", () => { revision.current++ }), [])
   React.useEffect(() => on("plans_changed", () => { if (ready) reload() }), [ready, reload])
 
   const shown = (plans ?? []).filter((p) =>

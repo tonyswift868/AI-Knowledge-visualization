@@ -21,13 +21,21 @@ const TABS: { id: SettingsTab; label: string; icon: any }[] = [
 export function useSaveSettings() {
   const set = useApp((s) => s.set)
   const toast = useApp((s) => s.toast)
+  const scopeRevision = React.useRef(0)
+  React.useEffect(() => {
+    const off = on("scope_changed", () => { scopeRevision.current++ })
+    return () => { scopeRevision.current++; off() }
+  }, [])
   return React.useCallback(async (changes: Partial<S>) => {
+    const revision = scopeRevision.current
     const prev = useApp.getState().settings
     if (prev) set({ settings: { ...prev, ...changes } })
     try {
       const r = await call<{ settings: S }>("settings.save", { changes })
+      if (revision !== scopeRevision.current) return
       set({ settings: r.settings })
     } catch (e) {
+      if (revision !== scopeRevision.current) return
       if (prev) set({ settings: prev })
       toast("error", (e as Error).message)
     }
@@ -132,6 +140,8 @@ function Models() {
   const [presets, setPresets] = React.useState<Preset[]>([])
   const [activeId, setActiveId] = React.useState<string | null>(null)
   const [form, setForm] = React.useState({ provider_id: "deepseek", preset_id: "" as string | null, display_name: "", base_url: "", model: "", api_key: "", timeout: 120 })
+  const loadRevision = React.useRef(0)
+  const scopeRevision = React.useRef(0)
   const [saving, setSaving] = React.useState(false)
   const [testing, setTesting] = React.useState(false)
   const [testFault, setTestFault] = React.useState<import('../store').ModelFault|null>(null)
@@ -153,16 +163,24 @@ function Models() {
   }, [])
 
   const load = React.useCallback(async () => {
+    const revision = ++loadRevision.current
     setLoadError('')
-    const [p, l] = await Promise.all([call<{ providers: Provider[] }>("models.providers"),
-      call<{ presets: Preset[]; active_id: string | null }>("models.list")])
-    setProviders(p.providers)
-    setPresets(l.presets)
-    setActiveId(l.active_id)
-    const active = l.presets.find((x) => x.id === l.active_id)
-    fill(active?.provider_id ?? "deepseek", l.presets, p.providers)
+    try {
+      const [p, l] = await Promise.all([call<{ providers: Provider[] }>("models.providers"),
+        call<{ presets: Preset[]; active_id: string | null }>("models.list")])
+      if (revision !== loadRevision.current) return
+      setProviders(p.providers)
+      setPresets(l.presets)
+      setActiveId(l.active_id)
+      const active = l.presets.find((x) => x.id === l.active_id)
+      fill(active?.provider_id ?? "deepseek", l.presets, p.providers)
+    } catch (e) { if (revision === loadRevision.current) setLoadError((e as Error).message) }
   }, [fill])
-  React.useEffect(() => { load().catch((e) => setLoadError(e.message)) }, [load, toast])
+  React.useEffect(() => {
+    const off = on("scope_changed", () => { scopeRevision.current++; loadRevision.current++; setProviders(null); setPresets([]); setActiveId(null) })
+    void load()
+    return () => { scopeRevision.current++; loadRevision.current++; testCancel.current?.abort(); off() }
+  }, [load])
 
   const active = presets.find((p) => p.id === activeId)
   const selected = providers?.find((p) => p.id === form.provider_id)
@@ -170,47 +188,54 @@ function Models() {
   const relay = isRelay(form.provider_id)
 
   async function save() {
+    const revision = scopeRevision.current
     setSaving(true)
     try {
       const r = await call<{ presets: Preset[]; active_id: string }>("models.save", {
         provider_id: form.provider_id, preset_id: form.preset_id ?? undefined, display_name: form.display_name,
         base_url: form.base_url, model: form.model, api_key: form.api_key || undefined, timeout: Number(form.timeout),
       })
+      if (revision !== scopeRevision.current) return
       setPresets(r.presets)
       setActiveId(r.active_id)
       setForm((f) => ({ ...f, api_key: "", preset_id: r.active_id }))
       toast("ok", "已保存并设为当前使用的模型。")
     } catch (e) {
-      toast("error", (e as Error).message)
-    } finally { setSaving(false) }
+      if (revision === scopeRevision.current) toast("error", (e as Error).message)
+    } finally { if (revision === scopeRevision.current) setSaving(false) }
   }
 
   async function test() {
+    const revision = scopeRevision.current
     setTesting(true)
     setTestFault(null)
     testCancel.current=new AbortController()
     try {
       const r = await call<{ latency_ms: number; model: string }>("models.test",{}, {signal:testCancel.current.signal})
+      if (revision !== scopeRevision.current) return
       toast("ok", `连接正常：${r.model || "模型"} 在 ${(r.latency_ms / 1000).toFixed(1)} 秒内回复。`)
     } catch (e) {
+      if (revision !== scopeRevision.current) return
       const error = e as BridgeFailure
       setTestFault(error.model_fault ?? null)
       toast("error", error.message)
-    } finally { testCancel.current=null;setTesting(false) }
+    } finally { if (revision === scopeRevision.current) { testCancel.current=null;setTesting(false) } }
   }
 
   useModelRetry(test,f=>f.purpose === 'connection_test' || f.purpose === 'models.test' || !f.purpose)
   async function action(method: "models.select" | "models.delete", id: string) {
+    const revision = scopeRevision.current
     try {
       const r = await call<{ presets: Preset[]; active_id: string | null }>(method, { preset_id: id })
+      if (revision !== scopeRevision.current) return
       setPresets(r.presets)
       setActiveId(r.active_id)
       if (method === "models.delete") toast("ok", "已删除该模型预设及其保存的 Key。")
-    } catch (e) { toast("error", (e as Error).message) }
+    } catch (e) { if (revision === scopeRevision.current) toast("error", (e as Error).message) }
   }
 
-  if (!providers) return loadError ? <div className="card" role="alert">{loadError}<Button onClick={()=>load().catch(e=>setLoadError(e.message))}>重试</Button></div>
-    : <Loading shape="form" label="正在读取模型预设…" onRetry={()=>load().catch(e=>setLoadError(e.message))}/>
+  if (!providers) return loadError ? <div className="card" role="alert">{loadError}<Button onClick={()=>void load()}>重试</Button></div>
+    : <Loading shape="form" label="正在读取模型预设…" onRetry={()=>void load()}/>
 
   return (
     <div className="stack">
@@ -445,23 +470,29 @@ function Learning() {
   const [group, setGroup] = React.useState<PresetGroup>({ presets: [], default_id: "" })
   const [edit, setEdit] = React.useState<TeacherPreset | null>(null)
   const [busy, setBusy] = React.useState(false)
+  const loadRevision = React.useRef(0)
   const [confirm, setConfirm] = React.useState<{ group: PresetGroup; message: string } | null>(null)
   React.useEffect(() => {
     if (settings.teacher_presets) setGroup({ presets: settings.teacher_presets, default_id: settings.default_teacher_preset_id! })
   }, [settings.teacher_presets, settings.default_teacher_preset_id])
   React.useEffect(() => {
     let live = true
-    call<PresetGroup>("settings.teacher_presets").then((r) => { if (live) setGroup(r) }).catch((e) => toast("error", e.message))
-    return () => { live = false }
+    const revision = ++loadRevision.current
+    const off = on("scope_changed", () => { loadRevision.current++; setGroup({ presets: [], default_id: "" }) })
+    call<PresetGroup>("settings.teacher_presets").then((r) => { if (live && revision === loadRevision.current) setGroup(r) })
+      .catch((e) => { if (live && revision === loadRevision.current) toast("error", e.message) })
+    return () => { live = false; loadRevision.current++; off() }
   }, [toast])
   const save = async (next: PresetGroup, confirmed = false) => {
+    const revision = loadRevision.current
     setBusy(true)
     try {
       const r = await call<PresetGroup & { confirmation_required?: boolean; message?: string }>("settings.save_teacher_presets", { ...next, confirm_delete: confirmed })
+      if (revision !== loadRevision.current) return
       if (r.confirmation_required) { setConfirm({ group: next, message: r.message! }); return }
       setGroup({ presets: r.presets, default_id: r.default_id }); setConfirm(null); setEdit(null)
       toast("ok", "老师预设已保存，下次讲课立即使用。")
-    } catch (e) { toast("error", (e as Error).message) } finally { setBusy(false) }
+    } catch (e) { if (revision === loadRevision.current) toast("error", (e as Error).message) } finally { if (revision === loadRevision.current) setBusy(false) }
   }
   const create = () => {
     const name = ["预设一", "预设二", "预设三", "预设四"].find((n) => !group.presets.some((p) => p.name === n)) ?? "新老师"

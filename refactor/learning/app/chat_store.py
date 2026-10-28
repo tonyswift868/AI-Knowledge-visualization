@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import logging
+import os
 from threading import Lock
 import uuid
 
@@ -19,11 +20,16 @@ from refactor.learning.chat.session import FreeChatSessionConflictError
 from refactor.learning.chat.session import FreeChatSessionNotFoundError
 from refactor.learning.chat.persistence import MAX_SESSION_FILE_BYTES
 from refactor.learning.chat.persistence import FreeChatStoreError
+from refactor.learning.chat.persistence import FreeChatStoreIOError
 from refactor.learning.chat.storage import ScopedChatStore
 from refactor.learning.chat.errors import ToolError
 
 log = logging.getLogger(__name__)
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+# Local migration receipt only; no schema or synchronized payload change.
+# v1's total receipt could be written after an I/O failure. Individual import
+# receipts and CourseStore tombstones still prevent resurrecting deleted chats.
+IMPORT_COMPLETE = 'complete_v2'
 
 
 def title_from(text):
@@ -49,8 +55,7 @@ class CourseChatStore:
         # not have to wait for filesystem I/O while holding the GUI thread.
         with self._import_lock:
             if not self._import_ready:
-                self._import_legacy()
-                self._import_ready = True
+                self._import_ready = self._import_legacy()
 
     def _snapshot(self, session_id):
         try:
@@ -143,19 +148,31 @@ class CourseChatStore:
             return self._snapshot(session_id)
 
     def _import_legacy(self):
-        if self.store.legacy_chat_imported(): return
+        if self.store.legacy_chat_imported(IMPORT_COMPLETE): return True
         directory = self.store.root / 'tools' / 'chat' / 'sessions'
         # Do not follow a junction/symlink into another account's old files.
         for path in (directory.parent.parent, directory.parent, directory):
             self.store._safe_path(path)
+        try:
+            # Path.glob suppresses some directory I/O errors and can make an
+            # unreadable directory look empty. Only an absent directory is done.
+            with os.scandir(directory) as entries:
+                paths = sorted(directory / entry.name for entry in entries
+                               if entry.name.lower().endswith('.json'))
+        except FileNotFoundError:
+            paths = []
+        except OSError as exc:
+            log.warning('legacy chat directory unavailable (%s); import will retry', type(exc).__name__)
+            return False
         reader = ScopedChatStore(directory.parent)
-        for path in sorted(directory.glob('*.json')):
+        retry = False
+        for path in paths:
+            source_key = hashlib.sha256(path.stem.encode('utf-8')).hexdigest()
+            if self.store.legacy_chat_imported(source_key): continue
             try:
                 self.store._safe_path(path)
                 if path.stat().st_size > MAX_SESSION_FILE_BYTES:
                     raise ValueError('oversized legacy session')
-                source_key = hashlib.sha256(path.stem.encode('utf-8')).hexdigest()
-                if self.store.legacy_chat_imported(source_key): continue
                 old = reader.get(path.stem)
                 sid = 'legacy-' + source_key
                 rows, previous = [], old.created_at.astimezone(timezone.utc)
@@ -170,8 +187,15 @@ class CourseChatStore:
                 title = title_from(next((m.content for m in old.messages if m.role == 'user'), ''))
                 self.store.import_chat_session(source_key, dict(id=sid, title=title,
                     created_at=old.created_at.astimezone(timezone.utc).isoformat(), updated_at=updated.isoformat()), rows)
-            except (OSError, ValueError, OverflowError, FreeChatStoreError, ToolError) as exc:
+            except (OSError, FreeChatStoreIOError, FreeChatSessionNotFoundError) as exc:
+                retry = True
+                log.warning('legacy chat import deferred %s (%s); import will retry', path.name, type(exc).__name__)
+            except (ValueError, OverflowError, FreeChatStoreError, ToolError) as exc:
                 if isinstance(exc, StoreError) and exc.code == 'STORE_CLOSED': raise
                 # No chat text, persona, tokens, or filesystem contents in logs.
                 log.warning('legacy chat import skipped %s (%s); original retained', path.name, type(exc).__name__)
-        self.store.mark_legacy_chat_imported()
+        if retry: return False
+        with self.store.transaction():
+            self.store.mark_legacy_chat_imported()
+            self.store.mark_legacy_chat_imported(IMPORT_COMPLETE)
+        return True

@@ -46,6 +46,7 @@ export function Home() {
     }).catch(() => {if(revision===loadRevision.current)setLoadError(true)}).finally(() => {if(revision===loadRevision.current)setLoading(false)})
   }, [])
   React.useEffect(() => { if (ready) load() }, [ready, load])
+  React.useEffect(() => on("scope_changed", () => { loadRevision.current++ }), [])
   React.useEffect(() => on("study_day", () => load()), [load])   // the refresh time passed while open
   React.useEffect(() => on("plans_changed", () => { if (ready) load() }), [ready, load])
 
