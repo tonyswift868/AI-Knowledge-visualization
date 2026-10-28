@@ -175,7 +175,7 @@ def _seed_subject(database_url: str, subject: str) -> None:
                            (ORG, WORKSPACE, subject))
 
 
-def _prepare_database(postgres: _EmbeddedPostgres, name: str, issuer: str) -> tuple[str, str, str]:
+def _prepare_database(postgres: _EmbeddedPostgres, name: str, issuer: str, *, target: str = "head") -> tuple[str, str, str]:
     host = f"127.0.0.1:{postgres.port}"
     with psycopg.connect(f"host=127.0.0.1 port={postgres.port} user=postgres dbname=postgres", autocommit=True) as connection:
         connection.execute("DO $$ BEGIN CREATE ROLE mentorflow_app LOGIN PASSWORD 'local-only-154'; EXCEPTION WHEN duplicate_object THEN ALTER ROLE mentorflow_app LOGIN PASSWORD 'local-only-154'; END $$")
@@ -192,7 +192,7 @@ def _prepare_database(postgres: _EmbeddedPostgres, name: str, issuer: str) -> tu
     migration_url = f"postgresql+psycopg://mentorflow_migrator:local-migrator-154@{host}/{name}"
     app_url = f"postgresql+psycopg://mentorflow_app:local-only-154@{host}/{name}"
     admin_url = f"postgresql+psycopg://postgres@{host}/{name}"
-    _run_alembic(migration_url, ["upgrade", "head"], postgres.directory / f"{name}-upgrade.log", issuer)
+    _run_alembic(migration_url, ["upgrade", target], postgres.directory / f"{name}-upgrade.log", issuer)
     return app_url, admin_url, migration_url
 
 
