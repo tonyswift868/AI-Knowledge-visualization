@@ -6,7 +6,12 @@ import os
 import time
 from types import SimpleNamespace
 
-from .account_identity import AccountProfile, ProfileMode, identity_hash
+from .account_identity import (
+    AccountProfile,
+    NONSECRET_ACCOUNT_PREFERENCE_KEYS,
+    ProfileMode,
+    identity_hash,
+)
 
 KEY = 'account/registry_v1'
 _mutex = threading.RLock()
@@ -110,8 +115,31 @@ class AccountRegistry:
             value=self._read()
             row=next((r for r in value['accounts'] if r['account_id']==account_id),None)
             if row is None: raise ValueError('ACCOUNT_NOT_REGISTERED')
-            value['current_account_id']=account_id;self._write(value)
-            self.preferences.save_target(self.profile(row),remember_me=row['remember_session'],auto_login=row['auto_login'])
+            preference_keys = NONSECRET_ACCOUNT_PREFERENCE_KEYS
+            settings = self.preferences.settings
+            old_registry = (settings.contains(KEY), settings.value(KEY))
+            old_preferences = {
+                key: (settings.contains(key), settings.value(key))
+                for key in preference_keys
+            }
+            value['current_account_id']=account_id
+            try:
+                self.preferences.save_target(self.profile(row),remember_me=row['remember_session'],auto_login=row['auto_login'])
+                self._write(value)
+            except BaseException:
+                # Restore both sides: sync may report failure after setValue changed
+                # the in-memory registry value, even if the backend rejected it.
+                if old_registry[0]:
+                    settings.setValue(KEY, old_registry[1])
+                else:
+                    settings.remove(KEY)
+                for key, (existed, previous) in old_preferences.items():
+                    if existed:
+                        settings.setValue(key, previous)
+                    else:
+                        settings.remove(key)
+                settings.sync()
+                raise
             return row
 
     def set_options(self,account_id,**options):

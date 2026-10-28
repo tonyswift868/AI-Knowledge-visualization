@@ -150,6 +150,9 @@ class DesktopUpdates(QObject):
         self._update_prompt()
 
         def work():
+            # Keep the verified result in this worker; the GUI may not have
+            # consumed its queued cache signal before a later core failure.
+            cached = None
             try:
                 if action == "startup":
                     cached = self.core.get_startup_update_state(self.root, full=False, check_feed=False,
@@ -186,7 +189,6 @@ class DesktopUpdates(QObject):
                 maintenance_log(self.root, event, outcome='error',
                                 error_type=type(exc).__name__, detail=str(exc))
                 if action == 'startup':
-                    cached = self._startup_cached
                     if cached is not None:
                         result = {**cached, 'feed': 'UNAVAILABLE_RECOVERABLE',
                                   'offline_fallback': True}

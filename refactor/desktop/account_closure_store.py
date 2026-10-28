@@ -5,6 +5,7 @@ import json
 from . import credential_store
 from .account_identity import AccountProfile, ProfileMode
 from .account_closure_client import STATES, failure, operation_id
+from .account_protocol import AccountError
 from .login_session import account_session_lock
 
 KEY = 'account/closures_v1/'
@@ -19,6 +20,7 @@ def can_reprepare(record):
 class ClosureStore:
     def __init__(self, settings):
         self.settings = settings
+        self.invalid_record_count = 0
 
     @staticmethod
     def profile(record):
@@ -59,13 +61,29 @@ class ClosureStore:
     def records(self):
         self.settings.sync()
         result = []
+        self.invalid_record_count = 0
         for key in self.settings.allKeys():
             if key.startswith(KEY):
-                raw = json.loads(str(self.settings.value(key)))
-                profile = self.profile(raw)
-                if key != KEY + profile.account_id:
-                    raise failure('CLOSURE_RECOVERY_UNAVAILABLE')
-                result.append(self.load(profile))
+                try:
+                    encoded = self.settings.value(key)
+                    if not isinstance(encoded, str) or len(encoded) > 8192:
+                        raise ValueError()
+                    raw = json.loads(encoded)
+                    profile = self.profile(raw)
+                    if key != KEY + profile.account_id:
+                        self.invalid_record_count += 1
+                        continue
+                    record = self.load(profile)
+                    if record is None:
+                        self.invalid_record_count += 1
+                        continue
+                    result.append(record)
+                except (json.JSONDecodeError, RecursionError, KeyError, TypeError, ValueError):
+                    self.invalid_record_count += 1
+                except AccountError as error:
+                    if error.code not in {'CLOSURE_RECOVERY_UNAVAILABLE', 'CLOSURE_IDENTITY_MISMATCH'}:
+                        raise
+                    self.invalid_record_count += 1
         return result
 
     def write(self, record):
