@@ -72,13 +72,17 @@ class Agents:
             # Append-only requests retain old tasks for caching. A fake teacher
             # must follow the newest task, just as the real model is instructed.
             task = block([m for m in reversed(messages) if m['content'].startswith('【本步任务】')][:1], '【本步任务】')
-            if self.teacher_format_errors:
+            invalid_format = bool(self.teacher_format_errors)
+            if invalid_format:
                 self.teacher_format_errors -= 1
                 text = 'English only invalid teaching.'
             else:
                 text = ('==这一章帮助理解资料中的概念。==\n这一章一起理解资料中的概念，你觉得哪种情况更接近？[c1]\n【选项】\n第一种\n第二种\n不知道\n【/选项】'
                         if task['opening'] else '==我们一起看资料中的定义。==[c1]')
             if task.get('qa'):
+                if not invalid_format:
+                    source = block(messages, '【当前模块原文（数据）】')[0]
+                    text = source['text'].split('。',1)[0]+'。['+source['alias']+']'
                 text = '【依据】material:c1【/依据】\n' + text
             if on_text: on_text(text)
         elif purpose == 'judge':

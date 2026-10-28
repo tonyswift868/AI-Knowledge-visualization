@@ -1,0 +1,43 @@
+{
+  "schema": "mentorflow.test.teacher228.replay.v1",
+  "provenance": {
+    "task": "226-MF03",
+    "source": "D:/MentorFlow/.local/r226/MF03/report.md",
+    "deidentified": true,
+    "limitation": "226 raw comparison JSON was not retained. These are only exact response excerpts quoted in its report, not reconstructed full transcripts."
+  },
+  "cases": [
+    {
+      "id": "golden-set-unsupported-absolute",
+      "question": "Golden Set 的场景标签有什么用？",
+      "evidence": "合成讲义：Golden Set 的每个样例带有业务场景标签，便于按场景检查模型输出是否覆盖预期行为。",
+      "quoted_answer_excerpt": "如果不带标签，就只能整体看输出；带上标签后，才能知道哪一类业务场景的行为已经被覆盖……标签服务于覆盖情况的检查，并非用来判定单个样例的优劣。",
+      "human_expected": "核心用途有直接依据。‘没有标签就只能整体看’等内容是原文之外的扩展；按本轮标准，扩展不能仅因原文没写就判错，需人工判断是否属实。‘只能’也不能冒充原文用语或带资料引用。",
+      "classification": "supported_core_plus_extension_requires_truth_review"
+    },
+    {
+      "id": "business-layer-extrapolation",
+      "question": "业务校验应该放在哪一层？",
+      "evidence": "合成讲义：业务规则校验由应用服务层负责；数据库约束作为最后一道完整性防线。",
+      "quoted_answer_excerpt": "业务规则校验由应用服务层负责，数据库约束只作为最后一道完整性防线。……比如用触发器表达流程判断，规则的修改成本会变高，也不容易复用和测试。",
+      "human_expected": "应用服务层与数据库防线的核心说法由资料直接支持。触发器成本/复用/测试是扩展；它可以比资料多说，但不能仅因原文未写就判错，也不能伪称原文明确说过。",
+      "classification": "supported_core_plus_plausible_extension_requires_truth_review"
+    },
+    {
+      "id": "consistency-domain-example",
+      "question": "强一致性和最终一致性有什么区别？",
+      "evidence": "合成讲义：强一致性要求写入完成后后续读取立即看到新值；最终一致性允许短暂延迟，但系统会在没有新写入时收敛到一致状态。",
+      "quoted_answer_excerpt": "余额刚改完，页面马上显示新数值，符合强一致的描述；若短暂仍显示旧值、稍后自动更正，则符合最终一致的描述。",
+      "human_expected": "定义有依据；余额与延迟读取示例是解释性延伸，按本轮标准可接受，只需人工确认没有将例子说成强制选型建议。",
+      "classification": "reasonable_analogy_with_boundary"
+    },
+    {
+      "id": "current-point-analogy-source",
+      "question": "能用一个生活中的例子解释当前点吗？",
+      "evidence": "合成讲义：模块边界用于把系统拆成职责清楚、可以独立验证的部分。",
+      "quoted_answer_excerpt": "模块边界更像厨房里‘切配区’和‘灶台区’之间的分工线，它让每个区域只负责一类事，也能被单独检查。",
+      "human_expected": "类比解释‘职责清楚/可以单独检查’有当前点材料依据；来源应是 current-point 资料，不应仅因使用类比就归为无资料 supplement。",
+      "classification": "material_supported_analogy"
+    }
+  ]
+}
