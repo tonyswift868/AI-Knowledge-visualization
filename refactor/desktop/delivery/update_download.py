@@ -407,11 +407,18 @@ class ObjectCache:
         offset = partial.stat().st_size if partial.exists() else 0
         self._download_offsets[asset['sha256']] = offset
         if offset > asset['size']:
-            raise SecurityError('oversized partial object')
-        if offset == asset['size'] and partial.exists():
-            if hash_file(partial) != asset['sha256']:
-                raise SecurityError('completed partial hash mismatch')
-        else:
+            # This cannot be a resumable prefix of the signed object. Discard
+            # only this safely resolved partial and restart the same object.
+            partial.unlink()
+            offset = 0
+            self._download_offsets[asset['sha256']] = 0
+        if offset == asset['size'] and partial.exists() and hash_file(partial) != asset['sha256']:
+            # Discard only this safely resolved, complete partial. Short
+            # partials remain available to the normal range-resume path.
+            partial.unlink()
+            offset = 0
+            self._download_offsets[asset['sha256']] = 0
+        if offset != asset['size'] or not partial.exists():
             stream = None
             try:
                 for kind, value in self.transport.stream(asset['url'], offset=offset, cancel=cancel):
@@ -445,6 +452,8 @@ class ObjectCache:
         if not partial.exists() or partial.stat().st_size != asset['size']:
             raise RecoverableError('interrupted asset retained')
         if hash_file(partial) != asset['sha256']:
+            partial.unlink()
+            self._download_offsets[asset['sha256']] = 0
             raise SecurityError('asset SHA-256 mismatch')
         target = self.objects / asset['sha256']
         safe_entry(target, self.root)
