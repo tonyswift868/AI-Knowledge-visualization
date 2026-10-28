@@ -808,6 +808,32 @@ class CourseStore:
         with self._lock:
             return self._db.execute('SELECT 1 FROM _meta WHERE key=?', ('classroom-import:'+plan_id,)).fetchone() is not None
 
+    def classroom_gaps_imported(self, plan_id):
+        with self._lock:
+            return self._db.execute('SELECT 1 FROM _meta WHERE key=?', ('classroom-gaps-import:'+plan_id,)).fetchone() is not None
+
+    @_atomic
+    def import_classroom_gaps(self, plan_id, legacy_gaps):
+        """Import legacy missing-material rows once, without syncing a marker field."""
+        marker = 'classroom-gaps-import:'+plan_id
+        if self._db.execute('SELECT 1 FROM _meta WHERE key=?', (marker,)).fetchone():
+            record = self.classroom_position(plan_id)
+            return list((record or {}).get('state', {}).get('question_gaps') or [])
+        record = self.classroom_position(plan_id)
+        state = dict(record['state']) if record else {}
+        original_gaps = list(state.get('question_gaps') or [])
+        gaps = []
+        for gap in original_gaps + list(legacy_gaps):
+            if gap not in gaps:
+                gaps.append(gap)
+        if gaps != state.get('question_gaps', []):
+            if not record:
+                raise StoreError('CLASSROOM_POSITION_MISSING')
+            state['question_gaps'] = gaps
+            self.save_classroom_position(plan_id, state)
+        self._db.execute('INSERT INTO _meta VALUES(?,?)', (marker, '1'))
+        return gaps
+
     @_atomic
     def import_classroom_position(self, plan_id, state, modified_ns):
         """Once per device. A stale legacy file never replaces a newer synced scene."""
@@ -2300,9 +2326,29 @@ class CourseStore:
                                           kind='summary', at=_at(at), compressed=False, summary_of=list(message_ids)))
         return identifier
 
-    def messages(self, plan_id, module_id=None, *, include_compressed=False):
-        values = self.records('messages', plan_id)
-        return sorted([m for m in values if m['module_id'] == module_id and (include_compressed or not m['compressed'])], key=lambda m: (m['at'], m['id']))
+    def get_message(self, plan_id, message_id):
+        with self._lock:
+            return self._get('messages', plan_id, message_id)
+
+    def messages(self, plan_id, module_id=None, *, include_compressed=False, limit=None):
+        """Read one channel using messages_order; a limit returns its latest rows.
+
+        The default retains all rows of that channel for dialogue page-boundary
+        replay. JSON is decoded only after SQL has filtered the channel/window.
+        """
+        if limit is not None and (type(limit) is not int or limit < 0):
+            raise ValueError('limit must be a non-negative integer')
+        query = 'SELECT payload FROM messages WHERE plan_key=? AND module_id IS ?'
+        params = [plan_id, module_id]
+        if not include_compressed: query += " AND json_extract(payload, '$.compressed')=0"
+        direction = 'DESC' if limit is not None else 'ASC'
+        query += f" ORDER BY json_extract(payload, '$.at') {direction}, id {direction}"
+        if limit is not None:
+            query += ' LIMIT ?'; params.append(limit)
+        with self._lock:
+            values = [json.loads(row[0]) for row in self._db.execute(query, params)]
+        if limit is not None: values.reverse()
+        return values
 
     @_atomic
     def save_report(self, plan_id, document, *, report_id=None):

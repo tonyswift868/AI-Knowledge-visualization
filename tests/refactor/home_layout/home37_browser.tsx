@@ -29,8 +29,8 @@ window.home37Check = () => {
   try {
     require(document.querySelectorAll('.home-total .progress-status').length === 1, '合计只显示一个进度状态')
     require(document.body.textContent!.includes('今天全部计划'), '合计标注全部计划')
-    require(cards[0].querySelector('.progress-status')!.textContent!.includes('今天 10 / 24 分'), '每日进度包含待确认时长')
-    require(cards[0].querySelector('.progress-status')!.textContent!.includes('含待确认 10 分'), '区分待确认时长')
+    require(cards[0].querySelector('.progress-status')!.textContent!.includes('今天 10 / 24 分'), '每日完成分钟计入暂记时长')
+    require(!cards[0].querySelector('.progress-status')!.textContent!.includes('待确认'), '进度不单独标待确认时长')
     require(!document.querySelector('.home-page')!.textContent!.includes('暂记'), '首页没有暂记术语')
     const columns = getComputedStyle(document.querySelector('.home-plan-grid')!).gridTemplateColumns.split(' ').length
     require(columns > 1, '多份计划网格排列')

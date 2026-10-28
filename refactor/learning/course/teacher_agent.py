@@ -100,20 +100,31 @@ def citation_map(ctx: dict) -> dict[str, str]:
 
 def _reject_state_claims(text):
     # A conservative check for explicit first-person/completed actions, not a
-    # claim of complete semantic detection. Negated explanations remain valid.
+    # claim of complete semantic detection. Negation applies within its clause.
+    contrasts = r"但(?:是)?|不过|然而|可是|而是|只是|yet|but|however"
+    quotes = r'“[^”]*”|"[^"]*"|‘[^’]*’|\'[^\']*\''
+    quoted_claim = r"(?:我(?:已(?:经)?|刚刚)|已(?:经)?|现已)[^。！？\n]{0,40}(?:删除|取消|跳过|修改|更改|调整|更新|重置|清除|标记|改成)[^。！？\n]{0,18}(?:计划|进度|检验|检测|掌握|通过)"
     for start, end in _prose_spans(text):
         for sentence in re.split(r"[。！？!?，,；;\n]", text[start:end]):
-            if re.search(r"(?:不能|不会|无法|没有|无权|并未|未曾)", sentence):
-                continue
-            # A bare 已 must introduce the action itself (or 把/将 + object).
-            # In profile notes, “用户称已记住并要求跳过检测” reports a request,
-            # not an action by this agent. Keep the broader span only for 我.
-            if re.search(r"(?:我(?:已(?:经)?|刚刚)?(?:为你|帮你|替你)?(?:把|将)?[^。！？\n]{0,30}|"
-                         r"(?:已(?:经)?|现已)(?:为你|帮你|替你)?(?:(?:把|将)[^。！？\n]{0,30})?(?:成功|自动|直接)?)"
-                         r"(?:删除|取消|跳过|修改|更改|调整|更新|重置|清除|标记|改成)[^。！？\n]{0,18}(?:计划|进度|检验|检测|掌握|通过)", sentence) or re.search(
-                         r"(?:计划|进度|检验|检测|错题记录)[^。！？\n]{0,15}(?:已(?:经)?|现已)(?:被)?(?:删除|取消|跳过|修改|更改|更新|清除|重置)", sentence) or re.search(
-                         r"我(?:已(?:经)?|刚刚)?(?:为你|帮你|替你)?(?:把|将)[^。！？\n]{0,15}(?:计划|进度|检验|检测)[^。！？\n]{0,15}(?:删除|取消|跳过|修改|更改|更新|清除|重置|改好|改成)", sentence):
-                raise TeachingFormatError('STATE_CLAIM', "speech: 老师不能宣称修改了计划、进度或检验")
+            if re.search(r"(?:错误示例|错误说法|反例|不实说法)", sentence):
+                def redact_explicit_error_example(match):
+                    quoted = match.group(0)
+                    if re.search(quoted_claim, quoted[1:-1]):
+                        return ""
+                    return quoted
+                sentence = re.sub(quotes, redact_explicit_error_example, sentence, flags=re.IGNORECASE)
+            for clause in re.split(contrasts, sentence, flags=re.IGNORECASE):
+                if re.search(r"(?:不能|不会|无法|没有|无权|并未|未曾|cannot|can't|won't|did not|didn't)", clause, re.IGNORECASE):
+                    continue
+                # A bare 已 must introduce the action itself (or 把/将 + object).
+                # In profile notes, “用户称已记住并要求跳过检测” reports a request,
+                # not an action by this agent. Keep the broader span only for 我.
+                if re.search(r"(?:我(?:已(?:经)?|刚刚)?(?:为你|帮你|替你)?(?:把|将)?[^。！？\n]{0,30}|"
+                             r"(?:已(?:经)?|现已)(?:为你|帮你|替你)?(?:(?:把|将)[^。！？\n]{0,30})?(?:成功|自动|直接)?)"
+                             r"(?:删除|取消|跳过|修改|更改|调整|更新|重置|清除|标记|改成)[^。！？\n]{0,18}(?:计划|进度|检验|检测|掌握|通过)", clause) or re.search(
+                             r"(?:计划|进度|检验|检测|错题记录)[^。！？\n]{0,15}(?:已(?:经)?|现已)(?:被)?(?:删除|取消|跳过|修改|更改|更新|清除|重置)", clause) or re.search(
+                             r"我(?:已(?:经)?|刚刚)?(?:为你|帮你|替你)?(?:把|将)[^。！？\n]{0,15}(?:计划|进度|检验|检测)[^。！？\n]{0,15}(?:删除|取消|跳过|修改|更改|更新|清除|重置|改好|改成)", clause):
+                    raise TeachingFormatError('STATE_CLAIM', "speech: 老师不能宣称修改了计划、进度或检验")
 
 
 TEACHER_SYSTEM = """你是 MentorFlow 的中文老师，陪伴学生沿当前知识点对话。只完成本步任务，不自己推进、判分、改计划。
