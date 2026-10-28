@@ -129,11 +129,11 @@ def test_java_access_authentication_uses_lightweight_family_row():
     classes = task_tmp / 'classes'
     classes.mkdir(parents=True, exist_ok=True)
     jdk = Path(r'D:\MentorFlow\.local\java\jdk-21.0.12.1+1')
-    dependency_cp = Path(r'D:\MentorFlow\.local\test-tmp\java-cache\test-classpath.txt')
-    if not dependency_cp.is_file():
-        dependency_cp = Path(r'D:\MentorFlow\.local\test-tmp\java-cache\test-classpath.txt')
+    dependency_cp = Path(os.environ.get('JAVA156_CLASSPATH_FILE',
+        r'D:\MentorFlow\.local\test-tmp\java-cache\test-classpath.txt'))
     assert dependency_cp.is_file(), f'Java classpath file missing: {dependency_cp}'
-    build_classes = Path(r'D:\MentorFlow\.local\test-tmp\java-cache\build\classes')
+    build_classes = Path(os.environ.get('JAVA156_BUILD',
+        r'D:\MentorFlow\.local\test-tmp\java-cache\build')) / 'classes'
     cp = os.pathsep.join((str(build_classes), dependency_cp.read_text(encoding='utf-8').strip()))
     harness = repo / 'tests/refactor/server_java/java/session219/NativeSession219Main.java'
     service = repo / 'refactor/server-java/src/main/java/win/clannad/mentorflow/account/NativeSessionService.java'

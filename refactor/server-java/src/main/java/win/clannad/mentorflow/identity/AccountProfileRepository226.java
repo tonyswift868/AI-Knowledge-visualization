@@ -108,6 +108,11 @@ public final class AccountProfileRepository226 {
                 jdbc.query("SELECT set_config('mentorflow.rag_account_scope', ?, true), "
                         + "set_config('mentorflow.actor_issuer', ?, true), set_config('mentorflow.actor_subject', ?, true)",
                     rs -> null, scope, issuer, subject);
+                if (writing) {
+                    // Match account closure's operations-row -> profile-advisory -> profile-row lock order.
+                    // guard_row checks the closure fence before skipping these null row values.
+                    jdbc.query("SELECT account_closure.guard_row('public','account_profiles',NULL::jsonb,NULL::jsonb)", rs -> null);
+                }
                 if (writing) jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended('mentorflow.rag:' || ?, 0))", rs -> null, scope);
                 try { return action.call(); }
                 catch (IdentityFailure failure) { throw failure; }

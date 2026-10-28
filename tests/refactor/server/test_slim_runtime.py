@@ -17,6 +17,7 @@ import uvicorn
 
 from contract_support import principal, runtime
 from slim_sqlite_support import _SQLiteTransactions
+from refactor.server.enterprise_tenancy.schema import ENTERPRISE_MIGRATION_REVISION
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -42,8 +43,10 @@ print('standalone import passed')
 def test_slim_only_selected_routes_and_no_original_storage():
     from refactor.server.app import app
     paths=app.openapi()['paths']
-    assert len(paths)==38
+    assert len(paths)==40
     assert set(paths['/api/enterprise/sync/v1/entities/bulk']) == {'post'}
+    assert set(paths['/api/enterprise/account/profile']) == {'get', 'patch'}
+    assert set(paths['/api/enterprise/account/profile/avatar']) == {'get', 'put', 'delete'}
     assert set(p for p in paths if not p.startswith('/api/enterprise/')) == {
         '/health/live','/health/startup','/health/ready'}
     assert not any(part in path for path in paths for part in (
@@ -66,7 +69,7 @@ def test_slim_existing_secret_adapter_and_dockerfile(tmp_path):
 
 
 def test_slim_real_uvicorn_health_and_local_business_requests(schema_template, tmp_path, monkeypatch):
-    """SQLite is test-only; production configure/verify still require PostgreSQL 0042."""
+    """SQLite is test-only; production verifies the canonical PostgreSQL revision."""
     import shutil
     from refactor.server import app as entry
     from refactor.server.enterprise.identity.native import NativeSessions
@@ -97,7 +100,7 @@ def test_slim_real_uvicorn_health_and_local_business_requests(schema_template, t
         partial(identity_runtime.enterprise_request_context,now=now))
     def verify():
         with engine.connect() as conn:
-            assert conn.scalar(text('SELECT version_num FROM alembic_version'))=='0045_account_closure_rag'
+            assert conn.scalar(text('SELECT version_num FROM alembic_version'))==ENTERPRISE_MIGRATION_REVISION
     monkeypatch.setattr(entry.EnterpriseIdentityConfig,'from_env',lambda:identity.config)
     monkeypatch.setattr(entry.orm_runtime,'configure_enterprise_orm',lambda:engine)
     monkeypatch.setattr(entry.orm_runtime,'verify_enterprise_runtime_schema',verify)

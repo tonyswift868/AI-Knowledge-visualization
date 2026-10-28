@@ -125,10 +125,29 @@ class AccountProfileService:
         self.engine = engine
 
     @staticmethod
-    def _bind(connection, scope):
+    def _bind(connection, scope, issuer=None, subject=None):
         if connection.dialect.name == "postgresql":
-            connection.execute(text("SELECT set_config('mentorflow.rag_account_scope', :scope, true)"),
-                               {"scope": scope})
+            if issuer is None or subject is None:
+                connection.execute(text("SELECT set_config('mentorflow.rag_account_scope', :scope, true)"),
+                                   {"scope": scope})
+            else:
+                connection.execute(text("""SELECT
+                    set_config('mentorflow.rag_account_scope', :scope, true),
+                    set_config('mentorflow.actor_issuer', :issuer, true),
+                    set_config('mentorflow.actor_subject', :subject, true)"""),
+                    {"scope": scope, "issuer": issuer, "subject": subject})
+
+    @staticmethod
+    def _lock_profile_write(connection, scope):
+        if connection.dialect.name != "postgresql":
+            return
+        # Enter the existing closure fence before taking the profile lock. The
+        # row trigger repeats this check at write time; this early call drains
+        # in-flight writers before closure.acquire commits its fence.
+        connection.execute(text("""SELECT account_closure.guard_row(
+            'public', 'account_profiles', NULL::jsonb, NULL::jsonb)"""))
+        connection.execute(text("""SELECT pg_advisory_xact_lock(
+            hashtextextended('mentorflow.rag:' || :scope, 0))"""), {"scope": scope})
 
     @staticmethod
     def _table(connection):
@@ -163,7 +182,8 @@ class AccountProfileService:
     def update(self, issuer, subject, nickname, signature, expected):
         scope = account_scope(issuer, subject)
         with self.engine.begin() as connection:
-            self._bind(connection, scope)
+            self._bind(connection, scope, issuer, subject)
+            self._lock_profile_write(connection, scope)
             table = self._table(connection)
             connection.execute(text(f"INSERT INTO {table}(account_scope) VALUES (:scope) "
                                     "ON CONFLICT (account_scope) DO NOTHING"), {"scope": scope})
@@ -192,7 +212,8 @@ class AccountProfileService:
     def save_avatar(self, issuer, subject, image, etag, width, height, expected):
         scope = account_scope(issuer, subject)
         with self.engine.begin() as connection:
-            self._bind(connection, scope)
+            self._bind(connection, scope, issuer, subject)
+            self._lock_profile_write(connection, scope)
             table = self._table(connection)
             connection.execute(text(f"INSERT INTO {table}(account_scope) VALUES (:scope) "
                                     "ON CONFLICT (account_scope) DO NOTHING"), {"scope": scope})
@@ -211,7 +232,8 @@ class AccountProfileService:
     def delete_avatar(self, issuer, subject, expected):
         scope = account_scope(issuer, subject)
         with self.engine.begin() as connection:
-            self._bind(connection, scope)
+            self._bind(connection, scope, issuer, subject)
+            self._lock_profile_write(connection, scope)
             row = self._row(connection, scope, lock=True)
             if row is None:
                 if expected != 1:
