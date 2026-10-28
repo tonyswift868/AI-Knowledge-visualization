@@ -29,6 +29,8 @@ export type Settings = {
   teacher_presets?: TeacherPreset[]
   default_teacher_preset_id?: string
 }
+export type SettingsSnapshot = { settings: Settings; settings_revision?: number; account_id?: string }
+export type SettingsSaveTicket = { id: number; scope: number; account_id?: string; changes: Partial<Settings>; previous: Partial<Settings> }
 
 export type Account = { name: string; nickname?: string; signature?: string; avatar_url?: string | null; account_id?: string; role_label: string; settings_available?: boolean; offline?: boolean }
 export type Notice = { message: string; show_verify: boolean } | null
@@ -56,6 +58,9 @@ type State = {
   sync: SyncStatus
   account: Account | null
   settings: Settings | null
+  confirmedSettings: Settings | null
+  settingsRevision: number
+  settingsScopeRevision: number
   options: Record<string, string[]>
   notice: Notice
   ready: boolean
@@ -69,19 +74,29 @@ type State = {
   setModelStatus: (status: ModelStatus) => void
   go: (route: Route, tab?: SettingsTab) => void
   set: (patch: Partial<State>) => void
+  applySettingsSnapshot: (snapshot: SettingsSnapshot, expectedScope: number, account?: Account | null) => boolean
+  resetSettingsScope: () => void
+  beginSettingsSave: (changes: Partial<Settings>) => SettingsSaveTicket
+  finishSettingsSave: (ticket: SettingsSaveTicket, snapshot: SettingsSnapshot) => boolean
+  failSettingsSave: (ticket: SettingsSaveTicket) => void
   toast: (kind: Toast["kind"], text: string) => void
   dismiss: (id: number) => void
 }
 
 let toastId = 0
+let settingsSaveId = 0
+const pendingSettingsFields = new Map<keyof Settings, number>()
 
-export const useApp = create<State>((set) => ({
+export const useApp = create<State>((set, get) => ({
   route: "home",
   settingsTab: "models",
   planId: null,
   sync: null,
   account: null,
   settings: null,
+  confirmedSettings: null,
+  settingsRevision: 0,
+  settingsScopeRevision: 0,
   options: {},
   notice: null,
   ready: false,
@@ -98,6 +113,67 @@ export const useApp = create<State>((set) => ({
       : null})),
   go: (route, tab) => set((s) => ({ route, settingsTab: tab ?? s.settingsTab })),
   set: (patch) => set(patch),
+  applySettingsSnapshot: (snapshot, expectedScope, account) => {
+    let applied = false
+    set((s) => {
+      if (s.settingsScopeRevision !== expectedScope) return {}
+      const nextAccount = account === undefined ? s.account : account
+      if (snapshot.account_id && nextAccount?.account_id && snapshot.account_id !== nextAccount.account_id) return {}
+      const revision = Number.isSafeInteger(snapshot.settings_revision) && snapshot.settings_revision! >= 0 ? snapshot.settings_revision! : 0
+      if (revision < s.settingsRevision) return account === undefined ? {} : { account: nextAccount }
+      const merged = { ...(s.settings ?? snapshot.settings), ...snapshot.settings }
+      for (const [field] of pendingSettingsFields) {
+        if (Object.prototype.hasOwnProperty.call(s.settings ?? {}, field)) (merged as any)[field] = (s.settings as any)[field]
+      }
+      applied = true
+      return { ...(account === undefined ? {} : { account: nextAccount }), settings: merged, confirmedSettings: snapshot.settings, settingsRevision: revision }
+    })
+    return applied
+  },
+  resetSettingsScope: () => {
+    pendingSettingsFields.clear()
+    set((s) => ({ settings: null, confirmedSettings: null, settingsRevision: 0, settingsScopeRevision: s.settingsScopeRevision + 1 }))
+  },
+  beginSettingsSave: (changes) => {
+    const s = get()
+    const id = ++settingsSaveId
+    const previous: Partial<Settings> = {}
+    for (const field of Object.keys(changes) as (keyof Settings)[]) {
+      previous[field] = (s.confirmedSettings ?? s.settings)?.[field] as any
+      pendingSettingsFields.set(field, id)
+    }
+    set((current) => ({ settings: current.settings ? { ...current.settings, ...changes } : current.settings }))
+    return { id, scope: s.settingsScopeRevision, account_id: s.account?.account_id, changes, previous }
+  },
+  finishSettingsSave: (ticket, snapshot) => {
+    const s = get()
+    if (s.settingsScopeRevision !== ticket.scope || (ticket.account_id && s.account?.account_id !== ticket.account_id) ||
+        (snapshot.account_id && ticket.account_id && snapshot.account_id !== ticket.account_id)) return false
+    const confirmed: Partial<Settings> = {}
+    for (const field of Object.keys(ticket.changes) as (keyof Settings)[]) {
+      if (pendingSettingsFields.get(field) !== ticket.id) continue
+      pendingSettingsFields.delete(field)
+      const latest = s.confirmedSettings
+      if (latest && Object.prototype.hasOwnProperty.call(latest, field)) confirmed[field] = latest[field] as any
+      else if (Object.prototype.hasOwnProperty.call(ticket.previous, field)) confirmed[field] = ticket.previous[field] as any
+    }
+    if (Object.keys(confirmed).length) set((current) => ({ settings: current.settings ? { ...current.settings, ...confirmed } : current.settings }))
+    get().applySettingsSnapshot(snapshot, ticket.scope)
+    return true
+  },
+  failSettingsSave: (ticket) => {
+    const s = get()
+    if (s.settingsScopeRevision !== ticket.scope || (ticket.account_id && s.account?.account_id !== ticket.account_id)) return
+    const rollback: Partial<Settings> = {}
+    for (const field of Object.keys(ticket.changes) as (keyof Settings)[]) {
+      if (pendingSettingsFields.get(field) !== ticket.id) continue
+      pendingSettingsFields.delete(field)
+      const confirmed = s.confirmedSettings
+      if (confirmed && Object.prototype.hasOwnProperty.call(confirmed, field)) rollback[field] = confirmed[field] as any
+      else if (Object.prototype.hasOwnProperty.call(ticket.previous, field)) rollback[field] = ticket.previous[field] as any
+    }
+    if (Object.keys(rollback).length) set((current) => ({ settings: current.settings ? { ...current.settings, ...rollback } : current.settings }))
+  },
   toast: (kind, text) => {
     if (kind === 'error' && useApp.getState().modelStatus.fault?.message === text) return
     const id = ++toastId

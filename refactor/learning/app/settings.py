@@ -6,6 +6,7 @@ chat_persona remains independent and never enters classroom prompts.
 from __future__ import annotations
 
 import copy
+from itertools import count
 import re
 
 from ..preferences.storage import AccountJSON, StorageError
@@ -41,6 +42,10 @@ DEFAULTS = {
 
 _TIME = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
 DEFAULTS.update(teacher_presets=[legacy_preset(DEFAULTS)], default_teacher_preset_id="teacher-1")
+
+# UI snapshot order only; never written into the account JSON or course database.
+# Shared across instances so another window reading the same account participates.
+_snapshot_revisions = count(1)
 
 
 def validate_presets(presets, default_id):
@@ -150,6 +155,13 @@ class AppSettings:
             group = validate_presets(group['presets'], group['default_id'])
             value.update(teacher_presets=group['presets'], default_teacher_preset_id=group['default_id'])
         return value
+
+    def snapshot(self) -> dict:
+        """An account-scoped UI snapshot stamped in the same lock as its read."""
+        with self._file.lock:
+            value = self.load()
+            return dict(settings=value, settings_revision=next(_snapshot_revisions),
+                        account_id=self._file.account_id)
 
     def save(self, changes: dict) -> dict:
         if not isinstance(changes, dict):

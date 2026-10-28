@@ -107,6 +107,7 @@ export function on(name: string, fn: Listener): () => void {
 const mockState: any = {
   profile: { nickname: "tonyswift", signature: "账号资料仅本人可见。", version: 1,
     avatar_url: null, available: true, offline: false },
+  settings_revision: 0,
   settings: {
     version: 1, theme: "sakura", font_scale: 1, reduce_motion: false, teacher_style: "warm", detail: "normal",
     examples: "normal", analogy_domains: ["life", "games"], refresh_time: "04:00", reminder_enabled: false,
@@ -127,9 +128,9 @@ function mockSend(text: string) {
   switch (req.method) {
     case "app.bootstrap":
       return reply({ version: "2.0-preview", account: { name: "MentorFlow", role_label: "管理员", settings_available: true },
-                     settings: mockState.settings, options, notice: null, ready: true })
-    case "settings.get": return reply({ settings: mockState.settings, options })
-    case "settings.save": Object.assign(mockState.settings, req.params.changes); return reply({ settings: mockState.settings })
+                     settings: mockState.settings, settings_revision: mockState.settings_revision, options, notice: null, ready: true })
+    case "settings.get": return reply({ settings: mockState.settings, settings_revision: mockState.settings_revision, options })
+    case "settings.save": Object.assign(mockState.settings, req.params.changes); mockState.settings_revision++; return reply({ settings: mockState.settings, settings_revision: mockState.settings_revision })
     case "account.profile_get": return reply({ ...mockState.profile })
     case "account.profile_save":
       mockState.profile = { ...mockState.profile, nickname: req.params.nickname, signature: req.params.signature, version: mockState.profile.version + 1 }

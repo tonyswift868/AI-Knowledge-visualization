@@ -102,8 +102,9 @@ def register(bridge, window):
     def bootstrap(params, ctx: CallContext):
         current = window.services
         model_ready(current)
-        settings = current.settings.load() if current else AppSettings.defaults_copy()
-        return {"version": APP_VERSION, "account": window.account_info(), "settings": settings,
+        snapshot = (current.settings.snapshot() if current else
+                    dict(settings=AppSettings.defaults_copy(), settings_revision=0, account_id=None))
+        return {"version": APP_VERSION, "account": window.account_info(), **snapshot,
                 "options": AppSettings.options(), "notice": window.session_notice,
                 "ready": current is not None}
 
@@ -143,17 +144,24 @@ def register(bridge, window):
 
     # ----------------------------------------------------------- settings
     def settings_get(params, ctx):
-        return {"settings": services().settings.load(), "options": AppSettings.options()}
+        return {**services().settings.snapshot(), "options": AppSettings.options()}
+
+    def publish_settings(current, ctx):
+        # A save may finish long before its handler resumes. Read the newest
+        # values, and serialize native-window notifications with other snapshots.
+        with current.settings._file.lock:
+            snapshot = current.settings.snapshot()
+            if window.services is current and not ctx.cancel.is_set():
+                window.settings_changed(snapshot['settings'])
+            return snapshot
 
     def settings_save(params, ctx):
         changes = params.get("changes")
         current = services()
         if ctx.cancel.is_set():
             raise BridgeError('CANCELLED', '已取消。')
-        saved = current.settings.save(changes)
-        if window.services is current and not ctx.cancel.is_set():
-            window.settings_changed(saved)
-        return {"settings": saved}
+        current.settings.save(changes)
+        return publish_settings(current, ctx)
 
     bridge.register("settings.get", settings_get)
     bridge.register("settings.save", settings_save)
@@ -167,9 +175,8 @@ def register(bridge, window):
         current = services()
         result = current.settings.save_teacher_presets(params.get('presets'), params.get('default_id'), current.store,
                                                       confirm_delete=params.get('confirm_delete', False))
-        if (not result.get('confirmation_required') and window.services is current
-                and not ctx.cancel.is_set()):
-            window.settings_changed(current.settings.load())
+        if not result.get('confirmation_required'):
+            publish_settings(current, ctx)
         return result
 
     def set_teacher_preset(params, ctx):
