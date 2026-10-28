@@ -97,6 +97,58 @@ def safe_entry(path: Path, root: Path, *, directory=False, missing=True):
             trace.totals['path_validation_calls'] += 1
 
 
+def _write_release_identity(path: Path, root: Path, envelope: bytes) -> None:
+    """Publish the signed staging identity atomically and recover its own partials."""
+    path, root = Path(path), Path(root)
+    safe_entry(path, root)
+    if path.exists():
+        if path.stat().st_size > len(envelope):
+            raise SecurityError('short staging identity collision')
+        current = path.read_bytes()
+        if current == envelope:
+            return
+        # A failed direct write from an earlier build can leave only a prefix.
+        # Replace only a prefix of this verified envelope; other contents remain
+        # a staging identity collision and fail closed.
+        if len(current) >= len(envelope) or not envelope.startswith(current):
+            raise SecurityError('short staging identity collision')
+
+    temporary = path.with_name(path.name + '.pending')
+    safe_entry(temporary, root)
+    if temporary.exists():
+        if temporary.stat().st_size > len(envelope):
+            raise SecurityError('staging identity temporary changed')
+        current = temporary.read_bytes()
+        if current == envelope:
+            os.replace(temporary, path)
+            return
+        if len(current) >= len(envelope) or not envelope.startswith(current):
+            raise SecurityError('staging identity temporary changed')
+        temporary.unlink()
+
+    try:
+        safe_entry(temporary, root)
+        with temporary.open('xb') as stream:
+            stream.write(envelope)
+            stream.flush()
+            os.fsync(stream.fileno())
+        safe_entry(temporary, root, missing=False)
+        os.replace(temporary, path)
+        safe_entry(path, root, missing=False)
+    except BaseException:
+        # Remove only a known partial prefix left by an ENOSPC interruption.
+        # A complete envelope remains available for publication on retry.
+        try:
+            safe_entry(temporary, root)
+            if temporary.is_file():
+                current = temporary.read_bytes()
+                if len(current) < len(envelope) and envelope.startswith(current):
+                    temporary.unlink()
+        except Exception:
+            pass
+        raise
+
+
 class InstallUpdateLock:
     """OS-held per-install lock; process exit releases it (no stale PID lease)."""
     def __init__(self, root):
@@ -541,12 +593,7 @@ class ObjectCache:
         safe_entry(target.parent,stage_root,directory=True)
         target.parent.mkdir(parents=True,exist_ok=True)
         identity=target.parent/'release.json'
-        if safe_entry(identity,stage_root):
-            if identity.read_bytes()!=release.envelope:
-                raise SecurityError('short staging identity collision')
-        else:
-            with identity.open('xb') as stream:
-                stream.write(release.envelope); stream.flush(); os.fsync(stream.fileno())
+        _write_release_identity(identity, stage_root, release.envelope)
         safe_entry(target, stage_root, directory=True)
         target.mkdir(exist_ok=True)
         allowed = set(release.rows)

@@ -11,10 +11,11 @@ export type UpdateStatus = {
   downloaded_bytes?: number; actual_downloaded_bytes?: number; expected_download_bytes?: number
   downloaded_files?: number; total_download_files?: number; download_state?: string
   background_downloading?: boolean; prepared?: boolean
+  deferred_update?: boolean; deferred_target?: string; deferred_message?: string
 }
 type Notice = { status: UpdateStatus | null; open: boolean; later: boolean; manual: boolean; error: string }
 export const useUpdates = create<Notice>(() => ({ status: null, open: false, later: false, manual: false, error: "" }))
-export const offered = (s: UpdateStatus | null) => !!s && ["AVAILABLE", "UPDATE_AVAILABLE", "OPTIONAL_UPDATE", "MANDATORY_UPDATE", "PENDING_INSTALL"].includes(s.state)
+export const offered = (s: UpdateStatus | null) => !!s && (["AVAILABLE", "UPDATE_AVAILABLE", "OPTIONAL_UPDATE", "MANDATORY_UPDATE", "PENDING_INSTALL"].includes(s.state) || s.state === "HEALTHY" && !!s.deferred_update)
 const mandatory = (s: UpdateStatus | null) => !!s?.mandatory || s?.state === "MANDATORY_UPDATE"
 type MandatoryUpdateGuard = () => Promise<void>
 let mandatoryUpdateGuard: MandatoryUpdateGuard | null = null
@@ -47,6 +48,8 @@ export function UpdateStatusSummary({status, error = ""}: {status: UpdateStatus 
   else if (!message && ["FAILED_RECOVERABLE", "FAILED_SECURITY", "UNPACKAGED"].includes(status?.state || "")) message = status?.message || "暂时无法检查更新。"
   else if (!message && status?.state === "APPLYING") message = status?.message || "正在安装更新，完成后将自动重启。"
   else if (!message && status?.state === "RESTART_REQUIRED") message = status?.message || "正在重新启动…"
+  else if (!message && (status?.state === "PENDING_INSTALL" || status?.deferred_update && !status.busy && offered(status)))
+    message = status.deferred_message || status.message || "新版已下载好，下次打开软件时完成更新。"
   else if (!message && status?.state === "UPDATE_DOWNLOADED") message = status?.prepared ? "已下载好，点一下就能更新。" : status?.message || "下载完成，正在准备安装。"
   else if (!message && status?.state === "DOWNLOAD_PAUSED_OR_INTERRUPTED") message = status?.message || "下载已暂停，可继续。"
   else if (!message && status?.state === "UP_TO_DATE") message = status.current || status.version ? `已是最新版本 ${status.current || status.version}` : "已是最新版本。"

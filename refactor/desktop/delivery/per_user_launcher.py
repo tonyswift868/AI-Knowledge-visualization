@@ -81,7 +81,10 @@ def _launch_serialized(root, mark):
     except (OSError, RuntimeError, ValueError) as error:
         _log_pending_install_failure(root, {}, error)
     if pending is not None:
-        if pending['state'] not in ('CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'):
+        retry_deferred_busy = (pending['state'] == 'PREVIOUS_HEALTHY' and
+                               pending.get('deferred_reason') == 'app_directory_busy')
+        retry_pending = pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING')
+        if retry_pending or retry_deferred_busy:
             try:
                 # A successful apply already launches/health-checks TARGET.
                 result = core.resume_pending_on_normal_launch(root, reason='next_launch')
@@ -98,7 +101,12 @@ def _launch_serialized(root, mark):
                     _log_pending_install_failure(root, pending, pending_error)
                     rolled_back = False
                 if rolled_back:
-                    return dict(status='PREVIOUS_HEALTHY', health=_recovery_health(root))
+                    latest = core.read_pending(root)
+                    return dict(status='PREVIOUS_HEALTHY', health=_recovery_health(root),
+                                deferred_update=latest.get('deferred_reason') == 'app_directory_busy',
+                                deferred_target=latest.get('target', ''),
+                                deferred_reason=latest.get('deferred_reason', ''),
+                                deferred_message=core.PENDING_MESSAGE if latest.get('deferred_reason') == 'app_directory_busy' else '')
     with InstallUpdateLock(root):
         if core.unsafe_teardown('next_launch'):
             raise RecoverableError('session ending: launch and update deferred')

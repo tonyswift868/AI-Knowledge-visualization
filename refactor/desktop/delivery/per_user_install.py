@@ -51,6 +51,14 @@ class RecoveryEvidenceMissing(RecoverableError):
     """A transaction cannot be restored because its signed evidence is absent."""
 
 
+class DeferredAppActivation(RecoverableError):
+    """The verified App tree could not be activated within the bounded retry."""
+
+    def __init__(self, winerror):
+        self.winerror = winerror
+        super().__init__('新版已下载好，下次打开软件时完成更新。')
+
+
 def keys():
     # Shared authority, not the protected helper's dependency graph. The real
     # desktop PYZ must not import a high-privilege preflight just to read keys.
@@ -247,13 +255,24 @@ def _recover_updater_swap(root, public_keys, *, snapshot=None):
     shutil.rmtree(work)
 
 
-def _rename_directory(root, source, target, *, component):
+def _rename_directory(root, source, target, *, component, diagnose=False,
+                      budget_seconds=None):
     def record(state, phase, count, elapsed):
         # UserRuntime has no desktop logging configuration. Its existing
         # short-lived maintenance writer also records retries in mentorflow.log.
         maintenance_log(root, 'directory_rename', state=state, step=phase,
                         count=count, elapsed_seconds=round(elapsed, 3))
-    return rename_with_retry(source, target, component=component, on_event=record)
+    def record_attempt(details):
+        maintenance_log(root, 'directory_rename_attempt', step=component,
+                        attempt=details.get('attempt'), timestamp=details.get('timestamp'),
+                        elapsed_seconds=round(details.get('elapsed_seconds', 0.0), 3),
+                        error_code=details.get('error_code'),
+                        blockers=details.get('blockers', []),
+                        diagnostic_status=details.get('diagnostic_status', 'unknown'),
+                        diagnostic_reason=details.get('diagnostic_reason'))
+    return rename_with_retry(source, target, component=component, on_event=record,
+                             diagnose=diagnose, on_attempt=record_attempt if diagnose else None,
+                             budget_seconds=budget_seconds)
 
 
 def _recovery_rename(root, source, target, *, component):
@@ -462,7 +481,9 @@ def cleanup_program_files(root, *, retry_busy=False):
             protected = None
             if (root / core.PENDING).exists():
                 pending = core.read_pending(root)
-                if pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING'):
+                if (pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING') or
+                        (pending['state'] == 'PREVIOUS_HEALTHY' and
+                         pending.get('deferred_reason') == 'app_directory_busy')):
                     protected = plain(pending['stage'])
             candidates = [p for p in root.iterdir() if p.is_dir() and
                           re.fullmatch(r'(?:staging|retired|failed)-[0-9a-f]{32}', p.name)]
@@ -912,11 +933,24 @@ def recover(root, public_keys=None):
 
 def transact(root, source, envelope, *, public_keys=None, health=None, progress=lambda value: None,
              repair=False, before_swap=lambda: None, fault=lambda phase: None, refresh_runtime=False,
-             prepared=False):
+             prepared=False, allow_deferred_stage=False):
     """Stage -> verify -> swap -> real health; previous remains recoverable."""
     public_keys = public_keys if public_keys is not None else keys()
     root = target(root, probe=True); source = plain(source)
-    if source == root or source.is_relative_to(root) or root.is_relative_to(source):
+    deferred_attempt = None
+    if allow_deferred_stage:
+        # This path is only used after a verified APP_ACTIVATE denial. Bind it
+        # to the rolled-back journal before allowing an internal source tree.
+        match = re.fullmatch(r'staging-([0-9a-f]{32})', source.parent.name)
+        if (match is None or source.name != 'App' or source.parent.parent != root):
+            raise SecurityError('invalid deferred prepared source')
+        deferred_attempt = match.group(1)
+        prior_journal = strict_json(read(root / JOURNAL))
+        if (deferred_attempt not in (prior_journal.get('attempt'),
+                                     prior_journal.get('deferred_source_attempt')) or
+                prior_journal.get('phase') != 'ROLLED_BACK'):
+            raise SecurityError('deferred prepared source is not bound to rollback')
+    elif source == root or source.is_relative_to(root) or root.is_relative_to(source):
         raise SecurityError('release source overlaps installed tree')
     exists = root.exists()
     initial_repair = exists and any(root.iterdir()) and not is_install(root)
@@ -945,6 +979,13 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             verify_tree(source, release, subset=list(release.rows))
         if refresh_runtime: require_updater_stopped(root)
         current, release = admit(root, envelope, public_keys, repair=repair)
+        if deferred_attempt is not None:
+            locked_journal = strict_json(read(root / JOURNAL))
+            if (deferred_attempt not in (locked_journal.get('attempt'),
+                                         locked_journal.get('deferred_source_attempt')) or
+                    locked_journal.get('phase') != 'ROLLED_BACK' or
+                    locked_journal.get('target') != release.version):
+                raise SecurityError('deferred prepared source changed before transaction')
         if initial_repair: _initial_repair_release(root, public_keys, release)
         if not initial_repair and (root / JOURNAL).exists() and strict_json(read(root / JOURNAL)).get('phase') not in ('HEALTHY', 'ROLLED_BACK'):
             raise RecoverableError('previous transaction requires recovery before new apply')
@@ -955,6 +996,8 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
         stage = root / ('staging-' + attempt); stage.mkdir()
         journal = dict(schema='mentorflow.per-user-transaction.v1', attempt=attempt, phase='PREPARING', target=release.version,
                        base=current.version if current else None, base_manifest=digest(current.manifest_bytes) if current else None)
+        if deferred_attempt is not None:
+            journal['deferred_source_attempt'] = deferred_attempt
         atomic(root / JOURNAL, canonical(journal))
         committed = False
         def mark(phase):
@@ -963,6 +1006,9 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             if phase == 'HEALTHY': committed = True
             fault(phase)
         moved = False; base_closed = False; activated = False
+        activation_denied = None
+        deferred_exception = None
+        restored_previous = False
         recovery_incomplete = False
         try:
             if reuse:
@@ -1026,7 +1072,14 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
                 else:
                     _rename_directory(root, root / 'App', previous / 'App', component='APP_PREVIOUS_SAVE')
                 moved = True; mark('OLD_MOVED')
-            _rename_directory(root, stage / 'App', root / 'App', component='APP_ACTIVATE'); moved = True; activated = True
+            try:
+                _rename_directory(root, stage / 'App', root / 'App', component='APP_ACTIVATE',
+                                  diagnose=True, budget_seconds=3.0)
+            except OSError as activation_error:
+                if getattr(activation_error, 'winerror', None) in (5, 32, 33):
+                    activation_denied = activation_error
+                raise
+            moved = True; activated = True
             atomic(root / CURRENT, release.envelope)
             atomic(root / STATE, canonical(dict(schema=SCHEMA, mode='per_user', app_id=configured().app_id)))
             if not (root / 'Updater').exists():
@@ -1089,6 +1142,7 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
                     if not isinstance(recovery, dict) or recovery.get('ready') is not True:
                         raise RecoverableError('previous restored but health not confirmed')
                     atomic(root / 'last-recovery.json', canonical(dict(attempt=journal['attempt'], version=current.version, health=recovery)))
+                    restored_previous = True
                 elif current:
                     if isinstance(operation_error, (OSError, RenameStateChangedError)):
                         raise RecoverableError('恢复没完成，下次启动再试') from operation_error
@@ -1107,6 +1161,9 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
                 recovery_incomplete = True
                 maintenance_log(root, 'recovery_incomplete', code='DIRECTORY_RENAME_RETRY_EXHAUSTED')
                 raise RecoverableError('恢复没完成，下次启动再试') from recovery_error
+            if activation_denied is not None and restored_previous:
+                deferred_exception = DeferredAppActivation(getattr(activation_denied, 'winerror', None))
+                raise deferred_exception from operation_error
             raise
 
         finally:
@@ -1114,11 +1171,22 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             # the existing next-start flow can retry it. Never consume pending
             # content just because the App could not close.
             verified_files.close()
+            preserve_deferred = deferred_exception is not None
+            if preserve_deferred and (stage / 'App').exists():
+                # Keep the verified prepared bytes in their transaction tree.
+                # The same live App handle that denied activation may also deny
+                # moving them back to the downloader cache.
+                deferred_exception.prepared_stage = str(stage / 'App')
             if reuse and not activated and (stage / 'App').exists() and not source.exists():
-                _recovery_rename(root, stage / 'App', source, component='APP_STAGING_RESTORE')
+                if not preserve_deferred:
+                    _recovery_rename(root, stage / 'App', source, component='APP_STAGING_RESTORE')
+                else:
+                    maintenance_log(root, 'prepared_tree_retained_for_next_start',
+                                    attempt=attempt, target=release.version)
             # This attempt's copy is never needed for resume; the independently
             # verified download remains outside the installation until applied.
-            if stage.exists() and not recovery_incomplete and not (stage / 'previous-updater').exists():
+            if (stage.exists() and not recovery_incomplete and not preserve_deferred and
+                    not (stage / 'previous-updater').exists()):
                 _remove_program_tree(root, stage)
 
 
