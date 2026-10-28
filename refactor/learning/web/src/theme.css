@@ -166,6 +166,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .account-card:hover, .account-card.open { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.16); }
 .avatar { width: 38px; height: 38px; border-radius: 12px; flex: none; display: grid; place-items: center; font-weight: 800;
   background: var(--sidebar-active); color: #fff; }
+.avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
 .account-meta { min-width: 0; line-height: 1.3; flex: 1; display: grid; }
 .account-meta b { font-size: 0.93rem; overflow: hidden; text-overflow: ellipsis; }
 .account-meta span { font-size: 0.76rem; color: var(--sidebar-dim); }

@@ -32,6 +32,7 @@ class AppServices:
         self._catalog = None
         self._chat = None
         self._rag = None
+        self._account_profile = None
         self._closed = False
         self.model_status_listener = None
         self._model_probe_cancel = None
@@ -39,6 +40,17 @@ class AppServices:
         self._model_probe_generation = 0
 
     # -- catalog (server whitelist and prices, cached, with built-in fallback)
+    @property
+    def account_profile(self):
+        with self._lock:
+            if self._account_profile is None and not self._closed:
+                from refactor.desktop.account_profile import AccountProfileClient
+                self._account_profile = AccountProfileClient(
+                    account_id=self.account_id, data_root=self.data_root,
+                    session_provider=self.session_provider, api_base_url=self.api_base_url,
+                    ca_bundle=self.ca_bundle)
+            return self._account_profile
+
     @property
     def catalog(self):
         with self._lock:
@@ -271,6 +283,9 @@ class AppServices:
     def close(self):
         with self._lock:
             self._closed = True
+            if self._account_profile is not None:
+                self._account_profile.close()
+            self._avatar_preview = None
             if self._model_probe_cancel is not None:
                 self._model_probe_cancel.set()
             services, self._gateway, self._store, self._catalog, self._rag = (

@@ -614,31 +614,174 @@ function Appearance() {
 }
 
 // ----------------------------------------------------------------- account
+type AccountProfile = { nickname: string; signature: string; version: number; avatar_url: string | null; available: boolean; offline: boolean }
+
 function Account() {
+  return <div className="stack"><AccountProfilePanel/><AccountSecurityPanel/></div>
+}
+
+export function AccountProfilePanel() {
+  const account = useApp((s) => s.account)
+  const [profile, setProfile] = React.useState<AccountProfile | null>(null)
+  const [nickname, setNickname] = React.useState("")
+  const [signature, setSignature] = React.useState("")
+  const [preview, setPreview] = React.useState<{ preview_url: string; width: number; height: number } | null>(null)
+  const [cropX, setCropX] = React.useState(0)
+  const [cropY, setCropY] = React.useState(0)
+  const [busy, setBusy] = React.useState(false)
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState("")
+  const identity = account?.account_id ?? account?.name ?? ""
+  const request = React.useRef(0)
+  const scope = React.useRef({ identity, revision: 0 })
+  if (scope.current.identity !== identity) scope.current = { identity, revision: scope.current.revision + 1 }
+  const isCurrentScope = (revision: number, expectedIdentity: string) =>
+    scope.current.revision === revision && scope.current.identity === expectedIdentity &&
+    ((useApp.getState().account?.account_id ?? useApp.getState().account?.name ?? "") === expectedIdentity)
+  const setAccountProfile = (value: AccountProfile) => {
+    const current = useApp.getState().account
+    if (current) useApp.getState().set({ account: { ...current, nickname: value.nickname ?? "", signature: value.signature ?? "", avatar_url: value.avatar_url ?? null } })
+  }
+  const load = React.useCallback(async () => {
+    const sequence = ++request.current
+    setLoading(true); setError("")
+    try {
+      const result = await call<AccountProfile>("account.profile_get")
+      if (sequence !== request.current) return
+      setProfile(result); setNickname(result.nickname ?? ""); setSignature(result.signature ?? "")
+      setAccountProfile(result)
+    } catch (e) {
+      if (sequence !== request.current) return
+      const failure = e as BridgeFailure
+      if (["NOT_FOUND", "METHOD_NOT_FOUND", "UNKNOWN_METHOD", "UNSUPPORTED"].includes(failure.code)) {
+        setProfile({ nickname: "", signature: "", version: 0, avatar_url: null, available: false, offline: false })
+      } else setError(failure.message || "个人资料暂时无法读取。")
+    } finally { if (sequence === request.current) setLoading(false) }
+  }, [identity])
+  React.useEffect(() => {
+    setProfile(null); setNickname(""); setSignature(""); setPreview(null)
+    setBusy(false)
+    void load()
+    return () => { request.current++ }
+  }, [identity, load])
+  const available = profile?.available ?? false
+  const offline = profile?.offline ?? account?.offline ?? false
+  const nicknameCount = Array.from(nickname).length
+  const signatureCount = Array.from(signature).length
+  const invalid = nicknameCount > 30 || signatureCount > 60
+  const changed = !!profile && (nickname !== profile.nickname || signature !== profile.signature)
+  const side = preview ? Math.min(preview.width, preview.height) : 0
+  const maxX = preview ? Math.max(0, preview.width - side) : 0
+  const maxY = preview ? Math.max(0, preview.height - side) : 0
+  const profilePatch = (result: AccountProfile, revision: number, expectedIdentity: string) => {
+    if (!isCurrentScope(revision, expectedIdentity)) return
+    setProfile(result); setNickname(result.nickname ?? ""); setSignature(result.signature ?? ""); setPreview(null)
+    setAccountProfile(result)
+  }
+  async function saveText() {
+    if (!profile || !available || offline || invalid || !changed || busy) return
+    const { revision } = scope.current
+    const expectedIdentity = identity
+    setBusy(true); setError("")
+    try { profilePatch(await call<AccountProfile>("account.profile_save", { nickname, signature, version: profile.version }), revision, expectedIdentity) }
+    catch (e) { if (isCurrentScope(revision, expectedIdentity)) setError((e as Error).message || "保存没有完成。") }
+    finally { if (isCurrentScope(revision, expectedIdentity)) setBusy(false) }
+  }
+  async function chooseAvatar() {
+    if (!available || offline || busy) return
+    const { revision } = scope.current
+    const expectedIdentity = identity
+    setBusy(true); setError("")
+    try {
+      const result = await call<{ preview_url: string; width: number; height: number; cancelled?: boolean }>("account.profile_choose_avatar")
+      if (!isCurrentScope(revision, expectedIdentity)) return
+      if (result.cancelled) return
+      if (!result.preview_url || result.width < 1 || result.height < 1) throw new Error("头像预览无法读取。")
+      setPreview(result); setCropX(Math.floor((result.width - Math.min(result.width, result.height)) / 2))
+      setCropY(Math.floor((result.height - Math.min(result.width, result.height)) / 2))
+    } catch (e) { if (isCurrentScope(revision, expectedIdentity)) setError((e as Error).message || "头像没有读取成功。") }
+    finally { if (isCurrentScope(revision, expectedIdentity)) setBusy(false) }
+  }
+  async function saveAvatar() {
+    if (!preview || !profile || !available || offline || busy) return
+    const { revision } = scope.current
+    const expectedIdentity = identity
+    setBusy(true); setError("")
+    try {
+      const result = await call<AccountProfile>("account.profile_save_avatar", {
+        crop: { x: cropX, y: cropY, size: side }, version: profile.version,
+      })
+      profilePatch(result, revision, expectedIdentity)
+    } catch (e) { if (isCurrentScope(revision, expectedIdentity)) setError((e as Error).message || "头像没有保存成功。") }
+    finally { if (isCurrentScope(revision, expectedIdentity)) setBusy(false) }
+  }
+  async function deleteAvatar() {
+    if (!profile?.avatar_url || !available || offline || busy) return
+    const { revision } = scope.current
+    const expectedIdentity = identity
+    setBusy(true); setError("")
+    try { profilePatch(await call<AccountProfile>("account.profile_delete_avatar", { version: profile.version }), revision, expectedIdentity) }
+    catch (e) { if (isCurrentScope(revision, expectedIdentity)) setError((e as Error).message || "头像没有删除成功。") }
+    finally { if (isCurrentScope(revision, expectedIdentity)) setBusy(false) }
+  }
+  return <section className="card stack" aria-label="个人资料" data-testid="profile226">
+    <div><h2>个人资料</h2><p className="sub">昵称和头像只在你的账号及已登录设备上显示，不会公开。</p></div>
+    {loading ? <p className="muted" role="status">正在读取个人资料…</p> : profile && !available ? <p className="muted" role="status">当前服务器暂不支持个人资料，账号仍可正常使用。</p> : !profile ? <p className="muted" role="status">个人资料暂时无法读取，请重试。</p> : <>
+      <div className="row" style={{ alignItems: "flex-start" }}>
+        <div className="avatar" style={{ width: 72, height: 72, fontSize: "1.5rem", overflow: "hidden" }} data-testid="profile226-avatar">
+          {profile.avatar_url ? <img src={profile.avatar_url} alt="账号头像" /> : (nickname || account?.name)?.slice(0, 1) ?? "M"}
+        </div>
+        <div className="stack" style={{ flex: 1 }}>
+          <b>{nickname || account?.name || "账号"}</b>
+          <span className="muted">登录用户名：{account?.name ?? "—"} · {account?.role_label || "学习者"}</span>
+          {profile.signature && <span className="muted" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{profile.signature}</span>}
+          {preview && <div className="stack" data-testid="profile226-crop">
+            <p className="sub">拖动裁剪位置，预览为正方形。</p>
+            <div style={{ width: 180, height: 180, overflow: "hidden", borderRadius: 16, background: "var(--surface-2)" }}>
+              <img src={preview.preview_url} alt="头像裁剪预览" style={{ width: "100%", height: "100%", objectFit: "cover",
+                objectPosition: `${maxX ? Math.round(cropX / maxX * 100) : 50}% ${maxY ? Math.round(cropY / maxY * 100) : 50}%` }} />
+            </div>
+            {maxX > 0 && <label className="small muted">左右位置<input aria-label="头像左右裁剪位置" type="range" min={0} max={maxX} value={cropX} onChange={e => setCropX(Number(e.target.value))} /></label>}
+            {maxY > 0 && <label className="small muted">上下位置<input aria-label="头像上下裁剪位置" type="range" min={0} max={maxY} value={cropY} onChange={e => setCropY(Number(e.target.value))} /></label>}
+          </div>}
+          <div className="row">
+            <Button small disabled={offline || busy} onClick={() => void chooseAvatar()}>选择头像</Button>
+            {preview && <><Button small kind="primary" busy={busy} onClick={() => void saveAvatar()}>保存头像</Button><Button small disabled={busy} onClick={() => setPreview(null)}>取消</Button></>}
+            {!preview && profile.avatar_url && <Button small disabled={offline || busy} onClick={() => void deleteAvatar()}>删除头像</Button>}
+          </div>
+          <span className="small muted">支持 JPEG、PNG；原图最大 5 MB。上传前会裁剪、压缩并清除照片位置信息。</span>
+        </div>
+      </div>
+      <label className="stack"><b>昵称</b><input className="input" aria-label="昵称" value={nickname}
+        onChange={e => setNickname(e.target.value)} disabled={offline || busy} placeholder={account?.name || "留空时显示登录用户名"} />
+        <span className="small muted">{nicknameCount}/30 字；可以留空，也可以与别人重名。</span></label>
+      <label className="stack"><b>个性签名</b><textarea className="input" aria-label="个性签名" value={signature} rows={3}
+        onChange={e => setSignature(e.target.value)} disabled={offline || busy} placeholder="写一句介绍自己的话（选填）" />
+        <span className="small muted">{signatureCount}/60 字</span></label>
+      {offline && <p className="small muted" role="status">当前离线，只能查看本机保存的资料；联网后才能修改。</p>}
+      {invalid && <p role="alert" className="error-text">昵称最多 30 字，签名最多 60 字。</p>}
+      <div className="row"><Button kind="primary" busy={busy} disabled={offline || !changed || invalid || loading} onClick={() => void saveText()}>保存个人资料</Button>
+        <Button small disabled={loading || busy} onClick={() => void load()}>重新读取</Button></div>
+    </>}
+    {error && <p role="alert" className="error-text">{error}</p>}
+  </section>
+}
+
+function AccountSecurityPanel() {
   const account = useApp((s) => s.account)
   const act = (action: string) => call("app.account", { action }).catch(() => undefined)
-  return (
-    <div className="stack">
-      <div className="card">
-        <div className="row">
-          <div className="avatar" style={{ width: 52, height: 52, fontSize: "1.3rem" }}>{account?.name?.slice(0, 1) ?? "M"}</div>
-          <div><h2 style={{ margin: 0 }}>{account?.name}</h2><span className="muted">服务端身份：{account?.role_label}</span></div>
-        </div>
-      </div>
-      <div className="card stack">
-        <div className="row between">
-          <div><h2>邮箱、密码与注销</h2><p className="sub">查看绑定邮箱、修改密码、注销账号。</p></div>
-          <Button onClick={() => act("account_settings")} disabled={!account?.settings_available}><ShieldCheck />打开账号设置</Button>
-        </div>
-        <div className="row between">
-          <div><h2>切换账号</h2><p className="sub">回到登录页，换一个账号登录。</p></div>
-          <Button onClick={() => act("switch")}><Users />切换账号</Button>
-        </div>
-        <div className="row between">
-          <div><h2>退出登录</h2><p className="sub">本机学习数据会保留，下次登录继续。</p></div>
-          <Button kind="danger" onClick={() => act("logout")}><LogOut />退出登录</Button>
-        </div>
-      </div>
+  return <div className="card stack">
+    <div className="row between">
+      <div><h2>邮箱、密码与注销</h2><p className="sub">查看绑定邮箱、修改密码、注销账号。</p></div>
+      <Button onClick={() => act("account_settings")} disabled={!account?.settings_available}><ShieldCheck />打开账号设置</Button>
     </div>
-  )
+    <div className="row between">
+      <div><h2>切换账号</h2><p className="sub">回到登录页，换一个账号登录。</p></div>
+      <Button onClick={() => act("switch")}><Users />切换账号</Button>
+    </div>
+    <div className="row between">
+      <div><h2>退出登录</h2><p className="sub">本机学习数据会保留，下次登录继续。</p></div>
+      <Button kind="danger" onClick={() => act("logout")}><LogOut />退出登录</Button>
+    </div>
+  </div>
 }

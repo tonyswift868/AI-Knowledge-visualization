@@ -105,6 +105,8 @@ export function on(name: string, fn: Listener): () => void {
 // ---------------------------------------------------------------- browser mock
 // Only used when the page is opened outside the desktop app (layout checks).
 const mockState: any = {
+  profile: { nickname: "tonyswift", signature: "账号资料仅本人可见。", version: 1,
+    avatar_url: null, available: true, offline: false },
   settings: {
     version: 1, theme: "sakura", font_scale: 1, reduce_motion: false, teacher_style: "warm", detail: "normal",
     examples: "normal", analogy_domains: ["life", "games"], refresh_time: "04:00", reminder_enabled: false,
@@ -128,6 +130,17 @@ function mockSend(text: string) {
                      settings: mockState.settings, options, notice: null, ready: true })
     case "settings.get": return reply({ settings: mockState.settings, options })
     case "settings.save": Object.assign(mockState.settings, req.params.changes); return reply({ settings: mockState.settings })
+    case "account.profile_get": return reply({ ...mockState.profile })
+    case "account.profile_save":
+      mockState.profile = { ...mockState.profile, nickname: req.params.nickname, signature: req.params.signature, version: mockState.profile.version + 1 }
+      return reply({ ...mockState.profile })
+    case "account.profile_choose_avatar": return reply({ preview_url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='200'%3E%3Crect width='320' height='200' fill='%23d65a86'/%3E%3Ccircle cx='160' cy='100' r='70' fill='%23fff'/%3E%3C/svg%3E", width: 320, height: 200 })
+    case "account.profile_save_avatar":
+      mockState.profile = { ...mockState.profile, avatar_url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23d65a86'/%3E%3C/svg%3E", version: mockState.profile.version + 1 }
+      return reply({ ...mockState.profile })
+    case "account.profile_delete_avatar":
+      mockState.profile = { ...mockState.profile, avatar_url: null, version: mockState.profile.version + 1 }
+      return reply({ ...mockState.profile })
     case "models.providers": return reply({ providers: [
       { id: "deepseek", name: "DeepSeek", default_base_url: "https://api.deepseek.com/anthropic", default_model: "deepseek-v4-flash", search_supported: true, search_verified: true },
       { id: "qwen", name: "通义千问", default_base_url: "https://dashscope.aliyuncs.com/api/v1", default_model: "qwen-plus", search_supported: true, search_verified: false },

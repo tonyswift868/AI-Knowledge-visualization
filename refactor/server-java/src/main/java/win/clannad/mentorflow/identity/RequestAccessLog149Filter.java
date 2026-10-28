@@ -32,6 +32,7 @@ public final class RequestAccessLog149Filter extends OncePerRequestFilter {
         routes.addAll(Set.of("/health/live", "/health/ready", "/health/startup",
         "/api/enterprise/account/workspaces",
         "/api/enterprise/account/workspaces/initialize",
+        "/api/enterprise/account/profile", "/api/enterprise/account/profile/avatar",
         "/api/enterprise/auth/native/login", "/api/enterprise/auth/native/refresh",
         "/api/enterprise/auth/native/logout", "/api/enterprise/auth/native/session",
         "/api/enterprise/auth/me", "/api/enterprise/auth/admin/overview",

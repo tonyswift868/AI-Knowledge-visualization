@@ -61,7 +61,7 @@ public class IdentitySecurity {
                 String auth=request.getHeader("Authorization"); auth=auth==null?"":auth.strip();
                 String cookie="";
                 if (request.getCookies()!=null) for (Cookie item:request.getCookies()) if (item.getName().equals(settings.cookieName)) cookie=item.getValue().strip();
-                if(AccountRoutes146.isWorkspace(request.getRequestURI())) {
+                if(AccountRoutes146.isWorkspace(request.getRequestURI()) || AccountRoutes146.isAccountProfile(request.getRequestURI())) {
                     if(!cookie.isEmpty())throw new IdentityFailure(401,"AUTH_BOUNDARY_CONFLICT","Account bootstrap requires bearer authentication");
                     if(!auth.startsWith("Bearer ")||auth.chars().filter(v->v==' ').count()!=1)
                         throw new IdentityFailure(401,"ENTERPRISE_AUTH_REQUIRED","A verified bearer account is required");
@@ -93,12 +93,13 @@ public class IdentitySecurity {
         @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain) throws IOException,ServletException {
             if (!request.getRequestURI().startsWith("/api")) {chain.doFilter(request,response);return;}
             if (NativeAccessAuthenticator.isSessionEndpoint(request.getRequestURI())||AccountRoutes146.isPublic(request.getRequestURI())) {chain.doFilter(request,response);return;}
+            if (AccountRoutes146.isAccountProfile(request.getRequestURI())) response.setHeader("Cache-Control", "private, no-cache");
             var auth=SecurityContextHolder.getContext().getAuthentication();
             if (!(auth instanceof JwtAuthenticationToken authenticated)) {chain.doFilter(request,response);return;}
             try {
                 Jwt jwt=authenticated.getToken(); String issuer=jwt.getClaimAsString("iss"), subject=jwt.getSubject();
                 directory.ensureOpen(issuer,subject);
-                if(AccountRoutes146.isWorkspace(request.getRequestURI())) {
+                if(AccountRoutes146.isWorkspace(request.getRequestURI()) || AccountRoutes146.isAccountProfile(request.getRequestURI())) {
                     request.setAttribute("account_principal",jwt);
                     chain.doFilter(request,response);return;
                 }

@@ -19,6 +19,7 @@ public final class RequestBoundaryFilter extends OncePerRequestFilter {
         request.setAttribute("request_id",id); response.setHeader("X-Request-ID",id);
         request.setAttribute("identity_settings",settings);
         response.setHeader("X-MentorFlow-Runtime-Profile","ACCOUNT_CORE_MVP");
+        if (AccountRoutes146.isAccountProfile(request.getRequestURI())) response.setHeader("Cache-Control","private, no-cache");
         if (AccountRoutes146.isWorkspace(request.getRequestURI())) response.setHeader("Cache-Control","no-store");
         try {
             if (request.getRequestURI().startsWith("/api") && !settings.mode.equals("ENTERPRISE_SERVER"))
