@@ -22,14 +22,9 @@ LEGACY_RECORDS['legacy_sources']['local_defaults'] = {
     'original_url': '', 'local_path': '', 'text': '', 'parse_error': '',
     'archive_preview_id': '', 'archive_relative_path': '', 'parent_archive_name': ''}
 
-# Durable snapshots of existing feature runtimes and account preferences live
-# in the existing ORM SQLite, captured by the same transaction triggers.
-AGGREGATE_KINDS = {'product_plan_state': 'plan', 'product_review_state': 'review',
-                   'product_account_settings': 'setting'}
-AGGREGATE_RECORDS = {
-    table: dict(kind=kind, columns=('id', 'state'), keys=('id',), local_defaults={})
-    for table, kind in AGGREGATE_KINDS.items()
-}
+# Legacy aggregate snapshots are retired from the sync contract. The current
+# client sends course_record envelopes and has no writer for these projections.
+AGGREGATE_RECORDS = {}
 AGGREGATE_RECORDS['product_asset_metadata'] = dict(kind='resource',
     columns=('id','original_filename','media_type','sha256','size_bytes','source_kind','classification'),
     keys=('id',),local_defaults={})

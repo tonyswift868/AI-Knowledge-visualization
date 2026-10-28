@@ -20,7 +20,6 @@ BASE = "/api/enterprise/sync/v1"
 WIRE_SCHEMA = "mentorflow.refactor-sync.v1"
 HEADERS = ("cache-control", "content-type", "content-length", "x-request-id",
            "x-mentorflow-runtime-profile")
-MISSING_VALIDATORS = {"product_plan_state", "product_review_state", "product_account_settings"}
 RUN_ID = uuid.uuid4().hex[:10]
 
 
@@ -123,19 +122,6 @@ def test_sync_payload145_all_product_record_types_from_python_contract(sync145_b
     index = 0
     for table, spec in RECORDS.items():
         row = _product_row(table, spec)
-        if table in MISSING_VALIDATORS:
-            # The current Python implementation calls absent validator modules.
-            values = {column: row[column] for column in spec["columns"]}
-            payload = {"product_record": {"schema": "mentorflow.product-record.v1",
-                       "record_type": table, "values": values}}
-            entity_id = product_record_id(table, values)
-            path = f"{BASE}/entities/{spec['kind']}/{entity_id}"
-            response = _paired(clients, "PUT", path, token=token, request_id=f"missing145-{index}",
-                               body=_json({"request_id": f"missing145-{index}", "expected_revision": 0,
-                                           "payload": payload}), expected=500)
-            assert response.text == "Internal Server Error"
-            index += 1
-            continue
         payload = product_project(table, row)
         # project() itself is the Python contract's fixture factory; it also
         # rejects accidental malformed synthetic rows before the HTTP checks.
@@ -147,6 +133,36 @@ def test_sync_payload145_all_product_record_types_from_python_contract(sync145_b
                                        "payload": payload}), expected=200)
         assert response.json()["revision"] == 1, (table, response.content)
         index += 1
+
+
+def test_sync_payload219_retired_aggregate_is_row_failure_not_batch_500(sync145_backends):
+    clients = sync145_backends
+    token = clients["jwks"].token(subject="user-145-retired-aggregate-219-" + RUN_ID)
+    good_id = "course:bulk-219"
+    good_entity = _entity("course_record", good_id)
+    good_payload = _envelope("course_record", good_id)
+    retired_values = {"id": "retired-product-plan-state", "state": "{}"}
+    retired_key = json.dumps([retired_values["id"]], ensure_ascii=False, separators=(",", ":"))
+    retired_entity = "product_plan_state:" + hashlib.sha256(retired_key.encode()).hexdigest()
+    retired_payload = {"product_record": {"schema": "mentorflow.product-record.v1",
+                        "record_type": "product_plan_state", "values": retired_values}}
+    rows = [
+        {"kind": "learning_run", "entity_id": good_entity, "request_id": "bulk-course219",
+         "expected_revision": 0, "payload": good_payload},
+        {"kind": "plan", "entity_id": retired_entity, "request_id": "bulk-retired219",
+         "expected_revision": 0, "payload": retired_payload},
+    ]
+    batch = _paired(clients, "POST", f"{BASE}/entities/bulk", token=token,
+                    request_id="bulk-mixed219", body=_json({"records": rows}), expected=200)
+    results = batch.json()["results"]
+    assert [(item["status"], item.get("code")) for item in results] == [
+        (200, None), (422, "PRODUCT_SYNC_RECORD_FIELDS")]
+    for backend in ("python", "java"):
+        snapshot = clients[backend].get(f"{BASE}/snapshot", headers=_headers(
+            token, "bulk-mixed-snapshot219"))
+        assert snapshot.status_code == 200
+        assert any(item["entity_id"] == good_entity for item in snapshot.json()["entities"])
+        assert not any(item["entity_id"] == retired_entity for item in snapshot.json()["entities"])
 
 
 def test_sync_payload145_course_fields_secret_depth_and_size(sync145_backends):
@@ -265,39 +281,3 @@ def test_sync_payload145_unicode_numeric_canonical_digest(sync145_backends):
                 assert digest == expected
         finally:
             engine.dispose()
-
-
-def test_sync_payload145_uncaught_bulk_error_rolls_back_prior_success(sync145_backends):
-    clients = sync145_backends
-    token = clients["jwks"].token(subject="user-145-payload-rollback-" + RUN_ID)
-    record_id = "rollback:course:first"
-    course_payload = _envelope("course_record", record_id)
-    first = {"kind": "learning_run", "entity_id": _entity("course_record", record_id),
-             "request_id": "bulk-rollback-first145", "expected_revision": 0,
-             "payload": course_payload}
-
-    # This product family reaches an absent legacy validator module and raises
-    # an uncaught server error. Unlike a row-level SyncFailure, it must abort
-    # the outer batch transaction, including the first successful savepoint.
-    table = "product_plan_state"
-    spec = RECORDS[table]
-    values = _product_row(table, spec)
-    product_payload = {"product_record": {"schema": "mentorflow.product-record.v1",
-                       "record_type": table, "values": values}}
-    failing = {"kind": spec["kind"], "entity_id": product_record_id(table, values),
-               "request_id": "bulk-rollback-special145", "expected_revision": 0,
-               "payload": product_payload}
-    batch = _paired(clients, "POST", f"{BASE}/entities/bulk", token=token,
-                    request_id="bulk-rollback145",
-                    body=_json({"records": [first, failing]}), expected=500)
-    assert batch.text == "Internal Server Error"
-
-    # Check durable state through the same Python/Java HTTP snapshot contract;
-    # a successful first row must not escape the failed batch transaction.
-    for backend in ("python", "java"):
-        snapshot = clients[backend].get(f"{BASE}/snapshot", headers=_headers(
-            token, "bulk-rollback-snapshot145"))
-        assert snapshot.status_code == 200, (backend, snapshot.content)
-        assert not any(item["entity_id"] == first["entity_id"]
-                       for item in snapshot.json()["entities"]), backend
-

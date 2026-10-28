@@ -94,7 +94,7 @@ def main():
         ("GET", "/api/enterprise/sync/v1/snapshot", None, bogus, 401),
         ("GET", "/api/enterprise/auth/me", None, bogus, 401),
         ("POST", "/api/enterprise/auth/native/refresh", {"refresh_token": "mfn1_r_bogus"}, forwarded_https, 401),
-        ("POST", "/api/enterprise/account/closure/prepare", {}, bogus, 401),
+        ("POST", "/api/enterprise/account/closure/prepare", {}, {**bogus, **forwarded_https}, 401),
         ("GET", "/api/enterprise/auth/admin/overview", None, bogus, 401),
     ]
     matches = 0

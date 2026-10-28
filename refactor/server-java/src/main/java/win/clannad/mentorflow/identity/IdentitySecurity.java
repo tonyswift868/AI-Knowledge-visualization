@@ -105,7 +105,6 @@ public class IdentitySecurity {
                 String org=request.getHeader("X-MentorFlow-Organization-ID"); org=org==null?"":org.strip();
                 String workspace=request.getHeader("X-MentorFlow-Workspace-ID"); workspace=workspace==null||workspace.isBlank()?null:workspace.strip();
                 if (org.isEmpty()) throw new IdentityFailure(403,"ENTERPRISE_ORGANIZATION_REQUIRED","Bearer identity requires a selected organization");
-                directory.ensureOpen(issuer,subject);
                 if (!jwt.getExpiresAt().isAfter(Instant.now())) throw new IdentityFailure(401,"ENTERPRISE_SESSION_INVALID","Enterprise session is revoked or expired");
                 if (jwt.getNotBefore()!=null && jwt.getNotBefore().isAfter(Instant.now())) throw new IdentityFailure(401,"OIDC_TOKEN_NOT_ACTIVE","OIDC token is not active");
                 String client=jwt.getClaimAsString("azp"); if (client==null) client=jwt.getClaimAsString("client_id");

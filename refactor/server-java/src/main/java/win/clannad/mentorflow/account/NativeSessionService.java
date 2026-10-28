@@ -281,7 +281,7 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
         if (current == null || current.revokedReason() != null || !current.issuer().equals(issuer)
                 || !current.subject().equals(access.subject())) throw expired();
         if (!current.refreshDigest().equals(access.refreshDigest())) { removeFamilyAccess(access.familyId()); throw expired(); }
-        // Python _sync reloads the durable principal on every authentication;
+        // Both backends reload the durable principal on every authentication;
         // verification handles are deliberately not persisted or resurrected.
         Map<String,Object> claims = current.principal();
         return toJwt(rawToken, claims);
@@ -349,8 +349,14 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
     }
     private Family findFamily(String familyId) {
         try(Connection connection=dataSource.getConnection(); PreparedStatement query=connection.prepareStatement(
-                "SELECT family_id,issuer,subject,refresh_digest,used_digests::text,principal::text,account_binding,deadline,revoked_reason FROM native_session_families WHERE family_id=?")) {
-            query.setString(1,familyId); try(ResultSet row=query.executeQuery()){return row.next()?family(row):null;}
+                "SELECT family_id,issuer,subject,refresh_digest,principal::text,deadline,revoked_reason FROM native_session_families WHERE family_id=?")) {
+            query.setString(1,familyId);
+            try(ResultSet row=query.executeQuery()){
+                if(!row.next())return null;
+                Map<String,Object> principal=mapper.readValue(row.getString(5),new TypeReference<LinkedHashMap<String,Object>>(){});
+                double deadline=row.getDouble(6); Instant until=row.wasNull()?null:Instant.ofEpochMilli((long)(deadline*1000));
+                return new Family(row.getString(1),row.getString(2),row.getString(3),row.getString(4),Set.of(),principal,null,until,row.getString(7));
+            }
         } catch(Exception failure){throw unavailable();}
     }
     private Family family(ResultSet row) throws Exception {

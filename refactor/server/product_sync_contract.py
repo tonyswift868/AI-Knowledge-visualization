@@ -632,21 +632,6 @@ def validate(kind, entity_id, payload):
         raise ProductSyncRejected('PRODUCT_SYNC_RECORD_ID')
     if len(json.dumps(payload, allow_nan=False).encode()) > record_byte_limit(record['record_type']):
         raise ProductSyncRejected('PRODUCT_SYNC_RECORD_TOO_LARGE')
-    table=record['record_type']
-    try:
-        if table=='product_plan_state':
-            from .product_runtime_state import validate_plan_record
-            validate_plan_record(values['id'],json.loads(values['state']))
-        elif table=='product_account_settings':
-            from .product_settings_api import validate_setting
-            validate_setting(values['id'],json.loads(values['state']))
-        elif table=='product_review_state':
-            from .product_runtime_state import restore_review
-            restore_review({values['id']:json.loads(values['state'])})
-    except (ValueError,TypeError,KeyError,AttributeError):
-        raise ProductSyncRejected('PRODUCT_SYNC_STATE_INVALID') from None
-
-
 # Measured retained aggregates reach 6,458,439 serialized bytes. These three
 # typed domains alone receive 8 MiB; all schema/privacy/ID checks still apply.
 LARGE_AGGREGATE_TYPES = frozenset({

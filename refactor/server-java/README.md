@@ -1,6 +1,6 @@
-# MentorFlow Java server (local migration work)
+# MentorFlow Java server
 
-This Spring Boot 3 / Java 21 service is a local implementation of the authenticated catalog endpoints and the three account-core health endpoints. Its contracts are checked over HTTP against the existing Python server. Python defaults to `PERSONAL_LOCAL`; this first Java version requires `ENTERPRISE_SERVER`. It is not wired into production routing and is not ready for an online cutover.
+This Spring Boot 3 / Java 21 service is the production enterprise backend: account authentication and lifecycle, structured synchronization, catalog, health, administration, and RAG text retrieval. The Python backend remains available for fallback and HTTP contract comparison. Java requires `ENTERPRISE_SERVER`; Python defaults to `PERSONAL_LOCAL`. Build, health checks, routing and rollback use the existing scripts in [deploy/README.md](deploy/README.md). Production operations require separate authorization; a local test does not verify the live deployment.
 
 ## Build locally
 
@@ -59,7 +59,7 @@ Catalog files are `source-whitelist.json` and `model-prices.json`. Each must be 
 
 The service validates RS256 JWTs, signed issuer continuity, and its own native access tokens, resolving membership through the shared identity directory. Native login/refresh/logout/session use the existing Alembic-owned `native_session_families` table; Java never creates or migrates production tables. Refresh tokens survive service restart and can rotate in either implementation over the same database.
 
-Access-token hashes and valid browser-cookie sessions are process-local in Python. Existing database rows cannot reconstruct them. Therefore a native access token minted by one implementation is not recognized by the other, and Java does not accept a valid Python browser-cookie session. These are explicit migration gaps, covered by HTTP tests rather than substituted shared stores. Do not split protected traffic across the two implementations or switch production routing based only on this local build. Cutover needs an agreed session handoff and explicit user approval.
+Access-token hashes and valid browser-cookie sessions are process-local in Python. Existing database rows cannot reconstruct them. Therefore a native access token minted by one implementation is not recognized by the other, and Java does not accept a valid Python browser-cookie session. Native desktop clients can refresh against the shared durable family after a restart or cutover; a Python browser-cookie session requires login again. Do not split protected traffic across the two implementations. The production routing and Python fallback procedure, including health and session checks, is documented in [deploy/README.md](deploy/README.md).
 
 ## HTTP contracts and measurements
 

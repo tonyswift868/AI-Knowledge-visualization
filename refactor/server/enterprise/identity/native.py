@@ -413,14 +413,41 @@ class NativeSessions:
         if not token.startswith(ACCESS_PREFIX) or len(token) > 128:
             raise expired()
         with self.lock:
-            self._sync()
             self._prune()
             digest = self.digest(token)
             self._raise_if_superseded(digest)
-            row = self.families.get(self.access.get(digest))
+            fid = self.access.get(digest)
+            row = self.families.get(fid)
             if row is None or row.access_deadline <= self.clock():
                 raise expired()
-            return row.principal
+            if self.engine is None:
+                return row.principal
+            try:
+                with self.engine.connect() as conn:
+                    record = conn.execute(sa.select(NATIVE_FAMILIES.c.refresh_digest,
+                        NATIVE_FAMILIES.c.principal, NATIVE_FAMILIES.c.deadline,
+                        NATIVE_FAMILIES.c.revoked_reason).where(
+                            NATIVE_FAMILIES.c.family_id == fid,
+                            NATIVE_FAMILIES.c.issuer == self.issuer)).mappings().first()
+                if record is None:
+                    self._drop(fid, persisted=True)
+                    raise expired()
+                if record['revoked_reason'] == 'NATIVE_SESSION_SUPERSEDED':
+                    self._drop(fid, superseding=True, persisted=True)
+                    raise superseded()
+                if (record['revoked_reason'] is not None
+                        or record['refresh_digest'] != row.refresh_hash):
+                    self._drop(fid, persisted=True)
+                    raise expired()
+                deadline = record['deadline']
+                if deadline is not None and deadline <= self.clock():
+                    self._drop(fid)
+                    raise expired()
+                return AuthenticatedPrincipal.model_validate(record['principal'])
+            except IdentityError:
+                raise
+            except Exception:
+                raise unavailable() from None
 
     async def refresh(self, token):
         if not token.startswith(REFRESH_PREFIX) or len(token) > 128:

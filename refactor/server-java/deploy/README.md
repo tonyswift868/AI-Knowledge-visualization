@@ -2,6 +2,8 @@
 
 本目录的操作在生产服务器本机执行。Java 服务复用现有数据库和只读配置；应用容器启动时不跑数据库迁移，迁移通过下文独立维护命令执行。任何 Compose 命令都必须把 BUG-45 网络 override 作为最后一个 `-f` 文件。当前 Python backend 已停止、edge upstream 指向正式 `java-backend:8080`；保留 Python 镜像、容器和 Compose 定义供探针比较与回退。
 
+219 批会话、身份查询、请求体与同步契约修复的构建、检查及回退清单见 [RELEASE219.md](RELEASE219.md)。该清单是部署准备，不代表已经上线。
+
 ## RAG 上线迁移（MF-156）
 
 先备份数据库，再从本次发布源码目录运行 `migrate.sh`。基础
@@ -171,4 +173,4 @@ docker run --rm --network mentorflow-e1-preview_internal \
   "$PYTHON_IMAGE" /tmp/probe.py --java-only
 ```
 
-它比较 live/startup 和代表性认证、目录、同步响应，忽略 request ID、耗时和检查时间等动态字段。Python 与 Java 的 email readiness 都必须是 `ready=true, code=EMAIL_TLS_AUTH_READY`；`--java-only` 只请求 Java，不会 exec 到已停容器。native refresh 探针携带 `X-Forwarded-Proto: https` 来模拟 edge 转发；它只送无效 token，不代表有效凭证的认证测试。探针要求 readiness 的 `status` 为 `ready`、`started` 为 true，`postgres` 与 `keycloak_discovery` 必须存在且 ready；无效 JSON 或字段也会失败。服务器特有的网络连通、容器健康、Nginx reload 和真实登录仍需在服务器验证；本机脚本测试不能替代这些检查。
+它比较 live/startup 和代表性认证、目录、同步响应，忽略 request ID、耗时和检查时间等动态字段。Python 与 Java 的 email readiness 都必须是 `ready=true, code=EMAIL_TLS_AUTH_READY`；`--java-only` 只请求 Java，不会 exec 到已停容器。native refresh 与 closure/prepare 探针携带 `X-Forwarded-Proto: https` 来模拟 edge 转发，避免先被 HTTPS 入口校验拒绝而掩盖身份契约；它们只送无效 token，不代表有效凭证的认证测试。探针要求 readiness 的 `status` 为 `ready`、`started` 为 true，`postgres` 与 `keycloak_discovery` 必须存在且 ready；无效 JSON 或字段也会失败。服务器特有的网络连通、容器健康、Nginx reload 和真实登录仍需在服务器验证；本机脚本测试不能替代这些检查。

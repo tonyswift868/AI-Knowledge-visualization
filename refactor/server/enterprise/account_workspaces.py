@@ -1,5 +1,6 @@
 """MVP-only authenticated account discovery, before tenant selection."""
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict
 from starlette.concurrency import run_in_threadpool
 
@@ -10,12 +11,42 @@ from refactor.server.enterprise_tenancy.models import EnterprisePersistenceReque
 
 DISCOVERY_PATH = "/api/enterprise/account/workspaces"
 INITIALIZE_PATH = DISCOVERY_PATH + "/initialize"
+MAX_INITIALIZE_BODY_BYTES = 4096
 ACCOUNT_WORKSPACE_PATHS = frozenset({DISCOVERY_PATH, INITIALIZE_PATH})
-router = APIRouter()
 
 
 class InitializeOwnWorkspace(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class BoundedInitializeBodyRoute(APIRoute):
+    def get_route_handler(self):
+        original = super().get_route_handler()
+
+        async def bounded_handler(request: Request):
+            if request.method != "POST" or request.url.path != INITIALIZE_PATH:
+                return await original(request)
+            receive = request.receive
+            received = 0
+
+            async def bounded_receive():
+                nonlocal received
+                message = await receive()
+                if message["type"] == "http.request":
+                    body = message.get("body", b"")
+                    remaining = MAX_INITIALIZE_BODY_BYTES - received
+                    if len(body) > remaining:
+                        raise HTTPException(status_code=413, detail="Request body too large")
+                    received += len(body)
+                return message
+
+            request._receive = bounded_receive
+            return await original(request)
+
+        return bounded_handler
+
+
+router = APIRouter(route_class=BoundedInitializeBodyRoute)
 
 
 async def authenticate_account(request: Request, runtime):

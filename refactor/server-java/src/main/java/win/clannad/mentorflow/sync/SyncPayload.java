@@ -274,12 +274,6 @@ public final class SyncPayload {
         int limit=LARGE_TYPES.contains(table)?8*1024*1024:LIMIT;
         if (SyncJson.dumpAscii(payload).getBytes(StandardCharsets.UTF_8).length > limit)
             throw fail("PRODUCT_SYNC_RECORD_TOO_LARGE");
-        if (Set.of("product_plan_state","product_account_settings","product_review_state").contains(table)) {
-            // The current slim Python tree references these validators but ships neither module.
-            // Python therefore fails with an uncaught ModuleNotFoundError (HTTP 500).
-            String missing="product_account_settings".equals(table)?"product_settings_api":"product_runtime_state";
-            throw new IllegalStateException("No module named 'refactor.server."+missing+"'");
-        }
     }
 
     private static boolean publicValueEquals(Object value) {
