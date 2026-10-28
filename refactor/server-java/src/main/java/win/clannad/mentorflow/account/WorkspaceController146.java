@@ -28,6 +28,7 @@ import win.clannad.mentorflow.identity.IdentitySettings;
 @RestController
 @RequestMapping("/api/enterprise/account/workspaces")
 public final class WorkspaceController146 {
+    private static final int MAX_INITIALIZE_BODY_BYTES=4096;
     private static final ObjectMapper JSON=new ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private final WorkspaceBootstrap146 bootstrap;
     private final IdentityDirectory directory;
@@ -44,7 +45,11 @@ public final class WorkspaceController146 {
 
     @PostMapping("/initialize")
     public Object initialize(HttpServletRequest request) throws IOException {
-        byte[] raw=request.getInputStream().readAllBytes();
+        byte[] raw=request.getInputStream().readNBytes(MAX_INITIALIZE_BODY_BYTES+1);
+        if(raw.length>MAX_INITIALIZE_BODY_BYTES) {
+            return ResponseEntity.status(413).contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("detail","Request body too large"));
+        }
         JsonNode body;
         String input=new String(raw,StandardCharsets.UTF_8);
         try{body=raw.length==0?null:JSON.readTree(input);}

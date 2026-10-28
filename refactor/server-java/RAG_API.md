@@ -67,4 +67,4 @@ Alembic 管理 RAG 表；Java 启动不自动迁移。架构师上线时先备�
 
 依赖固定为 `dev.langchain4j:langchain4j-embeddings-bge-small-zh-v15-q:1.22.0-beta32`（LangChain4j Apache-2.0，BGE 模型 MIT）。[官方模型说明](https://docs.langchain4j.dev/apidocs/dev/langchain4j/model/embedding/onnx/bgesmallzhv15q/BgeSmallZhV15QuantizedEmbeddingModel.html) 建议资料块不超过约 512 tokens 以保证效果，这不是本接口的硬性截断线。模型及 tokenizer 随 JAR 提供，运行时不需要访问大模型服务。
 
-只读容器根目录下应将 `DJL_CACHE_DIR`、`ENGINE_CACHE_DIR`、`HF_HOME`、`HF_HUB_CACHE` 指向可写 `/tmp` 子目录，并保留可写 `java.io.tmpdir`。模型文件已打包，native 库仍需解压。现有 Compose `/tmp` 为 64 MiB；建议结合报告实测为缓存和普通临时文件留出余量，架构师上线时配置，不在本机修改服务器。
+只读容器根目录下应将 `DJL_CACHE_DIR`、`ENGINE_CACHE_DIR`、`HF_HOME`、`HF_HUB_CACHE` 指向可写 `/tmp` 子目录，并保留可写 `java.io.tmpdir`。模型文件已打包，native 库仍需解压。现有 Compose `/tmp` 为 128 MiB（见 `deploy/compose.yml`），供 native 库解压、缓存和 JVM 临时文件使用；容量调整沿用部署流程，不在本机修改服务器。

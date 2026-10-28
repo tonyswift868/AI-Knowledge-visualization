@@ -4,20 +4,23 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
+import javax.sql.DataSource;
+import org.postgresql.ds.PGPoolingDataSource;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 /** Read-only membership projection over the existing Alembic schema; owns no DDL. */
 @Component
 public final class JdbcIdentityDirectory implements IdentityDirectory {
-    private final String url, issuer;
+    private final String issuer;
+    private final DataSource dataSource;
+    private final PGPoolingDataSource pool;
     private final Properties properties=new Properties();
     private final List<Map<String,Object>> services;
     private final AtomicBoolean verified=new AtomicBoolean(false);
@@ -26,6 +29,7 @@ public final class JdbcIdentityDirectory implements IdentityDirectory {
     public JdbcIdentityDirectory(Environment env,IdentitySettings settings) {
         issuer=settings.canonicalIssuer.replaceAll("/+$","");
         String raw=env.getProperty("MENTORFLOW_DATABASE_URL","").strip();
+        String url;
         if (raw.isEmpty()) url="";
         else if (raw.startsWith("jdbc:postgresql:")) url=raw;
         else {
@@ -37,6 +41,17 @@ public final class JdbcIdentityDirectory implements IdentityDirectory {
             url="jdbc:postgresql://"+host+(uri.getPort()<0?"":":"+uri.getPort())+uri.getRawPath()+(uri.getRawQuery()==null?"":"?"+uri.getRawQuery());
         }
         properties.setProperty("connectTimeout","10"); properties.setProperty("socketTimeout","10");
+        if(url.isEmpty()) {pool=null;dataSource=null;}
+        else {
+            pool=new PGPoolingDataSource();
+            pool.setDataSourceName("mentorflow-identity-"+java.util.UUID.randomUUID());
+            pool.setURL(url);
+            if(properties.getProperty("user")!=null)pool.setUser(properties.getProperty("user"));
+            if(properties.getProperty("password")!=null)pool.setPassword(properties.getProperty("password"));
+            pool.setConnectTimeout(10);pool.setSocketTimeout(10);
+            pool.setMaxConnections(10);
+            dataSource=pool;
+        }
         String rawServices=env.getProperty("MENTORFLOW_SERVICE_IDENTITY_GRANTS_JSON","").strip();
         try {
             if(rawServices.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>65536) throw new IllegalArgumentException("service identity grant configuration is too large");
@@ -61,9 +76,11 @@ public final class JdbcIdentityDirectory implements IdentityDirectory {
         } catch (java.io.IOException ex) {throw new IllegalArgumentException("service identity grant configuration must be valid JSON",ex);}
     }
     private Connection connect() throws SQLException {
-        if(url.isEmpty()) throw new SQLException("database URL is missing");
-        return DriverManager.getConnection(url,properties);
+        if(dataSource==null) throw new SQLException("database URL is missing");
+        return dataSource.getConnection();
     }
+    @jakarta.annotation.PreDestroy
+    public void close() {if(pool!=null)pool.close();}
     /** Preserve the Python application-role invariant, without creating or migrating tables. */
     private void verifyRole(Connection connection) throws SQLException {
         if(verified.get())return;
