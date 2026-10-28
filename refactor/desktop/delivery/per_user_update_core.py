@@ -5,6 +5,7 @@ here. A downloaded update may be deferred and revalidated on a normal launch.
 """
 from pathlib import Path
 import os
+import re
 import threading
 
 from refactor.desktop.delivery.update_protocol import canonical
@@ -16,7 +17,7 @@ from refactor.desktop.delivery import per_user_install as install
 
 PENDING = 'pending-update.json'
 SCHEMA = 'mentorflow.per-user-pending.v1'
-PENDING_MESSAGE = '更新已下载好，关闭软件后下次打开时自动安装。'
+PENDING_MESSAGE = '新版已下载好，下次打开软件时完成更新。'
 STATES = frozenset(('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING', 'CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'))
 _ending = threading.Event()
 
@@ -124,8 +125,8 @@ def _startup_policy_evidence(root, current, service=None):
     return evidence
 
 
-def get_startup_update_state(root, *, service=None, check_feed=True, full=True, cancel=None,
-                             on_pointer_policy=None):
+def _get_startup_update_state(root, *, service=None, check_feed=True, full=True, cancel=None,
+                              on_pointer_policy=None):
     """Single authority for startup; no account API, token or UI dependency.
 
     Network errors cannot invent a mandatory gate or erase one already proved
@@ -205,6 +206,36 @@ def get_startup_update_state(root, *, service=None, check_feed=True, full=True, 
         return retained_policy('UNAVAILABLE_RECOVERABLE')
     finally:
         if owned and service is not None: service.close()
+
+
+def _with_deferred_update(root, result):
+    """Expose a retained, verified-download hint without changing startup policy."""
+    result = dict(result)
+    result['deferred_update'] = False
+    try:
+        pending = read_pending(root)
+        is_deferred_busy = (pending['state'] == 'PREVIOUS_HEALTHY' and
+                            pending.get('deferred_reason') == 'app_directory_busy')
+        if pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING') or is_deferred_busy:
+            current = install.installed(root)
+            from refactor.desktop.delivery.update_protocol import version_key
+            if version_key(pending['target']) > version_key(current.version):
+                result.update(deferred_update=True, deferred_target=pending['target'],
+                              deferred_reason='app_directory_busy' if is_deferred_busy else '',
+                              deferred_message=PENDING_MESSAGE)
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        # A malformed hint never becomes authority and never changes the
+        # signed startup decision. Normal validation/recovery handles it.
+        pass
+    return result
+
+
+def get_startup_update_state(root, *, service=None, check_feed=True, full=True, cancel=None,
+                             on_pointer_policy=None):
+    result = _get_startup_update_state(root, service=service, check_feed=check_feed,
+                                       full=full, cancel=cancel,
+                                       on_pointer_policy=on_pointer_policy)
+    return _with_deferred_update(root, result)
 
 
 def bootstrap_legacy_identity(root, *, envelope=None):
@@ -417,7 +448,8 @@ def check_latest(root, *, service=None, cancel=None):
     owned = service is None
     try:
         service = service if service is not None else one_click_service(root)
-        return service.check(manual=True, cancel=cancel) if cancel is not None else service.check(manual=True)
+        result = service.check(manual=True, cancel=cancel) if cancel is not None else service.check(manual=True)
+        return _with_deferred_update(root, result)
     except NoFeedConfigured: return _no_feed_result()
     except SecurityError as error:
         install.maintenance_log(root, 'check_latest_failed', detail=str(error))
@@ -495,9 +527,13 @@ def update_to_latest(root, progress=None, cancel=None, *, pid=None, hwnd_hex=Non
         install.maintenance_log(root, 'update_to_latest_deferred', detail=str(error))
         try:
             pending = read_pending(root)
-            if pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING'):
-                install.atomic(Path(root) / PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))
-                return dict(state='PENDING_INSTALL', destructive_apply=False, message=PENDING_MESSAGE)
+            busy_activation = (pending['state'] == 'PREVIOUS_HEALTHY' and
+                               pending.get('deferred_reason') == 'app_directory_busy')
+            if pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING') or busy_activation:
+                return dict(state='PENDING_INSTALL', destructive_apply=False,
+                            deferred_update=True, deferred_target=pending['target'],
+                            deferred_reason='app_directory_busy' if busy_activation else '',
+                            deferred_message=PENDING_MESSAGE, message=PENDING_MESSAGE)
         except (OSError, RuntimeError, ValueError):
             pass
         return dict(state='FAILED_RECOVERABLE', error=type(error).__name__, message='更新暂时无法完成，请稍后重试。')
@@ -520,7 +556,10 @@ def remember_download(root, stage, envelope, *, state='UPDATE_DOWNLOADED'):
 
 def read_pending(root):
     doc = strict_json(install.read(Path(root)/PENDING))
-    if set(doc) != {'schema', 'state', 'stage', 'target', 'release_sha256'} or doc['schema'] != SCHEMA or doc['state'] not in STATES:
+    fields = {'schema', 'state', 'stage', 'target', 'release_sha256'}
+    if (set(doc) not in (fields, fields | {'deferred_reason'}) or
+            doc['schema'] != SCHEMA or doc['state'] not in STATES or
+            ('deferred_reason' in doc and doc['deferred_reason'] != 'app_directory_busy')):
         raise SecurityError('unknown pending update state')
     return doc
 
@@ -549,6 +588,28 @@ def _pending_stage(root, pending, service):
     """
     root = install.target(root)
     stage = install.plain(pending['stage'])
+    if pending.get('deferred_reason') == 'app_directory_busy':
+        cache_root = install.plain(service.cache.runtime_root)
+        if stage.is_relative_to(cache_root):
+            return stage
+        internal_attempt = re.fullmatch(r'staging-([0-9a-f]{32})', stage.parent.name)
+        if (internal_attempt is None or stage.name != 'App' or stage.parent.parent != root):
+            raise SecurityError('deferred prepared source is outside its transaction')
+        journal = strict_json(install.read(root/install.JOURNAL))
+        source_attempt = journal.get('deferred_source_attempt')
+        if (internal_attempt.group(1) not in {
+                    journal.get('attempt'), journal.get('deferred_source_attempt')} or
+                (source_attempt is not None and
+                 re.fullmatch(r'[0-9a-f]{32}', source_attempt) is None) or
+                journal.get('phase') != 'ROLLED_BACK' or
+                journal.get('target') != pending['target']):
+            raise SecurityError('deferred prepared source is not bound to a rolled-back transaction')
+        if service.release is None or service.release.version != pending['target']:
+            raise SecurityError('deferred prepared target changed')
+        # The receipt is intentionally not trusted for an internal recovery
+        # stage. Re-hash every signed file before copying it into a fresh stage.
+        install.verify_tree(stage, service.release)
+        return stage
     if stage.is_relative_to(install.plain(service.cache.runtime_root)):
         return stage
     legacy_root = install.plain(root.parent / '.MentorFlow-runtime' / '.mfu')
@@ -571,6 +632,16 @@ def status(root):
         pending = read_pending(root)
         if pending['state'] not in ('CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'):
             result.update(state=pending['state'], target=pending['target'])
+        if (pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING') or
+                (pending['state'] == 'PREVIOUS_HEALTHY' and
+                 pending.get('deferred_reason') == 'app_directory_busy')):
+            result.update(deferred_update=True, deferred_target=pending['target'],
+                          deferred_reason=pending.get('deferred_reason', ''),
+                          deferred_message=PENDING_MESSAGE)
+        else:
+            result['deferred_update'] = False
+    else:
+        result['deferred_update'] = False
     return result
 
 
@@ -610,16 +681,35 @@ def prepare_update(root, *, service=None, progress=None, cancel=None, reuse_prep
             except (OSError, ValueError, RuntimeError):
                 pending = None
             if pending and pending['release_sha256'] == digest(service.release.envelope):
-                stage = _pending_stage(root, pending, service)
-                if ready(stage, service.release):
-                    service.staged = stage
-                    install.maintenance_log(root, 'update_prepared_reused', target=service.release.version)
-                    return {**snapshot, 'state': 'UPDATE_DOWNLOADED', 'ui_state': 'READY_TO_APPLY', 'prepared': True}
-                # Restart an owned, altered/incomplete tree under BOTH writer
-                # locks. Never remove the running App or learning data.
-                with InstallUpdateLock(service.cache.root):
-                    if stage.exists() and not install._remove_program_tree(root, stage):
-                        raise RecoverableError('cannot restart changed prepared tree')
+                try:
+                    stage = _pending_stage(root, pending, service)
+                except (OSError, RuntimeError, ValueError):
+                    # A non-busy rolled-back candidate can be rejected by its
+                    # real health check. It is not auto-retried; a manual check
+                    # may safely download a fresh copy of the still-published
+                    # signed release instead of trusting that stale stage.
+                    stage = None
+                if stage is not None:
+                    if (pending.get('deferred_reason') == 'app_directory_busy' and
+                            stage.is_relative_to(install.target(root))):
+                        # _pending_stage has already rebound the internal path
+                        # to the rolled-back journal and re-hashed the complete
+                        # signed tree. It intentionally has no downloader receipt.
+                        service.staged = stage
+                        install.maintenance_log(root, 'update_prepared_reused',
+                                                target=service.release.version,
+                                                source='deferred_transaction')
+                        return {**snapshot, 'state': 'UPDATE_DOWNLOADED',
+                                'ui_state': 'READY_TO_APPLY', 'prepared': True}
+                    if ready(stage, service.release):
+                        service.staged = stage
+                        install.maintenance_log(root, 'update_prepared_reused', target=service.release.version)
+                        return {**snapshot, 'state': 'UPDATE_DOWNLOADED', 'ui_state': 'READY_TO_APPLY', 'prepared': True}
+                    # Restart an owned, altered/incomplete tree under BOTH writer
+                    # locks. Never remove the running App or learning data.
+                    with InstallUpdateLock(service.cache.root):
+                        if stage.exists() and not install._remove_program_tree(root, stage):
+                            raise RecoverableError('cannot restart changed prepared tree')
             snapshot = service.download(progress=progress, cancel=cancel)
             if snapshot['state'] != 'READY_TO_APPLY': return snapshot
             pending = remember_download(root, service.staged, service.release.envelope)
@@ -637,7 +727,10 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
     apply supplies the exact running App PID/HWND; no guessed process is closed.
     """
     root = install.target(root); pending = read_pending(root)
-    if pending['state'] in ('CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'):
+    deferred_busy = (pending['state'] == 'PREVIOUS_HEALTHY' and
+                     pending.get('deferred_reason') == 'app_directory_busy')
+    if pending['state'] == 'CURRENT_HEALTHY' or (
+            pending['state'] == 'PREVIOUS_HEALTHY' and not deferred_busy):
         raise RecoverableError('no pending update')
     if unsafe_teardown(reason):
         install.atomic(root/PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))
@@ -647,6 +740,7 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
     if pid is None: install.require_app_stopped(root)
     owned = service is None; service = service or (service_factory or configured_service)(root)
     applied = False
+    internal_stage = False
     try:
         snapshot = service.check(manual=True)  # never trust a stale cached envelope
         if snapshot['state'] != 'UPDATE_AVAILABLE':
@@ -655,7 +749,10 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
             raise SecurityError('pending release changed; download the current signed release')
         stage = _pending_stage(root, pending, service)
         pending = {**pending, 'stage': str(stage)}
-        if digest(install.read(stage.parent/'release.json')) != pending['release_sha256']:
+        internal_attempt = (re.fullmatch(r'staging-([0-9a-f]{32})', stage.parent.name)
+                            if stage.name == 'App' and stage.parent.parent == root else None)
+        internal_stage = internal_attempt is not None
+        if not internal_stage and digest(install.read(stage.parent/'release.json')) != pending['release_sha256']:
             raise SecurityError('cached release changed')
         service.staged = stage
         def bridge(root, stage, envelope):
@@ -669,7 +766,9 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
                          install.request_app_shutdown(root, pid, hwnd_hex))
             else:
                 close = lambda: install.require_app_stopped(root)
-            return install.transact(root, stage, envelope, before_swap=close, prepared=True)
+            return install.transact(root, stage, envelope, before_swap=close,
+                                    prepared=not internal_stage,
+                                    allow_deferred_stage=internal_stage)
         # check() just refreshed and verified withdrawal/rollout/high-water.
         # Keep its cache writer lock through the transaction instead of asking
         # apply_and_restart to fetch and hash the same release a second time.
@@ -679,12 +778,14 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
         # The signed transaction already records HEALTHY. A completed download
         # is no longer pending, even if background housekeeping meets a lock.
         (root/PENDING).unlink(missing_ok=True)
-        return {**result, 'state': 'CURRENT_HEALTHY'}
+        if internal_stage:
+            install._remove_program_tree(root, stage.parent)
+        return {**result, 'state': 'CURRENT_HEALTHY', 'deferred_update': False}
     except install.AppShutdownTimeout:
         install.atomic(root/PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))
         return dict(state='PENDING_INSTALL', destructive_apply=False, relaunched=False,
-                    message='更新已下载好，关闭软件后下次打开时自动安装。')
-    except Exception:
+                    message=PENDING_MESSAGE)
+    except Exception as operation_error:
         journal = strict_json(install.read(root/install.JOURNAL)) if (root/install.JOURNAL).exists() else {}
         # A prior transaction's ROLLED_BACK journal must not consume a newly
         # downloaded pending update after an offline/fresh-metadata failure.
@@ -694,7 +795,20 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
                      and proof.get('attempt') == journal.get('attempt')
                      and proof.get('health', {}).get('ready') is True)
         state = 'PREVIOUS_HEALTHY' if recovered else 'PENDING_INSTALL'
-        install.atomic(root/PENDING, canonical({**pending, 'state': state}))
+        retained = {**pending, 'state': state}
+        if isinstance(operation_error, install.DeferredAppActivation) and recovered:
+            retained['deferred_reason'] = 'app_directory_busy'
+            prepared_stage = getattr(operation_error, 'prepared_stage', None)
+            if prepared_stage:
+                retained['stage'] = prepared_stage
+                # The internal transaction tree is authorized only by this
+                # exact busy-deferred marker and its rolled-back journal.
+                retained['state'] = 'PREVIOUS_HEALTHY'
+        elif pending.get('deferred_reason') == 'app_directory_busy' and not applied:
+            retained['deferred_reason'] = 'app_directory_busy'
+        elif 'deferred_reason' in retained:
+            retained.pop('deferred_reason', None)
+        install.atomic(root/PENDING, canonical(retained))
         raise
     finally:
         if owned: service.close()

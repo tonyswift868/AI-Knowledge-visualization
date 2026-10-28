@@ -283,10 +283,12 @@ def test_app_activation_real_child_handle_release_or_recovery(tmp_path, monkeypa
         monkeypatch, source_for, 'APP_ACTIVATE', release_after)
     try:
         if release_after is None:
-            with pytest.raises(PermissionError) as caught:
+            with pytest.raises(install.DeferredAppActivation) as caught:
                 install.transact(root, source, new_envelope, health=ready)
             assert caught.value.winerror == 5
-            assert state['sleeps'] == 7
+            retained = Path(caught.value.prepared_stage)
+            assert retained.is_dir()
+            assert state['sleeps'] >= 14
             # Activation exhausted retries; the prior signed App was restored,
             # its release binding and transaction marker reflect rollback.
             assert install.installed(root, feed.keys).envelope == old_envelope

@@ -54,7 +54,7 @@ def test_self_exit_timeout_keeps_pending_install(case, monkeypatch):
     result = core.apply_update(root, pid=9876, hwnd_hex='0001', reason='normal',
                                service=service, wait_for_exit=True)
     assert result['state'] == 'PENDING_INSTALL'
-    assert '下次打开时自动安装' in result['message']
+    assert result['message'] == '新版已下载好，下次打开软件时完成更新。'
     assert core.read_pending(root)['state'] == 'PENDING_INSTALL'
 
 
@@ -84,7 +84,7 @@ def test_failed_coordinator_result_is_deferred_in_chinese(tmp_path):
     ui = SimpleNamespace(root=tmp_path, _cancel=__import__('threading').Event())
     result = DesktopUpdates._coordinator_result(ui, {'result_path': str(result_path)})
     assert result['state'] == 'PENDING_INSTALL'
-    assert '下次打开时自动安装' in result['message']
+    assert result['message'] == '新版已下载好，下次打开软件时完成更新。'
 
 
 def test_next_launch_pending_failure_is_logged(monkeypatch, tmp_path):
@@ -172,7 +172,7 @@ def test_failed_save_restores_deferred_prompt_instead_of_quitting(tmp_path):
         _publish=published.append, _show_prompt=lambda: shown.append(True))
     DesktopUpdates._finish_handoff(ui)
     assert shown and published[0]['state'] == 'PENDING_INSTALL'
-    assert '下次打开时自动安装' in published[0]['message']
+    assert published[0]['message'] == '新版已下载好，下次打开软件时完成更新。'
 
 
 def test_cleanup_retries_cache_without_release_sidecar(case, monkeypatch):

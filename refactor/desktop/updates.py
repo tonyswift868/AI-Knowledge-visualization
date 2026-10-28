@@ -90,7 +90,7 @@ class DesktopUpdates(QObject):
         self._publish({**self.state, **result})
         self._login_blocked = not result.get('login_allowed', False)
         getattr(self.gate, 'set_login_available', self.gate.setEnabled)(not self._login_blocked)
-        if self._login_blocked or result.get('state') == 'OPTIONAL_UPDATE':
+        if self._login_blocked or result.get('state') == 'OPTIONAL_UPDATE' or result.get('deferred_update'):
             self._show_prompt()
         if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE'):
             from .delivery.per_user_install import schedule_updater_refresh
@@ -107,6 +107,13 @@ class DesktopUpdates(QObject):
 
     def _publish(self, value):
         if not self._closed:
+            if value.get('state') in ('UP_TO_DATE', 'CURRENT_HEALTHY'):
+                value = {**value, 'deferred_update': False}
+            if (value.get('state') == 'PENDING_INSTALL' or value.get('deferred_update') and
+                    value.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'UPDATE_AVAILABLE', 'MANDATORY_UPDATE')):
+                from .delivery.per_user_update_core import PENDING_MESSAGE
+                value = {**value, 'message': value.get('deferred_message') or PENDING_MESSAGE,
+                         'latest': value.get('deferred_target') or value.get('latest') or value.get('target', '')}
             self.state = dict(value)
             self.changed.emit(self.snapshot())
 
@@ -207,7 +214,7 @@ class DesktopUpdates(QObject):
                 pending = self.root / PENDING
                 if action == 'install' and pending.exists():
                     result = {"state": "PENDING_INSTALL", "destructive_apply": False,
-                              "message": "更新已下载好，关闭软件后下次打开时自动安装。"}
+                              "message": "新版已下载好，下次打开软件时完成更新。"}
                 else:
                     result = {"state": "FAILED_RECOVERABLE", "message": "更新暂时无法完成，请稍后重试。"}
             self._send({"action": action, "result": result})
@@ -287,11 +294,11 @@ class DesktopUpdates(QObject):
                 if outcome.get("status") == "FAILED" or outcome.get('state') == 'PENDING_INSTALL':
                     from .delivery.per_user_update_core import PENDING
                     if (self.root / PENDING).is_file():
-                        return {"state": "PENDING_INSTALL", "message": "更新已下载好，关闭软件后下次打开时自动安装。"}
+                        return {"state": "PENDING_INSTALL", "message": "新版已下载好，下次打开软件时完成更新。"}
                     return {"state": "FAILED_RECOVERABLE", "message": "更新暂时无法完成，请稍后重试。"}
                 return {**result, **outcome}
             if time.monotonic() >= deadline:
-                return {"state": "PENDING_INSTALL", "message": "更新已下载好，关闭软件后下次打开时自动安装。"}
+                return {"state": "PENDING_INSTALL", "message": "新版已下载好，下次打开软件时完成更新。"}
         return result
 
     def _defer_session(self, _manager=None):
@@ -452,7 +459,7 @@ class DesktopUpdates(QObject):
             self._busy = False
             self._clear_login_handoff()
             self._publish({**self.state, 'state': 'PENDING_INSTALL',
-                           'message': '更新已下载好，关闭软件后下次打开时自动安装。'})
+                           'message': '新版已下载好，下次打开软件时完成更新。'})
             self._show_prompt()
 
     def _show_prompt(self):
@@ -503,7 +510,7 @@ class DesktopUpdates(QObject):
                     '有新版本可用，可以现在更新，或稍后在 设置 → 关于 更新。')
                 # Preserve live download/preparation messages, but classify a
                 # fresh offer for the window visible NOW (login may have moved).
-                if not status.get('download_state'):
+                if not status.get('download_state') and not status.get('deferred_update'):
                     status['message'] = guidance
             self._prompt.update_status(status)
 
