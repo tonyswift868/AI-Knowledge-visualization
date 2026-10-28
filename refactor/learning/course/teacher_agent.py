@@ -1,6 +1,6 @@
 """Source-grounded teacher: no lesson drafts, scored questions or answers generated."""
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 from urllib.parse import unquote
 from .judge_agent import _dump, _excerpts, _identifier, _points, _text
@@ -157,11 +157,38 @@ def qa_response_body(raw):
     return body
 
 
+def qa_fallback(raw, ctx):
+    """Return a user-visible answer after source review fails twice.
+
+    The content is retained as supplementary material, while claims of exact
+    quotation and all source identifiers are removed. The ordinary classroom
+    parser still enforces Chinese and state-change constraints.
+    """
+    body = qa_response_body(raw) if raw.startswith('【依据】') else raw
+    body = re.sub(r'^【/?依据】[^\n]*(?:\n|$)', '', body, flags=re.M)
+    body = _SOURCE_LINK.sub('', body)
+    body = re.sub(r'\[[cC]\d+(?:\s*[,，、]\s*[cC]?\d+)*\]', '', body)
+    body = _SOURCE_QUOTE.sub(lambda match: '补充表述：' + match[1], body)
+    # Once provenance was rejected, an unquoted attribution must not keep
+    # claiming that the preserved explanation was written in the material.
+    body = re.sub(r'(?:原文|资料|讲义)(?:中|里)?(?:明确|还)?(?:说明|说|写道|写着|指出|提到|证明|规定|要求|表明)[：:]?',
+                  '补充说明：', body)
+    body = strip_source_footer(body).strip()
+    if not re.search(r'[\u3400-\u9fff]', body):
+        body = '我暂时无法核对这段回答的资料出处，先把它作为补充说明：\n\n' + body
+    fallback_ctx = dict(ctx)
+    fallback_ctx.pop('qa', None)
+    fallback_ctx.pop('question_only', None)
+    teaching = parse_teaching(body, fallback_ctx)
+    return replace(teaching, answer_basis='supplement', cited_chunks=())
+
+
 def _qa_claims(text, ctx, basis, aliases):
     """Catch observable source inconsistencies, not semantic truth scoring.
 
     Paraphrases and bounded examples remain allowed. Check citation association,
-    explicit quotations, strong exclusivity and inconsistent analogy labels.
+    explicit quotations and inconsistent analogy labels. This is not a truth
+    or entailment checker.
     The existing single rewrite handles a rejected draft; no text is relabelled
     or silently cut by this check.
     """
@@ -185,9 +212,22 @@ def _qa_claims(text, ctx, basis, aliases):
 
     mapping = citation_map(ctx)
     prose = ''.join(text[a:b] for a,b in _prose_spans(text))
+    mentioned_aliases = _CITATION.findall(prose)
+    if any(alias not in mapping for alias in mentioned_aliases):
+        raise QAParseError('QA_CITATION', 'qa: 回复引用了不存在的资料编号；改用已提供的编号或移除引用')
+    source_quotes = list(_SOURCE_QUOTE.finditer(prose))
     if basis == 'supplement':
-        cited = [a for a in _CITATION.findall(prose) if a in mapping]
-        new_knowledge = re.search(r'(?:以下|下面|接下来).{0,8}(?:资料外|原文以外|资料未涉及|新知识)', prose)
+        sources = {alias:ctx['excerpts'][chunk] for alias,chunk in mapping.items()}
+        outside_frame = re.search(r'讲义里没有|原文(?:以外|未涉及|没讲)|资料外|课外补充|作为(?:原文|资料|讲义)?背景|仅作(?:原文|资料|讲义)?背景', prose)
+        for quote in source_quotes:
+            quoted = normalized(quote[1])
+            quote_sources = [normalized(sources[quote[2]])] if quote[2] in sources else list(map(normalized,sources.values()))
+            if not quoted or not any(quoted in source for source in quote_sources):
+                raise QAParseError('QA_QUOTE', 'qa: 标成原话的引文不在所给资料中；去掉原文归因或改用真实原话')
+            if not outside_frame:
+                raise QAParseError('QA_BASIS', 'qa: 这段直接引用了已有资料，应按资料回答并标出处；只有明确作为补充背景时才标 supplement')
+        cited = [a for a in mentioned_aliases if a in mapping]
+        new_knowledge = re.search(r'(?:以下|下面|接下来).{0,12}(?:资料外|原文以外|资料未涉及|新知识|补充)', prose) or outside_frame
         if cited and not new_knowledge and re.search(r'例子|举例|类比|比方', ctx.get('user','')) and re.search(r'原文|资料|讲义', prose):
             # Acknowledging a real source while explaining it with an example
             # is different from answering an unrelated, uncovered question.
@@ -214,33 +254,21 @@ def _qa_claims(text, ctx, basis, aliases):
         if not terms(claim):
             claim = re.split(r'[。！？!?\n]', _CITATION.sub('', content[ref.end():]).lstrip())[0]
         source = evidence.get(ref[1])
-        # A source already anchored in an earlier fact can be referred to by a
-        # later analogy-boundary note ("这个类比对应的是原文那两点"). It cannot
-        # borrow a different, unrelated source or stand alone without a fact.
-        back_reference = ref[1] in grounded and re.search(r'(?:这个|该)类比对应.{0,12}(?:原文|讲义|资料)', claim)
+        # Pronouns can refer to an earlier fact with the same verified source.
+        # Lack of repeated nouns is not mechanical evidence of a wrong source.
+        # An unanchored or different source still cannot be borrowed this way.
+        back_reference = ref[1] in grounded and re.search(
+            r'(?:(?:这个|该)类比对应.{0,12}(?:原文|讲义|资料)|^(?:两者|前者|后者|它们))', claim)
         if source is None or not (related(claim, source) or back_reference):
             raise QAParseError('QA_CITATION', 'qa: 带编号的这句话与对应出处不符；出处只贴在它能支持的事实后，类比另作解释，不冒充原文')
         grounded.add(ref[1])
     # A quoted original sentence must actually be in its stated source. Plain
     # reformulations need not reproduce original wording.
-    for quote in re.finditer(r'(?:原文|资料|讲义)(?:中)?(?:说|写道|写着|指出)?[：:]\s*[“"]([^”"]+)[”"]\s*(?:\[(c\d+)\])?', prose):
+    for quote in source_quotes:
         claim = normalized(quote[1])
         sources = [normalized(evidence.get(quote[2],''))] if quote[2] else joined
         if claim and not any(claim in source for source in sources):
             raise QAParseError('QA_QUOTE', 'qa: 标成原话的引文不在所标资料中；用真实原话或明确改成解释，不编造原文')
-    # Strong universal/exclusive assertions need the source's actual claim;
-    # otherwise ask the teacher to explain without overstating that source.
-    for sentence in re.findall(r'[^。！？!?\n]+[。！？!?]?', prose):
-        if sentence.endswith(('？','?')):
-            continue
-        for clause in re.split(r'[，,；;：:]', sentence):
-            if re.search(r'只能|仅能|唯一|必然|不可能|一律|永远|完全不能|一定(?:会|是|要|能|不能)', clause):
-                if re.search(r'(?:没有|未|不能|不宜|不应).{0,8}(?:说|说明|认定|表示|声称|意味着)', clause):
-                    continue
-                claim = normalized(clause)
-                if not any(claim in source for source in joined):
-                    raise QAParseError('QA_ABSOLUTE', 'qa: 资料不支持这处绝对或排他结论；保留事实，改成不夸大的解释，不把“资料没有写”推成“不可能、只能或禁止”')
-
 def _reject_state_claims(text):
     # A conservative check for explicit first-person/completed actions, not a
     # claim of complete semantic detection. Negation applies within its clause.
@@ -327,6 +355,10 @@ def teacher_request(ctx):
             '类比仍选 material：先标明所解释的原文事实[cN]，再用“类比（帮助理解）：”给例子，并说清对应关系；不是因为用了例子就选 supplement。例子不冒充原文事件，也不靠比方推导新规则。'
             '只有问题确实需要资料之外的新知识且本次没有足够依据时才用 supplement；不把资料中能回答的问题说成讲义没有。'
             '原文短就短答，200～300字不是最低长度，不为凑长度补例子。')
+        system += ('\n【答疑准确性】常见的一般建议按通常场景解释即可，不因少数特例回避回答。'
+            '解释技术机制时，先说清它保证的对象、成立条件和时间范围，再作类比。'
+            '不要把局部的顺序保证放大成所有操作的统一顺序，也不要把传播或收敛保证说成任意时刻都立即读到最新值；'
+            '机制本身的保证与应用还需的同步或其他条件要分清。用准确的简短定义，不用更强但不成立的口号代替。')
     system+='\n【精炼与重点，适用于新旧知识点】每次回复用==重点句==标出1～3句最关键的结论，只标完整结论，不把整段都涂满、不标问句；加粗仍用于术语。普通回复约200～300字，开场或简单回应可更短，不为凑字重复。学生明确要求展开、详细点时可以长。不要大段搬原文，想看全文指向“原文出处”。只有普通回复超过350字且学生未要求展开时，请精炼重写一次；仍长就完整保留，任何时候不截断老师的话。荧光标注、开头与收尾方式只是表达偏好，不因这些样式问题打回重写。大知识点的要点卡由程序提供，你不要重复输出长总结。\n【本次输出自查】普通回复的全部可见正文（含开头、比喻、列表、结尾）合计不超过350字；200～300字已经包含这些部分，不是先讲300字再添例子。“多例子”也只选最有用的一例，其余留给后续对话。尽量有一句陈述结论用成对的==包住，最多三句，不把提问放在==里；选项不算荧光结论。'
     task['presentation']=dict(highlight_sentences=[1,3],target_characters=[200,300],expanded=wants_expansion(task['user']))
     if ctx.get('concept'):
@@ -361,6 +393,7 @@ def teacher_request(ctx):
 
 _LITERALS = re.compile(r"```[^\n]*\n.*?```|~~~[^\n]*\n.*?~~~|`[^`\n]+`", re.S)
 _CITATION = re.compile(r"\[([cC]\d+)\]")
+_SOURCE_QUOTE = re.compile(r'(?:原文|资料|讲义)(?:中|里)?(?:说|写道|写着|指出|提到)?[：:]\s*[“"]([^”"]+)[”"]\s*(?:\[(c\d+)\])?')
 _SOURCE_LINK = re.compile(r'\[[^\[\]\n]*\]\(mf-source:([^\s)]+)\)')
 _SOURCE_FOOTER = re.compile(r'^\s*(?:\*\*)?看原文[：:]\s*[^\n]*$', re.M)
 

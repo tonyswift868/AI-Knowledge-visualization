@@ -21,10 +21,10 @@ def qa(row):
                    excerpts={'source': row['evidence']}, dialogue=[])
 
 
-def test_228_replay_unsupported_golden_set_absolute_requires_rewrite():
+def test_228_previous_golden_extension_is_not_rejected_for_missing_evidence_alone():
     row = samples()['golden-set-unsupported-absolute']
-    with pytest.raises(agent.TeachingFormatError, match='绝对'):
-        agent.parse_teaching('【依据】material:c1【/依据】\n'+row['quoted_answer_excerpt'], qa(row))
+    result = agent.parse_teaching('【依据】material:c1【/依据】\n'+row['quoted_answer_excerpt'], qa(row))
+    assert result.answer_basis == 'material'
 
 
 def test_228_material_direct_quote_must_belong_to_the_cited_source():
@@ -87,7 +87,7 @@ def test_228_material_policy_allows_bounded_analogy_and_small_correct_extensions
 def test_228_real_replay_rewrites_once_before_committing_final_source():
     row = samples()['golden-set-unsupported-absolute']
     ctx = qa(row)
-    replies = iter(['【依据】material:c1【/依据】\n'+row['quoted_answer_excerpt'],
+    replies = iter(['【依据】material:c1【/依据】\n资料写道：“标签能让模型变聪明。”[c1]',
                     '【依据】material:c1【/依据】\n场景标签便于按场景检查模型输出是否覆盖预期行为。[c1]'])
     calls = []
     def complete(purpose, messages, **kwargs):
@@ -101,8 +101,8 @@ def test_228_real_replay_rewrites_once_before_committing_final_source():
     result, _, _ = room._generate_teacher('plan', ctx, agent.teacher_request(ctx), threading.Event(), streamed.append)
     assert len(calls) == 2 and RESET in streamed
     assert result.cited_chunks == ('source',)
-    assert '只能' not in result.speech
-    assert row['quoted_answer_excerpt'] in calls[1][-2]['content']
+    assert '能让模型变聪明' not in result.speech
+    assert '标签能让模型变聪明' in calls[1][-2]['content']
 
 
 def live_rows():

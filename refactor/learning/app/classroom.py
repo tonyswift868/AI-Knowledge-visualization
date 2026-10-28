@@ -1856,6 +1856,17 @@ class Classroom:
                 if attempt==0:
                     feedback='上一条回复需要修正' if tctx.get('qa') else '上一条回复格式不合格'
                     request=(request[0],request[1]+([dict(role='assistant',content=result.text)] if concept or tctx.get('qa') else [])+[dict(role='user',content=f'{feedback}：{exc}。用中文解释本步内容，不出计分题、不声称修改计划；开场才给选项。重新写一次。')])
+                elif (tctx.get('qa') and isinstance(exc, teacher_agent.TeachingFormatError)
+                      and exc.reason.startswith('QA_')):
+                    # A provenance check must not turn an otherwise usable
+                    # student question into an error. Keep the answer, strip
+                    # unverifiable source claims, then show it as supplement.
+                    teaching=teacher_agent.qa_fallback(result.text,tctx)
+                    safe_body=teaching.speech
+                    teaching=self._label_supplement(teaching)
+                    emit(teaching.speech)
+                    accepted='【依据】supplement【/依据】\n'+safe_body
+                    return teaching,original_request,accepted
                 elif str(exc).startswith(('concept','presentation')):
                     kept=teacher_agent.concept_fallback(result.text,tctx)
                     kept_ctx=dict(tctx)
