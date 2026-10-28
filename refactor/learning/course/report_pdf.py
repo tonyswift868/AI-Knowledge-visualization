@@ -1,79 +1,106 @@
-"""Local vector PDF rendering for the saved learning report (Qt only)."""
+"""Local vector PDF rendering with Qt's paginated rich-text layout."""
 from __future__ import annotations
 
 from pathlib import Path
 
 
 def render_report_pdf(report, titles, views, path: Path):
-    from PySide6.QtCore import QRectF, Qt
-    from PySide6.QtGui import QColor, QFont, QFontDatabase, QPainter, QPdfWriter, QPageSize
+    from PySide6.QtCore import QFile, QIODevice, QRectF, QSizeF
+    from PySide6.QtGui import (QColor, QFont, QFontDatabase, QPdfWriter, QPageSize,
+                              QTextBlockFormat, QTextCharFormat, QTextCursor,
+                              QTextDocument, QTextFormat, QPyTextObject, QTextOption)
 
-    writer = QPdfWriter(str(path))
+    output = QFile(str(path))
+    if not output.open(QIODevice.OpenModeFlag.WriteOnly):
+        raise OSError('无法创建 PDF：' + output.errorString())
+    writer = QPdfWriter(output)
     writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
     writer.setResolution(96)
     writer.setTitle('学习报告：' + report['plan']['goal'])
-    painter = QPainter(writer)
-    if not painter.isActive():
-        raise OSError('无法创建 PDF。')
     families = set(QFontDatabase.families())
     family = next((f for f in ('Microsoft YaHei', 'Noto Sans CJK SC', 'SimSun', 'Arial Unicode MS')
                    if f in families), QFont().family())
-    width, height = writer.width(), writer.height()
-    margin, y = 46, 46
-    usable = width - 2 * margin
+    margin = 46
+    usable = writer.width() - 2 * margin
     ink, muted, blue, rose = QColor('#182536'), QColor('#526275'), QColor('#2466a4'), QColor('#ae475b')
 
-    def page(need=30):
-        nonlocal y
-        if y + need > height - margin:
-            writer.newPage()
-            y = margin
+    document = QTextDocument()
+    document.setUndoRedoEnabled(False)
+    document.setDefaultFont(QFont(family, 10))
+    document.documentLayout().setPaintDevice(writer)
+    document.setDocumentMargin(margin)
+    document.setPageSize(QSizeF(writer.width(), writer.height()))
+    option = document.defaultTextOption()
+    option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+    document.setDefaultTextOption(option)
+    cursor = QTextCursor(document)
 
-    def line(value, *, size=10, bold=False, color=ink, indent=0):
-        nonlocal y
+    # Charts remain vector objects. Qt places their intrinsic height alongside
+    # the text; neither charts nor paragraphs decide where a page ends.
+    chart_type = QTextFormat.ObjectTypes.UserObject + 1
+    values_property = QTextFormat.Property.UserProperty
+    color_property = values_property + 1
+
+    class Bars(QPyTextObject):
+        def intrinsicSize(self, _document, _position, fmt):
+            return QSizeF(usable * .56, 14 if len(fmt.property(values_property)) == 1 else 10)
+
+        def drawObject(self, painter, rect, _document, _position, fmt):
+            values = fmt.property(values_property)
+            if len(values) == 1:
+                track = QRectF(rect.x(), rect.y(), rect.width(), 11)
+                painter.fillRect(track, QColor('#e6ecf2'))
+                painter.fillRect(QRectF(track.x(), track.y(), track.width() * values[0], 11),
+                                 fmt.property(color_property))
+            else:
+                for index, (value, color) in enumerate(zip(values, (blue, rose))):
+                    painter.fillRect(QRectF(rect.x(), rect.y() + index * 5, rect.width() * value, 3), color)
+
+    bars = Bars(document)
+    document.documentLayout().registerHandler(chart_type, bars)
+
+    def block(*, before=0, after=7, indent=0):
+        fmt = QTextBlockFormat()
+        fmt.setTopMargin(before)
+        fmt.setBottomMargin(after)
+        fmt.setLeftMargin(indent)
+        if cursor.atStart():
+            cursor.setBlockFormat(fmt)
+        else:
+            cursor.insertBlock(fmt)
+
+    def line(value, *, size=10, bold=False, color=ink, before=0, after=7):
+        block(before=before, after=after)
+        fmt = QTextCharFormat()
         font = QFont(family, size)
         font.setBold(bold)
-        painter.setFont(font)
-        painter.setPen(color)
-        rect = QRectF(margin + indent, y, usable - indent, 2000)
-        bounds = painter.boundingRect(rect, Qt.TextFlag.TextWordWrap, str(value))
-        page(bounds.height() + 7)
-        rect.moveTop(y)
-        painter.drawText(rect, Qt.TextFlag.TextWordWrap, str(value))
-        y += bounds.height() + 7
+        fmt.setFont(font)
+        fmt.setForeground(color)
+        # Plain text (also literal HTML) can span many pages. Qt splits its
+        # lines at page boundaries instead of painting beyond a fixed rect.
+        cursor.insertText(str(value), fmt)
 
     def heading(value):
-        nonlocal y
-        page(46)
-        y += 13
-        line(value, size=14, bold=True, color=blue)
+        line(value, size=14, bold=True, color=blue, before=13)
+
+    def chart(values, color=blue):
+        block(after=7, indent=110)
+        fmt = QTextCharFormat()
+        fmt.setObjectType(chart_type)
+        fmt.setProperty(values_property, values)
+        fmt.setProperty(color_property, color)
+        cursor.insertText('\ufffc', fmt)
 
     def bar(label, value, total, color=blue, *, count=False):
-        nonlocal y
-        page(35)
-        label_width = usable * .42
-        painter.setPen(ink)
-        painter.setFont(QFont(family, 9))
-        painter.drawText(QRectF(margin, y, label_width - 4, 22),
-                         Qt.TextFlag.TextSingleLine, label[:34])
-        x = margin + label_width
-        bar_width = usable - label_width - 95
-        painter.fillRect(QRectF(x, y + 4, bar_width, 11), QColor('#e6ecf2'))
-        painter.fillRect(QRectF(x, y + 4, bar_width * min(1, value / max(1, total)), 11), color)
-        painter.drawText(QRectF(x + bar_width + 8, y, 86, 22),
-                         Qt.TextFlag.TextSingleLine, f'{value} 次' if count else f'{value}/{total}')
-        y += 27
+        label_value = f'{value} 次' if count else f'{value}/{total}'
+        line(f'{label}  {label_value}', size=9, after=3)
+        chart([min(1, value / max(1, total))], color)
 
     def daily(row):
-        nonlocal y
-        page(42)
         label = f"{row['day']}  目标 {row['target_minutes']}  实际 {row['actual_minutes']}"
-        line(label + f"  比当天目标少 {row['debt_minutes']}  多 {row['ahead_minutes']}", size=9)
-        x, span = margin + 110, usable - 250
+        line(label + f"  比当天目标少 {row['debt_minutes']}  多 {row['ahead_minutes']}", size=9, after=3)
         limit = max(1, row['target_minutes'], row['actual_minutes'])
-        painter.fillRect(QRectF(x, y - 4, span * row['target_minutes'] / limit, 3), blue)
-        painter.fillRect(QRectF(x, y + 1, span * row['actual_minutes'] / limit, 3), rose)
-        y += 10
+        chart([row['target_minutes'] / limit, row['actual_minutes'] / limit])
 
     try:
         plan = report['plan']
@@ -133,5 +160,11 @@ def render_report_pdf(report, titles, views, path: Path):
                 line(profile['check'])
             if profile.get('text'):
                 line(profile['text'])
+        # With pageSize set, Qt prints its pagination as-is. Keep the existing
+        # margins/title styles without adding Qt's default page-number footer.
+        document.print_(writer)
     finally:
-        painter.end()
+        document.documentLayout().setPaintDevice(None)
+        # Finish the PDF trailer before closing its output device.
+        del writer
+        output.close()
