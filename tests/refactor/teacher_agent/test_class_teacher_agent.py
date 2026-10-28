@@ -32,7 +32,7 @@ def encoded(value):
 
 def test_fixed_public_teaching_shape_and_immutable_result():
     result = agent.parse_teaching("传感器接收环境信息。[c1]", context())
-    assert [field.name for field in fields(result)] == ["speech", "cited_chunks", "options"]
+    assert [field.name for field in fields(result)] == ["speech", "cited_chunks", "options", "answer_basis", "citation_aliases"]
     assert result.speech == "传感器接收环境信息。[c1]"
     assert result.cited_chunks == ("chunk-a",)
     with pytest.raises(FrozenInstanceError): result.speech = "改变"

@@ -121,13 +121,16 @@ def test_teacher81_switch_next_classroom_request_and_stable_system_prefix(wired)
     ok(call,'classroom.next',plan_id=PLAN)
     initial=agents.requests[-1]['system']
     prefix=deepcopy(agents.requests[-1]['messages'])
-    ok(call,'classroom.ask',plan_id=PLAN,text='请解释队列。')
+    ok(call,'classroom.confused',plan_id=PLAN)
     assert agents.requests[-1]['system']==initial
     assert agents.requests[-1]['messages'][:len(prefix)]==prefix
+    ok(call,'classroom.ask',plan_id=PLAN,text='请解释队列。')
+    qa_initial=agents.requests[-1]['system']
+    assert '主动答疑协议' in qa_initial and '教学规则始终优先于人设' in qa_initial
     ok(call,'plan.set_teacher_preset',plan_id=PLAN,preset_id='teacher-2')
     ok(call,'classroom.ask',plan_id=PLAN,text='请再解释一句。')
     changed=agents.requests[-1]['system']
-    assert changed!=initial and '说话像相声演员' in changed and '教学规则始终优先于人设' in changed
+    assert changed!=qa_initial and '说话像相声演员' in changed and '教学规则始终优先于人设' in changed
     ok(call,'classroom.ask',plan_id=PLAN,text='请再举一句例子。')
     assert agents.requests[-1]['system']==changed
     from refactor.learning.app.classroom import Classroom

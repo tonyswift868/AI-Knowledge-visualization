@@ -78,6 +78,8 @@ class Agents:
             else:
                 text = ('==这一章帮助理解资料中的概念。==\n这一章一起理解资料中的概念，你觉得哪种情况更接近？[c1]\n【选项】\n第一种\n第二种\n不知道\n【/选项】'
                         if task['opening'] else '==我们一起看资料中的定义。==[c1]')
+            if task.get('qa'):
+                text = '【依据】material:c1【/依据】\n' + text
             if on_text: on_text(text)
         elif purpose == 'judge':
             task = block(messages, '【本次判定】')
