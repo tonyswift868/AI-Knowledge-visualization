@@ -50,6 +50,7 @@ def test_repo_root_and_docs_subpath_skip_readme_and_keep_chapter_order():
     docs = import_repo("https://github.com/acme/guide/tree/main/docs", fetch=fetch)
     raw_paths = [unquote(url.split("/main/", 1)[1]) for url in calls if "raw.githubusercontent.com" in url]
     assert raw_paths == paths[1:]
+    assert sum("/git/trees/" in url for url in calls) == 1
     assert docs.url == "https://github.com/acme/guide/tree/main/docs"
 
 

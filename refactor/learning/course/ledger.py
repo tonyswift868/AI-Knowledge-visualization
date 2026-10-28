@@ -18,6 +18,29 @@ from math import isfinite, lcm
 from types import MappingProxyType
 
 
+def order_journal_operations(operations):
+    """Replay a same-sequence confirmation/revocation fork with confirmation winning.
+
+    Device-local operation sequences still order successive commands: a later
+    confirmation cannot resurrect previously revoked learning. For the same
+    sequence and unit, confirmation runs before revocation, which only removes
+    tentative credits. Event names must not decide this conflict policy.
+    Only those commands exchange slots; credits, replans and other units keep
+    their historical order, including their relation to frozen snapshots.
+    """
+    ordered = sorted(operations)
+    slots = {}
+    for index, (sequence, _, op, payload) in enumerate(ordered):
+        if op in ('confirm', 'revoke'):
+            slots.setdefault((sequence, payload['unit_id']), []).append(index)
+    for indices in slots.values():
+        commands = sorted((ordered[index] for index in indices),
+                          key=lambda row: row[2] == 'revoke')
+        for index, command in zip(indices, commands):
+            ordered[index] = command
+    return ordered
+
+
 def learning_day_slices(sources, minutes: int) -> list[tuple[date, int]]:
     """Return source-day portions for a restored amount, consuming source facts in order.
 

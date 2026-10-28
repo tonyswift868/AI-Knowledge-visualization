@@ -69,6 +69,12 @@ def compile_row(raw, original, gateway, cancel=None):
     if answer is None or answer == '':
         return dict(row, reason='原文没有答案，补上答案后再加入。', missing=True)
     answer = mq.literal(answer, span)
+    if kind == 'recall':
+        lines = [line.strip() for line in answer.splitlines() if line.strip()]
+        # Only explicit Markdown headings prove a title-only answer here.
+        # Bold lines can be substantive answers (for example, "**Primary key**").
+        if lines and all(mq._ANSWER_HEADING.fullmatch(line) for line in lines):
+            return dict(row, reason='原文没有答案，补上答案后再加入。', missing=True)
     if kind == 'objective':
         import re
         # Literal A/B/number may also appear in the question/options. Do not

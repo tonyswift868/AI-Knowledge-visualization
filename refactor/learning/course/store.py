@@ -61,7 +61,8 @@ import time
 import uuid
 
 from ..preferences.storage import account_directory
-from .ledger import Ledger, PlanWindow, Credit, replan_preserves_past, learning_day_slices
+from .ledger import (Ledger, PlanWindow, Credit, replan_preserves_past,
+                     learning_day_slices, order_journal_operations)
 from .mastery import MasteryBook, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
@@ -211,7 +212,7 @@ def _legacy_learning_day_projection(operations):
                 pool.remove(item)
         return consumed
 
-    ordered = sorted(operations)
+    ordered = order_journal_operations(operations)
     for index, (_, identifier, op, payload) in enumerate(ordered):
         seq = ordered[index][0]
         if direct_pending and not (op == 'credit' and seq == direct_pending[0] + 1):
@@ -1735,7 +1736,7 @@ class CourseStore:
                 key = e['point_minutes_key']
                 if key not in estimate_events or e['id'] == plan.get('point_minutes_event_id'):
                     estimate_events[key] = e['id']
-        for _, _, op, payload in sorted(operations):
+        for _, _, op, payload in order_journal_operations(operations):
             if op == 'credit':
                 c = payload['credit']
                 ledger._add_journal_credit(c['credit_id'], c['unit_id'], c['minutes'],
