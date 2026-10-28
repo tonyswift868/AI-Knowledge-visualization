@@ -202,29 +202,35 @@ class BalanceClient:
                 cached = self._cache.get(key)
                 if not refresh and cached and self._clock() < cached[0]:
                     return deepcopy(cached[1])
-                event = self._flights.get(key)
-                owner = event is None
+                flight = self._flights.get(key)
+                owner = flight is None
                 if owner:
-                    event = self._flights[key] = threading.Event()
-            if not owner:
-                end = time.monotonic() + TIMEOUT
-                while not event.wait(.02):
-                    if time.monotonic() >= end or (cancel and cancel.is_set()):
-                        return None
-                with self._lock:
-                    return deepcopy(self._cache.get(key, (0, None))[1])
-            value = None
-            try:
-                value = asyncio.run(_bounded(target, api_key, self._transport, cancel, TIMEOUT))
-            except Exception:
-                pass  # do not log URLs, request/response objects or exceptions
-            finally:
-                with self._lock:
-                    if len(self._cache) >= 64:
-                        self._cache.pop(next(iter(self._cache)))
-                    self._cache[key] = (self._clock() + TTL, deepcopy(value))
-                    self._flights.pop(key).set()
-            return value
+                    flight = self._flights[key] = {'event': threading.Event(), 'value': None}
+
+                    def fetch():
+                        value = None
+                        try:
+                            # A caller owns only its wait, never the shared HTTP request.
+                            value = asyncio.run(_bounded(target, api_key, self._transport, None, TIMEOUT))
+                        except Exception:
+                            pass  # do not log URLs, request/response objects or exceptions
+                        finally:
+                            with self._lock:
+                                if len(self._cache) >= 64:
+                                    self._cache.pop(next(iter(self._cache)))
+                                self._cache[key] = (self._clock() + TTL, deepcopy(value))
+                                flight['value'] = value
+                                self._flights.pop(key, None)
+                                flight['event'].set()
+
+                    threading.Thread(target=fetch, daemon=True).start()
+            end = time.monotonic() + TIMEOUT
+            while not flight['event'].wait(.02):
+                if time.monotonic() >= end or (cancel and cancel.is_set()):
+                    return None
+            if cancel and cancel.is_set():
+                return None
+            return deepcopy(flight['value'])
         except Exception:
             return None
 

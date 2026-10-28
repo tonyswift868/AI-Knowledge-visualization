@@ -2749,3 +2749,13 @@ class CourseStore:
         self._prune_point_links()
         for plan_id, in self._db.execute('SELECT id FROM plans').fetchall():
             self._upgrade_material_plan(plan_id)
+
+    def needs_sync_replay(self, entity: str, entity_id: str) -> bool:
+        """True when this version understands a journal identity it never stored."""
+        if entity not in PARENTS:
+            return False
+        with self._lock:
+            return self._db.execute(
+                'SELECT 1 FROM _records WHERE entity=? AND entity_id=?',
+                (entity, entity_id),
+            ).fetchone() is None

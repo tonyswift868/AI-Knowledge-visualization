@@ -656,7 +656,8 @@ class ModelGateway:
                         attempted = True
                         result = providers.complete(config['provider_id'], base_url=config['base_url'], model=config['model'],
                                                     api_key=secret, messages=messages, system=system, enable_search=enable_search,
-                                                    temperature=config['temperature'], timeout=max(.001, deadline-time.monotonic()),
+                                                    # Adding/subtracting a monotonic float can round above the original budget.
+                                                    temperature=config['temperature'], timeout=min(timeout, max(.001, deadline-time.monotonic())),
                                                     cancel=token, on_text=receive if provider_on_text is not None else None,
                                                     max_tokens=max_tokens, reasoning_effort=effort,
                                                     first_event_timeout=None if background else self.first_event_timeout)
