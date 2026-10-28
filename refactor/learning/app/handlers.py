@@ -147,8 +147,12 @@ def register(bridge, window):
 
     def settings_save(params, ctx):
         changes = params.get("changes")
-        saved = services().settings.save(changes)
-        window.settings_changed(saved)
+        current = services()
+        if ctx.cancel.is_set():
+            raise BridgeError('CANCELLED', '已取消。')
+        saved = current.settings.save(changes)
+        if window.services is current and not ctx.cancel.is_set():
+            window.settings_changed(saved)
         return {"settings": saved}
 
     bridge.register("settings.get", settings_get)
@@ -163,7 +167,8 @@ def register(bridge, window):
         current = services()
         result = current.settings.save_teacher_presets(params.get('presets'), params.get('default_id'), current.store,
                                                       confirm_delete=params.get('confirm_delete', False))
-        if not result.get('confirmation_required'):
+        if (not result.get('confirmation_required') and window.services is current
+                and not ctx.cancel.is_set()):
             window.settings_changed(current.settings.load())
         return result
 

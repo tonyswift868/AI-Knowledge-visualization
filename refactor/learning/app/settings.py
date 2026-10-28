@@ -128,6 +128,12 @@ class AppSettings:
         self._store_provider = lambda: store
 
     def load(self) -> dict:
+        # The file lock is shared by every AppSettings for this account/path.
+        # Include lazy preset migration so it cannot race a preset edit.
+        with self._file.lock:
+            return self._load()
+
+    def _load(self) -> dict:
         try:
             data = self._file.read(copy.deepcopy(DEFAULTS))
             value = validate(data)
@@ -150,22 +156,27 @@ class AppSettings:
             raise BridgeError("SETTINGS_INVALID", "设置格式无效。")
         if set(changes) & {'teacher_presets', 'default_teacher_preset_id'}:
             raise BridgeError('SETTINGS_INVALID', '请通过老师预设入口管理预设。')
-        current = self.load()
-        # Keep the legacy settings API usable; the preset UI saves the full group.
-        if set(changes) & {'teacher_style', 'detail', 'examples', 'analogy_domains'}:
-            row = next(p for p in current['teacher_presets'] if p['id'] == current['default_teacher_preset_id'])
-            for old, new in (('teacher_style','style'), ('detail','detail'), ('examples','examples'), ('analogy_domains','analogies')):
-                if old in changes: row[new] = changes[old]
-        current.update(changes)
-        value = validate(current)
-        try:
-            self._file.write(value)
-        except StorageError as exc:
-            raise BridgeError("SETTINGS_SAVE_FAILED", str(exc)) from None
-        if self._store_provider is not None:
-            self._store_provider().save_account_setting('teacher_presets',
-                dict(presets=value['teacher_presets'], default_id=value['default_teacher_preset_id']))
-        return value
+        # read() and write() each lock on their own; a partial update must hold
+        # that same lock through the entire merge, or another field can be lost.
+        with self._file.lock:
+            current = self.load()
+            teacher_changed = set(changes) & {'teacher_style', 'detail', 'examples', 'analogy_domains'}
+            # Keep the legacy settings API usable; the preset UI saves the full group.
+            if teacher_changed:
+                row = next(p for p in current['teacher_presets'] if p['id'] == current['default_teacher_preset_id'])
+                for old, new in (('teacher_style','style'), ('detail','detail'), ('examples','examples'), ('analogy_domains','analogies')):
+                    if old in changes: row[new] = changes[old]
+            current.update(changes)
+            value = validate(current)
+            try:
+                self._file.write(value)
+            except StorageError as exc:
+                raise BridgeError("SETTINGS_SAVE_FAILED", str(exc)) from None
+            # Theme/font/etc. must not rewrite a snapshot of the synced presets.
+            if teacher_changed and self._store_provider is not None:
+                self._store_provider().save_account_setting('teacher_presets',
+                    dict(presets=value['teacher_presets'], default_id=value['default_teacher_preset_id']))
+            return value
 
     def teacher_presets(self):
         value = self.load()
@@ -173,20 +184,22 @@ class AppSettings:
 
     def save_teacher_presets(self, presets, default_id, store, *, confirm_delete=False):
         group = validate_presets(presets, default_id)
-        self.bind_store(store)
-        previous = self.teacher_presets()
-        deleted = {p['id'] for p in previous['presets']} - {p['id'] for p in group['presets']}
-        if previous['default_id'] in deleted:
-            raise BridgeError('DEFAULT_PRESET', '默认预设不能删，请先把另一个预设设为默认。')
-        plans = [p for p in store.list_plans(include_archived=True) if p.get('teacher_preset_id') in deleted]
-        if plans and confirm_delete is not True:
-            return dict(confirmation_required=True, usage_count=len(plans),
-                        message=f"有 {len(plans)} 个计划在用，删除后它们改用默认预设。确定删除吗？")
-        # The authoritative synced group and all affected bindings commit together.
-        with store.transaction():
-            for plan in plans: store.set_teacher_preset(plan['id'], group['default_id'])
-            store.save_account_setting('teacher_presets', group)
-        return dict(group, confirmation_required=False)
+        with self._file.lock:
+            self.bind_store(store)
+            previous = self.teacher_presets()
+            deleted = {p['id'] for p in previous['presets']} - {p['id'] for p in group['presets']}
+            if previous['default_id'] in deleted:
+                raise BridgeError('DEFAULT_PRESET', '默认预设不能删，请先把另一个预设设为默认。')
+            plans = [p for p in store.list_plans(include_archived=True) if p.get('teacher_preset_id') in deleted]
+            if plans and confirm_delete is not True:
+                return dict(confirmation_required=True, usage_count=len(plans),
+                            message=f"有 {len(plans)} 个计划在用，删除后它们改用默认预设。确定删除吗？")
+            # Lock order: account JSON, then CourseStore. The authoritative synced
+            # group and all affected bindings still commit together.
+            with store.transaction():
+                for plan in plans: store.set_teacher_preset(plan['id'], group['default_id'])
+                store.save_account_setting('teacher_presets', group)
+            return dict(group, confirmation_required=False)
 
     @staticmethod
     def defaults_copy() -> dict:
