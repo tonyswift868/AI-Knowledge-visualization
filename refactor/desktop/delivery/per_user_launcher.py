@@ -102,11 +102,21 @@ def _launch_serialized(root, mark):
                     rolled_back = False
                 if rolled_back:
                     latest = core.read_pending(root)
-                    return dict(status='PREVIOUS_HEALTHY', health=_recovery_health(root),
-                                deferred_update=latest.get('deferred_reason') == 'app_directory_busy',
-                                deferred_target=latest.get('target', ''),
-                                deferred_reason=latest.get('deferred_reason', ''),
-                                deferred_message=core.PENDING_MESSAGE if latest.get('deferred_reason') == 'app_directory_busy' else '')
+                    try:
+                        health = _recovery_health(root)
+                    except (OSError, RuntimeError, ValueError) as health_error:
+                        # The old App may have exited after rollback or while
+                        # the next-start retry was offline. A stale proof is
+                        # not damage evidence; fall through to the normal
+                        # signed old-App launch, which still prevents duplicates.
+                        install.maintenance_log(root, 'recovery_app_not_running',
+                                                error_type=type(health_error).__name__)
+                    else:
+                        return dict(status='PREVIOUS_HEALTHY', health=health,
+                                    deferred_update=latest.get('deferred_reason') == 'app_directory_busy',
+                                    deferred_target=latest.get('target', ''),
+                                    deferred_reason=latest.get('deferred_reason', ''),
+                                    deferred_message=core.PENDING_MESSAGE if latest.get('deferred_reason') == 'app_directory_busy' else '')
     with InstallUpdateLock(root):
         if core.unsafe_teardown('next_launch'):
             raise RecoverableError('session ending: launch and update deferred')

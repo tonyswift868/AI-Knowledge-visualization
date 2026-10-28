@@ -218,3 +218,29 @@ def test_normal_health_failure_does_not_become_busy_auto_retry(tmp_path, monkeyp
         assert core.get_startup_update_state(root, check_feed=False)['deferred_update'] is False
     finally:
         feed.close()
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='uses the Windows per-user launch path')
+def test_stale_rollback_proof_falls_through_to_healthy_old_app_launch(tmp_path, monkeypatch):
+    feed, root, _old, source, envelope, _ready = _signed_case(tmp_path, monkeypatch)
+    service = _queue_update(feed, root, source, envelope, tmp_path)
+    pending = core.read_pending(root)
+    install.atomic(root / core.PENDING, core.canonical({
+        **pending, 'state': 'PREVIOUS_HEALTHY', 'deferred_reason': 'app_directory_busy'}))
+    monkeypatch.setattr(core, 'resume_pending_on_normal_launch',
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                            install.RecoverableError('offline')))
+    monkeypatch.setattr(launcher, '_recovery_health',
+                        lambda _root: (_ for _ in ()).throw(install.SecurityError('stale process proof')))
+    launched = []
+    def launch_old(_root, release):
+        launched.append(release.version)
+        return {'ready': True, 'version': release.version}
+    monkeypatch.setattr(install, 'launch_health', launch_old)
+    try:
+        result = launcher._launch_serialized(root, lambda _phase: None)
+        assert result['status'] == 'HEALTHY'
+        assert launched == ['2.0.3']
+        assert core.read_pending(root)['deferred_reason'] == 'app_directory_busy'
+    finally:
+        feed.close()
