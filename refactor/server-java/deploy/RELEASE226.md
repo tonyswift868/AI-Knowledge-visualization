@@ -1,6 +1,10 @@
 # 226 账号资料功能部署与应用回退
 
-状态：操作清单，**本次未上线、未连接服务器**。生产步骤须在此批合并并通过统一验收后按架构师任务执行。迁移新增 `0046_account_profiles`。该表含用户昵称、签名和头像，不得通过常规 downgrade 删除。
+状态：234-MF01 已获用户部署授权，源码固定从 `149b53ed` 以 `git -c core.autocrlf=false archive` 导出；解包后先检查全部 `.sh` 为 LF 并执行 `sh -n`，本机运行 `tests/refactor/deploy219/test_server_deploy219.py`。BUG-189、BUG-191 仅改应用代码，没有增加迁移，以下镜像标签仍沿用 `226`。实际执行结果以 234-MF01 回执为准。迁移新增 `0046_account_profiles`。该表含用户昵称、签名和头像，不得通过常规 downgrade 删除。
+
+234 当前结果（2026-10-29）：0046 已迁移；候选 Java 226 和 Python 226 探针曾通过，但执行连接被远端关闭，按任务失败分支回退。最终 Java 为 `rollback226`（与上线前 219 同一镜像 ID），0046 和资料表保留，新 Python 226 备用已停止。`restore-python.sh` 的实际启动报 `backend-tls-ready is missing dependency runtime-secrets-ready`，因此不能把语法检查通过当成备用恢复可用；本次没有越界修改 Compose 依赖。按本节第 4 节的直接旧 Java 应用回退恢复后，探针 9/9、公网三健康检查 200。下一次执行前须另行解决备用启动配置；不要重跑本次迁移或覆盖本次备份。
+
+只通过任务指定的 SSH 命令行执行；普通 SSH 用户无 Docker 权限时使用服务器已有的 `sudo -n`，不改 sudo/Docker 权限、不输入或输出密码。下面各步共用已核实的环境变量。
 
 ## 发布范围
 
@@ -13,6 +17,13 @@
 ## 0. 只读确认部署位置并备份
 
 使用服务器现存 release 工作流；不猜部署目录、备份位置或密钥路径。先确认当前 backend 容器的名字仍是 `mentorflow-e1-preview-backend-1`，然后照 RELEASE219 第 1 节只读查看其 Compose project、environment file、config files 与 mounts，并查看 Java 容器标签。根据这些值和既有运维配置设置 `BACKEND_CONTAINER`、`BACKEND_ENV`、`OLD_DEPLOY`、`TRUST_DIR`；`TRUST_DIR` 必须是挂到 `/run/mentorflow/trust` 的主机目录。还要核对迁移 wrapper 实际读取的 migrator secret volume/path。值不能唯一确定时停止并报告；不要打印 `.env` 或 secret 内容。
+
+234 只读定位确认：现有 Compose 的 `migrate_secrets:/run/secrets:ro`（基础配置第 189 行）对应卷 `mentorflow-e1-preview_migrate_secrets`，其中已有 `postgres_migrator_password`。脚本默认的 OIDC proxy 卷仅有 TLS 文件，不能照默认运行。以下全部迁移调用须沿用脚本已有覆盖参数（不新增、复制或修改凭据）：
+
+```sh
+export MIGRATION_SECRETS_VOLUME=mentorflow-e1-preview_migrate_secrets
+export MF_MIGRATION_PASSWORD_FILE=/run/secrets/postgres_migrator_password
+```
 
 ```sh
 set -eu
@@ -28,6 +39,8 @@ docker inspect --format '{{range .Mounts}}{{println .Source "->" .Destination}}{
 docker inspect --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}' mentorflow-java-backend
 docker inspect --format '{{.Image}}' mentorflow-java-backend > "$STATE/java-image-id"
 docker image tag "$(cat "$STATE/java-image-id")" mentorflow-java-server:rollback226
+docker inspect --format '{{.Image}}' "$BACKEND_CONTAINER" > "$STATE/python-image-id"
+docker image tag "$(cat "$STATE/python-image-id")" mentorflow-slim-backend:rollback226
 ```
 
 After verifying the output, export the resolved host paths in the same shell; do not put secret values in shell history:
@@ -44,6 +57,7 @@ cp "$OLD_DEPLOY/.env" "$STATE/previous-java.env"
 cp "$OLD_DEPLOY/.java.env" "$STATE/previous-java-runtime.env"
 cp "$OLD_DEPLOY/compose.generated.yml" "$STATE/previous-compose.generated.yml"
 cp /opt/mentorflow/state/bug45-20261010/network45.override.yml "$STATE/network45.override.yml"
+cp /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf "$STATE/edge.conf"
 test ! -e "$STATE/mentorflow-before226.dump"
 POSTGRES_CANDIDATES=$(docker ps --filter label=com.docker.compose.project=mentorflow-e1-preview \
   --filter label=com.docker.compose.service=postgres --format '{{.Names}}')
@@ -128,9 +142,9 @@ export PYTHON_FALLBACK_OVERRIDE="$STATE/python226.override.yml"
 sh python-compose.sh recreate
 ```
 
-随后确认服务 healthy 并用发布批准的隔离探针验证：profile 空资料读取、profile 版本写入/读回、归属隔离、avatar GET 私有 ETag 与错误条件、closure 清理检查。测试身份和数据不得用真实账号；若现有探针未覆盖这些合同，先不切流，回报架构师补齐。
+随后等待 Python 容器 healthy，运行现有 `probe.py` 对比两端（9/9、双方 READY true、email matches true）。234 不注册账号、不读取或改写生产用户资料。profile 读写、头像上传的登录后合同已有本机隔离测试；生产阶段只做无令牌端点认证状态检查，登录后的 200 留待用户使用后按路径/状态码统计，不把无令牌探针称为资料读写验收。
 
-再按 RELEASE219 第 2–3 节准备 Java 新 image 与配置，通过 `sh java-compose.sh config` 校验后启动 Java 并执行已有 readiness/业务探针，以及与新版 Python 相同的账号资料 HTTP 合同。使用命令行，所有 Compose 命令仅经包装脚本，避免漏 network45 override。未得架构师明确上线指令时不得运行本节生产命令。
+再按 RELEASE219 第 2–3 节准备 Java 新 image 与配置，通过 `sh java-compose.sh config` 校验后启动 Java 并执行已有 readiness/业务探针及无令牌 profile 认证检查。使用命令行，所有 Compose 命令仅经包装脚本，避免漏 network45 override。
 
 获得上线指令后，在 deploy 目录按以下顺序执行具体的 Java 启动、探测和切流命令。健康探针须在切流前全部通过；`probe.py --java-only` 不创建账号或写入资料：
 
@@ -150,7 +164,20 @@ curl --fail --silent --show-error https://89.45.45.28/health/startup
 curl --fail --silent --show-error https://89.45.45.28/health/ready
 ```
 
-随后用已批准的隔离账号执行 profile HTTP 合同探针（无工作区、版本 CAS、头像 ETag、跨账号隔离）；不要将生产用户资料作为探针。只有 Java 与外部健康检查、合同探针均通过，才宣布完成。
+核实正在运行的镜像标签和 JAR（SHA 与镜像标签相同）、数据库版本和表存在；只读元数据，不查询用户行：
+
+```sh
+docker inspect --format '{{.Config.Image}} {{.Image}}' mentorflow-java-backend
+docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }} {{ index .Config.Labels "org.mentorflow.jar.sha256" }}' mentorflow-java-server:226
+docker exec mentorflow-java-backend sha256sum /app/mentorflow-server.jar
+docker exec "$POSTGRES_CONTAINER" psql -U postgres -d mentorflow -Atc "SELECT version_num FROM alembic_version; SELECT to_regclass('public.account_profiles');"
+docker inspect --format '{{.Config.Image}} {{.State.Health.Status}}' "$BACKEND_CONTAINER"
+sh -n restore-python.sh
+sh stop-python.sh
+docker inspect --format '{{.State.Status}}' "$BACKEND_CONTAINER"
+```
+
+只有两端探针和公网健康检查通过后才停备用；`stop-python.sh` 校验 upstream 为 Java，随后通过带 network45 的 wrapper 停 backend 与 OIDC proxy，保留容器及镜像供 `restore-python.sh` 启用。不实际执行回退来验收备用。启动 Java 前至 ready 恢复期间按秒采样三个公网 health 的状态码，记录不可用样本和时间精度；不把 Docker 命令耗时冒充真实不可用时长。登录后的资料读取/保存/头像上传只从访问日志汇总路径和状态码，不输出用户内容、账号或令牌。
 
 旧客户端可以继续使用既有登录、工作区、同步接口；新端点不存在时新客户端应按既定兼容行为显示原用户名首字母。新增资料表不影响原身份和角色字段。
 
