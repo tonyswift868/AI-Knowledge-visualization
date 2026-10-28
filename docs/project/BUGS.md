@@ -648,6 +648,7 @@
 - 排查：依 BUG-119 与 218-MF07 复盘，比较 native/refresh 探针已有的 forwarded_https 和闭户接口门禁，确认是探针请求条件不一致，不是认证策略或线上服务故障。
 - 解决：219-MF01 在 `refactor/server-java/deploy/probe.py` 的 closure/prepare 请求合并既有 HTTPS 转发头，并更新部署说明；不改 HTTPS 门禁和认证标准。本轮只修探针，先前脚本部署成功属于2026-10-21的历史记录。
 - 验证：修前双端探针均 8/9、闭户返回 403；修后双端及 --java-only 均 9/9。`test_server_deploy219.py` 部署脚本相关共18项通过；真实服务器尚未部署本轮改动。
+- 部署（222-MF01，2026-10-28 12:28 JST）：线上合同探针 9/9（closure/prepare 回 401），公网健康检查按默认 CA 验证通过。
 - 关联：[ACC-03] [ARCH-09] [BUG-45]
 - 更新：2026-10-28
 
@@ -1737,6 +1738,7 @@
 - 排查：沿 authenticateAccess → findFamily 检查查询字段；Python旧路径还会按 issuer 加载全部家族。基线Java harness因完整历史被读取而失败，Python基线在1001条历史下因查询含 used_digests 失败。
 - 解决：Java NativeSessionService.findFamily 改为只取认证所需列；Python NativeSessions.authenticate 按 family_id 和 issuer 查询轻量状态。刷新、重放检测仍读完整历史。
 - 验证：修后两端认证不读取历史；撤销、轮换仍拒绝，旧令牌重放仍撤销整族。`test_native_session219_history.py` 与既有 `ten_years_thousand_rotations_restart_and_replay` 最终不同测试项10项通过。
+- 部署（222-MF01，2026-10-28 12:28 JST）：已随 Java mentorflow-java-server:219（JAR sha256 6022c6cc…）和 Python 回退镜像 219-python-fallback 上线；需要登录才能核的行为等用户正常使用后按访问日志状态码核对。
 - 关联：无
 - 更新：2026-10-28
 
@@ -1746,6 +1748,7 @@
 - 排查：基线真实过滤器计数为 ensureOpen 2 次、resolve 1 次；检查 JdbcIdentityDirectory.connect 确认每次新建连接。
 - 解决：IdentitySecurity 删除第二次 ensureOpen，保留首次及 membership、服务账号和令牌检查；JdbcIdentityDirectory 改用已有 PostgreSQL JDBC 驱动内置池，最多10连接、惰性建立，应用关闭时释放。
 - 验证：修后真实 ContextFilter 只检查1次，注销中账号仍403；本机 PostgreSQL 17 驱动验证归还复用同一 backend、回滚/reset、4并发借用各自独立连接、关池后拒绝借用。`test_identity_and_workspace_219_behaviors` 1 passed。
+- 部署（222-MF01，2026-10-28 12:28 JST）：已随 Java mentorflow-java-server:219（JAR sha256 6022c6cc…）和 Python 回退镜像 219-python-fallback 上线；需要登录才能核的行为等用户正常使用后按访问日志状态码核对。
 - 关联：无
 - 更新：2026-10-28
 
@@ -1755,6 +1758,7 @@
 - 排查：以真实 Java controller 和 FastAPI TestClient 测量读取量、状态码及 bootstrap 调用次数，分别核对服务端两套实现。
 - 解决：WorkspaceController146.java 最多读4097字节，超过4096回413；Python account_workspaces.py 在 initialize 路由接收层限累计请求体到4096，保留原JSON字段校验。
 - 验证：Java修前读完1,048,589字节并回422，修后读4097字节即413；Python空白大体修前200且调用bootstrap，修后413且不调用，正常空对象仍成功、坏JSON和额外字段仍422。`test_initialize_route_bounds_body_and_preserves_validation_contract` 1 passed，`test_workspace_json148` 等 HTTP 合同相关 2 项通过。
+- 部署（222-MF01，2026-10-28 12:28 JST）：已随 Java mentorflow-java-server:219（JAR sha256 6022c6cc…）和 Python 回退镜像 219-python-fallback 上线；需要登录才能核的行为等用户正常使用后按访问日志状态码核对。
 - 关联：无
 - 更新：2026-10-28
 
@@ -2006,6 +2010,7 @@
 - 排查：对照客户端来源计数、服务器 ready 处理和能力协商，用严格假服务与 Java 合同检查序号、完整清单、幂等及内容冲突。只读本地副本显示3份采用资料1038块、App RAG 4份1254块均完整，远端未连接，不能推断线上状态。
 - 解决：客户端 `app/rag.py` 仅上传块数齐全的来源，通过既有文档列表接口协商 append_only_chunk_repair_v1；Java 的 `RagController.java` 公告能力，`RagService.java` 在原ID事务内校验清单并按序号追加缺块，不改删旧块。冲突明确409，不伪称全部补齐。
 - 验证：`test_rag219_partial_upload.py` 等 Python 路径13个不同用例、`test_rag219_append_only_repair.py` 等 Java 合同5个不同用例最终通过，覆盖完整性门槛、能力声明、追加幂等、重分块及冲突保留。两端服务改动未部署，真实远端缺块和恢复结果未验证。
+- 部署（222-MF01，2026-10-28 12:28 JST）：服务端补传能力已随 Java 219 镜像上线；真实补传要等用户用资料问答后看日志核对；内容已归属另一主文档时仍 409、双方保留。
 - 关联：无
 - 更新：2026-10-28
 
@@ -2033,6 +2038,7 @@
 - 排查：交叉核对README、RAG_API与真实compose配置；测试直接从Compose提取tmpfs值，避免另造常量作为依据。
 - 解决：README说明当前Java后端能力、Python回退边界及会话限制；RAG API改为128 MiB，并链接现有部署准备清单。文档只陈述准备状态，不写成已上线。
 - 验证：test_docs219_describe_production_java_and_actual_tmpfs 修前失败、修后通过；线上本轮部署未做。
+- 部署（222-MF01，2026-10-28 12:28 JST）：线上 Java tmpfs 实测 128 MiB，和改正后的说明一致。
 - 关联：无
 - 更新：2026-10-28
 
@@ -2042,6 +2048,7 @@
 - 排查：核对2.0.3强制更新提交及 learning/desktop 当前代码和完整历史搜索；旧类型命中仅见服务端契约演进，不能说成客户端删除。修前Python三类均 ModuleNotFoundError（3/3）。
 - 解决：Python 的 `product_sync_extensions.py`、`product_sync_contract.py` 和 Java 的 `SyncDefinitions.json`、`SyncPayload.java` 移除相同三类白名单及死分支，不删历史存储；旧类型按既有422逐行拒绝，合法行保留。
 - 验证：`test_sync_legacy_aggregates219.py` 等双端校验及 slim 合同共11 passed；`test_sync_payload145.py` 的批量/快照复测1 passed，合法行200、旧类型422，快照只保留合法行。
+- 部署（222-MF01，2026-10-28 12:28 JST）：已随 Java mentorflow-java-server:219（JAR sha256 6022c6cc…）和 Python 回退镜像 219-python-fallback 上线；需要登录才能核的行为等用户正常使用后按访问日志状态码核对。
 - 关联：无
 - 更新：2026-10-28
 
