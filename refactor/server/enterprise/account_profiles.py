@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.concurrency import run_in_threadpool
 
+from refactor.server.core_errors import app_error_body
 from refactor.server.enterprise.account_workspaces import authenticate_account
 from refactor.server.enterprise.identity.oidc import IdentityError
 
@@ -26,7 +27,7 @@ MAX_TEXT_BODY_BYTES = 4096
 MAX_AVATAR_BYTES = 262_144
 MAX_AVATAR_EDGE = 512
 _SCOPE_SETTING = "mentorflow.rag_account_scope"
-_PROFILE_ETAG = re.compile(r'^"profile-([1-9][0-9]*)"$')
+_PROFILE_ETAG = re.compile(r'^"profile-([1-9][0-9]{0,18})"$')
 _MAX_VERSION = (1 << 63) - 1
 
 
@@ -235,11 +236,23 @@ def _expected_version(request):
         raise AccountProfileError("PROFILE_IF_MATCH_REQUIRED", 428)
     match = _PROFILE_ETAG.fullmatch(value)
     if not match:
-        raise AccountProfileError("PROFILE_IF_MATCH_INVALID", 400)
-    version = int(match.group(1))
+        raise AccountProfileError("ACCOUNT_PROFILE_IF_MATCH_INVALID", 400)
+    try:
+        version = int(match.group(1))
+    except (ValueError, OverflowError):
+        raise AccountProfileError("ACCOUNT_PROFILE_IF_MATCH_INVALID", 400) from None
     if version > _MAX_VERSION:
-        raise AccountProfileError("PROFILE_IF_MATCH_INVALID", 400)
+        raise AccountProfileError("ACCOUNT_PROFILE_IF_MATCH_INVALID", 400)
     return version
+
+
+def _write_error_response(request, exc):
+    body = {"code": exc.code}
+    if exc.code == "ACCOUNT_PROFILE_IF_MATCH_INVALID":
+        body = app_error_body(exc.code, "资料版本标记无效",
+                              request_id=getattr(request.state, "request_id", None))
+    return JSONResponse(body, status_code=exc.status,
+                        headers={"Cache-Control": "private, no-cache"})
 
 
 def _principal(request):
@@ -326,8 +339,7 @@ async def patch_profile(request: Request):
                             _expected_version(request))
         return _profile_response(result)
     except AccountProfileError as exc:
-        return JSONResponse({"code": exc.code}, status_code=exc.status,
-                            headers={"Cache-Control": "private, no-cache"})
+        return _write_error_response(request, exc)
 
 
 def _if_none_match(header, etag):
@@ -367,8 +379,7 @@ async def put_avatar(request: Request):
                             _expected_version(request))
         return _profile_response(result)
     except AccountProfileError as exc:
-        return JSONResponse({"code": exc.code}, status_code=exc.status,
-                            headers={"Cache-Control": "private, no-cache"})
+        return _write_error_response(request, exc)
 
 
 @router.delete(AVATAR_PATH)
@@ -377,8 +388,7 @@ async def delete_avatar(request: Request):
         result = await _run(request, "delete_avatar", _expected_version(request))
         return _profile_response(result)
     except AccountProfileError as exc:
-        return JSONResponse({"code": exc.code}, status_code=exc.status,
-                            headers={"Cache-Control": "private, no-cache"})
+        return _write_error_response(request, exc)
 
 
 async def authenticate_profile_account(request: Request, runtime):
