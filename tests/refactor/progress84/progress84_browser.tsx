@@ -27,10 +27,11 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 10))
 const wait = async (condition: () => boolean) => { for (let n = 0; n < 1000; n++) { if (condition()) return; await tick() } throw Error('UI not ready') }
 const require = (condition: boolean, text: string) => { if (!condition) throw Error(text) }
 async function check() {
-  for (const [mode, expected] of Object.entries({ debt: '逾期待还 36 分今天已还 24 分含待确认 24 分', severe: '逾期待还 156 分今天已还 24 分含待确认 16 分', today: '今天 24 / 60 分含待确认 8 分', ahead: '超前完成 24 分含待确认 8 分' })) {
+  for (const [mode, expected] of Object.entries({ debt: '逾期待还 36 分今天已还 24 分', severe: '逾期待还 156 分今天已还 24 分', today: '今天 24 / 60 分', ahead: '超前完成 24 分' })) {
     window.progress84Show(mode, 'sakura')
     await wait(() => document.querySelector('.class-head [data-progress]')?.getAttribute('data-progress') === mode)
     require(document.querySelector('.class-head .progress-status')!.textContent === expected, `${mode} numbers/text`)
+    require(!document.querySelector('.class-head .progress-status')!.textContent!.includes('待确认'), `${mode} no separate tentative label`)
     require(document.querySelectorAll('.class-head .progress-status').length === 1, `${mode} only one state`)
     if (mode !== 'today') require(!document.querySelector('.progress-status')!.textContent!.includes(' / '), `${mode} no daily fraction`)
   }
@@ -41,14 +42,14 @@ async function check() {
   states.opening.today = { ...states.opening.today, debt_minutes: 60, today_repaid_tentative: 0 } as never
   states.teaching.today = { ...states.teaching.today, ...samples.debt } as never
   openingButton()!.click()
-  await wait(() => document.querySelector('.progress-status')?.textContent === '逾期待还 36 分今天已还 24 分含待确认 24 分')
+  await wait(() => document.querySelector('.progress-status')?.textContent === '逾期待还 36 分今天已还 24 分')
   require(!openingButton(), 'new response applied without remount')
   // Hold the next response like a slow teacher; progress must arrive first.
   const credited = { ...states.teaching.today, debt_minutes: 28, today_repaid_tentative: 32 }
   holdNext(credited)
   const nextButton = [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '懂了，继续')!
   nextButton.click()
-  await wait(() => document.querySelector('.progress-status')?.textContent === '逾期待还 28 分今天已还 32 分含待确认 32 分')
+  await wait(() => document.querySelector('.progress-status')?.textContent === '逾期待还 28 分今天已还 32 分')
   require(nextButton.disabled, 'action still in progress')
   require(!document.body.textContent!.includes('TODAY:'), 'UI event not shown as teacher speech')
   releaseNext()

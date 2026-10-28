@@ -37,9 +37,15 @@ export function Report() {
   const toast = useApp((s) => s.toast)
   const [data, setData] = React.useState<ReportData | null>(null)
   React.useEffect(() => {
-    if (!planId) { go("plans"); return }
-    call<ReportData>("plan.report", { plan_id: planId }).then(setData)
-      .catch((e) => { toast("error", e.message); go("plan") })
+    let active = true
+    if (!planId) { go("plans"); return () => { active = false } }
+    call<ReportData>("plan.report", { plan_id: planId }).then((result) => {
+      if (active) setData(result)
+    }).catch((e) => {
+      if (!active) return
+      toast("error", e.message); go("plan")
+    })
+    return () => { active = false }
   }, [planId, go, toast])
   if (!data) return <div className="page"><Loading shape="page" label="正在整理学习报告…" onCancel={()=>go('plan')}/></div>
   const { report: r, titles, views } = data

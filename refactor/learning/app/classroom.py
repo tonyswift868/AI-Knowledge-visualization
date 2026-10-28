@@ -1036,7 +1036,7 @@ class Classroom:
         director='正常回答学生追问，依据本点和本计划已采用资料；没有依据就直说“资料里没讲到”，可在计划里补充资料。回答完回到原来的位置，不出题、不判分。'
         if state.get('pending'):
             director+='当前屏幕上正在检测，学生这句明确是提问，不是作答。只解答这个疑问，不继续讲课、不讲当前题的答案或必答要点、不提示如何答题。题目与检测仍保留。'
-            director+='软件操作事实：客观题在选项或输入框作答、程序判；问答题用上方卡片先写自己的回答，再点看答案，逐条勾自己答到的要点并提交，全部勾到才算对。你只回答提问，不代替卡片、不改变软件的判法。'
+            director+='软件操作事实：客观题在选项或输入框作答、程序判；问答题用上方卡片先写自己的回答，再点看答案，要点默认全部勾上，把没答到的点成叉，由学生自己点〔算我答对〕或〔算我答错〕，与勾选数量无关。你只回答提问，不代替卡片、不改变软件的判法。'
             director+='说“继续”不会跳过检测题，也不会退回讲课；不要建议这样跳题，不编造操作。回答完请学生回到当前卡片作答。'
         teaching=self._teacher(course,state,ctx,director,point_ids,user=text,allow_plan=True)
         self._deliver(course,state,teaching,user=text)
@@ -1853,11 +1853,20 @@ class Classroom:
         action=getattr(self._local,'action',None)
         if not message_id and action:
             message_id=uuid.uuid5(uuid.NAMESPACE_URL,course.plan_id+':'+action[2]+':'+role+':'+kind+':'+text).hex
-        if message_id and any(m['id']==message_id for m in course.store.messages(course.plan_id,self._channel(state))):return message_id
-        previous=course.store.messages(course.plan_id,self._channel(state))
-        at=self.now()
-        if previous:at=max(at,datetime.fromisoformat(previous[-1]['at'])+timedelta(microseconds=1))
-        return course.store.append_message(course.plan_id,self._channel(state),role,text,kind=kind,message_id=message_id,at=at)
+        channel=self._channel(state)
+        # Keep duplicate detection and timestamp assignment in the same write
+        # transaction, without decoding the plan's conversation history.
+        with course.store.transaction():
+            if message_id:
+                try:previous_message=course.store.get_message(course.plan_id,message_id)
+                except StoreError as exc:
+                    if exc.code!='NOT_FOUND':raise
+                else:
+                    if previous_message['module_id']==channel and not previous_message['compressed']:return message_id
+            previous=course.store.messages(course.plan_id,channel,limit=1)
+            at=self.now()
+            if previous:at=max(at,datetime.fromisoformat(previous[-1]['at'])+timedelta(microseconds=1))
+            return course.store.append_message(course.plan_id,channel,role,text,kind=kind,message_id=message_id,at=at)
 
     def _record(self, course, state, context, pending, verdict, answer):
         if self._prior_verdict(course,state,pending):return
@@ -1951,6 +1960,20 @@ class Classroom:
         if facts:text+='已记录的作答事实：'+facts
         course.store.save_teacher_profile(course.plan_id,dict(document,text=text,preferences=self._prefs(course),
             weak_points=[dict(point_id=pid,note=reason) for pid,reason in latest.items()]))
+
+    def _missing_gaps(self, plan_id):
+        legacy = self._file(plan_id)  # Validate the id without requiring an active lesson.
+        store = self.services.store
+        plan = store.get_plan(plan_id)
+        if not store.classroom_gaps_imported(plan_id):
+            if store.classroom_position(plan_id) is None:
+                self._load(_Course(store, plan))  # Preserve the legacy-position import path.
+            legacy_gaps = legacy.read({}).get('question_gaps', [])
+            if not isinstance(legacy_gaps, list):
+                legacy_gaps = []
+            return store.import_classroom_gaps(plan_id, legacy_gaps)
+        record = store.classroom_position(plan_id)
+        return list((record or {}).get('state', {}).get('question_gaps') or [])
 
     def _file(self, plan_id):
         if not isinstance(plan_id, str) or not _PLAN_ID.fullmatch(plan_id):
@@ -2432,7 +2455,7 @@ def register(bridge, services, study_day, *, presence=lambda active,plan_id=None
         'classroom.back':lambda p,c:invoke('back',p,c),
         'classroom.retry':lambda p,c:invoke('retry',p,c),
         'classroom.cancel_preparation':lambda p,c:invoke('stop_preparation',p,c),
-        'classroom.gaps':lambda p,c:room()._file(p.get('plan_id')).read({}).get('question_gaps',[]),
+        'classroom.gaps':lambda p,c:room()._missing_gaps(p.get('plan_id')),
         'classroom.test':test,
         'classroom.direct_next':lambda p,c:invoke('direct_next',p,c),
         'classroom.direct_choice':lambda p,c:invoke('direct_choice',p,c,p.get('skip')),
