@@ -172,7 +172,7 @@ def test_prep205_hundred_point_preparation_stays_bounded_and_resumes_without_mod
         result = point_materials.prepare_module(store, plan_id, 'large',
             dict(finder=empty_finder), lambda *_args: None)
         assert result['points'] == 150 and result['questions'] == 0
-        assert len(calls) == 150
+        assert len(calls) == 0
         module = next(row for row in store.records('modules', plan_id) if row['id'] == 'large')
         extraction = module['question_extraction']
         assert extraction['state'] == 'done' and extraction['result']['points'] == 150
@@ -208,7 +208,7 @@ def test_prep205_hundred_point_preparation_stays_bounded_and_resumes_without_mod
             "SELECT local_revision FROM _records WHERE entity='points' AND entity_id=?",
             (f'{len(plan_id)}:{plan_id}{point["id"]}',)).fetchone()[0] for point in saved_points}
         point_materials.prepare_module(store, plan_id, 'large', dict(finder=empty_finder), lambda *_args: None)
-        assert len(calls) == 150
+        assert len(calls) == 0
         module_after = next(row for row in store.records('modules', plan_id) if row['id'] == 'large')
         assert module_after['question_extraction']['state'] == 'done'
         assert module_after['question_extraction']['result']['points'] == 150

@@ -296,7 +296,10 @@ class Classroom:
             self._local.point_checkpoint = None
             self._local.prefetched = self._take_prefetch(course,state,action)
             try:
-                if state.get('pending') and not self._gradable(state['pending']['question']) and not (action and action[0]=='leave'):
+                if state.get('resume_retired_questions') and not (action and action[0]=='leave'):
+                    # A stale click must not answer the replacement question.
+                    self.enter(course,state,ctx)
+                elif state.get('pending') and not self._gradable(state['pending']['question']) and not (action and action[0]=='leave'):
                     self._replace_subjective(course,state,ctx)
                 elif self._test_already_closed(course, state):
                     self._finish_test(course, state, ctx)
@@ -386,8 +389,9 @@ class Classroom:
         if state.get('version') != 2 or state.get('module_id') not in modules:
             state = self._rebuild(course)
         state=self._reconcile_position(course,state)
-        room = (state.get('practice') or {}).get('resume', state)
         bank = course.store.records('question_bank',course.plan_id)
+        self._reconcile_cloze_scene(course,state,bank)
+        room = (state.get('practice') or {}).get('resume', state)
         bank_ids = {q['id'] for q in bank}
         retired = {q['id'] for q in bank if q.get('role')=='retired'}
         pending = room.get('pending') or {}
@@ -417,6 +421,56 @@ class Classroom:
             # A bank/source edit must not leave an obsolete unscored scene open.
             self._restore_direct(state,review['resume'])
         return self._reconcile_kept_check(course,state)
+
+    def _reconcile_cloze_scene(self, course, state, bank):
+        """Retire future cloze cards, not immutable answers or closed manifests.
+
+        An open attempt keeps already-judged cloze in its historical score.
+        Only its unanswered cloze leave the frozen manifest. Read-only polling
+        only projects the scene; entering resumes the next eligible question.
+        """
+        retired={q['id'] for q in bank if q.get('origin')=='cloze'}
+        if not retired:return
+        judgements=course.store.records('judgements',course.plan_id)
+        def reconcile(room):
+            practice=room.get('practice') or {}
+            if practice.get('resume'):reconcile(practice['resume'])
+            pending=room.get('pending') or {}
+            removed_pending=pending.get('question',{}).get('id') in retired
+            if removed_pending:
+                room['pending']=None
+                for key in ('failure','recall_result','answer_explanation'):
+                    room.pop(key,None)
+            for key in ('test','check'):
+                exam=room.get(key)
+                if not exam:continue
+                queue=exam.get('queue',[]);index=exam.get('index',0)
+                if not any(q.get('id') in retired for q in queue):continue
+                exam['queue']=[q for q in queue if q.get('id') not in retired]
+                exam['index']=sum(q.get('id') not in retired for q in queue[:index])
+                if key=='test':
+                    attempts={exam.get('attempt'),exam.get('assessment_id')}
+                    answered={r['event'].get('question_id') for r in judgements
+                              if r['event'].get('attempt_id') in attempts and r['event'].get('attempt_id')}
+                    for field in ('question_ids','assessment_question_ids','targets'):
+                        if field in exam:
+                            exam[field]=[qid for qid in exam[field] if qid not in retired or qid in answered]
+                    if not exam['queue'] and not any(qid in answered for qid in exam.get('question_ids',[])):
+                        # An entirely unasked generated quiz is not a failed
+                        # test or a skip grant. Resume from real learning facts.
+                        room.update(self._rebuild(course))
+                        room.pop('resume_retired_questions',None)
+                        continue
+                    if room.get('pending'):
+                        room['pending'].update(number=exam['index']+1,total=len(exam['queue']))
+                if not room.get('pending'):
+                    room['resume_retired_questions']=key
+            if removed_pending and practice:
+                room['resume_retired_questions']='practice'
+            elif removed_pending and pending.get('kind')=='check':
+                room['check']=None
+                room['resume_retired_questions']='check'
+        reconcile(state)
 
     def _reconcile_kept_check(self, course, state):
         """An explicit keep-one grant may supersede a saved, already-passed card.
@@ -709,6 +763,10 @@ class Classroom:
 
     def enter(self, course, state, ctx):
         self._normalize_unknown_material_wait(state)
+        resume=state.pop('resume_retired_questions',None)
+        if resume=='test':self._ask_next(course,state,ctx)
+        elif resume=='check':self._next_check(course,state,ctx)
+        elif resume=='practice':self._ask_practice(course,state,ctx)
         if state.pop('resume_kept_check',False):self._next_check(course,state,ctx)
         if (course.book().check_complete() and not self._questions(course) and course.plan['state']!='completed'
                 and all(self._ready(course,m['id']) for m in course.modules)):
@@ -1228,7 +1286,7 @@ class Classroom:
             if isinstance(exc,_SupersededOperation):raise
             if cancel.is_set() or isinstance(exc,ModelCancelled):raise ModelCancelled() from None
             log.info('point preparation did not produce a question',exc_info=True)
-            if getattr(exc,'code','') in ('CLOZE_FAILED','POINT_SOURCE_MISSING'):
+            if getattr(exc,'code','')=='POINT_SOURCE_MISSING':
                 return dict(kind='question_program_error',code=exc.code,reason=str(exc),
                     recorded=getattr(exc,'evidence_saved',True))
             return dict(kind='material_gap',code=getattr(exc,'code','PREPARATION_UNAVAILABLE'),reason='找题暂未完成，请稍后再试')
@@ -2304,7 +2362,13 @@ class Classroom:
             explanation=state.get('answer_explanation')
             self._restore_direct(state,test['resume'])
             if explanation:state['answer_explanation']=explanation
-        self._say(course,state,f'本模块答对 {correct}/{total} 道题。'+('已达到90%，模块通过。' if passed else '尚未达到90%，回到直接考之前的位置接着学。' if test['kind']=='skip_test' else '尚未达到90%，只重测答错的题，不重讲。'))
+        retired_cloze={q['id'] for q in store.records('question_bank',course.plan_id) if q.get('origin')=='cloze'}
+        has_cloze=bool(retired_cloze.intersection(test.get('assessment_question_ids') or test.get('question_ids') or []))
+        note='旧挖空题的作答保留在历史成绩中，不再作为通过门槛。' if has_cloze else ''
+        self._say(course,state,f'本模块答对 {correct}/{total} 道题。'+note+(
+            ('模块通过。' if has_cloze else '已达到90%，模块通过。') if passed else
+            '回到直接考之前的位置接着学。' if test['kind']=='skip_test' else
+            '继续学习即可。' if not self._questions(course,mid) else '尚未达到90%，只重测答错的原题，不重讲。'))
         self._publish_today(course,state,ctx)
         self._profile(course)
 

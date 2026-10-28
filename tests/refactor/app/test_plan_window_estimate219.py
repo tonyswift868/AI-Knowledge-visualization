@@ -51,10 +51,14 @@ def test_219_plan_preview_includes_general_module_and_final_check_reserve(fixtur
 
     ranges = draft['outline']['ranges']
     learning = ranges['learning']
+    # This fixture contains no source exercises; point count is not a proxy for
+    # assessment count. Preview reserves therefore use zero questions here.
+    question_counts = flow._question_counts(draft, modules)
     expected = plan_flow.map_ranges(
         flow._window(draft), point_count, module_counts=[len(m['points']) for m in modules],
-        question_counts=[len(m['points']) for m in modules], learning_minutes=learning)
+        question_counts=question_counts, learning_minutes=learning)
     assert ranges['total'] == expected['total']
     assert ranges['daily'] == expected['daily']
-    assert ranges['total'][1] > learning
-    assert draft['estimate']['note'] == '知识地图已核验；保存时不再生成知识点。总时长含暂估的检测储备，备题后按实际题量调整。'
+    assert ranges['total'] == [learning, learning]
+    assert ranges['estimated_question_count'] == 0
+    assert '原题估算' in draft['estimate']['note']

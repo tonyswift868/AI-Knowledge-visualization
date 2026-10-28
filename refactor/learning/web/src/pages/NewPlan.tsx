@@ -71,7 +71,7 @@ export type Draft = {
 }
 type Detail = {
   plan: { id: string; title?: string; goal: string; state: string; window: { start: string; end: string } | null; total_minutes: number }
-  stages: { id: string; title: string; modules: { id: string; title: string; summary: string; learning_minutes: number; check_minutes: number; state?: string | null; cloze_heavy?: boolean
+  stages: { id: string; title: string; modules: { id: string; title: string; summary: string; learning_minutes: number; check_minutes: number; state?: string | null
     navigation?: {id: string; title: string; reason: string; citations?: Citation[]}[]
     points: { structure?: string; subpoints?: {id: string; title: string; minutes: number}[]; citations?: Citation[]; source_general?: boolean; id: string; title: string; summary: string; minutes: number; state?: string; level?: number; errors?: number; needs_review?: boolean; taught?: boolean }[] }[] }[]
   sources: { id: string; title: string; url: string | null; kind: string }[]
@@ -689,7 +689,6 @@ export function PlanTree({ detail, editable, busy, onDelete, onMove }:
                   </div>
                   <p>{m.summary}</p>
                   {!!m.navigation?.length && <details><summary>资料导航（{m.navigation.length} 条，不计学习时长）</summary>{m.navigation.map(n=><div key={n.id}><b>{n.title}</b><p>{n.reason}</p><PointCitations citations={n.citations}/></div>)}</details>}
-                  {m.cloze_heavy && <small className="muted">这个模块有较多知识点用的是原文填空题</small>}
                   {open === m.id && (
                     <ol className="point-list fade-in">
                       {m.points.map((p) => <li key={p.id} className={p.state ? `mastery-${MASTERY[p.state]?.[1] ?? "none"}` : ""}>

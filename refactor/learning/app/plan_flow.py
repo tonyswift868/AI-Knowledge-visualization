@@ -295,8 +295,7 @@ class PlanFlow:
                     # Late background notifications must not reopen an account.
                     return view  # Keep the last preview; don't query the closed account again.
                 known=[saved.get(m.get('id')) for m in modules]
-                question_counts = ([n if n is not None else len(m['points'])
-                                    for m, n in zip(modules, known)] if saved else None)
+                question_counts = self._question_counts(draft, modules)
                 view['outline']['ranges'] = self._content_ranges(draft, modules,
                     question_counts=question_counts)
                 view['outline']['ranges']['checks_pending']=any(n is None for n in known)
@@ -1227,32 +1226,60 @@ class PlanFlow:
                     agents.estimate_point_minutes(**metrics[row['id']], difficulty=p.get('difficulty', '中')))
             module['minutes'] = [sum(p['minutes'] for p in originals)] * 2
         if question_counts is None:
-            question_counts = [len(module['points']) for module in modules]
-        return map_ranges(self._window(draft), len(rows), module_counts=[len(m['points']) for m in modules],
-                          question_counts=question_counts, learning_minutes=sum(m['minutes'][0] for m in modules))
+            question_counts = self._question_counts(draft, modules)
+        ranges = map_ranges(self._window(draft), len(rows), module_counts=[len(m['points']) for m in modules],
+                            question_counts=question_counts, learning_minutes=sum(m['minutes'][0] for m in modules))
+        ranges['estimated_question_count'] = sum(question_counts)
+        return ranges
+
+    def _question_counts(self, draft, modules):
+        """Use prepared counts when known; otherwise count only source originals."""
+        from ..course.material_questions import candidates, for_module, references
+        sources, chunks_by_source = self._adopted(draft)
+        adopted_ids = {source['id'] for source in sources}
+        chunks = [chunk for source_id, rows in chunks_by_source.items() if source_id in adopted_ids
+                  for chunk in rows]
+        originals = candidates(chunks, sources)
+        stored_modules = self.services.store.records('modules', draft['plan_id'])
+        saved = {module['id']: module.get('question_count') for module in stored_modules}
+        stored_by_id = {module['id']: module for module in stored_modules}
+        rows = self.services.store.records('question_bank', draft['plan_id'])
+        from ..course.question_bank import assessment_questions
+        counts = []
+        for module in modules:
+            actual = saved.get(module.get('id'))
+            if type(actual) is int and actual >= 0:
+                counts.append(actual)
+            else:
+                module_id = module.get('id')
+                bank_count = len(assessment_questions(rows, module_id)) if module_id else 0
+                stored = stored_by_id.get(module_id, {})
+                prepared = ((stored.get('question_extraction') or {}).get('state') in ('done', 'partial')
+                            or (stored.get('material_preparation') or {}).get('state') == 'done')
+                chunk_ids = {cid for point in module['points'] for cid in references(point)}
+                counts.append(bank_count if bank_count or prepared else
+                              len(for_module(originals, chunk_ids=chunk_ids)))
+        return counts
 
     def estimate(self, draft, *, annotate=True):
         if draft["phase"] != "outline" or not draft.get("outline"):
             raise BridgeError("PHASE_INVALID", "请先生成路线轮廓。")
         modules = agents.outline_modules(draft["outline"])
-        # Before preparation creates the question bank, use a conservative
-        # provisional estimate of one assessment question per point. Actual
-        # prepared counts later replace this preview reserve.
         ranges = self._content_ranges(draft, modules, annotate=annotate,
-                                      question_counts=[len(module['points']) for module in modules])
+                                      question_counts=self._question_counts(draft, modules))
         draft["outline"]["ranges"] = ranges
         draft["estimate"] = {"modules": len(modules), "points": ranges["points"],
             "input_tokens": [0, 0], "output_tokens": [0, 0], "model": "",
-            "note": "知识地图已核验；保存时不再生成知识点。总时长含暂估的检测储备，备题后按实际题量调整。",
+            "note": "知识地图已核验；检测储备按资料原题估算，备题后按实际可用题量调整；没有原题的模块只学不考。",
             "blocked": False}
         if ranges["over_cap"]:
             text = (f"按现在日期每天需要 {ranges['daily'][1]} 分钟，超过你填写的 {ranges['cap']} 分钟。"
                     f"建议延长到 {ranges['suggested_end']}（共 {ranges['suggested_days']} 天），或缩小学习范围。"
-                    "检测储备为暂估，备题后按实际题量调整。可以提高每天时长、延长周期或调整内容，也可以按当前安排继续。")
+                    "检测储备按资料原题估算，备题后按实际可用题量调整。可以提高每天时长、延长周期或调整内容，也可以按当前安排继续。")
         else:
             text = (f"共 {ranges['points']} 个知识点，按原文分量和难度预估学习 {ranges['learning']} 分钟；"
                     f"含暂估检测储备的总时长约 {ranges['total'][1]} 分钟，每天约 {ranges['daily'][1]} 分钟。"
-                    "备题后按实际题量调整。确认后保存计划并准备第 1 模块。")
+                    "检测储备按资料原题估算，没有原题的模块只学不考。确认后保存计划并准备第 1 模块。")
         draft["messages"].append(_msg("ai", "estimate", text))
         self.save(draft)
 
@@ -1354,8 +1381,8 @@ class PlanFlow:
             prepared = {m['id']: m.get('question_count') for m in store.records('modules', plan_id)}
             counts = [prepared.get(m.get('id')) for m in modules]
             draft['outline']['ranges'] = self._content_ranges(
-                draft, modules, question_counts=[n if n is not None else len(m['points'])
-                                                 for m, n in zip(modules, counts)])
+                draft, modules, question_counts=[n if type(n) is int and n >= 0 else fallback
+                    for n, fallback in zip(counts, self._question_counts(draft, modules))])
             draft['outline']['ranges']['checks_pending'] = any(n is None for n in counts)
             if ctx.cancel.is_set():
                 raise ModelCancelled()
@@ -1474,18 +1501,15 @@ class PlanFlow:
                 metadata_count = count
             else:
                 store.set_question_estimate(plan_id, module_id, count, today=self.study_day())
-        if not isinstance(result, dict) or not any(k in result for k in ('points', 'cloze_points', 'cloze_heavy')):
+        if not isinstance(result, dict) or not any(k in result for k in ('points', 'questions')):
             if metadata_count is not None:
                 store.save_module_preparation(plan_id, module_id, {}, merge=True, question_count=metadata_count)
             return
-        summary = {k: result.get(k) for k in ('points', 'cloze_points', 'cloze_heavy')}
-        if (type(summary['points']) is not int or type(summary['cloze_points']) is not int
-                or not 0 <= summary['cloze_points'] <= summary['points'] or type(summary['cloze_heavy']) is not bool):
+        if (type(result.get('points')) is not int or type(result.get('questions')) is not int
+                or result['points'] < 0 or result['questions'] < 0):
             raise BridgeError('PREPARATION_FORMAT', '资料准备结果不完整，请重试。')
-        # A cached worker may still carry the former 80-point summary. The
-        # actual structure and eligible bank rows are the display authority.
         summary = {k: current[k] for k in ('points', 'questions', 'objective', 'recall',
-            'rejected', 'cloze_points', 'cloze_heavy', 'supplemental_questions')}
+            'rejected', 'supplemental_questions')}
         saved = module.get('material_preparation') or {}
         if metadata_count is not None or any(saved.get(k) != v for k, v in summary.items()):
             store.save_module_preparation(plan_id, module_id, summary, merge=True, question_count=metadata_count)
@@ -2895,8 +2919,7 @@ class PlanFlow:
                        "prerequisites": m.get("prerequisites", []),
                        "state": book.module(m["id"]).state if book else None,
                        "question_count": bank_counts.get(m['id'], [0, 0])[0],
-                       "passed_questions": bank_counts.get(m['id'], [0, 0])[1],
-                       "cloze_heavy": bool((m.get('material_preparation') or {}).get('cloze_heavy'))}
+                       "passed_questions": bank_counts.get(m['id'], [0, 0])[1]}
                       for m in modules if m["stage_id"] == s["id"]]} for s in stages],
                   "sources": [{"id": s["id"], "title": s.get("title") or s.get("url") or s.get("filename"), "url": s.get("url"),
                                "kind": s["kind"]} for s in store.records("sources", plan_id) if s.get("adopted")]}

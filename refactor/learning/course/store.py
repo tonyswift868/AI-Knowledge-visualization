@@ -1075,14 +1075,19 @@ class CourseStore:
         legacy = plan.get('material_version') not in (2, 3)
         upgrade_fields = plan.get('material_version') != 3 or plan.get('material_migration') == 8
         changed_modules, changed_points = set(), set()
+        retired_cloze = False
         for question in self._rows('question_bank', plan_id):
             retired = self._retire_legacy_question(question)
-            if retired.get('role') == 'retired' and not retired['retirement'].get('preparation_reset'):
+            is_cloze_retirement = question.get('origin') == 'cloze' and retired.get('role') == 'retired'
+            if is_cloze_retirement:
+                retired_cloze |= retired != question
+            elif retired.get('role') == 'retired' and not retired['retirement'].get('preparation_reset'):
                 retired = dict(retired, retirement=dict(retired['retirement'], preparation_reset=True))
             if retired != question:
                 self._put('question_bank', plan_id, retired)
-                changed_modules.add(question['module_id'])
-                changed_points.update(question.get('point_ids', ()))
+                if not is_cloze_retirement:
+                    changed_modules.add(question['module_id'])
+                    changed_points.update(question.get('point_ids', ()))
         chunks = {c['id']: c for c in self._rows('source_chunks', plan_id)}
         sources = {s['id']: s for s in self._rows('sources', plan_id)}
         modules = self._rows('modules', plan_id)
@@ -1131,7 +1136,7 @@ class CourseStore:
         original = dict(plan)
         plan.pop('unusable', None); plan.pop('unusable_reason', None)
         plan['material_version'] = 3
-        if legacy or changed_modules:
+        if legacy or changed_modules or retired_cloze:
             plan['material_migration'] = 8
         if plan != original: self._put('plans', plan_id, plan)
         return plan
@@ -1142,6 +1147,12 @@ class CourseStore:
         # Also accept an old locally restored plan without requiring app restart.
         if plan.get('material_version') != 3 or plan.get('unusable'):
             return self._upgrade_material_plan(plan_id)
+        # Cloze retirement is deliberately narrower than the historical v8
+        # material upgrade: it must not retire unrelated legacy found rows or
+        # mark their modules for re-preparation.
+        for row in self._rows('question_bank', plan_id):
+            if row.get('origin') == 'cloze' and row.get('role') != 'retired':
+                self._put('question_bank', plan_id, self._retire_legacy_question(row))
         return plan
 
     @_atomic
@@ -1845,6 +1856,7 @@ class CourseStore:
 
     def load_mastery(self, plan_id) -> MasteryBook:
         with self.transaction():
+            self.require_material_plan(plan_id)
             self._get('plans', plan_id, plan_id)
             modules = sorted(self._rows('modules', plan_id), key=lambda m: (m['position'], m['id']))
             points = self._rows('points', plan_id)

@@ -160,7 +160,7 @@ class MasteryBook:
         self._refs = {p.point_id:p for p in self._points}
         if len(self._refs)!=len(self._points):raise MasteryError('DUPLICATE_POINT')
         self._modules = dict.fromkeys(p.module_id for p in self._points)
-        self._questions = {q['id']:{k:copy.deepcopy(q[k]) for k in ('id','module_id','point_ids')}
+        self._questions = {q['id']:{k:copy.deepcopy(q[k]) for k in ('id','module_id','point_ids','origin','role') if k in q}
                            for q in questions}
         self._final_question_ids = (set(self._questions) if final_question_ids is None
                                     else set(final_question_ids))
@@ -326,6 +326,11 @@ class MasteryBook:
                         m['assessment_id']=assessment_id or event.attempt_id
                         m['assessment_ids']=tuple(dict.fromkeys(ids))
                 ids=[qid for qid in ids if qid in questions]
+                # Keep the frozen manifest and first-test summary intact for
+                # history, while removing retired generated cloze from the
+                # current mastery denominator.
+                active_ids=[qid for qid in ids if not self._is_retired_cloze(qid)]
+                cloze_only_manifest=bool(ids) and all(self._is_retired_cloze(qid) for qid in ids)
                 # No-question direct review is a learner's skip decision, not
                 # an assessment. Credits and this close are committed together;
                 # retain the existing skipped projection without fake answers.
@@ -333,7 +338,18 @@ class MasteryBook:
                     m.update(state='skipped',skip_test_passed=True)
                     closed.add(key)
                     continue
-                passed=bool(ids) and sum(questions[qid]['module_correct'] is True for qid in ids)*10>=len(ids)*9
+                historical_passed=(bool(ids) and
+                    sum(questions[qid]['module_correct'] is True for qid in ids)*10>=len(ids)*9)
+                passed=historical_passed or (bool(active_ids) and
+                    sum(questions[qid]['module_correct'] is True for qid in active_ids)*10>=len(active_ids)*9)
+                if not active_ids and all(p.point_id in self._taught for p in self._points
+                                          if p.module_id==event.module_id):
+                    passed=True
+                elif cloze_only_manifest and m['state'] not in ('passed','skipped'):
+                    # A former cloze-only assessment is no longer a learning
+                    # gate. Until its points are taught, resume teaching while
+                    # preserving the historical failed attempt below.
+                    m['state']='untested'
                 if event.kind=='retest':m['retest_count']+=1
                 else:m[event.kind+'_count']+=1
                 if m['first_test'] is None and event.kind!='retest':
@@ -343,8 +359,10 @@ class MasteryBook:
                 direct=event.kind=='skip_test' or event.kind=='retest' and m['skip_test_count']>0 and m['module_test_count']==0
                 # A completed module assessment is a durable achievement.
                 # New bank questions are for final check and cannot revoke it.
-                if m['state'] not in ('passed','skipped'):
+                if m['state'] not in ('passed','skipped') and not cloze_only_manifest:
                     m['state']=('skipped' if direct else 'passed') if passed else 'failed'
+                elif cloze_only_manifest and passed and m['state'] not in ('passed','skipped'):
+                    m['state']='skipped' if direct else 'passed'
                 if direct and passed:m['skip_test_passed']=True
                 closed.add(key);continue
             qid=event.question_id
@@ -381,6 +399,10 @@ class MasteryBook:
                     if q['passed']:q['check_passed_at']=event.at.isoformat()
         self._cache=questions,modules,history
         return self._cache
+
+    def _is_retired_cloze(self, question_id):
+        row=self._questions.get(question_id,{})
+        return row.get('origin')=='cloze' and row.get('role')=='retired'
 
     def question(self, question_id):
         qs,_,_=self._project()
