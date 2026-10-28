@@ -40,6 +40,7 @@ done
 [ -n "$compose_files" ] || { echo "Compose labels contain no base config files" >&2; exit 1; }
 
 set -- -p "$project" --project-directory "$working_dir"
+if [ "${COMPOSE_DRY_RUN:-0}" = 1 ]; then set -- --dry-run "$@"; fi
 # The production backend and its readiness helpers share the
 # account-core-mvp profile. Activating only the explicitly named backend is
 # insufficient: Compose can then omit nested depends_on services. Let an
@@ -72,7 +73,10 @@ if [ "$action" = recreate ]; then
 fi
 set -- "$@" -f "$network_override"
 if [ "$action" = start ]; then
-  exec "$docker_bin" compose "$@" start backend oidc-loopback-proxy
+  # Reuse 234's successful up --no-deps path. Compose start still validates
+  # pruned readiness dependencies on production; only these existing services
+  # may be started/reconciled, never postgres or one-shot initialization jobs.
+  exec "$docker_bin" compose "$@" up -d --no-deps backend oidc-loopback-proxy
 fi
 if [ "$action" = recreate ]; then
   exec "$docker_bin" compose "$@" up -d --no-deps --force-recreate backend oidc-loopback-proxy

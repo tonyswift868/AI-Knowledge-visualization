@@ -186,6 +186,6 @@ def test_release219_build_start_cutover_restore_sequence(existing_deploy, tmp_pa
     python = next(i for i, line in enumerate(calls) if line.endswith("--force-recreate backend oidc-loopback-proxy"))
     java = next(i for i, line in enumerate(calls) if line.endswith("up -d --no-deps java-backend java-oidc"))
     switch = next(i for i, line in enumerate(calls) if "nginx -s reload" in line)
-    restore = next(i for i, line in enumerate(calls) if line.endswith("start backend oidc-loopback-proxy"))
+    restore = next(i for i, line in enumerate(calls) if line.endswith("up -d --no-deps backend oidc-loopback-proxy"))
     assert build < python < java < switch < restore
     assert all("network45.override.yml " in line for line in calls if line.startswith("compose "))

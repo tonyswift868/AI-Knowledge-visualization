@@ -273,11 +273,14 @@ def test_restore_starts_python_then_cuts_edge_back(sandbox):
     assert "server backend:8000 resolve;" in edge.read_text(encoding="utf-8")
     assert edge.stat().st_ino == inode
     log = _log(sandbox)
-    assert "network45.override.yml start backend" in log
+    assert "network45.override.yml up -d --no-deps backend oidc-loopback-proxy" in log
     assert "inspect --format" in log
     assert "nginx -s reload" in log
     commands = log.splitlines()
-    start_index = next(i for i, line in enumerate(commands) if line.startswith("compose ") and " start " in line)
+    start_index = next(
+        i for i, line in enumerate(commands)
+        if line.startswith("compose ") and " up -d --no-deps backend oidc-loopback-proxy" in line
+    )
     health_index = next(i for i, line in enumerate(commands) if "Health.Status" in line)
     cutover_index = next(i for i, line in enumerate(commands) if "nginx -t" in line)
     assert start_index < health_index < cutover_index
@@ -296,7 +299,7 @@ def test_restore_unhealthy_python_never_switches_edge(sandbox):
     assert result.returncode != 0
     assert edge.read_text(encoding="utf-8") == original
     log = _log(sandbox)
-    assert "network45.override.yml start backend" in log
+    assert "network45.override.yml up -d --no-deps backend oidc-loopback-proxy" in log
     assert "nginx -t" not in log
 
 
