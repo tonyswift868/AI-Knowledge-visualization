@@ -253,6 +253,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
 select.input { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%), linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
   background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 34px; }
 
+.select-menu-trigger { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-width: 0;
+  padding: 11px 14px; border: 1px solid var(--border-strong); border-radius: 13px; outline: none;
+  background: var(--surface-2); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  transition: border-color .2s, box-shadow .2s, background .2s; }
+.select-menu-trigger:hover:not(:disabled) { border-color: var(--accent); }
+.select-menu-trigger:focus-visible, .select-menu-trigger[aria-expanded="true"] { border-color: var(--accent); box-shadow: var(--focus); }
+.select-menu-trigger:disabled { opacity: .55; cursor: not-allowed; }
+.select-menu-trigger > svg { flex: none; color: var(--text-3); transition: transform .18s ease; }
+.select-menu-trigger[aria-expanded="true"] > svg { transform: rotate(180deg); }
+.select-menu-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-menu-popup { position: fixed; z-index: 1200; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain;
+  padding: 5px; border: 1px solid var(--border-strong); border-radius: 13px; background: var(--surface-solid);
+  box-shadow: 0 12px 36px rgba(20, 18, 40, .2); color: var(--text); scrollbar-width: thin; }
+.select-menu-option { display: flex; align-items: center; gap: 9px; min-width: 0; min-height: 38px; padding: 8px 10px;
+  border-radius: 9px; color: var(--text-2); font-size: .88rem; cursor: pointer; }
+.select-menu-option > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-menu-option:hover, .select-menu-option.active { background: var(--accent-soft); color: var(--accent); }
+.select-menu-option.selected { font-weight: 700; color: var(--accent-2); }
+.select-menu-option.selected.active { color: var(--accent); }
+.select-menu-check { flex: none; margin-left: auto; }
+
 .segmented { display: inline-flex; padding: 4px; border-radius: 14px; background: var(--accent-soft); gap: 4px; flex-wrap: wrap; }
 .segmented button { border: 0; background: transparent; padding: 8px 16px; border-radius: 11px; cursor: pointer; color: var(--text-2); font-weight: 600; font-size: 0.9rem; transition: all 0.2s; }
 .segmented button:hover { color: var(--accent); }

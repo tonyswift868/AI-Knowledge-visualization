@@ -5,8 +5,9 @@ import { BookOpen, Check, Copy, FilePlus2, LoaderCircle, MessageSquarePlus, Send
 import { call, on } from "../bridge"
 import { useApp } from "../store"
 import { useRoundScroll } from "../useRoundScroll"
-import { Button, ModelFaultPanel, useModelRetry } from "../ui"
+import { Button, ModelFaultPanel, SelectMenu, useModelRetry } from "../ui"
 import { Loading } from "../loading/Loading"
+import { MicButton, useVoiceInput } from "../voice"
 import "./rag.css"
 
 type Plan = { id: string; title: string; document_ids: string[] }
@@ -42,6 +43,22 @@ export function Rag() {
   const probeRagStatus = React.useRef<(() => void) | null>(null)
   const scrollRef = React.useRef<HTMLDivElement>(null)
   const beginRound = useRoundScroll(scrollRef, session?.id)
+  const ragFault = modelFault && (modelFault.purpose === "rag_qa" || modelFault.purpose === "rag.send") ? modelFault : null
+  const voiceTerms = React.useMemo(() => selected
+    .map((id) => sources?.documents.find((doc) => doc.id === id)?.title)
+    .filter((title): title is string => !!title), [selected, sources])
+  const voiceScopeKey = `rag:${session?.id ?? "new"}:${[...selected].sort().join("\u001f")}`
+  const onVoiceChange = React.useCallback((value: string) => {
+    setQuestion(value)
+    if (value.trim() !== question.trim() && (sendFailure || ragFault)) clearSendFailure()
+  }, [question, sendFailure, ragFault])
+  const questionVoice = useVoiceInput({
+    value: question,
+    onChange: onVoiceChange,
+    terms: voiceTerms,
+    scopeKey: voiceScopeKey,
+    disabled: !!busy || !!pending,
+  })
   useModelRetry(() => { void send() }, (fault) => fault.purpose === "rag_qa" || fault.purpose === "rag.send")
 
   function clearSendFailure() {
@@ -272,7 +289,6 @@ export function Rag() {
   const selectedDocuments = selected.map((id) => docById(id)).filter((doc): doc is Document => !!doc)
   const currentPlan = sources.plans.find((plan) => plan.id === planId)
   const sessions = sources.sessions
-  const ragFault = modelFault && (modelFault.purpose === "rag_qa" || modelFault.purpose === "rag.send") ? modelFault : null
   const sessionGroups = new Map<string, { title: string; sessions: SessionSummary[] }>()
   for (const item of sessions) {
     const key = [...item.document_ids].sort().join("\u001f")
@@ -294,9 +310,11 @@ export function Rag() {
       <aside className="card rag-sources" aria-label="选择问答资料">
         <div className="rag-section-title"><span className="rag-step">01</span><div><h2>选择资料</h2><p>同一份资料可以用于多个问答会话。</p></div></div>
         <label className="rag-label" htmlFor="rag-plan-select">按计划选择</label>
-        <select id="rag-plan-select" className="input" data-testid="rag-plan-select" aria-label="按计划选择资料" value={planId} disabled={!!pending || !!busy} onChange={(event) => selectPlan(event.target.value)}>
-          <option value="">选择一个计划…</option>{sources.plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.title}</option>)}
-        </select>
+        <SelectMenu id="rag-plan-select" className="rag-plan-select" testId="rag-plan-select"
+          optionTestIdPrefix="rag-plan-option-" ariaLabel="按计划选择资料" value={planId}
+          placeholder="选择一个计划…" disabled={!!pending || !!busy}
+          options={[{ value: "", label: "选择一个计划…" }, ...sources.plans.map((plan) => ({ value: plan.id, label: plan.title }))]}
+          onChange={selectPlan} />
         {currentPlan && <Button small kind="ghost" className="rag-all-plan" data-testid="rag-plan-select-all" aria-label={`选择计划全部资料：${currentPlan.title}`} disabled={!!pending || !!busy} onClick={() => togglePlan(currentPlan.id)}>
           {currentPlan.document_ids.every((id) => selected.includes(id)) ? "取消本计划资料" : "选择这个计划的全部资料"} <span>· {currentPlan.document_ids.length} 份</span>
         </Button>}
@@ -354,9 +372,12 @@ export function Rag() {
             <span>{sendFailure.message} 这条问题没有自动重发。</span>
             <Button small data-testid="rag-retry-send" disabled={!!busy || !!pending} onClick={() => void send(sendFailure.text)}>重试这条问题</Button>
           </div>}
-          <textarea className="input" rows={2} data-testid="rag-question" aria-label="输入资料问题" value={question} disabled={!!pending || !!busy}
-            placeholder="例如：这份资料是怎样解释这个概念的？" onChange={(event) => { const value = event.target.value; setQuestion(value); if (value.trim() !== question.trim() && (sendFailure || ragFault)) clearSendFailure() }}
-            onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }} />
+          <div className="rag-question-input">
+            <textarea className="input" rows={2} data-testid="rag-question" aria-label="输入资料问题" value={question} disabled={!!pending || !!busy}
+              placeholder="例如：这份资料是怎样解释这个概念的？" onChange={(event) => { const value = event.target.value; setQuestion(value); if (value.trim() !== question.trim() && (sendFailure || ragFault)) clearSendFailure() }}
+              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }} />
+            <div data-testid="rag-question-mic" role="group" aria-label="资料问题语音输入"><MicButton voice={questionVoice} /></div>
+          </div>
           {pending ? <Button data-testid="rag-cancel" onClick={() => abort.current?.abort()}><Square />取消回答</Button>
             : <Button kind="primary" data-testid="rag-send" disabled={!question.trim() || !selected.length || !!busy} onClick={() => void send()}>{busy === "send" ? <><LoaderCircle className="spin" />准备会话…</> : busy === "session" ? <><LoaderCircle className="spin" />建立会话…</> : <><SendHorizontal />提问</>}</Button>}
         </div>

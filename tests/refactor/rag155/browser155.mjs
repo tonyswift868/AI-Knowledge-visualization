@@ -8,7 +8,18 @@ const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pen
 async function js(expression){try{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value}catch(e){throw Error(String(e)+' expression='+expression)}}
 async function until(expression,limit=300){for(let i=0;i<limit;i++){if(await js(expression))return;await pause()}throw Error('timeout: '+expression)}
 async function click(selector){const p=await js(`(async()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;e.scrollIntoView({block:'nearest'});await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,hit=document.elementFromPoint(x,y);return{x,y,ok:x>=0&&y>=0&&x<innerWidth&&y<innerHeight&&(hit===e||e.contains(hit)),hit:hit?.outerHTML?.slice(0,100)}})()`);if(!p)throw Error('missing selector '+selector);if(!p.ok)throw Error('click target occluded/offscreen '+selector+' '+JSON.stringify(p));await call('Input.dispatchMouseEvent',{type:'mousePressed',x:p.x,y:p.y,button:'left',clickCount:1});await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x,y:p.y,button:'left',clickCount:1});await pause(80)}
-async function select(selector,value){await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}))})()`)}
+async function key(key,code,value){await call('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:value});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:value});await pause(50)}
+async function select(selector,value){
+ await click(selector);await until(`!!document.querySelector('[role="listbox"]')`);
+ const wanted=value?`rag-plan-option-${value}`:'rag-plan-option-empty';let found=false;
+ for(let i=0;i<8;i++){
+  const state=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),id=e?.getAttribute('aria-activedescendant'),items=[...document.querySelectorAll('[role="listbox"] [role="option"]')];return{active:items.findIndex(x=>x.id===id),target:items.findIndex(x=>x.dataset.testid===${JSON.stringify(wanted)})}})()`);
+  if(state.active===state.target){found=true;break}
+  await key(state.active<state.target?'ArrowDown':'ArrowUp',state.active<state.target?'ArrowDown':'ArrowUp',state.active<state.target?40:38);
+ }
+ if(!found)throw Error('custom plan option not keyboard reachable: '+wanted);
+ await key('Enter','Enter',13);await until(`!document.querySelector('[role="listbox"]')`);
+}
 async function input(selector,value){await js(`document.querySelector(${JSON.stringify(selector)})?.focus()`);await call('Input.insertText',{text:value});}
 const checks=[];const check=(yes,label)=>{if(!yes)throw Error(label);checks.push(label)};let result,stage='start';
 try{
