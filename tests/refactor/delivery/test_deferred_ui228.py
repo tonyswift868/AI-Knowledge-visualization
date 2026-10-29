@@ -13,7 +13,6 @@ if __name__ == '__main__':
 import pytest
 from PySide6.QtWidgets import QApplication, QWidget
 
-from refactor.desktop.update_dialog import UpdateDialog
 from refactor.desktop.updates import DesktopUpdates
 
 MESSAGE = '新版已下载好，下次打开软件时完成更新。'
@@ -42,7 +41,8 @@ def test_deferred228_startup_keeps_login_and_pending_message(adapter228, monkeyp
     assert gate.isEnabled()
     assert not ui.snapshot()['mandatory']
     assert ui.snapshot()['message'] == MESSAGE
-    assert shown == [True]
+    assert shown == []
+    assert ui._prompt is None
 
 
 def test_deferred228_background_ready_does_not_erase_next_launch_message(adapter228):
@@ -54,21 +54,21 @@ def test_deferred228_background_ready_does_not_erase_next_launch_message(adapter
     assert ui.snapshot()['message'] == MESSAGE
 
 
-def test_deferred228_native_offer_preserves_message(adapter228):
-    app, gate, ui = adapter228
-    ui._prompt = UpdateDialog(gate)
-    ui.state = dict(state='OPTIONAL_UPDATE', current='2.0.36', latest='2.0.37',
-        deferred_update=True, deferred_message=MESSAGE, message=MESSAGE)
-    ui._update_prompt()
-    assert ui._prompt.message.text() == MESSAGE
-    assert ui._prompt.install.isEnabled()
-    ui._prompt.close()
-    app.processEvents()
+def test_deferred228_optional_offer_preserves_message_without_native_prompt(adapter228):
+    _, gate, ui = adapter228
+    ui._apply_startup_result(dict(state='OPTIONAL_UPDATE', login_allowed=True,
+        current='2.0.36', latest='2.0.37', feed='VERIFIED', deferred_update=True,
+        deferred_target='2.0.37', deferred_message=MESSAGE, message=MESSAGE))
+    assert gate.isEnabled()
+    assert ui._prompt is None
+    assert ui.snapshot()['message'] == MESSAGE
 
 
 def test_deferred228_web_notice_has_pending_message_and_manual_retry(tmp_path):
     from tests.refactor.update194.test_settings_update194 import _prepare_page, NODE, DEPS
     _prepare_page(tmp_path)
+    entry = Path(__file__).with_name('browser_deferred228.tsx')
+    (tmp_path/'entry.tsx').write_text('import '+json.dumps(entry.as_posix()), encoding='utf-8')
     screenshots = Path(os.environ.get('UPDATE228_ARTIFACTS', str(tmp_path/'screenshots')))
     screenshots.mkdir(parents=True, exist_ok=True)
     temp = tmp_path/'temp'; temp.mkdir()

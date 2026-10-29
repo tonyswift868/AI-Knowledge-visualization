@@ -115,16 +115,27 @@ def test_212_keep_refuses_initially_passed_item_and_rejects_changed_grant_scope(
     # A newly added final item after a grant cannot be silently covered by the
     # old immutable grant identifier.
     keep = ids["m6_old"][1]
-    execute_keep_question(tmp_path, fixture204.ACCOUNT, fixture204.PLAN, keep)
+    outcome = execute_keep_question(tmp_path, fixture204.ACCOUNT, fixture204.PLAN, keep)
     with CourseStore(fixture204.ACCOUNT, tmp_path) as store:
         extra = fixture204._question("late-question", "m6", "p6")
         store.add_bank_questions(fixture204.PLAN, "m6", [extra])
+    before = fixture204._db_digest(fixture204._course_db(tmp_path))
     try:
         preview_keep_question(tmp_path, fixture204.ACCOUNT, fixture204.PLAN, keep)
     except ValueError as exc:
         assert "新的未通过题" in str(exc)
     else:
         raise AssertionError("scope changes require a new explicit grant")
+    with CourseStore(fixture204.ACCOUNT, tmp_path) as store:
+        try:
+            store.grant_final_check_questions_except(fixture204.PLAN, keep,
+                grant_id=outcome["grant_id"])
+        except StoreError as exc:
+            assert exc.code == "GRANT_SCOPE_CHANGED"
+        else:
+            raise AssertionError("store must not extend the immutable grant to a new question")
+        assert not store.load_mastery(fixture204.PLAN).question(extra["id"]).passed
+    assert fixture204._db_digest(fixture204._course_db(tmp_path)) == before
 
 
 def test_212_store_repeat_is_noop_after_keep_passes_and_completed_plan(tmp_path):
@@ -154,7 +165,7 @@ def test_212_store_repeat_is_noop_after_keep_passes_and_completed_plan(tmp_path)
     assert fixture204._db_digest(fixture204._course_db(tmp_path)) == before
 
 
-def test_212_repeat_grant_refuses_previously_granted_item_that_became_unpassed(tmp_path):
+def test_212_repeat_grant_preserves_passed_item_and_late_wrong_fact(tmp_path):
     ids = _ready(tmp_path)
     keep = ids["m6_old"][0]
     outcome = execute_keep_question(tmp_path, fixture204.ACCOUNT, fixture204.PLAN, keep)
@@ -166,19 +177,28 @@ def test_212_repeat_grant_refuses_previously_granted_item_that_became_unpassed(t
             datetime(2026, 10, 28, 1, tzinfo=timezone.utc), "check", question["module_id"],
             results=tuple((point_id, False) for point_id in question["point_ids"]),
             question_id=granted_question))
+        # BUG-196: an old client's late answer remains a fact, but cannot put
+        # an already-passed question back into the final-check pool.
+        book = store.load_mastery(fixture204.PLAN)
+        assert book.question(granted_question).passed
+        assert not book.question(keep).passed
+        assert book.next_check_questions() == [keep]
+        events = store.records("judgements", fixture204.PLAN)
+        late = next(row for row in events if row["event"]["event_id"] == "later-wrong-on-grant")
+        assert late["event"]["question_id"] == granted_question
+        assert late["event"]["results"] == [[point_id, False] for point_id in question["point_ids"]]
 
-    try:
-        preview_keep_question(tmp_path, fixture204.ACCOUNT, fixture204.PLAN, keep)
-    except ValueError as exc:
-        assert "再次变成未通过" in str(exc)
-    else:
-        raise AssertionError("preview must reject a previously granted question that failed later")
+    before = fixture204._db_digest(fixture204._course_db(tmp_path))
+    preview = preview_keep_question(tmp_path, fixture204.ACCOUNT, fixture204.PLAN, keep)
+    assert preview["already_applied"] is True
+    assert preview["questions_to_grant"] == []
+    assert preview["keep_question"]["current_passed"] is False
+    assert preview["currently_unpassed_count"] == 1
 
     with CourseStore(fixture204.ACCOUNT, tmp_path) as store:
-        try:
-            store.grant_final_check_questions_except(fixture204.PLAN, keep,
-                grant_id=outcome["grant_id"])
-        except StoreError as exc:
-            assert exc.code == "GRANT_SCOPE_CHANGED"
-        else:
-            raise AssertionError("store must reject a changed target set without rewriting the grant")
+        repeated = store.grant_final_check_questions_except(fixture204.PLAN, keep,
+            grant_id=outcome["grant_id"])
+        assert repeated["already_applied"] is True
+        assert repeated["newly_granted"] == []
+        assert store.records("judgements", fixture204.PLAN) == events
+    assert fixture204._db_digest(fixture204._course_db(tmp_path)) == before

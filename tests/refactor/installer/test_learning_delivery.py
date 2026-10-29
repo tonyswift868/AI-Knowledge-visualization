@@ -267,19 +267,31 @@ def test_learning_delivery_signing_rejects_wrong_private_key(tmp_path):
     assert not output.exists()
 
 
-def test_learning_delivery_update_worker_uses_existing_core_and_real_window(tmp_path):
+def test_learning_delivery_update_worker_uses_existing_core_and_real_window(tmp_path, monkeypatch):
     from PySide6.QtWidgets import QApplication, QWidget
     from refactor.desktop.updates import DesktopUpdates
+    from refactor.desktop.delivery import per_user_install
+    monkeypatch.setattr(per_user_install, 'schedule_updater_refresh', lambda *_: None)
+    monkeypatch.setattr(per_user_install, 'schedule_program_cleanup', lambda *_a, **_k: None)
+    monkeypatch.setattr(DesktopUpdates, '_prepare_in_background', lambda _self: None)
     app = QApplication.instance() or QApplication([])
     gate = QWidget()
     calls = []
+    target, digest = '2.0.39', 'a' * 64
     class Core:
         def attach_shutdown_guard(self, _app): pass
         def get_startup_update_state(self, root, full, check_feed, cancel=None, on_pointer_policy=None):
-            # Signed local policy permits login while the feed refresh runs.
+            # Only the verified feed result offers an installable release.
             calls.append(("startup", threading.get_ident()))
-            return dict(state="HEALTHY", login_allowed=True)
+            return dict(state="OPTIONAL_UPDATE" if check_feed else "HEALTHY",
+                        login_allowed=True, current='2.0.38', latest=target if check_feed else '',
+                        target=target if check_feed else '', release_sha256=digest if check_feed else '',
+                        feed='VERIFIED' if check_feed else 'NOT_CHECKED',
+                        message='有新版本可用；登录后可在主界面选择更新。')
         def check_latest(self, root, cancel=None): return dict(state="UP_TO_DATE")
+        def record_update_authorization(self, root, version, sha256):
+            assert (version, sha256) == (target, digest)
+            calls.append(('authorized', version, sha256))
         def update_to_latest(self, root, **kwargs):
             calls.append(("install", kwargs))
             return dict(state="APPLYING")
@@ -287,15 +299,20 @@ def test_learning_delivery_update_worker_uses_existing_core_and_real_window(tmp_
     try:
         adapter.start()
         deadline = time.monotonic() + 4
-        while adapter.state["state"] != "HEALTHY" and time.monotonic() < deadline:
+        while adapter.state.get("login_check_status") != "ready" and time.monotonic() < deadline:
             app.processEvents(); time.sleep(.005)
         assert gate.isEnabled()
         assert calls[0][1] != threading.get_ident()
+        assert adapter.state['state'] == 'OPTIONAL_UPDATE'
+        assert adapter._prompt is None
+        assert gate.isEnabled()
         adapter.run("install", gate)
         while adapter.snapshot()["busy"] and time.monotonic() < deadline:
             app.processEvents(); time.sleep(.005)
         assert adapter.state["state"] == "APPLYING"
+        assert calls[-1][0] == 'install'
         assert calls[-1][1]["hwnd_hex"] == f"{int(gate.winId()):016x}"
+        assert calls[-2] == ('authorized', target, digest)
         from refactor.desktop.delivery.update_session import UpdateSession
         from refactor.desktop.delivery.update_session import SessionEnding
         import os

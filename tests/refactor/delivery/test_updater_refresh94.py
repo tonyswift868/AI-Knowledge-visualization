@@ -46,6 +46,13 @@ def snapshot(root):
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob('*') if p.is_file()}
 
 
+def installer_state_snapshot(root):
+    """Snapshot install payload/journal while excluding expected attempt logs."""
+    diagnostic_logs = {'Data/logs/mentorflow.log', 'Data/logs/launcher-startup.jsonl'}
+    return {name: value for name, value in snapshot(root).items()
+            if name not in diagnostic_logs}
+
+
 def updated_app(f):
     return install.transact(f.root, f.source, f.raw, health=f.ready)
 
@@ -65,12 +72,12 @@ def test_updater94_install_upgrade_and_same_version_repair_replace_binding(runti
 
 
 def test_updater94_installer_stops_before_mutating_if_updater_running(runtime94, monkeypatch):
-    f = runtime94; before = snapshot(f.root)
+    f = runtime94; before = installer_state_snapshot(f.root)
     def running(_): raise RecoverableError('请先关闭 MentorFlow 修复与更新窗口')
     monkeypatch.setattr(install, 'require_updater_stopped', running)
     with pytest.raises(RecoverableError, match='请先关闭'):
         install.transact(f.root, f.source, f.raw, health=f.ready, refresh_runtime=True)
-    assert snapshot(f.root) == before
+    assert installer_state_snapshot(f.root) == before
 
 
 def test_updater94_installer_interrupted_app_recovery_also_waits_for_updater(runtime94, monkeypatch):
@@ -79,7 +86,7 @@ def test_updater94_installer_interrupted_app_recovery_also_waits_for_updater(run
     (f.root / install.JOURNAL).write_bytes(canonical({**journal, 'phase': 'NEW_ACTIVE'}))
     envelope = f.source.parent / 'incoming-release.json'
     envelope.write_bytes(f.raw)
-    before = snapshot(f.root)
+    before = installer_state_snapshot(f.root)
     def running(_): raise RecoverableError('请先关闭 MentorFlow 更新程序')
     monkeypatch.setattr(install, 'require_updater_stopped', running)
     monkeypatch.setattr(install, 'recover', lambda *args: pytest.fail('must not recover App before runtime exits'))
@@ -87,7 +94,7 @@ def test_updater94_installer_interrupted_app_recovery_also_waits_for_updater(run
                            release=envelope, close_after_health=False)
     with pytest.raises(RecoverableError, match='请先关闭'):
         install._execute(args, None, lambda _: None)
-    assert snapshot(f.root) == before
+    assert installer_state_snapshot(f.root) == before
 
 
 def test_updater94_in_app_update_waits_for_health_and_process_exit_then_refreshes(runtime94, monkeypatch):

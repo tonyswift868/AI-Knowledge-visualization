@@ -9,11 +9,12 @@ import sys
 import time
 
 
-def test_server_java_temp_is_this_pytest_basetemp(tmp_path, request):
+def test_server_java_temp_uses_selected_scratch_root():
+    ship_root = Path(os.environ["SHIP156_TMP"]).resolve()
     temp = Path(os.environ["TEMP"]).resolve()
-    base = Path(str(request.config._tmp_path_factory.getbasetemp())).resolve()
-    assert base in temp.parents or temp == base
-    assert "ship156" not in str(temp).lower()
+    assert temp == ship_root / "tmp"
+    assert Path(os.environ["TMP"]).resolve() == temp
+    assert Path(os.environ["TMPDIR"]).resolve() == temp
 
 
 def test_java_cache_file_lock_serializes_processes(tmp_path):

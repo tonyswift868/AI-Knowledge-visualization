@@ -84,7 +84,8 @@ def test_optional_pointer168_releases_login_before_manifest_without_offer(harnes
     assert gate.isEnabled() and prompts == []
     core.release.set()
     pump168(app, lambda: ui.state.get('feed') == 'VERIFIED')
-    assert ui.state['state'] == 'OPTIONAL_UPDATE' and len(prompts) == 1
+    assert ui.state['state'] == 'OPTIONAL_UPDATE' and prompts == []
+    assert ui.state['latest'] == '2.0.27' and gate.isEnabled()
 
 
 @pytest.mark.parametrize('policy', [None, policy168(mandatory=True, floor='2.0.27'),

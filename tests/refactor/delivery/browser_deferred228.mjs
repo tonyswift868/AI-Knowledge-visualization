@@ -24,10 +24,11 @@ try {
       const status={available:true,busy:false,state,version:'2.0.36',current:'2.0.36',latest:'2.0.37',
         prepared:true,deferred_update:true,deferred_target:'2.0.37',deferred_message:message,message,
         release_notes:'目录暂时被占用。当前版本与已下载的新版本均已保留。'};
-      await js(`window.fixture194.response=${JSON.stringify(status)};window.set194Theme(${JSON.stringify(theme)});window.set194Status(${JSON.stringify(status)},true,false);`);
-      await until(`document.querySelector('[data-testid="update-status"]')?.innerText===${JSON.stringify(message)}`);
+      await js(`window.fixture194.response=${JSON.stringify(status)};window.set194Theme(${JSON.stringify(theme)});window.set194Status(${JSON.stringify(status)},false,false);`);
+      await until(`document.querySelector('aside[aria-label="软件更新提示"]')?.innerText.includes('2.0.37')`);
       if(await js('document.body.innerText.includes("同步失败") || document.body.innerText.includes("更新暂时无法完成")'))throw Error('deferred activation shown as failure');
-      if(!await js(`!![...document.querySelectorAll('[role="dialog"] button')].find(b=>!b.disabled&&b.innerText.includes('更新'))`))throw Error('manual update action missing');
+      if(await js(`!!document.querySelector('[role="dialog"]')`))throw Error('optional update opened a blocking dialog');
+      if(!await js(`!![...document.querySelectorAll('aside[aria-label="软件更新提示"] button')].find(b=>!b.disabled&&b.innerText.includes('立即更新'))`))throw Error('manual banner update action missing');
       checks++;
       if(state==='PENDING_INSTALL'){
         const shot=await call('Page.captureScreenshot',{format:'png'});
