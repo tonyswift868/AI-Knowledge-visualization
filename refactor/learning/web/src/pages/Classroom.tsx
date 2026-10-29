@@ -533,7 +533,7 @@ export function Classroom() {
             <span className="eyebrow">{room.check ? "全部模块已学完" : `模块 ${room.module.number}/${room.module.total}`} · {room.plan.goal}</span>
             <b>{room.check ? "最终检验" : room.module.title}</b>
             <div className="class-module-inline129">
-              <span>{room.check ? `已通过 ${room.check.passed}/${room.check.total} 个知识点` : `本模块 ${done}/${room.points.length} 个点已讲`}</span>
+              <span>{room.check ? `已通过 ${room.check.passed}/${room.check.total} 道题` : `本模块 ${done}/${room.points.length} 个点已讲`}</span>
               {!room.check && <button aria-expanded={pointsExpanded} aria-controls="classroom-points" onClick={() => setPointsExpanded(value => !value)}>
                 {pointsExpanded ? '收起知识点' : '展开知识点'}</button>}
               <div className="class-check-bar" role="progressbar" aria-label={room.check ? '最终检验进度' : '本模块讲解进度'}
