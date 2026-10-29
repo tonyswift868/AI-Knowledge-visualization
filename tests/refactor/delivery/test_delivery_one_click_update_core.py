@@ -31,8 +31,17 @@ def setup(case, monkeypatch):
     return root, service
 
 
+def click_update(root, service):
+    """Model the verified offer plus the user's explicit update click."""
+    offer = core.check_latest(root, service=service)
+    assert offer['state'] == 'UPDATE_AVAILABLE'
+    assert offer.get('release_sha256')
+    core.record_update_authorization(root, offer['target'], offer['release_sha256'])
+
+
 def test_one_call_download_apply_and_relaunch_with_single_consent(case, monkeypatch):
     root, service = setup(case, monkeypatch)
+    click_update(root, service)
     events = []; progress = []
     monkeypatch.setattr(install, 'request_app_shutdown', lambda *args: events.append(('close', args[1:])))
     monkeypatch.setattr(install, 'launch_health', lambda r, v: (events.append(('launch', v.version)) or ready(r,v)))
@@ -49,6 +58,7 @@ def test_one_call_download_apply_and_relaunch_with_single_consent(case, monkeypa
 
 def test_in_app_call_dispatches_before_own_shutdown(case, monkeypatch):
     root, service = setup(case, monkeypatch)
+    click_update(root, service)
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
     monkeypatch.setattr(ProcessPeer, 'require', lambda *a, **kw: {})
     monkeypatch.setattr(ProcessPeer, 'visible_responsive_window', lambda *a: None)
@@ -73,6 +83,7 @@ def test_in_app_call_dispatches_before_own_shutdown(case, monkeypatch):
 
 def test_in_app_tampered_coordinator_never_executes(case, monkeypatch):
     root, service = setup(case, monkeypatch)
+    click_update(root, service)
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
     monkeypatch.setattr(ProcessPeer, 'require', lambda *a, **kw: {})
     monkeypatch.setattr(ProcessPeer, 'visible_responsive_window', lambda *a: None)
@@ -86,6 +97,7 @@ def test_in_app_tampered_coordinator_never_executes(case, monkeypatch):
 @pytest.mark.parametrize('reason', ['shutdown','logoff','unsafe'])
 def test_one_click_teardown_defers_then_next_normal_launch_revalidates(case, monkeypatch, reason):
     root, service = setup(case, monkeypatch)
+    click_update(root, service)
     monkeypatch.setattr(install, 'request_app_shutdown', lambda *a: pytest.fail('unsafe close'))
     result = core.update_to_latest(root, pid=9876, hwnd_hex='0001', reason=reason, service=service)
     assert result['state'] == 'PENDING_INSTALL' and not result['destructive_apply']
@@ -97,6 +109,7 @@ def test_one_click_teardown_defers_then_next_normal_launch_revalidates(case, mon
 
 def test_bad_target_automatically_restores_and_relaunches_previous(case, monkeypatch):
     root, service = setup(case, monkeypatch); calls = []
+    click_update(root, service)
     monkeypatch.setattr(install, 'request_app_shutdown', lambda *a: None)
     def health(root, release):
         calls.append(release.version)
@@ -113,6 +126,7 @@ def test_bad_target_automatically_restores_and_relaunches_previous(case, monkeyp
 @pytest.mark.parametrize('mode', ['offline','cancel_before','cancel_during'])
 def test_failed_or_cancelled_download_keeps_running_app(case, monkeypatch, mode):
     root, service = setup(case, monkeypatch)
+    click_update(root, service)
     before = (root/install.CURRENT).read_bytes(); cancel = [mode == 'cancel_before']
     monkeypatch.setattr(install, 'request_app_shutdown', lambda *a: pytest.fail('old App must keep running'))
     if mode == 'offline':
@@ -124,7 +138,8 @@ def test_failed_or_cancelled_download_keeps_running_app(case, monkeypatch, mode)
     assert (root/install.CURRENT).read_bytes() == before
 
 
-def test_offline_next_launch_still_opens_current_not_stale_previous(case, monkeypatch):
+@pytest.mark.parametrize('authorized', [False, True])
+def test_offline_next_launch_still_opens_current_not_stale_previous(case, monkeypatch, authorized):
     import sys
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
     root, service = setup(case, monkeypatch)
@@ -132,6 +147,8 @@ def test_offline_next_launch_still_opens_current_not_stale_previous(case, monkey
     # Test the launch/pending seam without ever opening the native repair UI.
     monkeypatch.setattr(install, 'verify_gui', lambda *a, **kw: None)
     assert core.download_latest(root, service=service)['state'] == 'UPDATE_DOWNLOADED'
+    if authorized:
+        core.record_update_authorization(root, service.release.version, core.digest(service.release.envelope))
     journal = strict_json((root/install.JOURNAL).read_bytes())
     (root/install.JOURNAL).write_bytes(canonical({**journal, 'phase':'ROLLED_BACK'}))
     (root/'last-recovery.json').write_bytes(canonical(dict(attempt=journal['attempt'],health=dict(ready=True,pid=1))))
@@ -146,7 +163,8 @@ def test_offline_next_launch_still_opens_current_not_stale_previous(case, monkey
     monkeypatch.setattr(sys,'argv',['UserRuntime','launch','--root',str(root)])
     assert install.main()['status'] == 'HEALTHY'
     assert launches == ['1.4.0']
-    assert core.read_pending(root)['state'] == 'PENDING_INSTALL'
+    # Background preparation has no consent; launch may only open the old App.
+    assert core.read_pending(root)['state'] == ('PENDING_INSTALL' if authorized else 'UPDATE_DOWNLOADED')
 
 
 @pytest.mark.parametrize('url', ['file:///E:/feed.json','E:/feed.json','http://localhost/stable.json',

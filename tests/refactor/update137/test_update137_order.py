@@ -32,6 +32,7 @@ def test_update137_offer_before_download_and_click_continues(case, monkeypatch, 
                         (events.append('applied') or {'state':'CURRENT_HEALTHY'}))
     class Core:
         def attach_shutdown_guard(self, app): pass
+        record_update_authorization = staticmethod(core.record_update_authorization)
         def check_latest(self, root, **kw): return core.check_latest(root, service=service, **kw)
         def download_latest(self, root, **kw):
             events.append('download_started')

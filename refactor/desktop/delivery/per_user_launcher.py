@@ -85,38 +85,47 @@ def _launch_serialized(root, mark):
                                pending.get('deferred_reason') == 'app_directory_busy')
         retry_pending = pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING')
         if retry_pending or retry_deferred_busy:
-            try:
-                # A successful apply already launches/health-checks TARGET.
-                result = core.resume_pending_on_normal_launch(root, reason='next_launch')
-                if result.get('state') == 'CURRENT_HEALTHY':
-                    return result
-            except (OSError, RuntimeError, ValueError) as error:
-                _log_pending_install_failure(root, pending, error)
-                # Offline/withdrawn/invalid pending content cannot block the
-                # signed current App. A rolled-back App is already running;
-                # validate its live identity instead of launching a duplicate.
+            if not core.authorization_matches(pending):
+                # Legacy pending receipts and background preparation are hints,
+                # never user consent. Keep the signed current App launchable.
+                install.maintenance_log(root, 'pending_update_not_authorized',
+                                        target=pending.get('target', ''),
+                                        reason='missing_or_mismatched_user_authorization')
+            else:
+                from refactor.desktop.delivery.startup_window import set_startup_text
+                set_startup_text('正在更新 MentorFlow…', root=root)
                 try:
-                    rolled_back = core.read_pending(root)['state'] == 'PREVIOUS_HEALTHY'
-                except (OSError, RuntimeError, ValueError) as pending_error:
-                    _log_pending_install_failure(root, pending, pending_error)
-                    rolled_back = False
-                if rolled_back:
-                    latest = core.read_pending(root)
+                    # A successful apply already launches/health-checks TARGET.
+                    result = core.resume_pending_on_normal_launch(root, reason='next_launch')
+                    if result.get('state') == 'CURRENT_HEALTHY':
+                        return result
+                except (OSError, RuntimeError, ValueError) as error:
+                    _log_pending_install_failure(root, pending, error)
+                    # Offline/withdrawn/invalid pending content cannot block the
+                    # signed current App. A rolled-back App is already running;
+                    # validate its live identity instead of launching a duplicate.
                     try:
-                        health = _recovery_health(root)
-                    except (OSError, RuntimeError, ValueError) as health_error:
-                        # The old App may have exited after rollback or while
-                        # the next-start retry was offline. A stale proof is
-                        # not damage evidence; fall through to the normal
-                        # signed old-App launch, which still prevents duplicates.
-                        install.maintenance_log(root, 'recovery_app_not_running',
-                                                error_type=type(health_error).__name__)
-                    else:
-                        return dict(status='PREVIOUS_HEALTHY', health=health,
-                                    deferred_update=latest.get('deferred_reason') == 'app_directory_busy',
-                                    deferred_target=latest.get('target', ''),
-                                    deferred_reason=latest.get('deferred_reason', ''),
-                                    deferred_message=core.PENDING_MESSAGE if latest.get('deferred_reason') == 'app_directory_busy' else '')
+                        rolled_back = core.read_pending(root)['state'] == 'PREVIOUS_HEALTHY'
+                    except (OSError, RuntimeError, ValueError) as pending_error:
+                        _log_pending_install_failure(root, pending, pending_error)
+                        rolled_back = False
+                    if rolled_back:
+                        latest = core.read_pending(root)
+                        try:
+                            health = _recovery_health(root)
+                        except (OSError, RuntimeError, ValueError) as health_error:
+                            # The old App may have exited after rollback or while
+                            # the next-start retry was offline. A stale proof is
+                            # not damage evidence; fall through to the normal
+                            # signed old-App launch, which still prevents duplicates.
+                            install.maintenance_log(root, 'recovery_app_not_running',
+                                                    error_type=type(health_error).__name__)
+                        else:
+                            return dict(status='PREVIOUS_HEALTHY', health=health,
+                                        deferred_update=latest.get('deferred_reason') == 'app_directory_busy',
+                                        deferred_target=latest.get('target', ''),
+                                        deferred_reason=latest.get('deferred_reason', ''),
+                                        deferred_message=core.PENDING_MESSAGE if latest.get('deferred_reason') == 'app_directory_busy' else '')
     with InstallUpdateLock(root):
         if core.unsafe_teardown('next_launch'):
             raise RecoverableError('session ending: launch and update deferred')
@@ -158,7 +167,9 @@ def launch(root):
     splash.setFixedSize(420, 220)
     layout = QVBoxLayout(splash); layout.setContentsMargins(32, 28, 32, 28)
     heading = QLabel('MentorFlow'); heading.setObjectName('pageHeading')
-    layout.addWidget(heading); layout.addWidget(QLabel('正在启动…'))
+    from refactor.desktop.delivery.startup_window import current_startup_text
+    startup_text = QLabel(current_startup_text())
+    layout.addWidget(heading); layout.addWidget(startup_text)
     progress = QProgressBar(); progress.setRange(0, 0); progress.setTextVisible(False)
     layout.addWidget(progress)
     apply(splash, 'sakura')
@@ -182,7 +193,10 @@ def launch(root):
         finally: done.set()
     loop = QEventLoop()
     timer = QTimer(); timer.setInterval(20)
-    timer.timeout.connect(lambda: loop.quit() if done.is_set() else None)
+    def poll_startup():
+        startup_text.setText(current_startup_text())
+        if done.is_set(): loop.quit()
+    timer.timeout.connect(poll_startup)
     # Keep the caller's runtime_session guard in the launch worker.
     context = copy_context()
     worker = threading.Thread(target=lambda: context.run(work), name='mf-startup', daemon=True)

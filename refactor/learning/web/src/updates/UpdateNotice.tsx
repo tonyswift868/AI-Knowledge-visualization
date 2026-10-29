@@ -12,6 +12,7 @@ export type UpdateStatus = {
   downloaded_files?: number; total_download_files?: number; download_state?: string
   background_downloading?: boolean; prepared?: boolean
   deferred_update?: boolean; deferred_target?: string; deferred_message?: string
+  release_sha256?: string
 }
 type Notice = { status: UpdateStatus | null; open: boolean; later: boolean; manual: boolean; error: string }
 export const useUpdates = create<Notice>(() => ({ status: null, open: false, later: false, manual: false, error: "" }))
@@ -106,6 +107,16 @@ async function deferUpdate() {
   catch (e) { useUpdates.setState({ error: (e as Error).message }) }
 }
 
+export function UpdateBanner() {
+  const ready = useApp((s) => s.ready)
+  const {status, open} = useUpdates()
+  if (!ready || open || !offered(status) || mandatory(status)) return null
+  return <aside role="status" aria-label="软件更新提示" className="banner row" style={{alignItems: "center", justifyContent: "space-between"}}>
+    <span>发现新版本 {status?.latest || status?.target || ""}。您可以继续使用，也可以现在更新。</span>
+    <Button kind="primary" disabled={!!status?.busy} onClick={() => void installUpdate()}>立即更新</Button>
+  </aside>
+}
+
 export function UpdateNotice() {
   const ready = useApp((s) => s.ready)
   const route = useApp((s) => s.route)
@@ -161,14 +172,11 @@ export function UpdateNotice() {
   React.useEffect(() => {
     if (!status || (!ready && !mandatory(status)) || pendingCheck !== null && !mandatory(status)) return
     if (offered(status)) {
-      // All classroom modes share this route. Defer until home/plan; manual
-      // discovery in Settings uses exactly the same dialog.
-      const safe = ["home", "plans", "plan"].includes(route) || notice.manual && route === "settings"
       if (mandatory(status)) {
         if (route === "classroom" && guardedVersion.current !== mandatoryKey) {
           if (!guardRunning.current) saveClassroom(mandatoryKey)
         } else useUpdates.setState({ open: true, manual: false })
-      } else if (safe && (notice.manual || !notice.later)) useUpdates.setState({ open: true, manual: false })
+      } else if (notice.manual) useUpdates.setState({ manual: false })
     } else {
       if (status.state === "UP_TO_DATE" && (notice.open || notice.later)) useUpdates.setState({ open: false, later: false })
       if (!notice.manual || !["UP_TO_DATE", "FAILED_RECOVERABLE", "FAILED_SECURITY", "UNPACKAGED"].includes(status.state)) return

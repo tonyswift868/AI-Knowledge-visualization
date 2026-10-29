@@ -14,7 +14,7 @@ import { PlanDetail } from "./pages/PlanDetail"
 import { Classroom } from "./pages/Classroom"
 import { Report } from "./pages/Report"
 import { Settings } from "./pages/Settings"
-import { UpdateNotice, useUpdates } from "./updates/UpdateNotice"
+import { UpdateBanner, UpdateNotice, useUpdates } from "./updates/UpdateNotice"
 import { TeacherStagePreview } from "./teacher/TeacherStagePreview"
 import { VoiceInputPreview } from "./voice/VoiceInputPreview"
 import { Loading, RequestLoading } from './loading/Loading'
@@ -308,6 +308,7 @@ export function App() {
               {s.fullscreen ? <Minimize2 /> : <Maximize2 />}
             </button>
           </header>
+          <UpdateBanner />
           {currentModelFault && modelFaultOpen && <div id="model-status-details" className="model-status-details" role="region" aria-label="模型连接问题详情">
             <ModelFaultPanel fault={currentModelFault} onRetry={retryModelConnection}/>
             <div className="row" style={{ justifyContent: 'flex-end' }}>

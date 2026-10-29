@@ -16,10 +16,13 @@ from refactor.desktop.delivery.update_protocol import SecurityError
 from refactor.desktop.delivery import per_user_install as install
 
 PENDING = 'pending-update.json'
+UPDATE_AUTHORIZATION = 'update-authorization.json'
 SCHEMA = 'mentorflow.per-user-pending.v1'
+AUTHORIZATION_SCHEMA = 'mentorflow.user-update-authorization.v1'
 PENDING_MESSAGE = '新版已下载好，下次打开软件时完成更新。'
 STATES = frozenset(('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING', 'CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'))
 _ending = threading.Event()
+_authorization_lock = threading.RLock()
 
 class NoFeedConfigured(RecoverableError):
     """An unbound product is usable, but cannot discover updates yet."""
@@ -169,6 +172,7 @@ def _get_startup_update_state(root, *, service=None, check_feed=True, full=True,
             latest = max(compatible, key=lambda item: version_key(item.version))
             return _startup_result('MANDATORY_UPDATE', current=release.version,
                                    latest=latest.version, target=latest.version, mandatory_floor=floor,
+                                   release_sha256=digest(latest.envelope),
                                    mandatory_reason=startup_mandatory_reason(latest, release.version,
                                                                            witnesses=evidence),
                                    release_notes=latest.signed['release_notes'], feed=feed)
@@ -196,6 +200,7 @@ def _get_startup_update_state(root, *, service=None, check_feed=True, full=True,
         if state == 'OPTIONAL_UPDATE' and not result.get('update'):
             state = 'HEALTHY'
         return _startup_result(state, current=release.version, latest=latest.version, target=latest.version,
+                               release_sha256=digest(latest.envelope),
                                mandatory_floor=mandatory_floor(latest),
                                mandatory_reason=startup_mandatory_reason(latest, release.version,
                                                                        witnesses=evidence),
@@ -216,7 +221,7 @@ def _with_deferred_update(root, result):
         pending = read_pending(root)
         is_deferred_busy = (pending['state'] == 'PREVIOUS_HEALTHY' and
                             pending.get('deferred_reason') == 'app_directory_busy')
-        if pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING') or is_deferred_busy:
+        if (pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING') or is_deferred_busy) and authorization_matches(pending):
             current = install.installed(root)
             from refactor.desktop.delivery.update_protocol import version_key
             if version_key(pending['target']) > version_key(current.version):
@@ -449,6 +454,9 @@ def check_latest(root, *, service=None, cancel=None):
     try:
         service = service if service is not None else one_click_service(root)
         result = service.check(manual=True, cancel=cancel) if cancel is not None else service.check(manual=True)
+        if service.release is not None and result.get('state') == 'UPDATE_AVAILABLE':
+            result = {**result, 'release_sha256': digest(service.release.envelope),
+                      'target': service.release.version, 'latest': service.release.version}
         return _with_deferred_update(root, result)
     except NoFeedConfigured: return _no_feed_result()
     except SecurityError as error:
@@ -511,8 +519,11 @@ def update_to_latest(root, progress=None, cancel=None, *, pid=None, hwnd_hex=Non
         service = service if service is not None else one_click_service(root)
         prepared = download_latest(root, progress, cancel, service=service, reuse_prepared=True)
         if prepared.get('state') != 'UPDATE_DOWNLOADED': return prepared
+        pending = read_pending(root)
+        if not authorization_matches(pending, pending['target'], pending['release_sha256']):
+            return {**prepared, 'state': 'UPDATE_DOWNLOADED', 'destructive_apply': False,
+                    'message': '新版已准备好；请在提示中点击更新后安装。'}
         if cancel is not None and cancel():
-            pending = read_pending(root)
             install.atomic(Path(root) / PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))
             return {**prepared, 'state': 'PENDING_INSTALL', 'cancelled': True, 'destructive_apply': False}
         if progress is not None: progress({**prepared, 'state': 'APPLYING'})
@@ -548,20 +559,96 @@ def remember_download(root, stage, envelope, *, state='UPDATE_DOWNLOADED'):
     from .prepared_update import ready, seal
     if not ready(stage, release):
         seal(stage, release, lambda: install.verify_tree(stage, release))
+    release_sha256 = digest(envelope)
     doc = dict(schema=SCHEMA, state=state, stage=str(stage), target=release.version,
-               release_sha256=digest(envelope))
-    install.atomic(root/PENDING, canonical(doc))
+               release_sha256=release_sha256)
+    # Serialize only the tiny receipt read/modify/write with the UI click.
+    # Signature/file verification above never holds this UI-facing lock.
+    with _authorization_lock:
+        _remember_authorized_pending(root, doc)
     return dict(state=state, target=release.version)
+
+
+def _remember_authorized_pending(root, doc):
+    target, release_sha256 = doc['target'], doc['release_sha256']
+    pending_path = root / PENDING
+    consent_path = root / UPDATE_AUTHORIZATION
+    remove_intent = False
+    try:
+        existing = read_pending(root)
+        if (existing['target'] == target and
+                existing['release_sha256'] == release_sha256 and
+                authorization_matches(existing, target, release_sha256)):
+            doc['user_authorization'] = existing['user_authorization']
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        pass
+    # A click made before a slow/background preparation is persisted separately.
+    # This only transfers an already recorded, exact click authorization; preparation
+    # never creates or broadens consent.
+    try:
+        consent = read_update_authorization(root)
+        if consent.get('target') == target and consent.get('release_sha256') == release_sha256:
+            doc['user_authorization'] = consent
+            remove_intent = True
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        pass
+    install.atomic(pending_path, canonical(doc))
+    if remove_intent:
+        consent_path.unlink(missing_ok=True)
 
 
 def read_pending(root):
     doc = strict_json(install.read(Path(root)/PENDING))
     fields = {'schema', 'state', 'stage', 'target', 'release_sha256'}
-    if (set(doc) not in (fields, fields | {'deferred_reason'}) or
+    known = (fields, fields | {'deferred_reason'}, fields | {'user_authorization'},
+             fields | {'deferred_reason', 'user_authorization'})
+    if (set(doc) not in known or
             doc['schema'] != SCHEMA or doc['state'] not in STATES or
             ('deferred_reason' in doc and doc['deferred_reason'] != 'app_directory_busy')):
         raise SecurityError('unknown pending update state')
+    if 'user_authorization' in doc and not _valid_authorization(doc['user_authorization']):
+        raise SecurityError('invalid user update authorization')
     return doc
+
+
+def _valid_authorization(doc):
+    return (isinstance(doc, dict) and set(doc) == {'schema', 'target', 'release_sha256'} and
+            doc.get('schema') == AUTHORIZATION_SCHEMA and
+            isinstance(doc.get('target'), str) and bool(doc['target']) and
+            isinstance(doc.get('release_sha256'), str) and
+            re.fullmatch(r'[0-9a-f]{64}', doc['release_sha256']) is not None)
+
+
+def record_update_authorization(root, target, release_sha256):
+    """Persist only the exact release identity observed by a verified UI offer."""
+    consent = {'schema': AUTHORIZATION_SCHEMA, 'target': target,
+               'release_sha256': release_sha256}
+    if not _valid_authorization(consent):
+        raise ValueError('verified update identity required before recording consent')
+    root = install.target(root)
+    consent_path = root / UPDATE_AUTHORIZATION
+    with _authorization_lock:
+        if (root / PENDING).is_file():
+            pending = read_pending(root)
+            if pending['target'] == target and pending['release_sha256'] == release_sha256:
+                install.atomic(root / PENDING, canonical({**pending, 'user_authorization': consent}))
+                consent_path.unlink(missing_ok=True)
+                return True
+        install.atomic(consent_path, canonical(consent))
+        return False
+
+
+def read_update_authorization(root):
+    doc = strict_json(install.read(install.target(root) / UPDATE_AUTHORIZATION))
+    if not _valid_authorization(doc):
+        raise SecurityError('invalid user update authorization')
+    return doc
+
+
+def authorization_matches(pending, target=None, release_sha256=None):
+    consent = pending.get('user_authorization') if isinstance(pending, dict) else None
+    return (_valid_authorization(consent) and consent['target'] == (target or pending.get('target')) and
+            consent['release_sha256'] == (release_sha256 or pending.get('release_sha256')))
 
 
 def discard_stale_pending(root):
@@ -630,11 +717,15 @@ def status(root):
         elif phase != 'HEALTHY': result['state'] = 'APPLYING'
     if (root/PENDING).exists():
         pending = read_pending(root)
-        if pending['state'] not in ('CURRENT_HEALTHY', 'PREVIOUS_HEALTHY'):
+        authorized = authorization_matches(pending)
+        if pending['state'] not in ('CURRENT_HEALTHY', 'PREVIOUS_HEALTHY') and authorized:
             result.update(state=pending['state'], target=pending['target'])
-        if (pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING') or
+        if pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING') and not authorized:
+            result.update(state='UPDATE_AVAILABLE', target=pending['target'], latest=pending['target'],
+                          prepared=True, message='新版已准备好，点击更新后安装。')
+        if ((pending['state'] in ('UPDATE_DOWNLOADED', 'PENDING_INSTALL', 'APPLYING') and authorized) or
                 (pending['state'] == 'PREVIOUS_HEALTHY' and
-                 pending.get('deferred_reason') == 'app_directory_busy')):
+                 pending.get('deferred_reason') == 'app_directory_busy' and authorized)):
             result.update(deferred_update=True, deferred_target=pending['target'],
                           deferred_reason=pending.get('deferred_reason', ''),
                           deferred_message=PENDING_MESSAGE)
@@ -727,6 +818,10 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
     apply supplies the exact running App PID/HWND; no guessed process is closed.
     """
     root = install.target(root); pending = read_pending(root)
+    if not authorization_matches(pending):
+        install.maintenance_log(root, 'update_apply_blocked', target=pending.get('target', ''),
+                                reason='missing_or_mismatched_user_authorization')
+        raise RecoverableError('update requires explicit user authorization for this signed release')
     deferred_busy = (pending['state'] == 'PREVIOUS_HEALTHY' and
                      pending.get('deferred_reason') == 'app_directory_busy')
     if pending['state'] == 'CURRENT_HEALTHY' or (
@@ -778,6 +873,7 @@ def apply_update(root, *, pid=None, hwnd_hex=None, reason='normal', service=None
         # The signed transaction already records HEALTHY. A completed download
         # is no longer pending, even if background housekeeping meets a lock.
         (root/PENDING).unlink(missing_ok=True)
+        (root/UPDATE_AUTHORIZATION).unlink(missing_ok=True)
         if internal_stage:
             install._remove_program_tree(root, stage.parent)
         return {**result, 'state': 'CURRENT_HEALTHY', 'deferred_update': False}

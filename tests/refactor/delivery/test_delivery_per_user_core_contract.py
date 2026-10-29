@@ -80,6 +80,7 @@ def test_pending_unsafe_exit_never_fetches_or_swaps(case, monkeypatch, reason):
     _, root, feed, publish = bootstrap(case, monkeypatch)
     source, raw = publish('1.3.1', 2)
     core.remember_download(root, source, raw)
+    core.record_update_authorization(root, '1.3.1', engine.digest(raw))
     monkeypatch.setattr(core, 'configured_service', lambda _: pytest.fail('no network/launch on teardown'))
     before = (root/engine.CURRENT).read_bytes()
     assert core.apply_update(root, reason=reason)['state'] == 'PENDING_INSTALL'
@@ -91,6 +92,7 @@ def test_pending_receipt_cannot_authorize_changed_metadata(case, monkeypatch):
     _, root, feed, publish = bootstrap(case, monkeypatch)
     source, raw = publish('1.3.1', 2)
     core.remember_download(root, source, raw)
+    core.record_update_authorization(root, '1.3.1', engine.digest(raw))
     from refactor.desktop.delivery.update_service import MatureUpdateService
     from refactor.desktop.delivery.update_download import HTTPTransport
     service = MatureUpdateService(install_root=root, cache_root=root.parent/'cache', metadata_url=feed.origin+'/stable.json',
@@ -112,6 +114,7 @@ def test_previous_rollback_cannot_consume_new_pending_on_offline(case, monkeypat
     _, root, feed, publish = bootstrap(case, monkeypatch)
     source, raw = publish('1.3.1', 2)
     core.remember_download(root, source, raw)
+    core.record_update_authorization(root, '1.3.1', engine.digest(raw))
     journal = strict_json((root/engine.JOURNAL).read_bytes())
     (root/engine.JOURNAL).write_bytes(canonical({**journal, 'phase':'ROLLED_BACK'}))
     class OfflineService:
