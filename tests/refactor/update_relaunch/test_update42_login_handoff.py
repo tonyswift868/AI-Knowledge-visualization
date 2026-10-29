@@ -236,6 +236,9 @@ def test_update42_adapter_writes_after_download_before_old_coordinator_and_clean
             events.append('clear'); handoff.clear()
     class Core:
         def attach_shutdown_guard(self, app): pass
+        def record_update_authorization(self, root, target, release_sha256):
+            assert target == '2.0.39' and release_sha256 == 'a' * 64
+            events.append('authorized')
         def update_to_latest(self, root, progress, cancel, **kw):
             assert not vault.values
             events.append('download')
@@ -256,12 +259,16 @@ def test_update42_adapter_writes_after_download_before_old_coordinator_and_clean
     adapter._session = NS(require_running=lambda: None, close=lambda: None, defer=lambda: None)
     adapter._coordinator_result = lambda value: (dict(state='FAILED_RECOVERABLE') if outcome == 'failed'
         else {**value, 'cancelled': True} if outcome == 'cancelled' else value)
+    # Model the verified optional release shown in the main-window banner;
+    # calling install is the user's explicit click on that banner.
+    adapter.state.update(state='OPTIONAL_UPDATE', login_allowed=True, mandatory=False,
+                         latest='2.0.39', release_sha256='a' * 64, feed='VERIFIED')
     try:
         adapter.run('install', gate)
         wait_for(qapp, lambda: not adapter._busy)
-        assert events[:1] == ['download']
+        assert events[:2] == ['authorized', 'download']
         if outcome == 'success':
-            assert events == ['download', 'write', 'dispatch']
+            assert events == ['authorized', 'download', 'write', 'dispatch']
             adapter.close()  # Coordinator shutdown must retain the record.
             assert handoff.take(profile) == (True, 'synthetic-refresh')
         else:

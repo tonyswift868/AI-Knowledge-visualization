@@ -35,7 +35,8 @@ try{
  if(!(await js(`document.querySelector('[data-testid="profile226-crop"] .reactEasyCrop_CropArea')?.className.includes('CropArea')`)))throw Error('可调位置的裁剪预览缺失');
  await clickText('取消');checks.push('头像选择后提供可调位置的正方形预览，取消不提交');
  await js(`(()=>{const i=document.querySelector('input[aria-label="昵称"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'另一位昵称');i.dispatchEvent(new Event('input',{bubbles:true}));const t=document.querySelector('textarea[aria-label="个性签名"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'<img src=x onerror=alert(1)>');t.dispatchEvent(new Event('input',{bubbles:true}))})()`);
- await clickText('保存个人资料');await until(`document.querySelector('[data-testid="profile226-avatar"]')?.parentElement?.parentElement?.textContent.includes('另一位昵称')`);
+ await clickText('保存个人资料');await until(`document.querySelector('[data-testid="profile226"] .mf-profile-identity h3')?.textContent.trim()==='另一位昵称'&&document.querySelector('[data-testid="profile226"] .mf-profile-save-row [role="status"]')?.textContent.includes('已保存')`);
+ if(await js(`document.querySelector('[data-testid="profile226"] .mf-profile-identity p')?.textContent!=='<img src=x onerror=alert(1)>'`))throw Error('保存成功后个人签名没有按纯文本展示');
  if(await js(`document.querySelector('[data-testid="profile226"] img[onerror]')!==null`))throw Error('签名被当作HTML执行');
  await js(`window.mountProfile226('card')`);await until(`document.querySelector('.account-card .account-meta b')?.textContent==='另一位昵称'`);
  checks.push('通过正式UI保存昵称与签名后，卡片及时更新；签名作为纯文本渲染');

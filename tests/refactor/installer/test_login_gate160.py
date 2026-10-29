@@ -118,7 +118,9 @@ def test_login_gate160_network_result_resolves_policy(app160, tmp_path, monkeypa
             assert ui._prompt is not None and ui._prompt.isVisible()
             assert not ui._prompt.later.isVisible()
         if state == 'OPTIONAL_UPDATE':
-            assert ui._prompt is not None and ui._prompt.later.isVisible()
+            assert ui._prompt is None
+            assert ui.snapshot()['latest'] == '2.0.21'
+            assert gate.isEnabled()
     finally:
         ui.close()
         gate.close()

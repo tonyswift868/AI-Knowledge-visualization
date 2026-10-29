@@ -1,7 +1,7 @@
 import * as React from "react"
 import { createRoot } from "react-dom/client"
 import { Settings } from "../../../refactor/learning/web/src/pages/Settings"
-import { UpdateNotice, useUpdates, type UpdateStatus } from "../../../refactor/learning/web/src/updates/UpdateNotice"
+import { UpdateBanner, UpdateNotice, useUpdates, type UpdateStatus } from "../../../refactor/learning/web/src/updates/UpdateNotice"
 import { useApp } from "../../../refactor/learning/web/src/store"
 import { RequestLoading } from "../../../refactor/learning/web/src/loading/Loading"
 import { Toasts } from "../../../refactor/learning/web/src/ui"
@@ -33,7 +33,7 @@ useUpdates.setState({ status: readyStatus, open: false, later: false, manual: fa
 connect().then((connected) => {
   useApp.getState().set({ connected })
   createRoot(document.getElementById("root")!).render(<>
-    <div className="shell"><Settings /></div>
+    <div className="shell"><main className="main"><UpdateBanner /><div className="content"><Settings /></div></main></div>
     <Toasts />
     <RequestLoading />
     <UpdateNotice />

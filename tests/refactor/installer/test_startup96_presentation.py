@@ -45,7 +45,7 @@ class Feed96:
 
 
 @pytest.mark.parametrize('logged_in', [False, True])
-def test_startup96_pending_network_does_not_hold_login_and_offer_uses_current_window(app96, tmp_path, monkeypatch, logged_in):
+def test_startup96_pending_network_does_not_hold_login_or_show_optional_modal(app96, tmp_path, monkeypatch, logged_in):
     from refactor.desktop.delivery import per_user_install
     monkeypatch.setattr(per_user_install, 'schedule_updater_refresh', lambda _: None)
     gate, home = QWidget(), QWidget()
@@ -61,19 +61,12 @@ def test_startup96_pending_network_does_not_hold_login_and_offer_uses_current_wi
             owner.home = home; gate.hide(); home.show()
         feed.release.set()
         pump(app96, lambda: not ui.snapshot()['busy'])
-        assert ui._prompt_parent() is (home if logged_in else gate)
-        if logged_in:
-            # Existing React UpdateNotice owns the main-window presentation.
-            assert ui._prompt is None
-            assert '继续登录' not in ui.snapshot()['message']
-            assert '关于' in ui.snapshot()['message']
-        else:
-            assert ui._prompt.isVisible() and ui._prompt.parentWidget() is gate
-            assert '继续登录' in ui._prompt.message.text()
-            assert ui._prompt.install.text() == '立即更新并重启'
-            ui._prompt.grab().save(str(tmp_path/'login-update96.png'))
-            ui._prompt.later.click()
-            assert ui.snapshot()['deferred'] and gate.isEnabled() and not ui._prompt.isVisible()
+        # Optional releases always leave startup/login unblocked. The React
+        # home window owns the non-modal banner after sign-in.
+        assert ui._prompt is None
+        assert gate.isEnabled()
+        assert ui.snapshot()['login_allowed'] is True
+        assert '关于' in ui.snapshot()['message']
     finally:
         feed.release.set(); ui.close(); gate.close(); home.close()
 

@@ -60,22 +60,23 @@ try {
   const summaries=[];
   const base={available:true,busy:false,state:'CHECKING',version:'9.194.0',current:'9.194.0',message:'正在检查更新…'};
 
-  // The compact Settings surface owns idle/checking/latest/error; an automatic offer
-  // moves the one semantic status into the global modal while Settings stays mounted.
+  // Optional offers stay in the Settings surface until the user explicitly starts the update.
   await js('window.set194Theme("sakura")');
   await configure(base,false,false);
   summaries.push({theme:'sakura',phase:'checking',...(await state('正在检查更新',false))});
   check(await visibleTextCount('正在检查更新')===1,'checking message appears more than once');
 
   await js(`(async()=>{window.fixture194.response=${JSON.stringify({available:true,busy:false,state:'OPTIONAL_UPDATE',version:'9.194.0',current:'9.194.0',latest:'9.194.1',message:'发现新版本。',release_notes:'更新状态唯一展示测试'})}; window.set194Theme('sakura');window.set194Route('home'); await window.check194Automatically()})()`);
-  await until('!!document.querySelector(\'[role="dialog"][aria-label="MentorFlow 更新"]\')');
-  const automatic=await state('9.194.1',true);
-  check(await visibleTextCount(automatic.text)===1,'automatic offer status message appears more than once across Settings and modal');
+  await until(`document.querySelector('[data-testid="update-status"]')?.innerText.includes('发现新版本。')`);
+  const automatic=await state('发现新版本。',false);
+  check(await js(`(()=>{const e=document.querySelector('[aria-label="软件更新提示"]');const r=e?.getBoundingClientRect();return !!e&&!!r&&r.width>0&&r.height>0&&r.top>=0&&r.bottom<=innerHeight&&!!e.closest('.main')})()`),'automatic optional offer must be a visible inline main-window banner');
+  check(!(await js('document.querySelector(".shell").inert')),'automatic optional offer must not block Settings');
+  check(await visibleTextCount(automatic.text)===1,'automatic offer status message appears more than once in Settings');
   summaries.push({theme:'sakura',phase:'automatic-offer',...automatic});
-  check(await js(`!![...document.querySelectorAll('[role="dialog"][aria-label="MentorFlow 更新"] button')].find(b=>b.innerText.includes('立即更新并重启'))`),'automatic offer lost its update action');
+  check(await js(`!![...document.querySelectorAll('button')].find(b=>b.innerText.includes('更新并自动重启'))`),'automatic offer lost its explicit Settings update action');
 
-  // A click on the actual Settings button starts a manual request. When an update
-  // is found, the global modal takes over the one status slot from About.
+  // A click on the actual Settings button starts a manual request. The shell banner
+  // stays visible and non-modal; only the user's explicit update action opens progress.
   await js(`window.set194Status({available:true,busy:false,state:'UP_TO_DATE',version:'9.194.0',current:'9.194.0',message:'已是最新版本。'},false,false);window.fixture194.response=${JSON.stringify({available:true,busy:false,state:'OPTIONAL_UPDATE',version:'9.194.0',current:'9.194.0',latest:'9.194.2',message:'发现新版本。'})};window.set194Theme('aurora');window.set194Route('settings');`);
   await js(`window.fixture194.hold=true`);
   await js(`(()=>{const b=[...document.querySelectorAll('button')].find(x=>x.innerText.trim()==='检查更新');if(!b)throw Error('Settings manual update button missing');b.click();return true})()`);
@@ -86,14 +87,16 @@ try {
   check(await visibleTextCount(manualChecking.text)===1,'manual checking status is duplicated while the real check bridge is pending');
   summaries.push({theme:'aurora',phase:'manual-checking-pending',...manualChecking});
   await js(`window.fixture194.releasePending();window.fixture194.hold=false`);
-  await until(`document.body.innerText.includes('9.194.2')`);
-  const manual=await state('9.194.2',true);
+  await until(`document.querySelector('[aria-label="软件更新提示"]')?.innerText.includes('9.194.2')`);
+  const manual=await state('发现新版本。',false);
+  check(await js(`(()=>!!document.querySelector('[aria-label="软件更新提示"]')?.innerText.includes('9.194.2'))()`),'manual optional offer should remain visible in the main-window banner');
   summaries.push({theme:'aurora',phase:'manual-offer',...manual});
   check(await visibleTextCount(manual.text)===1,'manual offer status message appears more than once across Settings and modal');
-  check(await js(`!![...document.querySelectorAll('[role="dialog"][aria-label="MentorFlow 更新"] button')].find(b=>b.innerText.includes('立即更新并重启'))`),'manual update offer lost its global update action');
+  check(!(await js('document.querySelector(".shell").inert')),'manual optional offer must remain non-blocking');
+  check(await js(`!![...document.querySelectorAll('button')].find(b=>b.innerText.includes('更新并自动重启'))`),'manual offer lost its explicit Settings update action');
 
   await js(`window.fixture194.hold=true`);
-  await js(`(()=>{const b=[...document.querySelectorAll('[role="dialog"][aria-label="MentorFlow 更新"] button')].find(x=>x.innerText.includes('立即更新并重启'));if(!b)throw Error('global update action missing');b.click();return true})()`);
+  await js(`(()=>{const b=[...document.querySelectorAll('button')].find(x=>x.innerText.includes('更新并自动重启'));if(!b)throw Error('Settings update action missing');b.click();return true})()`);
   await until(`window.fixture194.calls.includes('update.install')&&window.fixture194.pending===1&&!!window.fixture194.releasePending`);
   await noGlobalWait();
   await until(`document.querySelector('[data-testid="update-status"]')?.innerText.includes('正在准备新版本')`);
@@ -152,7 +155,7 @@ try {
   // number that is also legitimately shown in the current→target metadata.
   const matrix=[
     {phase:'checking',modal:false,expected:'正在检查更新…',status:{available:true,busy:true,state:'CHECKING',version:'9.194.0',current:'9.194.0',message:'正在检查更新…'}},
-    {phase:'offer',modal:true,expected:'发现新版本 9.194.2。',status:{available:true,busy:false,state:'OPTIONAL_UPDATE',version:'9.194.0',current:'9.194.0',latest:'9.194.2',message:'发现新版本 9.194.2。',release_notes:'主题矩阵测试'}},
+    {phase:'offer',modal:false,expected:'发现新版本 9.194.2。',status:{available:true,busy:false,state:'OPTIONAL_UPDATE',version:'9.194.0',current:'9.194.0',latest:'9.194.2',message:'发现新版本。',release_notes:'主题矩阵测试'}},
     {phase:'downloading',modal:true,expected:'正在下载 3/8 个文件（3.00 MB / 8.00 MB）',status:{available:true,busy:true,state:'DOWNLOADING',download_state:'DOWNLOADING',version:'9.194.0',current:'9.194.0',latest:'9.194.2',downloaded_bytes:3145728,expected_download_bytes:8388608,downloaded_files:3,total_download_files:8}},
     {phase:'latest',modal:false,expected:'已是最新版本 9.194.0',status:{available:true,busy:false,state:'UP_TO_DATE',version:'9.194.0',current:'9.194.0',message:'已是最新版本。'}},
     {phase:'error',modal:false,expected:'更新服务暂时无法连接。',status:{available:true,busy:false,state:'FAILED_RECOVERABLE',version:'9.194.0',current:'9.194.0',message:'更新服务暂时无法连接。'}},
@@ -169,6 +172,13 @@ try {
       if(item.phase==='downloading'){
         const current=await state(item.expected,true);
         check(current.text===snapshot.text&&current.progressBars===1,`${theme}: download screenshot state changed before capture: ${JSON.stringify(current)}`);
+      }
+      if(item.phase==='offer'){
+        check(!(await js('document.querySelector(".shell").inert')),`${theme}: optional offer must not lock Settings`);
+        await js(`(()=>{const b=[...document.querySelectorAll('button')].find(x=>x.innerText.includes('更新并自动重启'));if(!b)throw Error('Settings explicit update action missing');b.click();return true})()`);
+        await until(`!!document.querySelector('[role="dialog"][aria-label="MentorFlow 更新"]')`);
+        check((await state('9.194.2',true)).modalCount===1,`${theme}: explicit click failed to open the update dialog`);
+        await configure(item.status,false,false);
       }
       if(item.phase==='downloading')check(snapshot.progressContainers===1&&snapshot.progressBars===1,`${theme}: download progress missing/duplicated`);
       summaries.push({theme,phase:`matrix-${item.phase}`,...snapshot});

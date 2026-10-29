@@ -30,11 +30,15 @@ def test_offer_before_prepare_keeps_login_and_event_loop_responsive105(app96, tm
     try:
         ui.start(); pump(app96, lambda: entered.is_set() and gate.isEnabled())
         assert not ui.snapshot()['busy'] and ui._background_preparing
-        assert ui._prompt.isVisible() and ui._prompt.install.isEnabled()
+        # Optional releases are surfaced by the main-window banner; startup
+        # preparation must not create a native offer or hold login.
+        assert ui._prompt is None
         pump(app96, lambda: len(ticks)>=5)
         done.set(); pump(app96, lambda: not ui._background_preparing)
         assert ui.state['state']=='OPTIONAL_UPDATE'
         assert ui.state['prepared'] is not failure
-        assert ui._prompt.isVisible() and ui._prompt.install.isEnabled()
+        assert ui._prompt is None
+        assert gate.isEnabled()
+        assert ui.state['latest'] == '2.0.6'
     finally:
         done.set(); timer.stop(); ui.close(); gate.close()

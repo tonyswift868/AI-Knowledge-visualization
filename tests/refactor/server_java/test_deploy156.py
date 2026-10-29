@@ -203,7 +203,7 @@ def test_python_fallback_recreate_keeps_layers_and_network45_last(sandbox):
 @pytest.mark.parametrize(
     "action,tail",
     [
-        ("start", "start backend oidc-loopback-proxy"),
+        ("start", "up -d --no-deps backend oidc-loopback-proxy"),
         ("stop", "stop oidc-loopback-proxy backend"),
     ],
 )
