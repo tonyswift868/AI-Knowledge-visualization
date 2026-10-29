@@ -90,7 +90,7 @@ class DesktopUpdates(QObject):
         self._publish({**self.state, **result})
         self._login_blocked = not result.get('login_allowed', False)
         getattr(self.gate, 'set_login_available', self.gate.setEnabled)(not self._login_blocked)
-        if self._login_blocked or result.get('state') == 'OPTIONAL_UPDATE' or result.get('deferred_update'):
+        if self._login_blocked:
             self._show_prompt()
         if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE'):
             from .delivery.per_user_install import schedule_updater_refresh
@@ -135,6 +135,22 @@ class DesktopUpdates(QObject):
             action = "check"
         if action not in {"startup", "check", "install"}:
             raise ValueError("unknown update operation")
+        if action == 'install' and self.state.get('shell') != 'repair':
+            # Persist the precise signed release shown to the user at the click
+            # entry. A background preparation never creates consent.
+            target_version = self.state.get('latest') or self.state.get('target')
+            envelope_sha256 = self.state.get('release_sha256')
+            try:
+                if not target_version or not envelope_sha256:
+                    raise ValueError('尚未取得已验证的新版本信息，请重新检查更新。')
+                self.core.record_update_authorization(self.root, target_version, envelope_sha256)
+            except (OSError, RuntimeError, ValueError) as error:
+                from .delivery.per_user_install import maintenance_log
+                maintenance_log(self.root, 'update_authorization_failed',
+                                error_type=type(error).__name__, detail=str(error))
+                self._publish({**self.state, 'state': 'FAILED_RECOVERABLE',
+                               'message': '无法保存更新确认，请重新检查更新。'})
+                return self.snapshot()
         if action == 'install':
             # The user action takes priority over a delayed, optional prefetch.
             self._background_retry.stop()
@@ -173,9 +189,30 @@ class DesktopUpdates(QObject):
                 else:
                     self._session.require_running()
                     operation = self.core.repair_installation if self.state.get('shell') == 'repair' else self.core.update_to_latest
-                    result = operation(
-                        self.root, progress=self._install_progress,
-                        cancel=self._cancel.is_set, pid=os.getpid(), hwnd_hex=hwnd)
+                    # Prefetch shares this worker, but cleanup/Updater refresh
+                    # use their own threads. A click queued behind prefetch must
+                    # not lose the installation lock to those maintenance jobs.
+                    # Wait only here on the worker, never on the GUI thread.
+                    from .delivery.per_user_install import _maintenance_lock, maintenance_log
+                    wait_started = time.monotonic()
+                    while not self._cancel.is_set() and not self._closed:
+                        if _maintenance_lock.acquire(timeout=.2):
+                            try:
+                                if self._cancel.is_set() or self._closed:
+                                    result = {'state': 'CANCELLED', 'cancelled': True,
+                                              'message': '更新已取消。'}
+                                else:
+                                    maintenance_log(self.root, 'user_install_maintenance_ready',
+                                                    wait_seconds=time.monotonic() - wait_started)
+                                    result = operation(
+                                        self.root, progress=self._install_progress,
+                                        cancel=self._cancel.is_set, pid=os.getpid(), hwnd_hex=hwnd)
+                            finally:
+                                _maintenance_lock.release()
+                            break
+                    else:
+                        result = {'state': 'CANCELLED', 'cancelled': True,
+                                  'message': '更新已取消。'}
                     if result.get("coordinator_started") and result.get('app_exit') == 'self':
                         # The coordinator has the signed staged update. New
                         # Apps exit themselves after this acknowledgement; the
@@ -380,7 +417,8 @@ class DesktopUpdates(QObject):
                                'login_check_pending': False, 'login_allowed': False})
                 self._login_blocked = True
                 getattr(self.gate, 'set_login_available', self.gate.setEnabled)(False)
-                self._show_prompt()
+                if self._login_blocked:
+                    self._show_prompt()
             if result.get('state') in ('HEALTHY', 'OPTIONAL_UPDATE', 'MANDATORY_UPDATE') and not self._cleanup_started:
                 self._cleanup_started = True
                 from .delivery.per_user_install import schedule_program_cleanup
@@ -460,7 +498,8 @@ class DesktopUpdates(QObject):
             self._clear_login_handoff()
             self._publish({**self.state, 'state': 'PENDING_INSTALL',
                            'message': '新版已下载好，下次打开软件时完成更新。'})
-            self._show_prompt()
+            if self._login_blocked:
+                self._show_prompt()
 
     def _show_prompt(self):
         from .update_dialog import UpdateDialog

@@ -134,3 +134,17 @@ source_sha 认定冻结源码（未提交构建仍可写旧 HEAD）。该延迟�
 必须记录真实 localhost 指针及签名清单分段耗时。UIA 仅用 Invoke/ValuePattern，不用系统输入；
 CDP 只连接本机测试窗口。日志、截图、缓存与副本均留在任务目录，最终清理预览注册、快捷方式、
 凭据和测试私钥；正式安装与用户数据不动。
+
+239-MF04 最终真包：固定任务根 `D:/MentorFlow/.local/test-tmp/fix239u` 和 AppId
+`MentorFlow.UAT.fix239u`，先 dot-source `env239.ps1`，确认 localhost-only 服务在
+`127.0.0.1:18763/18764`；复用 task 内测试证书/私钥和现有锁定 build-tools。
+`D:/MentorFlow/.venv/Scripts/python.exe build239.py X --source D:/MentorFlow/.local/test-tmp/fix239u/source-final239` 冻结
+`X239-lock-final`（9.239.1）、签名并生成本机安装包；`D:/MentorFlow/.venv/Scripts/python.exe build239.py Y-optional` 和
+`D:/MentorFlow/.venv/Scripts/python.exe build239.py Y-required` 分别生成 `Y-optional239-lock-final` 与 `Y-required239-lock-final`
+（9.239.2 可选/强制策略包）。每包启动前都运行
+`refreeze239.py <X|Y-optional|Y-required> --check-only --source-root D:/MentorFlow/.local/test-tmp/fix239u/source-final239`；检查失败时禁止运行。
+最后依次 `scenario239.py a --run-id 0`（可选更新已准备但无授权，关闭重开仍为旧版，再显式点击更新）、
+`scenario239.py b --run-id 0`（登录入口强制门闩）和 `scenario239.py c --run-id 0`（阻止一次退出后下次启动完成更新）。
+所有 HTTP 与账号替身仅指向本机；CDP 只连 `127.0.0.1:18861`，UIA 仅调用真实控件的
+Invoke/ValuePattern，不模拟鼠标/键盘。环境边界检查、pending 授权、最终版本、安装分段/前台提示
+和截图都写进 task-local logs/screenshots；不得用正式密钥、正式账号或公网请求。

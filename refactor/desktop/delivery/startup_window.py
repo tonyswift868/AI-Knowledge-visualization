@@ -10,11 +10,13 @@ _native = None
 _paint = None
 _gdi_objects = []
 _class_instance = None
+_startup_text = '正在启动…'
 
 
 def native_splash(text='正在启动…'):
     """A tiny Win32 splash before Qt loads; QApplication later pumps its messages."""
-    global _native
+    global _native, _startup_text
+    _startup_text = text
     if os.name != 'nt': return
     import ctypes as c
     from ctypes import wintypes as w
@@ -53,7 +55,7 @@ def native_splash(text='正在启动…'):
             previous=gdi.SelectObject(dc,fonts[0]); rect=w.RECT(32,28,390,78)
             user.DrawTextW(dc,'MentorFlow',-1,c.byref(rect),0)
             gdi.SelectObject(dc,fonts[1]); gdi.SetTextColor(dc,0x806D84)
-            rect=w.RECT(32,110,390,150); user.DrawTextW(dc,text,-1,c.byref(rect),0)
+            rect=w.RECT(32,110,390,174); user.DrawTextW(dc,_startup_text,-1,c.byref(rect),0x10)
             gdi.SelectObject(dc,previous); user.EndPaint(hwnd,c.byref(area)); return 0
         return user.DefWindowProcW(hwnd,message,wp,lp)
     _paint=paint
@@ -93,6 +95,26 @@ def native_splash(text='正在启动…'):
                   foreground_before=int(foreground_before or 0),
                   foreground_after=int(user.GetForegroundWindow() or 0),
                   foreground=user.GetForegroundWindow() == hwnd)
+    if not foreground_result:
+        flash_taskbar(hwnd, root=runtime_root())
+
+
+def set_startup_text(text, *, root=None):
+    """Update the existing splash from the install worker, without activating it."""
+    global _startup_text
+    _startup_text = text
+    if _native is not None and os.name == 'nt':
+        import ctypes
+        user = ctypes.windll.user32
+        # Invalidate queues WM_PAINT on the UI thread; do not use cross-thread
+        # SendMessage/activation while the worker holds the update lock.
+        user.InvalidateRect(ctypes.c_void_p(_native), None, True)
+    if root is not None:
+        log_phase(root, 'startup_activity', text=text)
+
+
+def current_startup_text():
+    return _startup_text
 
 
 def run_with_native_splash(action):
@@ -178,7 +200,29 @@ def foreground(window):
             log_phase(root, 'app_foreground_requested', hwnd=int(window.winId()),
                       set_foreground_result=result, foreground_before=int(before or 0),
                       foreground_after=int(user.GetForegroundWindow() or 0))
+        if not result:
+            flash_taskbar(int(window.winId()), root=root)
     window.raise_(); window.activateWindow()
+
+
+def flash_taskbar(hwnd, *, root=None):
+    """Notify after denied foreground activation; never steal input focus."""
+    if os.name != 'nt': return
+    import ctypes
+    from ctypes import wintypes
+    class FlashInfo(ctypes.Structure):
+        _fields_ = [('size', wintypes.UINT), ('hwnd', wintypes.HWND),
+                    ('flags', wintypes.DWORD), ('count', wintypes.UINT),
+                    ('timeout', wintypes.DWORD)]
+    info = FlashInfo(ctypes.sizeof(FlashInfo), hwnd, 2, 3, 0)  # FLASHW_TRAY, three flashes.
+    call = ctypes.windll.user32.FlashWindowEx
+    call.argtypes = [ctypes.POINTER(FlashInfo)]
+    call.restype = wintypes.BOOL
+    # The API return is the prior active state, NOT whether flashing succeeded.
+    prior_active = bool(call(ctypes.byref(info)))
+    if root is not None:
+        log_phase(root, 'foreground_attention_requested', hwnd=hwnd, flashes=3,
+                  previous_active=prior_active)
 
 
 def runtime_root():

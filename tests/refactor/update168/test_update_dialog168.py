@@ -95,7 +95,7 @@ def test_update168_background_lock_conflict_retries_silently(app168, tmp_path, m
         assert calls == 2
         assert '锁冲突' not in ui.snapshot().get('message', '')
         assert '失败' not in ui.snapshot().get('message', '')
-        assert ui._prompt is not None and '锁冲突' not in ui._prompt.message.text()
+        assert ui._prompt is None  # Optional offers stay on the non-blocking web notice.
         assert ui.snapshot().get('background_downloading')
         release_second.set()
         pump(app168, lambda: bool(ui.snapshot().get('prepared')))
@@ -136,7 +136,7 @@ def test_update168_background_lock_retry_budget_exhausts_without_ui_error(app168
                    and kwargs.get('reason') == 'update_lock_busy' for args, kwargs in logs)
         assert ui.state.get('state') == 'OPTIONAL_UPDATE'
         assert '失败' not in ui.state.get('message', '')
-        assert ui._prompt is not None and '失败' not in ui._prompt.message.text()
+        assert ui._prompt is None  # Background preparation never opens a native dialog.
     finally:
         ui.close(); gate.close(); app168.processEvents()
 

@@ -52,6 +52,9 @@ def _queue_update(feed, root, source, envelope, tmp_path):
     shutil.copytree(source, staged)
     (staged.parent / 'release.json').write_bytes(envelope)
     core.remember_download(root, staged, envelope)
+    # This fixture represents a user-confirmed install, not background prefetch.
+    core.record_update_authorization(root, install.historical(envelope, feed.keys).version,
+                                     install.digest(envelope))
     return _Service(feed, root, envelope, cache_root)
 
 

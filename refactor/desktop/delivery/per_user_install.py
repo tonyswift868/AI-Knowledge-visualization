@@ -16,6 +16,7 @@ import tempfile
 import time
 import uuid
 from functools import lru_cache
+from contextlib import contextmanager
 
 # Paint before cryptography/Qt imports or hidden shutdown-monitor windows.
 if __name__ == '__main__' and sys.argv[1:2] == ['launch']:
@@ -423,6 +424,26 @@ def maintenance_log(root, phase, **fields):
                                     ensure_ascii=False) + '\n')
     except OSError:
         pass
+
+
+@contextmanager
+def _install_stage(root, stage):
+    """Measure local work separately from the existing network/rename timers."""
+    started = time.perf_counter()
+    # An incomplete first installation must reject untrusted repair inputs
+    # without touching its evidence (including logs). Update timings apply to
+    # installations whose identity already exists.
+    enabled = (Path(root) / STATE).is_file()
+    if enabled:
+        maintenance_log(root, 'install_stage_started', stage=stage)
+    complete = False
+    try:
+        yield
+        complete = True
+    finally:
+        if enabled:
+            maintenance_log(root, 'install_stage_finished', stage=stage, complete=complete,
+                            seconds=time.perf_counter() - started)
 
 
 def _program_cache_roots(root):
@@ -955,16 +976,21 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
     exists = root.exists()
     initial_repair = exists and any(root.iterdir()) and not is_install(root)
     if initial_repair: _initial_repair_release(root, public_keys)
-    current, release = admit(root, envelope, public_keys, repair=repair)
+    with _install_stage(root, 'initial_signed_admission'):
+        current, release = admit(root, envelope, public_keys, repair=repair)
     if initial_repair: _initial_repair_release(root, public_keys, release)
     # A distribution may contain a sibling Installer directory. Only signed
     # files are read/copied; the newly materialized tree must match exactly.
     # Ordinary installers may include an unsigned sibling Installer directory.
     # Prepared updates have an exact file inventory, held write-denied through
     # activation. Invalid/old receipts retain the legacy verified copy path.
-    from refactor.desktop.delivery.prepared_update import ready
-    reuse = prepared and source.drive.casefold() == root.drive.casefold() and ready(source, release)
-    if not reuse: verify_tree(source, release, subset=list(release.rows))
+    # Check the receipt once, under the writer lock. An optimistic ready()
+    # inventory here repeated every file identity check immediately before the
+    # locked lease, without extending the immutable interval used for activation.
+    reuse_candidate = prepared and source.drive.casefold() == root.drive.casefold()
+    if not prepared:
+        with _install_stage(root, 'source_full_verification'):
+            verify_tree(source, release, subset=list(release.rows))
     required = sum(r['size'] for r in release.rows.values()) + 64 * 1024**2
     free = shutil.disk_usage(root.parent).free
     if free < required: raise RecoverableError(low_space_message(required, free))
@@ -973,12 +999,17 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
     from contextlib import ExitStack
     with InstallUpdateLock(root), ExitStack() as verified_files:
         from refactor.desktop.delivery.prepared_update import lease, inventory
-        reuse = reuse and verified_files.enter_context(lease(source, release))
+        from refactor.desktop.delivery.startup_window import set_startup_text
+        set_startup_text('正在更新 MentorFlow：核对已下载的文件…', root=root)
+        with _install_stage(root, 'prepared_inventory_locked'):
+            reuse = reuse_candidate and verified_files.enter_context(lease(source, release))
+        maintenance_log(root, 'prepared_inventory_result', reused=bool(reuse), files=len(release.rows))
         if prepared and not reuse:
-            # Recheck under the lock if it changed after the optimistic read.
-            verify_tree(source, release, subset=list(release.rows))
+            with _install_stage(root, 'source_full_verification'):
+                verify_tree(source, release, subset=list(release.rows))
         if refresh_runtime: require_updater_stopped(root)
-        current, release = admit(root, envelope, public_keys, repair=repair)
+        with _install_stage(root, 'locked_signed_admission'):
+            current, release = admit(root, envelope, public_keys, repair=repair)
         if deferred_attempt is not None:
             locked_journal = strict_json(read(root / JOURNAL))
             if (deferred_attempt not in (locked_journal.get('attempt'),
@@ -1011,6 +1042,7 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
         restored_previous = False
         recovery_incomplete = False
         try:
+            set_startup_text('正在更新 MentorFlow：安装文件…', root=root)
             if reuse:
                 from refactor.desktop.delivery.prepared_update import RECEIPT
                 ready_inventory = strict_json(read(source.parent / RECEIPT))['files']
@@ -1027,12 +1059,15 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
                 _copy(source, stage / 'App', release, progress)
             # Cache/staging may be writable: recheck current signed metadata and
             # ALL copied bytes immediately before invoking the swap boundary.
-            _, release = admit(root, envelope, public_keys, repair=repair)
-            verified_inventory = verified_files.enter_context(inventory(stage / 'App', release))
+            with _install_stage(root, 'activation_signed_admission'):
+                _, release = admit(root, envelope, public_keys, repair=repair)
+            with _install_stage(root, 'moved_inventory'):
+                verified_inventory = verified_files.enter_context(inventory(stage / 'App', release))
             if not reuse or verified_inventory != ready_inventory:
                 # One final independent hash pass; hold these exact objects
                 # against writes until the swap (including the close callback).
-                verify_tree(stage / 'App', release)
+                with _install_stage(root, 'activation_full_verification'):
+                    verify_tree(stage / 'App', release)
             mark('VERIFIED'); progress(85)
             atomic(root / HIGHEST, release.envelope)
             from refactor.desktop.delivery.per_user_update_core import unsafe_teardown
@@ -1044,7 +1079,7 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             base_closed = True
             # Check names/identity again (not SHA) and release child handles at
             # the native rename boundary. No other product writer can enter.
-            with inventory(stage / 'App', release) as final_inventory:
+            with _install_stage(root, 'activation_identity_recheck'), inventory(stage / 'App', release) as final_inventory:
                 if final_inventory != verified_inventory:
                     raise SecurityError('verified staging changed before activation')
             verified_files.close()
@@ -1105,7 +1140,9 @@ def transact(root, source, envelope, *, public_keys=None, health=None, progress=
             from refactor.desktop.delivery.startup_integrity import remember_verified, verified_stat_snapshot
             verified_stats = verified_stat_snapshot(root, release)
             mark('NEW_ACTIVE'); progress(95)
-            proof = (health or launch_health)(root, release)
+            set_startup_text('更新已安装，正在打开 MentorFlow…', root=root)
+            with _install_stage(root, 'new_app_health'):
+                proof = (health or launch_health)(root, release)
             if not isinstance(proof, dict) or proof.get('ready') is not True:
                 raise RecoverableError('new version did not become ready')
             successful_result = dict(status='HEALTHY', version=release.version, health=proof,

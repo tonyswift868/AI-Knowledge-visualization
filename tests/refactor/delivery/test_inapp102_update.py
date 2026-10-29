@@ -9,7 +9,7 @@ from refactor.desktop.delivery import per_user_install as install
 from refactor.desktop.delivery import per_user_update_core as core
 from refactor.desktop.delivery.update_protocol import canonical
 from tests.refactor.delivery.test_delivery_per_user_install import case
-from tests.refactor.delivery.test_delivery_one_click_update_core import setup
+from tests.refactor.delivery.test_delivery_one_click_update_core import setup, click_update
 
 
 def _legacy_pending(root, source, raw):
@@ -35,6 +35,7 @@ def test_legacy_pending_stage_is_reverified_in_fixed_legacy_cache(case, monkeypa
     service.check(manual=True); service.download()
     source, raw = service.staged, service.release.envelope
     _legacy_pending(root, source, raw)
+    click_update(root, service)  # Legacy downloads require a fresh explicit click.
     monkeypatch.setattr(install, 'launch_health', lambda r, release: dict(ready=True, version=release.version))
     result = core.resume_pending_on_normal_launch(root, service=service)
     assert result['state'] == 'CURRENT_HEALTHY'
@@ -48,6 +49,7 @@ def test_self_exit_timeout_keeps_pending_install(case, monkeypatch):
     service.check(manual=True); service.download()
     source, raw = service.staged, service.release.envelope
     _legacy_pending(root, source, raw)
+    click_update(root, service)
     monkeypatch.setattr(install, 'wait_for_app_exit',
                         lambda *args, **kwargs: (_ for _ in ()).throw(
                             install.AppShutdownTimeout('app self-exit timed out')))
@@ -60,6 +62,7 @@ def test_self_exit_timeout_keeps_pending_install(case, monkeypatch):
 
 def test_in_app_handoff_passes_self_exit_flag(case, monkeypatch):
     root, service = setup(case, monkeypatch)
+    click_update(root, service)
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
     monkeypatch.setattr(ProcessPeer, 'require', lambda *a, **kw: {})
     monkeypatch.setattr(ProcessPeer, 'visible_responsive_window', lambda *a: None)
@@ -162,16 +165,19 @@ def test_native_handle_is_open_before_ack_and_exit_wait(monkeypatch, tmp_path):
     assert events == ['validated', 'ack']
 
 
-def test_failed_save_restores_deferred_prompt_instead_of_quitting(tmp_path):
+@pytest.mark.parametrize('mandatory', [False, True])
+def test_failed_save_restores_deferred_state_instead_of_quitting(tmp_path, mandatory):
     from refactor.desktop.updates import DesktopUpdates
     class Shell:
         def prepare_update_shutdown(self): raise OSError('save busy')
     shown = []; published = []
     ui = SimpleNamespace(_closed=False, root=tmp_path, _prompt=None, _login_handoff=Shell(),
+        _login_blocked=mandatory,
         state={'state': 'APPLYING'}, _clear_login_handoff=lambda: None,
         _publish=published.append, _show_prompt=lambda: shown.append(True))
     DesktopUpdates._finish_handoff(ui)
-    assert shown and published[0]['state'] == 'PENDING_INSTALL'
+    assert bool(shown) is mandatory
+    assert published[0]['state'] == 'PENDING_INSTALL'
     assert published[0]['message'] == '新版已下载好，下次打开软件时完成更新。'
 
 

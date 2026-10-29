@@ -17,6 +17,7 @@ def test_ready_click_does_not_rebuild_hash_or_copy105(case, monkeypatch):
     root, service = setup(case, monkeypatch)
     assert core.prepare_update(root, service=service)['prepared']
     stage = service.staged
+    core.record_update_authorization(root, service.release.version, install.digest(service.release.envelope))
     monkeypatch.setattr(service, 'download', lambda **kw: pytest.fail('ready click rebuilt staging'))
     monkeypatch.setattr(install, '_copy', lambda *a: pytest.fail('same-volume update copied files'))
     original = install.verify_tree
@@ -80,6 +81,7 @@ def test_ready_pending_protected_from_cleanup105(case, monkeypatch):
 def test_ready_rollback_and_close_timeout105(case, monkeypatch):
     root, service = setup(case, monkeypatch)
     core.prepare_update(root, service=service)
+    core.record_update_authorization(root, service.release.version, install.digest(service.release.envelope))
     stage = service.staged
     monkeypatch.setattr(install, 'request_app_shutdown', lambda *a: (_ for _ in ()).throw(install.AppShutdownTimeout('busy')))
     result = core.apply_update(root, service=service, pid=1234, hwnd_hex='0001')
@@ -108,6 +110,7 @@ def test_ready_files_deny_writes_until_activation105(case, monkeypatch):
 def test_click_uses_ready_without_fetch_then_apply_checks_metadata_once105(case, monkeypatch):
     root, service = setup(case, monkeypatch)
     core.prepare_update(root, service=service)
+    core.record_update_authorization(root, service.release.version, install.digest(service.release.envelope))
     calls = []
     check = service.check
     monkeypatch.setattr(service, 'check', lambda **kw: (calls.append(True) or check(**kw)))
