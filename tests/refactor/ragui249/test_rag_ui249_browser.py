@@ -10,7 +10,7 @@ import shutil
 import pytest
 
 REPO = Path(__file__).resolve().parents[3]
-OUT = Path("D:/MentorFlow/.local/test-tmp/ragui249")
+OUT = Path("D:/MentorFlow/.local/test-tmp/ragux251/legacy-ragui249")
 NODE = Path("D:/MentorFlow/.local/node/node.exe")
 DEPS = Path("D:/MentorFlow/.local/web-deps")
 WEB = REPO / "refactor/learning/web"

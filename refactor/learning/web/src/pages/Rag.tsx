@@ -1,7 +1,7 @@
 import * as React from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { BookOpen, Check, Copy, FilePlus2, LoaderCircle, MessageSquarePlus, SendHorizontal, Square, Trash2, X } from "lucide-react"
+import { BookOpen, Check, Copy, FilePlus2, LoaderCircle, MessageSquarePlus, Pencil, SendHorizontal, Square, Trash2, X } from "lucide-react"
 import { call, on } from "../bridge"
 import { useApp } from "../store"
 import { useRoundScroll } from "../useRoundScroll"
@@ -18,8 +18,6 @@ type SessionSummary = { id: string; title: string; document_ids: string[]; updat
 type Session = SessionSummary & { messages: Message[] }
 type SourcesResponse = { plans: Plan[]; documents: Document[]; sessions: SessionSummary[]; server_status?: { state: "ready" | "unavailable"; message?: string } }
 
-const sameSet = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i])
-
 export function Rag() {
   const toast = useApp((s) => s.toast)
   const modelFault = useApp((s) => s.modelFault)
@@ -28,17 +26,35 @@ export function Rag() {
   const [planId, setPlanId] = React.useState("")
   const [selected, setSelected] = React.useState<string[]>([])
   const [session, setSession] = React.useState<Session | null>(null)
+  const sessionRef = React.useRef(session)
+  sessionRef.current = session
   const [question, setQuestion] = React.useState("")
   const [pending, setPending] = React.useState<{ text: string; reply: string } | null>(null)
+  const pendingRef = React.useRef(pending)
+  pendingRef.current = pending
   const [sendFailure, setSendFailure] = React.useState<{ text: string; message: string } | null>(null)
-  const [busy, setBusy] = React.useState<"ingest" | "import" | "session" | "send" | "" >("")
+  const [busy, setBusy] = React.useState<"import" | "session" | "saving" | "prepare" | "send" | "" > ("")
+  const busyRef = React.useRef(busy)
+  busyRef.current = busy
+  const [editingSessionSources, setEditingSessionSources] = React.useState(false)
+  const [preparing, setPreparing] = React.useState<{ sessionId: string; ids: string[]; uploaded: number; total: number; source?: "explicit" | "send" } | null>(null)
+  const [prepareFailure, setPrepareFailure] = React.useState<{ sessionId: string; ids: string[]; message: string } | null>(null)
   const [progress, setProgress] = React.useState<Record<string, Partial<Document>>>({})
+  const preparingRef = React.useRef(preparing)
+  const progressRef = React.useRef(progress)
+  const docByIdRef = React.useRef<(id: string) => Document | undefined>(docById)
+  preparingRef.current = preparing
+  progressRef.current = progress
+  docByIdRef.current = docById
   const [sourceOpen, setSourceOpen] = React.useState<{ messageId: string; number: number } | null>(null)
   const abort = React.useRef<AbortController | null>(null)
+  const preparationAbort = React.useRef<AbortController | null>(null)
   const mounted = React.useRef(false)
   const sessionReadRevision = React.useRef(0)
   const sourcesReadRevision = React.useRef(0)
   const accountScopeRevision = React.useRef(0)
+  const workflowRevision = React.useRef(0)
+  const sendPreparationCancelled = React.useRef(false)
   const sourcesFlight = React.useRef<Promise<SourcesResponse> | null>(null)
   const probeRagStatus = React.useRef<(() => void) | null>(null)
   const scrollRef = React.useRef<HTMLDivElement>(null)
@@ -69,16 +85,115 @@ export function Rag() {
     }
   }
 
+  function cancelPreparation() {
+    if (preparingRef.current?.source === "send") {
+      // This preparation runs inside rag.send, so abort its shared request to
+      // prevent it from continuing into retrieval or a model call.
+      sendPreparationCancelled.current = true
+      abort.current?.abort()
+      preparingRef.current = null
+      setPreparing(null)
+      return
+    }
+    workflowRevision.current++
+    preparationAbort.current?.abort()
+    preparationAbort.current = null
+    setPreparing(null)
+    preparingRef.current = null
+    setBusy((current) => current === "prepare" ? "" : current)
+  }
+
+  function mergeIngestedDocuments(updated: Document[]) {
+    if (!updated.length) return
+    setSources((current) => current ? { ...current, documents: mergeDocuments(current.documents, updated) } : current)
+  }
+
+  function upsertSession(sessionValue: Session) {
+    const summary: SessionSummary = {
+      id: sessionValue.id,
+      title: sessionValue.title,
+      document_ids: sessionValue.document_ids,
+      updated_at: sessionValue.updated_at,
+      count: sessionValue.count,
+    }
+    setSources((current) => current ? {
+      ...current,
+      sessions: [summary, ...current.sessions.filter((item) => item.id !== summary.id)],
+    } : current)
+  }
+
+  async function prepareDocuments(sessionId: string, ids: string[]) {
+    const documentIds = [...new Set(ids)].filter((id) => docById(id)?.status !== "ready")
+    setPrepareFailure(null)
+    if (!documentIds.length) return true
+
+    const revision = ++workflowRevision.current
+    const accountRevision = accountScopeRevision.current
+    const controller = new AbortController()
+    preparationAbort.current?.abort()
+    preparationAbort.current = controller
+    const total = documentIds.reduce((sum, id) => sum + (docById(id)?.total_chunks ?? 0), 0)
+    const isCurrent = () => mounted.current && revision === workflowRevision.current
+      && accountRevision === accountScopeRevision.current
+    const operation = { sessionId, ids: documentIds, uploaded: 0, total, source: "explicit" as const }
+    preparingRef.current = operation
+    setPreparing(operation)
+    setBusy("prepare")
+    try {
+      const result = await call<{ documents: Document[] }>("rag.ingest", { document_ids: documentIds }, { signal: controller.signal })
+      if (!isCurrent()) return false
+      const updated = result.documents ?? []
+      mergeIngestedDocuments(updated)
+      const failed = documentIds.map((id) => updated.find((doc) => doc.id === id) ?? docById(id))
+        .filter((doc): doc is Document => !!doc && doc.status !== "ready")
+      if (failed.length) {
+        const message = failed.map((doc) => `${doc.title}${doc.error ? `：${doc.error}` : "未完成准备"}`).join("；")
+        setPrepareFailure({ sessionId, ids: documentIds, message })
+        setSources((current) => current ? { ...current, documents: current.documents.map((doc) => {
+          const failure = failed.find((item) => item.id === doc.id)
+          return failure ? { ...doc, status: "failed", error: failure.error || "资料准备未完成。" } : doc
+        }) } : current)
+        return false
+      }
+      return true
+    } catch (error) {
+      if (!isCurrent()) return false
+      const failure = error as Error & { code?: string }
+      if (failure.code !== "CANCELLED" && failure.name !== "AbortError") {
+        const message = failure.message || "资料准备失败，请重试。"
+        setPrepareFailure({ sessionId, ids: documentIds, message })
+        setSources((current) => current ? { ...current, documents: current.documents.map((doc) => documentIds.includes(doc.id)
+          ? { ...doc, status: "failed", error: message } : doc) } : current)
+        toast("error", `资料准备失败：${message}`)
+      }
+      return false
+    } finally {
+      if (isCurrent()) {
+        preparationAbort.current = null
+        preparingRef.current = null
+        setPreparing(null)
+        setBusy((current) => current === "prepare" ? "" : current)
+      }
+    }
+  }
+
   const refresh = React.useCallback(async () => {
     if (sourcesFlight.current) return sourcesFlight.current
-    const revision = ++sourcesReadRevision.current
-    const flight = call<SourcesResponse>("rag.sources").then((result) => {
-      if (mounted.current && revision === sourcesReadRevision.current) {
-        setSources(result)
-        setLoadError("")
+    const flight = (async () => {
+      while (true) {
+        const revision = sourcesReadRevision.current
+        const result = await call<SourcesResponse>("rag.sources")
+        if (!mounted.current) return result
+        if (revision === sourcesReadRevision.current) {
+          setSources(result)
+          setLoadError("")
+          return result
+        }
+        // A mutation landed while this read was in flight. Re-read serially
+        // within the same shared flight so stale snapshots never win and a
+        // second concurrent rag.sources request is never started.
       }
-      return result
-    })
+    })()
     sourcesFlight.current = flight
     try {
       return await flight
@@ -86,6 +201,9 @@ export function Rag() {
       if (sourcesFlight.current === flight) sourcesFlight.current = null
     }
   }, [])
+  function invalidateSourcesRead() {
+    sourcesReadRevision.current++
+  }
   React.useEffect(() => {
     let alive = true
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -93,6 +211,7 @@ export function Rag() {
     let pollRequired = false
     let delay = 1500
     mounted.current = true
+    sourcesReadRevision.current++
     const clearScheduled = () => {
       if (timer !== null) clearTimeout(timer)
       timer = null
@@ -133,130 +252,250 @@ export function Rag() {
     const off = on("rag.progress", (event) => {
       const id = String(event?.id ?? event?.document_id ?? "")
       if (!id) return
+      let operation = preparingRef.current
+      if (!operation && !sendPreparationCancelled.current && busyRef.current === "send" && pendingRef.current) {
+        const activeSession = sessionRef.current
+        if (activeSession?.document_ids.includes(id) && event?.status === "uploading") {
+          operation = { sessionId: activeSession.id, ids: activeSession.document_ids,
+            uploaded: 0, total: 0, source: "send" }
+          preparingRef.current = operation
+          setPreparing(operation)
+        }
+      }
+      if (!operation && busyRef.current !== "import") return
+      if (operation && !operation.ids.includes(id)) return
       setProgress((old) => ({ ...old, [id]: event }))
+      if (operation && operation.ids.includes(id)) {
+        const uploaded = operation.ids.reduce((sum, documentId) => sum + (documentId === id
+          ? Number(event?.uploaded_chunks ?? 0)
+          : Number(progressRef.current[documentId]?.uploaded_chunks ?? docByIdRef.current(documentId)?.uploaded_chunks ?? 0)), 0)
+        const total = operation.ids.reduce((sum, documentId) => sum + (documentId === id
+          ? Number(event?.total_chunks ?? 0)
+          : Number(docByIdRef.current(documentId)?.total_chunks ?? 0)), 0)
+        setPreparing((current) => current?.sessionId === operation.sessionId
+          ? { ...current, uploaded, total, source: operation?.source } : current)
+        preparingRef.current = { ...operation, uploaded, total }
+      }
       setSources((old) => old ? { ...old, documents: old.documents.map((doc) => doc.id === id ? { ...doc, ...event, id } : doc) } : old)
     })
     const offScope = on("scope_changed", () => {
       accountScopeRevision.current++
+      workflowRevision.current++
+      preparationAbort.current?.abort()
+      preparationAbort.current = null
+      abort.current?.abort()
       sourcesReadRevision.current++
-      sourcesFlight.current = null
       sessionReadRevision.current++
       setSources(null)
       setSession(null)
+      sessionRef.current = null
       setSelected([])
+      setPreparing(null)
+      preparingRef.current = null
+      setProgress({})
+      sendPreparationCancelled.current = false
+      setPrepareFailure(null)
+      setEditingSessionSources(false)
+      setPending(null)
+      pendingRef.current = null
+      setSendFailure(null)
+      setBusy("")
+      busyRef.current = ""
       clearSendFailure()
     })
-    return () => { alive = false; mounted.current = false; sessionReadRevision.current++; probeRagStatus.current = null; clearScheduled(); off(); offScope(); abort.current?.abort() }
+    return () => { alive = false; mounted.current = false; sourcesReadRevision.current++; sessionReadRevision.current++; workflowRevision.current++; probeRagStatus.current = null; clearScheduled(); off(); offScope(); abort.current?.abort(); preparationAbort.current?.abort() }
   }, [refresh])
 
   async function openSession(id: string) {
+    cancelPreparation()
+    setEditingSessionSources(false)
     const revision = ++sessionReadRevision.current
     try {
       const result = await call<{ session: Session }>("rag.get", { session_id: id })
       if (!mounted.current || revision !== sessionReadRevision.current) return
       setSession(result.session)
+      sessionRef.current = result.session
       setSelected(result.session.document_ids)
+      setPlanId(planForDocuments(result.session.document_ids))
       clearSendFailure()
     } catch (e) { if (mounted.current && revision === sessionReadRevision.current) toast("error", (e as Error).message) }
   }
   function toggleDocument(id: string) {
+    if (session && !editingSessionSources) return
     clearSendFailure()
+    setPrepareFailure(null)
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
   }
   function selectPlan(id: string) {
+    if (session && !editingSessionSources) return
     clearSendFailure()
+    setPrepareFailure(null)
     setPlanId(id)
     if (!id) return
     const plan = sources?.plans.find((item) => item.id === id)
     if (plan) setSelected((current) => [...new Set([...current, ...plan.document_ids])])
   }
   function togglePlan(id: string) {
+    if (session && !editingSessionSources) return
     clearSendFailure()
+    setPrepareFailure(null)
     const ids = sources?.plans.find((item) => item.id === id)?.document_ids ?? []
     setSelected((current) => ids.length && ids.every((docId) => current.includes(docId))
       ? current.filter((docId) => !ids.includes(docId)) : [...new Set([...current, ...ids])])
   }
   async function importFiles() {
+    const keepSessionSelection = !!session && !editingSessionSources
+    const accountRevision = accountScopeRevision.current
     setBusy("import")
     try {
       const picked = await call<{ paths: string[] }>("rag.pick_files")
-      if (!picked.paths?.length) return
+      if (!picked.paths?.length || accountRevision !== accountScopeRevision.current) return
       const result = await call<{ documents: Document[] }>("rag.import_files", { paths: picked.paths })
+      if (accountRevision !== accountScopeRevision.current || !mounted.current) return
       const imported = result.documents ?? []
       setSources((current) => current ? { ...current, documents: mergeDocuments(current.documents, imported) } : current)
-      setSelected((current) => [...new Set([...current, ...imported.map((doc) => doc.id)])])
+      if (!keepSessionSelection) setSelected((current) => [...new Set([...current, ...imported.map((doc) => doc.id)])])
+      else if (imported.length) toast("info", "资料已加入列表。要把它加入当前会话，请先点“改资料”。")
       await refresh()
     } catch (e) { toast("error", (e as Error).message) }
-    finally { setBusy("") }
+    finally { if (accountRevision === accountScopeRevision.current) setBusy("") }
   }
-  async function ingest() {
-    const documentIds = selectedDocuments.filter((doc) => doc.status !== "ready").map((doc) => doc.id)
-    if (!documentIds.length || busy) return
-    setBusy("ingest")
+  function beginSessionSourcesEdit() {
+    if (!session || busy || pending) return
+    cancelPreparation()
+    setPrepareFailure(null)
+    setSelected(session.document_ids)
+    setPlanId(planForDocuments(session.document_ids))
+    setEditingSessionSources(true)
+  }
+  function cancelSessionSourcesEdit() {
+    cancelPreparation()
+    setSelected(session?.document_ids ?? [])
+    setEditingSessionSources(false)
+    setPrepareFailure(null)
+  }
+  async function saveSessionSources() {
+    if (!session || !selected.length || busy || pending) return
+    const currentSessionId = session.id
+    const revision = ++sessionReadRevision.current
+    const accountRevision = accountScopeRevision.current
+    const ids = [...selected]
+    setBusy("saving")
+    setPrepareFailure(null)
     try {
-      const result = await call<{ documents: Document[] }>("rag.ingest", { document_ids: documentIds })
-      const updated = result.documents ?? []
-      if (updated.length) setSources((current) => current ? { ...current, documents: mergeDocuments(current.documents, updated) } : current)
-      const fresh = await refresh()
-      const byReturnedId = new Map(updated.map((doc) => [doc.id, doc]))
-      const finalDocs = documentIds.map((id) => byReturnedId.get(id) ?? fresh.documents.find((doc) => doc.id === id)).filter((doc): doc is Document => !!doc)
-      const failed = finalDocs.filter((doc) => doc.status !== "ready")
-      if (failed.length) toast("error", `${failed.length} 份资料未完成入库：${failed.map((doc) => `${doc.title}${doc.error ? `（${doc.error}）` : ""}`).join("、")}`)
-      else toast("ok", "所选资料已完成入库。")
-    } catch (e) { toast("error", (e as Error).message) }
-    finally { setBusy("") }
+      const result = await call<{ session: Session }>("rag.update_documents", {
+        session_id: currentSessionId, document_ids: ids,
+      })
+      if (!mounted.current || revision !== sessionReadRevision.current || accountRevision !== accountScopeRevision.current || session?.id !== currentSessionId) return
+      setSession(result.session)
+      sessionRef.current = result.session
+      setSelected(result.session.document_ids)
+      setPlanId(planForDocuments(result.session.document_ids))
+      setEditingSessionSources(false)
+      invalidateSourcesRead()
+      upsertSession(result.session)
+      setBusy("")
+      void refresh().catch(() => {})
+      await prepareDocuments(result.session.id, result.session.document_ids)
+    } catch (error) {
+      if (mounted.current && revision === sessionReadRevision.current && accountRevision === accountScopeRevision.current && session?.id === currentSessionId) toast("error", `更改资料未保存：${(error as Error).message}`)
+    } finally {
+      if (revision === sessionReadRevision.current && accountRevision === accountScopeRevision.current) setBusy((current) => current === "saving" ? "" : current)
+    }
   }
   async function newSession() {
     if (!selected.length || busy || pending) return
     setBusy("session")
+    const ids = [...selected]
+    const accountRevision = accountScopeRevision.current
+    const revision = ++sessionReadRevision.current
     try {
-      const result = await call<{ session: Session }>("rag.create", { document_ids: selected })
+      const result = await call<{ session: Session }>("rag.create", { document_ids: ids })
+      if (!mounted.current || accountRevision !== accountScopeRevision.current || revision !== sessionReadRevision.current) return
       setSession(result.session)
+      sessionRef.current = result.session
+      setSelected(result.session.document_ids)
+      setPlanId(planForDocuments(result.session.document_ids))
+      setEditingSessionSources(false)
       clearSendFailure()
-      await refresh()
-    } catch (e) { toast("error", (e as Error).message) }
-    finally { setBusy("") }
-  }
-  async function ensureSession(): Promise<Session> {
-    if (session && sameSet(session.document_ids, selected)) return session
-    const existing = sources?.sessions.find((item) => sameSet(item.document_ids, selected))
-    if (existing) {
-      const result = await call<{ session: Session }>("rag.get", { session_id: existing.id })
-      setSession(result.session)
-      return result.session
+      invalidateSourcesRead()
+      upsertSession(result.session)
+      setBusy("")
+      void refresh().catch(() => {})
+      await prepareDocuments(result.session.id, result.session.document_ids)
+    } catch (e) {
+      if (revision === sessionReadRevision.current && accountRevision === accountScopeRevision.current) toast("error", (e as Error).message)
+    } finally {
+      if (revision === sessionReadRevision.current && accountRevision === accountScopeRevision.current) setBusy((current) => current === "session" ? "" : current)
     }
-    const result = await call<{ session: Session }>("rag.create", { document_ids: selected })
-    setSession(result.session)
-    return result.session
   }
   async function send(retryText?: string) {
     const text = (retryText ?? question).trim()
-    if (!text || !selected.length || pending || busy) return
-    const notReady = selected.some((id) => docById(id)?.status !== "ready")
-    if (notReady) {
-      toast("info", "请先完成资料入库，再开始提问。")
-      return
+    if (!text || pending || busy || editingSessionSources) return
+    let activeSession = sessionRef.current
+    const ids = activeSession?.document_ids ?? selected
+    if (!ids.length) return
+    const accountRevision = accountScopeRevision.current
+    const revision = ++sessionReadRevision.current
+    sendPreparationCancelled.current = false
+    const isCurrent = () => mounted.current && revision === sessionReadRevision.current
+      && accountRevision === accountScopeRevision.current
+      && sessionRef.current?.id === activeSession?.id
+    if (!activeSession) {
+      setBusy("session")
+      try {
+        const created = await call<{ session: Session }>("rag.create", { document_ids: ids })
+        if (!mounted.current || revision !== sessionReadRevision.current || accountRevision !== accountScopeRevision.current) return
+        activeSession = created.session
+        setSession(activeSession)
+        sessionRef.current = activeSession
+        setSelected(activeSession.document_ids)
+        setPlanId(planForDocuments(activeSession.document_ids))
+        invalidateSourcesRead()
+        upsertSession(activeSession)
+        setBusy("")
+      } catch (error) {
+        toast("error", `新会话未建立：${(error as Error).message}`)
+        setBusy("")
+        return
+      }
+    }
+    if (ids.some((id) => docById(id)?.status !== "ready")) {
+      if (!await prepareDocuments(activeSession.id, ids)) return
+      if (!isCurrent()) return
     }
     setSourceOpen(null)
     clearSendFailure()
     setBusy("send")
+    busyRef.current = "send"
     try {
-      const activeSession = await ensureSession()
       beginRound(activeSession.id)
       setQuestion("")
-      setPending({ text, reply: "" })
+      const pendingValue = { text, reply: "" }
+      pendingRef.current = pendingValue
+      setPending(pendingValue)
       const controller = new AbortController()
       abort.current = controller
       const result = await call<{ session: Session }>("rag.send", { session_id: activeSession.id, text }, {
         signal: controller.signal,
-        onStream: (delta) => setPending((current) => current && { ...current, reply: current.reply + delta }),
+        onStream: (delta) => { if (isCurrent()) setPending((current) => current && { ...current, reply: current.reply + delta }) },
       })
+      if (!isCurrent()) return
       setSession(result.session)
+      sessionRef.current = result.session
+      invalidateSourcesRead()
+      upsertSession(result.session)
       await refresh()
     } catch (e) {
+      if (!isCurrent()) return
       const error = e as Error & { code?: string; model_fault?: { category?: string; purpose?: string } }
       setQuestion((current) => current || text)
-      if (error.code === "CANCELLED") toast("info", error.message)
+      if (error.code === "RAG_DOCUMENT_NOT_READY") {
+        const documentIds = activeSession.document_ids
+        setPrepareFailure({ sessionId: activeSession.id, ids: documentIds, message: error.message })
+        setSources((current) => current ? { ...current, documents: current.documents.map((doc) => documentIds.includes(doc.id)
+          ? { ...doc, status: "failed", error: error.message } : doc) } : current)
+      } else if (error.code === "CANCELLED") toast("info", error.message)
       else {
         const fault = error.model_fault
         const retryable = fault?.category === "network" || error.code === "RAG_UNAVAILABLE"
@@ -270,16 +509,32 @@ export function Rag() {
         }
         toast("error", error.message)
       }
-    } finally { abort.current = null; setPending(null); setBusy("") }
+    } finally {
+      if (isCurrent()) {
+        abort.current = null
+        preparingRef.current = null
+        pendingRef.current = null
+        busyRef.current = ""
+        setPending(null)
+        setPreparing(null)
+        setBusy("")
+      }
+      sendPreparationCancelled.current = false
+    }
   }
   async function deleteSession(id: string) {
+    if (busy || pending) return
     try {
       await call("rag.delete", { session_id: id })
-      if (session?.id === id) { setSession(null); clearSendFailure() }
+      if (sessionRef.current?.id === id) { setSession(null); sessionRef.current = null; setSelected([]); clearSendFailure() }
       await refresh()
     } catch (e) { toast("error", (e as Error).message) }
   }
   function docById(id: string) { return sources?.documents.find((doc) => doc.id === id) }
+  function planForDocuments(ids: string[]) {
+    const planIds = [...new Set(ids.flatMap((id) => docById(id)?.plan_ids ?? []))]
+    return planIds.length === 1 ? planIds[0]! : ""
+  }
 
   if (!sources) return <div className="page rag-page" data-testid="rag-page">
     {loadError ? <div className="card" role="alert">读取资料失败：{loadError}<Button onClick={() => refresh().catch((e) => setLoadError(e.message))}>重试</Button></div>
@@ -289,6 +544,9 @@ export function Rag() {
   const selectedDocuments = selected.map((id) => docById(id)).filter((doc): doc is Document => !!doc)
   const currentPlan = sources.plans.find((plan) => plan.id === planId)
   const sessions = sources.sessions
+  const sidebarSelectionLocked = !!session && !editingSessionSources
+  const sessionDocuments = session?.document_ids.map((id) => docById(id)).filter((doc): doc is Document => !!doc) ?? []
+  const selectedCount = session ? session.document_ids.length : selected.length
   const sessionGroups = new Map<string, { title: string; sessions: SessionSummary[] }>()
   for (const item of sessions) {
     const key = [...item.document_ids].sort().join("\u001f")
@@ -307,25 +565,27 @@ export function Rag() {
       <span>{sources.server_status.message || "资料检索暂时不可用，已保存记录仍可查看。"}</span>
     </div>}
     <div className="rag-layout">
-      <aside className="card rag-sources" aria-label="选择问答资料">
-        <div className="rag-section-title"><span className="rag-step">01</span><div><h2>选择资料</h2><p>同一份资料可以用于多个问答会话。</p></div></div>
+      <aside className="rag-sidebar" data-testid="rag-sidebar" aria-label="资料与会话">
+       <section className="card rag-sources" aria-label="选择问答资料">
+        <div className="rag-section-title"><span className="rag-step">01</span><div><h2>资料</h2><p>同一份资料可以用于多个问答会话。</p></div></div>
         <label className="rag-label" htmlFor="rag-plan-select">按计划选择</label>
         <SelectMenu id="rag-plan-select" className="rag-plan-select" testId="rag-plan-select"
           optionTestIdPrefix="rag-plan-option-" ariaLabel="按计划选择资料" value={planId}
-          placeholder="选择一个计划…" disabled={!!pending || !!busy}
+          placeholder="选择一个计划…" disabled={!!pending || !!busy || sidebarSelectionLocked}
           options={[{ value: "", label: "选择一个计划…" }, ...sources.plans.map((plan) => ({ value: plan.id, label: plan.title }))]}
           onChange={selectPlan} />
-        {currentPlan && <Button small kind="ghost" className="rag-all-plan" data-testid="rag-plan-select-all" aria-label={`选择计划全部资料：${currentPlan.title}`} disabled={!!pending || !!busy} onClick={() => togglePlan(currentPlan.id)}>
+        {currentPlan && <Button small kind="ghost" className="rag-all-plan" data-testid="rag-plan-select-all" aria-label={`选择计划全部资料：${currentPlan.title}`} disabled={!!pending || !!busy || sidebarSelectionLocked} onClick={() => togglePlan(currentPlan.id)}>
           {currentPlan.document_ids.every((id) => selected.includes(id)) ? "取消本计划资料" : "选择这个计划的全部资料"} <span>· {currentPlan.document_ids.length} 份</span>
         </Button>}
         <div className="rag-document-list" aria-label="可选资料">
           {sources.documents.length === 0 ? <p className="muted small">还没有可选资料。可以先上传文件。</p> : sources.documents.map((doc) => {
             const planNames = doc.plan_ids.map((id) => sources.plans.find((plan) => plan.id === id)?.title).filter(Boolean)
             const status = progress[doc.id] ?? doc
+            const activelyPreparing = !!preparing && !!session && preparing.sessionId === session.id && preparing.ids.includes(doc.id)
             return <label className={`rag-document ${selected.includes(doc.id) ? "selected" : ""}`} key={doc.id}>
-              <input type="checkbox" data-testid={`rag-document-${doc.id}`} aria-label={`选择资料：${doc.title}`} checked={selected.includes(doc.id)} disabled={!!pending || !!busy} onChange={() => toggleDocument(doc.id)} />
+              <input type="checkbox" data-testid={`rag-document-${doc.id}`} aria-label={`选择资料：${doc.title}`} checked={selected.includes(doc.id)} disabled={!!pending || !!busy || sidebarSelectionLocked} onChange={() => toggleDocument(doc.id)} />
               <span className="rag-document-info"><b title={doc.title}>{doc.title}</b><small>{planNames.join(" · ") || "单独上传"}</small>
-                <small className={`rag-doc-status ${status.status === "failed" ? "failed" : ""}`} role="status">{documentStatus(status)}</small></span>
+        <small className={`rag-doc-status ${status.status === "failed" ? "failed" : ""}`} role="status">{documentStatus(status, activelyPreparing)}</small></span>
             </label>
           })}
         </div>
@@ -335,39 +595,68 @@ export function Rag() {
         </div>
         <div className="rag-selected" aria-label="已选资料">
           {!selectedDocuments.length ? <span className="muted small">尚未选择资料</span> : selectedDocuments.map((doc) => <span className="rag-chip" key={doc.id}>
-            <span title={doc.title}>{doc.title}</span><button type="button" data-testid={`rag-remove-document-${doc.id}`} aria-label={`移除资料：${doc.title}`} title="移除资料" disabled={!!pending || !!busy} onClick={() => toggleDocument(doc.id)}><X size={13} /></button>
+              <span title={doc.title}>{doc.title}</span><button type="button" data-testid={`rag-remove-document-${doc.id}`} aria-label={`移除资料：${doc.title}`} title="移除资料" disabled={!!pending || !!busy || sidebarSelectionLocked} onClick={() => toggleDocument(doc.id)}><X size={13} /></button>
           </span>)}
         </div>
-        <Button kind="primary" data-testid="rag-ingest" disabled={!selected.length || !!busy || selectedDocuments.every((doc) => doc.status === "ready")} onClick={ingest}>
-          {busy === "ingest" ? <><LoaderCircle className="spin" />正在入库…</> : "将所选资料入库"}
-        </Button>
-        <p className="rag-privacy">仅上传抽取后的文字分块，用于资料检索；原文件不会上传。</p>
+        <p className="rag-privacy">准备资料时只上传抽取后的文字分块用于检索，原文件不会上传。{session && !editingSessionSources ? "要把新资料加进当前会话，请点右侧“改资料”。" : ""}</p>
+       </section>
+
+       <section className="card rag-sidebar-sessions" aria-label="会话列表">
+         <div className="rag-session-list-head"><div><h2>会话列表</h2><p>按使用的资料分组</p></div>
+           <Button small kind="primary" data-testid="rag-new-session" disabled={!selected.length || !!busy || !!pending || editingSessionSources} onClick={newSession}>
+             <MessageSquarePlus />新建会话
+           </Button>
+         </div>
+         <div className="rag-session-list" data-testid="rag-session-list">
+           {[...sessionGroups.entries()].length === 0 ? <p className="rag-session-list-empty">还没有会话。选好资料后点“新建会话”。</p> : [...sessionGroups.entries()].map(([groupId, group]) =>
+             <section className="rag-session-group" key={groupId} aria-label={`资料组：${group.title}`}>
+               <span className="rag-session-group-title" title={group.title}>{group.title}</span>
+               <div>{group.sessions.map((item) => <div className={`rag-session ${session?.id === item.id ? "active" : ""}`} key={item.id}>
+                 <button type="button" data-testid={`rag-session-${item.id}`} data-active={session?.id === item.id} title={item.title}
+                   disabled={!!pending || busy === "session" || busy === "saving"}
+                   onClick={() => void openSession(item.id)}>{item.title || "新会话"}{item.count ? ` · ${item.count} 条` : ""}</button>
+                 <button type="button" aria-label={`删除会话：${item.title}`} title="删除会话" disabled={!!busy || !!pending} onClick={() => void deleteSession(item.id)}><Trash2 size={13} /></button>
+               </div>)}</div>
+             </section>)}
+         </div>
+       </section>
       </aside>
 
       <section className="card rag-chat" aria-label="资料问答对话">
         {ragFault && !sendFailure && <div className="rag-model-fault" data-testid="rag-model-fault"><ModelFaultPanel fault={ragFault} onRetry={() => { void send() }} /></div>}
         <header className="rag-chat-head">
-          <div><span className="rag-step">02</span><div><h2>{session?.title || "开始提问"}</h2><p>{selectedDocuments.length ? `当前使用 ${selectedDocuments.length} 份资料` : "请先选择资料"}</p></div></div>
-          <Button small kind="ghost" data-testid="rag-new-session" disabled={!selected.length || !!busy || !!pending} onClick={newSession}><MessageSquarePlus />新建会话</Button>
+          <div><span className="rag-step">02</span><div><h2 data-testid={session && session.count === 0 ? "rag-empty-session" : undefined}>{session && session.count === 0 ? `新会话 · 用 ${session.document_ids.length} 份资料` : session?.title || "开始提问"}</h2><p>{session ? `当前使用 ${session.document_ids.length} 份资料` : selected.length ? `准备为 ${selected.length} 份资料创建会话` : "请先选择资料"}</p></div></div>
         </header>
-        <div className="rag-session-strip" aria-label="资料组会话">
-          {[...sessionGroups.entries()].map(([groupId, group]) => <section className="rag-session-group" key={groupId} aria-label={`资料组：${group.title}`}>
-            <span className="rag-session-group-title" title={group.title}>{group.title}</span>
-            <div>{group.sessions.map((item) => <div className={`rag-session ${session?.id === item.id ? "active" : ""}`} key={item.id}>
-              <button type="button" title={item.title} disabled={!!pending} onClick={() => void openSession(item.id)}>{item.title}</button>
-              <button type="button" aria-label={`删除会话：${item.title}`} title="删除会话" disabled={!!pending} onClick={() => void deleteSession(item.id)}><Trash2 size={13} /></button>
-            </div>)}</div>
-          </section>)}
-        </div>
+        {session && <div className="rag-chat-sources" data-testid="rag-session-sources" aria-label="本会话使用的资料">
+          <div className="rag-chat-source-chips">{sessionDocuments.map((doc) => <span className="rag-chip" key={doc.id} title={doc.title}>{doc.title}</span>)}</div>
+          {!editingSessionSources ? <Button small kind="ghost" data-testid="rag-edit-session-sources" disabled={!!busy || !!pending} onClick={beginSessionSourcesEdit}><Pencil size={14} />改资料</Button> : <div className="rag-session-source-actions">
+            <Button small kind="ghost" data-testid="rag-cancel-session-edit" disabled={!!busy || !!pending} onClick={cancelSessionSourcesEdit}>取消</Button>
+            <Button small kind="primary" data-testid="rag-save-session-sources" disabled={!selected.length || !!busy || !!pending} onClick={() => void saveSessionSources()}>保存资料</Button>
+          </div>}
+        </div>}
+        {prepareFailure && session && prepareFailure.sessionId === session.id && <div className="rag-prepare-failure" data-testid="rag-prepare-failure" role="alert">
+          <span>资料准备失败：{prepareFailure.message}</span>
+          <Button small kind="ghost" data-testid="rag-retry-preparation" disabled={!!busy || !!pending} onClick={() => void prepareDocuments(prepareFailure.sessionId, prepareFailure.ids)}>重试准备资料</Button>
+        </div>}
+        {session && !editingSessionSources && sessionDocuments.some((doc) => doc.status !== "ready")
+          && !preparing && !prepareFailure && <div className="rag-prepare-resume" data-testid="rag-prepare-resume" role="status">
+            <span>资料还没准备好，准备完成后即可提问。</span>
+            <Button small kind="ghost" data-testid="rag-prepare-documents" disabled={!!busy || !!pending}
+              onClick={() => void prepareDocuments(session.id, session.document_ids)}>继续准备资料</Button>
+          </div>}
         <div className="rag-messages" ref={scrollRef} data-testid="rag-messages">
-          {!session?.messages.length && !pending ? <div className="rag-empty"><div className="rag-empty-icon"><BookOpen /></div><b>从资料开始，一起把问题说清楚</b><span>选好并完成资料入库后，在下面输入你的问题。</span></div> : <>
+          {!session?.messages.length && !pending ? <div className="rag-empty"><div className="rag-empty-icon"><BookOpen /></div><b>{session ? "这是一个新会话" : "从资料开始，一起把问题说清楚"}</b><span>{session ? `已选好 ${session.document_ids.length} 份资料。准备完成后，在下方输入问题；回答和原文会留在这个会话里。` : "选好资料并点左边“新建会话”，也可以直接在下面输入问题。"}</span></div> : <>
             {session?.messages.map((message) => <div key={message.id} data-turn-key={`rag-${session.id}-${message.id}`} data-turn-role={message.role}><RagMessage message={message} onCitation={(number) => setSourceOpen({ messageId: message.id, number })}
               active={sourceOpen?.messageId === message.id ? sourceOpen.number : null} /></div>)}
             {pending && <><div data-turn-key="rag-pending-user" data-turn-role="user"><div className="rag-message user"><div className="rag-bubble">{pending.text}</div></div></div><div data-turn-key="rag-pending-assistant" data-turn-role="assistant"><div className="rag-message assistant"><div className="rag-bubble" data-testid="rag-streaming-reply">{pending.reply || <span className="rag-thinking">正在查阅资料并整理回答…<i /><i /><i /></span>}</div></div></div></>}
           </>}
         </div>
         <div className="rag-composer">
-          {!selectedDocuments.length && <p className="rag-composer-hint">选择一份或多份资料后即可提问。</p>}
+          {!selectedCount && <p className="rag-composer-hint">选择一份或多份资料后即可提问。</p>}
+          {preparing && preparing.sessionId === session?.id && <div className="rag-prepare-status" data-testid="rag-prepare-status" role="status">
+            <LoaderCircle className="spin" size={15} />正在准备资料 {preparing.uploaded}/{preparing.total || "…"} 段
+            <Button small kind="ghost" data-testid="rag-cancel-preparation" onClick={cancelPreparation}>取消准备</Button>
+          </div>}
           {sendFailure && <div className="rag-send-failure" role="status" data-testid="rag-send-failure">
             <span>{sendFailure.message} 这条问题没有自动重发。</span>
             <Button small data-testid="rag-retry-send" disabled={!!busy || !!pending} onClick={() => void send(sendFailure.text)}>重试这条问题</Button>
@@ -379,7 +668,7 @@ export function Rag() {
             <div data-testid="rag-question-mic" role="group" aria-label="资料问题语音输入"><MicButton voice={questionVoice} /></div>
           </div>
           {pending ? <Button data-testid="rag-cancel" onClick={() => abort.current?.abort()}><Square />取消回答</Button>
-            : <Button kind="primary" data-testid="rag-send" disabled={!question.trim() || !selected.length || !!busy} onClick={() => void send()}>{busy === "send" ? <><LoaderCircle className="spin" />准备会话…</> : busy === "session" ? <><LoaderCircle className="spin" />建立会话…</> : <><SendHorizontal />提问</>}</Button>}
+            : <Button kind="primary" data-testid="rag-send" disabled={!question.trim() || !selectedCount || !!busy || editingSessionSources} onClick={() => void send()}>{busy === "prepare" ? <><LoaderCircle className="spin" />准备资料…</> : busy === "send" ? <><LoaderCircle className="spin" />正在回答…</> : busy === "session" ? <><LoaderCircle className="spin" />新建会话…</> : <><SendHorizontal />提问</>}</Button>}
         </div>
       </section>
     </div>
@@ -391,11 +680,12 @@ function mergeDocuments(before: Document[], after: Document[]) {
   after.forEach((doc) => byId.set(doc.id, { ...byId.get(doc.id), ...doc }))
   return [...byId.values()]
 }
-function documentStatus(doc: Partial<Document>) {
+function documentStatus(doc: Partial<Document>, activelyPreparing = false) {
   if (doc.status === "ready") return `已就绪${doc.total_chunks ? ` · ${doc.total_chunks} 段` : ""}`
-  if (doc.status === "failed") return `入库失败${doc.error ? `：${doc.error}` : "，可重试"}`
-  if (doc.status === "uploading") return `入库中 ${doc.uploaded_chunks ?? 0} / ${doc.total_chunks ?? 0} 段`
-  return "尚未入库"
+  if (doc.status === "failed") return `准备失败${doc.error ? `：${doc.error}` : "，可重试"}`
+  if (doc.status === "uploading" && activelyPreparing) return `正在准备 ${doc.uploaded_chunks ?? 0} / ${doc.total_chunks ?? 0} 段`
+  if (doc.status === "uploading") return "准备未完成，可继续准备"
+  return "尚未准备"
 }
 
 function RagMessage({ message, onCitation, active }: { message: Message; onCitation: (n: number) => void; active: number | null }) {

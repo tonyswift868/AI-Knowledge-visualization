@@ -43,21 +43,21 @@ try{
  stage='file import';await click('[data-testid="rag-pick-files"]');
  await until(`!!document.querySelector('[data-testid="rag-document-upload-155"]')`);
  check(await js(`document.querySelector('[data-testid="rag-document-upload-155"]')?.getAttribute('aria-label')?.includes('选择资料')`),'new text file is imported as an unplanned source');
- // Explicit ingestion reports per-document progress before becoming ready.
+ // Preparing is now automatic when a session is created; it replaces the old
+ // explicit “ingest” action while retaining progress and retry behavior.
  await until(`!document.querySelector('[data-testid="rag-document-doc-b"]')?.disabled`);
  await click('[data-testid="rag-document-doc-b"]');
- stage='ingest';await click('[data-testid="rag-ingest"]');
- await until(`document.body.innerText.includes('入库中')`);
- check(await js(`document.body.innerText.includes('入库中 1 /')`),'uploading progress is visible while ingest is in progress');
+ stage='automatic preparation';await click('[data-testid="rag-new-session"]');
+ await until(`!!document.querySelector('[data-testid="rag-prepare-status"]')`);
+ check(await js(`/\\d+\\s*\\/\\s*\\d+/.test(document.querySelector('[data-testid="rag-prepare-status"]')?.innerText||'')`),'automatic preparation shows uploaded and total chunk counts');
  fs.writeFileSync(path.join(root,'release-ingest155'),'');
- await until(`document.querySelector('[data-testid="rag-document-upload-155"]')?.closest('label')?.innerText.includes('入库失败')`);
+ await until(`document.querySelector('[data-testid="rag-document-upload-155"]')?.closest('label')?.innerText.includes('准备失败')`);
  check(await js(`document.querySelector('[data-testid="rag-document-doc-b"]')?.closest('label')?.innerText.includes('已就绪')`),'partial ingest failure is visible while successful sources stay ready');
- fs.writeFileSync(path.join(root,'ingest-retry155'),'');
- await click('[data-testid="rag-ingest"]');
+ await click('[data-testid="rag-retry-preparation"]');
  await until(`document.querySelector('[data-testid="rag-document-upload-155"]')?.closest('label')?.innerText.includes('已就绪')`);
  check(await js(`document.querySelector('[data-testid="rag-document-doc-b"]')?.closest('label')?.innerText.includes('已就绪')`),'retry completes the failed source without losing the successful one');
  // Create a session for a selected document set, then exercise streaming answer and citations.
- stage='create session';await click('[data-testid="rag-new-session"]');
+ stage='use prepared session';
  await until(`!document.querySelector('[data-testid="rag-question"]')?.disabled`);
  await input('[data-testid="rag-question"]','向量检索如何工作？');
  await until(`!document.querySelector('[data-testid="rag-send"]')?.disabled&&document.querySelector('[data-testid="rag-question"]')?.value==='向量检索如何工作？'`);
@@ -92,8 +92,8 @@ try{
  for(const theme of ['sakura','aurora']){
    await call('Emulation.setDeviceMetricsOverride',{width:600,height:850,deviceScaleFactor:1,mobile:false});
    await js(`document.documentElement.dataset.theme=${JSON.stringify(theme)};document.querySelector('.rag-page')?.scrollIntoView({block:'start'})`);await pause(250);
-   const geom=await js(`(()=>{const selected=document.querySelector('.rag-selected')?.getBoundingClientRect(),ingest=document.querySelector('[data-testid="rag-ingest"]')?.getBoundingClientRect(),list=document.querySelector('.rag-document-list'),item=list?.querySelector('.rag-document'),page=document.querySelector('.rag-page')?.getBoundingClientRect();return{viewport:innerWidth,document:document.documentElement.scrollWidth,body:document.body.scrollWidth,selectedBottom:selected?.bottom,ingestTop:ingest?.top,listHeight:list?.clientHeight,firstDocumentHeight:item?.getBoundingClientRect().height,pageTop:page?.top,topbarBottom:document.querySelector('.topbar')?.getBoundingClientRect().bottom}})()`);
-   check(geom.selectedBottom<=geom.ingestTop+1,theme+' selected tags do not overlap the ingest button');
+   const geom=await js(`(()=>{const selected=document.querySelector('.rag-selected')?.getBoundingClientRect(),upload=document.querySelector('.rag-upload-row')?.getBoundingClientRect(),list=document.querySelector('.rag-document-list'),item=list?.querySelector('.rag-document'),page=document.querySelector('.rag-page')?.getBoundingClientRect();return{viewport:innerWidth,document:document.documentElement.scrollWidth,body:document.body.scrollWidth,selectedTop:selected?.top,uploadBottom:upload?.bottom,listHeight:list?.clientHeight,firstDocumentHeight:item?.getBoundingClientRect().height,pageTop:page?.top,topbarBottom:document.querySelector('.topbar')?.getBoundingClientRect().bottom}})()`);
+   check(geom.selectedTop>=geom.uploadBottom-1,theme+' selected source tags remain separated from the upload action');
    check(geom.listHeight>=geom.firstDocumentHeight,theme+' document list can fully show at least one source');
    check(geom.pageTop>=geom.topbarBottom-1,theme+' page title remains below the top bar');
    check(geom.document<=geom.viewport+1&&geom.body<=geom.viewport+1,theme+' narrow layout has no horizontal overflow');sizes.push({theme,...geom});

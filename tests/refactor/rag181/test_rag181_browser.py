@@ -109,6 +109,12 @@ def host181(root):
     bridge.register('rag.import_files',import_files)
     def create(p,c): trace('create',p); return dict(session=session(p.get('document_ids',[])))
     bridge.register('rag.create',create)
+    def update_documents(p,c):
+        row=by_id[p['session_id']]
+        row['document_ids']=list(p.get('document_ids',[]))
+        trace('update_documents',p)
+        return dict(session=row)
+    bridge.register('rag.update_documents',update_documents)
     bridge.register('rag.delete',lambda p,c:(sessions.__setitem__(slice(None),[s for s in sessions if s['id']!=p.get('session_id')]) or by_id.pop(p.get('session_id'),None) or {'ok':True}))
     def send(p,c):
         trace('send',p)
