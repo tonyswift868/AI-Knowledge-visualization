@@ -39,4 +39,4 @@
 | access期限为300秒；登录创建access、refresh和会话族 | `refactor/server-java/src/main/java/win/clannad/mentorflow/account/NativeSessionService.java:31-41,131-174` |
 | 新登录撤销该主体之前所有活动会话族 | `refactor/server-java/src/main/java/win/clannad/mentorflow/account/NativeSessionService.java:145-172` |
 | refresh轮换新旧令牌摘要；并发旧refresh会被拦截，提交前复核当前摘要，旧值重放时撤销会话族 | `refactor/server-java/src/main/java/win/clannad/mentorflow/account/NativeSessionService.java:177-207,215-245` |
-| 单账号单设备在线的产品需求与客户端处理 | `docs/project/CURRENT_STATE.md:404-408`（ACC-01）；`refactor/learning/services/session_guard.py`（挤下线守卫） |
+| 单账号单设备在线的产品需求与客户端处理 | [ACC-01]；`refactor/learning/services/session_guard.py`（挤下线守卫） |

@@ -42,8 +42,8 @@ MentorFlow 是一个按用户提供的资料来学习的桌面软件。用户先
 
 | 具体事实 | 当前基线代码 |
 |---|---|
-| 老师请求带入计划、模块、当前原文、对话和用户本轮内容 | `refactor/learning/app/classroom.py:1481-1497` |
-| 课堂位置由程序保存到课程库 | `refactor/learning/app/classroom.py:432-436` |
+| 老师请求带入计划、模块、当前原文、对话和用户本轮内容 | `refactor/learning/app/classroom.py:1714-1775` |
+| 课堂位置由程序保存到课程库 | `refactor/learning/app/classroom.py:520-524`；`refactor/learning/course/store.py:851-854` |
 | 老师以提供的原文为依据，并限制比喻不能扩展成新结论 | `refactor/learning/course/teacher_agent.py:120-124` |
 
 ## Q02｜客户端、服务器与模型分工
@@ -81,9 +81,9 @@ MentorFlow 是一个按用户提供的资料来学习的桌面软件。用户先
 | 具体事实 | 当前基线代码 |
 |---|---|
 | 桌面窗口承载网页界面，并注册本机桥接对象 | `refactor/learning/app/window.py:269-305` |
-| 课堂由本机服务组织当前点位、资料和对话 | `refactor/learning/app/classroom.py:1481-1497` |
-| 课堂讲解调用共享模型网关 | `refactor/learning/app/classroom.py:1574-1592` |
-| 资料问答先向服务器检索，再由客户端调用模型 | `refactor/learning/app/rag.py:648-652,681-690` |
+| 课堂由本机服务组织当前点位、资料和对话 | `refactor/learning/app/classroom.py:1714-1775` |
+| 课堂讲解调用共享模型网关 | `refactor/learning/app/classroom.py:1808-1855` |
+| 资料问答先向服务器检索，再由客户端调用模型 | `refactor/learning/app/rag.py:446-510,1096-1175` |
 | 同步服务单独负责拉取和上传课程记录 | `refactor/learning/course/sync_course.py:508-535` |
 
 ## Q03｜一次课堂提问的流转
@@ -120,10 +120,10 @@ MentorFlow 是一个按用户提供的资料来学习的桌面软件。用户先
 
 | 具体事实 | 当前基线代码 |
 |---|---|
-| 追问使用当前点位、用户问题和相关资料构造模型上下文 | `refactor/learning/app/classroom.py:991-1005,1481-1497` |
-| 普通讲解中学生消息由老师响应且不打分、不移动位置 | `refactor/learning/app/classroom.py:1008-1017` |
-| 模型请求单独完成；解析和展示校验后才返回讲解 | `refactor/learning/app/classroom.py:1574-1610` |
-| 回复展示并写入课程对话 | `refactor/learning/app/classroom.py:1657-1675` |
+| 追问使用当前点位、用户问题和相关资料构造模型上下文 | `refactor/learning/app/classroom.py:1097-1127,1714-1755` |
+| 普通讲解中学生消息由老师响应且不打分、不移动位置 | `refactor/learning/app/classroom.py:1097-1127` |
+| 模型请求单独完成；解析和展示校验后才返回讲解 | `refactor/learning/app/classroom.py:1808-1855` |
+| 回复展示并写入课程对话 | `refactor/learning/app/classroom.py:1955-1985` |
 
 ## Q04｜模型与学习进度的边界
 
@@ -160,10 +160,10 @@ MentorFlow 是一个按用户提供的资料来学习的桌面软件。用户先
 | 具体事实 | 当前基线代码 |
 |---|---|
 | 课堂操作在宿主状态中执行并保存；模型错误时恢复原位置或检查点 | `refactor/learning/app/classroom.py:289-350` |
-| 普通追问要求不判分、不移动位置 | `refactor/learning/app/classroom.py:991-1017` |
-| 模型生成函数明确只做模型工作，不写状态、对话或学习额度 | `refactor/learning/app/classroom.py:1574-1576` |
+| 普通追问要求不判分、不移动位置 | `refactor/learning/app/classroom.py:1097-1127` |
+| 模型生成函数明确只做模型工作，不写状态、对话或学习额度 | `refactor/learning/app/classroom.py:1808-1812` |
 | 教学规则要求模型不生成判定、答题记录或掌握状态 | `refactor/learning/course/teacher_agent.py:126-135` |
-| 课堂位置通过独立保存方法写入课程库 | `refactor/learning/app/classroom.py:432-436` |
+| 课堂位置通过独立保存方法写入课程库 | `refactor/learning/app/classroom.py:520-524`；`refactor/learning/course/store.py:851-854` |
 
 ## Q05｜本地保存与同步分工
 
@@ -202,7 +202,7 @@ MentorFlow 是一个按用户提供的资料来学习的桌面软件。用户先
 | 课程数据存放在本机账号目录下的 SQLite 课程库 | `refactor/learning/course/store.py:279-296` |
 | 本地课程记录写入时设置 `pending=1` | `refactor/learning/course/store.py:691-714` |
 | 同步从待处理记录开始拉取和上传 | `refactor/learning/course/sync_course.py:508-535` |
-| 仅在对应本地版本获得确认时清除待同步状态 | `refactor/learning/course/store.py:2243-2251` |
+| 仅在对应本地版本获得确认时清除待同步状态 | `refactor/learning/course/store.py:2605-2611` |
 
 ## 本模块练习顺序
 

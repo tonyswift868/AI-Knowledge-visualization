@@ -1,6 +1,6 @@
 # MentorFlow：把账号与同步后端从 Python 改成 Java
 
-面试讲解稿，事实截至 2026-10-16，源码核对基线 `01a07fb3`；线上状态取主目录同日最新 ARCH-09 记录（见 S1）。下面的第一人称是讲述模板，面试时按自己的实际参与范围调整。数字来自已有报告，本次只整理文档，没有重新压测，也没有操作服务器。[S1]
+面试讲解稿：实现细节和测量数据是注明日期的历史证据；当前发布与恢复状态以 [ARCH-09]、[ACC-02]、[SYS-06] 为准。本文代码出处已按当前基线复核；下面的第一人称是讲述模板，面试时按自己的实际参与范围调整。本次只整理文档，没有重新压测，也没有操作服务器。[S1]
 
 ## 一分钟项目介绍
 
@@ -8,7 +8,7 @@
 >
 > 我们原来用 Python FastAPI 做服务器，这次把边界比较清楚的账号和同步业务逐块迁到 Java 21、Spring Boot。改造也服务于 Java + AI 的学习和求职实践，AI 提示词和课堂编排继续留在 Python，模型仍由客户端用用户自己的 Key 直连。
 >
-> 最费心的是兼容已有客户端和数据。我用同一组 HTTP 请求分别测 Python 和 Java，比较响应和数据库结果，连错误码、中文文案和 JSON 顺序都检查。上线先影子运行，再把相关接口整组切过去，Python 保留作回退。切换时踩过一个反向代理协议识别的坑，后来补了真实客户端经过代理的回归测试。[S1][S2][S3][S7][S8]
+> 最费心的是兼容已有客户端和数据。我用同一组 HTTP 请求分别测 Python 和 Java，比较响应和数据库结果，连错误码、中文文案和 JSON 顺序都检查。历史切换先影子运行，再把相关接口整组切过去；Python 回退路径和当前备用版本，以 [ARCH-09] 为准。切换时踩过一个反向代理协议识别的坑，后来补了真实客户端经过代理的回归测试。[S1][S2][S3][S7][S8]
 
 如果只剩一句话：**我做的是有存量数据和客户端的兼容迁移，重点是会话连续性、并发写入、失败恢复，以及可验证的切换。**[S3][S4][S7]
 
@@ -111,9 +111,9 @@ flowchart LR
 
 > 先让 Java 在旁边影子运行，确认配置、健康和请求对照，再整组切受保护的账号和同步接口。访问摘要在进程内存，不能登录落 Python、下一次同步随机落 Java。刷新族和业务记录共用 PostgreSQL，切换时通过 refresh 接续，但旧短期 access 不会凭空互认。[S3][S7]
 
-回滚先恢复 nginx 到仍在运行的 Python，再验证健康、刷新和同步。数据库保留最新状态：已经轮换的刷新令牌、同步写入和完成的注销，不应被旧备份覆盖。不要把写请求同时影子发给两版，也不要盲目重放结果未知的注销或改密。[S7][C6]
+当前已验证的恢复路径是先以 `--prepare-only` 启动 Python 226 备用并等待健康，再做内部契约 probe；只有具体授权切流后，才切入口到 Python。异常时不得靠覆盖数据库备份回滚，数据库维持 0046；Java/Python 219 都不兼容该结构。任何准备、切流与回切操作按 [ARCH-09] 和 RELEASE226 执行。[S7][C6]
 
-截至当前记录，2026-10-16 15:16 修复后再次整组切到 Java，用户先关软件，重开 2.0.20 后确认自动登录、同步、上课正常；记录中的随后 20 分钟，refresh/session/me/workspaces/changes/bulk 都为 200，Java 内存约 200 MB。Python 仍运行作回退，用户 2026-10-16 定直接收尾、不设观察期；注册、找回、改密、改邮箱、注销尚没有线上真人完整验证。[S1]
+历史验收记录：2026-10-16 15:16 修复后再次整组切到 Java，用户先关软件，重开 2.0.20 后确认自动登录、同步、上课正常；记录中的随后 20 分钟，refresh/session/me/workspaces/changes/bulk 都为 200，Java 内存约 200 MB。上述是当时的观察，不代表当前版本或当前回退状态。当前发布、备用版本及恢复边界见 [ARCH-09][ACC-02][SYS-06]；当时注册、找回、改密、改邮箱、注销尚无线上真人完整验证，这一历史缺口不能直接当作当前结论。[S1]
 
 ### 9. 线上踩坑：客户端是 HTTPS，后端却看见 HTTP
 
@@ -150,7 +150,7 @@ flowchart LR
 | 145：每端 20 批，每批 100 条，平均请求耗时 | 597.680 ms | 491.563 ms | 本机 HTTP + PostgreSQL 17.6 真实提交，先 Python 后 Java；请求平均分别为 1,023,633 和 1,023,433 字节，非完全同字节。[S4] |
 | 145：Java 性能轮结束工作集/峰值工作集 | 未给出同场景 Python 内存对照 | 385.57 / 407.99 MiB | Windows 进程指标，不能与上一行目录场景或 Linux 容器内存混算。[S4] |
 
-面试答法：“这两组本机样本中 Java 平均延迟更低，但内存占用更高。它们证明功能之外也测过资源成本，不能证明所有业务 Java 都更快，也没有据此推导生产 QPS、P99 或可支持用户数。线上约 200 MB 是当前运行观察，和 Windows RSS 不是同口径。”[S1][S2][S4]
+面试答法：“这两组本机样本中 Java 平均延迟更低，但内存占用更高。它们证明功能之外也测过资源成本，不能证明所有业务 Java 都更快，也没有据此推导生产 QPS、P99 或可支持用户数。线上约 200 MB 是 2026-10-16 当时的运行观察，和 Windows RSS 不是同口径，也不是当前版本的内存测量。”[S1][S2][S4]
 
 ## 高频追问 15 个和答法
 
@@ -194,7 +194,7 @@ flowchart LR
     测试范围漏了代理拓扑：本机直接 HTTPS，生产是 edge 终止 TLS 后转 HTTP。旧测试证明了直连合同，没有证明真实部署链；149 补真实客户端经过同样拓扑，固定修前失败和修后成功。[S8]
 
 14. **为什么整组切换，回滚要恢复数据库吗？**
-    短期 access 在各进程内存，分散路由会让有效用户被另一版拒绝。整组切，再靠共享刷新族恢复；回滚先把流量路由回仍在运行的 Python，保留当前数据库，不能覆盖新会话轮换、同步结果和已完成注销。[S3][S7][C6]
+    短期 access 在各进程内存，分散路由会让有效用户被另一版拒绝。整组切，再靠共享刷新族恢复；Python 备用的已验证准备、健康检查、内部 probe 与授权切流步骤见 RELEASE226。恢复时保留当前数据库，不覆盖新会话轮换、同步结果和已完成注销。[S3][S7][C6]
 
 15. **X-Forwarded-Proto 修复后，你怎么证明修到了？**
     旧配置下真实客户端经 TLS edge→HTTP Java 复现登录/刷新失败；正式 framework 配置下两端完整链通过，同时无转发标记的直接 HTTP 仍被拒绝。访问日志补路由模板、状态、耗时，不记录密码和令牌。线上历史原始响应缺失这个证据边界仍要承认。[S8][C7]
@@ -223,7 +223,7 @@ flowchart LR
 
 | 编号 | 可核对材料与定位 |
 |---|---|
-| S1 | [CURRENT_STATE.md](../project/CURRENT_STATE.md)：[PROD-01]、[DIR-01] 产品；[ARCH-09]（约 277～301 行）改造动机、范围、15:16 上线与剩余验收；[ARCH-05]（约 247 行）同步；[ACC-01]（约 496 行）单设备；[BUG-97]（约 1120 行）413 原因与客户端修复。开头“当前阶段”有早期服务器描述，本稿以较具体的 ARCH-09 为准。源码基线里的观察期表述已被主目录 [最新 CURRENT_STATE.md](D:/MentorFlow/docs/project/CURRENT_STATE.md) 同日 15:33 的 ARCH-09 更新取代：用户定不设观察期，直接收尾；该项按主目录最新记录引用，只读、不改总文档。 |
+| S1 | [CURRENT_STATE.md](../project/CURRENT_STATE.md)：[ARCH-09] 当前部署与恢复状态，[ACC-02] 资料账号接口，[SYS-06] 当前发布；[ARCH-05] 同步、[ACC-01] 单设备、[BUG-97] 413 故障与客户端修复。引用稳定条目编号，不用易漂移的行号。下文 2026-10-16 观察数据仅是历史证据；发布版本和备用服务以这些条目的最新内容为准。 |
 | S2 | [java142/report.md](D:/MentorFlow/.local/test-tmp/java142/report.md)：交付与边界、身份层与配置对照、HTTP 合同、资源测量（约 145～154 行）；备份定位 [142-MF01.md](D:/MentorFlow/.local/receipts/142-MF01.md)。精确性能数据取报告，不用回执四舍五入替代。 |
 | S3 | [auth144/report.md](D:/MentorFlow/.local/test-tmp/auth144/report.md)：实现与边界、未完成的进程内 access/cookie、数据库与测试、并发及永久族；[144-MF01.md](D:/MentorFlow/.local/receipts/144-MF01.md)。 |
 | S4 | [sync145/report.md](D:/MentorFlow/.local/test-tmp/sync145/report.md)：五个接口、数据库与事务、50 组合同、逐行比较、20 批性能、9 MiB 所在层；[145-MF07.md](D:/MentorFlow/.local/receipts/145-MF07.md)。 |
@@ -235,8 +235,8 @@ flowchart LR
 | C2 | [IdentitySecurity.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/identity/IdentitySecurity.java)（约 42～84 行）、[CompatibleJwtDecoder.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/identity/CompatibleJwtDecoder.java)（约 94～183 行）；[NativeSessionService.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/account/NativeSessionService.java)（约 130～287 行登录/刷新/认证，373 行起锁与撤销）；[NativeAuthController.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/account/NativeAuthController.java)。 |
 | C3 | [SyncRepository.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java)：97～133 行外层事务/NESTED、151～183 行 scope 和锁、225～259 行幂等/CAS；[test_sync_http_contract145.py](../../tests/refactor/server_java/test_sync_http_contract145.py)、[test_sync_payload145.py](../../tests/refactor/server_java/test_sync_payload145.py) 对应并发与整批回滚证据。 |
 | C4 | [ClosureService.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/closure/ClosureService.java)、[PostgresClosureStore.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/closure/PostgresClosureStore.java)、[ClosureAdminClient.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/closure/ClosureAdminClient.java)、[ClosureSessionHooks146.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/account/ClosureSessionHooks146.java)；[test_closure_admin_http_contract147.py](../../tests/refactor/server_java/test_closure_admin_http_contract147.py)（约 78～104 行比较列）；[AdminOverviewController.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminOverviewController.java)（57～60 行 GET/HEAD 映射与方法拒绝）。 |
-| C5 | [sync_course.py](../../refactor/learning/course/sync_course.py)：330～339、392～418 行稳定请求 ID，422～497 行拆批/结果；[sync_transport.py](../../refactor/learning/sync_transport.py)（79～103、320～361 行）413 映射与单条回退。只读用于说明已有客户端行为，本次没有改客户端。 |
-| C6 | [CUTOVER148.md](../../refactor/server-java/CUTOVER148.md)：整组切换前提、进程会话边界、保留数据库的回退流程。命令模板不代表本稿执行过部署。 |
+| C5 | [sync_course.py](../../refactor/learning/course/sync_course.py)：345～359 行稳定请求 ID，422～509 行拆批/结果与单条回退；[sync_transport.py](../../refactor/learning/sync_transport.py)（412～466 行）单条接口的 413 映射。只读用于说明已有客户端行为，本次没有改客户端。 |
+| C6 | [CUTOVER148.md](../../refactor/server-java/CUTOVER148.md)：历史整组切换前提和进程会话边界；当前备用准备、健康检查、内部 probe 与授权切流以 [ARCH-09] 和 [RELEASE226.md](../../refactor/server-java/deploy/RELEASE226.md) 为准。命令模板不代表本稿执行过部署。 |
 | C7 | [application.properties](../../refactor/server-java/src/main/resources/application.properties) 的 forward-headers-strategy；[RequestAccessLog149Filter.java](../../refactor/server-java/src/main/java/win/clannad/mentorflow/identity/RequestAccessLog149Filter.java)。完整客户端/代理回归的用例与运行数字见 S8。 |
 
 没有材料支持的内容就不讲：没有生产高并发/QPS/P99 结论，没有 Java 原生承接全部 Python 浏览器会话，没有把 AI 编排迁到 Spring AI，没有证明线上所有邮件流程已真人走通，也没有声称一个本地事务能原子回滚 Keycloak 删除。[S1][S3][S6][S8]

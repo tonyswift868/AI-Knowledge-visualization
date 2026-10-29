@@ -34,9 +34,9 @@
 
 | 具体事实 | 当前基线出处 |
 |---|---|
-| 只从已采用来源和对应段落构造章节范围 | `refactor/learning/app/plan_flow.py:897-929` |
-| 根据目标、表单和章节生成目录结构预览，保存为待确认阶段 | `refactor/learning/app/plan_flow.py:979-1027` |
-| 用户可在目录预览阶段选择删改或继续；确认后进入后续结构步骤 | `refactor/learning/app/plan_flow.py:1057-1078,2261-2264` |
-| 保存前校验引用属于已采用资料，不验证知识点与原文的语义蕴含 | `refactor/learning/app/plan_flow.py:1296-1308` |
-| 小要点保留原文段落引用与来源标题 | `refactor/learning/course/planner_agents.py:1691-1719` |
+| 只从已采用来源和对应段落构造章节范围 | `refactor/learning/app/plan_flow.py:916-947` |
+| 根据目标、表单和章节生成目录结构预览，保存为待确认阶段 | `refactor/learning/app/plan_flow.py:998-1051` |
+| 用户可在目录预览阶段选择删改或继续；确认后进入后续结构步骤 | `refactor/learning/app/plan_flow.py:1074-1110` |
+| 保存前校验引用属于已采用资料，不验证知识点与原文的语义蕴含 | `refactor/learning/app/plan_flow.py:1352-1364` |
+| 小要点保留原文段落引用与来源标题 | `refactor/learning/course/planner_agents.py:1677-1720` |
 | 规划提示要求对照目标与资料覆盖，并标出资料未覆盖的内容 | `refactor/learning/course/planner_agents.py:226-241` |

@@ -8,6 +8,8 @@
 
 资料检索也必须隔离账号，但它的范围规则和同步不同。issuer是身份签发方，subject_id是这个签发方给用户的主体编号；服务从经过验证的这两个标识形成账号范围，再限定用户本次选定的资料。同一份资料的不同引用会归到统一文档编号（canonical ID），只在本次解析出的这些编号内找候选片段，不以组织或工作区筛选检索结果。向量相似只负责排序内容，不决定谁有权读。同步记录则按身份对应的账号、组织与工作区校验归属。真实pgvector隔离测试中，账号B无法列出、检索、删除或重传账号A的资料，三张RAG表启用了强制RLS；这是当次路径的验证结果。
 
+账号个人资料（昵称、签名和头像）是另一类账号级数据：客户端请求带当前会话身份，服务按验证后的账号范围读取或写入，不从请求参数选择别人的账号，也不要求工作区成员关系。Java 226 的个人资料和头像路由使用迁移0046建立的 `account_profiles`；头像经服务端重编码后保存。接口与用户可见范围见 [ACC-02]，隔离测试边界见 [ACC-03]。
+
 **可以直接这样说：**“隔离要同时检查身份和数据范围。同步会核对当前账号、组织和工作区；资料问答则限定当前账号和本次选定的资料，数据库RLS再限制可见数据行。登录成功本身不等于可以读取其他账号的数据。”
 
 ### 登录后，系统怎样避免读取另一个账号的数据？
@@ -24,6 +26,7 @@
 
 | 说法 | 出处 |
 |---|---|
-| 本机按账号存课程库、同步校验账号空间 | `docs/project/CURRENT_STATE.md:153-156,168-172`；`refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncController.java:79-82`；`refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java:149-175` |
-| RAG账号范围与本次文档选择过滤 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:197-213,332-341`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/PgVectorStore.java:40-53` |
-| RLS纵深保护及双账号验证范围 | `docs/project/CURRENT_STATE.md:419-427`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagRepository.java:63-90` |
+| 本机按账号存课程库、同步校验账号空间 | [ARCH-03][ARCH-05]；`refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncController.java:79-82`；`refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java:149-175` |
+| RAG账号范围与本次文档选择过滤 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:324-351,460-470`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/PgVectorStore.java:40-53` |
+| RLS纵深保护及双账号验证范围 | [ACC-03]；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagRepository.java:63-90` |
+| 账号级个人资料与头像 | [ACC-02]；`refactor/server-java/src/main/java/win/clannad/mentorflow/identity/AccountProfileController226.java:28-46,70-105`；`AccountProfileRepository226.java:43-76` |

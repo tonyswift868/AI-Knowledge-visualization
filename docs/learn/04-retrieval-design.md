@@ -34,8 +34,8 @@ HNSW是近似近邻索引，搜索结果可能不同于逐条精确比较。记�
 
 | 具体事实 | 当前基线出处 |
 |---|---|
-| 问题生成512维向量，送入向量存储检索 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:203-213`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagEmbedding.java:19-23` |
+| 问题生成512维向量，送入向量存储检索 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:324-342`；`refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagEmbedding.java:19-23` |
 | PostgreSQL候选查询按pgvector余弦距离排序，使用HNSW检索配置 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/PgVectorStore.java:41-56` |
-| 归一化余弦分数与字符二元组Jaccard按0.8和0.2加权，之后排序 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:212-229` |
-| 字符二元组规范化并以Jaccard交并比计算重合度 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:380-394` |
+| 归一化余弦分数与字符二元组Jaccard按0.8和0.2加权，之后排序 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:324-351` |
+| 字符二元组规范化并以Jaccard交并比计算重合度 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:508-523` |
 | HNSW是近似索引；得分仅作相对排序 | `refactor/server-java/RAG_API.md:56,64` |

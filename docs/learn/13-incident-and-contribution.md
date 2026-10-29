@@ -38,10 +38,10 @@ HTTPS 可以理解为带加密保护的 HTTP。**入口代理**先接到客户�
 
 | 编号 | 事实及核对位置 |
 |---|---|
-| F01 | 切流现象、入口拓扑、错误映射与再次切换结果：`docs/project/CURRENT_STATE.md:198-206` [ARCH-09]；`docs/interview/java-backend-rewrite.md:118-128` |
+| F01 | 切流现象、入口拓扑、错误映射与再次切换结果：[ARCH-09]；`docs/interview/java-backend-rewrite.md` 的历史事件说明 |
 | F02 | 当前Spring转发头配置：`refactor/server-java/src/main/resources/application.properties:7` |
 | F03 | 原生认证按request.getScheme拒绝非HTTPS：`refactor/server-java/src/main/java/win/clannad/mentorflow/account/NativeAuthController.java:103-108` |
-| F04 | 本机真实客户端代理链复现、直接HTTP拒绝、历史证据边界：`docs/interview/java-backend-rewrite.md:122-128,193-200`；[ARCH-09] |
+| F04 | 本机真实客户端代理链复现、直接HTTP拒绝、历史证据边界：`docs/interview/java-backend-rewrite.md` 的“线上踩坑”小节；[ARCH-09] |
 
 ## Q20｜个人职责与验证证据｜必须能背
 
@@ -81,4 +81,4 @@ MentorFlow 采用 AI 协作开发，项目里的产品规则和验证来自明�
 |---|---|
 | F05 | 项目采用AI协作、职责与可验证交付原则：`AGENTS.md` 第9–11条；`docs/project/CURRENT_STATE.md` [ARCH-04]、[QA-01] |
 | F06 | 用户确定的题源、客观题/问答题职责：`docs/project/CURRENT_STATE.md` [DIR-01]、[TEACH-04] |
-| F07 | 题文错位和192调研结论：`docs/project/BUGS.md:1468-1472` [BUG-125]；原题与原文验证：`refactor/learning/course/material_questions.py:219-247,266-295` |
+| F07 | 题文错位和192调研结论：[BUG-125]；原题与原文验证：`refactor/learning/course/material_questions.py:219-247,266-295` |

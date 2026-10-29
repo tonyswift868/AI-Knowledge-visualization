@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 的「当前阶段」和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-29）：239-MF03、239-MF04、242-MF02 已合入 main（d91460d1），准备发 2.0.38；发版前验证 243-MF04、243-MF06 待转发。dots 面试提示词已复核可用（241-MF07）。
+- **现在在做的事**（2026-10-29）：线上发布版是 2.0.37；下一版 2.0.38 是否发布等用户决定（[SYS-06]）。当前代码含更新授权提示和个人资料界面，尚未发布为 2.0.38。243-MF04、243-MF06 均已完成；243-MF06 全量测试有 43 项失败（详见回执），不能称全绿。244-MF07 文档整理已交，待架构师审查合入。dots 提示词复核已完成（241-MF07）。
   - 回执处理：用户说做完了才读回执（不挂后台监视）；员工删临时文件常被系统拦住，合入后由架构师删 .local/test-tmp 下的任务目录，只把 report.md（和截图）留到 .local/r<批次>/。
 
 ## 固定做法（规则见 AGENTS.md）
@@ -15,7 +15,7 @@
 - **给员工写任务的措辞**（用户 2026-10-29 定）：不写红队、蓝队、攻、越权、令牌重放这类说法，不让员工去读这类旧报告，复现步骤要用就自己改写进任务；写成普通测试用语。员工被内容限制拦下时，换新聊天、拆小任务重派；普通的输出截断不是停下的理由，任务里写明分段读接着做（用户 2026-10-29，232 因此白跑一次）。
 
 - **员工实测不占用户的鼠标键盘（2026-10-11）**：真打包实测用 Windows 的 UI Automation（InvokePattern）点原生按钮、读文字；网页里的按钮和输入框用 Chrome DevTools 协议（测试环境设 QTWEBENGINE_REMOTE_DEBUGGING），因为 Qt 6.11 网页的无障碍接口只能聚焦、点不动；不用 computer-use、模拟输入或抢前台（102-MF04 用电脑界面操作时被用户按 Esc 中止）；测试窗口会出现在屏幕上，派任务时先告诉用户。
-- **发版**（什么时候发由用户定）：用流水线发版，让用户在装好的软件上点更新亲测（操作手册“发布新版”）。**本机先验、GitHub 一版只跑一次（用户 2026-10-11 提出）**：先在本机用同一个打包脚本打预览版，跑一遍 scripts/release 的发版前总验收（102-MF04c 整理），过了才触发 mf-build / mf-publish；没在本机验过的版本不上 GitHub。正式版不在本机打：本机环境会把别的 DLL 混进包里（102-MF04 实测混入过 ICU/OpenSSL），而且同一版本两边打出来的文件不同，会扰乱以后的增量更新。**版本号只在真正发布时占用（用户 2026-10-12 定）**：定下要发的下一版（现在是 2.0.34），在发布前查出的 bug 修完仍发这个版本号，不跳到下一个号；本机排练用的测试版本号（如 9.103.14）不算。
+- **发版**（何时发布、发布哪个版本由用户决定；[SYS-06]）：按“发布新版”操作手册使用流水线。**本机先验、GitHub 一版只跑一次（用户 2026-10-11 定）**：先用同一打包脚本在本机打预览版，跑过 `scripts/release` 的发版前总验收，再触发 mf-build / mf-publish；没在本机验过的版本不上 GitHub。正式包只由流水线构建，避免本机 DLL 混入和同版本内容不同。**版本号只在实际发布时占用（用户 2026-10-12 定）**：下一版发哪个号由用户决定，发布前修 bug 仍用这个号；本机排练测试号不占正式号。本机预览版和员工测试不替代用户亲测。
 - **任务文件与短通知**：规则见 AGENTS 第 9、15 条（只给现在就能开工的通知，每位一个代码块）；本文件待派队列只写任务号、一句话、文件路径和先后。通知格式例：“新任务 134-MF04：读 D:\MentorFlow\.local\tasks\134-MF04.md 照做，回执写到 D:\MentorFlow\.local\receipts\134-MF04.md。”
 - **任务状态**：任务写好标“已起草，待转发”；用户说发了才改“进行中”；合入后从员工表和待派队列删掉，任务原文也删。
 - **署名**：主目录提交用 `git -c user.name="tonyswift868" -c user.email="205869700+tonyswift868@users.noreply.github.com" commit ...`，结尾加 Co-Authored-By 行；不写进共享 git 配置。员工用各自工位名提交。
@@ -32,7 +32,7 @@
 - **界面构建**：PATH 加 `/d/MentorFlow/.local/node`，`node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 不进仓库。
 - **写脚本**：含 Windows 路径或反斜杠的内容不要用 bash heredoc 或 python -c（会被吃掉，BUG-10），写成文件再运行。
 - **往服务器传源码**：`git -c core.autocrlf=false -c core.eol=lf archive --format=tar -o <tar> <提交> refactor/server refactor/server-java`，scp 上去解到 /opt/mentorflow/releases/java-<提交>/，再核对关键文件 sha256；不加这两个参数 .sh 会带 Windows 换行，跑不了（[BUG-107]）。
-- **服务器**：`ssh -F "D:/MentorFlow/.local/server/ssh_config" mentorflow`（89.45.45.28，mentorflow-admin，sudo -n）。Python 后端 mentorflow-slim-backend:MF-76（已停，留作回退；切换与回滚脚本 /opt/mentorflow/state/mf76/switch.sh：无参数切换、check 只查配置、rollback 回到 MF-75；上一版 mf75 目录保留）；入口 nginx 容器 mentorflow-e1-preview-edge-1（配置 /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf）；更新与下载目录 /opt/mentorflow/update-static/e108/app/；资料白名单 /opt/mentorflow/state/mentorflow-e1-preview/catalog/。 后端是 Java（[ARCH-09]，2026-10-16 起）：容器 mentorflow-java-backend、mentorflow-java-oidc，部署与切换、回滚、停用和恢复 Python 的脚本在 /opt/mentorflow/releases/java-539ab610/refactor/server-java/deploy（README 有步骤）；compose 需 BACKEND_ENV=/opt/mentorflow/state/mentorflow-e1-preview/account-core-21337c1/runtime.env；Python 后端已停，镜像 mentorflow-slim-backend:MF-76 保留。 数据库容器镜像为 mentorflow-postgres-pgvector:17（[RAG-01]，2026-10-16）。它的 compose 标签指向已不存在的旧目录，以后用 compose 操作 postgres，要用后端容器标签里的文件组，加上 --profile account-core-mvp、-f /opt/mentorflow/backups/pgvector-20261016/pgvector.override.yml，最后再加 BUG-45 override。 2026-10-10 起两个 docker 网络设了 ip_range（BUG-45）：以后用 Compose 操作这些容器，命令末尾必须追加 -f /opt/mentorflow/state/bug45-20261010/network45.override.yml。
+- **服务器**：当前服务端入口与数据库状态以 [ARCH-09] 为准，Python 226 备用的授权恢复步骤见 `refactor/server-java/deploy/RELEASE226.md`。不要依照历史部署命令猜测当前配置；服务器操作只按获授权的具体任务执行。
 - **等回执（用户 2026-10-28 定，取代 10-14 的自动等）**：不挂后台监视。员工做完由用户告诉架构师，架构师再去读 .local/receipts 里的回执、审查合入、清理、更新文档；用户没说之前不去看，员工中途写的半成品回执不算。
 - **排练产物（2026-10-19）**：员工的真打包排练每次留下几十 GB（160 约 70 GB、168 约 25 GB），而且员工的递归删除会被系统拦住；收到这类回执后，架构师先把任务目录里除 report.md 和截图以外的都删掉，再做别的。
 - **磁盘（用户 2026-10-10 定）**：测试与临时产物在 .local/test-tmp/ 下；冒烟测试、构建、中间文件用完就自动删，不留着等以后分类。员工删除被系统拦住时，架构师合入后直接删（只留 report.md 和截图），不用再问用户。
@@ -41,9 +41,9 @@
 
 | 项目 | 值 |
 | --- | --- |
-| main | 以 `git rev-parse --short HEAD` 为准；GitHub 上的 main 到 149b53ed（2.0.37 发版时推送），之后只有文档，还没推送，随下次发版推送 |
-| 已发布 | 2.0.37（2026-10-29，非必须，只发软件内更新，基线 2.0.36，公网 stable.json 已验签，[SYS-06]）；下载站安装程序 2.0.15；强制线 2.0.3；服务器 Java mentorflow-java-server:226（2026-10-29，237-MF01），数据库迁移 0046 |
-| GitHub | main 已推送（私有仓库），远端只有 main 一个分支（9-26 遗留的 15 个 Dependabot 升级请求与分支 2026-10-12 经用户同意已关闭并删除，它们的配置已随旧代码删除，不会再生成）；发版需要的推送由架构师做，其余推送要用户说 |
+| main | 本地主线以 `git rev-parse --short HEAD` 为准；已发布版本与主线候选代码见 [SYS-06]。远端当前 HEAD 本轮未联网核验，不把本地候选误称为已发布 |
+| 已发布 | 客户端版本与下载站状态见 [SYS-06]；服务端 Java 226 与数据库迁移 0046 见 [ARCH-09] |
+| GitHub | 私有仓库；远端当前分支数量本轮未验证。发版所需推送与其他推送的授权规则见 AGENTS 第 12 条 |
 | 工位分支 | office/* 只在本地，永不推送；每条任务第一步把工位 reset 到基线 |
 
 ## 员工与工位
@@ -57,14 +57,14 @@
 | MF-03 | 空闲（239-MF03 已合入） | classroom |
 | MF-04 | 空闲（243-MF04 已过） | runtime |
 | MF-05 | 空闲（241-MF05 已交） | platform |
-| MF-06 | 243-MF06（发版前全量 + 用户数据副本走查）在做 | tools |
-| MF-07 | 244-MF07（理顺项目文档：只写现在、不矛盾、和代码一致，同步 dots 提示词出处）已起草，待转发 | library |
+| MF-06 | 空闲（243-MF06 已完成） | tools |
+| MF-07 | 244-MF07 已交，待审查合入 | library |
 
 ## 待派队列
 
 - 报告存档：两轮源码复盘 .local/review217/、.local/review218/；219 修复 .local/fix219/；220～228 各批报告 .local/r220/～.local/r228/（224、226、228 内测在 .local/r224/、.local/r226/、.local/r228/）。
-- 已起草，待转发（2026-10-29）：244-MF07（D:\MentorFlow\.local\tasks\244-MF07.md）理顺项目文档。243-MF06 过了，用户定发不发 2.0.38。
-- 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）；用户学完“MentorFlow 项目面试讲解”后的模拟面试官（[DOC-01]）。
+- **当前任务**：244-MF07 已交待审查合入，详见 `.local/tasks/244-MF07.md`；243-MF04、243-MF06 均已完成，发布版与下一版决定见 [SYS-06]。
+- 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn，获授权后导出并发布 mentorflow-guide（AGENTS 第 12 条）；发给朋友前重做安装程序并走一遍全新安装和注册（[SYS-06] [ACC-02]）。模拟面试提示词已交付，学习规则见 [DOC-01]。
 
 ## 找问题积分
 

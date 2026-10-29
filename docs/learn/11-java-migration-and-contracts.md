@@ -22,8 +22,8 @@
 
 | 说法 | 出处 |
 |---|---|
-| 求职目标、迁移范围与保留 Python 的边界 | `docs/project/CURRENT_STATE.md:198-206` [ARCH-09] |
-| AI 不直接改学习状态，流程由宿主状态机执行 | `docs/project/CURRENT_STATE.md:161-164` [ARCH-04] |
+| 求职目标、迁移范围与保留 Python 的边界 | [ARCH-09] |
+| AI 不直接改学习状态，流程由宿主状态机执行 | [ARCH-04] |
 
 ## Q17｜后端兼容性验证｜讲清原理
 
@@ -31,7 +31,7 @@
 
 例如，直接向后端发 HTTP 契约请求通过，并不能证明桌面端经由 HTTPS 边缘代理访问时也兼容。项目测试把真实的 `NativeCredentialClient`、`LoginSession`、`SyncTransport` 和 `ClosureClient` 放进代理拓扑，覆盖登录恢复、会话、同步和注销组合；这能发现只有真实客户端与代理一起运行才出现的协议差异。验证必须覆盖客户端实际依赖的链路，而不止单个后端端点。
 
-兼容性还包括数据库演进和恢复边界。当前服务数据库迁移到 0045；旧 Python 容器虽停用保留，但迁移后的数据库并不因此自动回到旧结构。若恢复路径要求兼容新数据，必须按具体版本核验，不能承诺“旧服务随时无条件接管”。[ARCH-09][RAG-01]
+兼容性还包括数据库演进和恢复边界。账号资料使用0046迁移新增的 `account_profiles`；当前部署版本与备用恢复路径见 [ARCH-09][ACC-02]。代码切回旧版本不会自动回退数据库。旧 Python 219 只认0045，不能接0046；Python 226 备用已经过真实启动和切换演练，但使用恢复路径仍须核对当前数据库和镜像版本，不能承诺任何旧服务都能无条件接管。
 
 **可以直接这样说：**“我会让同一组 HTTP 契约分别运行在旧、新后端，比较状态码、应用响应头、正文和数据库行；只对令牌、随机 ID、时间戳等动态值做明确归一化。再用真实客户端经实际代理拓扑走登录、会话、同步和注销流程。这样既核对协议，也核对持久化结果和真实调用链。”
 
@@ -49,9 +49,9 @@
 
 | 说法 | 出处 |
 |---|---|
-| 迁移采用逐接口对照契约、客户端不改 | `docs/project/CURRENT_STATE.md:198-206` [ARCH-09] |
-| 错误响应、并发、重试和HTTP/数据库结果的契约覆盖 | `docs/interview/java-backend-rewrite.md:99-107`；`tests/refactor/server_java/test_sync_http_contract145.py:131-149,258-280` |
-| X-Forwarded-Proto 漏读导致原生登录失败及修复核验 | `docs/project/CURRENT_STATE.md:198-199` [ARCH-09]；`docs/interview/java-backend-rewrite.md:120-128,233,240` |
-| 当前 PostgreSQL 迁移版本和 Python 停用回退边界 | `docs/project/CURRENT_STATE.md:9,198-207,515-528` [ARCH-09][RAG-01]；`docs/interview/java-backend-rewrite.md:108-116` |
+| 迁移采用逐接口对照契约、客户端不改 | [ARCH-09] |
+| 错误响应、并发、重试和HTTP/数据库结果的契约覆盖 | `docs/interview/java-backend-rewrite.md` 的“契约测试”小节；`tests/refactor/server_java/test_sync_http_contract145.py:131-149,258-280` |
+| X-Forwarded-Proto 漏读导致原生登录失败及修复核验 | [ARCH-09]；`docs/interview/java-backend-rewrite.md` 的“线上踩坑”小节 |
+| 当前 PostgreSQL 迁移版本、账号资料结构和恢复边界 | [ARCH-09][ACC-02]；`docs/interview/java-backend-rewrite.md` 的架构与数据库兼容段 |
 
 
