@@ -55,15 +55,15 @@
 | MF-01 | 空闲（238-MF01 已合入） | server |
 | MF-02 | 空闲（242-MF02 已合入） | client |
 | MF-03 | 空闲（239-MF03 已合入） | classroom |
-| MF-04 | 243-MF04（发版前真打包：线上 2.0.37 → 新版，再验新规则）已起草，待转发 | runtime |
+| MF-04 | 空闲（243-MF04 已过） | runtime |
 | MF-05 | 空闲（241-MF05 已交） | platform |
-| MF-06 | 243-MF06（发版前全量 + 用户数据副本走查）已起草，待转发 | tools |
+| MF-06 | 243-MF06（发版前全量 + 用户数据副本走查）在做 | tools |
 | MF-07 | 244-MF07（理顺项目文档：只写现在、不矛盾、和代码一致，同步 dots 提示词出处）已起草，待转发 | library |
 
 ## 待派队列
 
 - 报告存档：两轮源码复盘 .local/review217/、.local/review218/；219 修复 .local/fix219/；220～228 各批报告 .local/r220/～.local/r228/（224、226、228 内测在 .local/r224/、.local/r226/、.local/r228/）。
-- 已起草，待转发（2026-10-29）：243-MF04（D:\MentorFlow\.local\tasks\243-MF04.md）、243-MF06（D:\MentorFlow\.local\tasks\243-MF06.md），可并行；244-MF07（D:\MentorFlow\.local\tasks\244-MF07.md）理文档，可同时做。两份都过了，用户定发 2.0.38。
+- 已起草，待转发（2026-10-29）：244-MF07（D:\MentorFlow\.local\tasks\244-MF07.md）理文档，可同时做。两份都过了，用户定发 2.0.38。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）；用户学完“MentorFlow 项目面试讲解”后的模拟面试官（[DOC-01]）。
 
 ## 找问题积分
