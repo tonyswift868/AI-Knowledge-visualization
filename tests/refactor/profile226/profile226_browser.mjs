@@ -32,7 +32,7 @@ try{
  checks.push('sidebar 使用昵称，未修改认证用户名');
  await js(`window.mountProfile226('profile')`);await until(`[...document.querySelectorAll('button')].some(b=>b.textContent.trim()==='选择头像')`);
  await clickText('选择头像');await until(`!!document.querySelector('[data-testid="profile226-crop"]')`);await screenshot('profile-crop-preview.png');
- if(!(await js(`document.querySelector('[data-testid="profile226-crop"] img')?.alt==='头像裁剪预览'`)))throw Error('正方形裁剪预览缺失');
+ if(!(await js(`document.querySelector('[data-testid="profile226-crop"] .reactEasyCrop_CropArea')?.className.includes('CropArea')`)))throw Error('可调位置的裁剪预览缺失');
  await clickText('取消');checks.push('头像选择后提供可调位置的正方形预览，取消不提交');
  await js(`(()=>{const i=document.querySelector('input[aria-label="昵称"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(i,'另一位昵称');i.dispatchEvent(new Event('input',{bubbles:true}));const t=document.querySelector('textarea[aria-label="个性签名"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(t,'<img src=x onerror=alert(1)>');t.dispatchEvent(new Event('input',{bubbles:true}))})()`);
  await clickText('保存个人资料');await until(`document.querySelector('[data-testid="profile226-avatar"]')?.parentElement?.parentElement?.textContent.includes('另一位昵称')`);
