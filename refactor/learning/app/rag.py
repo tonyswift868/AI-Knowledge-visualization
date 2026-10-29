@@ -28,7 +28,9 @@ from .bridge import BridgeError, CallContext
 
 log = logging.getLogger(__name__)
 API = "/api/enterprise/rag/v1"
-BATCH_BYTES = 9 * 1024 * 1024
+# Leave room below the server's configured 9 MiB request limit for gateways
+# that apply slightly different framing or limits.
+BATCH_BYTES = 8 * 1024 * 1024
 MAX_QUESTION = 20_000
 
 SYSTEM = """你是资料问答助手。回答必须严格区分资料原文与资料外知识。
@@ -107,6 +109,9 @@ class RagTransport(SyncTransport):
                     if response.status_code == 409:
                         raise BridgeError("RAG_DOCUMENT_CONFLICT",
                             "资料服务中已有同编号但内容不同的资料，需要安全建立新版本。")
+                    if response.status_code == 413:
+                        raise BridgeError("RAG_HTTP_413",
+                            "资料太大，服务器一次收不下，正在自动拆小重试。")
                     raise BridgeError("RAG_HTTP", f"资料服务暂时无法完成请求（HTTP {response.status_code}）。")
             if not raw:
                 return {}
@@ -625,6 +630,42 @@ class RagService:
         return hashlib.sha256("".join(str(chunk.get("text") or "") for chunk in chunks)
                               .encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _upload_body_size(payload):
+        """Return the size of the exact JSON body httpx will send."""
+        return len(httpx.Request("POST", "https://rag.invalid/", json=payload).content)
+
+    def _send_upload_batch(self, path, payload, *, cancel, on_receipt):
+        """Send a batch, recursively splitting only the current batch on 413.
+
+        ``on_receipt`` validates and records each successful receipt. Returning
+        true stops sibling sends when a repair is already complete.
+        """
+        _cancel(cancel)
+        try:
+            receipt = self.transport.request_json("POST", path, payload=payload, cancel=cancel)
+        except BridgeError as exc:
+            if exc.code != "RAG_HTTP_413":
+                raise
+            parts = payload.get("chunks") or []
+            if len(parts) <= 1:
+                seq = parts[0].get("seq", "未知") if parts and isinstance(parts[0], dict) else "未知"
+                if type(seq) is int and seq >= 0:
+                    seq += 1
+                raise BridgeError("RAG_CHUNK_TOO_LARGE",
+                    f"资料太大，服务器一次收不下；第 {seq} 段单独发送仍失败。") from None
+            middle = len(parts) // 2
+            for half in (parts[:middle], parts[middle:]):
+                if self._send_upload_batch(path, {**payload, "chunks": half},
+                                           cancel=cancel, on_receipt=on_receipt):
+                    return True
+            return False
+        return bool(on_receipt(receipt))
+
+    @staticmethod
+    def _is_upload_capacity_error(exc):
+        return exc.code in {"RAG_CHUNK_TOO_LARGE", "RAG_REPAIR_MANIFEST_TOO_LARGE", "RAG_HTTP_413"}
+
     def _send_repair_batches(self, row, *, cancel=None, on_progress=None):
         chunks = row["chunks"]
         uploaded_digest = row.get("current_content_sha256") or _source_content_digest(chunks)
@@ -632,7 +673,7 @@ class RagService:
         base = {"title": row["title"], "source": row["source"], "total_chunks": len(chunks),
                 "repair_existing": True, "repair_manifest": manifest,
                 "repair_content_sha256": self._document_content_digest(chunks)}
-        if len(_json({**base, "chunks": []}).encode("utf-8")) >= BATCH_BYTES:
+        if self._upload_body_size({**base, "chunks": []}) > BATCH_BYTES:
             raise BridgeError("RAG_REPAIR_MANIFEST_TOO_LARGE", "资料分块清单超过单次补传容量，无法安全补齐。")
         batches, batch = [], []
         for seq, chunk in enumerate(chunks):
@@ -641,19 +682,22 @@ class RagService:
             payload_chunk = {key: chunk.get(key) for key in ("text", "page", "section")}
             payload_chunk["seq"] = seq
             candidate = batch + [payload_chunk]
-            if len(_json({**base, "chunks": candidate}).encode("utf-8")) > BATCH_BYTES and batch:
+            if self._upload_body_size({**base, "chunks": candidate}) > BATCH_BYTES and batch:
                 batches.append(batch)
                 batch = [payload_chunk]
             else:
                 batch = candidate
-            if len(_json({**base, "chunks": batch}).encode("utf-8")) > BATCH_BYTES:
-                raise BridgeError("RAG_CHUNK_TOO_LARGE", "资料分块超过单次补传容量，无法安全补齐。")
+            if self._upload_body_size({**base, "chunks": batch}) > BATCH_BYTES:
+                display_seq = seq + 1
+                raise BridgeError("RAG_CHUNK_TOO_LARGE",
+                    f"资料分块清单中第 {display_seq} 段超过单次补传容量，无法安全补齐。")
         if batch:
             batches.append(batch)
-        for part in batches:
+        completed = None
+
+        def accept_repair_receipt(receipt):
+            nonlocal completed
             _cancel(cancel)
-            receipt = self.transport.request_json("POST", f"{API}/documents/{row['id']}/chunks",
-                payload={**base, "chunks": part}, cancel=cancel)
             if (not isinstance(receipt, dict) or receipt.get("requested_document_id") != row["id"]
                     or receipt.get("document_id") != row["id"] or receipt.get("status") != "ready"
                     or type(receipt.get("received_chunks")) is not int
@@ -671,12 +715,20 @@ class RagService:
                     row.get("plan_ids", ()))
                 if on_progress:
                     on_progress(ready)
-                return ready
+                completed = ready
+                return True
             # The server keeps the previous ready data searchable during repair.
             if on_progress:
                 on_progress(self._doc_view({**row, "status": "ready",
                     "uploaded_chunks": received, "canonical_total_chunks": total},
                     row.get("plan_ids", ())))
+            return False
+
+        for part in batches:
+            if self._send_upload_batch(f"{API}/documents/{row['id']}/chunks",
+                    {**base, "chunks": part}, cancel=cancel,
+                    on_receipt=accept_repair_receipt):
+                return completed
         raise BridgeError("RAG_REPAIR_INCOMPLETE", "资料服务尚未确认所有本地分块，旧资料仍保留，请稍后重试。")
 
     def sources(self, cancel=None):
@@ -708,6 +760,7 @@ class RagService:
             remote = {}
             server_status = {"state": "unavailable", "message": str(exc)}
         repair_errors = {}
+        capacity_error_ids = set()
         # A ready remote row at the original source ID is not proof that its
         # body matches this device's extracted content. This also handles a
         # newly created local RAG database with an older server-side document.
@@ -746,15 +799,19 @@ class RagService:
                 except BridgeError as exc:
                     if exc.code == "CANCELLED":
                         raise
-                    version_id = _source_version_id(doc_id, local_row.get("current_content_sha256") or
-                                                    _source_content_digest(row.get("chunks", ())))
-                    self.local.set_remote_upload_id(doc_id, version_id)
+                    if self._is_upload_capacity_error(exc):
+                        capacity_error_ids.add(doc_id)
+                    else:
+                        version_id = _source_version_id(doc_id, local_row.get("current_content_sha256") or
+                                                        _source_content_digest(row.get("chunks", ())))
+                        self.local.set_remote_upload_id(doc_id, version_id)
                     repair_errors[doc_id] = exc.message
         # A previously uploaded source whose parsed content changed gets a new
         # immutable remote ID. This avoids mutating a ready ID (and avoids
         # append-only repair retaining old text). Old remote rows are retained.
         changed_ids = [doc_id for doc_id in current
-            if (saved := self.local.document(doc_id)) is not None
+            if doc_id not in capacity_error_ids
+            and (saved := self.local.document(doc_id)) is not None
             and saved.get("remote_upload_id") not in ("", doc_id)
             and (saved.get("uploaded_content_sha256") or "")
                 != (saved.get("current_content_sha256") or "")]
@@ -775,6 +832,13 @@ class RagService:
                     repair_errors[doc_id] = exc.message
         for doc_id, row in list(all_local.items()):
             row = self.local.document(doc_id) or row
+            if doc_id in capacity_error_ids:
+                # The repair callback has fresher acknowledged progress than
+                # the listing fetched before repair began.
+                all_local[doc_id] = {**row, "status": "failed",
+                    "uploaded_chunks": int(row.get("uploaded_chunks", 0) or 0),
+                    "error": repair_errors[doc_id]}
+                continue
             canonical_id = row.get("canonical_id") or doc_id
             content_current = ((row.get("current_content_sha256") or "")
                                == (row.get("uploaded_content_sha256") or ""))
@@ -799,7 +863,8 @@ class RagService:
                 continue
             is_current = ((row.get("current_content_sha256") or "")
                           == (row.get("uploaded_content_sha256") or ""))
-            remote_row = remote.get(row.get("remote_upload_id") or doc_id) if is_current else None
+            remote_row = (remote.get(row.get("remote_upload_id") or doc_id)
+                          if is_current and doc_id not in capacity_error_ids else None)
             docs.append(self._doc_view(row, plan_refs.get(doc_id, ()), remote_row))
         for item in docs:
             if item["id"] in repair_errors:
@@ -825,28 +890,28 @@ class RagService:
         uploaded_digest = row.get("current_content_sha256") or _source_content_digest(chunks)
         target_id = row.get("remote_upload_id") or row["id"]
         batches, batch = [], []
-        for chunk in chunks:
+        for seq, chunk in enumerate(chunks):
             payload_chunk = {key: chunk.get(key) for key in ("seq", "text", "page", "section")}
             candidate = batch + [payload_chunk]
-            encoded = _json({"title": row["title"], "source": row["source"],
-                             "total_chunks": len(chunks), "chunks": candidate}).encode("utf-8")
-            if len(encoded) > BATCH_BYTES and batch:
+            if self._upload_body_size({"title": row["title"], "source": row["source"],
+                    "total_chunks": len(chunks), "chunks": candidate}) > BATCH_BYTES and batch:
                 batches.append(batch)
                 batch = [payload_chunk]
             else:
                 batch = candidate
-            if len(_json({"title": row["title"], "source": row["source"],
-                          "total_chunks": len(chunks), "chunks": batch}).encode("utf-8")) > BATCH_BYTES:
-                raise BridgeError("RAG_CHUNK_TOO_LARGE", "资料分块超过单次上传容量，无法入库。")
+            if self._upload_body_size({"title": row["title"], "source": row["source"],
+                    "total_chunks": len(chunks), "chunks": batch}) > BATCH_BYTES:
+                display_seq = chunk.get("seq", seq)
+                if type(display_seq) is int and display_seq >= 0:
+                    display_seq += 1
+                raise BridgeError("RAG_CHUNK_TOO_LARGE",
+                    f"资料第 {display_seq} 段超过单次上传容量，无法入库。")
         if batch:
             batches.append(batch)
         status, received, canonical_id = "uploading", int(row.get("uploaded_chunks", 0) or 0), row.get("canonical_id") or row["id"]
-        for part in batches:
+        def accept_upload_receipt(receipt):
+            nonlocal status, received, canonical_id
             _cancel(cancel)
-            payload = {"title": row["title"], "source": row["source"],
-                       "total_chunks": len(chunks), "chunks": part}
-            receipt = self.transport.request_json("POST", f"{API}/documents/{target_id}/chunks",
-                                        payload=payload, cancel=cancel)
             if not isinstance(receipt, dict):
                 raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的入库状态无效。")
             canonical_id = receipt.get("document_id")
@@ -872,6 +937,13 @@ class RagService:
                                       row.get("plan_ids", ()))
             if on_progress:
                 on_progress(progress)
+            return False
+
+        for part in batches:
+            payload = {"title": row["title"], "source": row["source"],
+                       "total_chunks": len(chunks), "chunks": part}
+            self._send_upload_batch(f"{API}/documents/{target_id}/chunks", payload,
+                                    cancel=cancel, on_receipt=accept_upload_receipt)
         final_row = self.local.document(row["id"])
         if final_row and final_row.get("status") == "ready":
             # Record exactly the snapshot sent, never a newer concurrent edit.
@@ -932,6 +1004,17 @@ class RagService:
                     except BridgeError as exc:
                         if exc.code == "CANCELLED":
                             raise
+                        if self._is_upload_capacity_error(exc):
+                            current = self.local.document(doc_id) or row
+                            uploaded = int(current.get("uploaded_chunks", 0) or 0)
+                            self.local.set_status(doc_id, "failed", uploaded, exc.message)
+                            view = self._doc_view({**(self.local.document(doc_id) or current),
+                                "status": "failed", "uploaded_chunks": uploaded,
+                                "error": exc.message}, row.get("plan_ids", ()))
+                            result.append(view)
+                            if on_progress:
+                                on_progress(view)
+                            continue
                         # A conflict proves that existing ready chunks are not
                         # a subset of this source snapshot; preserve them and
                         # fall back to an immutable content-version upload.
