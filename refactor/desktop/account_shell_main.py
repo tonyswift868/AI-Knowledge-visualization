@@ -15,6 +15,38 @@ os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
 from refactor.runtime_logging import event as diagnostic_event
 
 
+def _account_initial(username: str | None) -> str:
+    return username[:1].upper() if username else "M"
+
+
+def _circular_avatar_pixmap(source, size):
+    """Return a smoothly masked, aspect-preserving circular account-list avatar."""
+    from PySide6.QtCore import Qt, QSize
+    from PySide6.QtGui import QPainter, QPainterPath, QPixmap
+
+    diameter = max(1, int(size))
+    result = QPixmap(diameter, diameter)
+    result.fill(Qt.GlobalColor.transparent)
+    if source is None or source.isNull():
+        return result
+    scaled = source.scaled(
+        QSize(diameter, diameter),
+        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    painter = QPainter(result)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+    clip = QPainterPath()
+    clip.addEllipse(0, 0, diameter, diameter)
+    painter.setClipPath(clip)
+    x = (scaled.width() - diameter) // 2
+    y = (scaled.height() - diameter) // 2
+    painter.drawPixmap(-x, -y, scaled)
+    painter.end()
+    return result
+
+
 class AccountShell:
     """Compose the existing account flow without starting learning services."""
 
@@ -423,9 +455,9 @@ class AccountShell:
                 pixmap.fill(QColor('#8c6477'))
                 painter = QPainter(pixmap)
                 painter.setPen(QColor('white'))
-                painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, label[:1])
+                painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, _account_initial(usernames[index]))
                 painter.end()
-            selector.addItem(QIcon(pixmap), label, row["account_id"])
+            selector.addItem(QIcon(_circular_avatar_pixmap(pixmap, 32)), label, row["account_id"])
         selector.setCurrentIndex(selector.findData(snapshot["current_account_id"]))
         if selector.currentIndex() >= 0:
             # The popup label is not the credential username.

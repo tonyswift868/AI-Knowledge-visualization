@@ -70,7 +70,7 @@ export function AccountMenu() {
         </div>
       )}
       <button className={`account-card ${open ? "open" : ""}`} onClick={() => setOpen(!open)} title={account?.nickname || account?.name}>
-        <span className="avatar">{account?.avatar_url ? <img src={account.avatar_url} alt="" /> : (account?.nickname || account?.name)?.slice(0, 1) ?? "M"}</span>
+        <span className="avatar">{account?.avatar_url ? <img src={account.avatar_url} alt="" /> : (Array.from(account?.name || "M")[0]).toUpperCase()}</span>
         <span className="account-meta"><b>{account?.nickname || account?.name || "…"}</b><span>{account?.role_label || "学习者"}</span></span>
         <ChevronsUpDown className="account-caret" />
       </button>

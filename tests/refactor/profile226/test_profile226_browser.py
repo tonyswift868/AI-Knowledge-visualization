@@ -12,7 +12,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 NODE = Path("D:/MentorFlow/.local/node/node.exe")
 DEPS = Path("D:/MentorFlow/.local/web-deps")
-SCREENSHOTS = Path("D:/MentorFlow/.local/test-tmp/profile226/screenshots")
+SCREENSHOTS = Path(os.environ.get("MF_PROFILE_SCREENSHOTS", "D:/MentorFlow/.local/test-tmp/profile226/screenshots"))
 sys.path.insert(0, str(REPO))
 
 
