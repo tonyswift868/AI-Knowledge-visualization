@@ -38,6 +38,6 @@
 |---|---|
 | 受保护API要求认证；服务从JWT取得issuer/subject并解析当前组织、工作区 | `refactor/server-java/src/main/java/win/clannad/mentorflow/identity/IdentitySecurity.java:43-49,94-110` |
 | 人类用户需在选定租户范围内有有效成员关系，否则拒绝并构造带范围的actor/tenant上下文 | `refactor/server-java/src/main/java/win/clannad/mentorflow/identity/IdentitySecurity.java:111-135` |
-| RAG要求已认证人类账号，并以issuer与subject计算账号范围 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:332-341` |
+| RAG要求已认证人类账号，并以issuer与subject计算账号范围 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:324-327,460-470` |
 | 同步存储按issuer、subject、organization、workspace限定行 | `refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java:34,168-171,225-256` |
-| 两个替身账号的同步与资料问答隔离核查范围及结论 | `docs/project/CURRENT_STATE.md:419-427`（ACC-03） |
+| 两个替身账号的同步与资料问答隔离核查范围及结论 | [ACC-03] |

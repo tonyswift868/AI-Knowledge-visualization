@@ -34,8 +34,8 @@ RAG可以理解成“先找资料，再带着资料回答”。用户的文件�
 
 | 具体事实 | 当前基线出处 |
 |---|---|
-| 文件由客户端抽取为带页码、章节的文本段落；上传只组装seq/text/page/section片段字段，不传原文件 | `refactor/learning/app/rag.py:569-600,474-499`；`refactor/server-java/RAG_API.md:3`；`docs/project/CURRENT_STATE.md:518-523` [RAG-01] |
-| 服务端为上传片段计算向量并存储，检查完整性后标记可检索 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:52-89,91-116` |
-| 客户端向服务器提交问题、资料范围与k值，项目实际传k=8 | `refactor/learning/app/rag.py:648-652` |
-| 服务端检索并返回段落、页码和章节信息 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:195-229` |
-| 客户端把问题、出处段落和历史交给模型并保存对话 | `refactor/learning/app/rag.py:672-700` |
+| 客户端导入资料并保留页码、章节，再按片段字段上传，不传原文件 | `refactor/learning/course/materials.py:70-96,141-164`；`refactor/learning/app/rag.py:823-839`；`refactor/server-java/RAG_API.md:3`；[RAG-01] |
+| 服务端为上传片段计算向量并存储，检查完整性后标记可检索 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:180-244` |
+| 客户端向服务器提交问题、资料范围与k值，项目实际传k=8 | `refactor/learning/app/rag.py:446-510` |
+| 服务端检索并返回段落、页码和章节信息 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:324-358` |
+| 客户端把问题、出处段落和历史交给模型并保存对话 | `refactor/learning/app/rag.py:1096-1175` |

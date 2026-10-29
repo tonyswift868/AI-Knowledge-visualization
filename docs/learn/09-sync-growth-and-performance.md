@@ -26,4 +26,4 @@
 |---|---|
 | 同步范围、客户端先拉再传与增量游标 | `refactor/learning/course/sync_course.py:233-328,508-532`；`refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncController.java:64-73` |
 | 客户端批量上传每批最多100条、逐批确认 | `refactor/learning/course/sync_course.py:38-40,392-469,508-544`；`refactor/learning/sync_transport.py:79-119`；`refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java:97-124` |
-| 413拆批及过大单条的处理 | `refactor/learning/course/sync_course.py:422-497`；`refactor/learning/sync_transport.py:79-104`；`docs/project/BUGS.md:820-830` |
+| 413拆批及过大单条的处理 | `refactor/learning/course/sync_course.py:422-509`；`refactor/learning/sync_transport.py:412-466`；[BUG-97] |

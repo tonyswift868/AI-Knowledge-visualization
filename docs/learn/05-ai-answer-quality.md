@@ -36,7 +36,7 @@ MentorFlow 的当前检索会把问题转成向量，先取候选段，再按向
 
 | 事实 | 出处 |
 |---|---|
-| 服务端检索向量候选，再按向量相似度与字符二元组重合度混合排序 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:195-229,380-394` |
-| 客户端把问题、带编号段落和对话交给模型；当前提示要求引用、无答案说明和资料外补充标记 | `refactor/learning/app/rag.py:34-37,648-699` |
-| 抽题答案可字面忠于源文但与题干语义不匹配；程序只检查答案单位结构和原文包含关系 | `docs/project/BUGS.md:1468-1471`；`refactor/learning/course/material_questions.py:239-247`；`refactor/learning/course/question_bank.py:254-294` |
-| 曾对三道真实问答做人工核对，不能外推成全面自动评估 | `docs/project/CURRENT_STATE.md:514-541` |
+| 服务端检索向量候选，再按向量相似度与字符二元组重合度混合排序 | `refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java:324-351,508-523` |
+| 客户端把问题、带编号段落和对话交给模型；当前提示要求引用、无答案说明和资料外补充标记 | `refactor/learning/app/rag.py:34-37,1096-1175` |
+| 抽题答案可字面忠于源文但与题干语义不匹配；程序只检查答案单位结构和原文包含关系 | [BUG-125]；`refactor/learning/course/material_questions.py:239-247`；`refactor/learning/course/question_bank.py:254-294` |
+| 曾对三道真实问答做人工核对，不能外推成全面自动评估 | [RAG-01] |

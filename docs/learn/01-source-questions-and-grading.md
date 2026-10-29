@@ -35,6 +35,6 @@
 | 具体事实 | 当前基线出处 |
 |---|---|
 | 候选题从资料原题识别，客观答案只接受原文答案标记 | `refactor/learning/course/material_questions.py:84-110` |
-| 抽题约束是不出题、不改题、不补答案；问答参考答案由程序保留 | `refactor/learning/course/material_questions.py:266-304` |
+| 抽题约束是不出题、不改题、不补答案；问答参考答案由程序保留 | `refactor/learning/course/material_questions.py:763-822` |
 | 选择、填空和计算走确定性规则比较 | `refactor/learning/course/answer_compare.py:99-126` |
-| 问答先提交自己的回答，再展示参考答案并勾选要点；正确与否为用户自评 | `refactor/learning/app/classroom.py:1077-1110` |
+| 问答先提交自己的回答，再展示参考答案并勾选要点；正确与否为用户自评 | `refactor/learning/app/classroom.py:1183-1220` |
