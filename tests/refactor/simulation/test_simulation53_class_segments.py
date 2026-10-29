@@ -10,7 +10,7 @@ def test_simulation53_first_test_pause_then_retest_and_skip_day(tmp_path):
     # Evidence path follows the same D-drive boundary as the existing tool.
     from pathlib import Path
     import tempfile
-    root=Path(r'D:\MentorFlow\.local\test-tmp\block53-class\unit');root.mkdir(parents=True,exist_ok=True)
+    root=tmp_path
     with tempfile.TemporaryDirectory(dir=root) as path:
         sim=Simulation(path,Clock(),lambda _:OfflineGateway(),fetcher=offline_fetch,offline=True,timeout=20)
         try:
@@ -40,7 +40,7 @@ def test_simulation53_actual_price_forecast_avoids_output_cap_reservation(tmp_pa
         def get_configuration(self):return dict(provider_id='deepseek',model='deepseek-v4-flash')
         def estimate_context(self):return {}
         def complete(self,*a,**kw):return SimpleNamespace(text='ok',usage=Usage(2,0,2,10,0,0,{}))
-    root=Path(r'D:\MentorFlow\.local\test-tmp\block53-class\unit');root.mkdir(parents=True,exist_ok=True)
+    root=tmp_path
     with tempfile.TemporaryDirectory(dir=root) as path:
         gw=RecordedGateway(Real(),Evidence(path),budget='.12')
         gw.complete('point_materials',[],system='',max_tokens=24576)
@@ -82,21 +82,21 @@ def _simulation53_wait_fixture(path,monkeypatch,progress):
     return sim,timer
 
 
-def test_simulation53_multicall_bridge_progress_extends_wait(monkeypatch):
+def test_simulation53_multicall_bridge_progress_extends_wait(monkeypatch, tmp_path):
     from pathlib import Path
     import tempfile
-    root=Path(r'D:\MentorFlow\.local\test-tmp\block53-class\unit');root.mkdir(parents=True,exist_ok=True)
+    root=tmp_path
     with tempfile.TemporaryDirectory(dir=root) as path:
         sim,timer=_simulation53_wait_fixture(path,monkeypatch,True)
         assert sim.call('plan.say',text='确认结构')=={'ok':True}
         assert timer.value>sim.timeout and not timer.cancelled
 
 
-def test_simulation53_inactive_bridge_still_times_out(monkeypatch):
+def test_simulation53_inactive_bridge_still_times_out(monkeypatch, tmp_path):
     from pathlib import Path
     import tempfile,pytest
     from .engine import StopRun
-    root=Path(r'D:\MentorFlow\.local\test-tmp\block53-class\unit');root.mkdir(parents=True,exist_ok=True)
+    root=tmp_path
     with tempfile.TemporaryDirectory(dir=root) as path:
         sim,timer=_simulation53_wait_fixture(path,monkeypatch,False)
         with pytest.raises(StopRun,match='plan.say'):sim.call('plan.say',text='确认结构')
@@ -124,10 +124,10 @@ def test_simulation53_cli_totals_include_worker_close_accounting(tmp_path,monkey
     assert result['calls']==1 and result['cost_cny']=='0.1'
 
 
-def test_simulation53_resume_keeps_incomplete_request_evidence(monkeypatch):
+def test_simulation53_resume_keeps_incomplete_request_evidence(monkeypatch, tmp_path):
     from pathlib import Path
     import tempfile
-    root=Path(r'D:\MentorFlow\.local\test-tmp\block53-class\unit');root.mkdir(parents=True,exist_ok=True)
+    root=tmp_path
     with tempfile.TemporaryDirectory(dir=root) as path:
         sim,timer=_simulation53_wait_fixture(path,monkeypatch,True)
         original={'request':{'id':'old','method':'plan.say','params':{'text':'确认结构'}}}

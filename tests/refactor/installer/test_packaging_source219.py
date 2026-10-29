@@ -72,7 +72,11 @@ def test_build_release_help_works_from_unrelated_cwd(tmp_path):
     script = Path(__file__).resolve().parents[3] / 'scripts/release/build_release.py'
     environment = os.environ.copy()
     environment.pop('PYTHONPATH', None)
+    # The CLI may emit UTF-8 help text (including non-ASCII punctuation). Keep
+    # its stdout contract independent of the Windows parent locale/code page.
+    environment['PYTHONIOENCODING'] = 'utf-8'
     result = subprocess.run([sys.executable, '-B', str(script), '--help'], cwd=tmp_path,
-                            env=environment, capture_output=True, text=True, timeout=15)
+                            env=environment, capture_output=True, text=True,
+                            encoding='utf-8', errors='strict', timeout=15)
     assert result.returncode == 0, result.stderr
     assert 'usage:' in result.stdout.lower()

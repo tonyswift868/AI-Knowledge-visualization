@@ -60,9 +60,7 @@ def _capture_combo(gate: LoginGateWindow, output_dir: Path, label: str):
 
 def test_profile242_https_client_bridge_and_qt_login_list(tmp_path, monkeypatch):
     app_qt = QApplication.instance() or QApplication([])
-    artifacts = Path("D:/MentorFlow/.local/test-tmp/ui242")
-    artifacts.mkdir(parents=True, exist_ok=True)
-    screenshots = artifacts / "screenshots"
+    screenshots = tmp_path / "screenshots"
     screenshots.mkdir(parents=True, exist_ok=True)
     root = tmp_path / "local-profile-e2e"
     root.mkdir(parents=True, exist_ok=True)
