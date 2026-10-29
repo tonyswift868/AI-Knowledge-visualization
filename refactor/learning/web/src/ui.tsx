@@ -1,5 +1,5 @@
 import * as React from "react"
-import { CheckCircle2, CircleHelp, Info, XCircle, TriangleAlert } from "lucide-react"
+import { CheckCircle2, ChevronDown, CircleHelp, Info, XCircle, TriangleAlert } from "lucide-react"
 import { createPortal } from "react-dom"
 import { useApp, type ModelFault } from "./store"
 
@@ -176,6 +176,126 @@ export function Segmented<T extends string | number>({ value, options, onChange 
       ))}
     </div>
   )
+}
+
+export type SelectMenuOption = { value: string; label: string }
+
+/** A theme-aware listbox for compact selection lists that must not use the OS popup. */
+export function SelectMenu({ id, value, options, placeholder, ariaLabel, disabled = false,
+                             onChange, testId, optionTestIdPrefix, className = "" }:
+  { id?: string; value: string; options: SelectMenuOption[]; placeholder: string; ariaLabel: string;
+    disabled?: boolean; onChange: (value: string) => void; testId?: string;
+    optionTestIdPrefix?: string; className?: string }) {
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const menuRef = React.useRef<HTMLDivElement>(null)
+  const [open, setOpen] = React.useState(false)
+  const [active, setActive] = React.useState(0)
+  const [position, setPosition] = React.useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null)
+  const instanceId = React.useId()
+  const listId = `${instanceId}-listbox`
+  const selectedIndex = options.findIndex((option) => option.value === value)
+  const shown = selectedIndex >= 0 ? options[selectedIndex]!.label : placeholder
+  const activeOptionId = options[active] ? `${listId}-option-${active}` : undefined
+
+  const placeMenu = React.useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const viewportPadding = 8
+    const gap = 5
+    const width = Math.min(rect.width, window.innerWidth - viewportPadding * 2)
+    const left = Math.min(Math.max(rect.left, viewportPadding), window.innerWidth - width - viewportPadding)
+    const below = Math.max(0, window.innerHeight - rect.bottom - viewportPadding - gap)
+    const above = Math.max(0, rect.top - viewportPadding - gap)
+    const openBelow = below >= Math.min(180, Math.max(80, options.length * 46)) || below >= above
+    const maxHeight = Math.min(320, openBelow ? below : above)
+    const top = openBelow ? rect.bottom + gap : rect.top - maxHeight - gap
+    setPosition({ left, top, width, maxHeight })
+  }, [options.length])
+
+  React.useEffect(() => {
+    if (!open) { setPosition(null); return }
+    placeMenu()
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false)
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    window.addEventListener("resize", placeMenu)
+    window.addEventListener("scroll", placeMenu, true)
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown)
+      window.removeEventListener("resize", placeMenu)
+      window.removeEventListener("scroll", placeMenu, true)
+    }
+  }, [open, placeMenu])
+
+  React.useEffect(() => {
+    if (disabled) setOpen(false)
+  }, [disabled])
+
+  React.useEffect(() => {
+    if (!options.length) { setOpen(false); setActive(0); return }
+    setActive((index) => Math.min(index, options.length - 1))
+  }, [options.length])
+
+  React.useEffect(() => {
+    if (open && position && activeOptionId) document.getElementById(activeOptionId)?.scrollIntoView({ block: "nearest" })
+  }, [open, activeOptionId, position !== null])
+
+  function openAt(index: number) {
+    if (disabled || !options.length) return
+    setActive(Math.max(0, Math.min(options.length - 1, index)))
+    setOpen(true)
+  }
+  function choose(index: number) {
+    const option = options[index]
+    if (!option || disabled) return
+    onChange(option.value)
+    setActive(index)
+    setOpen(false)
+    triggerRef.current?.focus({ preventScroll: true })
+  }
+  function onKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      if (!open) openAt(selectedIndex >= 0 ? selectedIndex : 0)
+      else setActive((index) => Math.min(options.length - 1, index + 1))
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault()
+      if (!open) openAt(selectedIndex >= 0 ? selectedIndex : options.length - 1)
+      else setActive((index) => Math.max(0, index - 1))
+    } else if (event.key === "Home" && open) {
+      event.preventDefault(); setActive(0)
+    } else if (event.key === "End" && open) {
+      event.preventDefault(); setActive(options.length - 1)
+    } else if ((event.key === "Enter" || event.key === " ") && open) {
+      event.preventDefault(); choose(active)
+    } else if (event.key === "Escape" && open) {
+      event.preventDefault(); setOpen(false); triggerRef.current?.focus({ preventScroll: true })
+    }
+  }
+
+  return <>
+    <button ref={triggerRef} id={id} type="button" className={`select-menu-trigger ${className}`}
+      role="combobox" aria-label={ariaLabel} aria-haspopup="listbox" aria-expanded={open}
+      aria-controls={listId} aria-activedescendant={open ? activeOptionId : undefined}
+      data-testid={testId} title={shown} disabled={disabled}
+      onClick={() => open ? setOpen(false) : openAt(selectedIndex >= 0 ? selectedIndex : 0)}
+      onKeyDown={onKeyDown} onBlur={() => setOpen(false)}>
+      <span className="select-menu-label">{shown}</span><ChevronDown size={16} aria-hidden="true" />
+    </button>
+    {open && position && createPortal(
+      <div ref={menuRef} id={listId} className="select-menu-popup" role="listbox" aria-label={ariaLabel}
+        style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight }}>
+        {options.map((option, index) => <div key={option.value || "__empty"} id={`${listId}-option-${index}`}
+          className={`select-menu-option ${index === active ? "active" : ""} ${option.value === value ? "selected" : ""}`}
+          role="option" aria-selected={option.value === value} data-testid={optionTestIdPrefix ? `${optionTestIdPrefix}${option.value || "empty"}` : undefined}
+          title={option.label} onMouseMove={() => setActive(index)} onMouseDown={(event) => event.preventDefault()}
+          onClick={() => choose(index)}>
+          <span>{option.label}</span>{option.value === value && <span className="select-menu-check" aria-hidden="true">✓</span>}
+        </div>)}
+      </div>, document.body)}
+  </>
 }
 
 // One definition used everywhere a daily duration is shown (PLAN-05).

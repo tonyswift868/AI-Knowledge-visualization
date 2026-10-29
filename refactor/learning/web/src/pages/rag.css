@@ -90,3 +90,8 @@
 @media (max-width: 880px) { .rag-layout { grid-template-columns: minmax(220px, 270px) minmax(0,1fr); gap: 11px; } .rag-sources { padding: 13px; } .rag-chat-head { padding: 12px; } }
 @media (max-width: 680px) { .rag-page { gap: 10px; } .rag-heading { padding: 3px 1px; } .rag-heading-mark { width: 39px; height: 39px; border-radius: 13px; } .rag-layout { display: flex; flex-direction: column; min-height: 0; } .rag-sources { max-height: 43vh; } .rag-chat { min-height: 58vh; } .rag-document-list { max-height: 22vh; } .rag-chat-head { gap: 5px; padding: 10px; } .rag-chat-head .btn { padding: 6px 8px; font-size: .72rem; } .rag-messages { padding: 12px 10px; } .rag-message { max-width: 100%; } .rag-composer { grid-template-columns: minmax(0, 1fr) auto; padding: 9px; gap: 6px; } .rag-composer .btn { padding: 8px 10px; font-size: .78rem; } }
 .reduce-motion .rag-thinking i { animation: none; opacity: .65; }
+.rag-question-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 9px; min-width: 0; }
+.rag-question-input > .input { grid-column: 1; grid-row: 1; width: 100%; min-width: 0; }
+.rag-question-input > div { grid-column: 2; grid-row: 1; min-width: 0; }
+.rag-question-input .mf-voice-mic { min-height: 50px; padding: 11px; }
+.rag-question-input .mf-voice-status { max-width: min(440px, calc(100vw - 48px)); }

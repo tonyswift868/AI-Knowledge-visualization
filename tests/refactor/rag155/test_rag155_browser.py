@@ -79,6 +79,8 @@ def host155(root):
         sessions.insert(0,row);by_id[row['id']]=row;return row
     bridge.register('app.bootstrap',lambda p,c:dict(version='test',account=dict(name='本地测试',role_label='学习者'),settings=dict(theme='sakura',font_scale=1,reduce_motion=True),options={},notice=None,ready=True))
     bridge.register('settings.get',lambda p,c:dict(settings=dict(theme='sakura',font_scale=1,reduce_motion=True),options={}))
+    bridge.register('voice.status',lambda p,c:dict(state='not_downloaded',installed=False,invalid=False,
+      model_name='本机语音模型',size_bytes=1,download_url='',job_id=None,downloaded_bytes=0,total_bytes=0,cancelling=False))
     bridge.register('sync.status',lambda p,c:dict(state='synced',at=None,message='已同步'))
     bridge.register('models.status',lambda p,c:dict(state='unknown',short='模型待验证'))
     bridge.register('update.status',lambda p,c:dict(available=False,busy=False,state='UP_TO_DATE',version='test'))

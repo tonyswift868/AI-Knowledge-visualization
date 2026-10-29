@@ -55,6 +55,8 @@ def host181(root):
         sessions.insert(0,row);by_id[row['id']]=row;return row
     bridge.register('app.bootstrap',lambda p,c:dict(version='test',account=dict(name='本地测试',role_label='学习者',offline=True),settings=dict(theme='sakura',font_scale=1,reduce_motion=True),options={},notice=dict(message='当前离线，已使用此设备上次验证的账号进入；连接恢复后会自动核对并同步。',show_verify=False),ready=True))
     bridge.register('settings.get',lambda p,c:dict(settings=dict(theme='sakura',font_scale=1,reduce_motion=True),options={}))
+    bridge.register('voice.status',lambda p,c:dict(state='not_downloaded',installed=False,invalid=False,
+      model_name='本机语音模型',size_bytes=1,download_url='',job_id=None,downloaded_bytes=0,total_bytes=0,cancelling=False))
     bridge.register('plans.list',lambda p,c:dict(plans=[],study_day='181-fixture'))
     bridge.register('sync.status',lambda p,c:dict(state='synced',at=None,message='已同步'))
     bridge.register('models.status',lambda p,c:dict(state='unknown',short='模型待验证'))
