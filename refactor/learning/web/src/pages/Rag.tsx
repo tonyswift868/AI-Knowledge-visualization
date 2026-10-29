@@ -547,6 +547,7 @@ export function Rag() {
   const sidebarSelectionLocked = !!session && !editingSessionSources
   const sessionDocuments = session?.document_ids.map((id) => docById(id)).filter((doc): doc is Document => !!doc) ?? []
   const selectedCount = session ? session.document_ids.length : selected.length
+  const isEmptyNewSession = session?.count === 0 && session.title === "新会话"
   const sessionGroups = new Map<string, { title: string; sessions: SessionSummary[] }>()
   for (const item of sessions) {
     const key = [...item.document_ids].sort().join("\u001f")
@@ -625,7 +626,7 @@ export function Rag() {
       <section className="card rag-chat" aria-label="资料问答对话">
         {ragFault && !sendFailure && <div className="rag-model-fault" data-testid="rag-model-fault"><ModelFaultPanel fault={ragFault} onRetry={() => { void send() }} /></div>}
         <header className="rag-chat-head">
-          <div><span className="rag-step">02</span><div><h2 data-testid={session && session.count === 0 ? "rag-empty-session" : undefined}>{session && session.count === 0 ? `新会话 · 用 ${session.document_ids.length} 份资料` : session?.title || "开始提问"}</h2><p>{session ? `当前使用 ${session.document_ids.length} 份资料` : selected.length ? `准备为 ${selected.length} 份资料创建会话` : "请先选择资料"}</p></div></div>
+          <div><span className="rag-step">02</span><div><h2 data-testid={isEmptyNewSession ? "rag-empty-session" : undefined}>{isEmptyNewSession ? `新会话 · 用 ${session.document_ids.length} 份资料` : session?.title || "开始提问"}</h2><p>{session ? `当前使用 ${session.document_ids.length} 份资料` : selected.length ? `准备为 ${selected.length} 份资料创建会话` : "请先选择资料"}</p></div></div>
         </header>
         {session && <div className="rag-chat-sources" data-testid="rag-session-sources" aria-label="本会话使用的资料">
           <div className="rag-chat-source-chips">{sessionDocuments.map((doc) => <span className="rag-chip" key={doc.id} title={doc.title}>{doc.title}</span>)}</div>
