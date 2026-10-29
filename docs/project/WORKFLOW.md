@@ -63,7 +63,7 @@
 ## 待派队列
 
 - 报告存档：两轮源码复盘 .local/review217/、.local/review218/；219 修复 .local/fix219/；220～228 各批报告 .local/r220/～.local/r228/（224、226、228 内测在 .local/r224/、.local/r226/、.local/r228/）。
-- 已起草，待转发（2026-10-29）：244-MF07（D:\MentorFlow\.local\tasks\244-MF07.md）理文档，可同时做。两份都过了，用户定发 2.0.38。
+- 已起草，待转发（2026-10-29）：244-MF07（D:\MentorFlow\.local\tasks\244-MF07.md）理顺项目文档。243-MF06 过了，用户定发不发 2.0.38。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn 并重推 mentorflow-guide；发给朋友前重做安装程序并走一遍全新安装和注册（[ACC-02]）；用户学完“MentorFlow 项目面试讲解”后的模拟面试官（[DOC-01]）。
 
 ## 找问题积分
