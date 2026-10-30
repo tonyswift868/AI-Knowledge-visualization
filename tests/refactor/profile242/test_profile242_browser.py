@@ -2,26 +2,14 @@
 import json
 import os
 from pathlib import Path
-import shutil
 import socket
 import subprocess
 import sys
 
-import pytest
-
 REPO = Path(__file__).resolve().parents[3]
 NODE = Path("D:/MentorFlow/.local/node/node.exe")
 DEPS = Path("D:/MentorFlow/.local/web-deps")
-SCREENSHOTS = Path("D:/MentorFlow/.local/test-tmp/ui242/screenshots")
-TMP_ROOT = Path("D:/MentorFlow/.local/test-tmp/ui242/pytest")
 sys.path.insert(0, str(REPO))
-
-
-@pytest.fixture
-def tmp_path(request):
-    path = TMP_ROOT / request.node.name
-    path.mkdir(parents=True, exist_ok=True)
-    return path
 
 
 def _build(directory):
@@ -73,6 +61,8 @@ def _host(directory):
 
 def test_profile242_settings_and_account_card_light_dark(tmp_path):
     _build(tmp_path)
+    done = tmp_path / "done"
+    assert not done.exists(), "pytest tmp_path must not reuse a previous host shutdown marker"
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
@@ -87,15 +77,12 @@ def test_profile242_settings_and_account_card_light_dark(tmp_path):
                                     env=env, capture_output=True, text=True, encoding="utf-8", timeout=100)
             assert result.returncode == 0, result.stdout + result.stderr
         finally:
-            (tmp_path / "done").touch()
+            done.touch()
             child.wait(timeout=15)
     result = json.loads((tmp_path / "result242.json").read_text(encoding="utf-8"))
     assert result["ok"], result
     shots = list((tmp_path / "screenshots").glob("*.png"))
     assert len(shots) == 14
-    SCREENSHOTS.mkdir(parents=True, exist_ok=True)
-    for shot in shots:
-        shutil.copy2(shot, SCREENSHOTS / shot.name)
 
 
 if __name__ == "__main__":

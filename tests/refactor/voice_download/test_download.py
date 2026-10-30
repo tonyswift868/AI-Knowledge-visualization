@@ -8,6 +8,8 @@ import socket
 import tarfile
 import threading
 from types import SimpleNamespace
+import urllib.error
+import urllib.request
 import zipfile
 
 import pytest
@@ -251,3 +253,45 @@ def test_callback_failure_cleans_cache_and_unlocks(tmp_path, server):
     assert not manager.path.exists() and not manager.staging.exists()
     manager.download(lambda *_: None, threading.Event())
     assert manager.status()["installed"]
+
+
+def test_download_bypasses_a_cached_proxy_without_changing_it(tmp_path, monkeypatch, server):
+    proxy_requests = []
+
+    class ProxyHandler(BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+
+        def do_GET(self):
+            proxy_requests.append(self.path)
+            self.send_error(502, "explicit local proxy response")
+
+    proxy = ThreadingHTTPServer(("127.0.0.1", 0), ProxyHandler)
+    proxy_thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+    proxy_thread.start()
+    previous_opener = urllib.request._opener
+    poisoned_opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": f"http://127.0.0.1:{proxy.server_port}"})
+    )
+    monkeypatch.setattr(urllib.request, "_opener", poisoned_opener)
+    monkeypatch.setattr(urllib.request, "proxy_bypass", lambda _host: False)
+
+    try:
+        asset = raw(server)
+        request = urllib.request.Request(server.url + "/model")
+        with pytest.raises(urllib.error.HTTPError, match="502"):
+            urllib.request.urlopen(request, timeout=2)
+        assert proxy_requests and server.requests == []
+
+        manager = AssetDownloader(tmp_path / "models", (asset,))
+        manager.download(lambda *_: None, threading.Event())
+
+        assert server.requests == [("/model", None)]
+        assert len(proxy_requests) == 1
+        assert urllib.request._opener is poisoned_opener
+    finally:
+        proxy.shutdown()
+        proxy.server_close()
+        proxy_thread.join()
+        assert urllib.request._opener is poisoned_opener
+        assert previous_opener is not poisoned_opener

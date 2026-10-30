@@ -14,6 +14,17 @@ ROOT = Path(__file__).resolve().parents[3]
 DEPLOY = ROOT / "refactor/server-java/deploy"
 
 
+def _dash_copy_from_worktree(script: Path, tmp_path: Path) -> Path:
+    """Stage current worktree bytes for dash, normalizing Windows CRLF only."""
+    raw = script.read_bytes()
+    normalized = raw.replace(b"\r\n", b"\n")
+    assert b"\r" not in normalized, f"lone CR in {script.name}"
+    staged = tmp_path / script.name
+    staged.parent.mkdir(parents=True, exist_ok=True)
+    staged.write_bytes(normalized)
+    return staged
+
+
 class EdgeTransport(BaseHTTPRequestHandler):
     """Mirror the existing HTTPS gate before authenticating a bogus token."""
 
@@ -134,15 +145,27 @@ def test_restore219_checks_health_before_switch(existing_deploy, tmp_path, healt
         existing_deploy.test_restore_unhealthy_python_never_switches_edge(tmp_path)
 
 
-def test_deploy219_dash_syntax_and_no_crlf(existing_deploy):
+def test_deploy219_dash_syntax_and_no_crlf(existing_deploy, tmp_path):
     dash = Path("C:/Program Files/Git/usr/bin/dash.exe")
     assert dash.is_file()
     for script in sorted(DEPLOY.glob("*.sh")):
-        with script.open("rb") as stream:
-            assert all(b"\r" not in line for line in stream), script.name
-        result = subprocess.run([str(dash), "-n", existing_deploy._posix(script)],
+        staged = _dash_copy_from_worktree(script, tmp_path)
+        result = subprocess.run([str(dash), "-n", existing_deploy._posix(staged)],
                                 capture_output=True, text=True)
         assert result.returncode == 0, f"{script.name}: {result.stderr}"
+
+
+@pytest.mark.parametrize("newline", [b"\n", b"\r\n"])
+def test_deploy219_dash_copy_preserves_worktree_edit(existing_deploy, tmp_path, newline):
+    dash = Path("C:/Program Files/Git/usr/bin/dash.exe")
+    source = tmp_path / "edited.sh"
+    source.write_bytes(b"#!/bin/sh\nprintf '%s\\n' 'worktree edit'\n".replace(b"\n", newline))
+    staged = _dash_copy_from_worktree(source, tmp_path / "staged")
+    assert staged.read_bytes() == b"#!/bin/sh\nprintf '%s\\n' 'worktree edit'\n"
+    result = subprocess.run([str(dash), existing_deploy._posix(staged)],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "worktree edit\n"
 
 
 @pytest.mark.parametrize("mode", ["", "reload_once_fail"])
@@ -151,7 +174,8 @@ def test_cutover219_executes_with_dash(existing_deploy, tmp_path, mode):
     dash = Path("C:/Program Files/Git/usr/bin/dash.exe")
     edge = d._edge(tmp_path, "server backend:8000 resolve;")
     original = edge.read_bytes()
-    result = d._run(dash, [d._posix(DEPLOY / "cutover.sh"), "java"], tmp_path, mode=mode)
+    cutover = _dash_copy_from_worktree(DEPLOY / "cutover.sh", tmp_path)
+    result = d._run(dash, [d._posix(cutover), "java"], tmp_path, mode=mode)
     if not mode:
         assert result.returncode == 0, result.stderr
         assert b"server java-backend:8080 resolve;" in edge.read_bytes()

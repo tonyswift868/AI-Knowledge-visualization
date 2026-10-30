@@ -207,7 +207,7 @@ def test_profile226_login_popup_cache_remove_and_screenshots(tmp_path):
     assert gate.account_selector.itemText(0) == '小明 · learner-a'
     assert not gate.account_selector.itemIcon(0).isNull()
     assert gate.username_field.text() == 'learner-a'
-    shots = Path('D:/MentorFlow/.local/test-tmp/profile226/screenshots')
+    shots = tmp_path / 'screenshots'
     shots.mkdir(parents=True, exist_ok=True)
     for theme in ('sakura', 'aurora'):
         gate.set_loading_appearance(theme)
