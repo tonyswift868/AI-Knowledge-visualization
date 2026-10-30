@@ -260,9 +260,9 @@
 ### [BUG-202] 本机打包用错了环境：257-MF04 用平时测试的 .venv 跑正式打包脚本，0.4 秒报 altgraph 缺失，没开始打包
 - 状态：已查清；专用打包环境已重建，本机打包验证中。
 - 现象：2026-10-31 257-MF04 在本机做 2.0.39 发版先验，用 D:\MentorFlow\.venv 跑 scripts/release/build_release.py，0.4 秒退出：ValueError: altgraph: installed None, locked 0.17.5（check_environment.py 的锁定依赖检查），没开始打包。
-- 原因：①正式打包脚本要在专用打包环境里跑，不是平时测试的环境：MF_BUILD_TOOLS 指向装了 PyInstaller 等锁定包的目录；MF_NODE_DIR 指向 Node 24.13.0（D:\MentorFlow\.local\node；系统 Node 是 24.19.0，检查不过）；MF_TEMP_ROOT 指向 D:\MentorFlow\.local\test-tmp（默认是 C 盘系统临时目录，输出目录不在它下面就报错）。架构师写 257 时三样都没写，也没先自己跑一遍环境检查。②原来的专用打包环境放在 .local/test-tmp/installer/build-tools，清理临时文件时被删得只剩空壳（390 KB，PyInstaller 本体没了）。
+- 原因：①正式打包脚本要在专用打包环境里跑，不是平时测试的环境：MF_BUILD_TOOLS 指向装了 PyInstaller 等锁定包的目录；MF_NODE_DIR 指向 Node 24.13.0（D:\MentorFlow\.local\node；系统 Node 是 24.19.0，检查不过）；MF_TEMP_ROOT 指向 D:\MentorFlow\.local\test-tmp（默认是 C 盘系统临时目录，输出目录不在它下面就报错）。架构师写 257 时三样都没写，也没先自己跑一遍环境检查。③架构师接着在主目录自己打包时，打包中途又在主目录提交了文档，打包收尾核对代码版本必然对不上，只好停掉重跑。②原来的专用打包环境放在 .local/test-tmp/installer/build-tools，清理临时文件时被删得只剩空壳（390 KB，PyInstaller 本体没了）。
 - 解决：架构师 2026-10-31 按 scripts/release/requirements-build.txt 把 .venv 缺的 6 个锁定包（altgraph 0.17.5、packaging 26.3、pefile 2023.2.7、pyinstaller 6.16.0、pyinstaller-hooks-contrib 2026.7、setuptools 84.0.0）用 pip --no-deps --target 装到 D:\MentorFlow\.local\release-tools\build-tools（不在 test-tmp，不会被清理），环境检查 73 项锁定依赖全对。完整命令写进 WORKFLOW「本机打包」，以后照抄。
-- 经验：派打包任务前，架构师先自己跑一遍环境检查；任务里写完整命令和三个环境变量，不让员工自己找环境。
+- 经验：派打包任务前，架构师先自己跑一遍环境检查；任务里写完整命令和三个环境变量，不让员工自己找环境（已写进 AGENTS 第 9 条）。打包在干净的员工工位里跑，不在主目录跑。
 - 关联：[SYS-06]
 - 更新：2026-10-31
 
