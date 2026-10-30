@@ -1,3 +1,4 @@
+import {click253} from './click253.mjs';
 import fs from 'node:fs';import path from 'node:path';import{fileURLToPath}from'node:url';
 const root=path.resolve(process.argv[2]),endpoint=process.env.MF_CDP_ENDPOINT;
 const pause=(ms=40)=>new Promise(r=>setTimeout(r,ms));let target;
@@ -7,7 +8,12 @@ let seq=0;const pending=new Map();ws.onmessage=e=>{const d=JSON.parse(e.data);if
 const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject,method});ws.send(JSON.stringify({id,method,params}))});
 async function js(expression){try{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value}catch(e){throw Error(String(e)+' expression='+expression)}}
 async function until(expression,limit=300){for(let i=0;i<limit;i++){if(await js(expression))return;await pause()}throw Error('timeout: '+expression)}
-async function click(selector){const p=await js(`(async()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;e.scrollIntoView({block:'nearest'});await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2,hit=document.elementFromPoint(x,y);return{x,y,ok:x>=0&&y>=0&&x<innerWidth&&y<innerHeight&&(hit===e||e.contains(hit)),hit:hit?.outerHTML?.slice(0,100)}})()`);if(!p)throw Error('missing selector '+selector);if(!p.ok)throw Error('click target occluded/offscreen '+selector+' '+JSON.stringify(p));await call('Input.dispatchMouseEvent',{type:'mousePressed',x:p.x,y:p.y,button:'left',clickCount:1});await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x,y:p.y,button:'left',clickCount:1});await pause(80)}
+async function click(selector){
+ await click253(js,(type,x,y)=>call('Input.dispatchMouseEvent',{type,x,y,button:'left',clickCount:1}),selector,{
+   onSample:state=>fs.appendFileSync(path.join(root,'click-diagnostics155.jsonl'),JSON.stringify({selector,...state})+'\n'),
+ });
+ await pause(80);
+}
 async function key(key,code,value){await call('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:value});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:value});await pause(50)}
 async function select(selector,value){
  await click(selector);await until(`!!document.querySelector('[role="listbox"]')`);
