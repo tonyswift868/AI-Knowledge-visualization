@@ -73,8 +73,8 @@ try{
   check(await js('document.querySelector(".rag-chat-head h2")?.textContent==="新账号资料会话"'),'late old-account session cannot replace new-account RAG')
 
   await js('window.mountFrontend219("rag")')
-  await until('!!document.querySelector(".rag-session-strip button[title=\\"会话 B\\"]")','Rag sessions loaded')
-  await js('document.querySelector(".rag-session-strip button[title=\\"会话 B\\"]").click()')
+  await until('!!document.querySelector(".rag-session-list button[title=\\"会话 B\\"]")','Rag sessions loaded')
+  await js('document.querySelector(".rag-session-list button[title=\\"会话 B\\"]").click()')
   await until('document.querySelector(".rag-chat-head h2")?.textContent==="会话 B"','B RAG session opened')
   await pause(1000)
   check(await js('document.querySelector(".rag-chat-head h2")?.textContent==="会话 B"&&!!document.querySelector("input[aria-label=\\"选择资料：资料 B\\"]")?.checked'),'late A session response cannot replace B session or selected document')

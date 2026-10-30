@@ -296,6 +296,24 @@ class RagLocalStore:
                              (session_id, title, _json(document_ids), now, now))
         return self.get_session(session_id)
 
+    def update_session_documents(self, session_id, document_ids):
+        """Change a session's selected source IDs without touching its history."""
+        now = _now()
+        with self._lock:
+            self._ensure_open()
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = self._db.execute(
+                    "UPDATE rag_sessions SET document_ids=?,updated_at=? WHERE id=?",
+                    (_json(document_ids), now, session_id))
+                if cursor.rowcount != 1:
+                    raise BridgeError("RAG_SESSION_NOT_FOUND", "这段资料问答已不存在，请刷新列表。")
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+        return self.get_session(session_id)
+
     def get_session(self, session_id):
         with self._lock:
             self._ensure_open()
@@ -905,7 +923,7 @@ class RagService:
                 if type(display_seq) is int and display_seq >= 0:
                     display_seq += 1
                 raise BridgeError("RAG_CHUNK_TOO_LARGE",
-                    f"资料第 {display_seq} 段超过单次上传容量，无法入库。")
+                    f"资料第 {display_seq} 段超过单次上传容量，无法准备资料。")
         if batch:
             batches.append(batch)
         status, received, canonical_id = "uploading", int(row.get("uploaded_chunks", 0) or 0), row.get("canonical_id") or row["id"]
@@ -913,7 +931,7 @@ class RagService:
             nonlocal status, received, canonical_id
             _cancel(cancel)
             if not isinstance(receipt, dict):
-                raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的入库状态无效。")
+                raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的准备状态无效。")
             canonical_id = receipt.get("document_id")
             response_requested_id = receipt.get("requested_document_id")
             status = receipt.get("status")
@@ -929,7 +947,7 @@ class RagService:
                     or not 0 < total or not 0 <= received <= total
                     or status == "ready" and received != total
                     or not counts_match and not canonical_duplicate_ready):
-                raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的入库进度与所选资料不匹配。")
+                raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的准备进度与所选资料不匹配。")
             self.local.set_remote_state(row["id"], canonical_id, status, received, total)
             progress = self._doc_view({**row, "canonical_id": canonical_id,
                                         "canonical_total_chunks": total,
@@ -1157,16 +1175,19 @@ class RagService:
     def create(self, document_ids):
         self._check_open()
         ids = self._ids(document_ids)
-        titles = []
         for document_id in ids:
-            row = self.local.document(document_id)
-            if row is None:
+            if self.local.document(document_id) is None:
                 raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "所选资料已不存在，请刷新资料列表。")
-            if row["status"] != "ready":
-                raise BridgeError("RAG_DOCUMENT_NOT_READY", "请先完成资料入库，再开始提问。")
-            titles.append(row["title"])
-        title = " + ".join(titles[:2]) + (" 等资料问答" if len(titles) > 2 else "问答")
-        return {"session": self.local.create_session(ids, title)}
+        return {"session": self.local.create_session(ids, "新会话")}
+
+    def update_documents(self, session_id, document_ids):
+        self._check_open()
+        session_id = self._session_id(session_id)
+        ids = self._ids(document_ids)
+        for document_id in ids:
+            if self.local.document(document_id) is None:
+                raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "所选资料已不存在，请刷新资料列表。")
+        return {"session": self.local.update_session_documents(session_id, ids)}
 
     def get(self, session_id):
         self._check_open()
@@ -1176,7 +1197,7 @@ class RagService:
         self._check_open()
         return {"ok": self.local.delete_session(self._session_id(session_id))}
 
-    def send(self, session_id, text, *, cancel=None, on_text=None):
+    def send(self, session_id, text, *, cancel=None, on_text=None, on_progress=None):
         self._check_open()
         _cancel(cancel)
         session_id = self._session_id(session_id)
@@ -1189,18 +1210,26 @@ class RagService:
         # immutable remote version; if sync is unavailable no model call occurs.
         self._course_documents()
         selected = [self.local.document(doc_id) for doc_id in session["document_ids"]]
-        if any(row is not None and
-               (row.get("uploaded_content_sha256") or "") !=
-               (row.get("current_content_sha256") or "") for row in selected):
-            refreshed = self.ingest(session["document_ids"], cancel=cancel)
-            if any(item.get("status") != "ready" for item in refreshed["documents"]):
-                raise BridgeError("RAG_DOCUMENT_NOT_READY", "资料内容更新尚未完成，请稍后重试。")
+        needs_preparation = any(
+            row is None or row.get("status") != "ready" or
+            (row.get("uploaded_content_sha256") or "") !=
+            (row.get("current_content_sha256") or "") for row in selected)
+        if needs_preparation:
+            _cancel(cancel)
+            refreshed = self.ingest(session["document_ids"], cancel=cancel, on_progress=on_progress)
+            failed = [item for item in refreshed["documents"] if item.get("status") != "ready"]
+            if failed:
+                details = "；".join(
+                    f"{item.get('title') or '资料'}：{item.get('error') or '准备未完成'}"
+                    for item in failed)
+                raise BridgeError("RAG_DOCUMENT_NOT_READY", f"资料准备失败，暂时不能提问。{details}")
+            _cancel(cancel)
             session = self.local.get_session(session_id)
         selected = [self.local.document(doc_id) for doc_id in session["document_ids"]]
         if any(row is None or row.get("status") != "ready" or
                (row.get("uploaded_content_sha256") or "") !=
                (row.get("current_content_sha256") or "") for row in selected):
-            raise BridgeError("RAG_DOCUMENT_NOT_READY", "所选资料尚未完成入库，请先完成资料同步。")
+            raise BridgeError("RAG_DOCUMENT_NOT_READY", "所选资料尚未准备好，请稍后重试。")
         _cancel(cancel)
         search = self.transport.request_json("POST", API + "/search",
             payload={"document_ids": list(dict.fromkeys(
@@ -1298,6 +1327,9 @@ def register(bridge, services, window):
     def create(params, ctx):
         return current().create(params.get("document_ids"))
 
+    def update_documents(params, ctx):
+        return current().update_documents(params.get("session_id"), params.get("document_ids"))
+
     def get(params, ctx):
         return current().get(params.get("session_id"))
 
@@ -1306,13 +1338,15 @@ def register(bridge, services, window):
 
     def send(params, ctx: CallContext):
         return current().send(params.get("session_id"), params.get("text"),
-                               cancel=ctx.cancel, on_text=ctx.stream)
+                               cancel=ctx.cancel, on_text=ctx.stream,
+                               on_progress=progress)
 
     bridge.register("rag.sources", sources)
     bridge.register("rag.ingest", ingest)
     bridge.register("rag.pick_files", pick_files, ui=True)
     bridge.register("rag.import_files", import_files)
     bridge.register("rag.create", create)
+    bridge.register("rag.update_documents", update_documents)
     bridge.register("rag.get", get)
     bridge.register("rag.delete", delete)
     bridge.register("rag.send", send)

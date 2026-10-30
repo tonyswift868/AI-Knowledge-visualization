@@ -14,7 +14,7 @@ try{
  await until(`!!document.querySelector('[data-testid="rag-offline-notice"]')`);
  const first=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'../screenshots/offline-rag181.png'),Buffer.from(first.data,'base64'));
  await js("window.store181.getState().set({route:'home'})");await until(`!!document.querySelector('.home-page')`);await until(`document.querySelector('.topbar')?.innerText.includes('离线学习')`);check(await js(`document.querySelector('.banner')?.innerText.includes('当前离线，已使用此设备上次验证的账号进入')`),'offline account state appears on the real App home');const accountshot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'../screenshots/offline-account181.png'),Buffer.from(accountshot.data,'base64'));
- await js("window.store181.getState().set({route:'rag'})");await until(`!!document.querySelector('[data-testid="rag-offline-notice"]')`);
+ await js("window.store181.getState().set({route:'rag'})");await until(`!!document.querySelector('[data-testid="rag-offline-notice"]')`);await pause(1000); // Let the remounted page's initial source request settle before recovery polling begins.
  fs.writeFileSync(path.join(root,'recover-marker181'),'');
  await until(`!document.querySelector('[data-testid="rag-offline-notice"]')`,800);
  check(await js(`document.body.innerText.includes('资料问答')`),'RAG service recovery clears the offline notice automatically');
@@ -31,8 +31,8 @@ try{
  check(await js(`document.querySelector('[data-testid="rag-question"]')?.value==='测试断线后手动重试'`),'failed question text remains in the composer');
  const trace=fs.readFileSync(path.join(root,'bridge-trace181.txt'),'utf8');
  check((trace.match(/^send /gm)||[]).length===1,'failed question is never automatically resent');
- await click('[data-testid="rag-document-doc-c"]');await until(`!document.querySelector('[data-testid="rag-retry-send"]')`);check(true,'changing selected materials clears the stale retry');
- await click('[data-testid="rag-document-doc-c"]');fs.writeFileSync(path.join(root,'fail-next-send181'),'');await click('[data-testid="rag-send"]');await until(`!!document.querySelector('[data-testid="rag-retry-send"]')`);
+ await click('[data-testid="rag-edit-session-sources"]');await click('[data-testid="rag-document-doc-c"]');await click('[data-testid="rag-save-session-sources"]');await until(`!!document.querySelector('[data-testid="rag-edit-session-sources"]')&&!document.querySelector('[data-testid="rag-retry-send"]')`);check(true,'explicitly editing the current session sources clears its stale retry');
+ await until(`!document.querySelector('[data-testid="rag-send"]')?.disabled`);fs.writeFileSync(path.join(root,'fail-next-send181'),'');await click('[data-testid="rag-send"]');await until(`!!document.querySelector('[data-testid="rag-retry-send"]')`);
  await pause(1800);const traceAgain=fs.readFileSync(path.join(root,'bridge-trace181.txt'),'utf8');check((traceAgain.match(/^send /gm)||[]).length===2,'question remains unsent until the user chooses an action');
  const probeStats=JSON.parse(fs.readFileSync(path.join(root,'sources-count181.json'),'utf8'));check(probeStats.max_active===1,'status probes never overlap');const stableProbeCount=probeStats.calls;await pause(1300);check(JSON.parse(fs.readFileSync(path.join(root,'sources-count181.json'),'utf8')).calls===stableProbeCount,'one settled recovery poll does not create another chain');
  await js("document.querySelector('[data-testid=\"rag-retry-send\"]')?.scrollIntoView({block:'center'})");await pause(150);const retryshot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'../screenshots/question-retry181.png'),Buffer.from(retryshot.data,'base64'));
