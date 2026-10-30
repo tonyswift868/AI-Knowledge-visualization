@@ -14,8 +14,8 @@ export type UpdateStatus = {
   deferred_update?: boolean; deferred_target?: string; deferred_message?: string
   release_sha256?: string
 }
-type Notice = { status: UpdateStatus | null; open: boolean; later: boolean; manual: boolean; error: string }
-export const useUpdates = create<Notice>(() => ({ status: null, open: false, later: false, manual: false, error: "" }))
+type Notice = { status: UpdateStatus | null; open: boolean; later: boolean; manual: boolean; error: string; dismissedVersion: string | null }
+export const useUpdates = create<Notice>(() => ({ status: null, open: false, later: false, manual: false, error: "", dismissedVersion: null }))
 export const offered = (s: UpdateStatus | null) => !!s && (["AVAILABLE", "UPDATE_AVAILABLE", "OPTIONAL_UPDATE", "MANDATORY_UPDATE", "PENDING_INSTALL"].includes(s.state) || s.state === "HEALTHY" && !!s.deferred_update)
 const mandatory = (s: UpdateStatus | null) => !!s?.mandatory || s?.state === "MANDATORY_UPDATE"
 type MandatoryUpdateGuard = () => Promise<void>
@@ -109,11 +109,15 @@ async function deferUpdate() {
 
 export function UpdateBanner() {
   const ready = useApp((s) => s.ready)
-  const {status, open} = useUpdates()
-  if (!ready || open || !offered(status) || mandatory(status)) return null
-  return <aside role="status" aria-label="软件更新提示" className="banner row" style={{alignItems: "center", justifyContent: "space-between"}}>
-    <span>发现新版本 {status?.latest || status?.target || ""}。您可以继续使用，也可以现在更新。</span>
-    <Button kind="primary" disabled={!!status?.busy} onClick={() => void installUpdate()}>立即更新</Button>
+  const {status, open, dismissedVersion} = useUpdates()
+  const version = status?.latest || status?.target || ""
+  if (!ready || open || !offered(status) || mandatory(status) || dismissedVersion === version) return null
+  return <aside role="status" aria-label="软件更新提示" className="banner row wrap" style={{alignItems: "center", justifyContent: "space-between"}}>
+    <span>发现新版本 {version}。您可以继续使用，也可以现在更新。</span>
+    <div className="row wrap">
+      <Button kind="primary" disabled={!!status?.busy} onClick={() => void installUpdate()}>立即更新</Button>
+      <Button onClick={() => useUpdates.setState({ dismissedVersion: version })}>我知道了</Button>
+    </div>
   </aside>
 }
 
