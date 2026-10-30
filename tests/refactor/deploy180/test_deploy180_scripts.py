@@ -9,6 +9,8 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -33,6 +35,47 @@ def _posix(path: Path | str) -> str:
     return value
 
 
+def _write_timeout_evidence(sandbox: Path, command: list[str], timeout: float,
+                            started: float, exc: subprocess.TimeoutExpired, *, pid=None, timed_out_at=None,
+                            elapsed=None, termination=None) -> str:
+    """Preserve the failed run's evidence before the sandbox fixture removes it."""
+    root_value = os.environ.get("DEPLOY180_DIAGNOSTICS_ROOT")
+    evidence_root = Path(root_value) if root_value else sandbox.parent / "deploy180-diagnostics"
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    destination = evidence_root / sandbox.name
+    destination.mkdir(parents=True, exist_ok=True)
+
+    def save_output(name: str, value: str | bytes | None) -> None:
+        if value is None:
+            return
+        data = value if isinstance(value, bytes) else value.encode("utf-8", "replace")
+        (destination / name).write_bytes(data)
+
+    save_output("stdout.txt", exc.stdout)
+    save_output("stderr.txt", exc.stderr)
+    for name in ("docker.log", "docker-events.log", "http-events.jsonl"):
+        source = sandbox / name
+        if source.is_file():
+            shutil.copy2(source, destination / name)
+    state = sandbox / "fake-state"
+    if state.is_dir():
+        state_copy = destination / "fake-state"
+        state_copy.mkdir(exist_ok=True)
+        for name in ("values", "kc-fail-used", "kc-marker", "java-fail-used"):
+            source = state / name
+            if source.is_file():
+                shutil.copy2(source, state_copy / name)
+    metadata = {
+        "sandbox": str(sandbox), "command": command, "timeout_seconds": timeout,
+        "started_unix": started, "timed_out_unix": timed_out_at if timed_out_at is not None else time.time(),
+        "timed_out_utc": datetime.now(timezone.utc).isoformat(),
+        "process_pid": pid, "elapsed_seconds": elapsed, "termination": termination, "exception": str(exc),
+    }
+    (destination / "metadata.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+    return str(destination)
+
+
 @pytest.fixture
 def sandbox():
     SCRATCH.mkdir(parents=True, exist_ok=True)
@@ -45,7 +88,21 @@ def sandbox():
 
 class _HTTP(BaseHTTPRequestHandler):
     seen: list[tuple[str, str, object]] = []
+    events: list[dict[str, object]] = []
+    event_lock = threading.Lock()
     email_available = True
+
+    def _record_request(self, method: str, status: int | None = None, phase: str = "received") -> None:
+        with type(self).event_lock:
+            event = {"time_unix": time.time(), "time_utc": datetime.now(timezone.utc).isoformat(),
+                     "method": method, "path": self.path, "phase": phase}
+            if status is not None:
+                event["status"] = status
+            type(self).events.append(event)
+            sandbox = getattr(type(self), "diagnostic_sandbox", None)
+            if sandbox is not None:
+                with (sandbox / "http-events.jsonl").open("a", encoding="utf-8") as stream:
+                    stream.write(json.dumps(event, ensure_ascii=False) + "\n")
 
     def _send(self, status: int, value: object = None):
         raw = b"" if value is None else json.dumps(value).encode()
@@ -55,8 +112,10 @@ class _HTTP(BaseHTTPRequestHandler):
         self.end_headers()
         if raw:
             self.wfile.write(raw)
+        self._record_request(self.command, status, "response_sent")
 
     def do_GET(self):
+        self._record_request("GET")
         type(self).seen.append(("GET", self.path, None))
         if self.path == "/health/ready":
             self._send(200, {"status": "ready", "started": True, "dependencies": [
@@ -80,6 +139,7 @@ class _HTTP(BaseHTTPRequestHandler):
             self._send(404, {"code": "NOT_FOUND"})
 
     def do_POST(self):
+        self._record_request("POST")
         size = int(self.headers.get("Content-Length", "0"))
         body = json.loads(self.rfile.read(size) or b"{}")
         type(self).seen.append(("POST", self.path, body))
@@ -99,8 +159,10 @@ class _HTTP(BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def http_server():
+def http_server(sandbox):
     _HTTP.seen = []
+    _HTTP.events = []
+    _HTTP.diagnostic_sandbox = sandbox
     _HTTP.email_available = True
     server = ThreadingHTTPServer(("127.0.0.1", 0), _HTTP)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -146,6 +208,7 @@ def _fake_docker(sandbox: Path) -> tuple[Path, Path, Path]:
     executable.write_text(r'''#!/bin/sh
 set -eu
 printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"
+printf '%s\t%s\n' "${EPOCHREALTIME:-$SECONDS}" "$*" >> "$FAKE_DOCKER_TRACE"
 state=$FAKE_DOCKER_STATE
 getv() { sed -n "s/^$1=//p" "$state/values" 2>/dev/null | head -1; }
 setv() { key=$1; value=$2; tmp=$state/values.new; { grep -v "^$key=" "$state/values" 2>/dev/null || true; printf '%s=%s\n' "$key" "$value"; } > "$tmp"; mv "$tmp" "$state/values"; }
@@ -248,10 +311,81 @@ esac
     return executable, log, bindir
 
 
-def _run_bash(script: Path, args: list[str], env: dict[str, str], timeout=60):
+def _run_bash(script: Path, args: list[str], env: dict[str, str], timeout=240):
+    # Measured CPU/I/O contention exceeds the old 60s budget (BUG-201).
+    # Keep real script/rollback assertions; retain diagnostics on every timeout.
     assert BASH.is_file(), "Git Bash is needed for the POSIX deployment scripts"
-    return subprocess.run([str(BASH), _posix(script), *args], env=env, capture_output=True,
-                          text=True, timeout=timeout)
+    sandbox = Path(env["FAKE_SANDBOX_ROOT"])
+    command = [str(BASH), _posix(script), *args]
+    started, monotonic_start = time.time(), time.monotonic()
+    logs = sandbox / "command-output"
+    logs.mkdir(exist_ok=True)
+    prefix = str(time.time_ns())
+    stdout_path, stderr_path = logs / (prefix + ".stdout"), logs / (prefix + ".stderr")
+
+    def output(path):
+        with path.open(encoding="utf-8") as stream:
+            return "".join(stream)
+
+    with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
+        # Files avoid Windows reader threads waiting for an inherited pipe in
+        # a grandchild after the Git Bash launcher itself has been killed.
+        process = subprocess.Popen(command, env=env, stdout=stdout_file, stderr=stderr_file)
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            timed_out_at = time.time()
+            termination = {}
+            try:
+                if os.name == "nt":
+                    # This PID is the child created above, never a name-based kill.
+                    killed = subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                            capture_output=True, timeout=10)
+                    termination["returncode"] = killed.returncode
+                else:
+                    process.kill()
+                process.wait(timeout=10)
+            except (OSError, subprocess.TimeoutExpired) as stop_error:
+                termination["error"] = str(stop_error)
+                if process.poll() is None:
+                    try:
+                        process.kill()
+                        process.wait(timeout=5)
+                    except (OSError, subprocess.TimeoutExpired) as fallback_error:
+                        termination["fallback_error"] = str(fallback_error)
+            termination["still_running"] = process.poll() is None
+            # Keep raw evidence even if the last output contains an incomplete
+            # UTF-8 character at termination; normal successful output is strict.
+            with stdout_path.open("rb") as stream:
+                exc.output = b"".join(stream)
+            with stderr_path.open("rb") as stream:
+                exc.stderr = b"".join(stream)
+            evidence = _write_timeout_evidence(sandbox, command, timeout, started, exc,
+                                               pid=process.pid, timed_out_at=timed_out_at,
+                                               elapsed=time.monotonic() - monotonic_start,
+                                               termination=termination)
+            raise AssertionError(
+                f"deployment command timed out after {timeout}s; pid={process.pid}; "
+                f"command={command!r}; diagnostic evidence: {evidence}; "
+                f"stdout tail={exc.stdout[-1200:]!r}; stderr tail={exc.stderr[-1200:]!r}"
+            ) from exc
+    result = subprocess.CompletedProcess(command, process.returncode,
+                                         output(stdout_path), output(stderr_path))
+    root_value = env.get("DEPLOY180_DIAGNOSTICS_ROOT")
+    if root_value:
+        destination = Path(root_value) / "successful-commands" / sandbox.name
+        destination.mkdir(parents=True, exist_ok=True)
+        for name in ("docker.log", "docker-events.log", "http-events.jsonl"):
+            source = sandbox / name
+            if source.is_file():
+                shutil.copy2(source, destination / name)
+        event = {"command": command, "pid": process.pid, "started_unix": started,
+                 "finished_unix": time.time(), "elapsed_seconds": time.monotonic() - monotonic_start,
+                 "returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr}
+        with (destination / "commands.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(event) + "\n")
+    return result
+
 
 
 def _harness(sandbox: Path, base_url: str, fail_kc=False):
@@ -268,8 +402,10 @@ def _harness(sandbox: Path, base_url: str, fail_kc=False):
     env = os.environ.copy()
     env.update({
         "DOCKER_BIN": _posix(docker), "FAKE_DOCKER_LOG": _posix(log),
+        "FAKE_DOCKER_TRACE": _posix(sandbox / "docker-events.log"),
         "FAKE_DOCKER_PATH": _posix(docker),
         "FAKE_DOCKER_STATE": _posix(sandbox / "fake-state"),
+        "FAKE_SANDBOX_ROOT": str(sandbox),
         "HOST_PYTHON": _posix(Path(sys.executable)),
         "FAKE_JAVA_DEPLOY_DIR": _posix(source / "refactor/server-java/deploy"),
         "FAKE_BASE_URL": base_url,
