@@ -128,6 +128,8 @@ def _host(root: Path):
         "text": "识别结果可编辑后再提问", "raw_text": "识别结果可编辑后再提问", "replacements": []})
     bridge.register("voice.cancel", lambda p, c: {"ok": True})
 
+    from tests.refactor.rag263.legacy_bridge263 import register_legacy_preparation
+    register_legacy_preparation(bridge, docs)
     view.resize(1100, 820)
     view.show()
     view.setUrl(QUrl.fromLocalFile(str(root / "dist/index.html")))

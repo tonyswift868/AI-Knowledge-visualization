@@ -112,7 +112,9 @@ class RagTransport(SyncTransport):
                     if response.status_code == 413:
                         raise BridgeError("RAG_HTTP_413",
                             "资料太大，服务器一次收不下，正在自动拆小重试。")
-                    raise BridgeError("RAG_HTTP", f"资料服务暂时无法完成请求（HTTP {response.status_code}）。")
+                    error = BridgeError("RAG_HTTP", f"资料服务暂时无法完成请求（HTTP {response.status_code}）。")
+                    error.http_status = response.status_code
+                    raise error
             if not raw:
                 return {}
             try:
@@ -229,7 +231,8 @@ class RagLocalStore:
                         old["status"] in {"uploading", "failed"}))
                     upload_id = (_source_version_id(document_id, content_digest) if needs_new_version
                                  else old["remote_upload_id"] or document_id)
-                    stale = needs_new_version or bool(uploaded_digest and uploaded_digest != content_digest)
+                    stale = needs_new_version or bool(current_changed and uploaded_digest
+                                                      and uploaded_digest != content_digest)
                     self._db.execute("""UPDATE rag_documents SET title=?,source=?,total_chunks=?,
                         current_content_sha256=?,remote_upload_id=?,
                         status=CASE WHEN ? THEN 'not_uploaded' ELSE status END,
@@ -387,27 +390,255 @@ class RagService:
                                       http_transport=http_transport)
         self.local = RagLocalStore(store.root / "rag.sqlite3")
         self._lock = threading.RLock()
+        self._upload_lock = threading.RLock()
+        self._worker_local = threading.local()
         self._closed = False
         self._picked_paths = set()
         self._plan_documents = {}
         self._incomplete_documents = set()
         self._remote_capabilities = set()
         self._repair_verified_documents = set()
+        self.scope_id = uuid.uuid4().hex
+        self._jobs_lock = threading.Condition(threading.RLock())
+        self._jobs = {}
+        self._job_by_key = {}
+        self._job_queue = []
+        self._job_sequence = 0
+        self._job_stopping = False
+        self._progress_callback = None
+        self._job_worker = threading.Thread(target=self._preparation_worker,
+                                            name="rag-preparation", daemon=True)
+        self._job_worker.start()
 
     def close(self):
+        self.stop_preparations()
         with self._lock:
             if self._closed:
                 return
             self._closed = True
             self._picked_paths.clear()
-        self.transport.close()
-        self.local.close()
+        def finish_close():
+            if threading.current_thread() is not self._job_worker:
+                self._job_worker.join()
+            self.transport.close()
+            self.local.close()
+        threading.Thread(target=finish_close, name="rag-close", daemon=True).start()
+
+    def stop_preparations(self):
+        with self._jobs_lock:
+            self._job_stopping = True
+            for job in self._jobs.values():
+                if job["state"] in ("queued", "running"):
+                    job["cancel"].set()
+                    if job["state"] == "queued":
+                        job["state"] = "cancelled"
+            self._jobs_lock.notify_all()
+
+    def _job_snapshot(self, job):
+        return {k: job[k] for k in ("id", "document_id", "state", "uploaded_chunks",
+                "total_chunks", "error", "sequence") if k in job}
+
+    @staticmethod
+    def _preparation_key(row):
+        return (row["id"], row.get("current_content_sha256") or _source_content_digest(row["chunks"]),
+                row["title"], row["source"])
+
+    def _log_preparation_failure(self, document_id, exc):
+        code = getattr(exc, "code", "RAG_PREPARATION_FAILED")
+        if not isinstance(code, str) or not re.fullmatch(r"[A-Z0-9_]{1,64}", code):
+            code = "RAG_PREPARATION_FAILED"
+        status = getattr(exc, "http_status", None)
+        suffix = f" HTTP{status}" if type(status) is int else ""
+        log.error("RAG preparation failed document=%s batch_index=%s code=%s%s",
+                  document_id[:8], getattr(self._worker_local, "batch_index", 0), code, suffix)
+
+    def _preparation_worker(self):
+        while True:
+            with self._jobs_lock:
+                while not self._job_stopping and not self._job_queue:
+                    self._jobs_lock.wait()
+                if self._job_stopping:
+                    return
+                self._job_queue.sort(key=lambda item: (item[0], item[1]))
+                _, _, job_id = self._job_queue.pop(0)
+                job = self._jobs.get(job_id)
+                if not job or job["state"] != "queued":
+                    continue
+                job["state"] = "running"
+            try:
+                self._worker_local.batch_index = 0
+                result = self._ingest_locked([job["document_id"]], cancel=job["cancel"],
+                    snapshots={job["document_id"]: job["snapshot"]},
+                    on_progress=lambda row, j=job: self._job_progress(j, row))
+                row = result["documents"][0]
+                with self._jobs_lock:
+                    job["uploaded_chunks"] = int(row.get("uploaded_chunks", 0) or 0)
+                    job["total_chunks"] = int(row.get("total_chunks", 0) or 0)
+                    job["state"] = ("cancelled" if job["cancel"].is_set() else
+                                     "ready" if row.get("status") == "ready" else "failed")
+                    if job["state"] == "failed":
+                        job["error"] = row.get("error") or "RAG_PREPARATION_FAILED"
+                    if job["state"] == "failed" and row.get("status") != "failed":
+                        job["error"] = row.get("error") or "RAG_PREPARATION_FAILED"
+                        self._log_preparation_failure(job["document_id"],
+                            BridgeError("RAG_SOURCE_INCOMPLETE", "资料源不完整。"))
+                    self._jobs_lock.notify_all()
+                self._push_job(job)
+            except BridgeError as exc:
+                with self._jobs_lock:
+                    job["state"] = "cancelled" if exc.code == "CANCELLED" else "failed"
+                    job["error"] = None if job["state"] == "cancelled" else exc.code
+                    self._jobs_lock.notify_all()
+                if job["state"] == "failed":
+                    self._log_preparation_failure(job["document_id"], exc)
+                self._push_job(job)
+            except Exception as exc:  # noqa: BLE001
+                code = getattr(exc, "code", "RAG_PREPARATION_FAILED")
+                safe_code = code if isinstance(code, str) and re.fullmatch(r"[A-Z0-9_]{1,64}", code) else "RAG_PREPARATION_FAILED"
+                with self._jobs_lock:
+                    job["state"] = "failed"
+                    job["error"] = safe_code
+                    self._jobs_lock.notify_all()
+                log.error("RAG preparation failed document=%s batch_index=%s code=%s",
+                          job["document_id"][:8], getattr(self._worker_local, "batch_index", 0), safe_code)
+                self._push_job(job)
+
+    def _job_progress(self, job, row):
+        with self._jobs_lock:
+            if self._job_stopping or self._closed:
+                return
+            job["uploaded_chunks"] = int(row.get("uploaded_chunks", 0) or 0)
+            job["total_chunks"] = int(row.get("total_chunks", 0) or 0)
+            payload = dict(row, job_id=job["id"], scope_id=self.scope_id,
+                           preparation_state="running", sequence=job["sequence"])
+            if self._progress_callback:
+                self._progress_callback(payload)
+            for listener in tuple(job.get("listeners", ())):
+                listener(payload)
+
+    def _push_job(self, job):
+        with self._jobs_lock:
+            if self._job_stopping or self._closed:
+                return
+            row = self.local.document(job["document_id"]) or {"id": job["document_id"]}
+            payload = dict(self._doc_view(row), job_id=job["id"], scope_id=self.scope_id,
+                           preparation_state=job["state"], sequence=job["sequence"])
+            if job.get("error"):
+                payload["error"] = job["error"]
+            if self._progress_callback:
+                self._progress_callback(payload)
+
+    def prepare(self, document_ids, *, priority=False, _listener=None):
+        if type(priority) is not bool:
+            raise BridgeError("PARAM_INVALID", "资料准备优先级无效。")
+        ids = self._ids(document_ids)
+        self._course_documents()
+        snapshots = {doc_id: self._document_chunks(doc_id) for doc_id in ids}
+        with self._jobs_lock:
+            if self._job_stopping:
+                raise BridgeError("RAG_CLOSED", "资料问答已关闭，请重新打开。")
+            def reusable(doc_id):
+                row = snapshots[doc_id]
+                job = self._jobs.get(self._job_by_key.get(self._preparation_key(row)))
+                return job if job and (job["state"] in ("queued", "running")
+                    or job["state"] == "ready" and self._doc_view(row)["status"] == "ready") else None
+
+            new_count = sum(reusable(doc_id) is None for doc_id in ids)
+            queued_count = sum(item["state"] == "queued" for item in self._jobs.values())
+            if queued_count + new_count > 64:
+                raise BridgeError("RAG_QUEUE_FULL", "资料准备队列已满，请稍后重试。")
+            output = []
+            for doc_id in ids:
+                row = snapshots[doc_id]
+                key = self._preparation_key(row)
+                job = reusable(doc_id)
+                if not job:
+                    self._job_sequence += 1
+                    job = {"id": uuid.uuid4().hex, "document_id": doc_id, "state": "queued",
+                           "uploaded_chunks": 0, "total_chunks": len(row["chunks"]),
+                           "cancel": threading.Event(), "key": key, "snapshot": row,
+                           "sequence": self._job_sequence}
+                    self._jobs[job["id"]] = job
+                    self._job_by_key[key] = job["id"]
+                    self._job_queue.append((0 if priority else 1, self._job_sequence, job["id"]))
+                elif priority and job["state"] == "queued":
+                    self._job_queue = [(0 if item[2] == job["id"] else item[0], item[1], item[2])
+                                       for item in self._job_queue]
+                if _listener:
+                    job.setdefault("listeners", []).append(_listener)
+                output.append(self._job_snapshot(job))
+            self._jobs_lock.notify_all()
+            return {"scope_id": self.scope_id, "jobs": output}
+
+    def preparation(self, document_ids=None):
+        if document_ids is not None and (not isinstance(document_ids, list) or
+                any(not _clean_id(item) for item in document_ids)):
+            raise BridgeError("PARAM_INVALID", "资料编号无效，请重新选择。")
+        with self._jobs_lock:
+            ids = None if document_ids is None else set(document_ids)
+            rows = [self._job_snapshot(job) for job in self._jobs.values()
+                    if ids is None or job["document_id"] in ids]
+            return {"scope_id": self.scope_id, "jobs": rows}
+
+    def cancel_preparation(self, job_ids):
+        if not isinstance(job_ids, list) or any(not _clean_id(item) for item in job_ids):
+            raise BridgeError("PARAM_INVALID", "准备任务编号无效。")
+        with self._jobs_lock:
+            for job_id in job_ids:
+                job = self._jobs.get(job_id)
+                if job and job["state"] in ("queued", "running"):
+                    job["cancel"].set()
+                    if job["state"] == "queued":
+                        job["state"] = "cancelled"
+            self._jobs_lock.notify_all()
+        return self.preparation()
+
+    def wait_preparation(self, document_ids, *, cancel=None, on_progress=None):
+        # Only the subscription belongs to this request, never the upload job.
+        def listener(payload):
+            if on_progress and not (cancel and cancel.is_set()):
+                try:
+                    on_progress(payload)
+                except Exception:  # A detached observer must not fail a shared upload.
+                    pass
+        snapshot = self.prepare(document_ids, priority=True, _listener=listener if on_progress else None)
+        target = {job["document_id"]: job["id"] for job in snapshot["jobs"]}
+        try:
+            while True:
+                _cancel(cancel)  # Cancels only this waiter; the shared job keeps running.
+                with self._jobs_lock:
+                    jobs = [self._jobs[job_id] for job_id in target.values()]
+                    if all(job["state"] in ("ready", "failed", "cancelled") for job in jobs):
+                        break
+                    self._jobs_lock.wait(.1)
+        finally:
+            with self._jobs_lock:
+                for job_id in target.values():
+                    listeners = self._jobs[job_id].get("listeners", [])
+                    if listener in listeners:
+                        listeners.remove(listener)
+        result = []
+        for job in jobs:
+            row = self.local.document(job["document_id"]) or {}
+            view = self._doc_view(row) if row else {"id": job["document_id"], "status": "failed"}
+            view.update(job_id=job["id"], scope_id=self.scope_id,
+                        preparation_state=job["state"])
+            if job.get("error"):
+                view["error"] = job["error"]
+            result.append(view)
+            if on_progress:
+                on_progress(view)
+        return {"documents": result}
 
     def _check_open(self):
         if self._closed:
             raise BridgeError("RAG_CLOSED", "资料问答已关闭，请重新打开。")
 
     def _course_documents(self):
+        with self._upload_lock:
+            return self._course_documents_snapshot()
+
+    def _course_documents_snapshot(self):
         plans = []
         documents = {}
         incomplete_documents = set()
@@ -742,7 +973,8 @@ class RagService:
                     row.get("plan_ids", ())))
             return False
 
-        for part in batches:
+        for batch_index, part in enumerate(batches, 1):
+            self._worker_local.batch_index = batch_index
             if self._send_upload_batch(f"{API}/documents/{row['id']}/chunks",
                     {**base, "chunks": part}, cancel=cancel,
                     on_receipt=accept_repair_receipt):
@@ -777,8 +1009,6 @@ class RagService:
             # documents or saved sessions. Keep the distinction visible.
             remote = {}
             server_status = {"state": "unavailable", "message": str(exc)}
-        repair_errors = {}
-        capacity_error_ids = set()
         # A ready remote row at the original source ID is not proof that its
         # body matches this device's extracted content. This also handles a
         # newly created local RAG database with an older server-side document.
@@ -786,77 +1016,17 @@ class RagService:
             state = remote.get(doc_id)
             saved = self.local.document(doc_id) or row
             total = len(row.get("chunks", ()))
-            if (state and state.get("status") == "ready" and state.get("total_chunks") == total
+            if (state and self._remote_complete(state, total) and state.get("total_chunks") == total
                     and (saved.get("uploaded_content_sha256") or "")
                         != (saved.get("current_content_sha256") or "")
                     and (saved.get("remote_upload_id") or doc_id) == doc_id):
                 version_id = _source_version_id(doc_id, saved.get("current_content_sha256") or
                                                 _source_content_digest(row.get("chunks", ())))
                 self.local.set_remote_upload_id(doc_id, version_id)
-        if "append_only_chunk_repair_v1" in self._remote_capabilities:
-            for doc_id, row in current.items():
-                state = remote.get(doc_id)
-                if (doc_id in self._incomplete_documents or doc_id in self._repair_verified_documents
-                        or not state or state.get("id") != doc_id or state.get("status") != "ready"):
-                    continue
-                local_row = self.local.document(doc_id) or row
-                if (local_row.get("remote_upload_id") or doc_id) != doc_id:
-                    continue
-                local_total = len(row.get("chunks", ()))
-                remote_total = state.get("total_chunks")
-                received = state.get("uploaded_chunks")
-                if (type(remote_total) is int and remote_total == local_total
-                        and type(received) is int and received == remote_total):
-                    continue
-                try:
-                    repaired = self._send_repair_batches(row, cancel=cancel)
-                    state["total_chunks"] = repaired["total_chunks"]
-                    state["uploaded_chunks"] = repaired["uploaded_chunks"]
-                    state["status"] = "ready"
-                    self._repair_verified_documents.add(doc_id)
-                except BridgeError as exc:
-                    if exc.code == "CANCELLED":
-                        raise
-                    if self._is_upload_capacity_error(exc):
-                        capacity_error_ids.add(doc_id)
-                    else:
-                        version_id = _source_version_id(doc_id, local_row.get("current_content_sha256") or
-                                                        _source_content_digest(row.get("chunks", ())))
-                        self.local.set_remote_upload_id(doc_id, version_id)
-                    repair_errors[doc_id] = exc.message
-        # A previously uploaded source whose parsed content changed gets a new
-        # immutable remote ID. This avoids mutating a ready ID (and avoids
-        # append-only repair retaining old text). Old remote rows are retained.
-        changed_ids = [doc_id for doc_id in current
-            if doc_id not in capacity_error_ids
-            and (saved := self.local.document(doc_id)) is not None
-            and saved.get("remote_upload_id") not in ("", doc_id)
-            and (saved.get("uploaded_content_sha256") or "")
-                != (saved.get("current_content_sha256") or "")]
-        if changed_ids and server_status["state"] == "ready":
-            try:
-                outcome = self.ingest(changed_ids, cancel=cancel)
-                for item in outcome["documents"]:
-                    if item.get("status") != "ready" and item.get("error"):
-                        repair_errors[item["id"]] = item["error"]
-                # Refresh aliases/canonical IDs after uploads. Do not infer a
-                # successful mapping from the pre-upload listing.
-                remote = self._remote_documents(cancel=cancel)
-                all_local = {item["id"]: item for item in self.local.documents()}
-            except BridgeError as exc:
-                if exc.code == "CANCELLED":
-                    raise
-                for doc_id in changed_ids:
-                    repair_errors[doc_id] = exc.message
+        # Listing/reopening never starts preparation. Any incomplete or changed
+        # source remains visible; explicit prepare/send owns repair scheduling.
         for doc_id, row in list(all_local.items()):
             row = self.local.document(doc_id) or row
-            if doc_id in capacity_error_ids:
-                # The repair callback has fresher acknowledged progress than
-                # the listing fetched before repair began.
-                all_local[doc_id] = {**row, "status": "failed",
-                    "uploaded_chunks": int(row.get("uploaded_chunks", 0) or 0),
-                    "error": repair_errors[doc_id]}
-                continue
             canonical_id = row.get("canonical_id") or doc_id
             content_current = ((row.get("current_content_sha256") or "")
                                == (row.get("uploaded_content_sha256") or ""))
@@ -882,11 +1052,8 @@ class RagService:
             is_current = ((row.get("current_content_sha256") or "")
                           == (row.get("uploaded_content_sha256") or ""))
             remote_row = (remote.get(row.get("remote_upload_id") or doc_id)
-                          if is_current and doc_id not in capacity_error_ids else None)
+                          if is_current else None)
             docs.append(self._doc_view(row, plan_refs.get(doc_id, ()), remote_row))
-        for item in docs:
-            if item["id"] in repair_errors:
-                item["error"] = repair_errors[item["id"]]
         for item in docs:
             if item["id"] in self._incomplete_documents:
                 item["error"] = "本地资料仍在同步；当前远端状态保留，本次不会覆盖或重复上传。"
@@ -957,7 +1124,8 @@ class RagService:
                 on_progress(progress)
             return False
 
-        for part in batches:
+        for batch_index, part in enumerate(batches, 1):
+            self._worker_local.batch_index = batch_index
             payload = {"title": row["title"], "source": row["source"],
                        "total_chunks": len(chunks), "chunks": part}
             self._send_upload_batch(f"{API}/documents/{target_id}/chunks", payload,
@@ -973,10 +1141,15 @@ class RagService:
             on_progress(ready)
         return ready
 
-    def ingest(self, document_ids, *, cancel=None, on_progress=None):
+    def ingest(self, document_ids, *, cancel=None, on_progress=None, _snapshots=None):
+        return self._ingest_locked(document_ids, cancel=cancel, on_progress=on_progress,
+                                   snapshots=_snapshots)
+
+    def _ingest_locked(self, document_ids, *, cancel=None, on_progress=None, snapshots=None):
         self._check_open()
         ids = self._ids(document_ids)
-        self._course_documents()
+        if snapshots is None:
+            self._course_documents()
         remote = self._remote_documents(cancel=cancel)
         result = []
         for doc_id in ids:
@@ -992,11 +1165,11 @@ class RagService:
                 if on_progress:
                     on_progress(view)
                 continue
-            row = self._document_chunks(doc_id)
+            row = (snapshots or {}).get(doc_id) or self._document_chunks(doc_id)
             target_id = row.get("remote_upload_id") or doc_id
             remote_row = remote.get(target_id)
             if (remote_row and remote_row.get("id") == doc_id
-                    and remote_row.get("status") == "ready"
+                    and self._remote_complete(remote_row, len(row["chunks"]))
                     and remote_row.get("total_chunks") == len(row["chunks"])
                     and (row.get("uploaded_content_sha256") or "")
                         != (row.get("current_content_sha256") or "")
@@ -1026,6 +1199,7 @@ class RagService:
                             current = self.local.document(doc_id) or row
                             uploaded = int(current.get("uploaded_chunks", 0) or 0)
                             self.local.set_status(doc_id, "failed", uploaded, exc.message)
+                            self._log_preparation_failure(doc_id, exc)
                             view = self._doc_view({**(self.local.document(doc_id) or current),
                                 "status": "failed", "uploaded_chunks": uploaded,
                                 "error": exc.message}, row.get("plan_ids", ()))
@@ -1047,6 +1221,7 @@ class RagService:
                             if upload_exc.code == "CANCELLED":
                                 raise
                             self.local.set_status(doc_id, "failed", 0, upload_exc.message)
+                            self._log_preparation_failure(doc_id, upload_exc)
                             view = self._doc_view({**(self.local.document(doc_id) or row),
                                 "status": "failed", "error": upload_exc.message},
                                 row.get("plan_ids", ()))
@@ -1062,6 +1237,7 @@ class RagService:
                         if upload_exc.code == "CANCELLED":
                             raise
                         self.local.set_status(doc_id, "failed", 0, upload_exc.message)
+                        self._log_preparation_failure(doc_id, upload_exc)
                         view = self._doc_view({**(self.local.document(doc_id) or row),
                             "status": "failed", "error": upload_exc.message},
                             row.get("plan_ids", ()))
@@ -1112,11 +1288,13 @@ class RagService:
                         if retry_exc.code == "CANCELLED":
                             raise
                         self.local.set_status(doc_id, "failed", 0, retry_exc.message)
+                        self._log_preparation_failure(doc_id, retry_exc)
                         view = self._doc_view({**(self.local.document(doc_id) or current),
                             "status": "failed", "error": retry_exc.message},
                             current.get("plan_ids", ()))
                 else:
                     self.local.set_status(doc_id, "failed", current.get("uploaded_chunks", 0), exc.message)
+                    self._log_preparation_failure(doc_id, exc)
                     view = self._doc_view({**(self.local.document(doc_id) or current),
                         "status": "failed", "error": exc.message}, current.get("plan_ids", ()))
                 if on_progress:
@@ -1216,7 +1394,8 @@ class RagService:
             (row.get("current_content_sha256") or "") for row in selected)
         if needs_preparation:
             _cancel(cancel)
-            refreshed = self.ingest(session["document_ids"], cancel=cancel, on_progress=on_progress)
+            refreshed = self.wait_preparation(session["document_ids"], cancel=cancel,
+                                               on_progress=on_progress)
             failed = [item for item in refreshed["documents"] if item.get("status") != "ready"]
             if failed:
                 details = "；".join(
@@ -1311,10 +1490,26 @@ def register(bridge, services, window):
         bridge.push("rag.progress", data)
 
     def sources(params, ctx):
-        return current().sources(cancel=ctx.cancel)
+        service = current()
+        service._progress_callback = progress
+        return service.sources(cancel=ctx.cancel)
 
     def ingest(params, ctx):
-        return current().ingest(params.get("document_ids"), cancel=ctx.cancel, on_progress=progress)
+        service = current()
+        service._progress_callback = progress
+        return service.ingest(params.get("document_ids"), cancel=ctx.cancel, on_progress=progress)
+
+    def prepare(params, ctx):
+        current()._progress_callback = progress
+        return current().prepare(params.get("document_ids"), priority=params.get("priority", False))
+
+    def preparation(params, ctx):
+        current()._progress_callback = progress
+        return current().preparation(params.get("document_ids"))
+
+    def cancel_preparation(params, ctx):
+        current()._progress_callback = progress
+        return current().cancel_preparation(params.get("job_ids"))
 
     def pick_files(params, ctx):
         if params:
@@ -1343,6 +1538,9 @@ def register(bridge, services, window):
 
     bridge.register("rag.sources", sources)
     bridge.register("rag.ingest", ingest)
+    bridge.register("rag.prepare", prepare)
+    bridge.register("rag.preparation", preparation)
+    bridge.register("rag.cancel_preparation", cancel_preparation)
     bridge.register("rag.pick_files", pick_files, ui=True)
     bridge.register("rag.import_files", import_files)
     bridge.register("rag.create", create)

@@ -101,6 +101,9 @@ def test_rag226_failed_replacement_keeps_old_mapping_but_blocks_stale_retrieval(
 
         fake.fail_upload_status = 503
         visible = next(row for row in instance.sources()["documents"] if row["id"] == digest)
+        assert visible["status"] == "not_uploaded"
+        instance.wait_preparation([digest])
+        visible = next(row for row in instance.sources()["documents"] if row["id"] == digest)
         saved = instance.local.document(digest)
         assert visible["status"] == "failed"
         assert saved["canonical_id"] == old_id  # retain rollback/history mapping
@@ -117,6 +120,8 @@ def test_rag226_failed_replacement_keeps_old_mapping_but_blocks_stale_retrieval(
         assert gateway.calls == []
         assert fake.search_queries == []
 
+        # Retry is explicit; simply returning to the page must not upload.
+        instance.wait_preparation([digest])
         corrected = next(row for row in instance.sources()["documents"] if row["id"] == digest)
         assert corrected["status"] == "ready"
         assert instance.local.document(digest)["canonical_id"] != old_id
@@ -190,6 +195,10 @@ def test_rag226_new_device_does_not_trust_same_count_remote_ready_row(tmp_path):
     try:
         listed = instance.sources()
         visible = next(row for row in listed["documents"] if row["id"] == digest)
+        assert visible["status"] == "not_uploaded"
+        instance.wait_preparation([digest])
+        listed = instance.sources()
+        visible = next(row for row in listed["documents"] if row["id"] == digest)
         saved = instance.local.document(digest)
         assert visible["status"] == "ready"
         assert saved["remote_upload_id"] != digest
@@ -254,7 +263,10 @@ def test_rag226_upload_receipt_cannot_confirm_a_newer_concurrent_snapshot(tmp_pa
         assert row["status"] == "ready"  # raw DB state may reflect old receipt
         assert outcome[0]["documents"][0]["status"] == "not_uploaded"
         listed = next(item for item in instance.sources()["documents"] if item["id"] == digest)
-        assert listed["status"] == "ready"  # sources completed the new immutable version
+        assert listed["status"] == "not_uploaded"  # listing must not start an upload
+        instance.wait_preparation([digest])
+        listed = next(item for item in instance.sources()["documents"] if item["id"] == digest)
+        assert listed["status"] == "ready"
         assert instance.local.document(digest)["uploaded_content_sha256"] == \
             instance.local.document(digest)["current_content_sha256"]
         assert len(fake.documents) == 2

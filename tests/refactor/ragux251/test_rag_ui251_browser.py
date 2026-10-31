@@ -218,6 +218,8 @@ def _host(root: Path):
     bridge.register("test.seed_legacy", seed_legacy)
     bridge.register("test.trace", lambda p, c: {**metrics, "sessions": summaries()})
 
+    from tests.refactor.rag263.legacy_bridge263 import register_legacy_preparation
+    register_legacy_preparation(bridge, docs, ingest)
     view.resize(1200, 1200)
     view.show()
     view.setUrl(QUrl.fromLocalFile(str(root / "dist/index.html")))

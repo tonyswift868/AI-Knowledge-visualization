@@ -440,7 +440,8 @@ def test_rag155_bridge_registers_expected_methods_and_offline_sources_keep_local
         assert value["documents"][0]["title"] == "本地资料"
         assert value["sessions"][0]["id"] == session["id"]
         assert set(bridge.handlers) == {"rag.sources", "rag.ingest", "rag.pick_files", "rag.import_files",
-            "rag.create", "rag.update_documents", "rag.get", "rag.delete", "rag.send"}
+            "rag.create", "rag.update_documents", "rag.get", "rag.delete", "rag.send",
+            "rag.prepare", "rag.preparation", "rag.cancel_preparation"}
         assert bridge.handlers["rag.pick_files"][1] is True
     finally:
         instance.close()

@@ -19,6 +19,8 @@
 .rag-all-plan { justify-content: flex-start; width: 100%; min-height: 34px; padding: 6px 8px !important; font-size: .79rem !important; }
 .rag-all-plan span { color: var(--text-3); font-weight: 400; }
 .rag-document-list { display: grid; gap: 6px; max-height: min(30vh, 250px); overflow: auto; padding: 2px 2px 2px 0; }
+.rag-document-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px; }
+.rag-document-continue { flex: none; padding: 5px 7px !important; font-size: .68rem !important; }
 .rag-document { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); cursor: pointer; transition: border-color .16s, background .16s; }
 .rag-document:hover, .rag-document.selected { border-color: var(--accent); background: var(--accent-soft); }
 .rag-document input { width: 16px; height: 16px; flex: none; margin: 2px 0 0; accent-color: var(--accent); }

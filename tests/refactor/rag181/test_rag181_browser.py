@@ -144,6 +144,8 @@ def host181(root):
         bridge.push('model_status',dict(state='ok',short='模型连接正常'))
         return dict(session=s)
     bridge.register('rag.send',send)
+    from tests.refactor.rag263.legacy_bridge263 import register_legacy_preparation
+    register_legacy_preparation(bridge, docs, ingest)
     view.resize(1000,780);view.show();view.setUrl(QUrl.fromLocalFile(str(root/'dist/index.html')))
     timer=QTimer();timer.timeout.connect(lambda:app.quit() if (root/'done181').exists() else None);timer.start(100)
     try: app.exec()
