@@ -1,5 +1,7 @@
 """Content-version confirmation contract for plan-scoped RAG search."""
 
+import threading
+
 from refactor.learning.app import rag
 
 
@@ -34,6 +36,7 @@ def test_plan_search_does_not_query_old_remote_body_before_new_content_is_confir
 
     service = object.__new__(rag.RagService)
     service._closed = False
+    service._upload_lock = threading.RLock()  # created by __init__ since 263, which this test bypasses
     service._incomplete_documents = set()
     service._plan_documents = {}
     service.store = PlanStore()
