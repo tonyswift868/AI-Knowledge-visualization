@@ -7,7 +7,7 @@
 - **谁在做什么**：用户定需求、做决定、转发任务、亲自测试；两位架构师（Claude 会话）轮流当班，同一时间只有一位动主目录；GPT 员工在各自工位干活。交接只靠本文件、CURRENT_STATE 和 git 提交。
 - **接班**：读 AGENTS.md、CURRENT_STATE 的「当前阶段」和索引、本文件；看 `git log`；确认工位 `git status` 干净；问用户哪些已起草的任务真的发出去了。
 - **交班**（每次停手前都做）：用户定下的事当场改进对应条目；更新「当前阶段」、员工表、待派队列；本地提交。
-- **现在在做的事**（2026-10-31）：2.0.39 已发布并验签，等用户亲测。259-MF06 全量（基线 1efed95a，2026-10-31）5211 过、0 失败、49 跳过，Java 一项没跳；架构师正带用户一步步发 2.0.40（用户亲手做本机打包到验签）。
+- **现在在做的事**（2026-10-31）：2.0.40 已发布并验签（用户亲手走完发版全流程），2.0.39 和 2.0.40 都等用户亲测。没有员工在做的任务，待派队列空。
   - 回执处理：用户说做完了才读回执（不挂后台监视）；员工删临时文件常被系统拦住，合入后由架构师删 .local/test-tmp 下的任务目录，只把 report.md（和截图）留到 .local/r<批次>/。
 
 ## 固定做法（规则见 AGENTS.md）
@@ -29,7 +29,7 @@
 - **本机打包**（发版先验，[BUG-202]）：只能用专用打包环境，不能用平时测试的环境。在干净的员工工位里跑（如 D:\MentorFlow-office\runtime\repo，先 reset 到要发的提交），不在主目录跑：打包收尾要核对代码版本，打包期间主目录一提交就失败。在工位目录里 PowerShell 照抄：
   `$env:MF_TEMP_ROOT='D:\MentorFlow\.local\test-tmp'; $env:MF_BUILD_TOOLS='D:\MentorFlow\.local\release-tools\build-tools'; $env:MF_NODE_DIR='D:\MentorFlow\.local\node'; & D:\MentorFlow\.venv\Scripts\python.exe -B scripts\release\build_release.py --version <测试号如 9.257.1> --baseline <git rev-parse --short=8 HEAD> --valid-days 1096 --base-versions <线上版本> --notes <说明> --output-dir D:\MentorFlow\.local\test-tmp\<任务目录>\build --previous-release <已验签的线上 stable.json 副本>`
   先只跑环境检查（打印 Exact build pins verified: 73 才往下）。专用打包环境在 .local/release-tools/build-tools，不放进 test-tmp，清理临时文件时别删。
-- **发版辅助脚本**（.local/tools/release/，不进仓库）：`dispatch_build.py <版本> <基线版本> <更新说明>` 触发 mf-build（非必须）；`gh_release.py latest <工作流文件>` 看最近一次运行，`gh_release.py download <运行号> unsigned-<版本> <zip路径>` 下载产物（GitHub 跳转到存储地址时不能带认证头），`gh_release.py publish <版本>` 触发 mf-publish。令牌运行时从 Git Credential Manager 取，不落盘。核对 stable.json 用 `curl -A Mozilla/5.0`（Cloudflare 对 Python 默认 UA 回 403）。
+- **发版辅助脚本**（.local/tools/release/，不进仓库）：`dispatch_build.py <版本> <基线版本> <更新说明>` 触发 mf-build（非必须）；`gh_release.py latest <工作流文件>` 看最近一次运行，`gh_release.py download <运行号> unsigned-<版本> <zip路径>` 下载产物（GitHub 跳转到存储地址时不能带认证头），`gh_release.py publish <版本>` 触发 mf-publish。令牌运行时从 Git Credential Manager 取，不落盘。`verify_public.py <版本> <上一版>` 从公网下载 stable.json 并用客户端代码验签（用 curl 加浏览器 UA 下载，Cloudflare 对 Python 默认 UA 回 403），副本存到 .local/test-tmp/release-<版本>/verify/stable.json，下次本机打包的 --previous-release 就用它。
 - **启动/重启用户的源代码版**：`Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden`。重启前一定先问用户（可能在上课）。
 - **查用户软件的问题**：装好的软件日志 D:\MentorFlowApp\MentorFlow\Data\logs\mentorflow.log，源代码版日志 D:\MentorFlowData\account-shell\logs\mentorflow.log（JSON 行，只读）；数据库在对应的 learning\accounts\<账号>\*.sqlite3，只读查看用 `sqlite3.connect('file:...?mode=ro', uri=True)`。
 - **界面构建**：PATH 加 `/d/MentorFlow/.local/node`，`node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 不进仓库。
@@ -44,7 +44,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| main | 以 `git rev-parse --short HEAD` 为准；2.0.39 发版时推送到 3c106e74（2026-10-31），之后的提交随下次发版推送 |
+| main | 以 `git rev-parse --short HEAD` 为准；2.0.40 发版时推送到 4ec6ae18（2026-10-31），之后的提交随下次发版推送 |
 | 已发布 | 2.0.38（2026-10-29，非必须，只发软件内更新，基线 2.0.37，mf-build 40810814819、mf-publish 40811427277，公网 stable.json 已验签，[SYS-06]）；下载站安装程序 2.0.15；强制线 2.0.3；服务器 Java mentorflow-java-server:226（2026-10-29，237-MF01），数据库迁移 0046 |
 | GitHub | main 已推送（私有仓库），远端只有 main 一个分支（9-26 遗留的 15 个 Dependabot 升级请求与分支 2026-10-12 经用户同意已关闭并删除，它们的配置已随旧代码删除，不会再生成）；发版需要的推送由架构师做，其余推送要用户说 |
 | 工位分支 | office/* 只在本地，永不推送；每条任务第一步把工位 reset 到基线 |
@@ -65,9 +65,7 @@
 
 ## 待派队列
 
-- 259-MF06 全量（基线 1efed95a，2026-10-31）5211 过、0 失败、49 跳过，Java 一项没跳。
-- 2.0.40 发版（进行中）：架构师带用户一步步走一遍发版流程，本机打包（本文件「本机打包」）、推送、mf-build、签名、mf-publish、验签都由用户亲手做（用户 2026-10-31 要求）。
-- 2.0.39 已发布（2026-10-31，非必须，基线 2.0.38）：248～254 全部在内；本机先验和 GitHub 打包各一次成功，公网验签通过（[SYS-06] [BUG-202]）。
+- 2.0.40 已发布（2026-10-31，非必须，基线 2.0.39）：258（[BUG-203]）；259 全量全过，用户亲手本机打包、推送、mf-build、签名、mf-publish、验签，各一次成功（[SYS-06]）。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn，获授权后导出并发布 mentorflow-guide（AGENTS 第 12 条）；发给朋友前重做安装程序并走一遍全新安装和注册（[SYS-06] [ACC-02]）。模拟面试提示词已交付，学习规则见 [DOC-01]。
 
 ## 回执格式
