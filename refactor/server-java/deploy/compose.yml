@@ -33,7 +33,8 @@ services:
     tmpfs:
       # RAG-01 measured ~32 MiB native extraction plus JVM scratch; 128 MiB
       # leaves headroom while keeping the read-only container writable only here.
-      - /tmp:size=128m,mode=1777
+      # ONNX native libraries load from /tmp; Docker tmpfs defaults to noexec (BUG-205).
+      - /tmp:size=128m,mode=1777,exec
     mem_limit: 1024m
     entrypoint: ["/app/entrypoint.sh"]
 
