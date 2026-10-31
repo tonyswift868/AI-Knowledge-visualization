@@ -38,6 +38,11 @@ def test_rag219_waits_for_all_adopted_chunks_then_repairs_early_ready_upload(tmp
         ]
         complete = instance.sources()
         assert complete["plans"][0]["document_ids"] == [source_digest]
+        assert not any(r.method == "POST" for r in fake.requests)
+        # Listing/reopening no longer uploads. An explicit preparation request
+        # still repairs the earlier client's partial-ready source safely.
+        instance.wait_preparation([source_digest])
+        complete = instance.sources()
         visible = next(row for row in complete["documents"] if row["id"] == source_digest)
         assert visible["status"] == "ready" and visible["total_chunks"] == 3
         assert visible["uploaded_chunks"] == 3

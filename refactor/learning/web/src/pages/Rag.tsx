@@ -17,14 +17,41 @@ type Message = { id: string; role: "user" | "assistant"; content: string; passag
 type SessionSummary = { id: string; title: string; document_ids: string[]; updated_at: string; count: number }
 type Session = SessionSummary & { messages: Message[] }
 type SourcesResponse = { plans: Plan[]; documents: Document[]; sessions: SessionSummary[]; server_status?: { state: "ready" | "unavailable"; message?: string } }
+type PreparationJob = { id: string; document_id: string; state: "queued" | "running" | "ready" | "failed" | "cancelled"; uploaded_chunks: number; total_chunks: number; error?: string; sequence?: number }
+type PreparationSnapshot = { scope_id: string; jobs: PreparationJob[] }
+const ragPageContexts = new Map<string, { sessionId: string; documentIds: string[] }>()
+const ragQuestionDrafts = new Map<string, string>()
+
+function questionDraftKey(accountId: string, sessionId: string | undefined, documentIds: string[]) {
+  return `${accountId}\u001f${sessionId ?? "new"}\u001f${[...documentIds].sort().join("\u001f")}`
+}
+
+function latestPreparationJobs(jobs: PreparationJob[]) {
+  const byDocument = new Map<string, PreparationJob>()
+  jobs.forEach((job) => {
+    const previous = byDocument.get(job.document_id)
+    if (previous && (typeof job.sequence === "number" || typeof previous.sequence === "number")) {
+      if (typeof previous.sequence !== "number" || (typeof job.sequence === "number" && job.sequence >= previous.sequence)) byDocument.set(job.document_id, job)
+      return
+    }
+    const rank = job.state === "running" ? 2 : job.state === "queued" ? 1 : 0
+    const previousRank = previous?.state === "running" ? 2 : previous?.state === "queued" ? 1 : 0
+    if (!previous || rank > previousRank || (rank === previousRank && job.uploaded_chunks >= previous.uploaded_chunks)) byDocument.set(job.document_id, job)
+  })
+  return [...byDocument.values()]
+}
 
 export function Rag() {
   const toast = useApp((s) => s.toast)
+  const accountId = useApp((s) => s.account?.account_id ?? "")
   const modelFault = useApp((s) => s.modelFault)
   const [sources, setSources] = React.useState<SourcesResponse | null>(null)
   const [loadError, setLoadError] = React.useState("")
   const [planId, setPlanId] = React.useState("")
-  const [selected, setSelected] = React.useState<string[]>([])
+  const [selected, setSelected] = React.useState<string[]>(() => {
+    const account = useApp.getState().account?.account_id ?? ""
+    return [...(ragPageContexts.get(account)?.documentIds ?? [])]
+  })
   const [session, setSession] = React.useState<Session | null>(null)
   const sessionRef = React.useRef(session)
   sessionRef.current = session
@@ -40,6 +67,9 @@ export function Rag() {
   const [preparing, setPreparing] = React.useState<{ sessionId: string; ids: string[]; uploaded: number; total: number; source?: "explicit" | "send" } | null>(null)
   const [prepareFailure, setPrepareFailure] = React.useState<{ sessionId: string; ids: string[]; message: string } | null>(null)
   const [progress, setProgress] = React.useState<Record<string, Partial<Document>>>({})
+  const [preparationJobs, setPreparationJobs] = React.useState<Record<string, PreparationJob>>({})
+  const preparationJobsRef = React.useRef(preparationJobs)
+  const allPreparationJobsRef = React.useRef<Record<string, PreparationJob>>({})
   const preparingRef = React.useRef(preparing)
   const progressRef = React.useRef(progress)
   const docByIdRef = React.useRef<(id: string) => Document | undefined>(docById)
@@ -49,11 +79,14 @@ export function Rag() {
   const [sourceOpen, setSourceOpen] = React.useState<{ messageId: string; number: number } | null>(null)
   const abort = React.useRef<AbortController | null>(null)
   const preparationAbort = React.useRef<AbortController | null>(null)
+  const preparationJobIds = React.useRef<string[]>([])
+  const preparationScopeId = React.useRef("")
   const mounted = React.useRef(false)
   const sessionReadRevision = React.useRef(0)
   const sourcesReadRevision = React.useRef(0)
   const accountScopeRevision = React.useRef(0)
   const workflowRevision = React.useRef(0)
+  const explicitCancelRevision = React.useRef(0)
   const sendPreparationCancelled = React.useRef(false)
   const sourcesFlight = React.useRef<Promise<SourcesResponse> | null>(null)
   const probeRagStatus = React.useRef<(() => void) | null>(null)
@@ -64,10 +97,23 @@ export function Rag() {
     .map((id) => sources?.documents.find((doc) => doc.id === id)?.title)
     .filter((title): title is string => !!title), [selected, sources])
   const voiceScopeKey = `rag:${session?.id ?? "new"}:${[...selected].sort().join("\u001f")}`
+  const draftKey = questionDraftKey(accountId, session?.id, session?.document_ids ?? selected)
+  React.useEffect(() => {
+    setQuestion(ragQuestionDrafts.get(draftKey) ?? "")
+  }, [draftKey])
+  React.useEffect(() => {
+    if (!accountId || (!session && !selected.length) || (!session && ragPageContexts.get(accountId)?.sessionId)) return
+    ragPageContexts.set(accountId, { sessionId: session?.id ?? "", documentIds: [...selected] })
+  }, [accountId, session?.id, selected.join("\u001f")])
+  function persistQuestion(value: string) {
+    if (value) ragQuestionDrafts.set(draftKey, value)
+    else ragQuestionDrafts.delete(draftKey)
+  }
   const onVoiceChange = React.useCallback((value: string) => {
     setQuestion(value)
+    persistQuestion(value)
     if (value.trim() !== question.trim() && (sendFailure || ragFault)) clearSendFailure()
-  }, [question, sendFailure, ragFault])
+  }, [question, sendFailure, ragFault, draftKey])
   const questionVoice = useVoiceInput({
     value: question,
     onChange: onVoiceChange,
@@ -86,14 +132,23 @@ export function Rag() {
   }
 
   function cancelPreparation() {
-    if (preparingRef.current?.source === "send") {
-      // This preparation runs inside rag.send, so abort its shared request to
-      // prevent it from continuing into retrieval or a model call.
+    explicitCancelRevision.current++
+    const currentIds = preparingRef.current?.ids
+    const activeJobIds = Object.values(allPreparationJobsRef.current)
+      .filter((job) => (job.state === "queued" || job.state === "running") && (!currentIds?.length || currentIds.includes(job.document_id)))
+      .map((job) => job.id)
+    const jobIds = [...new Set([...preparationJobIds.current, ...activeJobIds])]
+    preparationJobIds.current = []
+    const accountRevision = accountScopeRevision.current
+    const expectedScope = preparationScopeId.current
+    if (jobIds.length) void call<PreparationSnapshot>("rag.cancel_preparation", { job_ids: jobIds }).then((snapshot) => {
+      if (accountRevision === accountScopeRevision.current && (useApp.getState().account?.account_id ?? "") === accountId
+        && (!expectedScope || snapshot.scope_id === expectedScope)) applyPreparationSnapshot(snapshot)
+    }).catch(() => {})
+    if (preparingRef.current?.source === "send" || busyRef.current === "send") {
+      // Explicit cancellation also stops a rag.send request waiting on its job.
       sendPreparationCancelled.current = true
       abort.current?.abort()
-      preparingRef.current = null
-      setPreparing(null)
-      return
     }
     workflowRevision.current++
     preparationAbort.current?.abort()
@@ -103,9 +158,13 @@ export function Rag() {
     setBusy((current) => current === "prepare" ? "" : current)
   }
 
-  function mergeIngestedDocuments(updated: Document[]) {
-    if (!updated.length) return
-    setSources((current) => current ? { ...current, documents: mergeDocuments(current.documents, updated) } : current)
+  function stopWaitingForPreparation() {
+    workflowRevision.current++
+    preparationAbort.current?.abort()
+    preparationAbort.current = null
+    setPreparing(null)
+    preparingRef.current = null
+    setBusy((current) => current === "prepare" ? "" : current)
   }
 
   function upsertSession(sessionValue: Session) {
@@ -122,40 +181,71 @@ export function Rag() {
     } : current)
   }
 
-  async function prepareDocuments(sessionId: string, ids: string[]) {
+  async function prepareDocuments(sessionId: string, ids: string[], priority = false) {
     const documentIds = [...new Set(ids)].filter((id) => docById(id)?.status !== "ready")
     setPrepareFailure(null)
     if (!documentIds.length) return true
 
     const revision = ++workflowRevision.current
     const accountRevision = accountScopeRevision.current
+    const cancelRevision = explicitCancelRevision.current
     const controller = new AbortController()
     preparationAbort.current?.abort()
     preparationAbort.current = controller
     const total = documentIds.reduce((sum, id) => sum + (docById(id)?.total_chunks ?? 0), 0)
     const isCurrent = () => mounted.current && revision === workflowRevision.current
       && accountRevision === accountScopeRevision.current
+      && (useApp.getState().account?.account_id ?? "") === accountId
     const operation = { sessionId, ids: documentIds, uploaded: 0, total, source: "explicit" as const }
     preparingRef.current = operation
     setPreparing(operation)
     setBusy("prepare")
+    preparationJobIds.current = []
     try {
-      const result = await call<{ documents: Document[] }>("rag.ingest", { document_ids: documentIds }, { signal: controller.signal })
-      if (!isCurrent()) return false
-      const updated = result.documents ?? []
-      mergeIngestedDocuments(updated)
-      const failed = documentIds.map((id) => updated.find((doc) => doc.id === id) ?? docById(id))
-        .filter((doc): doc is Document => !!doc && doc.status !== "ready")
-      if (failed.length) {
-        const message = failed.map((doc) => `${doc.title}${doc.error ? `：${doc.error}` : "未完成准备"}`).join("；")
-        setPrepareFailure({ sessionId, ids: documentIds, message })
-        setSources((current) => current ? { ...current, documents: current.documents.map((doc) => {
-          const failure = failed.find((item) => item.id === doc.id)
-          return failure ? { ...doc, status: "failed", error: failure.error || "资料准备未完成。" } : doc
-        }) } : current)
+      const started = await call<PreparationSnapshot>("rag.prepare", { document_ids: documentIds, priority })
+      if (!isCurrent()) {
+        if (cancelRevision !== explicitCancelRevision.current && accountRevision === accountScopeRevision.current
+          && (useApp.getState().account?.account_id ?? "") === accountId) {
+          const jobIds = started.jobs.filter((job) => documentIds.includes(job.document_id)
+            && (job.state === "queued" || job.state === "running")).map((job) => job.id)
+          if (jobIds.length) void call<PreparationSnapshot>("rag.cancel_preparation", { job_ids: jobIds }).catch(() => {})
+        }
         return false
       }
-      return true
+      if (preparationScopeId.current && started.scope_id !== preparationScopeId.current) return false
+      preparationScopeId.current = started.scope_id
+      const targetJobs = latestPreparationJobs(started.jobs).filter((job) => documentIds.includes(job.document_id))
+      const targetJobIds = new Set(targetJobs.map((job) => job.id))
+      const resetJobs = { ...preparationJobsRef.current }
+      targetJobs.forEach((job) => { delete resetJobs[job.document_id] })
+      preparationJobsRef.current = resetJobs
+      setPreparationJobs(resetJobs)
+      applyPreparationSnapshot({ ...started, jobs: targetJobs })
+      preparationJobIds.current = targetJobs.filter((job) => job.state === "queued" || job.state === "running").map((job) => job.id)
+      while (!controller.signal.aborted && isCurrent()) {
+        const snapshot = await call<PreparationSnapshot>("rag.preparation", { document_ids: documentIds })
+        if (!isCurrent() || controller.signal.aborted || snapshot.scope_id !== preparationScopeId.current) return false
+        const jobs = snapshot.jobs.filter((job) => targetJobIds.has(job.id))
+        applyPreparationSnapshot(snapshot)
+        preparationJobIds.current = jobs.filter((job) => job.state === "queued" || job.state === "running").map((job) => job.id)
+        const failed = jobs.filter((job) => job.state === "failed" || job.state === "cancelled")
+        if (failed.length) {
+          const message = failed.map((job) => `${docById(job.document_id)?.title ?? job.document_id}${job.error ? `：${job.error}` : "未完成准备"}`).join("；")
+          setPrepareFailure({ sessionId, ids: documentIds, message })
+          return false
+        }
+        const latestByDocument = new Map(jobs.map((job) => [job.document_id, job]))
+        if (documentIds.every((id) => latestByDocument.get(id)?.state === "ready")) return true
+        const uploaded = jobs.reduce((sum, job) => sum + job.uploaded_chunks, 0)
+        const chunks = jobs.reduce((sum, job) => sum + job.total_chunks, 0)
+        preparingRef.current = { ...operation, uploaded, total: chunks }
+        setPreparing(preparingRef.current)
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 750)
+          controller.signal.addEventListener("abort", () => { clearTimeout(timer); resolve() }, { once: true })
+        })
+      }
+      return false
     } catch (error) {
       if (!isCurrent()) return false
       const failure = error as Error & { code?: string }
@@ -177,6 +267,56 @@ export function Rag() {
     }
   }
 
+  function applyPreparationSnapshot(snapshot: PreparationSnapshot) {
+    if (!snapshot?.jobs) return
+    if (preparationScopeId.current && snapshot.scope_id && snapshot.scope_id !== preparationScopeId.current) return
+    if (snapshot.scope_id) preparationScopeId.current = snapshot.scope_id
+    snapshot.jobs.forEach((job) => { allPreparationJobsRef.current[job.id] = job })
+    const latestByDocument = new Map(latestPreparationJobs(snapshot.jobs).map((job) => [job.document_id, job]))
+    const mergedJobs = { ...preparationJobsRef.current }
+    latestByDocument.forEach((job) => {
+      const previous = mergedJobs[job.document_id]
+      if (typeof previous?.sequence === "number" && (typeof job.sequence !== "number" || previous.sequence > job.sequence)) return
+      const sameJob = previous?.id === job.id
+      const previousTerminal = previous && (previous.state === "ready" || previous.state === "failed" || previous.state === "cancelled")
+      const incomingActive = job.state === "queued" || job.state === "running"
+      mergedJobs[job.document_id] = sameJob && ((previous.uploaded_chunks > job.uploaded_chunks) || (previousTerminal && incomingActive))
+        ? { ...job, state: previous.state, uploaded_chunks: Math.max(previous.uploaded_chunks, job.uploaded_chunks), error: previous.error ?? job.error }
+        : job
+    })
+    preparationJobsRef.current = mergedJobs
+    setPreparationJobs(mergedJobs)
+    setProgress((old) => {
+      const next = { ...old }
+      latestByDocument.forEach(({ document_id }) => {
+        const job = mergedJobs[document_id]
+        next[document_id] = { ...next[document_id], status: job.state === "ready" ? "ready" : job.state === "failed" || job.state === "cancelled" ? "failed" : "uploading", uploaded_chunks: job.uploaded_chunks, total_chunks: job.total_chunks, error: job.error }
+      })
+      return next
+    })
+    setSources((old) => old ? { ...old, documents: old.documents.map((doc) => {
+      const job = latestByDocument.has(doc.id) ? mergedJobs[doc.id] : undefined
+      return job ? { ...doc, status: job.state === "ready" ? "ready" : job.state === "failed" || job.state === "cancelled" ? "failed" : "uploading", uploaded_chunks: job.uploaded_chunks, total_chunks: job.total_chunks, error: job.error } : doc
+    }) } : old)
+    const activeJobs = [...latestByDocument.keys()].map((id) => mergedJobs[id]).filter((job) => job.state === "queued" || job.state === "running")
+    const activeSession = sessionRef.current
+    if (activeJobs.length && activeSession && activeJobs.some((job) => activeSession.document_ids.includes(job.document_id))) {
+      const ids = activeJobs.filter((job) => activeSession.document_ids.includes(job.document_id)).map((job) => job.document_id)
+      const matchingJobs = activeJobs.filter((job) => ids.includes(job.document_id))
+      const operation = { sessionId: activeSession.id, ids, uploaded: matchingJobs.reduce((sum, job) => sum + job.uploaded_chunks, 0), total: matchingJobs.reduce((sum, job) => sum + job.total_chunks, 0), source: "explicit" as const }
+      preparingRef.current = operation
+      setPreparing(operation)
+    } else {
+      const current = preparingRef.current
+      const currentJobs = current?.ids.map((id) => latestByDocument.get(id)) ?? []
+      if (current && currentJobs.length && currentJobs.every((job) => job && job.state !== "queued" && job.state !== "running")) {
+        preparingRef.current = null
+        setPreparing(null)
+        setBusy((value) => value === "prepare" ? "" : value)
+      }
+    }
+  }
+
   const refresh = React.useCallback(async () => {
     if (sourcesFlight.current) return sourcesFlight.current
     const flight = (async () => {
@@ -184,6 +324,7 @@ export function Rag() {
         const revision = sourcesReadRevision.current
         const result = await call<SourcesResponse>("rag.sources")
         if (!mounted.current) return result
+        if ((useApp.getState().account?.account_id ?? "") !== accountId) return result
         if (revision === sourcesReadRevision.current) {
           setSources(result)
           setLoadError("")
@@ -200,7 +341,26 @@ export function Rag() {
     } finally {
       if (sourcesFlight.current === flight) sourcesFlight.current = null
     }
-  }, [])
+  }, [accountId])
+  React.useEffect(() => {
+    if (!sources || !selected.length || !mounted.current) return
+    let active = true
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const accountRevision = accountScopeRevision.current
+    const query = async () => {
+      try {
+        const snapshot = await call<PreparationSnapshot>("rag.preparation", { document_ids: selected })
+        if (!active || accountRevision !== accountScopeRevision.current || (useApp.getState().account?.account_id ?? "") !== accountId
+          || (preparationScopeId.current && snapshot.scope_id !== preparationScopeId.current)) return
+        const jobs = latestPreparationJobs(snapshot.jobs)
+        applyPreparationSnapshot(snapshot)
+        preparationJobIds.current = snapshot.jobs.filter((job) => job.state === "queued" || job.state === "running").map((job) => job.id)
+        if (jobs.some((job) => job.state === "queued" || job.state === "running")) timer = setTimeout(() => { void query() }, 1200)
+      } catch { /* sources remain usable when the preparation status endpoint is unavailable */ }
+    }
+    void query()
+    return () => { active = false; if (timer) clearTimeout(timer) }
+  }, [!!sources, selected.join("\u001f"), accountId, session?.id])
   function invalidateSourcesRead() {
     sourcesReadRevision.current++
   }
@@ -231,12 +391,21 @@ export function Rag() {
       inFlight = true
       try {
         const result = await refresh()
-        if (!alive || scope !== accountScopeRevision.current) return
-        if (initial && result.sessions[0]) void openSession(result.sessions[0].id)
+        if (!alive || scope !== accountScopeRevision.current || (useApp.getState().account?.account_id ?? "") !== accountId) return
+        if (initial) {
+          const context = ragPageContexts.get(useApp.getState().account?.account_id ?? "")
+          if (context?.sessionId && result.sessions.some((item) => item.id === context.sessionId)) void openSession(context.sessionId)
+          else if (context?.documentIds.length) {
+            const knownIds = new Set(result.documents.map((doc) => doc.id))
+            const ids = context.documentIds.filter((id) => knownIds.has(id))
+            setSelected(ids)
+            setPlanId(planForDocuments(ids))
+          } else if (result.sessions[0]) void openSession(result.sessions[0].id)
+        }
         pollRequired = result.server_status?.state === "unavailable"
         if (!pollRequired) delay = 1500
       } catch (e) {
-        if (!alive || scope !== accountScopeRevision.current) return
+        if (!alive || scope !== accountScopeRevision.current || (useApp.getState().account?.account_id ?? "") !== accountId) return
         pollRequired = true
         if (initial) setLoadError((e as Error).message)
       } finally {
@@ -252,6 +421,18 @@ export function Rag() {
     const off = on("rag.progress", (event) => {
       const id = String(event?.id ?? event?.document_id ?? "")
       if (!id) return
+      const jobId = String(event?.job_id ?? "")
+      const preparationState = event?.preparation_state as PreparationJob["state"] | undefined
+      if (jobId && preparationState) {
+        const eventScope = String(event?.scope_id ?? "")
+        if (!eventScope || !preparationScopeId.current || eventScope !== preparationScopeId.current) return
+        const job: PreparationJob = { id: jobId, document_id: id, state: preparationState,
+          uploaded_chunks: Number(event?.uploaded_chunks ?? event?.uploaded ?? 0), total_chunks: Number(event?.total_chunks ?? event?.total ?? 0), error: event?.error,
+          sequence: typeof event?.sequence === "number" ? event.sequence : undefined }
+        applyPreparationSnapshot({ scope_id: eventScope, jobs: [job] })
+        if (preparationState === "queued" || preparationState === "running") preparationJobIds.current = [...new Set([...preparationJobIds.current, jobId])]
+        else preparationJobIds.current = preparationJobIds.current.filter((item) => item !== jobId)
+      }
       let operation = preparingRef.current
       if (!operation && !sendPreparationCancelled.current && busyRef.current === "send" && pendingRef.current) {
         const activeSession = sessionRef.current
@@ -262,7 +443,7 @@ export function Rag() {
           setPreparing(operation)
         }
       }
-      if (!operation && busyRef.current !== "import") return
+      if (!operation && busyRef.current !== "import" && !jobId) return
       if (operation && !operation.ids.includes(id)) return
       setProgress((old) => ({ ...old, [id]: event }))
       if (operation && operation.ids.includes(id)) {
@@ -281,7 +462,10 @@ export function Rag() {
     const offScope = on("scope_changed", () => {
       accountScopeRevision.current++
       workflowRevision.current++
-      preparationAbort.current?.abort()
+      stopWaitingForPreparation()
+      preparationJobIds.current = []
+      preparationScopeId.current = ""
+      allPreparationJobsRef.current = {}
       preparationAbort.current = null
       abort.current?.abort()
       sourcesReadRevision.current++
@@ -293,6 +477,8 @@ export function Rag() {
       setPreparing(null)
       preparingRef.current = null
       setProgress({})
+      preparationJobsRef.current = {}
+      setPreparationJobs({})
       sendPreparationCancelled.current = false
       setPrepareFailure(null)
       setEditingSessionSources(false)
@@ -303,16 +489,16 @@ export function Rag() {
       busyRef.current = ""
       clearSendFailure()
     })
-    return () => { alive = false; mounted.current = false; sourcesReadRevision.current++; sessionReadRevision.current++; workflowRevision.current++; probeRagStatus.current = null; clearScheduled(); off(); offScope(); abort.current?.abort(); preparationAbort.current?.abort() }
+    return () => { alive = false; mounted.current = false; sourcesReadRevision.current++; sessionReadRevision.current++; workflowRevision.current++; probeRagStatus.current = null; clearScheduled(); off(); offScope(); abort.current?.abort(); preparationAbort.current?.abort(); preparationAbort.current = null }
   }, [refresh])
 
   async function openSession(id: string) {
-    cancelPreparation()
+    stopWaitingForPreparation()
     setEditingSessionSources(false)
     const revision = ++sessionReadRevision.current
     try {
       const result = await call<{ session: Session }>("rag.get", { session_id: id })
-      if (!mounted.current || revision !== sessionReadRevision.current) return
+      if (!mounted.current || revision !== sessionReadRevision.current || (useApp.getState().account?.account_id ?? "") !== accountId) return
       setSession(result.session)
       sessionRef.current = result.session
       setSelected(result.session.document_ids)
@@ -362,14 +548,14 @@ export function Rag() {
   }
   function beginSessionSourcesEdit() {
     if (!session || busy || pending) return
-    cancelPreparation()
+    stopWaitingForPreparation()
     setPrepareFailure(null)
     setSelected(session.document_ids)
     setPlanId(planForDocuments(session.document_ids))
     setEditingSessionSources(true)
   }
   function cancelSessionSourcesEdit() {
-    cancelPreparation()
+    stopWaitingForPreparation()
     setSelected(session?.document_ids ?? [])
     setEditingSessionSources(false)
     setPrepareFailure(null)
@@ -387,6 +573,8 @@ export function Rag() {
         session_id: currentSessionId, document_ids: ids,
       })
       if (!mounted.current || revision !== sessionReadRevision.current || accountRevision !== accountScopeRevision.current || session?.id !== currentSessionId) return
+      const draft = ragQuestionDrafts.get(questionDraftKey(accountId, currentSessionId, session.document_ids)) ?? question
+      if (draft) ragQuestionDrafts.set(questionDraftKey(accountId, currentSessionId, result.session.document_ids), draft)
       setSession(result.session)
       sessionRef.current = result.session
       setSelected(result.session.document_ids)
@@ -412,6 +600,8 @@ export function Rag() {
     try {
       const result = await call<{ session: Session }>("rag.create", { document_ids: ids })
       if (!mounted.current || accountRevision !== accountScopeRevision.current || revision !== sessionReadRevision.current) return
+      const draft = ragQuestionDrafts.get(draftKey)
+      if (draft) ragQuestionDrafts.set(questionDraftKey(accountId, result.session.id, result.session.document_ids), draft)
       setSession(result.session)
       sessionRef.current = result.session
       setSelected(result.session.document_ids)
@@ -440,6 +630,7 @@ export function Rag() {
     sendPreparationCancelled.current = false
     const isCurrent = () => mounted.current && revision === sessionReadRevision.current
       && accountRevision === accountScopeRevision.current
+      && (useApp.getState().account?.account_id ?? "") === accountId
       && sessionRef.current?.id === activeSession?.id
     if (!activeSession) {
       setBusy("session")
@@ -447,6 +638,7 @@ export function Rag() {
         const created = await call<{ session: Session }>("rag.create", { document_ids: ids })
         if (!mounted.current || revision !== sessionReadRevision.current || accountRevision !== accountScopeRevision.current) return
         activeSession = created.session
+        ragQuestionDrafts.set(questionDraftKey(accountId, activeSession.id, ids), text)
         setSession(activeSession)
         sessionRef.current = activeSession
         setSelected(activeSession.document_ids)
@@ -461,7 +653,7 @@ export function Rag() {
       }
     }
     if (ids.some((id) => docById(id)?.status !== "ready")) {
-      if (!await prepareDocuments(activeSession.id, ids)) return
+      if (!await prepareDocuments(activeSession.id, ids, true)) return
       if (!isCurrent()) return
     }
     setSourceOpen(null)
@@ -470,6 +662,8 @@ export function Rag() {
     busyRef.current = "send"
     try {
       beginRound(activeSession.id)
+      persistQuestion("")
+      ragQuestionDrafts.delete(questionDraftKey(accountId, activeSession.id, ids))
       setQuestion("")
       const pendingValue = { text, reply: "" }
       pendingRef.current = pendingValue
@@ -489,6 +683,7 @@ export function Rag() {
     } catch (e) {
       if (!isCurrent()) return
       const error = e as Error & { code?: string; model_fault?: { category?: string; purpose?: string } }
+      ragQuestionDrafts.set(questionDraftKey(accountId, activeSession.id, ids), text)
       setQuestion((current) => current || text)
       if (error.code === "RAG_DOCUMENT_NOT_READY") {
         const documentIds = activeSession.document_ids
@@ -583,11 +778,13 @@ export function Rag() {
             const planNames = doc.plan_ids.map((id) => sources.plans.find((plan) => plan.id === id)?.title).filter(Boolean)
             const status = progress[doc.id] ?? doc
             const activelyPreparing = !!preparing && !!session && preparing.sessionId === session.id && preparing.ids.includes(doc.id)
-            return <label className={`rag-document ${selected.includes(doc.id) ? "selected" : ""}`} key={doc.id}>
+            const job = preparationJobs[doc.id]
+            const hasActiveJob = job?.state === "queued" || job?.state === "running"
+            return <div className="rag-document-row" key={doc.id}><label className={`rag-document ${selected.includes(doc.id) ? "selected" : ""}`}>
               <input type="checkbox" data-testid={`rag-document-${doc.id}`} aria-label={`选择资料：${doc.title}`} checked={selected.includes(doc.id)} disabled={!!pending || !!busy || sidebarSelectionLocked} onChange={() => toggleDocument(doc.id)} />
               <span className="rag-document-info"><b title={doc.title}>{doc.title}</b><small>{planNames.join(" · ") || "单独上传"}</small>
         <small className={`rag-doc-status ${status.status === "failed" ? "failed" : ""}`} role="status">{documentStatus(status, activelyPreparing)}</small></span>
-            </label>
+            </label>{(status.status === "uploading" || status.status === "failed") && !hasActiveJob && <Button small kind="ghost" className="rag-document-continue" data-testid={`rag-document-continue-${doc.id}`} onClick={() => void prepareDocuments(session?.id ?? "resume", [doc.id])}>继续准备</Button>}</div>
           })}
         </div>
         <div className="rag-upload-row">
@@ -664,7 +861,7 @@ export function Rag() {
           </div>}
           <div className="rag-question-input">
             <textarea className="input" rows={2} data-testid="rag-question" aria-label="输入资料问题" value={question} disabled={!!pending || !!busy}
-              placeholder="例如：这份资料是怎样解释这个概念的？" onChange={(event) => { const value = event.target.value; setQuestion(value); if (value.trim() !== question.trim() && (sendFailure || ragFault)) clearSendFailure() }}
+              placeholder="例如：这份资料是怎样解释这个概念的？" onChange={(event) => { const value = event.target.value; setQuestion(value); persistQuestion(value); if (value.trim() !== question.trim() && (sendFailure || ragFault)) clearSendFailure() }}
               onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }} />
             <div data-testid="rag-question-mic" role="group" aria-label="资料问题语音输入"><MicButton voice={questionVoice} /></div>
           </div>

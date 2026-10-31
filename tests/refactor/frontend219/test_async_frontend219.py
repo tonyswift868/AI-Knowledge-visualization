@@ -127,6 +127,8 @@ def host(root):
         title='较新详情' if own>=3 else '初始详情'
         return {'plan':{'id':'plan-219','title':title,'goal':'离线竞态','state':'ready','window':None,'total_minutes':0},'stages':[],'point_links':[],'point_links_status':'ready','daily':{'full_day':1,'cap':30},'sources':[],'point_minutes_status':'none','preparation_status':'none'}
     register('plan.detail',plan_detail);register('classroom.gaps',lambda p,c:[]);register('settings.teacher_presets',lambda p,c:{'presets':[]})
+    from tests.refactor.rag263.legacy_bridge263 import register_legacy_preparation
+    register_legacy_preparation(bridge, docs)
     view.resize(1100,850);view.show();view.setUrl(QUrl.fromLocalFile(str(root/'dist/index.html')))
     timer=QTimer();timer.timeout.connect(lambda:app.quit() if (root/'done').exists() else None);timer.start(100)
     try:app.exec()

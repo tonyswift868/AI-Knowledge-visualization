@@ -327,6 +327,10 @@ class LearningWindow(QWidget):
     def request_account_action(self, action):
         if action in {'switch', 'logout'}:
             self.speech.reset()
+            services = getattr(self, 'services', None)
+            rag = getattr(services, '_rag', None) if services is not None else None
+            if rag is not None:
+                rag.stop_preparations()
             self.bridge.cancel_pending()
             if self._sync is not None:
                 self._sync.stop()

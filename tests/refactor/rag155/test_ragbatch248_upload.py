@@ -292,6 +292,9 @@ def test_ragbatch248_sources_capacity_error_does_not_change_remote_id_or_reuploa
     try:
         monkeypatch.setattr(rag, "BATCH_BYTES", 50_000)
         listed = instance.sources()
+        assert attempted == []
+        instance.wait_preparation([doc_id])
+        listed = instance.sources()
         saved = instance.local.document(doc_id)
         assert saved["remote_upload_id"] == doc_id
         assert saved["uploaded_chunks"] == 2
