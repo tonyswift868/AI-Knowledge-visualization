@@ -31,6 +31,8 @@ API = "/api/enterprise/rag/v1"
 # Leave room below the server's configured 9 MiB request limit for gateways
 # that apply slightly different framing or limits.
 BATCH_BYTES = 8 * 1024 * 1024
+# 265: 1006 chunks / 61 s; 64 is ~3.9 s at that mean, leaving headroom below the 60 s read timeout.
+BATCH_CHUNKS = 64
 MAX_QUESTION = 20_000
 
 SYSTEM = """你是资料问答助手。回答必须严格区分资料原文与资料外知识。
@@ -931,12 +933,14 @@ class RagService:
             payload_chunk = {key: chunk.get(key) for key in ("text", "page", "section")}
             payload_chunk["seq"] = seq
             candidate = batch + [payload_chunk]
-            if self._upload_body_size({**base, "chunks": candidate}) > BATCH_BYTES and batch:
+            if (len(candidate) > BATCH_CHUNKS
+                    or self._upload_body_size({**base, "chunks": candidate}) > BATCH_BYTES) and batch:
                 batches.append(batch)
                 batch = [payload_chunk]
             else:
                 batch = candidate
-            if self._upload_body_size({**base, "chunks": batch}) > BATCH_BYTES:
+            if (len(batch) > BATCH_CHUNKS
+                    or self._upload_body_size({**base, "chunks": batch}) > BATCH_BYTES):
                 display_seq = seq + 1
                 raise BridgeError("RAG_CHUNK_TOO_LARGE",
                     f"资料分块清单中第 {display_seq} 段超过单次补传容量，无法安全补齐。")
@@ -968,7 +972,7 @@ class RagService:
                 return True
             # The server keeps the previous ready data searchable during repair.
             if on_progress:
-                on_progress(self._doc_view({**row, "status": "ready",
+                on_progress(self._doc_view({**row, "status": "uploading",
                     "uploaded_chunks": received, "canonical_total_chunks": total},
                     row.get("plan_ids", ())))
             return False
@@ -1078,14 +1082,16 @@ class RagService:
         for seq, chunk in enumerate(chunks):
             payload_chunk = {key: chunk.get(key) for key in ("seq", "text", "page", "section")}
             candidate = batch + [payload_chunk]
-            if self._upload_body_size({"title": row["title"], "source": row["source"],
-                    "total_chunks": len(chunks), "chunks": candidate}) > BATCH_BYTES and batch:
+            if (len(candidate) > BATCH_CHUNKS
+                    or self._upload_body_size({"title": row["title"], "source": row["source"],
+                        "total_chunks": len(chunks), "chunks": candidate}) > BATCH_BYTES) and batch:
                 batches.append(batch)
                 batch = [payload_chunk]
             else:
                 batch = candidate
-            if self._upload_body_size({"title": row["title"], "source": row["source"],
-                    "total_chunks": len(chunks), "chunks": batch}) > BATCH_BYTES:
+            if (len(batch) > BATCH_CHUNKS
+                    or self._upload_body_size({"title": row["title"], "source": row["source"],
+                        "total_chunks": len(chunks), "chunks": batch}) > BATCH_BYTES):
                 display_seq = chunk.get("seq", seq)
                 if type(display_seq) is int and display_seq >= 0:
                     display_seq += 1
@@ -1118,7 +1124,7 @@ class RagService:
             self.local.set_remote_state(row["id"], canonical_id, status, received, total)
             progress = self._doc_view({**row, "canonical_id": canonical_id,
                                         "canonical_total_chunks": total,
-                                        "uploaded_chunks": received, "status": status},
+                                        "uploaded_chunks": received, "status": "uploading"},
                                       row.get("plan_ids", ()))
             if on_progress:
                 on_progress(progress)
