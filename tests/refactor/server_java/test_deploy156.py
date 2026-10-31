@@ -39,7 +39,7 @@ def test_compose_rag_memory_tmpfs_and_cache_contract():
     compose = yaml.safe_load((DEPLOY / "compose.yml").read_text(encoding="utf-8"))
     backend = compose["services"]["java-backend"]
     assert backend["mem_limit"] == "1024m"
-    assert "/tmp:size=128m,mode=1777" in backend["tmpfs"]
+    assert "/tmp:size=128m,mode=1777,exec" in backend["tmpfs"]
     environment = backend["environment"]
     assert environment["DJL_CACHE_DIR"] == "/tmp/mentorflow-rag/native-cache"
     assert environment["ENGINE_CACHE_DIR"] == environment["DJL_CACHE_DIR"]
