@@ -8,6 +8,17 @@ const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pen
 async function js(expression){const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value}
 async function until(expression,limit=500){for(let i=0;i<limit;i++){if(await js(expression))return;await pause()}throw Error('timeout: '+expression)}
 async function click(selector){const p=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);if(!p)throw Error('missing '+selector);await call('Input.dispatchMouseEvent',{type:'mousePressed',x:p.x,y:p.y,button:'left',clickCount:1});await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x,y:p.y,button:'left',clickCount:1});await pause(80)}
+async function key(key,code,value){await call('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:value});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:value});await pause(50)}
+async function selectAllPlans(){
+ await click('[data-testid="rag-plan-select"]');await until(`!!document.querySelector('[role="listbox"]')`)
+ const wanted='rag-plan-option-empty'
+ for(let i=0;i<8;i++){
+  const state=await js(`(()=>{const e=document.querySelector('[data-testid="rag-plan-select"]'),id=e?.getAttribute('aria-activedescendant'),items=[...document.querySelectorAll('[role="listbox"] [role="option"]')];return{active:items.findIndex(x=>x.id===id),target:items.findIndex(x=>x.dataset.testid===${JSON.stringify(wanted)})}})()`)
+  if(state.active===state.target)break
+  await key(state.active<state.target?'ArrowDown':'ArrowUp',state.active<state.target?'ArrowDown':'ArrowUp',state.active<state.target?40:38)
+ }
+ await key('Enter','Enter',13);await until(`!document.querySelector('[role="listbox"]')`)
+}
 const result={ok:false,checks:[]};const check=(ok,label)=>{if(!ok)throw Error(label);result.checks.push(label)};
 try{
  await until(`!!document.querySelector('[data-testid="rag-page"]')`);
@@ -21,7 +32,7 @@ try{
  await until(`document.querySelector('.topbar')?.innerText.includes('已登录')`);await until(`!document.querySelector('.banner')`);
  const recoveredCount=JSON.parse(fs.readFileSync(path.join(root,'sources-count181.json'),'utf8')).calls;await pause(1800);check(JSON.parse(fs.readFileSync(path.join(root,'sources-count181.json'),'utf8')).calls===recoveredCount,'recovery cancels the stale poll schedule');
  const recovered=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(root,'../screenshots/offline-recovered181.png'),Buffer.from(recovered.data,'base64'));
- await click('[data-testid="rag-document-doc-a"]');
+ await click('[data-testid="rag-add-document-doc-a"]');
  await click('[data-testid="rag-new-session"]');
  await until(`!document.querySelector('[data-testid="rag-question"]')?.disabled`);
  await js(`(()=>{const e=document.querySelector('[data-testid="rag-question"]');const setter=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;setter.call(e,'测试断线后手动重试');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
@@ -31,7 +42,7 @@ try{
  check(await js(`document.querySelector('[data-testid="rag-question"]')?.value==='测试断线后手动重试'`),'failed question text remains in the composer');
  const trace=fs.readFileSync(path.join(root,'bridge-trace181.txt'),'utf8');
  check((trace.match(/^send /gm)||[]).length===1,'failed question is never automatically resent');
- await click('[data-testid="rag-edit-session-sources"]');await click('[data-testid="rag-document-doc-c"]');await click('[data-testid="rag-save-session-sources"]');await until(`!!document.querySelector('[data-testid="rag-edit-session-sources"]')&&!document.querySelector('[data-testid="rag-retry-send"]')`);check(true,'explicitly editing the current session sources clears its stale retry');
+ await selectAllPlans();await click('[data-testid="rag-add-document-doc-c"]');await until(`!!document.querySelector('[data-testid="rag-session-remove-document-doc-c"]')&&!document.querySelector('[data-testid="rag-retry-send"]')`);check(true,'immediately adding a source to the current session clears its stale retry');
  await until(`!document.querySelector('[data-testid="rag-send"]')?.disabled`);fs.writeFileSync(path.join(root,'fail-next-send181'),'');await click('[data-testid="rag-send"]');await until(`!!document.querySelector('[data-testid="rag-retry-send"]')`);
  await pause(1800);const traceAgain=fs.readFileSync(path.join(root,'bridge-trace181.txt'),'utf8');check((traceAgain.match(/^send /gm)||[]).length===2,'question remains unsent until the user chooses an action');
  const probeStats=JSON.parse(fs.readFileSync(path.join(root,'sources-count181.json'),'utf8'));check(probeStats.max_active===1,'status probes never overlap');const stableProbeCount=probeStats.calls;await pause(1300);check(JSON.parse(fs.readFileSync(path.join(root,'sources-count181.json'),'utf8')).calls===stableProbeCount,'one settled recovery poll does not create another chain');

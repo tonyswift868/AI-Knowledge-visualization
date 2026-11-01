@@ -14,7 +14,7 @@ PYTHON = Path("D:/MentorFlow/.venv/Scripts/python.exe")
 NODE = Path("D:/MentorFlow/.local/node/node.exe")
 DEPS = Path("D:/MentorFlow/.local/web-deps")
 WEB = REPO / "refactor/learning/web"
-OUTPUT = Path("D:/MentorFlow/.local/test-tmp/rag263/screenshots")
+OUTPUT = Path("D:/MentorFlow/.local/test-tmp/ragdel269c/legacy/rag263/screenshots")
 sys.path.insert(0, str(REPO))
 
 

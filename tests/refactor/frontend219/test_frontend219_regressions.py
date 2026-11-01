@@ -19,7 +19,7 @@ def test_frontend219_settings_read_is_fenced_by_account_scope_and_request():
 
 def test_frontend219_rag_session_open_ignores_old_success_and_failure():
     source = (ROOT / "refactor/learning/web/src/pages/Rag.tsx").read_text(encoding="utf-8")
-    open_session = source.split("async function openSession", 1)[1].split("function toggleDocument", 1)[0]
+    open_session = source.split("async function openSession", 1)[1].split("function queueSessionDocuments", 1)[0]
     assert "const revision = ++sessionReadRevision.current" in open_session
     assert "revision !== sessionReadRevision.current" in open_session
     assert "revision === sessionReadRevision.current" in open_session
