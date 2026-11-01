@@ -2540,7 +2540,7 @@
 - 原因判断：README 写明这份笔记是教学工具 dots 在用（用户把 prompt.md 复制给 dots）。失败的是 dots 那次追加调用，不是文件或系统权限；最可能是 dots 自己的运行环境（沙箱、只读模式、可写目录范围）不允许写这个路径，或当时有别的程序占着文件。没有找到 dots 那次调用的记录（员工只能查 Codex 和 Claude Code 的会话记录），所以没查实。和 MentorFlow 软件的身份验证无关。
 - 下一步（用户 2026-11-02 定）：从根上解决，让 dots 在它工作的项目里可读可写（用户从没调过它的权限），不做只对这一个文件放行的特例；dots 是 Codex 里的教学机器人（一个 Codex 会话），先查社区再修，派员工做。架构师只读看到 C:/Users/21533/.codex/config.toml 里 [windows] sandbox = "unelevated"，项目信任只有 D:/keshe2/workers，D:/MentorFlow 不在里面，推测 dots 跑在只读沙箱，没查实。279-MF06 已起草，待转发（任务文件 D:\MentorFlow\.local\tasks\279-MF06.md）。
 - 279-MF06（2026-11-02，报告 .local/test-tmp/dots279/report.md）：本机 codex-cli 0.159.2、桌面版 26.1027.3384.0，配置在 D:/Codex/data/config.toml（C:/Users/21533/.codex 指向它），[windows] sandbox = "unelevated"，没显式 sandbox_mode；项目信任只有 D:/keshe2/workers。官方机制：unelevated 沙箱给项目开写权限，是 Codex 自己的 helper 在项目目录上给沙箱能力 SID 加权限条目；D:/MentorFlow 上没有这类条目，所以 Codex 沙箱里能读不能写（和普通账户能写不矛盾）。dots 那次会话的设置没找到，原会话是否只读没查实。员工照任务“要改 NTFS 就停”停在改配置前，没改任何东西；这条停止条件是架构师写得太死。
-- 280-MF06（已起草，待转发，任务文件 D:\MentorFlow\.local\tasks\280-MF06.md）：允许 Codex 用官方方式给 D:/MentorFlow 加它沙箱身份的权限条目、改 config.toml 让该项目默认 workspace-write（先备份），修前修后 codex exec 验证；另查官方能否让 .local/release-keys（正式签名私钥）在可写项目里保持只读。
+- 280-MF06（已起草，待转发，任务文件 D:\MentorFlow\.local\tasks\280-MF06.md）：允许 Codex 用官方方式给 D:/MentorFlow、D:/MentorFlowApp、D:/MentorFlowData 加它沙箱身份的权限条目（用户 2026-11-02 定这三处，D:/MentorFlow-office 不加）、改 config.toml 让该项目默认 workspace-write（先备份），修前修后 codex exec 验证；另查官方能否让 .local/release-keys（正式签名私钥）在可写项目里保持只读。
 - 关联：无
 - 更新：2026-11-02
 

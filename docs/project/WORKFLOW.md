@@ -69,7 +69,7 @@
 - 269-MF03 已合入 7d1aebcc、269-MF01 已合入 1070685b（2026-11-01，[RAG-01]）。
 - 270-MF06 已完成（2026-11-01，基线 1070685b）：5259 过、1 失败（测试过时，架构师 323971fd 修好、单项通过）、49 跳过，Java 一项没跳。报告 .local/test-tmp/full270/report.md。
 - 278-MF03 已完成、合入 7bbbe13c（[BUG-211]），已随 2.0.43 发布。
-- 280-MF06（tools）：接着 279（查清机制、停在改权限前），照 Codex 官方方式让 dots 在 D:/MentorFlow 可读可写，并查签名私钥目录能否保持只读（[BUG-210]）。任务文件 D:\MentorFlow\.local\tasks\280-MF06.md，已起草，待转发。
+- 280-MF06（tools）：接着 279（查清机制、停在改权限前），照 Codex 官方方式让 dots 在 D:/MentorFlow、D:/MentorFlowApp、D:/MentorFlowData 可读可写（用户 2026-11-02 定，MentorFlow-office 不加），并查签名私钥目录能否保持只读（[BUG-210]）。任务文件 D:\MentorFlow\.local\tasks\280-MF06.md，已起草，待转发。
 - 273-MF04 已完成、合入 c82e8e7c（[BUG-208]，打包固定官方 SQLite 3.54.1，真包旧版 → 新版走通）：随 2.0.42 发。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn，获授权后导出并发布 mentorflow-guide（AGENTS 第 12 条）；发给朋友前重做安装程序并走一遍全新安装和注册（[SYS-06] [ACC-02]）。模拟面试提示词已交付，学习规则见 [DOC-01]。
 
