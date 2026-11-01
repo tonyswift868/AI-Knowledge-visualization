@@ -11,12 +11,13 @@
 脚本基于该现有镜像构建一个可复用的 `mentorflow-migration-tool:MF-156` 辅助镜像，只额外
 安装已记录的 `alembic==1.18.5`，不会改写基础镜像。默认使用
 `mentorflow-e1-preview_internal` 网络和 `mentorflow-e1-preview_oidc_proxy_secrets` secrets
-卷；迁移密码只在容器内从 `MF_MIGRATION_PASSWORD_FILE` 指定的路径读取，绝不写入 `.env`
+卷；线上迁移密码实际在 `mentorflow-e1-preview_migrate_secrets` 卷（默认卷只有 TLS 文件，234-MF01 查实），
+上线时 `export MIGRATION_SECRETS_VOLUME=mentorflow-e1-preview_migrate_secrets`；迁移密码只在容器内从 `MF_MIGRATION_PASSWORD_FILE` 指定的路径读取，绝不写入 `.env`
 或命令文件。部署前先只读查看卷里有哪些文件名（命令不输出文件内容）：
 
 ```sh
 docker run --rm --entrypoint /bin/sh \
-  -v mentorflow-e1-preview_oidc_proxy_secrets:/run/secrets:ro \
+  -v mentorflow-e1-preview_migrate_secrets:/run/secrets:ro \
   mentorflow-slim-backend:MF-76 -c 'find /run/secrets -maxdepth 1 -type f -printf "%f\\n"'
 ```
 

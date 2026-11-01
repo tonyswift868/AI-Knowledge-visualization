@@ -94,6 +94,8 @@ cd "$DEPLOY"
 export MIGRATION_IMAGE=mentorflow-slim-backend:226-python-fallback
 export MIGRATION_TOOL_IMAGE=mentorflow-migration-tool:MF-269
 export MIGRATION_NETWORK=mentorflow-e1-preview_internal
+# 迁移密码在 migrate_secrets 卷里；migrate.sh 默认的 oidc_proxy_secrets 卷只有 TLS 文件（234-MF01 查实，[BUG-209]）。
+export MIGRATION_SECRETS_VOLUME=mentorflow-e1-preview_migrate_secrets
 docker image inspect "$MIGRATION_IMAGE" >/dev/null
 sh migrate.sh current
 sh migrate.sh upgrade
