@@ -63,6 +63,7 @@ public final class RagRepository {
     public <T> T transaction(String accountScope, boolean writing, Function<JdbcTemplate, T> work) {
         if (!ready) throw new RagFailure("RAG_NOT_READY", "RAG storage is not configured", 503);
         TransactionTemplate tx = new TransactionTemplate(transactions);
+        if (!writing) tx.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
         try {
             return tx.execute(status -> {
                 bind(accountScope, writing);

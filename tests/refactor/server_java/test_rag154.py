@@ -38,7 +38,7 @@ def _tables(url: str):
 
 
 def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
-    """The reversible 0045 chain round-trips before forward-only 0046."""
+    """The reversible 0045 chain round-trips; 0046/0047 remain forward-only."""
     postgres = rag154_backends["postgres"]
     name = "rag154_legacy_" + uuid.uuid4().hex[:12]
     _app_url, _admin_url, url = _prepare_database(
@@ -70,26 +70,27 @@ def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
     _run_alembic(url, ["upgrade", "0045_account_closure_rag"], run_dir / "migration-up-test.log", rag154_backends["issuer"])
     assert all(_tables(url))
 
-    # Current production-schema migration is intentionally forward-only.
-    # An existing profile row must remain after Alembic refuses the downgrade.
+    # Current profile and upload-manifest migrations are intentionally forward-only.
+    # Existing profile data and the additive manifest table survive a refusal.
     current_url = rag154_backends["rollback_url"]
     admin = current_url.replace("mentorflow_migrator:local-migrator-154", "postgres")
     admin = admin.replace("postgresql+psycopg://", "postgresql://")
     with psycopg.connect(admin) as connection:
         connection.execute(
             "INSERT INTO public.account_profiles(account_scope,nickname) VALUES (%s,%s)",
-            ("a" * 64, "keep-profile-0046"),
+                ("a" * 64, "keep-profile-0047"),
         )
-    with pytest.raises(RuntimeError, match="Forward only: dropping account_profiles"):
+    with pytest.raises(RuntimeError, match="Forward only: dropping promoted upload manifests"):
         _run_alembic(
             current_url, ["downgrade", "0045_account_closure_rag"],
-            run_dir / "migration-0046-refused-downgrade.log", rag154_backends["issuer"],
+            run_dir / "migration-0047-refused-downgrade.log", rag154_backends["issuer"],
         )
     with psycopg.connect(admin) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0046_account_profiles"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0047_rag_promoted_manifests"
+        assert connection.execute("SELECT to_regclass('public.rag_document_upload_manifests')").fetchone()[0]
         assert connection.execute(
             "SELECT nickname FROM public.account_profiles WHERE account_scope=%s", ("a" * 64,)
-        ).fetchone()[0] == "keep-profile-0046"
+        ).fetchone()[0] == "keep-profile-0047"
 
 
 def test_rag154_migration_requires_pgvector_to_be_preinstalled(rag154_backends):
@@ -181,7 +182,8 @@ def test_rag154_account_isolation_and_delete_alias_vs_canonical(rag154_backends)
     denied = client.delete(f"{API}/documents/{doc_id}", headers=bob_headers)
     assert denied.status_code == 404, denied.text
 
-    # Delete an alias only detaches that ID; canonical deletion removes content.
+    # Deleting the alias detaches only that ID. Deleting its canonical promotes
+    # the remaining alias, then deleting the final logical copy removes content.
     alias = _upload(rag154_backends, "private-doc-alias",
                     [{"seq": 0, "text": "只有 Alice 账号可以访问这份资料。", "page": 7, "section": "别名"}],
                     title="Other", source="local://other")
@@ -189,10 +191,31 @@ def test_rag154_account_isolation_and_delete_alias_vs_canonical(rag154_backends)
     detach = client.delete(f"{API}/documents/private-doc-alias",
                            headers=rag154_headers(rag154_backends))
     assert detach.status_code == 200 and detach.json()["content_deleted"] is False
+    assert detach.json()["canonical_id"] == doc_id
     still_there = client.get(f"{API}/documents", headers=rag154_headers(rag154_backends)).json()["documents"]
     assert {item["document_id"] for item in still_there} == baseline | {doc_id}
+    alias2 = _upload(rag154_backends, "private-doc-alias-2",
+                     [{"seq": 0, "text": "只有 Alice 账号可以访问这份资料。", "page": 9, "section": "保留副本"}],
+                     title="Other 2", source="local://other-2")
+    assert alias2.status_code == 200 and alias2.json()["deduplicated"] is True
     deleted = client.delete(f"{API}/documents/{doc_id}", headers=rag154_headers(rag154_backends))
-    assert deleted.status_code == 200 and deleted.json()["content_deleted"] is True
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True
+    assert deleted.json()["content_deleted"] is False
+    assert deleted.json()["canonical_id"] == "private-doc-alias-2"
+    promoted = client.get(f"{API}/documents", headers=alice_headers).json()["documents"]
+    assert {item["document_id"] for item in promoted} == baseline | {"private-doc-alias-2"}
+    assert "private-doc-alias-2" in {
+        passage["document_id"] for passage in client.post(
+            f"{API}/search", headers=alice_headers,
+            json={"document_ids": ["private-doc-alias-2"], "query": "Alice 的资料", "k": 5},
+        ).json()["passages"]
+    }
+    deleted_last = client.delete(f"{API}/documents/private-doc-alias-2", headers=alice_headers)
+    assert deleted_last.status_code == 200
+    assert deleted_last.json()["deleted"] is True
+    assert deleted_last.json()["content_deleted"] is True
+    assert deleted_last.json()["canonical_id"] is None
     after = client.get(f"{API}/documents", headers=alice_headers).json()["documents"]
     assert {item["document_id"] for item in after} == baseline
 

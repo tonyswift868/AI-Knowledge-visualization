@@ -41,6 +41,11 @@ def _seed_rag(conn, scope: str, document_id: str, *, alias: str | None = None) -
             " VALUES (%s,%s,%s,1,%s)",
             (scope, alias, document_id, digest),
         )
+    conn.execute(
+        "INSERT INTO public.rag_document_upload_manifests"
+        "(account_scope,document_id,total_chunks,chunk_digests) VALUES (%s,%s,1,%s)",
+        (scope, document_id, hashlib.sha256(("body " + document_id).encode()).hexdigest()),
+    )
 
 
 def _legacy_rag_database(fixture, name: str):
@@ -149,7 +154,8 @@ def test_account_closure_cleans_only_verified_account_rag156(closure147_backends
                 ("public." + table,),
             ).fetchone()[0] for table in ("rag_document_aliases", "rag_chunks", "rag_documents"))
 
-        # 0046 is forward-only. Confirm a downgrade refusal leaves profile data intact.
+        # 0047 is forward-only. Confirm a downgrade refusal leaves both the
+        # profile data and additive upload-manifest table intact.
         with psycopg.connect(admin_url) as conn:
             conn.execute(
                 "INSERT INTO public.account_profiles(account_scope,nickname) VALUES (%s,%s),(%s,%s)",
@@ -158,12 +164,14 @@ def test_account_closure_cleans_only_verified_account_rag156(closure147_backends
         migration_url = fixture["postgres"].url(
             "sync145_java", "mentorflow_migrator", c145.MIGRATION_PASSWORD, sqlalchemy=True
         )
-        with pytest.raises(RuntimeError, match="Forward only: dropping account_profiles"):
+        with pytest.raises(RuntimeError, match="Forward only: dropping promoted upload manifests"):
             _run_alembic(
                 migration_url, ["downgrade", "0045_account_closure_rag"],
                 migration_log, OLD_ISSUER,
             )
         with psycopg.connect(admin_url) as conn:
+            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0047_rag_promoted_manifests"
+            assert conn.execute("SELECT to_regclass('public.rag_document_upload_manifests')").fetchone()[0]
             profile_rows = conn.execute(
                 "SELECT account_scope,nickname FROM public.account_profiles ORDER BY account_scope"
             ).fetchall()
@@ -252,7 +260,7 @@ def test_account_closure_cleans_only_verified_account_rag156(closure147_backends
         assert response_state.get("json", {}).get("state") == "COMPLETED", response_state
 
         with psycopg.connect(admin_url) as conn:
-            for table in ("rag_chunks", "rag_document_aliases", "rag_documents"):
+            for table in ("rag_chunks", "rag_document_aliases", "rag_documents", "rag_document_upload_manifests"):
                 target_count = conn.execute(
                     f"SELECT count(*) FROM public.{table} WHERE account_scope=%s",
                     (target_scope,),
