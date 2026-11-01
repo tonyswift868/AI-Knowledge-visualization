@@ -77,7 +77,7 @@ try{
   await js('document.querySelector(".rag-session-list button[title=\\"会话 B\\"]").click()')
   await until('document.querySelector(".rag-chat-head h2")?.textContent==="会话 B"','B RAG session opened')
   await pause(1000)
-  check(await js('document.querySelector(".rag-chat-head h2")?.textContent==="会话 B"&&!!document.querySelector("input[aria-label=\\"选择资料：资料 B\\"]")?.checked'),'late A session response cannot replace B session or selected document')
+  check(await js('document.querySelector(".rag-chat-head h2")?.textContent==="会话 B"&&!!document.querySelector("[data-testid=\\"rag-session-remove-document-doc-b\\"]")'),'late A session response cannot replace B session or selected document')
 
   await js('window.mountFrontend219("plan")')
   await until('document.querySelector(".hero h1")?.textContent==="初始详情"','initial plan detail loaded')

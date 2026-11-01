@@ -32,20 +32,20 @@ try{
   await until(`!!document.querySelector('[data-testid="rag-page"]')&&!!window.call251`);
   await until(`!!document.querySelector('[data-testid="rag-session-list"]')`);
   check(await js(`(()=>{const a=document.querySelector('.rag-sources')?.getBoundingClientRect(),b=document.querySelector('.rag-sidebar-sessions')?.getBoundingClientRect();return !!a&&!!b&&b.top>=a.bottom-2})()`),'source picker and session list are stacked in the left sidebar');
-  check(await js(`!document.querySelector('[data-testid^="rag-session-"]:not([data-testid="rag-session-list"])')`),'empty account displays an empty session-list state');
+  check(await js(`document.querySelector('.rag-session-list-empty')?.textContent.includes('还没有会话')`),'empty account displays an empty session-list state');
   for(const theme of ['sakura','aurora'])await screenshot(theme,'empty');
 
   // Asking from the initial no-session state with unready sources must create
   // a named session and automatically prepare those sources. Hold the fake
   // upload so the progress/cancel state can be inspected deterministically.
   await js(`window.call251('test.ingest_mode',{mode:'block'}).then(x=>x)`);
-  await click('[data-testid="rag-document-doc-a"]');
+  await click('[data-testid="rag-add-document-doc-a"]');
   await js(`(()=>{const e=document.querySelector('[data-testid="rag-question"]');const d=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;d.call(e,'请解释这段资料');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
   await click('[data-testid="rag-send"]');
   await until(`!!document.querySelector('[data-testid="rag-empty-session"]')`);
   await until(`document.querySelector('[data-testid="rag-empty-session"]')?.innerText.includes('新会话')`);
   check(await js(`!!document.querySelector('[data-testid="rag-session-list"] [data-active="true"]')`),'newly created session appears selected in the vertical session list');
-  check(await js(`document.querySelector('[data-testid="rag-empty-session"]')?.innerText.includes('用 1 份资料')`),'new session title communicates selected source count');
+  check(await js(`document.querySelector('.rag-chat-head')?.innerText.includes('1 份资料')`),'new session heading communicates selected source count');
   check(await js(`document.body.innerText.includes('下一步')||document.body.innerText.includes('提问')`),'new session explains the next step');
   await until(`document.querySelector('[data-testid="rag-prepare-status"]')?.innerText.includes('正在准备资料')`);
   check(await js(`/3\\s*\\/\\s*10/.test(document.querySelector('[data-testid="rag-prepare-status"]')?.innerText||'')`),'preparation status reports the actual uploaded and total chunk counts');
@@ -63,7 +63,7 @@ try{
 
   await js(`window.call251('test.ingest_mode',{mode:'success'}).then(x=>x)`);
   await click('[data-testid="rag-send"]');
-  await until(`document.querySelector('[data-testid="rag-document-doc-a"]')?.closest('label')?.innerText.includes('已就绪')`);
+  await until(`document.querySelector('[data-testid="rag-library-document-doc-a"]')?.innerText.includes('已就绪')`);
   await until(`document.body.innerText.includes('这是本机替身的资料回答')`);
   check((await trace()).send===1,'after cancellation the learner can retry, preparation completes, and the preserved question is sent once');
 
@@ -86,17 +86,15 @@ try{
   check(await js(`document.body.innerText.includes('请解释这段资料')`),'the automatically prepared initial question and answer are rendered as a conversation');
   for(const theme of ['sakura','aurora'])await screenshot(theme,'conversation');
 
-  await click('[data-testid="rag-edit-session-sources"]');
-  await click('[data-testid="rag-document-doc-c"]');
   await js(`window.call251('test.ingest_mode',{mode:'fail'}).then(x=>x)`);
-  await click('[data-testid="rag-save-session-sources"]');
-  await until(`!!document.querySelector('[data-testid="rag-prepare-failure"]')`);
-  check(await js(`document.querySelector('[data-testid="rag-document-doc-c"]')?.closest('label')?.innerText.includes('本机替身模拟的网络错误')`),'the affected document card shows the specific preparation failure reason');
-  check(await js(`document.querySelector('[data-testid="rag-prepare-failure"]')?.innerText.includes('本机替身模拟的网络错误')`),'the conversation explains the same specific preparation failure reason');
+  await click('[data-testid="rag-add-document-doc-c"]');
+  await until(`document.querySelector('[data-testid="rag-library-document-doc-c"]')?.innerText.includes('准备失败')`);
+  check(await js(`document.querySelector('[data-testid="rag-library-document-doc-c"]')?.innerText.includes('本机替身模拟的网络错误')`),'the affected document card shows the specific preparation failure reason');
+  check(await js(`!!document.querySelector('[data-testid="rag-document-continue-doc-c"]')`),'the failed background source has a continue-preparing action');
   check(await js(`document.body.innerText.includes('这是本机替身的资料回答')`),'changing a conversation source preserves its existing answer');
   await js(`window.call251('test.ingest_mode',{mode:'success'}).then(x=>x)`);
-  await click('[data-testid="rag-retry-preparation"]');
-  await until(`document.querySelector('[data-testid="rag-document-doc-c"]')?.closest('label')?.innerText.includes('已就绪')`);
+  await click('[data-testid="rag-document-continue-doc-c"]');
+  await until(`document.querySelector('[data-testid="rag-library-document-doc-c"]')?.innerText.includes('已就绪')`);
   check((await trace()).send===1,'source preparation retry does not re-send or duplicate the previous question');
   check((await trace()).lastUpdate?.session_id===originalSessionId,'source edits leave the current conversation ID unchanged');
 
@@ -104,7 +102,7 @@ try{
   await until(`!!document.querySelector('[data-testid="rag-session-legacy-session"]')`);
   await click('[data-testid="rag-session-legacy-session"]');
   await until(`document.body.innerText.includes('旧会话里的问题')`);
-  check(await js(`document.querySelector('[data-testid="rag-document-doc-b"]')?.checked`),'opening an existing conversation reflects its selected document');
+  check(await js(`!!document.querySelector('[data-testid="rag-session-remove-document-doc-b"]')`),'opening an existing conversation reflects its selected document');
   check(await js(`document.body.innerText.includes('旧会话的回答')`),'legacy conversation messages remain readable');
   await click('[data-testid="rag-citation-1"]');
   await until(`!!document.querySelector('[data-testid="rag-source-1"]')`);
@@ -113,16 +111,16 @@ try{
   // Switching between an existing and newly created conversation updates the
   // selection to that session's own source set.
   await click(`[data-testid="rag-session-${originalSessionId}"]`);
-  await until(`document.querySelector('[data-testid="rag-document-doc-a"]')?.checked`);
-  check(await js(`document.querySelector('[data-testid="rag-document-doc-c"]')?.checked`),'switching back restores the edited session source set');
+  await until(`!!document.querySelector('[data-testid="rag-session-remove-document-doc-a"]')`);
+  check(await js(`!!document.querySelector('[data-testid="rag-session-remove-document-doc-c"]')`),'switching back restores the edited session source set');
   await click('[data-testid="rag-session-legacy-session"]');
-  await until(`document.querySelector('[data-testid="rag-document-doc-b"]')?.checked`);
-  check(await js(`document.querySelector('[data-testid="rag-document-doc-a"]')?.checked===false`),'switching sessions updates selected sources to the chosen conversation');
+  await until(`!!document.querySelector('[data-testid="rag-session-remove-document-doc-b"]')`);
+  check(await js(`!document.querySelector('[data-testid="rag-session-remove-document-doc-a"]')`),'switching sessions updates selected sources to the chosen conversation');
 
   // The 249 picker and voice control remain available in the reorganized page.
   await until(`!!document.querySelector('[data-testid="rag-plan-select"]')`);
   check(await js(`!!document.querySelector('[data-testid="rag-question-mic"] .mf-voice-mic')`),'249 voice input button remains available in the reorganized page');
-  check(await js(`document.querySelector('[data-testid="rag-plan-select"]')?.disabled`),'249 custom plan picker remains present when session sources are locked');
+  check(await js(`!document.querySelector('[data-testid="rag-plan-select"]')?.disabled`),'library plan filter remains available while session membership is managed separately');
 
   // Exercise the backend race path where the UI thought the selected source
   // was ready but rag.send reports that indexing is incomplete. Progress and
@@ -139,7 +137,7 @@ try{
   check(await js(`document.querySelector('[data-testid="rag-prepare-failure"]')?.innerText.includes('资料尚未准备')`),'rag.send readiness failure becomes an actionable preparation failure');
   check((await trace()).modelInvocations===1,'a not-ready send failure does not reach the model');
   await click(`[data-testid="rag-session-${originalSessionId}"]`);
-  await until(`document.querySelector('[data-testid="rag-session-sources"]')?.innerText.includes('第二份待准备资料.md')`);
+  await until(`document.querySelector('[data-testid="rag-session-documents"]')?.innerText.includes('第二份待准备资料.md')`);
   await js(`window.call251('test.send_mode',{mode:'not_ready_block'}).then(x=>x)`);
   await js(`(()=>{const e=document.querySelector('[data-testid="rag-question"]');const d=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;d.call(e,'取消服务端准备的问题');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
   const userTurnsBeforeCancel=await js(`document.querySelectorAll('[data-testid^="rag-message-user-"]').length`);
@@ -152,17 +150,15 @@ try{
   check(await js(`document.querySelectorAll('[data-testid^="rag-message-user-"]').length===${userTurnsBeforeCancel}`),'cancelled backend preparation adds no user/assistant turn');
   check((await trace()).modelInvocations===1,'cancelling backend preparation does not invoke the model');
 
-  await until(`document.querySelector('[data-testid="rag-document-doc-d"]')?.closest('label')?.innerText.includes('尚未准备')`);
-  await click('[data-testid="rag-edit-session-sources"]');
-  await click('[data-testid="rag-document-doc-a"]');
-  await click('[data-testid="rag-document-doc-d"]');
+  await until(`document.querySelector('[data-testid="rag-library-document-doc-d"]')?.innerText.includes('尚未准备')`);
   await js(`window.call251('test.ingest_mode',{mode:'block'}).then(x=>x)`);
-  await click('[data-testid="rag-save-session-sources"]');
-  await until(`!!document.querySelector('[data-testid="rag-prepare-status"]')`);
+  await click('[data-testid="rag-session-remove-document-doc-a"]');
+  await click('[data-testid="rag-add-document-doc-d"]');
+  await until(`document.querySelector('[data-testid="rag-library-document-doc-d"]')?.innerText.includes('正在准备')`);
   await js(`window.call251('test.scope_changed').then(x=>x)`);
-  await until(`!document.querySelector('[data-testid="rag-session-sources"]')&&!document.querySelector('[data-testid="rag-prepare-status"]')`);
+  await until(`document.querySelector('[data-testid="rag-session-documents"]')?.innerText.includes('新会话要用的资料')&&!document.querySelector('[data-testid="rag-prepare-status"]')`);
   await until(`window.call251('test.trace').then(x=>x.ingestCancelled>=2)`);
-  check(await js(`!document.querySelector('[data-testid="rag-session-sources"]')`),'changing account scope clears the previous conversation and preparation state');
+  check(await js(`document.querySelector('[data-testid="rag-session-documents"]')?.innerText.includes('新会话要用的资料')`),'changing account scope clears the previous conversation and preparation state');
   check((await trace()).ingestCancelled>=2,'account scope change cancels in-flight preparation');
 
   result.trace=await trace();result.ok=true;

@@ -52,7 +52,7 @@ try{
  await js(`window.setAccount263('account-b');window.call263('test.switch_account').then(x=>x)`);
  await until(`!!document.querySelector('[data-testid="rag-session-session-new"]')`);
  await click('[data-testid="rag-session-session-new"]');
- await until(`!!document.querySelector('[data-testid="rag-session-session-new"][data-active="true"]')&&!!document.querySelector('[data-testid="rag-session-sources"]')`);
+ await until(`!!document.querySelector('[data-testid="rag-session-session-new"][data-active="true"]')&&!!document.querySelector('[data-testid="rag-session-documents"]')`);
  check(await js(`!document.body.innerText.includes('账号范围隔离')&&!document.querySelector('[data-testid="rag-prepare-status"]')`),'new account ignores the old-scope late event and draft');
  const afterScopeSwitch=await js(`window.call263('test.trace').then(x=>x)`);
  check(afterScopeSwitch.prepare===beforeScopeSwitch.prepare,'opening a new account does not auto-start its partial document');

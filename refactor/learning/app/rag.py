@@ -42,6 +42,16 @@ SYSTEM = """你是资料问答助手。回答必须严格区分资料原文与�
 _SUPPLEMENT_PREFIX = re.compile(r"资料外补充\s*(?:(?:\*\*)|__)?\s*[:：]")
 
 
+class _CombinedCancel(threading.Event):
+    """Read-only cancellation view combining caller and document deletion."""
+    def __init__(self, *events):
+        super().__init__()
+        self._events = tuple(event for event in events if event is not None)
+
+    def is_set(self):
+        return any(event.is_set() for event in self._events)
+
+
 def _has_supplement(text):
     return bool(_SUPPLEMENT_PREFIX.search(text or ""))
 
@@ -163,7 +173,8 @@ class RagLocalStore:
             );
             CREATE TABLE IF NOT EXISTS rag_sessions(
                 id TEXT PRIMARY KEY, title TEXT NOT NULL, document_ids TEXT NOT NULL,
-                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                title_manual INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS rag_messages(
                 id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES rag_sessions(id) ON DELETE CASCADE,
@@ -172,6 +183,25 @@ class RagLocalStore:
             );
             CREATE INDEX IF NOT EXISTS rag_messages_session ON rag_messages(session_id, created_at, id);
         """)
+        # 269: local RAG upgrades are additive and idempotent. Keep this
+        # migration transactional so an interrupted first launch can retry.
+        self._db.execute("BEGIN IMMEDIATE")
+        try:
+            session_columns = {row[1] for row in self._db.execute("PRAGMA table_info(rag_sessions)")}
+            if "title_manual" not in session_columns:
+                self._db.execute("ALTER TABLE rag_sessions ADD COLUMN title_manual INTEGER NOT NULL DEFAULT 0")
+            self._db.execute("""CREATE TABLE IF NOT EXISTS rag_document_deletions(
+                document_id TEXT PRIMARY KEY,
+                remote_ids TEXT NOT NULL,
+                state TEXT NOT NULL DEFAULT 'pending',
+                error TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""")
+            self._db.execute("COMMIT")
+        except BaseException:
+            self._db.execute("ROLLBACK")
+            raise
         columns = {row[1] for row in self._db.execute("PRAGMA table_info(rag_documents)")}
         if "canonical_id" not in columns:
             self._db.execute("ALTER TABLE rag_documents ADD COLUMN canonical_id TEXT NOT NULL DEFAULT ''")
@@ -183,6 +213,9 @@ class RagLocalStore:
             self._db.execute("ALTER TABLE rag_documents ADD COLUMN uploaded_content_sha256 TEXT NOT NULL DEFAULT ''")
         if "remote_upload_id" not in columns:
             self._db.execute("ALTER TABLE rag_documents ADD COLUMN remote_upload_id TEXT NOT NULL DEFAULT ''")
+        # A process that stopped during DELETE cannot know whether the server
+        # committed. Reopen it as pending and reconcile through authenticated GET.
+        self._db.execute("UPDATE rag_document_deletions SET state='pending' WHERE state='sending'")
         # One-time migration for pre-fingerprint ready rows. Their content
         # cannot be verified from counts, so mark them stale and bind them to
         # a content-version ID after hashing their locally stored chunks.
@@ -297,7 +330,7 @@ class RagLocalStore:
         now = _now()
         with self._lock:
             self._ensure_open()
-            self._db.execute("INSERT INTO rag_sessions VALUES(?,?,?,?,?)",
+            self._db.execute("INSERT INTO rag_sessions(id,title,document_ids,created_at,updated_at,title_manual) VALUES(?,?,?,?,?,0)",
                              (session_id, title, _json(document_ids), now, now))
         return self.get_session(session_id)
 
@@ -319,6 +352,104 @@ class RagLocalStore:
                 raise
         return self.get_session(session_id)
 
+    def rename_session(self, session_id, title):
+        now = _now()
+        with self._lock:
+            self._ensure_open()
+            cursor = self._db.execute(
+                "UPDATE rag_sessions SET title=?,title_manual=1,updated_at=? WHERE id=?",
+                (title, now, session_id))
+            if cursor.rowcount != 1:
+                raise BridgeError("RAG_SESSION_NOT_FOUND", "这段资料问答已不存在，请刷新列表。")
+        return self.get_session(session_id)
+
+    def document_usage(self, document_id):
+        """Return distinct sessions selecting or citing a document."""
+        with self._lock:
+            self._ensure_open()
+            row = self._db.execute("SELECT * FROM rag_documents WHERE id=?", (document_id,)).fetchone()
+            if row is None:
+                raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "这份资料已不存在，请刷新列表。")
+            sessions = {}
+            rows = self._db.execute("""SELECT s.id,s.title,s.document_ids,m.passages
+                FROM rag_sessions s LEFT JOIN rag_messages m ON m.session_id=s.id
+                ORDER BY s.updated_at DESC,s.id""").fetchall()
+            for item in rows:
+                selected = document_id in json.loads(item["document_ids"] or "[]")
+                cited = False
+                if item["passages"]:
+                    try:
+                        cited = any(isinstance(passage, dict) and passage.get("document_id") == document_id
+                                    for passage in json.loads(item["passages"]))
+                    except (TypeError, ValueError):
+                        cited = False
+                if selected or cited:
+                    sessions[item["id"]] = item["title"]
+            return {"document": dict(row), "session_names": list(sessions.values())}
+
+    def save_pending_deletion(self, document_id, remote_ids, *, state="pending"):
+        now = _now()
+        with self._lock:
+            self._ensure_open()
+            self._db.execute("""INSERT INTO rag_document_deletions(document_id,remote_ids,state,error,created_at,updated_at)
+                VALUES(?,?,?,'',?,?) ON CONFLICT(document_id) DO UPDATE SET
+                remote_ids=excluded.remote_ids,state=excluded.state,error='',updated_at=excluded.updated_at""",
+                (document_id, _json(remote_ids), state, now, now))
+
+    def pending_deletions(self):
+        with self._lock:
+            self._ensure_open()
+            return [{**dict(row), "remote_ids": json.loads(row["remote_ids"])} for row in
+                    self._db.execute("SELECT * FROM rag_document_deletions ORDER BY created_at,document_id")]
+
+    def finish_document_deletion(self, document_id, *, content_deleted, canonical_id=None,
+                                 keep_local=False):
+        """Atomically detach a document and mark historical citations deleted."""
+        now = _now()
+        with self._lock:
+            self._ensure_open()
+            row = self._db.execute("SELECT source FROM rag_documents WHERE id=?", (document_id,)).fetchone()
+            if row is None:
+                self._db.execute("DELETE FROM rag_document_deletions WHERE document_id=?", (document_id,))
+                return None
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                for session in self._db.execute("SELECT id,document_ids FROM rag_sessions").fetchall():
+                    ids = json.loads(session["document_ids"] or "[]")
+                    if document_id in ids:
+                        self._db.execute("UPDATE rag_sessions SET document_ids=?,updated_at=? WHERE id=?",
+                                         (_json([item for item in ids if item != document_id]), now, session["id"]))
+                for message in self._db.execute("SELECT id,passages FROM rag_messages").fetchall():
+                    try:
+                        passages = json.loads(message["passages"] or "[]")
+                    except (TypeError, ValueError):
+                        continue
+                    changed = False
+                    for passage in passages:
+                        if isinstance(passage, dict) and passage.get("document_id") == document_id:
+                            passage["deleted"] = True
+                            changed = True
+                    if changed:
+                        self._db.execute("UPDATE rag_messages SET passages=? WHERE id=?", (_json(passages), message["id"]))
+                if not keep_local:
+                    self._db.execute("DELETE FROM rag_documents WHERE id=?", (document_id,))
+                else:
+                    self._db.execute("""UPDATE rag_documents SET canonical_id=?,canonical_total_chunks=NULL,
+                        status='not_uploaded',uploaded_chunks=0,uploaded_content_sha256='',
+                        remote_upload_id=id,error='',updated_at=? WHERE id=?""",
+                        (canonical_id or document_id, now, document_id))
+                self._db.execute("DELETE FROM rag_document_deletions WHERE document_id=?", (document_id,))
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+            return {"content_deleted": bool(content_deleted), "canonical_id": canonical_id}
+
+    def finish_pending_deletion(self, document_id):
+        with self._lock:
+            self._ensure_open()
+            self._db.execute("DELETE FROM rag_document_deletions WHERE document_id=?", (document_id,))
+
     def get_session(self, session_id):
         with self._lock:
             self._ensure_open()
@@ -326,6 +457,7 @@ class RagLocalStore:
             if row is None:
                 raise BridgeError("RAG_SESSION_NOT_FOUND", "这段资料问答已不存在，请刷新列表。")
             result = {"id": row["id"], "title": row["title"],
+                      "title_manual": bool(row["title_manual"]),
                       "document_ids": json.loads(row["document_ids"]),
                       "updated_at": row["updated_at"], "messages": []}
             for message in self._db.execute("SELECT * FROM rag_messages WHERE session_id=? ORDER BY created_at,rowid",
@@ -340,10 +472,27 @@ class RagLocalStore:
         with self._lock:
             self._ensure_open()
             rows = self._db.execute("""SELECT s.id,s.title,s.document_ids,s.updated_at,
-                COUNT(m.id) AS count FROM rag_sessions s LEFT JOIN rag_messages m ON m.session_id=s.id
+                s.title_manual,COUNT(m.id) AS count FROM rag_sessions s LEFT JOIN rag_messages m ON m.session_id=s.id
                 GROUP BY s.id ORDER BY s.updated_at DESC,s.id""").fetchall()
             return [{"id": r["id"], "title": r["title"], "document_ids": json.loads(r["document_ids"]),
+                     "title_manual": bool(r["title_manual"]),
                      "updated_at": r["updated_at"], "count": r["count"]} for r in rows]
+
+    def update_canonical_group(self, old_canonical_id, canonical_id, *, exclude=()):
+        if not old_canonical_id or not canonical_id or old_canonical_id == canonical_id:
+            return
+        now = _now()
+        excluded = tuple(exclude)
+        with self._lock:
+            self._ensure_open()
+            if excluded:
+                marks = ",".join("?" for _ in excluded)
+                self._db.execute(
+                    f"UPDATE rag_documents SET canonical_id=?,updated_at=? WHERE canonical_id=? AND id NOT IN ({marks})",
+                    (canonical_id, now, old_canonical_id, *excluded))
+            else:
+                self._db.execute("UPDATE rag_documents SET canonical_id=?,updated_at=? WHERE canonical_id=?",
+                                 (canonical_id, now, old_canonical_id))
 
     def append_turn(self, session_id, question, answer, passages, supplement, cancel=None):
         now = _now()
@@ -351,12 +500,13 @@ class RagLocalStore:
             self._ensure_open()
             self._db.execute("BEGIN IMMEDIATE")
             try:
-                row = self._db.execute("SELECT title FROM rag_sessions WHERE id=?", (session_id,)).fetchone()
+                row = self._db.execute("SELECT title,title_manual FROM rag_sessions WHERE id=?", (session_id,)).fetchone()
                 if row is None:
                     raise BridgeError("RAG_SESSION_NOT_FOUND", "这段资料问答已不存在，请刷新列表。")
                 _cancel(cancel)
                 title = row["title"]
-                if self._db.execute("SELECT 1 FROM rag_messages WHERE session_id=?", (session_id,)).fetchone() is None:
+                if (not row["title_manual"] and self._db.execute(
+                        "SELECT 1 FROM rag_messages WHERE session_id=?", (session_id,)).fetchone() is None):
                     title = " ".join(question.split())[:28] or "资料问答"
                 self._db.executemany("INSERT INTO rag_messages(id,session_id,role,content,passages,supplement,created_at) VALUES(?,?,?,?,?,?,?)", [
                     (uuid.uuid4().hex, session_id, "user", question, "[]", 0, now),
@@ -407,6 +557,10 @@ class RagService:
         self._job_queue = []
         self._job_sequence = 0
         self._job_stopping = False
+        self._deleting_documents = set()
+        self._pending_deletion_ids = {row["document_id"] for row in self.local.pending_deletions()}
+        self._active_document_ops = {}
+        self._delete_events = {}
         self._progress_callback = None
         self._job_worker = threading.Thread(target=self._preparation_worker,
                                             name="rag-preparation", daemon=True)
@@ -420,6 +574,16 @@ class RagService:
             self._closed = True
             self._picked_paths.clear()
         def finish_close():
+            with self._jobs_lock:
+                operations = {op["id"]: op for active in self._active_document_ops.values()
+                              for op in active.values()}
+                deletions = list(self._delete_events.values())
+                for operation in operations.values():
+                    operation["cancel"].set()
+            for operation in operations.values():
+                operation["finished"].wait()
+            for deletion in deletions:
+                deletion["done"].wait()
             if threading.current_thread() is not self._job_worker:
                 self._job_worker.join()
             self.transport.close()
@@ -434,11 +598,114 @@ class RagService:
                     job["cancel"].set()
                     if job["state"] == "queued":
                         job["state"] = "cancelled"
+                        job["finished"].set()
             self._jobs_lock.notify_all()
 
     def _job_snapshot(self, job):
         return {k: job[k] for k in ("id", "document_id", "state", "uploaded_chunks",
                 "total_chunks", "error", "sequence") if k in job}
+
+    def _assert_document_available(self, document_id):
+        with self._jobs_lock:
+            if document_id in self._deleting_documents or document_id in self._pending_deletion_ids:
+                raise BridgeError("RAG_DELETE_PENDING", "这份资料正在删除或等待联网核对，请先重试删除。")
+
+    def _begin_document_operation(self, document_ids, caller_cancel=None):
+        operation_id = uuid.uuid4().hex
+        deletion_cancel = threading.Event()
+        finished = threading.Event()
+        with self._jobs_lock:
+            if self._job_stopping or self._closed:
+                raise BridgeError("RAG_CLOSED", "资料问答已关闭，请重新打开。")
+            for document_id in document_ids:
+                if document_id in self._deleting_documents or document_id in self._pending_deletion_ids:
+                    raise BridgeError("RAG_DELETE_PENDING", "这份资料正在删除或等待联网核对，请先重试删除。")
+            operation = {"id": operation_id, "cancel": deletion_cancel, "finished": finished}
+            for document_id in document_ids:
+                self._active_document_ops.setdefault(document_id, {})[operation_id] = operation
+        return _CombinedCancel(caller_cancel, deletion_cancel), operation
+
+    def _finish_document_operation(self, document_ids, operation):
+        with self._jobs_lock:
+            for document_id in document_ids:
+                active = self._active_document_ops.get(document_id)
+                if active:
+                    active.pop(operation["id"], None)
+                    if not active:
+                        self._active_document_ops.pop(document_id, None)
+            operation["finished"].set()
+            self._jobs_lock.notify_all()
+
+    def _notify_job_finished(self, job):
+        try:
+            self._push_job(job)
+        except Exception:
+            log.warning("RAG preparation terminal notification failed document=%s",
+                        job["document_id"][:8], exc_info=True)
+        finally:
+            job["finished"].set()
+            with self._jobs_lock:
+                self._jobs_lock.notify_all()
+
+    def _cancel_and_drain_document(self, document_id):
+        """Fence one doc, cancel its jobs/sends and await their last callbacks."""
+        with self._jobs_lock:
+            event = self._delete_events.get(document_id)
+            if event is None:
+                event = {"done": threading.Event(), "result": None, "error": None}
+                self._delete_events[document_id] = event
+                self._deleting_documents.add(document_id)
+                owner = True
+                jobs = [job for job in self._jobs.values()
+                        if job["document_id"] == document_id and not job["finished"].is_set()]
+                for job in jobs:
+                    if job["state"] in ("queued", "running"):
+                        job["cancel"].set()
+                    if job["state"] == "queued":
+                        job["state"] = "cancelled"
+                        try:
+                            job["finished"].set()
+                        except KeyError:
+                            pass
+                if jobs:
+                    self._job_queue = [item for item in self._job_queue
+                                       if item[2] not in {job["id"] for job in jobs}]
+                operations = list(self._active_document_ops.get(document_id, {}).values())
+                for operation in operations:
+                    operation["cancel"].set()
+                self._jobs_lock.notify_all()
+            else:
+                owner = False
+                jobs = operations = []
+        if not owner:
+            event["done"].wait()
+            if event["error"] is not None:
+                raise event["error"]
+            return event["result"], event
+        try:
+            for job in jobs:
+                job["finished"].wait()
+            for operation in operations:
+                operation["finished"].wait()
+            return None, event
+        except BaseException as exc:
+            event["error"] = exc
+            event["done"].set()
+            with self._jobs_lock:
+                self._delete_events.pop(document_id, None)
+                self._deleting_documents.discard(document_id)
+            raise
+
+    def _finish_delete_fence(self, document_id, event, *, result=None, error=None, pending=False):
+        with self._jobs_lock:
+            event["result"] = result
+            event["error"] = error
+            event["done"].set()
+            self._delete_events.pop(document_id, None)
+            if not pending:
+                self._deleting_documents.discard(document_id)
+                self._pending_deletion_ids.discard(document_id)
+            self._jobs_lock.notify_all()
 
     @staticmethod
     def _preparation_key(row):
@@ -485,7 +752,7 @@ class RagService:
                         self._log_preparation_failure(job["document_id"],
                             BridgeError("RAG_SOURCE_INCOMPLETE", "资料源不完整。"))
                     self._jobs_lock.notify_all()
-                self._push_job(job)
+                self._notify_job_finished(job)
             except BridgeError as exc:
                 with self._jobs_lock:
                     job["state"] = "cancelled" if exc.code == "CANCELLED" else "failed"
@@ -493,7 +760,7 @@ class RagService:
                     self._jobs_lock.notify_all()
                 if job["state"] == "failed":
                     self._log_preparation_failure(job["document_id"], exc)
-                self._push_job(job)
+                self._notify_job_finished(job)
             except Exception as exc:  # noqa: BLE001
                 code = getattr(exc, "code", "RAG_PREPARATION_FAILED")
                 safe_code = code if isinstance(code, str) and re.fullmatch(r"[A-Z0-9_]{1,64}", code) else "RAG_PREPARATION_FAILED"
@@ -503,11 +770,17 @@ class RagService:
                     self._jobs_lock.notify_all()
                 log.error("RAG preparation failed document=%s batch_index=%s code=%s",
                           job["document_id"][:8], getattr(self._worker_local, "batch_index", 0), safe_code)
-                self._push_job(job)
+                self._notify_job_finished(job)
 
     def _job_progress(self, job, row):
         with self._jobs_lock:
             if self._job_stopping or self._closed:
+                return
+            if self._jobs.get(job.get("id")) is not job:
+                return
+            if job["document_id"] in self._deleting_documents or job["document_id"] in self._pending_deletion_ids:
+                return
+            if self.local.document(job["document_id"]) is None:
                 return
             job["uploaded_chunks"] = int(row.get("uploaded_chunks", 0) or 0)
             job["total_chunks"] = int(row.get("total_chunks", 0) or 0)
@@ -522,7 +795,13 @@ class RagService:
         with self._jobs_lock:
             if self._job_stopping or self._closed:
                 return
-            row = self.local.document(job["document_id"]) or {"id": job["document_id"]}
+            if self._jobs.get(job.get("id")) is not job:
+                return
+            if job["document_id"] in self._deleting_documents or job["document_id"] in self._pending_deletion_ids:
+                return
+            row = self.local.document(job["document_id"])
+            if row is None:
+                return
             payload = dict(self._doc_view(row), job_id=job["id"], scope_id=self.scope_id,
                            preparation_state=job["state"], sequence=job["sequence"])
             if job.get("error"):
@@ -539,6 +818,8 @@ class RagService:
         with self._jobs_lock:
             if self._job_stopping:
                 raise BridgeError("RAG_CLOSED", "资料问答已关闭，请重新打开。")
+            if any(doc_id in self._deleting_documents or doc_id in self._pending_deletion_ids for doc_id in ids):
+                raise BridgeError("RAG_DELETE_PENDING", "这份资料正在删除或等待联网核对，请先重试删除。")
             def reusable(doc_id):
                 row = snapshots[doc_id]
                 job = self._jobs.get(self._job_by_key.get(self._preparation_key(row)))
@@ -559,7 +840,7 @@ class RagService:
                     job = {"id": uuid.uuid4().hex, "document_id": doc_id, "state": "queued",
                            "uploaded_chunks": 0, "total_chunks": len(row["chunks"]),
                            "cancel": threading.Event(), "key": key, "snapshot": row,
-                           "sequence": self._job_sequence}
+                           "sequence": self._job_sequence, "finished": threading.Event()}
                     self._jobs[job["id"]] = job
                     self._job_by_key[key] = job["id"]
                     self._job_queue.append((0 if priority else 1, self._job_sequence, job["id"]))
@@ -851,7 +1132,8 @@ class RagService:
                 # Replaying its SHA-addressed chunks is idempotent and repairs it.
                 status, uploaded = "not_uploaded", 0
         return {"id": row["id"], "title": row["title"], "source": row["source"],
-                "plan_ids": list(plan_ids), "status": status, "total_chunks": total,
+                "plan_ids": list(plan_ids), "origin": "plan" if plan_ids else "upload",
+                "status": status, "total_chunks": total,
                 "uploaded_chunks": uploaded, **({"error": row["error"]} if row.get("error") else {})}
 
     @staticmethod
@@ -1013,6 +1295,8 @@ class RagService:
             # documents or saved sessions. Keep the distinction visible.
             remote = {}
             server_status = {"state": "unavailable", "message": str(exc)}
+        if server_status["state"] == "ready":
+            self._reconcile_pending_deletions(remote)
         # A ready remote row at the original source ID is not proof that its
         # body matches this device's extracted content. This also handles a
         # newly created local RAG database with an older server-side document.
@@ -1030,7 +1314,12 @@ class RagService:
         # Listing/reopening never starts preparation. Any incomplete or changed
         # source remains visible; explicit prepare/send owns repair scheduling.
         for doc_id, row in list(all_local.items()):
-            row = self.local.document(doc_id) or row
+            saved_row = self.local.document(doc_id)
+            if saved_row is None:
+                saved_row = current.get(doc_id)
+            if saved_row is None:
+                continue
+            row = saved_row
             canonical_id = row.get("canonical_id") or doc_id
             content_current = ((row.get("current_content_sha256") or "")
                                == (row.get("uploaded_content_sha256") or ""))
@@ -1058,13 +1347,197 @@ class RagService:
             remote_row = (remote.get(row.get("remote_upload_id") or doc_id)
                           if is_current else None)
             docs.append(self._doc_view(row, plan_refs.get(doc_id, ()), remote_row))
+        pending_ids = {row["document_id"] for row in self.local.pending_deletions()}
         for item in docs:
+            if item["id"] in pending_ids:
+                item["deletion_pending"] = True
+                item["deletion_error"] = "删除结果待确认；联网后刷新或重试。"
             if item["id"] in self._incomplete_documents:
                 item["error"] = "本地资料仍在同步；当前远端状态保留，本次不会覆盖或重复上传。"
                 continue
         docs.sort(key=lambda item: (item["title"].casefold(), item["id"]))
         return {"plans": plans, "documents": docs, "sessions": self.local.list_sessions(),
                 "server_status": server_status}
+
+    def _reconcile_pending_deletions(self, remote):
+        """Use one successful, account-scoped GET to settle unknown DELETEs."""
+        for pending in self.local.pending_deletions():
+            if pending["state"] != "pending":
+                continue
+            document_id = pending["document_id"]
+            remote_ids = pending["remote_ids"]
+            if any(remote_id in remote for remote_id in remote_ids):
+                # GET proves the document still exists. Keep all local data and
+                # clear the uncertain attempt so the user may retry explicitly.
+                self.local.finish_pending_deletion(document_id)
+                with self._jobs_lock:
+                    self._pending_deletion_ids.discard(document_id)
+                    self._deleting_documents.discard(document_id)
+                    self._jobs_lock.notify_all()
+                continue
+            self._apply_confirmed_document_delete(document_id, remote, response=None)
+            with self._jobs_lock:
+                self._pending_deletion_ids.discard(document_id)
+                self._deleting_documents.discard(document_id)
+                self._jobs_lock.notify_all()
+
+    def document_usage(self, document_id):
+        self._check_open()
+        document_id = self._document_id(document_id)
+        self._course_documents()
+        row = self.local.document(document_id)
+        if row is None:
+            raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "这份资料已不存在，请刷新列表。")
+        plan_ids = self._plan_documents.get(document_id, {}).get("plan_ids", ())
+        usage = self.local.document_usage(document_id)
+        return {"document": self._doc_view(row, plan_ids),
+                "session_names": usage["session_names"]}
+
+    def rename_session(self, session_id, title):
+        self._check_open()
+        session_id = self._session_id(session_id)
+        if not isinstance(title, str):
+            raise BridgeError("PARAM_INVALID", "会话名称无效。")
+        title = " ".join(title.split())
+        if not title or len(title) > 80:
+            raise BridgeError("PARAM_INVALID", "会话名称不能为空，也不能超过 80 个字。")
+        return {"session": self.local.rename_session(session_id, title)}
+
+    def _apply_confirmed_document_delete(self, document_id, remote, response):
+        row = self.local.document(document_id)
+        if row is None:
+            self.local.finish_pending_deletion(document_id)
+            return {"ok": True, "document_id": document_id,
+                    "content_deleted": True, "canonical_id": None}
+        old_canonical = row.get("canonical_id") or document_id
+        response = response if isinstance(response, dict) else {}
+        content_deleted = response.get("content_deleted")
+        canonical_id = response.get("canonical_id")
+        if type(content_deleted) is not bool:
+            # A lost response is reconstructed from the authenticated listing.
+            surviving = remote.get(old_canonical)
+            if surviving is not None:
+                content_deleted, canonical_id = False, surviving.get("id") or old_canonical
+            else:
+                content_deleted = True
+                for peer in self.local.documents():
+                    if peer["id"] == document_id or (peer.get("canonical_id") or peer["id"]) != old_canonical:
+                        continue
+                    candidate = remote.get(peer.get("remote_upload_id") or peer["id"])
+                    if candidate is not None:
+                        content_deleted = False
+                        canonical_id = candidate.get("id") or peer.get("canonical_id") or peer["id"]
+                        break
+        elif content_deleted is False and not isinstance(canonical_id, str):
+            raise BridgeError("RAG_DELETE_PENDING", "删除响应缺少剩余资料编号，联网后重试核对。")
+        keep_local = document_id in self._plan_documents
+        self.local.finish_document_deletion(document_id, content_deleted=content_deleted,
+                                            canonical_id=canonical_id, keep_local=keep_local)
+        if canonical_id:
+            self.local.update_canonical_group(old_canonical, canonical_id, exclude=(document_id,))
+        self._forget_document_jobs(document_id)
+        with self._jobs_lock:
+            self._pending_deletion_ids.discard(document_id)
+        return {"ok": True, "document_id": document_id,
+                "content_deleted": content_deleted, "canonical_id": canonical_id}
+
+    def _forget_document_jobs(self, document_id):
+        with self._jobs_lock:
+            for job_id, job in list(self._jobs.items()):
+                if job.get("document_id") != document_id:
+                    continue
+                self._job_by_key.pop(job.get("key"), None)
+                self._jobs.pop(job_id, None)
+            self._job_queue = [item for item in self._job_queue if item[2] in self._jobs]
+
+    def delete_document(self, document_id):
+        self._check_open()
+        document_id = self._document_id(document_id)
+        result, event = self._cancel_and_drain_document(document_id)
+        if result is not None:
+            return result
+        target_id = None
+        try:
+            self._course_documents()
+            row = self.local.document(document_id)
+            if row is None:
+                raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "这份资料已不存在，请刷新列表。")
+            target_id = row.get("remote_upload_id") or document_id
+            # A successful GET is the offline gate and also tells us whether a
+            # remote partial/ready copy exists before issuing DELETE.
+            remote = self._remote_documents()
+            if target_id not in remote:
+                result = self._apply_confirmed_document_delete(document_id, remote, response=None)
+            else:
+                self.local.save_pending_deletion(document_id, [target_id], state="sending")
+                try:
+                    response = self.transport.request_json("DELETE", f"{API}/documents/{target_id}")
+                except BridgeError as exc:
+                    if getattr(exc, "http_status", None) == 404:
+                        try:
+                            after = self._remote_documents()
+                        except BridgeError:
+                            after = None
+                        if after is not None and target_id not in after:
+                            remote = after
+                            result = self._apply_confirmed_document_delete(document_id, remote, response=None)
+                        else:
+                            self.local.save_pending_deletion(document_id, [target_id])
+                            with self._jobs_lock:
+                                self._pending_deletion_ids.add(document_id)
+                            raise BridgeError("RAG_DELETE_PENDING", "删除结果待确认；联网后刷新或重试。") from None
+                    elif (exc.code in {"RAG_UNAVAILABLE", "CANCELLED", "RAG_RESPONSE_INVALID"}
+                          or type(getattr(exc, "http_status", None)) is int
+                          and exc.http_status >= 500):
+                        self.local.save_pending_deletion(document_id, [target_id])
+                        with self._jobs_lock:
+                            self._pending_deletion_ids.add(document_id)
+                        raise BridgeError("RAG_DELETE_PENDING", "删除结果待确认；联网后刷新或重试。") from None
+                    else:
+                        self.local.finish_pending_deletion(document_id)
+                        raise
+                else:
+                    if (not isinstance(response, dict) or response.get("deleted") is not True
+                            or type(response.get("content_deleted")) is not bool
+                            or response.get("content_deleted") is False
+                                and not _clean_id(response.get("canonical_id"))
+                            or response.get("content_deleted") is True
+                                and response.get("canonical_id") is not None):
+                        self.local.save_pending_deletion(document_id, [target_id])
+                        with self._jobs_lock:
+                            self._pending_deletion_ids.add(document_id)
+                        raise BridgeError("RAG_DELETE_PENDING", "删除响应不完整，联网后重试核对。")
+                    result = self._apply_confirmed_document_delete(document_id, remote, response)
+            current_docs = []
+            for current_row in self.local.documents():
+                plan_ids = self._plan_documents.get(current_row["id"], {}).get("plan_ids", ())
+                current_docs.append(self._doc_view(current_row, plan_ids))
+            current_docs.sort(key=lambda item: (item["title"].casefold(), item["id"]))
+            result["documents"] = current_docs
+            result["sessions"] = self.local.list_sessions()
+            self._finish_delete_fence(document_id, event, result=result)
+            return result
+        except BridgeError as exc:
+            pending_rows = self.local.pending_deletions()
+            pending_row = next((item for item in pending_rows if item["document_id"] == document_id), None)
+            pending = exc.code == "RAG_DELETE_PENDING" or pending_row is not None
+            if pending:
+                if pending_row is not None:
+                    self.local.save_pending_deletion(document_id, pending_row["remote_ids"])
+                with self._jobs_lock:
+                    self._pending_deletion_ids.add(document_id)
+            self._finish_delete_fence(document_id, event, error=exc, pending=pending)
+            raise
+        except BaseException as exc:
+            pending_rows = self.local.pending_deletions()
+            pending_row = next((item for item in pending_rows if item["document_id"] == document_id), None)
+            pending = pending_row is not None
+            if pending_row is not None:
+                self.local.save_pending_deletion(document_id, pending_row["remote_ids"])
+                with self._jobs_lock:
+                    self._pending_deletion_ids.add(document_id)
+            self._finish_delete_fence(document_id, event, error=exc, pending=pending)
+            raise
 
     def _document_chunks(self, document_id):
         row = self.local.document(document_id)
@@ -1148,8 +1621,14 @@ class RagService:
         return ready
 
     def ingest(self, document_ids, *, cancel=None, on_progress=None, _snapshots=None):
-        return self._ingest_locked(document_ids, cancel=cancel, on_progress=on_progress,
-                                   snapshots=_snapshots)
+        self._check_open()
+        ids = self._ids(document_ids)
+        combined, operation = self._begin_document_operation(ids, cancel)
+        try:
+            return self._ingest_locked(ids, cancel=combined, on_progress=on_progress,
+                                       snapshots=_snapshots)
+        finally:
+            self._finish_document_operation(ids, operation)
 
     def _ingest_locked(self, document_ids, *, cancel=None, on_progress=None, snapshots=None):
         self._check_open()
@@ -1332,9 +1811,13 @@ class RagService:
                 raise BridgeError("FILE_UNAVAILABLE", "所选文件读取失败，请确认文件仍可访问。") from None
             chunks = [{"text": chunk.text, "page": chunk.page_start,
                        "section": " / ".join(chunk.section)} for chunk in extracted.chunks]
-            self.local.save_document(extracted.sha256, extracted.title or path.stem,
-                                     path.name, chunks)
-            row = self.local.document(extracted.sha256)
+            # The same original file addresses the same logical row. Import
+            # must not replace a row while its deletion is in flight/uncertain.
+            with self._jobs_lock:
+                self._assert_document_available(extracted.sha256)
+                self.local.save_document(extracted.sha256, extracted.title or path.stem,
+                                         path.name, chunks)
+                row = self.local.document(extracted.sha256)
             view = self._doc_view(row)
             result.append(view)
             if on_progress:
@@ -1359,19 +1842,25 @@ class RagService:
     def create(self, document_ids):
         self._check_open()
         ids = self._ids(document_ids)
-        for document_id in ids:
-            if self.local.document(document_id) is None:
-                raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "所选资料已不存在，请刷新资料列表。")
-        return {"session": self.local.create_session(ids, "新会话")}
+        with self._jobs_lock:
+            if any(doc_id in self._deleting_documents or doc_id in self._pending_deletion_ids for doc_id in ids):
+                raise BridgeError("RAG_DELETE_PENDING", "资料正在删除或等待联网核对，请稍后再选。")
+            for document_id in ids:
+                if self.local.document(document_id) is None:
+                    raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "所选资料已不存在，请刷新资料列表。")
+            return {"session": self.local.create_session(ids, "新会话")}
 
     def update_documents(self, session_id, document_ids):
         self._check_open()
         session_id = self._session_id(session_id)
-        ids = self._ids(document_ids)
-        for document_id in ids:
-            if self.local.document(document_id) is None:
-                raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "所选资料已不存在，请刷新资料列表。")
-        return {"session": self.local.update_session_documents(session_id, ids)}
+        ids = self._optional_ids(document_ids)
+        with self._jobs_lock:
+            if any(doc_id in self._deleting_documents or doc_id in self._pending_deletion_ids for doc_id in ids):
+                raise BridgeError("RAG_DELETE_PENDING", "资料正在删除或等待联网核对，请稍后再选。")
+            for document_id in ids:
+                if self.local.document(document_id) is None:
+                    raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "所选资料已不存在，请刷新资料列表。")
+            return {"session": self.local.update_session_documents(session_id, ids)}
 
     def get(self, session_id):
         self._check_open()
@@ -1387,8 +1876,25 @@ class RagService:
         session_id = self._session_id(session_id)
         if not isinstance(text, str) or not text.strip() or len(text) > MAX_QUESTION:
             raise BridgeError("PARAM_INVALID", f"问题不能为空，也不能超过 {MAX_QUESTION} 字。")
+        session = self.local.get_session(session_id)
+        document_ids = list(session["document_ids"])
+        if not document_ids:
+            raise BridgeError("RAG_NO_DOCUMENTS", "这个会话还没有资料，请先添加资料再提问。")
+        combined, operation = self._begin_document_operation(document_ids, cancel)
+        try:
+            return self._send_active(session_id, text, document_ids=document_ids, cancel=combined,
+                                     on_text=on_text, on_progress=on_progress)
+        finally:
+            self._finish_document_operation(document_ids, operation)
+
+    def _send_active(self, session_id, text, *, document_ids, cancel=None, on_text=None, on_progress=None):
+        if not isinstance(text, str) or not text.strip() or len(text) > MAX_QUESTION:
+            raise BridgeError("PARAM_INVALID", f"问题不能为空，也不能超过 {MAX_QUESTION} 字。")
         question = text.strip()
         session = self.local.get_session(session_id)
+        # Use the exact, fenced document set captured when this send began;
+        # a concurrent sidebar edit applies to the next question.
+        session["document_ids"] = list(document_ids)
         # Existing sessions retain stable local IDs. Before every question,
         # refresh adopted content and ensure changed content has its current
         # immutable remote version; if sync is unavailable no model call occurs.
@@ -1457,9 +1963,12 @@ class RagService:
                     for item in history if item["role"] in {"user", "assistant"}]
         messages.append({"role": "user", "content": content})
         _cancel(cancel)
+        def guarded_text(delta):
+            if on_text and not (cancel and cancel.is_set()):
+                on_text(delta)
         try:
             reply = self.gateway.complete("rag_qa", messages, system=SYSTEM,
-                on_text=on_text, cancel=cancel)
+                on_text=guarded_text if on_text else None, cancel=cancel)
         except ModelCancelled:
             raise BridgeError("CANCELLED", "已停止，这一轮没有保存。") from None
         _cancel(cancel)
@@ -1477,6 +1986,20 @@ class RagService:
         if any(not _clean_id(item) for item in value):
             raise BridgeError("PARAM_INVALID", "资料编号无效，请重新选择。")
         return list(dict.fromkeys(value))
+
+    @staticmethod
+    def _optional_ids(value):
+        if not isinstance(value, list):
+            raise BridgeError("PARAM_INVALID", "资料编号无效，请重新选择。")
+        if any(not _clean_id(item) for item in value):
+            raise BridgeError("PARAM_INVALID", "资料编号无效，请重新选择。")
+        return list(dict.fromkeys(value))
+
+    @staticmethod
+    def _document_id(value):
+        if not _clean_id(value):
+            raise BridgeError("PARAM_INVALID", "资料编号无效，请刷新后重试。")
+        return value
 
     @staticmethod
     def _session_id(value):
@@ -1531,6 +2054,15 @@ def register(bridge, services, window):
     def update_documents(params, ctx):
         return current().update_documents(params.get("session_id"), params.get("document_ids"))
 
+    def document_usage(params, ctx):
+        return current().document_usage(params.get("document_id"))
+
+    def delete_document(params, ctx):
+        return current().delete_document(params.get("document_id"))
+
+    def rename_session(params, ctx):
+        return current().rename_session(params.get("session_id"), params.get("title"))
+
     def get(params, ctx):
         return current().get(params.get("session_id"))
 
@@ -1551,6 +2083,9 @@ def register(bridge, services, window):
     bridge.register("rag.import_files", import_files)
     bridge.register("rag.create", create)
     bridge.register("rag.update_documents", update_documents)
+    bridge.register("rag.document_usage", document_usage)
+    bridge.register("rag.delete_document", delete_document)
+    bridge.register("rag.rename_session", rename_session)
     bridge.register("rag.get", get)
     bridge.register("rag.delete", delete)
     bridge.register("rag.send", send)

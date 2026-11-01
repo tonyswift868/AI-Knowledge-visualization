@@ -34,34 +34,35 @@ try{
  check(await js(`!!document.querySelector('[data-testid="nav-rag"]')`),'資料問答 is a first-class left navigation entry');
  // Path 1: choose one plan, selecting all its documents.
  stage='plan selection';await select('[data-testid="rag-plan-select"]','plan-a');
- await until(`document.querySelector('[data-testid="rag-document-doc-a"]')?.checked&&document.querySelector('[data-testid="rag-document-doc-b"]')?.checked`);
  await click('[data-testid="rag-plan-select-all"]');
- await until(`!document.querySelector('[data-testid="rag-document-doc-a"]')?.checked&&!document.querySelector('[data-testid="rag-document-doc-b"]')?.checked`);
+ await until(`!!document.querySelector('[data-testid="rag-session-remove-document-doc-a"]')&&!!document.querySelector('[data-testid="rag-session-remove-document-doc-b"]')`);
+ // Adding a plan's complete set is idempotent; membership changes through the
+ // per-session remove chip, not by toggling the bulk-add action.
  await click('[data-testid="rag-plan-select-all"]');
- await until(`document.querySelector('[data-testid="rag-document-doc-a"]')?.checked&&document.querySelector('[data-testid="rag-document-doc-b"]')?.checked`);
- await click('[data-testid="rag-remove-document-doc-b"]');
- check(await js(`!document.querySelector('[data-testid="rag-document-doc-b"]')?.checked`),'selected document tag can be removed');
+ await until(`!!document.querySelector('[data-testid="rag-session-remove-document-doc-a"]')&&!!document.querySelector('[data-testid="rag-session-remove-document-doc-b"]')`);
+ await click('[data-testid="rag-session-remove-document-doc-b"]');
+ check(await js(`!document.querySelector('[data-testid="rag-session-remove-document-doc-b"]')`),'selected document can be removed immediately from the session');
  // Path 2: independently select sources from different plans.
  stage='cross-plan selection';await select('[data-testid="rag-plan-select"]','');
- await click('[data-testid="rag-document-doc-c"]');
- await until(`document.querySelector('[data-testid="rag-document-doc-a"]')?.checked&&document.querySelector('[data-testid="rag-document-doc-c"]')?.checked`);
+ await click('[data-testid="rag-add-document-doc-c"]');
+ await until(`!!document.querySelector('[data-testid="rag-session-remove-document-doc-a"]')&&!!document.querySelector('[data-testid="rag-session-remove-document-doc-c"]')`);
  // Path 3: upload a local text file through the page's picker/import workflow.
  stage='file import';await click('[data-testid="rag-pick-files"]');
- await until(`!!document.querySelector('[data-testid="rag-document-upload-155"]')`);
- check(await js(`document.querySelector('[data-testid="rag-document-upload-155"]')?.getAttribute('aria-label')?.includes('选择资料')`),'new text file is imported as an unplanned source');
+ await until(`!!document.querySelector('[data-testid="rag-library-document-upload-155"]')`);
+ check(await js(`document.querySelector('[data-testid="rag-library-document-upload-155"]')?.innerText.includes('本地上传')&&!!document.querySelector('[data-testid="rag-session-remove-document-upload-155"]')`),'new text file is imported as an unplanned source and joins the draft selection');
  // Preparing is now automatic when a session is created; it replaces the old
  // explicit “ingest” action while retaining progress and retry behavior.
- await until(`!document.querySelector('[data-testid="rag-document-doc-b"]')?.disabled`);
- await click('[data-testid="rag-document-doc-b"]');
+ await until(`!document.querySelector('[data-testid="rag-add-document-doc-b"]')?.disabled`);
+ await click('[data-testid="rag-add-document-doc-b"]');
  stage='automatic preparation';await click('[data-testid="rag-new-session"]');
  await until(`!!document.querySelector('[data-testid="rag-prepare-status"]')`);
  check(await js(`/\\d+\\s*\\/\\s*\\d+/.test(document.querySelector('[data-testid="rag-prepare-status"]')?.innerText||'')`),'automatic preparation shows uploaded and total chunk counts');
  fs.writeFileSync(path.join(root,'release-ingest155'),'');
- await until(`document.querySelector('[data-testid="rag-document-upload-155"]')?.closest('label')?.innerText.includes('准备失败')`);
- check(await js(`document.querySelector('[data-testid="rag-document-doc-b"]')?.closest('label')?.innerText.includes('已就绪')`),'partial ingest failure is visible while successful sources stay ready');
+ await until(`document.querySelector('[data-testid="rag-library-document-upload-155"]')?.innerText.includes('准备失败')`);
+ check(await js(`document.querySelector('[data-testid="rag-library-document-doc-b"]')?.innerText.includes('已就绪')`),'partial ingest failure is visible while successful sources stay ready');
  await click('[data-testid="rag-retry-preparation"]');
- await until(`document.querySelector('[data-testid="rag-document-upload-155"]')?.closest('label')?.innerText.includes('已就绪')`);
- check(await js(`document.querySelector('[data-testid="rag-document-doc-b"]')?.closest('label')?.innerText.includes('已就绪')`),'retry completes the failed source without losing the successful one');
+ await until(`document.querySelector('[data-testid="rag-library-document-upload-155"]')?.innerText.includes('已就绪')`);
+ check(await js(`document.querySelector('[data-testid="rag-library-document-doc-b"]')?.innerText.includes('已就绪')`),'retry completes the failed source without losing the successful one');
  // Create a session for a selected document set, then exercise streaming answer and citations.
  stage='use prepared session';
  await until(`!document.querySelector('[data-testid="rag-question"]')?.disabled`);
@@ -98,7 +99,7 @@ try{
  for(const theme of ['sakura','aurora']){
    await call('Emulation.setDeviceMetricsOverride',{width:600,height:850,deviceScaleFactor:1,mobile:false});
    await js(`document.documentElement.dataset.theme=${JSON.stringify(theme)};document.querySelector('.rag-page')?.scrollIntoView({block:'start'})`);await pause(250);
-   const geom=await js(`(()=>{const selected=document.querySelector('.rag-selected')?.getBoundingClientRect(),upload=document.querySelector('.rag-upload-row')?.getBoundingClientRect(),list=document.querySelector('.rag-document-list'),item=list?.querySelector('.rag-document'),page=document.querySelector('.rag-page')?.getBoundingClientRect();return{viewport:innerWidth,document:document.documentElement.scrollWidth,body:document.body.scrollWidth,selectedTop:selected?.top,uploadBottom:upload?.bottom,listHeight:list?.clientHeight,firstDocumentHeight:item?.getBoundingClientRect().height,pageTop:page?.top,topbarBottom:document.querySelector('.topbar')?.getBoundingClientRect().bottom}})()`);
+   const geom=await js(`(()=>{const selected=document.querySelector('.rag-selected')?.getBoundingClientRect(),upload=document.querySelector('.rag-upload-row')?.getBoundingClientRect(),list=document.querySelector('.rag-document-list'),item=list?.querySelector('.rag-document-row'),page=document.querySelector('.rag-page')?.getBoundingClientRect();return{viewport:innerWidth,document:document.documentElement.scrollWidth,body:document.body.scrollWidth,selectedTop:selected?.top,uploadBottom:upload?.bottom,listHeight:list?.clientHeight,firstDocumentHeight:item?.getBoundingClientRect().height,pageTop:page?.top,topbarBottom:document.querySelector('.topbar')?.getBoundingClientRect().bottom}})()`);
    check(geom.selectedTop>=geom.uploadBottom-1,theme+' selected source tags remain separated from the upload action');
    check(geom.listHeight>=geom.firstDocumentHeight,theme+' document list can fully show at least one source');
    check(geom.pageTop>=geom.topbarBottom-1,theme+' page title remains below the top bar');
