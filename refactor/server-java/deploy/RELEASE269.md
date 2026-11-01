@@ -101,6 +101,8 @@ sh migrate.sh current
 sh build.sh 269
 ```
 
+`java-compose.sh config` 要等 `build.sh` 写入 `MF_JAVA_VERSION` 之后才能跑；新发布目录的 `.env` 复制自旧目录时没有这个键，提前跑会报 `MF_JAVA_VERSION is missing`（272-MF01 就停在这里）。
+
 `build.sh` 构建 `mentorflow-java-server:269`，核对镜像内 JAR 与构建 JAR 的 SHA-256，并更新该发布目录 `.env` 中的 `MF_JAVA_VERSION=269`。审阅生成的 Compose 配置，确认既有运行参数、挂载、`MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS=0` 及 BUG-45 网络配置仍在；不要打印含秘密的环境值。
 
 ## 重建与健康检查
@@ -169,7 +171,9 @@ Java 226 不实现新的逐份删除语义。若 269 已把共享内容的一份
 
 ```sh
 cd "$DEPLOY"
-sed 's/^MF_JAVA_VERSION=.*/MF_JAVA_VERSION=226/' .env > "$STATE/rollback.env"
+# build.sh 之前失败时 .env 里还没有这个键，所以先删再追加，不用 sed 只替换。
+grep -v '^MF_JAVA_VERSION=' .env > "$STATE/rollback.env" || true
+printf 'MF_JAVA_VERSION=226\n' >> "$STATE/rollback.env"
 cat "$STATE/rollback.env" > .env
 sh java-compose.sh config
 sh java-compose.sh up
