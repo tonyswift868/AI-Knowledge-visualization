@@ -223,8 +223,9 @@ def test_profile226_postgres_migration_closure_and_downgrade(tmp_path, monkeypat
     admin_url = None
     app_engine = None
     try:
+        # Stop at 0046: later migrations (0047+) are forward-only and would block the 0045 downgrade check.
         app_url, admin_url, migration_url = support._prepare_database(
-            postgres, "profile226", issuer)
+            postgres, "profile226", issuer, target="0046_account_profiles")
         app_engine = create_engine(app_url)
         service = AccountProfileService(app_engine)
         pg_conninfo = admin_url.replace("postgresql+psycopg://", "postgresql://", 1)
