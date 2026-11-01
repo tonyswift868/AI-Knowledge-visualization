@@ -189,6 +189,11 @@ public final class RagService {
             if (!samePayload)
                 throw new RagFailure("RAG_DOCUMENT_ID_CONFLICT", "This document ID already contains different content", 409);
             int canonicalTotal = ((Number) document.get("total_chunks")).intValue();
+            Map<String, Object> promotedManifest = uploadManifest(jdbc, scope, requestedId);
+            if (promotedManifest != null) {
+                int originalTotal = ((Number) promotedManifest.get("total_chunks")).intValue();
+                return uploadResponse(canonicalId, requestedId, "ready", originalTotal, originalTotal, true);
+            }
             return uploadResponse(canonicalId, requestedId, "ready", canonicalTotal, canonicalTotal, aliasRequest);
         }
         if (document == null) {
@@ -247,13 +252,25 @@ public final class RagService {
     private static boolean sameExistingBatch(JdbcTemplate jdbc, String scope, String id,
             int total, List<Map<String, Object>> chunks) {
         Map<String, Object> doc = findDocument(jdbc, scope, id);
-        if (doc == null || total != ((Number) doc.get("total_chunks")).intValue()) return false;
+        if (doc == null) return false;
+        Map<String, Object> manifest = uploadManifest(jdbc, scope, id);
+        if (manifest != null) return sameAliasBatch(manifest, total, chunks);
+        if (total != ((Number) doc.get("total_chunks")).intValue()) return false;
         for (Map<String, Object> chunk : chunks) {
             List<Integer> matches = jdbc.query("SELECT 1 FROM rag_chunks WHERE account_scope=? AND document_id=? AND seq=? AND text=?",
                     (rs, row) -> 1, scope, id, chunk.get("seq"), chunk.get("text"));
             if (matches.isEmpty()) return false;
         }
         return true;
+    }
+
+    private static Map<String, Object> uploadManifest(JdbcTemplate jdbc, String scope, String id) {
+        List<Map<String, Object>> manifests = jdbc.query(
+                "SELECT total_chunks,chunk_digests FROM rag_document_upload_manifests "
+                        + "WHERE account_scope=? AND document_id=?",
+                (rs, row) -> Map.of("total_chunks", rs.getInt("total_chunks"),
+                        "chunk_digests", rs.getString("chunk_digests")), scope, id);
+        return manifests.isEmpty() ? null : manifests.get(0);
     }
 
     /** Alias requests retain their own seq/text manifest even when canonical chunking differs. */
@@ -263,8 +280,13 @@ public final class RagService {
                 "SELECT total_chunks,chunk_digests FROM rag_document_aliases WHERE account_scope=? AND requested_document_id=?",
                 (rs, row) -> Map.of("total_chunks", rs.getInt("total_chunks"), "chunk_digests", rs.getString("chunk_digests")),
                 scope, aliasId);
-        if (rows.isEmpty() || total != ((Number) rows.get(0).get("total_chunks")).intValue()) return false;
-        String[] expected = ((String) rows.get(0).get("chunk_digests")).split(",", -1);
+        return !rows.isEmpty() && sameAliasBatch(rows.get(0), total, chunks);
+    }
+
+    private static boolean sameAliasBatch(Map<String, Object> manifest, int total,
+            List<Map<String, Object>> chunks) {
+        if (total != ((Number) manifest.get("total_chunks")).intValue()) return false;
+        String[] expected = ((String) manifest.get("chunk_digests")).split(",", -1);
         if (expected.length != total) return false;
         for (Map<String, Object> chunk : chunks) {
             int seq = (Integer) chunk.get("seq");
@@ -315,6 +337,14 @@ public final class RagService {
                 @SuppressWarnings("unchecked") List<String> aliases = (List<String>) row.get("aliases");
                 aliases.addAll(jdbc.query("SELECT requested_document_id FROM rag_document_aliases WHERE account_scope=? AND canonical_document_id=? ORDER BY requested_document_id",
                         (rs, index) -> rs.getString(1), scope, row.get("document_id")));
+                Map<String, Object> promotedManifest = uploadManifest(jdbc, scope, (String) row.get("document_id"));
+                if (promotedManifest != null && "ready".equals(row.get("status"))) {
+                    // Report readiness in the promoted logical ID's original source chunking;
+                    // the physical canonical may use a different chunk boundary layout.
+                    int logicalTotal = ((Number) promotedManifest.get("total_chunks")).intValue();
+                    row.put("total_chunks", logicalTotal);
+                    row.put("received_chunks", (long) logicalTotal);
+                }
             }
             return rows;
         });
@@ -332,9 +362,13 @@ public final class RagService {
             require512(queryVector);
             return repository.transaction(scope, false, jdbc -> {
                 LinkedHashSet<String> canonicalIds = new LinkedHashSet<>();
+                Map<String, List<String>> requestedByCanonical = new LinkedHashMap<>();
                 for (String requested : requestedIds) {
                     String resolved = resolve(jdbc, scope, requested);
-                    if (resolved != null && findDocument(jdbc, scope, resolved) != null) canonicalIds.add(resolved);
+                    if (resolved != null && findDocument(jdbc, scope, resolved) != null) {
+                        canonicalIds.add(resolved);
+                        requestedByCanonical.computeIfAbsent(resolved, ignored -> new ArrayList<>()).add(requested);
+                    }
                 }
                 if (canonicalIds.isEmpty()) return Map.of("passages", List.of());
                 List<RagVectorStore.Candidate> ranked = vectorStore.nearest(jdbc, scope,
@@ -342,7 +376,12 @@ public final class RagService {
                 List<PassageScore> scored = new ArrayList<>(ranked.size());
                 for (RagVectorStore.Candidate passage : ranked) {
                     double score = 0.8 * ((passage.cosine() + 1.0) / 2.0) + 0.2 * bigramJaccard(query, passage.text());
-                    scored.add(new PassageScore(passage, score));
+                    List<String> logicalIds = requestedByCanonical.getOrDefault(passage.documentId(), List.of());
+                    if (!logicalIds.isEmpty()) {
+                        RagVectorStore.Candidate logicalPassage = new RagVectorStore.Candidate(logicalIds.get(0),
+                                passage.seq(), passage.text(), passage.page(), passage.section(), passage.cosine());
+                        scored.add(new PassageScore(logicalPassage, score));
+                    }
                 }
                 scored.sort(Comparator.comparingDouble(PassageScore::score).reversed()
                         .thenComparing(item -> item.passage().documentId()).thenComparingInt(item -> item.passage().seq()));
@@ -363,7 +402,7 @@ public final class RagService {
         }
     }
 
-    /** Deleting a canonical ID removes the deduplicated content and its aliases. Deleting an alias unlinks only that ID. */
+    /** Delete one logical document ID while keeping content shared by its remaining aliases. */
     public Map<String, Object> delete(Map<String, Object> actor, String docId) {
         String scope = accountScope(actor);
         String requested = required(docId, "document_id", 160);
@@ -372,14 +411,66 @@ public final class RagService {
                     (rs, row) -> rs.getString(1), scope, requested);
             if (!target.isEmpty()) {
                 jdbc.update("DELETE FROM rag_document_aliases WHERE account_scope=? AND requested_document_id=?", scope, requested);
-                return Map.of("deleted", true, "content_deleted", false, "document_id", target.get(0));
+                return deleteResponse(false, target.get(0));
             }
-            List<String> existing = jdbc.query("SELECT document_id FROM rag_documents WHERE account_scope=? AND document_id=?",
-                    (rs, row) -> rs.getString(1), scope, requested);
+            List<Map<String, Object>> existing = jdbc.query("SELECT document_id,title,source,total_chunks,status,content_sha256,created_at,updated_at "
+                            + "FROM rag_documents WHERE account_scope=? AND document_id=? FOR UPDATE",
+                    (rs, row) -> {
+                        LinkedHashMap<String, Object> value = new LinkedHashMap<>();
+                        value.put("document_id", rs.getString("document_id"));
+                        value.put("title", rs.getString("title")); value.put("source", rs.getString("source"));
+                        value.put("total_chunks", rs.getInt("total_chunks")); value.put("status", rs.getString("status"));
+                        value.put("content_sha256", rs.getString("content_sha256"));
+                        value.put("created_at", rs.getTimestamp("created_at")); value.put("updated_at", rs.getTimestamp("updated_at"));
+                        return value;
+                    }, scope, requested);
             if (existing.isEmpty()) throw new RagFailure("RAG_DOCUMENT_NOT_FOUND", "Document was not found", 404);
+
+            // A stable order makes promotion deterministic when a canonical document has several aliases.
+            List<Map<String, Object>> aliases = jdbc.query("SELECT requested_document_id,total_chunks,chunk_digests FROM rag_document_aliases "
+                            + "WHERE account_scope=? AND canonical_document_id=? ORDER BY requested_document_id",
+                    (rs, row) -> Map.of("requested_document_id", rs.getString("requested_document_id"),
+                            "total_chunks", rs.getInt("total_chunks"), "chunk_digests", rs.getString("chunk_digests")),
+                    scope, requested);
+            if (aliases.isEmpty()) {
+                jdbc.update("DELETE FROM rag_documents WHERE account_scope=? AND document_id=?", scope, requested);
+                return deleteResponse(true, null);
+            }
+
+            Map<String, Object> old = existing.get(0);
+            if (!"ready".equals(old.get("status")) || old.get("content_sha256") == null)
+                throw new RagFailure("RAG_DOCUMENT_STATE_CONFLICT", "Shared document content is not ready", 409);
+            Map<String, Object> promotedAlias = aliases.get(0);
+            String promoted = (String) promotedAlias.get("requested_document_id");
+
+            // Release the account/content unique key inside this transaction, then create the new
+            // canonical row before moving chunks and foreign-key references. Other transactions
+            // see either the old graph or the complete new graph, never this intermediate state.
+            jdbc.update("UPDATE rag_documents SET status='uploading',content_sha256=NULL "
+                    + "WHERE account_scope=? AND document_id=?", scope, requested);
+            jdbc.update("INSERT INTO rag_documents(account_scope,document_id,content_sha256,title,source,total_chunks,status,created_at,updated_at) "
+                            + "VALUES (?,?,?,?,?,?, 'ready', ?, ?)" ,
+                    scope, promoted, old.get("content_sha256"), old.get("title"), old.get("source"),
+                    old.get("total_chunks"), old.get("created_at"), old.get("updated_at"));
+            jdbc.update("INSERT INTO rag_document_upload_manifests(account_scope,document_id,total_chunks,chunk_digests) VALUES (?,?,?,?)",
+                    scope, promoted, promotedAlias.get("total_chunks"), promotedAlias.get("chunk_digests"));
+            jdbc.update("DELETE FROM rag_document_aliases WHERE account_scope=? AND requested_document_id=?", scope, promoted);
+            jdbc.update("UPDATE rag_document_aliases SET canonical_document_id=? "
+                    + "WHERE account_scope=? AND canonical_document_id=?", promoted, scope, requested);
+            jdbc.update("UPDATE rag_chunks SET document_id=? WHERE account_scope=? AND document_id=?", promoted, scope, requested);
             jdbc.update("DELETE FROM rag_documents WHERE account_scope=? AND document_id=?", scope, requested);
-            return Map.of("deleted", true, "content_deleted", true, "document_id", requested);
+            return deleteResponse(false, promoted);
         });
+    }
+
+    private static Map<String, Object> deleteResponse(boolean contentDeleted, String canonicalId) {
+        LinkedHashMap<String, Object> response = new LinkedHashMap<>();
+        response.put("deleted", true);
+        response.put("content_deleted", contentDeleted);
+        response.put("canonical_id", canonicalId);
+        // Keep the existing response key for older clients during rollout.
+        response.put("document_id", canonicalId);
+        return response;
     }
 
     private static String resolve(JdbcTemplate jdbc, String scope, String id) {
