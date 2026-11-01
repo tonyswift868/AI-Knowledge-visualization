@@ -1,6 +1,6 @@
 #!/bin/sh
-# Run Alembic from a disposable tool image based on the existing backend image. The image
-# and secrets volume are only read; the only persistent effect is the DB DDL.
+# Build a maintenance image from the existing backend image, then run Alembic.
+# Secrets/source mounts are read-only. For a no-build, read-only check use preflight.sh.
 set -eu
 
 usage() {
@@ -15,10 +15,10 @@ deploy_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$deploy_dir/../../.." && pwd)
 server_root=$repo_root/refactor/server
 docker_bin=${DOCKER_BIN:-docker}
-image=${MIGRATION_IMAGE:-mentorflow-slim-backend:MF-76}
-tool_image=${MIGRATION_TOOL_IMAGE:-mentorflow-migration-tool:MF-156}
+image=${MIGRATION_IMAGE:-mentorflow-slim-backend:269-python-fallback}
+tool_image=${MIGRATION_TOOL_IMAGE:-mentorflow-migration-tool:MF-275}
 network=${MIGRATION_NETWORK:-mentorflow-e1-preview_internal}
-secrets_volume=${MIGRATION_SECRETS_VOLUME:-mentorflow-e1-preview_oidc_proxy_secrets}
+secrets_volume=${MIGRATION_SECRETS_VOLUME:-mentorflow-e1-preview_migrate_secrets}
 secret_path=${MF_MIGRATION_PASSWORD_FILE:-/run/secrets/postgres_migrator_password}
 
 case "$image$tool_image$network$secrets_volume" in *[!A-Za-z0-9_./:-]*)

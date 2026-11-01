@@ -1,4 +1,4 @@
-ARG MF_MIGRATION_BASE=mentorflow-slim-backend:MF-76
+ARG MF_MIGRATION_BASE=mentorflow-slim-backend:269-python-fallback
 FROM ${MF_MIGRATION_BASE}
 
 # The application image intentionally excludes maintenance-only Alembic.
