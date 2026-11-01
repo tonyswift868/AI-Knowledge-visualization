@@ -145,3 +145,44 @@
   .rag-sidebar-sessions { min-height: 140px; max-height: 240px; }
   .rag-current-documents { flex: none; min-height: 105px; }
 }
+
+/* 278: keep the session rail full height; materials live in their own dialog. */
+.page.rag-page { height: 100%; min-height: 0; overflow: hidden; }
+.rag-layout { grid-template-columns: clamp(280px, 24vw, 360px) minmax(0, 1fr); flex: 1 1 auto; height: auto; min-height: 0; }
+.rag-sidebar-sessions { display: flex; flex-direction: column; gap: 10px; min-height: 0; padding: 14px; overflow: hidden; }
+.rag-sidebar-sessions .rag-session-list { flex: 1 1 auto; align-content: start; overflow: auto; }
+.rag-session-rename { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 4px; width: 100%; padding: 4px; }
+.rag-session-rename .input { min-width: 0; height: 32px; padding: 5px 7px; font-size: .76rem; }
+.rag-session-rename .btn { flex: none; padding: 5px 7px; font-size: .68rem; }
+.rag-chat-prepare-status { flex: none; margin: 8px 14px 0; }
+.rag-chat-head .rag-materials-empty { min-height: 42px; box-shadow: 0 0 0 4px var(--accent-soft), 0 6px 20px color-mix(in srgb, var(--accent) 25%, transparent); }
+.rag-materials-dialog { flex-direction: column; gap: 12px; width: min(1480px, calc(100vw - 48px)); height: min(900px, calc(100vh - 48px)); max-width: none; max-height: none; padding: 18px; overflow: hidden; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-solid); color: var(--text); box-shadow: 0 24px 80px rgba(0,0,0,.32); }
+.rag-materials-dialog[open] { display: flex; }
+.rag-materials-dialog::backdrop { background: rgba(10,14,24,.52); backdrop-filter: blur(3px); }
+.rag-materials-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 14px; }
+.rag-materials-head h2 { margin: 0; font-size: 1.15rem; letter-spacing: -.02em; }
+.rag-materials-head p { margin: 3px 0 0; color: var(--text-3); font-size: .76rem; }
+.rag-materials-columns { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, .85fr); flex: 1 1 auto; gap: 12px; min-height: 0; }
+.rag-materials-columns > .rag-sources, .rag-materials-columns > .rag-current-documents { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; padding: 14px; overflow: hidden; }
+.rag-materials-columns .rag-document-list { flex: 1 1 auto; align-content: start; min-height: 0; max-height: none; gap: 6px; }
+.rag-materials-columns .rag-current-documents .rag-selected { display: grid; align-content: start; flex: 1 1 auto; gap: 6px; min-height: 0; max-height: none; overflow: auto; padding: 2px 3px 2px 0; }
+.rag-materials-columns .rag-chip { justify-content: space-between; width: 100%; min-height: 36px; padding: 5px 7px 5px 10px; border-radius: 10px; background: var(--surface-2); font-size: .77rem; }
+.rag-materials-columns .rag-session-list-head { align-items: flex-start; }
+.rag-materials-columns .rag-session-list-head h2 { font-size: .93rem; }
+.rag-materials-columns .rag-section-title { flex: none; }
+.rag-materials-columns .rag-sources > .rag-upload-row, .rag-materials-columns .rag-sources > .rag-privacy, .rag-materials-columns .rag-sources > .rag-label, .rag-materials-columns .rag-sources > .rag-plan-select, .rag-materials-columns .rag-sources > .rag-all-plan { flex: none; }
+@media (max-width: 880px) {
+  .rag-layout { grid-template-columns: minmax(250px, 31vw) minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .rag-materials-columns { display: flex; flex-direction: column; overflow: auto; }
+  .rag-materials-columns > .rag-sources { flex: none; height: min(560px, calc(100vh - 160px)); min-height: 440px; }
+  .rag-materials-columns > .rag-current-documents { flex: none; height: min(440px, calc(100vh - 160px)); min-height: 300px; }
+}
+@media (max-width: 680px) {
+  .page.rag-page { height: auto; min-height: 100%; overflow: visible; }
+  .rag-layout { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+  .rag-sidebar-sessions { min-height: 210px; max-height: 32vh; }
+  .rag-chat { flex: 1 1 auto; min-height: 58vh; }
+  .rag-materials-dialog { width: calc(100vw - 20px); height: calc(100vh - 20px); padding: 12px; gap: 9px; }
+}

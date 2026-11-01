@@ -67,12 +67,15 @@ export function Rag() {
   busyRef.current = busy
   const [renamingSessionId, setRenamingSessionId] = React.useState("")
   const [sessionTitleDraft, setSessionTitleDraft] = React.useState("")
+  const [materialsOpen, setMaterialsOpen] = React.useState(false)
   const [deleteUsage, setDeleteUsage] = React.useState<DeleteUsage | null>(null)
   const [deleteInfoOpen, setDeleteInfoOpen] = React.useState(false)
   const [deleteError, setDeleteError] = React.useState("")
   const [deletingDocumentId, setDeletingDocumentId] = React.useState("")
   const [sessionMutationCount, setSessionMutationCount] = React.useState(0)
   const deleteDialogRef = React.useRef<HTMLDialogElement>(null)
+  const materialsDialogRef = React.useRef<HTMLDialogElement>(null)
+  const materialsTriggerRef = React.useRef<HTMLElement | null>(null)
   const deleteTriggerRef = React.useRef<HTMLElement | null>(null)
   const deleteUsageRequest = React.useRef(0)
   const deletionPendingIds = React.useRef(new Set<string>())
@@ -120,6 +123,15 @@ export function Rag() {
     if (deleteUsage && !dialog.open) dialog.showModal()
     if (!deleteUsage && dialog.open) dialog.close()
   }, [deleteUsage])
+  React.useEffect(() => {
+    const dialog = materialsDialogRef.current
+    if (!dialog) return
+    if (materialsOpen && !dialog.open) dialog.showModal()
+    if (!materialsOpen && dialog.open) dialog.close()
+  }, [materialsOpen])
+  React.useEffect(() => {
+    if (!materialsOpen) materialsTriggerRef.current?.focus()
+  }, [materialsOpen])
   React.useEffect(() => {
     if (!deleteUsage) deleteTriggerRef.current?.focus()
   }, [deleteUsage])
@@ -1000,7 +1012,66 @@ export function Rag() {
       <span>{sources.server_status.message || "资料检索暂时不可用，已保存记录仍可查看。"}</span>
     </div>}
     <div className="rag-layout">
-      <aside className="rag-sidebar" data-testid="rag-sidebar" aria-label="资料与会话">
+      <aside className="card rag-sidebar-sessions" data-testid="rag-sidebar" aria-label="会话列表">
+       <div className="rag-session-list-head"><div><h2>会话列表</h2><p>按使用的资料分组</p></div>
+         <Button small kind="primary" data-testid="rag-new-session" disabled={!selected.length || !!busy || !!pending || !!deletingDocumentId || sessionMutationCount > 0} onClick={newSession}>
+           <MessageSquarePlus />新建会话
+         </Button>
+       </div>
+       <div className="rag-session-list" data-testid="rag-session-list">
+         {[...sessionGroups.entries()].length === 0 ? <p className="rag-session-list-empty">还没有会话。先选好资料，再点“新建会话”。</p> : [...sessionGroups.entries()].map(([groupId, group]) =>
+           <section className="rag-session-group" key={groupId} aria-label={`资料组：${group.title}`}>
+             <span className="rag-session-group-title" title={group.title}>{group.title}</span>
+             <div>{group.sessions.map((item) => <div className={`rag-session ${session?.id === item.id ? "active" : ""}`} key={item.id}>
+               {renamingSessionId === item.id ? <div className="rag-session-rename"><input className="input" data-testid="rag-rename-session-input" aria-label="会话名称" value={sessionTitleDraft} maxLength={80} onChange={(event) => setSessionTitleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void renameSession(item.id); if (event.key === "Escape") setRenamingSessionId("") }} />
+                 <Button small kind="primary" data-testid="rag-save-session-title" disabled={!sessionTitleDraft.trim()} onClick={() => void renameSession(item.id)}>保存</Button><Button small kind="ghost" aria-label="取消改名" onClick={() => setRenamingSessionId("")}>取消</Button></div> : <>
+                 <button type="button" data-testid={`rag-session-${item.id}`} data-active={session?.id === item.id} title={item.title} disabled={!!pending || busy === "session" || busy === "saving"} onClick={() => void openSession(item.id)}>{item.title || "新会话"}</button>
+                 <button type="button" aria-label={`重命名会话：${item.title}`} title="重命名会话" data-testid={session?.id === item.id ? "rag-rename-session" : `rag-rename-session-${item.id}`} onClick={() => { setRenamingSessionId(item.id); setSessionTitleDraft(item.title); if (session?.id !== item.id) void openSession(item.id) }}><Pencil size={13} /></button>
+                 <button type="button" aria-label={`删除会话：${item.title}`} title="删除会话" disabled={!!busy || !!pending} onClick={() => void deleteSession(item.id)}><Trash2 size={13} /></button>
+               </>}
+             </div>)}</div>
+           </section>)}
+       </div>
+      </aside>
+
+      <section className="card rag-chat" aria-label="资料问答对话">
+        {ragFault && !sendFailure && <div className="rag-model-fault" data-testid="rag-model-fault"><ModelFaultPanel fault={ragFault} onRetry={() => { void send() }} /></div>}
+        <header className="rag-chat-head">
+          <div><span className="rag-step">02</span><div><h2 data-testid={isEmptyNewSession ? "rag-empty-session" : undefined}>{session?.title || "开始提问"}</h2><p>{session ? `${session.document_ids.length} 份资料` : selected.length ? `新会话将使用 ${selected.length} 份资料` : "请先选择资料"}</p></div></div>
+          <Button kind="primary" className={!selectedCount ? "rag-materials-empty" : undefined} data-testid="rag-materials-open" aria-haspopup="dialog" aria-expanded={materialsOpen} onClick={(event) => { materialsTriggerRef.current = event.currentTarget; setMaterialsOpen(true) }}><BookOpen size={16} />资料 · {selectedCount}</Button>
+        </header>
+        {((!!preparing && preparing.sessionId === session?.id) || (!!session && session.document_ids.some((id) => preparationJobs[id]?.state === "queued" || preparationJobs[id]?.state === "running"))) && <div className="rag-prepare-status rag-chat-prepare-status" data-testid="rag-prepare-status" role="status">
+          <LoaderCircle className="spin" size={15} />正在准备资料 {preparing?.sessionId === session?.id ? preparing.uploaded : session?.document_ids.reduce((sum, id) => sum + (preparationJobs[id]?.uploaded_chunks ?? 0), 0)}/{preparing?.sessionId === session?.id ? preparing.total || "…" : session?.document_ids.reduce((sum, id) => sum + (preparationJobs[id]?.total_chunks ?? 0), 0) || "…"} 段
+          <Button small kind="ghost" data-testid="rag-cancel-preparation" onClick={cancelPreparation}>取消准备</Button>
+        </div>}
+        {prepareFailure && session && prepareFailure.sessionId === session.id && <div className="rag-prepare-failure" data-testid="rag-prepare-failure" role="alert">
+          <span>资料准备失败：{prepareFailure.message}</span>
+          <Button small kind="ghost" data-testid="rag-retry-preparation" disabled={!!busy || !!pending} onClick={() => void prepareDocuments(prepareFailure.sessionId, prepareFailure.ids)}>重试准备资料</Button>
+        </div>}
+        {session && sessionDocuments.some((doc) => doc.status !== "ready") && !preparing && !session.document_ids.some((id) => preparationJobs[id]?.state === "queued" || preparationJobs[id]?.state === "running") && !prepareFailure && <div className="rag-prepare-resume" data-testid="rag-prepare-resume" role="status">
+          <span>资料还没准备好，准备完成后即可提问。</span><Button small kind="ghost" data-testid="rag-prepare-documents" disabled={!!busy || !!pending} onClick={() => void prepareDocuments(session.id, session.document_ids)}>继续准备资料</Button>
+        </div>}
+        <div className="rag-messages" ref={scrollRef} data-testid="rag-messages">
+          {!session?.messages.length && !pending ? <div className="rag-empty"><div className="rag-empty-icon"><BookOpen /></div><b>{session ? "这是一个新会话" : "从资料开始，一起把问题说清楚"}</b><span>{!selectedCount ? "先点上方的“资料”选择资料，再开始提问。" : session ? `已选好 ${session.document_ids.length} 份资料。准备完成后，在下方输入问题；回答和原文会留在这个会话里。` : "先点上方的“资料”选择资料，再开始提问。"}</span></div> : <>
+            {session?.messages.map((message) => <div key={message.id} data-turn-key={`rag-${session.id}-${message.id}`} data-turn-role={message.role}><RagMessage message={message} onCitation={(number) => setSourceOpen({ messageId: message.id, number })} active={sourceOpen?.messageId === message.id ? sourceOpen.number : null} /></div>)}
+            {pending && <><div data-turn-key="rag-pending-user" data-turn-role="user"><div className="rag-message user"><div className="rag-bubble">{pending.text}</div></div></div><div data-turn-key="rag-pending-assistant" data-turn-role="assistant"><div className="rag-message assistant"><div className="rag-bubble" data-testid="rag-streaming-reply">{pending.reply || <span className="rag-thinking">正在查阅资料并整理回答…<i /><i /><i /></span>}</div></div></div></>}
+          </>}
+        </div>
+        <div className="rag-composer">
+          {!selectedCount && <p className="rag-composer-hint">先点上方“资料”加入资料后即可提问。</p>}
+          {sendFailure && <div className="rag-send-failure" role="status" data-testid="rag-send-failure"><span>{sendFailure.message} 这条问题没有自动重发。</span><Button small data-testid="rag-retry-send" disabled={!!busy || !!pending} onClick={() => void send(sendFailure.text)}>重试这条问题</Button></div>}
+          <div className="rag-question-input">
+            <textarea className="input" rows={2} data-testid="rag-question" aria-label="输入资料问题" value={question} disabled={!!pending || !!busy} placeholder="例如：这份资料是怎样解释这个概念的？" onChange={(event) => { const value = event.target.value; setQuestion(value); persistQuestion(value); if (value.trim() !== question.trim() && (sendFailure || ragFault)) clearSendFailure() }} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }} />
+            <div data-testid="rag-question-mic" role="group" aria-label="资料问题语音输入"><MicButton voice={questionVoice} /></div>
+          </div>
+          {pending ? <Button data-testid="rag-cancel" onClick={() => abort.current?.abort()}><Square />取消回答</Button> : <Button kind="primary" data-testid="rag-send" disabled={!question.trim() || !selectedCount || !!busy || sessionMutationCount > 0} onClick={() => void send()}>{busy === "prepare" ? <><LoaderCircle className="spin" />准备资料…</> : busy === "send" ? <><LoaderCircle className="spin" />正在回答…</> : busy === "session" ? <><LoaderCircle className="spin" />新建会话…</> : <><SendHorizontal />提问</>}</Button>}
+        </div>
+      </section>
+    </div>
+
+    <dialog className="rag-materials-dialog" ref={materialsDialogRef} data-testid="rag-materials-dialog" aria-labelledby="rag-materials-title" onCancel={(event) => { event.preventDefault(); setMaterialsOpen(false) }} onClick={(event) => { if (event.target === event.currentTarget) setMaterialsOpen(false) }}>
+      <div className="rag-materials-head"><div><h2 id="rag-materials-title">资料</h2><p>选择本次对话要用的资料</p></div><button type="button" className="rag-icon-button" data-testid="rag-materials-close" aria-label="关闭资料窗口" onClick={() => setMaterialsOpen(false)}><X size={17} /></button></div>
+      <div className="rag-materials-columns">
         <section className="card rag-sources" aria-label="资料库" data-testid="rag-library">
         <div className="rag-section-title"><span className="rag-step">01</span><div><h2>资料库</h2><p>每份资料可加入多个会话。</p></div></div>
         <label className="rag-label" htmlFor="rag-plan-select">按计划筛选</label>
@@ -1039,86 +1110,17 @@ export function Rag() {
         </div>
         <p className="rag-privacy">准备资料时只上传抽取后的文字分块，原文件不会上传。</p>
        </section>
-
-       <section className="card rag-current-documents" aria-label="本会话资料" data-testid="rag-session-documents">
-         <div className="rag-session-list-head"><div><h2>{session ? `${session.title} · ${session.document_ids.length} 份资料` : "新会话要用的资料"}</h2><p>{session ? "点 × 仅从这个会话移除" : "从资料库加入要用的资料"}</p></div></div>
-         <div className="rag-selected" aria-label="本会话资料列表">
-           {(session ? sessionDocuments : selectedDocuments).length === 0 ? <span className="muted small">尚未加入资料</span> : (session ? sessionDocuments : selectedDocuments).map((doc) => <span className="rag-chip" key={doc.id}>
-             <span title={doc.title}>{doc.title}</span><button type="button" data-testid={`rag-session-remove-document-${doc.id}`} aria-label={`从本会话移除资料：${doc.title}`} title="从本会话移除" disabled={!!pending || !!deletingDocumentId} onClick={() => removeDocumentFromCurrent(doc.id)}><X size={13} /></button>
-           </span>)}
-         </div>
-         {session && <div className="rag-session-title-actions">
-           {renamingSessionId === session.id ? <><input className="input" data-testid="rag-rename-session-input" aria-label="会话名称" value={sessionTitleDraft} maxLength={80} onChange={(event) => setSessionTitleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void renameSession(session.id); if (event.key === "Escape") setRenamingSessionId("") }} />
-             <Button small kind="primary" data-testid="rag-save-session-title" disabled={!sessionTitleDraft.trim()} onClick={() => void renameSession(session.id)}>保存名称</Button><Button small kind="ghost" onClick={() => setRenamingSessionId("")}>取消</Button></>
-             : <Button small kind="ghost" data-testid="rag-rename-session" onClick={() => { setRenamingSessionId(session.id); setSessionTitleDraft(session.title) }}><Pencil size={13} />改名</Button>}
-         </div>}
-       </section>
-
-       <section className="card rag-sidebar-sessions" aria-label="会话列表">
-         <div className="rag-session-list-head"><div><h2>会话列表</h2><p>按使用的资料分组</p></div>
-           <Button small kind="primary" data-testid="rag-new-session" disabled={!selected.length || !!busy || !!pending || !!deletingDocumentId || sessionMutationCount > 0} onClick={newSession}>
-             <MessageSquarePlus />新建会话
-           </Button>
-         </div>
-         <div className="rag-session-list" data-testid="rag-session-list">
-           {[...sessionGroups.entries()].length === 0 ? <p className="rag-session-list-empty">还没有会话。选好资料后点“新建会话”。</p> : [...sessionGroups.entries()].map(([groupId, group]) =>
-             <section className="rag-session-group" key={groupId} aria-label={`资料组：${group.title}`}>
-               <span className="rag-session-group-title" title={group.title}>{group.title}</span>
-               <div>{group.sessions.map((item) => <div className={`rag-session ${session?.id === item.id ? "active" : ""}`} key={item.id}>
-                 <button type="button" data-testid={`rag-session-${item.id}`} data-active={session?.id === item.id} title={item.title}
-                   disabled={!!pending || busy === "session" || busy === "saving"}
-                   onClick={() => void openSession(item.id)}>{item.title || "新会话"}</button>
-                 <button type="button" aria-label={`重命名会话：${item.title}`} title="重命名会话" data-testid={`rag-rename-session-${item.id}`} onClick={() => { setRenamingSessionId(item.id); setSessionTitleDraft(item.title); if (session?.id !== item.id) void openSession(item.id) }}><Pencil size={13} /></button>
-                 <button type="button" aria-label={`删除会话：${item.title}`} title="删除会话" disabled={!!busy || !!pending} onClick={() => void deleteSession(item.id)}><Trash2 size={13} /></button>
-               </div>)}</div>
-             </section>)}
-         </div>
-       </section>
-      </aside>
-
-      <section className="card rag-chat" aria-label="资料问答对话">
-        {ragFault && !sendFailure && <div className="rag-model-fault" data-testid="rag-model-fault"><ModelFaultPanel fault={ragFault} onRetry={() => { void send() }} /></div>}
-        <header className="rag-chat-head">
-          <div><span className="rag-step">02</span><div><h2 data-testid={isEmptyNewSession ? "rag-empty-session" : undefined}>{session?.title || "开始提问"}</h2><p>{session ? `${session.document_ids.length} 份资料` : selected.length ? `新会话将使用 ${selected.length} 份资料` : "请先从左侧加入资料"}</p></div></div>
-        </header>
-        {prepareFailure && session && prepareFailure.sessionId === session.id && <div className="rag-prepare-failure" data-testid="rag-prepare-failure" role="alert">
-          <span>资料准备失败：{prepareFailure.message}</span>
-          <Button small kind="ghost" data-testid="rag-retry-preparation" disabled={!!busy || !!pending} onClick={() => void prepareDocuments(prepareFailure.sessionId, prepareFailure.ids)}>重试准备资料</Button>
-        </div>}
-        {session && sessionDocuments.some((doc) => doc.status !== "ready")
-          && !preparing && !prepareFailure && <div className="rag-prepare-resume" data-testid="rag-prepare-resume" role="status">
-            <span>资料还没准备好，准备完成后即可提问。</span>
-            <Button small kind="ghost" data-testid="rag-prepare-documents" disabled={!!busy || !!pending}
-              onClick={() => void prepareDocuments(session.id, session.document_ids)}>继续准备资料</Button>
-          </div>}
-        <div className="rag-messages" ref={scrollRef} data-testid="rag-messages">
-          {!session?.messages.length && !pending ? <div className="rag-empty"><div className="rag-empty-icon"><BookOpen /></div><b>{session ? "这是一个新会话" : "从资料开始，一起把问题说清楚"}</b><span>{session ? `已选好 ${session.document_ids.length} 份资料。准备完成后，在下方输入问题；回答和原文会留在这个会话里。` : "选好资料并点左边“新建会话”，也可以直接在下面输入问题。"}</span></div> : <>
-            {session?.messages.map((message) => <div key={message.id} data-turn-key={`rag-${session.id}-${message.id}`} data-turn-role={message.role}><RagMessage message={message} onCitation={(number) => setSourceOpen({ messageId: message.id, number })}
-              active={sourceOpen?.messageId === message.id ? sourceOpen.number : null} /></div>)}
-            {pending && <><div data-turn-key="rag-pending-user" data-turn-role="user"><div className="rag-message user"><div className="rag-bubble">{pending.text}</div></div></div><div data-turn-key="rag-pending-assistant" data-turn-role="assistant"><div className="rag-message assistant"><div className="rag-bubble" data-testid="rag-streaming-reply">{pending.reply || <span className="rag-thinking">正在查阅资料并整理回答…<i /><i /><i /></span>}</div></div></div></>}
-          </>}
-        </div>
-        <div className="rag-composer">
-          {!selectedCount && <p className="rag-composer-hint">先从左侧资料库加入资料后即可提问。</p>}
-          {preparing && preparing.sessionId === session?.id && <div className="rag-prepare-status" data-testid="rag-prepare-status" role="status">
-            <LoaderCircle className="spin" size={15} />正在准备资料 {preparing.uploaded}/{preparing.total || "…"} 段
-            <Button small kind="ghost" data-testid="rag-cancel-preparation" onClick={cancelPreparation}>取消准备</Button>
-          </div>}
-          {sendFailure && <div className="rag-send-failure" role="status" data-testid="rag-send-failure">
-            <span>{sendFailure.message} 这条问题没有自动重发。</span>
-            <Button small data-testid="rag-retry-send" disabled={!!busy || !!pending} onClick={() => void send(sendFailure.text)}>重试这条问题</Button>
-          </div>}
-          <div className="rag-question-input">
-            <textarea className="input" rows={2} data-testid="rag-question" aria-label="输入资料问题" value={question} disabled={!!pending || !!busy}
-              placeholder="例如：这份资料是怎样解释这个概念的？" onChange={(event) => { const value = event.target.value; setQuestion(value); persistQuestion(value); if (value.trim() !== question.trim() && (sendFailure || ragFault)) clearSendFailure() }}
-              onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send() } }} />
-            <div data-testid="rag-question-mic" role="group" aria-label="资料问题语音输入"><MicButton voice={questionVoice} /></div>
+        <section className="card rag-current-documents" aria-label="本会话资料" data-testid="rag-session-documents">
+          <div className="rag-session-list-head"><div><h2>{session ? `${session.title} · ${session.document_ids.length} 份资料` : "新会话要用的资料"}</h2><p>{session ? "点 × 仅从这个会话移除" : "从资料库加入要用的资料"}</p></div></div>
+          <div className="rag-selected" aria-label="本会话资料列表">
+            {(session ? sessionDocuments : selectedDocuments).length === 0 ? <span className="muted small">尚未加入资料</span> : (session ? sessionDocuments : selectedDocuments).map((doc) => <span className="rag-chip" key={doc.id}>
+              <span title={doc.title}>{doc.title}</span><button type="button" data-testid={`rag-session-remove-document-${doc.id}`} aria-label={`从本会话移除资料：${doc.title}`} title="从本会话移除" disabled={!!pending || !!deletingDocumentId} onClick={() => removeDocumentFromCurrent(doc.id)}><X size={13} /></button>
+            </span>)}
           </div>
-          {pending ? <Button data-testid="rag-cancel" onClick={() => abort.current?.abort()}><Square />取消回答</Button>
-            : <Button kind="primary" data-testid="rag-send" disabled={!question.trim() || !selectedCount || !!busy || sessionMutationCount > 0} onClick={() => void send()}>{busy === "prepare" ? <><LoaderCircle className="spin" />准备资料…</> : busy === "send" ? <><LoaderCircle className="spin" />正在回答…</> : busy === "session" ? <><LoaderCircle className="spin" />新建会话…</> : <><SendHorizontal />提问</>}</Button>}
-        </div>
-      </section>
-    </div>
+        </section>
+      </div>
+    </dialog>
+
     <dialog className="rag-delete-dialog" ref={deleteDialogRef} data-testid="rag-delete-dialog" aria-labelledby="rag-delete-title"
       onCancel={(event) => { event.preventDefault(); setDeleteUsage(null); setDeleteError(""); setDeleteInfoOpen(false) }}
       onPointerDownCapture={(event) => {

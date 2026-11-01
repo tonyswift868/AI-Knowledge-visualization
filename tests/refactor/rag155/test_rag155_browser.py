@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 REPO = Path(__file__).resolve().parents[3]
-OUT = Path('D:/MentorFlow/.local/test-tmp/ragdel269c/legacy/rag155/browser')
+OUT = Path('D:/MentorFlow/.local/test-tmp/ragui278/legacy/rag155/browser')
 NODE = 'D:/MentorFlow/.local/node/node.exe'
 WEB = REPO / 'refactor/learning/web'
 sys.path.insert(0, str(REPO))

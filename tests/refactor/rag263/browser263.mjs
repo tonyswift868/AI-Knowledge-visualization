@@ -1,3 +1,4 @@
+import {reachRagTarget278,openMaterials278,closeMaterials278} from '../rag278/materials_navigation278.mjs';
 import fs from 'node:fs';import path from 'node:path';import {fileURLToPath} from 'node:url';
 import {click253} from '../rag155/click253.mjs';
 const root=path.resolve(process.argv[2]),endpoint=process.env.MF_CDP_ENDPOINT,pause=(ms=80)=>new Promise(r=>setTimeout(r,ms));let target;
@@ -7,7 +8,7 @@ ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=pending.get(m.id);p
 const cdp=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))});
 async function js(expression){const r=await cdp('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value}
 async function until(expression,limit=500){for(let i=0;i<limit;i++){if(await js(expression))return;await pause()}throw Error('timeout '+expression)}
-async function click(selector){await click253(js,(type,x,y)=>cdp('Input.dispatchMouseEvent',{type,x,y,button:'left',clickCount:1}),selector);await pause(120)}
+async function rawClick(selector){await click253(js,(type,x,y)=>cdp('Input.dispatchMouseEvent',{type,x,y,button:'left',clickCount:1}),selector);await pause(120)}
 async function typeQuestion(text){await js(`(()=>{const e=document.querySelector('[data-testid="rag-question"]');const d=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;d.call(e,${JSON.stringify(text)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))})()`)}
 let stage='startup';const result={ok:false,checks:[],screenshots:[],trace:null},check=(v,l)=>{if(!v)throw Error(l);result.checks.push(l)};
 async function shot(theme){await js(`document.documentElement.dataset.theme=${JSON.stringify(theme)}`);await pause(180);const x=await cdp('Page.captureScreenshot',{format:'png'});const file=path.join(root,'screenshots',`rag263-${theme}.png`);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,Buffer.from(x.data,'base64'));result.screenshots.push(file)}
@@ -56,8 +57,10 @@ try{
  check(await js(`!document.body.innerText.includes('账号范围隔离')&&!document.querySelector('[data-testid="rag-prepare-status"]')`),'new account ignores the old-scope late event and draft');
  const afterScopeSwitch=await js(`window.call263('test.trace').then(x=>x)`);
  check(afterScopeSwitch.prepare===beforeScopeSwitch.prepare,'opening a new account does not auto-start its partial document');
+ await openMaterials278(js,rawClick);
  check(await js(`!!document.querySelector('[data-testid="rag-document-continue-doc-new"]')`),'a restarted partial document shows an explicit continue control');
  await click('[data-testid="rag-document-continue-doc-new"]');
+ await closeMaterials278(js,rawClick);
  await until(`window.call263('test.trace').then(x=>x.prepare===${beforeScopeSwitch.prepare+1})`);
  check(await js(`document.querySelector('[data-testid="rag-prepare-status"]')?.innerText.includes('3')`),'explicit continue starts the new-scope preparation job');
  const trace=await js(`window.call263('test.trace').then(x=>x)`);result.trace=trace;
@@ -65,3 +68,5 @@ try{
 }catch(e){result.stage=stage;result.error=String(e.stack||e);result.dom=await js('document.body.innerText').catch(()=>'' );result.ids=await js(`Array.from(document.querySelectorAll('[data-testid]')).map(x=>x.dataset.testid)`).catch(()=>[]);result.trace=await js(`window.call263('test.trace').then(x=>x)`).catch(()=>null)}
 finally{fs.writeFileSync(path.join(root,'result263.json'),JSON.stringify(result,null,2));ws.close()}
 console.log(JSON.stringify(result));if(!result.ok)process.exitCode=1;
+
+async function click(selector){await reachRagTarget278(js,rawClick,selector);await rawClick(selector)}

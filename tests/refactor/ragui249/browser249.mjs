@@ -1,3 +1,4 @@
+import {reachRagTarget278,openMaterials278,closeMaterials278} from '../rag278/materials_navigation278.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -20,7 +21,7 @@ ws.onmessage=event=>{const message=JSON.parse(event.data);if(message.id){const r
 const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))});
 async function js(expression){const result=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(result.exceptionDetails)throw Error(JSON.stringify(result.exceptionDetails));return result.result.value}
 async function until(expression,limit=400){for(let i=0;i<limit;i++){if(await js(expression))return;await pause()}throw Error('timeout: '+expression)}
-async function click(selector){const point=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);if(!point)throw Error('missing selector '+selector);await call('Input.dispatchMouseEvent',{type:'mousePressed',x:point.x,y:point.y,button:'left',clickCount:1});await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x,y:point.y,button:'left',clickCount:1});await pause(100)}
+async function rawClick(selector){const point=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);if(!point)throw Error('missing selector '+selector);await call('Input.dispatchMouseEvent',{type:'mousePressed',x:point.x,y:point.y,button:'left',clickCount:1});await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x,y:point.y,button:'left',clickCount:1});await pause(100)}
 async function key(key,code,value){await call('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:value});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:value});await pause(60)}
 const result={ok:false,checks:[],screenshots:[]};
 const check=(ok,label)=>{if(!ok)throw Error(label);result.checks.push(label)};
@@ -49,8 +50,9 @@ try{
   check(selectedActive,'ArrowDown can keyboard-highlight the long plan option');
   await key('Enter','Enter',13);
   await until(`document.body.innerText.includes(${JSON.stringify(title)})`);
-  check(await js(`(()=>{const t=document.querySelector(${JSON.stringify(trigger)}),label=t?.querySelector('.select-menu-label');return t?.getAttribute('title')===${JSON.stringify(title)}&&getComputedStyle(label).textOverflow==='ellipsis'&&getComputedStyle(label).whiteSpace==='nowrap'&&label.scrollWidth>label.clientWidth})()`),'selected long plan is ellipsized in the control while its full name remains available');
+  check(await js(`(()=>{const t=document.querySelector(${JSON.stringify(trigger)}),label=t?.querySelector('.select-menu-label');return t?.getAttribute('title')===${JSON.stringify(title)}&&getComputedStyle(label).textOverflow==='ellipsis'&&getComputedStyle(label).whiteSpace==='nowrap'&&label.clientWidth>0&&label.getBoundingClientRect().right<=t.getBoundingClientRect().right})()`),'selected long plan fits or ellipsizes inside the wider control while its full name remains available');
   await until(`!!document.querySelector('[data-testid="rag-question-mic"] .mf-voice-mic')`);
+  await closeMaterials278(js,rawClick);
   check(await js(`!!document.querySelector('[data-testid="rag-question-mic"] .mf-voice-mic')`),'question composer uses the existing MicButton component');
 
   result.voiceStatus=await js(`window.call249('voice.status').then(x=>x)`);
@@ -95,3 +97,5 @@ try{
 }
 console.log(JSON.stringify(result));
 if(!result.ok)process.exitCode=1;
+
+async function click(selector){await reachRagTarget278(js,rawClick,selector);await rawClick(selector)}

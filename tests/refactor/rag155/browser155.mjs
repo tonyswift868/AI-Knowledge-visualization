@@ -1,3 +1,4 @@
+import {reachRagTarget278,openMaterials278,closeMaterials278} from '../rag278/materials_navigation278.mjs';
 import {click253} from './click253.mjs';
 import fs from 'node:fs';import path from 'node:path';import{fileURLToPath}from'node:url';
 const root=path.resolve(process.argv[2]),endpoint=process.env.MF_CDP_ENDPOINT;
@@ -8,7 +9,7 @@ let seq=0;const pending=new Map();ws.onmessage=e=>{const d=JSON.parse(e.data);if
 const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject,method});ws.send(JSON.stringify({id,method,params}))});
 async function js(expression){try{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value}catch(e){throw Error(String(e)+' expression='+expression)}}
 async function until(expression,limit=300){for(let i=0;i<limit;i++){if(await js(expression))return;await pause()}throw Error('timeout: '+expression)}
-async function click(selector){
+async function rawClick(selector){
  await click253(js,(type,x,y)=>call('Input.dispatchMouseEvent',{type,x,y,button:'left',clickCount:1}),selector,{
    onSample:state=>fs.appendFileSync(path.join(root,'click-diagnostics155.jsonl'),JSON.stringify({selector,...state})+'\n'),
  });
@@ -58,13 +59,16 @@ try{
  await until(`!!document.querySelector('[data-testid="rag-prepare-status"]')`);
  check(await js(`/\\d+\\s*\\/\\s*\\d+/.test(document.querySelector('[data-testid="rag-prepare-status"]')?.innerText||'')`),'automatic preparation shows uploaded and total chunk counts');
  fs.writeFileSync(path.join(root,'release-ingest155'),'');
+ await openMaterials278(js,rawClick);
  await until(`document.querySelector('[data-testid="rag-library-document-upload-155"]')?.innerText.includes('准备失败')`);
  check(await js(`document.querySelector('[data-testid="rag-library-document-doc-b"]')?.innerText.includes('已就绪')`),'partial ingest failure is visible while successful sources stay ready');
  await click('[data-testid="rag-retry-preparation"]');
+ await openMaterials278(js,rawClick);
  await until(`document.querySelector('[data-testid="rag-library-document-upload-155"]')?.innerText.includes('已就绪')`);
  check(await js(`document.querySelector('[data-testid="rag-library-document-doc-b"]')?.innerText.includes('已就绪')`),'retry completes the failed source without losing the successful one');
  // Create a session for a selected document set, then exercise streaming answer and citations.
  stage='use prepared session';
+ await closeMaterials278(js,rawClick);
  await until(`!document.querySelector('[data-testid="rag-question"]')?.disabled`);
  await input('[data-testid="rag-question"]','向量检索如何工作？');
  await until(`!document.querySelector('[data-testid="rag-send"]')?.disabled&&document.querySelector('[data-testid="rag-question"]')?.value==='向量检索如何工作？'`);
@@ -99,6 +103,7 @@ try{
  for(const theme of ['sakura','aurora']){
    await call('Emulation.setDeviceMetricsOverride',{width:600,height:850,deviceScaleFactor:1,mobile:false});
    await js(`document.documentElement.dataset.theme=${JSON.stringify(theme)};document.querySelector('.rag-page')?.scrollIntoView({block:'start'})`);await pause(250);
+   await openMaterials278(js,rawClick);
    const geom=await js(`(()=>{const selected=document.querySelector('.rag-selected')?.getBoundingClientRect(),upload=document.querySelector('.rag-upload-row')?.getBoundingClientRect(),list=document.querySelector('.rag-document-list'),item=list?.querySelector('.rag-document-row'),page=document.querySelector('.rag-page')?.getBoundingClientRect();return{viewport:innerWidth,document:document.documentElement.scrollWidth,body:document.body.scrollWidth,selectedTop:selected?.top,uploadBottom:upload?.bottom,listHeight:list?.clientHeight,firstDocumentHeight:item?.getBoundingClientRect().height,pageTop:page?.top,topbarBottom:document.querySelector('.topbar')?.getBoundingClientRect().bottom}})()`);
    check(geom.selectedTop>=geom.uploadBottom-1,theme+' selected source tags remain separated from the upload action');
    check(geom.listHeight>=geom.firstDocumentHeight,theme+' document list can fully show at least one source');
@@ -113,3 +118,5 @@ try{
 }catch(e){result={ok:false,stage,checks,error:String(e.stack||e),body:await js('document.body.innerText').catch(()=>''),selectors:await js(`Array.from(document.querySelectorAll('[data-testid]')).map(e=>e.dataset.testid).slice(0,100)`).catch(()=>[]),question:await js(`({value:document.querySelector('[data-testid="rag-question"]')?.value,disabled:document.querySelector('[data-testid="rag-question"]')?.disabled,sendDisabled:document.querySelector('[data-testid="rag-send"]')?.disabled,send:document.querySelector('[data-testid="rag-send"]')?.outerHTML,active:document.activeElement?.getAttribute('data-testid'),pending:!!document.querySelector('[data-testid="rag-streaming-reply"]'),alerts:[...document.querySelectorAll('[role="alert"]')].map(x=>x.innerText)})`).catch(()=>null),trace:fs.existsSync(path.join(root,'bridge-trace155.txt'))?fs.readFileSync(path.join(root,'bridge-trace155.txt'),'utf8'):''} }
 finally{fs.writeFileSync(path.join(root,'result155.json'),JSON.stringify(result,null,2));ws.close()}
 console.log(JSON.stringify(result));if(!result.ok)process.exitCode=1;
+
+async function click(selector){await reachRagTarget278(js,rawClick,selector);await rawClick(selector)}

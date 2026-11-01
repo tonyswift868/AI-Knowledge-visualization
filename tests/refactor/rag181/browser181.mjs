@@ -1,3 +1,4 @@
+import {reachRagTarget278,openMaterials278,closeMaterials278} from '../rag278/materials_navigation278.mjs';
 import fs from 'node:fs';import path from 'node:path';import{fileURLToPath}from'node:url';
 const root=path.resolve(process.argv[2]),endpoint=process.env.MF_CDP_ENDPOINT;
 const pause=(ms=50)=>new Promise(r=>setTimeout(r,ms));let target;
@@ -7,7 +8,7 @@ let seq=0;const pending=new Map();ws.onmessage=e=>{const d=JSON.parse(e.data);if
 const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))});
 async function js(expression){const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value}
 async function until(expression,limit=500){for(let i=0;i<limit;i++){if(await js(expression))return;await pause()}throw Error('timeout: '+expression)}
-async function click(selector){const p=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);if(!p)throw Error('missing '+selector);await call('Input.dispatchMouseEvent',{type:'mousePressed',x:p.x,y:p.y,button:'left',clickCount:1});await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x,y:p.y,button:'left',clickCount:1});await pause(80)}
+async function rawClick(selector){const p=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);if(!p)throw Error('missing '+selector);await call('Input.dispatchMouseEvent',{type:'mousePressed',x:p.x,y:p.y,button:'left',clickCount:1});await call('Input.dispatchMouseEvent',{type:'mouseReleased',x:p.x,y:p.y,button:'left',clickCount:1});await pause(80)}
 async function key(key,code,value){await call('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:value});await call('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:value});await pause(50)}
 async function selectAllPlans(){
  await click('[data-testid="rag-plan-select"]');await until(`!!document.querySelector('[role="listbox"]')`)
@@ -58,3 +59,5 @@ try{
  result.ok=true;
 }catch(e){result.error=String(e.stack||e);result.body=await js('document.body.innerText').catch(()=> '');result.trace=fs.existsSync(path.join(root,'bridge-trace181.txt'))?fs.readFileSync(path.join(root,'bridge-trace181.txt'),'utf8'):''}
 finally{fs.writeFileSync(path.join(root,'result181.json'),JSON.stringify(result,null,2));ws.close()}
+
+async function click(selector){await reachRagTarget278(js,rawClick,selector);await rawClick(selector)}

@@ -294,7 +294,7 @@ export function SelectMenu({ id, value, options, placeholder, ariaLabel, disable
           onClick={() => choose(index)}>
           <span>{option.label}</span>{option.value === value && <span className="select-menu-check" aria-hidden="true">✓</span>}
         </div>)}
-      </div>, document.body)}
+      </div>, triggerRef.current?.closest("dialog") ?? document.body)}
   </>
 }
 

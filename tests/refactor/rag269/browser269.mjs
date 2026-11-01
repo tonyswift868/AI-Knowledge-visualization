@@ -29,12 +29,13 @@ async function lightDark(name){for(const theme of ['sakura','aurora'])result.scr
 let stage='startup';
 try{
   stage='mount';await until(`!!window.ready269&&!!document.querySelector('[data-testid="rag-page"]')`);
-  await until(`!!document.querySelector('[data-testid="rag-library"]')&&!!document.querySelector('[data-testid="rag-session-list"]')`);
-  check(await js(`document.querySelector('[data-testid="rag-session-documents"]')?.innerText.includes('新会话要用的资料')`),'without an active conversation the source panel is labeled for the next session');
+  await until(`!!document.querySelector('[data-testid="rag-session-list"]')&&!!document.querySelector('[data-testid="rag-materials-open"]')`);
+  await click('[data-testid="rag-materials-open"]');await until(`document.querySelector('[data-testid="rag-materials-dialog"]')?.open`);
+  check(await js(`document.querySelector('[data-testid="rag-session-documents"]')?.innerText.includes('新会话要用的资料')`),'without an active conversation the materials dialog is labeled for the next session');
   await click('[data-testid="rag-add-document-doc-plan"]');
   await click('[data-testid="rag-add-document-doc-upload"]');
   check(await js(`document.querySelector('[data-testid="rag-session-documents"]')?.innerText.includes('数据库课程资料.pdf')&&document.querySelector('[data-testid="rag-session-documents"]')?.innerText.includes('接口规范与示例说明.md')`),'a draft conversation keeps the current library selection for its next session');
-  await click('[data-testid="rag-new-session"]');
+  await click('[data-testid="rag-materials-close"]');await until(`!document.querySelector('[data-testid="rag-materials-dialog"]')?.open`);await click('[data-testid="rag-new-session"]');
   await until(`document.querySelector('[data-testid="rag-session-session-new-1"]')?.getAttribute('data-active')==='true'`);
   check(await js(`(()=>{const row=window.call269('test.trace');return row.then(x=>x.sessions.find(s=>s.id==='session-new-1')?.document_ids.includes('doc-plan')&&x.sessions.find(s=>s.id==='session-new-1')?.document_ids.includes('doc-upload'))})()`),'new sessions inherit the selected material group');
   await js(`window.call269('test.seed_history').then(x=>x)`);
@@ -47,12 +48,14 @@ try{
   await until(`document.querySelector('[data-testid="rag-session-session-a"]')?.getAttribute('data-active')==='true'`);
 
   stage='layout';
-  check(await js(`!!document.querySelector('[data-testid="rag-library"]')&&!!document.querySelector('[data-testid="rag-session-documents"]')&&!!document.querySelector('[data-testid="rag-session-list"]')`),'the sidebar contains library, current-session materials, and session list');
+  check(await js(`(()=>{const s=document.querySelector('[data-testid="rag-sidebar"]'),d=document.querySelector('[data-testid="rag-materials-dialog"]');return !!s?.querySelector('[data-testid="rag-session-list"]')&&!s.querySelector('[data-testid="rag-library"]')&&!s.querySelector('[data-testid="rag-session-documents"]')&&!d?.open})()`),'the sidebar is dedicated to the conversation list');
   check(await js(`!document.querySelector('[data-testid="rag-session-sources"]')&&!document.querySelector('.rag-chat-sources')&&!Array.from(document.querySelectorAll('button')).some(x=>x.innerText.includes('改资料'))`),'the conversation pane has no duplicate material strip or edit-material button');
   check(await js(`!document.querySelector('[data-testid^="rag-document-"] input[type="checkbox"]')&&!document.querySelector('[data-testid="rag-library"] input[type="checkbox"]')`),'library selection uses direct add controls instead of checkboxes');
   check(await js(`(()=>{const p=document.querySelector('[data-testid="rag-page"]'),r=p.getBoundingClientRect();return r.width>=innerWidth-20&&document.documentElement.scrollWidth<=innerWidth+1})()`),'the redesigned page uses the available width without horizontal overflow');
-  check(await js(`(()=>{const l=document.querySelector('.rag-layout'),s=document.querySelector('.rag-sidebar'),last=s?.lastElementChild,lr=l?.getBoundingClientRect(),sr=s?.getBoundingClientRect(),cr=last?.getBoundingClientRect();return !!l&&lr.height<=innerHeight+1&&cr.bottom<=lr.bottom+1&&sr.bottom<=lr.bottom+1})()`),'desktop layout stays within viewport height and the third sidebar panel stays inside its grid bounds');
+  check(await js(`(()=>{const l=document.querySelector('[data-testid="rag-session-list"]');return !!l&&l.clientHeight>innerHeight*.55})()`),'the conversation list fills the available sidebar height');
   await lightDark('layout');
+
+  await click('[data-testid="rag-materials-open"]');await until(`document.querySelector('[data-testid="rag-materials-dialog"]')?.open`);
 
   stage='instant-add-remove';
   await click('[data-testid="rag-plan-select"]');
@@ -84,6 +87,7 @@ try{
   await until(`window.call269('test.trace').then(x=>x.updates[x.updates.length-1]?.document_ids?.includes('doc-upload'))`);
   await click('[data-testid="rag-add-document-doc-plan"]');
   await until(`window.call269('test.trace').then(x=>x.updates[x.updates.length-1]?.document_ids?.includes('doc-plan'))`);
+  await click('[data-testid="rag-materials-close"]');await until(`!document.querySelector('[data-testid="rag-materials-dialog"]')?.open`);
 
   stage='rename';
   await click('[data-testid="rag-session-session-new-1"]');
@@ -102,8 +106,10 @@ try{
   check(await js(`document.querySelector('[data-testid="rag-session-session-new-1"]')?.innerText.includes('接口边界复习')`),'the first question does not overwrite a manually named conversation');
 
   stage='upload-target';
+  await click('[data-testid="rag-materials-open"]');await until(`document.querySelector('[data-testid="rag-materials-dialog"]')?.open`);
   await click('[data-testid="rag-pick-files"]');
   await until(`window.call269('test.trace').then(x=>x.pick_started===1)`);
+  await click('[data-testid="rag-materials-close"]');await until(`!document.querySelector('[data-testid="rag-materials-dialog"]')?.open`);
   await click('[data-testid="rag-session-session-a"]');
   await until(`document.querySelector('[data-testid="rag-session-session-a"]')?.getAttribute('data-active')==='true'`);
   await js(`window.call269('test.release_import').then(x=>x)`);
@@ -115,8 +121,10 @@ try{
   await click('[data-testid="rag-session-session-new-1"]');
   await until(`document.querySelector('[data-testid="rag-session-session-new-1"]')?.getAttribute('data-active')==='true'`);
   await until(`document.querySelector('[data-testid="rag-session-documents"]')?.innerText.includes('自动加入的上传资料.txt')`);
+  await click('[data-testid="rag-materials-close"]');await until(`!document.querySelector('[data-testid="rag-materials-dialog"]')?.open`);
 
   stage='delete-dialog';
+  await click('[data-testid="rag-materials-open"]');await until(`document.querySelector('[data-testid="rag-materials-dialog"]')?.open`);
   // The uploaded item is in session-empty; choose doc-upload, which is shared
   // by session-a and session-b, to inspect distinct affected conversation names.
   await click('[data-testid="rag-plan-select"]');
@@ -167,6 +175,7 @@ try{
   await click('[data-testid="rag-delete-confirm"]');
   await until(`window.call269('test.trace').then(x=>x.deleted.includes('doc-upload'))`);
   await until(`!document.querySelector('[data-testid="rag-library-document-doc-upload"]')`);
+  await click('[data-testid="rag-materials-close"]');await until(`!document.querySelector('[data-testid="rag-materials-dialog"]')?.open`);
   await click('[data-testid="rag-session-session-a"]');
   await until(`document.querySelector('[data-testid="rag-session-session-a"]')?.getAttribute('data-active')==='true'`);
   await click('[data-testid="rag-citation-1"]');
