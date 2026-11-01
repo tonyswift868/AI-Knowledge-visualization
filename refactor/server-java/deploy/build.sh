@@ -59,10 +59,7 @@ fi
 
 env_file=$here/.env
 touch "$env_file"
-if grep -q '^MF_JAVA_VERSION=' "$env_file"; then
-  sed "s/^MF_JAVA_VERSION=.*/MF_JAVA_VERSION=$version/" "$env_file" > "$temp/env"
-  cat "$temp/env" > "$env_file"
-else
-  printf '\nMF_JAVA_VERSION=%s\n' "$version" >> "$env_file"
-fi
+awk '!/^MF_JAVA_VERSION=/' "$env_file" > "$temp/env"
+printf 'MF_JAVA_VERSION=%s\n' "$version" >> "$temp/env"
+cat "$temp/env" > "$env_file"
 printf 'Built %s (JAR SHA-256 %s)\n' "$image" "$jar_sha"

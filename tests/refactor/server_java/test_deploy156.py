@@ -51,7 +51,7 @@ def test_compose_rag_memory_tmpfs_and_cache_contract():
 
 def test_migration_tool_reuses_base_image_and_only_adds_pinned_alembic():
     dockerfile = (DEPLOY / "migration.Dockerfile").read_text(encoding="utf-8")
-    assert "ARG MF_MIGRATION_BASE=mentorflow-slim-backend:MF-76" in dockerfile
+    assert "ARG MF_MIGRATION_BASE=mentorflow-slim-backend:269-python-fallback" in dockerfile
     assert "FROM ${MF_MIGRATION_BASE}" in dockerfile
     assert "alembic==1.18.5" in dockerfile
 
@@ -103,10 +103,10 @@ esac
     assert result.returncode == 0, result.stderr
     calls = log.read_text(encoding="utf-8").splitlines()
     assert len(calls) == 4  # build tool, then current -> upgrade -> current
-    assert calls[0].startswith("build --build-arg MF_MIGRATION_BASE=mentorflow-slim-backend:MF-76")
+    assert calls[0].startswith("build --build-arg MF_MIGRATION_BASE=mentorflow-slim-backend:269-python-fallback")
     run_calls = calls[1:]
     assert all("--network mentorflow-e1-preview_internal" in call for call in run_calls)
-    assert all("mentorflow-e1-preview_oidc_proxy_secrets" in call for call in run_calls)
+    assert all("mentorflow-e1-preview_migrate_secrets" in call for call in run_calls)
     assert all("postgres_migrator_password" in call for call in run_calls)
     assert all("/app/refactor/server,readonly" in call for call in run_calls)
     assert "MENTORFLOW_MIGRATION_DATABASE_URL" in run_calls[0]
@@ -129,15 +129,14 @@ def test_readme_matches_stopped_python_and_live_java_cutover_state():
     readme = (DEPLOY / "README.md").read_text(encoding="utf-8")
     assert "当前 Python backend 已停止、edge upstream 指向正式" in readme
     assert "架构师批准的" in readme and "重启窗口" in readme
-    start = readme.index("sh python-compose.sh start")
-    java_up = readme.index("sh java-compose.sh up")
-    assert start < java_up
-    assert "mentorflow-slim-backend:MF-156-python-fallback" in readme
-    assert "旧 MF-76" in readme
+    assert readme.index("sh preflight.sh") < readme.index("## 服务器现场条件")
+    assert "mentorflow-slim-backend:269-python-fallback" in readme
+    assert "0047" in readme and "旧226" in readme
     assert "sh python-compose.sh recreate" in readme
-    assert "不要用 `restore-python.sh` 做启动对照" in readme
-    assert 'edge_state=$(sh cutover.sh status)' in readme
-    assert 'if [ "$edge_state" != java ]; then sh cutover.sh java; fi' in readme
+    assert "sh restore-python.sh --prepare-only" in readme
+    assert "不要用无参数调用做启动对照" in readme
+    assert "Compose 5.5.0" in readme and "不能据此判断备用是否可用" in readme
+    assert "RELEASE219.md" not in readme and "RELEASE226.md" not in readme
 
 
 def _run_python_compose(action: str, sandbox: Path) -> list[str]:

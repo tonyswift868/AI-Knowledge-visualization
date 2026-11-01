@@ -2464,7 +2464,7 @@
 - 第二轮（236-MF01，2026-10-29 21:40 UTC）：235 的修法在服务器上无效。启用 account-core-mvp 后，切换第一步 restore-python 报 postgres is missing dependency runtime-secrets-ready，回退时 restore 又报 backend-tls-ready 缺同一依赖；新 Java 没起，服务器端自动回退，旧 Java 219 正常（probe 9/9、公网三项 200，采样 84 次全 200，没观察到中断）。教训：235 只用了 docker compose config 展开和假 Docker 演练，没在真实 Docker 上验过启动命令。对照：234 第一次部署时 Python 226 备用是能起来并 healthy 的，坏的是 235 前的 restore-python.sh 和 235 改过的启动路径。报告 .local/r236/MF01/report.md。
 - 换方法（237-MF01）：以 234 能起来的那条启动命令为基准对照差异；每条部署和回退要用的 compose 命令都先在服务器上用 docker compose --dry-run（不建不起容器）按真实文件组合验过；备用还是起不来就不卡上线，直接换新 Java（234 实测中断约 10 秒，旧 Java 219 回退两次实测可用），备用单独修。
 - 第三轮（237-MF01，2026-10-29）：234 能起来的基准命令是 up -d --no-deps --force-recreate backend oidc-loopback-proxy（不带 profile）；236 用 compose start 沿初始化依赖报缺失。改成定向 up -d --no-deps 后，服务器 Compose 5.5.0 真实 --dry-run：Python 备用启动/重建仍 exit 1（backend exited (0) 健康依赖错误），停备用、Java 226 up、旧 Java 回退 up 都 exit 0。按决策原则没再试启动备用，直接换 Java 226 上线。下次修备用从这条 dry-run 错误查起。报告 .local/r237/MF01/report.md。
-- 第四轮（238-MF01，2026-10-29，修好）：234 那条真起来过的基准命令在服务器 Compose 5.5.0 上 --dry-run 也报错，说明 dry-run 对带健康依赖的启动会误报，237 的“dry-run 不过”是假阴性；backend exited (0) 是 234 验证后正常停掉。修法：保留定向 up --no-deps、profile 允许显式空值，restore-python.sh 加 --prepare-only 把“起备用”和“切流量”分开，失败只在 Java 接流量时清理 Python。真机：备用起来 healthy，内部 probe 9/9；演练 22:37:23Z 切 Python、22:37:26 公网健康和 probe 全过、立即切回 Java，22:37:35 停备用；采样 618 次全 200，没观察到中断；Java 容器 ID、启动时间、重启次数、镜像都没变。恢复入口和步骤写进 RELEASE226.md，报告 .local/r238/MF01/report.md。
+- 第四轮（238-MF01，2026-10-29，修好）：234 那条真起来过的基准命令在服务器 Compose 5.5.0 上 --dry-run 也报错，说明 dry-run 对带健康依赖的启动会误报，237 的“dry-run 不过”是假阴性；backend exited (0) 是 234 验证后正常停掉。修法：保留定向 up --no-deps、profile 允许显式空值，restore-python.sh 加 --prepare-only 把“起备用”和“切流量”分开，失败只在 Java 接流量时清理 Python。真机：备用起来 healthy，内部 probe 9/9；演练 22:37:23Z 切 Python、22:37:26 公网健康和 probe 全过、立即切回 Java，22:37:35 停备用；采样 618 次全 200，没观察到中断；Java 容器 ID、启动时间、重启次数、镜像都没变。当前恢复入口和步骤见 refactor/server-java/deploy/RELEASE269.md，历史报告 .local/r238/MF01/report.md。
 - 关联：[BUG-192]
 - 更新：2026-10-29
 
@@ -2519,12 +2519,13 @@
 - 更新：2026-11-02
 
 ### [BUG-209] 部署 Java 269 两次停在迁移前（272：Compose 检查报 MF_JAVA_VERSION 缺失；274：找不到迁移密码文件）
-- 状态：已解决。部署说明已补两处（f616fc2b、92620915，2026-11-02）；两次都是部署说明漏了现场条件，275-MF01 换做法：上服务器后任何写操作前，先把 RELEASE269.md 每一步用到的外部条件全部只读查一遍、只读跑一次 migrate.sh current，全对上才部署，2026-11-02 一次成功。没修的根：migrate.sh 默认密码卷仍是错的 oidc_proxy_secrets，靠部署说明里 export 覆盖。
+- 状态：已解决。275-MF01 先做全量只读前置检查再部署成功；277-MF01 已把现场参数收进脚本默认值、常驻只读预检与一份现场说明（2026-11-02），不再依赖回执里的临时export。新脚本只在仓库修改，服务器仅经标准输入只读试跑。
 - 现象（2026-11-01 14:45 UTC）：备份成功后，迁移那一步先跑新发布目录的 java-compose.sh config，报 `required variable MF_JAVA_VERSION is missing a value: run build.sh VERSION first`，exit 1；迁移 0047 没跑、269 没构建。自动回退脚本也在同一处 exit 1。服务器一直是原 Java 226 容器、库 0046，三项健康 200，没受影响。
 - 原因：compose.yml 的镜像标签要求 MF_JAVA_VERSION，这个键由 build.sh 写进发布目录的 .env；新发布目录的 .env 从旧目录复制，旧的也没有这个键。员工脚本在 build.sh 之前加了一次 config 检查（RELEASE269.md 的顺序是迁移 → build.sh → config，没要求提前检查，但也没写明不能提前）。RELEASE269.md 的回退用 sed 只替换已有的键，build.sh 之前失败时没有键可换，回退也跟着失败。
 - 解决：RELEASE269.md 写明 config 要在 build.sh 之后；回退改成先删掉 MF_JAVA_VERSION 行再追加 MF_JAVA_VERSION=226，有没有这个键都能用（f616fc2b）。274-MF01 先在本机用有键、没键两份假 .env 演练回退那几行再上服务器。
 - 第二次（274-MF01，2026-11-02）：本机演练回退改键（有键、没键两份假 .env）通过；服务器上重新备份（/opt/mentorflow/state/release274/mentorflow-before269.dump）后，第一条 migrate.sh current 报 `missing migration secret: /run/secrets/postgres_migrator_password`，没有跑迁移。原因：migrate.sh 默认挂 mentorflow-e1-preview_oidc_proxy_secrets 卷，那个卷只有 TLS 文件；迁移密码在 mentorflow-e1-preview_migrate_secrets 卷。234-MF01（2026-10-29 上线 0046）就查到过并用 MIGRATION_SECRETS_VOLUME 覆盖跑通，但只写在回执里，没进部署说明。自动回退这次 exit 0（改键修法有效），服务一直是原 Java 226、库 0046。解决：RELEASE269.md 加 export MIGRATION_SECRETS_VOLUME=mentorflow-e1-preview_migrate_secrets，deploy/README.md 改正查看卷的命令（92620915）。272 的服务器暂存文件和误生的 .pyc 已由 274 删掉。报告 .local/test-tmp/deploy274/report.md。
 - 遗留：272、274 的备份（/opt/mentorflow/state/release272/、release274/ 下的 mentorflow-before269.dump）和 rollback272 镜像标签先留着；274 在服务器 /tmp 的暂存文件由 275 删。272 报告 .local/test-tmp/deploy272/report.md。
 - 验证：275-MF01（2026-11-02）前置检查逐条通过，迁移 0046 → 0047、Java 269 上线、Python 269 备用起来自检 9/9，两个测试账号真服务器验收全过（[RAG-01]）。报告 .local/test-tmp/deploy275/report.md。
+- 根治（277-MF01，2026-11-02）：migrate.sh默认密码卷改为migrate_secrets，基础/工具及静态备用镜像对齐当前269/0047；build.sh的版本键过滤后追加，覆盖缺键/重复键。新增preflight.sh只用既有工具跑current，缺镜像/卷报FAIL而不创建，所有Compose config末层network45；README集中“服务器现场条件”，旧219/226清单删除。相关替身测试通过；服务器stdin只读一次PREFLIGHT_FAILURES=0，生产六容器及数据库版本前后不变。报告 .local/test-tmp/deploy277/report.md。
 - 关联：[RAG-01]、[BUG-107]
 - 更新：2026-11-02

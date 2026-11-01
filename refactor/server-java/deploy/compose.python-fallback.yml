@@ -2,4 +2,4 @@
 # refactor/server source. Keep this layer before network45.override.yml.
 services:
   backend:
-    image: mentorflow-slim-backend:MF-156-python-fallback
+    image: mentorflow-slim-backend:269-python-fallback
