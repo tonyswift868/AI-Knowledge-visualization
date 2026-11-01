@@ -35,7 +35,7 @@
 - **界面构建**：PATH 加 `/d/MentorFlow/.local/node`，`node .local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs`；dist 不进仓库。
 - **写脚本**：含 Windows 路径或反斜杠的内容不要用 bash heredoc 或 python -c（会被吃掉，BUG-10），写成文件再运行。
 - **往服务器传源码**：`git -c core.autocrlf=false -c core.eol=lf archive --format=tar -o <tar> <提交> refactor/server refactor/server-java`，scp 上去解到 /opt/mentorflow/releases/java-<提交>/，再核对关键文件 sha256；不加这两个参数 .sh 会带 Windows 换行，跑不了（[BUG-107]）。
-- **服务器**：当前服务端入口与数据库状态以 [ARCH-09] 为准，Java 回退到 226 的步骤和限制见 `refactor/server-java/deploy/RELEASE269.md`；上线前先照它每一步做全量只读前置检查（[BUG-209]）。不要依照历史部署命令猜测当前配置；服务器操作只按获授权的具体任务执行。
+- **服务器**：当前服务端入口与数据库状态以 [ARCH-09] 为准，Java 回退到 226 的步骤和限制见 `refactor/server-java/deploy/RELEASE269.md`；每次上线第一步跑 `refactor/server-java/deploy/preflight.sh`（ssh 用 `sh -s < preflight.sh` 喂进去，只读），全部 OK 才往下；服务器现场条件只写在 deploy/README.md 那一节；员工上线时碰到的坑，合入时当场收进脚本或那一节，不只留在回执（[BUG-209]）。不要依照历史部署命令猜测当前配置；服务器操作只按获授权的具体任务执行。
 - **等回执（用户 2026-10-28 定，取代 10-14 的自动等）**：不挂后台监视。员工做完由用户告诉架构师，架构师再去读 .local/receipts 里的回执、审查合入、清理、更新文档；用户没说之前不去看，员工中途写的半成品回执不算。
 - **排练产物（2026-10-19）**：员工的真打包排练每次留下几十 GB（160 约 70 GB、168 约 25 GB），而且员工的递归删除会被系统拦住；收到这类回执后，架构师先把任务目录里除 report.md 和截图以外的都删掉，再做别的。
 - **磁盘（用户 2026-10-10 定）**：测试与临时产物在 .local/test-tmp/ 下；冒烟测试、构建、中间文件用完就自动删，不留着等以后分类。员工删除被系统拦住时，架构师合入后直接删（只留 report.md 和截图），不用再问用户。
@@ -55,7 +55,7 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 277-MF01 根治上线现场条件对不上：翻旧回执收坑、preflight.sh 只读上线前检查、改 migrate.sh 默认卷（[BUG-209]），已起草，待转发 | server |
+| MF-01 | 空闲（277-MF01 已合入 1ade7035） | server |
 | MF-02 | 空闲（258-MF02 已合入） | client |
 | MF-03 | 空闲（269-MF03 已合入 7d1aebcc） | classroom |
 | MF-04 | 空闲（273-MF04 已合入 c82e8e7c） | runtime |
@@ -68,7 +68,7 @@
 - 2.0.41 已发布（2026-11-01，非必须，基线 2.0.40）：263（[BUG-204]）、266（[BUG-206]）；267-MF01 公网端到端上传 1006 段通过、267-MF06 全量全过；架构师本机打包、推送、mf-build、签名、mf-publish、验签各一次成功。待用户更新后亲测。
 - 269-MF03 已合入 7d1aebcc、269-MF01 已合入 1070685b（2026-11-01，[RAG-01]）。
 - 270-MF06 已完成（2026-11-01，基线 1070685b）：5259 过、1 失败（测试过时，架构师 323971fd 修好、单项通过）、49 跳过，Java 一项没跳。报告 .local/test-tmp/full270/report.md。
-- 277-MF01（server）：根治上线现场条件对不上（用户 2026-11-02 定要彻底杜绝，[BUG-209]）：翻旧回执把坑收进脚本和 deploy/README.md 一节、新加只读 preflight.sh、migrate.sh 默认卷改对、删过时的 RELEASE219/226，服务器只读试跑。任务文件 D:\MentorFlow\.local\tasks\277-MF01.md，已起草，待转发。
+- 277-MF01 已完成、合入 1ade7035（[BUG-209] 根治）。
 - 276-MF06（tools）：调研学习记录追加写入被拒（[BUG-210]，只查不改）。任务文件 D:\MentorFlow\.local\tasks\276-MF06.md，已起草，待转发。和 277 并行。
 - 273-MF04 已完成、合入 c82e8e7c（[BUG-208]，打包固定官方 SQLite 3.54.1，真包旧版 → 新版走通）：随 2.0.42 发。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn，获授权后导出并发布 mentorflow-guide（AGENTS 第 12 条）；发给朋友前重做安装程序并走一遍全新安装和注册（[SYS-06] [ACC-02]）。模拟面试提示词已交付，学习规则见 [DOC-01]。
