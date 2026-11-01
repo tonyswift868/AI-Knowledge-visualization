@@ -77,6 +77,8 @@ try{
   await js('document.querySelector(".rag-session-list button[title=\\"会话 B\\"]").click()')
   await until('document.querySelector(".rag-chat-head h2")?.textContent==="会话 B"','B RAG session opened')
   await pause(1000)
+  await js('document.querySelector("[data-testid=\\"rag-materials-open\\"]").click()')
+  await until('document.querySelector("[data-testid=\\"rag-materials-dialog\\"]")?.open','B materials window opened')
   check(await js('document.querySelector(".rag-chat-head h2")?.textContent==="会话 B"&&!!document.querySelector("[data-testid=\\"rag-session-remove-document-doc-b\\"]")'),'late A session response cannot replace B session or selected document')
 
   await js('window.mountFrontend219("plan")')

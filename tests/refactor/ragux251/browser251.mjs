@@ -1,3 +1,4 @@
+import {reachRagTarget278,openMaterials278,closeMaterials278} from '../rag278/materials_navigation278.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -17,7 +18,7 @@ ws.onmessage=event=>{const message=JSON.parse(event.data);if(message.id){const r
 const cdp=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))});
 async function js(expression){const response=await cdp('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(response.exceptionDetails)throw Error(JSON.stringify(response.exceptionDetails));return response.result.value}
 async function until(expression,limit=400){for(let i=0;i<limit;i++){if(await js(expression))return;await pause()}throw Error('timeout: '+expression)}
-async function click(selector){const point=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);if(!point)throw Error('missing selector '+selector);await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:point.x,y:point.y,button:'left',clickCount:1});await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x,y:point.y,button:'left',clickCount:1});await pause(120)}
+async function rawClick(selector){const point=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2}})()`);if(!point)throw Error('missing selector '+selector);await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:point.x,y:point.y,button:'left',clickCount:1});await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:point.x,y:point.y,button:'left',clickCount:1});await pause(120)}
 async function key(key,code,value){await cdp('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode:value});await cdp('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode:value});await pause(80)}
 const result={ok:false,checks:[],screenshots:[],trace:null};
 const check=(ok,label)=>{if(!ok)throw Error(label);result.checks.push(label)};
@@ -31,7 +32,7 @@ async function trace(){return await js(`window.call251('test.trace').then(x=>x)`
 try{
   await until(`!!document.querySelector('[data-testid="rag-page"]')&&!!window.call251`);
   await until(`!!document.querySelector('[data-testid="rag-session-list"]')`);
-  check(await js(`(()=>{const a=document.querySelector('.rag-sources')?.getBoundingClientRect(),b=document.querySelector('.rag-sidebar-sessions')?.getBoundingClientRect();return !!a&&!!b&&b.top>=a.bottom-2})()`),'source picker and session list are stacked in the left sidebar');
+  check(await js(`!!document.querySelector('[data-testid="rag-sidebar"].rag-sidebar-sessions')&&!document.querySelector('[data-testid="rag-sidebar"] .rag-sources')&&!document.querySelector('[data-testid="rag-sidebar"] .rag-current-documents')`),'the sidebar is dedicated to sessions while materials live in their own window');
   check(await js(`document.querySelector('.rag-session-list-empty')?.textContent.includes('还没有会话')`),'empty account displays an empty session-list state');
   for(const theme of ['sakura','aurora'])await screenshot(theme,'empty');
 
@@ -40,6 +41,7 @@ try{
   // upload so the progress/cancel state can be inspected deterministically.
   await js(`window.call251('test.ingest_mode',{mode:'block'}).then(x=>x)`);
   await click('[data-testid="rag-add-document-doc-a"]');
+  await closeMaterials278(js,rawClick);
   await js(`(()=>{const e=document.querySelector('[data-testid="rag-question"]');const d=Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set;d.call(e,'请解释这段资料');e.dispatchEvent(new Event('input',{bubbles:true}))})()`);
   await click('[data-testid="rag-send"]');
   await until(`!!document.querySelector('[data-testid="rag-empty-session"]')`);
@@ -52,7 +54,9 @@ try{
   await until(`window.call251('test.trace').then(x=>x.ingestStarted>0)`);
   check(await js(`!!document.querySelector('[data-testid="rag-prepare-status"]')`),'new-session creation automatically begins preparing unready selected documents');
   check(await js(`document.querySelector('[data-testid="rag-send"]')?.disabled`),'question sending stays disabled while preparation is in progress');
+  await openMaterials278(js,rawClick);
   check(await js(`document.body.innerText.includes('原文件不会上传')||document.body.innerText.includes('只上传抽取后的文字')`),'preparation privacy copy explains that only extracted text is uploaded');
+  await closeMaterials278(js,rawClick);
   for(const theme of ['sakura','aurora'])await screenshot(theme,'preparing');
 
   await click('[data-testid="rag-cancel-preparation"]');
@@ -63,7 +67,9 @@ try{
 
   await js(`window.call251('test.ingest_mode',{mode:'success'}).then(x=>x)`);
   await click('[data-testid="rag-send"]');
+  await openMaterials278(js,rawClick);
   await until(`document.querySelector('[data-testid="rag-library-document-doc-a"]')?.innerText.includes('已就绪')`);
+  await closeMaterials278(js,rawClick);
   await until(`document.body.innerText.includes('这是本机替身的资料回答')`);
   check((await trace()).send===1,'after cancellation the learner can retry, preparation completes, and the preserved question is sent once');
 
@@ -154,7 +160,8 @@ try{
   await js(`window.call251('test.ingest_mode',{mode:'block'}).then(x=>x)`);
   await click('[data-testid="rag-session-remove-document-doc-a"]');
   await click('[data-testid="rag-add-document-doc-d"]');
-  await until(`document.querySelector('[data-testid="rag-library-document-doc-d"]')?.innerText.includes('正在准备')`);
+  await closeMaterials278(js,rawClick);
+  await until(`document.querySelector('[data-testid="rag-prepare-status"]')?.innerText.includes('正在准备')`);
   await js(`window.call251('test.scope_changed').then(x=>x)`);
   await until(`document.querySelector('[data-testid="rag-session-documents"]')?.innerText.includes('新会话要用的资料')&&!document.querySelector('[data-testid="rag-prepare-status"]')`);
   await until(`window.call251('test.trace').then(x=>x.ingestCancelled>=2)`);
@@ -171,3 +178,5 @@ try{
   fs.writeFileSync(path.join(root,'result251.json'),JSON.stringify(result,null,2));ws.close();
 }
 console.log(JSON.stringify(result));if(!result.ok)process.exitCode=1;
+
+async function click(selector){await reachRagTarget278(js,rawClick,selector);await rawClick(selector)}
