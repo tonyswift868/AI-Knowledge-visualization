@@ -166,7 +166,7 @@
 .rag-materials-columns > .rag-sources, .rag-materials-columns > .rag-current-documents { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; padding: 14px; overflow: hidden; }
 .rag-materials-columns .rag-document-list { flex: 1 1 auto; align-content: start; min-height: 0; max-height: none; gap: 6px; }
 .rag-materials-columns .rag-current-documents .rag-selected { display: grid; align-content: start; flex: 1 1 auto; gap: 6px; min-height: 0; max-height: none; overflow: auto; padding: 2px 3px 2px 0; }
-.rag-materials-columns .rag-chip { justify-content: space-between; width: 100%; min-height: 36px; padding: 5px 7px 5px 10px; border-radius: 10px; background: var(--surface-2); font-size: .77rem; }
+.rag-materials-columns .rag-chip { justify-content: flex-start; width: 100%; min-height: 36px; padding: 5px 10px 5px 7px; border-radius: 10px; background: var(--surface-2); font-size: .77rem; }
 .rag-materials-columns .rag-session-list-head { align-items: flex-start; }
 .rag-materials-columns .rag-session-list-head h2 { font-size: .93rem; }
 .rag-materials-columns .rag-section-title { flex: none; }
