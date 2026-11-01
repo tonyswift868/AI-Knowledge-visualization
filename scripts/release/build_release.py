@@ -276,7 +276,9 @@ def main():
     if not 1<=args.valid_days<=1100:raise ValueError('有效天数必须符合当前客户端上限1100天')
     work=setup(repo,out);build=builder(repo);ref=args.reference_payload.resolve()
     from scripts.release.check_environment import check
-    print('Exact build pins verified: '+str(check(NODE/'node.exe')),flush=True)
+    sqlite_cache = work/'sqlite-runtime'
+    print('Exact build pins and locked SQLite runtime verified: '+
+          str(check(NODE/'node.exe', sqlite_cache)),flush=True)
     auth,inputs=pinned_reference(ref);key_id,key=build.read_key(args.public_key)
     if auth['PUBLIC_KEYS']!={key_id:key}:raise ValueError('公钥与2.0.1冻结程序不一致')
     recipe=dict(build_only=args.build_only,version=args.version,baseline=baseline,source_dirty=source_dirty,
@@ -320,7 +322,7 @@ def main():
     build.freeze(argparse.Namespace(version=args.version,work=freeze_work,public_key=args.public_key,
         voice_catalog=inputs['voices'],public_runtime=inputs['runtime'],
         account_ca=inputs['ca'],seven_zip=inputs['seven'],web_dist=dist,
-        feed=args.feed,app_id=auth['APP_ID']))
+        feed=args.feed,app_id=auth['APP_ID'],sqlite_cache_dir=sqlite_cache))
     # One shell moves only this task's completed freeze payload, not a copy.
     built=(freeze_work/'app/MentorFlow').resolve();target=(out/'payload').resolve()
     if not built.is_relative_to(out) or not target.is_relative_to(out):raise ValueError('移动目标超出本任务输出目录')

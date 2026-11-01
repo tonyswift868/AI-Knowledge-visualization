@@ -109,6 +109,12 @@ def freeze(args):
     work.mkdir(parents=True, exist_ok=True)
     if (work / "app/MentorFlow").exists():
         raise ValueError("existing build preserved; use a new work directory")
+    # Use one pinned SQLite runtime for local release freezes and CI. Keep the
+    # downloaded archive and extracted DLL under this invocation's work root.
+    from scripts.release.sqlite_runtime import ensure_sqlite_runtime, validate_lock
+    validate_lock()
+    sqlite_cache = getattr(args, "sqlite_cache_dir", None) or work / "sqlite-runtime"
+    sqlite_dll = ensure_sqlite_runtime(sqlite_cache)
     web_dist = (getattr(args, "web_dist", None) or ROOT / "refactor/learning/web/dist").resolve()
     if not (web_dist / "index.html").is_file():
         raise ValueError("build the new web UI first")
@@ -148,8 +154,14 @@ def freeze(args):
     # It still does not load the learning UI/WebEngine or model libraries.
     for module in EXCLUDES + ["PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "numpy", "docling"]:
         runtime += ["--exclude-module", module]
+    # The small recovery Updater does not import sqlite3 and does not collect
+    # its DLL. The locked replacement is applied to the App Analysis below.
     run(runtime + [ROOT / "refactor/desktop/delivery/per_user_install.py"], work, work / "runtime-build.log")
+    from scripts.release.sqlite_runtime import SQLITE_DLL_SHA256, SQLITE_VERSION
+    (work / 'sqlite-runtime.json').write_text(json.dumps(
+        dict(version=SQLITE_VERSION, sha256=SQLITE_DLL_SHA256)), encoding='utf-8')
     data = [(resources, "refactor/desktop/resources"),
+            (work / 'sqlite-runtime.json', '.'),
             (web_dist, "refactor/learning/web/dist"),
             # Built-in catalogues and grading examples read via Path(__file__) (BUG-40).
             (ROOT / "refactor/learning/course/data", "refactor/learning/course/data"),
@@ -168,6 +180,8 @@ def freeze(args):
         f"a = Analysis({[(ROOT / 'refactor/desktop/packaged_main.py').as_posix()]!r}, "
         f"pathex={[ROOT.as_posix(), work.as_posix()]!r}, datas=data, "
         f"hiddenimports=['mentorflow_delivery_authority', 'keyring.backends.Windows', 'sherpa_onnx'], excludes={EXCLUDES!r}, runtime_hooks={credential_hooks!r})\n"
+        f"from scripts.release.sqlite_runtime import replace_analysis_sqlite\n"
+        f"replace_analysis_sqlite(a, {sqlite_dll.as_posix()!r})\n"
         "a.datas = [item for item in a.datas if include_payload_data(item[0])]\n"
         "pyz = PYZ(a.pure)\n"
         f"exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='MentorFlow', console=False, upx=False, icon={(work / 'MentorFlow.ico').as_posix()!r})\n"

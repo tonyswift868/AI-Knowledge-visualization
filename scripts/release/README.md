@@ -8,6 +8,7 @@
 |Python / Node|3.12.10 / 24.13.0，与本机一致|PSF / MIT；Windows runner，不用 Wine|
 |PyInstaller / Pillow / cryptography|6.16.0 / 12.3.0 / 46.0.7|GPL 加打包分发例外 / HPND / Apache-2.0 或 BSD；沿用现有安装步骤|
 |Inno Setup|[7.1.0 官方安装包](https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe)|[自由许可，可商用](https://github.com/jrsoftware/issrc/blob/is-7_1_0/license.txt)；仅在 GitHub runner 静默安装|
+|SQLite runtime DLL|[sqlite.org 3.54.1 Windows x64](https://sqlite.org/2026/sqlite-dll-win-x64-3540100.zip)|公有领域；发布构建校验归档 SHA3-256 `c2d09c8babb9399277055c057c97a53f1ffd7c5f11d0c1f2118ffdfa39f2daa4` 与解包 `sqlite3.dll` SHA256 `4b59d3cded9dc1608544160f3b4b10ac974c6ac0d6ffc23064e5f4c8dbd05aea`，并将它替换进 App 的 PyInstaller Analysis|
 |actionlint|[1.7.12](https://github.com/rhysd/actionlint/releases/tag/v1.7.12)|MIT；只在本机检查，GitHub 不跑测试|
 |7zr.exe|保留已核对的官方 7-Zip standalone 解压器，SHA256 见 inputs/reference.json|[7-Zip LGPL 与部分代码许可](https://www.7-zip.org/license.txt)，[公开源码](https://github.com/ip7z/7zip)；没有改二进制|
 |现有 MentorFlow 组件|build_learning_installer.py、assemble_payload.py、delivery/update_protocol.py、verify_tree|沿用本仓库授权；不另造签名、清单、安装或更新机制|
@@ -23,6 +24,9 @@ inputs/.gitattributes 禁用文本换行转换，保证 Git for Windows 的 auto
 不会改变这些按字节固定哈希的公开输入。
 73 条 Python 依赖全部写死，含真实冻结分析中发现的 9 个可选依赖，避免 CI
 因少装 h2、socksio 等而改变运行行为。前端始终用仓库 package-lock + npm ci。
+SQLite DLL 是独立于 Python requirements 的锁定输入：本机 freeze 与 GitHub
+mf-build 共用 `scripts/release/sqlite_runtime.py`，只在本次工作目录下载、验归档和 DLL
+字节；不会改动 Python 安装目录或系统 DLL。
 若配置 MF_BUILD_TOOLS，版本检查与冻结子进程都优先该目录；本机实际使用的
 packaging 为此目录中的 26.3，而非 .venv 中的 26.2，锁定表按前者保留。
 
