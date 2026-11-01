@@ -18,7 +18,7 @@
 | BUG-206 | 资料问答准备 JavaGuide 一直 0 / 1006 段，最后失败：资料服务暂时无法完成请求（HTTP 504） | 网关已修（265-MF01，资料问答一路等待 30→600 秒，2026-10-31 11:17 UTC 生效）；客户端改为每批最多 64 段（266-MF03，合入 bb75181a），已随 2.0.41 发布（2026-11-01）；公网端到端验收已过（267-MF01）；用户 2026-11-01 在 2.0.41 上传新资料（1250 段）准备成功，已验证 | 2026-11-01 |
 | BUG-207 | 物理计划（初二压强与浮力）没答最终检验，2026-10-30 自己变成“已完成” | 不改：用户 2026-11-01 定保持“已完成”，认为不算 bug、是没提前沟通 | 2026-11-01 |
 | BUG-208 | 装好的软件自带 SQLite 3.49.1，用户查到 SQLite 有读写和日志（WAL）撞在一起时的罕见问题 | 已修未发：273-MF04 打包固定官方 3.54.1，真包旧版 → 新版走通，已合入 c82e8e7c，随 2.0.42 发 | 2026-11-02 |
-| BUG-209 | 272-MF01 部署 Java 269 停在迁移前：Compose 检查报 MF_JAVA_VERSION 缺失，回退脚本同样失败 | 已修部署说明（f616fc2b），274-MF01 重做，已起草待转发；服务一直是 Java 226 | 2026-11-02 |
+| BUG-209 | 部署 Java 269 两次停在迁移前（272：Compose 检查报 MF_JAVA_VERSION 缺失；274：找不到迁移密码文件） | 部署说明已补两处（f616fc2b、92620915），275-MF01 先全量只读前置检查再部署，已起草待转发；服务一直是 Java 226 | 2026-11-02 |
 | BUG-01 | 新界面滚动卡死、左侧栏消失 | 已关闭（2026-09-27） | 2026-09-28 |
 | BUG-02 | E 盘（USB 外接固态盘）在测试时掉盘 | 已关闭（改为不在 E 盘频繁读写） | 2026-09-28 |
 | BUG-03 | DeepSeek 用量口径错误：缓存命中多时回答被判无效、用量少算 | 已关闭（2026-09-27） | 2026-09-28 |
@@ -2518,12 +2518,13 @@
 - 关联：[ARCH-03]
 - 更新：2026-11-02
 
-### [BUG-209] 272-MF01 部署 Java 269 停在迁移前：Compose 检查报 MF_JAVA_VERSION 缺失，回退脚本同样失败
-- 状态：已修部署说明（f616fc2b，2026-11-02），274-MF01 重做部署，已起草，待转发（任务文件 D:\MentorFlow\.local\tasks\274-MF01.md）。
+### [BUG-209] 部署 Java 269 两次停在迁移前（272：Compose 检查报 MF_JAVA_VERSION 缺失；274：找不到迁移密码文件）
+- 状态：部署说明已补两处（f616fc2b、92620915，2026-11-02）。两次都是部署说明漏了现场条件，换做法：275-MF01 上服务器后任何写操作前，先把 RELEASE269.md 每一步用到的外部条件全部只读查一遍、只读跑一次 migrate.sh current，全对上才部署；已起草，待转发（任务文件 D:\MentorFlow\.local\tasks\275-MF01.md）。
 - 现象（2026-11-01 14:45 UTC）：备份成功后，迁移那一步先跑新发布目录的 java-compose.sh config，报 `required variable MF_JAVA_VERSION is missing a value: run build.sh VERSION first`，exit 1；迁移 0047 没跑、269 没构建。自动回退脚本也在同一处 exit 1。服务器一直是原 Java 226 容器、库 0046，三项健康 200，没受影响。
 - 原因：compose.yml 的镜像标签要求 MF_JAVA_VERSION，这个键由 build.sh 写进发布目录的 .env；新发布目录的 .env 从旧目录复制，旧的也没有这个键。员工脚本在 build.sh 之前加了一次 config 检查（RELEASE269.md 的顺序是迁移 → build.sh → config，没要求提前检查，但也没写明不能提前）。RELEASE269.md 的回退用 sed 只替换已有的键，build.sh 之前失败时没有键可换，回退也跟着失败。
 - 解决：RELEASE269.md 写明 config 要在 build.sh 之后；回退改成先删掉 MF_JAVA_VERSION 行再追加 MF_JAVA_VERSION=226，有没有这个键都能用（f616fc2b）。274-MF01 先在本机用有键、没键两份假 .env 演练回退那几行再上服务器。
-- 遗留：272 在服务器留下 /tmp/mf272-* 三个暂存文件和子代理误生的 probe.cpython-312.pyc，274-MF01 顺带删；272 的备份（/opt/mentorflow/state/release272/mentorflow-before269.dump）和 rollback272 镜像标签先留着。报告 .local/test-tmp/deploy272/report.md。
-- 验证：未验证（等 274-MF01）。
+- 第二次（274-MF01，2026-11-02）：本机演练回退改键（有键、没键两份假 .env）通过；服务器上重新备份（/opt/mentorflow/state/release274/mentorflow-before269.dump）后，第一条 migrate.sh current 报 `missing migration secret: /run/secrets/postgres_migrator_password`，没有跑迁移。原因：migrate.sh 默认挂 mentorflow-e1-preview_oidc_proxy_secrets 卷，那个卷只有 TLS 文件；迁移密码在 mentorflow-e1-preview_migrate_secrets 卷。234-MF01（2026-10-29 上线 0046）就查到过并用 MIGRATION_SECRETS_VOLUME 覆盖跑通，但只写在回执里，没进部署说明。自动回退这次 exit 0（改键修法有效），服务一直是原 Java 226、库 0046。解决：RELEASE269.md 加 export MIGRATION_SECRETS_VOLUME=mentorflow-e1-preview_migrate_secrets，deploy/README.md 改正查看卷的命令（92620915）。272 的服务器暂存文件和误生的 .pyc 已由 274 删掉。报告 .local/test-tmp/deploy274/report.md。
+- 遗留：272、274 的备份（/opt/mentorflow/state/release272/、release274/ 下的 mentorflow-before269.dump）和 rollback272 镜像标签先留着；274 在服务器 /tmp 的暂存文件由 275 删。272 报告 .local/test-tmp/deploy272/report.md。
+- 验证：未验证（等 275-MF01）。
 - 关联：[RAG-01]、[BUG-107]
 - 更新：2026-11-02
