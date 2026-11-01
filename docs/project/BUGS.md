@@ -19,7 +19,7 @@
 | BUG-207 | 物理计划（初二压强与浮力）没答最终检验，2026-10-30 自己变成“已完成” | 不改：用户 2026-11-01 定保持“已完成”，认为不算 bug、是没提前沟通 | 2026-11-01 |
 | BUG-208 | 装好的软件自带 SQLite 3.49.1，用户查到 SQLite 有读写和日志（WAL）撞在一起时的罕见问题 | 已修，随 2.0.42 发布（2026-11-02）：软件自带官方 3.54.1；等用户更新 | 2026-11-02 |
 | BUG-209 | 部署 Java 269 两次停在迁移前（272：Compose 检查报 MF_JAVA_VERSION 缺失；274：找不到迁移密码文件） | 已解决：275 上线成功；277-MF01 根治（只读 preflight.sh、现场参数进脚本默认值、deploy/README.md 一节现场条件，合入 1ade7035） | 2026-11-02 |
-| BUG-210 | 教学用的学习记录（.local/interview/学习记录.txt）能读，追加写入报 PermissionError 13 | 279 查清机制、按任务停在改权限前；280-MF06 照 Codex 官方方式把 D:/MentorFlow 设成可写，已起草待转发 | 2026-11-02 |
+| BUG-210 | 教学用的学习记录（.local/interview/学习记录.txt）能读，追加写入报 PermissionError 13 | 已修：280-MF06 照 Codex 官方方式让 D:/MentorFlow、MentorFlowApp、MentorFlowData 可写，签名私钥目录保持只读；等用户新开 dots 会话亲测 | 2026-11-02 |
 | BUG-211 | 2.0.42 资料问答左栏三块挤在一屏，资料库、本会话资料、会话列表每块只露一两行，滚一下只看到一条 | 已修，随 2.0.43 发布（2026-11-02）；等用户亲测 | 2026-11-02 |
 | BUG-01 | 新界面滚动卡死、左侧栏消失 | 已关闭（2026-09-27） | 2026-09-28 |
 | BUG-02 | E 盘（USB 外接固态盘）在测试时掉盘 | 已关闭（改为不在 E 盘频繁读写） | 2026-09-28 |
@@ -2533,14 +2533,14 @@
 - 更新：2026-11-02
 
 ### [BUG-210] 教学用的学习记录（.local/interview/学习记录.txt）能读，追加写入报 PermissionError 13
-- 状态：没查到根因，等用户给定位信息（276-MF06 调研完成，2026-11-02）。
+- 状态：已修，等用户亲测：在 D:/MentorFlow 项目新开 dots 会话，权限保留输入框下的 Default permissions（项目默认），不选 Full access；不用重启 Codex 应用，旧会话可能还是旧权限。
 - 现象（用户 2026-11-02 报）：架构学习那条教学会话往这份笔记追加时，以追加模式打开就报 PermissionError: [Errno 13] Permission denied，在写正文之前；能读、能看末尾；回读新增 0 行，原内容没变；此前追加成功过，文件共 1140 行。这是教学文本笔记，不是软件里的学习数据库；不能据此认定软件的身份验证起了作用。
 - 架构师 2026-11-02 只读看过：文件没设只读（只有 Archive），141,555 字节，最后修改 2026-11-01 14:32:38；文件和父目录权限都是继承的，Authenticated Users 有修改权限。更可能是发起写入的工具的运行环境、别的程序占用或安全软件拦截，没查实。
 - 276-MF06 调研（2026-11-02 04:33～04:43，报告 .local/test-tmp/record276/report.md）：文件非只读，所有者是用户账号，和父目录、同目录其他文件的权限完全相同，没有拒绝项；普通 PowerShell 进程（用户账号、非管理员）以追加方式打开再立即关闭成功，前后大小 141,555 字节、SHA256 B86EE5A0…、修改时间都没变；Windows Defender 受控文件夹访问是关的，留存的事件日志里没有 1123/1124/1127 拦截；另装有 Malwarebytes，服务当时是停止状态。handle.exe 要管理员才能列句柄，没查成占用。
 - 原因判断：README 写明这份笔记是教学工具 dots 在用（用户把 prompt.md 复制给 dots）。失败的是 dots 那次追加调用，不是文件或系统权限；最可能是 dots 自己的运行环境（沙箱、只读模式、可写目录范围）不允许写这个路径，或当时有别的程序占着文件。没有找到 dots 那次调用的记录（员工只能查 Codex 和 Claude Code 的会话记录），所以没查实。和 MentorFlow 软件的身份验证无关。
 - 下一步（用户 2026-11-02 定）：从根上解决，让 dots 在它工作的项目里可读可写（用户从没调过它的权限），不做只对这一个文件放行的特例；dots 是 Codex 里的教学机器人（一个 Codex 会话），先查社区再修，派员工做。架构师只读看到 C:/Users/21533/.codex/config.toml 里 [windows] sandbox = "unelevated"，项目信任只有 D:/keshe2/workers，D:/MentorFlow 不在里面，推测 dots 跑在只读沙箱，没查实。279-MF06 已起草，待转发（任务文件 D:\MentorFlow\.local\tasks\279-MF06.md）。
 - 279-MF06（2026-11-02，报告 .local/test-tmp/dots279/report.md）：本机 codex-cli 0.159.2、桌面版 26.1027.3384.0，配置在 D:/Codex/data/config.toml（C:/Users/21533/.codex 指向它），[windows] sandbox = "unelevated"，没显式 sandbox_mode；项目信任只有 D:/keshe2/workers。官方机制：unelevated 沙箱给项目开写权限，是 Codex 自己的 helper 在项目目录上给沙箱能力 SID 加权限条目；D:/MentorFlow 上没有这类条目，所以 Codex 沙箱里能读不能写（和普通账户能写不矛盾）。dots 那次会话的设置没找到，原会话是否只读没查实。员工照任务“要改 NTFS 就停”停在改配置前，没改任何东西；这条停止条件是架构师写得太死。
-- 280-MF06（已起草，待转发，任务文件 D:\MentorFlow\.local\tasks\280-MF06.md）：允许 Codex 用官方方式给 D:/MentorFlow、D:/MentorFlowApp、D:/MentorFlowData 加它沙箱身份的权限条目（用户 2026-11-02 定这三处，D:/MentorFlow-office 不加）、改 config.toml 让该项目默认 workspace-write（先备份），修前修后 codex exec 验证；另查官方能否让 .local/release-keys（正式签名私钥）在可写项目里保持只读。
+- 解决（280-MF06，2026-11-02，报告 .local/test-tmp/dots280/report.md）：D:/Codex/data/config.toml 只加 [projects.'D:\MentorFlow'] trust_level = "trusted"（备份 config.toml.bak-20261102-dots）；新增项目配置 D:/MentorFlow/.codex/config.toml（不进 git，写在 .git/info/exclude）：default_permissions = "mentorflow"，继承 :workspace，可写根 D:/MentorFlow、D:/MentorFlowApp、D:/MentorFlowData（用户 2026-11-02 定，MentorFlow-office 不加），D:/MentorFlow/.local/release-keys 只读。Codex helper 给三处各加了自己沙箱能力 SID 的 Modify 条目（可继承），release-keys 上加了拒绝写删；普通账户条目和所有者都没变（DACL 多了自动继承标志 AI）。只对在 D:/MentorFlow 开的 Codex 会话生效，员工工位查询不加载这层配置。验证：修前 codex exec 只读沙箱追加探针被拒；修后用项目默认权限新会话追加探针成功、读回正确；只读打开学习记录.txt 成功（大小、哈希、修改时间不变）；沙箱里对 release-keys 请求建文件被拒（错误 5）。费用估约 ¥0.56。撤销方法（恢复配置备份、删项目配置、icacls 按三个 SID 移除）写在报告里，没执行。
 - 关联：无
 - 更新：2026-11-02
 
