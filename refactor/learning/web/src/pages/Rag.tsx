@@ -118,6 +118,10 @@ export function Rag() {
   const voiceScopeKey = `rag:${session?.id ?? "new"}:${[...selected].sort().join("\u001f")}`
   const draftKey = questionDraftKey(accountId, session?.id, session?.document_ids ?? selected)
   React.useEffect(() => {
+    if (sources && planId && (!sources.plans.some((plan) => plan.id === planId)
+      || !sources.documents.some((doc) => doc.plan_ids.includes(planId)))) setPlanId("")
+  }, [sources, planId])
+  React.useEffect(() => {
     const dialog = deleteDialogRef.current
     if (!dialog) return
     if (deleteUsage && !dialog.open) dialog.showModal()
@@ -129,6 +133,31 @@ export function Rag() {
     if (materialsOpen && !dialog.open) dialog.showModal()
     if (!materialsOpen && dialog.open) dialog.close()
   }, [materialsOpen])
+  React.useEffect(() => {
+    const dialog = materialsDialogRef.current
+    if (!dialog) return
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0) return
+      let element = event.target instanceof Element ? event.target : null
+      while (element && element !== dialog) {
+        if (element instanceof HTMLElement && element.scrollWidth > element.clientWidth + 1
+          && /^(auto|scroll)$/.test(getComputedStyle(element).overflowX)) {
+          const bounds = element.getBoundingClientRect()
+          // 24px makes the bottom edge of a list an easy wheel target, including native scrollbar hits.
+          if (event.clientY >= bounds.bottom - 24 && event.clientY <= bounds.bottom) {
+            const maxScroll = element.scrollWidth - element.clientWidth
+            const nextScroll = Math.max(0, Math.min(maxScroll, element.scrollLeft + event.deltaY))
+            event.preventDefault()
+            element.scrollLeft = nextScroll
+            return
+          }
+        }
+        element = element.parentElement
+      }
+    }
+    dialog.addEventListener("wheel", onWheel, { passive: false })
+    return () => dialog.removeEventListener("wheel", onWheel)
+  }, [!!sources])
   React.useEffect(() => {
     if (!materialsOpen) materialsTriggerRef.current?.focus()
   }, [materialsOpen])
@@ -463,7 +492,6 @@ export function Rag() {
             const knownIds = new Set(result.documents.map((doc) => doc.id))
             const ids = context.documentIds.filter((id) => knownIds.has(id))
             setSelected(ids)
-            setPlanId(planForDocuments(ids))
           } else if (result.sessions[0]) void openSession(result.sessions[0].id)
         }
         pollRequired = result.server_status?.state === "unavailable"
@@ -538,6 +566,7 @@ export function Rag() {
       sourcesReadRevision.current++
       sessionReadRevision.current++
       setSources(null)
+      setPlanId("")
       setSession(null)
       sessionRef.current = null
       setSelected([])
@@ -580,7 +609,6 @@ export function Rag() {
       desiredSessionDocuments.current.set(id, [...result.session.document_ids])
       persistedSessionDocuments.current.set(id, [...result.session.document_ids])
       setSelected(result.session.document_ids)
-      setPlanId(planForDocuments(result.session.document_ids))
       clearSendFailure()
     } catch (e) { if (mounted.current && revision === sessionReadRevision.current) toast("error", (e as Error).message) }
   }
@@ -597,7 +625,6 @@ export function Rag() {
       sessionRef.current = optimistic
       setSession(optimistic)
       setSelected(desired)
-      setPlanId(planForDocuments(desired))
     }
     clearSendFailure()
     setPrepareFailure(null)
@@ -624,7 +651,6 @@ export function Rag() {
         sessionRef.current = merged
         setSession(merged)
         setSelected(actualIds)
-        setPlanId(planForDocuments(actualIds))
       }
       const oldSet = new Set(base)
       const added = actualIds.filter((id) => !oldSet.has(id))
@@ -806,7 +832,6 @@ export function Rag() {
           sessionRef.current = latest.session
           setSession(latest.session)
           setSelected(latest.session.document_ids)
-          setPlanId(planForDocuments(latest.session.document_ids))
           desiredSessionDocuments.current.set(activeId, [...latest.session.document_ids])
           persistedSessionDocuments.current.set(activeId, [...latest.session.document_ids])
         }
@@ -846,7 +871,6 @@ export function Rag() {
       setSession(result.session)
       sessionRef.current = result.session
       setSelected(result.session.document_ids)
-      setPlanId(planForDocuments(result.session.document_ids))
       desiredSessionDocuments.current.set(result.session.id, [...result.session.document_ids])
       persistedSessionDocuments.current.set(result.session.id, [...result.session.document_ids])
       clearSendFailure()
@@ -884,7 +908,6 @@ export function Rag() {
         setSession(activeSession)
         sessionRef.current = activeSession
         setSelected(activeSession.document_ids)
-        setPlanId(planForDocuments(activeSession.document_ids))
         desiredSessionDocuments.current.set(activeSession.id, [...activeSession.document_ids])
         persistedSessionDocuments.current.set(activeSession.id, [...activeSession.document_ids])
         invalidateSourcesRead()
@@ -977,10 +1000,6 @@ export function Rag() {
     } catch (e) { toast("error", (e as Error).message) }
   }
   function docById(id: string) { return sources?.documents.find((doc) => doc.id === id) }
-  function planForDocuments(ids: string[]) {
-    const planIds = [...new Set(ids.flatMap((id) => docById(id)?.plan_ids ?? []))]
-    return planIds.length === 1 ? planIds[0]! : ""
-  }
 
   if (!sources) return <div className="page rag-page" data-testid="rag-page">
     {loadError ? <div className="card" role="alert">读取资料失败：{loadError}<Button onClick={() => refresh().catch((e) => setLoadError(e.message))}>重试</Button></div>
@@ -1114,7 +1133,7 @@ export function Rag() {
           <div className="rag-session-list-head"><div><h2>{session ? `${session.title} · ${session.document_ids.length} 份资料` : "新会话要用的资料"}</h2><p>{session ? "点 × 仅从这个会话移除" : "从资料库加入要用的资料"}</p></div></div>
           <div className="rag-selected" aria-label="本会话资料列表">
             {(session ? sessionDocuments : selectedDocuments).length === 0 ? <span className="muted small">尚未加入资料</span> : (session ? sessionDocuments : selectedDocuments).map((doc) => <span className="rag-chip" key={doc.id}>
-              <span title={doc.title}>{doc.title}</span><button type="button" data-testid={`rag-session-remove-document-${doc.id}`} aria-label={`从本会话移除资料：${doc.title}`} title="从本会话移除" disabled={!!pending || !!deletingDocumentId} onClick={() => removeDocumentFromCurrent(doc.id)}><X size={13} /></button>
+              <button type="button" data-testid={`rag-session-remove-document-${doc.id}`} aria-label={`从本会话移除资料：${doc.title}`} title="从本会话移除" disabled={!!pending || !!deletingDocumentId} onClick={() => removeDocumentFromCurrent(doc.id)}><X size={13} /></button><span title={doc.title}>{doc.title}</span>
             </span>)}
           </div>
         </section>
