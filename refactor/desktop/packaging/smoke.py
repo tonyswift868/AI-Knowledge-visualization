@@ -4,12 +4,51 @@ import json
 import traceback
 
 
+def loaded_sqlite_path() -> Path:
+    """Report the DLL actually loaded by _sqlite3, not a search-path guess."""
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+    kernel.GetModuleHandleW.restype = wintypes.HMODULE
+    kernel.GetModuleFileNameW.argtypes = [wintypes.HMODULE, wintypes.LPWSTR, wintypes.DWORD]
+    kernel.GetModuleFileNameW.restype = wintypes.DWORD
+    module = kernel.GetModuleHandleW('sqlite3.dll')
+    if not module:
+        raise RuntimeError('sqlite3.dll was not loaded')
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = kernel.GetModuleFileNameW(module, buffer, len(buffer))
+    if not length or length >= len(buffer):
+        raise RuntimeError('Cannot resolve the loaded sqlite3.dll')
+    return Path(buffer.value).resolve()
+
+
+def sqlite_runtime_info(payload: Path) -> dict:
+    import hashlib
+    import sqlite3
+    lock = json.loads((payload / '_internal/sqlite-runtime.json').read_text(encoding='utf-8'))
+    with sqlite3.connect(':memory:') as db:
+        version, source_id = db.execute('SELECT sqlite_version(), sqlite_source_id()').fetchone()
+    dll = loaded_sqlite_path()
+    if dll != (payload / '_internal/sqlite3.dll').resolve():
+        raise RuntimeError('SQLite loaded outside the frozen payload: ' + str(dll))
+    with dll.open('rb') as stream:
+        if hashlib.file_digest(stream, 'sha256').hexdigest() != lock['sha256']:
+            raise RuntimeError('Frozen SQLite DLL SHA256 mismatch')
+    if sqlite3.sqlite_version != lock['version'] or version != lock['version'] or not source_id:
+        raise RuntimeError('Unexpected frozen SQLite runtime: ' + repr((sqlite3.sqlite_version, version, source_id)))
+    return dict(version=version, source_id=source_id, loaded_dll=str(dll))
+
+
 def check(root: Path) -> int:
     root = root.resolve()
     root.mkdir(parents=True, exist_ok=True)
     result = {"backend_ready": False}
     services = None
     try:
+        import sys
+        if getattr(sys, 'frozen', False):
+            result['sqlite_runtime'] = sqlite_runtime_info(Path(sys.executable).resolve().parent)
         from PySide6.QtWidgets import QApplication
         from refactor.learning.app.services import AppServices
         from refactor.learning.course.catalog_client import _DATA
