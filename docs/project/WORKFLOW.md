@@ -58,7 +58,7 @@
 | MF-01 | 空闲（282-MF01 核对完成） | server |
 | MF-02 | 空闲（285-MF02 完成，考题在 exam285） | client |
 | MF-03 | 空闲（281-MF03 已合入 a94df235） | classroom |
-| MF-04 | 空闲（289-MF04 完成，dots 提示词已改，等用户亲测） | runtime |
+| MF-04 | 空闲（289-MF04 完成；用户定换回 289 之前的 dots 提示词） | runtime |
 | MF-05 | 空闲（288-MF05 已合入 0c34ccab） | platform |
 | MF-06 | 空闲（280-MF06 已完成，[BUG-210]） | tools |
 | MF-07 | 291-MF07 用积分重试 Graphify 语义分析、看效果（[DOC-02]），已转发，进行中 | library |
