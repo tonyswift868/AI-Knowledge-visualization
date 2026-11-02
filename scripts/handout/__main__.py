@@ -24,7 +24,19 @@ def main(argv=None):
     chk = sub.add_parser('check', help='check empty descriptions, metadata integrity and dots format')
     chk.add_argument('--output', type=Path, required=True)
     chk.add_argument('--allow-unfilled', action='store_true', help='first-stage skeleton integrity only')
+    cross = sub.add_parser('crosslayer', help='append source-proven cross-layer links to an existing snapshot handout')
+    cross.add_argument('--repo', type=Path, required=True)
+    cross.add_argument('--snapshot', required=True)
+    cross.add_argument('--output', type=Path, required=True)
+    cross.add_argument('--work', type=Path, required=True, help='empty disposable archive directory')
+    cross.add_argument('--config', type=Path, default=Path(__file__).with_name('mentorflow.json'))
     args = parser.parse_args(argv)
+    if args.command == 'crosslayer':
+        from .crosslayer import generate_crosslayer
+        result = generate_crosslayer(args.repo.resolve(), args.snapshot, args.output.resolve(),
+                                     args.work.resolve(), read_json(args.config))
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
     if args.command == 'generate':
         config = read_json(args.config)
         if args.exclusions:
