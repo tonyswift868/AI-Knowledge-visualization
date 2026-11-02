@@ -55,13 +55,13 @@
 
 | 员工 | 当前任务 | 工位 |
 | --- | --- | --- |
-| MF-01 | 空闲（282-MF01 核对完成） | server |
+| MF-01 | 296-MF01 讲义 C 份写空位（[DOC-02]），已起草，待转发 | server |
 | MF-02 | 空闲（285-MF02 完成，考题在 exam285） | client |
-| MF-03 | 空闲（281-MF03 已合入 a94df235） | classroom |
-| MF-04 | 空闲（289-MF04 完成；用户定换回 289 之前的 dots 提示词） | runtime |
-| MF-05 | 空闲（288-MF05 已合入 0c34ccab） | platform |
+| MF-03 | 295-MF03 讲义 B 份写空位（[DOC-02]），已起草，待转发 | classroom |
+| MF-04 | 294-MF04 讲义 A 份写空位（[DOC-02]），已起草，待转发 | runtime |
+| MF-05 | 297-MF05 讲义 D 份写空位（[DOC-02]），已起草，待转发 | platform |
 | MF-06 | 空闲（280-MF06 已完成，[BUG-210]） | tools |
-| MF-07 | 293-MF07 讲义生成程序、调用关系和骨架（[DOC-02]），已起草，待转发 | library |
+| MF-07 | 空闲（293-MF07 已合入 c505f2bd） | library |
 
 ## 待派队列
 
@@ -69,7 +69,7 @@
 - 269-MF03 已合入 7d1aebcc、269-MF01 已合入 1070685b（2026-11-01，[RAG-01]）。
 - 270-MF06 已完成（2026-11-01，基线 1070685b）：5259 过、1 失败（测试过时，架构师 323971fd 修好、单项通过）、49 跳过，Java 一项没跳。报告 .local/test-tmp/full270/report.md。
 - 281-MF03 已完成、合入 a94df235（[BUG-212]），已随 2.0.44 发布。
-- 项目讲义 [DOC-02]：产出在 .local/test-tmp 的 analyzer283（Graphify 安装包）、exam285（考题，考试前不给被考的一方看）、graphify291（全量图 out/full/graph.json）。293-MF07（程序出调用关系和讲义骨架）待转发；做完后按它的分工建议派 3～4 人读源码写第一部分，再派至少两人各抽查约 100 处。
+- 项目讲义 [DOC-02]：骨架 .local/handout/1181da9d（293 合入 c505f2bd，分工表在 .local/test-tmp/handout293/report.md 第 151～180 行，写完前别删）。294-MF04（A）、295-MF03（B）、296-MF01（C）、297-MF05（D）四人同时写空位，已起草，待转发，积分余额低于 25,000 停。四份回来后起草 MF-02、MF-06 各抽查约 100 处的任务；之后考试（exam285）和给 dots 的新提示词。Graphify 安装包在 analyzer283/keep。
 - 280-MF06 已完成（[BUG-210]）：dots 在 D:/MentorFlow、MentorFlowApp、MentorFlowData 可读可写，签名私钥目录只读；等用户新开 dots 会话亲测。
 - 273-MF04 已完成、合入 c82e8e7c（[BUG-208]，打包固定官方 SQLite 3.54.1，真包旧版 → 新版走通）：随 2.0.42 发。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn，获授权后导出并发布 mentorflow-guide（AGENTS 第 12 条）；发给朋友前重做安装程序并走一遍全新安装和注册（[SYS-06] [ACC-02]）。模拟面试提示词已交付，学习规则见 [DOC-01]。
