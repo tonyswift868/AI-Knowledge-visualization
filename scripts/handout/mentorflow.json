@@ -1,0 +1,23 @@
+{
+  "project": "MentorFlow",
+  "exclude": [".local/**", ".git/**", "**/.venv/**", "**/node_modules/**", "**/dist/**", "**/__pycache__/**", "**/.pytest_cache/**", "**/target/**", "**/vendor/**", "**/release-keys/**", "**/credentials/**", "**/auth.json", "docs/project/WORKFLOW.md", "scripts/release/inputs/7zr.exe", "**/*.jar", "**/*.key", "**/*.p12", "**/*.pfx"],
+  "groups": {
+    "test_roots": ["tests"],
+    "categories": {
+      "图片与二进制资源": [".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".moc3", ".wav", ".mp3", ".woff", ".woff2"],
+      "配置与数据样本": [".json", ".yaml", ".yml", ".toml", ".xml", ".ini", ".cfg", ".lock", ".pem"]
+    },
+    "single_names": ["README.md", "LICENSE", "Dockerfile", "requirements.txt"]
+  },
+  "reference_documents": ["docs/project/BUGS.md", "docs/project/CURRENT_STATE.md"],
+  "common_names": ["index.ts", "index.tsx", "index.js", "main.py", "app.py", "config.py", "__init__.py", "conftest.py", "README.md"],
+  "relation_limit": 30,
+  "graph_python": "D:/MentorFlow/.local/tools/graphify/venv/Scripts/python.exe",
+  "annex": {
+    "enabled": true,
+    "app_root": "D:/MentorFlowApp",
+    "data_root": "D:/MentorFlowData",
+    "office_root": "D:/MentorFlow-office",
+    "main_repo": "D:/MentorFlow"
+  }
+}
