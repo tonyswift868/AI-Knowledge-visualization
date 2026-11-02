@@ -59,9 +59,9 @@
 | MF-02 | 空闲（285-MF02 完成，考题在 exam285） | client |
 | MF-03 | 空闲（281-MF03 已合入 a94df235） | classroom |
 | MF-04 | 空闲（286-MF04 完成） | runtime |
-| MF-05 | 空闲（284-MF05 完成） | platform |
+| MF-05 | 288-MF05 项目地图三个脚本进仓库（[DOC-02]），已起草，待转发 | platform |
 | MF-06 | 空闲（280-MF06 已完成，[BUG-210]） | tools |
-| MF-07 | 空闲（283-MF07 完成，选 Graphify） | library |
+| MF-07 | 287-MF07 用订阅额度试 Graphify 完整分析（[DOC-02]），已起草，待转发 | library |
 
 ## 待派队列
 
@@ -69,7 +69,7 @@
 - 269-MF03 已合入 7d1aebcc、269-MF01 已合入 1070685b（2026-11-01，[RAG-01]）。
 - 270-MF06 已完成（2026-11-01，基线 1070685b）：5259 过、1 失败（测试过时，架构师 323971fd 修好、单项通过）、49 跳过，Java 一项没跳。报告 .local/test-tmp/full270/report.md。
 - 281-MF03 已完成、合入 a94df235（[BUG-212]），已随 2.0.44 发布。
-- 项目分析器 [DOC-02]：283～286 四路已完成，产出在 .local/test-tmp 的 analyzer283、dirmap284、exam285、delta286 四个目录（exam285 考试前不给被考的一方看）。等用户定 [DOC-02] 里的三个问题，再起草改工具和接 dots 的任务，之后再起草考试任务。
+- 项目分析器 [DOC-02]：283～286 四路已完成，产出在 .local/test-tmp 的 analyzer283、dirmap284、exam285、delta286 四个目录（exam285 考试前不给被考的一方看）。287-MF07（用订阅额度试 Graphify 完整分析）、288-MF05（三个脚本进仓库）已起草，待转发；两份回来后再起草改工具、接 dots 的任务，之后起草考试任务。
 - 280-MF06 已完成（[BUG-210]）：dots 在 D:/MentorFlow、MentorFlowApp、MentorFlowData 可读可写，签名私钥目录只读；等用户新开 dots 会话亲测。
 - 273-MF04 已完成、合入 c82e8e7c（[BUG-208]，打包固定官方 SQLite 3.54.1，真包旧版 → 新版走通）：随 2.0.42 发。
 - 候选（等用户提）：用户学项目资料时的反馈 → 改 docs/learn，获授权后导出并发布 mentorflow-guide（AGENTS 第 12 条）；发给朋友前重做安装程序并走一遍全新安装和注册（[SYS-06] [ACC-02]）。模拟面试提示词已交付，学习规则见 [DOC-01]。
