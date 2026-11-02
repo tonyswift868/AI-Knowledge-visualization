@@ -45,6 +45,30 @@ def register(bridge):
     assert {r["name"] for r in result["dynamic"]} == {"material_wait.action", "failure.action"}
 
 
+def test_dispatch302_failure_replay_uses_invoke_action_not_bridge_alias(tmp_path):
+    put(tmp_path, "refactor/learning/app/classroom.py", '''
+class Classroom:
+    def start_test(self, course, state, ctx): pass
+    def perform(self, action):
+        self._local.action = (action, [], "request")
+    def run(self, state):
+        state["failure"] = dict(action=action[0], args=action[1])
+    def retry(self, state):
+        return getattr(self, failure["action"])(state)
+def register(bridge):
+    def invoke(action, params): return room.perform(action)
+    methods = {
+        "classroom.test": lambda p,c: invoke("start_test",p),
+    }
+''')
+    result = extract(tmp_path)
+    failure = next(row for row in result["connections"] if row["name"] == "failure.action=start_test")
+    assert failure["target"]["function"] == "Classroom.start_test"
+    assert any("classroom.test" in step["function"] for step in failure["via"])
+    assert any("invoke(start_test)" == step["function"] for step in failure["via"])
+    assert not any(row["name"] == "failure.action=classroom.test" for row in result["connections"])
+
+
 def test_dispatch302_qapplication_updater_and_operation_branch(tmp_path):
     put(tmp_path, "refactor/learning/app/handlers.py", '''
 def update_action(action):

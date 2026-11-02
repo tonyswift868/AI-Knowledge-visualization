@@ -110,11 +110,16 @@ def _classroom(index: _PythonIndex):
         return [], [], []
     connections, unresolved, dynamic = [], [], []
     perform = class_methods.get("perform")
+    perform_action_write = next((n for n in ast.walk(perform) if isinstance(n, ast.Assign)
+        and any(isinstance(t, ast.Attribute) and t.attr == "action"
+                and isinstance(t.value, ast.Attribute) and t.value.attr == "_local"
+                for t in n.targets)), None) if perform else None
     perform_getattr = next((n for n in ast.walk(perform) if isinstance(n, ast.Call)
         and isinstance(n.func, ast.Name) and n.func.id == "getattr"
         and len(n.args) > 1 and isinstance(n.args[0], ast.Name) and n.args[0].id == "self"
         and isinstance(n.args[1], ast.Name) and n.args[1].id == "action"), None) if perform else None
     retry = class_methods.get("retry")
+    run = class_methods.get("run")
     resume = class_methods.get("_resume_materials")
     wait = class_methods.get("_wait")
     guarded_actions = set()
@@ -173,16 +178,45 @@ def _classroom(index: _PythonIndex):
                          and len(n.args) > 1 and isinstance(n.args[0], ast.Name) and n.args[0].id == "self"]
         if getattr_nodes:
             node = getattr_nodes[0]
+            failure_writes = []
+            if run:
+                for candidate in ast.walk(run):
+                    if not isinstance(candidate, ast.Assign) or not isinstance(candidate.value, ast.Call):
+                        continue
+                    if (isinstance(candidate.targets[0], ast.Subscript)
+                            and isinstance(candidate.targets[0].value, ast.Name)
+                            and candidate.targets[0].value.id == "state"
+                            and isinstance(candidate.targets[0].slice, ast.Constant)
+                            and candidate.targets[0].slice.value == "failure"
+                            and isinstance(candidate.value.func, ast.Name) and candidate.value.func.id == "dict"):
+                        failure_writes.append(candidate)
+            if not failure_writes:
+                unresolved.append({"kind": "dispatch", "name": "failure.action",
+                    "source": _endpoint(path, node.lineno, "Classroom.retry"),
+                    "reason": "未能定位 Classroom.run 将实际 action 值写入 failure 记录的赋值；不以桥注册名代替。"})
             for bridge_name, (key_node, actions) in registrations.items():
                 for action in actions:
                     target_node = class_methods.get(action)
-                    if target_node:
-                        connections.append({"kind": "dispatch", "name": f"failure.action={bridge_name}",
+                    if target_node and perform_action_write and failure_writes:
+                        registry_value = next((value for key, value in zip(method_dict.keys, method_dict.values)
+                                               if key is key_node), None)
+                        nested_value = nested.get(registry_value.id) if isinstance(registry_value, ast.Name) else registry_value
+                        invoke_site = next((candidate for candidate in _walk_function(nested_value)
+                            if isinstance(candidate, ast.Call) and isinstance(candidate.func, ast.Name)
+                            and candidate.func.id == "invoke" and candidate.args
+                            and isinstance(candidate.args[0], ast.Constant) and candidate.args[0].value == action), None)
+                        if invoke_site is None:
+                            continue
+                        via = [_endpoint(path, key_node.lineno, f"classroom.register.methods {bridge_name}"),
+                               _endpoint(path, invoke_site.lineno, f"invoke({action})"),
+                               _endpoint(path, perform_action_write.lineno, "Classroom.perform writes self._local.action")]
+                        via.extend(_endpoint(path, candidate.lineno, "Classroom.run writes failure.action = action[0]")
+                                   for candidate in failure_writes)
+                        connections.append({"kind": "dispatch", "name": f"failure.action={action}",
                             "source": _endpoint(path, node.lineno, "Classroom.retry"),
                             "target": _endpoint(path, target_node.lineno, f"Classroom.{action}"),
-                            "via": [_endpoint(path, key_node.lineno, "classroom.register.methods"),
-                                    _endpoint(path, perform.lineno, "Classroom.perform action registry")],
-                            "rule": "失败记录的 action 回放来源是已注册的有限桥方法名，通过 invoke 的字面action可映射回同名 Classroom 方法。"})
+                            "via": via,
+                            "rule": f"桥方法 {bridge_name!r} 调用 invoke({action!r})；perform 将该 action 存入 action[0]，run 保存为 failure.action，retry 再按此值 getattr 选择 Classroom.{action}。"})
             dynamic.append({"kind": "dispatch", "name": "failure.action",
                 "source": _endpoint(path, node.lineno, "Classroom.retry"),
                 "reason": "action 从持久化 failure 记录读取；当前代码的写入来自 perform 的注册动作集，但记录值由运行时决定。"})
