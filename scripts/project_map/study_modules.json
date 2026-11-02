@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "coverage_note": "以原学习地图锚点和主要职责目录前缀共同归属；目录命中是需要核对的变化候选，不证明已学结论改变。未覆盖路径必须列入没归属的变化。",
+  "source": "D:/MentorFlow/.local/interview/prompt.md, 阅读地图 M01-M11，2026-11-02",
+  "modules": [
+    {
+      "id": "M01",
+      "title": "产品与第一条请求",
+      "paths": [
+        "docs/learn/00-project-story.md",
+        "refactor/learning/app/window.py",
+        "refactor/learning/app/bridge.py",
+        "refactor/learning/app/classroom.py",
+        "refactor/learning/web/src/pages/Classroom.tsx",
+        "refactor/learning/course/store.py"
+      ],
+      "background_paths": [
+        "docs/project/CURRENT_STATE.md"
+      ],
+      "background_scope": "prompt只指定核对ARCH-01和ARCH-04；整文件变化单列为背景，不能据此认定本模块内容变更。"
+    },
+    {
+      "id": "M02",
+      "title": "资料、课程、原题",
+      "paths": [
+        "docs/learn/02-material-to-plan.md",
+        "docs/learn/01-source-questions-and-grading.md",
+        "refactor/learning/course/planner_agents.py",
+        "refactor/learning/course/material_questions.py",
+        "refactor/learning/course/question_bank.py",
+        "refactor/learning/course/answer_compare.py",
+        "refactor/learning/app/classroom.py",
+        "refactor/learning/course"
+      ]
+    },
+    {
+      "id": "M03",
+      "title": "登录与权限",
+      "paths": [
+        "docs/learn/06-authentication-and-authorization.md",
+        "docs/learn/07-native-sessions.md",
+        "docs/learn/10-account-isolation.md",
+        "refactor/desktop/login_session.py",
+        "refactor/desktop/account_shell_main.py",
+        "refactor/server-java/src/main/java/win/clannad/mentorflow/identity/IdentitySecurity.java",
+        "refactor/server-java/src/main/java/win/clannad/mentorflow/identity/CompatibleJwtDecoder.java",
+        "refactor/server-java/src/main/java/win/clannad/mentorflow/account/NativeSessionService.java"
+      ]
+    },
+    {
+      "id": "M04",
+      "title": "本地持久化",
+      "paths": [
+        "docs/learn/12-data-evolution-and-progress.md",
+        "refactor/learning/course/store.py",
+        "refactor/server/migrations/versions",
+        "scripts/release/sqlite_runtime.py"
+      ]
+    },
+    {
+      "id": "M05",
+      "title": "同步与并发",
+      "paths": [
+        "docs/learn/08-sync-conflict-and-retry.md",
+        "docs/learn/09-sync-growth-and-performance.md",
+        "refactor/learning/course/sync_course.py",
+        "refactor/learning/sync_transport.py",
+        "refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncController.java",
+        "refactor/server-java/src/main/java/win/clannad/mentorflow/sync/SyncRepository.java"
+      ]
+    },
+    {
+      "id": "M06",
+      "title": "Java 后端与契约",
+      "paths": [
+        "docs/learn/11-java-migration-and-contracts.md",
+        "docs/interview/java-backend-rewrite.md",
+        "refactor/server-java/pom.xml",
+        "refactor/server-java/src/main/java",
+        "refactor/server/migrations"
+      ]
+    },
+    {
+      "id": "M07",
+      "title": "RAG",
+      "paths": [
+        "docs/learn/03-rag-pipeline.md",
+        "docs/learn/04-retrieval-design.md",
+        "docs/learn/05-ai-answer-quality.md",
+        "refactor/learning/course/materials.py",
+        "refactor/learning/app/rag.py",
+        "refactor/server-java/src/main/java/win/clannad/mentorflow/rag",
+        "refactor/server/rag"
+      ]
+    },
+    {
+      "id": "M08",
+      "title": "大模型协议、流式与业务 JSON",
+      "paths": [
+        "docs/learn/05-ai-answer-quality.md",
+        "refactor/learning/course/planner_agents.py",
+        "refactor/learning/course/judge_agent.py",
+        "refactor/learning/app/bridge.py",
+        "refactor/learning/connections"
+      ]
+    },
+    {
+      "id": "M09",
+      "title": "Docker 发布、数据库兼容与回退",
+      "paths": [
+        "docs/learn/11-java-migration-and-contracts.md",
+        "refactor/server-java/Dockerfile",
+        "refactor/server-java/deploy",
+        "scripts/release"
+      ],
+      "background_paths": [
+        "docs/project/CURRENT_STATE.md",
+        "docs/project/BUGS.md"
+      ],
+      "background_scope": "只按当前阶段、ARCH-09、BUG-193及RELEASE226记录核对；背景文档全文件改动单列。"
+    },
+    {
+      "id": "M10",
+      "title": "Windows 客户端、生命周期、软件更新与签名",
+      "paths": [
+        "docs/learn/00-project-story.md",
+        "refactor/learning/app/window.py",
+        "refactor/learning/app/bridge.py",
+        "refactor/desktop",
+        "refactor/learning/web/src/updates"
+      ],
+      "background_paths": [
+        "docs/project/CURRENT_STATE.md"
+      ],
+      "background_scope": "只按SYS-06核对；背景文档全文件改动单列。"
+    },
+    {
+      "id": "M11",
+      "title": "典型事故、本人职责与 AI 辅助开发",
+      "paths": [
+        "docs/learn/13-incident-and-contribution.md",
+        "refactor/server-java/src/main/resources/application.properties",
+        "refactor/server-java/src/main/java/win/clannad/mentorflow/closure/ClosureService.java",
+        "refactor/server-java/src/main/java/win/clannad/mentorflow/identity/AccountProfileRepository226.java",
+        "refactor/learning/app/rag.py",
+        "refactor/desktop/account_shell_main.py",
+        "refactor/learning/app/sync.py",
+        "refactor/learning/course/report_pdf.py"
+      ],
+      "background_paths": [
+        "docs/project/BUGS.md"
+      ],
+      "background_scope": "仅关注M11列出的事故编号；BUGS全文件变化单列，不直接推断本人职责。"
+    }
+  ]
+}
