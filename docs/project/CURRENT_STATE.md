@@ -5,7 +5,7 @@
 ## 当前阶段（接手先读）
 
 - **开发状态**（2026-11-03）：2.0.44 已发布（资料窗口三处细节，[BUG-212]），用户 2026-11-03 亲测没问题；服务器 Java 269。
-- **接下来**（2026-11-05）：面经库 [DOC-03]：题库补全完（八股 365 道、算法 114 道），带学和拷打说明用户已认可，什么时候发由用户定。313-MF07（算法代码统一写法、思路和代码一一对应）在做（用户 2026-11-05 已转发）。314 五份（深挖追问链、MentorFlow 题卡四份）已起草，待转发。以后加题：照 00 文件「以后加题」一节，加进对应文件和账本（用户 2026-11-05 提醒题库要能继续编辑）。项目讲义 [DOC-02] 速查表已做好，待用户用 dots 测。
+- **接下来**（2026-11-05）：面经库 [DOC-03]：题库补全完（八股 365 道、算法 114 道），带学和拷打说明用户已认可，什么时候发由用户定。313、314 已交（2026-11-05）：算法 114 道统一成一套写法、每题一句话思路加编号步骤对代码注释，114 道跑过全过；05 加项目深挖追问链 12 道（PD-，★ 4）和 7 条真实追问链；MentorFlow 深挖题卡 121 张（整体 23、服务端 36、客户端 31、AI 31），每条要点带出处，没测过的直说没测过，架构师脚本复核格式、关键词、出处、关联八股全对，并把各卡用到的数字合进 1-整体.md 的数字表；账本加到 612 行。313 有 7 道（H-033、040、043、044、049、050、051）为扛极端深度改成显式栈或迭代，违背“树和网格深度优先用递归、选面试最常写的”，315-MF07 改回，已起草待转发。以后加题：照 00 文件「以后加题」一节，加进对应文件和账本（用户 2026-11-05 提醒题库要能继续编辑）。项目讲义 [DOC-02] 速查表已做好，待用户用 dots 测。
 - **产品与代码**：当前产品代码在 `refactor/`，测试在 `tests/refactor/`。桌面端是 PySide6/QWebEngine + React，学习流程由 Python 宿主编排；在线账号与同步服务使用 Java，Keycloak 负责身份服务。
 - **正式版本**：桌面软件当前 2.0.44（2026-11-02 发布，非必须，只发软件内更新，基线 2.0.43，序号 45，mf-build 41362658438、mf-publish 41363124817，公网 stable.json 已验签）：资料窗口筛选沿用、× 在最左、横向滚动条区域滚轮左右滚（[BUG-212]）；上一版 2.0.43 资料问答布局改版（[BUG-211]）；版本与更新规则见 [SYS-06]。
 - **服务器与数据**：在线入口是 Java 269（2026-11-02 上线，资料问答逐份删除），PostgreSQL 17 / pgvector 0.8.7，迁移版本 0047。Python 备用已重建为 269（mentorflow-slim-backend:269-python-fallback，认 0047，只验证能起来、没切流量），旧 226 备用标签保留但不认 0047。操作条件见 [ARCH-09]。
@@ -251,7 +251,7 @@ BUG 条目（问题与解决记录）和它们的索引只在 [BUGS.md](BUGS.md)
 
 ### [ARCH-01] 前端：单个 React 应用 + 本地桥
 - 状态：已实现。
-- 窗口 refactor/learning/app/window.py 里只有一个铺满的 WebEngine 视图，侧栏、导航、所有页面都在 React（refactor/learning/web，React + zustand + lucide）。加载 `mentorflow://app/` 与 `mentorflow://assets/`（Live2D），匿名、不落盘、严格 CSP。
+- 窗口 refactor/learning/app/window.py 里只有一个铺满的 WebEngine 视图，侧栏、导航、所有页面都在 React（refactor/learning/web，React + zustand + lucide）。页面加载随包的本地入口文件（window.py 用 QUrl.fromLocalFile），Live2D 资源走 `mentorflow://assets/`（teacher_assets.py），匿名、不落盘、严格 CSP。
 - 桥（QWebChannel，app/bridge.py + handlers.py）：前端发 `{id, method, params}`，耗时操作在后台线程；有响应、流式、取消、事件推送；页面传来的内容一律当不可信输入校验。外部链接交系统浏览器，只允许 https。
 - 构建产物 dist 不进仓库（构建命令见 WORKFLOW 操作手册；发版时流水线自己构建）。
 - 关联：[UI-00] [ACC-02]
@@ -303,7 +303,7 @@ BUG 条目（问题与解决记录）和它们的索引只在 [BUGS.md](BUGS.md)
 ### [ARCH-07] 课堂的流程
 - 状态：已实现，用户正式测试中。
 - 宿主状态机（app/classroom.py）决定现在做什么：开场 → 逐点讲解（对话式，[TEACH-06]）→ 模块讲完进入模块检测（有题时）→ 重测 → 下一模块 → 全部模块过后进最终检验（[CHK-01]）→ 报告。老师只负责说话，不决定流程。
-- 判分由程序做（[TEACH-04]）；题目等级见 [TEACH-02]。课堂进度存本机 classroom/<计划>.json，每次操作先和数据库核对，不一致按数据库重建；重答同一题沿用原记录。
+- 判分由程序做（[TEACH-04]）；题目等级见 [TEACH-02]。课堂进度存本机课程数据库（course/store.py 的课堂位置，SCHEMA 10 起随账号同步）；旧版的 classroom/<计划>.json 只在第一次读取时导入一次（app/classroom.py 的 _load）。换设备接着上课时沿用题目、作答和场景，本机的会话状态重置；重答同一题沿用原记录。
 - 学习档案每考完一个模块、下课时各更新一次，只写作答记录撑得住的话；第二天开课老师先接上。
 - 当前实现：app/classroom.py + course/（teacher_agent、mastery、ledger、question_bank、point_materials、profile_agent、check_agent）+ web/src/pages/Classroom.tsx。
 - 关联：[TEACH-01] [TEACH-02] [TEACH-06] [CHK-01]
