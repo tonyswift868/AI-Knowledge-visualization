@@ -1,6 +1,6 @@
 # MentorFlow — 入口
 
-主目录 D:\MentorFlow，代码全在 [refactor](refactor/)（客户端 learning、desktop，服务器 server），测试在 tests/refactor/。需求与状态只在 [docs/project/CURRENT_STATE.md](docs/project/CURRENT_STATE.md)（接手先读「当前阶段」）；问题记录（BUG 条目）只在 [docs/project/BUGS.md](docs/project/BUGS.md)；员工、任务、交付状态和操作步骤只在 [docs/project/WORKFLOW.md](docs/project/WORKFLOW.md)。
+主目录 D:\MentorFlow，代码全在 [refactor](refactor/)（客户端 learning、desktop，服务器 server），测试在 tests/refactor/。需求与状态只在 [docs/project/CURRENT_STATE.md](docs/project/CURRENT_STATE.md)（接手先读「当前阶段」）；问题记录（BUG 条目）只在 [docs/project/BUGS.md](docs/project/BUGS.md)；员工、任务、交付状态和操作步骤只在 [docs/project/WORKFLOW.md](docs/project/WORKFLOW.md)。面试资料（[DOC-03]）入口是 .local/interview/面经库/00-总目录与带学说明.md：八股、算法、学习进度账本，以及 MentorFlow 和 Kristina 两个项目的速查表、题卡路径都在里面。
 
 ## 规则（唯一一份，2026-10-14 由各处合并；别处不再写规则，只写编号引用）
 
