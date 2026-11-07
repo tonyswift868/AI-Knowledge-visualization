@@ -57,10 +57,10 @@
 
 | 员工 | 名字 | 当前任务 | 工位 |
 | --- | --- | --- | --- |
-| MF-01 | 服务端 | 原修复已合入；320-MF01-followup进行中：挂起交错的错误展示二次异常丢回执 | server |
+| MF-01 | 服务端 | 320-MF01-followup完成：d2bae60c合入18fae1cd，新增5/去重21项通过 | server |
 | MF-02 | 客户端 | 320-MF02-qa完成：3个真实设置页取消/正常场景通过 | client |
 | MF-03 | 课堂 | 320-MF03-qa完成：真实混合导入/重试/页面/SQLite一致，未改产品 | classroom |
-| MF-04 | 运行时 | 320-MF04-session-review进行中：BUG-215独立代码/锁/恢复审查 | runtime |
+| MF-04 | 运行时 | 320-MF04-final进行中：原丢回执探针复验+最终6项小组合 | runtime |
 | MF-05 | 发版 | 320-MF05-final-cleanup进行中：旧18+本轮小缓存统一命令，待followup结束后盘点 | platform |
 | MF-06 | 工具 | 320-MF06-integration完成：de03890c合入组合18项通过；待补丁后限定复核 | tools |
 | MF-07 | 资料 | 320-MF07完成：ef7e63ff合入d04ef1ba，12项相关通过；待独立验收 | library |
