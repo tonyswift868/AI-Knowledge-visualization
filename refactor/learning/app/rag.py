@@ -1794,26 +1794,44 @@ class RagService:
         with self._lock:
             allowed = set(self._picked_paths)
             self._picked_paths.clear()
-        result = []
+        errors = []
+        selected_paths = []
+        # Validate the entire picker grant before a batch can write anything.
         for raw_path in paths:
+            self._check_open()
             _cancel(cancel)
             try:
                 path = Path(raw_path).resolve(strict=True)
             except (OSError, RuntimeError):
-                raise BridgeError("FILE_UNAVAILABLE", "所选文件已无法读取，请重新选择。") from None
+                errors.append({"filename": Path(raw_path).name, "code": "FILE_UNAVAILABLE",
+                               "message": "所选文件已无法读取，请重新选择。"})
+                continue
             if str(path) not in allowed:
                 raise BridgeError("FILE_NOT_SELECTED", "请先用“选择文件”打开资料。")
+            selected_paths.append(path)
+        result = []
+        for path in selected_paths:
+            self._check_open()
+            _cancel(cancel)
             try:
                 extracted = extract_file(path, cancel=cancel)
             except ExtractError as exc:
-                raise BridgeError("RAG_EXTRACT_" + exc.code, exc.message) from None
+                if exc.code == "CANCELLED":
+                    raise BridgeError("CANCELLED", exc.message) from None
+                errors.append({"filename": path.name, "code": "RAG_EXTRACT_" + exc.code,
+                               "message": exc.message})
+                continue
             except OSError:
-                raise BridgeError("FILE_UNAVAILABLE", "所选文件读取失败，请确认文件仍可访问。") from None
+                errors.append({"filename": path.name, "code": "FILE_UNAVAILABLE",
+                               "message": "所选文件读取失败，请确认文件仍可访问。"})
+                continue
             chunks = [{"text": chunk.text, "page": chunk.page_start,
                        "section": " / ".join(chunk.section)} for chunk in extracted.chunks]
             # The same original file addresses the same logical row. Import
             # must not replace a row while its deletion is in flight/uncertain.
             with self._jobs_lock:
+                self._check_open()
+                _cancel(cancel)
                 self._assert_document_available(extracted.sha256)
                 self.local.save_document(extracted.sha256, extracted.title or path.stem,
                                          path.name, chunks)
@@ -1822,7 +1840,7 @@ class RagService:
             result.append(view)
             if on_progress:
                 on_progress(view)
-        return {"documents": result}
+        return {"documents": result, "errors": errors}
 
     def pick_files(self, parent=None):
         self._check_open()
@@ -2046,7 +2064,10 @@ def register(bridge, services, window):
         return current().pick_files(window)
 
     def import_files(params, ctx):
-        return current().import_files(params.get("paths"), cancel=ctx.cancel, on_progress=progress)
+        def imported(document):
+            progress(document)
+            ctx.stream(_json(document))
+        return current().import_files(params.get("paths"), cancel=ctx.cancel, on_progress=imported)
 
     def create(params, ctx):
         return current().create(params.get("document_ids"))

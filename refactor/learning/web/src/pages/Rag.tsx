@@ -20,6 +20,7 @@ type SourcesResponse = { plans: Plan[]; documents: Document[]; sessions: Session
 type PreparationJob = { id: string; document_id: string; state: "queued" | "running" | "ready" | "failed" | "cancelled"; uploaded_chunks: number; total_chunks: number; error?: string; sequence?: number }
 type PreparationSnapshot = { scope_id: string; jobs: PreparationJob[] }
 type DeleteUsage = { document: Document; session_names: string[] }
+type ImportError = { filename: string; code: string; message: string }
 type DeleteResult = { ok: true; document_id: string; content_deleted: boolean; canonical_id: string | null; documents: Document[]; sessions: SessionSummary[] }
 const ragPageContexts = new Map<string, { sessionId: string; documentIds: string[] }>()
 const ragQuestionDrafts = new Map<string, string>()
@@ -49,6 +50,7 @@ export function Rag() {
   const modelFault = useApp((s) => s.modelFault)
   const [sources, setSources] = React.useState<SourcesResponse | null>(null)
   const [loadError, setLoadError] = React.useState("")
+  const [importErrors, setImportErrors] = React.useState<ImportError[]>([])
   const [planId, setPlanId] = React.useState("")
   const [selected, setSelected] = React.useState<string[]>(() => {
     const account = useApp.getState().account?.account_id ?? ""
@@ -566,6 +568,7 @@ export function Rag() {
       sourcesReadRevision.current++
       sessionReadRevision.current++
       setSources(null)
+      setImportErrors([])
       setPlanId("")
       setSession(null)
       sessionRef.current = null
@@ -703,23 +706,31 @@ export function Rag() {
     const targetSession = session ? { id: session.id, document_ids: [...session.document_ids] } : null
     const accountRevision = accountScopeRevision.current
     let importedForTarget: Document[] = []
+    const consumeImported = (documents: Document[]) => {
+      if (accountRevision !== accountScopeRevision.current || !mounted.current) return
+      importedForTarget = mergeDocuments(importedForTarget, documents)
+      setSources((current) => current ? { ...current, documents: mergeDocuments(current.documents, documents) } : current)
+      if (!targetSession && documents.length) {
+        setSelected((current) => [...new Set([...current, ...documents.map((doc) => doc.id)])])
+      }
+    }
     setBusy("import")
     try {
       const picked = await call<{ paths: string[] }>("rag.pick_files")
       if (!picked.paths?.length || accountRevision !== accountScopeRevision.current) return
-      const result = await call<{ documents: Document[] }>("rag.import_files", { paths: picked.paths })
+      setImportErrors([])
+      const result = await call<{ documents: Document[]; errors?: ImportError[] }>("rag.import_files", { paths: picked.paths }, {
+        onStream: (delta) => consumeImported([JSON.parse(delta) as Document]),
+      })
       if (accountRevision !== accountScopeRevision.current || !mounted.current) return
-      const imported = result.documents ?? []
-      setSources((current) => current ? { ...current, documents: mergeDocuments(current.documents, imported) } : current)
-      if (targetSession) {
-        importedForTarget = imported
-      } else if (imported.length) {
-        setSelected((current) => [...new Set([...current, ...imported.map((doc) => doc.id)])])
-      }
+      consumeImported(result.documents ?? [])
+      setImportErrors(result.errors ?? [])
       await refresh()
-    } catch (e) { toast("error", (e as Error).message) }
+    } catch (e) {
+      if (accountRevision === accountScopeRevision.current && mounted.current) toast("error", (e as Error).message)
+    }
     finally {
-      if (accountRevision === accountScopeRevision.current) {
+      if (accountRevision === accountScopeRevision.current && mounted.current) {
         setBusy("")
         if (targetSession && importedForTarget.length) {
           queueSessionDocuments(targetSession.id, targetSession.document_ids, (current) => [...current, ...importedForTarget.map((doc) => doc.id)])
@@ -1123,6 +1134,10 @@ export function Rag() {
             </article>
           })}
         </div>
+        {importErrors.length > 0 && <div className="rag-import-errors" data-testid="rag-import-errors" role="alert">
+          <b>部分文件未能导入</b>
+          <ul>{importErrors.map((error, index) => <li key={`${error.filename}-${index}`}><b>{error.filename}</b>：{error.message}</li>)}</ul>
+        </div>}
         <div className="rag-upload-row" data-testid={session ? "rag-upload-current-session" : "rag-upload-new-session"}>
           <Button kind="ghost" small data-testid="rag-pick-files" aria-label="上传新资料文件" disabled={!!busy || !!pending || !!deletingDocumentId} onClick={importFiles}><FilePlus2 />{busy === "import" ? "正在读取文件…" : "上传新文件"}</Button>
           <span className="muted small">文件只在本机抽取文字</span>
