@@ -2537,7 +2537,7 @@
 - 根因：course/store.py的_delete收缩删除payload；sync_course.py未知删除路径552–559将同一残缺payload先按deleting=False发布，再删除。未发布有效活动计划的业务事实，被两次独立提交的通用同步流程暂时改成了活动记录；不能靠补空state或跳过接收校验掩盖。
 - 验证：MF01一次5应用HTTP/1默认actor/0直接SQL，真实Java接受rev1/seq69活动plans/{id}，第二真实接收端报错；生产者正常DELETE成rev2/seq70后pending0，接收端再次sync成功、pulled1/pending0、since70、计划不存在。全HTTP200不代表业务可消费。两Store/client关闭、正常tombstone完成，无额外清理请求。MF02独立真实Store/Sync离线样本5个内存协议请求也验证最终可恢复。证据audit322/MF01/plan-delete-java-7811c323a8a6/result.json、plan-delete-intermediate-source.md及MF02/plan-delete-independent-review.md。
 - 影响边界：已证中间状态会使一轮正常同步失败；最终删除commit后的当前行feed为tombstone，重试可恢复，不能称永久损坏、漏进度或已发生正式事故。公共Store/真实Java路径已测，未测自然UI复现率；提交持锁期间的PLAN_BUSY不是本条件。
-- 修复：选择原子tombstone新入口而非bulk拼对（bulk保存点/partial与分批可再次暴露窗口）。客户端未知删除直POST墓碑，旧backend404/405保留队列、不回退create/delete；旧半发布仅在可信身份严格匹配本地pending-delete时收CAS元数据而不物化残缺live，最终正常CAS删，其他非法live仍拒绝。pending_record主键查询避免outbox首批500遗漏。相关transport/真实Store回归与既有7文件分批去重98项有通过证据，原2个过时断言纠正后只重测相关项。Java/Python新入口合同见fix323/MF01/contracts323.md：missing+expected0在同事务创建rev1/payload{}，保留旧delete404、旧receipt算法与新intent标签；运行待MF06。没有本地删除意图的旧坏row不自动删，需另核用户数据。
+- 修复：选择原子tombstone新入口而非bulk拼对（bulk保存点/partial与分批可再次暴露窗口）。客户端未知删除直POST墓碑，旧backend404/405保留队列、不回退create/delete；旧半发布仅在可信身份严格匹配本地pending-delete时收CAS元数据而不物化残缺live，最终正常CAS删，其他非法live仍拒绝。pending_record主键查询避免outbox首批500遗漏。相关transport/真实Store回归与既有7文件分批去重98项有通过证据，原2个过时断言纠正后只重测相关项。Java/Python新入口合同见fix323/MF01/contracts323.md：missing+expected0在同事务创建rev1/payload{}，保留旧delete404、旧receipt算法与新intent标签；真实Java/Python同步42项已通过。没有本地删除意图的旧坏row不自动删，需另核用户数据。
 - 关联：[QA-02] [ACC-03]
 - 更新：2026-11-07
 
@@ -2547,7 +2547,7 @@
 - 根因线索：app/rag.py的_ingest_locked1654–1666与sources1303–1314把原ID已ready但本地尚未确认视为应切版本ID。后续只跟当前remote_upload_id删除V，失去同次原上传D的删除闭环。Java按现有共享内容合同删除alias保canonical；本案只有一份逻辑资料，同正文/块位置不变，和BUG-220出处映射不同。
 - 一次运行证据：MF07冻结runner以真实HTTP200回执hook触发现有public cancel，控制本地业务处理时序，不改回执/摘要/身份/服务端状态；12应用（主9/清理3）、1默认actor、0直接SQL。root读取before_resume/after_resume/after_delete/after_cleanup四JSON，先保存删除残留，再精确清理D/V并确认归零，全部本地库/线程/client关闭。证据audit322/MF07/client/evidence，run_tag20261107T114746Z-c4d0b120；源链与合同复核audit322/MF02/rag-cancel-independent-review.md。
 - 辅助与边界：业务证据后打印误把flush传给json.dumps导致exit1，finally实际清理成功；不把辅助TypeError当产品故障或整个脚本全通过。只证明此受控普通取消时点的一次行为，不证明自然频率或正式用户残留规模。embedding固定/向量BYTEA替身，只验证业务元数据，不验证真实模型/pgvector。旧原件属于测试数据，已清，不动正式资料。
-- 修复：移除sources/ingest把未确认ready原ID盲换版本的两处路径，统一以已确认完整指纹认定current；显式准备时在原ID幂等重放完整快照，仅真实内容409才走既有fresh版本逻辑，保留旧内容、共享canonical及修订fence。新增3项普通代码回归，与226/263/269相关组owner报告合计38过；实际命令和最终证据待323-MF07回执补齐。独立运行缺口见.local/r322/受限记录.md，未重试原目标。
+- 修复：移除sources/ingest把未确认ready原ID盲换版本的两处路径，统一以已确认完整指纹认定current；显式准备时在原ID幂等重放完整快照，仅真实内容409才走既有fresh版本逻辑，保留旧内容、共享canonical及修订fence。新增普通确认回归并纳入323-MF07最终73个不同相关用例，分批有通过证据，完整命令/替身/最初fixture失败与定向修正见该回执。独立运行缺口见.local/r322/受限记录.md，未重试原目标。
 - 关联：[QA-02] [RAG-01]
 - 更新：2026-11-07
 
@@ -2557,7 +2557,7 @@
 - 预期/可达性：[RAG-01]及server-java/RAG_API.md要求选中资料及数据库原文出处相符，内容摘要明确忽略块边界/页码等元数据；真实客户端按抽取结果提交seq/text/page/section。因此不同分块/位置的相同正文为正常入口，不是伪造摘要或异常请求。
 - 根因：RagService.uploadBatch约231–245按正文摘要合并，alias仅保留数量/seq文本摘要，未保存B原始位置映射；search约378–384只重写逻辑document_id，仍用canonical passage的位置。删除提升移动原canonical块，后续重传/别名manifest不能还原已丢的位置。
 - 验证：MF07共享generation2真实Java鉴权/RagService/Repository/JDBC/PG普通HTTP和只读SQL复现；root独立子代理以自有全文/身份重新构造并实测6个应用HTTP、4条只读SELECT，删除A提升前后均重现，清理后自有scope为空。向量为BYTEA精确替身、embedding固定512维，仅替代边界；不证明真实pgvector/HNSW/模型质量，身份与出处投影根因不依赖这些边界。证据.local/r321/candidates/MF07-001.md、.local/receipts/321-verify-MF07-001.md及相应小JSON/驱动。
-- 修复进行中：共享正文/向量与各逻辑来源布局分开，0048只持久化轻量原始UTF8范围/seq/页节，既有普通canonical可回填，旧alias/promoted原位置未存储则unknown；新版客户端以已有完整原块通过原chunks入口幂等补布局，不重新embedding。source_layout_v1能力及显式search opt-in提供nullable未知出处/多来源投影，客户端保留实际remote ID不折叠canonical。root已定未opt-in旧client保留原协议，不能新增409阻断已有查询；完整修复依赖新client新协议，不声称旧未知位置神奇恢复。无本地原块时保留正文/资料，位置明确未知，不隐藏/删除资料或伪造来源。最终代码与验证待完整回执。
+- 修复进行中：共享正文/向量与各逻辑来源布局分开，0048只持久化轻量原始UTF8范围/seq/页节，既有普通canonical可回填，旧alias/promoted原位置未存储则unknown；新版客户端以已有完整原块通过原chunks入口幂等补布局，不重新embedding。source_layout_v1能力及显式search opt-in提供nullable未知出处/多来源投影，客户端保留实际remote ID不折叠canonical。root已定未opt-in旧client保留原协议，不能新增409阻断已有查询；完整修复依赖新client新协议，不声称旧未知位置神奇恢复。无本地原块时保留正文/资料，位置明确未知，不隐藏/删除资料或伪造来源。代码4e841b8d/2741b3a0及尾补e799dce0已合入，客户端73项相关通过；真实Java/PG关键组通过，实际用户四表投影数据保留/重复升级通过，准确限制见[QA-02]。
 - 未验证：正式用户资料的受影响数量、真实向量召回、旧别名恢复、多个别名同选。候选所述两文档和删除提升路径已查实，其余不外推。
 - 关联：[QA-02] [RAG-01]
 - 更新：2026-11-07
