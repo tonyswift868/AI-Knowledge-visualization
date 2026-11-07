@@ -29,7 +29,7 @@ public final class RagController {
     @GetMapping("/documents")
     public Object documents(HttpServletRequest request, HttpServletResponse response) {
         return run(response, () -> Map.of("documents", service.documents(actor(request)),
-                "capabilities", List.of("append_only_chunk_repair_v1")));
+                "capabilities", List.of("append_only_chunk_repair_v1", "source_layout_v1")));
     }
     @DeleteMapping("/documents/{doc_id}")
     public Object delete(HttpServletRequest request, HttpServletResponse response,

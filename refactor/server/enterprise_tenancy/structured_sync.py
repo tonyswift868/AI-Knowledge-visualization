@@ -176,6 +176,10 @@ class Delete(StrictModel):
     request_id: str = Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')
     expected_revision: int = Field(ge=1, le=2_147_483_646)
 
+class Tombstone(StrictModel):
+    request_id: str = Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9._:-]+$')
+    expected_revision: int = Field(ge=0, le=2_147_483_646)
+
 class BulkWrite(StrictModel):
     # Individual validation errors belong to their row, not the whole batch.
     records: list[dict] = Field(min_length=1, max_length=500)
@@ -422,8 +426,10 @@ class StructuredSyncService:
                 raise error('SYNC_RESOURCE_IDS_INVALID', 422)
         return payload
 
-    def _write_row(self, c, scope, kind, entity_id, body, payload, deleting):
-        fingerprint = hashlib.sha256(json.dumps([kind, entity_id, body.expected_revision, deleting, payload],
+    def _write_row(self, c, scope, kind, entity_id, body, payload, deleting, create_missing_tombstone=False):
+        intent = ['tombstone-if-missing-v1', kind, entity_id, body.expected_revision, deleting, payload] \
+            if create_missing_tombstone else [kind, entity_id, body.expected_revision, deleting, payload]
+        fingerprint = hashlib.sha256(json.dumps(intent,
             sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
         replay = c.execute(select(requests).where(predicate(requests, scope), requests.c.request_id == body.request_id)).mappings().first()
         if replay:
@@ -434,7 +440,7 @@ class StructuredSyncService:
             match = and_(predicate(entities, scope), entities.c.kind == kind, entities.c.entity_id == entity_id)
             current = c.execute(select(entities).where(match)).mappings().first()
             revision = current['revision'] if current else 0
-            if deleting and not current:
+            if deleting and not current and not create_missing_tombstone:
                 raise error('SYNC_ENTITY_NOT_FOUND', 404)
             if revision != body.expected_revision:
                 raise error('SYNC_STALE_REVISION')
@@ -459,13 +465,16 @@ class StructuredSyncService:
             advance_learning_generation(c, scope)
         return result
 
-    def write(self, actor, tenant, kind, entity_id, body, *, deleting=False):
+    def write(self, actor, tenant, kind, entity_id, body, *, deleting=False, create_missing_tombstone=False):
+        if create_missing_tombstone and not deleting:
+            raise ValueError('create_missing_tombstone requires a delete operation')
         payload = self._payload(kind, entity_id, body, deleting=deleting)
         context = TenantTransactionContext(tenant=tenant, actor=actor)
         scope = scope_of(context)
         with self.transactions.transaction(context) as tx:
             self._bind(tx, scope, writing=True)
-            result = self._write_row(tx.connection, scope, kind, entity_id, body, payload, deleting)
+            result = self._write_row(tx.connection, scope, kind, entity_id, body, payload, deleting,
+                                     create_missing_tombstone)
         return result
 
     def write_many(self, actor, tenant, body):

@@ -32,16 +32,24 @@ public final class SyncController {
     @PostMapping("/entities/{kind}/{entity_id}/delete")
     public void delete(HttpServletRequest request,HttpServletResponse response,@PathVariable("kind") String kind,
                        @PathVariable("entity_id") String entityId) throws IOException {
-        mutate(request,response,kind,entityId,true);
+        mutate(request,response,kind,entityId,true,false);
     }
-    @SuppressWarnings("unchecked") private void mutate(HttpServletRequest request,HttpServletResponse response,String kind,String entityId,boolean deleting) throws IOException {
+    @PostMapping("/entities/{kind}/{entity_id}/tombstone")
+    public void tombstone(HttpServletRequest request,HttpServletResponse response,@PathVariable("kind") String kind,
+                       @PathVariable("entity_id") String entityId) throws IOException {
+        mutate(request,response,kind,entityId,true,true);
+    }
+    private void mutate(HttpServletRequest request,HttpServletResponse response,String kind,String entityId,boolean deleting) throws IOException {
+        mutate(request,response,kind,entityId,deleting,false);
+    }
+    @SuppressWarnings("unchecked") private void mutate(HttpServletRequest request,HttpServletResponse response,String kind,String entityId,boolean deleting,boolean createMissingTombstone) throws IOException {
         handle(request,response,()-> {
             var errors=new ArrayList<Map<String,Object>>();SyncValidation.literal(errors,kind,"path");
-            var data=SyncValidation.operation(body(request),deleting,errors);
+            var data=SyncValidation.operation(body(request),deleting,createMissingTombstone,errors);
             if(!errors.isEmpty())throw new SyncValidation.Invalid(errors);
             Map<String,Object> projected=SyncPayload.project(kind,entityId,(Map<String,Object>)data.get("payload"),deleting);
             return repository.write(actor(request),tenant(request),kind,entityId,(String)data.get("request_id"),
-                ((Number)data.get("expected_revision")).intValue(),projected,deleting);
+                ((Number)data.get("expected_revision")).intValue(),projected,deleting,createMissingTombstone);
         });
     }
     @PostMapping("/entities/bulk")

@@ -82,8 +82,8 @@ public final class RagService {
                     "SELECT count(*) FROM rag_chunks WHERE account_scope=? AND document_id=?",
                     Long.class, scope, canonicalId);
             int total = ((Number) document.get("total_chunks")).intValue();
-            LinkedHashMap<String, Object> result = new LinkedHashMap<>(
-                    uploadResponse(canonicalId, requestedId, "ready", received, total, false));
+            LinkedHashMap<String, Object> result = new LinkedHashMap<>(decorateUpload(jdbc,scope,requestedId,
+                    uploadResponse(canonicalId, requestedId, "ready", received, total, false)));
             result.put("repair_complete", true);
             return result;
         }
@@ -118,6 +118,8 @@ public final class RagService {
             throw invalid("repair_manifest", "would exceed the maximum document chunk count");
         jdbc.update("UPDATE rag_documents SET total_chunks=? WHERE account_scope=? AND document_id=?",
                 (int) target, scope, canonicalId);
+        jdbc.update("UPDATE rag_source_chunks SET total_chunks=? WHERE account_scope=? AND document_id=? AND seq<?",
+                (int) target, scope, canonicalId, (int) target);
 
         for (Map<String, Object> chunk : chunks) {
             String digest = chunkDigest(chunk);
@@ -147,11 +149,12 @@ public final class RagService {
             if (!conflict.isEmpty())
                 throw new RagFailure("RAG_DOCUMENT_REPAIR_CONFLICT",
                         "Append repair would duplicate another canonical document; no existing document was removed", 409);
+            // Append-only repair preserves existing physical byte ranges, including alias layouts.
             jdbc.update("UPDATE rag_documents SET total_chunks=?,content_sha256=?,status='ready',updated_at=CURRENT_TIMESTAMP "
                     + "WHERE account_scope=? AND document_id=?", (int) received, digest, scope, canonicalId);
         }
-        LinkedHashMap<String, Object> result = new LinkedHashMap<>(
-                uploadResponse(canonicalId, requestedId, "ready", received, (int) target, false));
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>(decorateUpload(jdbc,scope,requestedId,
+                uploadResponse(canonicalId, requestedId, "ready", received, (int) target, false)));
         result.put("repair_complete", complete);
         return result;
     }
@@ -192,9 +195,11 @@ public final class RagService {
             Map<String, Object> promotedManifest = uploadManifest(jdbc, scope, requestedId);
             if (promotedManifest != null) {
                 int originalTotal = ((Number) promotedManifest.get("total_chunks")).intValue();
-                return uploadResponse(canonicalId, requestedId, "ready", originalTotal, originalTotal, true);
+                recordSourceLayout(jdbc,scope,requestedId,canonicalId,originalTotal,chunks);
+                return decorateUpload(jdbc,scope,requestedId,uploadResponse(canonicalId, requestedId, "ready", originalTotal, originalTotal, true));
             }
-            return uploadResponse(canonicalId, requestedId, "ready", canonicalTotal, canonicalTotal, aliasRequest);
+            recordSourceLayout(jdbc,scope,requestedId,canonicalId,aliasRequest?((Number)uploadAliasTotal(jdbc,scope,requestedId)).intValue():canonicalTotal,chunks);
+            return decorateUpload(jdbc,scope,requestedId,uploadResponse(canonicalId, requestedId, "ready", canonicalTotal, canonicalTotal, aliasRequest));
         }
         if (document == null) {
             jdbc.update("INSERT INTO rag_documents(account_scope,document_id,title,source,total_chunks,status) VALUES (?,?,?,?,?,'uploading')",
@@ -234,6 +239,7 @@ public final class RagService {
         if (!duplicates.isEmpty()) {
             String existingId = duplicates.get(0);
             String requestedChunkDigests = documentChunkDigests(jdbc, scope, canonicalId, total);
+            storeSourceLayout(jdbc, scope, requestedId, existingId, canonicalId);
             jdbc.update("DELETE FROM rag_documents WHERE account_scope=? AND document_id=?", scope, canonicalId);
             if (!requestedId.equals(existingId)) {
                 jdbc.update("INSERT INTO rag_document_aliases(account_scope,requested_document_id,canonical_document_id,total_chunks,chunk_digests) "
@@ -242,11 +248,24 @@ public final class RagService {
             }
             Map<String, Object> existing = findDocument(jdbc, scope, existingId);
             int canonicalTotal = ((Number) existing.get("total_chunks")).intValue();
-            return uploadResponse(existingId, requestedId, "ready", canonicalTotal, canonicalTotal, true);
+            return decorateUpload(jdbc,scope,requestedId,uploadResponse(existingId, requestedId, "ready", canonicalTotal, canonicalTotal, true));
         }
         jdbc.update("UPDATE rag_documents SET content_sha256=?,status='ready',updated_at=CURRENT_TIMESTAMP WHERE account_scope=? AND document_id=?",
                 digest, scope, canonicalId);
-        return uploadResponse(canonicalId, requestedId, "ready", total, total, false);
+        storeSourceLayout(jdbc, scope, requestedId, canonicalId, canonicalId);
+        return decorateUpload(jdbc,scope,requestedId,uploadResponse(canonicalId, requestedId, "ready", total, total, false));
+    }
+
+    private static void storeSourceLayout(JdbcTemplate jdbc,String scope,String logicalId,String canonicalId,String sourceDocumentId){
+        String canonicalDigest=documentDigest(jdbc,scope,canonicalId);
+        if(!canonicalDigest.equals(documentDigest(jdbc,scope,sourceDocumentId)))
+            throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT","Source chunks do not match canonical content",409);
+        jdbc.update("WITH source AS (SELECT seq,text,page,section,octet_length(convert_to(text,'UTF8')) byte_length, "
+                        +"count(*) OVER() total_chunks,COALESCE(sum(octet_length(convert_to(text,'UTF8'))) OVER (ORDER BY seq ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) start_byte "
+                        +"FROM rag_chunks WHERE account_scope=? AND document_id=?) INSERT INTO rag_source_chunks "
+                        +"(account_scope,document_id,canonical_document_id,seq,total_chunks,text_sha256,byte_length,start_byte,end_byte,page,section) "
+                        +"SELECT ?,?,?,seq,total_chunks,encode(sha256(convert_to(text,'UTF8')),'hex'),byte_length,start_byte,start_byte+byte_length,page,section FROM source "
+                        +"ON CONFLICT(account_scope,document_id,seq) DO NOTHING",scope,sourceDocumentId,scope,logicalId,canonicalId);
     }
 
     private static boolean sameExistingBatch(JdbcTemplate jdbc, String scope, String id,
@@ -317,6 +336,141 @@ public final class RagService {
         } catch (Exception error) { throw new IllegalStateException("Could not hash a RAG chunk", error); }
     }
 
+    /** Store only verified source metadata; source text remains in the shared canonical chunks. */
+    private Map<String, Object> recordSourceLayout(JdbcTemplate jdbc,String scope,String logicalId,String canonicalId,int total,List<Map<String,Object>> chunks) {
+            Map<String, Object> document = findDocument(jdbc, scope, canonicalId);
+            if (document == null || !"ready".equals(document.get("status")))
+                throw new RagFailure("RAG_DOCUMENT_NOT_FOUND", "Ready document was not found", 404);
+            String manifest = sourceManifest(jdbc, scope, logicalId, canonicalId, total);
+            String[] hashes = manifest.split(",", -1);
+            if (hashes.length != total)
+                throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "Source manifest is incomplete", 409);
+            List<int[]> totals=jdbc.query("SELECT min(total_chunks),max(total_chunks) FROM rag_source_chunks WHERE account_scope=? AND document_id=?",
+                    (rs,row)->new int[]{rs.getInt(1),rs.getInt(2)},scope,logicalId);
+            if(totals.get(0)[0]!=0&&(totals.get(0)[0]!=total||totals.get(0)[1]!=total))
+                throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "Source layout chunk count changed between batches", 409);
+            for (Map<String, Object> chunk : chunks) {
+                int seq = (Integer) chunk.get("seq");
+                if (!hashes[seq].equals(chunkDigest(chunk)))
+                    throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "Source chunk does not match its saved manifest", 409);
+            }
+            List<Map<String, Object>> old = jdbc.query("SELECT seq,total_chunks,text_sha256,byte_length,start_byte,end_byte,page,section "
+                            + "FROM rag_source_chunks WHERE account_scope=? AND document_id=? ORDER BY seq",
+                    (rs, row) -> {
+                        LinkedHashMap<String, Object> value = new LinkedHashMap<>();
+                        value.put("seq", rs.getInt("seq")); value.put("total_chunks", rs.getInt("total_chunks"));
+                        value.put("text_sha256", rs.getString("text_sha256")); value.put("byte_length", rs.getLong("byte_length"));
+                        value.put("start_byte", rs.getObject("start_byte")); value.put("end_byte", rs.getObject("end_byte"));
+                        value.put("page", rs.getString("page")); value.put("section", rs.getString("section")); return value;
+                    }, scope, logicalId);
+            if (!old.isEmpty() && old.size() == total && old.stream().allMatch(row -> row.get("start_byte") != null)) {
+                if (!sameSourceLayout(old, chunks, total))
+                    throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "Known source layout cannot be replaced", 409);
+                return layoutResponse(jdbc, scope, logicalId, canonicalId, total);
+            }
+            for (Map<String, Object> chunk : chunks) {
+                int seq = (Integer) chunk.get("seq"); String text = (String) chunk.get("text");
+                String digest = textDigest(text); long bytes = text.getBytes(StandardCharsets.UTF_8).length;
+                List<Map<String, Object>> existing = jdbc.query("SELECT text_sha256,byte_length,page,section,total_chunks,canonical_document_id FROM rag_source_chunks "
+                                + "WHERE account_scope=? AND document_id=? AND seq=?",
+                        (rs, row) -> Map.of("text_sha256", rs.getString(1), "byte_length", rs.getLong(2),
+                                "page", rs.getString(3) == null ? "" : rs.getString(3), "section", rs.getString(4) == null ? "" : rs.getString(4),
+                                "total_chunks",rs.getInt(5),"canonical_document_id",rs.getString(6)),
+                        scope, logicalId, seq);
+                if (!existing.isEmpty()) {
+                    Map<String, Object> row = existing.get(0);
+                    if (!digest.equals(row.get("text_sha256")) || bytes != ((Number) row.get("byte_length")).longValue()
+                            || total!=((Number)row.get("total_chunks")).intValue()||!canonicalId.equals(row.get("canonical_document_id"))
+                            || !java.util.Objects.equals(chunk.get("page") == null ? "" : chunk.get("page"), row.get("page"))
+                            || !java.util.Objects.equals(chunk.get("section") == null ? "" : chunk.get("section"), row.get("section")))
+                        throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "Source layout metadata conflicts with an earlier batch", 409);
+                    continue;
+                }
+                jdbc.update("INSERT INTO rag_source_chunks(account_scope,document_id,canonical_document_id,seq,total_chunks,text_sha256,byte_length,page,section) "
+                        + "VALUES (?,?,?,?,?,?,?,?,?)", scope, logicalId, canonicalId, seq, total, digest, bytes,
+                        chunk.get("page"), chunk.get("section"));
+            }
+            List<Map<String, Object>> saved = jdbc.query("SELECT seq,text_sha256,byte_length FROM rag_source_chunks "
+                            + "WHERE account_scope=? AND document_id=? ORDER BY seq",
+                    (rs, row) -> Map.of("seq", rs.getInt(1), "text_sha256", rs.getString(2), "byte_length", rs.getLong(3)),
+                    scope, logicalId);
+            if (saved.size() == total && saved.stream().allMatch(row -> ((Number) row.get("seq")).intValue() >= 0)) {
+                for(int i=0;i<total;i++) if(((Number)saved.get(i).get("seq")).intValue()!=i)
+                    throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "Source sequence is incomplete", 409);
+                Map<Integer, long[]> ranges = verifySavedLayoutRanges(jdbc, scope, canonicalId, logicalId, saved, total);
+                for (int i = 0; i < total; i++) {
+                    long[] range = ranges.get(i);
+                    if (range == null) throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "Source chunks do not map to canonical text", 409);
+                    jdbc.update("UPDATE rag_source_chunks SET start_byte=?,end_byte=? WHERE account_scope=? AND document_id=? AND seq=?",
+                            range[0], range[1], scope, logicalId, i);
+                }
+            }
+            return layoutResponse(jdbc, scope, logicalId, canonicalId, total);
+    }
+
+    private static String sourceManifest(JdbcTemplate jdbc, String scope, String logicalId, String canonicalId, int total) {
+        List<String> aliases = jdbc.query("SELECT total_chunks,chunk_digests FROM rag_document_aliases WHERE account_scope=? AND requested_document_id=?",
+                (rs, row) -> rs.getInt(1) == total ? rs.getString(2) : null, scope, logicalId);
+        if (!aliases.isEmpty() && aliases.get(0) != null) return aliases.get(0);
+        Map<String, Object> upload = uploadManifest(jdbc, scope, logicalId);
+        if (upload != null && ((Number) upload.get("total_chunks")).intValue() == total)
+            return (String) upload.get("chunk_digests");
+        List<String> saved=jdbc.query("SELECT seq,text_sha256 FROM rag_source_chunks WHERE account_scope=? AND document_id=? ORDER BY seq",
+                (rs,row)->rs.getInt(1)+":"+rs.getString(2),scope,logicalId);
+        if(saved.size()==total&&saved.stream().allMatch(item->item.matches("\\d+:[0-9a-f]{64}"))){
+            StringBuilder manifest=new StringBuilder();for(int i=0;i<total;i++){String[] pair=saved.get(i).split(":",2);if(Integer.parseInt(pair[0])!=i)return "";if(i>0)manifest.append(',');manifest.append(pair[1]);}return manifest.toString();
+        }
+        if (!logicalId.equals(canonicalId))
+            throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "No source manifest is available", 409);
+        return documentChunkDigests(jdbc, scope, canonicalId, total);
+    }
+
+    private static boolean sameSourceLayout(List<Map<String, Object>> old, List<Map<String, Object>> chunks, int total) {
+        if (old.size() != total) return false;
+        for (Map<String, Object> chunk : chunks) {
+            int seq = (Integer) chunk.get("seq"); Map<String, Object> row = old.get(seq);
+            if (!textDigest((String) chunk.get("text")).equals(row.get("text_sha256"))
+                    || !java.util.Objects.equals(chunk.get("page"), row.get("page"))
+                    || !java.util.Objects.equals(chunk.get("section"), row.get("section"))) return false;
+        }
+        return true;
+    }
+
+    private static Map<Integer,long[]> verifySavedLayoutRanges(JdbcTemplate jdbc,String scope,String canonicalId,String logicalId,
+            List<Map<String,Object>> saved,int total){
+        List<Map<String,Object>> direct=jdbc.query("WITH physical AS (SELECT seq,text,octet_length(convert_to(text,'UTF8')) len, "
+                        +"COALESCE(sum(octet_length(convert_to(text,'UTF8'))) OVER (ORDER BY seq ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) pstart FROM rag_chunks WHERE account_scope=? AND document_id=?), "
+                        +"layout AS (SELECT seq,byte_length,text_sha256,COALESCE(sum(byte_length) OVER (ORDER BY seq ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) start_byte FROM rag_source_chunks WHERE account_scope=? AND document_id=?), "
+                        +"totals AS (SELECT (SELECT COALESCE(sum(len),0) FROM physical) pbytes,(SELECT COALESCE(sum(byte_length),0) FROM layout) sbytes), "
+                        +"pieces AS (SELECT l.seq,l.start_byte,l.byte_length,l.text_sha256,string_agg(substring(convert_to(p.text,'UTF8') FROM GREATEST(0,l.start_byte-p.pstart)::int+1 "
+                        +"FOR (LEAST(l.start_byte+l.byte_length,p.pstart+p.len)-GREATEST(l.start_byte,p.pstart))::int), ''::bytea ORDER BY p.seq) content "
+                        +"FROM layout l JOIN physical p ON p.pstart<l.start_byte+l.byte_length AND p.pstart+p.len>l.start_byte GROUP BY l.seq,l.start_byte,l.byte_length,l.text_sha256) "
+                        +"SELECT x.seq,x.start_byte,x.start_byte+x.byte_length end_byte FROM pieces x CROSS JOIN totals t "
+                        +"WHERE t.sbytes<=t.pbytes AND octet_length(x.content)=x.byte_length AND encode(sha256(x.content),'hex')=x.text_sha256 ORDER BY x.seq",
+                (rs,row)->Map.of("seq",rs.getInt(1),"start",rs.getLong(2),"end",rs.getLong(3)),scope,canonicalId,scope,logicalId);
+        if(direct.size()==total){Map<Integer,long[]> ranges=new LinkedHashMap<>();for(Map<String,Object> row:direct)ranges.put(((Number)row.get("seq")).intValue(),new long[]{((Number)row.get("start")).longValue(),((Number)row.get("end")).longValue()});return ranges;}
+        List<Map<String,Object>> physical=jdbc.query("SELECT seq,encode(sha256(convert_to(text,'UTF8')),'hex') digest,octet_length(convert_to(text,'UTF8')) byte_length, "
+                        +"COALESCE(sum(octet_length(convert_to(text,'UTF8'))) OVER (ORDER BY seq ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) start_byte "
+                        +"FROM rag_chunks WHERE account_scope=? AND document_id=? ORDER BY seq",
+                (rs,row)->Map.of("seq",rs.getInt(1),"digest",rs.getString(2),"byte_length",rs.getLong(3),"start",rs.getLong(4)),scope,canonicalId);
+        if(physical.size()!=total) throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "Source layout cannot be mapped to canonical text", 409);
+        Map<String,Map<String,Object>> byHash=new LinkedHashMap<>();Set<String> repeated=new LinkedHashSet<>();
+        for(Map<String,Object> row:physical)if(byHash.putIfAbsent((String)row.get("digest"),row)!=null)repeated.add((String)row.get("digest"));
+        if(!repeated.isEmpty()) throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "Repeated physical chunks make source order ambiguous", 409);
+        Map<Integer,long[]> ranges=new LinkedHashMap<>();
+        for(Map<String,Object> row:saved){Map<String,Object> target=byHash.get(row.get("text_sha256"));if(target==null||((Number)target.get("byte_length")).longValue()!=((Number)row.get("byte_length")).longValue())throw new RagFailure("RAG_SOURCE_LAYOUT_CONFLICT", "Source layout cannot be mapped to canonical chunks", 409);int seq=((Number)row.get("seq")).intValue();long start=((Number)target.get("start")).longValue();ranges.put(seq,new long[]{start,start+((Number)row.get("byte_length")).longValue()});}
+        return ranges;
+    }
+
+    private static Map<String,Object> layoutResponse(JdbcTemplate jdbc,String scope,String logical,String canonical,int total){
+        List<Map<String,Object>> rows=jdbc.query("SELECT count(*) n,count(start_byte) located FROM rag_source_chunks WHERE account_scope=? AND document_id=?",
+                (rs,row)->Map.of("n",rs.getInt("n"),"located",rs.getInt("located")),scope,logical);
+        int received=((Number)rows.get(0).get("n")).intValue(),located=((Number)rows.get(0).get("located")).intValue();
+        LinkedHashMap<String,Object> result=new LinkedHashMap<>();result.put("document_id",canonical);result.put("requested_document_id",logical);
+        result.put("source_layout_status",received==0?"unknown":received<total?"incomplete":located==total?"known":"incomplete");
+        result.put("received_chunks",received);result.put("total_chunks",total);return result;
+    }
+
     /** One row per canonical content object; aliases retain IDs issued by clients/plans. */
     public List<Map<String, Object>> documents(Map<String, Object> actor) {
         String scope = accountScope(actor);
@@ -339,12 +493,17 @@ public final class RagService {
                         (rs, index) -> rs.getString(1), scope, row.get("document_id")));
                 Map<String, Object> promotedManifest = uploadManifest(jdbc, scope, (String) row.get("document_id"));
                 if (promotedManifest != null && "ready".equals(row.get("status"))) {
-                    // Report readiness in the promoted logical ID's original source chunking;
-                    // the physical canonical may use a different chunk boundary layout.
                     int logicalTotal = ((Number) promotedManifest.get("total_chunks")).intValue();
                     row.put("total_chunks", logicalTotal);
                     row.put("received_chunks", (long) logicalTotal);
                 }
+                List<Map<String,Object>> layouts=new ArrayList<>();
+                layouts.add(layoutInfo(jdbc,scope,(String)row.get("document_id"),((Number)row.get("total_chunks")).intValue()));
+                for(String alias:aliases){
+                    Integer aliasTotal=jdbc.queryForObject("SELECT total_chunks FROM rag_document_aliases WHERE account_scope=? AND requested_document_id=?",Integer.class,scope,alias);
+                    layouts.add(layoutInfo(jdbc,scope,alias,aliasTotal==null?0:aliasTotal));
+                }
+                row.put("source_layouts",layouts);
             }
             return rows;
         });
@@ -355,51 +514,154 @@ public final class RagService {
         String scope = accountScope(actor);
         String query = required(body.get("query"), "query", 16_000);
         int k = body.containsKey("k") ? positiveInt(body.get("k"), "k", MAX_TOP_K) : 5;
+        Object sourceLayoutFlag=body.get("source_layout_v1");
+        if(body.containsKey("source_layout_v1")&&!(sourceLayoutFlag instanceof Boolean))throw invalid("source_layout_v1","must be a boolean");
+        final boolean sourceLayoutMode=Boolean.TRUE.equals(sourceLayoutFlag);
         List<String> requestedIds = stringList(body.get("document_ids"), "document_ids", MAX_SELECTED_DOCUMENTS);
-        if (requestedIds.isEmpty()) return Map.of("passages", List.of());
+        if (requestedIds.isEmpty()) return searchResponse(List.of(), List.of());
         try {
             float[] queryVector = embedding.embed(QUERY_PREFIX + query.strip());
             require512(queryVector);
             return repository.transaction(scope, false, jdbc -> {
                 LinkedHashSet<String> canonicalIds = new LinkedHashSet<>();
                 Map<String, List<String>> requestedByCanonical = new LinkedHashMap<>();
+                Map<String, String> contentDigests = new LinkedHashMap<>();
                 for (String requested : requestedIds) {
                     String resolved = resolve(jdbc, scope, requested);
-                    if (resolved != null && findDocument(jdbc, scope, resolved) != null) {
+                    Map<String,Object> document=resolved==null?null:findDocument(jdbc,scope,resolved);
+                    if (document != null) {
                         canonicalIds.add(resolved);
+                        contentDigests.put(resolved,(String)document.get("content_sha256"));
                         requestedByCanonical.computeIfAbsent(resolved, ignored -> new ArrayList<>()).add(requested);
                     }
                 }
-                if (canonicalIds.isEmpty()) return Map.of("passages", List.of());
+                if (canonicalIds.isEmpty()) return searchResponse(List.of(), List.of());
                 List<RagVectorStore.Candidate> ranked = vectorStore.nearest(jdbc, scope,
                         new ArrayList<>(canonicalIds), queryVector, Math.min(10_000, Math.max(k * 10, 50)));
-                List<PassageScore> scored = new ArrayList<>(ranked.size());
+                Comparator<LocatedPassage> order=Comparator.comparingDouble(LocatedPassage::score).reversed()
+                        .thenComparing(LocatedPassage::documentId).thenComparing(LocatedPassage::seq,Comparator.nullsLast(Comparator.naturalOrder()));
+                Map<String,LocatedPassage> best=new LinkedHashMap<>();
+                Map<String,String> sourceStates = new LinkedHashMap<>();
+                Map<String,CanonicalRanges> physicalLayouts = new LinkedHashMap<>();
+                List<Map<String,Object>> warnings=new ArrayList<>();
+                Set<String> warned=new LinkedHashSet<>();
                 for (RagVectorStore.Candidate passage : ranked) {
                     double score = 0.8 * ((passage.cosine() + 1.0) / 2.0) + 0.2 * bigramJaccard(query, passage.text());
                     List<String> logicalIds = requestedByCanonical.getOrDefault(passage.documentId(), List.of());
-                    if (!logicalIds.isEmpty()) {
-                        RagVectorStore.Candidate logicalPassage = new RagVectorStore.Candidate(logicalIds.get(0),
-                                passage.seq(), passage.text(), passage.page(), passage.section(), passage.cosine());
-                        scored.add(new PassageScore(logicalPassage, score));
+                    CanonicalRanges physical=physicalLayouts.computeIfAbsent(passage.documentId(),id->canonicalRanges(jdbc,scope,id));
+                    long[] candidateRange = physical.bySeq().getOrDefault(passage.seq(),new long[]{0,0});
+                    String hitDigest=textDigest(passage.text());
+                    for(String logicalId:logicalIds) {
+                        String state=sourceStates.computeIfAbsent(logicalId,id->sourceStatus(jdbc,scope,id));
+                        List<LocatedPassage> located=sourcePassages(jdbc,scope,logicalId,passage,sourceLayoutMode,
+                                "known".equals(state),candidateRange,k,hitDigest,contentDigests.get(passage.documentId()));
+                        for(LocatedPassage item:located){
+                            String key=item.documentId()+"\u0000"+(item.seq()==null?hitDigest:item.seq());
+                            LocatedPassage old=best.get(key);
+                            if(old==null||score>old.score())best.put(key,item.withScore(score));
+                            if(best.size()>k){
+                                var worst=best.entrySet().stream().max((a,b)->order.compare(a.getValue(),b.getValue())).orElseThrow();
+                                best.remove(worst.getKey());
+                            }
+                        }
+                        if(located.isEmpty()&&!"known".equals(state)&&warned.add(logicalId)){
+                            LinkedHashMap<String,Object> warning=new LinkedHashMap<>();warning.put("document_id",logicalId);
+                            warning.put("code","RAG_SOURCE_LAYOUT_UNKNOWN");warning.put("message","来源位置未知，需同步本地块元数据");warnings.add(warning);
+                        }
                     }
                 }
-                scored.sort(Comparator.comparingDouble(PassageScore::score).reversed()
-                        .thenComparing(item -> item.passage().documentId()).thenComparingInt(item -> item.passage().seq()));
+                List<LocatedPassage> scored=new ArrayList<>(best.values());
+                scored.sort(order);
                 List<Map<String, Object>> passages = new ArrayList<>();
-                for (PassageScore item : scored.stream().limit(k).toList()) {
+                Map<String,String> textCache=new LinkedHashMap<>();
+                for (LocatedPassage item : scored.stream().limit(k).toList()) {
                     LinkedHashMap<String, Object> value = new LinkedHashMap<>();
-                    value.put("document_id", item.passage().documentId()); value.put("seq", item.passage().seq());
-                    value.put("text", item.passage().text()); value.put("page", item.passage().page());
-                    value.put("section", item.passage().section()); value.put("score", Math.round(item.score() * 1_000_000d) / 1_000_000d);
+                    value.put("document_id", item.documentId()); value.put("seq", item.seq());
+                    String cacheKey=item.canonicalId()+":"+item.startByte()+":"+item.endByte();
+                    String passageText=item.text()==null?textCache.computeIfAbsent(cacheKey,ignored->rangeText(jdbc,scope,item.canonicalId(),item.startByte(),item.endByte(),physicalLayouts.get(item.canonicalId()))):item.text();
+                    value.put("text", passageText); value.put("page", item.page());
+                    value.put("section", item.section()); value.put("location_status",item.locationStatus());
+                    value.put("source_layout_status",item.locationStatus());
+                    value.put("score", Math.round(item.score() * 1_000_000d) / 1_000_000d);
                     passages.add(value);
                 }
-                return Map.of("passages", passages);
+                return searchResponse(passages,warnings);
             });
         } catch (RagFailure failure) {
             throw failure;
         } catch (RuntimeException failure) {
             throw new RagFailure("RAG_EMBEDDING_UNAVAILABLE", "Could not calculate the search embedding", 503);
         }
+    }
+
+    private static Map<String,Object> searchResponse(List<Map<String,Object>> passages,List<Map<String,Object>> warnings){
+        LinkedHashMap<String,Object> response=new LinkedHashMap<>();response.put("passages",passages);response.put("source_warnings",warnings);return response;
+    }
+
+    private static List<LocatedPassage> sourcePassages(JdbcTemplate jdbc,String scope,String logicalId,RagVectorStore.Candidate hit,
+            boolean sourceLayoutMode,boolean known,long[] candidate,int k,String hitDigest,String contentDigest){
+        String condition=known?" AND start_byte<? AND end_byte>?":" AND text_sha256=?";
+        Object[] parameters=known?new Object[]{scope,logicalId,hit.documentId(),candidate[1],candidate[0],k}
+                :new Object[]{scope,logicalId,hit.documentId(),hitDigest,1};
+        List<Map<String,Object>> layout=jdbc.query("SELECT seq,total_chunks,start_byte,end_byte,page,section,text_sha256 FROM rag_source_chunks "
+                        +"WHERE account_scope=? AND document_id=? AND canonical_document_id=?"+condition+" ORDER BY seq LIMIT ?",
+                (rs,row)->{LinkedHashMap<String,Object> value=new LinkedHashMap<>();value.put("seq",rs.getInt("seq"));value.put("total",rs.getInt("total_chunks"));value.put("start",rs.getObject("start_byte"));value.put("end",rs.getObject("end_byte"));value.put("page",rs.getString("page"));value.put("section",rs.getString("section"));value.put("hash",rs.getString("text_sha256"));return value;},parameters);
+        // A candidate gives every mapped chunk the same score; only its first k seqs can enter global top k.
+        if(known){
+            List<LocatedPassage> out=new ArrayList<>();
+            for(Map<String,Object> row:layout){long start=((Number)row.get("start")).longValue(),end=((Number)row.get("end")).longValue();if(start<candidate[1]&&end>candidate[0]){
+                out.add(new LocatedPassage(logicalId,((Number)row.get("seq")).intValue(),null,(String)row.get("page"),(String)row.get("section"),"known",0,hit.documentId(),start,end));
+            }}return out;
+        }
+        // Old aliases have hashes but no recoverable pages/sections. Return only an exact proven source chunk.
+        String digest=hitDigest;List<String> manifests=jdbc.query("SELECT chunk_digests FROM rag_document_aliases WHERE account_scope=? AND requested_document_id=? UNION ALL SELECT chunk_digests FROM rag_document_upload_manifests WHERE account_scope=? AND document_id=?",
+                (rs,row)->rs.getString(1),scope,logicalId,scope,logicalId);
+        if(logicalId.equals(hit.documentId())&&manifests.isEmpty()&&layout.isEmpty()){
+            if(sourceLayoutMode)return List.of(new LocatedPassage(logicalId,null,hit.text(),null,null,"missing",0,null,0,0));
+            return List.of(new LocatedPassage(logicalId,hit.seq(),hit.text(),hit.page(),hit.section(),"unknown",0,null,0,0));
+        }
+        if(logicalId.equals(hit.documentId())&&manifests.isEmpty()&&!layout.isEmpty()){
+            for(Map<String,Object> row:layout)if(digest.equals(row.get("hash")))return List.of(sourceLayoutMode
+                    ?new LocatedPassage(logicalId,null,hit.text(),null,null,"missing",0,null,0,0)
+                    :new LocatedPassage(logicalId,((Number)row.get("seq")).intValue(),hit.text(),null,"来源位置未知","unknown",0,null,0,0));
+        }
+        if(!manifests.isEmpty()){String[] hashes=manifests.get(0).split(",",-1);for(int i=0;i<hashes.length;i++)if(hashes[i].equals(digest))return List.of(sourceLayoutMode
+                ?new LocatedPassage(logicalId,null,hit.text(),null,null,"missing",0,null,0,0)
+                :new LocatedPassage(logicalId,i,hit.text(),null,"来源位置未知","unknown",0,null,0,0));
+            if(sourceLayoutMode&&hashes.length==1&&hashes[0].equals(contentDigest))
+                return List.of(new LocatedPassage(logicalId,null,hit.text(),null,null,"missing",0,null,0,0));
+        }
+        if(sourceLayoutMode&&layout.stream().anyMatch(row->digest.equals(row.get("hash"))))
+            return List.of(new LocatedPassage(logicalId,null,hit.text(),null,null,"missing",0,null,0,0));
+        if(sourceLayoutMode&&!logicalId.equals(hit.documentId()))return List.of();
+        if(!sourceLayoutMode)return List.of(new LocatedPassage(logicalId,hit.seq(),hit.text(),hit.page(),hit.section(),"unknown",0,null,0,0));
+        return List.of(new LocatedPassage(logicalId,null,hit.text(),null,null,"missing",0,null,0,0));
+    }
+
+    /** Read lengths once per canonical search result, without transferring document text. */
+    private static CanonicalRanges canonicalRanges(JdbcTemplate jdbc,String scope,String canonical){
+        List<long[]> lengths=jdbc.query("SELECT seq,octet_length(text) FROM rag_chunks WHERE account_scope=? AND document_id=? ORDER BY seq",
+                (rs,row)->new long[]{rs.getInt(1),rs.getLong(2)},scope,canonical);
+        Map<Integer,long[]> bySeq=new LinkedHashMap<>();
+        java.util.NavigableMap<Long,Integer> byStart=new java.util.TreeMap<>();
+        long start=0;
+        for(long[] chunk:lengths){int seq=(int)chunk[0];bySeq.put(seq,new long[]{start,start+chunk[1]});byStart.put(start,seq);start+=chunk[1];}
+        return new CanonicalRanges(bySeq,byStart);
+    }
+
+    /** Select only byte slices intersecting one logical source chunk; never materialize the whole document. */
+    private static String rangeText(JdbcTemplate jdbc,String scope,String canonical,long start,long end,CanonicalRanges ranges){
+        var first=ranges.byStart().floorEntry(start);
+        var last=ranges.byStart().lowerEntry(end);
+        if(first==null||last==null||end>ranges.bySeq().get(last.getValue())[1])
+            throw new IllegalStateException("Source range is outside canonical text");
+        List<byte[]> parts=jdbc.query("WITH p AS (SELECT seq,text,octet_length(text) len, "
+                        +"?::bigint+COALESCE(sum(octet_length(text)) OVER (ORDER BY seq ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) pstart "
+                        +"FROM rag_chunks WHERE account_scope=? AND document_id=? AND seq>=? AND seq<=?) SELECT substring(convert_to(text,'UTF8') FROM GREATEST(0,?-pstart)::int+1 "
+                        +"FOR (LEAST(?,pstart+len)-GREATEST(?,pstart))::int) FROM p WHERE pstart<? AND pstart+len>? ORDER BY seq",
+                (rs,row)->rs.getBytes(1),first.getKey(),scope,canonical,first.getValue(),last.getValue(),start,end,start,end,start);
+        java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();for(byte[] part:parts)bytes.writeBytes(part);
+        return bytes.toString(StandardCharsets.UTF_8);
     }
 
     /** Delete one logical document ID while keeping content shared by its remaining aliases. */
@@ -410,6 +672,7 @@ public final class RagService {
             List<String> target = jdbc.query("SELECT canonical_document_id FROM rag_document_aliases WHERE account_scope=? AND requested_document_id=?",
                     (rs, row) -> rs.getString(1), scope, requested);
             if (!target.isEmpty()) {
+                jdbc.update("DELETE FROM rag_source_chunks WHERE account_scope=? AND document_id=?", scope, requested);
                 jdbc.update("DELETE FROM rag_document_aliases WHERE account_scope=? AND requested_document_id=?", scope, requested);
                 return deleteResponse(false, target.get(0));
             }
@@ -455,6 +718,9 @@ public final class RagService {
             jdbc.update("INSERT INTO rag_document_upload_manifests(account_scope,document_id,total_chunks,chunk_digests) VALUES (?,?,?,?)",
                     scope, promoted, promotedAlias.get("total_chunks"), promotedAlias.get("chunk_digests"));
             jdbc.update("DELETE FROM rag_document_aliases WHERE account_scope=? AND requested_document_id=?", scope, promoted);
+            jdbc.update("DELETE FROM rag_source_chunks WHERE account_scope=? AND document_id=?", scope, requested);
+            jdbc.update("UPDATE rag_source_chunks SET canonical_document_id=? WHERE account_scope=? AND canonical_document_id=?",
+                    promoted, scope, requested);
             jdbc.update("UPDATE rag_document_aliases SET canonical_document_id=? "
                     + "WHERE account_scope=? AND canonical_document_id=?", promoted, scope, requested);
             jdbc.update("UPDATE rag_chunks SET document_id=? WHERE account_scope=? AND document_id=?", promoted, scope, requested);
@@ -480,6 +746,20 @@ public final class RagService {
         List<String> docs = jdbc.query("SELECT document_id FROM rag_documents WHERE account_scope=? AND document_id=?",
                 (rs, row) -> rs.getString(1), scope, id);
         return docs.isEmpty() ? null : docs.get(0);
+    }
+
+    private static String sourceStatus(JdbcTemplate jdbc,String scope,String id){
+        List<Map<String,Object>> rows=jdbc.query("SELECT count(*) n,count(start_byte) located,min(total_chunks) low,max(total_chunks) high FROM rag_source_chunks WHERE account_scope=? AND document_id=?",
+                (rs,row)->Map.of("n",rs.getInt("n"),"located",rs.getInt("located"),"low",rs.getInt("low"),"high",rs.getInt("high")),scope,id);
+        int n=((Number)rows.get(0).get("n")).intValue(),located=((Number)rows.get(0).get("located")).intValue();
+        if(n==0)return "unknown";
+        int low=((Number)rows.get(0).get("low")).intValue(),high=((Number)rows.get(0).get("high")).intValue();
+        return low==high&&n==high&&located==n?"known":"incomplete";
+    }
+
+    private static Map<String,Object> layoutInfo(JdbcTemplate jdbc,String scope,String id,int total){
+        LinkedHashMap<String,Object> value=new LinkedHashMap<>();value.put("requested_document_id",id);
+        value.put("total_chunks",total);value.put("complete","known".equals(sourceStatus(jdbc,scope,id)));return value;
     }
 
     private static Map<String, Object> findDocument(JdbcTemplate jdbc, String scope, String id) {
@@ -511,7 +791,18 @@ public final class RagService {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>();
         result.put("document_id", canonical); result.put("requested_document_id", requested);
         result.put("status", status); result.put("received_chunks", received); result.put("total_chunks", total);
-        result.put("deduplicated", deduplicated); return result;
+        result.put("deduplicated", deduplicated); result.put("source_layout_status", "uploading".equals(status)?"incomplete":"unknown");
+        result.put("source_layout_complete",false);return result;
+    }
+
+    private static Map<String,Object> decorateUpload(JdbcTemplate jdbc,String scope,String logical,Map<String,Object> response){
+        String status=sourceStatus(jdbc,scope,logical);response.put("source_layout_status",status);
+        response.put("source_layout_complete","known".equals(status));return response;
+    }
+
+    private static Integer uploadAliasTotal(JdbcTemplate jdbc,String scope,String logical){
+        List<Integer> totals=jdbc.query("SELECT total_chunks FROM rag_document_aliases WHERE account_scope=? AND requested_document_id=?",(rs,row)->rs.getInt(1),scope,logical);
+        return totals.isEmpty()?0:totals.get(0);
     }
 
     private static List<Map<String, Object>> chunkBatch(Object value, int total) {
@@ -612,5 +903,8 @@ public final class RagService {
         return result;
     }
 
-    private record PassageScore(RagVectorStore.Candidate passage, double score) {}
+    private record LocatedPassage(String documentId,Integer seq,String text,String page,String section,String locationStatus,double score,String canonicalId,long startByte,long endByte){
+        LocatedPassage withScore(double value){return new LocatedPassage(documentId,seq,text,page,section,locationStatus,value,canonicalId,startByte,endByte);}
+    }
+    private record CanonicalRanges(Map<Integer,long[]> bySeq,java.util.NavigableMap<Long,Integer> byStart) {}
 }

@@ -225,6 +225,46 @@ def test_sync145_contract_stream_and_postgres_rows_match(sync145_backends):
                and item["owner"] == "mentorflow_migrator" for item in py_rows["rls"])
 
 
+def test_sync145_tombstone_can_create_missing_entity_without_changing_delete(sync145_backends):
+    token = sync145_backends["jwks"].token(subject="user-145-a")
+    entity_id = _entity_id("first-contact:plan")
+    path = f"{BASE}/entities/learning_run/{entity_id}"
+    missing_delete = _paired(sync145_backends, "POST", path + "/delete",
+        headers=_headers(token, "legacy-missing-delete145"),
+        body=_wire_json({"request_id": "legacy-missing-delete", "expected_revision": 1}), status=404)
+    assert missing_delete.json()["code"] == "SYNC_ENTITY_NOT_FOUND"
+    stale_tombstone = _paired(sync145_backends, "POST", path + "/tombstone",
+        headers=_headers(token, "stale-missing-tombstone145"),
+        body=_wire_json({"request_id": "stale-missing-tombstone", "expected_revision": 1}), status=409)
+    assert stale_tombstone.json()["code"] == "SYNC_STALE_REVISION"
+
+    request = {"request_id": "create-tombstone145", "expected_revision": 0}
+    created = _paired(sync145_backends, "POST", path + "/tombstone",
+        headers=_headers(token, "create-tombstone145"), body=_wire_json(request), status=200)
+    expected = {"kind": "learning_run", "entity_id": entity_id, "revision": 1,
+                "deleted": True, "payload": {}}
+    assert created.json() == expected
+    assert _paired(sync145_backends, "POST", path + "/tombstone",
+        headers=_headers(token, "replay-tombstone145"), body=_wire_json(request), status=200).json() == expected
+    # Same request id and body do not let the old delete endpoint consume a new-intent receipt.
+    reused = _paired(sync145_backends, "POST", path + "/delete",
+        headers=_headers(token, "intent-mismatch145"), body=_wire_json(request), status=409)
+    assert reused.json()["code"] == "SYNC_IDEMPOTENCY_KEY_REUSED"
+
+    existing_id = _entity_id("existing-tombstone:plan")
+    existing_path = f"{BASE}/entities/learning_run/{existing_id}"
+    _put(sync145_backends, token, "existing-tombstone:plan", _envelope("existing-tombstone:plan"),
+         request_id="create-live-for-tombstone", revision=0)
+    existing_delete = {"request_id": "delete-existing-tombstone145", "expected_revision": 1}
+    existing = _paired(sync145_backends, "POST", existing_path + "/tombstone",
+        headers=_headers(token, "existing-tombstone145"),
+        body=_wire_json(existing_delete), status=200)
+    assert existing.json()["revision"] == 2 and existing.json()["deleted"] is True
+    old_intent = _paired(sync145_backends, "POST", existing_path + "/delete",
+        headers=_headers(token, "existing-old-intent145"), body=_wire_json(existing_delete), status=409)
+    assert old_intent.json()["code"] == "SYNC_IDEMPOTENCY_KEY_REUSED"
+
+
 @pytest.mark.parametrize("method,route", [
     ("PUT", f"{BASE}/entities/learning_run/" + _entity_id("limit145-single")),
     ("POST", f"{BASE}/entities/bulk"),

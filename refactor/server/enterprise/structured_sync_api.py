@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, Query
 from fastapi.responses import JSONResponse
 from refactor.server.enterprise.identity.oidc import IdentityError
 from refactor.server.enterprise_tenancy.models import EnterprisePersistenceRequestError
-from refactor.server.enterprise_tenancy.structured_sync import Write, Delete, BulkWrite
+from refactor.server.enterprise_tenancy.structured_sync import Write, Delete, Tombstone, BulkWrite
 from sqlalchemy.exc import SQLAlchemyError
 
 router = APIRouter(prefix='/api/enterprise/sync/v1')
@@ -38,6 +38,10 @@ def write_many(request: Request, body: BulkWrite):
 @router.post('/entities/{kind}/{entity_id}/delete')
 def delete(request: Request, kind: Literal['plan','progress','resource','task','calendar','review','learner_profile','learning_run','history','setting'], entity_id: str, body: Delete):
     return call(request, 'write', kind, entity_id, body, deleting=True)
+
+@router.post('/entities/{kind}/{entity_id}/tombstone')
+def tombstone(request: Request, kind: Literal['plan','progress','resource','task','calendar','review','learner_profile','learning_run','history','setting'], entity_id: str, body: Tombstone):
+    return call(request, 'write', kind, entity_id, body, deleting=True, create_missing_tombstone=True)
 
 @router.get('/snapshot')
 def snapshot(request: Request, required_scope: str | None = Query(default=None, max_length=512),
