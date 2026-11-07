@@ -230,6 +230,20 @@ class CourseSync:
         self._fence(cancel)
         self.store.set_sync_cursor(_json(cursor))
 
+    def _pending_delete(self, values):
+        """Only the matching current local deletion may consume an old placeholder."""
+        lookup = getattr(self.store, 'pending_record', None)
+        if callable(lookup):
+            candidate = lookup(values['entity'], values['entity_id'])
+        else:
+            candidate = next((record for record in self.store.pending_records(2**31-1)
+                              if (record.entity, record.entity_id) == (values['entity'], values['entity_id'])), None)
+        if candidate is None or not candidate.deleted:
+            return False
+        local = _values(candidate)
+        return (all(local[key] == values[key] for key in ('schema', 'plan_key', 'entity', 'entity_id'))
+                and local['payload'].get('id') == values['payload']['id'])
+
     def _pull(self, cursor, pending, cancel):
         self._fence(cancel)
         total = 0
@@ -309,11 +323,19 @@ class CourseSync:
                 _validate(values)
                 if _wire_id(values) != wire_id or _record_id(values) != payload["record_id"]:
                     raise _invalid()
+            pending_delete = (not deleted and set(values['payload']) == {'id'}
+                              and self._pending_delete(values))
             next_cursor["records"][wire_id] = (_metadata(values, revision, deleted) if values is not None
                                                 else {"revision": revision, "deleted": True})
+            if pending_delete:
+                next_cursor['records'][wire_id]['unapplied'] = True
             if values is not None and "entity" not in previous:
                 identities["records"][wire_id] = dict(next_cursor["records"][wire_id], unapplied=True)
                 new_identity = True
+            if pending_delete:
+                # Old clients published the deletion's {id} as live data. Keep
+                # only its CAS identity; the user's pending removal owns it.
+                continue
             needs_replay = getattr(self.store, "needs_sync_replay", None)
             missing_local = (values is not None and not deleted and callable(needs_replay)
                              and needs_replay(values["entity"], values["entity_id"]))
@@ -355,8 +377,15 @@ class CourseSync:
         started = time.monotonic()
         event('sync', state='SINGLE_REQUEST_START', count=1)
         try:
-            result = (self.transport.delete("learning_run", wire_id, **args) if deleting
-                      else self.transport.write("learning_run", wire_id, payload=payload, **args))
+            if deleting and wire_id not in cursor['records']:
+                tombstone = getattr(self.transport, 'tombstone', None)
+                if not callable(tombstone):
+                    raise PlanError('SYNC_TOMBSTONE_UNSUPPORTED',
+                                    '服务器暂不支持原子删除；本机删除仍保留，稍后可重试。')
+                result = tombstone('learning_run', wire_id, **args)
+            else:
+                result = (self.transport.delete("learning_run", wire_id, **args) if deleting
+                          else self.transport.write("learning_run", wire_id, payload=payload, **args))
         finally:
             event('sync', state='SINGLE_REQUEST_END', elapsed_seconds=time.monotonic()-started)
         self._fence(cancel)
@@ -549,11 +578,6 @@ class CourseSync:
                 for attempt in range(2):
                     try:
                         self._fence(cancel)
-                        if record.deleted and _wire_id(_values(record)) not in cursor["records"]:
-                            # The existing delete endpoint requires an entity. A
-                            # locally created then deleted row still needs a tombstone.
-                            self._send(record, cursor, cancel, deleting=False,
-                                       persist_cursor=True, acknowledgements=acknowledgements)
                         self._send(record, cursor, cancel, deleting=record.deleted,
                                    persist_cursor=False, acknowledgements=acknowledgements)
                         summary["uploaded"] += 1

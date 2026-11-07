@@ -159,6 +159,7 @@ class Server:
                 observation={'source': 'SERVER_CONFIRMED', 'snapshot_revision': 'pg-snapshot:1:5:'},
                 entities=list(self.rows.values())))
         deleting = request.method == 'POST'
+        tombstone = request.url.path.endswith('/tombstone')
         parts = request.url.path.split('/')
         eid = parts[-2] if deleting else parts[-1]
         key = body['request_id']
@@ -173,7 +174,7 @@ class Server:
         if previous and previous['deleted']:
             return httpx.Response(410, json={'code': 'SYNC_ENTITY_TOMBSTONED'})
         if deleting:
-            assert previous is not None
+            assert previous is not None or tombstone
         else:
             assert set(body['payload']['values']) == {'schema', 'plan_key', 'entity', 'entity_id', 'payload'}
             assert body['payload']['record_type'] == 'course_record'
@@ -360,7 +361,9 @@ def test_tombstone_upload_and_incremental_pull(connection):
     CourseSync(store, transport).sync()
     assert not store.pending
     assert list(server.rows.values())[0]['deleted']
-    assert list(server.rows.values())[0]['revision'] == 2
+    assert list(server.rows.values())[0]['revision'] == 1
+    assert not any(method == 'PUT' for method, *_ in server.calls)
+    assert any(path.endswith('/tombstone') for _, path, *_ in server.calls)
     # A fresh device has no local row to delete and cannot reverse a hashed ID.
     fresh = MemoryStore()
     assert CourseSync(fresh, transport).sync()['ok']

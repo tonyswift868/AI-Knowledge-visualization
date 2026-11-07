@@ -409,7 +409,14 @@ class SyncTransport(AuthenticatedPlanSource):
         return self._mutate(kind, entity_id, request_id=request_id,
                             expected_revision=expected_revision, payload={}, deleting=True)
 
-    def _mutate(self, kind, entity_id, *, request_id, expected_revision, payload, deleting):
+    def tombstone(self, kind, entity_id, *, request_id, expected_revision):
+        """Create an atomic tombstone, including when the entity is not known locally."""
+        return self._mutate(kind, entity_id, request_id=request_id,
+                            expected_revision=expected_revision, payload={}, deleting=True,
+                            tombstone=True)
+
+    def _mutate(self, kind, entity_id, *, request_id, expected_revision, payload, deleting,
+                tombstone=False):
         if (kind not in {"task", "history", "learning_run", "setting", "resource"}
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,159}", entity_id)
                 or type(expected_revision) is not int or expected_revision < 0):
@@ -433,7 +440,8 @@ class SyncTransport(AuthenticatedPlanSource):
                    "X-MentorFlow-Workspace-ID": scope.workspace_id}
         try:
             with nullcontext(self._client) as client:
-                path = f"/api/enterprise/sync/v1/entities/{kind}/{entity_id}" + ("/delete" if deleting else "")
+                path = (f"/api/enterprise/sync/v1/entities/{kind}/{entity_id}"
+                        + ("/tombstone" if tombstone else "/delete" if deleting else ""))
                 with self._sync_response("POST" if deleting else "PUT", path, json=body) as response:
                     self._log_response(path, response, state='UPLOAD_HTTP_RESPONSE',
                                        operation_id=request_id)
@@ -453,6 +461,9 @@ class SyncTransport(AuthenticatedPlanSource):
                 raise PlanError("SYNC_TOMBSTONED", "云端记录已删除；未用本机旧副本恢复它。")
             if response.status_code == 413:
                 raise PlanError("SYNC_RECORD_TOO_LARGE", "服务器或代理拒收过大的单条学习记录，本机记录已保留。")
+            if tombstone and response.status_code in (404, 405):
+                raise PlanError("SYNC_TOMBSTONE_UNSUPPORTED",
+                                "服务器暂不支持原子删除；本机删除仍保留，稍后可重试。")
             if response.status_code != 200:
                 raise PlanError("SYNC_UNAVAILABLE", "学习记录暂未同步，已保留本机内容，稍后会重试。")
             result = response.json()

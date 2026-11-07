@@ -2601,6 +2601,15 @@ class CourseStore:
                                json.loads(row['payload']), bool(row['deleted']), row['local_revision'])
                     for row in self._db.execute('SELECT * FROM _records WHERE pending=1 ORDER BY local_revision,entity,entity_id LIMIT ?', (limit,))]
 
+    def pending_record(self, entity, entity_id) -> SyncRecord | None:
+        """Read current outbox intent without scanning every pending payload."""
+        with self._lock:
+            row = self._db.execute('SELECT * FROM _records WHERE entity=? AND entity_id=? AND pending=1',
+                                   (entity, entity_id)).fetchone()
+            return (SyncRecord(row['entity'], row['entity_id'], row['plan_key'],
+                               f"mentorflow.course.{row['entity']}.v1", json.loads(row['payload']),
+                               bool(row['deleted']), row['local_revision']) if row is not None else None)
+
     @_atomic
     def mark_synced(self, entity, entity_id, local_revision, server_revision) -> None:
         _number(local_revision); _number(server_revision)
