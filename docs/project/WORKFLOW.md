@@ -39,6 +39,7 @@
 - **往服务器传源码**：`git -c core.autocrlf=false -c core.eol=lf archive --format=tar -o <tar> <提交> refactor/server refactor/server-java`，scp 上去解到 /opt/mentorflow/releases/java-<提交>/，再核对关键文件 sha256；不加这两个参数 .sh 会带 Windows 换行，跑不了（[BUG-107]）。
 - **服务器**：当前服务端入口与数据库状态以 [ARCH-09] 为准，Java 回退到 226 的步骤和限制见 `refactor/server-java/deploy/RELEASE269.md`；每次上线第一步跑 `refactor/server-java/deploy/preflight.sh`（ssh 用 `sh -s < preflight.sh` 喂进去，只读），全部 OK 才往下；服务器现场条件只写在 deploy/README.md 那一节；员工上线时碰到的坑，合入时当场收进脚本或那一节，不只留在回执（[BUG-209]）。不要依照历史部署命令猜测当前配置；服务器操作只按获授权的具体任务执行。
 - **等回执（用户 2026-11-06 定）**：用聊天等待工具接收员工完成状态和直接回执消息，收到后读 .local/receipts、审查整合；员工中途半成品不算完成，不扫描文件监控。遇到需用户决定的事停止依赖该决定的派工，等待用户。
+- **全套夹具目录（323实测纠偏，AGENTS第13条）**：只设TEMP/basetemp不足以覆盖旧fixture固定根。下次全仓执行前按.local/test-tmp/fix323/MF06/full323-recovery/legacy-fixture-output-boundaries323.json逐项绑定已有专用输出变量到本批根，并明确条件旧输入；无override的固定写入/清理先给具体处理方案，不直接沿旧默认再跑。323已完覆盖不因此重跑，旧文件无运行前清单不能补称未变或全合成；当前pack/UAT只用MF06本批根。
 - **排练产物（2026-10-19）**：员工的真打包排练每次留下几十 GB（160 约 70 GB、168 约 25 GB），而且员工的递归删除会被系统拦住；收到这类回执后，架构师先把任务目录里除 report.md 和截图以外的都删掉，再做别的。
 - **磁盘（用户 2026-10-10 定）**：测试与临时产物在 .local/test-tmp/ 下；冒烟测试、构建、中间文件用完就自动删，不留着等以后分类。员工删除被系统拦住时，架构师合入后直接删（只留 report.md 和截图），不用再问用户。
 
