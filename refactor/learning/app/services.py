@@ -26,6 +26,8 @@ class AppServices:
         self.ca_bundle = ca_bundle
         self.settings = AppSettings(account_id, data_root, store_provider=lambda: self.store)
         self._lock = threading.RLock()
+        self._learning_lock = threading.Lock()
+        self._learning_suspended = False
         self._model_probe_lock = threading.Lock()
         self._gateway = None
         self._store = None
@@ -279,6 +281,72 @@ class AppServices:
                 catalog.refresh_background()
         except Exception:  # noqa: BLE001
             log.warning("catalog refresh could not start", exc_info=True)
+
+    @property
+    def learning_suspended(self):
+        with self._learning_lock:
+            return self._learning_suspended or self._closed
+
+    def suspend_learning(self):
+        """Cancel account-owned learning preparation without closing its stores."""
+        with self._learning_lock:
+            if self._closed or self._learning_suspended:
+                return False
+            self._learning_suspended = True
+
+        material = getattr(self, '_material_jobs', None)
+        if material is not None:
+            with material['guard']:
+                material['session_suspended'] = True
+                jobs = {id(job): job for job in material['jobs'].values()}
+                for entries in material['queued'].values():
+                    for _, _, job in entries:
+                        jobs[id(job)] = job
+                for job in jobs.values():
+                    job['session_cancelled'] = True
+                    job['cancel'].set()
+                timers = list(material['timers'].values())
+                material['timers'].clear()
+                material['queued'].clear()
+            for timer in timers:
+                timer.cancel()
+
+        for name in ('_point_minute_jobs', '_point_link_jobs'):
+            shared = getattr(self, name, None)
+            if shared is None:
+                continue
+            with shared['guard']:
+                jobs = shared['jobs']
+                for job in jobs.values():
+                    job['session_cancelled'] = True
+                    job['cancel'].set()
+                jobs.clear()
+        return True
+
+    def resume_learning(self):
+        """Resume interrupted materials once, using the normal account recovery path."""
+        with self._learning_lock:
+            if self._closed or not self._learning_suspended:
+                return False
+            self._learning_suspended = False
+        material = getattr(self, '_material_jobs', None)
+        if material is not None:
+            with material['guard']:
+                material['session_suspended'] = False
+        flow = getattr(self, '_material_flow', None)
+        if flow is None:
+            return True
+
+        def resume():
+            if self.learning_suspended:
+                return
+            try:
+                flow.resume_started_preparations()
+            except Exception:
+                log.warning('interrupted learning preparation recovery failed', exc_info=True)
+
+        threading.Thread(target=resume, name='learning-session-resume', daemon=True).start()
+        return True
 
     def close(self):
         with self._lock:

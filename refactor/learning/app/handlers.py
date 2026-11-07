@@ -87,6 +87,7 @@ def register(bridge, window):
         bridge.event.connect(model_account_event)
 
     def services():
+        bridge.require_session()
         current = window.services
         if current is None:
             raise BridgeError("NOT_READY", "账号服务还在连接，请稍候。")

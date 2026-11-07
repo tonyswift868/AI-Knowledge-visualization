@@ -223,7 +223,8 @@ class PlanFlow:
         with self._material_guard:
             self._material_jobs = getattr(services, '_material_jobs', None)
             if self._material_jobs is None:
-                self._material_jobs = dict(guard=threading.Lock(), jobs={}, active=set(), queued={}, execution_locks={})
+                self._material_jobs = dict(guard=threading.Lock(), jobs={}, active=set(), queued={},
+                                           execution_locks={}, timers={}, session_suspended=False)
             if services is not None:  # Pure prompt helpers also construct a flow without services.
                 services._material_jobs = self._material_jobs
                 services._material_flow = self
@@ -252,6 +253,7 @@ class PlanFlow:
         self._preparing = self._material_jobs['active']
         self._material_jobs.setdefault('timers', {})
         self._material_jobs.setdefault('last_requested_plan', None)
+        self._material_jobs.setdefault('session_suspended', False)
 
     # ----------------------------------------------------------- drafts
     def _file(self, plan_id):
@@ -1596,7 +1598,8 @@ class PlanFlow:
     def _prepare_remaining(self, plan_id, modules, prepare, *, retry=False, notify=None, fingerprint=None,
                            priority=False, recovering=False):
         """One sequential queue per plan; classroom demand moves a job to its head."""
-        if not modules or getattr(self.services, '_closed', False):
+        if (not modules or getattr(self.services, '_closed', False)
+                or getattr(self.services, 'learning_suspended', False)):
             return None
         if not recovering:
             self._note_plan_requested(plan_id)
@@ -1615,6 +1618,8 @@ class PlanFlow:
             if ready:
                 persisted[mid] = self._mark_material_ready(plan_id, mid, persisted.get(mid))
         with state['guard']:
+            if state.get('session_suspended'):
+                return None
             queue = state['queued'].setdefault(plan_id, [])
             first_job = None
             for module in modules:
@@ -1648,7 +1653,8 @@ class PlanFlow:
                             error=persisted.get(mid, {}).get('error') if failed and not retry else None,
                             error_code=persisted.get(mid, {}).get('error_code') if failed and not retry else None,
                             fingerprint=fingerprint, cancel=threading.Event(), listeners=[],
-                            explicit_stop=False, attempts=0, priority=False, cancel_retries=0)
+                            explicit_stop=False, attempts=0, priority=False, cancel_retries=0,
+                            session_cancelled=False)
                         state['jobs'][key] = job
                     if job['status']=='queued':
                         queue[:] = [entry for entry in queue if entry[0]['id']!=mid]
@@ -1670,6 +1676,9 @@ class PlanFlow:
         while True:
             wake_later = False
             with state['guard']:
+                if state.get('session_suspended'):
+                    state['active'].discard(plan_id)
+                    return
                 queue = state['queued'].get(plan_id, [])
                 if not queue:
                     state['queued'].pop(plan_id, None)
@@ -1712,13 +1721,19 @@ class PlanFlow:
                 self._notify_preparation(plan_id, job)
             ctx = CallContext('plan-materials', job['cancel'], lambda _: None)
             try:
-                if job['cancel'].is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
+                if (job['cancel'].is_set() or job.get('session_cancelled')
+                        or getattr(self.services, 'learning_suspended', False)
+                        or getattr(self.services, '_closed', False)): raise ModelCancelled()
                 result = None
                 ready_resumed = False
                 for attempt in range(1, 4):
                     with state['guard']:
-                        if job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
+                        if job.get('session_cancelled') or job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
                         job.update(status='running', attempts=attempt, error=None, error_code=None)
+                    with state['guard']:
+                        if job.get('session_cancelled') or state.get('session_suspended'):
+                            raise ModelCancelled()
+                    # Foreground work can own the plan lock while needing this queue guard.
                     saved = self._record_preparation(plan_id, mid, 'running', attempts=attempt,
                         fingerprint=job.get('fingerprint'), unless_stopped=True)
                     if saved.get('state') == 'stopped':
@@ -1744,7 +1759,12 @@ class PlanFlow:
                             if job['cancel'].is_set(): raise ModelCancelled()
                             self._prepare_notes(plan_id, mid, ctx)
                             result = prepare(self.services.store, plan_id, mid, self._material_context(ctx), progress)
-                        if job['cancel'].is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
+                        if (job['cancel'].is_set() or job.get('session_cancelled')
+                                or getattr(self.services, 'learning_suspended', False)
+                                or getattr(self.services, '_closed', False)): raise ModelCancelled()
+                        with state['guard']:
+                            if job.get('session_cancelled') or state.get('session_suspended'):
+                                raise ModelCancelled()
                         self._save_material_summary(plan_id, mid, result)
                         if not self._module_ready(plan_id, mid):
                             raise BridgeError('MATERIALS_INCOMPLETE', '这个模块的原文或题目不足，进入模块时可重试。')
@@ -1762,7 +1782,7 @@ class PlanFlow:
                             raise
                         delay = self._material_retry_delay(attempt)
                         with state['guard']:
-                            if job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
+                            if job.get('session_cancelled') or job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
                         saved = self._record_preparation(plan_id, mid, 'running', error=message,
                             error_code=code, attempts=attempt, fingerprint=job.get('fingerprint'),
                             retry_at=time.time()+delay, unless_stopped=True)
@@ -1773,11 +1793,18 @@ class PlanFlow:
                             raise ModelCancelled()
                         self._notify_preparation(plan_id, job)
                         if job['cancel'].wait(delay): raise ModelCancelled()
+                        if job.get('session_cancelled') or getattr(self.services, 'learning_suspended', False):
+                            raise ModelCancelled()
                 if ready_resumed:
                     continue
-                if job['cancel'].is_set() or getattr(self.services, '_closed', False): raise ModelCancelled()
+                if (job['cancel'].is_set() or job.get('session_cancelled')
+                        or getattr(self.services, 'learning_suspended', False)
+                        or getattr(self.services, '_closed', False)): raise ModelCancelled()
                 with state['guard']:
-                    if job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
+                    if job.get('session_cancelled') or job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
+                with state['guard']:
+                    if job.get('session_cancelled') or state.get('session_suspended'):
+                        raise ModelCancelled()
                 saved = self._record_preparation(plan_id, mid, 'done', attempts=job.get('attempts', 1),
                     fingerprint=job.get('fingerprint'), unless_stopped=True)
                 if saved.get('state') != 'done':
@@ -1795,9 +1822,13 @@ class PlanFlow:
                             continue
                     raise ModelCancelled()
                 with state['guard']:
-                    if job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
+                    if job.get('session_cancelled') or job.get('explicit_stop') or job['cancel'].is_set(): raise ModelCancelled()
                     job['status'] = 'ready'
             except ModelCancelled:
+                if job.get('session_cancelled') or getattr(self.services, 'learning_suspended', False):
+                    with state['guard']:
+                        job['status'] = 'cancelled'
+                    continue
                 with state['guard']:
                     if job.get('resume_ready'):
                         job.update(status='ready', resume_ready=False, explicit_stop=False,
@@ -1839,6 +1870,7 @@ class PlanFlow:
                         time.sleep(delay)
                         with state['guard']:
                             if (not getattr(self.services, '_closed', False)
+                                    and not job.get('session_cancelled')
                                     and not job.get('explicit_stop')
                                     and state['jobs'].get((plan_id, mid)) is job):
                                 job.update(cancel=threading.Event(), status='queued',
@@ -1861,6 +1893,10 @@ class PlanFlow:
                         except Exception:
                             log.warning('could not persist repeated cancellation', exc_info=True)
             except Exception as exc:
+                if job.get('session_cancelled') or getattr(self.services, 'learning_suspended', False):
+                    with state['guard']:
+                        job['status'] = 'cancelled'
+                    continue
                 log.warning('module preparation failed: %s', type(exc).__name__)
                 job.update(status='failed', error=getattr(exc, 'message', '这个模块的题未备好，进入模块时可重试。'),
                            code=getattr(exc, 'code', None))
@@ -1883,7 +1919,10 @@ class PlanFlow:
             return self._material_jobs['execution_locks'].setdefault(plan_id, threading.Lock())
 
     def _notify_preparation(self, plan_id, job):
-        if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
+        if (job['cancel'].is_set() or job.get('session_cancelled')
+                or getattr(self.services, '_closed', False)
+                or getattr(self.services, 'learning_suspended', False)):
+            return
         data = {k: job[k] for k in ('module_id', 'done', 'total', 'text', 'error')}
         data.update(plan_id=plan_id, status=job['status'])
         try: self.push('plan_preparation', data)
@@ -1915,14 +1954,19 @@ class PlanFlow:
     def _schedule_material_wakeup(self, plan_id):
         state = self._material_jobs
         delay = self._material_off_peak_delay()
-        if delay <= 0 or getattr(self.services, '_closed', False): return
+        if (delay <= 0 or getattr(self.services, '_closed', False)
+                or getattr(self.services, 'learning_suspended', False)):
+            return
         with state['guard']:
+            if state.get('session_suspended'):
+                return
             existing = state['timers'].get(plan_id)
             if existing is not None and existing.is_alive(): return
             def wake():
                 with state['guard']:
                     state['timers'].pop(plan_id, None)
-                    if (getattr(self.services, '_closed', False) or not state['queued'].get(plan_id)
+                    if (getattr(self.services, '_closed', False) or state.get('session_suspended')
+                            or not state['queued'].get(plan_id)
                             or plan_id in state['active']):
                         return
                     state['active'].add(plan_id)
@@ -2032,7 +2076,7 @@ class PlanFlow:
 
     def resume_started_preparations(self):
         """Resume unfinished work once the account services are ready."""
-        if getattr(self.services, '_closed', False): return 0
+        if getattr(self.services, '_closed', False) or getattr(self.services, 'learning_suspended', False): return 0
         prepare = self._prepare_callable()
         plans = self.services.store.list_plans()
         resumed = 0
@@ -2715,7 +2759,7 @@ class PlanFlow:
 
     def ensure_point_minutes(self, plan_id, *, background_check=False):
         """Start once per unchanged input/version; no model IO on the caller thread."""
-        if getattr(self.services, '_closed', False): return 'none'
+        if getattr(self.services, '_closed', False) or getattr(self.services, 'learning_suspended', False): return 'none'
         shared = self._point_minute_jobs
         with shared['guard']:
             if plan_id in shared['jobs']: return 'running'
@@ -2728,7 +2772,7 @@ class PlanFlow:
                     return 'ready'
                 if not state['points'] or sum(m.get('point_count', 0) for m in state['modules']) != len(state['points']):
                     return 'none'
-            job = dict(cancel=threading.Event(), epoch=shared['epoch'])
+            job = dict(cancel=threading.Event(), epoch=shared['epoch'], session_cancelled=False)
             worker = threading.Thread(target=self._point_minutes_worker, args=(plan_id, job, state),
                                       name='plan-point-minutes', daemon=True)
             job['thread'] = worker
@@ -2774,18 +2818,24 @@ class PlanFlow:
                 reply = self.services.gateway.complete('point_difficulty', messages, system=agents.POINT_DIFFICULTY_SYSTEM,
                     cancel=job['cancel'], plan_id=plan_id, max_tokens=4096)
                 difficulties.update(agents.parse_point_difficulty(reply if isinstance(reply, str) else reply.text, aliases))
-            if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
+            if (job['cancel'].is_set() or job.get('session_cancelled')
+                    or getattr(self.services, 'learning_suspended', False)
+                    or getattr(self.services, '_closed', False)): return
             job['writer'] = threading.get_ident()
+            if job.get('session_cancelled') or getattr(self.services, 'learning_suspended', False): return
             if store.save_point_minutes(plan_id, state['fingerprint'], difficulties, today=self.study_day()): status = 'ready'
         except Exception:
             if not getattr(self.services, '_closed', False): log.exception('point minutes failed plan=%s; original minutes retained', plan_id)
         finally:
             with self._point_minute_jobs['guard']:
-                self._point_minute_jobs['jobs'].pop(plan_id, None)
-                if self._point_minute_jobs['epoch'] == job.get('write_epoch', job['epoch']):
+                if self._point_minute_jobs['jobs'].get(plan_id) is job:
+                    self._point_minute_jobs['jobs'].pop(plan_id, None)
+                if (not job.get('session_cancelled')
+                        and self._point_minute_jobs['epoch'] == job.get('write_epoch', job['epoch'])):
                     self._point_minute_jobs['statuses'][plan_id] = status
-            self._point_minutes_event(plan_id, status)
-            if status == 'ready' and not getattr(self.services, '_closed', False):
+            if not job.get('session_cancelled'):
+                self._point_minutes_event(plan_id, status)
+            if status == 'ready' and not job.get('session_cancelled') and not getattr(self.services, '_closed', False):
                 # Classroom's existing snapshot refresh also reloads its ledger projection.
                 try: self.push('classroom.materials_ready', dict(plan_id=plan_id, reason='point_minutes'))
                 except Exception: log.info('point minutes classroom closed', exc_info=True)
@@ -2797,7 +2847,7 @@ class PlanFlow:
 
     def ensure_point_links(self, plan_id, *, retry=False):
         """Background only; detail/retry never wait for model IO. Shared per account."""
-        if getattr(self.services, '_closed', False): return 'none'
+        if getattr(self.services, '_closed', False) or getattr(self.services, 'learning_suspended', False): return 'none'
         shared = self._point_link_jobs
         with shared['guard']:
             if plan_id in shared['jobs']:
@@ -2807,7 +2857,7 @@ class PlanFlow:
             targets = state['dirty'] + (state['failed'] if retry else [])
             if not targets: return state['status']
             cancel = threading.Event()
-            job = dict(cancel=cancel, retry=retry)
+            job = dict(cancel=cancel, retry=retry, session_cancelled=False)
             shared['jobs'][plan_id] = job
             worker = threading.Thread(target=self._point_links_worker, args=(plan_id, job),
                                       name='plan-point-links', daemon=True)
@@ -2843,7 +2893,10 @@ class PlanFlow:
                         if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
                         error = getattr(exc, 'code', type(exc).__name__)
                         log.warning('point links module=%s attempt=%d error=%s', module['id'], attempt + 1, error)
-                if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
+                if (job['cancel'].is_set() or job.get('session_cancelled')
+                        or getattr(self.services, 'learning_suspended', False)
+                        or getattr(self.services, '_closed', False)): return
+                if job.get('session_cancelled') or getattr(self.services, 'learning_suspended', False): return
                 store.save_point_links(plan_id, module['id'], fingerprint, links, dropped=dropped, error=error)
                 # Notify after each committed module, including partial failures.
                 self._point_links_event(plan_id, 'running')
@@ -2851,8 +2904,9 @@ class PlanFlow:
             if not getattr(self.services, '_closed', False): log.exception('point links worker failed plan=%s', plan_id)
         finally:
             with self._point_link_jobs['guard']:
-                self._point_link_jobs['jobs'].pop(plan_id, None)
-            if not getattr(self.services, '_closed', False):
+                if self._point_link_jobs['jobs'].get(plan_id) is job:
+                    self._point_link_jobs['jobs'].pop(plan_id, None)
+            if not job.get('session_cancelled') and not getattr(self.services, '_closed', False):
                 try: self._point_links_event(plan_id, store.point_links_state(plan_id)['status'])
                 except Exception: log.info('point links store closed', exc_info=True)
 

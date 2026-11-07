@@ -56,8 +56,9 @@ class Classroom:
     _active_operations = {}
     _operation_generations = {}
 
-    def __init__(self, services, study_day, *, now=_now, rng=None):
+    def __init__(self, services, study_day, *, now=_now, rng=None, require_session=None):
         self.services, self.study_day, self.now = services, study_day, now
+        self._require_session = require_session or (lambda epoch=None: None)
         self._rng = rng or random.Random()
         self._jobs, self._entered_plans = {}, set()
         self._local = threading.local()
@@ -141,6 +142,7 @@ class Classroom:
             return True
 
     def prefetch(self, plan_id, version):
+        self._require_session()
         lock=self._lock(plan_id)
         if not lock.acquire(False):return dict(total=0,ready=0)
         try:
@@ -265,11 +267,13 @@ class Classroom:
             self._local.action = None
 
     def run(self, plan_id, work, ctx=None, *, readonly=False):
+        self._require_session(getattr(ctx, 'session_epoch', None) if ctx and ctx.cancel.is_set() else None)
         lock = self._lock(plan_id)
         if not lock.acquire(False):
             message = "课堂正在处理，请稍后再发；已有内容和位置保留。"
             raise BridgeError("CLASS_BUSY", message)
         self._local.room_lock=lock;self._local.lock_held=True
+        self._local.context=ctx
         self._local.room_state=None;self._local.operation_key=None;self._local.operation_token=None
         self._local.operation_generation=None;self._local.slow_checkpoint=None
         key=self._activity_key(plan_id);token=None
@@ -364,6 +368,7 @@ class Classroom:
                 active=self._active_operations.get(key)
                 if token and active and active['token']==token:self._active_operations.pop(key,None)
             self._local.room_state=None;self._local.room_lock=None;self._local.operation_key=None;self._local.operation_token=None
+            self._local.context=None
             if getattr(self._local,'lock_held',False):lock.release()
             self._local.lock_held=False
 
@@ -518,6 +523,9 @@ class Classroom:
         return state
 
     def _save(self, course, state):
+        ctx = getattr(self._local, 'context', None)
+        # Routine token refresh must not invalidate healthy in-flight lessons.
+        self._require_session(getattr(ctx, 'session_epoch', None) if ctx and ctx.cancel.is_set() else None)
         try:
             course.store.save_classroom_position(course.plan_id,self._pack_position(course,state))
         except (StorageError,StoreError) as exc:
@@ -2544,12 +2552,16 @@ def _link_citations(text, mapping):
 
 def register(bridge, services, study_day, *, presence=lambda active,plan_id=None:None, now=_now):
     rooms={}
+    def suspend():
+        for current in list(rooms.values()):current.cancel_prefetch()
+    if hasattr(bridge, 'session_suspended'):
+        bridge.session_suspended.connect(suspend)
     def room():
         current=services();key=id(current)
         if key not in rooms:
             for old in rooms.values():old.cancel_materials()
             rooms.clear()
-            rooms[key]=Classroom(current,study_day,now=now)
+            rooms[key]=Classroom(current,study_day,now=now,require_session=getattr(bridge,'require_session',None))
             rooms[key].material_event=lambda data:bridge.push('classroom.materials_ready',data)
         return rooms[key]
     def text(p):

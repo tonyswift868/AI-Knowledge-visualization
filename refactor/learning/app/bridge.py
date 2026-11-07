@@ -78,6 +78,7 @@ class AppBridge(QObject):
     request_failed_for_session = Signal(str, int)
     request_completed = Signal(str)
     closing = Signal()
+    session_suspended = Signal()
     _deliver = Signal(str)
 
     def __init__(self, parent=None, *, workers: int = 4):
@@ -86,6 +87,7 @@ class AppBridge(QObject):
         self._pending: dict[str, threading.Event] = {}
         self._lock = threading.Lock()
         self._session_epoch = 0
+        self._session_error = None
         self._closed = False
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mf-bridge")
         # Worker threads hand results to the GUI thread through this queued
@@ -126,7 +128,25 @@ class AppBridge(QObject):
         """Fence failures from requests started under the previous login."""
         with self._lock:
             self._session_epoch += 1
+            self._session_error = None
             return self._session_epoch
+
+    def suspend_session(self, code, message):
+        """Reject new account work until explicit session recovery starts a new epoch."""
+        with self._lock:
+            self._session_error = (code, message)
+            for cancel in self._pending.values():
+                cancel.set()
+        self.session_suspended.emit()
+
+    def require_session(self, session_epoch=None):
+        with self._lock:
+            error = self._session_error
+            current_epoch = self._session_epoch
+        if error is not None:
+            raise BridgeError(*error)
+        if session_epoch is not None and session_epoch != current_epoch:
+            raise BridgeError('CANCELLED', '账号会话已更新，旧操作已取消。')
 
     def push(self, name: str, data=None):
         """Python-initiated notification (thread-safe)."""

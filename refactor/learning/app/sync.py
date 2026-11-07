@@ -106,6 +106,7 @@ class WindowSync(QObject):
     def __init__(self, window, services, *, http_transport=None, sync_options=None):
         super().__init__(window)
         self.window, self.bridge = window, window.bridge
+        self._services = services
         self.settings = services.settings
         self._closed = self._paused = False
         self._sync_notice = None
@@ -137,6 +138,7 @@ class WindowSync(QObject):
         if self._closed: return
         self._paused = False
         self._session_epoch = self.bridge.begin_session_epoch()
+        self._services.resume_learning()
         self.guard.set_session_epoch(self._session_epoch)
         self.service.start()
         if self.service._active:
@@ -219,8 +221,10 @@ class WindowSync(QObject):
         if self._closed: return
         if status['state'] in {'reauth', 'superseded'}:
             self.guard.stop()
-            self.bridge.cancel_pending()
             message = (SUPERSEDED_MESSAGE if status['state'] == 'superseded' else '登录已失效，请重新验证账号。')
+            code = 'NATIVE_SESSION_SUPERSEDED' if status['state'] == 'superseded' else 'REAUTH_REQUIRED'
+            self.bridge.suspend_session(code, message)
+            self._services.suspend_learning()
             self.window.set_session_notice(message, show_verify=True)
         elif status['state'] == 'retrying':
             self._sync_notice = (status.get('last_error') or {}).get('message') or CONNECTION_UNSTABLE
