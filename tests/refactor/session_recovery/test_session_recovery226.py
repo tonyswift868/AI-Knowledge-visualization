@@ -151,6 +151,9 @@ def test_old_bridge_error_cannot_reauth_recovered_real_sync(qt_app, tmp_path):
         ca_bundle=certifi.where(),
         settings=window.settings,
         store=store,
+        # No learning jobs are owned by this sync-only fixture.
+        resume_learning=lambda: False,
+        suspend_learning=lambda: True,
     )
     sync = WindowSync(window, services, http_transport=httpx.MockTransport(transport))
     holder = SimpleNamespace(_disposed=False, _sync=sync, services=services, bridge=bridge)

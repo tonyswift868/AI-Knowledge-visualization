@@ -240,6 +240,8 @@ def test_sync203_window_start_does_not_probe_until_provider_is_ready(app, monkey
         api_base_url='https://fixture.invalid',
         ca_bundle='fixture-ca',
         store=store,
+        # No learning jobs are suspended in this readiness fixture.
+        resume_learning=lambda: False,
     )
     window = QObject()
     window.bridge = bridge
