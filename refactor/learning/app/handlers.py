@@ -282,16 +282,43 @@ def register(bridge, window):
     bridge.register("models.balance", model_balance)
 
     # -------------------------------------------------------------- usage
-    def usage_summary(params, ctx):
+    def usage_days(params):
         days = params.get("days", 7)
-        group_by = params.get("group_by", "purpose")
-        if days not in (1, 7, 30, 365) or group_by not in ("purpose", "model", "day"):
+        if type(days) is not int or days not in (1, 7, 30, 365):
             raise BridgeError("PARAM_INVALID", "用量统计范围无效。")
-        end = datetime.now(timezone.utc) + timedelta(minutes=1)
-        start = end - timedelta(days=days)
-        return _plain(services().gateway.usage_log.summary(start, end, group_by=group_by, tokens_only=True))
+        return days
 
+    def usage_overview(params, ctx):
+        from ..connections.usage_view import overview
+        return _plain(overview(services().gateway.usage_log))
+
+    def usage_summary(params, ctx):
+        from ..connections.usage_view import summary
+        days = usage_days(params)
+        group_by = params.get("group_by", "purpose")
+        if group_by not in ("purpose", "model", "day"):
+            raise BridgeError("PARAM_INVALID", "用量统计范围无效。")
+        return _plain(summary(services().gateway.usage_log, days, group_by))
+
+    def usage_details(params, ctx):
+        from ..connections.errors import ModelError
+        from ..connections.usage_view import details
+        days = usage_days(params)
+        offset, limit = params.get('offset', 0), params.get('limit', 50)
+        if (type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100
+                or ('end' in params and not isinstance(params['end'], str))):
+            raise BridgeError("PARAM_INVALID", "用量详情分页参数无效。")
+        try:
+            return _plain(details(services().gateway.usage_log, days, offset=offset, limit=limit,
+                                  end=params.get('end')))
+        except ModelError as error:
+            if error.code == 'USAGE_TIME_INVALID':
+                raise BridgeError('PARAM_INVALID', '用量详情截止时间无效。') from None
+            raise
+
+    bridge.register("usage.overview", usage_overview)
     bridge.register("usage.summary", usage_summary)
+    bridge.register("usage.details", usage_details)
 
     # -------------------------------------------------------------- plans
     def plan_list(params, ctx):
