@@ -6,6 +6,9 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-215 | 明确被挤下线后旧端仍能发起课堂工作 | 320本地修复及独立验收通过，未发布 | 2026-11-07 |
+| BUG-216 | 取消模型连接测试未到达网关 | 320本地修复及真实设置页独立验收通过，未发布 | 2026-11-07 |
+| BUG-217 | 批量导入中途失败丢失已成功项反馈 | 320本地修复及独立实操验收通过，未发布 | 2026-11-07 |
 | BUG-197 | 资料问答“将所选资料入库”报 HTTP 413：服务器入口网关对 /api/ 默认只收 1 MB，资料上传按 9 MB 分批 | 网关已修（247，2026-10-29 线上验证）；客户端分批已随 2.0.39 发布（2026-10-31）；用户未实测 | 2026-10-31 |
 | BUG-198 | 资料问答“按计划选择”用了系统原生下拉框，弹出列表横跨整个窗口、长计划名撑满，和界面风格不一致 | 已修，已随 2.0.39 发布（2026-10-31）；用户未实测 | 2026-10-31 |
 | BUG-199 | 资料问答“新建会话”点了看不出变化；会话放在哪、建了会话还能不能加资料、“入库”是什么意思，用户都看不明白 | 已修，已随 2.0.39 发布（2026-10-31）；用户未实测 | 2026-10-31 |
@@ -2530,7 +2533,7 @@
 - 根因：app/sync.py的失效处理只停止guard、取消当时已有bridge请求并通知窗口，没有阻止后续新业务调用。AppBridge/handlers仍能取得原AppServices，Classroom没有消费这个已知失效状态；完整LearningWindow没有补上该保护。服务器确实拒绝旧会话，问题在客户端已知拒绝后的业务状态接线。
 - 实现：Bridge现有会话代次锁存明确reauth/superseded拒绝原因，共用services入口拒绝后续业务、verify入口保留；WindowSync/AppServices挂起学习，Classroom入口/预取/位置保存校验，取消的旧上下文在恢复后仍不能回写。共享PlanFlow队列加会话挂起标记，取消在途与tail，不把它记为用户stopped或普通取消自动重排；持久pending保留，明确重新认证后用原恢复入口恢复一次，正常刷新不重复恢复。保留原队列guard与plan/store锁边界；普通retrying/offline不触发挂起。
 - 修复验证（320，2026-11-07）：新增7项及相关58项去重65项通过。真实LearningWindow/AppBridge/handlers/Classroom/SQLite验证明确失效后新模型/消息/位置/outbox不增长、旧pending保留、verify可达、认证恢复、旧教师迟到不回写、503离线及健康token刷新不误伤；真实PlanFlow队列验证inflight/tail不重排、不写stopped、恢复一次及持续挂起pending不变。受影响初始化/锁顺序问题在交付前修正，仅重测关联用例。凭据/HTTP/模型为受控边界，不重建Java/PG；未跑全量/正式整包/真人UAT。回执.local/receipts/320-MF01.md。测试根及误写两份pytest缓存共18,496,723字节删除被自动审批拒绝，交统一清理收尾，未绕过。
-- 验证：MF01真实NativeCredentialClient→Java/JDBC/隔离PG第二登录；MF03独立完整LearningWindow+React+QWebChannel+真实Classroom/SQLite证实。身份商和付费模型分别为本地合法替身，未动正式账号/数据。证据.local/r318/candidates/MF01-001.md、.local/receipts/318-MF03-repro-MF01-001.md；同次SQLite只读证据确认提问和回答落盘，不以辅助草稿ok充当课堂响应。重登/普通断网对照本轮未重跑，需修复验证。
+- 初次复现（318）：MF01真实NativeCredentialClient→Java/JDBC/隔离PG第二登录；MF03独立完整LearningWindow+React+QWebChannel+真实Classroom/SQLite证实。身份商和付费模型分别为本地合法替身，未动正式账号/数据。证据.local/r318/candidates/MF01-001.md、.local/receipts/318-MF03-repro-MF01-001.md；同次SQLite只读证据确认提问和回答落盘，不以辅助草稿ok充当课堂响应。修复及重登/普通断网对照现已完成，见本条320验证。
 - 审查补修：独立MF04真实models.list配置读取交错发现，挂起后原模型错误的可选展示器再进services门禁而抛二次异常，pending已移除却没有response。d2bae60c补丁合入18fae1cd：已取消跳过展示，展示器及文案读取异常局部保护，保留原code/message继续原回执；不解除业务门禁。新增5及既有16去重21项通过。MF04从原探针独立复验，Future无异常、仅一次CANCELLED、pending=0、不污染恢复epoch；合入后错误回执与216取消6项一次通过。回执.local/receipts/320-MF01-followup.md、320-MF04-session-review.md、320-MF04-final.md。
 - 关联：[ACC-01] [SYS-08]；与BUG-185/130机制不同。
 - 更新：2026-11-07
