@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -29,6 +30,9 @@ HASH_PATHS = (
     "refactor/server-java/deploy/compose.python-fallback.yml",
     "refactor/server-java/deploy/migration.Dockerfile",
 )
+SOURCE_REVISION = "PREFLIGHT_SOURCE_REVISION"
+SOURCE_PATH_0048 = "refactor/server/migrations/versions/0048_rag_source_chunks.py"
+SOURCE_PATHS_0048 = (*HASH_PATHS, SOURCE_PATH_0048)
 CONTAINERS = {
     "mentorflow-java-backend": ("running", "mentorflow-java-server:269"),
     "mentorflow-java-oidc": ("running", "mentorflow-local/oidc:current"),
@@ -108,12 +112,20 @@ class PreflightFixture:
             target = self.release / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / rel, target)
-        manifest_lines = []
-        for rel in HASH_PATHS:
-            file = self.release / rel
-            manifest_lines.append(f"{hashlib.sha256(file.read_bytes()).hexdigest()}  {rel}")
+        self.write_synthetic_source_0048()
         self.manifest = self.state / "source.sha256"
-        self.write_manifest(manifest_lines)
+        self.write_manifest(self.manifest_lines(HASH_PATHS))
+
+    def write_synthetic_source_0048(self):
+        source = self.release / SOURCE_PATH_0048
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("# Synthetic 0048 source manifest fixture.\n", encoding="ascii")
+
+    def manifest_lines(self, paths: tuple[str, ...]) -> list[str]:
+        return [
+            f"{hashlib.sha256((self.release / rel).read_bytes()).hexdigest()}  {rel}"
+            for rel in paths
+        ]
 
     def write_manifest(self, lines: list[str], *, separator: str = "\n", final_newline: bool = True):
         text = separator.join(lines) + (separator if final_newline else "")
@@ -187,11 +199,14 @@ case "$1 $2" in
         if [ "${FAKE_MISSING_SECRET:-0}" = 1 ]; then exit 1; fi
         echo 'present bytes=20 mode=400'; exit 0 ;;
       *'current'*)
-        if [ "${FAKE_CURRENT_WRONG:-0}" = 1 ]; then echo 'Current revision(s): 0046_account_profiles'; else echo 'Current revision(s): 0047_rag_promoted_manifests (head)'; fi
+        if [ "${FAKE_CURRENT_WRONG:-0}" = 1 ]; then echo 'Current revision(s): 0046_account_profiles'; else echo "Current revision(s): ${FAKE_DB_REVISION:-0047_rag_promoted_manifests} (head)"; fi
         exit 0 ;;
     esac ;;
   'exec mentorflow-e1-preview-postgres-1')
-    case "$*" in *'psql -XqAt'*) echo 'mentorflow|0047_rag_promoted_manifests|true'; exit 0 ;; *) exit 42 ;; esac ;;
+    case "$*" in *'psql -XqAt'*)
+      schema_ok=true
+      case "$*" in *"to_regclass('public.rag_source_chunks')"*) schema_ok=${FAKE_DB_SOURCE_TABLE:-true} ;; esac
+      echo "mentorflow|${FAKE_DB_REVISION:-0047_rag_promoted_manifests}|$schema_ok"; exit 0 ;; *) exit 42 ;; esac ;;
 esac
 exit 41
 '''
@@ -229,14 +244,16 @@ exit 41
             "BACKEND_ENV": posix(self.runtime),
             "NETWORK45_OVERRIDE": posix(self.network45),
             "SOURCE_SHA256_MANIFEST": posix(self.manifest),
+            "FAKE_DB_REVISION": "0047_rag_promoted_manifests",
+            "FAKE_DB_SOURCE_TABLE": "true",
             "EDGE_CONF_PATH": posix(self.edge_conf),
         })
         values.update(overrides)
         return values
 
-    def run(self, **overrides):
+    def run(self, args=(), **overrides):
         return subprocess.run(
-            [str(BASH), "-c", 'sh -s', "_"], cwd=ROOT, env=self.env(**overrides),
+            [str(BASH), "-c", 'sh -s -- "$@"', "_", *args], cwd=ROOT, env=self.env(**overrides),
             input=PREFLIGHT.read_bytes(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             timeout=60,
         )
@@ -285,6 +302,187 @@ def test_preflight_accepts_complete_manifest_with_crlf_and_no_final_newline(pref
     output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
     assert result.returncode == 0, output
     assert "approved_source_sha256 OK" in output
+
+
+@pytest.mark.parametrize(
+    ("profile", "paths"),
+    [
+        ("0047_rag_promoted_manifests", HASH_PATHS),
+        ("0048_rag_source_chunks", SOURCE_PATHS_0048),
+    ],
+)
+def test_source_manifest_generation_is_revision_specific_and_offline(preflight, profile, paths):
+    result = preflight.run(
+        ("--source-manifest",),
+        **{SOURCE_REVISION: profile, "RELEASE_ROOT": posix(preflight.release)},
+    )
+
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+    generated = result.stdout.decode("ascii").splitlines()
+    assert generated == preflight.manifest_lines(paths)
+    assert len(generated) == len(paths)
+    assert not preflight.log.exists()
+
+    preflight.write_manifest(generated)
+    verified = preflight.run(
+        **{SOURCE_REVISION: profile, "RELEASE_ROOT": posix(preflight.release)}
+    )
+    output = (verified.stdout + verified.stderr).decode("utf-8", errors="replace")
+    assert verified.returncode == 0, output
+    assert "approved_source_sha256 OK" in output
+
+
+@pytest.mark.parametrize(
+    ("args", "overrides"),
+    [
+        (("--source-manifest",), {SOURCE_REVISION: "unknown"}),
+        (("--invalid",), {}),
+        (("--source-manifest", "extra"), {}),
+    ],
+)
+def test_source_manifest_rejects_invalid_request_without_docker(preflight, args, overrides):
+    result = preflight.run(args, **overrides)
+    assert result.returncode == 2
+    assert result.stdout == b""
+    assert not preflight.log.exists()
+
+
+def test_source_manifest_rejects_missing_release_root_without_docker(preflight):
+    result = preflight.run(
+        ("--source-manifest",), RELEASE_ROOT=posix(preflight.root / "absent-release")
+    )
+    assert result.returncode != 0
+    assert result.stdout == b""
+    assert not preflight.log.exists()
+
+
+def test_source_manifest_generation_fails_when_new_migration_file_is_absent(preflight):
+    source = preflight.release / SOURCE_PATH_0048
+    source.rename(source.with_suffix(".not-in-release"))
+    result = preflight.run(
+        ("--source-manifest",), **{SOURCE_REVISION: "0048_rag_source_chunks"}
+    )
+    assert result.returncode != 0
+    assert len(result.stdout.decode("ascii").splitlines()) == len(HASH_PATHS)
+    assert SOURCE_PATH_0048 in result.stderr.decode("utf-8", errors="replace")
+    assert not preflight.log.exists()
+
+
+def test_release_manifest_generation_can_retry_after_missing_migration(preflight):
+    readme = (PREFLIGHT.parent / "README.md").read_text(encoding="utf-8")
+    command = next(
+        block for block in re.findall(r"```sh\n(.*?)\n```", readme, re.S)
+        if "CANDIDATE_SOURCE_MANIFEST.tmp" in block and "--source-manifest" in block
+    )
+    (preflight.deploy / "preflight.sh").write_bytes(PREFLIGHT.read_bytes())
+    candidate = preflight.state / "generated-source.sha256"
+    source = preflight.release / SOURCE_PATH_0048
+    held_source = source.with_suffix(".not-in-release")
+    source.rename(held_source)
+    env = preflight.env(
+        NEW_RELEASE_ROOT=posix(preflight.release),
+        CANDIDATE_SOURCE_MANIFEST=posix(candidate),
+    )
+    failed = subprocess.run(
+        [str(BASH), "-c", command], cwd=ROOT, env=env, capture_output=True, timeout=20
+    )
+    assert failed.returncode != 0
+    assert not candidate.exists()
+    assert not candidate.with_suffix(".sha256.tmp").exists()
+
+    held_source.rename(source)
+    retried = subprocess.run(
+        [str(BASH), "-c", command], cwd=ROOT, env=env, capture_output=True, timeout=20
+    )
+    assert retried.returncode == 0, retried.stderr.decode("utf-8", errors="replace")
+    assert candidate.read_text(encoding="ascii").splitlines() == preflight.manifest_lines(SOURCE_PATHS_0048)
+    assert not candidate.with_suffix(".sha256.tmp").exists()
+    assert not preflight.log.exists()
+
+
+def test_preflight_0048_sources_pass_before_database_migration(preflight):
+    preflight.write_manifest(preflight.manifest_lines(SOURCE_PATHS_0048))
+    result = preflight.run(**{SOURCE_REVISION: "0048_rag_source_chunks"})
+
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode == 0, output
+    assert "approved_source_sha256 OK" in output
+    assert "database_migration_current OK" in output
+    assert "postgres_schema_revision_and_table OK" in output
+    assert "to_regclass('public.rag_source_chunks')" not in preflight.log.read_text(encoding="utf-8")
+
+
+def test_preflight_0048_sources_and_database_pass_after_migration(preflight):
+    preflight.write_manifest(preflight.manifest_lines(SOURCE_PATHS_0048))
+    result = preflight.run(
+        FAKE_DB_REVISION="0048_rag_source_chunks",
+        EXPECTED_ALEMBIC_REVISION="0048_rag_source_chunks",
+        **{SOURCE_REVISION: "0048_rag_source_chunks"},
+    )
+
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode == 0, output
+    assert "approved_source_sha256 OK" in output
+    assert "database_migration_current OK" in output
+    assert "postgres_schema_revision_and_table OK" in output
+    assert "to_regclass('public.rag_source_chunks')" in preflight.log.read_text(encoding="utf-8")
+
+
+def test_preflight_0048_source_does_not_replace_database_revision_expectation(preflight):
+    preflight.write_manifest(preflight.manifest_lines(SOURCE_PATHS_0048))
+    result = preflight.run(
+        EXPECTED_ALEMBIC_REVISION="0048_rag_source_chunks",
+        **{SOURCE_REVISION: "0048_rag_source_chunks"},
+    )
+
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode != 0, output
+    assert "approved_source_sha256 OK" in output
+    assert "database_migration_current FAIL:" in output
+    assert "postgres_schema_revision_and_table FAIL:" in output
+
+
+def test_preflight_0048_requires_source_chunks_table(preflight):
+    preflight.write_manifest(preflight.manifest_lines(SOURCE_PATHS_0048))
+    result = preflight.run(
+        FAKE_DB_REVISION="0048_rag_source_chunks",
+        FAKE_DB_SOURCE_TABLE="false",
+        EXPECTED_ALEMBIC_REVISION="0048_rag_source_chunks",
+        **{SOURCE_REVISION: "0048_rag_source_chunks"},
+    )
+
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode != 0, output
+    assert "approved_source_sha256 OK" in output
+    assert "database_migration_current OK" in output
+    assert "postgres_schema_revision_and_table FAIL:" in output
+
+
+@pytest.mark.parametrize("defect", ["missing", "duplicate", "wrong_hash", "extra"])
+def test_preflight_0048_manifest_rejects_invalid_set(preflight, defect):
+    lines = preflight.manifest_lines(SOURCE_PATHS_0048)
+    new_source_line = next(line for line in lines if line.endswith(SOURCE_PATH_0048))
+    if defect == "missing":
+        lines.remove(new_source_line)
+    elif defect == "duplicate":
+        duplicate = next(line for line in lines if line.endswith(HASH_PATHS[7]))
+        lines.remove(new_source_line)
+        lines.append(duplicate)
+    elif defect == "wrong_hash":
+        digest, path = new_source_line.split("  ", 1)
+        changed = ("0" if digest[0] != "0" else "1") + digest[1:]
+        lines[lines.index(new_source_line)] = f"{changed}  {path}"
+    else:
+        extra_path = "refactor/server-java/deploy/unapproved.txt"
+        extra_file = preflight.release / extra_path
+        extra_file.write_text("fixture\n", encoding="ascii")
+        lines.append(f"{hashlib.sha256(extra_file.read_bytes()).hexdigest()}  {extra_path}")
+    preflight.write_manifest(lines)
+
+    result = preflight.run(**{SOURCE_REVISION: "0048_rag_source_chunks"})
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode != 0, output
+    assert "approved_source_sha256 FAIL:" in output
 
 
 @pytest.mark.parametrize("missing_path", HASH_PATHS)
