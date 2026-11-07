@@ -7,8 +7,10 @@ from refactor.learning.app.bridge import BridgeError
 
 def draft_bridge160(tmp_path, account):
     methods = {}
+    # This direct handler fixture represents a normal active account session.
     bridge = SimpleNamespace(register=lambda name, fn, **kw: methods.update({name: fn}), push=lambda *a: None,
-                             event=SimpleNamespace(connect=lambda callback: None))
+                             event=SimpleNamespace(connect=lambda callback: None),
+                             require_session=lambda session_epoch=None: None)
     services = SimpleNamespace(account_id=account, data_root=tmp_path,
                                store=SimpleNamespace(get_plan=lambda key: {'id': 'p'} if key == 'p' else None))
     register(bridge, SimpleNamespace(services=services))
