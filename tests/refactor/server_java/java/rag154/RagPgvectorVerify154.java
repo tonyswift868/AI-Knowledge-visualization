@@ -5,12 +5,14 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.core.env.StandardEnvironment;
 import win.clannad.mentorflow.identity.IdentitySecurity;
+import win.clannad.mentorflow.persistence.BusinessDatabase;
 import win.clannad.mentorflow.rag.*;
 
 /** Run against an explicitly disposable migrated pgvector database, never an online account. */
 public final class RagPgvectorVerify154 {
     public static void main(String[] args) {
-        RagRepository repository=new RagRepository(new StandardEnvironment());
+        try (BusinessDatabase business = new BusinessDatabase(new StandardEnvironment())) {
+        RagRepository repository=new RagRepository(business);
         RagService service=new RagService(repository,new RagEmbedding(),new PgVectorStore());
         String tag="verify154-"+UUID.randomUUID();
         Map<String,Object> alice=Map.of("actor_kind","HUMAN","issuer","https://rag154.invalid","subject_id",tag+"-alice");
@@ -37,10 +39,13 @@ public final class RagPgvectorVerify154 {
             check(((List<?>)service.search(bob,query).get("passages")).isEmpty(),"cross-account search isolation");
             check(((List<?>)service.search(alice,Map.of("document_ids",List.of("absent"),"query","事务","k",5)).get("passages")).isEmpty(),"document filtering");
             service.delete(alice,tag+"-a");
-            check(service.documents(alice).isEmpty(),"delete cascades");
+            check(service.documents(alice).size()==1,"alias survives canonical deletion");
+            service.delete(alice,tag+"-alias");
+            check(service.documents(alice).isEmpty(),"final logical document deletion");
             System.out.println("RAG_PGVECTOR154_OK");
         } finally {
-            for(Map<String,Object> document:service.documents(alice)) service.delete(alice,(String)document.get("document_id"));
+            for(String id:List.of(tag+"-alias",tag+"-a")) service.delete(alice,id);
+        }
         }
     }
     private static void check(boolean passed,String label) {

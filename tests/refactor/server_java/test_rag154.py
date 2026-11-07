@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 from pathlib import Path
 import uuid
@@ -70,27 +71,134 @@ def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
     _run_alembic(url, ["upgrade", "0045_account_closure_rag"], run_dir / "migration-up-test.log", rag154_backends["issuer"])
     assert all(_tables(url))
 
-    # Current profile and upload-manifest migrations are intentionally forward-only.
-    # Existing profile data and the additive manifest table survive a refusal.
+    # Current profile, upload-manifest and source-layout migrations are forward-only.
+    # Existing profile data and additive RAG tables survive a refusal.
     current_url = rag154_backends["rollback_url"]
     admin = current_url.replace("mentorflow_migrator:local-migrator-154", "postgres")
     admin = admin.replace("postgresql+psycopg://", "postgresql://")
     with psycopg.connect(admin) as connection:
         connection.execute(
-            "INSERT INTO public.account_profiles(account_scope,nickname) VALUES (%s,%s)",
-                ("a" * 64, "keep-profile-0047"),
+                "INSERT INTO public.account_profiles(account_scope,nickname) VALUES (%s,%s)",
+                ("a" * 64, "keep-profile-0048"),
         )
-    with pytest.raises(RuntimeError, match="Forward only: dropping promoted upload manifests"):
+    with pytest.raises(RuntimeError, match="Forward only: dropping RAG source chunk metadata"):
         _run_alembic(
             current_url, ["downgrade", "0045_account_closure_rag"],
-            run_dir / "migration-0047-refused-downgrade.log", rag154_backends["issuer"],
+            run_dir / "migration-0048-refused-downgrade.log", rag154_backends["issuer"],
         )
     with psycopg.connect(admin) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0047_rag_promoted_manifests"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0048_rag_source_chunks"
         assert connection.execute("SELECT to_regclass('public.rag_document_upload_manifests')").fetchone()[0]
+        assert connection.execute("SELECT to_regclass('public.rag_source_chunks')").fetchone()[0]
+        assert connection.execute(
+            "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
+            "WHERE oid='public.rag_source_chunks'::regclass"
+        ).fetchone()[0]
+        assert connection.execute(
+            "SELECT count(*) FROM pg_policies WHERE schemaname='public' "
+            "AND tablename='rag_source_chunks' AND policyname='tenant_isolation_rag_source_chunks' "
+            "AND qual ILIKE '%mentorflow.rag_account_scope%' "
+            "AND with_check ILIKE '%mentorflow.rag_account_scope%'"
+        ).fetchone()[0] == 1
+        assert all(connection.execute(
+            "SELECT has_table_privilege('mentorflow_app','public.rag_source_chunks',%s)", (privilege,)
+        ).fetchone()[0] for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"))
+        assert not connection.execute(
+            "SELECT has_table_privilege('mentorflow_closure','public.rag_document_upload_manifests','SELECT')"
+        ).fetchone()[0]
+        assert not connection.execute(
+            "SELECT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' "
+            "AND tablename='rag_document_upload_manifests' AND policyname='account_closure_migration_read')"
+        ).fetchone()[0]
         assert connection.execute(
             "SELECT nickname FROM public.account_profiles WHERE account_scope=%s", ("a" * 64,)
-        ).fetchone()[0] == "keep-profile-0047"
+        ).fetchone()[0] == "keep-profile-0048"
+
+
+def test_rag154_0047_to_0048_backfill_uses_only_unambiguous_canonical_layout(rag154_backends):
+    """The migration role sees FORCE-RLS rows; promoted source metadata stays unknown."""
+    postgres = rag154_backends["postgres"]
+    name = "rag154_source_0048_" + uuid.uuid4().hex[:12]
+    _app_url, admin_url, migration_url = _prepare_database(
+        postgres, name, rag154_backends["issuer"], target="0047_rag_promoted_manifests"
+    )
+    admin = admin_url.replace("postgresql+psycopg://", "postgresql://")
+    ordinary = ["safe alpha", "稳定 beta"]
+    promoted = ["promoted alpha", "promoted beta"]
+
+    def chunk_hashes(values):
+        return [hashlib.sha256(value.encode("utf-8")).hexdigest() for value in values]
+
+    with psycopg.connect(admin) as connection:
+        for scope, document_id, values in (("a" * 64, "ordinary", ordinary), ("b" * 64, "promoted", promoted)):
+            digest = hashlib.sha256(document_id.encode()).hexdigest()
+            connection.execute(
+                "INSERT INTO public.rag_documents(account_scope,document_id,content_sha256,title,source,total_chunks,status) "
+                "VALUES (%s,%s,%s,%s,%s,2,'ready')",
+                (scope, document_id, digest, document_id, "legacy"),
+            )
+            embedding_type = connection.execute(
+                "SELECT format_type(a.atttypid,a.atttypmod) FROM pg_attribute a "
+                "WHERE a.attrelid='public.rag_chunks'::regclass AND a.attname='embedding'"
+            ).fetchone()[0]
+            for seq, value in enumerate(values):
+                if embedding_type == "bytea":
+                    embedding = bytes(2048)
+                    connection.execute(
+                        "INSERT INTO public.rag_chunks(account_scope,document_id,seq,text,page,section,embedding) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (scope, document_id, seq, value, f"page-{document_id}-{seq}",
+                         f"section-{document_id}-{seq}", embedding),
+                    )
+                else:
+                    vector = "[" + ",".join("0" for _ in range(512)) + "]"
+                    connection.execute(
+                        "INSERT INTO public.rag_chunks(account_scope,document_id,seq,text,page,section,embedding) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s::vector)",
+                        (scope, document_id, seq, value, f"page-{document_id}-{seq}",
+                         f"section-{document_id}-{seq}", vector),
+                    )
+        hashes = chunk_hashes(promoted)
+        connection.execute(
+            "INSERT INTO public.rag_document_upload_manifests(account_scope,document_id,total_chunks,chunk_digests) "
+            "VALUES (%s,'promoted',2,%s)", ("b" * 64, ",".join(hashes)),
+        )
+        connection.execute(
+            "INSERT INTO public.rag_document_aliases(account_scope,requested_document_id,canonical_document_id,total_chunks,chunk_digests) "
+            "VALUES (%s,'legacy-alias','ordinary',1,%s)",
+            ("a" * 64, hashlib.sha256(b"alias with independent layout").hexdigest()),
+        )
+
+    run_dir = rag154_backends["directory"]
+    _run_alembic(
+        migration_url, ["upgrade", "0048_rag_source_chunks"],
+        run_dir / "migration-0047-to-0048-source-layout.log", rag154_backends["issuer"],
+    )
+    with psycopg.connect(admin) as connection:
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0048_rag_source_chunks"
+        rows = connection.execute(
+            "SELECT account_scope,document_id,seq,text_sha256,byte_length,start_byte,end_byte,page,section "
+            "FROM public.rag_source_chunks ORDER BY document_id,seq"
+        ).fetchall()
+        expected = []
+        start = 0
+        for seq, value in enumerate(ordinary):
+            encoded = value.encode("utf-8")
+            end = start + len(encoded)
+            expected.append(("a" * 64, "ordinary", seq, hashlib.sha256(encoded).hexdigest(), len(encoded), start, end,
+                             f"page-ordinary-{seq}", f"section-ordinary-{seq}"))
+            start = end
+        assert rows == expected
+        assert connection.execute(
+            "SELECT count(*) FROM public.rag_source_chunks WHERE document_id IN ('promoted','legacy-alias')"
+        ).fetchone()[0] == 0
+        assert not connection.execute(
+            "SELECT has_table_privilege('mentorflow_closure','public.rag_document_upload_manifests','SELECT')"
+        ).fetchone()[0]
+        assert not connection.execute(
+            "SELECT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' "
+            "AND tablename='rag_document_upload_manifests' AND policyname='account_closure_migration_read')"
+        ).fetchone()[0]
 
 
 def test_rag154_migration_requires_pgvector_to_be_preinstalled(rag154_backends):

@@ -26,6 +26,8 @@ CASES145 = [
     ('PUT', '/entities/task/a', {'request_id': 'v', 'expected_revision': -1, 'payload': {}, 'extra': '未知'}),
     ('PUT', '/entities/task/a', {'request_id': 'v', 'expected_revision': 2147483647, 'payload': {}}),
     ('POST', '/entities/task/a/delete', {'request_id': 'v', 'expected_revision': 0, 'payload': {}}),
+    ('POST', '/entities/task/a/tombstone', {'request_id': 'v', 'expected_revision': -1}),
+    ('POST', '/entities/task/a/tombstone', {'request_id': 'v', 'expected_revision': 0, 'payload': {}}),
     ('POST', '/entities/bulk', {'records': []}),
     ('POST', '/entities/bulk', {'records': [1]}),
     ('POST', '/entities/bulk', {'records': 'bad', 'extra': 1}),

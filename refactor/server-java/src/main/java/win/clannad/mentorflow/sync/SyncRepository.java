@@ -1,7 +1,6 @@
 package win.clannad.mentorflow.sync;
 
 import java.nio.charset.StandardCharsets;
-import java.net.URI;
 import java.security.MessageDigest;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -17,11 +16,10 @@ import java.util.TreeMap;
 import java.util.Locale;
 import java.util.function.Function;
 import javax.sql.DataSource;
-import org.springframework.core.env.Environment;
+import win.clannad.mentorflow.persistence.BusinessDatabase;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Component;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.transaction.TransactionDefinition;
@@ -39,7 +37,12 @@ public final class SyncRepository {
         "learner_profile", "learning_run", "history", "setting"};
 
     public record Operation(String kind, String entityId, String requestId, int expectedRevision,
-                            Map<String, Object> payload, boolean deleting) {}
+                            Map<String, Object> payload, boolean deleting, boolean createMissingTombstone) {
+        public Operation(String kind, String entityId, String requestId, int expectedRevision,
+                Map<String, Object> payload, boolean deleting) {
+            this(kind, entityId, requestId, expectedRevision, payload, deleting, false);
+        }
+    }
 
     private final DataSource dataSource;
     private final JdbcTemplate jdbc;
@@ -47,39 +50,12 @@ public final class SyncRepository {
     private final boolean ready;
 
     /** Does not connect at construction; the existing 142 test fixture can start without a DB URL. */
-    public SyncRepository(Environment environment) {
-        String url = environment.getProperty("MENTORFLOW_DATABASE_URL");
-        if (url == null || url.isBlank()) {
-            this.dataSource = null;
-            this.jdbc = null;
-            this.transactions = null;
-            this.ready = false;
-            return;
-        }
-        DriverManagerDataSource source = new DriverManagerDataSource();
-        if (url.startsWith("jdbc:postgresql:")) source.setUrl(url);
-        else {
-            String normalized = url.replaceFirst("^postgresql\\+[^:]+:", "postgresql:");
-            if (normalized.startsWith("postgres://")) normalized = "postgresql:" + normalized.substring("postgres:".length());
-            URI uri = URI.create(normalized);
-            if (!"postgresql".equals(uri.getScheme())) throw new IllegalArgumentException("sync database URL must use PostgreSQL");
-            String userInfo = uri.getUserInfo();
-            if (userInfo != null) {
-                String[] parts = userInfo.split(":", 2);
-                source.setUsername(parts[0]);
-                if (parts.length > 1) source.setPassword(parts[1]);
-            }
-            String host = uri.getHost();
-            if (host == null) throw new IllegalArgumentException("sync database URL must include a host");
-            if (host.contains(":")) host = "[" + host + "]";
-            source.setUrl("jdbc:postgresql://" + host + (uri.getPort() < 0 ? "" : ":" + uri.getPort())
-                + (uri.getRawPath() == null ? "" : uri.getRawPath()) + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery()));
-        }
-        source.setDriverClassName("org.postgresql.Driver");
+    public SyncRepository(BusinessDatabase business) {
+        DataSource source = business.dataSource();
         this.dataSource = source;
-        this.jdbc = new JdbcTemplate(source);
-        this.transactions = new DataSourceTransactionManager(source);
-        this.ready = true;
+        this.jdbc = source == null ? null : new JdbcTemplate(source);
+        this.transactions = source == null ? null : new DataSourceTransactionManager(source);
+        this.ready = source != null;
     }
 
     private void requireReady() {
@@ -88,9 +64,16 @@ public final class SyncRepository {
 
     public Map<String,Object> write(Map<String,Object> actor, Map<String,Object> tenant, String kind,
             String entityId, String requestId, int expectedRevision, Map<String,Object> payload, boolean deleting) {
+        return write(actor, tenant, kind, entityId, requestId, expectedRevision, payload, deleting, false);
+    }
+
+    public Map<String,Object> write(Map<String,Object> actor, Map<String,Object> tenant, String kind,
+            String entityId, String requestId, int expectedRevision, Map<String,Object> payload,
+            boolean deleting, boolean createMissingTombstone) {
+        if (createMissingTombstone && !deleting) throw new IllegalArgumentException("missing tombstones require a delete operation");
         requireReady();
         Operation operation = new Operation(kind, entityId, requestId, expectedRevision,
-            deleting ? Map.of() : payload, deleting);
+            deleting ? Map.of() : payload, deleting, createMissingTombstone);
         return inTransaction(actor, tenant, true, () -> writeRow(scope(actor, tenant), operation));
     }
 
@@ -223,7 +206,10 @@ public final class SyncRepository {
     }
 
     private Map<String,Object> writeRow(Map<String,Object> scope, Operation op) {
-        String digest = sha256(SyncJson.dumpAsciiSorted(List.of(op.kind(), op.entityId(), op.expectedRevision(), op.deleting(), op.payload())));
+        List<?> fingerprint = op.createMissingTombstone()
+            ? List.of("tombstone-if-missing-v1", op.kind(), op.entityId(), op.expectedRevision(), op.deleting(), op.payload())
+            : List.of(op.kind(), op.entityId(), op.expectedRevision(), op.deleting(), op.payload());
+        String digest = sha256(SyncJson.dumpAsciiSorted(fingerprint));
         List<Map<String,Object>> receipts = jdbc.query("SELECT digest,response FROM structured_sync_requests WHERE " + SCOPE_WHERE + " AND request_id=?",
             (rs, row) -> Map.of("digest", rs.getString("digest"), "response", jsonObject(rs, "response")), scopeValues(scope, op.requestId()));
         if (!receipts.isEmpty()) {
@@ -236,7 +222,7 @@ public final class SyncRepository {
             (rs, row) -> Map.of("revision", rs.getInt("revision"), "deleted", rs.getBoolean("deleted")), entityValues(scope, op.kind(), op.entityId()));
         boolean exists = !currentRows.isEmpty();
         int revision = exists ? (Integer)currentRows.get(0).get("revision") : 0;
-        if (op.deleting() && !exists) throw new SyncFailure("SYNC_ENTITY_NOT_FOUND", 404);
+        if (op.deleting() && !exists && !op.createMissingTombstone()) throw new SyncFailure("SYNC_ENTITY_NOT_FOUND", 404);
         if (revision != op.expectedRevision()) throw new SyncFailure("SYNC_STALE_REVISION", 409);
         if (exists && Boolean.TRUE.equals(currentRows.get(0).get("deleted"))) throw new SyncFailure("SYNC_ENTITY_TOMBSTONED", 410);
         verifyReferences(scope, op);

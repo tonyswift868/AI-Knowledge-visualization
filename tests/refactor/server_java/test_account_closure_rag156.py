@@ -46,6 +46,14 @@ def _seed_rag(conn, scope: str, document_id: str, *, alias: str | None = None) -
         "(account_scope,document_id,total_chunks,chunk_digests) VALUES (%s,%s,1,%s)",
         (scope, document_id, hashlib.sha256(("body " + document_id).encode()).hexdigest()),
     )
+    text = "body " + document_id
+    encoded = text.encode("utf-8")
+    conn.execute(
+        "INSERT INTO public.rag_source_chunks"
+        "(account_scope,document_id,canonical_document_id,seq,total_chunks,text_sha256,byte_length,"
+        "start_byte,end_byte,page,section) VALUES (%s,%s,%s,0,1,%s,%s,0,%s,NULL,NULL)",
+        (scope, document_id, document_id, hashlib.sha256(encoded).hexdigest(), len(encoded), len(encoded)),
+    )
 
 
 def _legacy_rag_database(fixture, name: str):
@@ -154,8 +162,8 @@ def test_account_closure_cleans_only_verified_account_rag156(closure147_backends
                 ("public." + table,),
             ).fetchone()[0] for table in ("rag_document_aliases", "rag_chunks", "rag_documents"))
 
-        # 0047 is forward-only. Confirm a downgrade refusal leaves both the
-        # profile data and additive upload-manifest table intact.
+        # 0048 is forward-only. Confirm a downgrade refusal leaves profile and
+        # additive RAG metadata intact.
         with psycopg.connect(admin_url) as conn:
             conn.execute(
                 "INSERT INTO public.account_profiles(account_scope,nickname) VALUES (%s,%s),(%s,%s)",
@@ -164,14 +172,23 @@ def test_account_closure_cleans_only_verified_account_rag156(closure147_backends
         migration_url = fixture["postgres"].url(
             "sync145_java", "mentorflow_migrator", c145.MIGRATION_PASSWORD, sqlalchemy=True
         )
-        with pytest.raises(RuntimeError, match="Forward only: dropping promoted upload manifests"):
+        with pytest.raises(RuntimeError, match="Forward only: dropping RAG source chunk metadata"):
             _run_alembic(
                 migration_url, ["downgrade", "0045_account_closure_rag"],
                 migration_log, OLD_ISSUER,
             )
         with psycopg.connect(admin_url) as conn:
-            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0047_rag_promoted_manifests"
+            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0048_rag_source_chunks"
             assert conn.execute("SELECT to_regclass('public.rag_document_upload_manifests')").fetchone()[0]
+            assert conn.execute("SELECT to_regclass('public.rag_source_chunks')").fetchone()[0]
+            clean_def = conn.execute(
+                "SELECT pg_get_functiondef('account_closure.clean(text,text,text)'::regprocedure)"
+            ).fetchone()[0]
+            complete_def = conn.execute(
+                "SELECT pg_get_functiondef('account_closure.complete(text,text,text)'::regprocedure)"
+            ).fetchone()[0]
+            assert "DELETE FROM public.rag_source_chunks" in clean_def
+            assert "FROM public.rag_source_chunks WHERE account_scope=" in complete_def
             profile_rows = conn.execute(
                 "SELECT account_scope,nickname FROM public.account_profiles ORDER BY account_scope"
             ).fetchall()
@@ -260,7 +277,8 @@ def test_account_closure_cleans_only_verified_account_rag156(closure147_backends
         assert response_state.get("json", {}).get("state") == "COMPLETED", response_state
 
         with psycopg.connect(admin_url) as conn:
-            for table in ("rag_chunks", "rag_document_aliases", "rag_documents", "rag_document_upload_manifests"):
+            for table in ("rag_chunks", "rag_document_aliases", "rag_documents",
+                          "rag_document_upload_manifests", "rag_source_chunks"):
                 target_count = conn.execute(
                     f"SELECT count(*) FROM public.{table} WHERE account_scope=%s",
                     (target_scope,),
@@ -292,8 +310,21 @@ def test_account_closure_cleans_only_verified_account_rag156(closure147_backends
                 "SELECT pg_get_functiondef('account_closure.guard_row(text,text,jsonb,jsonb)'::regprocedure)"
             ).fetchone()[0]
             assert "p_table='account_profiles'" in current_guard
+            assert "'rag_source_chunks'" in current_guard
+            assert conn.execute(
+                "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
+                "WHERE oid='public.rag_source_chunks'::regclass"
+            ).fetchone()[0]
+            assert all(conn.execute(
+                "SELECT has_table_privilege('mentorflow_closure',%s,%s)",
+                ("public.rag_source_chunks", privilege),
+            ).fetchone()[0] for privilege in ("SELECT", "DELETE"))
             assert conn.execute(
                 "SELECT count(*) FROM pg_trigger WHERE tgrelid='public.rag_chunks'::regclass "
+                "AND tgname='account_closure_write_guard' AND NOT tgisinternal"
+            ).fetchone()[0] == 1
+            assert conn.execute(
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid='public.rag_source_chunks'::regclass "
                 "AND tgname='account_closure_write_guard' AND NOT tgisinternal"
             ).fetchone()[0] == 1
     finally:

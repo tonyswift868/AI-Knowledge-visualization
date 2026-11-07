@@ -46,7 +46,10 @@ final class SyncValidation {
         }
         return number;
     }
-    @SuppressWarnings("unchecked") static Map<String,Object> operation(Object input,boolean deleting,List<Map<String,Object>> errors) {
+    static Map<String,Object> operation(Object input,boolean deleting,List<Map<String,Object>> errors) {
+        return operation(input, deleting, false, errors);
+    }
+    @SuppressWarnings("unchecked") static Map<String,Object> operation(Object input,boolean deleting,boolean createMissingTombstone,List<Map<String,Object>> errors) {
         if(!(input instanceof Map<?,?>)) {
             errors.add(issue("model_attributes_type",List.of("body"),"Input should be a valid dictionary or object to extract fields from",input));return null;
         }
@@ -59,7 +62,7 @@ final class SyncValidation {
             if(!(value instanceof Byte||value instanceof Short||value instanceof Integer||value instanceof Long||value instanceof BigInteger))
                 errors.add(issue("int_type",List.of("body",key),"Input should be a valid integer",value));
             else {
-                BigInteger integer=new BigInteger(value.toString());int minimum=deleting?1:0;
+                BigInteger integer=new BigInteger(value.toString());int minimum=deleting&&!createMissingTombstone?1:0;
                 if(integer.compareTo(BigInteger.valueOf(minimum))<0)errors.add(issue("greater_than_equal",List.of("body",key),"Input should be greater than or equal to "+minimum,value,"ge",minimum));
                 else if(integer.compareTo(BigInteger.valueOf(2147483646))>0)errors.add(issue("less_than_equal",List.of("body",key),"Input should be less than or equal to 2147483646",value,"le",2147483646));
             }
