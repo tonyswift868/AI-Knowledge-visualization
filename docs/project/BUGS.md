@@ -2542,7 +2542,7 @@
 - 更新：2026-11-07
 
 ### [BUG-221] 资料初次准备取消后继续再删除，原服务器准备件残留
-- 状态：323客户端592c0145已合入；owner报告38项相关普通代码测试通过，最终回执待交，root仅做变更语法检查。322原单次事实/独立源码复核边界不变，受限独立运行目标仍冻结，不改写/拆分/转人重试，不伪装已独立实测。未发布。
+- 状态：323客户端592c0145已合入；最终回执已交，普通确认回归纳入客户端73个不同相关用例的分批通过证据。322原单次事实/独立源码复核边界不变，受限独立运行目标仍冻结，不改写/拆分/转人重试，不伪装已独立实测。未发布。
 - 条件与现象：唯一逻辑资料D首次正常单块上传，收到真实200 ready回执后、业务登记前调用已有cancel。local成功digest自然未确认，远端D已ready；显式继续prepare(D)由产品生成V alias→D；真实delete_document(D)返回ok、本地资料移除，但原始GET仍有D ready1/1且无alias。
 - 根因线索：app/rag.py的_ingest_locked1654–1666与sources1303–1314把原ID已ready但本地尚未确认视为应切版本ID。后续只跟当前remote_upload_id删除V，失去同次原上传D的删除闭环。Java按现有共享内容合同删除alias保canonical；本案只有一份逻辑资料，同正文/块位置不变，和BUG-220出处映射不同。
 - 一次运行证据：MF07冻结runner以真实HTTP200回执hook触发现有public cancel，控制本地业务处理时序，不改回执/摘要/身份/服务端状态；12应用（主9/清理3）、1默认actor、0直接SQL。root读取before_resume/after_resume/after_delete/after_cleanup四JSON，先保存删除残留，再精确清理D/V并确认归零，全部本地库/线程/client关闭。证据audit322/MF07/client/evidence，run_tag20261107T114746Z-c4d0b120；源链与合同复核audit322/MF02/rag-cancel-independent-review.md。
