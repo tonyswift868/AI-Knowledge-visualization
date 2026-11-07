@@ -167,3 +167,85 @@ def test_rag323_qa_reports_layout_conflict_without_new_version_or_answer(tmp_pat
         assert len(posts) == 1 and posts[0].url.path == f"{API}/documents/{logical_id}/chunks"
     finally:
         instance.close()
+
+
+def test_rag323_unknown_citation_survives_real_store_close_and_service_reopen(tmp_path):
+    from tests.refactor.rag263.test_rag263_background import close_service
+
+    logical_id, canonical = _digest("persist-unknown-source"), "persist-unknown-canonical"
+    fragment = "不能定位的原文片段"
+    fake = LayoutServer([_remote_row(canonical, aliases=[logical_id], layouts=None)], passages=[{
+        "document_id": canonical, "seq": 7, "text": fragment, "page": 99, "section": "他处位置"}])
+    instance, store, _ = service(tmp_path, fake)
+    reopened = None
+    try:
+        _prepare_local(instance, logical_id, logical_id, "保留引用", [
+            {"text": f"前文，{fragment}，后文。", "page": 12}], canonical_id=canonical)
+        session = instance.create([logical_id])["session"]
+        saved = instance.send(session["id"], "原文是什么？")["session"]["messages"][-1]["passages"]
+        assert len(saved) == 1 and saved[0]["source_layout_status"] == "missing"
+        assert all(saved[0][key] is None for key in ("seq", "page", "section"))
+        close_service(instance)
+        with instance.local._lock:
+            assert instance.local._closed
+        assert not instance._job_worker.is_alive()
+        requests_before_reopen = len(fake.requests)
+
+        reopened, _, gateway = service(tmp_path, fake, store=store)
+        loaded = reopened.get(session["id"])["session"]["messages"][-1]["passages"]
+
+        assert loaded == saved
+        assert loaded[0]["text"] == fragment
+        assert all(loaded[0][key] is None for key in ("seq", "page", "section"))
+        assert loaded[0]["source_layout_status"] == "missing"
+        assert len(fake.requests) == requests_before_reopen
+        assert gateway.calls == []
+    finally:
+        close_service(instance)
+        if reopened is not None:
+            close_service(reopened)
+
+
+def test_rag323_missing_plan_hit_cannot_fabricate_classroom_evidence(tmp_path):
+    from types import SimpleNamespace
+
+    from tests.refactor.conversation37.test_grounded_conversation37 import make_environment, PLAN, PARAGRAPH
+    from tests.refactor.rag263.test_rag263_background import close_service
+
+    logical_id = _digest(PARAGRAPH)
+    fake = LayoutServer([_remote_row(logical_id, layouts=[{
+        "requested_document_id": logical_id, "total_chunks": 1, "complete": False}])],
+        capabilities=["source_layout_v1"], passages=[{
+            "document_id": logical_id, "seq": None, "text": PARAGRAPH,
+            "page": None, "section": None, "source_layout_status": "missing"}])
+    producer_store = FakeCourseStore(tmp_path / "rag-account", plans=[{"id": PLAN}],
+        sources={PLAN: [{"id": "partial-source", "adopted": True, "sha256": logical_id,
+                        "chunk_count": 1, "title": "来源待同步"}]}, chunks={PLAN: []})
+    instance, _, gateway = service(tmp_path, fake, store=producer_store)
+    classroom = make_environment(tmp_path / "classroom-account")
+    try:
+        _prepare_local(instance, logical_id, logical_id, "来源待同步", [{"text": "先前缓存原块。"}])
+        missing_result = instance.search_plan(PLAN, "原文")
+        hit = missing_result["passages"][0]
+        assert hit["chunk_id"] is None and hit["source_layout_status"] == "missing"
+        assert (hit["seq"], hit["page"], hit["section"]) == (None, None, None)
+        # Feed the actual normalized RAG result into the real consumer. Even
+        # text matching another adopted chunk must not manufacture its ID.
+        classroom.services.rag = SimpleNamespace(search_plan=lambda *args, **kwargs: missing_result)
+        local_text = "现有本地fallback证据。"
+        classroom.store.add_sources(PLAN, [{"id": "local-source", "kind": "file",
+            "title": "本地资料", "filename": "fallback.txt", "sha256": _digest(local_text), "adopted": True,
+            "chunks": [{"chunk_id": "local-fallback", "text": local_text}]}])
+        course = classroom.room._course(PLAN)
+        chunks, sources = course._source_rows()
+        assert hit["text"] == chunks["c0"]["text"] and sources[chunks["c0"]["source_id"]]["adopted"]
+        fallback = {"local-fallback": local_text}
+
+        merged = classroom.room._qa_passages(course, "原文", fallback, None)
+
+        assert merged == fallback and "c0" not in merged
+        assert gateway.calls == [] and classroom.gateway.calls == []
+    finally:
+        close_service(instance)
+        classroom.services._closed = True
+        classroom.store.close()
