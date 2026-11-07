@@ -150,8 +150,9 @@ def test_durable_classroom_draft_fallback177_is_account_scoped(tmp_path):
             def connect(self, callback): self.callbacks.append(callback)
             def emit(self, value=None):
                 for callback in tuple(self.callbacks): callback(value)
+        # This direct handler fixture represents an active account session.
         bridge = SimpleNamespace(register=lambda name, fn, **kw: methods.update({name: fn}), push=lambda *a: None,
-                                 event=Signal(), closing=Signal())
+                                 event=Signal(), closing=Signal(), require_session=lambda session_epoch=None: None)
         services = SimpleNamespace(account_id=account_id, data_root=tmp_path,
             store=SimpleNamespace(get_plan=lambda key: {"id": "plan177"} if key == "plan177" else None,
                                   list_plans=lambda: []))
