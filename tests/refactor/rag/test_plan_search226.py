@@ -38,6 +38,14 @@ class _Store:
 def _service(monkeypatch, docs, passages=None, error=None):
     service = object.__new__(rag.RagService)
     service._closed = False
+    service._remote_documents_loaded = True
+    service._remote_capabilities = set()
+    service._source_layout_complete = {}
+    service._incomplete_documents = set()
+    for row in docs.values():
+        # Ready stubs represent an already-confirmed local upload snapshot.
+        row.setdefault("current_content_sha256", "confirmed-fixture")
+        row.setdefault("uploaded_content_sha256", "confirmed-fixture")
     service.local = _Local(docs)
     service.transport = _Transport({"passages": passages or []}, error)
     service.store = _Store()
@@ -49,24 +57,26 @@ def test_plan_search_uses_adopted_plan_docs_and_filters_canonical_results(monkey
     text = "证据段"
     digest = hashlib.sha256(text.encode()).hexdigest()
     service = _service(monkeypatch, {
-        digest: {"id": digest, "title": "课件", "status": "ready", "canonical_id": "canonical-a"},
+        digest: {"id": digest, "title": "课件", "status": "ready", "canonical_id": "canonical-a",
+                 "chunks": [{"text": text, "page": 88, "section": "来源章节"}]},
         "not-ready": {"id": "not-ready", "title": "待索引", "status": "uploading", "canonical_id": "canonical-b"},
     }, [
         {"document_id": "canonical-a", "seq": 2, "text": text, "page": 4, "section": "章节一"},
         {"document_id": "unrelated", "seq": 0, "text": "越权段"},
     ])
     service.store = _Store([{"id": "source-a", "sha256": digest, "adopted": True}],
-                           [{"id": "chunk-a", "source_id": "source-a", "position": 0, "text": text}])
+                           [{"id": "chunk-a", "source_id": "source-a", "position": 0, "text": text,
+                             "page_start": 88, "section": ["来源章节"]}])
     service._course_documents = lambda: ([{"id": "plan-a", "document_ids": [digest, "not-ready"]}], {})
 
     result = service.search_plan("plan-a", "问题")
 
     assert result["status"] == "partial"
-    assert result["passages"] == [{"chunk_id": "chunk-a", "text": text, "title": "课件", "page": 4,
-                                   "section": "章节一", "document_id": digest, "seq": 2}]
+    assert result["passages"] == [{"chunk_id": "chunk-a", "text": text, "title": "课件", "page": 88,
+                                   "section": "来源章节", "document_id": digest, "seq": 0}]
     method, path, payload = service.transport.calls[0]
     assert (method, path) == ("POST", rag.API + "/search")
-    assert payload["document_ids"] == ["canonical-a"]
+    assert payload["document_ids"] == [digest]
 
 
 def test_plan_search_reports_not_ready_without_remote_call():
@@ -144,7 +154,11 @@ def test_plan_search_maps_only_exact_adopted_chunks_and_marks_partial(tmp_path, 
         result = service.search_plan(plan_id, "查找原文")
 
         assert result["status"] == "partial"
-        assert result["passages"] == [{"chunk_id": "a" * 32, "text": body_ready, "title": "采用资料",
-            "page": 3, "section": None, "document_id": ready_digest, "seq": 0}]
+        assert result["passages"] == [
+            {"chunk_id": "a" * 32, "text": body_ready, "title": "采用资料",
+             "page": 3, "section": "单元", "document_id": ready_digest, "seq": 0},
+            {"chunk_id": None, "text": "服务器无原文的改写", "title": "采用资料",
+             "page": None, "section": None, "document_id": ready_digest, "seq": None,
+             "source_layout_status": "missing"}]
     finally:
         services.close()
