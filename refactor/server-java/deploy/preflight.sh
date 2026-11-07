@@ -26,9 +26,51 @@ migration_network=${MIGRATION_NETWORK:-mentorflow-e1-preview_internal}
 migration_secrets_volume=${MIGRATION_SECRETS_VOLUME:-mentorflow-e1-preview_migrate_secrets}
 migration_password_file=${MF_MIGRATION_PASSWORD_FILE:-/run/secrets/postgres_migrator_password}
 expected_revision=${EXPECTED_ALEMBIC_REVISION:-0047_rag_promoted_manifests}
+source_revision=${PREFLIGHT_SOURCE_REVISION:-0047_rag_promoted_manifests}
 expected_java_version=${PREFLIGHT_EXPECTED_JAVA_VERSION:-${java_image##*:}}
 curl_bin=${CURL_BIN:-curl}
 failures=0
+
+# The new source bundle exists before the database is migrated to its head.
+required_hash_paths='refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java
+refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagRepository.java
+refactor/server-java/src/main/java/win/clannad/mentorflow/rag/PgVectorStore.java
+refactor/server-java/Dockerfile
+refactor/server/Dockerfile
+refactor/server/enterprise_tenancy/schema.py
+refactor/server/migrations/versions/0047_rag_promoted_manifests.py
+refactor/server-java/deploy/build.sh
+refactor/server-java/deploy/migrate.sh
+refactor/server-java/deploy/java-compose.sh
+refactor/server-java/deploy/python-compose.sh
+refactor/server-java/deploy/compose.yml
+refactor/server-java/deploy/compose.python-fallback.yml
+refactor/server-java/deploy/migration.Dockerfile'
+case "$source_revision" in
+  0047_rag_promoted_manifests) ;;
+  0048_rag_source_chunks)
+    required_hash_paths="$required_hash_paths
+refactor/server/migrations/versions/0048_rag_source_chunks.py"
+    ;;
+  *) printf 'unsupported PREFLIGHT_SOURCE_REVISION\n' >&2; exit 2 ;;
+esac
+required_hash_count=$(printf '%s\n' "$required_hash_paths" | awk 'NF { n++ } END { print n+0 }')
+
+# Emit the same source set for an approved archive; no Docker or file writes.
+if [ "$#" -gt 0 ]; then
+  if [ "$#" -ne 1 ] || [ "$1" != --source-manifest ]; then
+    printf 'usage: preflight.sh [--source-manifest]\n' >&2
+    exit 2
+  fi
+  (
+    cd "$release_root" || exit 1
+    for required_path in $required_hash_paths; do
+      digest_line=$(sha256sum -b "$required_path") || exit 1
+      printf '%s  %s\n' "${digest_line%% *}" "$required_path"
+    done
+  )
+  exit $?
+fi
 
 ok() {
   if [ "$#" -gt 1 ]; then printf '%s OK: %s\n' "$1" "$2"; else printf '%s OK\n' "$1"; fi
@@ -289,24 +331,10 @@ if [ "$edge_state" = java ]; then ok edge_upstream_java; else fail edge_upstream
 disk_available=$(df -Pk "$release_root" 2>/dev/null | awk 'NR==2 {print $4}')
 case "$disk_available" in ''|*[!0-9]*) fail disk_space 'cannot read available space' ;; *) if [ "$disk_available" -gt 0 ]; then ok disk_space "available_kb=$disk_available"; else fail disk_space 'no available space'; fi ;; esac
 
-required_hash_paths='refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java
-refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagRepository.java
-refactor/server-java/src/main/java/win/clannad/mentorflow/rag/PgVectorStore.java
-refactor/server-java/Dockerfile
-refactor/server/Dockerfile
-refactor/server/enterprise_tenancy/schema.py
-refactor/server/migrations/versions/0047_rag_promoted_manifests.py
-refactor/server-java/deploy/build.sh
-refactor/server-java/deploy/migrate.sh
-refactor/server-java/deploy/java-compose.sh
-refactor/server-java/deploy/python-compose.sh
-refactor/server-java/deploy/compose.yml
-refactor/server-java/deploy/compose.python-fallback.yml
-refactor/server-java/deploy/migration.Dockerfile'
 hash_manifest_ok=0
 if check_file "$source_manifest"; then
   manifest_count=$(awk 'NF { n++ } END { print n+0 }' "$source_manifest")
-  if [ "$manifest_count" = 14 ] && (sed 's/\r$//' "$source_manifest" | (cd "$release_root" && sha256sum -c - >/dev/null 2>&1)); then
+  if [ "$manifest_count" = "$required_hash_count" ] && (sed 's/\r$//' "$source_manifest" | (cd "$release_root" && sha256sum -c - >/dev/null 2>&1)); then
     missing_hash_path=0
     for required_path in $required_hash_paths; do
       awk -v expected="$required_path" '{ sub(/\r$/, "", $2) } $2 == expected { found++ } END { if (found != 1) exit 1 }' "$source_manifest" || missing_hash_path=1
@@ -314,7 +342,7 @@ if check_file "$source_manifest"; then
     [ "$missing_hash_path" -eq 0 ] && hash_manifest_ok=1
   fi
 fi
-if [ "$hash_manifest_ok" -eq 1 ]; then ok approved_source_sha256; else fail approved_source_sha256 'approved 14-file hash manifest absent, incomplete, duplicate, or mismatched'; fi
+if [ "$hash_manifest_ok" -eq 1 ]; then ok approved_source_sha256; else fail approved_source_sha256 "approved $required_hash_count-file hash manifest absent, incomplete, duplicate, or mismatched"; fi
 
 if check_file "$deploy_dir/migration.Dockerfile" && image_exists "$migration_tool_image" && \
   image_exists "$migration_image" && secret_volume_exists && \
@@ -326,9 +354,13 @@ if check_file "$deploy_dir/migration.Dockerfile" && image_exists "$migration_too
   esac
 else fail database_migration_current 'existing migration inputs/image/network/secret volume unavailable; skipped docker run; preflight never builds or creates them'; fi
 
-schema_query="BEGIN READ ONLY; SELECT current_database()||'|'||version_num||'|'||(to_regclass('public.rag_document_upload_manifests') IS NOT NULL)::text FROM alembic_version; COMMIT;"
+schema_tables="to_regclass('public.rag_document_upload_manifests') IS NOT NULL"
+if [ "$expected_revision" = 0048_rag_source_chunks ]; then
+  schema_tables="$schema_tables AND to_regclass('public.rag_source_chunks') IS NOT NULL"
+fi
+schema_query="BEGIN READ ONLY; SELECT current_database()||'|'||version_num||'|'||($schema_tables)::text FROM alembic_version; COMMIT;"
 schema_state=$("$docker_bin" exec "$postgres_container" psql -XqAt -v ON_ERROR_STOP=1 -U postgres -d mentorflow -c "$schema_query" 2>/dev/null) || schema_state=
-if [ "$schema_state" = "mentorflow|$expected_revision|true" ]; then ok postgres_schema_revision_and_table; else fail postgres_schema_revision_and_table 'read-only PostgreSQL check did not confirm expected revision and manifest table'; fi
+if [ "$schema_state" = "mentorflow|$expected_revision|true" ]; then ok postgres_schema_revision_and_table; else fail postgres_schema_revision_and_table 'read-only PostgreSQL check did not confirm expected revision and required RAG tables'; fi
 
 java_tmpfs=$("$docker_bin" inspect --format '{{index .HostConfig.Tmpfs "/tmp"}}' "$java_container" 2>/dev/null) || java_tmpfs=
 case ",$java_tmpfs," in *,exec,*) ok java_tmpfs_exec_tmpfs ;; *) fail java_tmpfs_exec_tmpfs 'Java /tmp is not configured as executable tmpfs' ;; esac

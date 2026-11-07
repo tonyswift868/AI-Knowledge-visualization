@@ -45,9 +45,56 @@ sudo -n sh preflight.sh
 | 公网探活 | API/健康入口是 `https://89.45.45.28` 的 `/health/live`、`/health/startup`、`/health/ready`；下载站域名不是这个vhost（221）。普通API用`/api/enterprise/auth/lifecycle/capabilities`；匿名401不代表用户登录业务通过 |
 | TLS/身份扩展 | 保留edge转发的HTTPS语义、Java信任库/Keycloak回环/mTLS。注册SPI有改动时先按该任务验证Keycloak扩展再换Java；实际Keycloak可有shell包装入口，不能只grep一个Cmd字段推断`--optimized` |
 | 主机工具/磁盘 | `sh`、Python3、Docker/Compose、curl、sha256sum、df可用；备份用PostgreSQL容器里的`pg_dump/pg_restore`，不用旧宿主机版本。备份前确认目标不存在和足够空间，权限600，不输出备份正文 |
-| 预检对照输入 | 当前`SOURCE_SHA256_MANIFEST`为`/opt/mentorflow/state/release275/source.sha256`（14项），按`preflight.sh`中的完整路径集合逐项核对`RELEASE_ROOT`下的既有发布源码；每个指定路径必须恰好出现一次，缺项、重复、额外项或SHA256不符均FAIL。新部署需用该审定发布自己的清单，不跳过校验。`EXPECTED_ALEMBIC_REVISION`、`JAVA_IMAGE`、`PYTHON_IMAGE`用于核对在线基线，不拿尚未构建的目标冒充现网；`DEPLOY_DIR`、`SERVER_ROOT`可覆盖相对位置 |
+| 预检对照输入 | 当前`SOURCE_SHA256_MANIFEST`为`/opt/mentorflow/state/release275/source.sha256`。`PREFLIGHT_SOURCE_REVISION`默认`0047_rag_promoted_manifests`（完整14项），显式`0048_rag_source_chunks`增加0048迁移文件（共15项）；每个指定路径必须恰好出现一次，数量由同一集合计算，缺项、重复、额外项或SHA256不符均FAIL。`EXPECTED_ALEMBIC_REVISION`独立表示数据库应处的版本，默认仍0047；`JAVA_IMAGE`、`PYTHON_IMAGE`核对在线镜像，不拿尚未构建的目标冒充现网。`RELEASE_ROOT`绑定清单源码，`DEPLOY_DIR`绑定现有部署配置，`SERVER_ROOT`绑定迁移源码 |
 
-14项对应当前在线发布的源码集合，不是所有后续发布的固定文件数；发布新增迁移等文件时，应同步核对审定清单、`preflight.sh`的必需路径集合及对应测试，不能用重复旧路径补足行数。新迁移尚未上线时保留在线版本检查，不仅因本地新增迁移就改写现网的默认revision。
+## 0048发布的源码清单与迁移阶段
+
+当前线上事实仍是0047；以下是另行获准后使用的新发布流程，不表示0048已上线。完整路径集合只维护在`preflight.sh`中；`--source-manifest`按选定源码版本输出原生SHA256清单，不连接Docker/数据库、不访问网络、不写文件，且可通过`sh -s -- --source-manifest`标准输入执行。只从审定提交的LF归档生成对照清单，不能从待核验的现场目录重算一份来替代审定输入。
+
+| 阶段 | 源码版本/清单 | 数据库期望 |
+| --- | --- | --- |
+| 先检查现网 | 默认0047、原14项、原发布目录 | 默认0047，在线镜像及旧部署配置 |
+| 新源码迁移前 | 显式0048、原14项加`0048_rag_source_chunks.py`共15项、新归档目录 | 显式0047，仍核对正在运行的旧镜像与配置 |
+| 迁移成功后 | 保持新0048源码和同一15项清单 | 显式0048，同时要求manifest表和`rag_source_chunks`表存在 |
+
+先完成默认现网预检。随后在受信任的构建端为审定的新归档生成清单，调用者只在成功时发布临时输出；将该清单作为发布材料带到批准的现场，不覆盖旧清单：
+
+```sh
+set -eu
+umask 077
+: "${NEW_RELEASE_ROOT:?set the approved new LF archive directory}"
+: "${CANDIDATE_SOURCE_MANIFEST:?set a new manifest output path}"
+NEW_DEPLOY="$NEW_RELEASE_ROOT/refactor/server-java/deploy"
+test ! -e "$CANDIDATE_SOURCE_MANIFEST"
+test ! -e "$CANDIDATE_SOURCE_MANIFEST.tmp"
+manifest_lines=$(PREFLIGHT_SOURCE_REVISION=0048_rag_source_chunks RELEASE_ROOT="$NEW_RELEASE_ROOT" \
+  sh "$NEW_DEPLOY/preflight.sh" --source-manifest)
+printf '%s\n' "$manifest_lines" > "$CANDIDATE_SOURCE_MANIFEST.tmp"
+mv "$CANDIDATE_SOURCE_MANIFEST.tmp" "$CANDIDATE_SOURCE_MANIFEST"
+```
+
+在另行批准的维护shell中，将新源码/清单与仍在线的部署配置分开绑定。`ONLINE_DEPLOY_DIR`须由现有Java Compose labels核实；这一阶段不在新包上提前展开Compose，不提前把`MF_JAVA_VERSION`或在线镜像期望改成未构建版本：
+
+```sh
+: "${NEW_RELEASE_ROOT:?set the new archive directory on this host}"
+: "${CANDIDATE_SOURCE_MANIFEST:?set the transferred approved manifest on this host}"
+: "${ONLINE_DEPLOY_DIR:?set the existing verified Java deploy directory}"
+NEW_DEPLOY="$NEW_RELEASE_ROOT/refactor/server-java/deploy"
+export RELEASE_ROOT="$NEW_RELEASE_ROOT"
+export DEPLOY_DIR="$ONLINE_DEPLOY_DIR"
+export SERVER_ROOT="$NEW_RELEASE_ROOT/refactor/server"
+export SOURCE_SHA256_MANIFEST="$CANDIDATE_SOURCE_MANIFEST"
+export PREFLIGHT_SOURCE_REVISION=0048_rag_source_chunks
+EXPECTED_ALEMBIC_REVISION=0047_rag_promoted_manifests sh "$NEW_DEPLOY/preflight.sh"
+```
+
+全部OK后才备份；备份确认后从新归档的deploy目录执行`migrate.sh current/upgrade/current`，逐步检查退出码。`upgrade head`此时明确以0048为目标。迁移成功后，用同一绑定再次检查：
+
+```sh
+EXPECTED_ALEMBIC_REVISION=0048_rag_source_chunks sh "$NEW_DEPLOY/preflight.sh"
+```
+
+迁后检查通过才按批准的版本构建并重建服务。新配置就绪后，最终预检再将`DEPLOY_DIR`、在线镜像和版本期望切换到实际部署的新值；不能只改数据库期望来绕过真实FAIL。表存在/版本检查不替代0048迁移角色、回填、RLS和closure测试。旧Python269继续停止，不据此声称已可接0048；备用须另按同源新版本构建并验证。
 
 ## 维护顺序与失败传播
 
