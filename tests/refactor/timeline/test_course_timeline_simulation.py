@@ -73,6 +73,9 @@ class HandlerRegistry:
     def register(self, name, fn, **options):
         self.methods[name] = fn
 
+    def require_session(self, session_epoch=None):
+        """Timeline handlers run with a normal active account session."""
+
 
 class _Signal:
     def __init__(self):
