@@ -82,7 +82,7 @@ def test_java_build156_reuses_complete_current_artifacts(tmp_path):
         path.write_bytes(b"ready")
     java_root = bootstrap.ROOT / "tests/refactor/server_java/java"
     for source in java_root.rglob("*.java"):
-        target = build / "test-classes" / source.relative_to(java_root).with_suffix(".class")
+        target = bootstrap._harness_class_path(source, build / "test-classes")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(b"ready")
     cp = tmp_path / "test-classpath.txt"
@@ -110,7 +110,7 @@ def test_java_build156_test_harness_timestamp_does_not_stale_production_jar(tmp_
     os.utime(jar, ns=(jar_time, jar_time))
     classes_time = newest_test_source + 2_000_000_000
     for source in sources:
-        target = build / "test-classes" / source.relative_to(java_root).with_suffix(".class")
+        target = bootstrap._harness_class_path(source, build / "test-classes")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(b"class")
         os.utime(target, ns=(classes_time, classes_time))
@@ -140,7 +140,7 @@ def test_java_build156_missing_classpath_dependency_forces_rebuild(tmp_path):
     main_class.write_bytes(b"class")
     java_root = bootstrap.ROOT / "tests/refactor/server_java/java"
     for source in java_root.rglob("*.java"):
-        target = build / "test-classes" / source.relative_to(java_root).with_suffix(".class")
+        target = bootstrap._harness_class_path(source, build / "test-classes")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(b"class")
     cp = tmp_path / "test-classpath.txt"
@@ -150,6 +150,54 @@ def test_java_build156_missing_classpath_dependency_forces_rebuild(tmp_path):
 
     assert not current
     assert "missing JARs" in reason
+
+
+def test_java_build156_uses_declared_package_and_rebuilds_stale_class(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    monkeypatch.setattr(bootstrap, "ROOT", repo)
+    source_root = repo / "tests/refactor/server_java/java"
+    packaged = source_root / "contract148/ClosureCancellation148.java"
+    packaged.parent.mkdir(parents=True)
+    packaged.write_text(
+        "package win.clannad.mentorflow.closure;\npublic final class ClosureCancellation148 {}\n",
+        encoding="utf-8",
+    )
+    default_package = source_root / "fakecases/DefaultCase.java"
+    default_package.parent.mkdir(parents=True)
+    default_package.write_text("public final class DefaultCase {}\n", encoding="utf-8")
+
+    build = tmp_path / "build"
+    jar = build / "mentorflow-server-0.1.0.jar"
+    main_class = build / "classes/win/clannad/mentorflow/ServerApplication.class"
+    packaged_class = bootstrap._harness_class_path(packaged, build / "test-classes")
+    default_class = bootstrap._harness_class_path(default_package, build / "test-classes")
+    for path in (jar, main_class, packaged_class, default_class):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"ready")
+    # A fresh class under the source tree must not hide a stale javac output.
+    wrong_tree_class = build / "test-classes/contract148/ClosureCancellation148.class"
+    wrong_tree_class.parent.mkdir(parents=True)
+    wrong_tree_class.write_bytes(b"stale-layout")
+
+    dependency = tmp_path / "fake-dependency.jar"
+    dependency.write_bytes(b"fake jar")
+    cp = tmp_path / "test-classpath.txt"
+    cp.write_text(str(dependency), encoding="utf-8")
+    stale_ns = packaged.stat().st_mtime_ns - 1_000_000_000
+    os.utime(packaged_class, ns=(stale_ns, stale_ns))
+    fresh_ns = packaged.stat().st_mtime_ns + 1_000_000_000
+    os.utime(wrong_tree_class, ns=(fresh_ns, fresh_ns))
+    pom = repo / "refactor/server-java/pom.xml"
+    pom.parent.mkdir(parents=True, exist_ok=True)
+    pom.write_text("<project/>", encoding="utf-8")
+    os.utime(cp, ns=(pom.stat().st_mtime_ns + 1_000_000_000,) * 2)
+
+    assert packaged_class == build / "test-classes/win/clannad/mentorflow/closure/ClosureCancellation148.class"
+    assert default_class == build / "test-classes/DefaultCase.class"
+    current, reason = _artifacts_current(build, cp, input_files=[])
+
+    assert not current
+    assert "ClosureCancellation148.java" in reason and "stale" in reason
 
 
 def test_java_build156_build_attempt_is_shared_once(monkeypatch):
