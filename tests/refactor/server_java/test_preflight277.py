@@ -6,14 +6,12 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import tempfile
 
 import pytest
 
 
 ROOT = Path(__file__).resolve().parents[3]
 PREFLIGHT = ROOT / "refactor" / "server-java" / "deploy" / "preflight.sh"
-TASK_TMP = Path(r"D:\MentorFlow\.local\test-tmp\deploy277")
 BASH = Path(r"C:\Program Files\Git\bin\bash.exe")
 HASH_PATHS = (
     "refactor/server-java/src/main/java/win/clannad/mentorflow/rag/RagService.java",
@@ -111,11 +109,15 @@ class PreflightFixture:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / rel, target)
         manifest_lines = []
-        for index, rel in enumerate(HASH_PATHS):
+        for rel in HASH_PATHS:
             file = self.release / rel
             manifest_lines.append(f"{hashlib.sha256(file.read_bytes()).hexdigest()}  {rel}")
         self.manifest = self.state / "source.sha256"
-        self.manifest.write_text("\n".join(manifest_lines) + "\n", encoding="utf-8", newline="\n")
+        self.write_manifest(manifest_lines)
+
+    def write_manifest(self, lines: list[str], *, separator: str = "\n", final_newline: bool = True):
+        text = separator.join(lines) + (separator if final_newline else "")
+        self.manifest.write_bytes(text.encode("ascii"))
 
     def write_deploy_env(self, values: dict[str, str]):
         (self.deploy / ".env").write_text("".join(f"{key}={value}\n" for key, value in values.items()), encoding="utf-8")
@@ -241,13 +243,8 @@ exit 41
 
 
 @pytest.fixture
-def preflight():
-    TASK_TMP.mkdir(parents=True, exist_ok=True)
-    fixture_root = Path(tempfile.mkdtemp(prefix="preflight277-", dir=TASK_TMP))
-    try:
-        yield PreflightFixture(fixture_root)
-    finally:
-        shutil.rmtree(fixture_root)
+def preflight(tmp_path):
+    return PreflightFixture(tmp_path / "preflight277")
 
 
 def test_preflight_sh_syntax_and_full_fake_docker_pass(preflight):
@@ -278,6 +275,90 @@ def test_preflight_sh_syntax_and_full_fake_docker_pass(preflight):
     assert "java_tmpfs_exec_tmpfs OK" in output
     assert " --build " not in calls and "docker build" not in calls
     assert "MF_JAVA_DEPLOY_DIR=" not in output and "postgres_migrator_password=" not in output
+
+
+def test_preflight_accepts_complete_manifest_with_crlf_and_no_final_newline(preflight):
+    lines = preflight.manifest.read_text(encoding="ascii").splitlines()
+    preflight.write_manifest(lines, separator="\r\n", final_newline=False)
+
+    result = preflight.run()
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode == 0, output
+    assert "approved_source_sha256 OK" in output
+
+
+@pytest.mark.parametrize("missing_path", HASH_PATHS)
+def test_preflight_rejects_each_missing_manifest_path(preflight, missing_path):
+    lines = preflight.manifest.read_text(encoding="ascii").splitlines()
+    preflight.write_manifest([line for line in lines if not line.endswith(missing_path)])
+
+    result = preflight.run()
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode != 0, output
+    assert "approved_source_sha256 FAIL:" in output
+
+
+@pytest.mark.parametrize("missing_path", HASH_PATHS)
+def test_preflight_rejects_each_path_replaced_by_duplicate(preflight, missing_path):
+    lines = preflight.manifest.read_text(encoding="ascii").splitlines()
+    missing_line = next(line for line in lines if line.endswith(missing_path))
+    duplicate_path = next(path for path in HASH_PATHS if path != missing_path)
+    duplicate_line = next(line for line in lines if line.endswith(duplicate_path))
+    lines.remove(missing_line)
+    lines.append(duplicate_line)
+    preflight.write_manifest(lines)
+    assert len(preflight.manifest.read_text(encoding="ascii").splitlines()) == len(HASH_PATHS)
+
+    result = preflight.run()
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode != 0, output
+    assert "approved_source_sha256 FAIL:" in output
+
+
+def test_preflight_rejects_duplicate_build_for_missing_migration_path(preflight):
+    lines = preflight.manifest.read_text(encoding="ascii").splitlines()
+    migration_path = "refactor/server-java/deploy/migration.Dockerfile"
+    build_line = next(line for line in lines if line.endswith("refactor/server-java/deploy/build.sh"))
+    lines = [line for line in lines if not line.endswith(migration_path)]
+    preflight.write_manifest([*lines, build_line])
+    assert len(preflight.manifest.read_text(encoding="ascii").splitlines()) == len(HASH_PATHS)
+
+    result = preflight.run()
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode != 0, output
+    assert "approved_source_sha256 FAIL:" in output
+
+
+@pytest.mark.parametrize("entries", ["extra", "duplicate"])
+def test_preflight_rejects_extra_or_duplicate_manifest_entry(preflight, entries):
+    lines = preflight.manifest.read_text(encoding="ascii").splitlines()
+    first_line = lines[0]
+    if entries == "extra":
+        extra_path = "refactor/server-java/deploy/unapproved.txt"
+        extra_file = preflight.release / extra_path
+        extra_file.write_text("fixture\n", encoding="ascii")
+        lines.append(f"{hashlib.sha256(extra_file.read_bytes()).hexdigest()}  {extra_path}")
+    else:
+        lines.append(first_line)
+    preflight.write_manifest(lines)
+
+    result = preflight.run()
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode != 0, output
+    assert "approved_source_sha256 FAIL:" in output
+
+
+def test_preflight_rejects_wrong_manifest_hash(preflight):
+    lines = preflight.manifest.read_text(encoding="ascii").splitlines()
+    digest, path = lines[0].split("  ", 1)
+    changed = ("0" if digest[0] != "0" else "1") + digest[1:]
+    lines[0] = f"{changed}  {path}"
+    preflight.write_manifest(lines)
+
+    result = preflight.run()
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode != 0, output
+    assert "approved_source_sha256 FAIL:" in output
 
 
 @pytest.mark.parametrize(

@@ -45,7 +45,9 @@ sudo -n sh preflight.sh
 | 公网探活 | API/健康入口是 `https://89.45.45.28` 的 `/health/live`、`/health/startup`、`/health/ready`；下载站域名不是这个vhost（221）。普通API用`/api/enterprise/auth/lifecycle/capabilities`；匿名401不代表用户登录业务通过 |
 | TLS/身份扩展 | 保留edge转发的HTTPS语义、Java信任库/Keycloak回环/mTLS。注册SPI有改动时先按该任务验证Keycloak扩展再换Java；实际Keycloak可有shell包装入口，不能只grep一个Cmd字段推断`--optimized` |
 | 主机工具/磁盘 | `sh`、Python3、Docker/Compose、curl、sha256sum、df可用；备份用PostgreSQL容器里的`pg_dump/pg_restore`，不用旧宿主机版本。备份前确认目标不存在和足够空间，权限600，不输出备份正文 |
-| 预检对照输入 | 当前`SOURCE_SHA256_MANIFEST`为`/opt/mentorflow/state/release275/source.sha256`（14项），逐项对照`RELEASE_ROOT`下的既有发布源码；新部署需用该审定发布自己的清单，不跳过校验。`EXPECTED_ALEMBIC_REVISION`、`JAVA_IMAGE`、`PYTHON_IMAGE`用于核对在线基线，不拿尚未构建的目标冒充现网；`DEPLOY_DIR`、`SERVER_ROOT`可覆盖相对位置 |
+| 预检对照输入 | 当前`SOURCE_SHA256_MANIFEST`为`/opt/mentorflow/state/release275/source.sha256`（14项），按`preflight.sh`中的完整路径集合逐项核对`RELEASE_ROOT`下的既有发布源码；每个指定路径必须恰好出现一次，缺项、重复、额外项或SHA256不符均FAIL。新部署需用该审定发布自己的清单，不跳过校验。`EXPECTED_ALEMBIC_REVISION`、`JAVA_IMAGE`、`PYTHON_IMAGE`用于核对在线基线，不拿尚未构建的目标冒充现网；`DEPLOY_DIR`、`SERVER_ROOT`可覆盖相对位置 |
+
+14项对应当前在线发布的源码集合，不是所有后续发布的固定文件数；发布新增迁移等文件时，应同步核对审定清单、`preflight.sh`的必需路径集合及对应测试，不能用重复旧路径补足行数。新迁移尚未上线时保留在线版本检查，不仅因本地新增迁移就改写现网的默认revision。
 
 ## 维护顺序与失败传播
 
