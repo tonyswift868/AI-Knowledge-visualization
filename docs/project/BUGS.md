@@ -6,8 +6,8 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
-| BUG-222 | 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败 | 322真实Java与两人真实Store/Sync核验，最终删除后可恢复，未修 | 2026-11-07 |
-| BUG-221 | 资料初次准备取消后继续再删除，原服务器准备件残留 | 322单次真实运行已观察；独立运行因平台限制未完成，未修 | 2026-11-07 |
+| BUG-222 | 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败 | 323客户端3d474281已合入，相关98项有通过证据；服务端/Java整合待验 | 2026-11-07 |
+| BUG-221 | 资料初次准备取消后继续再删除，原服务器准备件残留 | 323客户端修复已合入，owner报38项普通测试过；旧独立运行限制保留 | 2026-11-07 |
 | BUG-220 | 资料别名检索身份与出处不一致，沿用主文档页码/章节/块序号 | 321正常HTTP与独立自有输入复现，未修 | 2026-11-07 |
 | BUG-219 | Java就绪探针把空issuer数组/对象误判健康 | 323本地修复/自动回归已合入，Java执行待集中验证 | 2026-11-07 |
 | BUG-218 | 批准源码清单重复项可掩盖迁移Dockerfile漏项，预检误报通过 | 323本地修复已合入，38项离线测试通过，未部署 | 2026-11-07 |
@@ -2532,22 +2532,22 @@
 - 更新：2026-11-02
 
 ### [BUG-222] 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败
-- 状态：322已验证未修。MF01真实Java/两份生产CourseStore与CourseSync实测；MF02用不同计划独立离线复现完整接收失败和恢复。独立离线使用内存协议服务，不冒充第二次Java运行。
+- 状态：323客户端3d474281已合入，分批相关98项去重测试有通过证据（非一次全量）；服务端实现与Java整合待集中验证，尚未发布。322真实Java/两Store及独立离线证据边界不变。
 - 条件与现象：计划尚未成功发布/取得cursor身份时本地正常删除。真实Store自然生成仅含id的deleted pending记录，CourseSync先PUT为活动计划、再另发DELETE；两次提交间正常changes读取该活动行，真实接收CourseSync抛KeyError(state)、该页回滚且since未推进。
 - 根因：course/store.py的_delete收缩删除payload；sync_course.py未知删除路径552–559将同一残缺payload先按deleting=False发布，再删除。未发布有效活动计划的业务事实，被两次独立提交的通用同步流程暂时改成了活动记录；不能靠补空state或跳过接收校验掩盖。
 - 验证：MF01一次5应用HTTP/1默认actor/0直接SQL，真实Java接受rev1/seq69活动plans/{id}，第二真实接收端报错；生产者正常DELETE成rev2/seq70后pending0，接收端再次sync成功、pulled1/pending0、since70、计划不存在。全HTTP200不代表业务可消费。两Store/client关闭、正常tombstone完成，无额外清理请求。MF02独立真实Store/Sync离线样本5个内存协议请求也验证最终可恢复。证据audit322/MF01/plan-delete-java-7811c323a8a6/result.json、plan-delete-intermediate-source.md及MF02/plan-delete-independent-review.md。
 - 影响边界：已证中间状态会使一轮正常同步失败；最终删除commit后的当前行feed为tombstone，重试可恢复，不能称永久损坏、漏进度或已发生正式事故。公共Store/真实Java路径已测，未测自然UI复现率；提交持锁期间的PLAN_BUSY不是本条件。
-- 修法待讨论：比较现有bulk事务处理未知删除两步、或直接创建缺失实体tombstone的协议。已核fresh pair双成功时可隐藏中间态，但bulk按row保存点允许partial，旧create回执与当前revision可不同，第二row409不可ack；分批/413回退也不能拆pair。已半发布且cursor未知的旧行可能在先pull阶段挡publisher，恢复未实测，不能只改future pair就宣称修好旧数据。必须保留幂等/冲突/失回执语义，不丢弃未知删除/吞接收校验/保留已删正文造临时活行。详情audit322/MF01/bug222-bulk-feasibility.md；未实施。
+- 修复：选择原子tombstone新入口而非bulk拼对（bulk保存点/partial与分批可再次暴露窗口）。客户端未知删除直POST墓碑，旧backend404/405保留队列、不回退create/delete；旧半发布仅在可信身份严格匹配本地pending-delete时收CAS元数据而不物化残缺live，最终正常CAS删，其他非法live仍拒绝。pending_record主键查询避免outbox首批500遗漏。相关transport/真实Store回归与既有7文件分批去重98项有通过证据，原2个过时断言纠正后只重测相关项。Java/Python新入口合同见fix323/MF01/contracts323.md：missing+expected0在同事务创建rev1/payload{}，保留旧delete404、旧receipt算法与新intent标签；运行待MF06。没有本地删除意图的旧坏row不自动删，需另核用户数据。
 - 关联：[QA-02] [ACC-03]
 - 更新：2026-11-07
 
 ### [BUG-221] 资料初次准备取消后继续再删除，原服务器准备件残留
-- 状态：322单次真实隔离运行已观察，root已核四阶段原始JSON；MF02独立源码/合同复核支持条件链，但准备独立运行时被平台内容安全限制，尚未做第二次运行。受限目的冻结，不改写/拆分/转员工继续；当前不伪装为另一员工已独立实测，不记独立查实分，产品未修。
+- 状态：323客户端592c0145已合入；owner报告38项相关普通代码测试通过，最终回执待交，root仅做变更语法检查。322原单次事实/独立源码复核边界不变，受限独立运行目标仍冻结，不改写/拆分/转人重试，不伪装已独立实测。未发布。
 - 条件与现象：唯一逻辑资料D首次正常单块上传，收到真实200 ready回执后、业务登记前调用已有cancel。local成功digest自然未确认，远端D已ready；显式继续prepare(D)由产品生成V alias→D；真实delete_document(D)返回ok、本地资料移除，但原始GET仍有D ready1/1且无alias。
 - 根因线索：app/rag.py的_ingest_locked1654–1666与sources1303–1314把原ID已ready但本地尚未确认视为应切版本ID。后续只跟当前remote_upload_id删除V，失去同次原上传D的删除闭环。Java按现有共享内容合同删除alias保canonical；本案只有一份逻辑资料，同正文/块位置不变，和BUG-220出处映射不同。
 - 一次运行证据：MF07冻结runner以真实HTTP200回执hook触发现有public cancel，控制本地业务处理时序，不改回执/摘要/身份/服务端状态；12应用（主9/清理3）、1默认actor、0直接SQL。root读取before_resume/after_resume/after_delete/after_cleanup四JSON，先保存删除残留，再精确清理D/V并确认归零，全部本地库/线程/client关闭。证据audit322/MF07/client/evidence，run_tag20261107T114746Z-c4d0b120；源链与合同复核audit322/MF02/rag-cancel-independent-review.md。
 - 辅助与边界：业务证据后打印误把flush传给json.dumps导致exit1，finally实际清理成功；不把辅助TypeError当产品故障或整个脚本全通过。只证明此受控普通取消时点的一次行为，不证明自然频率或正式用户残留规模。embedding固定/向量BYTEA替身，只验证业务元数据，不验证真实模型/pgvector。旧原件属于测试数据，已清，不动正式资料。
-- 修法待讨论：优先比较利用现有原ID幂等/冲突合同恢复同次未确认上传、或持久化可核对的源快照/尝试归属。需一起覆盖计划sources同形分流，保护真正不同正文旧版本、另一逻辑资料共享正文及失回执重试；不能盲删canonical或所有历史版本。独立运行缺口详见.local/r322/受限记录.md，未继续该受限目标。
+- 修复：移除sources/ingest把未确认ready原ID盲换版本的两处路径，统一以已确认完整指纹认定current；显式准备时在原ID幂等重放完整快照，仅真实内容409才走既有fresh版本逻辑，保留旧内容、共享canonical及修订fence。新增3项普通代码回归，与226/263/269相关组owner报告合计38过；实际命令和最终证据待323-MF07回执补齐。独立运行缺口见.local/r322/受限记录.md，未重试原目标。
 - 关联：[QA-02] [RAG-01]
 - 更新：2026-11-07
 
