@@ -1,4 +1,6 @@
 import * as React from "react"
+import { Usage } from "./Usage"
+import { money } from "../usageMoney"
 import { useUpdates, checkUpdate, installUpdate, UpdateProgress, UpdateStatusSummary, offered as updateOffered } from "../updates/UpdateNotice"
 import {
   BellRing, BookOpenText, Bot, CheckCircle2, Clock3, Coins, GraduationCap, HeartHandshake, KeyRound, Laugh, LogOut, Palette, PlugZap, RefreshCw,
@@ -82,12 +84,10 @@ type Preset = { id: string; provider_id: string; display_name: string; base_url:
 const isRelay = (id: string) => id.startsWith("relay_")
 
 type VendorBalance = { label: string; balances: { amount: string; currency: string }[]; updated_at: string }
-type SpendCurrency = { currency: string; ready: boolean; today: string; week: string; month: string; days: { date: string; amount: string }[] }
-type Spend = { ready: boolean; observations: number; currencies: SpendCurrency[]; balance: VendorBalance | null;
+type Spend = { balance: VendorBalance | null;
   supported: boolean; query_failed?: boolean; unavailable?: boolean }
-const money = (amount: string, currency: string) => `${currency === "CNY" ? "¥" : currency === "USD" ? "$" : currency + " "}${Number(amount).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
-const spendHint = (value: Spend) => value.unavailable ? "花费记录暂时无法读取" : !value.supported ? "此预设暂不支持查询账户余额" : value.observations > 0
-  ? "刚开始记录，下次查询后显示花费" : "尚未查到余额，下次查询后开始记录"
+const spendHint = (value: Spend) => value.unavailable ? "余额记录暂时无法读取" : !value.supported
+  ? "此预设暂不支持查询账户余额" : "尚未查到厂商账户余额"
 
 function ApiBalance({ preset, reload }: { preset: Preset; reload: number }) {
   const [value, setValue] = React.useState<Spend | null>(null)
@@ -111,11 +111,12 @@ function ApiBalance({ preset, reload }: { preset: Preset; reload: number }) {
     const timer = setInterval(() => { setNow(Date.now()); void load(false) }, 30000)
     return () => { ++request.current; off(); clearInterval(timer) }
   }, [load, preset.id])
-  if (!value) return busy ? <Loading label="正在查询厂商余额与花费…"/> : <span className="small muted">暂未查到花费</span>
+  if (!value) return busy ? <Loading label="正在查询厂商账户余额…"/> : <span className="small muted">暂未查到余额</span>
   const minutes = value.balance ? Math.max(0, Math.floor((now - Date.parse(value.balance.updated_at)) / 60000)) : null
   const tooltip = value.balance ? `${value.balance.label}：${value.balance.balances.map((b) => money(b.amount, b.currency)).join(" · ")}` : "暂无余额记录"
   return <div style={{ textAlign: "right" }} title={tooltip}>
-    <div>{value.ready ? value.currencies.map((c) => c.ready ? `今天花了 ${money(c.today, c.currency)}` : `${c.currency} 刚开始记录`).join(" · ") : <span className="small muted">{spendHint(value)}</span>}</div>
+    <div>{value.balance ? value.balance.balances.map((b) => money(b.amount, b.currency)).join(" · ") : <span className="small muted">{spendHint(value)}</span>}</div>
+    {value.query_failed && <span className="small muted">查询未成功，保留上次余额</span>}
     <div className="row small muted" style={{ justifyContent: "flex-end" }}>
       <span>{minutes == null ? "" : minutes < 1 ? "更新于刚刚" : `更新于 ${minutes} 分钟前`}</span>
       <Button small busy={busy} onClick={() => setRevision((r) => r + 1)}><RefreshCw size={13} />刷新</Button>
@@ -293,8 +294,9 @@ function Models() {
       {presets.length > 0 && (
         <div className="card stack">
           <div className="row between"><h2>已保存的预设</h2><Button small onClick={() => setBalanceReload((n) => n + 1)}><RefreshCw />刷新余额</Button></div>
+          <p className="small muted">余额属于整个厂商账户，可能包括其他工具或其他 Key 的消费。</p>
           <table className="table">
-            <thead><tr><th>名称</th><th>模型</th><th>Key</th><th>今天花费</th><th /></tr></thead>
+            <thead><tr><th>名称</th><th>模型</th><th>Key</th><th>厂商账户余额</th><th /></tr></thead>
             <tbody>
               {presets.map((p) => (
                 <tr key={p.id}>
@@ -316,138 +318,6 @@ function Models() {
       )}
     </div>
   )
-}
-
-// ------------------------------------------------------------------- usage
-const PURPOSE: Record<string, string> = {
-  connection_test: "连接测试", research: "找资料", source_scoring: "资料评分", sufficiency: "需求核对", outline: "生成轮廓",
-  generate: "生成计划", teacher: "老师讲课", judge: "判定作答", question: "出题", profile: "学习档案", free_chat: "教师闲聊",
-}
-type Agg = { calls: number; failed: number; cancelled: number; in_progress: number;
-  input_tokens: number | null; cached_input_tokens: number | null; uncached_input_tokens: number | null;
-  output_tokens: number | null; search_requests: number | null; cache_hit_rate: string | null;
-  usage_complete: boolean; unknown_fields: string[]; incomplete_reasons: Record<string, number>;
-  transport_unknown_calls?: number; cancelled_unknown_calls?: number; partial_usage_calls?: number }
-
-function fmt(n: number | null | undefined) { return n == null ? "—" : n.toLocaleString("zh-CN") }
-function rate(n: string | null | undefined) { return n == null ? "—" : `${(Number(n) * 100).toFixed(1)}%` }
-const METER_NAMES: Record<string, string> = { input_tokens: "输入", cached_input_tokens: "缓存命中", uncached_input_tokens: "缓存未命中",
-  output_tokens: "输出", reasoning_tokens: "推理分项", search_requests: "搜索次数" }
-function UsageGap({ value }: { value: Agg }) {
-  const missing = new Set(value.unknown_fields ?? [])
-  for (const field of ["input_tokens", "cached_input_tokens", "uncached_input_tokens", "output_tokens", "search_requests"] as const) {
-    if (value[field] == null) missing.add(field)
-  }
-  if (value.usage_complete !== false && !missing.size) return null
-  const reasons = Object.entries(value.incomplete_reasons ?? {})
-  return <div className="sub">未完整统计：{[...missing].map((f) => METER_NAMES[f] ?? f).join("、")}。
-    {!!value.transport_unknown_calls && <span> 有 {value.transport_unknown_calls} 次调用超时或断线，用量未知（可能已计费）。</span>}
-    {!!value.cancelled_unknown_calls && <span> 有 {value.cancelled_unknown_calls} 次调用取消，用量未知（可能已计费）。</span>}
-    {!!value.partial_usage_calls && <span> {value.partial_usage_calls} 次调用已记录收到的部分用量。</span>}
-    {reasons.length ? reasons.map(([reason, count]) => <span key={reason}> {reason}（{count} 次）。</span>) : "返回数据未包含完整统计字段。"}
-    未知字段显示“—”，不会将缺失量当作零。原因计数可能重叠。
-  </div>
-}
-
-function Usage() {
-  const toast = useApp((s) => s.toast)
-  const [days, setDays] = React.useState(7)
-  const [groupBy, setGroupBy] = React.useState<"purpose" | "model" | "day">("purpose")
-  const [data, setData] = React.useState<{ total: Agg; groups: (Agg & { key: string })[] } | null>(null)
-  const [error,setError]=React.useState('')
-  const [attempt,retry]=React.useReducer(n=>n+1,0)
-  React.useEffect(() => {
-    let current = true
-    setData(null)
-    setError('')
-    call("usage.summary", { days, group_by: groupBy }).then((r: any) => { if (current) setData(r) })
-      .catch((e) => { if (current) setError(e.message) })
-    return () => { current = false }
-  }, [days, groupBy, toast,attempt])
-  const t = data?.total
-  const meters = [["模型调用（含失败）", t?.calls], ["输入 token", t?.input_tokens], ["缓存命中 token", t?.cached_input_tokens],
-    ["缓存未命中 token", t?.uncached_input_tokens], ["输出 token", t?.output_tokens], ["搜索次数", t?.search_requests]] as const
-  return (
-    <div className="stack">
-      <BalanceSpend />
-      <div className="row between">
-        <Segmented value={days} onChange={setDays} options={[{ value: 1, label: "今天" }, { value: 7, label: "近 7 天" }, { value: 30, label: "近 30 天" }]} />
-        <Segmented value={groupBy} onChange={setGroupBy} options={[{ value: "purpose", label: "按用途" }, { value: "model", label: "按模型" }, { value: "day", label: "按日期（UTC）" }]} />
-      </div>
-      <div className="grid three">
-        {meters.map(([label, value]) => <div className="card stat" key={label}><div className="label">{label}</div><div className="value">{t ? fmt(value) : "…"}</div></div>)}
-        <div className="card stat"><div className="label">缓存命中率</div><div className="value">{t ? rate(t.cache_hit_rate) : "…"}</div><div className="hint">缓存命中 ÷ 输入 token</div></div>
-      </div>
-      {t && <><p className="sub">失败 {fmt(t.failed)} 次 · 取消 {fmt(t.cancelled)} 次 · 尚未结束 {fmt(t.in_progress)} 次；均计入调用次数。</p><UsageGap value={t} /></>}
-      <div className="card" style={{ overflowX: "auto" }}>
-        {!data ? error ? <div role="alert">{error}<Button onClick={retry}>重试</Button></div> : <Loading shape="cards" label="正在读取模型用量…" resetKey={`${days}:${groupBy}:${attempt}`} onRetry={retry}/> : data.groups.length === 0 ? <p className="sub">这段时间还没有模型调用。</p> : (
-          <table className="table">
-            <thead><tr><th>{groupBy === "purpose" ? "用途" : groupBy === "model" ? "模型" : "日期（UTC）"}</th><th>次数</th><th>输入 token</th><th>缓存命中</th><th>缓存未命中</th><th>输出 token</th><th>搜索次数</th><th>命中率</th></tr></thead>
-            <tbody>{data.groups.map((g) => <React.Fragment key={String(g.key)}>
-              <tr><td><b>{groupBy === "purpose" ? PURPOSE[g.key] ?? g.key : String(g.key).replace("/", " · ")}</b></td>
-                <td>{fmt(g.calls)}</td><td>{fmt(g.input_tokens)}</td><td>{fmt(g.cached_input_tokens)}</td><td>{fmt(g.uncached_input_tokens)}</td>
-                <td>{fmt(g.output_tokens)}</td><td>{fmt(g.search_requests)}</td><td>{rate(g.cache_hit_rate)}</td></tr>
-              {!g.usage_complete && <tr><td colSpan={8}><UsageGap value={g} /></td></tr>}
-            </React.Fragment>)}</tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function BalanceSpend() {
-  const [value, setValue] = React.useState<Spend | null>(null)
-  const [preset, setPreset] = React.useState<Preset | null>(null)
-  const [busy, setBusy] = React.useState(false)
-  const [error, setError] = React.useState("")
-  const request = React.useRef(0)
-  const load = React.useCallback(async (refresh = false) => {
-    const sequence = ++request.current
-    setBusy(true)
-    try {
-      const result = await call<{ preset: Preset | null; spend: Spend | null }>("usage.spend", { refresh })
-      if (sequence === request.current) { setPreset(result.preset); setValue(result.spend); setError("") }
-    } catch { if (sequence === request.current) setError("花费暂时无法读取，请稍后刷新。") }
-    finally { if (sequence === request.current) setBusy(false) }
-  }, [])
-  React.useEffect(() => {
-    void load(true)
-    const off = on("balance_spend", () => void load())
-    // Refresh local date buckets at midnight even when no new observation arrives.
-    const timer = setInterval(() => void load(), 30000)
-    return () => { ++request.current; off(); clearInterval(timer) }
-  }, [load])
-  const currencies = value?.currencies.length ? value.currencies : [{ currency: "CNY", ready: false, today: "0", week: "0", month: "0", days: [] }]
-  return <section className="stack" aria-label="账户余额变化花费">
-    <div className="row between"><h3>花费{preset ? ` · ${preset.display_name}` : ""}</h3><Button small busy={busy} onClick={() => void load(true)}><RefreshCw />刷新花费</Button></div>
-    <Loading active={busy} label="正在查询账户余额与花费…"/>
-    {currencies.map((currency) => <React.Fragment key={currency.currency}>
-      <div className="grid three">
-        {([["今天花了", currency.today], ["本周", currency.week], ["本月", currency.month]] as const).map(([label, amount]) => <div className="card stat" key={label}>
-          <div className="label">{label}</div><div className="value">{currency.ready ? money(amount, currency.currency) : "—"}</div>
-        </div>)}
-      </div>
-      <p className="small muted">按账户余额变化计算；如果这把 Key 也在别处使用，那部分也会算进来</p>
-      {!currency.ready && (value ? <p className="sub" role="status">{spendHint(value)}</p> : busy ? null : <p className="sub">尚未选择可查询余额的模型预设</p>)}
-      {value?.query_failed && <p className="small muted" role="status">本次余额查询未成功，已保留原有记录，下次再查。</p>}
-      <div className="card" aria-label={`最近 14 天花费（${currency.currency}）`} style={{ padding: 20 }}>
-        <h3>最近 14 天</h3>
-        {currency.days.length ? <div role="list" style={{ display: "flex", gap: 6, marginTop: 16, alignItems: "flex-end", height: 152 }}>
-          {currency.days.map((day, index) => {
-            const max = Math.max(...currency.days.map((d) => Number(d.amount)), 0.0001)
-            const label = `${day.date}：${currency.ready ? money(day.amount, currency.currency) : "尚未开始统计"}`
-            return <div role="listitem" aria-label={label} title={label} key={day.date} style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
-              <div style={{ height: Math.max(2, Number(day.amount) / max * 112), background: "var(--accent)", borderRadius: "5px 5px 0 0", opacity: Number(day.amount) > 0 ? 0.85 : 0.18 }} />
-              <div className="small muted" style={{ marginTop: 6, fontSize: "0.65rem", whiteSpace: "nowrap" }}>{index % 2 === 0 || index === 13 ? day.date.slice(5) : "\u00a0"}</div>
-            </div>
-          })}
-        </div> : <p className="sub">查询余额后开始记录。</p>}
-      </div>
-    </React.Fragment>)}
-    {error && <p className="sub" role="status">{error}</p>}
-    <h3>Token 与缓存统计</h3>
-  </section>
 }
 
 // ---------------------------------------------------------------- learning
