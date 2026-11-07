@@ -12,7 +12,7 @@ import "./rag.css"
 
 type Plan = { id: string; title: string; document_ids: string[] }
 type Document = { id: string; title: string; source: string; plan_ids: string[]; origin?: "plan" | "upload"; deletion_pending?: boolean; deletion_error?: string; status: "not_uploaded" | "uploading" | "ready" | "failed"; total_chunks: number; uploaded_chunks: number; error?: string }
-type Passage = { number?: number; document_id: string; seq: number; text: string; page?: number | null; section?: string | null; title?: string; deleted?: boolean }
+type Passage = { number?: number; document_id: string; seq: number | null; text: string; page?: number | null; section?: string | null; title?: string; deleted?: boolean }
 type Message = { id: string; role: "user" | "assistant"; content: string; passages?: Passage[]; supplement?: boolean }
 type SessionSummary = { id: string; title: string; document_ids: string[]; updated_at: string; count: number }
 type Session = SessionSummary & { messages: Message[] }
@@ -1243,7 +1243,7 @@ function RagMessage({ message, onCitation, active }: { message: Message; onCitat
       {copied ? <Check size={14} /> : <Copy size={14} />}<span aria-live="polite">{copied ? "已复制" : "复制"}</span>
     </button></div>}
     {passage && <aside className="rag-passage" data-testid={`rag-source-${active}`} aria-label={`原文引用 ${active}`}>
-      <div className="rag-passage-head"><div><b>[{active}] {passage.deleted ? "资料已删除" : passage.title || "原文出处"}</b><span>{[passage.page ? `第 ${passage.page} 页` : "", passage.section || "", `原文块 ${passage.seq}`].filter(Boolean).join(" · ")}</span></div>
+      <div className="rag-passage-head"><div><b>[{active}] {passage.deleted ? "资料已删除" : passage.title || "原文出处"}</b><span>{[passage.page ? `第 ${passage.page} 页` : "", passage.section || "", typeof passage.seq === "number" ? `原文块 ${passage.seq}` : "出处未确认"].filter(Boolean).join(" · ")}</span></div>
         <button type="button" aria-label="关闭原文" onClick={() => onCitation(0)}><X size={15} /></button></div>
       <div className="rag-passage-text" data-selectable>{passage.text}</div>
     </aside>}

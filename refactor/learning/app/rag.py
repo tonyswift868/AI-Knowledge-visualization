@@ -89,6 +89,15 @@ def _upload_is_current(row):
     return bool(uploaded and uploaded == row.get("current_content_sha256"))
 
 
+def _match_source_chunk(chunks, text, source_seq=None):
+    """Use a proven logical seq, or uniquely matching complete local text."""
+    if (type(source_seq) is int and 0 <= source_seq < len(chunks)
+            and chunks[source_seq].get("text") == text):
+        return source_seq, chunks[source_seq]
+    matches = [(seq, chunk) for seq, chunk in enumerate(chunks) if chunk.get("text") == text]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _source_version_id(document_id, content_digest):
     """Immutable remote ID for a changed body; local source IDs stay stable."""
     value = hashlib.sha256(f"{document_id}\0{content_digest}".encode("utf-8")).hexdigest()
@@ -125,8 +134,25 @@ class RagTransport(SyncTransport):
                 _cancel(cancel)
                 if not 200 <= response.status_code < 300:
                     if response.status_code == 409:
-                        raise BridgeError("RAG_DOCUMENT_CONFLICT",
-                            "资料服务中已有同编号但内容不同的资料，需要安全建立新版本。")
+                        code = "RAG_DOCUMENT_CONFLICT"
+                        try:
+                            value = json.loads(raw)
+                            error = value.get("error") if isinstance(value, dict) else None
+                            server_code = error.get("code") if isinstance(error, dict) else error
+                        except (ValueError, UnicodeError):
+                            server_code = None
+                        # Only legacy content conflicts permit a new version.
+                        # Preserve newer typed conflicts, including layout-only
+                        # refusals, instead of silently uploading another body.
+                        if (isinstance(server_code, str)
+                                and re.fullmatch(r"RAG_[A-Z0-9_]{1,60}", server_code)
+                                and server_code not in {"RAG_DOCUMENT_CONFLICT", "RAG_DOCUMENT_ID_CONFLICT",
+                                    "RAG_DOCUMENT_METADATA_CONFLICT", "RAG_DOCUMENT_REPAIR_CONFLICT"}):
+                            code = server_code
+                        message = ("资料服务中已有同编号但内容不同的资料，需要安全建立新版本。"
+                                   if code == "RAG_DOCUMENT_CONFLICT" else
+                                   "资料来源信息与服务器记录冲突，原有资料已保留，请核对后重试。")
+                        raise BridgeError(code, message)
                     if response.status_code == 413:
                         raise BridgeError("RAG_HTTP_413",
                             "资料太大，服务器一次收不下，正在自动拆小重试。")
@@ -555,6 +581,8 @@ class RagService:
         self._plan_documents = {}
         self._incomplete_documents = set()
         self._remote_capabilities = set()
+        self._remote_documents_loaded = False
+        self._source_layout_complete = {}
         self._repair_verified_documents = set()
         self.scope_id = uuid.uuid4().hex
         self._jobs_lock = threading.Condition(threading.RLock())
@@ -830,7 +858,8 @@ class RagService:
                 row = snapshots[doc_id]
                 job = self._jobs.get(self._job_by_key.get(self._preparation_key(row)))
                 return job if job and (job["state"] in ("queued", "running")
-                    or job["state"] == "ready" and self._doc_view(row)["status"] == "ready") else None
+                    or job["state"] == "ready" and self._doc_view(row)["status"] == "ready"
+                    and not self._needs_source_layout(row)) else None
 
             new_count = sum(reusable(doc_id) is None for doc_id in ids)
             queued_count = sum(item["state"] == "queued" for item in self._jobs.values())
@@ -1010,19 +1039,16 @@ class RagService:
             if doc is None:
                 continue
             local_docs[doc_id] = doc
-        ready_ids = [doc_id for doc_id, doc in local_docs.items() if doc.get("status") == "ready"]
+        ready_ids = [doc_id for doc_id, doc in local_docs.items()
+                     if doc.get("status") == "ready" and _upload_is_current(doc)]
         if not ready_ids:
             return {"status": "not_ready", "passages": []}
-        canonical_to_local = {}
-        for doc_id in ready_ids:
-            canonical_id = local_docs[doc_id].get("canonical_id") or doc_id
-            canonical_to_local.setdefault(canonical_id, doc_id)
         incomplete = set(getattr(self, "_incomplete_documents", ()))
         partial = any(doc_id not in ready_ids or doc_id in incomplete
                       for doc_id in plan.get("document_ids", ()))
 
-        # Search results become citations only when their returned text exactly
-        # matches an adopted source chunk owned by this plan.
+        # Only a real adopted chunk ID can become classroom evidence. Unknown
+        # hits remain visible at this boundary without fabricating that ID.
         sources = [source for source in self.store.records("sources", plan_id)
                    if source.get("adopted") is True]
         chunks = self.store.records("source_chunks", plan_id)
@@ -1037,16 +1063,13 @@ class RagService:
             doc_id = source.get("sha256")
             if not isinstance(doc_id, str) or not re.fullmatch(r"[0-9a-f]{64}", doc_id):
                 doc_id = hashlib.sha256(body.encode("utf-8")).hexdigest()
-            for chunk in source_chunks:
+            for seq, chunk in enumerate(chunk for chunk in source_chunks
+                                        if str(chunk.get("text") or "").strip()):
                 text = str(chunk.get("text") or "")
-                if text.strip():
-                    source_chunk_ids.setdefault((doc_id, text), chunk["id"])
-        canonical_ids = list(dict.fromkeys(local_docs[doc_id].get("canonical_id") or doc_id
-                                           for doc_id in ready_ids))
+                source_chunk_ids.setdefault((doc_id, seq, text), chunk["id"])
         try:
-            result = self.transport.request_json("POST", API + "/search", payload={
-                "document_ids": canonical_ids, "query": query.strip(), "k": 8,
-            }, cancel=cancel)
+            result = self._search_documents({doc_id: local_docs[doc_id] for doc_id in ready_ids},
+                                            query.strip(), cancel)
         except BridgeError as exc:
             if exc.code == "CANCELLED":
                 raise
@@ -1055,31 +1078,24 @@ class RagService:
             _cancel(cancel)
             return {"status": "unavailable", "passages": []}
         _cancel(cancel)
-        rows = result.get("passages", []) if isinstance(result, dict) else []
-        if not isinstance(rows, list):
-            return {"status": "unavailable", "passages": []}
         passages = []
-        for row in rows:
-            if not isinstance(row, dict) or not isinstance(row.get("text"), str):
-                continue
-            doc_id = canonical_to_local.get(row.get("document_id"))
-            if doc_id not in ready_ids:
-                continue
-            chunk_id = source_chunk_ids.get((doc_id, row["text"]))
-            if chunk_id is None:
-                continue
-            doc = local_docs[doc_id]
-            passages.append({"chunk_id": chunk_id, "text": row["text"],
-                "title": doc.get("title") or row.get("title") or "资料",
-                "page": row.get("page"), "section": row.get("section"),
-                "document_id": doc_id, "seq": row.get("seq")})
-        return {"status": "partial" if partial else "ready", "passages": passages}
+        for row in result["passages"]:
+            chunk_id = (source_chunk_ids.get((row["document_id"], row["seq"], row["text"]))
+                        if row["document_id"] not in incomplete else None)
+            passages.append(dict(row, chunk_id=chunk_id))
+        partial = partial or any(row.get("source_layout_status") == "missing" for row in passages)
+        output = {"status": "partial" if partial else "ready", "passages": passages}
+        if result["source_warnings"]:
+            output["source_warnings"] = result["source_warnings"]
+        return output
 
     def _remote_documents(self, cancel=None):
         value = self.transport.request_json("GET", API + "/documents", cancel=cancel)
         capabilities = value.get("capabilities", []) if isinstance(value, dict) else []
         self._remote_capabilities = {item for item in capabilities if isinstance(item, str)} \
             if isinstance(capabilities, list) else set()
+        self._remote_documents_loaded = True
+        self._source_layout_complete = {}
         rows = value if isinstance(value, list) else value.get("documents", [])
         if not isinstance(rows, list):
             raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的资料列表无效。")
@@ -1093,12 +1109,91 @@ class RagService:
                     "uploaded_chunks": row.get("received_chunks", row.get("uploaded_chunks", 0)),
                     "total_chunks": row.get("total_chunks", 0)}
                 result[document_id] = normalized
+                if "source_layout_v1" in self._remote_capabilities:
+                    layouts = row.get("source_layouts", [])
+                    for layout in layouts if isinstance(layouts, list) else []:
+                        if (isinstance(layout, dict)
+                                and isinstance(layout.get("requested_document_id"), str)):
+                            self._source_layout_complete[layout["requested_document_id"]] = (
+                                layout.get("complete") is True)
                 aliases = row.get("aliases", [])
                 if isinstance(aliases, list):
                     for alias in aliases:
                         if isinstance(alias, str):
                             result[alias] = normalized
         return result
+
+    def _needs_source_layout(self, row):
+        target_id = row.get("remote_upload_id") or row["id"]
+        return ("source_layout_v1" in getattr(self, "_remote_capabilities", ())
+                and not getattr(self, "_source_layout_complete", {}).get(target_id, False))
+
+    def _ensure_source_layouts(self, documents, cancel=None):
+        if not getattr(self, "_remote_documents_loaded", False):
+            self._remote_documents(cancel=cancel)
+        missing = [doc_id for doc_id, row in documents.items()
+                   if self._needs_source_layout(row) and row.get("chunks")
+                   and doc_id not in self._incomplete_documents and _upload_is_current(row)]
+        if missing:
+            prepared = self.ingest(missing, cancel=cancel, _snapshots=documents)
+            failed = [row for row in prepared["documents"] if row.get("status") != "ready"]
+            if failed:
+                details = "；".join(f"{row.get('title') or '资料'}：{row.get('error') or '尚未完成'}"
+                                   for row in failed)
+                raise BridgeError("RAG_DOCUMENT_NOT_READY", f"资料来源信息准备失败。{details}")
+            documents = {doc_id: self.local.document(doc_id) or row
+                         for doc_id, row in documents.items()}
+            if any(not _upload_is_current(row) for row in documents.values()):
+                raise BridgeError("RAG_DOCUMENT_NOT_READY", "资料已更新，请重新准备当前内容。")
+        return documents
+
+    def _search_documents(self, documents, query, cancel=None):
+        """Bind hits to requested sources; canonical positions are never inferred."""
+        documents = self._ensure_source_layouts(documents, cancel)
+        requested, canonical = {}, {}
+        for doc_id, row in documents.items():
+            requested.setdefault(row.get("remote_upload_id") or doc_id, []).append(doc_id)
+            canonical.setdefault(row.get("canonical_id") or doc_id, []).append(doc_id)
+        payload = {"document_ids": list(requested), "query": query, "k": 8}
+        source_layout = "source_layout_v1" in getattr(self, "_remote_capabilities", ())
+        if source_layout:
+            payload["source_layout_v1"] = True
+        result = self.transport.request_json("POST", API + "/search", payload=payload, cancel=cancel)
+        rows = result.get("passages", []) if isinstance(result, dict) else None
+        if not isinstance(rows, list):
+            raise BridgeError("RAG_RESPONSE_INVALID", "资料检索结果无效。")
+        passages, seen = [], set()
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("text"), str):
+                continue
+            ids = requested.get(row.get("document_id"), ())
+            if not ids and not source_layout:
+                ids = canonical.get(row.get("document_id"), ())
+            for doc_id in ids:
+                doc = documents[doc_id]
+                seq, page, section = None, None, None
+                if (source_layout and row.get("source_layout_status") != "missing"
+                        and type(row.get("seq")) is int and row["seq"] >= 0):
+                    chunks = doc.get("chunks", ())
+                    match = _match_source_chunk(chunks, row["text"], row["seq"])
+                    if not chunks or match is not None and match[0] == row["seq"]:
+                        seq, page, section = row["seq"], row.get("page"), row.get("section")
+                else:
+                    match = _match_source_chunk(doc.get("chunks", ()), row["text"])
+                    if match is not None:
+                        seq, chunk = match
+                        page, section = chunk.get("page"), _section_text(chunk.get("section")) or None
+                key = (doc_id, seq, row["text"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                passage = {"document_id": doc_id, "seq": seq, "text": row["text"],
+                           "page": page, "section": section,
+                           "title": doc.get("title") or "资料"}
+                if seq is None:
+                    passage["source_layout_status"] = "missing"
+                passages.append(passage)
+        return {"passages": passages[:8], "source_warnings": result.get("source_warnings") or []}
 
     @staticmethod
     def _doc_view(row, plan_ids=(), remote=None):
@@ -1200,10 +1295,6 @@ class RagService:
             return False
         return bool(on_receipt(receipt))
 
-    @staticmethod
-    def _is_upload_capacity_error(exc):
-        return exc.code in {"RAG_CHUNK_TOO_LARGE", "RAG_REPAIR_MANIFEST_TOO_LARGE", "RAG_HTTP_413"}
-
     def _send_repair_batches(self, row, *, cancel=None, on_progress=None):
         chunks = row["chunks"]
         uploaded_digest = row.get("current_content_sha256") or _source_content_digest(chunks)
@@ -1245,6 +1336,8 @@ class RagService:
                     or type(receipt.get("repair_complete")) is not bool):
                 raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的补传状态无效。")
             received, total = receipt["received_chunks"], receipt["total_chunks"]
+            if "source_layout_v1" in self._remote_capabilities:
+                self._source_layout_complete[row["id"]] = receipt.get("source_layout_complete") is True
             self.local.set_remote_state(row["id"], row["id"], "ready", received, total)
             if receipt["repair_complete"]:
                 if received != total:
@@ -1584,6 +1677,8 @@ class RagService:
                     or status == "ready" and received != total
                     or not counts_match and not canonical_duplicate_ready):
                 raise BridgeError("RAG_RESPONSE_INVALID", "资料服务返回的准备进度与所选资料不匹配。")
+            if "source_layout_v1" in self._remote_capabilities:
+                self._source_layout_complete[target_id] = receipt.get("source_layout_complete") is True
             self.local.set_remote_state(row["id"], canonical_id, status, received, total)
             progress = self._doc_view({**row, "canonical_id": canonical_id,
                                         "canonical_total_chunks": total,
@@ -1646,7 +1741,8 @@ class RagService:
             remote_total = remote_row.get("total_chunks") if remote_row else None
             remote_uploaded = remote_row.get("uploaded_chunks") if remote_row else None
             remote_status = remote_row.get("status") if remote_row else None
-            needs_repair = bool(remote_row and remote_row.get("id") == doc_id and (
+            needs_repair = bool(target_id == doc_id and remote_row
+                and remote_row.get("id") == doc_id and (
                 remote_status == "ready" and (
                     remote_total != len(row["chunks"])
                     or type(remote_uploaded) is int and type(remote_total) is int
@@ -1659,7 +1755,7 @@ class RagService:
                     except BridgeError as exc:
                         if exc.code == "CANCELLED":
                             raise
-                        if self._is_upload_capacity_error(exc):
+                        if exc.code != "RAG_DOCUMENT_CONFLICT":
                             current = self.local.document(doc_id) or row
                             uploaded = int(current.get("uploaded_chunks", 0) or 0)
                             self.local.set_status(doc_id, "failed", uploaded, exc.message)
@@ -1711,7 +1807,8 @@ class RagService:
                 continue
             current_digest = row.get("current_content_sha256") or _source_content_digest(row["chunks"])
             verified_target = _upload_is_current(row)
-            if verified_target and self._remote_complete(remote_row, len(row["chunks"])):
+            if (verified_target and self._remote_complete(remote_row, len(row["chunks"]))
+                    and not self._needs_source_layout(row)):
                 state = remote_row
                 received = int(state.get("uploaded_chunks", len(row["chunks"])) or 0)
                 self.local.set_remote_state(doc_id, state.get("id", doc_id), "ready", received,
@@ -1916,30 +2013,9 @@ class RagService:
                not _upload_is_current(row) for row in selected):
             raise BridgeError("RAG_DOCUMENT_NOT_READY", "所选资料尚未准备好，请稍后重试。")
         _cancel(cancel)
-        search = self.transport.request_json("POST", API + "/search",
-            payload={"document_ids": list(dict.fromkeys(
-                (self.local.document(doc_id) or {}).get("canonical_id") or doc_id
-                for doc_id in session["document_ids"])), "query": question, "k": 8}, cancel=cancel)
-        rows = search.get("passages", []) if isinstance(search, dict) else []
-        if not isinstance(rows, list):
-            raise BridgeError("RAG_RESPONSE_INVALID", "资料检索结果无效。")
         local_docs = {doc_id: self.local.document(doc_id) for doc_id in session["document_ids"]}
-        canonical_to_local = {}
-        for doc_id, local_doc in local_docs.items():
-            if local_doc is not None:
-                canonical_to_local.setdefault(local_doc.get("canonical_id") or doc_id, doc_id)
-        passages = []
-        for row in rows:
-            if not isinstance(row, dict) or not isinstance(row.get("text"), str):
-                continue
-            canonical_id = row.get("document_id")
-            doc_id = canonical_to_local.get(canonical_id)
-            if doc_id is None:
-                continue
-            doc = local_docs.get(doc_id) or {}
-            passages.append({"number": len(passages) + 1, "document_id": doc_id,
-                "seq": row.get("seq"), "text": row["text"], "page": row.get("page"),
-                "section": row.get("section"), "title": doc.get("title") or row.get("title") or "资料"})
+        search = self._search_documents(local_docs, question, cancel)
+        passages = [dict(row, number=index + 1) for index, row in enumerate(search["passages"])]
         prompt_parts = []
         for passage in passages:
             location = []
@@ -1947,9 +2023,13 @@ class RagService:
                 location.append(f"第 {passage['page']} 页")
             if passage["section"]:
                 location.append(str(passage["section"]))
+            if passage["seq"] is None:
+                location.append("出处未确认")
             suffix = f"（{'；'.join(location)}）" if location else ""
             prompt_parts.append(f"[{passage['number']}]《{passage['title']}》{suffix}\n{passage['text']}")
         content = "用户问题：\n" + question + "\n\n检索到的资料段落：\n" + ("\n\n".join(prompt_parts) or "（没有检索到相关段落）")
+        if search["source_warnings"]:
+            content += "\n\n检索提示：部分命中无法确认属于所选资料，未将这些片段冒充其原文引用；资料本身仍保留。"
         # Preserve the whole conversation. The gateway owns its configured
         # context/error behavior; silently dropping older turns changes meaning.
         history = session["messages"]

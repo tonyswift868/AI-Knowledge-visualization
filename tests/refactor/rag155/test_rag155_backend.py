@@ -349,9 +349,13 @@ def test_rag155_canonical_dedup_alias_survives_restart_and_search_maps_passages(
                                      "page": 3, "section": "第一章"}]
             session = reopened.create([second_id])["session"]
             answer = reopened.send(session["id"], "正文是什么？")["session"]["messages"][-1]
-            assert fake.search_queries[-1]["document_ids"] == [canonical]
+            assert fake.search_queries[-1]["document_ids"] == [second_id]
             assert answer["passages"][0]["document_id"] == second_id
             assert answer["passages"][0]["title"] == "上传资料"
+            assert answer["passages"][0]["text"] == "同一份资料的正文。"
+            assert answer["passages"][0]["seq"] is None
+            assert answer["passages"][0]["page"] is None
+            assert "出处未确认" in gateway.calls[-1][1][-1]["content"]
             assert gateway.calls[-1][0] == "rag_qa"
         finally:
             reopened.close()
