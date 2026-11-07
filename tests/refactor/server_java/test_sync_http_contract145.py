@@ -246,10 +246,9 @@ def test_sync145_tombstone_can_create_missing_entity_without_changing_delete(syn
     assert created.json() == expected
     assert _paired(sync145_backends, "POST", path + "/tombstone",
         headers=_headers(token, "replay-tombstone145"), body=_wire_json(request), status=200).json() == expected
-    # Same request id and body do not let the old delete endpoint consume a new-intent receipt.
-    reused = _paired(sync145_backends, "POST", path + "/delete",
-        headers=_headers(token, "intent-mismatch145"), body=_wire_json(request), status=409)
-    assert reused.json()["code"] == "SYNC_IDEMPOTENCY_KEY_REUSED"
+    # The old delete still validates revision >= 1 before reading any receipt.
+    _paired(sync145_backends, "POST", path + "/delete",
+        headers=_headers(token, "intent-mismatch145"), body=_wire_json(request), status=422)
 
     existing_id = _entity_id("existing-tombstone:plan")
     existing_path = f"{BASE}/entities/learning_run/{existing_id}"
