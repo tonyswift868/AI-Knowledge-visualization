@@ -49,6 +49,8 @@ def test_classroom77_formal_handlers_date_opening_and_reopen(tmp_path,monkeypatc
         def __init__(self):self.actions={};self.event=Signal();self.closing=Signal()
         def register(self,name,fn,**kw):self.actions[name]=fn
         def push(self,*args):pass
+        # This fixture keeps one active account session throughout the handlers.
+        def require_session(self,session_epoch=None):pass
     bridge=Bridge();handlers.register(bridge,SimpleNamespace(services=e.services))
     ctx=SimpleNamespace(cancel=threading.Event(),stream=lambda text:None)
     def call(name,**params):

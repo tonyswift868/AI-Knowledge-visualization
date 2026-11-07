@@ -29,6 +29,8 @@ def test_classroom81_formal_single_teacher_call_no_grading(tmp_path, monkeypatch
         def __init__(self):self.actions={};self.event=Signal();self.closing=Signal()
         def register(self,name,fn,**kwargs):self.actions[name]=fn
         def push(self,*args):pass
+        # This fixture keeps one active account session throughout the handlers.
+        def require_session(self,session_epoch=None):pass
     bridge=Bridge();handlers.register(bridge,SimpleNamespace(services=e.services))
     ctx=SimpleNamespace(cancel=threading.Event(),stream=lambda _:None)
     def call(name,**params):
