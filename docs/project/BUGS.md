@@ -2534,11 +2534,11 @@
 - 更新：2026-11-06
 
 ### [BUG-216] 设置页取消连接测试，取消信号未到网关，请求继续并迟到报成功
-- 状态：320-MF04已本地修复并合入64e50884，4项定点通过；MF02进行独立真实设置页复核，未发布。
+- 状态：320-MF04本地修复合入64e50884，4项定点及MF02三个真实设置页独立场景通过，未发布。
 - 现象（2026-11-06）：真实Settings页测试连接期间点击取消，生产bridge.ts/QWebChannel/AppBridge的cancel已置位；gateway token没有外部事件且未取消，释放本机HTTP响应后仍成功，并弹“连接正常…15.1秒”。离开模型页也未终止底层，但新页的旧toast已被revision保护拦住。
 - 根因：app/handlers.py:259的models.test处理器接收ctx却调用gateway.test_connection()时漏传cancel=ctx.cancel；网关/传输已有取消能力，直接传事件的同路径对照可正常在响应释放前结束。不是新建取消机制的需求。
 - 实现：handlers.model_test补传cancel=ctx.cancel，复用网关/传输已有取消机制；未改桥接协议、网关或账本。厂商已报告用量继续保留，客户端取消不保证远端已发生计算退款。
-- 修复验证（320，2026-11-07）：真实AppBridge→handler→网关→provider→本机held-response HTTP/SQLite回归，在响应释放前已Bridge CANCELLED/账本MODEL_CANCELLED，放行后无迟到成功，正常对照成功；原桥接取消、短连接探测、已报告input_tokens=100保留合计4项通过。外部凭据/HTTP为合成边界，未调用付费模型；React独立复核另行记录。回执.local/receipts/320-MF04.md；68,947字节pytest残留原生删除被自动审批拒绝，未绕过。
+- 修复验证（320，2026-11-07）：真实AppBridge→handler→网关→provider→本机held-response HTTP/SQLite回归，在响应释放前已Bridge CANCELLED/账本MODEL_CANCELLED，放行后无迟到成功，正常对照成功；原桥接取消、短连接探测、已报告input_tokens=100保留合计4项通过。MF02独立真实React Settings/Loading/Toasts/QWebChannel三个场景一次通过：正常成功、点击取消、models切usage离页取消，均在响应体释放前结束且放行后无迟到成功；取消账本MODEL_CANCELLED，未报告用量unknown，正常手动10/2tokens保留。外部凭据/HTTP为合成边界，未调用付费模型；usage摘要即时刷新、真包/真人UAT未验。回执.local/receipts/320-MF04.md、320-MF02-qa.md；残留原生删除被自动审批拒绝，未绕过，人工命令留档。
 - 验证：MF04真实AppBridge+AppServices+gateway+provider+SQLite、本机合法HTTP有限3请求；MF02独立真实React Settings/Loading取消与离页、正常对照共4请求，证实相同信号断点。只替代外部付费HTTP和凭据，未花真实模型费用；候选.local/r318/candidates/MF04-001.json及独立证据.local/test-tmp/audit318/MF02/window/MF04-001-crosscheck.md。无真实厂商退款/远端停止保证。
 - 关联：[SYS-01]，与BUG-129自动检查/BUG-145余额取消不同。
 - 更新：2026-11-06
