@@ -9,8 +9,8 @@
 | BUG-222 | 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败 | 322真实Java与两人真实Store/Sync核验，最终删除后可恢复，未修 | 2026-11-07 |
 | BUG-221 | 资料初次准备取消后继续再删除，原服务器准备件残留 | 322单次真实运行已观察；独立运行因平台限制未完成，未修 | 2026-11-07 |
 | BUG-220 | 资料别名检索身份与出处不一致，沿用主文档页码/章节/块序号 | 321正常HTTP与独立自有输入复现，未修 | 2026-11-07 |
-| BUG-219 | Java就绪探针把空issuer数组/对象误判健康 | 321真实探针四步对照及独立核验通过，未修 | 2026-11-07 |
-| BUG-218 | 批准源码清单重复项可掩盖迁移Dockerfile漏项，预检误报通过 | 321发现并独立三向复现，未修 | 2026-11-07 |
+| BUG-219 | Java就绪探针把空issuer数组/对象误判健康 | 323本地修复/自动回归已合入，Java执行待集中验证 | 2026-11-07 |
+| BUG-218 | 批准源码清单重复项可掩盖迁移Dockerfile漏项，预检误报通过 | 323本地修复已合入，38项离线测试通过，未部署 | 2026-11-07 |
 | BUG-215 | 明确被挤下线后旧端仍能发起课堂工作 | 320本地修复及独立验收通过，未发布 | 2026-11-07 |
 | BUG-216 | 取消模型连接测试未到达网关 | 320本地修复及真实设置页独立验收通过，未发布 | 2026-11-07 |
 | BUG-217 | 批量导入中途失败丢失已成功项反馈 | 320本地修复及独立实操验收通过，未发布 | 2026-11-07 |
@@ -2563,22 +2563,22 @@
 - 更新：2026-11-07
 
 ### [BUG-219] Java就绪探针把空issuer数组/对象误判健康
-- 状态：321发现，MF06真实生产探针四步执行、MF03独立源码与命中证据核验通过，已查实未修；未证明正式事故。
+- 状态：321已查实；323本地修复3739780e与pytest自动回归入口f9a23415已合入，Java22例待MF06集中执行，不报已验证。未发布、未证明正式事故。
 - 现象：本地外部discovery正常→issuer=[]→issuer={}→恢复正常，GET /health/ready实际200/200/200/200；空容器也被报告KEYCLOAK_DISCOVERY_OK、required healthy。其他required仅PG且始终正常，optional email未配置不影响此结论。
 - 根因：health/DefaultHealthProbe.java:87–91调用pythonTruthy，108–114对array/object无条件true；与既有Python bool空容器false和此探针的兼容判定不同。HealthController据此汇总ready。静态issuer配置校验不验证本次discovery响应，未提前拒绝。
 - 验证：严格4个应用GET、14个控制/setup调用，generation2真实DefaultHealthProbe和Controller，四步均有新增downstream discovery mode事件，排除未读取fixture或替换健康probe；MF03独立复读源码/完整响应/事件后同意根因，未重复请求。最终恢复normal且ready200；未操作正式服务。证据.local/r321/candidates/MF05-004.md、audit321/MF06/discovery-case-results.json及MF03/health-MF05-004-independent-review.json。
-- 建议（未实施）：恢复空array/object为false、非空容器保持现有兼容语义，核同形helper调用者并补空容器回归；不借机新增完整issuer URL或安全加固机制。AdminOverviewService同形helper仅静态关联，未外推其动态影响。
+- 修复：既有pythonTruthy改为容器size>0才true，空array/object为false、非空仍兼容；22例覆盖容器/null/文本/数值并接入现有pytest发现流程，收集1项通过，执行待集中验证。不新增issuer URL校验，未改AdminOverviewService等静态关联helper。
 - 未验证：正式discovery实际是否出现异常shape、现场切流/登录影响。只查实就绪状态误报，不称账号隔离绕过或不可恢复损坏。
 - 关联：[QA-02] [ARCH-09]
 - 更新：2026-11-07
 
 ### [BUG-218] 批准源码清单重复项可掩盖迁移Dockerfile漏项，预检误报通过
-- 状态：321发现并完成独立三向复现，已查实未修；仅部署门禁完整性问题，未证明正式事故。
+- 状态：323修复2b2a403b已合入，38项离线测试通过；未部署。321已独立三向复现，仅部署门禁完整性问题，未证明正式事故。
 - 现象：批准清单按合同需覆盖14项源码；修改migration.Dockerfile但保留原清单时预检失败；保持改动，仅用重复build.sh项替代该文件的清单项并凑满14行，真实生产preflight.sh却返回approved_source_sha256 OK、PREFLIGHT_FAILURES=0。
 - 根因：refactor/server-java/deploy/preflight.sh:292–309只核14个非空行、逐行hash，以及7个核心路径各出现一次，未比较完整14路径集合；migration.Dockerfile另查存在性不能核内容。migrate.sh:55–56后续实际以该文件构建迁移工具。
 - 预期与触发：deploy/README的批准源码预检和test_preflight277.py的HASH_PATHS定义准确14路径，失败文案包括incomplete/duplicate；误填/缺项清单应明确拒绝，不能因重复其他合法行而放行漏核文件。不把任意本地文件变化泛化为线上攻击或事故。
 - 验证：MF05及root独立核验子代理分别用自有输入、既有PreflightFixture本地Docker/curl替身，执行真实生产preflight全脚本，三向结果均为完整基线exit0、目标改动原清单exit1、目标改动+重复替代清单exit0。独立执行不调用pytest/conftest、不运行真实Docker/Java/PG或网络；未改产品。证据.local/r321/candidates/MF05-003.md、.local/receipts/321-verify-MF05-003.md及对应小型fixture/log。
-- 建议（未实施）：将批准路径集合统一，校验路径属于准确集合、集合相等且每项恰一次，再沿用现有hash验证；无需新增签名/安全框架。修复待用户讨论授权。
+- 修复：补齐现有required_hash_paths为真实完整14路径，保留总数14、每项恰一次及SHA256核验，无新增解析/签名框架。完整预检入口配合离线Docker/curl stub，正常、合法CRLF/无末尾换行、逐项缺失/重复替代、额外项及错hash共38项通过（545.39秒），已通过后未重复跑。新增迁移的发布集合仍须随实际文件更新，不能把当前0047当新版已上线。
 - 未验证：正式机器清单/文件状态、实际镜像构建或迁移结果。本地替身仅模拟其他部署前置状态，不能当作线上事故证据。
 - 关联：[QA-02] [ARCH-09]
 - 更新：2026-11-07
