@@ -225,11 +225,17 @@ class AppBridge(QObject):
             code = getattr(exc, "code", None)
             message = getattr(exc, "message", None)
             fault = getattr(exc, 'model_fault', None)
-            if isinstance(code, str) and (code.startswith('MODEL_') or code == 'AGENT_FORMAT') and code != 'MODEL_CANCELLED':
-                from ..connections.faults import model_fault
-                reporter = getattr(self, 'model_error_handler', None)
-                fault = fault or (reporter(exc, handler.method, params) if callable(reporter) else model_fault(exc))
-                if fault: message = fault['message']
+            if (not context.cancel.is_set() and isinstance(code, str)
+                    and (code.startswith('MODEL_') or code == 'AGENT_FORMAT') and code != 'MODEL_CANCELLED'):
+                try:
+                    from ..connections.faults import model_fault
+                    reporter = getattr(self, 'model_error_handler', None)
+                    fault = fault or (reporter(exc, handler.method, params) if callable(reporter) else model_fault(exc))
+                    if fault: message = fault['message']
+                except Exception:
+                    # Optional presentation must not swallow the original response.
+                    fault = None
+                    log.warning('model fault presentation failed', exc_info=True)
             # PlanError deliberately keeps its text in Exception.args. Preserve
             # known auth codes even when that exception has no .message field.
             if code == 'NATIVE_SESSION_SUPERSEDED':
