@@ -2537,7 +2537,7 @@
 - 根因：course/store.py的_delete收缩删除payload；sync_course.py未知删除路径552–559将同一残缺payload先按deleting=False发布，再删除。未发布有效活动计划的业务事实，被两次独立提交的通用同步流程暂时改成了活动记录；不能靠补空state或跳过接收校验掩盖。
 - 验证：MF01一次5应用HTTP/1默认actor/0直接SQL，真实Java接受rev1/seq69活动plans/{id}，第二真实接收端报错；生产者正常DELETE成rev2/seq70后pending0，接收端再次sync成功、pulled1/pending0、since70、计划不存在。全HTTP200不代表业务可消费。两Store/client关闭、正常tombstone完成，无额外清理请求。MF02独立真实Store/Sync离线样本5个内存协议请求也验证最终可恢复。证据audit322/MF01/plan-delete-java-7811c323a8a6/result.json、plan-delete-intermediate-source.md及MF02/plan-delete-independent-review.md。
 - 影响边界：已证中间状态会使一轮正常同步失败；最终删除commit后的当前行feed为tombstone，重试可恢复，不能称永久损坏、漏进度或已发生正式事故。公共Store/真实Java路径已测，未测自然UI复现率；提交持锁期间的PLAN_BUSY不是本条件。
-- 修法待讨论：比较现有bulk事务原子处理未知删除的两步、或直接创建不存在实体tombstone的协议。必须保留幂等/冲突/失回执语义，不能按cursor未知直接丢弃删除，也不保留已删正文仅为造一个临时活行。未实施。
+- 修法待讨论：比较现有bulk事务处理未知删除两步、或直接创建缺失实体tombstone的协议。已核fresh pair双成功时可隐藏中间态，但bulk按row保存点允许partial，旧create回执与当前revision可不同，第二row409不可ack；分批/413回退也不能拆pair。已半发布且cursor未知的旧行可能在先pull阶段挡publisher，恢复未实测，不能只改future pair就宣称修好旧数据。必须保留幂等/冲突/失回执语义，不丢弃未知删除/吞接收校验/保留已删正文造临时活行。详情audit322/MF01/bug222-bulk-feasibility.md；未实施。
 - 关联：[QA-02] [ACC-03]
 - 更新：2026-11-07
 
