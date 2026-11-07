@@ -105,6 +105,9 @@ class FakeBridge:
     def push(self, name, data=None):
         self.events.append((name, data))
 
+    def require_session(self, session_epoch=None):
+        """The handler fixture keeps a normal active account session."""
+
 
 def _wire(monkeypatch, services):
     for module in (chat, rag, self_test, plan_flow, classroom, balance):
