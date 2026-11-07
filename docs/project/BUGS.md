@@ -6,6 +6,8 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-222 | 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败 | 322真实Java与两人真实Store/Sync核验，最终删除后可恢复，未修 | 2026-11-07 |
+| BUG-221 | 资料初次准备取消后继续再删除，原服务器准备件残留 | 322单次真实运行已观察；独立运行因平台限制未完成，未修 | 2026-11-07 |
 | BUG-220 | 资料别名检索身份与出处不一致，沿用主文档页码/章节/块序号 | 321正常HTTP与独立自有输入复现，未修 | 2026-11-07 |
 | BUG-219 | Java就绪探针把空issuer数组/对象误判健康 | 321真实探针四步对照及独立核验通过，未修 | 2026-11-07 |
 | BUG-218 | 批准源码清单重复项可掩盖迁移Dockerfile漏项，预检误报通过 | 321发现并独立三向复现，未修 | 2026-11-07 |
@@ -2528,6 +2530,26 @@
 - 修法（273-MF04，2026-11-02）：mf-build 和本机打包走同一个 freeze（scripts/release/sqlite_runtime.py），从 sqlite.org 下载官方 sqlite-dll-win-x64-3540100.zip，归档 SHA3-256 和解包 DLL 的 SHA256 都写死，对不上打包失败；打包环境检查和冻结冒烟都核对实际加载的是 _internal 里的 3.54.1（source_id 2026-10-16 14:45:20 555e07ef…）。验证：测试密钥真包，旧版（5863cb78 源码，加载 3.49.1）Inno 安装 → 软件内更新 → 新版加载 3.54.1，WinError 5 零次；第一次点更新遇到一次 WinError 32（ready 文件被测试自己的观察脚本轮询占着），停掉观察脚本后同一入口重试成功，没有证明是产品问题，以后演练再出现就在本条记录。用户 course、rag 库只读备份的副本：3.54.1 读写、完整性检查 ok，再用 3.49.1 读新版写过的副本、写一轮、完整性检查 ok（用户退回旧版数据还能用）。31 个相关测试通过。报告 .local/test-tmp/sqlite273/report.md。
 - 关联：[ARCH-03]
 - 更新：2026-11-02
+
+### [BUG-222] 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败
+- 状态：322已验证未修。MF01真实Java/两份生产CourseStore与CourseSync实测；MF02用不同计划独立离线复现完整接收失败和恢复。独立离线使用内存协议服务，不冒充第二次Java运行。
+- 条件与现象：计划尚未成功发布/取得cursor身份时本地正常删除。真实Store自然生成仅含id的deleted pending记录，CourseSync先PUT为活动计划、再另发DELETE；两次提交间正常changes读取该活动行，真实接收CourseSync抛KeyError(state)、该页回滚且since未推进。
+- 根因：course/store.py的_delete收缩删除payload；sync_course.py未知删除路径552–559将同一残缺payload先按deleting=False发布，再删除。未发布有效活动计划的业务事实，被两次独立提交的通用同步流程暂时改成了活动记录；不能靠补空state或跳过接收校验掩盖。
+- 验证：MF01一次5应用HTTP/1默认actor/0直接SQL，真实Java接受rev1/seq69活动plans/{id}，第二真实接收端报错；生产者正常DELETE成rev2/seq70后pending0，接收端再次sync成功、pulled1/pending0、since70、计划不存在。全HTTP200不代表业务可消费。两Store/client关闭、正常tombstone完成，无额外清理请求。MF02独立真实Store/Sync离线样本5个内存协议请求也验证最终可恢复。证据audit322/MF01/plan-delete-java-7811c323a8a6/result.json、plan-delete-intermediate-source.md及MF02/plan-delete-independent-review.md。
+- 影响边界：已证中间状态会使一轮正常同步失败；最终删除commit后的当前行feed为tombstone，重试可恢复，不能称永久损坏、漏进度或已发生正式事故。公共Store/真实Java路径已测，未测自然UI复现率；提交持锁期间的PLAN_BUSY不是本条件。
+- 修法待讨论：比较现有bulk事务原子处理未知删除的两步、或直接创建不存在实体tombstone的协议。必须保留幂等/冲突/失回执语义，不能按cursor未知直接丢弃删除，也不保留已删正文仅为造一个临时活行。未实施。
+- 关联：[QA-02] [ACC-03]
+- 更新：2026-11-07
+
+### [BUG-221] 资料初次准备取消后继续再删除，原服务器准备件残留
+- 状态：322单次真实隔离运行已观察，root已核四阶段原始JSON；MF02独立源码/合同复核支持条件链，但准备独立运行时被平台内容安全限制，尚未做第二次运行。受限目的冻结，不改写/拆分/转员工继续；当前不伪装为另一员工已独立实测，不记独立查实分，产品未修。
+- 条件与现象：唯一逻辑资料D首次正常单块上传，收到真实200 ready回执后、业务登记前调用已有cancel。local成功digest自然未确认，远端D已ready；显式继续prepare(D)由产品生成V alias→D；真实delete_document(D)返回ok、本地资料移除，但原始GET仍有D ready1/1且无alias。
+- 根因线索：app/rag.py的_ingest_locked1654–1666与sources1303–1314把原ID已ready但本地尚未确认视为应切版本ID。后续只跟当前remote_upload_id删除V，失去同次原上传D的删除闭环。Java按现有共享内容合同删除alias保canonical；本案只有一份逻辑资料，同正文/块位置不变，和BUG-220出处映射不同。
+- 一次运行证据：MF07冻结runner以真实HTTP200回执hook触发现有public cancel，控制本地业务处理时序，不改回执/摘要/身份/服务端状态；12应用（主9/清理3）、1默认actor、0直接SQL。root读取before_resume/after_resume/after_delete/after_cleanup四JSON，先保存删除残留，再精确清理D/V并确认归零，全部本地库/线程/client关闭。证据audit322/MF07/client/evidence，run_tag20261107T114746Z-c4d0b120；源链与合同复核audit322/MF02/rag-cancel-independent-review.md。
+- 辅助与边界：业务证据后打印误把flush传给json.dumps导致exit1，finally实际清理成功；不把辅助TypeError当产品故障或整个脚本全通过。只证明此受控普通取消时点的一次行为，不证明自然频率或正式用户残留规模。embedding固定/向量BYTEA替身，只验证业务元数据，不验证真实模型/pgvector。旧原件属于测试数据，已清，不动正式资料。
+- 修法待讨论：优先比较利用现有原ID幂等/冲突合同恢复同次未确认上传、或持久化可核对的源快照/尝试归属。需一起覆盖计划sources同形分流，保护真正不同正文旧版本、另一逻辑资料共享正文及失回执重试；不能盲删canonical或所有历史版本。独立运行缺口详见.local/r322/受限记录.md，未继续该受限目标。
+- 关联：[QA-02] [RAG-01]
+- 更新：2026-11-07
 
 ### [BUG-220] 资料别名检索身份与出处不一致，沿用主文档页码/章节/块序号
 - 状态：321正常接口实测和独立自有输入复现已查实，未修；未发现跨账号读取或正文丢失。
