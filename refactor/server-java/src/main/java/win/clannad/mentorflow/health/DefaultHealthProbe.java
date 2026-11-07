@@ -110,8 +110,8 @@ public final class DefaultHealthProbe implements HealthProbe {
         if (value.isBoolean()) return value.booleanValue();
         if (value.isNumber()) return value.decimalValue().signum() != 0;
         if (value.isTextual()) return !value.textValue().isEmpty();
-        // Python treats even empty lists and dictionaries as true.
-        return value.isArray() || value.isObject();
+        // Python containers are truthy only when non-empty.
+        return (value.isArray() || value.isObject()) && value.size() > 0;
     }
     private String text(String key) { return env.getProperty(key, "").trim(); }
     private static long elapsedMs(long start) { return Math.max(0, (System.nanoTime() - start) / 1_000_000); }
