@@ -2524,15 +2524,16 @@
 - 更新：2026-11-02
 
 ### [BUG-215] 已明确被另一设备挤下线，旧端仍能发送新的课堂请求
-- 状态：320本地修复已合入；原新增7项/相关65项及三项合入组合18项通过。独立审查丢回执缺口已由d2bae60c补修合入18fae1cd，新增5/去重21项通过，MF04限定复验中，未发布。
+- 状态：320本地修复及独立验收通过；最终产品源码18fae1cd，尚未发布。原65项、合入18项、补修21项分批通过；MF04独立原探针及最终6项通过，已关闭本次审查发现的回执缺口。
 - 现象（2026-11-06）：2.0.45对应源码92826b46，第二次登录后旧端SessionGuard/WindowSync已为superseded并显示异地登录提示；旧端仍从完整生产React课堂输入框点击发送，模型边界调用1→2、课堂messages 0→2、本地待同步1→3，状态持续superseded。
 - 预期：[ACC-01]要求新设备登录挤下旧设备后立即停止上课，未上传进度保留；这与[SYS-08]普通网络故障允许离线学习不同。
 - 根因：app/sync.py的失效处理只停止guard、取消当时已有bridge请求并通知窗口，没有阻止后续新业务调用。AppBridge/handlers仍能取得原AppServices，Classroom没有消费这个已知失效状态；完整LearningWindow没有补上该保护。服务器确实拒绝旧会话，问题在客户端已知拒绝后的业务状态接线。
 - 实现：Bridge现有会话代次锁存明确reauth/superseded拒绝原因，共用services入口拒绝后续业务、verify入口保留；WindowSync/AppServices挂起学习，Classroom入口/预取/位置保存校验，取消的旧上下文在恢复后仍不能回写。共享PlanFlow队列加会话挂起标记，取消在途与tail，不把它记为用户stopped或普通取消自动重排；持久pending保留，明确重新认证后用原恢复入口恢复一次，正常刷新不重复恢复。保留原队列guard与plan/store锁边界；普通retrying/offline不触发挂起。
 - 修复验证（320，2026-11-07）：新增7项及相关58项去重65项通过。真实LearningWindow/AppBridge/handlers/Classroom/SQLite验证明确失效后新模型/消息/位置/outbox不增长、旧pending保留、verify可达、认证恢复、旧教师迟到不回写、503离线及健康token刷新不误伤；真实PlanFlow队列验证inflight/tail不重排、不写stopped、恢复一次及持续挂起pending不变。受影响初始化/锁顺序问题在交付前修正，仅重测关联用例。凭据/HTTP/模型为受控边界，不重建Java/PG；未跑全量/正式整包/真人UAT。回执.local/receipts/320-MF01.md。测试根及误写两份pytest缓存共18,496,723字节删除被自动审批拒绝，交统一清理收尾，未绕过。
 - 验证：MF01真实NativeCredentialClient→Java/JDBC/隔离PG第二登录；MF03独立完整LearningWindow+React+QWebChannel+真实Classroom/SQLite证实。身份商和付费模型分别为本地合法替身，未动正式账号/数据。证据.local/r318/candidates/MF01-001.md、.local/receipts/318-MF03-repro-MF01-001.md；同次SQLite只读证据确认提问和回答落盘，不以辅助草稿ok充当课堂响应。重登/普通断网对照本轮未重跑，需修复验证。
+- 审查补修：独立MF04真实models.list配置读取交错发现，挂起后原模型错误的可选展示器再进services门禁而抛二次异常，pending已移除却没有response。d2bae60c补丁合入18fae1cd：已取消跳过展示，展示器及文案读取异常局部保护，保留原code/message继续原回执；不解除业务门禁。新增5及既有16去重21项通过。MF04从原探针独立复验，Future无异常、仅一次CANCELLED、pending=0、不污染恢复epoch；合入后错误回执与216取消6项一次通过。回执.local/receipts/320-MF01-followup.md、320-MF04-session-review.md、320-MF04-final.md。
 - 关联：[ACC-01] [SYS-08]；与BUG-185/130机制不同。
-- 更新：2026-11-06
+- 更新：2026-11-07
 
 ### [BUG-216] 设置页取消连接测试，取消信号未到网关，请求继续并迟到报成功
 - 状态：320-MF04本地修复合入64e50884，4项定点及MF02三个真实设置页独立场景通过，未发布。
@@ -2542,7 +2543,7 @@
 - 修复验证（320，2026-11-07）：真实AppBridge→handler→网关→provider→本机held-response HTTP/SQLite回归，在响应释放前已Bridge CANCELLED/账本MODEL_CANCELLED，放行后无迟到成功，正常对照成功；原桥接取消、短连接探测、已报告input_tokens=100保留合计4项通过。MF02独立真实React Settings/Loading/Toasts/QWebChannel三个场景一次通过：正常成功、点击取消、models切usage离页取消，均在响应体释放前结束且放行后无迟到成功；取消账本MODEL_CANCELLED，未报告用量unknown，正常手动10/2tokens保留。外部凭据/HTTP为合成边界，未调用付费模型；usage摘要即时刷新、真包/真人UAT未验。回执.local/receipts/320-MF04.md、320-MF02-qa.md；残留原生删除被自动审批拒绝，未绕过，人工命令留档。
 - 验证：MF04真实AppBridge+AppServices+gateway+provider+SQLite、本机合法HTTP有限3请求；MF02独立真实React Settings/Loading取消与离页、正常对照共4请求，证实相同信号断点。只替代外部付费HTTP和凭据，未花真实模型费用；候选.local/r318/candidates/MF04-001.json及独立证据.local/test-tmp/audit318/MF02/window/MF04-001-crosscheck.md。无真实厂商退款/远端停止保证。
 - 关联：[SYS-01]，与BUG-129自动检查/BUG-145余额取消不同。
-- 更新：2026-11-06
+- 更新：2026-11-07
 
 ### [BUG-217] 资料问答批量上传中途失败，已入库的成功项没有反馈到页面或会话
 - 状态：320-MF07本地修复合入d04ef1ba，12项相关检查及MF03独立真实页面/SQLite一致性验收通过，未发布。
@@ -2553,7 +2554,7 @@
 - 修复验证（320，2026-11-07）：9项后端、1项真实React/QWebChannel/解析/SQLite及2项既有相关导入竞态，共12项通过；最终账号旧错误提示保护后仅重测受影响浏览器1项通过。覆盖混合有效/空白/有效、全有效、首份失败、重试、全局失败前缀、原会话/切会话和账号切换。MF03独立自有混合批次/重试，成功2份库/UI/原会话一致且ready，失败文件名/原因可读；退出后mode=ro核SQLite，重试资料ID/分块数/会话数不增长，后端与前端分别审查无具体缺陷。外部HTTP/模型/选择器为本地替身；未跑全量或真包/真人UAT。回执.local/receipts/320-MF07.md、320-MF03-qa.md；两轮测试残留删除被自动审批拒绝，证据保留，不声称已清理。
 - 验证：MF07真实React→QWebChannel→桥接→解析→SQLite；MF01用自己的文件/数据库独立复现混合批次、刷新/重开和全有效对照。文件选择器/远端HTTP/模型为有限本地替身，真实Toasts接收EMPTY错误但不以截图断言可读性。证据.local/r318/candidates/MF07-002.json、.local/receipts/318-MF01-repro-MF07-002.md；未用正式用户文件/服务。
 - 关联：[RAG-01]；与BUG-176远端分块不完整不同根因。
-- 更新：2026-11-06
+- 更新：2026-11-07
 
 ### [BUG-214] 久未打开软件，再次打开把跨日厂商账户余额下降全部显示为“今天花了”
 - 状态：已随2.0.45正式发布（317，2026-11-06），本地相关/独立/全套/真包及公网验收通过，待用户更新亲测，未宣称真人UAT已通过。
