@@ -59,10 +59,10 @@
 | --- | --- | --- | --- |
 | MF-01 | 服务端 | 320-MF01进行中：BUG-215客户端会话门禁 | server |
 | MF-02 | 客户端 | 320-MF02-qa进行中：BUG-216真实设置页独立验证 | client |
-| MF-03 | 课堂 | 320-MF03-qa进行中：BUG-217独立页面/SQLite一致性验收 | classroom |
+| MF-03 | 课堂 | 320-MF03-qa完成：真实混合导入/重试/页面/SQLite一致，未改产品 | classroom |
 | MF-04 | 运行时 | 320-MF04完成：708407ea合入64e50884，4项定点通过；待独立UI核验 | runtime |
-| MF-05 | 发版 | 320-MF05补误建技能内容变更保护；缓存主脚本已交人工命令，未实际删除 | platform |
-| MF-06 | 工具 | 320-MF06-cleanup-review进行中：最终清理脚本只读复核 | tools |
+| MF-05 | 发版 | 320-MF05补祖先/内容变更保护；旧人工命令已撤回，待更新版复核 | platform |
+| MF-06 | 工具 | 320-MF06-cleanup-review完成：三处守卫需修；未核准旧Execute | tools |
 | MF-07 | 资料 | 320-MF07完成：ef7e63ff合入d04ef1ba，12项相关通过；待独立验收 | library |
 
 ## 待派队列
