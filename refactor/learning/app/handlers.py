@@ -256,7 +256,7 @@ def register(bridge, window):
 
     def model_test(params, ctx):
         started = monotonic.monotonic()
-        result = services().gateway.test_connection()
+        result = services().gateway.test_connection(cancel=ctx.cancel)
         return {"ok": True, "latency_ms": int((monotonic.monotonic() - started) * 1000),
                 "model": getattr(result, "model", ""), "reply": (getattr(result, "text", "") or "")[:80]}
 
