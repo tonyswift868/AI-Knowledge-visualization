@@ -83,6 +83,12 @@ def _source_content_digest(chunks):
     return hashlib.sha256(_json(normalized).encode("utf-8")).hexdigest()
 
 
+def _upload_is_current(row):
+    """Only a confirmed full snapshot certifies this source's current content."""
+    uploaded = row.get("uploaded_content_sha256") or ""
+    return bool(uploaded and uploaded == row.get("current_content_sha256"))
+
+
 def _source_version_id(document_id, content_digest):
     """Immutable remote ID for a changed body; local source IDs stay stable."""
     value = hashlib.sha256(f"{document_id}\0{content_digest}".encode("utf-8")).hexdigest()
@@ -1101,8 +1107,7 @@ class RagService:
         uploaded = int(row.get("uploaded_chunks", 0))
         status = row.get("status", "not_uploaded")
         current_digest = row.get("current_content_sha256") or ""
-        uploaded_digest = row.get("uploaded_content_sha256") or ""
-        if (current_digest and uploaded_digest != current_digest
+        if (current_digest and not _upload_is_current(row)
                 and status not in {"uploading", "failed"}):
             # A previous remote version may remain available for rollback or
             # shared canonical references, but it is not the current document.
@@ -1297,22 +1302,9 @@ class RagService:
             server_status = {"state": "unavailable", "message": str(exc)}
         if server_status["state"] == "ready":
             self._reconcile_pending_deletions(remote)
-        # A ready remote row at the original source ID is not proof that its
-        # body matches this device's extracted content. This also handles a
-        # newly created local RAG database with an older server-side document.
-        for doc_id, row in current.items():
-            state = remote.get(doc_id)
-            saved = self.local.document(doc_id) or row
-            total = len(row.get("chunks", ()))
-            if (state and self._remote_complete(state, total) and state.get("total_chunks") == total
-                    and (saved.get("uploaded_content_sha256") or "")
-                        != (saved.get("current_content_sha256") or "")
-                    and (saved.get("remote_upload_id") or doc_id) == doc_id):
-                version_id = _source_version_id(doc_id, saved.get("current_content_sha256") or
-                                                _source_content_digest(row.get("chunks", ())))
-                self.local.set_remote_upload_id(doc_id, version_id)
         # Listing/reopening never starts preparation. Any incomplete or changed
-        # source remains visible; explicit prepare/send owns repair scheduling.
+        # source remains visible. An unconfirmed ready ID is replayed by the
+        # next explicit prepare; listing alone cannot prove a content conflict.
         for doc_id, row in list(all_local.items()):
             saved_row = self.local.document(doc_id)
             if saved_row is None:
@@ -1321,8 +1313,7 @@ class RagService:
                 continue
             row = saved_row
             canonical_id = row.get("canonical_id") or doc_id
-            content_current = ((row.get("current_content_sha256") or "")
-                               == (row.get("uploaded_content_sha256") or ""))
+            content_current = _upload_is_current(row)
             lookup_id = row.get("remote_upload_id") or doc_id
             remote_row = (remote.get(lookup_id) or remote.get(canonical_id)) if content_current else None
             if remote_row:
@@ -1342,8 +1333,7 @@ class RagService:
         for doc_id, row in all_local.items():
             if row is None:
                 continue
-            is_current = ((row.get("current_content_sha256") or "")
-                          == (row.get("uploaded_content_sha256") or ""))
+            is_current = _upload_is_current(row)
             remote_row = (remote.get(row.get("remote_upload_id") or doc_id)
                           if is_current else None)
             docs.append(self._doc_view(row, plan_refs.get(doc_id, ()), remote_row))
@@ -1653,17 +1643,6 @@ class RagService:
             row = (snapshots or {}).get(doc_id) or self._document_chunks(doc_id)
             target_id = row.get("remote_upload_id") or doc_id
             remote_row = remote.get(target_id)
-            if (remote_row and remote_row.get("id") == doc_id
-                    and self._remote_complete(remote_row, len(row["chunks"]))
-                    and remote_row.get("total_chunks") == len(row["chunks"])
-                    and (row.get("uploaded_content_sha256") or "")
-                        != (row.get("current_content_sha256") or "")
-                    and target_id == doc_id):
-                target_id = _source_version_id(doc_id, row.get("current_content_sha256") or
-                                               _source_content_digest(row["chunks"]))
-                self.local.set_remote_upload_id(doc_id, target_id)
-                row = self.local.document(doc_id)
-                remote_row = remote.get(target_id)
             remote_total = remote_row.get("total_chunks") if remote_row else None
             remote_uploaded = remote_row.get("uploaded_chunks") if remote_row else None
             remote_status = remote_row.get("status") if remote_row else None
@@ -1731,8 +1710,7 @@ class RagService:
                     on_progress(view)
                 continue
             current_digest = row.get("current_content_sha256") or _source_content_digest(row["chunks"])
-            uploaded_digest = row.get("uploaded_content_sha256") or ""
-            verified_target = bool(uploaded_digest and uploaded_digest == current_digest)
+            verified_target = _upload_is_current(row)
             if verified_target and self._remote_complete(remote_row, len(row["chunks"])):
                 state = remote_row
                 received = int(state.get("uploaded_chunks", len(row["chunks"])) or 0)
@@ -1759,9 +1737,9 @@ class RagService:
                     raise
                 current = self.local.document(doc_id) or row
                 if exc.code == "RAG_DOCUMENT_CONFLICT":
-                    # Even a deterministic version ID is not accepted as
-                    # evidence on its own. If it was already occupied by a
-                    # different body, keep it and retry under a fresh ID.
+                    # Replaying the full snapshot is the content check, even
+                    # for a ready original ID. Keep a conflicting body and
+                    # retry under a fresh immutable ID.
                     fresh_id = _fresh_source_version_id(doc_id,
                         current.get("current_content_sha256") or _source_content_digest(current["chunks"]))
                     self.local.set_remote_upload_id(doc_id, fresh_id)
@@ -1920,8 +1898,7 @@ class RagService:
         selected = [self.local.document(doc_id) for doc_id in session["document_ids"]]
         needs_preparation = any(
             row is None or row.get("status") != "ready" or
-            (row.get("uploaded_content_sha256") or "") !=
-            (row.get("current_content_sha256") or "") for row in selected)
+            not _upload_is_current(row) for row in selected)
         if needs_preparation:
             _cancel(cancel)
             refreshed = self.wait_preparation(session["document_ids"], cancel=cancel,
@@ -1936,8 +1913,7 @@ class RagService:
             session = self.local.get_session(session_id)
         selected = [self.local.document(doc_id) for doc_id in session["document_ids"]]
         if any(row is None or row.get("status") != "ready" or
-               (row.get("uploaded_content_sha256") or "") !=
-               (row.get("current_content_sha256") or "") for row in selected):
+               not _upload_is_current(row) for row in selected):
             raise BridgeError("RAG_DOCUMENT_NOT_READY", "所选资料尚未准备好，请稍后重试。")
         _cancel(cancel)
         search = self.transport.request_json("POST", API + "/search",
