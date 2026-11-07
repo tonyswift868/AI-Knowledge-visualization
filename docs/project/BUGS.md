@@ -6,10 +6,10 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
-| BUG-222 | 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败 | 323客户端3d474281已合入，相关98项有通过证据；服务端/Java整合待验 | 2026-11-07 |
+| BUG-222 | 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败 | 323本地修复；客户端98项有通过证据，Java/Python同步42过，未部署 | 2026-11-07 |
 | BUG-221 | 资料初次准备取消后继续再删除，原服务器准备件残留 | 323客户端修复已合入，owner报38项普通测试过；旧独立运行限制保留 | 2026-11-07 |
-| BUG-220 | 资料别名检索身份与出处不一致，沿用主文档页码/章节/块序号 | 323跨端来源布局/0048迁移实现中，尚未报验证完成 | 2026-11-07 |
-| BUG-219 | Java就绪探针把空issuer数组/对象误判健康 | 323本地修复/自动回归已合入，Java执行待集中验证 | 2026-11-07 |
+| BUG-220 | 资料别名检索身份与出处不一致，沿用主文档页码/章节/块序号 | 323跨端核心/真实PG迁移过、客户端73相关过；真实用户四表投影通过，原生向量未测 | 2026-11-07 |
+| BUG-219 | Java就绪探针把空issuer数组/对象误判健康 | 323本地修复、Java22例实际通过，未发布 | 2026-11-07 |
 | BUG-218 | 批准源码清单重复项可掩盖迁移Dockerfile漏项，预检误报通过 | 323本地修复已合入，38项离线测试通过，未部署 | 2026-11-07 |
 | BUG-215 | 明确被挤下线后旧端仍能发起课堂工作 | 320本地修复及独立验收通过，未发布 | 2026-11-07 |
 | BUG-216 | 取消模型连接测试未到达网关 | 320本地修复及真实设置页独立验收通过，未发布 | 2026-11-07 |
@@ -2532,7 +2532,7 @@
 - 更新：2026-11-02
 
 ### [BUG-222] 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败
-- 状态：323客户端3d474281已合入，分批相关98项去重测试有通过证据（非一次全量）；服务端实现与Java整合待集中验证，尚未发布。322真实Java/两Store及独立离线证据边界不变。
+- 状态：323客户端3d474281与服务端4e841b8d已合入；客户端分批98项有通过证据，真实Java/Python同步42项通过，尚未发布。322真实Java/两Store及独立离线证据边界不变。
 - 条件与现象：计划尚未成功发布/取得cursor身份时本地正常删除。真实Store自然生成仅含id的deleted pending记录，CourseSync先PUT为活动计划、再另发DELETE；两次提交间正常changes读取该活动行，真实接收CourseSync抛KeyError(state)、该页回滚且since未推进。
 - 根因：course/store.py的_delete收缩删除payload；sync_course.py未知删除路径552–559将同一残缺payload先按deleting=False发布，再删除。未发布有效活动计划的业务事实，被两次独立提交的通用同步流程暂时改成了活动记录；不能靠补空state或跳过接收校验掩盖。
 - 验证：MF01一次5应用HTTP/1默认actor/0直接SQL，真实Java接受rev1/seq69活动plans/{id}，第二真实接收端报错；生产者正常DELETE成rev2/seq70后pending0，接收端再次sync成功、pulled1/pending0、since70、计划不存在。全HTTP200不代表业务可消费。两Store/client关闭、正常tombstone完成，无额外清理请求。MF02独立真实Store/Sync离线样本5个内存协议请求也验证最终可恢复。证据audit322/MF01/plan-delete-java-7811c323a8a6/result.json、plan-delete-intermediate-source.md及MF02/plan-delete-independent-review.md。
@@ -2552,7 +2552,7 @@
 - 更新：2026-11-07
 
 ### [BUG-220] 资料别名检索身份与出处不一致，沿用主文档页码/章节/块序号
-- 状态：321已查实；323跨端来源布局、0048迁移和新旧协议实现中，未报验证完成。未发现跨账号读取或正文丢失，未部署。
+- 状态：323跨端修复已合入并通过核心验证：真实Java/PG来源投影/迁移/闭包相关通过，客户端73个不同相关用例有通过证据；真实用户四表投影复制迁移通过。未部署，完整原生pgvector/索引/整库恢复未验证，未声称旧未知位置自动还原。
 - 现象：同正文A分2块且页1/2、章节A，B分1块且页88、章节B；B正常去重为别名后，只选B检索返回document_id=B，却仍是A的页码、章节和seq0/1。删除A提升B、重传B正常显示1/1后仍错。
 - 预期/可达性：[RAG-01]及server-java/RAG_API.md要求选中资料及数据库原文出处相符，内容摘要明确忽略块边界/页码等元数据；真实客户端按抽取结果提交seq/text/page/section。因此不同分块/位置的相同正文为正常入口，不是伪造摘要或异常请求。
 - 根因：RagService.uploadBatch约231–245按正文摘要合并，alias仅保留数量/seq文本摘要，未保存B原始位置映射；search约378–384只重写逻辑document_id，仍用canonical passage的位置。删除提升移动原canonical块，后续重传/别名manifest不能还原已丢的位置。
@@ -2563,11 +2563,11 @@
 - 更新：2026-11-07
 
 ### [BUG-219] Java就绪探针把空issuer数组/对象误判健康
-- 状态：321已查实；323本地修复3739780e与pytest自动回归入口f9a23415已合入，Java22例待MF06集中执行，不报已验证。未发布、未证明正式事故。
+- 状态：323修复3739780e与pytest自动入口f9a23415已合入，MF06集中实际执行Java22例通过。未发布、未证明正式事故。
 - 现象：本地外部discovery正常→issuer=[]→issuer={}→恢复正常，GET /health/ready实际200/200/200/200；空容器也被报告KEYCLOAK_DISCOVERY_OK、required healthy。其他required仅PG且始终正常，optional email未配置不影响此结论。
 - 根因：health/DefaultHealthProbe.java:87–91调用pythonTruthy，108–114对array/object无条件true；与既有Python bool空容器false和此探针的兼容判定不同。HealthController据此汇总ready。静态issuer配置校验不验证本次discovery响应，未提前拒绝。
 - 验证：严格4个应用GET、14个控制/setup调用，generation2真实DefaultHealthProbe和Controller，四步均有新增downstream discovery mode事件，排除未读取fixture或替换健康probe；MF03独立复读源码/完整响应/事件后同意根因，未重复请求。最终恢复normal且ready200；未操作正式服务。证据.local/r321/candidates/MF05-004.md、audit321/MF06/discovery-case-results.json及MF03/health-MF05-004-independent-review.json。
-- 修复：既有pythonTruthy改为容器size>0才true，空array/object为false、非空仍兼容；22例覆盖容器/null/文本/数值并接入现有pytest发现流程，收集1项通过，执行待集中验证。不新增issuer URL校验，未改AdminOverviewService等静态关联helper。
+- 修复：既有pythonTruthy改为容器size>0才true，空array/object为false、非空仍兼容；容器/null/文本/数值等22例经现有pytest入口实际通过。不新增issuer URL校验，未改AdminOverviewService等静态关联helper。
 - 未验证：正式discovery实际是否出现异常shape、现场切流/登录影响。只查实就绪状态误报，不称账号隔离绕过或不可恢复损坏。
 - 关联：[QA-02] [ARCH-09]
 - 更新：2026-11-07
