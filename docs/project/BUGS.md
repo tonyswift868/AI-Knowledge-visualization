@@ -2524,11 +2524,12 @@
 - 更新：2026-11-02
 
 ### [BUG-215] 已明确被另一设备挤下线，旧端仍能发送新的课堂请求
-- 状态：318独立复现已证实；用户2026-11-07授权修复，320-MF01进行中，尚未修复验收或发布。
+- 状态：320-MF01本地修复合入de03890c，新增7项/相关去重65项通过；独立代码审查与合入组合验收收尾中，未发布。
 - 现象（2026-11-06）：2.0.45对应源码92826b46，第二次登录后旧端SessionGuard/WindowSync已为superseded并显示异地登录提示；旧端仍从完整生产React课堂输入框点击发送，模型边界调用1→2、课堂messages 0→2、本地待同步1→3，状态持续superseded。
 - 预期：[ACC-01]要求新设备登录挤下旧设备后立即停止上课，未上传进度保留；这与[SYS-08]普通网络故障允许离线学习不同。
 - 根因：app/sync.py的失效处理只停止guard、取消当时已有bridge请求并通知窗口，没有阻止后续新业务调用。AppBridge/handlers仍能取得原AppServices，Classroom没有消费这个已知失效状态；完整LearningWindow没有补上该保护。服务器确实拒绝旧会话，问题在客户端已知拒绝后的业务状态接线。
-- 方向（未实施）：复用现有会话状态/请求上下文，在共用业务入口拒绝已知失效代际的新课堂任务、取消在途任务并保留未同步数据；重新认证后恢复。仅禁用一个按钮无法覆盖其他入口，也不能把所有网络错误变成强制退出。
+- 实现：Bridge现有会话代次锁存明确reauth/superseded拒绝原因，共用services入口拒绝后续业务、verify入口保留；WindowSync/AppServices挂起学习，Classroom入口/预取/位置保存校验，取消的旧上下文在恢复后仍不能回写。共享PlanFlow队列加会话挂起标记，取消在途与tail，不把它记为用户stopped或普通取消自动重排；持久pending保留，明确重新认证后用原恢复入口恢复一次，正常刷新不重复恢复。保留原队列guard与plan/store锁边界；普通retrying/offline不触发挂起。
+- 修复验证（320，2026-11-07）：新增7项及相关58项去重65项通过。真实LearningWindow/AppBridge/handlers/Classroom/SQLite验证明确失效后新模型/消息/位置/outbox不增长、旧pending保留、verify可达、认证恢复、旧教师迟到不回写、503离线及健康token刷新不误伤；真实PlanFlow队列验证inflight/tail不重排、不写stopped、恢复一次及持续挂起pending不变。受影响初始化/锁顺序问题在交付前修正，仅重测关联用例。凭据/HTTP/模型为受控边界，不重建Java/PG；未跑全量/正式整包/真人UAT。回执.local/receipts/320-MF01.md。测试根及误写两份pytest缓存共18,496,723字节删除被自动审批拒绝，交统一清理收尾，未绕过。
 - 验证：MF01真实NativeCredentialClient→Java/JDBC/隔离PG第二登录；MF03独立完整LearningWindow+React+QWebChannel+真实Classroom/SQLite证实。身份商和付费模型分别为本地合法替身，未动正式账号/数据。证据.local/r318/candidates/MF01-001.md、.local/receipts/318-MF03-repro-MF01-001.md；同次SQLite只读证据确认提问和回答落盘，不以辅助草稿ok充当课堂响应。重登/普通断网对照本轮未重跑，需修复验证。
 - 关联：[ACC-01] [SYS-08]；与BUG-185/130机制不同。
 - 更新：2026-11-06
