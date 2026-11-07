@@ -6,6 +6,8 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-220 | 资料别名检索身份与出处不一致，沿用主文档页码/章节/块序号 | 321正常HTTP与独立自有输入复现，未修 | 2026-11-07 |
+| BUG-219 | Java就绪探针把空issuer数组/对象误判健康 | 321真实探针四步对照及独立核验通过，未修 | 2026-11-07 |
 | BUG-218 | 批准源码清单重复项可掩盖迁移Dockerfile漏项，预检误报通过 | 321发现并独立三向复现，未修 | 2026-11-07 |
 | BUG-215 | 明确被挤下线后旧端仍能发起课堂工作 | 320本地修复及独立验收通过，未发布 | 2026-11-07 |
 | BUG-216 | 取消模型连接测试未到达网关 | 320本地修复及真实设置页独立验收通过，未发布 | 2026-11-07 |
@@ -2526,6 +2528,27 @@
 - 修法（273-MF04，2026-11-02）：mf-build 和本机打包走同一个 freeze（scripts/release/sqlite_runtime.py），从 sqlite.org 下载官方 sqlite-dll-win-x64-3540100.zip，归档 SHA3-256 和解包 DLL 的 SHA256 都写死，对不上打包失败；打包环境检查和冻结冒烟都核对实际加载的是 _internal 里的 3.54.1（source_id 2026-10-16 14:45:20 555e07ef…）。验证：测试密钥真包，旧版（5863cb78 源码，加载 3.49.1）Inno 安装 → 软件内更新 → 新版加载 3.54.1，WinError 5 零次；第一次点更新遇到一次 WinError 32（ready 文件被测试自己的观察脚本轮询占着），停掉观察脚本后同一入口重试成功，没有证明是产品问题，以后演练再出现就在本条记录。用户 course、rag 库只读备份的副本：3.54.1 读写、完整性检查 ok，再用 3.49.1 读新版写过的副本、写一轮、完整性检查 ok（用户退回旧版数据还能用）。31 个相关测试通过。报告 .local/test-tmp/sqlite273/report.md。
 - 关联：[ARCH-03]
 - 更新：2026-11-02
+
+### [BUG-220] 资料别名检索身份与出处不一致，沿用主文档页码/章节/块序号
+- 状态：321正常接口实测和独立自有输入复现已查实，未修；未发现跨账号读取或正文丢失。
+- 现象：同正文A分2块且页1/2、章节A，B分1块且页88、章节B；B正常去重为别名后，只选B检索返回document_id=B，却仍是A的页码、章节和seq0/1。删除A提升B、重传B正常显示1/1后仍错。
+- 预期/可达性：[RAG-01]及server-java/RAG_API.md要求选中资料及数据库原文出处相符，内容摘要明确忽略块边界/页码等元数据；真实客户端按抽取结果提交seq/text/page/section。因此不同分块/位置的相同正文为正常入口，不是伪造摘要或异常请求。
+- 根因：RagService.uploadBatch约231–245按正文摘要合并，alias仅保留数量/seq文本摘要，未保存B原始位置映射；search约378–384只重写逻辑document_id，仍用canonical passage的位置。删除提升移动原canonical块，后续重传/别名manifest不能还原已丢的位置。
+- 验证：MF07共享generation2真实Java鉴权/RagService/Repository/JDBC/PG普通HTTP和只读SQL复现；root独立子代理以自有全文/身份重新构造并实测6个应用HTTP、4条只读SELECT，删除A提升前后均重现，清理后自有scope为空。向量为BYTEA精确替身、embedding固定512维，仅替代边界；不证明真实pgvector/HNSW/模型质量，身份与出处投影根因不依赖这些边界。证据.local/r321/candidates/MF07-001.md、.local/receipts/321-verify-MF07-001.md及相应小JSON/驱动。
+- 建议（未实施）：内容/向量去重与各逻辑来源出处分开归属，保留原始块范围、页码、章节映射并按所选来源投影；不能只补文件名、加页码偏移或禁止合法不同分块。旧alias的位置元数据未保存，不能凭摘要还原，恢复/迁移/重传方案需和用户讨论，不能擅删用户资料。
+- 未验证：正式用户资料的受影响数量、真实向量召回、旧别名恢复、多个别名同选。候选所述两文档和删除提升路径已查实，其余不外推。
+- 关联：[QA-02] [RAG-01]
+- 更新：2026-11-07
+
+### [BUG-219] Java就绪探针把空issuer数组/对象误判健康
+- 状态：321发现，MF06真实生产探针四步执行、MF03独立源码与命中证据核验通过，已查实未修；未证明正式事故。
+- 现象：本地外部discovery正常→issuer=[]→issuer={}→恢复正常，GET /health/ready实际200/200/200/200；空容器也被报告KEYCLOAK_DISCOVERY_OK、required healthy。其他required仅PG且始终正常，optional email未配置不影响此结论。
+- 根因：health/DefaultHealthProbe.java:87–91调用pythonTruthy，108–114对array/object无条件true；与既有Python bool空容器false和此探针的兼容判定不同。HealthController据此汇总ready。静态issuer配置校验不验证本次discovery响应，未提前拒绝。
+- 验证：严格4个应用GET、14个控制/setup调用，generation2真实DefaultHealthProbe和Controller，四步均有新增downstream discovery mode事件，排除未读取fixture或替换健康probe；MF03独立复读源码/完整响应/事件后同意根因，未重复请求。最终恢复normal且ready200；未操作正式服务。证据.local/r321/candidates/MF05-004.md、audit321/MF06/discovery-case-results.json及MF03/health-MF05-004-independent-review.json。
+- 建议（未实施）：恢复空array/object为false、非空容器保持现有兼容语义，核同形helper调用者并补空容器回归；不借机新增完整issuer URL或安全加固机制。AdminOverviewService同形helper仅静态关联，未外推其动态影响。
+- 未验证：正式discovery实际是否出现异常shape、现场切流/登录影响。只查实就绪状态误报，不称账号隔离绕过或不可恢复损坏。
+- 关联：[QA-02] [ARCH-09]
+- 更新：2026-11-07
 
 ### [BUG-218] 批准源码清单重复项可掩盖迁移Dockerfile漏项，预检误报通过
 - 状态：321发现并完成独立三向复现，已查实未修；仅部署门禁完整性问题，未证明正式事故。
