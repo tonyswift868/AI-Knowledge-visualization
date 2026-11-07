@@ -8,7 +8,7 @@ from refactor.learning.connections.pricing import timestamp
 from .test_app_window_layer import qapp, make_bridge, pump, _Window
 
 
-def test_bridge_only_tokens_and_vendor_balance_separate(qapp, tmp_path):
+def test_bridge_usage_amounts_and_vendor_balance_separate(qapp, tmp_path):
     log = UsageLog(tmp_path / 'usage.sqlite3')
     log.record('deepseek', 'flash', 'teacher', Usage(100, 40, 60, 20, 0, 3, {}), at=timestamp())
     seen = []
@@ -22,7 +22,9 @@ def test_bridge_only_tokens_and_vendor_balance_separate(qapp, tmp_path):
         bridge.call(json.dumps(dict(id='tokens', method='usage.summary', params=dict(days=7, group_by='day'))))
         reply = pump(qapp, bridge, sent, lambda m: m.get('id') == 'tokens')[0]
         assert reply['ok'] and reply['result']['total']['uncached_input_tokens'] == 60
-        assert not any(word in json.dumps(reply['result']) for word in ('amount', 'price', 'cost', 'currency'))
+        assert reply['result']['total']['unpriced_calls'] == 1
+        assert reply['result']['total']['known_amounts'] == {}
+        assert reply['result']['total']['amount_complete'] is False
         bridge.call(json.dumps(dict(id='balance', method='models.balance', params=dict(preset_id='p1', refresh=True))))
         reply = pump(qapp, bridge, sent, lambda m: m.get('id') == 'balance')[0]
         assert reply['result']['balance']['balances'][0]['amount'] == '0'

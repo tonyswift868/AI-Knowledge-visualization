@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import asdict
+from datetime import timezone as datetime_timezone
 from decimal import Decimal
 import json
 import math
@@ -248,12 +249,25 @@ class UsageLog:
             db.execute('UPDATE calls SET model=?,state=?,error_code=?,usage_json=?,cost_json=? WHERE request_id=?',
                        (values[2], state, values[7], values[8], values[9], request_id))
 
-    def summary(self, start, end, group_by='purpose', *, tokens_only=False):
+    def _quote(self, row):
+        """Use a determined snapshot, or calculate an absent quote read-only."""
+        data = json.loads(row['usage_json']) if row['usage_json'] else None
+        quote = json.loads(row['cost_json']) if row['cost_json'] else None
+        recalculated = False
+        if quote is None and data is not None:
+            cost = self.catalog.cost(row['provider_id'], row['model'], Usage(**data), at=row['at_utc'])
+            if cost is not None:
+                quote = asdict(cost)
+                recalculated = True
+        return data, quote, recalculated
+
+    def summary(self, start, end, group_by='purpose', *, tokens_only=False, timezone=datetime_timezone.utc):
+        """Group days in timezone (None follows the OS); default remains UTC."""
         if group_by not in {'purpose', 'model', 'day'}:
             raise ModelError('USAGE_INVALID', '用量汇总维度无效。')
         start, end = timestamp(start), timestamp(end)
-        if start >= end:
-            raise ModelError('USAGE_TIME_INVALID', '汇总结束时间必须晚于开始时间。')
+        if start > end:
+            raise ModelError('USAGE_TIME_INVALID', '汇总结束时间不能早于开始时间。')
         with self._db() as db:
             rows = db.execute('SELECT * FROM calls WHERE at_utc>=? AND at_utc<? ORDER BY at_utc,request_id',
                               (start.isoformat(timespec='microseconds'), end.isoformat(timespec='microseconds'))).fetchall()
@@ -264,21 +278,15 @@ class UsageLog:
             if tokens_only:
                 row['quote'], row['recalculated'], row['unpriced_reason'] = None, False, ''
                 continue
-            data = json.loads(row['usage_json']) if row['usage_json'] else None
-            row['quote'] = json.loads(row['cost_json']) if row['cost_json'] else None
-            row['recalculated'] = False
-            if row['quote'] is None and data is not None:
-                quote = self.catalog.cost(row['provider_id'], row['model'], Usage(**data), at=row['at_utc'])
-                if quote is not None:
-                    row['quote'] = asdict(quote)
-                    row['recalculated'] = True
+            data, row['quote'], row['recalculated'] = self._quote(row)
             row['unpriced_reason'] = (self.catalog.unpriced_reason(row['provider_id'], row['model'],
                                       Usage(**data) if data else None, at=row['at_utc'])
                                       if row['quote'] is None else '')
         groups = {}
         for row in rows:
             key = ((row['provider_id'], row['model']) if group_by == 'model' else
-                   row['at_utc'][:10] if group_by == 'day' else row['purpose'])
+                   timestamp(row['at_utc']).astimezone(timezone).date().isoformat()
+                   if group_by == 'day' else row['purpose'])
             groups.setdefault(key, []).append(row)
         def aggregate(items):
             known = {key: 0 for key in FIELDS}
@@ -347,11 +355,51 @@ class UsageLog:
                         transport_unknown_calls=transport_unknown, cancelled_unknown_calls=cancelled_unknown,
                         partial_usage_calls=partial_calls,
                         usage_complete=not unknown, unknown_fields=sorted(unknown), known_tokens=known,
+                        incomplete_reasons=incomplete,
                         amount=next(iter(amounts.values())) if not (unpriced or estimated) and len(amounts) == 1 else None,
                         currency=next(iter(amounts)) if not (unpriced or estimated) and len(amounts) == 1 else None,
                         amounts=dict(amounts) if not (unpriced or estimated) else None, known_amounts=amounts,
                         priced_calls=priced, estimated_calls=estimated, estimated_amounts=estimated_amounts,
                         unpriced_reasons=reasons, recalculated_calls=recalculated,
                         unpriced_calls=unpriced, amount_complete=not (unpriced or estimated), errors=errors)
-        return {'start': start.isoformat(), 'end': end.isoformat(), 'timezone': 'UTC', 'group_by': group_by,
+        local_end = end.astimezone(timezone)
+        return {'start': start.isoformat(), 'end': end.isoformat(),
+                'timezone': getattr(timezone, 'key', None) or local_end.tzname(), 'group_by': group_by,
                 'total': aggregate(rows), 'groups': [dict(key=key, **aggregate(items)) for key, items in sorted(groups.items())]}
+
+    def details(self, start, end, *, offset=0, limit=50):
+        """Page through safe call fields without exposing plans or billing context."""
+        if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
+            raise ModelError('USAGE_INVALID', '用量详情分页参数无效。')
+        start, end = timestamp(start), timestamp(end)
+        if start > end:
+            raise ModelError('USAGE_TIME_INVALID', '详情结束时间不能早于开始时间。')
+        bounds = (start.isoformat(timespec='microseconds'), end.isoformat(timespec='microseconds'))
+        with self._db() as db:
+            # Count and page share a read snapshot if a model call finishes meanwhile.
+            db.execute('BEGIN')
+            total = db.execute('SELECT COUNT(*) FROM calls WHERE at_utc>=? AND at_utc<?', bounds).fetchone()[0]
+            rows = db.execute('''SELECT * FROM calls WHERE at_utc>=? AND at_utc<?
+                                 ORDER BY at_utc DESC,request_id LIMIT ? OFFSET ?''',
+                              (*bounds, limit, offset)).fetchall() if offset < total else []
+        items = []
+        for row in rows:
+            data, quote, _ = self._quote(row)
+            usage = None
+            if data is not None:
+                meta = data['raw'].get('_mentorflow', {})
+                unknown = set(meta.get('unreported_fields', []))
+                if meta.get('partial_usage'):
+                    unknown.update(FIELDS)
+                if meta.get('token_total_reconciled') is False:
+                    unknown.update(set(FIELDS) - {'search_requests'})
+                usage = {key: data[key] for key in FIELDS}
+                usage.update(usage_complete=not unknown, unknown_fields=sorted(unknown),
+                             partial_usage=meta.get('partial_usage') is True)
+            item = {key: row[key] for key in ('request_id', 'at_utc', 'provider_id', 'model',
+                                              'purpose', 'state', 'error_code')}
+            item.update(usage=usage, cost=({'amount': format(Decimal(quote['amount']), 'f'), 'currency': quote['currency']}
+                                          if quote is not None else None))
+            items.append(item)
+        return dict(total_calls=total, items=items,
+                    next_offset=offset + len(items) if offset + len(items) < total else None)
