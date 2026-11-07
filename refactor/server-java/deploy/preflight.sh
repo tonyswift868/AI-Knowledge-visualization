@@ -295,7 +295,14 @@ refactor/server-java/src/main/java/win/clannad/mentorflow/rag/PgVectorStore.java
 refactor/server-java/Dockerfile
 refactor/server/Dockerfile
 refactor/server/enterprise_tenancy/schema.py
-refactor/server/migrations/versions/0047_rag_promoted_manifests.py'
+refactor/server/migrations/versions/0047_rag_promoted_manifests.py
+refactor/server-java/deploy/build.sh
+refactor/server-java/deploy/migrate.sh
+refactor/server-java/deploy/java-compose.sh
+refactor/server-java/deploy/python-compose.sh
+refactor/server-java/deploy/compose.yml
+refactor/server-java/deploy/compose.python-fallback.yml
+refactor/server-java/deploy/migration.Dockerfile'
 hash_manifest_ok=0
 if check_file "$source_manifest"; then
   manifest_count=$(awk 'NF { n++ } END { print n+0 }' "$source_manifest")
