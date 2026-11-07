@@ -43,8 +43,9 @@ print('standalone import passed')
 def test_slim_only_selected_routes_and_no_original_storage():
     from refactor.server.app import app
     paths=app.openapi()['paths']
-    assert len(paths)==40
+    assert len(paths)==41
     assert set(paths['/api/enterprise/sync/v1/entities/bulk']) == {'post'}
+    assert set(paths['/api/enterprise/sync/v1/entities/{kind}/{entity_id}/tombstone']) == {'post'}
     assert set(paths['/api/enterprise/account/profile']) == {'get', 'patch'}
     assert set(paths['/api/enterprise/account/profile/avatar']) == {'get', 'put', 'delete'}
     assert set(p for p in paths if not p.startswith('/api/enterprise/')) == {
