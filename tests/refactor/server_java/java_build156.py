@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import subprocess
 import threading
 import time
@@ -72,6 +73,16 @@ def _classpath_problem(cp_file: Path) -> str | None:
     if missing:
         return "Java dependency classpath references missing JARs: " + ", ".join(missing[:8])
     return None
+
+
+def _harness_class_path(source: Path, test_classes: Path) -> Path:
+    """Return javac -d's class path from the declared package and source filename."""
+    header = source.read_text(encoding="utf-8")
+    package = re.search(r"^\s*package\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*;",
+                        header, re.MULTILINE)
+    package_path = Path(*package.group(1).split(".")) if package else Path()
+    # javac -d lays classes out by package, regardless of the source directory.
+    return test_classes / package_path / f"{source.stem}.class"
 
 
 def _run_build_once(*, build: Path, java_home: Path, maven: Path, m2: Path,
@@ -172,8 +183,7 @@ def _artifacts_current(build: Path, cp_file: Path,
     test_classes = build / "test-classes"
     java_root = ROOT / "tests/refactor/server_java/java"
     sources = sorted(java_root.rglob("*.java"))
-    harness_classes = [test_classes / path.relative_to(java_root).with_suffix(".class")
-                       for path in sources]
+    harness_classes = [_harness_class_path(source, test_classes) for source in sources]
     required = (jar, classes / "win" / "clannad" / "mentorflow" / "ServerApplication.class",
                 cp_file, *harness_classes)
     missing = [str(path) for path in required if not path.is_file()]

@@ -123,8 +123,22 @@ def test_rag154_0047_to_0048_backfill_uses_only_unambiguous_canonical_layout(rag
         postgres, name, rag154_backends["issuer"], target="0047_rag_promoted_manifests"
     )
     admin = admin_url.replace("postgresql+psycopg://", "postgresql://")
-    ordinary = ["safe alpha", "稳定 beta"]
+    ordinary = ["  safe alpha \n", "稳定🙂\tbeta  "]
     promoted = ["promoted alpha", "promoted beta"]
+    legacy_order = {
+        "rag_documents": "account_scope,document_id",
+        "rag_chunks": "account_scope,document_id,seq",
+        "rag_document_upload_manifests": "account_scope,document_id",
+        "rag_document_aliases": "account_scope,requested_document_id",
+    }
+
+    def snapshot_legacy(connection):
+        return {
+            table: connection.execute(
+                f"SELECT * FROM public.{table} ORDER BY {order}"
+            ).fetchall()
+            for table, order in legacy_order.items()
+        }
 
     def chunk_hashes(values):
         return [hashlib.sha256(value.encode("utf-8")).hexdigest() for value in values]
@@ -168,6 +182,7 @@ def test_rag154_0047_to_0048_backfill_uses_only_unambiguous_canonical_layout(rag
             "VALUES (%s,'legacy-alias','ordinary',1,%s)",
             ("a" * 64, hashlib.sha256(b"alias with independent layout").hexdigest()),
         )
+        legacy_before = snapshot_legacy(connection)
 
     run_dir = rag154_backends["directory"]
     _run_alembic(
@@ -176,9 +191,14 @@ def test_rag154_0047_to_0048_backfill_uses_only_unambiguous_canonical_layout(rag
     )
     with psycopg.connect(admin) as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0048_rag_source_chunks"
+        legacy_after_first = snapshot_legacy(connection)
+        assert legacy_after_first == legacy_before
         rows = connection.execute(
             "SELECT account_scope,document_id,seq,text_sha256,byte_length,start_byte,end_byte,page,section "
             "FROM public.rag_source_chunks ORDER BY document_id,seq"
+        ).fetchall()
+        source_before_second = connection.execute(
+            "SELECT * FROM public.rag_source_chunks ORDER BY account_scope,document_id,seq"
         ).fetchall()
         expected = []
         start = 0
@@ -199,6 +219,19 @@ def test_rag154_0047_to_0048_backfill_uses_only_unambiguous_canonical_layout(rag
             "SELECT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' "
             "AND tablename='rag_document_upload_manifests' AND policyname='account_closure_migration_read')"
         ).fetchone()[0]
+
+    _run_alembic(
+        migration_url, ["upgrade", "0048_rag_source_chunks"],
+        run_dir / "migration-0048-idempotent-source-layout.log", rag154_backends["issuer"],
+    )
+    with psycopg.connect(admin) as connection:
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0048_rag_source_chunks"
+        legacy_after_second = snapshot_legacy(connection)
+        source_after_second = connection.execute(
+            "SELECT * FROM public.rag_source_chunks ORDER BY account_scope,document_id,seq"
+        ).fetchall()
+        assert legacy_after_second == legacy_before
+        assert source_after_second == source_before_second
 
 
 def test_rag154_migration_requires_pgvector_to_be_preinstalled(rag154_backends):
@@ -237,6 +270,7 @@ def test_rag154_upload_is_idempotent_and_deduplicates_text_across_metadata(rag15
     assert first.json() == {
         "document_id": "doc-primary", "requested_document_id": "doc-primary",
         "status": "ready", "received_chunks": 2, "total_chunks": 2, "deduplicated": False,
+        "source_layout_status": "known", "source_layout_complete": True,
     }
 
     # Retrying the same identifier and exact payload is idempotent.
