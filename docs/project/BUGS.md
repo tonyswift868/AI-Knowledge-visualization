@@ -6,7 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
-| BUG-224 | dots 用带学索引命令被沙箱拦（refresh 拒绝访问、current 打不开库） | 改为直接读文本文件，待验证 | 2026-11-09 |
+| BUG-224 | dots 用带学索引命令被沙箱拦（refresh 拒绝访问、current 打不开库） | 已解决：改为直接读文本文件，用户截图验证 | 2026-11-09 |
 | BUG-223 | 拾题「本题段落」跳转栏切题后变空 | 已修、已写回 E，等用户重启后亲测 | 2026-11-09 |
 | BUG-222 | 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败 | 323本地修复；客户端98项有通过证据，Java/Python同步42过，未部署 | 2026-11-07 |
 | BUG-221 | 资料初次准备取消后继续再删除，原服务器准备件残留 | 323客户端修复已合入，owner报38项普通测试过；旧独立运行限制保留 | 2026-11-07 |
@@ -2534,7 +2534,7 @@
 - 更新：2026-11-02
 
 ### [BUG-224] dots 用 teaching_index.py 查拾题：自己 refresh 报拒绝访问，current 打不开数据库
-- 状态：已改做法，待用户用 dots 验证。
+- 状态：已解决。2026-11-09 用户截图：dots 按新做法读到文件，报出 R26-JV-018「G1 和 ZGC 的停顿阶段有什么不同？」，和文件一致。
 - 现象（2026-11-09）：
   - 用户导入主批后，dots 跑 check 得到 Index is stale；照提示跑 refresh，报 PermissionError [WinError 5]（E:/Codex/Projects/InterviewDesk/teaching-index/snapshots/...building-...）。
   - 架构师 refresh 后 check 通过，dots 再跑 current 报 sqlite3.OperationalError: unable to open database file。dots 两次都停下，没编题。
