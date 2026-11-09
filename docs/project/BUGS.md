@@ -6,6 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-224 | dots 自己 refresh 带学索引被拒绝访问 | 已解决：refresh 归架构师 | 2026-11-09 |
 | BUG-223 | 拾题「本题段落」跳转栏切题后变空 | 待修，332-MF02 | 2026-11-09 |
 | BUG-222 | 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败 | 323本地修复；客户端98项有通过证据，Java/Python同步42过，未部署 | 2026-11-07 |
 | BUG-221 | 资料初次准备取消后继续再删除，原服务器准备件残留 | 323客户端修复已合入，owner报38项普通测试过；旧独立运行限制保留 | 2026-11-07 |
@@ -2531,6 +2532,15 @@
 - 修法（273-MF04，2026-11-02）：mf-build 和本机打包走同一个 freeze（scripts/release/sqlite_runtime.py），从 sqlite.org 下载官方 sqlite-dll-win-x64-3540100.zip，归档 SHA3-256 和解包 DLL 的 SHA256 都写死，对不上打包失败；打包环境检查和冻结冒烟都核对实际加载的是 _internal 里的 3.54.1（source_id 2026-10-16 14:45:20 555e07ef…）。验证：测试密钥真包，旧版（5863cb78 源码，加载 3.49.1）Inno 安装 → 软件内更新 → 新版加载 3.54.1，WinError 5 零次；第一次点更新遇到一次 WinError 32（ready 文件被测试自己的观察脚本轮询占着），停掉观察脚本后同一入口重试成功，没有证明是产品问题，以后演练再出现就在本条记录。用户 course、rag 库只读备份的副本：3.54.1 读写、完整性检查 ok，再用 3.49.1 读新版写过的副本、写一轮、完整性检查 ok（用户退回旧版数据还能用）。31 个相关测试通过。报告 .local/test-tmp/sqlite273/report.md。
 - 关联：[ARCH-03]
 - 更新：2026-11-02
+
+### [BUG-224] dots 带学查拾题报 Index is stale，自己 refresh 报拒绝访问
+- 状态：已解决（流程），2026-11-09 架构师 refresh 后 check 通过。
+- 现象：用户导入主批后，dots 跑 teaching_index.py check 得到 Index is stale；照提示跑 refresh，报 PermissionError [WinError 5]，路径是 E:/Codex/Projects/InterviewDesk/teaching-index/snapshots/20261109T031713244351Z-...building-...。dots 停下，没编题。
+- 原因：导入后数据库版本变了，索引要重建；dots 跑在 Codex 沙箱里，E 盘可读不可写。不是 dots 的错，是架构师给的提示词让它自己 refresh。
+- 解决：refresh 只由架构师在每次导入核对后做；00-总目录与带学说明.md 改成 dots 遇到 Index is stale 就停下找 Claude。没改 Codex 沙箱权限。
+- 验证：2026-11-09 架构师 refresh、check 通过（880 全对，版本 20261109T031713244351Z）；snapshots 目录没有残留的 .building 文件。
+- 关联：[DOC-03]
+- 更新：2026-11-09
 
 ### [BUG-223] 拾题宽窗口「本题段落」跳转栏切题后变空，只剩标题和压扁的折叠按钮
 - 状态：待修。原因是架构师读代码的推断，未复现；332-MF02 复现并修复。
