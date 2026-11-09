@@ -6,7 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
-| BUG-224 | dots 自己 refresh 带学索引被拒绝访问 | 已解决：refresh 归架构师 | 2026-11-09 |
+| BUG-224 | dots 用带学索引命令被沙箱拦（refresh 拒绝访问、current 打不开库） | 改为直接读文本文件，待验证 | 2026-11-09 |
 | BUG-223 | 拾题「本题段落」跳转栏切题后变空 | 待修，332-MF02 | 2026-11-09 |
 | BUG-222 | 未同步计划删除分两次提交，中间活动记录缺字段使另一端同步失败 | 323本地修复；客户端98项有通过证据，Java/Python同步42过，未部署 | 2026-11-07 |
 | BUG-221 | 资料初次准备取消后继续再删除，原服务器准备件残留 | 323客户端修复已合入，owner报38项普通测试过；旧独立运行限制保留 | 2026-11-07 |
@@ -2533,12 +2533,14 @@
 - 关联：[ARCH-03]
 - 更新：2026-11-02
 
-### [BUG-224] dots 带学查拾题报 Index is stale，自己 refresh 报拒绝访问
-- 状态：已解决（流程），2026-11-09 架构师 refresh 后 check 通过。
-- 现象：用户导入主批后，dots 跑 teaching_index.py check 得到 Index is stale；照提示跑 refresh，报 PermissionError [WinError 5]，路径是 E:/Codex/Projects/InterviewDesk/teaching-index/snapshots/20261109T031713244351Z-...building-...。dots 停下，没编题。
-- 原因：导入后数据库版本变了，索引要重建；dots 跑在 Codex 沙箱里，E 盘可读不可写。不是 dots 的错，是架构师给的提示词让它自己 refresh。
-- 解决：refresh 只由架构师在每次导入核对后做；00-总目录与带学说明.md 改成 dots 遇到 Index is stale 就停下找 Claude。没改 Codex 沙箱权限。
-- 验证：2026-11-09 架构师 refresh、check 通过（880 全对，版本 20261109T031713244351Z）；snapshots 目录没有残留的 .building 文件。
+### [BUG-224] dots 用 teaching_index.py 查拾题：自己 refresh 报拒绝访问，current 打不开数据库
+- 状态：已改做法，待用户用 dots 验证。
+- 现象（2026-11-09）：
+  - 用户导入主批后，dots 跑 check 得到 Index is stale；照提示跑 refresh，报 PermissionError [WinError 5]（E:/Codex/Projects/InterviewDesk/teaching-index/snapshots/...building-...）。
+  - 架构师 refresh 后 check 通过，dots 再跑 current 报 sqlite3.OperationalError: unable to open database file。dots 两次都停下，没编题。
+- 原因：dots 跑在 Codex 沙箱里，E 盘可读不可写。refresh 要写索引；current 要读拾题正在用的进度库，打开数据库也需要写权限。根子在架构师：dots 只需要读题，却让它走一套要写权限的命令。
+- 解决：00-总目录与带学说明.md 改成 dots 直接读文本文件（2026新版题目和答案 md、旧版面经库 md、项目题卡 md 和答案 json），不跑任何命令；从哪题开始由用户说题号。没改 Codex 沙箱权限。
+- 验证：架构师确认这些文件都在、项目答案 json 能按题号搜到；待用户让 dots 读一次。
 - 关联：[DOC-03]
 - 更新：2026-11-09
 
