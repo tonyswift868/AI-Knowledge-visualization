@@ -529,13 +529,14 @@ class ModelGateway:
         return replace(value, raw=raw)
 
     def complete(self, purpose, messages, *, system=None, enable_search=False,
-                 on_text=None, cancel=None, plan_id='', max_tokens=4096, reasoning_effort=None):
+                 on_text=None, cancel=None, plan_id='', max_tokens=4096, reasoning_effort=None,
+                 request_id=''):
         if type(max_tokens) is not int or not 1 <= max_tokens <= 32768:
             raise ModelError('MODEL_CONFIG_INVALID', '模型调用参数无效。')
         max_tokens = max(max_tokens, PURPOSE_MIN_OUTPUT.get(purpose, 0))
         return self._complete(purpose, messages, system=system, enable_search=enable_search,
                               on_text=on_text, cancel=cancel, plan_id=plan_id, max_tokens=max_tokens,
-                              reasoning_effort=reasoning_effort)
+                              reasoning_effort=reasoning_effort, request_id=request_id)
 
     def test_connection(self, *, cancel=None):
         """Small, non-thinking connectivity probe; cancellation is optional."""
@@ -586,7 +587,7 @@ class ModelGateway:
 
     @trace_model_call
     def _complete(self, purpose, messages, *, system, enable_search, on_text, cancel, plan_id, max_tokens,
-                  reasoning_effort):
+                  reasoning_effort, request_id=''):
         effort = reasoning_effort if reasoning_effort is not None else PURPOSE_EFFORT.get(purpose, 'high')
         config, setup_error = None, None
         token = _Cancellation(cancel if isinstance(cancel, threading.Event) else None)
@@ -608,7 +609,8 @@ class ModelGateway:
             # Persist BEFORE key access/network. Crash/forced exit leaves an
             # explicit unfinished call, never a falsely complete cost summary.
             identifier = self.usage_log.begin(config['provider_id'] or '' if config else '',
-                                              config['model'] if config else '', purpose, plan_id=plan_id)
+                                              config['model'] if config else '', purpose, plan_id=plan_id,
+                                              request_id=request_id)
             try:
                 if setup_error:
                     raise setup_error

@@ -21,7 +21,7 @@ LOGGER = logging.getLogger('refactor.runtime')
 _handler = None
 _crash_file = None
 _lock = threading.RLock()
-_EVENTS = {'startup', 'login', 'refresh', 'sync', 'update', 'model', 'bridge',
+_EVENTS = {'startup', 'login', 'refresh', 'sync', 'update', 'model', 'rag_timing', 'bridge',
            'exit', 'window', 'qt', 'renderer', 'process', 'classroom'}
 
 
@@ -76,6 +76,21 @@ class DiagnosticFormatter(logging.Formatter):
                 value = record.mf_fields.get(field)
                 if type(value) is int:
                     payload[field] = value
+            for field in ('passage_count',):
+                value = record.mf_fields.get(field)
+                if type(value) is int and value >= 0:
+                    payload[field] = value
+            for field in ('retrieval_ms', 'first_token_ms', 'generation_ms', 'total_ms'):
+                if field not in record.mf_fields:
+                    continue
+                value = record.mf_fields.get(field)
+                if value is None:
+                    payload[field] = None
+                elif isinstance(value, (int, float)) and 0 <= value < float('inf'):
+                    payload[field] = round(value, 3)
+            model = record.mf_fields.get('model')
+            if isinstance(model, str) and re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', model):
+                payload['model'] = model
             # Only the Qt adapter supplies this text, with URLs and secrets removed.
             if event == 'qt' and isinstance(record.mf_fields.get('message'), str):
                 payload['message'] = record.mf_fields['message'][:1000]
