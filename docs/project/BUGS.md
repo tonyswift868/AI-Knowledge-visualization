@@ -6,7 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
-| BUG-228 | 本机没有能连 MentorFlow 服务器的 SSH 设置，服务器上的只读活派不出去 | 待用户告诉怎么连 | 2026-11-09 |
+| BUG-228 | 本机没有能连 MentorFlow 服务器的 SSH 设置，服务器上的只读活派不出去 | 已解决：新钥匙登记给 mentorflow-admin，架构师连通验证 | 2026-11-09 |
 | BUG-227 | 拾题开着时写回新代码，点「更新题库」没迁移学习记录 | 已改成每次启动也迁移、已写回 E，等用户重开拾题后核对 | 2026-11-09 |
 | BUG-226 | 遮住回答把追问问题也藏了，没法练追问 | 已修，待用户验证（344 已写回 E） | 2026-11-09 |
 | BUG-225 | dots 说“原文”却改写了追问 | 带学说明已加逐字照念，待验证 | 2026-11-09 |
@@ -2538,8 +2538,11 @@
 - 更新：2026-11-02
 
 ### [BUG-228] 本机没有能连 MentorFlow 服务器的 SSH 设置，服务器上的只读活派不出去
-- 状态：待用户告诉架构师现在怎么连服务器（SSH 别名或主机、钥匙放哪）。
+- 状态：已解决（2026-11-09）。
 - 现象（2026-11-09，派 350 上服务器只读统计前核环境）：deploy/README.md 现场条件写的 SSH 别名是 `mentorflow`，本机 `~/.ssh/config` 里没有这个别名；唯一的 `vmiss-osa`（钥匙在 E 盘）不是 MentorFlow 服务器——架构师只读连上去看过，上面没有 docker，也没有 /opt/mentorflow，什么都没改。324-MF01 也卡在同一处（回执 .local/receipts/324-MF01-SERVER-2046.md：“Could not resolve hostname mentorflow”），当时只记在 .local/r324/report.md，没记 BUG。
+- 原因：服务器 sshd 只收钥匙（`Permission denied (publickey)`），而且 `PermitRootLogin no`，能登录的只有 `mentorflow-admin`；它名下登记的旧钥匙本机已经没有了（E 盘 mentorflow-e1-staging 那把试过 root、ubuntu、mentorflow、mentorflow-admin 都被拒）。
+- 解决（2026-11-09，用户在场）：用户在本机生成专用钥匙 C:\Users\21533\.ssh\mentorflow_server（C 盘，员工不用碰 E 盘）；在服务商 Rabisu 的 Virtualizor 面板点服务器名下第 4 个图标 → Launch VNC，用 root 和密码登录网页控制台；控制台不能粘贴，架构师写了代敲脚本 D:\46\MentorFlow服务器\控制台代敲.ps1（读同目录 控制台命令.txt 逐字敲入并回车），把公钥追加到 /home/mentorflow-admin/.ssh/authorized_keys（原有钥匙不动；先误加到 /root 的那行无害，root 不能 ssh）。连法和备用办法写在 D:\46\MentorFlow服务器\连接说明.txt，现场条件写进 deploy/README.md「运维权限」。
+- 验证：`ssh -i C:\Users\21533\.ssh\mentorflow_server mentorflow-admin@89.45.45.28` 登录成功，`sudo -n` 可用，`docker ps` 有 mentorflow-java-backend、mentorflow-e1-preview-postgres-1 等（2026-11-09，只读）。别名 `mentorflow` 待用户在本机 ssh 配置里加（架构师写 ~/.ssh/config 被权限拦下）。
 - 另：350 的包装脚本要求服务器发布目录里已有 usage-stats.py，现在的线上目录 /opt/mentorflow/releases/java-1070685b 是这个脚本之前发的，没有它。连上以后改成服务器只跑 `docker logs` 和只读 psql，统计脚本在本机跑，服务器上不放文件。
 - 关联：[ARCH-09] [DOC-03]
 - 更新：2026-11-09

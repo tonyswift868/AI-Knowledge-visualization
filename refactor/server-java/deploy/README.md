@@ -23,7 +23,7 @@ sudo -n sh preflight.sh
 
 | 条件 | 当前名称/约束 |
 | --- | --- |
-| 运维权限 | SSH配置中的 `mentorflow`；Docker与现有root文件用非交互 `sudo -n`，不改权限 |
+| 运维权限 | 登录用户 `mentorflow-admin`（服务器 `PermitRootLogin no`，root 不能 ssh 登录），钥匙 `C:\Users\21533\.ssh\mentorflow_server`（2026-11-09 新建，[BUG-228]）；SSH 别名 `mentorflow` 需在本机 `~/.ssh/config` 里配（HostName 89.45.45.28、User mentorflow-admin、IdentityFile 上面那把、IdentitiesOnly yes），没配时用 `ssh -i <钥匙> mentorflow-admin@89.45.45.28`；Docker与现有root文件用非交互 `sudo -n`，不改权限 |
 | 在线源码 | `/opt/mentorflow/releases/java-1070685b`；新包从审定提交以 `git -c core.autocrlf=false -c core.eol=lf archive` 导出，保留 `refactor/server`、`refactor/server-java` 相对路径，不覆盖运行目录/挂载；比对关键源码SHA256（[BUG-107]） |
 | Java pair | `mentorflow-java-backend`、`mentorflow-java-oidc`；镜像 `mentorflow-java-server:269`；OIDC使用backend网络命名空间，每次重建后精确核对 `container:<backend ID>` |
 | Python pair | `mentorflow-e1-preview-backend-1`、`mentorflow-e1-preview-oidc-loopback-proxy-1`；`mentorflow-slim-backend:269-python-fallback`；保持停止，认0047；旧226标签保留但不能作为当前Python备用 |
