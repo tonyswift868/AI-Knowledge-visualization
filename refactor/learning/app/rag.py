@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import sqlite3
 import threading
+import time
 import uuid
 
 import httpx
@@ -25,6 +26,7 @@ from ..sync_transport import SyncTransport
 from ..sync_source import TRANSIENT_SESSION_CODES
 from ..sync_identity import PlanError
 from .bridge import BridgeError, CallContext
+from refactor.runtime_logging import event as diagnostic_event
 
 log = logging.getLogger(__name__)
 API = "/api/enterprise/rag/v1"
@@ -113,6 +115,111 @@ def _fresh_source_version_id(document_id, content_digest):
 def _cancel(cancel):
     if cancel is not None and cancel.is_set():
         raise BridgeError("CANCELLED", "已取消。")
+
+
+def _safe_model_name(gateway):
+    """Read only the public model label; never pull credentials into timing logs."""
+    try:
+        configuration = gateway.get_configuration()
+    except Exception:
+        return ""
+    model = configuration.get("model") if isinstance(configuration, dict) else ""
+    return model if isinstance(model, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", model) else ""
+
+
+def _elapsed_ms(started, ended):
+    return round(max(0.0, ended - started) * 1000, 3) if started is not None and ended is not None else None
+
+
+class _RagTiming:
+    """Keep the one safe, end-of-request diagnostic record for a RAG question."""
+
+    def __init__(self, gateway):
+        self.request_id = uuid.uuid4().hex
+        self.started = time.perf_counter()
+        self.retrieval_started = None
+        self.retrieval_ms = None
+        self.model_started = None
+        self.model_finished = None
+        self.first_token_at = None
+        self.last_token_at = None
+        self.passage_count = 0
+        self.model = _safe_model_name(gateway)
+        self.phase = "RETRIEVAL"
+        self.error = None
+        self.succeeded = False
+
+    def start_retrieval(self):
+        self.retrieval_started = time.perf_counter()
+
+    def finish_retrieval(self, result):
+        self.retrieval_ms = _elapsed_ms(self.retrieval_started, time.perf_counter())
+        passages = result.get("passages", []) if isinstance(result, dict) else []
+        self.passage_count = len(passages) if isinstance(passages, list) else 0
+        if isinstance(result, dict):
+            self.phase = "MODEL_FIRST_BYTE"
+
+    def start_model(self):
+        self.model_started = time.perf_counter()
+        self.phase = "MODEL_FIRST_BYTE"
+
+    def observe_text(self, delta):
+        if not isinstance(delta, str) or not delta:
+            return
+        now = time.perf_counter()
+        if self.first_token_at is None:
+            self.first_token_at = now
+            self.phase = "MODEL_GENERATION"
+        self.last_token_at = now
+
+    def finish_model(self, reply=None):
+        self.model_finished = time.perf_counter()
+        actual_model = getattr(reply, "model", None) if reply is not None else None
+        if isinstance(actual_model, str) and re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", actual_model):
+            self.model = actual_model
+        # Some adapters only return a complete result and do not emit deltas.
+        # The result arrival is then the only observable first-byte boundary.
+        if self.first_token_at is None and isinstance(getattr(reply, "text", None), str) and reply.text:
+            self.first_token_at = self.model_finished
+            self.last_token_at = self.model_finished
+
+    def emit(self):
+        ended = time.perf_counter()
+        code = getattr(self.error, "code", None) if self.error is not None else "OK"
+        if self.succeeded:
+            state = "SUCCEEDED"
+            phase = "COMPLETE"
+            code = "OK"
+        elif code in {"CANCELLED", "MODEL_CANCELLED"}:
+            state = "CANCELLED"
+            phase = self.phase
+        elif code in {"MODEL_TIMEOUT", "MODEL_FIRST_EVENT_TIMEOUT", "TIMEOUT"}:
+            state = "TIMEOUT"
+            phase = self.phase
+        else:
+            state = "FAILED"
+            phase = self.phase
+        first_token_ms = _elapsed_ms(self.model_started, self.first_token_at)
+        generation_ms = _elapsed_ms(self.first_token_at, self.last_token_at)
+        fields = dict(
+            request_id=self.request_id,
+            purpose="rag_qa",
+            state=state,
+            phase=phase,
+            model=self.model,
+            passage_count=self.passage_count,
+            retrieval_ms=self.retrieval_ms,
+            first_token_ms=first_token_ms,
+            generation_ms=generation_ms,
+            total_ms=_elapsed_ms(self.started, ended),
+        )
+        if not self.succeeded:
+            fields["code"] = code or "INTERNAL"
+        try:
+            diagnostic_event("rag_timing", **fields)
+        except Exception:
+            # Diagnostics must never change the user's answer/error path.
+            pass
 
 
 class RagTransport(SyncTransport):
@@ -1981,6 +2088,22 @@ class RagService:
             self._finish_document_operation(document_ids, operation)
 
     def _send_active(self, session_id, text, *, document_ids, cancel=None, on_text=None, on_progress=None):
+        timing = _RagTiming(self.gateway)
+        try:
+            result = self._send_active_impl(session_id, text, document_ids=document_ids,
+                                            cancel=cancel, on_text=on_text, on_progress=on_progress,
+                                            timing=timing)
+        except BaseException as exc:
+            timing.error = exc
+            raise
+        else:
+            timing.succeeded = True
+            return result
+        finally:
+            timing.emit()
+
+    def _send_active_impl(self, session_id, text, *, document_ids, cancel=None, on_text=None,
+                          on_progress=None, timing):
         if not isinstance(text, str) or not text.strip() or len(text) > MAX_QUESTION:
             raise BridgeError("PARAM_INVALID", f"问题不能为空，也不能超过 {MAX_QUESTION} 字。")
         question = text.strip()
@@ -2014,7 +2137,13 @@ class RagService:
             raise BridgeError("RAG_DOCUMENT_NOT_READY", "所选资料尚未准备好，请稍后重试。")
         _cancel(cancel)
         local_docs = {doc_id: self.local.document(doc_id) for doc_id in session["document_ids"]}
-        search = self._search_documents(local_docs, question, cancel)
+        timing.start_retrieval()
+        try:
+            search = self._search_documents(local_docs, question, cancel)
+        except BaseException:
+            timing.finish_retrieval(None)
+            raise
+        timing.finish_retrieval(search)
         passages = [dict(row, number=index + 1) for index, row in enumerate(search["passages"])]
         prompt_parts = []
         for passage in passages:
@@ -2037,14 +2166,22 @@ class RagService:
                     for item in history if item["role"] in {"user", "assistant"}]
         messages.append({"role": "user", "content": content})
         _cancel(cancel)
+
         def guarded_text(delta):
+            timing.observe_text(delta)
             if on_text and not (cancel and cancel.is_set()):
                 on_text(delta)
+
+        timing.start_model()
+        reply = None
         try:
             reply = self.gateway.complete("rag_qa", messages, system=SYSTEM,
-                on_text=guarded_text if on_text else None, cancel=cancel)
+                on_text=guarded_text, cancel=cancel, request_id=timing.request_id)
         except ModelCancelled:
             raise BridgeError("CANCELLED", "已停止，这一轮没有保存。") from None
+        finally:
+            timing.finish_model(reply)
+        timing.phase = "SAVE"
         _cancel(cancel)
         answer = getattr(reply, "text", None)
         if not isinstance(answer, str):
