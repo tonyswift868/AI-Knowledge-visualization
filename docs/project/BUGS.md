@@ -6,6 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-232 | Java 服务端把异常转成 500/503 时不记日志、丢掉原因，出错后服务端查不到原因 | 待修（363-MF02） | 2026-11-11 |
 | BUG-231 | Java 服务拿数据库连接三套做法并存：身份目录用已弃用的驱动池（借满无限等），原生会话校验每次新建物理连接 | 待修（360-MF05） | 2026-11-11 |
 | BUG-230 | 资料分块表有和主键前两列重复的索引（0044 已上线，0048 照抄） | 待修（361-MF06） | 2026-11-11 |
 | BUG-229 | 用量统计的“每日活跃账号”取自一张已经没人写的表，结果永远为空 | 待修（361-MF06） | 2026-11-11 |
@@ -2539,6 +2540,19 @@
 - 修法（273-MF04，2026-11-02）：mf-build 和本机打包走同一个 freeze（scripts/release/sqlite_runtime.py），从 sqlite.org 下载官方 sqlite-dll-win-x64-3540100.zip，归档 SHA3-256 和解包 DLL 的 SHA256 都写死，对不上打包失败；打包环境检查和冻结冒烟都核对实际加载的是 _internal 里的 3.54.1（source_id 2026-10-16 14:45:20 555e07ef…）。验证：测试密钥真包，旧版（5863cb78 源码，加载 3.49.1）Inno 安装 → 软件内更新 → 新版加载 3.54.1，WinError 5 零次；第一次点更新遇到一次 WinError 32（ready 文件被测试自己的观察脚本轮询占着），停掉观察脚本后同一入口重试成功，没有证明是产品问题，以后演练再出现就在本条记录。用户 course、rag 库只读备份的副本：3.54.1 读写、完整性检查 ok，再用 3.49.1 读新版写过的副本、写一轮、完整性检查 ok（用户退回旧版数据还能用）。31 个相关测试通过。报告 .local/test-tmp/sqlite273/report.md。
 - 关联：[ARCH-03]
 - 更新：2026-11-02
+
+### [BUG-232] Java 服务端把异常转成 500/503 时不记日志、丢掉原因，出错后服务端查不到原因
+- 状态：待修（363-MF02）。
+- 现象（2026-11-11，给面试题卡 M-06-03 写答案时对照代码发现，代码 6ae8fe5c，架构师核对过）：
+  - 同步接口任何 RuntimeException 都清空响应、回纯文本 500（`sync/SyncController.java:137-145`）；同步事务里的数据库异常一律变成 503 SYNC_QUERY_FAILED，原异常不保留（`sync/SyncRepository.java:142-143`）。
+  - 资料上传和检索里任何运行时异常（包括数据库异常）都报成 503 RAG_EMBEDDING_UNAVAILABLE（`rag/RagService.java:61-62`、`:592-593`）；资料其他接口的数据库异常变 503 RAG_UNAVAILABLE（`rag/RagController.java:70`）；身份目录任何异常变 503 CLOSURE_STORAGE_UNAVAILABLE（`identity/JdbcIdentityDirectory.java:113`）。
+  - 这些地方都不写日志。日志根级别 WARN，全服务只有访问日志一个 INFO logger（`resources/application.properties:9-10`、`identity/RequestAccessLog149Filter.java:69`），访问日志记方法、路由、状态、耗时，不记 request_id。
+- 原因：照 Python 参考实现把异常转成固定错误响应时，没同时把原因记到服务端日志。
+- 影响：数据库连不上、死锁、SQL 写错、空指针，在服务端都只剩“某路由 500/503”，事后查不了；资料上传和检索把数据库错误报成“向量计算不可用”，误导排查方向。[BUG-205] 能查清，是因为那次抛的是 Error，逃出了这套转换。
+- 解决（待做）：每个转换点记一条日志：预期内的 503 用 WARN，非预期的 RuntimeException 用 ERROR 并带异常栈；内容是错误码、request_id（`RequestBoundaryFilter` 已放进请求属性）、路由、异常类名、数据库 SQLState；不记请求体、资料正文和令牌。SyncFailure、RagFailure 带上原异常作 cause。响应内容和状态码不变（错误码要不要细分会影响客户端提示，另议）。
+- 验证（待做）：测试注入会抛 SQLException 的 DataSource，调同步写和资料检索：响应和原来一样，日志里有错误码、request_id、异常类名、SQLState；空指针走同步的 500 分支，日志有异常栈；日志里搜不到资料正文和 Bearer 令牌。
+- 关联：[BUG-205]、[BUG-231]、[DOC-03]（题卡 M-06-03，缺陷 MD-04）
+- 更新：2026-11-11
 
 ### [BUG-231] Java 服务拿数据库连接三套做法并存：身份目录用已弃用的驱动池（借满无限等），原生会话校验每次新建物理连接
 - 状态：待修（360-MF05）。
