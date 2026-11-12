@@ -11,8 +11,7 @@
 
 ## 告警
 
-- 邮件通道：启用 SMTP；服务器受限文件只保留 `MF_ALERT_SMTP_HOST`、`MF_ALERT_SMTP_PORT`、`MF_ALERT_SMTP_USERNAME`、`MF_ALERT_SMTP_PASSWORD_FILE`、`MF_ALERT_SMTP_FROM`、`MF_ALERT_SMTP_TO` 这些键名和值，不能进仓库或日志。
-- 必须启用：Agent/主机离线、容器停止（针对 377 清单中的 7 个运行容器）。恢复通知也开启，便于区分短暂故障和已恢复状态。
+- 不配邮件（用户 2026-11-12 定）：Beszel 不设通知渠道，告警邮件只由 Healthchecks.io 发（见 README）；Beszel 只用来看主机和容器的资源历史。
 - CPU、内存、磁盘阈值暂不预设目标；先按装前/装后测量结果和 Beszel 默认采集观察。若 MF-01 后续调整阈值，先改本文件再在 UI 保存，并把变更纳入 Hub 数据卷备份。
 
 ## 登录结论
