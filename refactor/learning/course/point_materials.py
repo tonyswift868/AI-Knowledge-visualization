@@ -193,7 +193,19 @@ def prepare_module(store, plan_id, module_id, ctx, progress):
         for candidate in direct:
             accepted.append(mq.compile_question(dict(kind='recall', stem=candidate['stem']), candidate, module_id))
         remaining = [c for c in candidates if c not in direct]
-        for group in mq.batches(remaining):
+        groups = list(mq.batches(remaining))
+        store.discard_other_question_batch_staging(plan_id, module_id, fingerprint)
+        staged = store.question_batch_staging(plan_id, module_id, fingerprint)
+        if not staged:
+            # A changed input fingerprint must never reuse an older module run.
+            store.clear_question_batch_staging(plan_id, module_id)
+        for batch_index, group in enumerate(groups):
+            saved = staged.get(batch_index)
+            if saved is not None:
+                accepted.extend(saved.get('accepted', []))
+                rejected.extend(saved.get('rejected', []))
+                progress(len(accepted)+len(rejected), len(candidates), '已恢复已完成的资料拆题批次')
+                continue
             _check(ctx)
             packet = dict(module_id=module_id, module_title=module['title'],
                           candidates=[mq.request_candidate(c) for c in group])
@@ -207,8 +219,8 @@ def prepare_module(store, plan_id, module_id, ctx, progress):
                     system=mq.SYSTEM, plan_id=plan_id, cancel=ctx.get('cancel'), enable_search=False)
                 if ctx.get('on_call'): ctx['on_call']('point_materials', response)
                 output = _json(response.text)
-            _check(ctx)
             rows = output.get('questions', []) if isinstance(output, dict) else []
+            batch_accepted, batch_rejected = [], []
             for candidate in group:
                 matches = [r for r in rows if isinstance(r, dict) and r.get('candidate_id') == candidate['id']]
                 try:
@@ -218,11 +230,15 @@ def prepare_module(store, plan_id, module_id, ctx, progress):
                     question = mq.compile_question(raw, candidate, module_id)
                     from .question_bank import validate_question
                     validate_question(question)
-                    accepted.append(question)
+                    batch_accepted.append(question)
                 except (ValueError, KeyError, TypeError) as exc:
-                    rejected.append(dict(candidate_id=candidate['id'], stem=candidate['stem'], reason=str(exc),
+                    batch_rejected.append(dict(candidate_id=candidate['id'], stem=candidate['stem'], reason=str(exc),
                         source_chunks=candidate['chunk_ids'], raw=matches))
                     _log.info('material question discarded: candidate=%s reason=%s', candidate['id'], exc)
+            accepted.extend(batch_accepted)
+            rejected.extend(batch_rejected)
+            store.save_question_batch_staging(plan_id, module_id, fingerprint, batch_index,
+                                              dict(accepted=batch_accepted, rejected=batch_rejected))
             progress(len(accepted)+len(rejected), len(candidates), '已核对资料原题，未改写或补答案')
         _check(ctx)
         # No model/network activity inside admission. The existing batch-66
@@ -249,6 +265,7 @@ def prepare_module(store, plan_id, module_id, ctx, progress):
                 if point.get('question_preparation')=='pending':
                     point['question_preparation']='done'
                     store._put('points',plan_id,point)
+            store.clear_question_batch_staging(plan_id, module_id, fingerprint)
             _check(ctx)
         message = ('资料里没有题，这个模块只学不考' if not candidates else
                    f'拆题完成，共 {len(admitted)} 道题，丢弃 {len(rejected)} 道（原因已记录）')

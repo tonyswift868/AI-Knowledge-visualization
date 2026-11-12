@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from refactor.learning.course.store import CourseStore
+from refactor.learning.course.store import CourseStore, SCHEMA_VERSION
 from refactor.learning.course.sync_contract import SyncRecord
 from refactor.learning.course.sync_course import CourseSync
 from tests.refactor.sync_course.test_sync_course import connection
@@ -27,7 +27,7 @@ def test_schema11_migration_adds_default_without_rewriting_messages(tmp_path):
         before_revision, before_pending = row['local_revision'], row['pending']
 
     with CourseStore(ACCOUNT, tmp_path) as migrated:
-        assert migrated._db.execute('SELECT version FROM schema_version').fetchone()[0] == 11
+        assert migrated._db.execute('SELECT version FROM schema_version').fetchone()[0] == SCHEMA_VERSION
         assert migrated.get_chat_session('old-chat')['archived'] is False
         assert tuple(migrated._db.execute("SELECT payload,revision FROM chat_messages WHERE id='old-message'").fetchone()) == before_message
         row = migrated._db.execute("SELECT local_revision,pending FROM _records WHERE entity='chat_sessions'").fetchone()

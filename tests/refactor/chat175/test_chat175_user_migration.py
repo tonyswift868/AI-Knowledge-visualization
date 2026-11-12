@@ -12,7 +12,7 @@ import sqlite3
 import pytest
 
 from refactor.learning.app.chat_store import CourseChatStore
-from refactor.learning.course.store import CourseStore
+from refactor.learning.course.store import CourseStore, SCHEMA_VERSION
 
 
 def fingerprint(db, table):
@@ -42,7 +42,7 @@ def test_chat175_user_copy_migration_preserves_every_message(tmp_path):
         sessions = {sid: json.loads(payload) for sid, payload in before.execute('SELECT id,payload FROM chat_sessions')}
         journal = before.execute("SELECT entity_id,local_revision,server_revision,pending FROM _records WHERE entity='chat_sessions' ORDER BY entity_id").fetchall()
     with CourseStore(account, tmp_path) as upgraded:
-        assert upgraded._db.execute('SELECT version FROM schema_version').fetchone()[0] == 11
+        assert upgraded._db.execute('SELECT version FROM schema_version').fetchone()[0] == SCHEMA_VERSION
         assert {table: upgraded._db.execute(f'SELECT count(*) FROM {table}').fetchone()[0]
                 for table in counts} == counts
         # sqlite Row objects are converted back for a byte-for-byte table hash.
