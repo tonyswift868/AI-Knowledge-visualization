@@ -1,0 +1,94 @@
+name: mentorflow-monitoring
+
+services:
+  uptime-kuma:
+    # 2.5.10 published 2026-11-12; linux/amd64 digest from the official GHCR package page.
+    image: ghcr.io/louislam/uptime-kuma:2.5.10@sha256:79e2757483d270d07e183cb7054198d8b75a5ac510a5e90a450567c3a019f514
+    container_name: mentorflow-monitoring-kuma
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      com.mentorflow.source: refactor/server-java/deploy/monitoring/compose.yml
+      com.mentorflow.purpose: http-tls-container-monitoring-and-alert-routing
+      com.mentorflow.listen: 127.0.0.1:3001
+      com.mentorflow.owner: MF-06
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "extra/healthcheck.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  beszel-hub:
+    # 0.21.1 published 2026-10-28; linux/amd64 digest from the official GHCR package page.
+    image: ghcr.io/henrygd/beszel/beszel:0.21.1@sha256:dd149010e30f4ba5876b6a65eb7ba3026f8c10d14dc07808d6324b02d477d93d
+    container_name: mentorflow-monitoring-beszel-hub
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_URL: http://127.0.0.1:8090
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - beszel_data:/beszel_data
+      - beszel_socket:/beszel_socket
+    labels:
+      com.mentorflow.source: refactor/server-java/deploy/monitoring/compose.yml
+      com.mentorflow.purpose: host-and-container-resource-history
+      com.mentorflow.listen: 127.0.0.1:8090
+      com.mentorflow.owner: MF-06
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/beszel", "health", "--url", "http://127.0.0.1:8090"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  beszel-agent:
+    # 0.21.1-alpine published 2026-10-28; linux/amd64 digest from the official GHCR package page.
+    image: ghcr.io/henrygd/beszel/beszel-agent:0.21.1-alpine@sha256:e1db7d0fdfb380cfbab1f5eac7a08c51d72b12dd1b1ab5517eddfa0a2b14fd39
+    container_name: mentorflow-monitoring-beszel-agent
+    restart: unless-stopped
+    init: true
+    network_mode: host
+    env_file:
+      - ${BESZEL_AGENT_ENV_FILE:?set BESZEL_AGENT_ENV_FILE to a root-readable restricted file}
+    environment:
+      LISTEN: /beszel_socket/beszel.sock
+      HUB_URL: http://127.0.0.1:8090
+    volumes:
+      - beszel_agent_data:/var/lib/beszel-agent
+      - beszel_socket:/beszel_socket
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      com.mentorflow.source: refactor/server-java/deploy/monitoring/compose.yml
+      com.mentorflow.purpose: host-and-container-resource-collector
+      com.mentorflow.listen: unix:///beszel_socket/beszel.sock
+      com.mentorflow.owner: MF-06
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "/agent", "health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  uptime_kuma_data:
+    name: mentorflow_monitoring_uptime_kuma_data
+  beszel_data:
+    name: mentorflow_monitoring_beszel_data
+  beszel_socket:
+    name: mentorflow_monitoring_beszel_socket
+  beszel_agent_data:
+    name: mentorflow_monitoring_beszel_agent_data
