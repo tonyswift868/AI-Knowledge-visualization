@@ -7,7 +7,8 @@ no prompt, answer, reasoning, tool arguments or URL is attached to an exception.
 from __future__ import annotations
 import time
 
-from ..errors import MODEL_OUTPUT_TRUNCATED, ModelError
+from ..errors import (MODEL_CONTEXT_WINDOW_EXCEEDED, MODEL_OUTPUT_TRUNCATED,
+                      CONTEXT_WINDOW_EXCEEDED_MESSAGE, ModelError)
 from .base import Usage, combine_usage, usage
 
 
@@ -321,10 +322,14 @@ class _Receipt:
 
     @property
     def truncated(self):
-        reasons = {'anthropic_messages': {'max_tokens', 'model_context_window_exceeded'},
+        reasons = {'anthropic_messages': {'max_tokens'},
                    'openai_chat': {'length'}, 'dashscope_generation': {'length'},
                    'openai_responses': {'max_output_tokens'}, 'gemini_generate_content': {'MAX_TOKENS'}}
         return isinstance(self.reason, str) and self.reason in reasons[self.protocol]
+
+    @property
+    def context_window_exceeded(self):
+        return self.protocol == 'anthropic_messages' and self.reason == 'model_context_window_exceeded'
 
 
 class Accounting:
@@ -376,6 +381,8 @@ class Accounting:
         self.receipts[-1].event(event, data)
 
     def check_truncated(self):
+        if any(r.context_window_exceeded for r in self.receipts):
+            raise self.attach(ModelError(MODEL_CONTEXT_WINDOW_EXCEEDED, CONTEXT_WINDOW_EXCEEDED_MESSAGE))
         if any(r.truncated for r in self.receipts):
             raise self.attach(ModelError(MODEL_OUTPUT_TRUNCATED, '模型输出达到上限，请拆小内容后重新生成。'))
 

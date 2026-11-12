@@ -8,6 +8,8 @@ import httpx
 import pytest
 
 from refactor.learning.connections.providers import ModelError
+from refactor.learning.connections.errors import (CONTEXT_WINDOW_EXCEEDED_MESSAGE,
+                                                  MODEL_CONTEXT_WINDOW_EXCEEDED)
 from .failure_samples import OFFICIAL, STREAMED, expected_tokens, set_text, truncated, wire_frames
 from .samples import KEY, ByteStream, anthro, call, chat, frame, ordinary, sse
 from .test_safety import invoke
@@ -187,11 +189,12 @@ def test_connect_failure_without_any_response_has_no_usage():
     assert not exc.value.response_received and exc.value.usage is None
 
 
-def test_context_window_limit_and_malformed_tool_json_keep_truncation_semantics():
+def test_context_window_limit_is_distinct_from_output_truncation():
     data = anthro(provider='deepseek', reason='model_context_window_exceeded')
     with pytest.raises(ModelError) as exc:
         call('deepseek', [data])
-    assert exc.value.code == 'MODEL_OUTPUT_TRUNCATED'
+    assert exc.value.code == MODEL_CONTEXT_WINDOW_EXCEEDED
+    assert exc.value.message == CONTEXT_WINDOW_EXCEEDED_MESSAGE
     frames = wire_frames(anthro(True, provider='deepseek', reason='max_tokens'), 'deepseek')
     # Valid SSE envelope, but incomplete tool-argument JSON on an output limit.
     frames.insert(-2, frame({'type': 'content_block_delta', 'index': 0,
