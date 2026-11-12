@@ -87,7 +87,9 @@ def test_sync363_database_failure_preserves_response_and_logs_context(sync145_ba
     # The request has no materials/body, and the token must never be copied to
     # diagnostics.  These guards also catch accidental exception message dumps.
     assert token not in log
-    assert "Bearer" not in log
+    # Stack frames legitimately name Spring's BearerTokenAuthenticationFilter;
+    # what must never appear is a "Bearer <credential>" header value.
+    assert not re.search(r"Bearer\s+[A-Za-z0-9._~+/=-]", log)
     assert "materials" not in log.lower()
 
 
