@@ -45,17 +45,17 @@ sudo -n sh preflight.sh
 | 公网探活 | API/健康入口是 `https://89.45.45.28` 的 `/health/live`、`/health/startup`、`/health/ready`；下载站域名不是这个vhost（221）。普通API用`/api/enterprise/auth/lifecycle/capabilities`；匿名401不代表用户登录业务通过 |
 | TLS/身份扩展 | 保留edge转发的HTTPS语义、Java信任库/Keycloak回环/mTLS。注册SPI有改动时先按该任务验证Keycloak扩展再换Java；实际Keycloak可有shell包装入口，不能只grep一个Cmd字段推断`--optimized` |
 | 主机工具/磁盘 | `sh`、Python3、Docker/Compose、curl、sha256sum、df可用；备份用PostgreSQL容器里的`pg_dump/pg_restore`，不用旧宿主机版本。备份前确认目标不存在和足够空间，权限600，不输出备份正文 |
-| 预检对照输入 | 当前`SOURCE_SHA256_MANIFEST`为`/opt/mentorflow/state/release275/source.sha256`。`PREFLIGHT_SOURCE_REVISION`默认`0047_rag_promoted_manifests`（完整14项），显式`0048_rag_source_chunks`增加0048迁移文件（共15项）；每个指定路径必须恰好出现一次，数量由同一集合计算，缺项、重复、额外项或SHA256不符均FAIL。`EXPECTED_ALEMBIC_REVISION`独立表示数据库应处的版本，默认仍0047；`JAVA_IMAGE`、`PYTHON_IMAGE`核对在线镜像，不拿尚未构建的目标冒充现网。`RELEASE_ROOT`绑定清单源码，`DEPLOY_DIR`绑定现有部署配置，`SERVER_ROOT`绑定迁移源码 |
+| 预检对照输入 | 当前`SOURCE_SHA256_MANIFEST`为`/opt/mentorflow/state/release275/source.sha256`。`PREFLIGHT_SOURCE_REVISION`默认`0047_rag_promoted_manifests`（完整14项），发布阶段按0048、0049、0050、0051逐项追加迁移文件（最终18项）；每个指定路径必须恰好出现一次，数量由同一集合计算，缺项、重复、额外项或SHA256不符均FAIL。`EXPECTED_ALEMBIC_REVISION`独立表示数据库应处的版本，默认仍0047；`JAVA_IMAGE`、`PYTHON_IMAGE`核对在线镜像，不拿尚未构建的目标冒充现网。`RELEASE_ROOT`绑定清单源码，`DEPLOY_DIR`绑定现有部署配置，`SERVER_ROOT`绑定迁移源码 |
 
-## 0048发布的源码清单与迁移阶段
+## 0051发布的源码清单与迁移阶段
 
-当前线上事实仍是0047；以下是另行获准后使用的新发布流程，不表示0048已上线。完整路径集合只维护在`preflight.sh`中；`--source-manifest`按选定源码版本输出原生SHA256清单，不连接Docker/数据库、不访问网络、不写文件，且可通过`sh -s -- --source-manifest`标准输入执行。只从审定提交的LF归档生成对照清单，不能从待核验的现场目录重算一份来替代审定输入。
+当前线上事实仍是0047；以下是另行获准后使用的新发布流程，不表示0051已上线。完整路径集合只维护在`preflight.sh`中；`--source-manifest`按选定源码版本输出原生SHA256清单，不连接Docker/数据库、不访问网络、不写文件，且可通过`sh -s -- --source-manifest`标准输入执行。只从审定提交的LF归档生成对照清单，不能从待核验的现场目录重算一份来替代审定输入。
 
 | 阶段 | 源码版本/清单 | 数据库期望 |
 | --- | --- | --- |
 | 先检查现网 | 默认0047、原14项、原发布目录 | 默认0047，在线镜像及旧部署配置 |
-| 新源码迁移前 | 显式0048、原14项加`0048_rag_source_chunks.py`共15项、新归档目录 | 显式0047，仍核对正在运行的旧镜像与配置 |
-| 迁移成功后 | 保持新0048源码和同一15项清单 | 显式0048，同时要求manifest表和`rag_source_chunks`表存在 |
+| 新源码迁移前 | 显式0051、原14项依次加`0048_rag_source_chunks.py`、`0049_drop_redundant_rag_indexes.py`、`0050_account_daily_activity.py`、`0051_sync_closure_fence.py`共18项、新归档目录；部署配置仍绑定在线目录 | 显式0047，仍核对正在运行的旧镜像与配置 |
+| 迁移成功后 | 保持新0051源码和同一18项清单 | 显式0051，同时要求`rag_source_chunks`存在、0049两项冗余索引已移除、`account_daily_activity`存在、`mentorflow_app`拥有`account_closure.assert_open(text,text)` EXECUTE |
 
 先完成默认现网预检。随后在受信任的构建端为审定的新归档生成清单，调用者只在成功时发布临时输出；将该清单作为发布材料带到批准的现场，不覆盖旧清单：
 
@@ -67,7 +67,7 @@ umask 077
 NEW_DEPLOY="$NEW_RELEASE_ROOT/refactor/server-java/deploy"
 test ! -e "$CANDIDATE_SOURCE_MANIFEST"
 test ! -e "$CANDIDATE_SOURCE_MANIFEST.tmp"
-manifest_lines=$(PREFLIGHT_SOURCE_REVISION=0048_rag_source_chunks RELEASE_ROOT="$NEW_RELEASE_ROOT" \
+manifest_lines=$(PREFLIGHT_SOURCE_REVISION=0051_sync_closure_fence RELEASE_ROOT="$NEW_RELEASE_ROOT" \
   sh "$NEW_DEPLOY/preflight.sh" --source-manifest)
 printf '%s\n' "$manifest_lines" > "$CANDIDATE_SOURCE_MANIFEST.tmp"
 mv "$CANDIDATE_SOURCE_MANIFEST.tmp" "$CANDIDATE_SOURCE_MANIFEST"
@@ -84,21 +84,24 @@ export RELEASE_ROOT="$NEW_RELEASE_ROOT"
 export DEPLOY_DIR="$ONLINE_DEPLOY_DIR"
 export SERVER_ROOT="$NEW_RELEASE_ROOT/refactor/server"
 export SOURCE_SHA256_MANIFEST="$CANDIDATE_SOURCE_MANIFEST"
-export PREFLIGHT_SOURCE_REVISION=0048_rag_source_chunks
+export PREFLIGHT_SOURCE_REVISION=0051_sync_closure_fence
 EXPECTED_ALEMBIC_REVISION=0047_rag_promoted_manifests sh "$NEW_DEPLOY/preflight.sh"
 ```
 
-全部OK后才备份；备份确认后从新归档的deploy目录执行`migrate.sh current/upgrade/current`，逐步检查退出码。`upgrade head`此时明确以0048为目标。迁移成功后，用同一绑定再次检查：
+全部OK后才备份；备份确认后从新归档的deploy目录执行`migrate.sh current/upgrade/current`，逐步检查退出码。`upgrade head`此时明确以0051为目标。迁移成功后，用同一绑定再次检查：
 
 ```sh
-EXPECTED_ALEMBIC_REVISION=0048_rag_source_chunks sh "$NEW_DEPLOY/preflight.sh"
+PREFLIGHT_SOURCE_REVISION=0051_sync_closure_fence \
+SOURCE_SHA256_MANIFEST="$CANDIDATE_SOURCE_MANIFEST" \
+RELEASE_ROOT="$NEW_RELEASE_ROOT" DEPLOY_DIR="$ONLINE_DEPLOY_DIR" \
+EXPECTED_ALEMBIC_REVISION=0051_sync_closure_fence sh "$NEW_DEPLOY/preflight.sh"
 ```
 
-迁后检查通过才按批准的版本构建并重建服务。新配置就绪后，最终预检再将`DEPLOY_DIR`、在线镜像和版本期望切换到实际部署的新值；不能只改数据库期望来绕过真实FAIL。表存在/版本检查不替代0048迁移角色、回填、RLS和closure测试。旧Python269继续停止，不据此声称已可接0048；备用须另按同源新版本构建并验证。
+迁后检查通过才按批准的版本构建并重建服务。新配置就绪后，最终预检再将`DEPLOY_DIR`、在线镜像和版本期望切换到实际部署的新值；不能只改数据库期望来绕过真实FAIL。表、索引和授权检查不替代0051迁移角色、回填、RLS和closure测试。旧Python269继续停止，不据此声称已可接0051；备用须另按同源新版本构建并验证。
 
 ## 维护顺序与失败传播
 
-预检全OK → 新目录备份并用容器内`pg_restore --list`验可读 → `migrate.sh current/upgrade/current`检查退出码和版本 → `build.sh VERSION` → `java-compose.sh config/up` → Java真实探活 → 同源码构建Python备用并prepare-only验证。逐步成功才继续。应用启动不自动迁移。
+预检全OK → 新目录备份并用容器内`pg_restore --list`验可读 → `migrate.sh current/upgrade/current`检查退出码和版本 → 迁后预检 → `build.sh VERSION` → JVM 参数试启动 → `java-compose.sh config/up` → Java 三项真实探活 → 最终预检。逐步成功才继续。此次0051上线不重建或切换旧Python269备用；它继续停止并只认0047。应用启动不自动迁移。
 
 `migrate.sh`维护命令会构建工具，和只读预检不同；不要把输出接到吞退出码的管道。迁移中的closure角色修复已在迁移内按既有`SET LOCAL ROLE`实现，不另授CREATE（[BUG-107]）。若新库已迁移，应用回退保留新表/数据，禁止把恢复旧全库当常规回退；0047不能downgrade。
 
