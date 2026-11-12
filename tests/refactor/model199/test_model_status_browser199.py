@@ -213,7 +213,8 @@ def test_model_status_chip_updates_without_blocking_navigation_or_classroom(tmp_
         finally:
             (tmp_path / "done199").touch()
             child.wait(timeout=15)
-    log_text = (tmp_path / "qt199.log").read_text(encoding="utf-8")[-5000:]
+    # Qt/WebEngine output may carry non-UTF-8 bytes; this text only feeds the failure message.
+    log_text = (tmp_path / "qt199.log").read_text(encoding="utf-8", errors="replace")[-5000:]
     assert drive.returncode == 0, drive.stdout + drive.stderr + log_text
     result = json.loads((tmp_path / "result199.json").read_text(encoding="utf-8"))
     assert result["states"] == ["checking", "ok", "error", "unconfigured"]
