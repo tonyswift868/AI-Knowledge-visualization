@@ -39,7 +39,7 @@ Kuma Docker monitors 依赖 socket 只读挂载和上表中的精确容器名。
 
 ### 387-MF01 安装顺序
 
-安装脚本先启动 Kuma 和 Beszel Hub，再从 `mentorflow_monitoring_beszel_data` 卷内的 `id_ed25519.pub` 读取 Hub 公钥，更新 root-only 的 `beszel-agent.env`（保留已有 `TOKEN`，权限 0600），最后才启动 Agent。安装前把该 env 文件纳入回退 manifest；失败回退时恢复原文件或删除本次新建文件。公钥读取只取 `.pub` 文件，不打印私钥或 env 值。
+安装脚本先启动 Kuma 和 Beszel Hub，再从 `mentorflow_monitoring_beszel_data` 卷取得 Hub 公钥，更新 root-only 的 `beszel-agent.env`（保留已有 `TOKEN`，权限 0600），最后才启动 Agent。0.21.1 官方 Hub 默认只持久化 `id_ed25519` 私钥，脚本用 `ssh-keygen -y` 在内存中派生公钥；若卷已有 `id_ed25519.pub` 则直接读取该公钥文件。私钥只作为派生输入，不打印、不写入 env；安装前把该 env 文件纳入回退 manifest，失败回退时恢复原文件或删除本次新建文件，env 值不进日志、回执或证据。
 
 ## 首次登录
 

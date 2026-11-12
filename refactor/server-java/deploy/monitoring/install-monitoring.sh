@@ -11,6 +11,7 @@ install_root=${MONITORING_INSTALL_ROOT:-/opt/mentorflow/monitoring}
 rollback_state=${MONITORING_ROLLBACK_STATE:-$install_root/.385-preinstall}
 agent_env=${BESZEL_AGENT_ENV_FILE:-/etc/mentorflow/monitoring/beszel-agent.env}
 beszel_volume=${BESZEL_HUB_VOLUME:-mentorflow_monitoring_beszel_data}
+ssh_keygen_bin=${SSH_KEYGEN_BIN:-ssh-keygen}
 agent_env_tmp=
 agent_env_created=0
 die() { printf 'monitoring install: %s\n' "$*" >&2; exit 1; }
@@ -103,8 +104,19 @@ backup_target "$unit_root/mentorflow-db-backup.service.d/healthchecks.conf" db-b
 backup_target "$unit_root/mentorflow-e108-ip-renew.service.d/healthchecks.conf" e108-ip-renew-healthchecks.conf
 hub_mount=$("$docker_bin" volume inspect -f '{{.Mountpoint}}' "$beszel_volume" 2>/dev/null) || die "Beszel hub volume missing: $beszel_volume"
 [ -n "$hub_mount" ] || die "Beszel hub volume mountpoint is empty: $beszel_volume"
-hub_key=$(cat "$hub_mount/id_ed25519.pub" 2>/dev/null) || die 'Beszel hub public key is not available in its data volume'
+if [ -r "$hub_mount/id_ed25519.pub" ]; then
+  hub_key=$(cat "$hub_mount/id_ed25519.pub" 2>/dev/null) || die 'Beszel hub public key is not available in its data volume'
+  hub_key_source=public-file
+elif [ -r "$hub_mount/id_ed25519" ]; then
+  command -v "$ssh_keygen_bin" >/dev/null 2>&1 || die 'ssh-keygen is required to derive the Beszel hub public key'
+  hub_key=$("$ssh_keygen_bin" -y -P '' -f "$hub_mount/id_ed25519" 2>/dev/null) || die 'Beszel hub public key could not be derived from its data volume'
+  hub_key_source=derived-from-private
+else
+  die 'Beszel hub public key is not available in its data volume'
+fi
 [ -n "$hub_key" ] || die 'Beszel hub public key is empty'
+printf '%s\n' "$hub_key" | grep -Eq '^ssh-ed25519 [A-Za-z0-9+/=]+( .*)?$' || die 'Beszel hub public key has an unexpected format'
+printf 'Beszel hub public key loaded (%s)\n' "$hub_key_source"
 if [ ! -e "$agent_env" ]; then
   umask 077
   run sh -c ': > "$1"' sh "$agent_env"
