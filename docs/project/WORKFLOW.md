@@ -25,7 +25,7 @@
 - **合入员工分支**：主目录 `git merge --no-ff office/<工位>`（或 `git diff --binary <基线> <员工提交> | git apply --index --3way`），逐文件看改动是否在任务范围内；合入后只做改动文件的编译检查（`py_compile`），相关测试、全量和查失败原因交给下一份任务顺带跑或单独派员工（AGENTS 第 9 条）。
 - **全量测试**（员工跑，架构师不跑；2026-10-21 约 4580 项、约 55 分钟）：`TMP=D:/MentorFlow/.local/test-tmp/<子目录> TEMP=同上 .venv/Scripts/python.exe -m pytest tests/refactor -q -p no:cacheprovider --basetemp=D:/MentorFlow/.local/test-tmp/<子目录>/pt`，输出重定向到文件、放后台跑，跑完删子目录。Java 构建缓存在 .local/test-tmp/java-cache（共享、加锁，不要删），不用再设 SHIP156_TMP（[BUG-108]）。
 - **基线**：合入并提交后 `git rev-parse --short HEAD` 就是下一批任务的基线。
-- **发布新版**（[SYS-06]）：①合入并推送 main；②手动运行 GitHub 工作流 mf-build（版本号、更新说明、是否必须及原因、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机 `.venv/Scripts/python.exe -B scripts/release/sign_and_stage.py --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity E:/Codex/Secrets/MentorFlow/ssh/mentorflow-e1-ops-ed25519`；④手动运行 mf-publish（版本号；build_installer 默认 false 只发更新约 1～3 分钟，要新安装程序时设 true 约 10 分钟，或事后单独跑 mf-installer）；⑤用客户端代码对公网 stable.json 验签（`refactor.desktop.delivery.update_protocol.verify_release(原始字节, {key_id: base64 解码的公钥}, current=上一版)`，公钥在 .local/release-keys/mentorflow-app-2026.public.json），看 aiteacher.clannad.win/download。触发和查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（.local/tmp/watch_run.sh 轮询到结束）。工作流只能手动触发，额度红线见 scripts/release/README.md。
+- **发布新版**（[SYS-06]）：①合入并推送 main；②手动运行 GitHub 工作流 mf-build（版本号、更新说明、是否必须及原因、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机 `.venv/Scripts/python.exe -B -m scripts.release.sign_and_stage --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity C:/Users/21533/.ssh/mentorflow_server`（在主目录跑，2.0.47 这样跑通，2026-11-12）；④手动运行 mf-publish（版本号；build_installer 默认 false 只发更新约 1～3 分钟，要新安装程序时设 true 约 10 分钟，或事后单独跑 mf-installer）；⑤用客户端代码对公网 stable.json 验签（`refactor.desktop.delivery.update_protocol.verify_release(原始字节, {key_id: base64 解码的公钥}, current=上一版)`，公钥在 .local/release-keys/mentorflow-app-2026.public.json），看 aiteacher.clannad.win/download。触发和查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（.local/tmp/watch_run.sh 轮询到结束）。工作流只能手动触发，额度红线见 scripts/release/README.md。
 - **本机打包**（发版先验，[BUG-202]）：只能用专用打包环境，不能用平时测试的环境。在干净的员工工位里跑（如 D:\MentorFlow-office\runtime\repo，先 reset 到要发的提交），不在主目录跑：打包收尾要核对代码版本，打包期间主目录一提交就失败。在工位目录里 PowerShell 照抄：
   `$env:MF_TEMP_ROOT='D:\MentorFlow\.local\test-tmp'; $env:MF_BUILD_TOOLS='D:\MentorFlow\.local\release-tools\build-tools'; $env:MF_NODE_DIR='D:\MentorFlow\.local\node'; & D:\MentorFlow\.venv\Scripts\python.exe -B scripts\release\build_release.py --version <测试号如 9.257.1> --baseline <git rev-parse --short=8 HEAD> --valid-days 1096 --base-versions <线上版本> --notes <说明> --output-dir D:\MentorFlow\.local\test-tmp\<任务目录>\build --previous-release <已验签的线上 stable.json 副本>`
   先只跑环境检查（打印 Exact build pins and locked SQLite runtime verified: 73 才往下）。专用打包环境在 .local/release-tools/build-tools，不放进 test-tmp，清理临时文件时别删。
@@ -45,9 +45,9 @@
 
 | 项目 | 值 |
 | --- | --- |
-| main | 以 `git rev-parse --short HEAD` 为准；2.0.46 正式源码 cf714dd6；2.0.47 候选产品代码 0aefe606，之后只有文档提交 |
-| 本地待发布候选 | 2.0.47：382-MF05 本机先验过（测试号 9.382.1，基线 0aefe606）；GitHub 构建见 384-MF05 |
-| 已发布 | 2.0.46，普通可选软件内更新，参数及证据见[SYS-06]和.local/r324/report.md；本轮不编新安装程序；服务器Java269、数据库迁移0047未改动 |
+| main | 以 `git rev-parse --short HEAD` 为准；2.0.47 正式源码 5354a3fa（产品代码同 0aefe606）；服务端线上 Java 0aefe606 |
+| 本地待发布候选 | 无 |
+| 已发布 | 2.0.47（2026-11-12，普通可选软件内更新；mf-build 43188083853、mf-publish 43201804724，公网验签过，副本 .local/test-tmp/release-2.0.47/verify/stable.json）；服务器 Java 0aefe606、迁移 0051（2026-11-12，381-MF01） |
 | GitHub | main 最近一次推送 2026-11-12（为 2.0.47 构建）。仓库私有，正式发布所需推送由架构师做，其余推送要用户说 |
 | 工位分支 | office/* 只在本地，永不推送；先核干净状态再从指定基线建本批分支，未知修改保留，不自动reset/clean |
 
@@ -57,16 +57,16 @@
 
 | 员工 | 名字 | 当前任务 | 工位 |
 | --- | --- | --- | --- |
-| MF-01 | 服务端 | 381-MF01 第二段进行中（真正上线；用户 2026-11-12 转发通知） | server |
+| MF-01 | 服务端 | 空闲（381-MF01 已交，2026-11-12 上线，合入 401dfdf3） | server |
 | MF-02 | 客户端 | 空闲（376-MF02 已交，2026-11-11 审过） | client |
 | MF-03 | 课堂 | 空闲（375-MF03 已交，2026-11-11 合入 0e6fe4c2） | classroom |
-| MF-04 | 运行时 | 386-MF04 进行中（工作台的账号数据从哪来，只查不改；用户 2026-11-12 转发） | runtime |
-| MF-05 | 发版 | 384-MF05 进行中（2.0.47：补验真实迁移，GitHub 构建一次，不签名不发布；用户 2026-11-12 转发） | platform |
-| MF-06 | 工具 | 385-MF06 进行中（工作台第一步：Kuma＋Beszel＋外部打卡＋桌面图标，只在本机写和演练；用户 2026-11-12 转发） | tools |
+| MF-04 | 运行时 | 空闲（386-MF04 已交，2026-11-12 审过，等用户定账号数据做法） | runtime |
+| MF-05 | 发版 | 空闲（384-MF05 已交，2.0.47 已发布） | platform |
+| MF-06 | 工具 | 空闲（385-MF06 已交，2026-11-12 合入 ab150cc6） | tools |
 | MF-07 | 资料 | 空闲（369-MF07 已交，2026-11-11 合入 main 62d2014a） | library |
 ## 待派队列
 
-- 写项目题卡答案时查出的缺陷这一批（[DOC-03]，360～380）：全部已交、合入 main 并推送，380 全量过（2 个偶发见 [BUG-241]）；服务端没上线、客户端没发版。①发版：服务端 381-MF01（.local/tasks/381-MF01.md）第一段已审过，第二段进行中；客户端 2.0.47：382 本机先验已过，384-MF05（.local/tasks/384-MF05.md）进行中，补验真实迁移并在 GitHub 构建一次，回执审过后架构师签名、跑 mf-publish、verify_public.py 2.0.47 2.0.46；②规范化（377 回执第六节 P0～P2；企业 API 改走域名按 373 分阶段，用户 2026-11-11 定和规范化一起排；IP 证书和备份加失败告警；动服务器的每一步先说明、用户同意再派）；③清理候选（377 回执第三节，只列未删，删前用户同意）。系统全景页（静态快照）：https://claude.ai/artifact/M6o4Nj3n5L9eeBLsh3b99K（源文件 .local/overview/mentorflow-system.html）；用户要实时的开发工作台：383-MF06 调研已交（.local/receipts/383-MF06.md），用户 2026-11-12 定了方案（见 CURRENT_STATE「当前阶段」），第一步 385-MF06（.local/tasks/385-MF06.md，本机写好并演练，381 上线后由 MF-01 照脚本装到服务器）、账号数据调研 386-MF04（.local/tasks/386-MF04.md）进行中；用户已注册 Healthchecks.io 免费账号（2026-11-12），装的时候架构师照 385 回执告诉用户建哪三个打卡项，用户自己加。客户端平时占用：用户 2026-11-11 说自己用下来不大，这次不测。358 的重排序模型、补前后段、切段对比实验这次不做（用户 2026-11-11 定）。362 七处结论见 .local/receipts/362-MF03.md。
+- 写项目题卡答案时查出的缺陷这一批（[DOC-03]，360～380）：全部已交、合入 main 并推送，380 全量过（2 个偶发见 [BUG-241]）；2026-11-12 服务端已上线、客户端 2.0.47 已发布。①发版已完成（2026-11-12）：服务端 381 上线（[BUG-242]），客户端 2.0.47 发布、公网验签过，等用户本人在装好的软件里更新亲测；②规范化（377 回执第六节 P0～P2；企业 API 改走域名按 373 分阶段，用户 2026-11-11 定和规范化一起排；IP 证书和备份加失败告警；动服务器的每一步先说明、用户同意再派）；③清理候选（377 回执第三节，只列未删，删前用户同意）。系统全景页（静态快照）：https://claude.ai/artifact/M6o4Nj3n5L9eeBLsh3b99K（源文件 .local/overview/mentorflow-system.html）；用户要实时的开发工作台：383-MF06 调研已交（.local/receipts/383-MF06.md），用户 2026-11-12 定了方案（见 CURRENT_STATE「当前阶段」），385-MF06 已交、合入 ab150cc6（还没装）；装之前等用户在 Healthchecks 建好三个打卡项、把打卡地址写进 .local/server/healthchecks.txt，并定发告警的邮箱，再派 MF-01 照 385 回执的命令装；Kuma、Beszel 第一次打开时的网页设置（建管理员、按 kuma-monitors.json 建监控项、Kuma 关登录、Beszel 加系统）由用户做，员工不操作网页。386-MF04 已交（.local/receipts/386-MF04.md）：现有后台接口只给 12 个总数，每个账号一行要新加只读接口（改服务器、要上线），等用户定。客户端平时占用：用户 2026-11-11 说自己用下来不大，这次不测。358 的重排序模型、补前后段、切段对比实验这次不做（用户 2026-11-11 定）。362 七处结论见 .local/receipts/362-MF03.md。
 - 347-MF01、349-MF05、350-MF04、351-MF02（[DOC-03]，用户 2026-11-09 定）：MentorFlow 项目追问的后续，四份 2026-11-09 都已交，349、350、351 已合入 main（合入后全量测试还没跑，交给下一份任务顺带跑）。用户 2026-11-09 定：G-02（354-MF04，最后跑全量）、G-01（355-MF05）先做，G-04 等下次发版；同义改写调研 356-MF07；350 上服务器只读跑同意，连法已解决（[BUG-228]），任务 357-MF01。355、356 已交（355 已合入），354、357 进行中；356 的 5 件事用户已定，358-MF07 已发（2026-11-09），关键词索引和重排序模型等 358 结果再派。
 - 348（Kristina）：Kristina 架构师 2026-11-09 已交回 .local/receipts/348-Kristina.md，结论见 CURRENT_STATE。
 - 335（[DOC-03]）：旧版并进新版第一步，六份已交（近期有 47、与新版重复 105、与旧版重复 2、没找到 135）。338-MF04 复查也已交（只多找到 6 道）。用户 2026-11-09 定逐题判断，340 已出名单（.local/receipts/340-旧题并入名单.md：并进 106、删 51、跨组重复 3、转项目问法 22），找出处 343-MF04 已交（61 道里 12 道找到一条出处，49 道没找到、不删）；并入 345-MF06 已交、架构师 2026-11-09 合入写回（见 CURRENT_STATE「340 逐题判断」条目），题库已导入、学习记录已迁到新题号，都核对通过（[BUG-227]）。scratch/338-MF04 的临时脚本和中间表架构师 2026-11-10 已删，只留 corpus/posts.jsonl（816 KB）。
