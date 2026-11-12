@@ -51,6 +51,10 @@ public final class BusinessDatabase323Main {
             HikariDataSource pool = (HikariDataSource) alias.dataSource();
             check("jdbc:postgresql://localhost:5432/mentorflow?socketTimeout=0".equals(pool.getJdbcUrl()),
                     "postgres:// alias and an explicit disabled socket timeout must remain accepted");
+            check("10".equals(pool.getDataSourceProperties().getProperty("connectTimeout")),
+                    "business pool must default the PostgreSQL connect timeout to 10 seconds");
+            check("10".equals(pool.getDataSourceProperties().getProperty("socketTimeout")),
+                    "business pool must default the PostgreSQL socket timeout to 10 seconds");
         }
         try (BusinessDatabase legacyUrl = new BusinessDatabase(environment(Map.of("MENTORFLOW_DATABASE_URL",
                 "postgresql+psycopg://alice:s%40cret@db.invalid:5433/mentorflow?sslmode=require&connectTimeout=0&socketTimeout=120")))) {
@@ -61,6 +65,10 @@ public final class BusinessDatabase323Main {
             check("alice".equals(pool.getUsername()), "URL username was not decoded/retained");
             check("s@cret".equals(pool.getPassword()), "URL password was not decoded/retained");
             check(pool.getJdbcUrl().contains("sslmode=require"), "URL sslmode was not retained");
+            check("10".equals(pool.getDataSourceProperties().getProperty("connectTimeout")),
+                    "explicit URL timeout must not remove the connect timeout default");
+            check("10".equals(pool.getDataSourceProperties().getProperty("socketTimeout")),
+                    "explicit URL timeout must not remove the socket timeout default");
         }
     }
 
