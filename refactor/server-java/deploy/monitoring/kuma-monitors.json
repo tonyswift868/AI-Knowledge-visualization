@@ -1,0 +1,26 @@
+{
+  "schema_version": "mentorflow.kuma-monitors.v1",
+  "generated_at": "2026-11-12",
+  "defaults": {
+    "interval_seconds": 60,
+    "retry_count": 2,
+    "timeout_seconds": 15,
+    "certificate_warning_days": 14,
+    "ip_certificate_warning_days": 3
+  },
+  "monitors": [
+    {"name": "java-health-live", "type": "http", "url": "https://89.45.45.28/health/live", "expected_status": 200, "interval_seconds": 60},
+    {"name": "java-health-startup", "type": "http", "url": "https://89.45.45.28/health/startup", "expected_status": 200, "interval_seconds": 60},
+    {"name": "java-health-ready", "type": "http", "url": "https://89.45.45.28/health/ready", "expected_status": 200, "interval_seconds": 60},
+    {"name": "certificate-89.45.45.28", "type": "https-certificate", "url": "https://89.45.45.28/", "interval_seconds": 900, "certificate_warning_days": 3},
+    {"name": "certificate-auth.clannad.win", "type": "https-certificate", "url": "https://auth.clannad.win/", "interval_seconds": 900, "certificate_warning_days": 14},
+    {"name": "certificate-aiteacher.clannad.win", "type": "https-certificate", "url": "https://aiteacher.clannad.win/", "interval_seconds": 900, "certificate_warning_days": 14},
+    {"name": "container-mentorflow-java-backend", "type": "docker", "container": "mentorflow-java-backend", "interval_seconds": 60},
+    {"name": "container-mentorflow-java-oidc", "type": "docker", "container": "mentorflow-java-oidc", "interval_seconds": 60},
+    {"name": "container-mentorflow-e1-preview-keycloak-1", "type": "docker", "container": "mentorflow-e1-preview-keycloak-1", "interval_seconds": 60},
+    {"name": "container-mentorflow-e1-preview-postgres-1", "type": "docker", "container": "mentorflow-e1-preview-postgres-1", "interval_seconds": 60},
+    {"name": "container-mentorflow-e1-preview-edge-1", "type": "docker", "container": "mentorflow-e1-preview-edge-1", "interval_seconds": 60},
+    {"name": "container-mentorflow-e109-mailpit", "type": "docker", "container": "mentorflow-e109-mailpit", "interval_seconds": 60},
+    {"name": "container-mentorflow-e108-update-static", "type": "docker", "container": "mentorflow-e108-update-static", "interval_seconds": 60}
+  ]
+}

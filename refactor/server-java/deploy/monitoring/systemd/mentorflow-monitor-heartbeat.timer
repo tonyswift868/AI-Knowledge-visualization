@@ -1,0 +1,11 @@
+[Unit]
+Description=MentorFlow external Healthchecks heartbeat timer
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=mentorflow-monitor-heartbeat.service
+
+[Install]
+WantedBy=timers.target
