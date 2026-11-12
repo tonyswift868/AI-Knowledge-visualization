@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,15 @@ public final class RagService {
     private static final int MAX_CHUNKS_PER_DOCUMENT = 100_000;
     private static final int MAX_SELECTED_DOCUMENTS = 500;
     private static final int MAX_TOP_K = 100;
+    // Fixed by 358-MF07's offline evaluation: dense/lexical top-20, RRF k=60,
+    // and character-bigram BM25 with the standard k1/b values.
+    private static final int RRF_CANDIDATE_LIMIT = 20;
+    private static final int RRF_K = 60;
+    private static final double BM25_K1 = 1.2d;
+    private static final double BM25_B = 0.75d;
+    // shortcut: process-local bounded cache; revisit when multi-instance sharing or >4096 distinct chunks is needed.
+    private static final int MAX_KEYWORD_STATS_CACHE_ENTRIES = 4096;
+    private static final Map<String, KeywordDocumentStats> KEYWORD_STATS_CACHE = new ConcurrentHashMap<>();
     private final RagRepository repository;
     private final RagEmbedding embedding;
     private final RagVectorStore vectorStore;
@@ -536,8 +547,12 @@ public final class RagService {
                     }
                 }
                 if (canonicalIds.isEmpty()) return searchResponse(List.of(), List.of());
-                List<RagVectorStore.Candidate> ranked = vectorStore.nearest(jdbc, scope,
-                        new ArrayList<>(canonicalIds), queryVector, Math.min(10_000, Math.max(k * 10, 50)));
+                int candidateLimit = Math.min(10_000, Math.max(RRF_CANDIDATE_LIMIT, k));
+                List<RagVectorStore.Candidate> dense = vectorStore.nearest(jdbc, scope,
+                        new ArrayList<>(canonicalIds), queryVector, candidateLimit);
+                List<RagVectorStore.Candidate> lexical = keywordCandidates(jdbc, scope,
+                        new ArrayList<>(canonicalIds), query, candidateLimit);
+                List<RankedCandidate> ranked = mergeRrf(dense, lexical);
                 Comparator<LocatedPassage> order=Comparator.comparingDouble(LocatedPassage::score).reversed()
                         .thenComparing(LocatedPassage::documentId).thenComparing(LocatedPassage::seq,Comparator.nullsLast(Comparator.naturalOrder()));
                 Map<String,LocatedPassage> best=new LinkedHashMap<>();
@@ -545,8 +560,9 @@ public final class RagService {
                 Map<String,CanonicalRanges> physicalLayouts = new LinkedHashMap<>();
                 List<Map<String,Object>> warnings=new ArrayList<>();
                 Set<String> warned=new LinkedHashSet<>();
-                for (RagVectorStore.Candidate passage : ranked) {
-                    double score = 0.8 * ((passage.cosine() + 1.0) / 2.0) + 0.2 * bigramJaccard(query, passage.text());
+                for (RankedCandidate rankedCandidate : ranked) {
+                    RagVectorStore.Candidate passage = rankedCandidate.candidate();
+                    double score = rankedCandidate.score();
                     List<String> logicalIds = requestedByCanonical.getOrDefault(passage.documentId(), List.of());
                     CanonicalRanges physical=physicalLayouts.computeIfAbsent(passage.documentId(),id->canonicalRanges(jdbc,scope,id));
                     long[] candidateRange = physical.bySeq().getOrDefault(passage.seq(),new long[]{0,0});
@@ -596,6 +612,104 @@ public final class RagService {
 
     private static Map<String,Object> searchResponse(List<Map<String,Object>> passages,List<Map<String,Object>> warnings){
         LinkedHashMap<String,Object> response=new LinkedHashMap<>();response.put("passages",passages);response.put("source_warnings",warnings);return response;
+    }
+
+    private static List<RagVectorStore.Candidate> keywordCandidates(JdbcTemplate jdbc, String scope,
+            List<String> documentIds, String query, int limit) {
+        List<String> queryTokens = keywordTokens(query);
+        if (documentIds.isEmpty() || queryTokens.isEmpty() || limit <= 0) return List.of();
+        String placeholders = String.join(",", java.util.Collections.nCopies(documentIds.size(), "?"));
+        String sql = "SELECT c.document_id,c.seq,c.text,c.page,c.section FROM rag_chunks c "
+                + "JOIN rag_documents d ON d.account_scope=c.account_scope AND d.document_id=c.document_id "
+                + "WHERE c.account_scope=? AND d.status='ready' AND c.document_id IN (" + placeholders + ")";
+        List<Object> arguments = new ArrayList<>(documentIds.size() + 1);
+        arguments.add(scope); arguments.addAll(documentIds);
+        List<RagVectorStore.Candidate> candidates = jdbc.query(sql, (rs, row) -> new RagVectorStore.Candidate(
+                rs.getString("document_id"), rs.getInt("seq"), rs.getString("text"),
+                rs.getString("page"), rs.getString("section"), 0d), arguments.toArray());
+        if (candidates.isEmpty()) return List.of();
+        Map<String, KeywordDocumentStats> statsByKey = new LinkedHashMap<>();
+        Map<String, Integer> documentFrequency = new HashMap<>();
+        double totalLength = 0d;
+        for (RagVectorStore.Candidate candidate : candidates) {
+            String key = candidateKey(candidate);
+            KeywordDocumentStats stats = keywordStats(candidate);
+            statsByKey.put(key, stats);
+            totalLength += stats.length();
+            for (String token : stats.frequencies().keySet()) documentFrequency.merge(token, 1, Integer::sum);
+        }
+        double averageLength = totalLength / Math.max(1, candidates.size());
+        int totalDocuments = candidates.size();
+        List<ScoredCandidate> scored = new ArrayList<>(candidates.size());
+        for (RagVectorStore.Candidate candidate : candidates) {
+            KeywordDocumentStats stats = statsByKey.get(candidateKey(candidate));
+            Map<String, Integer> frequencies = stats.frequencies();
+            double score = 0d;
+            for (String token : queryTokens) {
+                int termFrequency = frequencies.getOrDefault(token, 0);
+                if (termFrequency == 0) continue;
+                int documentFrequencyValue = documentFrequency.getOrDefault(token, 0);
+                double inverseFrequency = Math.log(1d + (totalDocuments - documentFrequencyValue + 0.5d)
+                        / (documentFrequencyValue + 0.5d));
+                double denominator = termFrequency + BM25_K1 * (1d - BM25_B
+                        + BM25_B * stats.length() / Math.max(1d, averageLength));
+                score += inverseFrequency * (termFrequency * (BM25_K1 + 1d) / denominator);
+            }
+            scored.add(new ScoredCandidate(candidate, score));
+        }
+        scored.sort(Comparator.comparingDouble(ScoredCandidate::score).reversed()
+                .thenComparing(value -> value.candidate().documentId())
+                .thenComparing(value -> value.candidate().seq()));
+        return scored.stream().limit(limit).map(ScoredCandidate::candidate).toList();
+    }
+
+    private static KeywordDocumentStats keywordStats(RagVectorStore.Candidate candidate) {
+        // rag_documents.content_sha256 identifies the whole document, so cache the
+        // immutable per-chunk statistics by the chunk's own content digest.
+        String cacheKey = "sha:" + textDigest(candidate.text() == null ? "" : candidate.text());
+        KeywordDocumentStats cached = KEYWORD_STATS_CACHE.get(cacheKey);
+        if (cached != null) return cached;
+        KeywordDocumentStats computed = KeywordDocumentStats.from(candidate.text());
+        if (KEYWORD_STATS_CACHE.size() >= MAX_KEYWORD_STATS_CACHE_ENTRIES) KEYWORD_STATS_CACHE.clear();
+        KeywordDocumentStats raced = KEYWORD_STATS_CACHE.putIfAbsent(cacheKey, computed);
+        return raced == null ? computed : raced;
+    }
+
+    private static List<RankedCandidate> mergeRrf(List<RagVectorStore.Candidate> dense,
+            List<RagVectorStore.Candidate> lexical) {
+        Map<String, RagVectorStore.Candidate> candidates = new LinkedHashMap<>();
+        Map<String, Integer> denseRanks = ranks(dense, candidates);
+        Map<String, Integer> lexicalRanks = ranks(lexical, candidates);
+        List<RankedCandidate> merged = new ArrayList<>(candidates.size());
+        for (Map.Entry<String, RagVectorStore.Candidate> entry : candidates.entrySet()) {
+            double score = rrfContribution(denseRanks.get(entry.getKey()))
+                    + rrfContribution(lexicalRanks.get(entry.getKey()));
+            merged.add(new RankedCandidate(entry.getValue(), score));
+        }
+        merged.sort(Comparator.comparingDouble(RankedCandidate::score).reversed()
+                .thenComparing(value -> value.candidate().documentId())
+                .thenComparing(value -> value.candidate().seq()));
+        return merged;
+    }
+
+    private static double rrfContribution(Integer rank) {
+        return rank == null ? 0d : 1d / (RRF_K + rank);
+    }
+
+    private static Map<String, Integer> ranks(List<RagVectorStore.Candidate> candidates,
+            Map<String, RagVectorStore.Candidate> all) {
+        Map<String, Integer> ranks = new LinkedHashMap<>();
+        for (int index = 0; index < candidates.size(); index++) {
+            RagVectorStore.Candidate candidate = candidates.get(index);
+            String key = candidateKey(candidate);
+            ranks.putIfAbsent(key, index + 1);
+            all.putIfAbsent(key, candidate);
+        }
+        return ranks;
+    }
+
+    private static String candidateKey(RagVectorStore.Candidate candidate) {
+        return candidate.documentId() + "\u0000" + candidate.seq();
     }
 
     private static List<LocatedPassage> sourcePassages(JdbcTemplate jdbc,String scope,String logicalId,RagVectorStore.Candidate hit,
@@ -901,6 +1015,40 @@ public final class RagService {
         if (normalized.length() == 1) result.add(normalized);
         for (int i = 0; i + 1 < normalized.length(); i++) result.add(normalized.substring(i, i + 2));
         return result;
+    }
+
+    private static List<String> keywordTokens(String text) {
+        String normalized = Normalizer.normalize(text == null ? "" : text, Normalizer.Form.NFKC)
+                .toLowerCase(Locale.ROOT);
+        List<String> characters = new ArrayList<>();
+        normalized.codePoints().forEach(codePoint -> {
+            int type = Character.getType(codePoint);
+            if (!Character.isWhitespace(codePoint) && !Character.isSpaceChar(codePoint)
+                    && !isPunctuation(type) && type != Character.OTHER_SYMBOL)
+                characters.add(new String(Character.toChars(codePoint)));
+        });
+        List<String> result = new ArrayList<>(Math.max(0, characters.size() - 1));
+        for (int index = 0; index + 1 < characters.size(); index++)
+            result.add(characters.get(index) + characters.get(index + 1));
+        return result;
+    }
+
+    private static boolean isPunctuation(int type) {
+        return type == Character.CONNECTOR_PUNCTUATION || type == Character.DASH_PUNCTUATION
+                || type == Character.START_PUNCTUATION || type == Character.END_PUNCTUATION
+                || type == Character.INITIAL_QUOTE_PUNCTUATION || type == Character.FINAL_QUOTE_PUNCTUATION
+                || type == Character.OTHER_PUNCTUATION;
+    }
+
+    private record ScoredCandidate(RagVectorStore.Candidate candidate, double score) {}
+    private record RankedCandidate(RagVectorStore.Candidate candidate, double score) {}
+    private record KeywordDocumentStats(Map<String, Integer> frequencies, int length) {
+        private static KeywordDocumentStats from(String text) {
+            List<String> tokens = keywordTokens(text);
+            Map<String, Integer> frequencies = new HashMap<>();
+            for (String token : tokens) frequencies.merge(token, 1, Integer::sum);
+            return new KeywordDocumentStats(Map.copyOf(frequencies), tokens.size());
+        }
     }
 
     private record LocatedPassage(String documentId,Integer seq,String text,String page,String section,String locationStatus,double score,String canonicalId,long startByte,long endByte){

@@ -1,9 +1,4 @@
-"""358-MF07: retrieval evaluation on the user's JavaGuide chunks.
-
-The fixture is the existing rag154 HTTP service with its local exact-vector
-backend.  No product code or user data is changed; RAG349_DATA points at a
-task-local copy of the corpus.
-"""
+"""358-MF07: evaluate the product's online keyword+dense RRF retrieval."""
 from __future__ import annotations
 
 import json
@@ -153,7 +148,9 @@ def test_rag358_user_javaguide_retrieval(rag154_backends):
         by_type[question_type] = _metric([row for row in results if row["type"] == question_type], question_type)
     output = {
         "task": "358-MF07",
-        "backend": "rag154 HTTP API + local-test ByteaExactVectorStore (exact cosine)",
+        "backend": "rag154 HTTP API (online dense top-20 + keyword top-20 RRF)",
+        "retrieval": {"dense_candidates": 20, "keyword_candidates": 20, "rrf_k": 60,
+                      "bm25_k1": 1.2, "bm25_b": 0.75, "normalization": "NFKC lowercase punctuation/space-free character bigrams"},
         "document_id": DOC_ID,
         "corpus": {"source_id": corpus.get("source_id"), "document_id": corpus.get("document_id"), "chunks": len(chunks)},
         "k_returned": 8,
