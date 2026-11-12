@@ -1,6 +1,7 @@
 """One per-pytest-session Java build for the server_java contract tests."""
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -12,21 +13,55 @@ from contextlib import contextmanager
 ROOT = Path(__file__).resolve().parents[3]
 _CACHE_ROOT = Path(os.environ.get("JAVA_CACHE_ROOT", r"D:\MentorFlow\.local\test-tmp\java-cache"))
 _SHIP_ROOT = os.environ.get("SHIP156_TMP")
+_RUNTIME_TMP = os.environ.get("JAVA156_RUNTIME_TMP")
 TASK_ROOT = Path(_SHIP_ROOT or os.environ.get("JAVA156_RUNTIME_TMP", str(_CACHE_ROOT / "runtime")))
-BUILD = Path(os.environ.get("JAVA156_BUILD", str(_CACHE_ROOT / "build")))
+_EXPLICIT_BUILD = "JAVA156_BUILD" in os.environ
+_EXPLICIT_CLASSPATH = "JAVA156_CLASSPATH_FILE" in os.environ
+
+
+def repository_cache_key(root: Path = ROOT) -> str:
+    """Stable short key for a canonical repository root."""
+    canonical = root.resolve(strict=False).as_posix().casefold()
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+
+
+def default_build_path(cache_root: Path = _CACHE_ROOT, root: Path = ROOT) -> Path:
+    return cache_root / ("build-" + repository_cache_key(root))
+
+
+def default_classpath_path(cache_root: Path = _CACHE_ROOT, root: Path = ROOT) -> Path:
+    return cache_root / ("test-classpath-" + repository_cache_key(root) + ".txt")
+
+
+def default_build_lock_path(cache_root: Path = _CACHE_ROOT, root: Path = ROOT) -> Path:
+    return cache_root / ("build-" + repository_cache_key(root) + ".lock")
+
+
+_DEFAULT_BUILD = default_build_path()
+if _EXPLICIT_CLASSPATH or _SHIP_ROOT or _RUNTIME_TMP:
+    # Keep the legacy compatibility variables on their old common build path;
+    # the normal no-override path is repository-scoped below.
+    _DEFAULT_BUILD = _CACHE_ROOT / "build"
+BUILD = Path(os.environ.get("JAVA156_BUILD", str(_DEFAULT_BUILD)))
 JAVA_HOME = Path(os.environ.get("JAVA_HOME", r"D:\MentorFlow\.local\java\jdk-21.0.12.1+1"))
 MAVEN = Path(os.environ.get("JAVA156_MAVEN", r"D:\MentorFlow\.local\java\apache-maven-3.9.16\bin\mvn.cmd"))
 M2 = Path(os.environ.get("JAVA_MAVEN_REPO", str(_CACHE_ROOT / "m2")))
 READONLY_M2 = Path(os.environ.get("JAVA156_READONLY_M2", r"D:\MentorFlow\.local\java\m2"))
-CLASSPATH_FILE = Path(os.environ.get("JAVA156_CLASSPATH_FILE", str(TASK_ROOT / "test-classpath.txt")))
+_DEFAULT_CLASSPATH = default_classpath_path()
+if _EXPLICIT_BUILD or _SHIP_ROOT or _RUNTIME_TMP:
+    _DEFAULT_CLASSPATH = TASK_ROOT / "test-classpath.txt"
+CLASSPATH_FILE = Path(os.environ.get("JAVA156_CLASSPATH_FILE", str(_DEFAULT_CLASSPATH)))
 _lock = threading.Lock()
 _state: tuple[bool, str] | None = None
 
 
 @contextmanager
 def _build_file_lock():
-    """Serialize builders across pytest processes while reusing java-cache."""
-    lock_path = _CACHE_ROOT / "build.lock"
+    """Serialize builders, isolating default locks by repository root."""
+    lock_path = default_build_lock_path(_CACHE_ROOT, ROOT)
+    if _EXPLICIT_BUILD or _EXPLICIT_CLASSPATH or _SHIP_ROOT or _RUNTIME_TMP:
+        # Preserve the legacy override/compatibility variables' shared lock.
+        lock_path = _CACHE_ROOT / "build.lock"
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     handle = lock_path.open("a+")
     try:

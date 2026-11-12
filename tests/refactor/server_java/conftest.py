@@ -4,17 +4,24 @@ from pathlib import Path
 
 import pytest
 
+from java_build156 import default_build_path, default_classpath_path, ensure_java_build, group_skip_reason
+
 # Importing this conftest must be side-effect free.  In particular, do not
 # redirect the process-wide TEMP/TMP variables to an old task directory.
 # Explicit SHIP156_TMP remains a compatibility escape hatch for old runners;
-# otherwise artifacts are shared in java-cache and scratch is per pytest run.
-_CACHE_ROOT = Path(r"D:\MentorFlow\.local\test-tmp\java-cache")
+# otherwise artifacts are repository-scoped in java-cache and scratch is per pytest run.
+_CACHE_ROOT = Path(os.environ.get("JAVA_CACHE_ROOT", r"D:\MentorFlow\.local\test-tmp\java-cache"))
 _EXPLICIT_SHIP = os.environ.get("SHIP156_TMP")
-_DEFAULT_BUILD = Path(os.environ.get("JAVA156_BUILD", str(_CACHE_ROOT / "build")))
-_DEFAULT_CP = Path(os.environ.get("JAVA156_CLASSPATH_FILE", str(_CACHE_ROOT / "test-classpath.txt")))
+_EXPLICIT_RUNTIME = os.environ.get("JAVA156_RUNTIME_TMP")
+_EXPLICIT_BUILD = "JAVA156_BUILD" in os.environ
+_EXPLICIT_CP = "JAVA156_CLASSPATH_FILE" in os.environ
+_DEFAULT_BUILD = Path(os.environ.get("JAVA156_BUILD", str(
+    _CACHE_ROOT / "build" if _EXPLICIT_RUNTIME or _EXPLICIT_CP else default_build_path(_CACHE_ROOT))))
+_DEFAULT_CP = Path(os.environ.get("JAVA156_CLASSPATH_FILE", str(
+    _CACHE_ROOT / "test-classpath.txt" if _EXPLICIT_SHIP or _EXPLICIT_RUNTIME or _EXPLICIT_BUILD
+    else default_classpath_path(_CACHE_ROOT))))
 
 import psycopg
-from java_build156 import ensure_java_build, group_skip_reason
 from contract_support144 import (LOCAL, OLD_ISSUER, FakeKeycloak144, make_tls144,
     prepare_databases144, seed_tenant144, start_java144, start_postgres144,
     start_python144, stop_postgres144, stop_server144)
@@ -151,7 +158,9 @@ def _server_java_test_environment(request, tmp_path, monkeypatch):
 def pytest_runtest_setup(item):
     """Build Java artifacts once; skip every dependent module cleanly on failure."""
     path = Path(str(item.path)).resolve()
-    if path.parent != Path(__file__).resolve().parent or path.name == "test_java_build156.py":
+    if path.parent != Path(__file__).resolve().parent or path.name in {
+        "test_java_build156.py", "test_java_build_dir374.py"
+    }:
         return
     ready, reason = ensure_java_build()
     skip_reason = group_skip_reason(ready, reason)
