@@ -11,7 +11,18 @@ services:
       PORT: "8080"
       MENTORFLOW_BIND_ADDRESS: 0.0.0.0
       MENTORFLOW_CATALOG_DIR: /run/mentorflow/catalog
+      # 372-MF01 (2026-11-11): 1 GiB/4 CPU measured JVM budget; see JVM.md.
       JAVA_TOOL_OPTIONS: >-
+        -XX:+UseContainerSupport
+        -XX:+UseG1GC
+        -Xms128m
+        -Xmx320m
+        -XX:MaxMetaspaceSize=96m
+        -Xss512k
+        -XX:ReservedCodeCacheSize=64m
+        -XX:MaxDirectMemorySize=64m
+        -XX:+ExitOnOutOfMemoryError
+        -Xlog:gc*,safepoint:file=/tmp/mentorflow-gc.log:time,uptime,level,tags:filecount=5,filesize=4M
         -Djavax.net.ssl.trustStore=/run/mentorflow/trust/trust.p12
         -Djavax.net.ssl.trustStorePassword=changeit
         -Djavax.net.ssl.trustStoreType=PKCS12
