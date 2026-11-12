@@ -32,7 +32,7 @@ function Test-TcpPort {
 function Test-HttpReady {
     param([string]$Url, [string]$ExpectedMarker)
     try {
-        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2 -MaximumRedirection 3
+        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5 -MaximumRedirection 3
         if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 400) { return $false }
         return ([string]$response.Content -match [regex]::Escape($ExpectedMarker))
     } catch {
@@ -42,7 +42,7 @@ function Test-HttpReady {
 
 function Show-WorkbenchError {
     param([string]$Message)
-    if ($NoUi) { Write-Error $Message; return }
+    if ($NoUi) { [Console]::Error.WriteLine([string]$Message); return }
     try {
         Add-Type -AssemblyName System.Windows.Forms
         [void][System.Windows.Forms.MessageBox]::Show($Message, 'MentorFlow 开发工作台', 'OK', 'Error')
@@ -96,7 +96,6 @@ try {
         '-L', "127.0.0.1:$BeszelLocalPort`:127.0.0.1:$BeszelRemotePort",
         "$SshUser@$SshHost"
     )
-
     Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
     $sshProcess = Start-Process -FilePath $SshExecutable -ArgumentList $sshArgs -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
@@ -115,7 +114,8 @@ try {
 
     $sshError = ''
     if (Test-Path -LiteralPath $stderrPath) {
-        $sshError = (Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue).Trim()
+        $sshError = Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
+        if ($null -eq $sshError) { $sshError = '' } else { $sshError = $sshError.ToString().Trim() }
     }
     if ($sshProcess.HasExited -and $sshError) {
         throw "无法连接服务器或建立 SSH 隧道：$sshError"
@@ -125,7 +125,9 @@ try {
     if ($sshProcess -and -not $sshProcess.HasExited) {
         Stop-Process -Id $sshProcess.Id -Force -ErrorAction SilentlyContinue
     }
-    Show-WorkbenchError -Message $_.Exception.Message
+    $errorMessage = if ($null -ne $_ -and $null -ne $_.Exception) { $_.Exception.Message } else { '工作台隧道启动失败。' }
+    if ([string]::IsNullOrWhiteSpace([string]$errorMessage)) { $errorMessage = '工作台隧道启动失败。' }
+    Show-WorkbenchError -Message $errorMessage
     exit 1
 } finally {
     Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
