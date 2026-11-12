@@ -2545,11 +2545,11 @@
 
 ### [BUG-234] 369 的子代理把图片 OCR 改动写进了 MF-03 的工位，364 开工检查发现工作区不干净而停下
 - 状态：已处理（改动交回 369，MF-03 工位已还原，364 重开）；为什么写错位置待 369-MF07 回执说明。
-- 现象（2026-11-11）：MF-03 18:21:48 在 `D:\MentorFlow-office\classroomepo` 切到 office/probe364 时工作区是干净的；18:24:05～18:25:43 这个工位里的 `refactor/learning/app/rag.py`、`course/extract.py`、`course/ocr.py`、`web/src/pages/Rag.tsx` 被改；MF-03 的子代理随后看到 4 个未提交改动，照任务“有输出就停”停下，回执 364-MF03 只报了阻断、没查业务。
-- 原因：改动内容是 369-MF07 第三节第 3 条（资料问答接受 png/jpg/webp/bmp、`PdfOCR.recognize_image`、资料页提示文字），属于 369；369 的工位是 `D:\MentorFlow-office\libraryepo`（18:21:54 切到 office/ocr369，18:23 起在那里改同名文件，那里的 `Rag.tsx` 没动）。所以是 369 的某个子代理用错了仓库路径。子代理为什么拿到 classroom 路径待查。
+- 现象（2026-11-11）：MF-03 18:21:48 在 `D:\MentorFlow-office\classroom\repo` 切到 office/probe364 时工作区是干净的；18:24:05～18:25:43 这个工位里的 `refactor/learning/app/rag.py`、`course/extract.py`、`course/ocr.py`、`web/src/pages/Rag.tsx` 被改；MF-03 的子代理随后看到 4 个未提交改动，照任务“有输出就停”停下，回执 364-MF03 只报了阻断、没查业务。
+- 原因：改动内容是 369-MF07 第三节第 3 条（资料问答接受 png/jpg/webp/bmp、`PdfOCR.recognize_image`、资料页提示文字），属于 369；369 的工位是 `D:\MentorFlow-office\library\repo`（18:21:54 切到 office/ocr369，18:23 起在那里改同名文件，那里的 `Rag.tsx` 没动）。所以是 369 的某个子代理用错了仓库路径。子代理为什么拿到 classroom 路径待查。
 - 排查：对比两个工位的 reflog 和文件修改时间（见上）；classroom 的 diff 和 library 的 diff 不同，不是同一份拷贝。
 - 解决：架构师把 classroom 的改动原样存成补丁 `D:\MentorFlow\.local\test-tmp\369-MF07\stray-in-classroom-1824.patch`（4 个文件、6,259 字节）后，用 `git restore` 还原这 4 个文件，classroom 工作区干净；补丁交给 369 自己并入；364 重开。以后的任务要求子代理改文件前先核对仓库根路径是本任务的工位。
-- 验证：`git -C D:\MentorFlow-office\classroomepo status --short` 无输出（2026-11-11 18:3x）。369 并入补丁后的结果看 369 回执。
+- 验证：`git -C D:\MentorFlow-office\classroom\repo status --short` 无输出（2026-11-11 18:3x）。369 并入补丁后的结果看 369 回执。
 - 关联：364-MF03、369-MF07
 - 更新：2026-11-11
 
