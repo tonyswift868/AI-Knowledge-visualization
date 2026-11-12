@@ -14,9 +14,9 @@ monitors = data["monitors"]
 names = [m["name"] for m in monitors]
 if len(names) != len(set(names)):
     raise ValueError("duplicate monitor name")
-if len(monitors) != 13:
-    raise ValueError(f"expected 13 monitors, got {len(monitors)}")
-if not all(m["interval_seconds"] > 0 for m in monitors):
+if len(monitors) != 4:
+    raise ValueError(f"expected 4 monitors, got {len(monitors)}")
+if not all(m.get("interval_seconds", data["defaults"]["interval_seconds"]) > 0 for m in monitors):
     raise ValueError("monitor interval must be positive")
 if not all(m.get("retry_count", data["defaults"]["retry_count"]) >= 1 for m in monitors):
     raise ValueError("monitor retry_count must be positive")
@@ -30,8 +30,8 @@ for monitor in monitors:
     elif monitor["type"] == "https-certificate":
         if not monitor.get("url", "").startswith("https://"):
             raise ValueError("certificate monitor must use https")
-        if monitor.get("certificate_warning_days", 0) <= 0:
-            raise ValueError("certificate warning days must be positive")
+        if not monitor.get("accepted_status"):
+            raise ValueError("certificate monitor needs accepted_status")
     else:
         raise ValueError(f"unsupported monitor type: {monitor['type']}")
 print(f"OK: {len(monitors)} monitors; names and intervals are valid")

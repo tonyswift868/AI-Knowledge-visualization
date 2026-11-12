@@ -25,7 +25,7 @@ Beszel Agent 的受限 env 文件由 MF-01 在服务器创建，路径通过 `BE
 
 ## 监控项来源与安装
 
-`kuma-monitors.json` 是 377 现场七个容器、Java 三个健康接口和 IP/两个域名证书的可审计清单，共 13 项。健康/容器 60 秒、失败重试 2 次、15 秒超时；证书 15 分钟检查，IP 证书提前 3 天提醒，域名证书提前 14 天提醒。前者在短周期证书续期失败时尽快发现，后者给外部域名证书留下维护窗口。
+`kuma-monitors.json` 是 Kuma 里实际建的监控项清单，共 4 项（用户 2026-11-12 定，照它在网页上建好）：Java 服务（`/health/ready`，一项就覆盖 Java、数据库、Keycloak、入口和 IP 证书）、登录域名和 aiteacher 域名（看证书剩余天数，300～499 也算正常）、更新下载容器。都是 60 秒、失败重试 2 次、15 秒超时。Kuma 不设通知，只用来看；邮件告警只由 Healthchecks.io 发。
 
 Uptime Kuma 的监控项和通知路由保存在其 SQLite 数据库，当前没有稳定、受支持的 declarative import API；因此本任务不伪造 API 客户端，也不把登录凭据写入脚本。MF-01 按清单在 Kuma UI 中建立监控项并导出备份；每次变更先更新此 JSON，再在 UI 中逐项核对。校验清单：
 
@@ -33,7 +33,7 @@ Uptime Kuma 的监控项和通知路由保存在其 SQLite 数据库，当前没
 python3 validate-kuma-manifest.py
 ```
 
-Kuma Docker monitors 依赖 socket 只读挂载和上表中的精确容器名。证书监控应保持 TLS 校验开启；IP 项检查 `https://89.45.45.28/` 的证书 SAN，不要把 `Ignore TLS` 打开。
+Kuma Docker monitors 依赖 socket 只读挂载和上表中的精确容器名。所有 HTTPS 项保持 TLS 校验开启，不要把 `Ignore TLS` 打开；IP 证书由「Java 服务」项和 Healthchecks 心跳一起校验。
 
 387-MF01 的告警出口只用 Healthchecks.io，不在 Kuma、Beszel 或服务器上配置 SMTP；邮件由 Healthchecks.io 按用户已创建的三个检查发送。服务器受限文件只保留三个键：`HEALTHCHECKS_HEARTBEAT_URL`、`HEALTHCHECKS_BACKUP_URL`、`HEALTHCHECKS_CERT_URL`。`healthchecks-send.sh heartbeat` 先用 HTTPS 校验证书访问公网 `/health/ready`，只有 HTTP 200 才打正常地址；非 200、超时或证书失败打原地址的 `/fail`。backup/cert 仍只打原地址，且失败不影响原任务。
 
