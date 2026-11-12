@@ -74,8 +74,8 @@ public final class PostgresClosureStore implements ClosureStore {
             }
             return result;
         } catch (ClosureFailure e) { throw e; }
-        catch (DataAccessException | TransactionException e) { throw new ClosureFailure("CLOSURE_STORAGE_UNAVAILABLE"); }
-        catch (RuntimeException e) { throw new ClosureFailure("CLOSURE_STORAGE_INVALID"); }
+        catch (DataAccessException | TransactionException e) { throw new ClosureFailure("CLOSURE_STORAGE_UNAVAILABLE", 503, e); }
+        catch (RuntimeException e) { throw new ClosureFailure("CLOSURE_STORAGE_INVALID", 503, e); }
     }
 
     @SuppressWarnings("unchecked") private static Map<String,Object> asObject(Object value) {

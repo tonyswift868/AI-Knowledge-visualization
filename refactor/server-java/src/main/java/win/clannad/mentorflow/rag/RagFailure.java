@@ -6,7 +6,10 @@ public final class RagFailure extends RuntimeException {
     public final int status;
 
     public RagFailure(String code, String message, int status) {
-        super(message);
+        this(code, message, status, null);
+    }
+    public RagFailure(String code, String message, int status, Throwable cause) {
+        super(message, cause);
         this.code = code;
         this.status = status;
     }

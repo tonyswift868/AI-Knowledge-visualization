@@ -114,11 +114,11 @@ public final class CompatibleJwtDecoder implements JwtDecoder {
         catch (Exception e) {
             String chain=""; for(Throwable c=e;c!=null;c=c.getCause()) chain+=" "+c.getClass().getName()+" "+c.getMessage();
             for(Throwable c=e;c!=null;c=c.getCause()) if(c instanceof InvalidJwksIOException invalid)
-                throw new IdentityFailure(invalid.code,invalid.getMessage(),503);
+                throw new IdentityFailure(invalid.code,invalid.getMessage(),503,invalid);
             if (chain.contains("JWKSetParseException"))
-                throw new IdentityFailure("OIDC_JWKS_INVALID","OIDC JWKS response is invalid",503);
+                throw new IdentityFailure("OIDC_JWKS_INVALID","OIDC JWKS response is invalid",503,e);
             if (chain.contains("RemoteKeySourceException") || chain.contains("ResourceRetrievalException"))
-                throw new IdentityFailure("OIDC_JWKS_UNAVAILABLE","OIDC signing keys are unavailable",503);
+                throw new IdentityFailure("OIDC_JWKS_UNAVAILABLE","OIDC signing keys are unavailable",503,e);
             if (chain.contains("no matching key") || chain.contains("No matching key") || chain.contains("Another algorithm expected"))
                 throw new IdentityFailure("OIDC_SIGNING_KEY_NOT_FOUND","OIDC signing key was not found");
             throw new IdentityFailure("OIDC_SIGNATURE_INVALID","OIDC token signature is invalid");

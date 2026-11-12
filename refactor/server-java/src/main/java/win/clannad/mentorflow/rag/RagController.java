@@ -24,21 +24,21 @@ public final class RagController {
     @PostMapping("/documents/{doc_id}/chunks")
     public Object upload(HttpServletRequest request, HttpServletResponse response,
                          @PathVariable("doc_id") String documentId) throws IOException {
-        return run(response, () -> service.upload(actor(request), documentId, body(request)));
+        return run(request, response, () -> service.upload(actor(request), documentId, body(request)));
     }
     @GetMapping("/documents")
     public Object documents(HttpServletRequest request, HttpServletResponse response) {
-        return run(response, () -> Map.of("documents", service.documents(actor(request)),
+        return run(request, response, () -> Map.of("documents", service.documents(actor(request)),
                 "capabilities", List.of("append_only_chunk_repair_v1", "source_layout_v1")));
     }
     @DeleteMapping("/documents/{doc_id}")
     public Object delete(HttpServletRequest request, HttpServletResponse response,
                          @PathVariable("doc_id") String documentId) {
-        return run(response, () -> service.delete(actor(request),documentId));
+        return run(request, response, () -> service.delete(actor(request),documentId));
     }
     @PostMapping("/search")
     public Object search(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        return run(response, () -> service.search(actor(request),body(request)));
+        return run(request, response, () -> service.search(actor(request),body(request)));
     }
     @SuppressWarnings("unchecked")
     private static Map<String,Object> actor(HttpServletRequest request) {
@@ -63,10 +63,10 @@ public final class RagController {
     private static IdentityFailure tooLarge() {return new IdentityFailure("RAG_REQUEST_TOO_LARGE","Request must not exceed 9 MiB (9437184 bytes)",413);}
     private static IdentityFailure invalid() {return new IdentityFailure("RAG_INVALID_REQUEST","Expected a valid JSON object",422);}
     @FunctionalInterface private interface Work {Object run();}
-    private static Object run(HttpServletResponse response,Work work) {
+    private static Object run(HttpServletRequest request,HttpServletResponse response,Work work) {
         response.setHeader("Cache-Control","no-store");
         try {return work.run();}
-        catch(RagFailure failure) {throw new IdentityFailure(failure.code,failure.getMessage(),failure.status);}
-        catch(DataAccessException failure) {throw new IdentityFailure("RAG_UNAVAILABLE","Document storage temporarily unavailable",503);}
+        catch(RagFailure failure) {throw new IdentityFailure(failure.code,failure.getMessage(),failure.status,failure);}
+        catch(DataAccessException failure) {throw new IdentityFailure("RAG_UNAVAILABLE","Document storage temporarily unavailable",503,failure);}
     }
 }

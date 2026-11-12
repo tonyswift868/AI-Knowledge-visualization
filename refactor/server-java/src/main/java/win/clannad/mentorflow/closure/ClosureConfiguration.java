@@ -45,8 +45,8 @@ public class ClosureConfiguration {
                     var checked=bridge.authenticate(username,password);
                     if(!issuer.equals(checked.issuer())||!subject.equals(checked.subject()))throw new ClosureFailure("CLOSURE_IDENTITY_INVALID",403);
                 }catch(IdentityFailure error) {
-                    if("NATIVE_CREDENTIALS_INVALID".equals(error.code))throw new ClosureFailure("CURRENT_PASSWORD_INVALID",400);
-                    throw new ClosureFailure("CLOSURE_IDENTITY_UNAVAILABLE");
+                    if("NATIVE_CREDENTIALS_INVALID".equals(error.code))throw new ClosureFailure("CURRENT_PASSWORD_INVALID",400,error);
+                    throw new ClosureFailure("CLOSURE_IDENTITY_UNAVAILABLE",503,error);
                 }
             }
             @Override public Revocation revokeLocal(String subject) {

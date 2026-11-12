@@ -24,6 +24,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import win.clannad.mentorflow.identity.IdentityFailure;
 import win.clannad.mentorflow.identity.IdentitySettings;
 import win.clannad.mentorflow.identity.NativeAccessAuthenticator;
+import win.clannad.mentorflow.identity.ErrorResponses;
 
 /** Closure recovery credentials deliberately bypass ordinary tenant/bearer auth. */
 @Component
@@ -101,10 +102,19 @@ public final class ClosureHttpFilter extends OncePerRequestFilter {
                 }
             }
             write(response,result.status(),result.payload(),true);
-        } catch(ClosureFailure failure){error(response,failure.code,failure.status,action,operation);}
-        catch(IdentityFailure failure){error(response,failure.code,failure.status,action,operation);}
+        } catch(ClosureFailure failure){
+            if(failure.status>=500)ErrorResponses.log(request,failure.code,failure,false);
+            error(response,failure.code,failure.status,action,operation);
+        }
+        catch(IdentityFailure failure){
+            if(failure.status>=500)ErrorResponses.log(request,failure.code,failure,false);
+            error(response,failure.code,failure.status,action,operation);
+        }
         catch(CancellationException cancelled){throw cancelled;}
-        catch(Exception failure){error(response,"CLOSURE_UNAVAILABLE",503,action,operation);}
+        catch(Exception failure){
+            ErrorResponses.log(request,"CLOSURE_UNAVAILABLE",failure,false);
+            error(response,"CLOSURE_UNAVAILABLE",503,action,operation);
+        }
         finally{if(body!=null)body.clear();}
     }
     private static boolean has(HttpServletRequest request,String header){return request.getHeader(header)!=null;}

@@ -60,7 +60,7 @@ public final class CatalogController {
         } catch (java.nio.file.NoSuchFileException missing) {
             throw new IdentityFailure("CATALOG_NOT_CONFIGURED", "目录文件尚未配置。", 404);
         } catch (IOException failure) {
-            throw new IdentityFailure("CATALOG_INVALID", "目录文件暂不可用。", 503);
+            throw new IdentityFailure("CATALOG_INVALID", "目录文件暂不可用。", 503, failure);
         }
 
         if (content.length > MAX_CATALOG_BYTES || !isVersionedObject(content)) {

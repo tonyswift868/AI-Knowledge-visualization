@@ -112,13 +112,13 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
         } catch (IdentityFailure failure) {
             throw failure;
         } catch (Exception failure) {
-            throw unavailable();
+            throw unavailable(failure);
         }
         if (verified == null || verified.subject() == null || verified.subject().isBlank()) throw denied();
         String canonical;
         try { canonical = identitySettings.canonicalizeIssuer(verified.issuer(), verified.subject()); }
         catch (IdentityFailure failure) { throw failure; }
-        catch (Exception failure) { throw new IdentityFailure("NATIVE_IDENTITY_UNAVAILABLE", "账号服务暂不可用。", 503); }
+        catch (Exception failure) { throw new IdentityFailure("NATIVE_IDENTITY_UNAVAILABLE", "账号服务暂不可用。", 503, failure); }
         if (!issuer.equals(canonical) || !"password_verified".equals(verified.authenticationStrength())
                 || !"mentorflow-desktop".equals(verified.clientId()) || verified.authenticationTime() == null
                 || verified.verificationHandle() == null || !verified.verificationHandle().matches("[A-Za-z0-9_-]{43}"))
@@ -167,7 +167,7 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
                     }
                     connection.commit();
                 } catch (Exception failure) { rollback(connection); throw failure; }
-            } catch (Exception failure) { if (failure instanceof IdentityFailure identity) throw identity; throw unavailable(); }
+            } catch (Exception failure) { if (failure instanceof IdentityFailure identity) throw identity; throw unavailable(failure); }
             evictSubjectAccess(verified.subject(),true);
             rememberAccess(familyId, issuer, verified.subject(), accessDigest, refreshDigest, accessDeadline, principal);
         }
@@ -240,7 +240,7 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
                         }
                         connection.commit();
                     } catch (Exception failure) { rollback(connection); throw failure; }
-                } catch (Exception failure) { if (failure instanceof IdentityFailure identity) throw identity; throw unavailable(); }
+                } catch (Exception failure) { if (failure instanceof IdentityFailure identity) throw identity; throw unavailable(failure); }
                 removeFamilyAccess(family.familyId());
                 rememberAccess(family.familyId(), family.issuer(), family.subject(), accessDigest, newDigest, accessDeadline, nextPrincipal);
             }
@@ -301,7 +301,7 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
                     }
                     connection.commit();
                 } catch (Exception failure) { rollback(connection); throw failure; }
-            } catch (Exception failure) { throw unavailable(); }
+            } catch (Exception failure) { throw unavailable(failure); }
             evictSubjectAccess(subject,false);
         }
     }
@@ -312,7 +312,7 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
             if (value == null || value.isBlank()) throw new IllegalStateException();
             return value;
         } catch (IdentityFailure failure) { throw failure; }
-        catch (Exception failure) { throw unavailable(); }
+        catch (Exception failure) { throw unavailable(failure); }
     }
 
     /** Reuse the native attempt counter for authenticated password reauthentication. */
@@ -337,7 +337,7 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
 
     private Family findFamilyByDigest(String digest, boolean lock) {
         try (Connection connection=dataSource.getConnection()) { return findFamilyByDigest(connection,digest,lock); }
-        catch (Exception failure) { throw unavailable(); }
+        catch (Exception failure) { throw unavailable(failure); }
     }
     private Family findFamilyByDigest(Connection connection,String digest,boolean lock) throws Exception {
         String sql="SELECT family_id,issuer,subject,refresh_digest,used_digests::text,principal::text,account_binding,deadline,revoked_reason "
@@ -357,7 +357,7 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
                 double deadline=row.getDouble(6); Instant until=row.wasNull()?null:Instant.ofEpochMilli((long)(deadline*1000));
                 return new Family(row.getString(1),row.getString(2),row.getString(3),row.getString(4),Set.of(),principal,null,until,row.getString(7));
             }
-        } catch(Exception failure){throw unavailable();}
+        } catch(Exception failure){throw unavailable(failure);}
     }
     private Family family(ResultSet row) throws Exception {
         List<String> used=mapper.readValue(row.getString(5),new TypeReference<List<String>>(){});
@@ -368,7 +368,7 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
     private void revokeByDigest(String digest) { Family family=findFamilyByDigest(digest,false); if(family!=null)revokeFamily(family.familyId(),false); }
     private void revokeFamily(String familyId,boolean superseding) {
         try(Connection connection=dataSource.getConnection()) { connection.setAutoCommit(false); try {revokeInTransaction(connection,familyId,superseding);connection.commit();}catch(Exception e){rollback(connection);throw e;} }
-        catch(Exception failure){throw unavailable();}
+        catch(Exception failure){throw unavailable(failure);}
         synchronized(processLock){removeFamilyAccess(familyId);}
     }
     private void revokeInTransaction(Connection connection,String familyId,boolean superseding)throws SQLException {
@@ -428,6 +428,7 @@ public final class NativeSessionService implements NativeAccessAuthenticator {
     private static IdentityFailure expired(){return new IdentityFailure("ENTERPRISE_SESSION_REAUTH_REQUIRED",EXPIRED,401);}
     private static IdentityFailure superseded(){return new IdentityFailure("NATIVE_SESSION_SUPERSEDED",SUPERSEDED,401);}
     private static IdentityFailure unavailable(){return new IdentityFailure("NATIVE_AUTH_UNAVAILABLE",UNAVAILABLE,503);}
+    private static IdentityFailure unavailable(Throwable cause){return new IdentityFailure("NATIVE_AUTH_UNAVAILABLE",UNAVAILABLE,503,cause);}
     private static IdentityFailure rateLimited(){return new IdentityFailure("NATIVE_RATE_LIMITED","登录尝试过于频繁，请稍后重试。",429);}
     private static IdentityFailure capacity(){return new IdentityFailure("NATIVE_SESSION_CAPACITY","账号服务暂不可用。",503);}
 }
