@@ -2590,7 +2590,7 @@
 
 ### [BUG-229] 用量统计的“每日活跃账号”取自一张已经没人写的表，结果永远为空
 - 状态：已修未验证（361-MF06，提交 100f3e24，2026-11-11 合入 main d951f1be；合入后全量 365-MF05 在跑；未上线，上线另问用户）。
-- 现象（2026-11-11，给面试题卡 M-05-08 写答案时发现）：350 写的用量统计把 `account_import_ledger` 里 state=COMPLETED 的 updated_at 按 UTC 日期分组、COUNT(DISTINCT subject_id) 当作“每日活跃账号”（`deploy/usage-stats-readonly.sh:22-32`、`deploy/usage-stats.py:139-142`、`:178-192`，标成 sync-active）。现行代码没有任何地方写这张表：Java 269 里它只出现在核对行级安全的租户表清单（`JdbcIdentityDirectory.java:28`），Python 侧只检查表结构，只有注销清理会删它；旧的写入代码 2026-09-29（7918845e）已删除。357 在真实服务器上只读跑统计，active_accounts 为空，同期 Java 访问日志里却有业务请求（357 回执第 74、117 行，回执架构师还没审）。同步实体表、原生会话表都没有时间列（0037、0043），访问日志不记账号（`RequestAccessLog149Filter.java:69`），所以现有数据答不了“每天多少账号在用”。
+- 现象（2026-11-11，给面试题卡 M-05-08 写答案时发现）：350 写的用量统计把 `account_import_ledger` 里 state=COMPLETED 的 updated_at 按 UTC 日期分组、COUNT(DISTINCT subject_id) 当作“每日活跃账号”（`deploy/usage-stats-readonly.sh:22-32`、`deploy/usage-stats.py:139-142`、`:178-192`，标成 sync-active）。现行代码没有任何地方写这张表：Java 269 里它只出现在核对行级安全的租户表清单（`JdbcIdentityDirectory.java:28`），Python 侧只检查表结构，只有注销清理会删它；旧的写入代码 2026-09-29（7918845e）已删除。357 在真实服务器上只读跑统计，active_accounts 为空，同期 Java 访问日志里却有业务请求（357 回执第 74、117 行，架构师 2026-11-11 审过）。同步实体表、原生会话表都没有时间列（0037、0043），访问日志不记账号（`RequestAccessLog149Filter.java:69`），所以现有数据答不了“每天多少账号在用”。
 - 原因：350 选统计口径时没核对这张表现在还有没有写入。
 - 影响：脚本照常输出空的“同步活跃账号”，容易被读成“没人用”。
 - 解决（待做）：加一份最小的活跃记录：认证通过的同步请求按“账号范围 + UTC 日期”写一行（主键去重，一账号一天一行，不存内容），带迁移、和其他租户表一样的行级安全，并纳入注销清理；统计改成按这张表 GROUP BY 日期 + COUNT(DISTINCT 账号)。新表上线之前，脚本对这一项输出“无数据来源”，不输出空结果。
