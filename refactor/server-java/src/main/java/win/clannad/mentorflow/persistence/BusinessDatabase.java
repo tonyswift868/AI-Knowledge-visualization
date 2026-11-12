@@ -48,6 +48,9 @@ public final class BusinessDatabase implements AutoCloseable {
             }
         }
         source.setDriverClassName("org.postgresql.Driver");
+        // Keep the driver timeouts the repositories and identity directory had before pooling (seconds; URL params still win).
+        source.addDataSourceProperty("connectTimeout", "10");
+        source.addDataSourceProperty("socketTimeout", "10");
         configurePool(source, "mentorflow-business");
         return source;
     }
