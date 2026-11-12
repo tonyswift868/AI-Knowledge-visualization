@@ -71,15 +71,25 @@ public final class SyncRepository {
             TransactionTemplate tx = new TransactionTemplate(transactions);
             tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
             tx.execute(status -> {
-                jdbc.update("SELECT set_config('mentorflow.actor_issuer', ?, true), "
-                        + "set_config('mentorflow.actor_subject', ?, true)", issuer, subject);
+                jdbc.execute((ConnectionCallback<Void>) connection -> {
+                    try (PreparedStatement statement = connection.prepareStatement(
+                            "SELECT set_config('mentorflow.actor_issuer', ?, true), "
+                                    + "set_config('mentorflow.actor_subject', ?, true)")) {
+                        statement.setString(1, issuer);
+                        statement.setString(2, subject);
+                        statement.execute();
+                    }
+                    return null;
+                });
                 jdbc.update("INSERT INTO account_daily_activity(account_scope,day) "
                         + "VALUES (?,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date) ON CONFLICT DO NOTHING",
                         scope);
                 return null;
             });
         } catch (RuntimeException failure) {
-            LOG.log(Level.WARNING, "Could not record daily account activity", failure);
+            // Best-effort telemetry must not put request/authentication data in logs.
+            LOG.log(Level.WARNING, "Could not record daily account activity; exception={0}",
+                    failure.getClass().getName());
         }
     }
 
@@ -181,6 +191,15 @@ public final class SyncRepository {
             return null;
         });
         if (writing) {
+            // Enter the closure fence before locking an entity row.  The closure
+            // cleaner locks its operation row first, so all writers use
+            // closure -> entity order and cannot form a lock-order cycle.
+            jdbc.execute((ConnectionCallback<Void>) connection -> {
+                try (PreparedStatement statement = connection.prepareStatement("SELECT account_closure.assert_open(?, ?)")) {
+                    statement.setString(1, issuer); statement.setString(2, subject); statement.execute();
+                }
+                return null;
+            });
             jdbc.execute((ConnectionCallback<Void>) connection -> {
                 try (PreparedStatement statement = connection.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
                     statement.setLong(1, advisoryKey(scope(actor, tenant))); statement.execute();

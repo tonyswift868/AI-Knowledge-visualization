@@ -24,6 +24,8 @@ import static win.clannad.mentorflow.sync.SyncValidation.ordered;
 @RestController
 @RequestMapping("/api/enterprise/sync/v1")
 public final class SyncController {
+    /** User-approved 2026-11-11 cap; matches the 9 MiB ingress/client batch limit. */
+    public static final int MAX_REQUEST_BYTES = 9 * 1024 * 1024;
     private static final Logger LOG = LoggerFactory.getLogger(SyncController.class);
     private final SyncRepository repository;
     public SyncController(SyncRepository repository) {this.repository=repository;}
@@ -95,7 +97,9 @@ public final class SyncController {
     }
     @SuppressWarnings("unchecked") private static Map<String,Object> tenant(HttpServletRequest request) {return (Map<String,Object>)request.getAttribute("tenant_context");}
     private static Object body(HttpServletRequest request) throws IOException {
-        byte[] bytes=request.getInputStream().readAllBytes();
+        if(request.getContentLengthLong()>MAX_REQUEST_BYTES)throw tooLarge();
+        byte[] bytes=request.getInputStream().readNBytes(MAX_REQUEST_BYTES+1);
+        if(bytes.length>MAX_REQUEST_BYTES)throw tooLarge();
         if(bytes.length==0)throw new SyncValidation.Invalid(List.of(SyncValidation.issue("missing",List.of("body"),"Field required",null)));
         String text;
         try {text=StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString();}
@@ -126,6 +130,9 @@ public final class SyncController {
         }
         if(value==null)throw new SyncValidation.Invalid(List.of(SyncValidation.issue("missing",List.of("body"),"Field required",null)));
         return value;
+    }
+    private static IdentityFailure tooLarge() {
+        return new IdentityFailure("SYNC_REQUEST_TOO_LARGE","Request must not exceed 9 MiB (9437184 bytes)",413);
     }
     private static class BodyParsing extends RuntimeException {}
     @FunctionalInterface private interface Work {Object run() throws IOException;}

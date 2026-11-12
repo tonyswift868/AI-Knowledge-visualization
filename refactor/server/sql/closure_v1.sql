@@ -338,7 +338,7 @@ GRANT EXECUTE ON FUNCTION account_closure.prepare(text,text,text,text,text),
  account_closure.status(text,text),account_closure.acquire(text,text,text),
  account_closure.clean(text,text,text),account_closure.provider_done(text,text,text),
  account_closure.complete(text,text,text),account_closure.fail(text,text,text,text),
- account_closure.check_open(text,text),account_closure.guard_write(),
+ account_closure.check_open(text,text),account_closure.assert_open(text,text),account_closure.guard_write(),
  account_closure.guard_row(text,text,jsonb,jsonb) TO mentorflow_app;
 GRANT EXECUTE ON FUNCTION account_closure.guard_write(),
  account_closure.guard_row(text,text,jsonb,jsonb) TO mentorflow_migrator;

@@ -269,7 +269,7 @@ def test_sync145_tombstone_can_create_missing_entity_without_changing_delete(syn
     ("POST", f"{BASE}/entities/bulk"),
 ])
 def test_sync145_http_body_size_boundary_is_measured_and_compared(sync145_backends, method, route):
-    """Exercise actual HTTP byte limits at 9 MiB and one byte over."""
+    """Exercise the 9 MiB boundary and Java's early application rejection."""
     clients = sync145_backends
     token = clients["jwks"].token(subject="user-145-a")
     if method == "PUT":
@@ -284,14 +284,42 @@ def test_sync145_http_body_size_boundary_is_measured_and_compared(sync145_backen
     outcomes = []
     for size in (boundary, boundary + 1):
         body = base + b" " * (size - len(base))
-        response = _paired(clients, method, route,
-                           headers=_headers(token, f"limit-{method}-{size}"), body=body)
-        outcomes.append((response.status_code, dict(response.headers), response.content))
-    assert outcomes[0][0] == 200, f"9 MiB should be accepted: {outcomes[0]!r}"
-    # Python has no application ingress limit. The direct HTTP comparison makes
-    # the Java-vs-Python behavior explicit; deployment ingress limits are outside
-    # this local application contract.
-    assert outcomes[1][0] == 200
+        request_headers = _headers(token, f"limit-{method}-{size}")
+        responses = {
+            name: clients[name].request(method, route, headers=request_headers, content=body)
+            for name in ("python", "java")
+        }
+        outcomes.append(responses)
+    assert outcomes[0]["python"].status_code == 200, f"9 MiB should be accepted: {outcomes[0]!r}"
+    assert outcomes[0]["java"].status_code == 200, f"9 MiB should be accepted: {outcomes[0]!r}"
+    # Python's direct reference app has no application ingress cap. Java must
+    # reject before reading/parsing the 9 MiB + 1 byte request.
+    assert outcomes[1]["python"].status_code == 200
+    java_oversized = outcomes[1]["java"]
+    assert java_oversized.status_code == 413
+    assert java_oversized.json()["error"]["code"] == "SYNC_REQUEST_TOO_LARGE"
+    assert java_oversized.json()["error"]["message"] == "Request must not exceed 9 MiB (9437184 bytes)"
+
+
+def test_sync145_java_chunked_body_is_rejected_while_reading(sync145_backends):
+    """A chunked request has no length header, so Java must count the stream."""
+    clients = sync145_backends
+    token = clients["jwks"].token(subject="user-145-chunked-limit")
+    route = f"{BASE}/entities/learning_run/" + _entity_id("chunked-limit145")
+    base = _put_body(_envelope("chunked-limit145"), request_id="chunked-limit", revision=0)
+    body = base + b" " * (9 * 1024 * 1024 + 1 - len(base))
+
+    def chunks():
+        for offset in range(0, len(body), 64 * 1024):
+            yield body[offset:offset + 64 * 1024]
+
+    request = clients["java"].build_request(
+        "PUT", route, headers=_headers(token, "chunked-limit"), content=chunks()
+    )
+    assert "content-length" not in request.headers
+    response = clients["java"].send(request)
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "SYNC_REQUEST_TOO_LARGE"
 
 
 def test_sync145_membership_database_failure_is_identical_503(sync145_backends):
