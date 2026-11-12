@@ -66,7 +66,7 @@ server_root='$release_root/refactor/server'
 candidate_manifest='$candidate_manifest'
 cd '$online_deploy'
 test -s '$backend_env'
-test "\$(awk -F= '\$1 == \"MF_JAVA_VERSION\" {print substr(\$0, index(\$0, \"=\")+1); exit}' .env)" = 269
+test "\$(awk -F= '\$1 == "MF_JAVA_VERSION" {print substr(\$0, index(\$0, "=")+1); exit}' .env)" = 269
 DOCKER_BIN="\$docker_bin" BACKEND_ENV="\$backend_env" sh java-compose.sh config
 DOCKER_BIN="\$docker_bin" BACKEND_ENV="\$backend_env" sh java-compose.sh up
 test "\$( "\$docker_bin" inspect --format '{{.State.Status}}' "\$java_container")" = running
@@ -175,11 +175,20 @@ test "\$( "\$docker_bin" inspect --format '{{.State.Status}}' "\$java_container"
 backend_id=\$( "\$docker_bin" inspect --format '{{.Id}}' "\$java_container")
 oidc_mode=\$( "\$docker_bin" inspect --format '{{.HostConfig.NetworkMode}}' "\$java_oidc_container")
 test "\$oidc_mode" = "container:\$backend_id"
-for path in live startup ready; do
-  code=\$(curl -ksS --max-time 15 -o /dev/null -w '%{http_code}' "https://89.45.45.28/health/\$path") || code=000
-  printf '%s %s\\n' "\$path" "\$code"
-  test "\$code" = 200
+healthy=0
+attempt=0
+while [ "\$attempt" -lt 30 ]; do
+  healthy=1
+  for path in live startup ready; do
+    code=\$(curl -ksS --max-time 15 -o /dev/null -w '%{http_code}' "https://89.45.45.28/health/\$path") || code=000
+    printf '%s %s\\n' "\$path" "\$code"
+    [ "\$code" = 200 ] || healthy=0
+  done
+  [ "\$healthy" -eq 1 ] && break
+  attempt=\$((attempt + 1))
+  sleep 2
 done
+test "\$healthy" -eq 1
 RELEASE_ROOT="\$release_root" DEPLOY_DIR="\$deploy_dir" SERVER_ROOT="\$server_root" BACKEND_ENV="\$backend_env" \\
   SOURCE_SHA256_MANIFEST="\$candidate_manifest" PREFLIGHT_SOURCE_REVISION=0051_sync_closure_fence \\
   EXPECTED_ALEMBIC_REVISION=0051_sync_closure_fence JAVA_IMAGE='$java_image' \\
