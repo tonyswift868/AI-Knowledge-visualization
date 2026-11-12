@@ -28,7 +28,7 @@
 - **发布新版**（[SYS-06]）：①合入并推送 main；②手动运行 GitHub 工作流 mf-build（版本号、更新说明、是否必须及原因、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机 `.venv/Scripts/python.exe -B scripts/release/sign_and_stage.py --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity E:/Codex/Secrets/MentorFlow/ssh/mentorflow-e1-ops-ed25519`；④手动运行 mf-publish（版本号；build_installer 默认 false 只发更新约 1～3 分钟，要新安装程序时设 true 约 10 分钟，或事后单独跑 mf-installer）；⑤用客户端代码对公网 stable.json 验签（`refactor.desktop.delivery.update_protocol.verify_release(原始字节, {key_id: base64 解码的公钥}, current=上一版)`，公钥在 .local/release-keys/mentorflow-app-2026.public.json），看 aiteacher.clannad.win/download。触发和查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（.local/tmp/watch_run.sh 轮询到结束）。工作流只能手动触发，额度红线见 scripts/release/README.md。
 - **本机打包**（发版先验，[BUG-202]）：只能用专用打包环境，不能用平时测试的环境。在干净的员工工位里跑（如 D:\MentorFlow-office\runtime\repo，先 reset 到要发的提交），不在主目录跑：打包收尾要核对代码版本，打包期间主目录一提交就失败。在工位目录里 PowerShell 照抄：
   `$env:MF_TEMP_ROOT='D:\MentorFlow\.local\test-tmp'; $env:MF_BUILD_TOOLS='D:\MentorFlow\.local\release-tools\build-tools'; $env:MF_NODE_DIR='D:\MentorFlow\.local\node'; & D:\MentorFlow\.venv\Scripts\python.exe -B scripts\release\build_release.py --version <测试号如 9.257.1> --baseline <git rev-parse --short=8 HEAD> --valid-days 1096 --base-versions <线上版本> --notes <说明> --output-dir D:\MentorFlow\.local\test-tmp\<任务目录>\build --previous-release <已验签的线上 stable.json 副本>`
-  先只跑环境检查（打印 Exact build pins verified: 73 才往下）。专用打包环境在 .local/release-tools/build-tools，不放进 test-tmp，清理临时文件时别删。
+  先只跑环境检查（打印 Exact build pins and locked SQLite runtime verified: 73 才往下）。专用打包环境在 .local/release-tools/build-tools，不放进 test-tmp，清理临时文件时别删。
 - **发版辅助脚本**（.local/tools/release/，不进仓库）：`dispatch_build.py <版本> <基线版本> <更新说明>` 触发 mf-build（非必须）；`gh_release.py latest <工作流文件>` 看最近一次运行，`gh_release.py download <运行号> unsigned-<版本> <zip路径>` 下载产物（GitHub 跳转到存储地址时不能带认证头），`gh_release.py publish <版本>` 触发 mf-publish。令牌运行时从 Git Credential Manager 取，不落盘。`verify_public.py <版本> <上一版>` 从公网下载 stable.json 并用客户端代码验签（用 curl 加浏览器 UA 下载，Cloudflare 对 Python 默认 UA 回 403），副本存到 .local/test-tmp/release-<版本>/verify/stable.json，下次本机打包的 --previous-release 就用它。
 - **启动/重启用户的源代码版**：`Start-Process -FilePath D:/MentorFlow/.venv/Scripts/pythonw.exe -ArgumentList 'D:/MentorFlow/refactor/desktop/source_start.pyw' -WorkingDirectory D:/MentorFlow -WindowStyle Hidden`。重启前一定先问用户（可能在上课）。
 - **查用户软件的问题**：装好的软件日志 D:\MentorFlowApp\MentorFlow\Data\logs\mentorflow.log，源代码版日志 D:\MentorFlowData\account-shell\logs\mentorflow.log（JSON 行，只读）；数据库在对应的 learning\accounts\<账号>\*.sqlite3，只读查看用 `sqlite3.connect('file:...?mode=ro', uri=True)`。
@@ -45,10 +45,10 @@
 
 | 项目 | 值 |
 | --- | --- |
-| main | 以 `git rev-parse --short HEAD` 为准；2.0.45正式源码及本地门禁基线44cb3e22，交班文档提交不改变产品代码 |
-| 本地待发布候选 | 323源码及验包固定5ef32599，后续仅文档；本地验证已完成，状态/边界见[QA-02]，正式发布暂停 |
+| main | 以 `git rev-parse --short HEAD` 为准；2.0.46 正式源码 cf714dd6；2.0.47 候选产品代码 0aefe606，之后只有文档提交 |
+| 本地待发布候选 | 2.0.47：382-MF05 本机先验过（测试号 9.382.1，基线 0aefe606）；GitHub 构建见 384-MF05 |
 | 已发布 | 2.0.46，普通可选软件内更新，参数及证据见[SYS-06]和.local/r324/report.md；本轮不编新安装程序；服务器Java269、数据库迁移0047未改动 |
-| GitHub | 最近正式发布2.0.45已推送；本批323修复仅本地，未推送/触发Windows CI。仓库私有，正式发布所需推送由架构师做，其余推送要用户说 |
+| GitHub | main 最近一次推送 2026-11-12（为 2.0.47 构建）。仓库私有，正式发布所需推送由架构师做，其余推送要用户说 |
 | 工位分支 | office/* 只在本地，永不推送；先核干净状态再从指定基线建本批分支，未知修改保留，不自动reset/clean |
 
 ## 员工与工位
@@ -57,16 +57,16 @@
 
 | 员工 | 名字 | 当前任务 | 工位 |
 | --- | --- | --- | --- |
-| MF-01 | 服务端 | 381-MF01 已起草，待发送（服务端上线：第一段准备、对服务器只读，第二段等架构师消息） | server |
+| MF-01 | 服务端 | 381-MF01 第一段已交、2026-11-12 审过；第二段通知已给用户，用户择时转发即开始上线 | server |
 | MF-02 | 客户端 | 空闲（376-MF02 已交，2026-11-11 审过） | client |
 | MF-03 | 课堂 | 空闲（375-MF03 已交，2026-11-11 合入 0e6fe4c2） | classroom |
 | MF-04 | 运行时 | 空闲（370-MF04 已交，2026-11-11 合入 96ae25c2） | runtime |
-| MF-05 | 发版 | 382-MF05 已起草，待发送（客户端本机预览版先验，测试号 9.382.1，不触发 GitHub） | platform |
-| MF-06 | 工具 | 383-MF06 已起草，待发送（开发工作台调研，只查不改，含告警） | tools |
+| MF-05 | 发版 | 384-MF05 已起草，待发送（2.0.47：补验真实迁移，GitHub 构建一次，不签名不发布） | platform |
+| MF-06 | 工具 | 空闲（383-MF06 已交，2026-11-12 审过，等用户定工作台方案） | tools |
 | MF-07 | 资料 | 空闲（369-MF07 已交，2026-11-11 合入 main 62d2014a） | library |
 ## 待派队列
 
-- 写项目题卡答案时查出的缺陷这一批（[DOC-03]，360～380）：全部已交、合入 main 并推送，380 全量过（2 个偶发见 [BUG-241]）；服务端没上线、客户端没发版。①发版：用户 2026-11-11 同意服务端上线，381-MF01（.local/tasks/381-MF01.md）第一段准备完、架构师审过、和用户约好时间后再发「381 第二段开始」；客户端 382-MF05（.local/tasks/382-MF05.md）本机先验，正式版本号 2.0.47（用户 2026-11-11 定），382 回执审过再派 GitHub 构建；②规范化（377 回执第六节 P0～P2；企业 API 改走域名按 373 分阶段，用户 2026-11-11 定和规范化一起排；IP 证书和备份加失败告警；动服务器的每一步先说明、用户同意再派）；③清理候选（377 回执第三节，只列未删，删前用户同意）。系统全景页（静态快照）：https://claude.ai/artifact/M6o4Nj3n5L9eeBLsh3b99K（源文件 .local/overview/mentorflow-system.html）；用户要实时的开发工作台，先调研 383-MF06（.local/tasks/383-MF06.md），报告给用户看过再派开工。客户端平时占用：用户 2026-11-11 说自己用下来不大，这次不测。358 的重排序模型、补前后段、切段对比实验这次不做（用户 2026-11-11 定）。362 七处结论见 .local/receipts/362-MF03.md。
+- 写项目题卡答案时查出的缺陷这一批（[DOC-03]，360～380）：全部已交、合入 main 并推送，380 全量过（2 个偶发见 [BUG-241]）；服务端没上线、客户端没发版。①发版：服务端 381-MF01（.local/tasks/381-MF01.md）第一段已审过，第二段由用户择时转发通知开始；客户端 2.0.47：382 本机先验已过，384-MF05（.local/tasks/384-MF05.md）补验真实迁移并在 GitHub 构建一次，回执审过后架构师签名、跑 mf-publish、verify_public.py 2.0.47 2.0.46；②规范化（377 回执第六节 P0～P2；企业 API 改走域名按 373 分阶段，用户 2026-11-11 定和规范化一起排；IP 证书和备份加失败告警；动服务器的每一步先说明、用户同意再派）；③清理候选（377 回执第三节，只列未删，删前用户同意）。系统全景页（静态快照）：https://claude.ai/artifact/M6o4Nj3n5L9eeBLsh3b99K（源文件 .local/overview/mentorflow-system.html）；用户要实时的开发工作台：383-MF06 调研已交（.local/receipts/383-MF06.md），等用户定方案再派开工（员工先在本机写好配置和桌面快捷方式并演练，再由 MF-01 照脚本装到服务器）。客户端平时占用：用户 2026-11-11 说自己用下来不大，这次不测。358 的重排序模型、补前后段、切段对比实验这次不做（用户 2026-11-11 定）。362 七处结论见 .local/receipts/362-MF03.md。
 - 347-MF01、349-MF05、350-MF04、351-MF02（[DOC-03]，用户 2026-11-09 定）：MentorFlow 项目追问的后续，四份 2026-11-09 都已交，349、350、351 已合入 main（合入后全量测试还没跑，交给下一份任务顺带跑）。用户 2026-11-09 定：G-02（354-MF04，最后跑全量）、G-01（355-MF05）先做，G-04 等下次发版；同义改写调研 356-MF07；350 上服务器只读跑同意，连法已解决（[BUG-228]），任务 357-MF01。355、356 已交（355 已合入），354、357 进行中；356 的 5 件事用户已定，358-MF07 已发（2026-11-09），关键词索引和重排序模型等 358 结果再派。
 - 348（Kristina）：Kristina 架构师 2026-11-09 已交回 .local/receipts/348-Kristina.md，结论见 CURRENT_STATE。
 - 335（[DOC-03]）：旧版并进新版第一步，六份已交（近期有 47、与新版重复 105、与旧版重复 2、没找到 135）。338-MF04 复查也已交（只多找到 6 道）。用户 2026-11-09 定逐题判断，340 已出名单（.local/receipts/340-旧题并入名单.md：并进 106、删 51、跨组重复 3、转项目问法 22），找出处 343-MF04 已交（61 道里 12 道找到一条出处，49 道没找到、不删）；并入 345-MF06 已交、架构师 2026-11-09 合入写回（见 CURRENT_STATE「340 逐题判断」条目），题库已导入、学习记录已迁到新题号，都核对通过（[BUG-227]）。scratch/338-MF04 的临时脚本和中间表架构师 2026-11-10 已删，只留 corpus/posts.jsonl（816 KB）。
