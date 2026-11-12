@@ -5,17 +5,16 @@ import jakarta.annotation.PreDestroy;
 import java.net.URI;
 import javax.sql.DataSource;
 import org.springframework.core.env.Environment;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Component;
 
-/** One lazy business pool; account/admin DataSource beans keep their own lifecycle. */
+/** One Spring-managed pool for the mentorflow_app database role. */
 @Component
 public final class BusinessDatabase implements AutoCloseable {
     private final HikariDataSource pool;
 
     public BusinessDatabase(Environment environment) {
         String url = environment.getProperty("MENTORFLOW_DATABASE_URL");
-        pool = url == null || url.isBlank() ? null : createPool(physicalSource(url));
+        pool = url == null || url.isBlank() ? null : createPool(url);
     }
 
     /** Null preserves the repositories' existing unconfigured/503 behavior. */
@@ -23,35 +22,23 @@ public final class BusinessDatabase implements AutoCloseable {
         return pool;
     }
 
-    static HikariDataSource createPool(DataSource physical) {
-        // Lazy initialization keeps construction and deployments without a live DB unchanged.
+    static HikariDataSource createPool(String raw) {
         HikariDataSource source = new HikariDataSource();
-        source.setDataSource(physical);
-        source.setPoolName("mentorflow-business");
-        source.setMaximumPoolSize(10);
-        source.setMinimumIdle(0);
-        source.setConnectionTimeout(10_000);
-        source.setInitializationFailTimeout(-1);
-        return source;
-    }
-
-    private static DriverManagerDataSource physicalSource(String raw) {
-        // Keep the repositories' existing driver/URL timeout and credential semantics.
-        DriverManagerDataSource source = new DriverManagerDataSource();
-        if (raw.startsWith("jdbc:postgresql:")) {
-            source.setUrl(raw);
+        String normalized = raw.replaceFirst("^postgresql\\+[^:]+:", "postgresql:");
+        if (normalized.startsWith("jdbc:postgresql:")) {
+            source.setJdbcUrl(normalized);
         } else {
-            String normalized = raw.replaceFirst("^postgresql\\+[^:]+:", "postgresql:");
             if (normalized.startsWith("postgres://")) {
                 normalized = "postgresql:" + normalized.substring("postgres:".length());
             }
             URI uri = URI.create(normalized);
             if (!"postgresql".equals(uri.getScheme()) || uri.getHost() == null) {
+                source.close();
                 throw new IllegalArgumentException("Business database URL must use PostgreSQL with a host");
             }
             String host = uri.getHost();
             if (host.contains(":") && !host.startsWith("[")) host = "[" + host + "]";
-            source.setUrl("jdbc:postgresql://" + host + (uri.getPort() < 0 ? "" : ":" + uri.getPort())
+            source.setJdbcUrl("jdbc:postgresql://" + host + (uri.getPort() < 0 ? "" : ":" + uri.getPort())
                     + (uri.getRawPath() == null ? "" : uri.getRawPath())
                     + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery()));
             if (uri.getUserInfo() != null) {
@@ -61,7 +48,24 @@ public final class BusinessDatabase implements AutoCloseable {
             }
         }
         source.setDriverClassName("org.postgresql.Driver");
+        configurePool(source, "mentorflow-business");
         return source;
+    }
+
+    static HikariDataSource createPool(DataSource physical) {
+        HikariDataSource source = new HikariDataSource();
+        source.setDataSource(physical);
+        configurePool(source, "mentorflow-business");
+        return source;
+    }
+
+    private static void configurePool(HikariDataSource source, String poolName) {
+        // Lazy initialization keeps construction and deployments without a live DB unchanged.
+        source.setPoolName(poolName);
+        source.setMaximumPoolSize(10);
+        source.setMinimumIdle(0);
+        source.setConnectionTimeout(10_000);
+        source.setInitializationFailTimeout(-1);
     }
 
     @Override

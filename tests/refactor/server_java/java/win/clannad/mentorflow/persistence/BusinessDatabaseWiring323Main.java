@@ -31,8 +31,8 @@ public final class BusinessDatabaseWiring323Main {
             check(pool != null, "configured URL must create the lazy business pool");
             check(context.containsBean("accountDataSource"), "account DataSource condition bean must remain present");
             Map<String, DataSource> sources = context.getBeansOfType(DataSource.class);
-            check(sources.size() == 1, "business pool must not be exposed as a DataSource bean: " + sources.keySet());
-            check(sources.get("accountDataSource") != pool, "account DataSource must remain distinct from business pool");
+            check(sources.size() == 1, "one application-role DataSource bean is expected: " + sources.keySet());
+            check(sources.get("accountDataSource") == pool, "account DataSource must reuse the business pool");
             check(repositoryDataSource(sync) == pool, "SyncRepository must use the shared business pool");
             check(repositoryDataSource(rag) == pool, "RagRepository must use the shared business pool");
         }

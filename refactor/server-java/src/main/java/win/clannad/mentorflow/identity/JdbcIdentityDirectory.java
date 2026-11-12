@@ -2,56 +2,40 @@ package win.clannad.mentorflow.identity;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URI;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.sql.DataSource;
-import org.postgresql.ds.PGPoolingDataSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+import win.clannad.mentorflow.persistence.BusinessDatabase;
 
 /** Read-only membership projection over the existing Alembic schema; owns no DDL. */
 @Component
 public final class JdbcIdentityDirectory implements IdentityDirectory {
     private final String issuer;
     private final DataSource dataSource;
-    private final PGPoolingDataSource pool;
-    private final Properties properties=new Properties();
+    private final BusinessDatabase ownedBusiness;
     private final List<Map<String,Object>> services;
     private final AtomicBoolean verified=new AtomicBoolean(false);
     private final ObjectMapper json=new ObjectMapper();
     private static final String[] TABLES={"organizations","organization_memberships","workspaces","workspace_memberships","workspace_role_bindings","workspace_profiles","workspace_goals","asset_manifests","asset_revisions","account_import_ledger","structured_sync_entities","structured_sync_requests","rehydration_manifests","resource_scopes","documents","evidence","knowledge_maps","learning_plans","teacher_sessions","review_campaigns","student_events","cost_events"};
+    @Autowired
+    public JdbcIdentityDirectory(Environment env,IdentitySettings settings,BusinessDatabase business) {
+        this(env,settings,business,false);
+    }
+    /** Compatibility constructor for the standalone identity Java gates. */
     public JdbcIdentityDirectory(Environment env,IdentitySettings settings) {
+        this(env,settings,new BusinessDatabase(env),true);
+    }
+    private JdbcIdentityDirectory(Environment env,IdentitySettings settings,BusinessDatabase business,boolean ownBusiness) {
         issuer=settings.canonicalIssuer.replaceAll("/+$","");
-        String raw=env.getProperty("MENTORFLOW_DATABASE_URL","").strip();
-        String url;
-        if (raw.isEmpty()) url="";
-        else if (raw.startsWith("jdbc:postgresql:")) url=raw;
-        else {
-            URI uri=URI.create(raw.replaceFirst("^postgresql\\+[^:]+:","postgresql:"));
-            if (!uri.getScheme().equals("postgresql")) throw new IllegalArgumentException("enterprise identity directory requires PostgreSQL");
-            String userInfo=uri.getUserInfo();
-            if (userInfo!=null) {String[] parts=userInfo.split(":",2); properties.setProperty("user",parts[0]);if(parts.length>1)properties.setProperty("password",parts[1]);}
-            String host=uri.getHost().contains(":")?"["+uri.getHost()+"]":uri.getHost();
-            url="jdbc:postgresql://"+host+(uri.getPort()<0?"":":"+uri.getPort())+uri.getRawPath()+(uri.getRawQuery()==null?"":"?"+uri.getRawQuery());
-        }
-        properties.setProperty("connectTimeout","10"); properties.setProperty("socketTimeout","10");
-        if(url.isEmpty()) {pool=null;dataSource=null;}
-        else {
-            pool=new PGPoolingDataSource();
-            pool.setDataSourceName("mentorflow-identity-"+java.util.UUID.randomUUID());
-            pool.setURL(url);
-            if(properties.getProperty("user")!=null)pool.setUser(properties.getProperty("user"));
-            if(properties.getProperty("password")!=null)pool.setPassword(properties.getProperty("password"));
-            pool.setConnectTimeout(10);pool.setSocketTimeout(10);
-            pool.setMaxConnections(10);
-            dataSource=pool;
-        }
+        dataSource=business.dataSource();
+        ownedBusiness=ownBusiness?business:null;
         String rawServices=env.getProperty("MENTORFLOW_SERVICE_IDENTITY_GRANTS_JSON","").strip();
         try {
             if(rawServices.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>65536) throw new IllegalArgumentException("service identity grant configuration is too large");
@@ -80,7 +64,7 @@ public final class JdbcIdentityDirectory implements IdentityDirectory {
         return dataSource.getConnection();
     }
     @jakarta.annotation.PreDestroy
-    public void close() {if(pool!=null)pool.close();}
+    public void close() {if(ownedBusiness!=null)ownedBusiness.close();}
     /** Preserve the Python application-role invariant, without creating or migrating tables. */
     private void verifyRole(Connection connection) throws SQLException {
         if(verified.get())return;
@@ -136,7 +120,11 @@ public final class JdbcIdentityDirectory implements IdentityDirectory {
             }
             connection.commit();
             return roles.isEmpty()?null:new Membership("membership:"+IdentitySecurity.sha256(issuer+"\u001f"+subject+"\u001f"+org),List.copyOf(roles));
-        } catch(SQLException failure) {throw new IllegalStateException("Membership directory unavailable",failure);}
+        } catch(SQLException failure) {
+            IdentityFailure unavailable = new IdentityFailure(503,"CLOSURE_STORAGE_UNAVAILABLE","账号身份目录暂不可用。");
+            unavailable.initCause(failure);
+            throw unavailable;
+        }
     }
     private static boolean active(String value){return value!=null&&value.strip().equalsIgnoreCase("ACTIVE");}
     private static void addRole(List<String> roles,String value) {
