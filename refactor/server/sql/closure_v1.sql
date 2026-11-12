@@ -234,6 +234,7 @@ BEGIN
   DELETE FROM public.account_import_ledger WHERE issuer=o.issuer AND subject_id=o.subject_id;
   DELETE FROM public.structured_sync_entities WHERE issuer=o.issuer AND subject_id=o.subject_id;
   DELETE FROM public.structured_sync_requests WHERE issuer=o.issuer AND subject_id=o.subject_id;
+  DELETE FROM public.account_daily_activity WHERE account_scope=encode(sha256(convert_to(o.issuer, 'UTF8') || decode('00', 'hex') || convert_to(o.subject_id, 'UTF8')), 'hex');
   DELETE FROM public.rehydration_manifests WHERE issuer=o.issuer AND subject_id=o.subject_id;
   DELETE FROM public.documents WHERE owner_subject_id=o.subject_id AND scope_type='PERSONAL';
   DELETE FROM public.evidence WHERE owner_subject_id=o.subject_id AND scope_type='PERSONAL';
@@ -287,6 +288,7 @@ BEGIN
      OR EXISTS (SELECT 1 FROM public.account_import_ledger WHERE issuer=o.issuer AND subject_id=o.subject_id)
      OR EXISTS (SELECT 1 FROM public.structured_sync_entities WHERE issuer=o.issuer AND subject_id=o.subject_id)
      OR EXISTS (SELECT 1 FROM public.structured_sync_requests WHERE issuer=o.issuer AND subject_id=o.subject_id)
+     OR EXISTS (SELECT 1 FROM public.account_daily_activity WHERE account_scope=encode(sha256(convert_to(o.issuer, 'UTF8') || decode('00', 'hex') || convert_to(o.subject_id, 'UTF8')), 'hex'))
      OR EXISTS (SELECT 1 FROM public.rehydration_manifests WHERE issuer=o.issuer AND subject_id=o.subject_id)
      OR EXISTS (SELECT 1 FROM public.documents WHERE owner_subject_id=o.subject_id AND scope_type='PERSONAL')
      OR EXISTS (SELECT 1 FROM public.evidence WHERE owner_subject_id=o.subject_id AND scope_type='PERSONAL')

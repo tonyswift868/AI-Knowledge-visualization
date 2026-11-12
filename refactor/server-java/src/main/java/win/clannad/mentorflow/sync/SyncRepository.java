@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.Locale;
 import java.util.function.Function;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.sql.DataSource;
 import win.clannad.mentorflow.persistence.BusinessDatabase;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -29,6 +31,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 /** PostgreSQL persistence for the frozen structured-sync protocol. */
 @Component
 public final class SyncRepository {
+    private static final Logger LOG = Logger.getLogger(SyncRepository.class.getName());
     private static final String SCOPE_WHERE = "issuer=? AND subject_id=? AND organization_id=? AND workspace_id=?";
     private static final String SCOPE_VERSION = "SUPPORTED_REHYDRATION_SCOPE_V1";
     private static final String[] SUPPORTED_SCOPE = {"plans", "progress", "resource_metadata", "plan_tasks", "calendars",
@@ -56,6 +59,28 @@ public final class SyncRepository {
         this.jdbc = source == null ? null : new JdbcTemplate(source);
         this.transactions = source == null ? null : new DataSourceTransactionManager(source);
         this.ready = source != null;
+    }
+
+    /** Best-effort account activity marker; telemetry failure must not affect sync. */
+    public void recordDailyActivity(Map<String,Object> actor) {
+        if (!ready) return;
+        try {
+            String issuer = requiredText(actor.get("issuer"));
+            String subject = requiredText(actor.get("subject_id"));
+            String scope = accountScope(actor);
+            TransactionTemplate tx = new TransactionTemplate(transactions);
+            tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            tx.execute(status -> {
+                jdbc.update("SELECT set_config('mentorflow.actor_issuer', ?, true), "
+                        + "set_config('mentorflow.actor_subject', ?, true)", issuer, subject);
+                jdbc.update("INSERT INTO account_daily_activity(account_scope,day) "
+                        + "VALUES (?,(CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date) ON CONFLICT DO NOTHING",
+                        scope);
+                return null;
+            });
+        } catch (RuntimeException failure) {
+            LOG.log(Level.WARNING, "Could not record daily account activity", failure);
+        }
     }
 
     private void requireReady() {
@@ -171,6 +196,10 @@ public final class SyncRepository {
         value.put("issuer", actor.get("issuer")); value.put("subject_id", actor.get("subject_id"));
         value.put("organization_id", tenant.get("organization_id")); value.put("workspace_id", tenant.get("workspace_id"));
         return value;
+    }
+
+    private static String accountScope(Map<String,Object> actor) {
+        return sha256(requiredText(actor.get("issuer")) + "\u0000" + requiredText(actor.get("subject_id")));
     }
 
     /** Matches Python hashlib.sha256(json.dumps(scope, sort_keys=True))[:8] as signed big-endian. */

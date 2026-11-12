@@ -20,26 +20,30 @@ test -r "$deploy_dir/usage-stats.py"
 # The dates are shell-validated before they are inserted into this fixed SQL.
 # The only database operation is one SELECT in a read-only transaction.
 query="BEGIN READ ONLY;
-SELECT (updated_at AT TIME ZONE 'UTC')::date::text AS day,
-       COUNT(DISTINCT subject_id)::text AS accounts
-  FROM public.account_import_ledger
- WHERE state = 'COMPLETED'
-   AND (updated_at AT TIME ZONE 'UTC')::date >= DATE '$from'
-   AND (updated_at AT TIME ZONE 'UTC')::date <= DATE '$to'
+SELECT day::text AS day,
+       COUNT(DISTINCT account_scope)::text AS accounts
+  FROM public.account_daily_activity
+ WHERE day >= DATE '$from'
+   AND day <= DATE '$to'
  GROUP BY 1 ORDER BY 1;
 COMMIT;"
-active=$($docker_bin exec -e PGOPTIONS='-c default_transaction_read_only=on' \
-  "$postgres_container" psql -XqAt -v ON_ERROR_STOP=1 -U postgres -d mentorflow -c "$query")
-
-# Convert the date/count-only rows to JSON; account identifiers never leave
-# PostgreSQL.  The access log remains the only stdin of the statistics script.
-active_json=$(printf '%s\n' "$active" | "$python_bin" -c \
+if active_output=$($docker_bin exec -e PGOPTIONS='-c default_transaction_read_only=on' \
+  "$postgres_container" psql -XqAt -v ON_ERROR_STOP=1 -U postgres -d mentorflow -c "$query" 2>&1); then
+  active_json=$(printf '%s\n' "$active_output" | "$python_bin" -c \
   'import json,sys; out=[]
 for line in sys.stdin:
  p=line.rstrip("\r\n").split("\t")
  if len(p)==2: out.append({"day":p[0],"accounts":int(p[1])})
 print(json.dumps(out,separators=(",",":")))')
+else
+  case "$active_output" in
+    *'does not exist'*|*'不存在'*) active_json='{"status":"无数据来源"}' ;;
+    *) printf '%s\n' "$active_output" >&2; exit 1 ;;
+  esac
+fi
 
+# Convert the date/count-only rows to JSON; account identifiers never leave
+# PostgreSQL.  The access log remains the only stdin of the statistics script.
 $docker_bin logs --since "${from}T00:00:00Z" --until "${to}T23:59:59.999999Z" "$java_container" |
   "$python_bin" "$deploy_dir/usage-stats.py" --start "$from" --end "$to" \
     --active-accounts-json "$active_json"

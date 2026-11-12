@@ -23,7 +23,7 @@ public final class JdbcIdentityDirectory implements IdentityDirectory {
     private final List<Map<String,Object>> services;
     private final AtomicBoolean verified=new AtomicBoolean(false);
     private final ObjectMapper json=new ObjectMapper();
-    private static final String[] TABLES={"organizations","organization_memberships","workspaces","workspace_memberships","workspace_role_bindings","workspace_profiles","workspace_goals","asset_manifests","asset_revisions","account_import_ledger","structured_sync_entities","structured_sync_requests","rehydration_manifests","resource_scopes","documents","evidence","knowledge_maps","learning_plans","teacher_sessions","review_campaigns","student_events","cost_events"};
+    private static final String[] TABLES={"organizations","organization_memberships","workspaces","workspace_memberships","workspace_role_bindings","workspace_profiles","workspace_goals","asset_manifests","asset_revisions","account_import_ledger","structured_sync_entities","structured_sync_requests","rehydration_manifests","account_daily_activity","resource_scopes","documents","evidence","knowledge_maps","learning_plans","teacher_sessions","review_campaigns","student_events","cost_events"};
     @Autowired
     public JdbcIdentityDirectory(Environment env,IdentitySettings settings,BusinessDatabase business) {
         this(env,settings,business,false);

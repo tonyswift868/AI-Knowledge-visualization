@@ -84,8 +84,8 @@ def test_readonly_wrapper_rejects_shell_metacharacters_before_sql():
     assert "date.fromisoformat" in wrapper
 
 
-def test_active_accounts_uses_sync_ledger_and_read_only_postgres():
-    """Run the exact SELECT against the existing embedded PostgreSQL fixture."""
+def test_active_accounts_uses_daily_activity_and_read_only_postgres():
+    """Run the exact daily activity SELECT against the embedded PostgreSQL fixture."""
     from support_rag154 import CLASSPATH_FILE, _EmbeddedPostgres, _prepare_database
 
     if not CLASSPATH_FILE.is_file():
@@ -103,6 +103,11 @@ def test_active_accounts_uses_sync_ledger_and_read_only_postgres():
             connection.execute(
                 "INSERT INTO organizations(id,slug,name,status) VALUES (%s,%s,%s,'active')",
                 ("org-350", "org-350", "usage350"),
+            )
+            connection.execute(
+                "CREATE TABLE account_daily_activity ("
+                "account_scope text NOT NULL, day date NOT NULL, "
+                "PRIMARY KEY (account_scope, day))"
             )
             connection.execute(
                 "INSERT INTO organization_memberships(organization_id,subject_id,role,status) "
@@ -131,11 +136,17 @@ def test_active_accounts_uses_sync_ledger_and_read_only_postgres():
                      "source-" + digest, "request-" + digest, "v1", "{}", "{}", state,
                      updated_at, updated_at),
                 )
+            connection.execute(
+                "INSERT INTO account_daily_activity(account_scope,day) VALUES "
+                "('subject-a','2026-11-01'),('subject-a','2026-11-01'),"
+                "('subject-b','2026-11-02') ON CONFLICT DO NOTHING"
+            )
             with connection.transaction():
                 connection.execute("SET TRANSACTION READ ONLY")
-                rows = connection.execute(
-                    usage_stats350.active_accounts_query(date(2026, 11, 1), date(2026, 11, 2))
-                ).fetchall()
+                query = usage_stats350.active_accounts_query(date(2026, 11, 1), date(2026, 11, 2))
+                assert "account_daily_activity" in query
+                assert "COUNT(DISTINCT account_scope)" in query
+                rows = connection.execute(query).fetchall()
                 assert usage_stats350.active_accounts_from_rows(rows) == [
                     {"day": "2026-11-01", "accounts": 1},
                     {"day": "2026-11-02", "accounts": 1},
@@ -151,3 +162,16 @@ def test_active_accounts_uses_sync_ledger_and_read_only_postgres():
                     )
     finally:
         postgres.stop()
+
+
+def test_missing_daily_activity_table_is_explicit(monkeypatch):
+    class Result:
+        returncode = 1
+        stdout = ""
+        stderr = 'ERROR: relation "account_daily_activity" does not exist'
+
+    monkeypatch.setattr(usage_stats350.subprocess, "run", lambda *args, **kwargs: Result())
+    assert usage_stats350.active_accounts_from_psql("postgresql://example.invalid/db") == "无数据来源"
+    summary = usage_stats350.summarize_lines([], active_accounts="无数据来源")
+    assert summary["active_accounts"] == "无数据来源"
+    assert summary["active_accounts_source"] == "无数据来源"

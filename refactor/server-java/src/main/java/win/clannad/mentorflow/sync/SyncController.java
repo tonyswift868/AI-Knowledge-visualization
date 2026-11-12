@@ -125,8 +125,12 @@ public final class SyncController {
     }
     private static class BodyParsing extends RuntimeException {}
     @FunctionalInterface private interface Work {Object run() throws IOException;}
-    private static void handle(HttpServletRequest request,HttpServletResponse response,Work work) throws IOException {
-        try {writeJson(response,200,work.run(),true);}
+    private void handle(HttpServletRequest request,HttpServletResponse response,Work work) throws IOException {
+        try {
+            Map<String,Object> authenticatedActor = actor(request);
+            repository.recordDailyActivity(authenticatedActor);
+            writeJson(response,200,work.run(),true);
+        }
         catch(SyncValidation.Invalid failure){writeJson(response,422,ordered("detail",failure.errors),false);}
         catch(SyncFailure failure){
             if(failure.code.equals("SYNC_NOT_READY"))throw new IdentityFailure("SYNC_NOT_READY","Structured sync unavailable",503);
@@ -144,6 +148,7 @@ public final class SyncController {
             response.setContentLength(bytes.length);response.getOutputStream().write(bytes);
         }
     }
+
     static void writeJson(HttpServletResponse response,int status,Object value,boolean noStore) throws IOException {
         byte[] bytes=SyncJson.dump(value,false).getBytes(StandardCharsets.UTF_8);
         response.setStatus(status);response.setContentType("application/json");
