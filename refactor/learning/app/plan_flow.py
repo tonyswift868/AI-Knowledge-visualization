@@ -430,7 +430,8 @@ class PlanFlow:
                                               **({'on_text': lambda _text: None} if purpose == 'outline' else {}))
             except ModelError as exc:
                 if (exc.code == MODEL_OUTPUT_TRUNCATED and not transport_retried and max_tokens < 32768
-                        and not ctx.cancel.is_set()):
+                        and not ctx.cancel.is_set()
+                        and PlanFlow._output_retry_can_grow(gateway, purpose, max_tokens)):
                     # A long outline can outgrow its cap; the same request with room to finish.
                     log.info("agent %s hit the output cap %s, retrying with double", purpose, max_tokens)
                     max_tokens, last = min(32768, max_tokens * 2), exc
@@ -1978,10 +1979,18 @@ class PlanFlow:
             timer.start()
 
     @staticmethod
+    def _output_retry_can_grow(gateway, purpose, max_tokens):
+        resolver = getattr(gateway, 'effective_output_limit', None)
+        if not callable(resolver):
+            return True
+        candidate = min(32768, max_tokens * 2)
+        return resolver(purpose, candidate) > resolver(purpose, max_tokens)
+
+    @staticmethod
     def _retryable_material_error(code):
         return code not in {'SOURCE_MISSING', 'POINT_SOURCE_MISSING', 'MODULE_NOT_FOUND', 'STORE_CLOSED',
                             'PREPARATION_FORMAT', 'MATERIALS_INCOMPLETE', 'MODEL_INSUFFICIENT_BALANCE',
-                            'MODEL_OUTPUT_TRUNCATED', 'RESEARCH_INPUT_INVALID'}
+                            'MODEL_OUTPUT_TRUNCATED', 'MODEL_CONTEXT_WINDOW_EXCEEDED', 'RESEARCH_INPUT_INVALID'}
 
     def stop_background(self, plan_id, module_id=None):
         """Persist an explicit user stop; ordinary cancellation stays resumable."""
@@ -3132,7 +3141,7 @@ class PlanFlow:
                     return self.services.gateway.complete("plan_additions_generate", job["messages"], system=job["system"],
                                                           cancel=ctx.cancel, plan_id=plan_id, max_tokens=8192).text
                 except ModelError as exc:
-                    if attempt or exc.code not in TRANSIENT | {MODEL_OUTPUT_TRUNCATED} or ctx.cancel.is_set():
+                    if attempt or exc.code not in TRANSIENT or ctx.cancel.is_set():
                         raise
 
         def work():

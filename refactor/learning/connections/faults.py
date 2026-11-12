@@ -32,6 +32,8 @@ def model_fault(error, provider_id='', *, repeated=False):
             message = getattr(error, 'message', '') or message
     elif code == 'MODEL_RATE_LIMITED' or status == 429:
         category, message, short = 'rate', '请求太频繁，请稍等再试', '模型请求频繁'
+    elif code == 'MODEL_CONTEXT_WINDOW_EXCEEDED':
+        category, message, short = 'input', '这次给模型的内容太长，请减少所选资料后再试。', '模型输入过长'
     elif (code == 'MODEL_FIRST_EVENT_TIMEOUT' or status in {500,503}
           or code == 'MODEL_TIMEOUT' and getattr(error,'response_received',False) and not length):
         category, message, short = 'busy', f'模型暂时无法使用（{name} 服务繁忙），请稍后再试', '模型暂不可用'

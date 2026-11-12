@@ -333,6 +333,23 @@ class ModelGateway:
             data = self._load()
             return self._public(next((p for p in data['presets'] if p['id'] == data['active_id']), None))
 
+    def effective_output_limit(self, purpose, requested):
+        """Return the output limit actually sent by ``complete``.
+
+        Callers may use this before a bounded retry; provider/model overrides
+        live here so a retry can be skipped when the outgoing value cannot grow.
+        """
+        with self._lock:
+            self._ensure_open()
+            data = self._load()
+            config = next((p for p in data['presets'] if p['id'] == data['active_id']), None)
+        if not config:
+            return requested
+        requested = max(requested, PURPOSE_MIN_OUTPUT.get(purpose, 0))
+        if purpose in PURPOSE_MAX_TOKENS:
+            return PURPOSE_MAX_TOKENS[purpose]
+        return MODEL_MAX_OUTPUT.get(config['model'], requested)
+
     def get_configuration_snapshot(self):
         """Return active preset metadata and revision from the same locked read."""
         with self._lock:
