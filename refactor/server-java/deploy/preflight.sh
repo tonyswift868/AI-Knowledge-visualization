@@ -52,6 +52,24 @@ case "$source_revision" in
     required_hash_paths="$required_hash_paths
 refactor/server/migrations/versions/0048_rag_source_chunks.py"
     ;;
+  0049_drop_redundant_rag_indexes)
+    required_hash_paths="$required_hash_paths
+refactor/server/migrations/versions/0048_rag_source_chunks.py
+refactor/server/migrations/versions/0049_drop_redundant_rag_indexes.py"
+    ;;
+  0050_account_daily_activity)
+    required_hash_paths="$required_hash_paths
+refactor/server/migrations/versions/0048_rag_source_chunks.py
+refactor/server/migrations/versions/0049_drop_redundant_rag_indexes.py
+refactor/server/migrations/versions/0050_account_daily_activity.py"
+    ;;
+  0051_sync_closure_fence)
+    required_hash_paths="$required_hash_paths
+refactor/server/migrations/versions/0048_rag_source_chunks.py
+refactor/server/migrations/versions/0049_drop_redundant_rag_indexes.py
+refactor/server/migrations/versions/0050_account_daily_activity.py
+refactor/server/migrations/versions/0051_sync_closure_fence.py"
+    ;;
   *) printf 'unsupported PREFLIGHT_SOURCE_REVISION\n' >&2; exit 2 ;;
 esac
 required_hash_count=$(printf '%s\n' "$required_hash_paths" | awk 'NF { n++ } END { print n+0 }')
@@ -355,9 +373,27 @@ if check_file "$deploy_dir/migration.Dockerfile" && image_exists "$migration_too
 else fail database_migration_current 'existing migration inputs/image/network/secret volume unavailable; skipped docker run; preflight never builds or creates them'; fi
 
 schema_tables="to_regclass('public.rag_document_upload_manifests') IS NOT NULL"
-if [ "$expected_revision" = 0048_rag_source_chunks ]; then
-  schema_tables="$schema_tables AND to_regclass('public.rag_source_chunks') IS NOT NULL"
-fi
+case "$expected_revision" in
+  0048_rag_source_chunks|0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence)
+    schema_tables="$schema_tables AND to_regclass('public.rag_source_chunks') IS NOT NULL"
+    ;;
+esac
+case "$expected_revision" in
+  0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence)
+    schema_tables="$schema_tables AND to_regclass('public.ix_rag_chunks_account_document') IS NULL"
+    schema_tables="$schema_tables AND to_regclass('public.ix_rag_source_chunks_logical') IS NULL"
+    ;;
+esac
+case "$expected_revision" in
+  0050_account_daily_activity|0051_sync_closure_fence)
+    schema_tables="$schema_tables AND to_regclass('public.account_daily_activity') IS NOT NULL"
+    ;;
+esac
+case "$expected_revision" in
+  0051_sync_closure_fence)
+    schema_tables="$schema_tables AND has_function_privilege('mentorflow_app', 'account_closure.assert_open(text,text)', 'EXECUTE')"
+    ;;
+esac
 schema_query="BEGIN READ ONLY; SELECT current_database()||'|'||version_num||'|'||($schema_tables)::text FROM alembic_version; COMMIT;"
 schema_state=$("$docker_bin" exec "$postgres_container" psql -XqAt -v ON_ERROR_STOP=1 -U postgres -d mentorflow -c "$schema_query" 2>/dev/null) || schema_state=
 if [ "$schema_state" = "mentorflow|$expected_revision|true" ]; then ok postgres_schema_revision_and_table; else fail postgres_schema_revision_and_table 'read-only PostgreSQL check did not confirm expected revision and required RAG tables'; fi

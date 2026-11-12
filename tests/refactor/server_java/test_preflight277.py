@@ -33,6 +33,12 @@ HASH_PATHS = (
 SOURCE_REVISION = "PREFLIGHT_SOURCE_REVISION"
 SOURCE_PATH_0048 = "refactor/server/migrations/versions/0048_rag_source_chunks.py"
 SOURCE_PATHS_0048 = (*HASH_PATHS, SOURCE_PATH_0048)
+SOURCE_PATH_0049 = "refactor/server/migrations/versions/0049_drop_redundant_rag_indexes.py"
+SOURCE_PATH_0050 = "refactor/server/migrations/versions/0050_account_daily_activity.py"
+SOURCE_PATH_0051 = "refactor/server/migrations/versions/0051_sync_closure_fence.py"
+SOURCE_PATHS_0049 = (*SOURCE_PATHS_0048, SOURCE_PATH_0049)
+SOURCE_PATHS_0050 = (*SOURCE_PATHS_0049, SOURCE_PATH_0050)
+SOURCE_PATHS_0051 = (*SOURCE_PATHS_0050, SOURCE_PATH_0051)
 CONTAINERS = {
     "mentorflow-java-backend": ("running", "mentorflow-java-server:269"),
     "mentorflow-java-oidc": ("running", "mentorflow-local/oidc:current"),
@@ -113,6 +119,7 @@ class PreflightFixture:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / rel, target)
         self.write_synthetic_source_0048()
+        self.write_synthetic_source_0049_0051()
         self.manifest = self.state / "source.sha256"
         self.write_manifest(self.manifest_lines(HASH_PATHS))
 
@@ -120,6 +127,12 @@ class PreflightFixture:
         source = self.release / SOURCE_PATH_0048
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text("# Synthetic 0048 source manifest fixture.\n", encoding="ascii")
+
+    def write_synthetic_source_0049_0051(self):
+        for rel in (SOURCE_PATH_0049, SOURCE_PATH_0050, SOURCE_PATH_0051):
+            source = self.release / rel
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text(f"# Synthetic {rel.rsplit('/', 1)[-1]} fixture.\n", encoding="ascii")
 
     def manifest_lines(self, paths: tuple[str, ...]) -> list[str]:
         return [
@@ -206,6 +219,10 @@ case "$1 $2" in
     case "$*" in *'psql -XqAt'*)
       schema_ok=true
       case "$*" in *"to_regclass('public.rag_source_chunks')"*) schema_ok=${FAKE_DB_SOURCE_TABLE:-true} ;; esac
+      case "$*" in *"to_regclass('public.ix_rag_chunks_account_document')"*) schema_ok=${FAKE_DB_REDUNDANT_INDEXES_GONE:-true} ;; esac
+      case "$*" in *"to_regclass('public.ix_rag_source_chunks_logical')"*) schema_ok=${FAKE_DB_REDUNDANT_INDEXES_GONE:-true} ;; esac
+      case "$*" in *"to_regclass('public.account_daily_activity')"*) schema_ok=${FAKE_DB_DAILY_ACTIVITY:-true} ;; esac
+      case "$*" in *"has_function_privilege('mentorflow_app'"*) schema_ok=${FAKE_DB_CLOSURE_FENCE:-true} ;; esac
       echo "mentorflow|${FAKE_DB_REVISION:-0047_rag_promoted_manifests}|$schema_ok"; exit 0 ;; *) exit 42 ;; esac ;;
 esac
 exit 41
@@ -309,6 +326,9 @@ def test_preflight_accepts_complete_manifest_with_crlf_and_no_final_newline(pref
     [
         ("0047_rag_promoted_manifests", HASH_PATHS),
         ("0048_rag_source_chunks", SOURCE_PATHS_0048),
+        ("0049_drop_redundant_rag_indexes", SOURCE_PATHS_0049),
+        ("0050_account_daily_activity", SOURCE_PATHS_0050),
+        ("0051_sync_closure_fence", SOURCE_PATHS_0051),
     ],
 )
 def test_source_manifest_generation_is_revision_specific_and_offline(preflight, profile, paths):
@@ -455,6 +475,45 @@ def test_preflight_0048_requires_source_chunks_table(preflight):
     assert result.returncode != 0, output
     assert "approved_source_sha256 OK" in output
     assert "database_migration_current OK" in output
+    assert "postgres_schema_revision_and_table FAIL:" in output
+
+
+@pytest.mark.parametrize(
+    ("revision", "paths", "checks"),
+    [
+        (
+            "0049_drop_redundant_rag_indexes",
+            SOURCE_PATHS_0049,
+            ("to_regclass('public.ix_rag_chunks_account_document')", "to_regclass('public.ix_rag_source_chunks_logical')"),
+        ),
+        ("0050_account_daily_activity", SOURCE_PATHS_0050, ("to_regclass('public.account_daily_activity')",)),
+        ("0051_sync_closure_fence", SOURCE_PATHS_0051, ("has_function_privilege('mentorflow_app'",)),
+    ],
+)
+def test_preflight_0049_to_0051_check_migration_effects(preflight, revision, paths, checks):
+    preflight.write_manifest(preflight.manifest_lines(paths))
+    result = preflight.run(
+        FAKE_DB_REVISION=revision,
+        EXPECTED_ALEMBIC_REVISION=revision,
+        **{SOURCE_REVISION: revision},
+    )
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode == 0, output
+    log = preflight.log.read_text(encoding="utf-8")
+    for check in checks:
+        assert check in log
+
+
+def test_preflight_0051_requires_closure_fence_grant(preflight):
+    preflight.write_manifest(preflight.manifest_lines(SOURCE_PATHS_0051))
+    result = preflight.run(
+        FAKE_DB_REVISION="0051_sync_closure_fence",
+        EXPECTED_ALEMBIC_REVISION="0051_sync_closure_fence",
+        FAKE_DB_CLOSURE_FENCE="false",
+        **{SOURCE_REVISION: "0051_sync_closure_fence"},
+    )
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode != 0, output
     assert "postgres_schema_revision_and_table FAIL:" in output
 
 
