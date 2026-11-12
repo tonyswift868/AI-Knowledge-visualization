@@ -26,9 +26,9 @@ HASH_PATHS = (
     "refactor/server-java/deploy/migrate.sh",
     "refactor/server-java/deploy/java-compose.sh",
     "refactor/server-java/deploy/python-compose.sh",
+    "refactor/server-java/deploy/probe.py",
+    "refactor/server-java/deploy/entrypoint.sh",
     "refactor/server-java/deploy/compose.yml",
-    "refactor/server-java/deploy/compose.python-fallback.yml",
-    "refactor/server-java/deploy/migration.Dockerfile",
 )
 SOURCE_REVISION = "PREFLIGHT_SOURCE_REVISION"
 SOURCE_PATH_0048 = "refactor/server/migrations/versions/0048_rag_source_chunks.py"
@@ -85,7 +85,7 @@ class PreflightFixture:
             path.mkdir(parents=True, exist_ok=True)
         for name in (".java.env", "compose.generated.yml", "migration.Dockerfile", "cutover.sh",
                      "build.sh", "migrate.sh", "java-compose.sh", "python-compose.sh", "probe.py",
-                     "compose.yml"):
+                     "entrypoint.sh", "compose.yml"):
             target = self.deploy / name
             target.write_text("fixture\n", encoding="utf-8")
         (self.deploy / "build.sh").write_text('printf "MF_JAVA_VERSION=%s\\n" "$version" >> "$env_file"\n', encoding="utf-8")
@@ -415,7 +415,7 @@ def test_release_manifest_generation_can_retry_after_missing_migration(preflight
         [str(BASH), "-c", command], cwd=ROOT, env=env, capture_output=True, timeout=20
     )
     assert retried.returncode == 0, retried.stderr.decode("utf-8", errors="replace")
-    assert candidate.read_text(encoding="ascii").splitlines() == preflight.manifest_lines(SOURCE_PATHS_0048)
+    assert candidate.read_text(encoding="ascii").splitlines() == preflight.manifest_lines(SOURCE_PATHS_0051)
     assert not candidate.with_suffix(".sha256.tmp").exists()
     assert not preflight.log.exists()
 
@@ -572,9 +572,9 @@ def test_preflight_rejects_each_path_replaced_by_duplicate(preflight, missing_pa
     assert "approved_source_sha256 FAIL:" in output
 
 
-def test_preflight_rejects_duplicate_build_for_missing_migration_path(preflight):
+def test_preflight_rejects_duplicate_build_for_missing_base_path(preflight):
     lines = preflight.manifest.read_text(encoding="ascii").splitlines()
-    migration_path = "refactor/server-java/deploy/migration.Dockerfile"
+    migration_path = "refactor/server-java/deploy/probe.py"
     build_line = next(line for line in lines if line.endswith("refactor/server-java/deploy/build.sh"))
     lines = [line for line in lines if not line.endswith(migration_path)]
     preflight.write_manifest([*lines, build_line])

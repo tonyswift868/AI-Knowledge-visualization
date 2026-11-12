@@ -43,9 +43,9 @@ refactor/server-java/deploy/build.sh
 refactor/server-java/deploy/migrate.sh
 refactor/server-java/deploy/java-compose.sh
 refactor/server-java/deploy/python-compose.sh
-refactor/server-java/deploy/compose.yml
-refactor/server-java/deploy/compose.python-fallback.yml
-refactor/server-java/deploy/migration.Dockerfile'
+refactor/server-java/deploy/probe.py
+refactor/server-java/deploy/entrypoint.sh
+refactor/server-java/deploy/compose.yml'
 case "$source_revision" in
   0047_rag_promoted_manifests) ;;
   0048_rag_source_chunks)
