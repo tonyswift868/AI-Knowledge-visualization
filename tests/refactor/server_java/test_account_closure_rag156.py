@@ -178,7 +178,7 @@ def test_account_closure_cleans_only_verified_account_rag156(closure147_backends
                 migration_log, OLD_ISSUER,
             )
         with psycopg.connect(admin_url) as conn:
-            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0048_rag_source_chunks"
+            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0050_account_daily_activity"
             assert conn.execute("SELECT to_regclass('public.rag_document_upload_manifests')").fetchone()[0]
             assert conn.execute("SELECT to_regclass('public.rag_source_chunks')").fetchone()[0]
             clean_def = conn.execute(

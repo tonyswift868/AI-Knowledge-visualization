@@ -136,9 +136,10 @@ def _row(records: list[dict], *, day: str, route: str | None = None) -> dict:
     return row
 
 
+NO_DATA_SOURCE = "无数据来源"
 ACTIVE_ACCOUNTS_BASIS = (
-    "sync-active only: public.account_import_ledger.updated_at in UTC, "
-    "state=COMPLETED, COUNT(DISTINCT subject_id); login events are not persisted"
+    "sync-active only: public.account_daily_activity.day in UTC, "
+    "COUNT(DISTINCT account_scope)"
 )
 
 
@@ -179,27 +180,27 @@ def active_accounts_query(start: date | None = None, end: date | None = None) ->
     """Return the fixed, date-bounded SELECT used by the read-only wrapper."""
     if start and end and start > end:
         raise ValueError("start date must not be after end date")
-    clauses = ["state = 'COMPLETED'"]
+    clauses = []
     if start:
-        clauses.append(f"(updated_at AT TIME ZONE 'UTC')::date >= DATE '{start.isoformat()}'")
+        clauses.append(f"day >= DATE '{start.isoformat()}'")
     if end:
-        clauses.append(f"(updated_at AT TIME ZONE 'UTC')::date <= DATE '{end.isoformat()}'")
+        clauses.append(f"day <= DATE '{end.isoformat()}'")
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     return (
-        "SELECT (updated_at AT TIME ZONE 'UTC')::date::text AS day, "
-        "COUNT(DISTINCT subject_id)::text AS accounts "
-        "FROM public.account_import_ledger WHERE " + " AND ".join(clauses) +
+        "SELECT day::text AS day, "
+        "COUNT(DISTINCT account_scope)::text AS accounts "
+        "FROM public.account_daily_activity" + where +
         " GROUP BY 1 ORDER BY 1"
     )
 
 
 def active_accounts_from_psql(db_url: str, start: date | None = None, end: date | None = None,
-                              *, psql: str = "psql") -> list[dict]:
+                              *, psql: str = "psql") -> list[dict] | str:
     """Run the one allowed SELECT in a read-only psql session.
 
-    The SQL deliberately uses only ``account_import_ledger`` because the
-    schema has no persisted login-event timestamp.  Dates are validated by
-    ``date.fromisoformat`` before interpolation, and the subprocess receives
-    no stdin so a piped access log cannot be consumed by psql.
+    Dates are validated by ``date.fromisoformat`` before interpolation, and
+    the subprocess receives no stdin so a piped access log cannot be consumed
+    by psql.  A pre-0050 database reports an explicit unavailable source.
     """
     query = active_accounts_query(start, end)
     env = os.environ.copy()
@@ -210,12 +211,14 @@ def active_accounts_from_psql(db_url: str, start: date | None = None, end: date 
     try:
         completed = subprocess.run(
             [psql, "-XqAt", "-v", "ON_ERROR_STOP=1", "-d", _psql_database_url(db_url), "-c", query],
-            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", env=env, check=False,
         )
     except OSError as exc:
         raise RuntimeError("read-only active-account SELECT could not start psql") from exc
     if completed.returncode:
+        if "does not exist" in completed.stderr.lower():
+            return NO_DATA_SOURCE
         raise RuntimeError("read-only active-account SELECT failed")
     return active_accounts_from_rows(completed.stdout.splitlines(), start, end)
 
@@ -260,8 +263,11 @@ def summarize_lines(lines, start: date | None = None, end: date | None = None,
         "requests": request_rows,
         "rag_requests": rag_rows,
         "active_accounts": (None if active_accounts is None
+                            else NO_DATA_SOURCE if active_accounts == NO_DATA_SOURCE
                             else active_accounts_from_rows(active_accounts, start, end)),
-        "active_accounts_source": "not_requested" if active_accounts is None else "read_only_sync_ledger",
+        "active_accounts_source": ("not_requested" if active_accounts is None
+                                    else NO_DATA_SOURCE if active_accounts == NO_DATA_SOURCE
+                                    else "read_only_daily_activity"),
         "active_accounts_basis": ACTIVE_ACCOUNTS_BASIS,
         "peak_minute": peak,
         "restart_gaps": gaps,
@@ -289,8 +295,10 @@ def main() -> int:
             raw_active = json.loads(args.active_accounts_json)
         except json.JSONDecodeError:
             parser.error("--active-accounts-json must be valid JSON")
-        if not isinstance(raw_active, list):
-            parser.error("--active-accounts-json must be a list")
+        if isinstance(raw_active, dict) and raw_active.get("status") == NO_DATA_SOURCE:
+            raw_active = NO_DATA_SOURCE
+        elif not isinstance(raw_active, list):
+            parser.error("--active-accounts-json must be a list or unavailable marker")
     db_url = args.db_url or (os.environ.get(args.db_url_env) if args.db_url_env else None)
     if args.db_url_env and not db_url:
         parser.error(f"database URL environment variable is missing: {args.db_url_env}")
