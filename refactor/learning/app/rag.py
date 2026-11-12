@@ -36,6 +36,10 @@ BATCH_BYTES = 8 * 1024 * 1024
 # 265: 1006 chunks / 61 s; 64 is ~3.9 s at that mean, leaving headroom below the 60 s read timeout.
 BATCH_CHUNKS = 64
 MAX_QUESTION = 20_000
+_LOCAL_FILE_SUFFIXES = frozenset({
+    '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.bmp', '.docx', '.pptx', '.epub', '.xlsx',
+    '.md', '.markdown', '.txt', '.csv', '.json', '.html', '.htm',
+})
 
 SYSTEM = """你是资料问答助手。回答必须严格区分资料原文与资料外知识。
 只依据用户问题和提供的资料段落回答事实；引用资料时用段落编号 [1]、[2] 标注，编号必须对应提供的段落。
@@ -1996,7 +2000,26 @@ class RagService:
             self._check_open()
             _cancel(cancel)
             try:
-                extracted = extract_file(path, cancel=cancel)
+                def extraction_progress(page, total):
+                    _cancel(cancel)
+                    if on_progress is not None:
+                        on_progress({"kind": "extract_progress", "filename": path.name,
+                                     "page": int(page), "total": int(total)})
+
+                recognizer = None
+                if path.suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}:
+                    from ..course.ocr import PdfOCR
+                    recognizer = PdfOCR()
+                try:
+                    extracted = extract_file(path, cancel=cancel, ocr=recognizer,
+                                             progress=extraction_progress if recognizer is not None else None)
+                except ExtractError as exc:
+                    if exc.code != 'SCANNED_NO_TEXT' or path.suffix.lower() != '.pdf':
+                        raise
+                    from ..course.ocr import PdfOCR
+                    # Keep the first pass cheap; only scanned PDFs pay OCR cost.
+                    extracted = extract_file(path, cancel=cancel, ocr=PdfOCR(),
+                                             progress=extraction_progress)
             except ExtractError as exc:
                 if exc.code == "CANCELLED":
                     raise BridgeError("CANCELLED", exc.message) from None
@@ -2024,19 +2047,30 @@ class RagService:
                 on_progress(view)
         return {"documents": result, "errors": errors}
 
+    def remember_picked_paths(self, paths):
+        """Grant exact local paths received from the native window drop target."""
+        if not isinstance(paths, list):
+            return []
+        normalized = []
+        for raw in paths:
+            if not isinstance(raw, str):
+                continue
+            try:
+                path = Path(raw).resolve(strict=True)
+            except (OSError, RuntimeError):
+                continue
+            if path.suffix.lower() in _LOCAL_FILE_SUFFIXES:
+                normalized.append(str(path))
+        with self._lock:
+            self._picked_paths.update(normalized)
+        return normalized
+
     def pick_files(self, parent=None):
         self._check_open()
         from PySide6.QtWidgets import QFileDialog
         paths, _ = QFileDialog.getOpenFileNames(parent, "选择资料", "",
-            "支持的资料 (*.pdf *.docx *.pptx *.epub *.xlsx *.md *.markdown *.txt *.csv *.json *.html *.htm)")
-        normalized = []
-        for raw in paths:
-            try:
-                normalized.append(str(Path(raw).resolve(strict=True)))
-            except (OSError, RuntimeError):
-                continue
-        with self._lock:
-            self._picked_paths.update(normalized)
+            "支持的资料 (*.pdf *.png *.jpg *.jpeg *.webp *.bmp *.docx *.pptx *.epub *.xlsx *.md *.markdown *.txt *.csv *.json *.html *.htm)")
+        normalized = self.remember_picked_paths(paths)
         return {"paths": normalized}
 
     def create(self, document_ids):
@@ -2258,6 +2292,9 @@ def register(bridge, services, window):
 
     def import_files(params, ctx):
         def imported(document):
+            if isinstance(document, dict) and document.get("kind") == "extract_progress":
+                progress(document)
+                return
             progress(document)
             ctx.stream(_json(document))
         return current().import_files(params.get("paths"), cancel=ctx.cancel, on_progress=imported)

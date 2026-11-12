@@ -234,6 +234,43 @@ class _ExternalLinkPage(QWebEnginePage):
         return False
 
 
+class _LearningWebView(QWebEngineView):
+    """Keep native file drops available to the local RAG picker."""
+
+    files_dropped = Signal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+
+    @staticmethod
+    def _paths(event):
+        mime = event.mimeData()
+        if mime is None or not mime.hasUrls():
+            return []
+        paths = []
+        for url in mime.urls():
+            if url.isLocalFile():
+                path = url.toLocalFile()
+                if path:
+                    paths.append(path)
+        return paths
+
+    def dragEnterEvent(self, event):  # noqa: N802 - Qt API
+        if self._paths(event):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dropEvent(self, event):  # noqa: N802 - Qt API
+        paths = self._paths(event)
+        if paths:
+            self.files_dropped.emit(paths)
+            event.acceptProposedAction()
+            return
+        super().dropEvent(event)
+
+
 class LearningWindow(QWidget):
     switch_requested = Signal()
     # Bridge handlers run on worker threads; widget changes must hop to the GUI thread.
@@ -270,7 +307,7 @@ class LearningWindow(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.view = QWebEngineView(self)
+        self.view = _LearningWebView(self)
         layout.addWidget(self.view)
         self.profile = QWebEngineProfile(self)  # off-the-record: nothing persisted by Chromium
         self.profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.MemoryHttpCache)
@@ -292,6 +329,7 @@ class LearningWindow(QWidget):
         self._apply_theme("sakura")
         self._theme_changed.connect(self._apply_theme, Qt.ConnectionType.QueuedConnection)
         self.bridge = AppBridge(self)
+        self.view.files_dropped.connect(self._on_files_dropped)
         handlers.register(self.bridge, self)
         self.teacher_assets.register(self.bridge, self)
         self.voice_input = register_voice_input(self.bridge, self)
@@ -307,6 +345,18 @@ class LearningWindow(QWidget):
             self.view.setUrl(QUrl.fromLocalFile(str(entry)))
         else:
             self.view.setHtml("<body style='font-family:sans-serif;padding:40px'>新界面尚未构建（缺少 web/dist）。</body>")
+
+    def _on_files_dropped(self, paths):
+        if self._disposed or self.services is None:
+            return
+        try:
+            rag = self.services.rag
+            accepted = rag.remember_picked_paths(paths)
+        except Exception:
+            log.warning('dropped file paths could not be prepared', exc_info=True)
+            return
+        if accepted:
+            self.bridge.push('rag.files_dropped', {'paths': accepted})
 
     # ------------------------------------------------------------ for handlers
     def account_info(self):

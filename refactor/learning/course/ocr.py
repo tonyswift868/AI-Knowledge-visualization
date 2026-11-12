@@ -90,6 +90,21 @@ class PdfOCR:
             with _PDFIUM_LOCK:
                 document.close()
 
+    def recognize_image(self, image, *, cancel=None):
+        """Recognize one already decoded image using the same pixel guard as PDF pages."""
+        _check(cancel)
+        width, height = image.size
+        if width * height > self.max_pixels:
+            raise ExtractError('TOO_LARGE', '图片尺寸超过 OCR 像素上限，请缩小图片后重试。')
+        try:
+            result, _ = self._load_engine(cancel)(image)
+            _check(cancel)
+            return '\n'.join(text.strip() for _, text, _confidence in (result or ()) if text.strip())
+        except ExtractError:
+            raise
+        except Exception as exc:
+            raise ExtractError('OCR_FAILED', '图片离线文字识别失败，请检查图片或稍后重试。') from exc
+
 
 class _PdfSession:
     def __init__(self, owner, document):
