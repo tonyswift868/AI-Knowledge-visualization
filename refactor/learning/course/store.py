@@ -66,7 +66,7 @@ from .ledger import (Ledger, PlanWindow, Credit, replan_preserves_past,
 from .mastery import MasteryBook, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 POINT_MINUTES_VERSION = 2  # Content totals, replacing v1's fixed-budget allocation.
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
@@ -470,6 +470,16 @@ class CourseStore:
                 projected = _json({key: value for key, value in payload.items() if key != _FIELD_VERSIONS})
                 self._db.execute('UPDATE chat_sessions SET payload=? WHERE plan_key=? AND id=?', (projected, '', payload['id']))
             self._db.execute('UPDATE schema_version SET version=11')
+            version = 11
+        if version == 11:
+            self._db.execute('''CREATE TABLE IF NOT EXISTS question_batch_staging(
+                plan_key TEXT NOT NULL, module_id TEXT NOT NULL, fingerprint TEXT NOT NULL,
+                batch_index INTEGER NOT NULL, payload TEXT NOT NULL CHECK(json_valid(payload)),
+                PRIMARY KEY(plan_key,module_id,fingerprint,batch_index),
+                FOREIGN KEY(plan_key) REFERENCES plans(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+                FOREIGN KEY(plan_key,module_id) REFERENCES modules(plan_key,id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED)''')
+            self._db.execute('CREATE INDEX IF NOT EXISTS question_batch_staging_module ON question_batch_staging(plan_key,module_id)')
+            self._db.execute('UPDATE schema_version SET version=12')
 
     def _revision(self):
         self._db.execute("UPDATE _meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
@@ -983,6 +993,37 @@ class CourseStore:
         row['material_preparation'] = summary
         self._put('modules', plan_id, row)
         return summary
+
+    @_atomic
+    def save_question_batch_staging(self, plan_id, module_id, fingerprint, batch_index, payload):
+        if not isinstance(batch_index, int) or batch_index < 0:
+            raise StoreError('INVALID_BATCH_INDEX')
+        self._get('modules', plan_id, module_id)
+        raw = _json(payload)
+        self._db.execute('''INSERT INTO question_batch_staging(plan_key,module_id,fingerprint,batch_index,payload)
+            VALUES(?,?,?,?,?) ON CONFLICT(plan_key,module_id,fingerprint,batch_index)
+            DO UPDATE SET payload=excluded.payload''',
+            (plan_id, module_id, fingerprint, batch_index, raw))
+
+    def question_batch_staging(self, plan_id, module_id, fingerprint):
+        with self._lock:
+            rows = self._db.execute('''SELECT batch_index,payload FROM question_batch_staging
+                WHERE plan_key=? AND module_id=? AND fingerprint=? ORDER BY batch_index''',
+                (plan_id, module_id, fingerprint)).fetchall()
+            return {row['batch_index']: json.loads(row['payload']) for row in rows}
+
+    @_atomic
+    def discard_other_question_batch_staging(self, plan_id, module_id, fingerprint):
+        self._db.execute('DELETE FROM question_batch_staging WHERE plan_key=? AND module_id=? AND fingerprint<>?',
+                         (plan_id, module_id, fingerprint))
+
+    @_atomic
+    def clear_question_batch_staging(self, plan_id, module_id, fingerprint=None):
+        if fingerprint is None:
+            self._db.execute('DELETE FROM question_batch_staging WHERE plan_key=? AND module_id=?', (plan_id, module_id))
+        else:
+            self._db.execute('DELETE FROM question_batch_staging WHERE plan_key=? AND module_id=? AND fingerprint=?',
+                             (plan_id, module_id, fingerprint))
 
     def records(self, entity, plan_id=''):
         """Read detached payloads; deterministic position/ID order for consumers."""
