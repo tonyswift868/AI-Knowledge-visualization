@@ -3,9 +3,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import os
 import subprocess
+import sys
 
 import sqlalchemy as sa
 import pytest
+
+_SERVER_JAVA = Path(__file__).resolve().parents[1] / 'server_java'
+if str(_SERVER_JAVA) not in sys.path:
+    sys.path.insert(0, str(_SERVER_JAVA))
+from java_build156 import default_build_path, default_classpath_path
 
 from refactor.server.enterprise.identity.native import NativeSessions, NATIVE_FAMILIES
 from refactor.server.enterprise.identity.models import AuthenticatedPrincipal
@@ -129,11 +135,13 @@ def test_java_access_authentication_uses_lightweight_family_row():
     classes = task_tmp / 'classes'
     classes.mkdir(parents=True, exist_ok=True)
     jdk = Path(r'D:\MentorFlow\.local\java\jdk-21.0.12.1+1')
+    cache_root = Path(os.environ.get('JAVA_CACHE_ROOT',
+        r'D:\MentorFlow\.local\test-tmp\java-cache'))
     dependency_cp = Path(os.environ.get('JAVA156_CLASSPATH_FILE',
-        r'D:\MentorFlow\.local\test-tmp\java-cache\test-classpath.txt'))
+        str(default_classpath_path(cache_root))))
     assert dependency_cp.is_file(), f'Java classpath file missing: {dependency_cp}'
     build_classes = Path(os.environ.get('JAVA156_BUILD',
-        r'D:\MentorFlow\.local\test-tmp\java-cache\build')) / 'classes'
+        str(default_build_path(cache_root)))) / 'classes'
     cp = os.pathsep.join((str(build_classes), dependency_cp.read_text(encoding='utf-8').strip()))
     harness = repo / 'tests/refactor/server_java/java/session219/NativeSession219Main.java'
     service = repo / 'refactor/server-java/src/main/java/win/clannad/mentorflow/account/NativeSessionService.java'

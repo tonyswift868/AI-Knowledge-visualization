@@ -16,6 +16,7 @@ import psycopg
 import pytest
 
 from support_rag178 import compile_embedding_shadow178
+from java_build156 import default_build_path, default_classpath_path
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -217,8 +218,9 @@ def rag178_backends():
     support.PG_ROOT = pg_root
     support.JAVA_HOME = java_home
     support.PYTHON = python
+    cache_root = Path(os.environ.get("JAVA_CACHE_ROOT", "D:/MentorFlow/.local/test-tmp/java-cache"))
     support.BUILD = Path(os.environ.get("RAG178_BUILD", os.environ.get(
-        "JAVA156_BUILD", "D:/MentorFlow/.local/test-tmp/java-cache/build")))
+        "JAVA156_BUILD", str(default_build_path(cache_root)))))
     support.M2 = Path(os.environ.get("RAG178_M2", os.environ.get(
         "JAVA_MAVEN_REPO", "D:/MentorFlow/.local/test-tmp/java-cache/m2")))
     support.MAVEN = Path(os.environ.get("RAG178_MAVEN", os.environ.get(
@@ -226,7 +228,7 @@ def rag178_backends():
     support.JAR = support.BUILD / "mentorflow-server-0.1.0.jar"
     support.TEST_CLASSES = support.BUILD / "test-classes"
     support.CLASSPATH_FILE = Path(os.environ.get("RAG178_TEST_CLASSPATH", os.environ.get(
-        "JAVA156_CLASSPATH_FILE", "D:/MentorFlow/.local/test-tmp/java-cache/runtime/test-classpath.txt")))
+        "JAVA156_CLASSPATH_FILE", str(default_classpath_path(cache_root)))))
     build = support.BUILD
     os.environ.update({"RAG154_PGROOT": str(pg_root), "RAG154_TMP": str(run_root),
                       "RAG154_BUILD": str(support.BUILD), "RAG154_VECTOR_BACKEND": "pgvector",

@@ -6,11 +6,13 @@ from pathlib import Path
 import subprocess
 
 import contract_support144 as support
+from java_build156 import default_build_path, default_classpath_path
 
 ROOT = Path(__file__).resolve().parents[3]
 JAVA_HOME = Path(os.environ.get("JAVA_HOME", r"D:\MentorFlow\.local\java\jdk-21.0.12.1+1"))
-BUILD = Path(os.environ.get("JAVA156_BUILD", r"D:\MentorFlow\.local\test-tmp\java-cache\build"))
-CLASSPATH = Path(os.environ.get("JAVA156_CLASSPATH_FILE", r"D:\MentorFlow\.local\test-tmp\java-cache\test-classpath.txt"))
+_CACHE_ROOT = Path(os.environ.get("JAVA_CACHE_ROOT", r"D:\MentorFlow\.local\test-tmp\java-cache"))
+BUILD = Path(os.environ.get("JAVA156_BUILD", str(default_build_path(_CACHE_ROOT))))
+CLASSPATH = Path(os.environ.get("JAVA156_CLASSPATH_FILE", str(default_classpath_path(_CACHE_ROOT))))
 
 
 def test_identity_and_workspace_219_behaviors():
