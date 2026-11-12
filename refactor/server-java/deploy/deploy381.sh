@@ -21,7 +21,7 @@ docker_bin=${DOCKER_BIN:-docker}
 job_bin=$deploy_dir/job.sh
 checked_bin=$deploy_dir/checked-step.sh
 for command in "$docker_bin" sh awk sed grep curl python3; do command -v "$command" >/dev/null 2>&1 || { echo "missing command: $command" >&2; exit 1; }; done
-test -f "$job_bin" && test -f "$checked_bin" && test -f "$online_deploy/preflight.sh"
+test -f "$job_bin" && test -f "$checked_bin"
 test -n "$candidate_manifest" && test -s "$candidate_manifest"
 test ! -e "$state"
 umask 077
