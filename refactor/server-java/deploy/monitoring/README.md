@@ -21,7 +21,7 @@
 - Beszel Agent：host network 仅为采集主机指标，配置使用 Unix socket，不监听新的 TCP 端口；安装脚本会比较安装前后的完整 `ss -ltnp`，只允许新增 `127.0.0.1:3001` 和 `127.0.0.1:8090`；卷 `mentorflow_monitoring_beszel_agent_data`。Kuma 和 Agent 都以只读方式挂载 `/var/run/docker.sock`。注意：Unix Docker socket 即使文件以 `:ro` 挂载，daemon API 仍可能具备高权限；这是当前监控 Docker 指标的明确风险边界，不能把 `:ro` 当成权限隔离。
 - 每个容器均带 source、purpose、listen 和 owner label。Compose `down` 默认保留 named volumes。
 
-Beszel Agent 的受限 env 文件由 MF-01 在服务器创建，路径通过 `BESZEL_AGENT_ENV_FILE` 指定，至少需要 `TOKEN` 和 `KEY` 两个键。值不进仓库、不进回执、不打印日志。不要把 Kuma 登录密码、通知 token、SMTP 密码写入 Compose。
+Beszel Agent 的受限 env 文件由 MF-01 在服务器创建，路径通过 `BESZEL_AGENT_ENV_FILE` 指定；`KEY` 由 Hub 数据卷提供，`TOKEN` 仅在采用 Hub WebSocket 注册时由用户在首次网页设置后补入。值不进仓库、不进回执、不打印日志。不要把 Kuma 登录密码、通知 token、SMTP 密码写入 Compose。
 
 ## 监控项来源与安装
 
@@ -35,7 +35,11 @@ python3 validate-kuma-manifest.py
 
 Kuma Docker monitors 依赖 socket 只读挂载和上表中的精确容器名。证书监控应保持 TLS 校验开启；IP 项检查 `https://89.45.45.28/` 的证书 SAN，不要把 `Ignore TLS` 打开。
 
-告警 destination 是 SMTP 邮件。当前 Java `NativeEmailHealthProbe` 只探测 identity email transport，不能作为告警发件器；仓库和 377 证据没有可直接复用的 SMTP 发件键值，因此需要用户另提供以下键名，由 MF-01 写入受限 secret 文件：`MF_ALERT_SMTP_HOST`、`MF_ALERT_SMTP_PORT`、`MF_ALERT_SMTP_USERNAME`、`MF_ALERT_SMTP_PASSWORD_FILE`、`MF_ALERT_SMTP_FROM`、`MF_ALERT_SMTP_TO`。Beszel 的主机/容器告警设置见 `beszel-settings.md`。Healthchecks.io 外部检查的键名同样只保留：`HEALTHCHECKS_HEARTBEAT_URL`、`HEALTHCHECKS_BACKUP_URL`、`HEALTHCHECKS_CERT_URL`。
+387-MF01 的告警出口只用 Healthchecks.io，不在 Kuma、Beszel 或服务器上配置 SMTP；邮件由 Healthchecks.io 按用户已创建的三个检查发送。服务器受限文件只保留三个键：`HEALTHCHECKS_HEARTBEAT_URL`、`HEALTHCHECKS_BACKUP_URL`、`HEALTHCHECKS_CERT_URL`。`healthchecks-send.sh heartbeat` 先用 HTTPS 校验证书访问公网 `/health/ready`，只有 HTTP 200 才打正常地址；非 200、超时或证书失败打原地址的 `/fail`。backup/cert 仍只打原地址，且失败不影响原任务。
+
+### 387-MF01 安装顺序
+
+安装脚本先启动 Kuma 和 Beszel Hub，再从 `mentorflow_monitoring_beszel_data` 卷内的 `id_ed25519.pub` 读取 Hub 公钥，更新 root-only 的 `beszel-agent.env`（保留已有 `TOKEN`，权限 0600），最后才启动 Agent。安装前把该 env 文件纳入回退 manifest；失败回退时恢复原文件或删除本次新建文件。公钥读取只取 `.pub` 文件，不打印私钥或 env 值。
 
 ## 首次登录
 
