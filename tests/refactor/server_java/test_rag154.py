@@ -87,7 +87,7 @@ def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
             run_dir / "migration-0048-refused-downgrade.log", rag154_backends["issuer"],
         )
     with psycopg.connect(admin) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0050_account_daily_activity"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0051_sync_closure_fence"
         assert connection.execute("SELECT to_regclass('public.rag_document_upload_manifests')").fetchone()[0]
         assert connection.execute("SELECT to_regclass('public.rag_source_chunks')").fetchone()[0]
         assert connection.execute(
