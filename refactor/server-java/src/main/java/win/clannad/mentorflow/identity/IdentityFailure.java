@@ -11,4 +11,7 @@ public final class IdentityFailure extends BadJwtException {
     public IdentityFailure(String code, String message, int status) {
         super(message); this.code=code; this.status=status;
     }
+    public IdentityFailure(String code, String message, int status, Throwable cause) {
+        super(message, cause); this.code=code; this.status=status;
+    }
 }

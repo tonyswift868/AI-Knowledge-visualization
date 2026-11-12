@@ -98,7 +98,7 @@ public final class AccountProfileController226 {
             return ResponseEntity.ok()
                 .header(HttpHeaders.ETAG, profileEtag(profile.version)).body(view(profile));
         } catch (IdentityFailure failure) { throw failure; }
-        catch (Exception failure) { throw new IdentityFailure(503, "ACCOUNT_PROFILE_AVATAR_UNAVAILABLE", "头像暂时无法处理"); }
+        catch (Exception failure) { throw new IdentityFailure("ACCOUNT_PROFILE_AVATAR_UNAVAILABLE", "头像暂时无法处理", 503, failure); }
         finally { java.util.Arrays.fill(source, (byte) 0); }
     }
 

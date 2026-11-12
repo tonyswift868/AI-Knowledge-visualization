@@ -42,7 +42,7 @@ public final class RagRepository {
         } catch (RagFailure failure) {
             throw failure;
         } catch (DataAccessException | TransactionException failure) {
-            throw new RagFailure("RAG_STORAGE_UNAVAILABLE", "RAG storage is temporarily unavailable", 503);
+            throw new RagFailure("RAG_STORAGE_UNAVAILABLE", "RAG storage is temporarily unavailable", 503, failure);
         }
     }
 

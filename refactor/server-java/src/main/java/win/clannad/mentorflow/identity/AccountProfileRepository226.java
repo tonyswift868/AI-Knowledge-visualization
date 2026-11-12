@@ -122,7 +122,7 @@ public final class AccountProfileRepository226 {
         } catch (IdentityFailure failure) {
             throw failure;
         } catch (DataAccessException | TransactionException failure) {
-            throw new IdentityFailure(503, "ACCOUNT_PROFILE_STORAGE_UNAVAILABLE", "账号资料暂时无法读取或保存");
+            throw new IdentityFailure("ACCOUNT_PROFILE_STORAGE_UNAVAILABLE", "账号资料暂时无法读取或保存", 503, failure);
         }
     }
 

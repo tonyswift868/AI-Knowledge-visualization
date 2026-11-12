@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 import win.clannad.mentorflow.identity.IdentityFailure;
 import win.clannad.mentorflow.identity.IdentityDirectory;
+import win.clannad.mentorflow.identity.ErrorResponses;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 /** Literal HTTP boundary matching Python's /api/enterprise/auth/native routes. */
@@ -52,8 +53,14 @@ public final class NativeAuthController {
             IdentityDirectory openCheck=directory.getIfAvailable();
             if(openCheck!=null)openCheck.ensureOpen(principal.getClaimAsString("iss"),principal.getSubject());
             return success(Map.of("state","active"),false);
-        } catch(IdentityFailure failure) { return error(failure.code,failure.getMessage(),failure.status); }
-        catch(Exception failure) { return error("NATIVE_AUTH_UNAVAILABLE","账号服务暂不可用。",503); }
+        } catch(IdentityFailure failure) {
+            if(failure.status>=500)ErrorResponses.log(request,failure.code,failure,false);
+            return error(failure.code,failure.getMessage(),failure.status);
+        }
+        catch(Exception failure) {
+            ErrorResponses.log(request,"NATIVE_AUTH_UNAVAILABLE",failure,false);
+            return error("NATIVE_AUTH_UNAVAILABLE","账号服务暂不可用。",503);
+        }
     }
 
     @RequestMapping(value={"/login","/refresh","/logout"},method={RequestMethod.GET,RequestMethod.HEAD,
@@ -91,8 +98,14 @@ public final class NativeAuthController {
             return success(Map.of("logged_out",true),true);
         } catch(IllegalArgumentException failure) { return error("NATIVE_REQUEST_INVALID","登录请求无法处理。",400); }
         catch(com.fasterxml.jackson.core.JsonProcessingException failure) { return error("NATIVE_REQUEST_INVALID","登录请求无法处理。",400); }
-        catch(IdentityFailure failure) { return error(failure.code,failure.getMessage(),failure.status); }
-        catch(Exception failure) { return error("NATIVE_AUTH_UNAVAILABLE","账号服务暂不可用。",503); }
+        catch(IdentityFailure failure) {
+            if(failure.status>=500)ErrorResponses.log(request,failure.code,failure,false);
+            return error(failure.code,failure.getMessage(),failure.status);
+        }
+        catch(Exception failure) {
+            ErrorResponses.log(request,"NATIVE_AUTH_UNAVAILABLE",failure,false);
+            return error("NATIVE_AUTH_UNAVAILABLE","账号服务暂不可用。",503);
+        }
         finally { if(body!=null)body.clear(); }
     }
 

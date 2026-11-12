@@ -110,7 +110,7 @@ public final class JdbcIdentityDirectory implements IdentityDirectory {
             }
             connection.commit();
         } catch (IdentityFailure failure) {throw failure;}
-        catch(Exception unavailable) {throw new IdentityFailure(503,"CLOSURE_STORAGE_UNAVAILABLE","账号状态暂不可用。");}
+        catch(Exception unavailable) {throw new IdentityFailure("CLOSURE_STORAGE_UNAVAILABLE","账号状态暂不可用。",503,unavailable);}
     }
     @Override public Membership resolve(String signedIssuer,String subject,String org,String workspace) {
         if(!signedIssuer.replaceAll("/+$","").equals(issuer))return null;
@@ -136,7 +136,10 @@ public final class JdbcIdentityDirectory implements IdentityDirectory {
             }
             connection.commit();
             return roles.isEmpty()?null:new Membership("membership:"+IdentitySecurity.sha256(issuer+"\u001f"+subject+"\u001f"+org),List.copyOf(roles));
-        } catch(SQLException failure) {throw new IllegalStateException("Membership directory unavailable",failure);}
+        } catch(SQLException failure) {
+            ErrorResponses.logCurrent("IDENTITY_DIRECTORY_UNAVAILABLE", failure, false);
+            throw new IllegalStateException("Membership directory unavailable",failure);
+        }
     }
     private static boolean active(String value){return value!=null&&value.strip().equalsIgnoreCase("ACTIVE");}
     private static void addRole(List<String> roles,String value) {

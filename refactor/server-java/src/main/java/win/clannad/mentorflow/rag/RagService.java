@@ -51,7 +51,7 @@ public final class RagService {
             } catch (RagFailure failure) {
                 throw failure;
             } catch (RuntimeException failure) {
-                throw new RagFailure("RAG_EMBEDDING_UNAVAILABLE", "Could not calculate chunk embeddings", 503);
+                throw new RagFailure("RAG_EMBEDDING_UNAVAILABLE", "Could not calculate chunk embeddings", 503, failure);
             }
         }
         try {
@@ -59,7 +59,7 @@ public final class RagService {
         } catch (RagFailure failure) {
             throw failure;
         } catch (RuntimeException failure) {
-            throw new RagFailure("RAG_EMBEDDING_UNAVAILABLE", "Could not calculate chunk embeddings", 503);
+            throw new RagFailure("RAG_EMBEDDING_UNAVAILABLE", "Could not calculate chunk embeddings", 503, failure);
         }
     }
 
@@ -590,7 +590,7 @@ public final class RagService {
         } catch (RagFailure failure) {
             throw failure;
         } catch (RuntimeException failure) {
-            throw new RagFailure("RAG_EMBEDDING_UNAVAILABLE", "Could not calculate the search embedding", 503);
+            throw new RagFailure("RAG_EMBEDDING_UNAVAILABLE", "Could not calculate the search embedding", 503, failure);
         }
     }
 

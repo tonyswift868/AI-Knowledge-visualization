@@ -89,7 +89,7 @@ public final class NativeIdentityBridge implements NativeSessionService.Credenti
                 display,"password_verified",null,null,"mentorflow-desktop",
                 Instant.ofEpochSecond(clock.instant().getEpochSecond()),v.path("verification_handle").asText());
         } catch(IdentityFailure error){throw error;}
-        catch(Exception error){throw fail(503,"NATIVE_IDENTITY_UNAVAILABLE","账号服务暂不可用。");}
+        catch(Exception error){throw fail(503,"NATIVE_IDENTITY_UNAVAILABLE","账号服务暂不可用。",error);}
         finally{body.clear();}
     }
 
@@ -118,7 +118,7 @@ public final class NativeIdentityBridge implements NativeSessionService.Credenti
             String id=pythonString(password.path("id").asText());
             return IdentitySecurity.sha256("["+id+", "+password.path("createdDate").bigIntegerValue()+", "+user.path("notBefore").asText("0")+"]");
         } catch(IdentityFailure failure){throw failure;}
-        catch(Exception error){throw unavailable();}
+        catch(Exception error){throw unavailable(error);}
     }
 
     /** Lifecycle availability is the existing opt-in/expiry, not a new capability switch. */
@@ -135,7 +135,7 @@ public final class NativeIdentityBridge implements NativeSessionService.Credenti
                 throw new IllegalArgumentException("Invalid authority response");
             return result.body;
         } catch(Exception error) {
-            throw fail(503,errorCode,errorMessage);
+            throw fail(503,errorCode,errorMessage,error);
         }
     }
 
@@ -159,17 +159,17 @@ public final class NativeIdentityBridge implements NativeSessionService.Credenti
                 :HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(payload));
             String accessToken;
             try{accessToken=adminToken();}
-            catch(Exception error){throw fail(503,"ADMIN_AUTHORITY_UNAVAILABLE","账号服务暂不可用。");}
+            catch(Exception error){throw fail(503,"ADMIN_AUTHORITY_UNAVAILABLE","账号服务暂不可用。",error);}
             Reply result=call(adminHttp,HttpRequest.newBuilder(URI.create(target.toString()))
                 .header("Accept","application/json").header("Content-Type","application/json")
                 .header("Authorization","Bearer "+accessToken).method(method,body),65536,json,
                 Math.min(operationDeadline,System.nanoTime()+Duration.ofSeconds(10).toNanos()));
             return new AdminResult(result.status,result.body,result.location);
         } catch(IdentityFailure error) {
-            if("NATIVE_IDENTITY_INVALID".equals(error.code))throw fail(503,"KEYCLOAK_RESPONSE_INVALID","账号服务暂不可用。");
+            if("NATIVE_IDENTITY_INVALID".equals(error.code))throw fail(503,"KEYCLOAK_RESPONSE_INVALID","账号服务暂不可用。",error);
             throw error;
         } catch(Exception error) {
-            throw fail(503,"KEYCLOAK_OUTCOME_UNKNOWN","账号服务暂不可用。");
+            throw fail(503,"KEYCLOAK_OUTCOME_UNKNOWN","账号服务暂不可用。",error);
         }
     }
 
@@ -255,8 +255,10 @@ public final class NativeIdentityBridge implements NativeSessionService.Credenti
     private static String text(Map<String,Object> value,String key) {if(!(value.get(key) instanceof String s)||s.isEmpty())throw new IllegalArgumentException("Missing configuration: "+key);return s;}
     private static String identifier(String value){if(!value.matches("[A-Za-z0-9_-]{1,255}"))throw unavailable();return value;}
     private static IdentityFailure fail(int status,String code,String message){return new IdentityFailure(status,code,message);}
+    private static IdentityFailure fail(int status,String code,String message,Throwable cause){return new IdentityFailure(code,message,status,cause);}
     private static IdentityFailure expired(){return fail(401,"ENTERPRISE_SESSION_REAUTH_REQUIRED","登录已失效，请重新登录。");}
     private static IdentityFailure unavailable(){return fail(503,"NATIVE_AUTH_UNAVAILABLE","账号服务暂不可用，请稍后重试。");}
+    private static IdentityFailure unavailable(Throwable cause){return fail(503,"NATIVE_AUTH_UNAVAILABLE","账号服务暂不可用，请稍后重试。",cause);}
     private static String pythonString(String value) {
         StringBuilder result=new StringBuilder("\"");
         for(int i=0;i<value.length();i++) {char c=value.charAt(i);switch(c) {

@@ -65,7 +65,7 @@ public final class ClosureAdminClient implements ClosureProvider {
                     ||!user.path("enabled").isBoolean()||!user.path("enabled").booleanValue())throw new ClosureFailure("CLOSURE_UNAVAILABLE");
             return user.path("username").asText();
         }catch(CancellationException cancelled){throw cancelled;}
-        catch(Exception error){throw new ClosureFailure("CLOSURE_UNAVAILABLE");}
+        catch(Exception error){throw new ClosureFailure("CLOSURE_UNAVAILABLE", 503, error);}
     }
     @Override public void ensureDeleted(String subject) {
         if(providerRequest("GET",subject)==404)return;
@@ -88,7 +88,7 @@ public final class ClosureAdminClient implements ClosureProvider {
             return reply.status();
         }catch(ClosureFailure error){throw error;}
         catch(CancellationException cancelled){throw cancelled;}
-        catch(Exception error){throw new ClosureFailure("CLOSURE_PROVIDER_OUTCOME_UNKNOWN");}
+        catch(Exception error){throw new ClosureFailure("CLOSURE_PROVIDER_OUTCOME_UNKNOWN", 503, error);}
     }
     private record Reply(int status,String contentType,byte[] body){}
     private Reply request(String method,String subject)throws Exception {

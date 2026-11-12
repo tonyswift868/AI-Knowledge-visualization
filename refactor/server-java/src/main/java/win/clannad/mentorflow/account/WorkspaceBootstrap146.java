@@ -41,7 +41,7 @@ public final class WorkspaceBootstrap146 {
                 connection.commit();return result;
             } catch(Exception failure){rollback(connection);throw failure;}
         } catch(IdentityFailure failure){throw failure;}
-        catch(Exception failure){throw unavailable();}
+        catch(Exception failure){throw unavailable(failure);}
     }
 
     public Map<String,Object> initialize(String signedIssuer,String subject) {
@@ -91,7 +91,7 @@ public final class WorkspaceBootstrap146 {
                 connection.commit();return result;
             } catch(Exception failure){rollback(connection);throw failure;}
         } catch(IdentityFailure failure){throw failure;}
-        catch(Exception failure){throw unavailable();}
+        catch(Exception failure){throw unavailable(failure);}
     }
 
     private List<Map<String,Object>> memberships(Connection connection,String signedIssuer,String subject)throws Exception {
@@ -189,5 +189,6 @@ public final class WorkspaceBootstrap146 {
         DataSource source=dataSources.getIfAvailable();if(source==null)throw new IdentityFailure(503,"ENTERPRISE_PERSISTENCE_NOT_READY","Account workspace persistence is not ready");return source;
     }
     private static IdentityFailure unavailable(){return new IdentityFailure(503,"ENTERPRISE_PERSISTENCE_UNAVAILABLE","Account workspace persistence is not available");}
+    private static IdentityFailure unavailable(Throwable cause){return new IdentityFailure("ENTERPRISE_PERSISTENCE_UNAVAILABLE","Account workspace persistence is not available",503,cause);}
     private static void rollback(Connection connection){try{connection.rollback();}catch(Exception ignored){}}
 }

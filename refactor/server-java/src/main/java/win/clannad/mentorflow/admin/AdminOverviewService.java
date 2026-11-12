@@ -113,7 +113,7 @@ public final class AdminOverviewService {
             payload.put("timezone","UTC"); payload.put("refresh_seconds",60); payload.put("identity_statistics",statistics);
             return JSON.writeValueAsBytes(payload);
         } catch(IdentityFailure known) { throw known; }
-        catch(Exception failure) { throw new IdentityFailure(503,"ADMIN_OVERVIEW_UNAVAILABLE","Administrator overview is unavailable"); }
+        catch(Exception failure) { throw new IdentityFailure("ADMIN_OVERVIEW_UNAVAILABLE","Administrator overview is unavailable",503,failure); }
         finally { collecting.set(false); }
     }
 

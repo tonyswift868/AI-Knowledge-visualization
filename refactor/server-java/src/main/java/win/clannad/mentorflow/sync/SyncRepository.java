@@ -140,7 +140,7 @@ public final class SyncRepository {
                 catch (Exception error) { throw new IllegalStateException(error); }
             });
         } catch (DataAccessException | TransactionException failure) {
-            throw new SyncFailure("SYNC_QUERY_FAILED", 503);
+            throw new SyncFailure("SYNC_QUERY_FAILED", 503, failure);
         }
     }
 

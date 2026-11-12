@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.servlet.HandlerMapping;
 import win.clannad.mentorflow.identity.IdentityFailure;
 import static win.clannad.mentorflow.sync.SyncValidation.ordered;
 
@@ -21,6 +24,7 @@ import static win.clannad.mentorflow.sync.SyncValidation.ordered;
 @RestController
 @RequestMapping("/api/enterprise/sync/v1")
 public final class SyncController {
+    private static final Logger LOG = LoggerFactory.getLogger(SyncController.class);
     private final SyncRepository repository;
     public SyncController(SyncRepository repository) {this.repository=repository;}
 
@@ -129,7 +133,13 @@ public final class SyncController {
         try {writeJson(response,200,work.run(),true);}
         catch(SyncValidation.Invalid failure){writeJson(response,422,ordered("detail",failure.errors),false);}
         catch(SyncFailure failure){
-            if(failure.code.equals("SYNC_NOT_READY"))throw new IdentityFailure("SYNC_NOT_READY","Structured sync unavailable",503);
+            if(failure.status>=500) {
+                String route = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) instanceof String pattern
+                        ? pattern : request.getServletPath();
+                LOG.warn("service_error code={} request_id={} route={} exception={} sqlState={}", failure.code,
+                        request.getAttribute("request_id"), route, exceptionClass(failure), sqlState(failure));
+            }
+            if(failure.code.equals("SYNC_NOT_READY"))throw new IdentityFailure("SYNC_NOT_READY","Structured sync unavailable",503,failure);
             writeJson(response,failure.status,ordered("code",failure.code,"sync_status","QUERY_FAILED"),true);
         }
         catch(IdentityFailure failure){throw failure;}
@@ -137,12 +147,29 @@ public final class SyncController {
         catch(RuntimeException failure) {
             // The reference's unhandled exceptions are plain text, not invented
             // structured state. In particular they must never imply empty data.
+            String route = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE) instanceof String pattern
+                    ? pattern : request.getServletPath();
+            LOG.error("service_error code=SYNC_INTERNAL_ERROR request_id={} route={} exception={} sqlState={}",
+                    request.getAttribute("request_id"), route, exceptionClass(failure), sqlState(failure), failure);
             response.reset();response.setStatus(500);
             request.setAttribute("python_principal_failure",Boolean.TRUE);
             response.setContentType("text/plain");
             byte[] bytes="Internal Server Error".getBytes(StandardCharsets.UTF_8);
             response.setContentLength(bytes.length);response.getOutputStream().write(bytes);
         }
+    }
+    private static String sqlState(Throwable failure) {
+        Throwable current=failure;
+        while(current!=null) {
+            if(current instanceof java.sql.SQLException sql && sql.getSQLState()!=null)return sql.getSQLState();
+            current=current.getCause();
+        }
+        return "";
+    }
+    private static String exceptionClass(Throwable failure) {
+        Throwable current=failure, deepest=failure;
+        while(current!=null) { deepest=current; current=current.getCause(); }
+        return deepest == null ? "" : deepest.getClass().getName();
     }
     static void writeJson(HttpServletResponse response,int status,Object value,boolean noStore) throws IOException {
         byte[] bytes=SyncJson.dump(value,false).getBytes(StandardCharsets.UTF_8);
