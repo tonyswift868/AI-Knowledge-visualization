@@ -1,21 +1,14 @@
 package win.clannad.mentorflow.account;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.Duration;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import javax.sql.DataSource;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,27 +21,6 @@ import win.clannad.mentorflow.identity.IdentitySettings;
 @Configuration
 @ConditionalOnProperty(name="MENTORFLOW_NATIVE_IDENTITY_ENDPOINT")
 public class NativeConfiguration144 {
-    static DataSource nativeDataSource(Environment env) {
-        String raw=env.getRequiredProperty("MENTORFLOW_DATABASE_URL");Properties properties=new Properties();String url;
-        if(raw.startsWith("jdbc:postgresql:"))url=raw;
-        else {
-            URI uri=URI.create(raw.replaceFirst("^postgresql\\+[^:]+:","postgresql:"));
-            if(!"postgresql".equals(uri.getScheme())||uri.getHost()==null)throw new IllegalArgumentException("Native sessions require PostgreSQL");
-            if(uri.getUserInfo()!=null){String[] pair=uri.getUserInfo().split(":",2);properties.setProperty("user",pair[0]);if(pair.length>1)properties.setProperty("password",pair[1]);}
-            String host=uri.getHost().contains(":")?"["+uri.getHost()+"]":uri.getHost();
-            url="jdbc:postgresql://"+host+(uri.getPort()<0?"":":"+uri.getPort())+uri.getRawPath()+(uri.getRawQuery()==null?"":"?"+uri.getRawQuery());
-        }
-        properties.setProperty("connectTimeout","10");properties.setProperty("socketTimeout","10");
-        String jdbc=url;
-        return new DataSource() {
-            public Connection getConnection() throws SQLException {return DriverManager.getConnection(jdbc,properties);}
-            public Connection getConnection(String user,String password) throws SQLException{return DriverManager.getConnection(jdbc,user,password);}
-            public java.io.PrintWriter getLogWriter(){return null;}public void setLogWriter(java.io.PrintWriter value){}
-            public void setLoginTimeout(int seconds){}public int getLoginTimeout(){return 10;}
-            public java.util.logging.Logger getParentLogger(){return java.util.logging.Logger.getLogger("win.clannad.mentorflow.account");}
-            public <T>T unwrap(Class<T> type)throws SQLException{throw new SQLException("Not a wrapper");}public boolean isWrapperFor(Class<?> type){return false;}
-        };
-    }
     @Bean NativeIdentityBridge nativeIdentityBridge(Environment env,IdentitySettings settings,Clock clock) throws Exception {
         if(!"1".equals(env.getProperty("MENTORFLOW_NATIVE_AUTH_SINGLE_PROCESS"))||!"1".equals(env.getProperty("WEB_CONCURRENCY","1")))
             throw new IllegalArgumentException("Native sessions require explicitly approved single-process deployment");

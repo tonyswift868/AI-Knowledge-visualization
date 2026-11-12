@@ -18,7 +18,6 @@ import javax.sql.DataSource;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.DataSourceUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ConnectionCallback;
@@ -49,19 +48,19 @@ public final class BusinessDatabase323Main {
         }
         try (BusinessDatabase alias = new BusinessDatabase(environment(Map.of("MENTORFLOW_DATABASE_URL",
                 "postgres://fixture:fixture@localhost:5432/mentorflow?socketTimeout=0")))) {
-            DriverManagerDataSource physical = (DriverManagerDataSource) ((HikariDataSource) alias.dataSource()).getDataSource();
-            check("jdbc:postgresql://localhost:5432/mentorflow?socketTimeout=0".equals(physical.getUrl()),
+            HikariDataSource pool = (HikariDataSource) alias.dataSource();
+            check("jdbc:postgresql://localhost:5432/mentorflow?socketTimeout=0".equals(pool.getJdbcUrl()),
                     "postgres:// alias and an explicit disabled socket timeout must remain accepted");
         }
         try (BusinessDatabase legacyUrl = new BusinessDatabase(environment(Map.of("MENTORFLOW_DATABASE_URL",
                 "postgresql+psycopg://alice:s%40cret@db.invalid:5433/mentorflow?sslmode=require&connectTimeout=0&socketTimeout=120")))) {
             check(legacyUrl.dataSource() instanceof HikariDataSource, "existing PostgreSQL URL form must create the pool");
-            DriverManagerDataSource physical = (DriverManagerDataSource) ((HikariDataSource) legacyUrl.dataSource()).getDataSource();
+            HikariDataSource pool = (HikariDataSource) legacyUrl.dataSource();
             check("jdbc:postgresql://db.invalid:5433/mentorflow?sslmode=require&connectTimeout=0&socketTimeout=120"
-                    .equals(physical.getUrl()), "normalized URL parameters must remain unchanged");
-            check("alice".equals(physical.getUsername()), "URL username was not decoded/retained");
-            check("s@cret".equals(physical.getPassword()), "URL password was not decoded/retained");
-            check(physical.getUrl().contains("sslmode=require"), "URL sslmode was not retained");
+                    .equals(pool.getJdbcUrl()), "normalized URL parameters must remain unchanged");
+            check("alice".equals(pool.getUsername()), "URL username was not decoded/retained");
+            check("s@cret".equals(pool.getPassword()), "URL password was not decoded/retained");
+            check(pool.getJdbcUrl().contains("sslmode=require"), "URL sslmode was not retained");
         }
     }
 
