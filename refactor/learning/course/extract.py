@@ -26,6 +26,8 @@ import zipfile
 MAX_BYTES = 50 * 1024 * 1024
 _MEDIA = {
     '.pdf': 'application/pdf',
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp', '.bmp': 'image/bmp',
     '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     '.md': 'text/markdown', '.markdown': 'text/markdown', '.txt': 'text/plain',
     '.csv': 'text/csv', '.json': 'application/json', '.html': 'text/html', '.htm': 'text/html',
@@ -34,10 +36,10 @@ _MEDIA = {
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 }
 _MESSAGES = {
-    'UNSUPPORTED_TYPE': '暂不支持此文件格式，请使用 PDF、DOCX、PPTX、EPUB、XLSX、Markdown、TXT、CSV、JSON 或 HTML。',
+    'UNSUPPORTED_TYPE': '暂不支持此文件格式，请使用 PDF、PNG、JPG/JPEG、WEBP、BMP、DOCX、PPTX、EPUB、XLSX、Markdown、TXT、CSV、JSON 或 HTML。',
     'TOO_LARGE': '文件超过允许的大小，请拆分资料后再导入。',
     'ENCRYPTED': 'PDF 已加密，无法用空密码打开，请先解除密码保护。',
-    'SCANNED_NO_TEXT': 'PDF 可提取的文字过少，可能是扫描件；请启用离线 OCR 或提供带文字的版本。',
+    'SCANNED_NO_TEXT': 'PDF 可提取的文字过少，可能是扫描件；资料问答会自动尝试离线 OCR。',
     'CORRUPT': '文件无法读取或内容损坏，请检查格式、编码或重新导出文件。',
     'EMPTY': '资料中没有可提取的正文。',
     'CANCELLED': '正文提取已取消。',
@@ -197,6 +199,24 @@ def _pdf(data, cancel, ocr=None, progress=None):
         raise ExtractError('SCANNED_NO_TEXT')
     title = reader.metadata.title if reader.metadata else ''
     return blocks, title if isinstance(title, str) else '', warnings
+
+
+def _image(data, filename, cancel, ocr=None, progress=None):
+    if ocr is None:
+        raise ExtractError('SCANNED_NO_TEXT', '图片需要离线 OCR 才能提取文字。')
+    try:
+        from PIL import Image
+        with Image.open(io.BytesIO(data)) as image:
+            text = ocr.recognize_image(image, cancel=cancel)
+    except ExtractError:
+        raise
+    except Exception as exc:
+        raise ExtractError('CORRUPT', '图片无法读取或内容损坏，请检查格式后重试。') from exc
+    if progress is not None:
+        progress(1, 1)
+    if not text.strip():
+        raise ExtractError('EMPTY', '图片里没认出文字。')
+    return [TextBlock(text, 'paragraph', 1, ())], Path(filename).stem, []
 
 
 def _word(data, cancel):
@@ -910,6 +930,8 @@ def extract_bytes(data: bytes, filename: str, *, max_bytes=MAX_BYTES, cancel=Non
     try:
         if suffix == '.pdf':
             blocks, title, warnings = _pdf(data, cancel, ocr, progress)
+        elif suffix in {'.png', '.jpg', '.jpeg', '.webp', '.bmp'}:
+            blocks, title, warnings = _image(data, filename, cancel, ocr, progress)
         elif suffix == '.docx':
             blocks, title, warnings = _word(data, cancel)
         elif suffix == '.pptx':

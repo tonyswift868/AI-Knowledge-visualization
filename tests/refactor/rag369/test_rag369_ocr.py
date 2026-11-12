@@ -3,6 +3,7 @@ from hashlib import sha256
 
 import pytest
 
+from refactor.learning.app.bridge import BridgeError
 from refactor.learning.course.extract import ExtractError, extract_bytes
 from tests.refactor.rag369.conftest import StubOCR, image_bytes, scanned_pdf
 from tests.refactor.rag320.test_rag_import320 import close_service, make_service, select
@@ -34,7 +35,11 @@ def test_pdf_ocr_page_limit_has_actionable_message():
     assert "3" in caught.value.message and "2" in caught.value.message
 
 
-@pytest.mark.parametrize("suffix,fmt,mime", [("png", "PNG", "image/png"), ("jpg", "JPEG", "image/jpeg")])
+@pytest.mark.parametrize("suffix,fmt,mime", [
+    ("png", "PNG", "image/png"), ("jpg", "JPEG", "image/jpeg"),
+    ("jpeg", "JPEG", "image/jpeg"), ("webp", "WEBP", "image/webp"),
+    ("bmp", "BMP", "image/bmp"),
+])
 def test_png_and_jpg_images_are_ocr_importable_and_chunked(suffix, fmt, mime):
     raw = image_bytes("image searchable token", fmt)
     result = extract_bytes(raw, f"photo.{suffix}", ocr=StubOCR(image_text="image searchable token"))
@@ -81,6 +86,62 @@ def test_rag_upload_persists_ocr_pdf_and_images_with_page_citations(tmp_path, mo
                    for chunk in pdf_doc["chunks"])
         assert any("uploaded image token" in chunk["text"] and chunk["page"] == 1
                    for chunk in image_doc["chunks"])
+    finally:
+        close_service(service)
+
+
+def test_rag_pdf_retries_once_and_emits_page_progress_without_partial_row(tmp_path, monkeypatch):
+    from refactor.learning.course import ocr as ocr_module
+
+    monkeypatch.setattr(ocr_module, "PdfOCR", lambda: StubOCR({0: "retry page one", 1: "retry page two"}))
+    service, _ = make_service(tmp_path)
+    path = tmp_path / "retry.pdf"
+    path.write_bytes(scanned_pdf())
+    events = []
+    select(service, path)
+    try:
+        result = service.import_files([str(path)], on_progress=events.append)
+        assert result["errors"] == [] and result["documents"]
+        assert [(event["page"], event["total"]) for event in events
+                if event.get("kind") == "extract_progress"] == [(1, 2), (2, 2)]
+        assert service.local.document(sha256(path.read_bytes()).hexdigest()) is not None
+
+        cancel = threading.Event()
+        cancel_path = tmp_path / "cancel.pdf"
+        cancel_path.write_bytes(scanned_pdf(3))
+        events.clear()
+        select(service, cancel_path)
+        with pytest.raises(BridgeError) as caught:
+            service.import_files([str(cancel_path)], cancel=cancel,
+                on_progress=lambda event: (events.append(event), cancel.set())
+                if event.get("kind") == "extract_progress" else events.append(event))
+        assert caught.value.code == "CANCELLED"
+        assert service.local.document(sha256(cancel_path.read_bytes()).hexdigest()) is None
+    finally:
+        close_service(service)
+
+
+def test_rag_blank_image_is_not_saved_and_duplicate_content_is_one_row(tmp_path, monkeypatch):
+    from refactor.learning.course import ocr as ocr_module
+    monkeypatch.setattr(ocr_module, "PdfOCR", lambda: StubOCR(image_text="image dedupe token"))
+    service, _ = make_service(tmp_path)
+    image = tmp_path / "same.png"
+    image.write_bytes(image_bytes("image dedupe token"))
+    blank = tmp_path / "blank.png"
+    blank.write_bytes(image_bytes(""))
+    try:
+        select(service, image)
+        first = service.import_files([str(image)])
+        select(service, image)
+        second = service.import_files([str(image)])
+        assert len(first["documents"]) == len(second["documents"]) == 1
+        assert len(service.local.documents()) == 1
+
+        monkeypatch.setattr(ocr_module, "PdfOCR", lambda: StubOCR(image_text=""))
+        select(service, blank)
+        failed = service.import_files([str(blank)])
+        assert failed["documents"] == [] and failed["errors"][0]["code"] == "RAG_EXTRACT_EMPTY"
+        assert service.local.document(sha256(blank.read_bytes()).hexdigest()) is None
     finally:
         close_service(service)
 

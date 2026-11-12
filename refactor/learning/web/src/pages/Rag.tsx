@@ -51,6 +51,8 @@ export function Rag() {
   const [sources, setSources] = React.useState<SourcesResponse | null>(null)
   const [loadError, setLoadError] = React.useState("")
   const [importErrors, setImportErrors] = React.useState<ImportError[]>([])
+  const [importProgress, setImportProgress] = React.useState<{ filename: string; page: number; total: number } | null>(null)
+  const [droppedPaths, setDroppedPaths] = React.useState<string[]>([])
   const [planId, setPlanId] = React.useState("")
   const [selected, setSelected] = React.useState<string[]>(() => {
     const account = useApp.getState().account?.account_id ?? ""
@@ -163,6 +165,16 @@ export function Rag() {
   React.useEffect(() => {
     if (!materialsOpen) materialsTriggerRef.current?.focus()
   }, [materialsOpen])
+  React.useEffect(() => on("rag.files_dropped", (event) => {
+    const paths = Array.isArray(event?.paths) ? event.paths.filter((path: unknown): path is string => typeof path === "string") : []
+    if (paths.length) setDroppedPaths(paths)
+  }), [])
+  React.useEffect(() => {
+    if (!droppedPaths.length || !sources || !!busy || !!pending) return
+    const paths = droppedPaths
+    setDroppedPaths([])
+    void importFiles(paths)
+  }, [droppedPaths, !!sources, busy, !!pending])
   React.useEffect(() => {
     if (!deleteUsage) deleteTriggerRef.current?.focus()
   }, [deleteUsage])
@@ -513,6 +525,13 @@ export function Rag() {
     }
     void load(true)
     const off = on("rag.progress", (event) => {
+      if (event?.kind === "extract_progress") {
+        const page = Number(event.page)
+        const total = Number(event.total)
+        if (typeof event.filename === "string" && Number.isFinite(page) && Number.isFinite(total)
+          && page >= 1 && total >= page) setImportProgress({ filename: event.filename, page, total })
+        return
+      }
       const id = String(event?.id ?? event?.document_id ?? "")
       if (!id) return
       const jobId = String(event?.job_id ?? "")
@@ -569,6 +588,8 @@ export function Rag() {
       sessionReadRevision.current++
       setSources(null)
       setImportErrors([])
+      setImportProgress(null)
+      setDroppedPaths([])
       setPlanId("")
       setSession(null)
       sessionRef.current = null
@@ -702,7 +723,7 @@ export function Rag() {
     const ids = sources?.plans.find((item) => item.id === id)?.document_ids ?? []
     if (ids.length) addDocumentsToCurrent(ids)
   }
-  async function importFiles() {
+  async function importFiles(paths?: string[]) {
     const targetSession = session ? { id: session.id, document_ids: [...session.document_ids] } : null
     const accountRevision = accountScopeRevision.current
     let importedForTarget: Document[] = []
@@ -716,7 +737,7 @@ export function Rag() {
     }
     setBusy("import")
     try {
-      const picked = await call<{ paths: string[] }>("rag.pick_files")
+      const picked = paths ? { paths } : await call<{ paths: string[] }>("rag.pick_files")
       if (!picked.paths?.length || accountRevision !== accountScopeRevision.current) return
       setImportErrors([])
       const result = await call<{ documents: Document[]; errors?: ImportError[] }>("rag.import_files", { paths: picked.paths }, {
@@ -732,6 +753,7 @@ export function Rag() {
     finally {
       if (accountRevision === accountScopeRevision.current && mounted.current) {
         setBusy("")
+        setImportProgress(null)
         if (targetSession && importedForTarget.length) {
           queueSessionDocuments(targetSession.id, targetSession.document_ids, (current) => [...current, ...importedForTarget.map((doc) => doc.id)])
         }
@@ -1139,8 +1161,9 @@ export function Rag() {
           <ul>{importErrors.map((error, index) => <li key={`${error.filename}-${index}`}><b>{error.filename}</b>：{error.message}</li>)}</ul>
         </div>}
         <div className="rag-upload-row" data-testid={session ? "rag-upload-current-session" : "rag-upload-new-session"}>
-          <Button kind="ghost" small data-testid="rag-pick-files" aria-label="上传新资料文件" disabled={!!busy || !!pending || !!deletingDocumentId} onClick={importFiles}><FilePlus2 />{busy === "import" ? "正在读取文件…" : "上传新文件"}</Button>
-          <span className="muted small">文件只在本机抽取文字</span>
+          <Button kind="ghost" small data-testid="rag-pick-files" aria-label="上传新资料文件" disabled={!!busy || !!pending || !!deletingDocumentId} onClick={() => void importFiles()}><FilePlus2 />{busy === "import" ? "正在读取文件…" : "上传新文件"}</Button>
+          {importProgress ? <span className="muted small" role="status" data-testid="rag-ocr-progress">正在识别 {importProgress.filename}：第 {importProgress.page}/{importProgress.total} 页</span>
+            : <span className="muted small" data-testid="rag-drop-hint">也可将 PDF 或 PNG/JPG/JPEG/WEBP/BMP 图片拖到窗口；文件只在本机抽取文字。</span>}
         </div>
         <p className="rag-privacy">准备资料时只上传抽取后的文字分块，原文件不会上传。</p>
        </section>
