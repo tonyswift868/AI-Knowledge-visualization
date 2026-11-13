@@ -27,7 +27,7 @@ $shortcut.TargetPath = $pwsh
 $shortcut.Arguments = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "' + $TargetScript + '"'
 $shortcut.WorkingDirectory = Split-Path -Parent $TargetScript
 $shortcut.WindowStyle = 1
-$shortcut.Description = 'MentorFlow 开发工作台（SSH 隧道后打开 Kuma 和 Beszel）'
+$shortcut.Description = 'MentorFlow 开发工作台（SSH 隧道后打开 Kuma、Beszel 和账号页）'
 $shortcut.IconLocation = "$env:SystemRoot\System32\SHELL32.dll,14"
 $shortcut.Save()
 

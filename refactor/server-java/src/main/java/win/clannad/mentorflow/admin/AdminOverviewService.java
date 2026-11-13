@@ -17,6 +17,8 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -117,6 +119,100 @@ public final class AdminOverviewService {
         finally { collecting.set(false); }
     }
 
+    public record AccountRow(String account, String registeredAt, String lastSyncDay,
+            Long readyDocumentCount, Long readyChunkCount, Long syncedQuestionCount) {}
+
+    /** Read only the account identifiers and aggregates needed by the local workbench page. */
+    public List<AccountRow> accountRows() {
+        List<JsonNode> users = readUsersForPage();
+        if (users == null) return List.of(new AccountRow("取不到", "取不到", null, null, null, null));
+        Map<String, Map<String, Object>> counts = new LinkedHashMap<>();
+        if (dataSource != null && !users.isEmpty()) {
+            java.sql.Array subjects = null;
+            try (Connection connection = dataSource.getConnection()) {
+                connection.setAutoCommit(false);
+                try (var statement = connection.createStatement()) {
+                    statement.execute("SET TRANSACTION READ ONLY");
+                    statement.execute("SET LOCAL statement_timeout = '2000ms'");
+                }
+                try (var statement = connection.prepareStatement(
+                        "SELECT subject_id,last_sync_day,ready_document_count,ready_chunk_count,synced_question_count "
+                                + "FROM public.mentorflow_admin_account_rows(?,?)")) {
+                    statement.setString(1, identity.canonicalIssuer.replaceAll("/+$", ""));
+                    subjects = connection.createArrayOf("text", users.stream()
+                            .map(user -> user.path("id").asText()).sorted().toArray(String[]::new));
+                    statement.setArray(2, subjects);
+                    try (var rows = statement.executeQuery()) {
+                        while (rows.next()) {
+                            Map<String, Object> row = new LinkedHashMap<>();
+                            row.put("last_sync_day", rows.getObject("last_sync_day"));
+                            row.put("ready_document_count", rows.getObject("ready_document_count"));
+                            row.put("ready_chunk_count", rows.getObject("ready_chunk_count"));
+                            row.put("synced_question_count", rows.getObject("synced_question_count"));
+                            counts.put(rows.getString("subject_id"), row);
+                        }
+                    }
+                }
+                connection.commit();
+            } catch (Exception unavailable) {
+                counts.clear();
+            } finally {
+                if (subjects != null) try { subjects.free(); } catch (SQLException ignored) { }
+            }
+        }
+        var result = new ArrayList<AccountRow>();
+        users.sort(java.util.Comparator.comparingLong((JsonNode user) -> user.path("createdTimestamp").asLong()).reversed());
+        for (JsonNode user : users) {
+            String subject = user.path("id").asText();
+            JsonNode email = user.get("email");
+            String account = accountLabel(email != null && email.isTextual() ? email.asText() : null, subject);
+            String registered = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm")
+                    .withZone(ZoneId.of("Asia/Tokyo"))
+                    .format(Instant.ofEpochMilli(user.path("createdTimestamp").asLong()));
+            Map<String, Object> row = counts.get(subject);
+            result.add(new AccountRow(account, registered,
+                    row == null ? null : row.get("last_sync_day") == null ? "无" : String.valueOf(row.get("last_sync_day")),
+                    row == null ? null : number(row.get("ready_document_count")),
+                    row == null ? null : number(row.get("ready_chunk_count")),
+                    row == null ? null : number(row.get("synced_question_count"))));
+        }
+        return List.copyOf(result);
+    }
+
+    private List<JsonNode> readUsersForPage() {
+        if (!configuredReader()) return null;
+        try { return readUsers(); }
+        catch (Exception unavailable) { return null; }
+    }
+
+    private static Long number(Object value) {
+        return value instanceof Number number ? number.longValue() : null;
+    }
+
+    static String accountLabel(String email, String subject) {
+        if (email == null || email.isBlank())
+            return subject == null || subject.isEmpty() ? "取不到" : subject.substring(0, Math.min(8, subject.length()));
+        return maskEmail(email);
+    }
+
+    public static String maskEmail(String email) {
+        int at = email.lastIndexOf('@');
+        if (at <= 0 || at == email.length() - 1) return "取不到";
+        String local = email.substring(0, at);
+        String domain = email.substring(at + 1);
+        int dot = domain.lastIndexOf('.');
+        String localStart = firstCharacters(local, 2), domainStart = firstCharacters(domain, 1);
+        if (dot <= 0 || dot == domain.length() - 1) return localStart
+                + "***@" + domainStart + "***";
+        return localStart + "***@" + domainStart
+                + "***" + domain.substring(dot);
+    }
+
+    private static String firstCharacters(String value, int count) {
+        int codePoints = value.codePointCount(0, value.length());
+        return value.substring(0, value.offsetByCodePoints(0, Math.min(count, codePoints)));
+    }
+
     private record HealthSnapshot(Map<String,Object> services) {}
     private HealthSnapshot healthSnapshot() {
         Map<String,Object> result=new LinkedHashMap<>();
@@ -130,28 +226,55 @@ public final class AdminOverviewService {
         return new HealthSnapshot(result);
     }
 
-    private boolean configuredReader() { return !env.getProperty("MENTORFLOW_ADMIN_OVERVIEW_CONFIG","").isEmpty(); }
+    private boolean configuredReader() { return !readerConfigPath().isEmpty(); }
+    private boolean lifecycleReader() {
+        return env.getProperty("MENTORFLOW_ADMIN_OVERVIEW_CONFIG", "").isEmpty()
+                && Boolean.parseBoolean(env.getProperty("MENTORFLOW_ADMIN_ACCOUNT_PAGE_ENABLED", "false"))
+                && "1".equals(env.getProperty("MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED", ""));
+    }
+    private String readerConfigPath() {
+        return readerConfigPath(env.getProperty("MENTORFLOW_ADMIN_OVERVIEW_CONFIG", ""),
+                env.getProperty("MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG", ""),
+                Boolean.parseBoolean(env.getProperty("MENTORFLOW_ADMIN_ACCOUNT_PAGE_ENABLED", "false")),
+                "1".equals(env.getProperty("MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED", "")));
+    }
+    static String readerConfigPath(String adminConfig, String lifecycleConfig, boolean pageEnabled, boolean lifecycleEnabled) {
+        if (adminConfig != null && !adminConfig.isEmpty()) return adminConfig;
+        return pageEnabled && lifecycleEnabled && lifecycleConfig != null ? lifecycleConfig : "";
+    }
+    static boolean validReaderConfigFields(Set<String> fields, boolean lifecycleConfig) {
+        Set<String> required=Set.of("origin","realm","client_id","secret_file","ca_file");
+        Set<String> allowed=new HashSet<>(required);
+        allowed.addAll(Set.of("client_cert_file","client_key_file"));
+        if (lifecycleConfig) allowed.addAll(Set.of("candidate_sha","expires_at"));
+        return fields.containsAll(required) && allowed.containsAll(fields);
+    }
+    static boolean validReaderOrigin(URI origin, String realm, String clientId, URI expected, boolean lifecycleConfig) {
+        return "https".equals(origin.getScheme()) && origin.getHost() != null && origin.getUserInfo() == null
+                && origin.getQuery() == null && origin.getFragment() == null
+                && List.of("", "/").contains(origin.getPath())
+                && realm.matches("[A-Za-z0-9_-]{1,255}") && clientId.matches("[A-Za-z0-9_-]{1,255}")
+                && (lifecycleConfig || (origin.toString().replaceAll("/+$", "") + "/realms/" + realm)
+                    .equals(expected.toString()));
+    }
     private List<JsonNode> readUsers() throws Exception {
-        String dedicated=env.getProperty("MENTORFLOW_ADMIN_OVERVIEW_CONFIG","");
+        String dedicated=readerConfigPath();
         if(dedicated.isEmpty())throw new IllegalArgumentException();
         Path file=Path.of(dedicated);
         if(!file.isAbsolute()||Files.isSymbolicLink(file)||Files.size(file)>8192) throw new IllegalArgumentException();
         JsonNode config=JSON.readTree(Files.readAllBytes(file));
         if(config==null||!config.isObject())throw new IllegalArgumentException();
-        Set<String> required=Set.of("origin","realm","client_id","secret_file","ca_file");
-        Set<String> optional=Set.of("client_cert_file","client_key_file");
+        boolean lifecycleConfig = lifecycleReader();
         Set<String> fields=new HashSet<>();config.fieldNames().forEachRemaining(fields::add);
-        Set<String> allowed=new HashSet<>(required);allowed.addAll(optional);
-        if(!fields.containsAll(required)||!allowed.containsAll(fields)) throw new IllegalArgumentException();
+        if(!validReaderConfigFields(fields, lifecycleConfig)) throw new IllegalArgumentException();
+        if (lifecycleConfig) validateLifecycleReaderConfig(config);
         String origin=config.path("origin").asText(),realm=config.path("realm").asText(),clientId=config.path("client_id").asText();
         URI originUri=URI.create(origin); URI expected=URI.create(identity.jwksUri.replaceFirst("/protocol/openid-connect/certs$",""));
-        if(!"https".equals(originUri.getScheme())||originUri.getHost()==null||originUri.getUserInfo()!=null
-            ||originUri.getQuery()!=null||originUri.getFragment()!=null||!List.of("","/").contains(originUri.getPath())
-            ||!realm.matches("[A-Za-z0-9_-]{1,255}")||!clientId.matches("[A-Za-z0-9_-]{1,255}")
-            ||!(origin.replaceAll("/+$","")+"/realms/"+realm).equals(expected.toString())) throw new IllegalArgumentException();
+        if(!validReaderOrigin(originUri,realm,clientId,expected,lifecycleConfig)) throw new IllegalArgumentException();
         String cert=pythonTruthy(config.get("client_cert_file"))?config.path("client_cert_file").asText():null;
         String key=pythonTruthy(config.get("client_key_file"))?config.path("client_key_file").asText():null;
         if((cert==null)!=(key==null)) throw new IllegalArgumentException();
+        if(lifecycleConfig&&cert==null) throw new IllegalArgumentException();
         String ca=pythonTruthy(config.get("ca_file"))?config.path("ca_file").asText():null;
         HttpClient client=HttpClient.newBuilder().sslContext(NativeIdentityBridge.tls(ca,cert,key))
             .connectTimeout(Duration.ofSeconds(10)).followRedirects(HttpClient.Redirect.NEVER).build();
@@ -182,6 +305,33 @@ public final class AdminOverviewService {
             if(page.size()<50)return users;
         }
         throw new IllegalArgumentException();
+    }
+
+    private void validateLifecycleReaderConfig(JsonNode config) {
+        String candidate = env.getProperty("MENTORFLOW_ACCOUNT_LIFECYCLE_CANDIDATE", "").strip();
+        for (String name : List.of("origin", "realm", "client_id", "secret_file", "ca_file"))
+            if (!config.path(name).isTextual() || config.path(name).asText().isEmpty()) throw new IllegalArgumentException();
+        for (String name : List.of("client_cert_file", "client_key_file", "candidate_sha", "expires_at"))
+            if (config.has(name) && (!config.path(name).isTextual() || config.path(name).asText().isEmpty()))
+                throw new IllegalArgumentException();
+        boolean test = "1".equals(env.getProperty("MENTORFLOW_ACCOUNT_MVP_TEST", ""));
+        if (!validLifecycleAuthority(candidate, config.path("candidate_sha").asText(), test,
+                config.has("expires_at") ? config.path("expires_at").asText() : null, Instant.now()))
+            throw new IllegalArgumentException();
+    }
+
+    static boolean validLifecycleAuthority(String candidate, String candidateSha, boolean test,
+            String expiresAt, Instant now) {
+        if (test && expiresAt == null) return false;
+        if (!candidate.isEmpty() && (!candidate.matches("[0-9a-f]{40,64}") || !candidate.equals(candidateSha)))
+            return false;
+        if (expiresAt == null) return true;
+        try {
+            Instant expiry = Instant.parse(expiresAt);
+            return expiry.isAfter(now) && !expiry.isAfter(now.plus(Duration.ofDays(7)));
+        } catch (RuntimeException invalidExpiry) {
+            return false;
+        }
     }
 
     private synchronized String adminToken(HttpClient client,String tokenUrl,String clientId,String secret) throws Exception {

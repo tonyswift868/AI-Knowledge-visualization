@@ -36,11 +36,27 @@ SOURCE_PATHS_0048 = (*HASH_PATHS, SOURCE_PATH_0048)
 SOURCE_PATH_0049 = "refactor/server/migrations/versions/0049_drop_redundant_rag_indexes.py"
 SOURCE_PATH_0050 = "refactor/server/migrations/versions/0050_account_daily_activity.py"
 SOURCE_PATH_0051 = "refactor/server/migrations/versions/0051_sync_closure_fence.py"
+SOURCE_PATH_0052 = "refactor/server/migrations/versions/0052_workbench_account_rows.py"
+SOURCE_PATHS_0052_EXTRA = (
+    "refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminOverviewService.java",
+    "refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageController.java",
+    "refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageConfiguration.java",
+    "refactor/server-java/deploy/deploy388.sh",
+    "refactor/server-java/deploy/account-page-proxy.sh",
+    "refactor/server-java/deploy/account-page-proxy.socket",
+    "refactor/server-java/deploy/account-page-proxy.service.in",
+    "refactor/server-java/deploy/install-account-page-proxy.sh",
+)
 SOURCE_PATHS_0049 = (*SOURCE_PATHS_0048, SOURCE_PATH_0049)
 SOURCE_PATHS_0050 = (*SOURCE_PATHS_0049, SOURCE_PATH_0050)
 SOURCE_PATHS_0051 = (*SOURCE_PATHS_0050, SOURCE_PATH_0051)
+SOURCE_PATHS_0052 = (
+    *SOURCE_PATHS_0051,
+    SOURCE_PATH_0052,
+    *SOURCE_PATHS_0052_EXTRA,
+)
 CONTAINERS = {
-    "mentorflow-java-backend": ("running", "mentorflow-java-server:269"),
+    "mentorflow-java-backend": ("running", "mentorflow-java-server:0aefe606"),
     "mentorflow-java-oidc": ("running", "mentorflow-local/oidc:current"),
     "mentorflow-e1-preview-backend-1": ("exited", "mentorflow-slim-backend:269-python-fallback"),
     "mentorflow-e1-preview-oidc-loopback-proxy-1": ("exited", "mentorflow-local/oidc:current"),
@@ -111,7 +127,7 @@ class PreflightFixture:
             "MF_JAVA_TRUSTSTORE_DIR": posix(self.trust),
             "MF_OIDC_PROXY_IMAGE": "mentorflow-local/oidc:current",
             "MF_OIDC_PROXY_CONFIG": posix(self.proxy_config),
-            "MF_JAVA_VERSION": "269",
+            "MF_JAVA_VERSION": "0aefe606",
         }
         self.write_deploy_env(env)
         for rel in HASH_PATHS:
@@ -119,17 +135,21 @@ class PreflightFixture:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / rel, target)
         self.write_synthetic_source_0048()
-        self.write_synthetic_source_0049_0051()
+        self.write_synthetic_source_0049_0052()
         self.manifest = self.state / "source.sha256"
-        self.write_manifest(self.manifest_lines(HASH_PATHS))
+        self.write_manifest(self.manifest_lines(SOURCE_PATHS_0052))
 
     def write_synthetic_source_0048(self):
         source = self.release / SOURCE_PATH_0048
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text("# Synthetic 0048 source manifest fixture.\n", encoding="ascii")
 
-    def write_synthetic_source_0049_0051(self):
-        for rel in (SOURCE_PATH_0049, SOURCE_PATH_0050, SOURCE_PATH_0051):
+    def write_synthetic_source_0049_0052(self):
+        for rel in (SOURCE_PATH_0049, SOURCE_PATH_0050, SOURCE_PATH_0051, SOURCE_PATH_0052):
+            source = self.release / rel
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text(f"# Synthetic {rel.rsplit('/', 1)[-1]} fixture.\n", encoding="ascii")
+        for rel in SOURCE_PATHS_0052_EXTRA:
             source = self.release / rel
             source.parent.mkdir(parents=True, exist_ok=True)
             source.write_text(f"# Synthetic {rel.rsplit('/', 1)[-1]} fixture.\n", encoding="ascii")
@@ -174,7 +194,7 @@ case "$1 $2" in
         *) echo running ;;
       esac ;;
       *'.Config.Image'*) case "$container" in
-        mentorflow-java-backend) echo mentorflow-java-server:269 ;;
+        mentorflow-java-backend) echo mentorflow-java-server:0aefe606 ;;
         mentorflow-e1-preview-backend-1) echo mentorflow-slim-backend:269-python-fallback ;;
         mentorflow-java-oidc|mentorflow-e1-preview-oidc-loopback-proxy-1) echo mentorflow-local/oidc:current ;;
         mentorflow-e1-preview-edge-1) echo mentorflow-local/edge:current ;;
@@ -212,7 +232,7 @@ case "$1 $2" in
         if [ "${FAKE_MISSING_SECRET:-0}" = 1 ]; then exit 1; fi
         echo 'present bytes=20 mode=400'; exit 0 ;;
       *'current'*)
-        if [ "${FAKE_CURRENT_WRONG:-0}" = 1 ]; then echo 'Current revision(s): 0046_account_profiles'; else echo "Current revision(s): ${FAKE_DB_REVISION:-0047_rag_promoted_manifests} (head)"; fi
+        if [ "${FAKE_CURRENT_WRONG:-0}" = 1 ]; then echo 'Current revision(s): 0046_account_profiles'; else echo "Current revision(s): ${FAKE_DB_REVISION:-0052_workbench_account_rows} (head)"; fi
         exit 0 ;;
     esac ;;
   'exec mentorflow-e1-preview-postgres-1')
@@ -222,8 +242,9 @@ case "$1 $2" in
       case "$*" in *"to_regclass('public.ix_rag_chunks_account_document')"*) schema_ok=${FAKE_DB_REDUNDANT_INDEXES_GONE:-true} ;; esac
       case "$*" in *"to_regclass('public.ix_rag_source_chunks_logical')"*) schema_ok=${FAKE_DB_REDUNDANT_INDEXES_GONE:-true} ;; esac
       case "$*" in *"to_regclass('public.account_daily_activity')"*) schema_ok=${FAKE_DB_DAILY_ACTIVITY:-true} ;; esac
-      case "$*" in *"has_function_privilege('mentorflow_app'"*) schema_ok=${FAKE_DB_CLOSURE_FENCE:-true} ;; esac
-      echo "mentorflow|${FAKE_DB_REVISION:-0047_rag_promoted_manifests}|$schema_ok"; exit 0 ;; *) exit 42 ;; esac ;;
+      case "$*" in *"has_function_privilege('mentorflow_app', 'account_closure.assert_open(text,text)'"*) schema_ok=${FAKE_DB_CLOSURE_FENCE:-true} ;; esac
+      case "$*" in *"mentorflow_admin_account_rows(text,text[])"*) schema_ok=${FAKE_DB_ACCOUNT_ROWS:-true} ;; esac
+      echo "mentorflow|${FAKE_DB_REVISION:-0052_workbench_account_rows}|$schema_ok"; exit 0 ;; *) exit 42 ;; esac ;;
 esac
 exit 41
 '''
@@ -261,7 +282,7 @@ exit 41
             "BACKEND_ENV": posix(self.runtime),
             "NETWORK45_OVERRIDE": posix(self.network45),
             "SOURCE_SHA256_MANIFEST": posix(self.manifest),
-            "FAKE_DB_REVISION": "0047_rag_promoted_manifests",
+            "FAKE_DB_REVISION": "0052_workbench_account_rows",
             "FAKE_DB_SOURCE_TABLE": "true",
             "EDGE_CONF_PATH": posix(self.edge_conf),
         })
@@ -287,6 +308,7 @@ def test_preflight_sh_syntax_and_full_fake_docker_pass(preflight):
     result = preflight.run()
     output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
     assert result.returncode == 0, output
+    assert len(preflight.manifest.read_text(encoding="ascii").splitlines()) == 27
     assert "docker_daemon OK" in output
     assert "current_java OK" in output
     assert "migration_secret_metadata OK" in output
@@ -329,6 +351,7 @@ def test_preflight_accepts_complete_manifest_with_crlf_and_no_final_newline(pref
         ("0049_drop_redundant_rag_indexes", SOURCE_PATHS_0049),
         ("0050_account_daily_activity", SOURCE_PATHS_0050),
         ("0051_sync_closure_fence", SOURCE_PATHS_0051),
+        ("0052_workbench_account_rows", SOURCE_PATHS_0052),
     ],
 )
 def test_source_manifest_generation_is_revision_specific_and_offline(preflight, profile, paths):
@@ -488,6 +511,7 @@ def test_preflight_0048_requires_source_chunks_table(preflight):
         ),
         ("0050_account_daily_activity", SOURCE_PATHS_0050, ("to_regclass('public.account_daily_activity')",)),
         ("0051_sync_closure_fence", SOURCE_PATHS_0051, ("has_function_privilege('mentorflow_app'",)),
+        ("0052_workbench_account_rows", SOURCE_PATHS_0052, ("account_closure.assert_open(text,text)", "mentorflow_admin_account_rows(text,text[])")),
     ],
 )
 def test_preflight_0049_to_0051_check_migration_effects(preflight, revision, paths, checks):

@@ -1,0 +1,12 @@
+[Unit]
+Description=MentorFlow account page TCP proxy
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=notify
+Environment=RELEASE_ROOT=@RELEASE_ROOT@
+Environment=JAVA_CONTAINER=mentorflow-java-backend
+ExecStart=/bin/sh @RELEASE_ROOT@/refactor/server-java/deploy/account-page-proxy.sh
+Restart=on-failure
+RestartSec=1s

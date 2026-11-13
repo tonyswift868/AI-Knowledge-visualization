@@ -5,6 +5,8 @@ param(
     [int]$KumaRemotePort = 3001,
     [int]$BeszelLocalPort = 18090,
     [int]$BeszelRemotePort = 8090,
+    [int]$AccountsLocalPort = 18091,
+    [int]$AccountsRemotePort = 18081,
     [string]$SshHost = '89.45.45.28',
     [string]$SshUser = 'mentorflow-admin',
     [string]$IdentityFile = 'C:\Users\21533\.ssh\mentorflow_server',
@@ -50,14 +52,16 @@ function Show-WorkbenchError {
 }
 
 function Open-WorkbenchPages {
-    param([string]$KumaUrl, [string]$BeszelUrl)
+    param([string]$KumaUrl, [string]$BeszelUrl, [string]$AccountsUrl)
     if ($SkipBrowser) { return }
     Start-Process $KumaUrl
     Start-Process $BeszelUrl
+    Start-Process $AccountsUrl
 }
 
 $kumaUrl = "http://127.0.0.1:$KumaLocalPort/"
 $beszelUrl = "http://127.0.0.1:$BeszelLocalPort/"
+$accountsUrl = "http://127.0.0.1:$AccountsLocalPort/admin/accounts"
 $sshProcess = $null
 $stdoutPath = Join-Path $env:TEMP "mentorflow-workbench-$PID.out.log"
 $stderrPath = Join-Path $env:TEMP "mentorflow-workbench-$PID.err.log"
@@ -69,18 +73,21 @@ try {
 
     $kumaTcp = Test-TcpPort -HostName '127.0.0.1' -Port $KumaLocalPort
     $beszelTcp = Test-TcpPort -HostName '127.0.0.1' -Port $BeszelLocalPort
+    $accountsTcp = Test-TcpPort -HostName '127.0.0.1' -Port $AccountsLocalPort
     $kumaReady = $kumaTcp -and (Test-HttpReady -Url $kumaUrl -ExpectedMarker 'Uptime Kuma')
     $beszelReady = $beszelTcp -and (Test-HttpReady -Url $beszelUrl -ExpectedMarker 'Beszel')
+    $accountsReady = $accountsTcp -and (Test-HttpReady -Url $accountsUrl -ExpectedMarker 'MentorFlow 账号')
 
-    if ($kumaReady -and $beszelReady) {
-        Open-WorkbenchPages -KumaUrl $kumaUrl -BeszelUrl $beszelUrl
+    if ($kumaReady -and $beszelReady -and $accountsReady) {
+        Open-WorkbenchPages -KumaUrl $kumaUrl -BeszelUrl $beszelUrl -AccountsUrl $accountsUrl
         exit 0
     }
 
-    if (($kumaTcp -and -not $kumaReady) -or ($beszelTcp -and -not $beszelReady)) {
+    if (($kumaTcp -and -not $kumaReady) -or ($beszelTcp -and -not $beszelReady) -or ($accountsTcp -and -not $accountsReady)) {
         $occupied = @()
         if ($kumaTcp -and -not $kumaReady) { $occupied += "Kuma 本机端口 $KumaLocalPort" }
         if ($beszelTcp -and -not $beszelReady) { $occupied += "Beszel 本机端口 $BeszelLocalPort" }
+        if ($accountsTcp -and -not $accountsReady) { $occupied += "账号本机端口 $AccountsLocalPort" }
         throw "端口已被其他程序占用：$($occupied -join '、')。请关闭占用程序后重试。"
     }
 
@@ -91,11 +98,12 @@ try {
         '-N',
         '-o', 'ExitOnForwardFailure=yes',
         '-o', 'ServerAliveInterval=30',
-        '-o', 'ServerAliveCountMax=3',
-        '-L', "127.0.0.1:$KumaLocalPort`:127.0.0.1:$KumaRemotePort",
-        '-L', "127.0.0.1:$BeszelLocalPort`:127.0.0.1:$BeszelRemotePort",
-        "$SshUser@$SshHost"
+        '-o', 'ServerAliveCountMax=3'
     )
+    if (-not $kumaReady) { $sshArgs += @('-L', "127.0.0.1:$KumaLocalPort`:127.0.0.1:$KumaRemotePort") }
+    if (-not $beszelReady) { $sshArgs += @('-L', "127.0.0.1:$BeszelLocalPort`:127.0.0.1:$BeszelRemotePort") }
+    if (-not $accountsReady) { $sshArgs += @('-L', "127.0.0.1:$AccountsLocalPort`:127.0.0.1:$AccountsRemotePort") }
+    $sshArgs += "$SshUser@$SshHost"
     Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
     $sshProcess = Start-Process -FilePath $SshExecutable -ArgumentList $sshArgs -WindowStyle Hidden -PassThru `
         -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
@@ -105,8 +113,9 @@ try {
         Start-Sleep -Milliseconds 500
         $kumaReady = Test-HttpReady -Url $kumaUrl -ExpectedMarker 'Uptime Kuma'
         $beszelReady = Test-HttpReady -Url $beszelUrl -ExpectedMarker 'Beszel'
-        if ($kumaReady -and $beszelReady) {
-            Open-WorkbenchPages -KumaUrl $kumaUrl -BeszelUrl $beszelUrl
+        $accountsReady = Test-HttpReady -Url $accountsUrl -ExpectedMarker 'MentorFlow 账号'
+        if ($kumaReady -and $beszelReady -and $accountsReady) {
+            Open-WorkbenchPages -KumaUrl $kumaUrl -BeszelUrl $beszelUrl -AccountsUrl $accountsUrl
             exit 0
         }
         if ($sshProcess.HasExited) { break }
@@ -120,7 +129,7 @@ try {
     if ($sshProcess.HasExited -and $sshError) {
         throw "无法连接服务器或建立 SSH 隧道：$sshError"
     }
-    throw "SSH 隧道未在 $WaitSeconds 秒内连通。请检查服务器网络、密钥权限和本机端口 $KumaLocalPort/$BeszelLocalPort。"
+    throw "SSH 隧道未在 $WaitSeconds 秒内连通。请检查服务器网络、密钥权限和本机端口 $KumaLocalPort/$BeszelLocalPort/$AccountsLocalPort。"
 } catch {
     if ($sshProcess -and -not $sshProcess.HasExited) {
         Stop-Process -Id $sshProcess.Id -Force -ErrorAction SilentlyContinue
