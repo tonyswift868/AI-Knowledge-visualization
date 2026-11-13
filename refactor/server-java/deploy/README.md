@@ -15,7 +15,7 @@ sudo -n sh preflight.sh
 
 检查现有镜像、网络、卷/secret元信息、Compose labels/文件/env键/挂载、源码、磁盘、当前库版本和健康入口。每项输出 `项目名 OK/FAIL 原因`；不打印 `.env` 值、secret、令牌或资料正文。迁移项只使用**已经存在**的工具镜像执行 Alembic `current`；镜像缺失直接 FAIL，不拉取、不构建。不得用普通 `migrate.sh current` 代替此项：该维护命令会先构建工具镜像。
 
-预检默认针对当前在线发布目录。新包尚未构建时，先检查在线目录；不要对新包提前运行 `java-compose.sh config`。新包的 `MF_JAVA_VERSION` 要等 `build.sh VERSION` 写入后才能展开 Compose（[BUG-209]）。新的现场只有任务明确批准后才能通过同名环境变量覆盖；默认值对应下面这份统一清单。
+预检的发布目录、镜像和清单必须显式绑定现场；脚本保留的旧发布默认值不能当作自动发现当前版本。新包尚未构建时，先检查在线目录；不要对新包提前运行 `java-compose.sh config`。新包的 `MF_JAVA_VERSION` 要等 `build.sh VERSION` 写入后才能展开 Compose（[BUG-209]）。
 
 ## 服务器现场条件
 
@@ -24,11 +24,11 @@ sudo -n sh preflight.sh
 | 条件 | 当前名称/约束 |
 | --- | --- |
 | 运维权限 | 登录用户 `mentorflow-admin`（服务器 `PermitRootLogin no`，root 不能 ssh 登录），钥匙 `C:\Users\21533\.ssh\mentorflow_server`（2026-11-09 新建，[BUG-228]）；SSH 别名 `mentorflow` 需在本机 `~/.ssh/config` 里配（HostName 89.45.45.28、User mentorflow-admin、IdentityFile 上面那把、IdentitiesOnly yes），没配时用 `ssh -i <钥匙> mentorflow-admin@89.45.45.28`；Docker与现有root文件用非交互 `sudo -n`，不改权限 |
-| 在线源码 | `/opt/mentorflow/releases/java-1070685b`；新包从审定提交以 `git -c core.autocrlf=false -c core.eol=lf archive` 导出，保留 `refactor/server`、`refactor/server-java` 相对路径，不覆盖运行目录/挂载；比对关键源码SHA256（[BUG-107]） |
-| Java pair | `mentorflow-java-backend`、`mentorflow-java-oidc`；当前镜像 `mentorflow-java-server:0aefe606`；OIDC使用backend网络命名空间，每次重建后精确核对 `container:<backend ID>` |
+| 在线源码 | Java运行配置在`/opt/mentorflow/releases/java-d37112fd`；账号页回环代理与最终27项清单源码在`/opt/mentorflow/releases/java-1d2b6ea2`。新包从审定提交以 `git -c core.autocrlf=false -c core.eol=lf archive` 导出，保留 `refactor/server`、`refactor/server-java` 相对路径，不覆盖运行目录/挂载；比对关键源码SHA256（[BUG-107]） |
+| Java pair | `mentorflow-java-backend`、`mentorflow-java-oidc`；当前镜像 `mentorflow-java-server:d37112fd`；OIDC使用backend网络命名空间，每次重建后精确核对 `container:<backend ID>` |
 | Python pair | `mentorflow-e1-preview-backend-1`、`mentorflow-e1-preview-oidc-loopback-proxy-1`；`mentorflow-slim-backend:269-python-fallback`；保持停止，认0047；旧226标签保留但不能作为当前Python备用 |
 | 回退保留 | `mentorflow-java-server:226`、`mentorflow-java-server:rollback272`；`release272`、`release274`、`release275`下各自数据库备份不能覆盖或清理 |
-| PostgreSQL | `mentorflow-e1-preview-postgres-1`；业务库 `mentorflow`、迁移角色 `mentorflow_migrator`、主机 `postgres`；当前Alembic为 `0051_sync_closure_fence`，上传manifest表为`rag_document_upload_manifests`；PG17与pgvector扩展沿用，不改角色/授权 |
+| PostgreSQL | `mentorflow-e1-preview-postgres-1`；业务库 `mentorflow`、迁移角色 `mentorflow_migrator`、主机 `postgres`；当前Alembic为 `0052_workbench_account_rows`，上传manifest表为`rag_document_upload_manifests`；PG17与pgvector扩展沿用 |
 | 迁移镜像 | 基础 `mentorflow-slim-backend:269-python-fallback`；已存在工具 `mentorflow-migration-tool:MF-275`；`migration.Dockerfile`只额外装项目已用的固定Alembic版本 |
 | 迁移网络/凭据 | `mentorflow-e1-preview_internal`；**`mentorflow-e1-preview_migrate_secrets`** 卷，容器内 **`/run/secrets/postgres_migrator_password`**。OIDC的 `mentorflow-e1-preview_oidc_proxy_secrets` 是TLS卷，不是迁移密码卷（234/274、[BUG-209]） |
 | 迁移覆盖参数 | `MIGRATION_IMAGE`、`MIGRATION_TOOL_IMAGE`、`MIGRATION_NETWORK`、`MIGRATION_SECRETS_VOLUME`、`MF_MIGRATION_PASSWORD_FILE`；维护脚本在一次性容器内读密码并URL编码，不写入命令行、`.env`或日志 |
@@ -45,15 +45,15 @@ sudo -n sh preflight.sh
 | 公网探活 | API/健康入口是 `https://89.45.45.28` 的 `/health/live`、`/health/startup`、`/health/ready`；下载站域名不是这个vhost（221）。普通API用`/api/enterprise/auth/lifecycle/capabilities`；匿名401不代表用户登录业务通过 |
 | TLS/身份扩展 | 保留edge转发的HTTPS语义、Java信任库/Keycloak回环/mTLS。注册SPI有改动时先按该任务验证Keycloak扩展再换Java；实际Keycloak可有shell包装入口，不能只grep一个Cmd字段推断`--optimized` |
 | 主机工具/磁盘 | `sh`、Python3、Docker/Compose、curl、sha256sum、df可用；备份用PostgreSQL容器里的`pg_dump/pg_restore`，不用旧宿主机版本。备份前确认目标不存在和足够空间，权限600，不输出备份正文 |
-| 预检对照输入 | 当前在线 Java 为`0aefe606`、数据库为`0051_sync_closure_fence`；旧在线清单为`/opt/mentorflow/state/release381/source.sha256`。候选清单单独用`CANDIDATE_SOURCE_MANIFEST`，默认`/opt/mentorflow/state/release388/source.sha256`。`PREFLIGHT_SOURCE_REVISION`默认`0052_workbench_account_rows`（完整27项），在原14项后加入0048至0052迁移文件、账号页Java文件、`deploy388.sh`及账号页回环代理脚本/单元；缺项、重复、额外项或SHA256不符均FAIL。`EXPECTED_ALEMBIC_REVISION`独立表示数据库期望，默认0052；部署388迁移前显式检查0051。`JAVA_IMAGE`默认核对在线`mentorflow-java-server:0aefe606`。`RELEASE_ROOT`绑定候选源码，`DEPLOY_DIR`绑定在线配置，`SERVER_ROOT`绑定迁移源码 |
+| 预检对照输入 | 当前27项清单为`/opt/mentorflow/state/release388/source-final.sha256`；388迁移前备份与旧0051清单保留。`PREFLIGHT_SOURCE_REVISION`与`EXPECTED_ALEMBIC_REVISION`默认`0052_workbench_account_rows`。脚本中的旧目录/镜像默认值须由下节现场参数覆盖；`RELEASE_ROOT`绑定审定源码，`DEPLOY_DIR`绑定实际运行配置，`SERVER_ROOT`绑定迁移源码。缺项、重复、额外项或SHA256不符均FAIL |
 
 ## 0052发布的源码清单与迁移阶段
 
-当前在线 Java 为`0aefe606`、数据库为0051；部署388迁移至0052。完整路径集合只维护在`preflight.sh`中；`--source-manifest`按选定源码版本输出原生SHA256清单，不连接Docker/数据库、不访问网络、不写文件，且可通过`sh -s -- --source-manifest`标准输入执行。只从审定提交的LF归档生成候选清单。
+当前在线 Java 为`d37112fd`、数据库为0052。最终只读预检绑定`RELEASE_ROOT=/opt/mentorflow/releases/java-1d2b6ea2`、`DEPLOY_DIR=/opt/mentorflow/releases/java-d37112fd/refactor/server-java/deploy`、`SERVER_ROOT=$RELEASE_ROOT/refactor/server`、`SOURCE_SHA256_MANIFEST=/opt/mentorflow/state/release388/source-final.sha256`、`JAVA_IMAGE=mentorflow-java-server:d37112fd`，源码与数据库版本均为0052。完整路径集合只维护在`preflight.sh`中；`--source-manifest`按选定源码版本输出原生SHA256清单，不连接Docker/数据库、不访问网络、不写文件。
 
 | 阶段 | 源码版本/清单 | 数据库期望 |
 | --- | --- | --- |
-| 普通只读预检 | 默认0052源码清单和数据库版本 | 在线 Java 镜像默认`0aefe606` |
+| 普通只读预检 | 默认0052版本，显式绑定最终27项清单与运行配置 | 显式在线镜像`d37112fd` |
 | 0052迁移前 | 新LF归档、27项候选清单；部署配置仍绑定在线目录 | 显式0051，在线镜像`0aefe606` |
 | 迁移成功后 | 同一候选源码清单 | 显式0052；保留0051 closure 授权检查，并要求`mentorflow_app`可执行`mentorflow_admin_account_rows(text,text[])` |
 
