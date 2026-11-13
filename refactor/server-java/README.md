@@ -47,6 +47,9 @@ The deployment mode and OIDC configuration use the existing Python environment n
 | `MENTORFLOW_NATIVE_AUTH_SINGLE_PROCESS`, `WEB_CONCURRENCY` | Native auth requires both to be `1`. |
 | `MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS` | Native family lifetime; default `0` means no time expiration. Access tokens remain short-lived. |
 | `MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED`, `MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG` | Existing opt-in lifecycle admin configuration, required for checking current account/password binding on native login and refresh. |
+| `MENTORFLOW_ADMIN_ACCOUNT_PAGE_ENABLED` | Enables the read-only `/admin/accounts` HTML page on a second connector; default false. |
+| `MENTORFLOW_ADMIN_ACCOUNT_PAGE_PORT` | Internal page connector port; default 8081. Deployment maps it to host loopback `127.0.0.1:18081`; it is not exposed through the main 8080 connector. |
+| `MENTORFLOW_ADMIN_OVERVIEW_CONFIG` | Optional dedicated Keycloak admin reader configuration; takes precedence when set. |
 | `MENTORFLOW_SERVICE_IDENTITY_GRANTS_JSON` | Existing configured service-account grants, with the same permission enum. |
 | `MENTORFLOW_KEYCLOAK_DISCOVERY_URL` | URL used by the readiness probe. |
 | `MENTORFLOW_CATALOG_DIR` | Catalog directory; defaults to `/run/mentorflow/catalog`. |
@@ -54,6 +57,8 @@ The deployment mode and OIDC configuration use the existing Python environment n
 | `PORT` | HTTP port; default 8080. |
 
 Catalog files are `source-whitelist.json` and `model-prices.json`. Each must be a JSON object with a `version` key and must fit in 1 MiB. Responses keep the source bytes unchanged.
+
+When the account page is enabled and the dedicated admin reader path is unset, the read-only overview and page may reuse `MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG` only while `MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED=1`. It reads the existing `secret_file` in place; it does not create or copy credentials. The lifecycle configuration must retain its approved HTTPS origin and paired mTLS files, and its candidate binding and expiry follow the same checks as `NativeConfiguration144`. Unknown configuration fields remain rejected. The dedicated reader keeps its existing issuer transport binding.
 
 ## Migration boundary
 

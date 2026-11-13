@@ -43,7 +43,7 @@ Kuma Docker monitors 依赖 socket 只读挂载和上表中的精确容器名。
 
 ## 首次登录
 
-桌面脚本免的是 SSH 交互登录，不会打印或读取私钥内容。`open-workbench.ps1` 已有 `-SkipBrowser`、`-NoUi` 开关；本次把隧道后的页面就绪等待从 2 秒放宽到 5 秒，并让空 SSH stderr 不再触发空值异常，避免首次启动 Kuma 时误报失败。Kuma 和 Beszel 的应用登录不在 Compose 中绕过：首次分别完成管理员初始化后，浏览器保存会话即可。用户 2026-11-12 定工作台不要登录：Kuma 首次建管理员后，由用户在 Settings → Security 关闭内置认证，安全边界交给 SSH 隧道（3001/8090 只听 127.0.0.1）；Beszel 的 `DISABLE_PASSWORD_AUTH` 只用于 OAuth/OIDC，`AUTO_LOGIN` 需要已确认的用户邮箱，本阶段均不写入。
+桌面脚本免的是 SSH 交互登录，不会打印或读取私钥内容。`open-workbench.ps1` 已有 `-SkipBrowser`、`-NoUi` 开关；会复用已经就绪的本机页面，只为未就绪服务建立转发，避免已有SSH隧道占用端口时重复绑定。MentorFlow 账号页经本机 18091 → SSH → 服务器回环 18081 提供；Java Compose 只发布 127.0.0.1:18081，路径为 /admin/accounts。桌面快捷方式的启动脚本同时打开 Kuma、Beszel 和账号页。Kuma 和 Beszel 的应用登录不在 Compose 中绕过：首次分别完成管理员初始化后，浏览器保存会话即可。用户 2026-11-12 定工作台不要登录：Kuma 首次建管理员后，由用户在 Settings → Security 关闭内置认证，安全边界交给 SSH 隧道（3001/8090 只听 127.0.0.1）；Beszel 的 `DISABLE_PASSWORD_AUTH` 只用于 OAuth/OIDC，`AUTO_LOGIN` 需要已确认的用户邮箱，本阶段均不写入。
 
 ## 升级、备份、恢复和卸载
 

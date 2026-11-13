@@ -18,15 +18,15 @@ edge_container=${EDGE_CONTAINER:-mentorflow-e1-preview-edge-1}
 edge_conf_path=${EDGE_CONF_PATH:-/opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf}
 postgres_container=${POSTGRES_CONTAINER:-mentorflow-e1-preview-postgres-1}
 project=${COMPOSE_PROJECT:-mentorflow-e1-preview}
-java_image=${JAVA_IMAGE:-mentorflow-java-server:269}
+java_image=${JAVA_IMAGE:-mentorflow-java-server:0aefe606}
 python_image=${PYTHON_IMAGE:-mentorflow-slim-backend:269-python-fallback}
 migration_image=${MIGRATION_IMAGE:-mentorflow-slim-backend:269-python-fallback}
 migration_tool_image=${MIGRATION_TOOL_IMAGE:-mentorflow-migration-tool:MF-275}
 migration_network=${MIGRATION_NETWORK:-mentorflow-e1-preview_internal}
 migration_secrets_volume=${MIGRATION_SECRETS_VOLUME:-mentorflow-e1-preview_migrate_secrets}
 migration_password_file=${MF_MIGRATION_PASSWORD_FILE:-/run/secrets/postgres_migrator_password}
-expected_revision=${EXPECTED_ALEMBIC_REVISION:-0047_rag_promoted_manifests}
-source_revision=${PREFLIGHT_SOURCE_REVISION:-0047_rag_promoted_manifests}
+expected_revision=${EXPECTED_ALEMBIC_REVISION:-0052_workbench_account_rows}
+source_revision=${PREFLIGHT_SOURCE_REVISION:-0052_workbench_account_rows}
 expected_java_version=${PREFLIGHT_EXPECTED_JAVA_VERSION:-${java_image##*:}}
 curl_bin=${CURL_BIN:-curl}
 failures=0
@@ -69,6 +69,18 @@ refactor/server/migrations/versions/0048_rag_source_chunks.py
 refactor/server/migrations/versions/0049_drop_redundant_rag_indexes.py
 refactor/server/migrations/versions/0050_account_daily_activity.py
 refactor/server/migrations/versions/0051_sync_closure_fence.py"
+    ;;
+  0052_workbench_account_rows)
+    required_hash_paths="$required_hash_paths
+refactor/server/migrations/versions/0048_rag_source_chunks.py
+refactor/server/migrations/versions/0049_drop_redundant_rag_indexes.py
+refactor/server/migrations/versions/0050_account_daily_activity.py
+refactor/server/migrations/versions/0051_sync_closure_fence.py
+refactor/server/migrations/versions/0052_workbench_account_rows.py
+refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminOverviewService.java
+refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageController.java
+refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageConfiguration.java
+refactor/server-java/deploy/deploy388.sh"
     ;;
   *) printf 'unsupported PREFLIGHT_SOURCE_REVISION\n' >&2; exit 2 ;;
 esac
@@ -374,24 +386,28 @@ else fail database_migration_current 'existing migration inputs/image/network/se
 
 schema_tables="to_regclass('public.rag_document_upload_manifests') IS NOT NULL"
 case "$expected_revision" in
-  0048_rag_source_chunks|0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence)
+  0048_rag_source_chunks|0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows)
     schema_tables="$schema_tables AND to_regclass('public.rag_source_chunks') IS NOT NULL"
     ;;
 esac
 case "$expected_revision" in
-  0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence)
+  0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows)
     schema_tables="$schema_tables AND to_regclass('public.ix_rag_chunks_account_document') IS NULL"
     schema_tables="$schema_tables AND to_regclass('public.ix_rag_source_chunks_logical') IS NULL"
     ;;
 esac
 case "$expected_revision" in
-  0050_account_daily_activity|0051_sync_closure_fence)
+  0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows)
     schema_tables="$schema_tables AND to_regclass('public.account_daily_activity') IS NOT NULL"
     ;;
 esac
 case "$expected_revision" in
   0051_sync_closure_fence)
     schema_tables="$schema_tables AND has_function_privilege('mentorflow_app', 'account_closure.assert_open(text,text)', 'EXECUTE')"
+    ;;
+  0052_workbench_account_rows)
+    schema_tables="$schema_tables AND has_function_privilege('mentorflow_app', 'account_closure.assert_open(text,text)', 'EXECUTE')"
+    schema_tables="$schema_tables AND has_function_privilege('mentorflow_app', 'mentorflow_admin_account_rows(text,text[])', 'EXECUTE')"
     ;;
 esac
 schema_query="BEGIN READ ONLY; SELECT current_database()||'|'||version_num||'|'||($schema_tables)::text FROM alembic_version; COMMIT;"

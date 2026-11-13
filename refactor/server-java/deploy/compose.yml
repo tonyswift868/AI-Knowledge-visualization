@@ -5,11 +5,14 @@ services:
     image: mentorflow-java-server:${MF_JAVA_VERSION:?run build.sh VERSION first}
     container_name: mentorflow-java-backend
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:18081:8081"
     env_file:
       - ${MF_JAVA_DEPLOY_DIR:?run prepare-config.sh}/.java.env
     environment:
       PORT: "8080"
       MENTORFLOW_BIND_ADDRESS: 0.0.0.0
+      MENTORFLOW_ADMIN_ACCOUNT_PAGE_ENABLED: "true"
       MENTORFLOW_CATALOG_DIR: /run/mentorflow/catalog
       # 372-MF01 (2026-11-11): 1 GiB/4 CPU measured JVM budget; see JVM.md.
       JAVA_TOOL_OPTIONS: >-
