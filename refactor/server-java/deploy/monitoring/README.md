@@ -43,6 +43,8 @@ Kuma Docker monitors 依赖 socket 只读挂载和上表中的精确容器名。
 
 ## 首次登录
 
+Windows 快捷方式由 `client/create-workbench-shortcut.ps1` 创建，固定使用系统 Windows PowerShell 5.1；两份脚本使用 UTF-8 BOM。合入后在主目录运行 `& 'D:\MentorFlow\refactor\server-java\deploy\monitoring\client\create-workbench-shortcut.ps1'`，默认脚本和工作目录随主目录解析，避免图标跟随员工工位分支。测试传入 `-ShortcutDirectory` 指向临时目录，不改用户桌面。
+
 桌面脚本免的是 SSH 交互登录，不会打印或读取私钥内容。`open-workbench.ps1` 已有 `-SkipBrowser`、`-NoUi` 开关；会复用已经就绪的本机页面，只为未就绪服务建立转发，避免已有SSH隧道占用端口时重复绑定。MentorFlow 账号页经本机 18091 → SSH → 服务器回环 18081 提供，路径为 /admin/accounts；宿主监听由 systemd socket-proxyd 提供。桌面快捷方式的启动脚本同时打开 Kuma、Beszel 和账号页。Kuma 和 Beszel 的应用登录不在 Compose 中绕过：首次分别完成管理员初始化后，浏览器保存会话即可。用户 2026-11-12 定工作台不要登录：Kuma 首次建管理员后，由用户在 Settings → Security 关闭内置认证，安全边界交给 SSH 隧道（3001/8090 只听 127.0.0.1）；Beszel 的 `DISABLE_PASSWORD_AUTH` 只用于 OAuth/OIDC，`AUTO_LOGIN` 需要已确认的用户邮箱，本阶段均不写入。
 
 ## 升级、备份、恢复和卸载
