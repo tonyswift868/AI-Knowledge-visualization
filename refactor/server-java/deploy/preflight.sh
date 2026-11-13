@@ -4,12 +4,12 @@
 set -u
 
 docker_bin=${DOCKER_BIN:-docker}
-release_root=${RELEASE_ROOT:-/opt/mentorflow/releases/java-1070685b}
-deploy_dir=${DEPLOY_DIR:-$release_root/refactor/server-java/deploy}
+release_root=${RELEASE_ROOT:-/opt/mentorflow/releases/java-391}
+deploy_dir=${DEPLOY_DIR:-/opt/mentorflow/releases/java-d37112fd/refactor/server-java/deploy}
 server_root=${SERVER_ROOT:-$release_root/refactor/server}
 backend_env=${BACKEND_ENV:-/opt/mentorflow/state/mentorflow-e1-preview/account-core-21337c1/runtime.env}
 network45_override=${NETWORK45_OVERRIDE:-/opt/mentorflow/state/bug45-20261010/network45.override.yml}
-source_manifest=${SOURCE_SHA256_MANIFEST:-/opt/mentorflow/state/release275/source.sha256}
+source_manifest=${SOURCE_SHA256_MANIFEST:-/opt/mentorflow/state/release391/source.sha256}
 java_container=${JAVA_CONTAINER:-mentorflow-java-backend}
 java_oidc_container=${JAVA_OIDC_CONTAINER:-mentorflow-java-oidc}
 python_container=${PYTHON_CONTAINER:-mentorflow-e1-preview-backend-1}
@@ -18,15 +18,15 @@ edge_container=${EDGE_CONTAINER:-mentorflow-e1-preview-edge-1}
 edge_conf_path=${EDGE_CONF_PATH:-/opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf}
 postgres_container=${POSTGRES_CONTAINER:-mentorflow-e1-preview-postgres-1}
 project=${COMPOSE_PROJECT:-mentorflow-e1-preview}
-java_image=${JAVA_IMAGE:-mentorflow-java-server:0aefe606}
+java_image=${JAVA_IMAGE:-mentorflow-java-server:d37112fd}
 python_image=${PYTHON_IMAGE:-mentorflow-slim-backend:269-python-fallback}
 migration_image=${MIGRATION_IMAGE:-mentorflow-slim-backend:269-python-fallback}
 migration_tool_image=${MIGRATION_TOOL_IMAGE:-mentorflow-migration-tool:MF-275}
 migration_network=${MIGRATION_NETWORK:-mentorflow-e1-preview_internal}
 migration_secrets_volume=${MIGRATION_SECRETS_VOLUME:-mentorflow-e1-preview_migrate_secrets}
 migration_password_file=${MF_MIGRATION_PASSWORD_FILE:-/run/secrets/postgres_migrator_password}
-expected_revision=${EXPECTED_ALEMBIC_REVISION:-0052_workbench_account_rows}
-source_revision=${PREFLIGHT_SOURCE_REVISION:-0052_workbench_account_rows}
+expected_revision=${EXPECTED_ALEMBIC_REVISION:-0053_workbench_question_index}
+source_revision=${PREFLIGHT_SOURCE_REVISION:-0053_workbench_question_index}
 expected_java_version=${PREFLIGHT_EXPECTED_JAVA_VERSION:-${java_image##*:}}
 curl_bin=${CURL_BIN:-curl}
 failures=0
@@ -81,6 +81,25 @@ refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminOverviewSer
 refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageController.java
 refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageConfiguration.java
 refactor/server-java/deploy/deploy388.sh
+refactor/server-java/deploy/account-page-proxy.sh
+refactor/server-java/deploy/account-page-proxy.socket
+refactor/server-java/deploy/account-page-proxy.service.in
+refactor/server-java/deploy/install-account-page-proxy.sh"
+    ;;
+  0053_workbench_question_index)
+    required_hash_paths="$required_hash_paths
+refactor/server/migrations/versions/0048_rag_source_chunks.py
+refactor/server/migrations/versions/0049_drop_redundant_rag_indexes.py
+refactor/server/migrations/versions/0050_account_daily_activity.py
+refactor/server/migrations/versions/0051_sync_closure_fence.py
+refactor/server/migrations/versions/0052_workbench_account_rows.py
+refactor/server/migrations/versions/0053_workbench_question_index.py
+refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminOverviewService.java
+refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageController.java
+refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageConfiguration.java
+refactor/server-java/deploy/deploy388.sh
+refactor/server-java/deploy/deploy391.sh
+refactor/server-java/deploy/rollback391.sh
 refactor/server-java/deploy/account-page-proxy.sh
 refactor/server-java/deploy/account-page-proxy.socket
 refactor/server-java/deploy/account-page-proxy.service.in
@@ -390,18 +409,18 @@ else fail database_migration_current 'existing migration inputs/image/network/se
 
 schema_tables="to_regclass('public.rag_document_upload_manifests') IS NOT NULL"
 case "$expected_revision" in
-  0048_rag_source_chunks|0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows)
+  0048_rag_source_chunks|0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows|0053_workbench_question_index)
     schema_tables="$schema_tables AND to_regclass('public.rag_source_chunks') IS NOT NULL"
     ;;
 esac
 case "$expected_revision" in
-  0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows)
+  0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows|0053_workbench_question_index)
     schema_tables="$schema_tables AND to_regclass('public.ix_rag_chunks_account_document') IS NULL"
     schema_tables="$schema_tables AND to_regclass('public.ix_rag_source_chunks_logical') IS NULL"
     ;;
 esac
 case "$expected_revision" in
-  0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows)
+  0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows|0053_workbench_question_index)
     schema_tables="$schema_tables AND to_regclass('public.account_daily_activity') IS NOT NULL"
     ;;
 esac
@@ -412,6 +431,11 @@ case "$expected_revision" in
   0052_workbench_account_rows)
     schema_tables="$schema_tables AND has_function_privilege('mentorflow_app', 'account_closure.assert_open(text,text)', 'EXECUTE')"
     schema_tables="$schema_tables AND has_function_privilege('mentorflow_app', 'mentorflow_admin_account_rows(text,text[])', 'EXECUTE')"
+    ;;
+  0053_workbench_question_index)
+    schema_tables="$schema_tables AND has_function_privilege('mentorflow_app', 'account_closure.assert_open(text,text)', 'EXECUTE')"
+    schema_tables="$schema_tables AND has_function_privilege('mentorflow_app', 'mentorflow_admin_account_rows(text,text[])', 'EXECUTE')"
+    schema_tables="$schema_tables AND EXISTS (SELECT 1 FROM pg_index WHERE indexrelid=to_regclass('public.structured_sync_entities_question_bank_issuer_subject_idx') AND indisvalid)"
     ;;
 esac
 schema_query="BEGIN READ ONLY; SELECT current_database()||'|'||version_num||'|'||($schema_tables)::text FROM alembic_version; COMMIT;"

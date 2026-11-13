@@ -282,6 +282,11 @@ exit 41
             "BACKEND_ENV": posix(self.runtime),
             "NETWORK45_OVERRIDE": posix(self.network45),
             "SOURCE_SHA256_MANIFEST": posix(self.manifest),
+            # These fixtures deliberately exercise the retained 0052 profile.
+            # Current deployment defaults are covered by test_preflight391.py.
+            "JAVA_IMAGE": "mentorflow-java-server:0aefe606",
+            "EXPECTED_ALEMBIC_REVISION": "0052_workbench_account_rows",
+            SOURCE_REVISION: "0052_workbench_account_rows",
             "FAKE_DB_REVISION": "0052_workbench_account_rows",
             "FAKE_DB_SOURCE_TABLE": "true",
             "EDGE_CONF_PATH": posix(self.edge_conf),
@@ -438,7 +443,7 @@ def test_release_manifest_generation_can_retry_after_missing_migration(preflight
         [str(BASH), "-c", command], cwd=ROOT, env=env, capture_output=True, timeout=20
     )
     assert retried.returncode == 0, retried.stderr.decode("utf-8", errors="replace")
-    assert candidate.read_text(encoding="ascii").splitlines() == preflight.manifest_lines(SOURCE_PATHS_0051)
+    assert candidate.read_text(encoding="ascii").splitlines() == preflight.manifest_lines(SOURCE_PATHS_0052)
     assert not candidate.with_suffix(".sha256.tmp").exists()
     assert not preflight.log.exists()
 

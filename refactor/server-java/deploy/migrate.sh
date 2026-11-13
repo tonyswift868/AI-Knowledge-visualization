@@ -4,12 +4,11 @@
 set -eu
 
 usage() {
-  echo "usage: $0 [current|upgrade|status]" >&2
+  echo "usage: $0 [current|upgrade|status|downgrade REVISION]" >&2
   exit 2
 }
 action=${1:-upgrade}
-[ "$#" -le 1 ] || usage
-case "$action" in current|upgrade|status) ;; *) usage ;; esac
+case "$action" in current|upgrade|status) [ "$#" -le 1 ] || usage;; downgrade) [ "$#" -eq 2 ] || usage;; *) usage ;; esac
 
 deploy_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$deploy_dir/../../.." && pwd)
@@ -69,5 +68,9 @@ case "$action" in
     run_migration upgrade head
     echo "Alembic revision after upgrade:"
     run_migration current
+    ;;
+  downgrade)
+    build_tool
+    run_migration downgrade "$2"
     ;;
 esac

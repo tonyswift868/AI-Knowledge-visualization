@@ -1,0 +1,98 @@
+"""391 defaults, approved source set and partial-index deployment checks."""
+from __future__ import annotations
+
+import shutil
+
+import pytest
+import test_preflight277 as legacy
+
+REVISION = "0053_workbench_question_index"
+INDEX = "structured_sync_entities_question_bank_issuer_subject_idx"
+EXTRA = (
+    "refactor/server/migrations/versions/0053_workbench_question_index.py",
+    "refactor/server-java/deploy/deploy391.sh",
+    "refactor/server-java/deploy/rollback391.sh",
+)
+PATHS = (*legacy.SOURCE_PATHS_0052, *EXTRA)
+
+
+class Preflight391(legacy.PreflightFixture):
+    def _setup_files(self):
+        super()._setup_files()
+        for rel in EXTRA:
+            target = self.release / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(legacy.ROOT / rel, target)
+        self.write_deploy_env({
+            "MF_JAVA_DEPLOY_DIR": legacy.posix(self.deploy),
+            "MF_JAVA_TRUSTSTORE_DIR": legacy.posix(self.trust),
+            "MF_OIDC_PROXY_IMAGE": "mentorflow-local/oidc:current",
+            "MF_OIDC_PROXY_CONFIG": legacy.posix(self.proxy_config),
+            "MF_JAVA_VERSION": "d37112fd",
+        })
+        self.write_manifest(self.manifest_lines(PATHS))
+
+    def _setup_fake_docker(self):
+        super()._setup_fake_docker()
+        source = self.fake_docker.read_text(encoding="utf-8")
+        source = source.replace("echo mentorflow-java-server:0aefe606", "echo mentorflow-java-server:d37112fd")
+        anchor = '      echo "mentorflow|${FAKE_DB_REVISION:-0052_workbench_account_rows}|$schema_ok"'
+        assert source.count(anchor) == 1
+        check = ('      case "$*" in *"' + INDEX + '"*) '
+                 '[ "${FAKE_QUESTION_INDEX_STATE:-valid}" = valid ] || schema_ok=false ;; esac\n')
+        self.fake_docker.write_text(source.replace(anchor, check + anchor), encoding="utf-8", newline="\n")
+
+    def env(self, **overrides):
+        values = super().env()
+        values.update(JAVA_IMAGE="mentorflow-java-server:d37112fd",
+                      EXPECTED_ALEMBIC_REVISION=REVISION,
+                      PREFLIGHT_SOURCE_REVISION=REVISION,
+                      FAKE_DB_REVISION=REVISION)
+        values.update(overrides)
+        return values
+
+
+@pytest.fixture
+def preflight391(tmp_path):
+    return Preflight391(tmp_path / "preflight391")
+
+
+def test_preflight391_defaults_match_deployed_sources_and_388_runtime():
+    source = legacy.PREFLIGHT.read_text(encoding="utf-8")
+    for setting in (
+        "release_root=${RELEASE_ROOT:-/opt/mentorflow/releases/java-391}",
+        "deploy_dir=${DEPLOY_DIR:-/opt/mentorflow/releases/java-d37112fd/refactor/server-java/deploy}",
+        "source_manifest=${SOURCE_SHA256_MANIFEST:-/opt/mentorflow/state/release391/source.sha256}",
+        "java_image=${JAVA_IMAGE:-mentorflow-java-server:d37112fd}",
+        "expected_revision=${EXPECTED_ALEMBIC_REVISION:-" + REVISION + "}",
+        "source_revision=${PREFLIGHT_SOURCE_REVISION:-" + REVISION + "}",
+    ):
+        assert setting in source
+
+
+def test_preflight391_source_manifest_is_complete_unique_and_offline(preflight391):
+    result = preflight391.run(("--source-manifest",))
+    assert result.returncode == 0, result.stderr.decode("utf-8", errors="replace")
+    lines = result.stdout.decode("ascii").splitlines()
+    assert sorted(lines) == sorted(preflight391.manifest_lines(PATHS))
+    assert len(lines) == len(set(lines)) == 30
+    assert not preflight391.log.exists()
+
+
+def test_preflight391_accepts_valid_index_and_keeps_prior_schema_checks(preflight391):
+    result = preflight391.run()
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode == 0, output
+    assert "PREFLIGHT_FAILURES=0" in output
+    calls = preflight391.log.read_text(encoding="utf-8")
+    for required in (INDEX, "indisvalid", "rag_source_chunks", "account_daily_activity",
+                     "ix_rag_chunks_account_document", "account_closure.assert_open", "mentorflow_admin_account_rows"):
+        assert required in calls
+
+
+@pytest.mark.parametrize("state", ["absent", "invalid"])
+def test_preflight391_rejects_missing_or_invalid_index(preflight391, state):
+    result = preflight391.run(FAKE_QUESTION_INDEX_STATE=state)
+    output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+    assert result.returncode != 0
+    assert "postgres_schema_revision_and_table FAIL" in output
