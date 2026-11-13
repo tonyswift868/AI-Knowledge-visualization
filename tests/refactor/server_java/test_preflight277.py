@@ -42,6 +42,10 @@ SOURCE_PATHS_0052_EXTRA = (
     "refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageController.java",
     "refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageConfiguration.java",
     "refactor/server-java/deploy/deploy388.sh",
+    "refactor/server-java/deploy/account-page-proxy.sh",
+    "refactor/server-java/deploy/account-page-proxy.socket",
+    "refactor/server-java/deploy/account-page-proxy.service.in",
+    "refactor/server-java/deploy/install-account-page-proxy.sh",
 )
 SOURCE_PATHS_0049 = (*SOURCE_PATHS_0048, SOURCE_PATH_0049)
 SOURCE_PATHS_0050 = (*SOURCE_PATHS_0049, SOURCE_PATH_0050)
@@ -304,7 +308,7 @@ def test_preflight_sh_syntax_and_full_fake_docker_pass(preflight):
     result = preflight.run()
     output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
     assert result.returncode == 0, output
-    assert len(preflight.manifest.read_text(encoding="ascii").splitlines()) == 23
+    assert len(preflight.manifest.read_text(encoding="ascii").splitlines()) == 27
     assert "docker_daemon OK" in output
     assert "current_java OK" in output
     assert "migration_secret_metadata OK" in output

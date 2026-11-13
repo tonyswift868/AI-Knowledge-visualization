@@ -45,7 +45,7 @@ sudo -n sh preflight.sh
 | 公网探活 | API/健康入口是 `https://89.45.45.28` 的 `/health/live`、`/health/startup`、`/health/ready`；下载站域名不是这个vhost（221）。普通API用`/api/enterprise/auth/lifecycle/capabilities`；匿名401不代表用户登录业务通过 |
 | TLS/身份扩展 | 保留edge转发的HTTPS语义、Java信任库/Keycloak回环/mTLS。注册SPI有改动时先按该任务验证Keycloak扩展再换Java；实际Keycloak可有shell包装入口，不能只grep一个Cmd字段推断`--optimized` |
 | 主机工具/磁盘 | `sh`、Python3、Docker/Compose、curl、sha256sum、df可用；备份用PostgreSQL容器里的`pg_dump/pg_restore`，不用旧宿主机版本。备份前确认目标不存在和足够空间，权限600，不输出备份正文 |
-| 预检对照输入 | 当前在线 Java 为`0aefe606`、数据库为`0051_sync_closure_fence`；旧在线清单为`/opt/mentorflow/state/release381/source.sha256`。候选清单单独用`CANDIDATE_SOURCE_MANIFEST`，默认`/opt/mentorflow/state/release388/source.sha256`。`PREFLIGHT_SOURCE_REVISION`默认`0052_workbench_account_rows`（完整23项），在原14项后加入0048至0052迁移文件及三个账号页Java文件、`deploy388.sh`；缺项、重复、额外项或SHA256不符均FAIL。`EXPECTED_ALEMBIC_REVISION`独立表示数据库期望，默认0052；部署388迁移前显式检查0051。`JAVA_IMAGE`默认核对在线`mentorflow-java-server:0aefe606`。`RELEASE_ROOT`绑定候选源码，`DEPLOY_DIR`绑定在线配置，`SERVER_ROOT`绑定迁移源码 |
+| 预检对照输入 | 当前在线 Java 为`0aefe606`、数据库为`0051_sync_closure_fence`；旧在线清单为`/opt/mentorflow/state/release381/source.sha256`。候选清单单独用`CANDIDATE_SOURCE_MANIFEST`，默认`/opt/mentorflow/state/release388/source.sha256`。`PREFLIGHT_SOURCE_REVISION`默认`0052_workbench_account_rows`（完整27项），在原14项后加入0048至0052迁移文件、账号页Java文件、`deploy388.sh`及账号页回环代理脚本/单元；缺项、重复、额外项或SHA256不符均FAIL。`EXPECTED_ALEMBIC_REVISION`独立表示数据库期望，默认0052；部署388迁移前显式检查0051。`JAVA_IMAGE`默认核对在线`mentorflow-java-server:0aefe606`。`RELEASE_ROOT`绑定候选源码，`DEPLOY_DIR`绑定在线配置，`SERVER_ROOT`绑定迁移源码 |
 
 ## 0052发布的源码清单与迁移阶段
 
@@ -54,7 +54,7 @@ sudo -n sh preflight.sh
 | 阶段 | 源码版本/清单 | 数据库期望 |
 | --- | --- | --- |
 | 普通只读预检 | 默认0052源码清单和数据库版本 | 在线 Java 镜像默认`0aefe606` |
-| 0052迁移前 | 新LF归档、23项候选清单；部署配置仍绑定在线目录 | 显式0051，在线镜像`0aefe606` |
+| 0052迁移前 | 新LF归档、27项候选清单；部署配置仍绑定在线目录 | 显式0051，在线镜像`0aefe606` |
 | 迁移成功后 | 同一候选源码清单 | 显式0052；保留0051 closure 授权检查，并要求`mentorflow_app`可执行`mentorflow_admin_account_rows(text,text[])` |
 
 先完成默认现网预检。随后从审定的新LF归档生成候选清单，不覆盖旧在线清单：
@@ -91,7 +91,7 @@ EXPECTED_ALEMBIC_REVISION=0051_sync_closure_fence sh "$NEW_DEPLOY/preflight.sh"
 
 `deploy388.sh`从`deploy381.sh`继承带检查的部署步骤，迁移前核对0051，迁移后核对0052；回退只还原应用至在线 Java `0aefe606`，数据库保留0052。回退脚本在隔离假环境中实际执行。
 
-账号页由Java独立监听8081，Compose只发布宿主`127.0.0.1:18081:8081`。桌面脚本将本机`18091`隧道转发至服务器回环`18081`，打开`/admin/accounts`；不经edge。
+账号页由Java容器监听8081。现场的`mentorflow-e1-preview_internal`虽在Docker inspect中显示端口HostBindings，实际却没有生成宿主listener。用systemd socket-proxyd在宿主监听`127.0.0.1:18081`，服务按需inspect Java容器在现有internal网络上的IP并连接8081；不改Java网络、不新增egress网络、不经edge。桌面脚本将本机`18091`隧道转发至服务器回环`18081`，打开`/admin/accounts`。`systemd-socket-proxyd`使用`Accept=no`和`--exit-idle-time=30s`，参见[官方手册](https://www.freedesktop.org/software/systemd/man/latest/systemd-socket-proxyd.html)。单独补装可运行`RELEASE_ROOT=<候选源码目录> STATE=<新建部署状态目录> sh install-account-page-proxy.sh install`；回退同一`STATE`运行`sh install-account-page-proxy.sh remove`，只删除带本任务inode所有权标记的units。
 
 ## 维护顺序与失败传播
 

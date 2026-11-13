@@ -80,7 +80,11 @@ refactor/server/migrations/versions/0052_workbench_account_rows.py
 refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminOverviewService.java
 refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageController.java
 refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageConfiguration.java
-refactor/server-java/deploy/deploy388.sh"
+refactor/server-java/deploy/deploy388.sh
+refactor/server-java/deploy/account-page-proxy.sh
+refactor/server-java/deploy/account-page-proxy.socket
+refactor/server-java/deploy/account-page-proxy.service.in
+refactor/server-java/deploy/install-account-page-proxy.sh"
     ;;
   *) printf 'unsupported PREFLIGHT_SOURCE_REVISION\n' >&2; exit 2 ;;
 esac

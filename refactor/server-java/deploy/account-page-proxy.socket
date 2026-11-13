@@ -1,0 +1,10 @@
+[Unit]
+Description=MentorFlow account page loopback listener
+
+[Socket]
+ListenStream=127.0.0.1:18081
+Accept=no
+Service=mentorflow-account-page-proxy.service
+
+[Install]
+WantedBy=sockets.target

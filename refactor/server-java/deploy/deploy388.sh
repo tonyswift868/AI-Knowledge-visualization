@@ -20,11 +20,12 @@ java_image=mentorflow-java-server:$version
 docker_bin=${DOCKER_BIN:-docker}
 job_bin=$deploy_dir/job.sh
 checked_bin=$deploy_dir/checked-step.sh
-for command in "$docker_bin" sh awk sed grep curl python3 ss; do command -v "$command" >/dev/null 2>&1 || { echo "missing command: $command" >&2; exit 1; }; done
+for command in "$docker_bin" sh awk sed grep curl python3 ss systemctl; do command -v "$command" >/dev/null 2>&1 || { echo "missing command: $command" >&2; exit 1; }; done
 test -f "$job_bin" && test -f "$checked_bin"
 test -n "$candidate_manifest" && test -s "$candidate_manifest"
 test ! -e "$state"
 umask 077
+RELEASE_ROOT="$release_root" sh "$deploy_dir/install-account-page-proxy.sh" preflight
 
 run_job() {
   job=$1; shift
@@ -64,6 +65,9 @@ online_deploy='$online_deploy'
 release_root='$release_root'
 server_root='$release_root/refactor/server'
 candidate_manifest='$candidate_manifest'
+proxy_installer='$release_root/refactor/server-java/deploy/install-account-page-proxy.sh'
+state='$state'
+RELEASE_ROOT='$release_root' STATE="\$state" sh "\$proxy_installer" remove
 cd '$online_deploy'
 test -s '$backend_env'
 test "\$(awk -F= '\$1 == "MF_JAVA_VERSION" {print substr(\$0, index(\$0, "=")+1); exit}' .env)" = 0aefe606
@@ -159,6 +163,10 @@ DOCKER_BIN="$docker_bin" BACKEND_ENV="$backend_env" sh "$deploy_dir/java-compose
 write_action "$state/compose-up.sh" env "DOCKER_BIN=$docker_bin" "BACKEND_ENV=$backend_env" sh "$deploy_dir/java-compose.sh" up
 run_job "$state/job-compose-up" sh "$checked_bin" "$state/compose-up.sh" "$state/rollback-java.sh"
 
+write_action "$state/account-page-proxy-install.sh" env "RELEASE_ROOT=$release_root" "STATE=$state" \
+  sh "$deploy_dir/install-account-page-proxy.sh" install
+run_job "$state/job-account-page-proxy" sh "$checked_bin" "$state/account-page-proxy-install.sh" "$state/rollback-java.sh"
+
 write_health_action() {
   file=$1
   cat > "$file" <<EOF
@@ -172,6 +180,7 @@ release_root='$release_root'
 deploy_dir='$deploy_dir'
 server_root='$release_root/refactor/server'
 candidate_manifest='$candidate_manifest'
+RELEASE_ROOT="\$release_root" STATE='$state' sh "\$release_root/refactor/server-java/deploy/install-account-page-proxy.sh" refresh
 test "\$( "\$docker_bin" inspect --format '{{.State.Status}}' "\$java_container")" = running
 backend_id=\$( "\$docker_bin" inspect --format '{{.Id}}' "\$java_container")
 oidc_mode=\$( "\$docker_bin" inspect --format '{{.HostConfig.NetworkMode}}' "\$java_oidc_container")

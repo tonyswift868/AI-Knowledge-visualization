@@ -48,7 +48,7 @@ The deployment mode and OIDC configuration use the existing Python environment n
 | `MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS` | Native family lifetime; default `0` means no time expiration. Access tokens remain short-lived. |
 | `MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED`, `MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG` | Existing opt-in lifecycle admin configuration, required for checking current account/password binding on native login and refresh. |
 | `MENTORFLOW_ADMIN_ACCOUNT_PAGE_ENABLED` | Enables the read-only `/admin/accounts` HTML page on a second connector; default false. |
-| `MENTORFLOW_ADMIN_ACCOUNT_PAGE_PORT` | Internal page connector port; default 8081. Deployment maps it to host loopback `127.0.0.1:18081`; it is not exposed through the main 8080 connector. |
+| `MENTORFLOW_ADMIN_ACCOUNT_PAGE_PORT` | Internal page connector port; default 8081. It is not exposed through the main 8080 connector; the host loopback listener is provided by systemd socket-proxyd on `127.0.0.1:18081`. |
 | `MENTORFLOW_ADMIN_OVERVIEW_CONFIG` | Optional dedicated Keycloak admin reader configuration; takes precedence when set. |
 | `MENTORFLOW_SERVICE_IDENTITY_GRANTS_JSON` | Existing configured service-account grants, with the same permission enum. |
 | `MENTORFLOW_KEYCLOAK_DISCOVERY_URL` | URL used by the readiness probe. |
