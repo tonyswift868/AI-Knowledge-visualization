@@ -1,8 +1,9 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env powershell
 [CmdletBinding()]
 param(
     [string]$TargetScript = (Join-Path $PSScriptRoot 'open-workbench.ps1'),
-    [string]$ShortcutName = 'MentorFlow 开发工作台.lnk'
+    [string]$ShortcutName = 'MentorFlow 工作台.lnk',
+    [string]$ShortcutDirectory = [Environment]::GetFolderPath('Desktop')
 )
 
 Set-StrictMode -Version Latest
@@ -12,18 +13,16 @@ if (-not (Test-Path -LiteralPath $TargetScript -PathType Leaf)) {
     throw "启动脚本不存在：$TargetScript"
 }
 
-$desktop = [Environment]::GetFolderPath('Desktop')
-if ([string]::IsNullOrWhiteSpace($desktop)) {
-    throw '无法找到当前用户的 Windows 桌面目录。'
+if ([string]::IsNullOrWhiteSpace($ShortcutDirectory) -or -not (Test-Path -LiteralPath $ShortcutDirectory -PathType Container)) {
+    throw "快捷方式目录不存在：$ShortcutDirectory"
 }
 
-$shortcutPath = Join-Path $desktop $ShortcutName
-$pwsh = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
-if ([string]::IsNullOrWhiteSpace($pwsh)) { $pwsh = (Get-Command powershell.exe -ErrorAction Stop).Source }
+$shortcutPath = Join-Path $ShortcutDirectory $ShortcutName
+$powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = $pwsh
+$shortcut.TargetPath = $powershell
 $shortcut.Arguments = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "' + $TargetScript + '"'
 $shortcut.WorkingDirectory = Split-Path -Parent $TargetScript
 $shortcut.WindowStyle = 1
