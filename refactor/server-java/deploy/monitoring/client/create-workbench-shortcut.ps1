@@ -1,13 +1,16 @@
 ﻿#!/usr/bin/env powershell
 [CmdletBinding()]
 param(
-    [string]$TargetScript = (Join-Path $PSScriptRoot 'open-workbench.ps1'),
+    [string]$TargetScript = '',
     [string]$ShortcutName = 'MentorFlow 工作台.lnk',
     [string]$ShortcutDirectory = [Environment]::GetFolderPath('Desktop')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Windows PowerShell 5.1 leaves $PSScriptRoot empty in param defaults.
+if ([string]::IsNullOrWhiteSpace($TargetScript)) { $TargetScript = Join-Path $PSScriptRoot 'open-workbench.ps1' }
 
 if (-not (Test-Path -LiteralPath $TargetScript -PathType Leaf)) {
     throw "启动脚本不存在：$TargetScript"

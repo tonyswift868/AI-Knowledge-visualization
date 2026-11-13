@@ -6,7 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
-| BUG-246 | 工作台桌面图标靠 Codex 自带的 PowerShell 启动，Codex 一更新就打不开 | 脚本已修已验证，待主目录重建图标（389-MF06） | 2026-11-12 |
+| BUG-246 | 工作台桌面图标靠 Codex 自带的 PowerShell 启动，Codex 一更新就打不开 | 已修已验证（389-MF06，合入 62e0b479，图标已重建） | 2026-11-12 |
 | BUG-245 | 账号页端口发布到宿主没生效：Java 只连着 internal 网络 | 已修已验证（388-MF01，合入 8ef6682e） | 2026-11-12 |
 | BUG-244 | 工作台安装时取不到 Beszel 公钥，第一次安装失败并自动回退 | 已修已验证（387-MF01，2026-11-12，合入 909e8481） | 2026-11-12 |
 | BUG-243 | 用量统计只读脚本跑不了：没有执行权限，合法日期也报 TypeError | 待修 | 2026-11-12 |
@@ -2557,12 +2557,12 @@
 - 更新：2026-11-02
 
 ### [BUG-246] 工作台桌面图标靠 Codex 自带的 PowerShell 启动，Codex 一更新就打不开
-- 状态：脚本已修已验证，待架构师合入后在主目录重建图标（389-MF06）。
+- 状态：已修已验证（389-MF06，合入 62e0b479；架构师 2026-11-12 重建图标）。
 - 现象（2026-11-12，架构师查 388 后的图标）：`MentorFlow 工作台.lnk` 的启动程序是 `C:\Program Files\WindowsApps\OpenAI.CodexPrimaryRuntime.v26-1110-778-0_...\pwsh.exe`，路径带 Codex 版本号；脚本路径指向员工工位 `D:\MentorFlow-office\server\repo\...`。用户现在点图标能用。
 - 原因：`create-workbench-shortcut.ps1` 从 PATH 找 pwsh，员工会话里找到的是 Codex 自带的；用户电脑没装系统级 PowerShell 7。两个脚本是 UTF-8 无 BOM 且含中文，Windows 自带的 PowerShell 5.1 解析报 8 个错误（按 UTF-8 读则 0 个），所以没法直接换成系统自带的。
 - 排查：架构师读快捷方式属性；`C:\Program Files\PowerShell` 不存在；用 5.1 解析器分别按默认编码和 UTF-8 解析对比。
 - 解决：389-MF06 两脚本使用 UTF-8 BOM，快捷方式固定系统 Windows PowerShell 5.1，增加 `ShortcutDirectory` 参数；合入后架构师在主目录运行生成脚本，脚本目标与工作目录随主目录解析。本任务未修改桌面图标。
-- 验证：2026-11-12 系统 5.1 运行 `-NoUi -SkipBrowser` 返回 0，13001/18090/18091 三页均 200 且标识正确；2 项独立 pytest 测试通过（BOM、5.1 解析、临时快捷方式路径/参数/工作目录）。原隧道 PID 46956 保留，仅清理本次 SSH PID 80852。
+- 验证：2026-11-12 系统 5.1 运行 `-NoUi -SkipBrowser` 返回 0，13001/18090/18091 三页均 200 且标识正确；2 项独立 pytest 测试通过（BOM、5.1 解析、临时快捷方式路径/参数/工作目录）。原隧道 PID 46956 保留，仅清理本次 SSH PID 80852。架构师合入后照回执命令在 5.1 下重建图标，报 `Join-Path` 空路径：5.1 在 param 默认值里拿不到 `$PSScriptRoot`，员工测试都显式传了路径所以没发现；架构师改成在脚本体里补默认值，不带参数重建成功，389 测试 2 项复跑通过。现在图标启动程序是 `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`，脚本和工作目录在 `D:\MentorFlow\refactor\server-java\deploy\monitoring\client`。
 - 关联：387-MF01、388-MF01
 - 更新：2026-11-12
 
