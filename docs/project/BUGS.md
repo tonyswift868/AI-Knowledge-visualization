@@ -6,6 +6,8 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-246 | 工作台桌面图标靠 Codex 自带的 PowerShell 启动，Codex 一更新就打不开 | 待修（389-MF06） | 2026-11-12 |
+| BUG-245 | 账号页端口发布到宿主没生效：Java 只连着 internal 网络 | 已修已验证（388-MF01，合入 8ef6682e） | 2026-11-12 |
 | BUG-244 | 工作台安装时取不到 Beszel 公钥，第一次安装失败并自动回退 | 已修已验证（387-MF01，2026-11-12，合入 909e8481） | 2026-11-12 |
 | BUG-243 | 用量统计只读脚本跑不了：没有执行权限，合法日期也报 TypeError | 待修 | 2026-11-12 |
 | BUG-242 | 381 上线第一次切换时探活 502，自动回退又被回退脚本挡住 | 已修已验证（381-MF01，2026-11-12，合入 401dfdf3） | 2026-11-12 |
@@ -2553,6 +2555,26 @@
 - 修法（273-MF04，2026-11-02）：mf-build 和本机打包走同一个 freeze（scripts/release/sqlite_runtime.py），从 sqlite.org 下载官方 sqlite-dll-win-x64-3540100.zip，归档 SHA3-256 和解包 DLL 的 SHA256 都写死，对不上打包失败；打包环境检查和冻结冒烟都核对实际加载的是 _internal 里的 3.54.1（source_id 2026-10-16 14:45:20 555e07ef…）。验证：测试密钥真包，旧版（5863cb78 源码，加载 3.49.1）Inno 安装 → 软件内更新 → 新版加载 3.54.1，WinError 5 零次；第一次点更新遇到一次 WinError 32（ready 文件被测试自己的观察脚本轮询占着），停掉观察脚本后同一入口重试成功，没有证明是产品问题，以后演练再出现就在本条记录。用户 course、rag 库只读备份的副本：3.54.1 读写、完整性检查 ok，再用 3.49.1 读新版写过的副本、写一轮、完整性检查 ok（用户退回旧版数据还能用）。31 个相关测试通过。报告 .local/test-tmp/sqlite273/report.md。
 - 关联：[ARCH-03]
 - 更新：2026-11-02
+
+### [BUG-246] 工作台桌面图标靠 Codex 自带的 PowerShell 启动，Codex 一更新就打不开
+- 状态：待修（389-MF06）。
+- 现象（2026-11-12，架构师查 388 后的图标）：`MentorFlow 工作台.lnk` 的启动程序是 `C:\Program Files\WindowsApps\OpenAI.CodexPrimaryRuntime.v26-1110-778-0_...\pwsh.exe`，路径带 Codex 版本号；脚本路径指向员工工位 `D:\MentorFlow-office\server\repo\...`。用户现在点图标能用。
+- 原因：`create-workbench-shortcut.ps1` 从 PATH 找 pwsh，员工会话里找到的是 Codex 自带的；用户电脑没装系统级 PowerShell 7。两个脚本是 UTF-8 无 BOM 且含中文，Windows 自带的 PowerShell 5.1 解析报 8 个错误（按 UTF-8 读则 0 个），所以没法直接换成系统自带的。
+- 排查：架构师读快捷方式属性；`C:\Program Files\PowerShell` 不存在；用 5.1 解析器分别按默认编码和 UTF-8 解析对比。
+- 解决：待修。389-MF06 把两个脚本存成带 BOM、跑通 5.1，快捷方式固定用系统 `powershell.exe`；合入后架构师在主目录重建图标。
+- 验证：无。
+- 关联：387-MF01、388-MF01
+- 更新：2026-11-12
+
+### [BUG-245] 账号页端口发布到宿主没生效：Java 只连着 internal 网络
+- 状态：已修已验证（388-MF01，2026-11-13 UTC；提交 1d2b6ea2，合入 main 8ef6682e）。
+- 现象（2026-11-13 UTC，388 上线）：compose 切换后 Java 健康正常，但宿主 `127.0.0.1:18081` 没有监听；HostConfig 里有端口绑定，NetworkSettings 里没发布。容器 IP:8081 直接访问页面 200，12 个总数都有值。
+- 原因：Java 只连现有的 internal 网络，Docker 不给 internal 网络上的容器发布端口到宿主；本机假演练没有模拟这一点。
+- 排查：MF-01 现场对比 `docker inspect` 的 HostConfig 和 NetworkSettings，确认绑定写了但没生效。
+- 解决：不给 Java 加外联网络，改用系统自带的 `systemd-socket-proxyd` 在宿主 127.0.0.1:18081 开回环 socket，转到 Java 容器当前 IP 的 8081；代理每次启动重新查 Java IP，部署后刷新，回退到没有 8081 的旧 Java 时删掉代理。已收进代理脚本、deploy388.sh、27 项来源清单和三份 README。以后重建 Java 的部署都要刷新这个代理。
+- 验证：新增监听只有 127.0.0.1:18081，UFW 不变；公网访问 `/admin/accounts` 404、`/api/...accounts` 401，公网 IP:18081 不通；桌面隧道 18091 拿到页面；最终预检 0 FAIL（回执 .local/receipts/388-MF01.md）。
+- 关联：[BUG-244]、388-MF01
+- 更新：2026-11-12
 
 ### [BUG-244] 工作台安装时取不到 Beszel 公钥，第一次安装失败并自动回退
 - 状态：已修已验证（387-MF01，2026-11-12；提交 d5972b43，合入 main 909e8481）。
