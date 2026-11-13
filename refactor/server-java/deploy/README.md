@@ -2,7 +2,7 @@
 
 **每次上线的第一步必须运行 `sudo -n sh preflight.sh`（已在root shell时用 `sh preflight.sh`），所有项目 OK、退出码 0 后才能备份、迁移、构建或重建容器。** FAIL 先核实原因；不在上线中途临时改配置或猜卷名。只读检查不等于获准部署。
 
-当前操作清单只有 [RELEASE269.md](RELEASE269.md)，线上版本及验证范围见 [ARCH-09](../../../docs/project/CURRENT_STATE.md#arch-09-服务器后端逐块改用-java)。当前 Python backend 已停止、edge upstream 指向正式 Java。重建接流量的服务须在架构师批准的重启窗口内执行，running 不等于 ready。
+历史分阶段操作清单见 [RELEASE269.md](RELEASE269.md)，391 的索引迁移按本文件 `deploy391.sh` 执行。线上版本及验证范围见 [ARCH-09](../../../docs/project/CURRENT_STATE.md#arch-09-服务器后端逐块改用-java)。当前 Python backend 已停止、edge upstream 指向正式 Java。重建接流量的服务须在架构师批准的重启窗口内执行，running 不等于 ready。
 
 ## 只读上线前检查
 
@@ -15,7 +15,7 @@ sudo -n sh preflight.sh
 
 检查现有镜像、网络、卷/secret元信息、Compose labels/文件/env键/挂载、源码、磁盘、当前库版本和健康入口。每项输出 `项目名 OK/FAIL 原因`；不打印 `.env` 值、secret、令牌或资料正文。迁移项只使用**已经存在**的工具镜像执行 Alembic `current`；镜像缺失直接 FAIL，不拉取、不构建。不得用普通 `migrate.sh current` 代替此项：该维护命令会先构建工具镜像。
 
-预检的发布目录、镜像和清单必须显式绑定现场；脚本保留的旧发布默认值不能当作自动发现当前版本。新包尚未构建时，先检查在线目录；不要对新包提前运行 `java-compose.sh config`。新包的 `MF_JAVA_VERSION` 要等 `build.sh VERSION` 写入后才能展开 Compose（[BUG-209]）。
+无参数预检默认使用当前391源码归档、388运行配置、d37112fd Java镜像、0053迁移版本和391来源清单。应在部署脚本的候选归档与现场状态相符时直接运行；若现场布局变更，再显式覆盖路径。新包尚未构建时，不要提前对新包运行 `java-compose.sh config`。新包的 `MF_JAVA_VERSION` 要等 `build.sh VERSION` 写入后才能展开 Compose（[BUG-209]）。
 
 ## 服务器现场条件
 
@@ -28,7 +28,7 @@ sudo -n sh preflight.sh
 | Java pair | `mentorflow-java-backend`、`mentorflow-java-oidc`；当前镜像 `mentorflow-java-server:d37112fd`；OIDC使用backend网络命名空间，每次重建后精确核对 `container:<backend ID>` |
 | Python pair | `mentorflow-e1-preview-backend-1`、`mentorflow-e1-preview-oidc-loopback-proxy-1`；`mentorflow-slim-backend:269-python-fallback`；保持停止，认0047；旧226标签保留但不能作为当前Python备用 |
 | 回退保留 | `mentorflow-java-server:226`、`mentorflow-java-server:rollback272`；`release272`、`release274`、`release275`下各自数据库备份不能覆盖或清理 |
-| PostgreSQL | `mentorflow-e1-preview-postgres-1`；业务库 `mentorflow`、迁移角色 `mentorflow_migrator`、主机 `postgres`；当前Alembic为 `0052_workbench_account_rows`，上传manifest表为`rag_document_upload_manifests`；PG17与pgvector扩展沿用 |
+| PostgreSQL | `mentorflow-e1-preview-postgres-1`；业务库 `mentorflow`、迁移角色 `mentorflow_migrator`、主机 `postgres`；391目标Alembic为 `0053_workbench_question_index`，上传manifest表为`rag_document_upload_manifests`；PG17与pgvector扩展沿用 |
 | 迁移镜像 | 基础 `mentorflow-slim-backend:269-python-fallback`；已存在工具 `mentorflow-migration-tool:MF-275`；`migration.Dockerfile`只额外装项目已用的固定Alembic版本 |
 | 迁移网络/凭据 | `mentorflow-e1-preview_internal`；**`mentorflow-e1-preview_migrate_secrets`** 卷，容器内 **`/run/secrets/postgres_migrator_password`**。OIDC的 `mentorflow-e1-preview_oidc_proxy_secrets` 是TLS卷，不是迁移密码卷（234/274、[BUG-209]） |
 | 迁移覆盖参数 | `MIGRATION_IMAGE`、`MIGRATION_TOOL_IMAGE`、`MIGRATION_NETWORK`、`MIGRATION_SECRETS_VOLUME`、`MF_MIGRATION_PASSWORD_FILE`；维护脚本在一次性容器内读密码并URL编码，不写入命令行、`.env`或日志 |
@@ -45,57 +45,42 @@ sudo -n sh preflight.sh
 | 公网探活 | API/健康入口是 `https://89.45.45.28` 的 `/health/live`、`/health/startup`、`/health/ready`；下载站域名不是这个vhost（221）。普通API用`/api/enterprise/auth/lifecycle/capabilities`；匿名401不代表用户登录业务通过 |
 | TLS/身份扩展 | 保留edge转发的HTTPS语义、Java信任库/Keycloak回环/mTLS。注册SPI有改动时先按该任务验证Keycloak扩展再换Java；实际Keycloak可有shell包装入口，不能只grep一个Cmd字段推断`--optimized` |
 | 主机工具/磁盘 | `sh`、Python3、Docker/Compose、curl、sha256sum、df可用；备份用PostgreSQL容器里的`pg_dump/pg_restore`，不用旧宿主机版本。备份前确认目标不存在和足够空间，权限600，不输出备份正文 |
-| 预检对照输入 | 当前27项清单为`/opt/mentorflow/state/release388/source-final.sha256`；388迁移前备份与旧0051清单保留。`PREFLIGHT_SOURCE_REVISION`与`EXPECTED_ALEMBIC_REVISION`默认`0052_workbench_account_rows`。脚本中的旧目录/镜像默认值须由下节现场参数覆盖；`RELEASE_ROOT`绑定审定源码，`DEPLOY_DIR`绑定实际运行配置，`SERVER_ROOT`绑定迁移源码。缺项、重复、额外项或SHA256不符均FAIL |
+| 预检对照输入 | 391来源清单为`/opt/mentorflow/state/release391/source.sha256`；旧388/0051清单与迁移前备份保留。`PREFLIGHT_SOURCE_REVISION`与`EXPECTED_ALEMBIC_REVISION`默认`0053_workbench_question_index`。默认`RELEASE_ROOT`绑定391审定源码，`DEPLOY_DIR`绑定d37112fd运行配置，`SERVER_ROOT`绑定迁移源码。缺项、重复、额外项或SHA256不符均FAIL |
 
-## 0052发布的源码清单与迁移阶段
+## 391 / 0053 索引迁移
 
-当前在线 Java 为`d37112fd`、数据库为0052。最终只读预检绑定`RELEASE_ROOT=/opt/mentorflow/releases/java-1d2b6ea2`、`DEPLOY_DIR=/opt/mentorflow/releases/java-d37112fd/refactor/server-java/deploy`、`SERVER_ROOT=$RELEASE_ROOT/refactor/server`、`SOURCE_SHA256_MANIFEST=/opt/mentorflow/state/release388/source-final.sha256`、`JAVA_IMAGE=mentorflow-java-server:d37112fd`，源码与数据库版本均为0052。完整路径集合只维护在`preflight.sh`中；`--source-manifest`按选定源码版本输出原生SHA256清单，不连接Docker/数据库、不访问网络、不写文件。
+当前 Java运行配置仍为`/opt/mentorflow/releases/java-d37112fd`，Java镜像为`mentorflow-java-server:d37112fd`。391候选源码归档为`/opt/mentorflow/releases/java-391`，来源清单为`/opt/mentorflow/state/release391/source.sha256`。普通无参数预检使用这组默认值，源码清单覆盖0053迁移及391部署/回退脚本；`--source-manifest`按选定源码版本输出SHA256清单，不连接Docker/数据库、不访问网络、不写文件。
 
 | 阶段 | 源码版本/清单 | 数据库期望 |
 | --- | --- | --- |
-| 普通只读预检 | 默认0052版本，显式绑定最终27项清单与运行配置 | 显式在线镜像`d37112fd` |
-| 0052迁移前 | 新LF归档、27项候选清单；部署配置仍绑定在线目录 | 显式0051，在线镜像`0aefe606` |
-| 迁移成功后 | 同一候选源码清单 | 显式0052；保留0051 closure 授权检查，并要求`mentorflow_app`可执行`mentorflow_admin_account_rows(text,text[])` |
+| 普通无参数只读预检 | 391源码、388运行配置、391来源清单 | 0053；Java镜像`d37112fd` |
+| 391迁移前 | 391候选源码与清单，部署配置仍绑定d37112fd在线目录 | 0052 |
+| 391迁移后 | 同一候选源码清单 | 0053；继承0052函数授权检查并要求题库部分索引有效 |
 
-先完成默认现网预检。随后从审定的新LF归档生成候选清单，不覆盖旧在线清单：
+候选源码用审定提交的 LF 归档，不覆盖在线运行目录。生成新来源清单时先等全部文件校验成功，再落盘，缺文件时可补齐后重试：
 
 ```sh
 set -eu
 umask 077
-: "${NEW_RELEASE_ROOT:?set the approved new LF archive directory}"
+: "${NEW_RELEASE_ROOT:?set the approved LF archive directory}"
 : "${CANDIDATE_SOURCE_MANIFEST:?set a new manifest output path}"
-NEW_DEPLOY="$NEW_RELEASE_ROOT/refactor/server-java/deploy"
 test ! -e "$CANDIDATE_SOURCE_MANIFEST"
 test ! -e "$CANDIDATE_SOURCE_MANIFEST.tmp"
-manifest_lines=$(PREFLIGHT_SOURCE_REVISION=0052_workbench_account_rows RELEASE_ROOT="$NEW_RELEASE_ROOT" \
-  sh "$NEW_DEPLOY/preflight.sh" --source-manifest)
+manifest_lines=$(PREFLIGHT_SOURCE_REVISION="${PREFLIGHT_SOURCE_REVISION:-0053_workbench_question_index}" \
+  RELEASE_ROOT="$NEW_RELEASE_ROOT" sh "$NEW_RELEASE_ROOT/refactor/server-java/deploy/preflight.sh" --source-manifest)
 printf '%s\n' "$manifest_lines" > "$CANDIDATE_SOURCE_MANIFEST.tmp"
 mv "$CANDIDATE_SOURCE_MANIFEST.tmp" "$CANDIDATE_SOURCE_MANIFEST"
 ```
 
-迁移前使用候选源码与清单，但仍绑定在线部署配置和当前0051数据库：
+`deploy391.sh`按序执行预检、数据库备份与`pg_restore --list`、Alembic升级、三个公网健康接口、账号页HTTP 200，最后从391源码归档无参数运行预检。该脚本只迁移数据库，不构建、重建或重启Java。迁移失败或健康检查失败时，用`RELEASE_ROOT=<391源码目录> sh refactor/server-java/deploy/rollback391.sh`将数据库降回0052，只移除新增索引；回退脚本会拒绝非0052/0053的版本。
 
-```sh
-: "${NEW_RELEASE_ROOT:?set the new archive directory on this host}"
-: "${CANDIDATE_SOURCE_MANIFEST:?set the transferred approved manifest on this host}"
-: "${ONLINE_DEPLOY_DIR:?set the existing verified Java deploy directory}"
-NEW_DEPLOY="$NEW_RELEASE_ROOT/refactor/server-java/deploy"
-export RELEASE_ROOT="$NEW_RELEASE_ROOT" DEPLOY_DIR="$ONLINE_DEPLOY_DIR"
-export SERVER_ROOT="$NEW_RELEASE_ROOT/refactor/server"
-export SOURCE_SHA256_MANIFEST="$CANDIDATE_SOURCE_MANIFEST"
-export PREFLIGHT_SOURCE_REVISION=0052_workbench_account_rows
-EXPECTED_ALEMBIC_REVISION=0051_sync_closure_fence sh "$NEW_DEPLOY/preflight.sh"
-```
-
-预检通过后备份；运行`migrate.sh current/upgrade/current`并逐条检查退出码，`upgrade head`以0052为目标。迁移后复用同一绑定并期望0052；最终预检绑定候选部署目录和候选镜像。应用启动不自动迁移。预检同时核对0051 closure授权和0052统计函数授权；它不替代迁移测试。
-
-`deploy388.sh`从`deploy381.sh`继承带检查的部署步骤，迁移前核对0051，迁移后核对0052；回退只还原应用至在线 Java `0aefe606`，数据库保留0052。回退脚本在隔离假环境中实际执行。
+`deploy388.sh`、更早的0052迁移步骤和旧清单仅作为历史脚本参考，不是当前部署流程。应用启动不自动迁移。
 
 账号页由Java容器监听8081。现场的`mentorflow-e1-preview_internal`虽在Docker inspect中显示端口HostBindings，实际却没有生成宿主listener。用systemd socket-proxyd在宿主监听`127.0.0.1:18081`，服务按需inspect Java容器在现有internal网络上的IP并连接8081；不改Java网络、不新增egress网络、不经edge。桌面脚本将本机`18091`隧道转发至服务器回环`18081`，打开`/admin/accounts`。`systemd-socket-proxyd`使用`Accept=no`和`--exit-idle-time=30s`，参见[官方手册](https://www.freedesktop.org/software/systemd/man/latest/systemd-socket-proxyd.html)。单独补装可运行`RELEASE_ROOT=<候选源码目录> STATE=<新建部署状态目录> sh install-account-page-proxy.sh install`；回退同一`STATE`运行`sh install-account-page-proxy.sh remove`，只删除带本任务inode所有权标记的units。
 
 ## 维护顺序与失败传播
 
-预检全OK → 新目录备份并用容器内`pg_restore --list`验可读 → `migrate.sh current/upgrade/current`检查退出码和版本 → 迁后预检 → `build.sh VERSION` → JVM 参数试启动 → `java-compose.sh config/up` → Java 三项真实探活 → 最终预检。逐步成功才继续。此次0052发布不重建或切换停止的旧Python269备用。应用启动不自动迁移。
+预检全OK → 备份并用容器内`pg_restore --list`验可读 → `migrate.sh current/upgrade/current`检查退出码和版本 → 三个公网健康接口及账号页探测 → 无参数最终预检。391不重建或切换停止的旧Python269备用，也不构建或重启Java。应用启动不自动迁移。
 
 `migrate.sh`维护命令会构建工具，和只读预检不同；不要把输出接到吞退出码的管道。迁移中的closure角色修复已在迁移内按既有`SET LOCAL ROLE`实现，不另授CREATE（[BUG-107]）。若新库已迁移，应用回退保留新表/数据，禁止把恢复旧全库当常规回退；0047不能downgrade。
 
