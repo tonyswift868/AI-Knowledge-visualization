@@ -63,6 +63,8 @@ sudo -n sh preflight.sh
 
 393只切换Java、替换心跳脚本并为两个域名启用精简日志，不执行数据库迁移或schema回退。源码及运行配置为`/opt/mentorflow/releases/java-393`，来源清单为`/opt/mentorflow/state/release393/source.sha256`。`--source-manifest`按选定源码版本输出SHA256清单，不连接Docker/数据库、不访问网络、不写文件。
 
+发布归档必须核对实际输出字节，不能只看Git索引的LF：Windows Git启用`core.autocrlf`时会按归档内`.gitattributes`做导出转换。服务器Java目录统一以LF导出，归档回归测试覆盖所有deploy子目录shell（含edge和monitoring），见[BUG-249]。失败作业和归档保留，重试使用新的job和STATE，不复用已完成的job目录。
+
 | 阶段 | 源码版本/清单 | 数据库期望 |
 | --- | --- | --- |
 | 装前原入口 | 保留的391源码/清单与d37112fd运行配置 | 0053；Java镜像d37112fd |

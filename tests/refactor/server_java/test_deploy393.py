@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tarfile
 
 import pytest
 
@@ -208,3 +209,24 @@ def test_failed_edge_internal_rollback_stops_without_retry(release):
     lines = release["order"].read_text(encoding="ascii").splitlines()
     assert "edge:rollback" not in lines
     assert "compose:up:d37112fd" not in lines
+
+
+def test_deploy393_git_archive_preserves_lf_with_windows_autocrlf(tmp_path):
+    archive = tmp_path / "deploy393.tar"
+    result = subprocess.run(
+        ["git", "-c", "core.autocrlf=true", "archive", "--format=tar", f"--output={archive}",
+         "HEAD", "refactor/server-java/deploy"],
+        cwd=ROOT, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    checked = set()
+    with tarfile.open(archive) as contents:
+        for member in contents:
+            if member.isfile() and member.name.endswith(".sh"):
+                with contents.extractfile(member) as script:
+                    for line in script:
+                        assert b"\r" not in line, member.name
+                checked.add(member.name)
+    for required in ("edge/install-edge-logging393.sh", "edge/rotate-edge-access393.sh",
+                     "monitoring/healthchecks-send.sh"):
+        assert "refactor/server-java/deploy/" + required in checked
