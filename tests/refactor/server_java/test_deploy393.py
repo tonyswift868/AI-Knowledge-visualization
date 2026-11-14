@@ -85,6 +85,7 @@ def release(tmp_path: Path):
     write_script(
         candidate_deploy / "edge/install-edge-logging393.sh",
         "#!/bin/sh\nset -eu\naction=$1\nprintf 'edge:%s\\n' \"$action\" >> \"$FAKE_ORDER\"\n"
+        "if [ \"$action\" = check ]; then exit \"${FAIL_EDGE_CHECK:-0}\"; fi\n"
         "if [ \"$action\" = install ]; then\n"
         "  cp \"$2\" \"$3\"\n  printf 'new-edge\\n' > \"$FAKE_EDGE_STATE\"\n"
         "  if [ \"${FAIL_EDGE_INTERNAL_ROLLBACK:-0}\" = 1 ]; then touch \"$3.rollback-failed\"; exit 70; fi\n"
@@ -151,11 +152,12 @@ def release(tmp_path: Path):
     }
 
 
-def run_deploy(release, *, fail_edge: bool = False, fail_edge_rollback: bool = False, fail_edge_internal_rollback: bool = False):
+def run_deploy(release, *, fail_edge: bool = False, fail_edge_rollback: bool = False, fail_edge_internal_rollback: bool = False, fail_edge_check: bool = False):
     env = release["env"].copy()
     env["FAIL_EDGE_INSTALL"] = "1" if fail_edge else "0"
     env["FAIL_EDGE_ROLLBACK"] = "1" if fail_edge_rollback else "0"
     env["FAIL_EDGE_INTERNAL_ROLLBACK"] = "1" if fail_edge_internal_rollback else "0"
+    env["FAIL_EDGE_CHECK"] = "1" if fail_edge_check else "0"
     return subprocess.run(
         [str(BASH), "-c", 'sh "$1"', "_", posix(release["candidate_deploy"] / "deploy393.sh")],
         env=env,
@@ -170,7 +172,7 @@ def test_deploy393_order_and_boundary_without_database_calls(release):
     assert result.returncode == 0, result.stderr
     lines = release["order"].read_text(encoding="ascii").splitlines()
     expected = [
-        "online_preflight", "candidate_preflight", "build:393", "docker_run_jvm", "compose:config:393",
+        "online_preflight", "candidate_preflight", "edge:check", "build:393", "docker_run_jvm", "compose:config:393",
         "compose:up:393", "health_live", "health_startup", "health_ready",
         "account_page", "edge:install", "candidate_final_preflight",
     ]
@@ -230,3 +232,22 @@ def test_deploy393_git_archive_preserves_lf_with_windows_autocrlf(tmp_path):
     for required in ("edge/install-edge-logging393.sh", "edge/rotate-edge-access393.sh",
                      "monitoring/healthchecks-send.sh"):
         assert "refactor/server-java/deploy/" + required in checked
+
+
+def test_edge_check_failure_does_not_build_or_switch_java(release):
+    result = run_deploy(release, fail_edge_check=True)
+    assert result.returncode == 1
+    lines = release["order"].read_text(encoding="ascii").splitlines()
+    assert "edge:check" in lines
+    assert not any(line.startswith(("build:", "compose:up:", "edge:install")) for line in lines)
+    assert release["image"].read_text(encoding="ascii") == "mentorflow-java-server:d37112fd\n"
+    assert release["heartbeat"].read_text(encoding="ascii") == "old-heartbeat\n"
+
+
+def test_deploy393_keeps_identical_heartbeat_without_replacing(release):
+    release["heartbeat"].write_text("new-heartbeat\n", encoding="ascii")
+    before = release["heartbeat"].stat().st_mtime_ns
+    result = run_deploy(release)
+    assert result.returncode == 0, result.stderr
+    assert release["heartbeat"].stat().st_mtime_ns == before
+    assert not (release["tmp"] / "state/heartbeat-replace-attempted").exists()

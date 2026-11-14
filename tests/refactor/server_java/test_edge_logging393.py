@@ -17,6 +17,12 @@ def posix(path: Path) -> str:
     return "/" + value[0].lower() + value[2:] if len(value) >= 2 and value[1] == ":" else value
 
 
+def add_fake_stat(bin_dir: Path) -> None:
+    fake_stat = bin_dir / "stat"
+    fake_stat.write_text("#!/bin/sh\nprintf '101 101\\n'\n", encoding="ascii", newline="\n")
+    fake_stat.chmod(0o755)
+
+
 def config() -> str:
     return """events { worker_connections 64; }
 http {
@@ -47,7 +53,7 @@ def test_assembler_only_enables_the_two_requested_vhosts(tmp_path):
         check=True,
     )
     assert result.stdout.count("log_format mentorflow_edge") == 1
-    assert result.stdout.count("access_log /var/log/nginx/mentorflow-access.log mentorflow_edge;") == 2
+    assert result.stdout.count("access_log /tmp/mentorflow-access393.log mentorflow_edge;") == 2
     assert result.stdout.count("access_log off;") == 2
     assert "$time_iso8601\\t$server_name\\t$status" in result.stdout
     assert "remote_addr" not in result.stdout
@@ -69,8 +75,9 @@ def test_assembler_rejects_missing_or_ambiguous_target(tmp_path):
 def test_install_and_rollback_keep_the_config_path_and_restore_content(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
+    add_fake_stat(bin_dir)
     proc = tmp_path / "proc"
-    log_file = proc / "4321" / "root" / "var" / "log" / "nginx" / "mentorflow-access.log"
+    log_file = proc / "4321" / "root" / "tmp" / "mentorflow-access393.log"
     log_file.parent.mkdir(parents=True)
     log_file.touch()
     docker = bin_dir / "docker"
@@ -99,8 +106,10 @@ def test_install_and_rollback_keep_the_config_path_and_restore_content(tmp_path)
         {
             "PATH": posix(bin_dir) + ":" + env["PATH"],
             "DOCKER_BIN": posix(docker),
+            "STAT_BIN": posix(bin_dir / "stat"),
             "PROC_ROOT": posix(proc),
             "ROTATE_TMPDIR": posix(rotate_tmp),
+            "EDGE_TMPDIR": posix(rotate_tmp),
             "FAKE_ROTATE_CAPTURE": posix(tmp_path / "rotate.conf.capture"),
             "FAKE_DOCKER_LOG": posix(tmp_path / "docker.log"),
             "CRON_FILE": posix(cron),
@@ -111,11 +120,13 @@ def test_install_and_rollback_keep_the_config_path_and_restore_content(tmp_path)
     install = subprocess.run([str(BASH), "-c", 'sh "$1" install "$2" "$3"', "_", posix(installer), posix(conf), posix(backup)], env=env, capture_output=True, text=True)
     assert install.returncode == 0, install.stderr
     assert conf.stat().st_ino == before_inode
-    assert conf.read_text(encoding="utf-8").count("access_log /var/log/nginx/mentorflow-access.log mentorflow_edge;") == 2
+    assert conf.read_text(encoding="utf-8").count("access_log /tmp/mentorflow-access393.log mentorflow_edge;") == 2
     rotation_text = (tmp_path / "rotate.conf.capture").read_text(encoding="utf-8")
-    assert "/proc/4321/root/var/log/nginx/mentorflow-access.log" in rotation_text
+    assert "/proc/4321/root/tmp/mentorflow-access393.log" in rotation_text
     assert "size 1M" in rotation_text
     assert "rotate 7" in rotation_text
+    assert "su root root" in rotation_text
+    assert "exec -u 101:101 mentorflow-e1-preview-edge-1 nginx -s reopen" in rotation_text
     assert "nginx -s reopen" in rotation_text
     assert "* * * * *" in cron.read_text(encoding="utf-8")
     assert "rotate-edge-access393.sh rotate" in cron.read_text(encoding="utf-8")
@@ -126,20 +137,21 @@ def test_install_and_rollback_keep_the_config_path_and_restore_content(tmp_path)
     assert conf.read_text(encoding="utf-8") == original
     assert not cron.exists()
     commands = (tmp_path / "docker.log").read_text(encoding="ascii")
-    assert "exec mentorflow-e1-preview-edge-1 nginx -t" in commands
-    assert "exec mentorflow-e1-preview-edge-1 nginx -s reload" in commands
+    assert "exec -u 101:101 mentorflow-e1-preview-edge-1 nginx -t" in commands
+    assert "exec -u 101:101 mentorflow-e1-preview-edge-1 nginx -s reload" in commands
 
 
 def test_failed_nginx_check_restores_original_and_removes_partial_rotation(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
+    add_fake_stat(bin_dir)
     proc = tmp_path / "proc"
-    log_file = proc / "4321" / "root" / "var" / "log" / "nginx" / "mentorflow-access.log"
+    log_file = proc / "4321" / "root" / "tmp" / "mentorflow-access393.log"
     log_file.parent.mkdir(parents=True)
     log_file.touch()
     docker = bin_dir / "docker"
     docker.write_text(
-        '#!/bin/sh\nif [ "$1" = inspect ]; then printf "4321\\n"; else printf "%s\\n" "$*" >> "$FAKE_DOCKER_LOG"; if [ "$*" = "exec mentorflow-e1-preview-edge-1 nginx -t" ] && [ ! -e "$FAKE_FAIL_MARKER" ]; then touch "$FAKE_FAIL_MARKER"; exit 1; fi; fi\n',
+        '#!/bin/sh\nif [ "$1" = inspect ]; then printf "4321\\n"; else printf "%s\\n" "$*" >> "$FAKE_DOCKER_LOG"; if [ "$*" = "exec -u 101:101 mentorflow-e1-preview-edge-1 nginx -t" ] && [ ! -e "$FAKE_FAIL_MARKER" ]; then touch "$FAKE_FAIL_MARKER"; exit 1; fi; fi\n',
         encoding="ascii",
         newline="\n",
     )
@@ -163,8 +175,10 @@ def test_failed_nginx_check_restores_original_and_removes_partial_rotation(tmp_p
         {
             "PATH": posix(bin_dir) + ":" + env["PATH"],
             "DOCKER_BIN": posix(docker),
+            "STAT_BIN": posix(bin_dir / "stat"),
             "PROC_ROOT": posix(proc),
             "ROTATE_TMPDIR": posix(rotate_tmp),
+            "EDGE_TMPDIR": posix(rotate_tmp),
             "FAKE_DOCKER_LOG": posix(tmp_path / "docker.log"),
             "FAKE_FAIL_MARKER": posix(tmp_path / "failed-once"),
             "CRON_FILE": posix(cron_dir / "edge393"),
@@ -179,19 +193,20 @@ def test_failed_nginx_check_restores_original_and_removes_partial_rotation(tmp_p
     assert not (cron_dir / "edge393").exists()
     assert backup.read_text(encoding="utf-8") == original
     commands = (tmp_path / "docker.log").read_text(encoding="ascii")
-    assert "exec mentorflow-e1-preview-edge-1 nginx -s reload" in commands
+    assert "exec -u 101:101 mentorflow-e1-preview-edge-1 nginx -s reload" in commands
 
 
 def test_restore_reload_failure_keeps_backup_and_marks_edge_rollback_failure(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
+    add_fake_stat(bin_dir)
     proc = tmp_path / "proc"
-    log_file = proc / "4321" / "root" / "var" / "log" / "nginx" / "mentorflow-access.log"
+    log_file = proc / "4321" / "root" / "tmp" / "mentorflow-access393.log"
     log_file.parent.mkdir(parents=True)
     log_file.touch()
     docker = bin_dir / "docker"
     docker.write_text(
-        '#!/bin/sh\nif [ "$1" = inspect ]; then printf "4321\\n"; else printf "%s\\n" "$*" >> "$FAKE_DOCKER_LOG"; if [ "$*" = "exec mentorflow-e1-preview-edge-1 nginx -s reload" ]; then exit 1; fi; fi\n',
+        '#!/bin/sh\nif [ "$1" = inspect ]; then printf "4321\\n"; else printf "%s\\n" "$*" >> "$FAKE_DOCKER_LOG"; if [ "$*" = "exec -u 101:101 mentorflow-e1-preview-edge-1 nginx -s reload" ]; then exit 1; fi; fi\n',
         encoding="ascii",
         newline="\n",
     )
@@ -216,8 +231,10 @@ def test_restore_reload_failure_keeps_backup_and_marks_edge_rollback_failure(tmp
         {
             "PATH": posix(bin_dir) + ":" + env["PATH"],
             "DOCKER_BIN": posix(docker),
+            "STAT_BIN": posix(bin_dir / "stat"),
             "PROC_ROOT": posix(proc),
             "ROTATE_TMPDIR": posix(rotate_tmp),
+            "EDGE_TMPDIR": posix(rotate_tmp),
             "FAKE_DOCKER_LOG": posix(tmp_path / "docker.log"),
             "CRON_FILE": posix(cron_dir / "edge393"),
         }
@@ -235,11 +252,12 @@ def test_restore_reload_failure_keeps_backup_and_marks_edge_rollback_failure(tmp
 def test_rotation_helper_resolves_container_pid_each_run(tmp_path):
     proc = tmp_path / "proc"
     for pid in ("4321", "9876"):
-        log_file = proc / pid / "root" / "var" / "log" / "nginx" / "mentorflow-access.log"
+        log_file = proc / pid / "root" / "tmp" / "mentorflow-access393.log"
         log_file.parent.mkdir(parents=True)
         log_file.touch()
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
+    add_fake_stat(bin_dir)
     docker = bin_dir / "docker"
     docker.write_text(
         '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FAKE_DOCKER_LOG"\nif [ "$1" = inspect ]; then if [ -e "$FAKE_PID_CHANGED" ]; then printf "9876\\n"; else touch "$FAKE_PID_CHANGED"; printf "4321\\n"; fi; else exit 9; fi\n',
@@ -261,9 +279,11 @@ def test_rotation_helper_resolves_container_pid_each_run(tmp_path):
     env.update(
         {
             "DOCKER_BIN": posix(docker),
+            "STAT_BIN": posix(bin_dir / "stat"),
             "LOGROTATE_BIN": posix(logrotate),
             "PROC_ROOT": posix(proc),
             "ROTATE_TMPDIR": posix(rotate_tmp),
+            "EDGE_TMPDIR": posix(rotate_tmp),
             "LOGROTATE_STATUS": posix(tmp_path / "status"),
             "FAKE_PID_CHANGED": posix(tmp_path / "pid-changed"),
             "FAKE_ROTATE_CAPTURE": posix(capture),
@@ -275,9 +295,71 @@ def test_rotation_helper_resolves_container_pid_each_run(tmp_path):
         result = subprocess.run([str(BASH), "-c", 'sh "$1" rotate', "_", posix(helper)], env=env, capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
     configs = capture.read_text(encoding="utf-8")
-    assert "/proc/4321/root/var/log/nginx/mentorflow-access.log" in configs
-    assert "/proc/9876/root/var/log/nginx/mentorflow-access.log" in configs
+    assert "/proc/4321/root/tmp/mentorflow-access393.log" in configs
+    assert "/proc/9876/root/tmp/mentorflow-access393.log" in configs
     docker_calls = (tmp_path / "docker.log").read_text(encoding="ascii").splitlines()
     assert len(docker_calls) == 2
     assert all(".State.Pid" in call for call in docker_calls)
     assert all("GraphDriver" not in call for call in docker_calls)
+
+
+def test_check_action_validates_candidate_without_deploy_side_effects(tmp_path):
+    proc = tmp_path / "proc"
+    log_file = proc / "4321" / "root" / "tmp" / "mentorflow-access393.log"
+    log_file.parent.mkdir(parents=True)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    add_fake_stat(bin_dir)
+    docker = bin_dir / "docker"
+    docker.write_text(
+        '#!/bin/sh\nif [ "$1" = inspect ]; then printf "4321\\n"; else printf "%s\\n" "$*" >> "$FAKE_DOCKER_LOG"; case "$*" in *"nginx -t -p /etc/nginx -c /tmp/mentorflow-access393-check/nginx.conf.check"*) : > "$FAKE_LOG_FILE" ;; esac; fi\n',
+        encoding="ascii",
+        newline="\n",
+    )
+    docker.chmod(0o755)
+    logrotate = bin_dir / "logrotate"
+    logrotate.write_text("#!/bin/sh\nfor arg do config=$arg; done\ncat \"$config\" >> \"$FAKE_ROTATE_CAPTURE\"\n", encoding="ascii", newline="\n")
+    logrotate.chmod(0o755)
+    python = bin_dir / "python3"
+    python.write_text("#!/bin/sh\nexec /d/MentorFlow/.venv/Scripts/python.exe \"$@\"\n", encoding="ascii", newline="\n")
+    python.chmod(0o755)
+    conf = tmp_path / "edge.conf"
+    original = config()
+    conf.write_text(original, encoding="utf-8", newline="\n")
+    before_inode = conf.stat().st_ino
+    backup = tmp_path / "edge.conf.before"
+    cron = tmp_path / "cron.d" / "edge393"
+    cron.parent.mkdir()
+    rotate_tmp = tmp_path / "run"
+    rotate_tmp.mkdir()
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": posix(bin_dir) + ":" + env["PATH"],
+            "DOCKER_BIN": posix(docker),
+            "STAT_BIN": posix(bin_dir / "stat"),
+            "PROC_ROOT": posix(proc),
+            "ROTATE_TMPDIR": posix(rotate_tmp),
+            "EDGE_TMPDIR": posix(rotate_tmp),
+            "FAKE_DOCKER_LOG": posix(tmp_path / "docker.log"),
+            "FAKE_LOG_FILE": posix(log_file),
+            "FAKE_ROTATE_CAPTURE": posix(tmp_path / "rotate.conf.capture"),
+            "CRON_FILE": posix(cron),
+        }
+    )
+    installer = EDGE / "install-edge-logging393.sh"
+    result = subprocess.run([str(BASH), "-c", 'sh "$1" check "$2"', "_", posix(installer), posix(conf)], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert conf.stat().st_ino == before_inode
+    assert conf.read_text(encoding="utf-8") == original
+    assert not backup.exists()
+    assert not cron.exists()
+    assert log_file.exists() and log_file.stat().st_size == 0
+    commands = (tmp_path / "docker.log").read_text(encoding="ascii")
+    assert "nginx -t -p /etc/nginx -c /tmp/mentorflow-access393-check/nginx.conf.check" in commands
+    assert "nginx -s reload" not in commands
+    assert "rm -f '/tmp/mentorflow-access393-check/nginx.conf.check'" in commands
+    assert ": >> \"$file\"" in commands
+    assert "exec -u 101:101 mentorflow-e1-preview-edge-1 nginx -t -p /etc/nginx" in commands
+    assert "chmod 0700" in commands and "chmod 0600" in commands and "chmod 0640" in commands
+    assert "size 1M" in (tmp_path / "rotate.conf.capture").read_text(encoding="utf-8")

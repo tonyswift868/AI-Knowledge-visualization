@@ -2,14 +2,16 @@
 
 ## 393 edge 访问日志
 
-`install-edge-logging393.sh install EDGE_CONF BACKUP` 只编辑现有 edge nginx 配置文件，保留其 inode；安装前保留备份，`nginx -t` 通过后平滑 reload。回退运行 `install-edge-logging393.sh rollback EDGE_CONF BACKUP`，恢复备份、验证并 reload。脚本不重建 edge 容器。
+上线前可运行 `sh edge/install-edge-logging393.sh check /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf`。它验证真实日志文件的可写性、动态PID轮转配置，并将完整候选配置临时放进容器 `/tmp` 后执行 `nginx -t -p /etc/nginx -c ...`；不改挂载配置、不reload、不装cron、不建备份。会留下允许保留的空访问日志文件。
 
-两个域名写入容器 `/var/log/nginx/mentorflow-access.log`，每行仅含 ISO 时间、nginx 配置域名、状态码。现有宿主 cron 每分钟调用 `rotate-edge-access393.sh`；脚本每次从 Docker inspect 读取当前容器 PID，经 `/proc/<pid>/root/` 找到该容器内的日志，再调用现有 logrotate。每个日志超过 1 MiB 时轮转并保留 7 个归档；这不是文件系统硬配额，单次高流量突发可在下一次检查前超过阈值。Docker stdout 没有大小上限，因此访问日志不写 stdout。容器重建会丢弃旧容器写层内的历史日志；当前 bind 配置和 cron 保留，轮转脚本会自动跟随同名容器的新 PID。
+`install-edge-logging393.sh install EDGE_CONF BACKUP` 会先复用上述检查，再编辑现有 edge nginx 配置文件，保留其 inode；安装前保留备份，`nginx -t` 通过后平滑 reload。回退运行 `install-edge-logging393.sh rollback EDGE_CONF BACKUP`，恢复备份、验证并 reload。脚本不重建 edge 容器。
+
+两个域名写入容器 `/tmp/mentorflow-access393.log`，每行仅含 ISO 时间、nginx 配置域名、状态码。现有宿主 cron 每分钟调用 `rotate-edge-access393.sh`；脚本每次从 Docker inspect 读取当前容器 PID，经 `/proc/<pid>/root/tmp/` 找到该容器内的日志，再调用现有 logrotate。现网 nginx master 的 UID/GID 为 101:101，nginx 自己创建日志；轮转读取当前日志 owner，使用 `su root root` 处理 sticky `/tmp` 目录，并以原 UID/GID 创建新日志。日志位于容器已有的 64 MiB tmpfs（与其他 `/tmp` 内容共享硬上限）；单个日志超过 1 MiB 时轮转并保留 7 个归档。阈值不是文件系统硬配额，单次高流量突发可在下一次检查前超过阈值。Docker stdout 没有大小上限，因此访问日志不写 stdout。容器重启或重建会清空 tmpfs 历史，nginx master重新启动后会创建当前日志；单独 reload nginx不会清空tmpfs。轮转脚本按当前容器 PID 自动跟随。
 
 只读按小时、域名和状态码计数（小时按 nginx 时间戳显示的时区分组）：
 
 ```sh
-docker exec mentorflow-e1-preview-edge-1 awk -F '\t' '{hour=substr($1,1,13); count[$2,$3,hour]++} END {for (key in count) {split(key, fields, SUBSEP); printf "%s\t%s\t%s\t%d\n", fields[1], fields[2], fields[3], count[key]}}' /var/log/nginx/mentorflow-access.log | sort
+docker exec mentorflow-e1-preview-edge-1 awk -F '\t' '{hour=substr($1,1,13); count[$2,$3,hour]++} END {for (key in count) {split(key, fields, SUBSEP); printf "%s\t%s\t%s\t%d\n", fields[1], fields[2], fields[3], count[key]}}' /tmp/mentorflow-access393.log | sort
 ```
 
 **每次上线的第一步必须运行 `sudo -n sh preflight.sh`（已在root shell时用 `sh preflight.sh`），所有项目 OK、退出码 0 后才能备份、迁移、构建或重建容器。** FAIL 先核实原因；不在上线中途临时改配置或猜卷名。只读检查不等于获准部署。

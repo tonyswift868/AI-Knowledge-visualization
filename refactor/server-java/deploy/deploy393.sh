@@ -20,7 +20,7 @@ image=mentorflow-java-server:393
 test ! -e "$state"
 test -s "$manifest" && test -s "$heartbeat"
 for file in .env .java.env compose.generated.yml; do test -s "$online_deploy/$file"; done
-for command in "$docker_bin" "$curl_bin" awk sh install; do command -v "$command" >/dev/null 2>&1; done
+for command in "$docker_bin" "$curl_bin" awk sh install cmp; do command -v "$command" >/dev/null 2>&1; done
 
 # The existing no-argument entry checks the current deployment independently.
 env -i PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}" sh "$online_preflight"
@@ -59,6 +59,9 @@ rollback_on_failure() {
 trap rollback_on_failure 0
 trap 'exit 130' HUP INT TERM
 
+# Check the real edge filesystem, rotation and nginx candidate before Java work.
+DOCKER_BIN="$docker_bin" sh "$deploy_dir/edge/install-edge-logging393.sh" check "$edge_conf" "$state/edge.conf.before"
+
 # Reuse the existing runtime inputs as bytes, without printing their values.
 cp -p "$online_deploy/.java.env" "$deploy_dir/.java.env"
 cp -p "$online_deploy/compose.generated.yml" "$deploy_dir/compose.generated.yml"
@@ -96,9 +99,11 @@ if [ "$page_code" != 200 ]; then
   page_code=$("$curl_bin" -sS --max-time 35 -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/admin/accounts) || page_code=000
 fi
 test "$page_code" = 200
-touch "$state/heartbeat-replace-attempted"
-install -m 755 "$deploy_dir/monitoring/healthchecks-send.sh" "$heartbeat.393-new"
-mv "$heartbeat.393-new" "$heartbeat"
+if ! cmp -s "$deploy_dir/monitoring/healthchecks-send.sh" "$heartbeat"; then
+  touch "$state/heartbeat-replace-attempted"
+  install -m 755 "$deploy_dir/monitoring/healthchecks-send.sh" "$heartbeat.393-new"
+  mv "$heartbeat.393-new" "$heartbeat"
+fi
 touch "$state/edge-install-attempted"
 DOCKER_BIN="$docker_bin" sh "$deploy_dir/edge/install-edge-logging393.sh" install "$edge_conf" "$state/edge.conf.before"
 test "$("$docker_bin" inspect --format '{{.Config.Image}}' "$java_container")" = "$image"
