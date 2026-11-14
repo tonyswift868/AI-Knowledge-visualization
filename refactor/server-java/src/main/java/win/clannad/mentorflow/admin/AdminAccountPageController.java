@@ -44,16 +44,16 @@ public final class AdminAccountPageController {
                 .append("main{max-width:1280px;margin:0 auto;padding:28px 20px}h1{font-size:25px;margin:0 0 22px}")
                 .append("h2{font-size:16px;margin:0 0 12px}.totals{background:#fff;border:1px solid #dce2e9;border-radius:10px;padding:18px;margin-bottom:24px}")
                 .append("dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 18px;margin:0}")
-                .append("dt{color:#5d6877;font-size:13px}dd{margin:2px 0 0;font-size:20px;font-variant-numeric:tabular-nums}")
+                .append(".total{min-width:0}dt{color:#5d6877;font-size:13px}dd{margin:2px 0 0;font-size:20px;font-variant-numeric:tabular-nums}")
                 .append(".table-scroll{overflow-x:auto;background:#fff;border:1px solid #dce2e9;border-radius:10px}")
                 .append("table{border-collapse:collapse;min-width:900px;width:100%;white-space:nowrap}th,td{padding:11px 14px;border-bottom:1px solid #e7ebf0;text-align:left}")
                 .append("th{background:#f8fafc;color:#495566;font-size:13px;font-weight:600}tbody tr:last-child td{border-bottom:0}")
                 .append("th:nth-child(n+4),td:nth-child(n+4){text-align:right;font-variant-numeric:tabular-nums}</style></head>")
                 .append("<body><main><h1>MentorFlow 账号</h1><section class=\"totals\"><h2>账号总数</h2><dl>");
         for (var counter : COUNTERS.entrySet()) {
-            html.append("<dt>").append(escape(counter.getValue())).append("</dt>")
+            html.append("<div class=\"total\"><dt>").append(escape(counter.getValue())).append("</dt>")
                     .append("<dd data-counter=\"").append(escape(counter.getKey())).append("\">")
-                    .append(escape(display(totals.get(counter.getKey())))).append("</dd>");
+                    .append(escape(display(totals.get(counter.getKey())))).append("</dd></div>");
         }
         html.append("</dl></section><h2>账号</h2><div class=\"table-scroll\"><table id=\"accounts\"><thead><tr>")
                 .append("<th>账号</th><th>注册时间（日本时间）</th><th>最近同步日（UTC）</th>")

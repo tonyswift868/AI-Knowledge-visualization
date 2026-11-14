@@ -4,12 +4,12 @@
 set -u
 
 docker_bin=${DOCKER_BIN:-docker}
-release_root=${RELEASE_ROOT:-/opt/mentorflow/releases/java-391}
-deploy_dir=${DEPLOY_DIR:-/opt/mentorflow/releases/java-d37112fd/refactor/server-java/deploy}
+release_root=${RELEASE_ROOT:-/opt/mentorflow/releases/java-393}
+deploy_dir=${DEPLOY_DIR:-/opt/mentorflow/releases/java-393/refactor/server-java/deploy}
 server_root=${SERVER_ROOT:-$release_root/refactor/server}
 backend_env=${BACKEND_ENV:-/opt/mentorflow/state/mentorflow-e1-preview/account-core-21337c1/runtime.env}
 network45_override=${NETWORK45_OVERRIDE:-/opt/mentorflow/state/bug45-20261010/network45.override.yml}
-source_manifest=${SOURCE_SHA256_MANIFEST:-/opt/mentorflow/state/release391/source.sha256}
+source_manifest=${SOURCE_SHA256_MANIFEST:-/opt/mentorflow/state/release393/source.sha256}
 java_container=${JAVA_CONTAINER:-mentorflow-java-backend}
 java_oidc_container=${JAVA_OIDC_CONTAINER:-mentorflow-java-oidc}
 python_container=${PYTHON_CONTAINER:-mentorflow-e1-preview-backend-1}
@@ -18,7 +18,7 @@ edge_container=${EDGE_CONTAINER:-mentorflow-e1-preview-edge-1}
 edge_conf_path=${EDGE_CONF_PATH:-/opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf}
 postgres_container=${POSTGRES_CONTAINER:-mentorflow-e1-preview-postgres-1}
 project=${COMPOSE_PROJECT:-mentorflow-e1-preview}
-java_image=${JAVA_IMAGE:-mentorflow-java-server:d37112fd}
+java_image=${JAVA_IMAGE:-mentorflow-java-server:393}
 python_image=${PYTHON_IMAGE:-mentorflow-slim-backend:269-python-fallback}
 migration_image=${MIGRATION_IMAGE:-mentorflow-slim-backend:269-python-fallback}
 migration_tool_image=${MIGRATION_TOOL_IMAGE:-mentorflow-migration-tool:MF-275}
@@ -100,6 +100,13 @@ refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPage
 refactor/server-java/deploy/deploy388.sh
 refactor/server-java/deploy/deploy391.sh
 refactor/server-java/deploy/rollback391.sh
+refactor/server-java/deploy/deploy393.sh
+refactor/server-java/deploy/rollback393.sh
+refactor/server-java/deploy/monitoring/healthchecks-send.sh
+refactor/server-java/deploy/edge/edge-logging393.conf
+refactor/server-java/deploy/edge/edge-config393.py
+refactor/server-java/deploy/edge/install-edge-logging393.sh
+refactor/server-java/deploy/edge/rotate-edge-access393.sh
 refactor/server-java/deploy/account-page-proxy.sh
 refactor/server-java/deploy/account-page-proxy.socket
 refactor/server-java/deploy/account-page-proxy.service.in

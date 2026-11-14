@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import os
+from html.parser import HTMLParser
 from pathlib import Path
-import re
 import shutil
 import socket
 import subprocess
@@ -14,8 +14,63 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[3]
-SCRATCH = Path(r"D:\MentorFlow\.local\test-tmp\388-MF01")
+SCRATCH = Path(os.environ.get("MF393_SCRATCH", r"D:\MentorFlow\.local\test-tmp\388-MF01"))
 BUILD = SCRATCH / "build"
+
+
+class _TotalsParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.stack = []
+        self.div_id = 0
+        self.dt_divs = []
+        self.counter_divs = []
+        self.counters = []
+        self.cells = {}
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        div_id = self.div_id if tag == "div" else None
+        if tag == "div":
+            self.div_id += 1
+            if "total" in attrs.get("class", "").split():
+                self.cells[div_id] = {"dt": 0, "dd": 0}
+        if tag == "dt":
+            self.dt_divs.append(self.stack[-1][1] if self.stack else None)
+            if self.dt_divs[-1] in self.cells:
+                self.cells[self.dt_divs[-1]]["dt"] += 1
+        if tag == "dd" and "data-counter" in attrs:
+            self.counters.append(attrs["data-counter"])
+            self.counter_divs.append(self.stack[-1][1] if self.stack else None)
+            if self.counter_divs[-1] in self.cells:
+                self.cells[self.counter_divs[-1]]["dd"] += 1
+        if tag not in {"meta", "link", "img", "input", "br", "hr"}:
+            self.stack.append((tag, div_id))
+
+    def handle_endtag(self, tag):
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index][0] == tag:
+                del self.stack[index:]
+                return
+
+    def assert_cells(self, expected):
+        assert self.counters == expected
+        assert len(self.cells) == len(expected)
+        assert self.dt_divs == self.counter_divs
+        assert set(self.counter_divs) == set(self.cells)
+        assert all(counts == {"dt": 1, "dd": 1} for counts in self.cells.values())
+
+
+def test_admin_totals393_rejects_multiple_pairs_in_one_grid_cell():
+    pairs = '<dt>A</dt><dd data-counter="a">1</dd><dt>B</dt><dd data-counter="b">2</dd>'
+    invalid = _TotalsParser()
+    invalid.feed('<dl><div class="total">' + pairs + '</div></dl>')
+    with pytest.raises(AssertionError):
+        invalid.assert_cells(["a", "b"])
+    valid = _TotalsParser()
+    valid.feed('<dl><div class="total"><dt>A</dt><dd data-counter="a">1</dd></div>'
+               '<div class="total"><dt>B</dt><dd data-counter="b">2</dd></div></dl>')
+    valid.assert_cells(["a", "b"])
 
 
 def _free_port() -> int:
@@ -35,8 +90,9 @@ def _java_home() -> Path | None:
 def test_admin_account_page388_masking_and_separate_http_port():
     java_home = _java_home()
     jar = BUILD / "mentorflow-server-0.1.0.jar"
-    if java_home is None or not (java_home / "bin" / "java.exe").is_file() or not jar.is_file():
-        pytest.skip("the task Java build must run before the HTTP contract")
+    if java_home is None or not (java_home / "bin" / "java.exe").is_file():
+        pytest.skip("portable Java 21 toolchain is not prepared")
+    assert jar.is_file(), f"task-local Java build is missing: {jar}; build the 393 artifact first"
     classpath = os.pathsep.join((str(BUILD / "classes"), str(BUILD / "test-classes"),
                                  (SCRATCH / "test-classpath.txt").read_text(encoding="utf-8").strip()))
     subprocess.run([str(java_home / "bin" / "java.exe"), "-cp", classpath,
@@ -93,13 +149,15 @@ def test_admin_account_page388_masking_and_separate_http_port():
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
         assert "<title>MentorFlow 账号</title>" in response.text
-        counters = set(re.findall(r'data-counter="([a-z0-9_]+)"', response.text))
-        assert counters == {
+        totals = _TotalsParser()
+        totals.feed(response.text)
+        expected = [
             "registered_human_users", "registrations_today", "registrations_7d", "registrations_30d",
             "enabled_users", "disabled_users", "email_verified_users", "email_unverified_users",
             "required_action_users", "backend_account_count", "workspace_member_count",
             "identity_account_mismatch_count",
-        }
+        ]
+        totals.assert_cells(expected)
         assert "overview.collect()" in (
             ROOT / "refactor/server-java/src/main/java/win/clannad/mentorflow/admin/AdminAccountPageController.java"
         ).read_text(encoding="utf-8")
