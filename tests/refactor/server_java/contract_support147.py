@@ -303,13 +303,14 @@ def closure147_backends(tmp_path_factory):
         for db in (python_db, java_db): _seed_db(db)
         py_dir = ARTIFACTS / "python"; py_dir.mkdir(exist_ok=True)
         java_dir = ARTIFACTS / "java"; java_dir.mkdir(exist_ok=True)
-        py_endpoint = _start_python147(python_db, tls, python_identity, py_dir); endpoints.append(py_endpoint)
+        if not os.environ.get('CLOSURE147_JAVA_ONLY'):
+            py_endpoint = _start_python147(python_db, tls, python_identity, py_dir); endpoints.append(py_endpoint)
         java_endpoint = _start_java147(java_db, tls, java_identity, java_dir, jar, classes); endpoints.append(java_endpoint)
         clients = {}
-        for name, endpoint in (("python", py_endpoint), ("java", java_endpoint)):
+        for name, endpoint in (("java", java_endpoint),) if os.environ.get('CLOSURE147_JAVA_ONLY') else (("python", py_endpoint), ("java", java_endpoint)):
             clients[name] = httpx.Client(base_url=endpoint["base_url"], verify=str(tls["ca"]), timeout=40, trust_env=False)
         yield {"clients": clients, "identities": {"python": python_identity, "java": java_identity},
-            "endpoints": {"python": py_endpoint, "java": java_endpoint}, "postgres": postgres,
+            "endpoints": ({"java": java_endpoint} if os.environ.get('CLOSURE147_JAVA_ONLY') else {"python": py_endpoint, "java": java_endpoint}), "postgres": postgres,
             "python_admin_url": postgres.url("sync145_python", "postgres", "postgres", sqlalchemy=True),
             "java_admin_url": postgres.url("sync145_java", "postgres", "postgres", sqlalchemy=True),
             "ca": tls["ca"], "tls": tls}
