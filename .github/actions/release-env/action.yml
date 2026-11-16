@@ -4,6 +4,9 @@ inputs:
   installer-tools:
     description: Install compiler dependencies and Node (false needs only signature verification)
     default: 'true'
+  node-tools:
+    description: Install Node for full UI freeze jobs
+    default: 'true'
   requirements:
     description: Exact pinned Python dependencies
     default: scripts/release/requirements-installer.txt
@@ -16,7 +19,7 @@ runs:
         cache: pip
         cache-dependency-path: ${{ inputs.requirements }}
     - uses: actions/setup-node@v7
-      if: ${{ inputs.installer-tools == 'true' }}
+      if: ${{ inputs.installer-tools == 'true' && inputs.node-tools == 'true' }}
       with:
         node-version: '24.13.0'
         cache: npm

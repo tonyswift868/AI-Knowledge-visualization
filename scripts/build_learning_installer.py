@@ -19,9 +19,12 @@ import re
 import shutil
 import subprocess
 import sys
+import zipfile
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 EXCLUDES = ["backend", "desktop.main", "desktop.app", "desktop.login_gate",
             "desktop.test_device_profile", "scripts.test_storage_policy", "test_storage_policy",
             "refactor.learning.main_window", "pytest", "_pytest", "unittest", "torch", "transformers",
@@ -100,6 +103,111 @@ def preview_credential_hook(work, product):
     return [str(path)]
 
 
+def build_user_runtime(work, account_ca=None):
+    """Build the standalone UserRuntime onedir closure, without building App."""
+    work = Path(work).resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    icon = work / "MentorFlow.ico"
+    if not icon.exists():
+        from PIL import Image
+        source = ROOT / "refactor/desktop/resources/teacher2d/tsubaki-live2d/icon.png"
+        with Image.open(source) as image:
+            image.save(icon, sizes=[(16,16), (32,32), (48,48), (256,256)])
+    base = [sys.executable, "-B", "-m", "PyInstaller", "--noconfirm", "--onedir", "--windowed",
+            "--noupx", "--paths", ROOT, "--paths", work, "--hidden-import", "mentorflow_delivery_authority",
+            "--specpath", work, "--icon", icon]
+    runtime = base + ["--name", "UserRuntime", "--distpath", work / "runtime", "--workpath", work / "runtime-build"]
+    account_ca = Path(account_ca).resolve() if account_ca else ROOT / "refactor/desktop/resources/trust/account-api.pem"
+    if account_ca.is_file():
+        runtime += ["--add-data", str(account_ca) + ";refactor/desktop/resources/trust"]
+    for module in EXCLUDES + ["PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "numpy", "docling"]:
+        runtime += ["--exclude-module", module]
+    run(runtime + [ROOT / "refactor/desktop/delivery/per_user_install.py"], work,
+        work / "runtime-build.log")
+    return work / "runtime/UserRuntime"
+
+
+def package_bootstrap_core(runtime, work, output):
+    """Package an already-built UserRuntime onedir closure at a fixed ZIP root."""
+    runtime, work, output = Path(runtime).resolve(), Path(work).resolve(), Path(output).resolve()
+    exe = runtime / "UserRuntime.exe"
+    if not exe.is_file() or not (runtime / "_internal").is_dir():
+        raise ValueError("bootstrap core requires a complete PyInstaller UserRuntime onedir closure")
+    output.mkdir(parents=True, exist_ok=True)
+    artifact = output / "bootstrap-core.zip"
+    if artifact.exists():
+        raise ValueError("bootstrap core output already exists")
+    work.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(artifact, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        for source in sorted(runtime.rglob("*")):
+            if source.is_symlink():
+                raise ValueError("symlinks are not allowed in the bootstrap core closure")
+            if source.is_file():
+                archive.write(source, Path("UserRuntime") / source.relative_to(runtime))
+    return {"artifact": "bootstrap-core.zip", "path": str(artifact), "size": artifact.stat().st_size,
+            "sha256": digest(artifact), "exe_path": "UserRuntime/UserRuntime.exe"}
+
+
+def bootstrap_core(args):
+    """Build or package the core independently from the full App payload."""
+    product = validate_feed(args.feed, args.app_id)
+    key_id, public = read_key(args.public_key)
+    work = args.work.resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    if args.runtime:
+        runtime = args.runtime.resolve()
+    else:
+        authority = work / "mentorflow_delivery_authority.py"
+        authority.write_text(f"APP_ID={product.app_id!r}\nPUBLIC_KEYS={ {key_id: public}!r}\n"
+                             f"ONE_CLICK_TEST_FIXTURE={product.uat!r}\nRECOVERY_FEED_URL={args.feed!r}\n"
+                             f"RECOVERY_RELEASE_URL={args.feed!r}\n", encoding="utf-8")
+        runtime = build_user_runtime(work, getattr(args, "account_ca", None))
+    result = package_bootstrap_core(runtime, work, args.output)
+    print(json.dumps(result, ensure_ascii=False))
+    return result
+
+
+def bootstrap(args):
+    """Compile the small Inno shell bound to one immutable core ZIP digest."""
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", args.core_sha256):
+        raise ValueError("core_sha256 must be a fixed SHA-256 digest")
+    core_parts = urlsplit(args.core_url)
+    if (core_parts.scheme != "https" or not core_parts.hostname or core_parts.username or core_parts.password
+            or core_parts.query or core_parts.fragment or any(c in args.core_url for c in ('"', "'", "\r", "\n", "\\"))):
+        raise ValueError("bootstrap core URL must be an HTTPS literal")
+    if not re.fullmatch(r"\d+\.\d+\.\d+", args.version):
+        raise ValueError("numeric bootstrap version required")
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", args.app_id):
+        raise ValueError("invalid product AppId")
+    core_zip = args.core_zip.resolve()
+    if not core_zip.is_file() or digest(core_zip).lower() != args.core_sha256.lower():
+        raise ValueError("bootstrap core ZIP does not match the pinned SHA-256")
+    work, output = args.work.resolve(), args.output.resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    output.mkdir(parents=True, exist_ok=True)
+    if any(output.iterdir()):
+        raise ValueError("bootstrap output must be empty")
+    from PIL import Image
+    source = ROOT / "refactor/desktop/resources/teacher2d/tsubaki-live2d/icon.png"
+    with Image.open(source) as icon:
+        icon.save(work / "MentorFlow.ico", sizes=[(16,16), (32,32), (48,48), (256,256)])
+    shutil.copyfile(source, work / "MentorFlow.png")
+    (work / "shell.ini").write_text("[Shell]\nAppId=" + args.app_id +
+        "\nMode=per_user\nEngine=UserRuntime\nLauncher=Updater\\UserRuntime.exe launch\n", encoding="utf-16")
+    options = {"BootstrapVersion": args.version, "BootstrapCoreURL": args.core_url,
+               "BootstrapCoreSHA256": args.core_sha256.lower(), "ProductAppId": args.app_id,
+               "ShortcutName": "MentorFlow 预览版" if ".UAT." in args.app_id else "MentorFlow",
+               "RequiredBytes": 0, "BuildInput": work, "OutputDir": output}
+    run([args.compiler, "--no-ide-signtools", *[f"/D{k}={v}" for k, v in options.items()],
+         ROOT / "refactor/desktop/packaging/inno/Bootstrap.iss"], work, work / "bootstrap-inno.log")
+    files = [{"artifact": p.name, "path": str(p), "size": p.stat().st_size, "sha256": digest(p)}
+             for p in output.glob("*.exe")]
+    if len(files) != 1:
+        raise ValueError("Inno compiler did not produce exactly one bootstrap executable")
+    print(json.dumps(files[0], ensure_ascii=False))
+    return files[0]
+
+
 def freeze(args):
     product = validate_feed(args.feed, args.app_id)
     key_id, public = read_key(args.public_key)
@@ -149,14 +257,9 @@ def freeze(args):
     base = [sys.executable, "-B", "-m", "PyInstaller", "--noconfirm", "--onedir", "--windowed",
             "--noupx", "--paths", ROOT, "--paths", work, "--hidden-import", "mentorflow_delivery_authority",
             "--specpath", work, "--icon", work / "MentorFlow.ico"]
-    runtime = base + ["--name", "UserRuntime", "--distpath", work / "runtime", "--workpath", work / "runtime-build"]
-    # Recovery uses the same branded QtWidgets dialogs, independently of App.
-    # It still does not load the learning UI/WebEngine or model libraries.
-    for module in EXCLUDES + ["PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "numpy", "docling"]:
-        runtime += ["--exclude-module", module]
-    # The small recovery Updater does not import sqlite3 and does not collect
-    # its DLL. The locked replacement is applied to the App Analysis below.
-    run(runtime + [ROOT / "refactor/desktop/delivery/per_user_install.py"], work, work / "runtime-build.log")
+    # The recovery core shares the standalone builder used by the online stub;
+    # it does not load the learning UI/WebEngine or model libraries.
+    build_user_runtime(work, args.account_ca)
     from scripts.release.sqlite_runtime import SQLITE_DLL_SHA256, SQLITE_VERSION
     (work / 'sqlite-runtime.json').write_text(json.dumps(
         dict(version=SQLITE_VERSION, sha256=SQLITE_DLL_SHA256)), encoding='utf-8')
@@ -374,8 +477,19 @@ def main():
     p = sub.add_parser("installer")
     for name in ("payload", "release", "work", "output", "compiler"):
         p.add_argument("--" + name, type=Path, required=True)
+    p = sub.add_parser("bootstrap-core")
+    for name in ("work", "output", "compiler", "public-key"):
+        p.add_argument("--" + name, type=Path, required=True)
+    p.add_argument("--account-ca", type=Path, help="CA bundle used by the current HTTPTransport trust policy")
+    p.add_argument("--feed", required=True); p.add_argument("--app-id", default="MentorFlow")
+    p.add_argument("--runtime", type=Path, help="reuse an already-built complete UserRuntime closure")
+    p = sub.add_parser("bootstrap")
+    for name in ("core-zip", "work", "output", "compiler"):
+        p.add_argument("--" + name, type=Path, required=True)
+    p.add_argument("--core-url", required=True); p.add_argument("--core-sha256", required=True)
+    p.add_argument("--version", required=True); p.add_argument("--app-id", default="MentorFlow")
     args = parser.parse_args()
-    globals()[args.action](args)
+    globals()[args.action.replace("-", "_")](args)
 
 
 if __name__ == "__main__":

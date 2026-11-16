@@ -1,12 +1,9 @@
-name: Assemble, compile and publish one installer
-description: Shared by manual installer and publish workflows, without another workflow trigger
+name: Assemble, compile and publish one offline installer
+description: Manual offline package only; never changes the online bootstrap stub
 inputs:
   version:
     description: Signed release version
     required: true
-  latest:
-    description: Atomically replace latest/MentorFlow-Setup.exe with a verified hard link
-    default: 'false'
   ssh-key:
     description: Admin SSH key, never the release signing key
     required: true
@@ -18,9 +15,6 @@ runs:
       env:
         MF_SSH_KEY: ${{ inputs.ssh-key }}
         MF_VERSION: ${{ inputs.version }}
-        MF_LATEST: ${{ inputs.latest }}
       run: |
-        $argsList = @('scripts/release/pipeline.py', 'installer', '--version', $env:MF_VERSION, '--work', "$env:RUNNER_TEMP/installer")
-        if ($env:MF_LATEST -eq 'true') { $argsList += '--latest' }
-        python -B @argsList
+        python -B scripts/release/pipeline.py installer --version "$env:MF_VERSION" --work "$env:RUNNER_TEMP/installer"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

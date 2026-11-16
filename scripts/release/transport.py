@@ -30,6 +30,12 @@ class LocalServer:
         shutil.copyfile(source, target)
         return str(target)
 
+    def download(self, relative, target):
+        source = self.app / relative
+        target = Path(target); target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        return target
+
 
 class SSHServer:
     def __init__(self, work, *, identity=None):
@@ -77,6 +83,14 @@ class SSHServer:
         target = '/tmp/mf-release-' + uuid.uuid4().hex
         # -O uses legacy SCP and a POSIX remote basename; no Windows path goes to the remote shell.
         subprocess.run(['scp', '-O', *self.options, str(Path(source).resolve()), HOST + ':' + target], check=True)
+        return target
+
+    def download(self, relative, target):
+        if not relative.startswith('releases/bootstrap/') or '..' in Path(relative).parts:
+            raise ValueError('refusing unexpected bootstrap download path')
+        target = Path(target); target.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(['scp', '-O', *self.options, HOST + ':/opt/mentorflow/update-static/e108/app/' + relative,
+                        str(target.resolve())], check=True)
         return target
 
 

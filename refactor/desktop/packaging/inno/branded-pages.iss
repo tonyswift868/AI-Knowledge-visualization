@@ -79,7 +79,11 @@ end;
 procedure RefreshLocation(Sender: TObject);
 var Target, Problem: String; NeedsAdmin: Boolean;
 begin
+  #ifdef BootstrapMode
+  Problem := ValidateParent(SelectedParent, Target, NeedsAdmin, False);
+  #else
   Problem := ValidateParent(SelectedParent, Target, NeedsAdmin, True);
+  #endif
   PathCaption.Text := Target;
   PathCaption.Hint := Target;
   if FileExists(AddBackslash(Target) + 'per-user-transaction.json') then
@@ -322,7 +326,11 @@ begin
   PathCaption.Font.Color := InkColor;
   Bounds(PathCaption, 108, 226, 402, 48);
   PathCaption.ShowHint := True;
+  #ifdef BootstrapMode
+  SpaceCaption := LabelAt('安装核心将按已签名版本检查所需空间。', 108, 285, 380, 20, 9, MutedColor, False);
+  #else
   SpaceCaption := LabelAt('约需 ' + HumanSize({#RequiredBytes}), 108, 285, 380, 20, 9, MutedColor, False);
+  #endif
   BrowseButton := TNewButton.Create(WizardForm);
   BrowseButton.Parent := BrandSurface;
   Bounds(BrowseButton, 534, 243, 130, 36);

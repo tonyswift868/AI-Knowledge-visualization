@@ -88,24 +88,31 @@ def test_publish99_archive_conflict_preserves_live_and_staging(release91):
     assert (f.app / '.staging-2.0.3').exists()
 
 
-def test_publish99_dispatch_defaults_and_optional_compiler():
+def test_publish99_dispatch_is_bootstrap_only_and_offline_installer_is_manual():
     workflow = yaml.load((pipeline.ROOT / '.github/workflows/mf-publish.yml').read_text(encoding='utf-8'),
                          Loader=yaml.BaseLoader)
-    option = workflow['on']['workflow_dispatch']['inputs']['build_installer']
-    assert option == dict(description='同时编安装程序', type='boolean', default='true')
+    assert set(workflow['on']['workflow_dispatch']['inputs']) == {'version'}
     steps = workflow['jobs']['publish']['steps']
-    env = next(s for s in steps if s.get('uses') == './.github/actions/release-env')
-    assert env['with']['installer-tools'] == '${{ inputs.build_installer }}'
-    compiler = next(s for s in steps if s.get('uses') == './.github/actions/mf-installer')
-    assert compiler['if'] == '${{ inputs.build_installer }}'
-    assert compiler['with']['latest'] == 'true'
+    bootstrap = next(s for s in steps if 'ensure-bootstrap' in s.get('run', ''))
+    promote = next(s for s in steps if 'promote' in s.get('run', ''))
+    assert steps.index(bootstrap) < steps.index(promote)
+    assert all(s.get('uses') != './.github/actions/mf-installer' for s in steps)
     assert 'cleanup' in steps[-1]['run'] and 'if' not in steps[-1]
+    offline = yaml.load((pipeline.ROOT / '.github/workflows/mf-installer.yml').read_text(encoding='utf-8'),
+                        Loader=yaml.BaseLoader)
+    assert set(offline['on']['workflow_dispatch']['inputs']) == {'version'}
+    action = yaml.load((pipeline.ROOT / '.github/actions/mf-installer/action.yml').read_text(encoding='utf-8'),
+                       Loader=yaml.BaseLoader)
+    assert set(action['inputs']) == {'version', 'ssh-key'}
+    assert '--latest' not in action['runs']['steps'][0]['run']
     action = yaml.load((pipeline.ROOT / '.github/actions/release-env/action.yml').read_text(),
                       Loader=yaml.BaseLoader)
     assert action['inputs']['installer-tools']['default'] == 'true'
     for step in action['runs']['steps']:
-        if 'setup-node' in step.get('uses', '') or '--requirement' in step.get('run', ''):
+        if '--requirement' in step.get('run', ''):
             assert step['if'] == "${{ inputs.installer-tools == 'true' }}"
+    node = next(s for s in action['runs']['steps'] if s.get('uses') == 'actions/setup-node@v7')
+    assert node['if'] == "${{ inputs.installer-tools == 'true' && inputs.node-tools == 'true' }}"
     small = next(s for s in action['runs']['steps'] if 'cryptography==' in s.get('run', ''))
     assert small['if'] == "${{ inputs.installer-tools != 'true' }}"
     assert 'pyinstaller' not in small['run'].lower()
