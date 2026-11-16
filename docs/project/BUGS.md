@@ -2595,12 +2595,12 @@
 
 ### [BUG-262] 405 嵌套 UserRuntime 的公开 CA 被包清单扫描误判为用户配置
 
-- 状态：原因查清，415-MF05 修（2026-11-16），修完在同一任务里重跑本机打包到底；未发布、未签名，未运行安装程序。
+- 状态：已修已验证（415-MF05，2026-11-16；修复提交 7b9048ff，合入 main 1be180dc）。
 - 现象：基线 `5b68fe580dd396f0463538bcd523f5ee244ead26`、测试版本 `9.412.1` 的固定构建环境校验 73 项通过，冻结和真实包内冒烟通过；随后 `build_manifest` 报 `PackageError: package contains user data, database, or secret configuration files: UserRuntime/_internal/refactor/desktop/resources/trust/account-api.pem`，构建退出 1，没有 unsigned-release.json。
 - 原因与排查：405 的 `build_user_runtime` 将既有公开 CA 加入 UserRuntime 闭包；`package_verification._application_managed_parts` 只把顶层 `_internal` 识别为依赖目录，未识别 `UserRuntime/_internal`，随后 `_find_user_data_files` 的 `PRIVATE_NAME_RE` 因 `account-` 文件名前缀误拒该公开 CA。主代理和独立复核子代理分别对照冻结日志、构建配方与源代码确认。
 - 影响（架构师 2026-11-16 查）：只卡打包（本机和 GitHub mf-build 都跑 `build_manifest`）；已装的 2.0.47 收更新只调用 `_validate_staging_entry`，只核路径，不做私名扫描，不会因此拒收 2.0.48。
 - 为什么全量没测出来（架构师 2026-11-16 查）：全仓没有任何测试调用 `package_verification` 的私名扫描（`build_manifest`、`_find_user_data_files`）；405 改了包的目录结构，也没给这道检查补测试。
-- 解决：415-MF05：`UserRuntime/_internal/...` 和顶层 `_internal/...` 走同一条归类规则（只认这个已知的嵌套运行时目录），不删 CA、不按文件名放行、不放宽私名规则；同时给这道检查写第一批测试，放进 tests/refactor/delivery，以后全量都会跑。
+- 解决：415-MF05：`_application_managed_parts` 把开头的 `UserRuntime/_internal` 当顶层 `_internal` 处理，走同一条归类规则（只认这个已知的嵌套运行时目录），不删 CA、不按文件名放行、不放宽私名规则；这道检查的第一批测试在 `tests/refactor/installer/test_package_verification415.py`，以后全量都会跑（放过 CA；嵌套运行时应用目录、UserRuntime 顶层、其他目录下 `_internal` 的私名文件照样被拒）。
 - 验证：412 本次只运行一次应用冻结；引导核心 ZIP 61,582,115 字节、小壳 4,871,051 字节各编译成功一次，工作流检查通过。完整发布包清单仍未通过，不能据此发版。证据见 `D:\MentorFlow\.local\receipts\412-MF05.md` 及其中指定的日志。
 - 更新：2026-11-16。
 
