@@ -26,7 +26,7 @@
 - **合入员工分支**：主目录 `git merge --no-ff office/<工位>`（或 `git diff --binary <基线> <员工提交> | git apply --index --3way`），逐文件看改动是否在任务范围内；合入后只做改动文件的编译检查（`py_compile`），相关测试、全量和查失败原因交给下一份任务顺带跑或单独派员工（AGENTS 第 9 条）。
 - **全量测试**（员工跑，架构师不跑；2026-10-21 约 4580 项、约 55 分钟）：`TMP=D:/MentorFlow/.local/test-tmp/<子目录> TEMP=同上 .venv/Scripts/python.exe -m pytest tests/refactor -q -p no:cacheprovider --basetemp=D:/MentorFlow/.local/test-tmp/<子目录>/pt`，输出重定向到文件、放后台跑，跑完删子目录。Java 构建缓存在 .local/test-tmp/java-cache（共享、加锁，不要删），不用再设 SHIP156_TMP（[BUG-108]）。
 - **基线**：合入并提交后 `git rev-parse --short HEAD` 就是下一批任务的基线。
-- **发布新版**（[SYS-06]）：①合入并推送 main；②手动运行 GitHub 工作流 mf-build（版本号、更新说明、是否必须及原因、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机 `.venv/Scripts/python.exe -B -m scripts.release.sign_and_stage --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity C:/Users/21533/.ssh/mentorflow_server`（在主目录跑，2.0.47 这样跑通，2026-11-12）；④手动运行 mf-publish（版本号；只填版本号；先确保小安装器的引导核心和小壳已发（ensure-bootstrap，405），再核签名、上对象、原子换 stable，约 10 分钟；下载页指到小壳要 MF-01 另改 nginx（405 已备好候选），仓库公开不占额度；用户 2026-11-16 定下载页始终是最新版）；⑤用客户端代码对公网 stable.json 验签（`refactor.desktop.delivery.update_protocol.verify_release(原始字节, {key_id: base64 解码的公钥}, current=上一版)`，公钥在 .local/release-keys/mentorflow-app-2026.public.json），看 aiteacher.clannad.win/download。触发和查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（.local/tmp/watch_run.sh 轮询到结束）。工作流只能手动触发，额度红线见 scripts/release/README.md。
+- **发布新版**（[SYS-06]）：①合入并推送 main；②手动运行 GitHub 工作流 mf-build（版本号、更新说明、是否必须及原因、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机 `.venv/Scripts/python.exe -B -m scripts.release.sign_and_stage --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity C:/Users/21533/.ssh/mentorflow_server`（在主目录跑，2.0.47 这样跑通，2026-11-12）；④手动运行 mf-publish（版本号；只填版本号；先确保小安装器的引导核心和小壳已发（ensure-bootstrap，405），再核签名、上对象、原子换 stable，约 10 分钟；下载页已由416指向小壳，后续由小壳运行时读取最新版stable，仓库公开不占额度；用户 2026-11-16 定下载页始终是最新版）；⑤用客户端代码对公网 stable.json 验签（`refactor.desktop.delivery.update_protocol.verify_release(原始字节, {key_id: base64 解码的公钥}, current=上一版)`，公钥在 .local/release-keys/mentorflow-app-2026.public.json），看 aiteacher.clannad.win/download。触发和查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（.local/tmp/watch_run.sh 轮询到结束）。工作流只能手动触发，额度红线见 scripts/release/README.md。
 - **本机打包**（发版先验，[BUG-202]）：只能用专用打包环境，不能用平时测试的环境。在干净的员工工位里跑（如 D:\MentorFlow-office\runtime\repo，先 reset 到要发的提交），不在主目录跑：打包收尾要核对代码版本，打包期间主目录一提交就失败。在工位目录里 PowerShell 照抄：
   `$env:MF_TEMP_ROOT='D:\MentorFlow\.local\test-tmp'; $env:MF_BUILD_TOOLS='D:\MentorFlow\.local\release-tools\build-tools'; $env:MF_NODE_DIR='D:\MentorFlow\.local\node'; & D:\MentorFlow\.venv\Scripts\python.exe -B scripts\release\build_release.py --version <测试号如 9.257.1> --baseline <git rev-parse --short=8 HEAD> --valid-days 1096 --base-versions <线上版本> --notes <说明> --output-dir D:\MentorFlow\.local\test-tmp\<任务目录>\build --previous-release <已验签的线上 stable.json 副本>`
   先只跑环境检查（打印 Exact build pins and locked SQLite runtime verified: 73 才往下）。专用打包环境在 .local/release-tools/build-tools，不放进 test-tmp，清理临时文件时别删。
@@ -58,7 +58,7 @@
 
 | 员工 | 名字 | 当前任务 | 工位 |
 | --- | --- | --- | --- |
-| MF-01 | 服务端 | 416-MF01 通知已给（把 /download 切到小安装器；先准备，2.0.48 发布完再切） | server |
+| MF-01 | 服务端 | 416-MF01已交：官网下载入口切换及公网核验通过，见[SYS-06]和416回执 | server |
 | MF-02 | 客户端 | 空闲（408 已合入 75b1a620） | client |
 | MF-03 | 课堂 | 空闲（410 已交，分支 office/retire410 de49ee83，2.0.48 上线后合入） | classroom |
 | MF-04 | 运行时 | 空闲（405 已合入 main 4b6c9092） | runtime |
@@ -67,7 +67,7 @@
 | MF-07 | 资料 | 空闲（402 已交：对照全量 8 失败 67 错误，多数是 Python 版服务端） | library |
 ## 待派队列
 
-- **2.0.48 这一批（用户 2026-11-16 定：最后统一合入、统一跑一次全量、统一部署、再发版）**：代码已合入，407 总全量已过，服务器已上线（406）并线上实测通过（414），Docker 已清。本机完整打包已过（415）。接下来：①架构师发 2.0.48（main 已推送、mf-build 已过、已签名；第一次 mf-publish 卡在编小安装器核心 [BUG-269]，已修，重新发布中）；②MF-01 把 /download 切到小安装器（416；用户 2026-11-16 定先切好，再一次测完）；③用户本人在另一台电脑上真装（从 /download 下载小安装器全新安装、旧版→新版、注册）。2.0.48 发布后下一批：合 410（删 Python 版服务端，合入后再跑一次全量）；把 rag156 等“退回旧版本数据库”的测试改成直接建到要验的版本（[BUG-258]）；部署后清 Docker 的保留名单补上定时任务用的镜像（[BUG-266]）。
+- **2.0.48 这一批（用户 2026-11-16 定：最后统一合入、统一跑一次全量、统一部署、再发版）**：代码已合入，407 总全量已过，服务器已上线（406）并线上实测通过（414），Docker 已清。本机完整打包已过（415）。416已完成官网切换及公网验证（[SYS-06]）；接下来用户本人在另一台电脑上一次验全新安装、旧版升级、注册。2.0.48 发布后下一批：合 410（删 Python 版服务端，合入后再跑一次全量）；把 rag156 等“退回旧版本数据库”的测试改成直接建到要验的版本（[BUG-258]）；部署后清 Docker 的保留名单补上定时任务用的镜像（[BUG-266]）。
 - 398 收尾并入 2.0.48：用户 2026-11-16 说等全部做完再在另一台电脑上测，2.0.47 不单独切 latest。
 
 
