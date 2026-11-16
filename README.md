@@ -1,10 +1,68 @@
+<div align="center">
+
 # MentorFlow
 
-面向个人学习的桌面应用，使用重构后的账号外壳、学习计划与课堂。
+**带 AI 老师的个人学习软件**
 
-- 官网：https://aiteacher.clannad.win
-- 下载安装：https://aiteacher.clannad.win/download（小安装器，装的始终是最新版）
+说出想学什么，它帮你排好每天的学习计划；老师上课讲解、出题判分，跟着你的进度走。
 
-开发运行：`python -m refactor.desktop.account_shell_main`；先按 `refactor/learning/web/package-lock.json` 准备前端依赖并构建新界面。
-正式打包入口：`python scripts/build_learning_installer.py --help`。
-需求与当前状态见 [CURRENT_STATE](docs/project/CURRENT_STATE.md)。
+[![下载最新版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88-Windows-2b7de9?style=for-the-badge)](https://aiteacher.clannad.win/download)
+
+[官网](https://aiteacher.clannad.win) · [下载](https://aiteacher.clannad.win/download) · [MIT 许可证](LICENSE)
+
+</div>
+
+## 截图
+
+| 学习日历 | 学习计划 |
+| :---: | :---: |
+| ![学习日历：每天可学的时间可以分别设置](docs/images/plan-calendar.png) | ![生成好的学习计划](docs/images/plan-overview.png) |
+| **课堂** | **做题判分** |
+| ![AI 老师上课](docs/images/classroom.png) | ![答题后的判分和讲解](docs/images/exercise.png) |
+
+## 能做什么
+
+- **对话建计划**：说出目标和截止日期，先看大致安排，确认后再细排到每一天。
+- **按天安排**：每天学多久、每周哪几天学都能单独设；落后或超前多少，一眼就能看到。
+- **AI 老师上课**：2D 老师讲解，随时可以打断提问，已经会的内容可以跳过。
+- **语音**：说话直接转成文字；讲解也可以点开朗读。
+- **导入资料**：支持 PDF、Word、PPT、EPUB、Excel、Markdown、网页等，扫描件也能识别文字，还能针对资料提问。
+- **练习与复习**：每课都有练习并自动判分，答错的知识点会标成“需要复习”，之后优先再出。
+- **知识地图**：把计划里的知识点和它们之间的关系画成图。
+- **多设备同步**：换一台电脑登录，计划和进度都在。
+- **多家模型可选**：DeepSeek、通义千问、Kimi 等，可以在设置里切换。
+
+## 开始使用
+
+1. 打开[下载页](https://aiteacher.clannad.win/download)下载安装程序，它会自动装上最新版。
+2. 安装完成后用邮箱注册。
+3. 建第一个学习计划。
+
+## 技术栈
+
+| 部分 | 技术 |
+| --- | --- |
+| 服务端 | Java 21、Spring Boot 3.5、LangChain4j、PostgreSQL 17 |
+| 登录 | Keycloak（OAuth2 / OpenID Connect） |
+| 资料检索 | 本地 bge-small-zh 向量模型 + pgvector，按账号隔离 |
+| 桌面端 | Python 3.12、PySide6（Qt WebEngine）、React 19、TypeScript、Vite |
+| 2D 老师 | PixiJS + Live2D |
+| 语音 | SenseVoice 语音识别、GPT-SoVITS 语音合成 |
+| 文字识别 | RapidOCR |
+| 安装与更新 | PyInstaller、Inno Setup；更新包用 Ed25519 签名校验 |
+| 部署 | Docker、nginx、Cloudflare |
+
+## 从源码运行
+
+<details>
+<summary>展开</summary>
+
+- 开发运行：`python -m refactor.desktop.account_shell_main`。运行前先按 `refactor/learning/web/package-lock.json` 准备前端依赖，并构建界面。
+- 打包：`python scripts/build_learning_installer.py --help`
+- 需求和当前状态：[CURRENT_STATE](docs/project/CURRENT_STATE.md)
+
+</details>
+
+## 许可证
+
+[MIT](LICENSE)
