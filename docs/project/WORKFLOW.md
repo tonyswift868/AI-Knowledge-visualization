@@ -25,7 +25,7 @@
 - **合入员工分支**：主目录 `git merge --no-ff office/<工位>`（或 `git diff --binary <基线> <员工提交> | git apply --index --3way`），逐文件看改动是否在任务范围内；合入后只做改动文件的编译检查（`py_compile`），相关测试、全量和查失败原因交给下一份任务顺带跑或单独派员工（AGENTS 第 9 条）。
 - **全量测试**（员工跑，架构师不跑；2026-10-21 约 4580 项、约 55 分钟）：`TMP=D:/MentorFlow/.local/test-tmp/<子目录> TEMP=同上 .venv/Scripts/python.exe -m pytest tests/refactor -q -p no:cacheprovider --basetemp=D:/MentorFlow/.local/test-tmp/<子目录>/pt`，输出重定向到文件、放后台跑，跑完删子目录。Java 构建缓存在 .local/test-tmp/java-cache（共享、加锁，不要删），不用再设 SHIP156_TMP（[BUG-108]）。
 - **基线**：合入并提交后 `git rev-parse --short HEAD` 就是下一批任务的基线。
-- **发布新版**（[SYS-06]）：①合入并推送 main；②手动运行 GitHub 工作流 mf-build（版本号、更新说明、是否必须及原因、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机 `.venv/Scripts/python.exe -B -m scripts.release.sign_and_stage --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity C:/Users/21533/.ssh/mentorflow_server`（在主目录跑，2.0.47 这样跑通，2026-11-12）；④手动运行 mf-publish（版本号；build_installer 默认 false 只发更新约 1～3 分钟，要新安装程序时设 true 约 10 分钟，或事后单独跑 mf-installer）；⑤用客户端代码对公网 stable.json 验签（`refactor.desktop.delivery.update_protocol.verify_release(原始字节, {key_id: base64 解码的公钥}, current=上一版)`，公钥在 .local/release-keys/mentorflow-app-2026.public.json），看 aiteacher.clannad.win/download。触发和查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（.local/tmp/watch_run.sh 轮询到结束）。工作流只能手动触发，额度红线见 scripts/release/README.md。
+- **发布新版**（[SYS-06]）：①合入并推送 main；②手动运行 GitHub 工作流 mf-build（版本号、更新说明、是否必须及原因、基线版本，build_only=false），约 5 分钟；③下载它的 unsigned 产物，本机 `.venv/Scripts/python.exe -B -m scripts.release.sign_and_stage --artifact <zip> --private-key .local/release-keys/mentorflow-app-2026.private.key --work .local/test-tmp/release-<版本>/sign --ssh-identity C:/Users/21533/.ssh/mentorflow_server`（在主目录跑，2.0.47 这样跑通，2026-11-12）；④手动运行 mf-publish（版本号；build_installer 默认 true，同时编安装程序并把下载页 latest 换成这一版，约 10 分钟，仓库公开不占额度；用户 2026-11-16 定下载页始终是最新版）；⑤用客户端代码对公网 stable.json 验签（`refactor.desktop.delivery.update_protocol.verify_release(原始字节, {key_id: base64 解码的公钥}, current=上一版)`，公钥在 .local/release-keys/mentorflow-app-2026.public.json），看 aiteacher.clannad.win/download。触发和查看运行可用 GitHub 网页，或用本机 git 凭据调 GitHub API（.local/tmp/watch_run.sh 轮询到结束）。工作流只能手动触发，额度红线见 scripts/release/README.md。
 - **本机打包**（发版先验，[BUG-202]）：只能用专用打包环境，不能用平时测试的环境。在干净的员工工位里跑（如 D:\MentorFlow-office\runtime\repo，先 reset 到要发的提交），不在主目录跑：打包收尾要核对代码版本，打包期间主目录一提交就失败。在工位目录里 PowerShell 照抄：
   `$env:MF_TEMP_ROOT='D:\MentorFlow\.local\test-tmp'; $env:MF_BUILD_TOOLS='D:\MentorFlow\.local\release-tools\build-tools'; $env:MF_NODE_DIR='D:\MentorFlow\.local\node'; & D:\MentorFlow\.venv\Scripts\python.exe -B scripts\release\build_release.py --version <测试号如 9.257.1> --baseline <git rev-parse --short=8 HEAD> --valid-days 1096 --base-versions <线上版本> --notes <说明> --output-dir D:\MentorFlow\.local\test-tmp\<任务目录>\build --previous-release <已验签的线上 stable.json 副本>`
   先只跑环境检查（打印 Exact build pins and locked SQLite runtime verified: 73 才往下）。专用打包环境在 .local/release-tools/build-tools，不放进 test-tmp，清理临时文件时别删。
@@ -57,14 +57,16 @@
 
 | 员工 | 名字 | 当前任务 | 工位 |
 | --- | --- | --- | --- |
-| MF-01 | 服务端 | 393-MF01 已发通知（2026-11-13，账号页排版 + 补日志，一次上线，[BUG-247] [BUG-248]） | server |
+| MF-01 | 服务端 | 393-MF01 等用户批准第三次 Java 切换（回执 .local/receipts/393-MF01.md：两次切换都自动回退成功，原因已修并在服务器上验证；心跳已上线；合入时注意它在工位里自用了 BUG-249（Git 导出 CRLF，主目录已记为 [BUG-119] 再现）和 BUG-250，合入时把它的 249 改成 [BUG-119]、README 第 68 行同改） | server |
 | MF-02 | 客户端 | 397-MF02 已起草，待发送（2026-11-16，删了没真删、一直涨的地方调研，只查不改） | client |
 | MF-03 | 课堂 | 空闲（375-MF03 已交，2026-11-11 合入 0e6fe4c2） | classroom |
 | MF-04 | 运行时 | 396-MF04 已起草，待发送（2026-11-16，[BUG-249] 服务器回执不再存内容、迁移 0054，只改代码和测试） | runtime |
 | MF-05 | 发版 | 395-MF05 进行中（2026-11-16 用户已转发，对外测试前全量 + 公网只读检查） | platform |
 | MF-06 | 工具 | 394-MF06 进行中（2026-11-16 用户已转发，公开仓库隐私和密钥扫描，只查不改） | tools |
-| MF-07 | 资料 | 空闲（369-MF07 已交，2026-11-11 合入 main 62d2014a） | library |
+| MF-07 | 资料 | 398-MF07 已起草，待发送（2026-11-16，补编 2.0.47 安装程序、不安装拆包核对、切换下载页 latest） | library |
 ## 待派队列
+
+- 398-MF07（用户 2026-11-16 定：下载页始终是服务器上的最新版）：下载页 latest 还是 2026-10-14 的旧安装程序；补编 2.0.47、拆包核对、切 latest（.local/tasks/398-MF07.md，授权触发两次 mf-installer）。以后每次发版 mf-publish 默认同时编安装程序（build_installer 默认 true，随下次推送生效）。这台电脑装着用户的软件，不能在这里跑安装程序；全新安装和注册要在另一台电脑上由用户或朋友走一遍（[ACC-02] 真人验收）。
 
 - 396-MF04（[BUG-249]，用户 2026-11-16 定按推荐修）：回执不再存内容、迁移 0054 去掉已存的、本机测试（.local/tasks/396-MF04.md），不碰 deploy 目录。之后：393 做完、396 审过，再起草 MF-01 的部署任务（preflight 加到 0054、服务器只读预演、回收空间、上线、测试账号端到端）。
 - 397-MF02（用户 2026-11-16 定：删掉的东西服务器上要真删、不能撑爆服务器）：逐项查用户能删能改的东西在服务器上还剩什么、哪些一直涨，写只读测量脚本给 MF-01 以后跑（.local/tasks/397-MF02.md），只查不改；报告给用户看过再派修。和 396 不改同一处，可同时发。

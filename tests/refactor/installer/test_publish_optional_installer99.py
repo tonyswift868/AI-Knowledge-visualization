@@ -92,7 +92,7 @@ def test_publish99_dispatch_defaults_and_optional_compiler():
     workflow = yaml.load((pipeline.ROOT / '.github/workflows/mf-publish.yml').read_text(encoding='utf-8'),
                          Loader=yaml.BaseLoader)
     option = workflow['on']['workflow_dispatch']['inputs']['build_installer']
-    assert option == dict(description='同时编安装程序', type='boolean', default='false')
+    assert option == dict(description='同时编安装程序', type='boolean', default='true')
     steps = workflow['jobs']['publish']['steps']
     env = next(s for s in steps if s.get('uses') == './.github/actions/release-env')
     assert env['with']['installer-tools'] == '${{ inputs.build_installer }}'

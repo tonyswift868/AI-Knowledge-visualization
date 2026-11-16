@@ -11,7 +11,7 @@ on:
       build_installer:
         description: 同时编安装程序
         type: boolean
-        default: false
+        default: true
 concurrency:
   group: mentorflow-release
   queue: max
