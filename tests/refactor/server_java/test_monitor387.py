@@ -13,7 +13,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "refactor" / "server-java" / "deploy" / "monitoring" / "healthchecks-send.sh"
 BASH = Path(r"C:\Program Files\Git\bin\bash.exe")
-TEST_TMP = Path(os.environ.get("MONITOR387_TMP", r"D:\MentorFlow\.local\test-tmp\monitor387"))
+TEST_TMP = Path(os.environ.get("MONITOR387_TMP", r"D:\MentorFlow\.local\test-tmp\393-MF01\heartbeat"))
 
 
 def _posix(path: Path) -> str:
@@ -42,8 +42,8 @@ printf 'ARGS:%s\\n' "$*" >> "$FAKE_CURL_LOG"
 printf 'CONFIG:%s\\n' "$config" >> "$FAKE_CURL_LOG"
 case "$config" in
   *'/health/ready'*)
-    if [ "${FAKE_HEALTH_RC:-0}" -ne 0 ]; then exit "$FAKE_HEALTH_RC"; fi
-    printf '%s' "${FAKE_HEALTH_STATUS:-200}"
+    printf '%s' "${FAKE_HEALTH_STATUS-200}"
+    exit "${FAKE_HEALTH_RC:-0}"
     ;;
 esac
 exit "${FAKE_PING_RC:-0}"
@@ -63,6 +63,8 @@ def _run(
     health_rc: str = "0",
     health_url: str | None = None,
     connect_to: str | None = None,
+    ping_rc: str = "0",
+    fake_dns: str | None = None,
 ):
     env_file = sandbox / "healthchecks.env"
     env_file.write_text(
@@ -82,8 +84,32 @@ def _run(
             "FAKE_CURL_LOG": _posix(log),
             "FAKE_HEALTH_STATUS": health_status,
             "FAKE_HEALTH_RC": health_rc,
+            "FAKE_PING_RC": ping_rc,
         }
     )
+    if fake_dns:
+        fake_bin = sandbox / "bin"
+        fake_bin.mkdir()
+        env["FAKE_DNS_MODE"] = fake_dns
+        (fake_bin / "timeout").write_text(
+            "#!/bin/sh\nshift\n[ \"${FAKE_DNS_MODE:-}\" = slow ] && exit 124\n[ \"${FAKE_DNS_MODE:-}\" = missing ] && exit 127\nexec \"$@\"\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        if fake_dns != "missing":
+            (fake_bin / "getent").write_text(
+                "#!/bin/sh\n" + ("exit 124\n" if fake_dns == "slow" else "printf '192.0.2.1 hc-ping.com\\n'\n"),
+                encoding="utf-8",
+                newline="\n",
+            )
+            (fake_bin / "dig").write_text(
+                "#!/bin/sh\n" + ("exit 124\n" if fake_dns == "slow" else "printf ';; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 1\\n'\n"),
+                encoding="utf-8",
+                newline="\n",
+            )
+        for tool in fake_bin.iterdir():
+            tool.chmod(0o755)
+        env["PATH"] = _posix(fake_bin) + ":" + env["PATH"]
     if health_url is not None:
         env["MF_HEARTBEAT_HEALTH_URL"] = health_url
     if connect_to is not None:
@@ -164,6 +190,82 @@ def test_heartbeat_ping_failure_still_fails_timer(sandbox):
         timeout=30,
     )
     assert result.returncode == 1
+    assert "event=heartbeat phase=ping curl_rc=7 class=connect" in result.stderr
+    assert "heartbeat-token" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("health_rc", "health_status", "expected"),
+    [
+        ("6", "", "curl_rc=6 class=host_resolve"),
+        ("7", "", "curl_rc=7 class=connect"),
+        ("28", "", "curl_rc=28 class=timeout"),
+        ("28", "200", "curl_rc=28 class=timeout"),
+        ("22", "200", "curl_rc=22 class=http_error"),
+        ("35", "", "curl_rc=35 class=tls"),
+        ("60", "", "curl_rc=60 class=tls"),
+        ("22", "503", "http_status=503"),
+    ],
+)
+def test_health_failures_log_safe_reason_and_preserve_ping_behavior(
+    sandbox, health_rc, health_status, expected
+):
+    if not BASH.is_file():
+        pytest.skip("Git for Windows Bash is required")
+    result, log = _run(
+        "heartbeat",
+        sandbox,
+        health_status=health_status,
+        health_rc=health_rc,
+        fake_dns="ok" if health_rc == "6" else None,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "event=heartbeat phase=health " + expected in result.stderr
+    configs = [line.removeprefix("CONFIG:") for line in log.splitlines() if line.startswith("CONFIG:")]
+    assert len(configs) == 2
+    assert "https://hc.example/heartbeat-token/fail" in configs[1]
+    assert result.returncode == 0
+    assert "heartbeat-token" not in result.stderr
+    assert "backup-token" not in result.stderr
+    assert "hc-ping.com" not in result.stderr
+    if health_rc == "6":
+        rows = [line for line in result.stderr.splitlines() if "phase=dns" in line]
+        assert len(rows) == 5
+        assert all("state=" in row and "elapsed_ms=" in row for row in rows)
+    else:
+        assert "phase=dns" not in result.stderr
+
+
+@pytest.mark.parametrize(("dns_mode", "expected_state"), [("slow", "timeout"), ("missing", "unavailable")])
+def test_dns_diagnostic_failures_do_not_mask_heartbeat_result(sandbox, dns_mode, expected_state):
+    if not BASH.is_file():
+        pytest.skip("Git for Windows Bash is required")
+    result, _ = _run("heartbeat", sandbox, health_status="", health_rc="6", fake_dns=dns_mode)
+    assert result.returncode == 0, result.stderr
+    rows = [line for line in result.stderr.splitlines() if "phase=dns" in line]
+    assert len(rows) == 5
+    assert all(f"state={expected_state}" in row for row in rows), rows
+    assert all("elapsed_ms=" in row for row in rows)
+
+
+def test_healthy_heartbeat_adds_no_log(sandbox):
+    if not BASH.is_file():
+        pytest.skip("Git for Windows Bash is required")
+    result, _ = _run("heartbeat", sandbox)
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+
+
+def test_ping_host_resolution_failure_runs_dns_diagnostics_without_changing_exit(sandbox):
+    if not BASH.is_file():
+        pytest.skip("Git for Windows Bash is required")
+    result, _ = _run("heartbeat", sandbox, ping_rc="6", fake_dns="ok")
+    assert result.returncode == 1
+    assert "event=heartbeat phase=ping curl_rc=6 class=host_resolve" in result.stderr
+    rows = [line for line in result.stderr.splitlines() if "phase=dns" in line]
+    assert len(rows) == 5
+    assert all("state=" in row and "elapsed_ms=" in row for row in rows)
+    assert "heartbeat-token" not in result.stderr
 
 
 def test_health_override_is_https_and_connect_to_stays_in_config(sandbox):

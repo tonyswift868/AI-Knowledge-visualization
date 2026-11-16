@@ -450,7 +450,11 @@ def test_release_manifest_generation_can_retry_after_missing_migration(preflight
 
 def test_preflight_0048_sources_pass_before_database_migration(preflight):
     preflight.write_manifest(preflight.manifest_lines(SOURCE_PATHS_0048))
-    result = preflight.run(**{SOURCE_REVISION: "0048_rag_source_chunks"})
+    result = preflight.run(
+        EXPECTED_ALEMBIC_REVISION="0047_rag_promoted_manifests",
+        FAKE_DB_REVISION="0047_rag_promoted_manifests",
+        **{SOURCE_REVISION: "0048_rag_source_chunks"},
+    )
 
     output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
     assert result.returncode == 0, output
@@ -593,7 +597,7 @@ def test_preflight_rejects_each_path_replaced_by_duplicate(preflight, missing_pa
     lines.remove(missing_line)
     lines.append(duplicate_line)
     preflight.write_manifest(lines)
-    assert len(preflight.manifest.read_text(encoding="ascii").splitlines()) == len(HASH_PATHS)
+    assert len(preflight.manifest.read_text(encoding="ascii").splitlines()) == len(SOURCE_PATHS_0052)
 
     result = preflight.run()
     output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
@@ -607,7 +611,7 @@ def test_preflight_rejects_duplicate_build_for_missing_base_path(preflight):
     build_line = next(line for line in lines if line.endswith("refactor/server-java/deploy/build.sh"))
     lines = [line for line in lines if not line.endswith(migration_path)]
     preflight.write_manifest([*lines, build_line])
-    assert len(preflight.manifest.read_text(encoding="ascii").splitlines()) == len(HASH_PATHS)
+    assert len(preflight.manifest.read_text(encoding="ascii").splitlines()) == len(SOURCE_PATHS_0052)
 
     result = preflight.run()
     output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
