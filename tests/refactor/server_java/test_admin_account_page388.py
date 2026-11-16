@@ -12,10 +12,10 @@ import time
 import httpx
 import pytest
 
+import java_build156 as java_build
+
 
 ROOT = Path(__file__).resolve().parents[3]
-SCRATCH = Path(os.environ.get("MF393_SCRATCH", r"D:\MentorFlow\.local\test-tmp\388-MF01"))
-BUILD = SCRATCH / "build"
 
 
 class _TotalsParser(HTMLParser):
@@ -79,31 +79,20 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-def _java_home() -> Path | None:
-    value = os.environ.get("JAVA_HOME") or os.environ.get("JAVA142_HOME")
-    if value:
-        return Path(value)
-    candidates = sorted(Path(r"D:\MentorFlow\.local\java").glob("jdk-21*"))
-    return candidates[-1] if candidates else None
-
-
-def test_admin_account_page388_masking_and_separate_http_port():
-    java_home = _java_home()
-    jar = BUILD / "mentorflow-server-0.1.0.jar"
-    if java_home is None or not (java_home / "bin" / "java.exe").is_file():
-        pytest.skip("portable Java 21 toolchain is not prepared")
-    assert jar.is_file(), f"task-local Java build is missing: {jar}; build the 393 artifact first"
-    classpath = os.pathsep.join((str(BUILD / "classes"), str(BUILD / "test-classes"),
-                                 (SCRATCH / "test-classpath.txt").read_text(encoding="utf-8").strip()))
+def test_admin_account_page388_masking_and_separate_http_port(tmp_path):
+    java_home = java_build.JAVA_HOME
+    build = java_build.BUILD
+    jar = build / "mentorflow-server-0.1.0.jar"
+    assert jar.is_file(), f"shared Java build is missing: {jar}"
+    classpath = os.pathsep.join((str(build / "classes"), str(build / "test-classes"),
+                                 java_build.CLASSPATH_FILE.read_text(encoding="utf-8").strip()))
     subprocess.run([str(java_home / "bin" / "java.exe"), "-cp", classpath,
                     "win.clannad.mentorflow.admin.AdminAccountMask388"], check=True)
 
     main_port, page_port = _free_port(), _free_port()
     while page_port == main_port:
         page_port = _free_port()
-    work = SCRATCH / "http-page"
-    if work.exists():
-        shutil.rmtree(work)
+    work = tmp_path / "http-page"
     work.mkdir(parents=True)
     catalog = work / "catalog"
     catalog.mkdir()
