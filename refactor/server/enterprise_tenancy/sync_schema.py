@@ -46,6 +46,11 @@ def require_structured_sync_schema(connection):
             FROM pg_policies WHERE schemaname='public' AND tablename=:table'''), {'table': table}).mappings().all()
         tenant_policy = 'tenant_isolation_'+table
         expected_names = {tenant_policy, 'account_closure_read', 'account_closure_delete'}
+        if table == 'structured_sync_entities':
+            # 0052 adds this read policy for the administrator aggregate. Keep
+            # the admission exact: it is limited to the migration role and
+            # grants SELECT through USING (true) only.
+            expected_names.add('admin_account_rows_read')
         if table == 'rehydration_manifests':
             expected_names.add('admin_overview_read')
         require(len(policies) == len(expected_names)
@@ -63,6 +68,13 @@ def require_structured_sync_schema(connection):
             # read access only. It does not grant the application a global policy.
             p = by_name['admin_overview_read']
             require(p['cmd'] == 'SELECT' and p['permissive'] == 'PERMISSIVE'
+                    and list(p['roles']) == ['mentorflow_migrator']
+                    and _expression(p['qual']) == 'true'
+                    and p['with_check'] is None)
+        if table == 'structured_sync_entities':
+            p = by_name['admin_account_rows_read']
+            require(p['policyname'] == 'admin_account_rows_read'
+                    and p['cmd'] == 'SELECT' and p['permissive'] == 'PERMISSIVE'
                     and list(p['roles']) == ['mentorflow_migrator']
                     and _expression(p['qual']) == 'true'
                     and p['with_check'] is None)

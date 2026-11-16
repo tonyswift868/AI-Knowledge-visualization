@@ -253,9 +253,10 @@ def _stop(endpoint):
     if not endpoint["log"].closed: endpoint["log"].close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def closure147_backends(tmp_path_factory):
-    # Keep this session fixture isolated even though it is created before the
+    # Each module needs fresh server throttles and session state for its traces.
+    # Keep this fixture isolated even though it is created before the
     # function-scoped environment fixture.  The build artifacts remain in the
     # shared cache; servers, certificates and database files stay in pytest's
     # current basetemp.
@@ -267,7 +268,7 @@ def closure147_backends(tmp_path_factory):
     local_temp = TASK_ROOT / "tmp"
     local_temp.mkdir(parents=True, exist_ok=True)
     # TEMP/TMP are scoped by server_java/conftest.py around the whole test
-    # item.  Do not write them here: this is a session fixture and changing
+    # item.  Do not write them here: this is a module fixture and changing
     # the parent process would leak the Java directory into unrelated tests.
     buildtmp = TASK_ROOT / "pytest-build"
     buildtmp.mkdir(parents=True, exist_ok=True)
