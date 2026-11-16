@@ -209,8 +209,9 @@ def _is_application_managed_path(relative: str) -> bool:
     """Return whether generic private-name rules apply to this package path.
 
     Top-level package paths are application-owned.  A path under PyInstaller's
-    ``_internal`` root is dependency-owned unless its immediate child is one
-    of the known application data/content/config/state or fixture roots.
+    ``_internal`` root (also under the bundled UserRuntime) is dependency-owned
+    unless its immediate child is a known application data/content/config/state
+    or fixture root.
     Content and config scans below those roots therefore remain strict while
     arbitrary third-party names such as ``torch/_vendor/quack/cache`` do not
     trigger a private-path finding by themselves.
@@ -220,6 +221,8 @@ def _is_application_managed_path(relative: str) -> bool:
 
 def _application_managed_parts(parts: tuple[str, ...]) -> bool:
     """Pure rule over already normalized/casefolded path components."""
+    if parts[:2] == ("userruntime", "_internal"):
+        parts = parts[1:]
     if not parts or parts[0] != "_internal":
         return True
     return len(parts) > 1 and parts[1] in APPLICATION_MANAGED_INTERNAL_ROOTS
