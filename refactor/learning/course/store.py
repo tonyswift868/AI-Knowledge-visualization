@@ -1,4 +1,4 @@
-"""Account-owned SQLite course data and an atomic record outbox, schema v10.
+"""Account-owned SQLite course data and an atomic record outbox, schema v13.
 
 Each business table stores a canonical, versioned JSON payload plus indexed FK
 columns and a local revision. Payload fields (also validated below):
@@ -66,7 +66,7 @@ from .ledger import (Ledger, PlanWindow, Credit, replan_preserves_past,
 from .mastery import MasteryBook, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 POINT_MINUTES_VERSION = 2  # Content totals, replacing v1's fixed-budget allocation.
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
@@ -480,6 +480,14 @@ class CourseStore:
                 FOREIGN KEY(plan_key,module_id) REFERENCES modules(plan_key,id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED)''')
             self._db.execute('CREATE INDEX IF NOT EXISTS question_batch_staging_module ON question_batch_staging(plan_key,module_id)')
             self._db.execute('UPDATE schema_version SET version=12')
+            version = 12
+        if version == 12:
+            # Deleted-plan tombstones are the authority for purging old local progress.
+            deleted_plans = [row[0] for row in self._db.execute(
+                "SELECT entity_id FROM _records WHERE entity='plans' AND deleted=1").fetchall()]
+            for plan_id in deleted_plans:
+                self._purge_deleted_plan_progress(plan_id)
+            self._db.execute('UPDATE schema_version SET version=13')
 
     def _revision(self):
         self._db.execute("UPDATE _meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
@@ -898,7 +906,22 @@ class CourseStore:
                          (_json({'id': identifier}), self._revision(), entity, wire))
         if entity == 'plans': self._db.execute('DELETE FROM plans WHERE id=?', (identifier,))
         else: self._db.execute(f'DELETE FROM {entity} WHERE plan_key=? AND id=?', (plan, identifier))
+        if entity == 'plans': self._purge_deleted_plan_progress(identifier)
         self._changed('local', entity)
+
+    def _purge_deleted_plan_progress(self, plan_id):
+        tombstone = self._db.execute(
+            "SELECT 1 FROM _records WHERE entity='plans' AND entity_id=? AND deleted=1", (plan_id,)
+        ).fetchone()
+        if tombstone is None:
+            return False
+        self._db.execute(
+            'DELETE FROM _records WHERE plan_key=? AND entity IN (' + ','.join('?' for _ in PROGRESS) + ')',
+            (plan_id, *PROGRESS),
+        )
+        for entity in PROGRESS:
+            self._db.execute(f'DELETE FROM {entity} WHERE plan_key=?', (plan_id,))
+        return True
 
     @_atomic
     def create_plan(self, plan_id=None, *, goal='', final_goal='', level='', notes='', window=None, total_minutes=0, teacher_preset_id=None):
@@ -1769,8 +1792,8 @@ class CourseStore:
     @_atomic
     def delete_plan(self, plan_id):
         self._get('plans', plan_id, plan_id)
-        # Tombstone every structural row; progress journal entries survive even
-        # though SQLite cascades their business rows when the plan is removed.
+        # Tombstone structure for sync; deleting the plan also purges its local
+        # progress journal, whose remote cleanup belongs to the plan tombstone.
         for entity in reversed(tuple(PARENTS)):
             if entity in PROGRESS or entity in ('plans', 'chat_sessions', 'chat_messages', 'account_settings'): continue
             for payload in self._rows(entity, plan_id): self._delete(entity, plan_id, payload['id'])
@@ -2757,7 +2780,9 @@ class CourseStore:
                     remote_versions['archived'] = local_versions['archived']
                     payload[_FIELD_VERSIONS] = remote_versions
             if record.entity in PROGRESS:
-                if record.deleted: continue  # Never erase even an already-synced event.
+                if self._purge_deleted_plan_progress(record.plan_key):
+                    continue
+                if record.deleted: continue  # Standalone tombstones do not erase a live plan's facts.
                 self._validate(record.entity, record.plan_key, payload, references=False)
                 if record.entity in ('judgements', 'attempt_closed'):
                     other = 'attempt_closed' if record.entity == 'judgements' else 'judgements'
@@ -2852,6 +2877,8 @@ class CourseStore:
                 server_revision=excluded.server_revision,pending=excluded.pending''',
                              (record.entity, record.entity_id, record.plan_key, _json(payload), int(deleted),
                               self._revision(), server_revision, int(repair_answered or merged or repair_archive)))
+            if record.entity == 'plans' and deleted:
+                self._purge_deleted_plan_progress(record.plan_key)
             if old is None or old['deleted'] != int(deleted) or old['payload'] != _json(payload):
                 self._changed('remote', record.entity)
         self._project_records()

@@ -258,6 +258,9 @@ public final class SyncRepository {
             ? List.of("tombstone-if-missing-v1", op.kind(), op.entityId(), op.expectedRevision(), op.deleting(), op.payload())
             : List.of(op.kind(), op.entityId(), op.expectedRevision(), op.deleting(), op.payload());
         String digest = sha256(SyncJson.dumpAsciiSorted(fingerprint));
+        // A deleted plan must reject stale writes even when their idempotency
+        // receipt predates the deletion.
+        rejectProgressForDeletedPlan(scope, op);
         List<Map<String,Object>> receipts = jdbc.query("SELECT digest,response FROM structured_sync_requests WHERE " + SCOPE_WHERE + " AND request_id=?",
             (rs, row) -> Map.of("digest", rs.getString("digest"), "response", jsonObject(rs, "response")), scopeValues(scope, op.requestId()));
         if (!receipts.isEmpty()) {
@@ -268,8 +271,13 @@ public final class SyncRepository {
             replay.put("payload", op.payload());
             return replay;
         }
-        List<Map<String,Object>> currentRows = jdbc.query("SELECT revision,deleted FROM structured_sync_entities WHERE " + SCOPE_WHERE + " AND kind=? AND entity_id=? FOR UPDATE",
-            (rs, row) -> Map.of("revision", rs.getInt("revision"), "deleted", rs.getBoolean("deleted")), entityValues(scope, op.kind(), op.entityId()));
+        String payloadColumn = op.deleting() && "learning_run".equals(op.kind()) ? "payload" : "'{}'::json AS payload";
+        List<Map<String,Object>> currentRows = jdbc.query("SELECT revision,deleted," + payloadColumn + " FROM structured_sync_entities WHERE " + SCOPE_WHERE + " AND kind=? AND entity_id=? FOR UPDATE",
+            (rs, row) -> {
+                LinkedHashMap<String,Object> current = new LinkedHashMap<>();
+                current.put("revision", rs.getInt("revision")); current.put("deleted", rs.getBoolean("deleted"));
+                current.put("payload", jsonObject(rs, "payload")); return current;
+            }, entityValues(scope, op.kind(), op.entityId()));
         boolean exists = !currentRows.isEmpty();
         int revision = exists ? (Integer)currentRows.get(0).get("revision") : 0;
         if (op.deleting() && !exists && !op.createMissingTombstone()) throw new SyncFailure("SYNC_ENTITY_NOT_FOUND", 404);
@@ -288,6 +296,14 @@ public final class SyncRepository {
             jdbc.update("INSERT INTO structured_sync_entities (issuer,subject_id,organization_id,workspace_id,kind,entity_id,revision,deleted,payload) VALUES (?,?,?,?,?,?,?, ?,?::json)",
                 scope.get("issuer"), scope.get("subject_id"), scope.get("organization_id"), scope.get("workspace_id"), op.kind(), op.entityId(), revision + 1, op.deleting(), payloadJson);
         }
+        if (op.deleting() && "plan".equals(op.kind())) {
+            purgeProgressForDeletedPlan(scope, op.entityId(), op.entityId());
+        } else if (op.deleting() && "learning_run".equals(op.kind())) {
+            String planKey = exists ? coursePlanKey(currentRows.get(0).get("payload")) : null;
+            if (planKey != null && !coursePlanWireId(planKey).equals(op.entityId())) planKey = null;
+            if (planKey != null) purgeProgressForDeletedPlan(scope, op.entityId(), planKey);
+            else purgeProgressForDeletedPlan(scope, op.entityId(), null);
+        }
         LinkedHashMap<String,Object> receipt = new LinkedHashMap<>(result);
         receipt.remove("payload");
         jdbc.update("INSERT INTO structured_sync_requests (issuer,subject_id,organization_id,workspace_id,request_id,digest,response) VALUES (?,?,?,?,?,?,?::json)",
@@ -303,6 +319,65 @@ public final class SyncRepository {
         if (resources instanceof List<?> list) for (Object resource : list) requireLiveReference(scope, "resource", String.valueOf(resource));
         if ("progress".equals(op.kind()) && op.payload().get("plan_id") instanceof String planId && !planId.isEmpty())
             requireLiveReference(scope, "plan", planId);
+    }
+
+    private void rejectProgressForDeletedPlan(Map<String,Object> scope, Operation op) {
+        if (op.deleting()) return;
+        String planKey = null;
+        if ("progress".equals(op.kind()) && op.payload().get("plan_id") instanceof String key && !key.isEmpty())
+            planKey = key;
+        else if ("learning_run".equals(op.kind())) {
+            Map<String,Object> values = courseRecordValues(op.payload());
+            if (values != null && List.of("judgements", "attempt_closed", "credits", "ledger_events", "usage",
+                    "practice_results", "question_answers").contains(values.get("entity"))
+                    && values.get("plan_key") instanceof String key && !key.isEmpty()) planKey = key;
+        }
+        if (planKey == null) return;
+        String refactorPlanId = coursePlanWireId(planKey);
+        Integer deleted = jdbc.query("SELECT 1 FROM structured_sync_entities WHERE " + SCOPE_WHERE
+                + " AND deleted=true AND ((kind='plan' AND entity_id=?) OR (kind='learning_run' AND entity_id=?)) LIMIT 1",
+            rs -> rs.next() ? 1 : null,
+            scope.get("issuer"), scope.get("subject_id"), scope.get("organization_id"), scope.get("workspace_id"),
+            planKey, refactorPlanId);
+        if (deleted != null) throw new SyncFailure("SYNC_ENTITY_TOMBSTONED", 410);
+    }
+
+    private void purgeProgressForDeletedPlan(Map<String,Object> scope, String deletedPlanEntityId, String planKey) {
+        // Scope writes already hold the account advisory lock. Match the stable
+        // course-plan wire ID too, so empty/missing plan tombstones still purge.
+        String planKeyFromPayload = planKey;
+        jdbc.update("UPDATE structured_sync_entities SET revision=revision+1,deleted=true,payload='{}'::json "
+                + "WHERE " + SCOPE_WHERE + " AND deleted=false AND ("
+                + "(kind='progress' AND ((CAST(? AS text) IS NOT NULL AND payload->>'plan_id'=?) OR "
+                + "(payload->>'plan_id' IS NOT NULL AND 'refactor.v1:course_record:' || encode(sha256(convert_to('[\"plans\",\"' || (payload->>'plan_id') || '\"]','UTF8')),'hex')=?))) OR "
+                + "(kind='learning_run' AND payload->>'record_type'='course_record' "
+                + "AND payload #>> '{values,entity}' IN ('judgements','attempt_closed','credits','ledger_events','usage','practice_results','question_answers') "
+                + "AND ((CAST(? AS text) IS NOT NULL AND payload #>> '{values,plan_key}'=?) OR "
+                + "(payload #>> '{values,plan_key}' IS NOT NULL AND 'refactor.v1:course_record:' || encode(sha256(convert_to('[\"plans\",\"' || (payload #>> '{values,plan_key}') || '\"]','UTF8')),'hex')=?))))",
+            scope.get("issuer"), scope.get("subject_id"), scope.get("organization_id"), scope.get("workspace_id"),
+            planKeyFromPayload, planKeyFromPayload, deletedPlanEntityId,
+            planKeyFromPayload, planKeyFromPayload, deletedPlanEntityId);
+    }
+
+    private static Map<String,Object> courseRecordValues(Map<String,Object> payload) {
+        if (!"course_record".equals(payload.get("record_type")) || !(payload.get("values") instanceof Map<?,?> raw)) return null;
+        LinkedHashMap<String,Object> values = new LinkedHashMap<>();
+        raw.forEach((key, value) -> { if (key instanceof String text) values.put(text, value); });
+        return values;
+    }
+
+    private static String coursePlanKey(Object payload) {
+        if (!(payload instanceof Map<?,?> raw)) return null;
+        LinkedHashMap<String,Object> map = new LinkedHashMap<>();
+        raw.forEach((key, value) -> { if (key instanceof String text) map.put(text, value); });
+        Map<String,Object> values = courseRecordValues(map);
+        return values != null && "plans".equals(values.get("entity")) && values.get("plan_key") instanceof String key
+                ? key : null;
+    }
+
+    private static String coursePlanWireId(String planKey) {
+        String recordId = SyncJson.dump(List.of("plans", planKey), false);
+        return "refactor.v1:course_record:" + sha256(recordId);
     }
 
     private void requireLiveReference(Map<String,Object> scope, String kind, String entityId) {
