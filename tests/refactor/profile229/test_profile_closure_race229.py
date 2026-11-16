@@ -93,10 +93,10 @@ def _write_request(client, actor, operation, version):
 
 
 @pytest.mark.parametrize("operation", ["patch", "put", "delete"])
-def test_python_profile_writes_cannot_survive_concurrent_closure229(profile_env229, operation):
+def test_java_profile_writes_cannot_survive_concurrent_closure229(profile_env229, operation):
     """Queue cleanup and an actual HTTP mutation behind the same PG lock."""
     env = profile_env229
-    backend = "python"
+    backend = "java"
     client = env["clients"][backend]
     actor = new_account229(env, f"closure-race-{backend}-{operation}")
 
@@ -150,7 +150,7 @@ def test_python_profile_writes_cannot_survive_concurrent_closure229(profile_env2
     assert response.status_code in (200, 403, 503), (response.status_code, response.text)
     if response.status_code == 503:
         # The admitted request can meet the closure fence inside the database
-        # trigger. Python maps that rejected write to this exact storage code.
+        # trigger. Java maps that rejected write to this exact storage code.
         # This test guards atomic cleanup, not HTTP error-code parity: clean
         # must complete, the whole row/BLOB must vanish, and a subsequent
         # request must receive the explicit closure denial below.

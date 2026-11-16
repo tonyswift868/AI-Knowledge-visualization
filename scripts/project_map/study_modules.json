@@ -89,8 +89,7 @@
         "docs/learn/05-ai-answer-quality.md",
         "refactor/learning/course/materials.py",
         "refactor/learning/app/rag.py",
-        "refactor/server-java/src/main/java/win/clannad/mentorflow/rag",
-        "refactor/server/rag"
+        "refactor/server-java/src/main/java/win/clannad/mentorflow/rag"
       ]
     },
     {

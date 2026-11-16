@@ -1,4 +1,4 @@
-"""Local HTTP/PG fixtures for paired MF-07 closure and admin contracts."""
+"""Local HTTP/PG fixtures for Java MF-07 closure and admin contracts."""
 from __future__ import annotations
 
 import json
@@ -207,18 +207,6 @@ def _account_id(issuer, subject):
     return account_id(issuer, subject)
 
 
-def _start_python147(db_url, tls, identity, directory):
-    port = _free_port(); env = _environment147(db_url=db_url, tls=tls, identity=identity, directory=directory, port=port)
-    log_path = directory / "python147.log"; log = log_path.open("wb")
-    script = Path(__file__).with_name("python_server147.py")
-    process = subprocess.Popen([str(Path(r"D:\MentorFlow\.venv\Scripts\python.exe")), "-B", str(script)],
-        cwd=ROOT, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
-    endpoint = {"base_url": f"https://localhost:{port}", "process": process, "log": log, "log_path": log_path,
-                "env": env, "identity": identity}
-    _wait(endpoint, tls["ca"])
-    return endpoint
-
-
 def _start_java147(db_url, tls, identity, directory, jar, classes):
     port = _free_port(); env = _environment147(db_url=db_url, tls=tls, identity=identity, directory=directory, port=port)
     env["PATH"] = str(c145.JAVA_HOME / "bin") + os.pathsep + env.get("PATH", "")
@@ -287,7 +275,7 @@ def closure147_backends(tmp_path_factory):
     postgres = c145.EmbeddedPostgresProcess145(cp, ARTIFACTS / "postgres147.log")
     tlsdir = ARTIFACTS / "tls"; tlsdir.mkdir(parents=True, exist_ok=True)
     tls = make_tls144(tlsdir)
-    python_identity, java_identity = Keycloak147(tls), Keycloak147(tls)
+    java_identity = Keycloak147(tls)
     endpoints = []
     try:
         # The 145 embedded server creates this NOLOGIN owner with PostgreSQL's
@@ -296,26 +284,18 @@ def closure147_backends(tmp_path_factory):
             conn.execute("ALTER ROLE mentorflow_closure NOINHERIT NOREPLICATION")
             role_flags = conn.execute("SELECT rolinherit, rolreplication FROM pg_roles WHERE rolname='mentorflow_closure'").fetchone()
             assert role_flags == (False, False), role_flags
-        for db in ("sync145_python", "sync145_java"):
-            migration = postgres.url(db, "mentorflow_migrator", c145.MIGRATION_PASSWORD, sqlalchemy=True)
-            c145._run_migration145(migration, OLD_ISSUER, ARTIFACTS / (db + "-migration147.log"))
-        python_db = postgres.url("sync145_python", "mentorflow_app", c145.APP_PASSWORD, sqlalchemy=True)
+        migration = postgres.url("sync145_java", "mentorflow_migrator", c145.MIGRATION_PASSWORD, sqlalchemy=True)
+        c145._run_migration145(migration, OLD_ISSUER, ARTIFACTS / "sync145_java-migration147.log")
         java_db = postgres.url("sync145_java", "mentorflow_app", c145.APP_PASSWORD)
-        for db in (python_db, java_db): _seed_db(db)
-        py_dir = ARTIFACTS / "python"; py_dir.mkdir(exist_ok=True)
+        _seed_db(java_db)
         java_dir = ARTIFACTS / "java"; java_dir.mkdir(exist_ok=True)
-        if not os.environ.get('CLOSURE147_JAVA_ONLY'):
-            py_endpoint = _start_python147(python_db, tls, python_identity, py_dir); endpoints.append(py_endpoint)
         java_endpoint = _start_java147(java_db, tls, java_identity, java_dir, jar, classes); endpoints.append(java_endpoint)
-        clients = {}
-        for name, endpoint in (("java", java_endpoint),) if os.environ.get('CLOSURE147_JAVA_ONLY') else (("python", py_endpoint), ("java", java_endpoint)):
-            clients[name] = httpx.Client(base_url=endpoint["base_url"], verify=str(tls["ca"]), timeout=40, trust_env=False)
-        yield {"clients": clients, "identities": {"python": python_identity, "java": java_identity},
-            "endpoints": ({"java": java_endpoint} if os.environ.get('CLOSURE147_JAVA_ONLY') else {"python": py_endpoint, "java": java_endpoint}), "postgres": postgres,
-            "python_admin_url": postgres.url("sync145_python", "postgres", "postgres", sqlalchemy=True),
+        clients = {"java": httpx.Client(base_url=java_endpoint["base_url"], verify=str(tls["ca"]), timeout=40, trust_env=False)}
+        yield {"clients": clients, "identities": {"java": java_identity},
+            "endpoints": {"java": java_endpoint}, "postgres": postgres,
             "java_admin_url": postgres.url("sync145_java", "postgres", "postgres", sqlalchemy=True),
             "ca": tls["ca"], "tls": tls}
         for client in clients.values(): client.close()
     finally:
         for endpoint in reversed(endpoints): _stop(endpoint)
-        python_identity.close(); java_identity.close(); postgres.stop()
+        java_identity.close(); postgres.stop()

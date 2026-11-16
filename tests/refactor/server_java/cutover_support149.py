@@ -100,36 +100,6 @@ class HttpsForwardProxy149:
         self.thread.join(timeout=3)
 
 
-def _start_python_http(database_url, tls, identity, directory):
-    port = _free_port()
-    env = c147._environment147(db_url=database_url, tls=tls, identity=identity,
-                               directory=directory, port=port)
-    env.pop("SERVER_SSL_ENABLED", None)
-    env["PORT"] = str(port)
-    env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
-    env["TEMP"] = env["TMP"] = str(ARTIFACTS / "tmp")
-    log_path = directory / "python149.log"
-    log = log_path.open("wb")
-    process = subprocess.Popen([str(c145.PYTHON), "-B", "-u", "-m",
-                                "tests.refactor.server_java.python_server149"],
-                               cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
-                               stdout=log, stderr=subprocess.STDOUT)
-    endpoint = {"base_url": f"http://127.0.0.1:{port}", "process": process,
-                "log": log, "log_path": log_path}
-    deadline = time.monotonic() + 75
-    while time.monotonic() < deadline and process.poll() is None:
-        try:
-            response = httpx.get(endpoint["base_url"] + "/health/live", timeout=.5,
-                                 trust_env=False)
-            if response.status_code == 200:
-                log.close()
-                return endpoint
-        except Exception:
-            time.sleep(.1)
-    c147._stop(endpoint)
-    raise RuntimeError("149 Python HTTP app failed to start")
-
-
 def _start_java_http(database_url, tls, identity, directory, jar, *, forward_strategy=None):
     port = _free_port()
     env = c147._environment147(db_url=database_url, tls=tls, identity=identity,
@@ -181,27 +151,24 @@ def client_cutover149():
     from lifecycle_support146 import FakeLifecycleKeycloak146, SMTPInbox146
     smtp = SMTPInbox146()
     identity = FakeLifecycleKeycloak146(tls, smtp)
-    db_name = "sync145_python"
+    db_name = "sync145_java"
     with __import__("psycopg").connect(pg.url(db_name, "postgres", "postgres"), autocommit=True) as conn:
         conn.execute("ALTER ROLE mentorflow_closure NOINHERIT NOREPLICATION")
     migration_url = pg.url(db_name, "mentorflow_migrator", c145.MIGRATION_PASSWORD, sqlalchemy=True)
     c145._run_migration145(migration_url, OLD_ISSUER, ARTIFACTS / "migration.log")
-    database_url = pg.url(db_name, "mentorflow_app", c145.APP_PASSWORD, sqlalchemy=True)
-    admin_url = pg.url(db_name, "postgres", "postgres", sqlalchemy=True)
+    database_url = pg.url(db_name, "mentorflow_app", c145.APP_PASSWORD)
+    admin_url = pg.url(db_name, "postgres", "postgres")
     users = {}
     for username in ("client149a", "client149b", "client149c", "client149d", "client149e"):
         subject = identity.add_user(username, username + "@fixture.invalid", "correct")
         users[username] = subject
         _seed_subject(admin_url, subject)
-    python_dir = ARTIFACTS / "python"
     java_dir = ARTIFACTS / "java"
-    python_dir.mkdir(exist_ok=True)
     java_dir.mkdir(exist_ok=True)
-    py = _start_python_http(database_url, tls, identity, python_dir)
-    endpoints = {"python_upstream": py}
-    proxies = {}
-    for name, endpoint in (("python", py),):
-        proxies[name] = HttpsForwardProxy149(endpoint["base_url"], tls)
+    java = _start_java_http(database_url, tls, identity, java_dir,
+        root_build / "mentorflow-server-0.1.0.jar")
+    endpoints = {"java": java}
+    proxies = {"java": HttpsForwardProxy149(java["base_url"], tls)}
 
     java_instances = {}
 

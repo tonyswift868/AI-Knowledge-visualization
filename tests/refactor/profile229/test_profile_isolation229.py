@@ -6,13 +6,12 @@ pytest_plugins = ["support_profile229"]
 from support_profile229 import new_account229, png229  # noqa: E402
 
 
-@pytest.mark.parametrize("backend", ["python", "java"])
-def test_avatar_account_workspace_selectors_cannot_access_other_profile229(profile_env229, backend):
+def test_avatar_account_workspace_selectors_cannot_access_other_profile229(profile_env229):
     """This API is a current-user route: forged IDs cannot select B's image."""
     env = profile_env229
-    client = env["clients"][backend]
-    account_a = new_account229(env, f"avatar-selector-a-{backend}")
-    account_b = new_account229(env, f"avatar-selector-b-{backend}")
+    client = env["clients"]["java"]
+    account_a = new_account229(env, "avatar-selector-a-java")
+    account_b = new_account229(env, "avatar-selector-b-java")
     profile_url = "/api/enterprise/account/profile"
     avatar_url = profile_url + "/avatar"
 

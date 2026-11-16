@@ -13,81 +13,9 @@ from PySide6.QtWidgets import QApplication
 from refactor.desktop.account_protocol import AccountConfig, AccountError, AccountStateClient
 from refactor.desktop.native_auth import NativeCredentialClient
 from refactor.desktop.account_shell_main import AccountShell
-from refactor.server.enterprise.contracts_v1 import TenantMode
-from refactor.server.enterprise.identity.config import EnterpriseIdentityConfig, KeycloakOidcConfig, IdentityConfigurationError
-from refactor.server.enterprise.identity.keycloak import KeycloakOidcClient, InMemoryEnterpriseSessionStore
-from refactor.server.enterprise.identity.models import AuthenticatedPrincipal
-from refactor.server.enterprise.identity.oidc import IdentityError
 from refactor.server.keycloak import session_policy as policy
 
 ISSUER = 'https://identity.fixture.invalid/realms/mentorflow'
-
-
-def config(**extra):
-    return EnterpriseIdentityConfig(mode=TenantMode.ENTERPRISE_SERVER,
-        keycloak=KeycloakOidcConfig(issuer=ISSUER, client_id='mentorflow-desktop',
-            audience='mentorflow-api', redirect_uri='https://app.fixture.invalid/callback'), **extra)
-
-
-def principal():
-    now = datetime.now(timezone.utc)
-    return AuthenticatedPrincipal(issuer=ISSUER, subject='fixture', audiences=('mentorflow-api',),
-        client_id='mentorflow-desktop', token_id='fixture-only', issued_at=now,
-        authentication_time=now, authentication_strength='password_verified', expires_at=now + timedelta(minutes=5))
-
-
-@pytest.mark.parametrize('ttl', [0, 60, 2_147_483_647])
-def test_session74_ttl_accepts_zero_and_no_seven_day_ceiling(ttl):
-    assert config(session_ttl_seconds=ttl).session_ttl_seconds == ttl
-
-
-@pytest.mark.parametrize('ttl', [-1, 1, 59])
-def test_session74_ttl_invalid_values_still_fail(ttl):
-    with pytest.raises(IdentityConfigurationError): config(session_ttl_seconds=ttl)
-
-
-def test_session74_env_default_and_explicit_zero_are_permanent():
-    env = dict(MENTORFLOW_DEPLOYMENT_MODE='ENTERPRISE_SERVER',
-        MENTORFLOW_KEYCLOAK_ISSUER=ISSUER, MENTORFLOW_KEYCLOAK_CLIENT_ID='mentorflow-desktop',
-        MENTORFLOW_KEYCLOAK_AUDIENCE='mentorflow-api',
-        MENTORFLOW_KEYCLOAK_REDIRECT_URI='https://app.fixture.invalid/callback')
-    assert EnterpriseIdentityConfig.from_env(env).session_ttl_seconds == 0
-    env['MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS'] = '0'
-    assert EnterpriseIdentityConfig.from_env(env).session_ttl_seconds == 0
-    env['MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS'] = '2147483647'
-    assert EnterpriseIdentityConfig.from_env(env).session_ttl_seconds == 2147483647
-
-
-def test_session74_unlimited_session_survives_idle_and_explicit_revoke_works():
-    async def run():
-        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(503))) as http:
-            client = KeycloakOidcClient(config(), oidc=NS(), http_client=http)
-            session = client._new_session(principal=principal(), refresh_token='fixture-only', refresh_expires_in=0)
-            assert session.session_expires_at is None and session.refresh_token_expires_at is None
-            future = session.created_at + timedelta(days=365 * 100)
-            assert client.store.get_for_refresh(session.session_id, now=future).public == session
-            client.store.revoke(session.session_id)
-            with pytest.raises(IdentityError): client.store.get(session.session_id, now=future)
-    asyncio.run(run())
-
-
-@pytest.mark.parametrize('failure', ['network', '503', '401'])
-def test_session74_oidc_refresh_outage_retains_session_revocation_removes_it(failure):
-    async def run():
-        def reply(req):
-            if failure == 'network': raise httpx.ReadTimeout('fixture timeout')
-            return httpx.Response(int(failure), json={'error': 'invalid_grant'})
-        async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as http:
-            client = KeycloakOidcClient(config(), oidc=NS(), http_client=http)
-            session = client._new_session(principal=principal(), refresh_token='fixture-only', refresh_expires_in=0)
-            with pytest.raises(IdentityError) as exc: await client.refresh_session(session.session_id)
-            if failure == '401':
-                assert exc.value.code == 'IDENTITY_DISABLED_OR_REVOKED'
-                with pytest.raises(IdentityError): client.store.get(session.session_id)
-            else:
-                assert exc.value.status == 503
-                assert client.store.get(session.session_id).refresh_token == 'fixture-only'
-    asyncio.run(run())
 
 
 class Admin:

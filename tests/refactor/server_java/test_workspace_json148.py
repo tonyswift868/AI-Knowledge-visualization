@@ -1,4 +1,4 @@
-"""Byte-level Python/Java parity for malformed workspace initialization JSON."""
+"""Java malformed workspace JSON responses keep the documented HTTP contract."""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,7 @@ from test_lifecycle_http146 import lifecycle_http146
 
 
 INITIALIZE = "/api/enterprise/account/workspaces/initialize"
-# Python json.JSONDecodeError.msg and .pos form the public FastAPI reference.
+# Fixed malformed-input positions and messages from the existing cases.
 BAD_JSON_148 = (
     ("object-eof", b"{", 1, "Expecting property name enclosed in double quotes"),
     ("value-eof", b'{"x":', 5, "Expecting value"),
@@ -58,55 +58,31 @@ def _client(pair, backend):
         timeout=25, trust_env=False, headers={"X-Request-ID": "malformed-json148"})
 
 
-def test_workspace_initialize_malformed_json_matches_python_bytes_148(lifecycle_http146):
+def test_workspace_initialize_malformed_json_contract_148(lifecycle_http146):
     pair = lifecycle_http146
-    traces = {}
-    mismatches = []
-    for backend in ("python", "java"):
-        with _client(pair, backend) as client:
-            login = client.post("/api/enterprise/auth/native/login",
-                json={"username": "alice", "password": "correct"})
-            assert login.status_code == 200, login.text
-            authorization = {"Authorization": "Bearer " + login.json()["access_token"]}
-            trace = []
-            for case, raw, position, python_error in BAD_JSON_148:
-                response = client.post(INITIALIZE, content=raw,
-                    headers={**authorization, "Content-Type": "application/json"})
-                trace.append(response)
-            traces[backend] = trace
-
-    for index, (case, _raw, position, python_error) in enumerate(BAD_JSON_148):
-        python, java = traces["python"][index], traces["java"][index]
-        if python.status_code != 422:
-            mismatches.append(f"{case}: Python status={python.status_code}, body={python.content!r}")
-        if java.status_code != 422:
-            mismatches.append(f"{case}: Java status={java.status_code}, body={java.content!r}")
-        expected_headers = ("application/json", python.headers.get("content-length"))
-        actual_headers = (java.headers.get("content-type"), java.headers.get("content-length"))
-        if expected_headers != actual_headers:
-            mismatches.append(f"{case}: headers Python={expected_headers!r} Java={actual_headers!r}")
-        if java.content != python.content:
-            mismatches.append(f"{case}: raw bytes Python={python.content!r} Java={java.content!r}")
-
-        # Lock the Python contract independently so equal regressions cannot pass.
+    with _client(pair, "java") as client:
+        login = client.post("/api/enterprise/auth/native/login",
+            json={"username": "alice", "password": "correct"})
+        assert login.status_code == 200, login.text
+        authorization = {"Authorization": "Bearer " + login.json()["access_token"]}
+        for case, raw, position, expected_error in BAD_JSON_148:
+            response = client.post(INITIALIZE, content=raw,
+                headers={**authorization, "Content-Type": "application/json"})
+            assert response.status_code == 422, (case, response.status_code, response.content)
+            assert response.headers.get("content-type", "").startswith("application/json"), case
+            assert int(response.headers["content-length"]) == len(response.content), case
         try:
-            body = python.json()
+            body = response.json()
             issue = body["detail"][0]
-            python_contract = (
+            assert (
                 list(body) == ["detail"] and len(body["detail"]) == 1
                 and list(issue) == ["type", "loc", "msg", "input", "ctx"]
                 and issue["type"] == "json_invalid"
                 and issue["loc"] == ["body", position]
                 and issue["msg"] == "JSON decode error"
-                and issue["input"] == {} and issue["ctx"] == {"error": python_error}
-                and python.content == json.dumps(body, ensure_ascii=False,
+                and issue["input"] == {} and issue["ctx"] == {"error": expected_error}
+                and response.content == json.dumps(body, ensure_ascii=False,
                     separators=(",", ":")).encode("utf-8")
-            )
+            ), (case, body)
         except (ValueError, KeyError, IndexError, TypeError) as exc:
-            python_contract = False
-            body = python.content
-            mismatches.append(f"{case}: Python response is not the expected JSON contract: {exc}")
-        if not python_contract:
-            mismatches.append(f"{case}: Python expected pos={position}, error={python_error!r}; body={body!r}")
-
-    assert not mismatches, "\n".join(mismatches)
+            raise AssertionError(f"{case}: malformed JSON response: {response.content!r}") from exc

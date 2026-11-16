@@ -52,7 +52,7 @@ def _memory145(pid):
                     reason="set SYNC145_BENCHMARK=1 for the requested local benchmark")
 def test_sync145_batch_100_about_1mb_20_runs_per_backend(sync145_backends):
     results = {}
-    for backend_name in ("python", "java"):
+    for backend_name in ("java",):
         client = sync145_backends[backend_name]
         token = sync145_backends["jwks"].token(subject="user-145-a")
         latencies = []

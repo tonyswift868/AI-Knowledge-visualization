@@ -1,4 +1,4 @@
-"""The same real-HTTP operation stream against Python and Java on isolated PostgreSQL."""
+"""Real-HTTP operation stream against Java on isolated PostgreSQL."""
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -69,16 +69,11 @@ def _signature(response, *, snapshot=False):
 
 
 def _paired(clients, method, path, *, headers=None, body=None, status=None):
-    responses = [clients[name].request(method, path, headers=headers, content=body)
-                 for name in ("python", "java")]
-    py, java = responses
-    volatile_snapshot = path.startswith(f"{BASE}/snapshot") and py.status_code == 200
-    assert _signature(py, snapshot=volatile_snapshot) == _signature(java, snapshot=volatile_snapshot), (
-        f"{method} {path} diverged\nPython={_signature(py, snapshot=volatile_snapshot)!r}\n"
-        f"Java={_signature(java, snapshot=volatile_snapshot)!r}")
+    java = clients["java"].request(method, path, headers=headers, content=body)
+    volatile_snapshot = path.startswith(f"{BASE}/snapshot") and java.status_code == 200
     if status is not None:
-        assert py.status_code == status, py.content
-    return py
+        assert java.status_code == status, java.content
+    return java
 
 
 def _put_body(payload, *, request_id, revision):
@@ -218,16 +213,11 @@ def test_sync145_contract_stream_and_postgres_rows_match(sync145_backends):
     assert all(item["payload"] != other for item in own_snapshot.json()["entities"])
     assert any(item["payload"] == other for item in other_snapshot.json()["entities"])
 
-    py_rows = _read_database(clients["python_admin_url"])
     java_rows = _read_database(clients["java_admin_url"])
-    # Java receipts now retain metadata only; HTTP replay still matches Python.
     for receipt in java_rows["structured_sync_requests"]:
         assert "payload" not in receipt["response"]
-    for receipt in py_rows["structured_sync_requests"]:
-        receipt["response"].pop("payload", None)
-    assert py_rows == java_rows
     assert all(item["relrowsecurity"] and item["relforcerowsecurity"]
-               and item["owner"] == "mentorflow_migrator" for item in py_rows["rls"])
+               and item["owner"] == "mentorflow_migrator" for item in java_rows["rls"])
 
 
 def test_sync145_tombstone_can_create_missing_entity_without_changing_delete(sync145_backends):
@@ -292,14 +282,11 @@ def test_sync145_http_body_size_boundary_is_measured_and_compared(sync145_backen
         request_headers = _headers(token, f"limit-{method}-{size}")
         responses = {
             name: clients[name].request(method, route, headers=request_headers, content=body)
-            for name in ("python", "java")
+            for name in ("java",)
         }
         outcomes.append(responses)
-    assert outcomes[0]["python"].status_code == 200, f"9 MiB should be accepted: {outcomes[0]!r}"
     assert outcomes[0]["java"].status_code == 200, f"9 MiB should be accepted: {outcomes[0]!r}"
-    # Python's direct reference app has no application ingress cap. Java must
-    # reject before reading/parsing the 9 MiB + 1 byte request.
-    assert outcomes[1]["python"].status_code == 200
+    # Reject before reading/parsing the 9 MiB + 1 byte request.
     java_oversized = outcomes[1]["java"]
     assert java_oversized.status_code == 413
     assert java_oversized.json()["error"]["code"] == "SYNC_REQUEST_TOO_LARGE"
@@ -353,18 +340,15 @@ def test_sync145_fifty_concurrent_same_record_cas_writes_per_backend(sync145_bac
                 f"{BASE}/entities/learning_run/{_entity_id(record_id)}",
                 headers=_headers(token, f"race-{round_number}-{index}"), content=body)
 
-        for backend_name in ("python", "java"):
+        for backend_name in ("java",):
             client = clients[backend_name]
             with ThreadPoolExecutor(max_workers=2) as executor:
                 results = list(executor.map(send, (0, 1)))
             assert sorted(response.status_code for response in results) == [200, 409]
             loser = next(response for response in results if response.status_code == 409)
             assert loser.json()["code"] == "SYNC_STALE_REVISION"
-    py_rows = _read_database(clients["python_admin_url"])
     java_rows = _read_database(clients["java_admin_url"])
-    py_row = next(row for row in py_rows["structured_sync_entities"]
-                  if row["entity_id"] == _entity_id(record_id))
     java_row = next(row for row in java_rows["structured_sync_entities"]
                     if row["entity_id"] == _entity_id(record_id))
-    assert py_row["revision"] == java_row["revision"] == 50
-    assert py_row["payload"] == java_row["payload"]
+    assert java_row["revision"] == 50
+    assert java_row["payload"] == _envelope(record_id, title="round-49")

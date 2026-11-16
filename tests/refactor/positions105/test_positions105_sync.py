@@ -235,8 +235,6 @@ def test_positions105_large_queue_is_bounded_and_server_accepts_entity(pair):
     assert len(_json(record.payload).encode('utf8'))<32*1024
     loaded=a.room._load(co)
     assert len(loaded['test']['queue'])==541 and loaded['pending']['question']==full
-    from refactor.server.enterprise_tenancy.structured_sync import _validate_course_record
-    _validate_course_record({k:getattr(record,k) for k in ('schema','plan_key','entity','entity_id','payload')})
 
 
 def test_positions105_foreign_process_flags_cleared_not_quiz_identity(pair):

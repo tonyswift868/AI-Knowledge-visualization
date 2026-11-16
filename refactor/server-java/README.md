@@ -1,6 +1,6 @@
 # MentorFlow Java server
 
-This Spring Boot 3 / Java 21 service is the production enterprise backend: account authentication and lifecycle, structured synchronization, catalog, health, administration, and RAG text retrieval. The Python backend remains available for fallback and HTTP contract comparison. Java requires `ENTERPRISE_SERVER`; Python defaults to `PERSONAL_LOCAL`. Build, health checks, routing and rollback use the existing scripts in [deploy/README.md](deploy/README.md). Production operations require separate authorization; a local test does not verify the live deployment.
+This Spring Boot 3 / Java 21 service is the enterprise backend: account authentication and lifecycle, structured synchronization, catalog, health, administration, and RAG text retrieval. It requires `ENTERPRISE_SERVER`. Python HTTP application code has been retired; `refactor/server` retains Alembic migrations, identity assets, shared contracts and legacy deployment inputs. Deployment scripts still contain historical Python fallback references pending separate cleanup; the retained files do not provide a runnable Python backend. Build, health checks and routing use [deploy/README.md](deploy/README.md). Production operations require separate authorization; a local test does not verify the live deployment.
 
 ## Build locally
 
@@ -20,7 +20,7 @@ The generated jar is `D:/MentorFlow/.local/test-tmp/java142/build/mentorflow-ser
 
 ## Configuration
 
-The deployment mode and OIDC configuration use the existing Python environment names. Python defaults to `PERSONAL_LOCAL`; this Java service supports only the enterprise server and must be configured explicitly for `ENTERPRISE_SERVER`.
+The deployment mode and OIDC configuration retain their existing environment names. Configure this service explicitly for `ENTERPRISE_SERVER`.
 
 | Variable | Purpose |
 | --- | --- |
@@ -38,7 +38,7 @@ The deployment mode and OIDC configuration use the existing Python environment n
 | `MENTORFLOW_KEYCLOAK_HTTP_TIMEOUT_SECONDS` | JWKS request timeout; default 10. |
 | `MENTORFLOW_KEYCLOAK_JWKS_CACHE_SECONDS` | JWKS cache period; default 300. |
 | `MENTORFLOW_DATABASE_URL` | Existing database connection setting used by the identity directory and readiness check. |
-| `MENTORFLOW_IDENTITY_SESSION_COOKIE_NAME` | Cookie/bearer conflict detection and expired-cookie clearing; valid browser-cookie sessions remain Python-owned. |
+| `MENTORFLOW_IDENTITY_SESSION_COOKIE_NAME` | Cookie/bearer conflict detection and expired-cookie clearing; browser-cookie sessions are not accepted. |
 | `MENTORFLOW_KEYCLOAK_ISSUER_MIGRATION_JSON` | Existing bounded issuer migration window and authority digest. |
 | `MENTORFLOW_IDENTITY_CONTINUITY_FILE`, `MENTORFLOW_IDENTITY_CONTINUITY_SHA256`, `MENTORFLOW_IDENTITY_CONTINUITY_SIGNATURE_HEX`, `MENTORFLOW_IDENTITY_CONTINUITY_PUBLIC_KEY_HEX` | Existing signed per-subject issuer continuity configuration. |
 | `MENTORFLOW_NATIVE_IDENTITY_ENDPOINT` | Enables native auth through the existing private Keycloak verifier endpoint. |
@@ -62,9 +62,9 @@ When the account page is enabled and the dedicated admin reader path is unset, t
 
 ## Migration boundary
 
-The service validates RS256 JWTs, signed issuer continuity, and its own native access tokens, resolving membership through the shared identity directory. Native login/refresh/logout/session use the existing Alembic-owned `native_session_families` table; Java never creates or migrates production tables. Refresh tokens survive service restart and can rotate in either implementation over the same database.
+The service validates RS256 JWTs, signed issuer continuity, and its own native access tokens, resolving membership through the shared identity directory. Native login/refresh/logout/session use the existing Alembic-owned `native_session_families` table; Java never creates or migrates production tables. Refresh tokens survive service restart.
 
-Access-token hashes and valid browser-cookie sessions are process-local in Python. Existing database rows cannot reconstruct them. Therefore a native access token minted by one implementation is not recognized by the other, and Java does not accept a valid Python browser-cookie session. Native desktop clients can refresh against the shared durable family after a restart or cutover; a Python browser-cookie session requires login again. Do not split protected traffic across the two implementations. The production routing and Python fallback procedure, including health and session checks, is documented in [deploy/README.md](deploy/README.md).
+Native access-token hashes are process-local. Desktop clients can refresh against their durable family after a Java restart. Alembic remains a separate Python maintenance tool, invoked by the deployment migration script.
 
 ## HTTP contracts and measurements
 
@@ -79,10 +79,10 @@ $env:JAVA142_ARTIFACTS = "$env:TEMP/build"
   -q -p no:cacheprovider --basetemp "$env:TEMP/pytest-contract"
 ```
 
-The same assertions receive a Python or Java base URL. Both real local servers use a local RSA/JWKS issuer and isolated external membership/health fixtures; no real accounts or services are contacted. Test controllers and adapters compile into `test-classes` and are excluded from the production jar. Missing prepared Java artifacts are reported as skips, not as Java passes.
+Contract tests start only Java, with a local RSA/JWKS issuer and isolated external membership/health fixtures; no real accounts or services are contacted. Test controllers and adapters compile into `test-classes` and are excluded from the production jar. Missing prepared Java artifacts are reported as skips, not as Java passes.
 
-Set `JAVA142_BENCHMARK=1` for a separate measurement run. It makes 20 warm-up requests and 1000 sequential requests per backend and writes `build/resource142.json`; default test runs skip this optional measurement. RSS sums the server process and descendants, including the Windows virtualenv redirector and its actual Python worker. This is a local Windows measurement with fake external membership state, not a production PostgreSQL/Linux capacity test.
+Set `JAVA142_BENCHMARK=1` for a separate Java measurement run. It makes 20 warm-up requests and 1000 sequential requests and writes `build/resource142.json`; default test runs skip this optional measurement. RSS sums the server process and descendants. This is a local Windows measurement with fake external membership state, not a production PostgreSQL/Linux capacity test.
 
-Response comparisons preserve status, application headers, content length and UTF-8 body bytes. Readiness excludes `dependencies[*].duration_ms` and the resulting content length only; HTTP server/date/connection framing is transport-specific. Fixed request IDs and token times keep the remaining values deterministic.
+HTTP assertions cover Java status, response fields, authentication and durable database effects. Fixed request IDs and token times keep contract fixtures deterministic.
 
-The `144` HTTP tests additionally start real embedded PostgreSQL 17.6 (test-only Zonky dependency), apply existing Alembic migrations with the existing database roles/schema prerequisites, and use a local TLS Keycloak substitute. Run `dependency:build-classpath -DincludeScope=test -Dmdep.outputFile=<scratch>/test-classpath.txt` after building; their scratch root is `D:/MentorFlow/.local/test-tmp/auth144`. No H2, production credentials, remote identity service or user data are used. Native contract comparisons normalize generated secrets and clock values, and separately compare durable family state and concurrent operations.
+The `144` HTTP tests additionally start real embedded PostgreSQL 17.6 (test-only Zonky dependency), apply existing Alembic migrations with the existing database roles/schema prerequisites, and use a local TLS Keycloak substitute. Run `dependency:build-classpath -DincludeScope=test -Dmdep.outputFile=<scratch>/test-classpath.txt` after building; their scratch root is `D:/MentorFlow/.local/test-tmp/auth144`. No H2, production credentials, remote identity service or user data are used. Native tests verify durable family state and concurrent operations.

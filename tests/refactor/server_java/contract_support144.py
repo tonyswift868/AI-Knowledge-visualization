@@ -294,14 +294,13 @@ def application_environment144(*, identity: FakeKeycloak144, tls: dict[str, Path
         "MENTORFLOW_ACCOUNT_LIFECYCLE_ENABLED":"1","MENTORFLOW_ACCOUNT_LIFECYCLE_CONFIG":str(lifecycle_path),
         "MENTORFLOW_CATALOG_DIR":str(directory / "catalog"),"MENTORFLOW_BIND_ADDRESS":"127.0.0.1","PORT":str(port),
         "SERVER_SSL_ENABLED":"true","SERVER_SSL_CERTIFICATE":str(tls["server_cert"]),
-        "SERVER_SSL_CERTIFICATE_PRIVATE_KEY":str(tls["server_key"]),"PYTHONDONTWRITEBYTECODE":"1",
+        "SERVER_SSL_CERTIFICATE_PRIVATE_KEY":str(tls["server_key"]),
         "CONTRACT144_SERVER_CERT":str(tls["server_cert"]),"CONTRACT144_SERVER_KEY":str(tls["server_key"]),
         "MENTORFLOW_IDENTITY_SESSION_TTL_SECONDS":"0"})
     env["MENTORFLOW_CATALOG_DIR"] = str(directory / "catalog")
     catalog = Path(env["MENTORFLOW_CATALOG_DIR"]); catalog.mkdir(parents=True,exist_ok=True)
     (catalog / "source-whitelist.json").write_text('{"version":"144","sites":[]}',encoding="utf-8")
     (catalog / "model-prices.json").write_text('{"version":"144","prices":[]}',encoding="utf-8")
-    env["PYTHONPATH"] = os.pathsep.join([str(ROOT),str(Path(__file__).parent),env.get("PYTHONPATH","")])
     manifest,signature,public,digest=migration_material144(directory)
     env.update({"MENTORFLOW_IDENTITY_CONTINUITY_FILE":str(manifest),
         "MENTORFLOW_IDENTITY_CONTINUITY_SIGNATURE_HEX":signature,
@@ -311,18 +310,6 @@ def application_environment144(*, identity: FakeKeycloak144, tls: dict[str, Path
     env["MENTORFLOW_KEYCLOAK_IDENTITY_ISSUER"] = OLD_ISSUER
     env["MENTORFLOW_KEYCLOAK_TRANSPORT_ISSUER"] = identity.origin+"/realms/mentorflow"
     return env
-
-
-def start_python144(db_url: str, identity: FakeKeycloak144, tls: dict[str, Path], directory: Path,
-        *, issuer: str | None = None, canonical: str | None = None) -> dict:
-    port = free_port(); env=application_environment144(identity=identity,tls=tls,db_url=db_url,directory=directory,
-        port=port,issuer=issuer,canonical=canonical)
-    script=Path(__file__).with_name("python_server144.py")
-    log_path=directory / "python.log"; log=log_path.open("wb")
-    process=subprocess.Popen([sys.executable,"-B",str(script)],cwd=ROOT,env=env,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT)
-    endpoint={"base_url":f"https://localhost:{port}","process":process,"log_path":log_path,"log":log,"env":env}
-    wait_server144(endpoint)
-    return endpoint
 
 
 def start_java144(db_url: str, identity: FakeKeycloak144, tls: dict[str, Path], directory: Path,

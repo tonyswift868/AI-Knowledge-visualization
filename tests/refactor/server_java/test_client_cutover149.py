@@ -1,4 +1,4 @@
-"""The real desktop account/sync clients across Python and Java HTTPS edges."""
+"""The real desktop account/sync clients against Java HTTPS edges."""
 from __future__ import annotations
 
 import asyncio
@@ -63,11 +63,11 @@ def test_client_before_scheme_fix149_real_desktop_maps_java_403(
     before_jar = Path(os.environ.get("JAVA149_FIXED_JAR",
         str(fixture["root_build"] / "mentorflow-server-0.1.0.jar")))
     assert before_jar.is_file(), "149 current Java jar must be prepared by the root build"
-    py_config = _config(fixture["proxies"]["python"].base_url)
-    py_login, py_observed, py_error = _login(py_config, fixture["tls"]["ca"], "client149a")
-    assert py_error is None, repr(py_error)
+    source_config = _config(fixture["proxies"]["java"].base_url)
+    source_login, source_observed, source_error = _login(source_config, fixture["tls"]["ca"], "client149a")
+    assert source_error is None, repr(source_error)
     assert any(item["path"].endswith("/native/login") and item["status"] == 200
-               for item in py_observed)
+               for item in source_observed)
 
     java_endpoint, java_proxy = fixture["start_java"](
         "before", before_jar, forward_strategy="none")
@@ -89,15 +89,15 @@ def test_client_before_scheme_fix149_real_desktop_maps_java_403(
         assert direct.status_code == 403
         assert direct.json()["code"] == "NATIVE_TRANSPORT_REQUIRED"
 
-        # Seed an actual Python-issued desktop credential, then exercise the
-        # real LoginSession.restore path against the same Java HTTP edge.
+        # Seed a real Java-issued desktop credential, then exercise restore
+        # against the Java edge with the former forwarding strategy.
         settings = _MemorySettings()
         from refactor.desktop.account_identity import AccountPreferenceStore
         from refactor.desktop.login_session import LoginSession
         preferences = AccountPreferenceStore(settings)
         credentials = _MemoryCredentialVault()
         session = LoginSession(preferences, credentials=credentials)
-        session.accept(py_login, remember=True, automatic=True, remember_password=False,
+        session.accept(source_login, remember=True, automatic=True, remember_password=False,
                        username="client149a")
         _set_desktop_env(monkeypatch, java_proxy.base_url, fixture["tls"]["ca"])
 
@@ -123,7 +123,7 @@ def test_client_before_scheme_fix149_real_desktop_maps_java_403(
 
         monkeypatch.setattr(native_auth.httpx, "AsyncClient", recording_async_client)
         with pytest.raises(Exception) as restore_failure:
-            session.restore(py_login.identity.profile(), threading.Event())
+            session.restore(source_login.identity.profile(), threading.Event())
         assert getattr(restore_failure.value, "code", None) == "NATIVE_AUTH_UNAVAILABLE"
         refresh = [item for item in restore_observed
                    if item["path"].endswith("/native/refresh")]
@@ -274,58 +274,15 @@ def _desktop_flow(base_url, ca, username):
             "account_closure": closed}
 
 
-@pytest.mark.parametrize("backend,username", [("python", "client149c"), ("java", "client149d")])
 def test_desktop_login_restore_sync_logout_and_closure149(
-        backend, username, client_cutover149, monkeypatch):
+        client_cutover149, monkeypatch):
     fixture = client_cutover149
-    if backend == "python":
-        proxy = fixture["proxies"]["python"]
-    else:
-        jar = Path(os.environ.get("JAVA149_FIXED_JAR",
-            str(fixture["root_build"] / "mentorflow-server-0.1.0.jar")))
-        assert jar.is_file(), "149 fixed Java jar must be prepared by the root build"
-        _, proxy = fixture["start_java"]("fixed", jar)
+    username = "client149d"
+    jar = Path(os.environ.get("JAVA149_FIXED_JAR",
+        str(fixture["root_build"] / "mentorflow-server-0.1.0.jar")))
+    assert jar.is_file(), "149 fixed Java jar must be prepared by the root build"
+    _, proxy = fixture["start_java"]("fixed", jar)
     _set_desktop_env(monkeypatch, proxy.base_url, fixture["tls"]["ca"])
-    if backend == "java":
-        # Simulate the cutover direction Python -> Java with a real refresh
-        # token issued by Python against the same PostgreSQL database. The
-        # desktop restore path must rotate it at Java and then sync there.
-        py_config = _config(fixture["proxies"]["python"].base_url)
-        py_login, py_observed, py_error = _login(
-            py_config, fixture["tls"]["ca"], "client149e")
-        assert py_error is None, repr(py_error)
-        assert any(item["path"].endswith("/native/login") and item["status"] == 200
-                   for item in py_observed)
-        from refactor.desktop.account_identity import AccountPreferenceStore
-        from refactor.desktop.login_session import LoginSession
-        settings = _MemorySettings()
-        preferences = AccountPreferenceStore(settings)
-        credentials = _MemoryCredentialVault()
-        session = LoginSession(preferences, credentials=credentials)
-        session.accept(py_login, remember=True, automatic=True, remember_password=False,
-                       username="client149e")
-        cross_profile = py_login.identity.profile()
-        cross_restore = session.restore(cross_profile, threading.Event())
-        from refactor.learning.sync_transport import SyncTransport
-        transport = SyncTransport(account_id=cross_restore.identity.account_id,
-            session_provider=lambda: cross_restore, api_base_url=proxy.base_url,
-            ca_bundle=Path(fixture["tls"]["ca"]))
-        cross_snapshot = transport.read_snapshot()
-        assert cross_snapshot["schema"] == "mentorflow.structured-sync.v1"
-        import hashlib
-        record_id = "client149:python-to-java"
-        entity_id = "refactor.v1:course_record:" + hashlib.sha256(
-            record_id.encode()).hexdigest()
-        values = {"schema": "mentorflow.course.module.v1", "plan_key": "client149",
-                  "entity": "module", "entity_id": record_id,
-                  "payload": {"title": "Python to Java refresh", "nodes": []}}
-        payload = {"schema": "mentorflow.refactor-sync.v1", "version": 1,
-                   "record_type": "course_record", "record_id": record_id,
-                   "values": values}
-        written = transport.write("learning_run", entity_id,
-            request_id="client149-python-to-java", expected_revision=0, payload=payload)
-        assert written["revision"] == 1
-        transport.close()
     result = _desktop_flow(proxy.base_url, fixture["tls"]["ca"], username)
     assert result["remote_logout"] is True
     assert result["account_closure"] == "COMPLETED"

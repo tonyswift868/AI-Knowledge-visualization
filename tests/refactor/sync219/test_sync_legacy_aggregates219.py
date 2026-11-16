@@ -1,4 +1,4 @@
-"""Both server contracts reject retired product aggregate records cleanly."""
+"""The Java server rejects retired product aggregate records cleanly."""
 from __future__ import annotations
 
 import os
@@ -10,9 +10,6 @@ import subprocess
 
 import pytest
 
-from refactor.server.product_sync_contract import (
-    ProductSyncRejected, validate,
-)
 
 
 RETIRED = ("product_plan_state", "product_review_state", "product_account_settings")
@@ -33,18 +30,11 @@ def _legacy_entity_id(table, values):
     return f"{table}:{digest}"
 
 
-def test_sync_legacy_aggregates219_python_rejects_retired_types():
-    for table in RETIRED:
-        spec, values, payload = _payload(table)
-        with pytest.raises(ProductSyncRejected, match="PRODUCT_SYNC_RECORD_FIELDS"):
-            validate(spec["kind"], _legacy_entity_id(table, values), payload)
-
-
 def test_sync_legacy_aggregates219_java_rejects_retired_types(tmp_path):
     repo = Path(__file__).resolve().parents[3]
     java = Path(r"D:\MentorFlow\.local\java\jdk-21.0.12.1+1\bin\java.exe")
     javac = java.with_name("javac.exe")
-    cache = Path(r"D:\MentorFlow\.local\test-tmp\java-cache\m2\com\fasterxml\jackson\core")
+    cache = Path(os.environ.get("JAVA_MAVEN_REPO", r"D:\MentorFlow\.local\java\m2")) / "com/fasterxml/jackson/core"
     jackson_jars = [cache / "jackson-databind/2.21.4/jackson-databind-2.21.4.jar",
                     cache / "jackson-core/2.21.4/jackson-core-2.21.4.jar",
                     cache / "jackson-annotations/2.21/jackson-annotations-2.21.jar"]

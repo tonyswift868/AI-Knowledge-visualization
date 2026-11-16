@@ -42,14 +42,12 @@ def test_sync_validation145_exact_http_errors(sync145_backends, method, path, bo
     headers = {'Authorization': 'Bearer '+sync145_backends['jwks'].token(subject='user-145-validation'),
                'X-MentorFlow-Organization-ID': ORG,
                'X-MentorFlow-Workspace-ID': WORKSPACE, 'X-Request-ID': 'validation145'}
-    responses = [sync145_backends[name].request(method, '/api/enterprise/sync/v1'+path,
-                                              headers=headers, json=body) for name in ('python', 'java')]
-    old, new = responses
-    assert old.status_code == (200 if path == '/changes?since=1.0' else 422), old.text
-    assert old.status_code == new.status_code, (old.text, new.text)
-    assert old.content == new.content, (old.text, new.text)
-    for name in ('content-type', 'cache-control', 'x-request-id', 'x-mentorflow-runtime-profile', 'content-length'):
-        assert old.headers.get(name) == new.headers.get(name), (name, old.headers, new.headers)
+    response = sync145_backends["java"].request(method, '/api/enterprise/sync/v1'+path,
+                                               headers=headers, json=body)
+    assert response.status_code == (200 if path == '/changes?since=1.0' else 422), response.text
+    assert response.headers['content-type'].startswith('application/json')
+    assert response.headers['x-request-id'] == 'validation145'
+
 
 
 @pytest.mark.parametrize('body,content_type', [
@@ -72,10 +70,8 @@ def test_sync_validation145_raw_body_errors(sync145_backends, body, content_type
                'X-MentorFlow-Organization-ID': ORG,
                'X-MentorFlow-Workspace-ID': WORKSPACE, 'X-Request-ID': 'raw145',
                'Content-Type': content_type}
-    replies = [sync145_backends[name].put('/api/enterprise/sync/v1/entities/task/a',
-                                        content=body, headers=headers) for name in ('python', 'java')]
-    old, new = replies
-    assert old.status_code in (400, 422)
-    assert (old.status_code, old.content) == (new.status_code, new.content), (old.text, new.text)
-    for name in ('content-type', 'cache-control', 'x-request-id', 'x-mentorflow-runtime-profile', 'content-length'):
-        assert old.headers.get(name) == new.headers.get(name), name
+    response = sync145_backends["java"].put('/api/enterprise/sync/v1/entities/task/a',
+                                           content=body, headers=headers)
+    assert response.status_code in (400, 422), response.text
+    assert response.headers['content-type'].startswith('application/json')
+    assert response.headers['x-request-id'] == 'raw145'

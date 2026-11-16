@@ -1,4 +1,4 @@
-"""Local PostgreSQL-backed lifecycle HTTP contracts against Python and Java."""
+"""Local PostgreSQL-backed Java lifecycle HTTP contracts."""
 from __future__ import annotations
 
 import json
@@ -122,7 +122,7 @@ def _db_projection(endpoint):
 
 def _workspace_bootstrap_rows(pair, backend, subject):
     """Return the exact bootstrap-owned rows, normalizing only server timestamps."""
-    db_name = "py146" if backend == "python" else "java146"
+    db_name = "java146"
     port = pair["pg"]["port"]
     with psycopg.connect(f"host=127.0.0.1 port={port} user=postgres dbname={db_name}") as conn:
         membership = conn.execute("""SELECT organization_id, role, status, created_at, updated_at FROM organization_memberships
@@ -160,12 +160,7 @@ def _exercise146(pair, backend):
     smtp = pair["smtps"][backend]
     authority = pair["identities"][backend]
     trace = []
-    # 176 intentionally changes Java's email-registration check to a uniform
-    # response. Python still performs an account lookup, which prewarms the
-    # cached admin token; Java obtains that token on its later first admin call.
-    # Exclude only the email lookup below and compare token acquisition
-    # separately. All other admin requests remain ordered and exact.
-    excluded_authority_http = set()
+    # Java intentionally returns a uniform email-registration response.
     with _client(pair, backend) as c:
         cap = c.get(LIFECYCLE + "/capabilities")
         assert cap.status_code == 200
@@ -200,19 +195,10 @@ def _exercise146(pair, backend):
         verified = c.post(LIFECYCLE + "/register/verify", json={"credential": credential, "code": "123456"})
         assert verified.status_code == 200 and _json_body(verified)["state"] == "VERIFIED"
         trace.append(_http_projection(verified))
-        lookup_http_start = len(authority.http_events)
         checked = c.post(LIFECYCLE + "/register/check", json={"field": "email", "value": "new146@fixture.invalid"})
-        # This is a semantic exception to Python/Java parity by design: Java
-        # must not expose registration status; legacy JSON fields still exist.
         checked_body = _json_body(checked)
         assert checked.status_code == 200
-        assert checked_body == {"field": "email", "available": backend == "java"}
-        if backend == "python":
-            for index in range(lookup_http_start, len(authority.http_events)):
-                row = authority.http_events[index]
-                if row["method"] == "GET" and row["path"] == "/admin/realms/mentorflow/users" \
-                        and "email" in row["query_fields"]:
-                    excluded_authority_http.add(index)
+        assert checked_body == {"field": "email", "available": True}
 
         # Password reset sends only into local SMTP, confirms the new credential,
         # and invalidates the pre-reset native bearer.
@@ -304,29 +290,16 @@ def _exercise146(pair, backend):
         "db": _db_projection(pair["servers"][backend]),
         "operations": [row["operation"] for row in authority.operations],
         "admin_tokens": admin_tokens,
-        "admin_trace": [row for index, row in enumerate(authority.http_events)
-            if index not in excluded_authority_http and row["route"] != "admin_token"]}
+        "admin_trace": [row for row in authority.http_events if row["route"] != "admin_token"]}
 
 
 def test_lifecycle146_same_http_contract_mail_and_postgres_projection(lifecycle_http146):
-    outcomes = {backend: _exercise146(lifecycle_http146, backend) for backend in ("python", "java")}
-    _assert_trace_equal(outcomes["python"]["trace"], outcomes["java"]["trace"])
-    assert outcomes["python"]["mail"] == outcomes["java"]["mail"]
-    assert outcomes["python"]["db"] == outcomes["java"]["db"]
-    assert outcomes["python"]["operations"] == outcomes["java"]["operations"]
-    for backend in ("python", "java"):
-        tokens = outcomes[backend]["admin_tokens"]
-        assert len(tokens) == 1
-        assert tokens[0]["method"] == "POST"
-        assert tokens[0]["path"] == "/realms/mentorflow/protocol/openid-connect/token"
-        assert tokens[0]["status"] == 200
-    assert outcomes["python"]["admin_trace"] == outcomes["java"]["admin_trace"]
-
-
-def _assert_trace_equal(python_trace, java_trace):
-    assert len(python_trace) == len(java_trace), f"trace length Python={len(python_trace)} Java={len(java_trace)}"
-    for index, (python_item, java_item) in enumerate(zip(python_trace, java_trace)):
-        assert python_item == java_item, f"HTTP contract mismatch at request index {index}: Python={python_item!r}, Java={java_item!r}"
+    outcome = _exercise146(lifecycle_http146, "java")
+    tokens = outcome["admin_tokens"]
+    assert len(tokens) == 1
+    assert tokens[0]["method"] == "POST"
+    assert tokens[0]["path"] == "/realms/mentorflow/protocol/openid-connect/token"
+    assert tokens[0]["status"] == 200
 
 
 def test_lifecycle146_fake_spi_boundary_is_explicit():
@@ -338,11 +311,11 @@ def test_lifecycle146_fake_spi_boundary_is_explicit():
 def test_lifecycle146_fresh_workspace_initialization_and_database_rows(lifecycle_http146):
     pair = lifecycle_http146
     subject = "subject146-bootstrap-user"
-    for backend in ("python", "java"):
+    for backend in ("java",):
         pair["identities"][backend].add_user("bootstrap-user", "bootstrap146@fixture.invalid", "bootstrap-pass")
 
     outcomes = {}
-    for backend in ("python", "java"):
+    for backend in ("java",):
         trace = []
         with _client(pair, backend) as c:
             login = c.post(NATIVE + "/login", json={"username": "bootstrap-user", "password": "bootstrap-pass"})
@@ -396,16 +369,14 @@ def test_lifecycle146_fresh_workspace_initialization_and_database_rows(lifecycle
     # IDs are deterministic length-prefixed issuer/subject hashes; timestamps are
     # normalized explicitly by the projection, while all persisted semantic columns
     # are compared row by row without sorting JSON or hiding state.
-    _assert_trace_equal(outcomes["python"]["trace"], outcomes["java"]["trace"])
-    assert outcomes["python"]["rows"] == outcomes["java"]["rows"]
-    manifest = outcomes["python"]["rows"]["rehydration_manifests"][0]
+    manifest = outcomes["java"]["rows"]["rehydration_manifests"][0]
     assert manifest[1] == subject and manifest[5:7] == (True, 1)
 
 
 def test_lifecycle146_reset_observation_valid_errors_and_boundary_contract(lifecycle_http146):
     pair = lifecycle_http146
     outcomes = {}
-    for backend in ("python", "java"):
+    for backend in ("java",):
         authority = pair["identities"][backend]
         trace = []
         with _client(pair, backend) as c:
@@ -469,7 +440,7 @@ def test_lifecycle146_reset_observation_valid_errors_and_boundary_contract(lifec
             trace.append(_http_projection(available))
             unavailable = c.post(LIFECYCLE + "/register/check", json={"field": "email", "value": "alice146@fixture.invalid"})
             assert unavailable.status_code == 200
-            assert _json_body(unavailable) == {"field": "email", "available": backend == "java"}
+            assert _json_body(unavailable) == {"field": "email", "available": True}
             invalid_check = c.post(LIFECYCLE + "/register/check", content=b'{"field":"username","value":"x","extra":1}',
                 headers={"Content-Type": "application/json"})
             assert invalid_check.status_code == 400 and _json_body(invalid_check)["code"] == "REGISTRATION_INPUT_INVALID"
@@ -482,4 +453,3 @@ def test_lifecycle146_reset_observation_valid_errors_and_boundary_contract(lifec
             assert wrong_method.status_code == 405
             trace.append(_http_projection(wrong_method))
         outcomes[backend] = trace
-    _assert_trace_equal(outcomes["python"], outcomes["java"])

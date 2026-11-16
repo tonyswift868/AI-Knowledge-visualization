@@ -1,4 +1,4 @@
-"""HTTP-only Python/Java session contracts over Alembic's real PostgreSQL schema."""
+"""HTTP-only Java session contracts over Alembic's real PostgreSQL schema."""
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
@@ -9,7 +9,7 @@ import httpx
 import psycopg
 import pytest
 from contract_support144 import (LOCAL,NATIVE_PREFIX,OLD_ISSUER,FakeKeycloak144,make_tls144,
-    prepare_databases144,seed_tenant144,start_java144,start_postgres144,start_python144,
+    prepare_databases144,seed_tenant144,start_java144,start_postgres144,
     stop_postgres144,stop_server144,ORG,WORKSPACE)
 
 def client(f,backend):
@@ -68,8 +68,8 @@ def state(f,backend):
             account_binding=binding,deadline=deadline,revoked_reason=reason))
     return sorted(result,key=lambda row:json.dumps(row,sort_keys=True))
 
-@pytest.mark.parametrize("backend",("python","java"))
-def test_native144_session_rotation_revocation_concurrency_restart(native_http144,backend):
+def test_native144_session_rotation_revocation_concurrency_restart(native_http144):
+    backend="java"
     f=native_http144;trace=[];fake=f["fake"]
     def observe(r,status):
         assert r.status_code==status,r.text
@@ -143,8 +143,7 @@ def test_native144_session_rotation_revocation_concurrency_restart(native_http14
         observe(c.get(NATIVE_PREFIX+"/session",headers=auth(departing["access_token"])),401)
         persistent=login(c,"bob")
     original=f[backend];stop_server144(original)
-    launch=start_python144 if backend=="python" else start_java144
-    f[backend]=launch(original["env"]["MENTORFLOW_DATABASE_URL"],fake,f["tls"],f["run"]/backend)
+    f[backend]=start_java144(original["env"]["MENTORFLOW_DATABASE_URL"],fake,f["tls"],f["run"]/backend)
     f["servers"].append(f[backend])
     with client(f,backend) as c:
         observe(c.get(NATIVE_PREFIX+"/session",headers=auth(persistent["access_token"])),401)
@@ -152,16 +151,15 @@ def test_native144_session_rotation_revocation_concurrency_restart(native_http14
         observe(c.get(NATIVE_PREFIX+"/session",headers=auth(continued["access_token"])),200)
     f["traces"][backend]=trace;f["states"][backend]=state(f,backend)
 
-def test_native144_bytes_headers_database_match(native_http144):
+def test_native144_java_state_and_trace_are_recorded(native_http144):
     f=native_http144
-    (LOCAL/"trace144.json").write_text(json.dumps(f["traces"],ensure_ascii=False,indent=2),encoding="utf-8")
-    assert f["traces"]["python"]==f["traces"]["java"]
-    assert f["states"]["python"]==f["states"]["java"]
-    (LOCAL/"contract144-results.json").write_text(json.dumps(dict(http_steps_per_backend=len(f["traces"]["python"]),
-        postgres_version=f["postgres_version"],python_state=f["states"]["python"],java_state=f["states"]["java"]),ensure_ascii=False,indent=2),encoding="utf-8")
+    assert f["traces"]["java"]
+    assert isinstance(f["states"]["java"],list)
+    (LOCAL/"contract144-results.json").write_text(json.dumps(dict(http_steps=len(f["traces"]["java"]),
+        postgres_version=f["postgres_version"],java_state=f["states"]["java"]),ensure_ascii=False,indent=2),encoding="utf-8")
 
-@pytest.mark.parametrize("backend",("python","java"))
-def test_native144_boundaries_and_cookie_headers(native_http144,backend):
+def test_native144_boundaries_and_cookie_headers(native_http144):
+    backend="java"
     f=native_http144;trace=[]
     with client(f,backend) as c:
         for body in ({},[],{"username":"alice"},{"username":"alice","password":1},{"username":" ","password":"correct"},
@@ -185,41 +183,8 @@ def test_native144_boundaries_and_cookie_headers(native_http144,backend):
             assert r.status_code==405;trace.append(snapshot(r))
     f["traces"]["boundary_"+backend]=trace
 
-def test_native144_boundary_bytes_match(native_http144):
-    f=native_http144;assert f["traces"]["boundary_python"]==f["traces"]["boundary_java"]
-
-def test_native144_cross_runtime_refresh_and_access_boundary(native_http144):
-    f=native_http144
-    with client(f,"shared_python") as py,client(f,"shared_java") as java:
-        r=py.post(NATIVE_PREFIX+"/login",json={"username":"alice","password":"correct"})
-        assert r.status_code==200,r.text;issued=r.json()
-        assert py.get(NATIVE_PREFIX+"/session",headers=auth(issued["access_token"])).status_code==200
-        # Explicit migration gap: access digests are process-local; do not inject a fake shared store.
-        assert java.get(NATIVE_PREFIX+"/session",headers=auth(issued["access_token"])).status_code==401
-        r=java.post(NATIVE_PREFIX+"/refresh",json={"refresh_token":issued["refresh_token"]})
-        assert r.status_code==200,r.text;rotated=r.json()
-        assert py.get(NATIVE_PREFIX+"/session",headers=auth(issued["access_token"])).status_code==401
-        assert java.get(NATIVE_PREFIX+"/session",headers=auth(rotated["access_token"])).status_code==200
-        r=py.post(NATIVE_PREFIX+"/refresh",json={"refresh_token":rotated["refresh_token"]})
-        assert r.status_code==200,r.text
-        assert java.get(NATIVE_PREFIX+"/session",headers=auth(rotated["access_token"])).status_code==401
-        assert py.get(NATIVE_PREFIX+"/session",headers=auth(r.json()["access_token"])).status_code==200
-
-def test_native144_valid_python_cookie_is_not_a_shared_java_session(native_http144):
-    f=native_http144
-    with client(f,"shared_python") as py,client(f,"shared_java") as java:
-        r=py.post(NATIVE_PREFIX+"/login",json={"username":"alice","password":"correct"})
-        assert r.status_code==200,r.text
-        fixture=py.post("/contract144/browser-cookie",json={"access_token":r.json()["access_token"]})
-        assert fixture.status_code==200,fixture.text
-        cookie=fixture.json();headers={"Cookie":cookie["cookie_name"]+"="+cookie["session_id"]}
-        # This is a measured scope gap, deliberately not labeled as full cookie parity.
-        assert py.get("/api/enterprise/catalog/source-whitelist",headers=headers).status_code==200
-        invalid=java.get("/api/enterprise/catalog/source-whitelist",headers=headers)
-        assert invalid.status_code==401 and code(invalid)=="ENTERPRISE_SESSION_INVALID"
-
-@pytest.mark.parametrize("backend",("python","java"))
-def test_native144_disabled_account_and_database_outage(native_http144,backend):
+def test_native144_disabled_account_and_database_outage(native_http144):
+    backend="java"
     f=native_http144;trace=[]
     with client(f,backend) as c:
         r=c.post(NATIVE_PREFIX+"/login",json={"username":"bob","password":"correct"})
@@ -232,7 +197,7 @@ def test_native144_disabled_account_and_database_outage(native_http144,backend):
         assert c.get(NATIVE_PREFIX+"/session",headers=auth(credentials["access_token"])).status_code==401
         r=c.post(NATIVE_PREFIX+"/login",json={"username":"bob","password":"correct"})
         assert r.status_code==200,r.text;credentials=r.json()
-        name="py144" if backend=="python" else "java144"
+        name="java144"
         admin_url=f"host=127.0.0.1 port={f['pg']['port']} user=postgres dbname={name}"
         with psycopg.connect(admin_url,autocommit=True) as conn:
             conn.execute("ALTER TABLE native_session_families RENAME TO native_session_families_outage144")
@@ -246,17 +211,10 @@ def test_native144_disabled_account_and_database_outage(native_http144,backend):
         assert r.status_code==200,r.text;trace.append(snapshot(r))
     f["traces"]["fault_"+backend]=trace
 
-def test_native144_fault_response_bytes_match(native_http144):
-    f=native_http144;assert f["traces"]["fault_python"]==f["traces"]["fault_java"]
-
 def test_native144_verifier_unicode_subject_boundary(native_http144):
     f=native_http144;f["fake"]._users["unicode-invalid"]="\u00a0subject144-alice"
-    responses=[]
     try:
-        for backend in ("python","java"):
-            with client(f,backend) as c:
-                response=c.post(NATIVE_PREFIX+"/login",json={"username":"unicode-invalid","password":"correct"})
-                assert response.status_code==503 and code(response)=="NATIVE_IDENTITY_INVALID",response.text
-                responses.append(snapshot(response))
-        assert responses[0]==responses[1]
+        with client(f,"java") as c:
+            response=c.post(NATIVE_PREFIX+"/login",json={"username":"unicode-invalid","password":"correct"})
+            assert response.status_code==503 and code(response)=="NATIVE_IDENTITY_INVALID",response.text
     finally:f["fake"]._users.pop("unicode-invalid",None)
