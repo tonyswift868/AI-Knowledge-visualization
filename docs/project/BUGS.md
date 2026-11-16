@@ -2576,7 +2576,7 @@
 - 更新：2026-11-02
 
 ### [BUG-269] mf-publish 第一次发小安装器时，编核心那步把空的编译器路径转成 Path 报错
-- 状态：已修（架构师 2026-11-16），重新发布 2.0.48 验证中。
+- 状态：已修已验证：2026-11-16 重新发布（mf-publish 运行 43891383595）成功，核心和小壳已发到服务器，公网 stable 是 2.0.48。
 - 现象（2026-11-16 14:53 UTC，mf-publish 运行 43890336043）：第 4 步 ensure-bootstrap 报 `TypeError: argument should be a str or an os.PathLike object ... not 'NoneType'`（pipeline.py 第 194 行），第 5、6 步跳过。服务器没改：公网 stable 还是 2.0.47，`releases/bootstrap/` 还不存在，签好的 2.0.48 仍在暂存区。
 - 原因：工作流不传 `--compiler`，`ensure_bootstrap` 收到 None。服务器上还没有核心，要先编核心，这里写成 `compiler=Path(compiler)`，空值直接报错；后面编小壳那步本来会在没给编译器时自己准备 Inno（`provision_inno`）。核心编译 `bootstrap_core` 根本不用编译器。
 - 为什么之前没发现：405 的测试都传了假的 `Path('ISCC.exe')`，没有测过“不给编译器”的真实调用方式；415 只验了打包（mf-build），没跑发布这一步。
