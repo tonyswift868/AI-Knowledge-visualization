@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from refactor.learning.sync_identity import PlanError
 from refactor.learning.sync_source import validate_snapshot
 from refactor.runtime_logging import event
+from .store import PROGRESS
 
 if TYPE_CHECKING:
     from .sync_contract import RecordStore, SyncRecord
@@ -310,6 +311,19 @@ class CourseSync:
                 identity = previous if "entity" in previous else None
                 if identity is None and wire_id in local:
                     identity = _values(local[wire_id])
+                if identity is None:
+                    # A plan tombstone contains only its opaque server ID. Old
+                    # cursors may have lost its identity while stale progress
+                    # is still pending; recover only from that progress scope.
+                    for pending_record in pending:
+                        if pending_record.entity not in PROGRESS or not pending_record.plan_key:
+                            continue
+                        plan_id = pending_record.plan_key
+                        candidate = dict(schema='mentorflow.course.plans.v1', plan_key=plan_id,
+                                         entity='plans', entity_id=plan_id, payload={'id': plan_id})
+                        if _wire_id(candidate) == wire_id:
+                            identity = candidate
+                            break
                 if identity is not None:
                     values = {k: identity[k] for k in ("schema", "plan_key", "entity", "entity_id")}
                     values["payload"] = _deleted_payload(identity)

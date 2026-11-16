@@ -3,6 +3,7 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -14,13 +15,13 @@ from unittest.mock import patch
 from tests.refactor.mastery70.support import seed_assessment
 from refactor.learning.course.ledger import Ledger, PlanWindow
 from refactor.learning.course.mastery import MasteryBook, PointRef, Judgement, AttemptClosed
-from refactor.learning.course.store import CourseStore, StoreError, SCHEMA_VERSION, MAX_PAYLOAD
+from refactor.learning.course.store import CourseStore, StoreError, SCHEMA_VERSION, MAX_PAYLOAD, PROGRESS
 from refactor.learning.course.sync_contract import RecordStore, SyncRecord
 
 TODAY = date(2026, 9, 27)
 NOW = datetime(2026, 9, 27, tzinfo=timezone.utc)
 WINDOW = PlanWindow(TODAY, TODAY + timedelta(days=4), 100)
-SCRATCH = Path('D:/MentorFlow/.local/test-tmp/course-store')
+SCRATCH = Path(os.environ.get('MENTORFLOW_TEST_SCRATCH', 'D:/MentorFlow/.local/test-tmp/course-store'))
 
 
 class StoreTests(unittest.TestCase):
@@ -218,11 +219,12 @@ class StoreTests(unittest.TestCase):
         s.archive_plan('p'); self.assertEqual(s.list_plans(),[])
         self.assertEqual(len(s.records('reports','p')),1)
         s.restore_plan('p'); self.assertEqual(len(s.list_plans()),1)
-        pending_events=[r for r in s.pending_records(999) if r.entity in ('credits','ledger_events','judgements','attempt_closed')]
         s.delete_plan('p')
         self.assertEqual(s.records('reports','p'),[])
         with self.assertRaises(StoreError): s.get_plan('p')
-        self.assertTrue(all(r in s.pending_records(999) for r in pending_events))
+        self.assertTrue(all(r.entity not in PROGRESS for r in s.pending_records(999)))
+        self.assertFalse(any(r['entity'] in PROGRESS for r in s._db.execute(
+            "SELECT entity FROM _records WHERE plan_key='p'")))
         self.assertTrue(any(r.entity=='reports' and r.deleted and 'document' not in r.payload for r in s.pending_records(999)))
 
     def test_chat_usage_originals_and_account_isolation(self):
@@ -318,15 +320,15 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(target.records('points','p'),source.records('points','p'))
         self.assertEqual(target._db.execute('PRAGMA foreign_key_check').fetchall(),[])
 
-    def test_remote_plan_deletion_keeps_unsent_progress(self):
+    def test_remote_plan_deletion_purges_unsent_progress(self):
         s=self.prepare(); s.add_credit('p','pending','u',10,TODAY)
         pending=next(r for r in s.pending_records(999) if r.entity=='credits')
         plan=next(r for r in s.pending_records(999) if r.entity=='plans')
         s.apply_remote([(replace(plan,payload={'id':'p'},deleted=True),100)])
         self.assertEqual(s.list_plans(),[])
-        self.assertIn(pending,s.pending_records(999))
-        s.apply_remote([(replace(pending,deleted=True),101)])
-        self.assertIn(pending,s.pending_records(999))
+        self.assertNotIn(pending,s.pending_records(999))
+        self.assertFalse(any(row['entity'] in PROGRESS for row in s._db.execute(
+            "SELECT entity FROM _records WHERE plan_key='p'")))
 
     def test_remote_batch_and_cursor_roll_back_together(self):
         source=self.prepare(); target=self.open(root=self.root/'target')
