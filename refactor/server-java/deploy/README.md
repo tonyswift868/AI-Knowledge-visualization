@@ -124,6 +124,14 @@ copy-revision=0054_sync_receipts_without_payload
 
 在获准切换后运行`RELEASE_ROOT=/opt/mentorflow/releases/java-401 sh refactor/server-java/deploy/deploy401.sh`。部署与回退命令使用独立的`STATE`目录；保留完整状态和迁移标记用于事故判断，不复用完成或失败的状态目录。
 
+## 416 下载页切换
+
+`switch_download416.sh switch EXPECTED_SHA256 CANDIDATE`用于已授权的`/download`切换。先用405工具生成并审查只有一条跳转变化的候选，再核对公网stable版本、小壳及核心文件的大小和SHA256；这些前提未通过不运行切换。默认活动文件是`/opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf`，容器为`mentorflow-e1-preview-edge-1`。
+
+脚本拒绝来源hash变化或已存在`/opt/mentorflow/state/download416/edge.conf.before`的情况。备份后用`cat`原地写入并核inode；nginx测试失败就原地还原、不reload，其他切换后失败则还原、测试并reload。单文件bind挂载不能用`mv`或删除重建活动文件。只reload，不重启容器。
+
+公网后验不通过时，运行同一脚本的`rollback`模式，原地恢复已有备份、测试、reload并核对旧跳转，然后停下报告。回退保留备份和state。旧完整包和releases文件不删除、不运行安装程序；用户异机全新安装、旧版升级和注册验收另做。
+
 ## 406 统一迁移与收尾
 
 线上专用测试账号由414任务创建并长期保留，凭据只存于本机`D:\MentorFlow\.local\server\test-account.txt`第0组；原文件备份为同目录`test-account.before414.txt`。以后上线实测使用这一个账号和`--account-index 0`，文档、命令行、日志与回执不写账号值或密码。建号时除邮箱标为已验证，还要只读确认requiredActions为空；realm默认动作可能在创建时附加VERIFY_EMAIL，只处理这一个新账号，不改realm默认设置。
