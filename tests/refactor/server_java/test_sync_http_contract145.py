@@ -220,6 +220,11 @@ def test_sync145_contract_stream_and_postgres_rows_match(sync145_backends):
 
     py_rows = _read_database(clients["python_admin_url"])
     java_rows = _read_database(clients["java_admin_url"])
+    # Java receipts now retain metadata only; HTTP replay still matches Python.
+    for receipt in java_rows["structured_sync_requests"]:
+        assert "payload" not in receipt["response"]
+    for receipt in py_rows["structured_sync_requests"]:
+        receipt["response"].pop("payload", None)
     assert py_rows == java_rows
     assert all(item["relrowsecurity"] and item["relforcerowsecurity"]
                and item["owner"] == "mentorflow_migrator" for item in py_rows["rls"])
