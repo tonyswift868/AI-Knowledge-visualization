@@ -126,6 +126,10 @@ copy-revision=0054_sync_receipts_without_payload
 
 ## 406 统一迁移与收尾
 
+线上专用测试账号由414任务创建并长期保留，凭据只存于本机`D:\MentorFlow\.local\server\test-account.txt`第0组；原文件备份为同目录`test-account.before414.txt`。以后上线实测使用这一个账号和`--account-index 0`，文档、命令行、日志与回执不写账号值或密码。建号时除邮箱标为已验证，还要只读确认requiredActions为空；realm默认动作可能在创建时附加VERIFY_EMAIL，只处理这一个新账号，不改realm默认设置。
+
+新专用账号在首次收尾前先登录并检查工作区；Java登录本身不会创建workspace或initialized manifest。若discovery要求初始化，仅对该新账号调用`POST /api/enterprise/account/workspaces/initialize`（Bearer、JSON `{}`，不带组织／工作区头），只建账号工作区元数据；确认唯一工作区READY且initialization_required=false后才取E2E账号计数基线，不预写业务测试数据。后续复用账号无需重复初始化。
+
 406候选源码的提交标记实际位于`/opt/mentorflow/state/release406/commit`，不是`source.commit`。重传前先核实标记路径、保留旧标记及来源清单，再解包、更新标记和清单、运行候选预检；元信息步骤失败不能跳过后继续部署。
 
 真实恢复验证使用同一只读导出快照执行`pg_dump --snapshot`及源库全表指纹，再在独立副本库完整恢复并比对指纹，之后才做副本迁移。保持快照的连接必须有本轮独有的application_name，并在成功和失败时都清理；若尚未取得backend PID就超时，也要检查并终止该本轮连接，不能只依赖已取得PID的分支。副本验证未通过不写PASS，不切Java。

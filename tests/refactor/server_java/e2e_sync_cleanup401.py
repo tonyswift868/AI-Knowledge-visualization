@@ -18,13 +18,25 @@ ACCOUNT_FILE = Path(r"D:\MentorFlow\.local\server\test-account.txt")
 BASE = "/api/enterprise/sync/v1"
 LOGIN = "/api/enterprise/auth/native/login"
 WORKSPACES = "/api/enterprise/account/workspaces"
+_SAFE_ERROR_CODE = re.compile(r"(?:NATIVE|ENTERPRISE|ACCOUNT|WORKSPACE|SYNC|IDENTITY)_[A-Z0-9_]{1,55}\Z")
+_SENSITIVE_CODE_WORDS = ("TOKEN", "PASSWORD", "USERNAME", "EMAIL", "SECRET", "PRIVATE")
 SSH = ("ssh", "-i", r"C:\Users\21533\.ssh\mentorflow_server", "-o", "IdentitiesOnly=yes",
        "-o", "BatchMode=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3",
        "mentorflow-admin@89.45.45.28")
 
 
 class SafeFailure(RuntimeError):
-    pass
+    def __init__(self, reason: str, *, status: int | None = None, code: str | None = None):
+        self.reason = reason
+        self.status = status if isinstance(status, int) and 100 <= status <= 599 else None
+        self.code = (code if isinstance(code, str) and _SAFE_ERROR_CODE.fullmatch(code)
+                     and not any(word in code for word in _SENSITIVE_CODE_WORDS) else None)
+        details = [reason]
+        if self.status is not None:
+            details.append(f"HTTP {self.status}")
+        if self.code is not None:
+            details.append(f"code={self.code}")
+        super().__init__("; ".join(details))
 
 
 def account_candidates(raw: str) -> list[tuple[str, str]]:
@@ -62,8 +74,25 @@ def _request(method: str, path: str, *, token: str | None = None, body: dict | N
             if not isinstance(result, dict):
                 raise ValueError
             return result
+    except urllib.error.HTTPError as error:
+        # Read only a bounded prefix to extract a stable machine code. Never expose
+        # the response body or its message, which may contain credentials or tokens.
+        code = None
+        try:
+            payload = json.loads(error.read(8192))
+            candidate = payload.get("code") if isinstance(payload, dict) else None
+            if (isinstance(candidate, str) and _SAFE_ERROR_CODE.fullmatch(candidate)
+                    and not any(word in candidate for word in _SENSITIVE_CODE_WORDS)):
+                code = candidate
+        except (OSError, ValueError):
+            pass
+        raise SafeFailure("HTTP request failed", status=error.code, code=code) from None
     except (OSError, urllib.error.URLError, ValueError):
         raise SafeFailure("HTTP request failed") from None
+
+
+def _count_text(counts: tuple[int, int, int]) -> str:
+    return f"entities={counts[0]},requests={counts[1]},accounts={counts[2]}"
 
 
 def _course_values(record_id: str, entity: str, payload: dict) -> dict:
@@ -199,6 +228,10 @@ def execute(account_index: int = 0) -> None:
                       {"id": control_id, "title": keep_marker, "archived": False})
     created: list[tuple[str, str]] = []
     deleted: set[tuple[str, str]] = set()
+    populated_counts = None
+    keep_created_counts = None
+    keep_after_delete_counts = None
+    target_deleted_counts = None
     try:
         created.append((control_record[0], control_record[1]))
         initial = _sync(token, org, workspace, *control_record)
@@ -209,12 +242,15 @@ def execute(account_index: int = 0) -> None:
         for entity, record_id, payload in records:
             created.append((entity, record_id))
             _sync(token, org, workspace, entity, record_id, payload)
-        if _sql_counts(marker, issuer.rstrip("/"))[0] < 3:
+        populated_counts = _sql_counts(marker, issuer.rstrip("/"))
+        keep_created_counts = _sql_counts(keep_marker, issuer.rstrip("/"))
+        if populated_counts[0] < 3:
             raise SafeFailure("sync rows were not observed")
         for entity, record_id, _ in records:
             _delete(token, org, workspace, entity, record_id)
             deleted.add((entity, record_id))
         target_deleted_counts = _sql_counts(marker, issuer.rstrip("/"))
+        keep_after_delete_counts = _sql_counts(keep_marker, issuer.rstrip("/"))
         if target_deleted_counts[:2] != (0, 0):
             raise SafeFailure("target marker remained after deletion")
         control_entity_id = _wire_id(control_record[0], control_record[1])
@@ -241,6 +277,11 @@ def execute(account_index: int = 0) -> None:
                 or target_counts[2] != before[2] or control_counts[2] != before[2]):
             print("Final cleanup counts did not return to baseline.", file=sys.stderr)
             raise SafeFailure("final marker/account count invariant failed")
+    print("E2E counts: "
+          f"target before=[{_count_text(before)}], populated=[{_count_text(populated_counts)}], "
+          f"target deleted=[{_count_text(target_deleted_counts)}], final=[{_count_text(target_counts)}]; "
+          f"control before=[{_count_text(keep_before)}], created=[{_count_text(keep_created_counts)}], "
+          f"after target deletion=[{_count_text(keep_after_delete_counts)}], final=[{_count_text(control_counts)}]")
     print("E2E passed: both marker counts=0, fresh control unchanged before cleanup, canonical backend account count unchanged")
 
 
@@ -257,8 +298,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         execute(args.account_index)
-    except (SafeFailure, OSError):
-        print("E2E stopped safely; inspect operator state before any rerun.", file=sys.stderr)
+    except SafeFailure as failure:
+        print(f"E2E stopped safely: {failure}", file=sys.stderr)
+        return 2
+    except OSError:
+        print("E2E stopped safely: local I/O failed; inspect operator state before any rerun.", file=sys.stderr)
         return 2
     return 0
 
