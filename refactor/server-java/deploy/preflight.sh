@@ -112,7 +112,7 @@ refactor/server-java/deploy/account-page-proxy.socket
 refactor/server-java/deploy/account-page-proxy.service.in
 refactor/server-java/deploy/install-account-page-proxy.sh"
     ;;
-  0054_sync_receipts_without_payload)
+  0054_sync_receipts_without_payload|0055_purge_deleted_plan_progress|0056_closure_session_cleanup)
     required_hash_paths="$required_hash_paths
 refactor/server/migrations/versions/0048_rag_source_chunks.py
 refactor/server/migrations/versions/0049_drop_redundant_rag_indexes.py
@@ -144,6 +144,23 @@ refactor/server-java/deploy/account-page-proxy.service.in
 refactor/server-java/deploy/install-account-page-proxy.sh"
     ;;
   *) printf 'unsupported PREFLIGHT_SOURCE_REVISION\n' >&2; exit 2 ;;
+esac
+case "$source_revision" in
+  0055_purge_deleted_plan_progress|0056_closure_session_cleanup)
+    required_hash_paths="$required_hash_paths
+refactor/server/migrations/versions/0055_purge_deleted_plan_progress.py
+refactor/server-java/deploy/deploy406.sh
+refactor/server-java/deploy/rollback406.sh
+refactor/server-java/deploy/preflight406.sh"
+    ;;
+esac
+case "$source_revision" in
+  0056_closure_session_cleanup)
+    required_hash_paths="$required_hash_paths
+refactor/server/migrations/versions/0056_closure_session_cleanup.py
+refactor/server-java/deploy/cleanup-docker406.sh
+refactor/server-java/deploy/finalize406.py"
+    ;;
 esac
 required_hash_count=$(printf '%s\n' "$required_hash_paths" | awk 'NF { n++ } END { print n+0 }')
 
@@ -447,18 +464,18 @@ else fail database_migration_current 'existing migration inputs/image/network/se
 
 schema_tables="to_regclass('public.rag_document_upload_manifests') IS NOT NULL"
 case "$expected_revision" in
-  0048_rag_source_chunks|0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows|0053_workbench_question_index|0054_sync_receipts_without_payload)
+  0048_rag_source_chunks|0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows|0053_workbench_question_index|0054_sync_receipts_without_payload|0055_purge_deleted_plan_progress|0056_closure_session_cleanup)
     schema_tables="$schema_tables AND to_regclass('public.rag_source_chunks') IS NOT NULL"
     ;;
 esac
 case "$expected_revision" in
-  0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows|0053_workbench_question_index|0054_sync_receipts_without_payload)
+  0049_drop_redundant_rag_indexes|0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows|0053_workbench_question_index|0054_sync_receipts_without_payload|0055_purge_deleted_plan_progress|0056_closure_session_cleanup)
     schema_tables="$schema_tables AND to_regclass('public.ix_rag_chunks_account_document') IS NULL"
     schema_tables="$schema_tables AND to_regclass('public.ix_rag_source_chunks_logical') IS NULL"
     ;;
 esac
 case "$expected_revision" in
-  0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows|0053_workbench_question_index|0054_sync_receipts_without_payload)
+  0050_account_daily_activity|0051_sync_closure_fence|0052_workbench_account_rows|0053_workbench_question_index|0054_sync_receipts_without_payload|0055_purge_deleted_plan_progress|0056_closure_session_cleanup)
     schema_tables="$schema_tables AND to_regclass('public.account_daily_activity') IS NOT NULL"
     ;;
 esac
@@ -479,6 +496,21 @@ case "$expected_revision" in
     schema_tables="$schema_tables AND to_regclass('public.structured_sync_requests') IS NOT NULL"
     schema_tables="$schema_tables AND NOT EXISTS (SELECT 1 FROM pg_policy WHERE polrelid=to_regclass('public.structured_sync_requests') AND polname='receipt_scrub_0054')"
     schema_tables="$schema_tables AND NOT EXISTS (SELECT 1 FROM public.structured_sync_requests WHERE response::jsonb ? 'payload')"
+    ;;
+  0055_purge_deleted_plan_progress|0056_closure_session_cleanup)
+    schema_tables="$schema_tables AND to_regclass('public.structured_sync_requests') IS NOT NULL"
+    schema_tables="$schema_tables AND NOT EXISTS (SELECT 1 FROM pg_policy WHERE polrelid=to_regclass('public.structured_sync_entities') AND polname='plan_progress_scrub_0055')"
+    schema_tables="$schema_tables AND NOT EXISTS (SELECT 1 FROM public.structured_sync_requests WHERE response::jsonb ? 'payload')"
+    schema_tables="$schema_tables AND NOT EXISTS (SELECT 1 FROM pg_policy WHERE polrelid=to_regclass('public.structured_sync_requests') AND polname='receipt_scrub_0054')"
+    ;;
+esac
+case "$expected_revision" in
+  0056_closure_session_cleanup)
+    schema_tables="$schema_tables AND EXISTS (SELECT 1 FROM pg_policy WHERE polrelid=to_regclass('public.native_session_families') AND polname='closure_sessions_read')"
+    schema_tables="$schema_tables AND EXISTS (SELECT 1 FROM pg_policy WHERE polrelid=to_regclass('public.native_session_families') AND polname='closure_sessions_delete')"
+    schema_tables="$schema_tables AND has_table_privilege('mentorflow_closure', 'public.native_session_families', 'SELECT,DELETE')"
+    schema_tables="$schema_tables AND position('DELETE FROM public.native_session_families' IN pg_get_functiondef('account_closure.clean(text,text,text)'::regprocedure)) > 0"
+    schema_tables="$schema_tables AND position('DELETE FROM public.native_session_families' IN pg_get_functiondef('account_closure.complete(text,text,text)'::regprocedure)) > 0"
     ;;
 esac
 schema_query="BEGIN READ ONLY; SELECT current_database()||'|'||version_num||'|'||($schema_tables)::text FROM alembic_version; COMMIT;"

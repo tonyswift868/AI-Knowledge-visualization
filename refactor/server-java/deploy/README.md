@@ -1,5 +1,11 @@
 # Java 后端部署操作
 
+## 406 成功部署后的 Docker 清理
+
+`cleanup-docker406.sh` 只由部署收尾入口在 Java 切换、0054～0056 迁移、最终预检、端到端验证、部署后存储报告和本次测试数据清理全部成功后调用。任一环节失败都不得调用。调用时传入 `STATE`、`JAVA_IMAGE`、`DOCKER_BIN` 和（可选）`MIGRATION_TOOL_IMAGE`、`MIGRATION_IMAGE`；默认迁移镜像为 `mentorflow-migration-tool:MF-275`，构建底座为 `mentorflow-slim-backend:269-python-fallback`。
+
+脚本先记录 `docker system df` 与 `df -h /`，再解析容器（包括已停止容器）实际引用的镜像 ID。它保留本次 Java、Java 393、迁移工具镜像、迁移工具构建底座 `mentorflow-slim-backend:269-python-fallback` 和所有容器引用的 ID；同一 ID 的全部标签因此一并保留。四个固定用途镜像缺少任一个时，脚本会在 prune 和镜像删除前停止。之后运行 `docker builder prune -a -f`，并对其余每个镜像 ID 各运行一次不带 `-f` 的 `docker image rm`。删除失败会记录并继续，不删除容器或卷。清理后再次记录两项磁盘指标；输出应由收尾入口并入部署日志，metrics 追加到 `STATE/metrics.txt`。若容器引用读取失败，脚本也会在 prune 和镜像删除前停止。
+
 ## 393 edge 访问日志
 
 上线前可运行 `sh edge/install-edge-logging393.sh check /opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf`。它验证真实日志文件的可写性、动态PID轮转配置，并将完整候选配置临时放进容器 `/tmp` 后执行 `nginx -t -p /etc/nginx -c ...`；不改挂载配置、不reload、不装cron、不建备份。会留下允许保留的空访问日志文件。
@@ -117,6 +123,14 @@ copy-revision=0054_sync_receipts_without_payload
 部署将0054 UPDATE本身记录的耗时、迁移命令墙钟耗时（含迁移工具构建与命令启动）、迁移前回执表总字节数、普通VACUUM耗时和VACUUM后表总字节数安全输出并写入`STATE/metrics.txt`；仅记录数值，不输出回执内容。VACUUM后字节数是表和索引总大小，不保证操作系统占用缩小。
 
 在获准切换后运行`RELEASE_ROOT=/opt/mentorflow/releases/java-401 sh refactor/server-java/deploy/deploy401.sh`。部署与回退命令使用独立的`STATE`目录；保留完整状态和迁移标记用于事故判断，不复用完成或失败的状态目录。
+
+## 406 统一迁移与收尾
+
+406 使用独立的`deploy406.sh`、`rollback406.sh`和`preflight406.sh`，保留401入口及0054合同。候选预检由406脚本执行，但`DEPLOY_DIR`仍指向现网393运行配置；源码修订为0056、镜像和数据库期望分别显式设为393与0053。无参数`preflight406.sh`则检查406镜像、0056数据库和release406的来源清单；0056还核对临时清理策略已移除、原生会话表的closure权限/策略和两个closure函数的删除逻辑。
+
+部署门禁要求隔离备份恢复与副本迁移证据的`copy-revision`为`0056_closure_session_cleanup`。新Java只切换一次；健康、OIDC配对和probe通过后才写`migration-started`并升级0054、0055、0056。标记一旦存在，任何后续故障都禁止回到393，版本不明时也不回退。版本确认0056后，对`structured_sync_requests`和`structured_sync_entities`分别执行普通`VACUUM (ANALYZE)`并记录两表前后总字节数和三条迁移耗时；最后无参数运行406预检并写`STATE/complete`。此时还没有完成真实E2E和存储后测，不调用Docker清理。
+
+部署job成功后，在本机项目Python运行`refactor/server-java/deploy/finalize406.py --execute --account-index 0`。不带`--execute`只显示计划。收尾先检查`/opt/mentorflow/state/job406`为`SUCCEEDED 0`且`/opt/mentorflow/state/deploy406/complete`存在，再顺序运行401对话/教师预设E2E和406学习计划E2E；两者都通过且各自清干本轮数据后，才在服务器写`storage-after.txt`并调用`cleanup-docker406.sh`。任一步失败都会跳过之后的清理；清理启动后失败会留下`docker-cleanup-started`，阻止自动重跑。保留名单包含393回退镜像、406新镜像、迁移工具镜像和`mentorflow-slim-backend:269-python-fallback`基础镜像。E2E stdout/stderr保存在`D:\MentorFlow\.local\test-tmp\406-MF01\deploy\sync-cleanup401.log`和`plan-cleanup406.log`；服务器清理输出追加到`deploy.log`、指标追加到`metrics.txt`。
 
 端到端工具位于`tests/refactor/server_java/e2e_sync_cleanup401.py`，无参数只打印离线计划，不读凭据或联网。收到“401可以切换”、上线与0054完成后，用项目Python运行该工具的`--execute --account-index 0`。工具只读已有测试账号凭据，创建全新对话/消息/预设和对照记录；先验证对照记录保留，再清理全部本次ID，SQL只输出两种随机标记的行数和账号计数。若清理失败会列本次新ID供处理，不会静默宣称成功。
 
