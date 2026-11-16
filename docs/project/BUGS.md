@@ -2576,7 +2576,7 @@
 - 状态：待查；406本轮已停止，不自行重试。
 - 现象（2026-11-16 UTC）：最终源码66649562部署后，job406成功、数据库0056、新版无参数预检0 FAIL；finalize406首先调用401对话/教师预设E2E，退出2。Java访问日志13:07:04.979记录POST /api/enterprise/auth/native/login，401，294ms；没有后续workspace或同步请求。
 - 原因：确认失败在测试账号登录阶段；登录被拒的具体原因未查清，不能据此断言密码错误或产品回归。E2E的SafeFailure出口隐藏了具体错误信息。
-- 排查（架构师 2026-11-16 只读）：切换后 Java 日志里登录类请求只有这一次和 13:05:52 一次 refresh 401，没有真实用户登录，看不出真实用户受不受影响；Java 自切换起没有 WARN、ERROR，Keycloak 那几秒没日志；这个端到端工具 401 阶段只做过离线演练，从没真正登录过线上，账号文件也没验过。411-MF01 查。
+- 排查（架构师 2026-11-16 只读）：切换后 Java 日志里登录类请求只有这一次和 13:05:52 一次 refresh 401，没有真实用户登录，看不出真实用户受不受影响；Java 自切换起没有 WARN、ERROR，Keycloak 那几秒没日志；这个端到端工具 401 阶段只做过离线演练，从没真正登录过线上，账号文件也没验过。用户 2026-11-16 在自己的软件里登录，能登上，真实用户不受影响，问题在测试账号或工具这边。411-MF01 查。
 - 处理：收尾按既有失败门禁跳过学习计划E2E、正式收尾storage-after和Docker清理；0054～0056已提交，不回退393，不重新部署或重新登录。另取只读存储报告及状态证据。
 - 验证：账号清单rehydration_manifests和structured_sync_entities全表指纹与部署前导出快照相同，初始化账号数3、实体5811、回执10339；没有本轮业务测试数据待清理。Java406启动13:05:44.489045344Z、RestartCount=0，数据库0056、回执payload残留0；cleanup-started/completed标记均无。
 - 证据：.local/test-tmp/406-MF01/finalize406.out、deploy/sync-cleanup401.log、e2e-readonly-final.out、final-evidence.out；回执.local/receipts/406-MF01.md。
