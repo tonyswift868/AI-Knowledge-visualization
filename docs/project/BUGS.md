@@ -2575,6 +2575,15 @@
 - 关联：[ARCH-03]
 - 更新：2026-11-02
 
+### [BUG-269] mf-publish 第一次发小安装器时，编核心那步把空的编译器路径转成 Path 报错
+- 状态：已修（架构师 2026-11-16），重新发布 2.0.48 验证中。
+- 现象（2026-11-16 14:53 UTC，mf-publish 运行 43890336043）：第 4 步 ensure-bootstrap 报 `TypeError: argument should be a str or an os.PathLike object ... not 'NoneType'`（pipeline.py 第 194 行），第 5、6 步跳过。服务器没改：公网 stable 还是 2.0.47，`releases/bootstrap/` 还不存在，签好的 2.0.48 仍在暂存区。
+- 原因：工作流不传 `--compiler`，`ensure_bootstrap` 收到 None。服务器上还没有核心，要先编核心，这里写成 `compiler=Path(compiler)`，空值直接报错；后面编小壳那步本来会在没给编译器时自己准备 Inno（`provision_inno`）。核心编译 `bootstrap_core` 根本不用编译器。
+- 为什么之前没发现：405 的测试都传了假的 `Path('ISCC.exe')`，没有测过“不给编译器”的真实调用方式；415 只验了打包（mf-build），没跑发布这一步。
+- 解决：核心那步改成原样传 `compiler`，不再转换；编译器只在编小壳时按需准备。补测试 `test_bootstrap_first_publish_without_compiler_provisions_inno_only_for_stub`（不给编译器、服务器上没有核心时能走通，小壳拿到准备好的编译器）。`test_bootstrap_publish405.py` 4 项通过。
+- 关联：405-MF04、415-MF05、[BUG-262]
+- 更新：2026-11-16
+
 ### [BUG-266] 部署后自动清 Docker 删掉了续证书定时任务要用的 certbot 镜像
 - 状态：镜像已拉回（架构师 2026-11-16）；保留名单待修（2.0.48 发布后下一批，改 `cleanup-docker406.sh`）。
 - 现象（2026-11-16，414-MF01 部署后自动清理）：删掉的 29 个镜像里有 `certbot/certbot:v5.4.0`。架构师只读查：服务器上 `mentorflow-e108-ip-renew.timer` 每 4 小时跑 `/opt/mentorflow/update-static/config/renew-ip-cert.sh`，里面 `docker run --rm` 按摘要 `certbot/certbot@sha256:c23159d3…` 起 certbot 续 IP 证书；清理后服务器上已没有任何 certbot 镜像。

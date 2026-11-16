@@ -191,7 +191,7 @@ def ensure_bootstrap(server, work, compiler=None, *, public_key=PUBLIC, core_com
         core_output.mkdir(parents=True, exist_ok=True)
         core_work = work / 'core-build'; core_work.mkdir(parents=True, exist_ok=True)
         built = (core_compile_fn or builder.bootstrap_core)(argparse.Namespace(
-            work=core_work, output=core_output, compiler=Path(compiler), public_key=public_key,
+            work=core_work, output=core_output, compiler=compiler, public_key=public_key,
             feed=BOOTSTRAP_FEED, app_id='MentorFlow', runtime=None))
         core_path = Path(built['path'])
         core_output = core_path

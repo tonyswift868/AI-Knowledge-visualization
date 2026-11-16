@@ -91,3 +91,17 @@ def test_bootstrap405_stub_failure_does_not_replace_old_stub_or_state(tmp_path, 
     assert target.read_bytes() == old_bytes
     assert (server.app / 'releases/bootstrap/bootstrap-state.json').read_bytes() == old_state
     assert (server.app / 'releases/bootstrap' / new_core / 'bootstrap-core.zip').is_file()
+
+
+def test_bootstrap_first_publish_without_compiler_provisions_inno_only_for_stub(tmp_path, monkeypatch):
+    # mf-publish passes no --compiler; a first publish builds the core and must not fail on Path(None) (BUG-269).
+    server = LocalServer(tmp_path / 'server')
+    seen = {}
+    monkeypatch.setattr(pipeline, 'provision_inno', lambda work: Path('provisioned-ISCC.exe'))
+    def stub(args):
+        seen['stub'] = args.compiler
+        return fake_build_stub(args)
+    result = pipeline.ensure_bootstrap(server, tmp_path / 'first', None,
+        core_compile_fn=fake_build_core, stub_compile_fn=stub)
+    assert result['status'] == 'BOOTSTRAP_UPDATED'
+    assert seen['stub'] == Path('provisioned-ISCC.exe')
