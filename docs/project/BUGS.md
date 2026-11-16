@@ -6,6 +6,8 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-261 | 406 部署后真实删除E2E在测试账号登录时返回401，收尾停止 | 待查；未重试，Docker清理已跳过 | 2026-11-16 |
+| BUG-260 | 406 最终归档上传后，重传脚本误用来源标记文件名而中止 | 已修已验证，未因此切换 Java | 2026-11-16 |
 | BUG-259 | 全量里 titlebar100 的启动按钮响应计时项偶发超线（0.1006 秒，线是 0.1 秒），单独跑过 | 待查（再现再查） | 2026-11-16 |
 | BUG-258 | 404 改成注销就删会话、0056 只能往前后，rag156、cutover148 两个旧测试还按旧行为验 | cutover148 随 410 删；rag156 待改（2.0.48 后和“退回旧版本数据库”那类测试一起改） | 2026-11-16 |
 | BUG-256 | 合入后整文件跑 403 的“真同步→删计划→再同步”测试，第二次同步报 INVALID_RECORD_ID | 已修已验证（测试隔离，不是产品问题；408 合入 75b1a620；407 总全量过） | 2026-11-16 |
@@ -2569,6 +2571,24 @@
 - 修法（273-MF04，2026-11-02）：mf-build 和本机打包走同一个 freeze（scripts/release/sqlite_runtime.py），从 sqlite.org 下载官方 sqlite-dll-win-x64-3540100.zip，归档 SHA3-256 和解包 DLL 的 SHA256 都写死，对不上打包失败；打包环境检查和冻结冒烟都核对实际加载的是 _internal 里的 3.54.1（source_id 2026-10-16 14:45:20 555e07ef…）。验证：测试密钥真包，旧版（5863cb78 源码，加载 3.49.1）Inno 安装 → 软件内更新 → 新版加载 3.54.1，WinError 5 零次；第一次点更新遇到一次 WinError 32（ready 文件被测试自己的观察脚本轮询占着），停掉观察脚本后同一入口重试成功，没有证明是产品问题，以后演练再出现就在本条记录。用户 course、rag 库只读备份的副本：3.54.1 读写、完整性检查 ok，再用 3.49.1 读新版写过的副本、写一轮、完整性检查 ok（用户退回旧版数据还能用）。31 个相关测试通过。报告 .local/test-tmp/sqlite273/report.md。
 - 关联：[ARCH-03]
 - 更新：2026-11-02
+
+### [BUG-261] 406 部署后真实删除E2E在测试账号登录时返回401，收尾停止
+- 状态：待查；406本轮已停止，不自行重试。
+- 现象（2026-11-16 UTC）：最终源码66649562部署后，job406成功、数据库0056、新版无参数预检0 FAIL；finalize406首先调用401对话/教师预设E2E，退出2。Java访问日志13:07:04.979记录POST /api/enterprise/auth/native/login，401，294ms；没有后续workspace或同步请求。
+- 原因：确认失败在测试账号登录阶段；登录被拒的具体原因未查清，不能据此断言密码错误或产品回归。E2E的SafeFailure出口隐藏了具体错误信息。
+- 处理：收尾按既有失败门禁跳过学习计划E2E、正式收尾storage-after和Docker清理；0054～0056已提交，不回退393，不重新部署或重新登录。另取只读存储报告及状态证据。
+- 验证：账号清单rehydration_manifests和structured_sync_entities全表指纹与部署前导出快照相同，初始化账号数3、实体5811、回执10339；没有本轮业务测试数据待清理。Java406启动13:05:44.489045344Z、RestartCount=0，数据库0056、回执payload残留0；cleanup-started/completed标记均无。
+- 证据：.local/test-tmp/406-MF01/finalize406.out、deploy/sync-cleanup401.log、e2e-readonly-final.out、final-evidence.out；回执.local/receipts/406-MF01.md。
+- 后续：需单独授权排查测试账号登录及继续真实删除验收；本轮不自行再试，也不先清Docker。
+- 更新：2026-11-16。
+
+### [BUG-260] 406 最终归档上传后，重传脚本误用来源标记文件名而中止
+- 状态：已修已验证（2026-11-16），部署脚本尚未启动时发生。
+- 现象：66649562归档已上传且SHA-256通过，随后cp报告release406/source.commit不存在，准备脚本退出1，尚未解包或切Java。
+- 原因：重传辅助脚本把实际已有的release406/commit误写成source.commit。
+- 解决：核对原始准备脚本，改为读取和备份commit；复用已验证归档，完成解包、49文件清单及候选预检。deploy/README已记录实际元信息路径及失败停止规则。
+- 验证：preflight406-final-complete.rc=0、PREFLIGHT_FAILURES=0、FINAL_SOURCE406_PRECHECK_OK；证据.local/test-tmp/406-MF01/preflight406-final.out与preflight406-final-complete.out。该次准备纠正未启动Java、job406或迁移。
+- 更新：2026-11-16。
 
 ### [BUG-259] 全量里 titlebar100 的启动按钮响应计时项偶发超线，单独跑过
 - 状态：待查（再现再查）。

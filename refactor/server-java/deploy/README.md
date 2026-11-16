@@ -126,6 +126,10 @@ copy-revision=0054_sync_receipts_without_payload
 
 ## 406 统一迁移与收尾
 
+406候选源码的提交标记实际位于`/opt/mentorflow/state/release406/commit`，不是`source.commit`。重传前先核实标记路径、保留旧标记及来源清单，再解包、更新标记和清单、运行候选预检；元信息步骤失败不能跳过后继续部署。
+
+真实恢复验证使用同一只读导出快照执行`pg_dump --snapshot`及源库全表指纹，再在独立副本库完整恢复并比对指纹，之后才做副本迁移。保持快照的连接必须有本轮独有的application_name，并在成功和失败时都清理；若尚未取得backend PID就超时，也要检查并终止该本轮连接，不能只依赖已取得PID的分支。副本验证未通过不写PASS，不切Java。
+
 406 使用独立的`deploy406.sh`、`rollback406.sh`和`preflight406.sh`，保留401入口及0054合同。候选预检由406脚本执行，但`DEPLOY_DIR`仍指向现网393运行配置；源码修订为0056、镜像和数据库期望分别显式设为393与0053。无参数`preflight406.sh`则检查406镜像、0056数据库和release406的来源清单；0056还核对临时清理策略已移除、原生会话表的closure权限/策略和两个closure函数的删除逻辑。
 
 部署门禁要求隔离备份恢复与副本迁移证据的`copy-revision`为`0056_closure_session_cleanup`。新Java只切换一次；健康、OIDC配对和probe通过后才写`migration-started`并升级0054、0055、0056。标记一旦存在，任何后续故障都禁止回到393，版本不明时也不回退。版本确认0056后，对`structured_sync_requests`和`structured_sync_entities`分别执行普通`VACUUM (ANALYZE)`并记录两表前后总字节数和三条迁移耗时；最后无参数运行406预检并写`STATE/complete`。此时还没有完成真实E2E和存储后测，不调用Docker清理。
