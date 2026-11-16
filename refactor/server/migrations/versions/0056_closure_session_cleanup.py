@@ -5,8 +5,8 @@ import time
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0055_closure_session_cleanup"
-down_revision = "0054_sync_receipts_without_payload"
+revision = "0056_closure_session_cleanup"
+down_revision = "0055_purge_deleted_plan_progress"
 branch_labels = depends_on = None
 
 # Read-only deployment rehearsal as postgres (counts only; before new grants):
