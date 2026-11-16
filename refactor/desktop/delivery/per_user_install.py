@@ -1409,6 +1409,10 @@ def _execute(args, parser, progress):
     if args.action == 'repair-installation':
         from refactor.desktop.delivery.per_user_update_core import repair_installation
         return repair_installation(args.root, pid=args.pid, hwnd_hex=args.hwnd_hex)
+    if args.action == 'bootstrap-install':
+        from refactor.desktop.delivery.bootstrap_install import bootstrap_install
+        return bootstrap_install(args.root, args.status_file, args.cancel_file, args.result,
+                                args.close_after_health)
     if args.action in ('check-latest', 'download-latest', 'update-to-latest', 'apply-latest'):
         from refactor.desktop.delivery import per_user_update_core as core
         cancelled = lambda: bool(args.cancel_file and args.cancel_file.exists())
@@ -1490,7 +1494,7 @@ def _execute(args, parser, progress):
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=('preflight', 'install', 'apply', 'recover',
+    parser.add_argument('action', choices=('preflight', 'install', 'bootstrap-install', 'apply', 'recover',
         'prepare-update', 'apply-pending', 'update-status', 'uninstall', 'shutdown', 'launch',
         'check-latest', 'download-latest', 'update-to-latest', 'apply-latest',
         'startup-state', 'repair-update', 'repair-installation'))
@@ -1526,7 +1530,7 @@ def main():
         pid = args.pid
         if args.action == 'apply': pid = strict_json(read(args.intent))['pid']
         scope = (runtime_session(pid) if args.action in
-                 ('install', 'apply', 'apply-pending', 'apply-latest', 'update-to-latest',
+                 ('install', 'bootstrap-install', 'apply', 'apply-pending', 'apply-latest', 'update-to-latest',
                   'recover', 'uninstall', 'repair-installation') else nullcontext())
         with scope:
             if args.action == 'apply-latest' and args.app_self_exit:
@@ -1538,7 +1542,7 @@ def main():
         if args.result: atomic(args.result, canonical(result))
         return result
     except Exception as error:
-        if args.root is not None:
+        if args.root is not None and (args.action != 'bootstrap-install' or is_install(args.root)):
             maintenance_log(args.root, 'runtime_operation_failed', action=args.action,
                             error_type=type(error).__name__, detail=str(error))
         if args.status_file:
@@ -1550,4 +1554,8 @@ def main():
 if __name__ == '__main__':
     try: print(canonical(main()).decode(), flush=True)
     except Exception as error:
-        print(str(error), file=sys.stderr, flush=True); raise SystemExit(3)
+        print(str(error), file=sys.stderr, flush=True)
+        if sys.argv[1:2] == ['bootstrap-install']:
+            from refactor.desktop.delivery.update_protocol import DownloadCancelled
+            raise SystemExit(2 if isinstance(error, DownloadCancelled) else 1)
+        raise SystemExit(3)

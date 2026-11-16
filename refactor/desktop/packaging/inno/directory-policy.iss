@@ -69,10 +69,12 @@ begin
   if FileExists(AddBackslash(Target) + 'per-user-install.json') and
      FileExists(AddBackslash(Target) + 'current-release.json') then begin
     Result := tkUpgrade;
+    #ifndef BootstrapMode
     try
       if CompareText(GetSHA256OfFile(AddBackslash(Target) + 'App\MentorFlow.exe'),
                      '{#PayloadExeSHA256}') = 0 then Result := tkRepair;
     except Result := tkUnknown; end;
+    #endif
     Exit;
   end;
   if FileExists(AddBackslash(Target) + 'highest-release.json') and

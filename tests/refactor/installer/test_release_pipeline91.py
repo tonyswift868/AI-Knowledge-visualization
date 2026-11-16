@@ -230,6 +230,9 @@ def test_release91_dispatch_only_global_queue_timeouts_and_small_artifact():
     text=(pipeline.ROOT/'.github/actions/release-env/action.yml').read_text()
     assert "python-version: '3.12.10'" in text and "node-version: '24.13.0'" in text
     assert 'cache: pip' in text and 'cache: npm' in text
+    release_env=yaml.load((pipeline.ROOT/'.github/actions/release-env/action.yml').read_text(),Loader=yaml.BaseLoader)
+    node=next(step for step in release_env['runs']['steps'] if step.get('uses')=='actions/setup-node@v7')
+    assert node['if']=="${{ inputs.installer-tools == 'true' && inputs.node-tools == 'true' }}"
 
 
 def test_release91_inno_never_installed_on_local_machine(tmp_path, monkeypatch):

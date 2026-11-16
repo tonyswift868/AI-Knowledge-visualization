@@ -8,10 +8,6 @@ on:
         description: Signed version (bootstrap 2.0.2 or 2.0.3)
         type: string
         required: true
-      latest:
-        description: Set this version as latest
-        type: boolean
-        default: false
 concurrency:
   group: mentorflow-release
   queue: max
@@ -32,5 +28,4 @@ jobs:
       - uses: ./.github/actions/mf-installer
         with:
           version: ${{ inputs.version }}
-          latest: ${{ inputs.latest }}
           ssh-key: ${{ secrets.MF_SSH_KEY }}

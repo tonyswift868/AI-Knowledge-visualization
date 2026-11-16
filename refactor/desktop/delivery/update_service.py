@@ -167,8 +167,10 @@ class MatureUpdateService:
         finally:
             elapsed = round((time.monotonic() - started) * 1000, 3)
             self._check_timings[name] = self._check_timings.get(name, 0) + elapsed
-            from refactor.desktop.delivery.per_user_install import maintenance_log
-            maintenance_log(self.install_root, 'update_check_stage', stage=name, elapsed_ms=elapsed)
+            from refactor.desktop.delivery.per_user_install import is_install, maintenance_log
+            # Cold discovery must not turn an empty target into an unknown tree.
+            if is_install(self.install_root):
+                maintenance_log(self.install_root, 'update_check_stage', stage=name, elapsed_ms=elapsed)
 
     def check(self, *, manual=True, cancel=None, on_pointer_policy=None):
         import logging

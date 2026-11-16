@@ -124,6 +124,11 @@ def atomic_bytes(path, data):
         temp.unlink(missing_ok=True)
 
 
+def atomic_public_bytes(path, data):
+    atomic_bytes(path, data)
+    Path(path).chmod(0o644)
+
+
 def link_or_copy(source, target):
     try:
         os.link(source, target)
@@ -151,6 +156,29 @@ def dispatch(request):
         return dict(raw=base64.b64encode(path.read_bytes()).decode())
     if action == 'live':
         return dict(raw=base64.b64encode((app / 'stable/stable.json').read_bytes()).decode())
+    if action == 'bootstrap_state':
+        path = app / 'releases/bootstrap/bootstrap-state.json'
+        value = json.loads(path.read_bytes()) if path.is_file() else None
+        if value:
+            try:
+                checked(app / 'releases/bootstrap/MentorFlow-Setup.exe',
+                        dict(size=value['stub_size'], sha256=value['stub_sha256']))
+                value['stub_valid'] = True
+            except (OSError, ValueError, KeyError):
+                value['stub_valid'] = False
+        return dict(state=value)
+    if action == 'bootstrap_core_state':
+        fingerprint = request['fingerprint']
+        if not re.fullmatch(r'[0-9a-f]{64}', fingerprint):
+            raise ValueError('bootstrap core fingerprint must be lowercase SHA256')
+        root = app / 'releases/bootstrap' / fingerprint
+        metadata = root / 'bootstrap-core.json'
+        artifact = root / 'bootstrap-core.zip'
+        if not metadata.is_file():
+            return dict(core=None)
+        value = json.loads(metadata.read_bytes())
+        checked(artifact, value)
+        return dict(core=value)
     if action == 'cleanup':
         if stage.exists():
             shutil.rmtree(stage)
@@ -164,7 +192,7 @@ def dispatch(request):
             else:
                 missing.append(row['sha256'])
         return dict(missing=sorted(set(missing)))
-    if action in ('stage_objects', 'stage_manifest', 'installer'):
+    if action in ('stage_objects', 'stage_manifest', 'installer', 'bootstrap_core', 'bootstrap_stub'):
         transfer = Path(request['transfer'])
         try:
             if action == 'stage_objects':
@@ -193,6 +221,64 @@ def dispatch(request):
                 finally:
                     shutil.rmtree(unpack)
                 return dict(status='STAGED', files=len(rows))
+            if action == 'bootstrap_core':
+                fingerprint = request['fingerprint']
+                if not re.fullmatch(r'[0-9a-f]{64}', fingerprint):
+                    raise ValueError('bootstrap core fingerprint must be lowercase SHA256')
+                checked(transfer, request['artifact'])
+                releases = app / 'releases/bootstrap'
+                releases.mkdir(parents=True, exist_ok=True)
+                releases.chmod(0o755)
+                destination = releases / fingerprint
+                metadata = dict(fingerprint=fingerprint, size=request['artifact']['size'],
+                                sha256=request['artifact']['sha256'],
+                                filename='bootstrap-core.zip')
+                if destination.exists():
+                    existing = destination / 'bootstrap-core.zip'
+                    if (json.loads((destination / 'bootstrap-core.json').read_bytes()) != metadata):
+                        raise ValueError('immutable bootstrap core fingerprint already has different metadata')
+                    checked(existing, request['artifact'])
+                else:
+                    temp = Path(tempfile.mkdtemp(prefix='.' + fingerprint + '-', dir=releases))
+                    try:
+                        artifact = temp / 'bootstrap-core.zip'
+                        shutil.copyfile(transfer, artifact)
+                        checked(artifact, request['artifact'])
+                        artifact.chmod(0o644)
+                        atomic_public_bytes(temp / 'bootstrap-core.json',
+                                            (json.dumps(metadata, sort_keys=True) + '\n').encode())
+                        temp.chmod(0o755)
+                        temp.rename(destination)
+                    finally:
+                        if temp.exists():
+                            shutil.rmtree(temp)
+                return dict(status='BOOTSTRAP_CORE_PUBLISHED', fingerprint=fingerprint,
+                            path='releases/bootstrap/' + fingerprint + '/bootstrap-core.zip', **request['artifact'])
+            if action == 'bootstrap_stub':
+                fingerprint = request['fingerprint']
+                core_fingerprint = request['core_fingerprint']
+                if (not re.fullmatch(r'[0-9a-f]{64}', fingerprint) or
+                        not re.fullmatch(r'[0-9a-f]{64}', core_fingerprint)):
+                    raise ValueError('bootstrap fingerprints must be lowercase SHA256')
+                checked(transfer, request['artifact'])
+                releases = app / 'releases/bootstrap'
+                releases.mkdir(parents=True, exist_ok=True)
+                releases.chmod(0o755)
+                target = releases / 'MentorFlow-Setup.exe'
+                temp = releases / ('.MentorFlow-Setup-' + uuid.uuid4().hex + '.exe')
+                try:
+                    shutil.copyfile(transfer, temp)
+                    checked(temp, request['artifact'])
+                    temp.chmod(0o644)
+                    os.replace(temp, target)
+                finally:
+                    temp.unlink(missing_ok=True)
+                state = dict(stub_fingerprint=fingerprint, core_fingerprint=core_fingerprint,
+                             core_url=request['core_url'], stub_size=request['artifact']['size'],
+                             stub_sha256=request['artifact']['sha256'])
+                atomic_public_bytes(releases / 'bootstrap-state.json',
+                                    (json.dumps(state, sort_keys=True) + '\n').encode())
+                return dict(status='BOOTSTRAP_STUB_PUBLISHED', path='releases/bootstrap/MentorFlow-Setup.exe', **state)
             raw = base64.b64decode(request['manifest'])
             if action == 'stage_manifest':
                 if sha(transfer) != request['sha256']:

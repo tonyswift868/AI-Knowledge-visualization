@@ -28,6 +28,10 @@ PUBLIC = Path(__file__).parent / 'inputs/public-key.json'
 ORIGIN = 'https://89.45.45.28/mentorflow/updates/app/objects/'
 INNO_URL = 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe'
 INNO_SHA256 = '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f'
+BOOTSTRAP_ROOT = 'https://89.45.45.28/mentorflow/updates/app/'
+BOOTSTRAP_FEED = BOOTSTRAP_ROOT + 'stable/stable.json'
+BOOTSTRAP_CORE_ROOT = BOOTSTRAP_ROOT + 'releases/bootstrap/'
+BOOTSTRAP_PROTOCOL_VERSION = '1.0.0'
 
 
 def rows_of(release):
@@ -130,6 +134,111 @@ def promote(server, version, work, *, public_key=PUBLIC):
                        rows=rows_of(release), login_policy=make_login_policy(release))
 
 
+def _bootstrap_fingerprint(paths, *, public_key, app_id, feed, protocol):
+    """Hash only bootstrap inputs; app release versions and stable bytes are excluded."""
+    import hashlib
+    digest = hashlib.sha256()
+    for path in sorted({Path(p).resolve() for p in paths}, key=lambda p: p.as_posix().casefold()):
+        if not path.is_file():
+            raise FileNotFoundError('bootstrap fingerprint input missing: ' + str(path))
+        rel = path.relative_to(ROOT).as_posix().encode('utf-8')
+        digest.update(len(rel).to_bytes(4, 'big')); digest.update(rel)
+        with path.open('rb') as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(chunk)
+    for value in (app_id, feed, protocol, 'Python 3.12.10', 'PyInstaller 6.16.0', 'Inno 7.1.0'):
+        data = value.encode('utf-8')
+        digest.update(len(data).to_bytes(4, 'big')); digest.update(data)
+    return digest.hexdigest()
+
+
+def bootstrap_fingerprints(public_key=PUBLIC):
+    delivery = ROOT / 'refactor/desktop/delivery'
+    inno = ROOT / 'refactor/desktop/packaging/inno'
+    common = [*delivery.glob('*.py'), *inno.rglob('*.iss'),
+              *(ROOT / 'refactor/desktop/packaging').glob('*.py'),
+              ROOT / 'scripts/build_learning_installer.py',
+              ROOT / 'refactor/desktop/packaging/authority.py',
+              ROOT / 'refactor/desktop/resources/trust/account-api.pem',
+              ROOT / 'refactor/desktop/resources/teacher2d/tsubaki-live2d/icon.png',
+              ROOT / 'scripts/release/requirements-bootstrap.txt', public_key]
+    protocol = __import__('refactor.desktop.delivery.update_protocol', fromlist=['UPDATER_VERSION']).UPDATER_VERSION
+    core = _bootstrap_fingerprint(common, public_key=public_key, app_id='MentorFlow',
+                                  feed=BOOTSTRAP_FEED, protocol=protocol)
+    # The shell has its own identity: shell sources and the exact built core digest.
+    shell_files = [*inno.rglob('*.iss'), ROOT / 'scripts/build_learning_installer.py',
+                   ROOT / 'scripts/release/requirements-bootstrap.txt',
+                   ROOT / 'refactor/desktop/resources/teacher2d/tsubaki-live2d/icon.png', public_key]
+    shell = _bootstrap_fingerprint([*shell_files], public_key=public_key, app_id='MentorFlow',
+                                   feed=BOOTSTRAP_FEED, protocol=protocol)
+    return core, shell
+
+
+def ensure_bootstrap(server, work, compiler=None, *, public_key=PUBLIC, core_compile_fn=None,
+                     stub_compile_fn=None):
+    """Publish a content-addressed core before atomically replacing the fixed stub."""
+    work = Path(work); work.mkdir(parents=True, exist_ok=True)
+    state = server.call('bootstrap_state', '0.0.0')['state']
+    core_fingerprint, _ = bootstrap_fingerprints(public_key)
+    core_record = server.call('bootstrap_core_state', '0.0.0', fingerprint=core_fingerprint)['core']
+    core_built = False
+    if core_record:
+        core_sha = core_record['sha256']
+        core_output = work / 'core' / 'bootstrap-core.zip'
+    else:
+        core_built = True
+        core_output = work / 'core'
+        core_output.mkdir(parents=True, exist_ok=True)
+        core_work = work / 'core-build'; core_work.mkdir(parents=True, exist_ok=True)
+        built = (core_compile_fn or builder.bootstrap_core)(argparse.Namespace(
+            work=core_work, output=core_output, compiler=Path(compiler), public_key=public_key,
+            feed=BOOTSTRAP_FEED, app_id='MentorFlow', runtime=None))
+        core_path = Path(built['path'])
+        core_output = core_path
+        core_sha = built['sha256']
+        core_artifact = dict(size=core_path.stat().st_size, sha256=builder.digest(core_path))
+        if core_artifact['sha256'] != core_sha:
+            raise ValueError('bootstrap core builder hash differs from artifact')
+        transfer = server.upload(core_path)
+        core_record = server.call('bootstrap_core', '0.0.0', transfer=transfer,
+                                  fingerprint=core_fingerprint, artifact=core_artifact)
+    core_url = BOOTSTRAP_CORE_ROOT + core_fingerprint + '/bootstrap-core.zip'
+    stub_fingerprint = _bootstrap_fingerprint(
+        [ROOT / 'scripts/build_learning_installer.py', * (ROOT / 'refactor/desktop/packaging/inno').rglob('*.iss'),
+         ROOT / 'scripts/release/requirements-bootstrap.txt',
+         ROOT / 'refactor/desktop/resources/teacher2d/tsubaki-live2d/icon.png', public_key],
+        public_key=public_key, app_id='MentorFlow', feed=core_url + '#' + core_sha,
+        protocol=BOOTSTRAP_PROTOCOL_VERSION)
+    if (state and state.get('stub_valid') is True
+            and state.get('stub_fingerprint') == stub_fingerprint
+            and state.get('core_fingerprint') == core_fingerprint):
+        return dict(status='BOOTSTRAP_UNCHANGED', core_fingerprint=core_fingerprint,
+                    stub_fingerprint=stub_fingerprint, core_url=core_url)
+    compiler = Path(compiler) if compiler else provision_inno(work / 'compiler')
+    if core_record and not core_built:
+        server.download('releases/bootstrap/' + core_fingerprint + '/bootstrap-core.zip', core_output)
+        if builder.digest(core_output) != core_sha:
+            raise ValueError('published immutable bootstrap core hash mismatch')
+    stub_output = work / 'stub'
+    stub_output.mkdir(parents=True, exist_ok=True)
+    stub_work = work / 'stub-build'; stub_work.mkdir(parents=True, exist_ok=True)
+    built_stub = (stub_compile_fn or builder.bootstrap)(argparse.Namespace(
+        core_zip=core_output,
+        core_url=core_url, core_sha256=core_sha, version=BOOTSTRAP_PROTOCOL_VERSION,
+        app_id='MentorFlow', compiler=Path(compiler), work=stub_work, output=stub_output))
+    stub_path = Path(built_stub['path'])
+    stub_sha = built_stub['sha256']
+    artifact = dict(size=stub_path.stat().st_size, sha256=builder.digest(stub_path))
+    if artifact['sha256'] != stub_sha:
+        raise ValueError('bootstrap stub builder hash differs from artifact')
+    result = server.call('bootstrap_stub', '0.0.0', transfer=server.upload(stub_path),
+                         fingerprint=stub_fingerprint, core_fingerprint=core_fingerprint,
+                         core_url=core_url, artifact=artifact)
+    return dict(status='BOOTSTRAP_UPDATED', core_fingerprint=core_fingerprint,
+                stub_fingerprint=stub_fingerprint, core_url=core_url,
+                core_sha256=core_sha, stub_sha256=stub_sha, publish=result)
+
+
 def stage_manifest(server, stable, public_key):
     release = verified_release(stable, public_key)
     return server.call('stage_manifest', release.version, transfer=server.upload(stable),
@@ -192,8 +301,8 @@ def build(server, args):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=['installer', 'promote', 'cleanup', 'stage', 'build'])
-    p.add_argument('--version', required=True)
+    p.add_argument('action', choices=['installer', 'promote', 'cleanup', 'stage', 'build', 'ensure-bootstrap'])
+    p.add_argument('--version')
     p.add_argument('--work', type=Path, required=True)
     p.add_argument('--public-key', type=Path, default=PUBLIC)
     p.add_argument('--local-server-root', type=Path)
@@ -208,12 +317,20 @@ def main():
     p.add_argument('--build-only', action='store_true')
     p.add_argument('--mandatory', action='store_true')
     p.add_argument('--mandatory-reason', default='')
+    p.add_argument('--bootstrap-compiler', type=Path)
     args = p.parse_args()
-    server_ops.version(args.version)
+    if args.action == 'ensure-bootstrap':
+        if args.version is not None:
+            p.error('ensure-bootstrap does not take an app release version')
+    else:
+        server_ops.version(args.version)
     args.work.mkdir(parents=True, exist_ok=True)
     server = LocalServer(args.local_server_root) if args.local_server_root else SSHServer(
         args.work / 'ssh', identity=args.ssh_identity)
-    if args.action == 'installer':
+    if args.action == 'ensure-bootstrap':
+        compiler = args.bootstrap_compiler or args.compiler
+        result = ensure_bootstrap(server, args.work, compiler, public_key=args.public_key)
+    elif args.action == 'installer':
         compiler = args.compiler or provision_inno(args.work / 'compiler')
         result = installer(server, args.version, args.work, compiler, public_key=args.public_key, latest=args.latest)
     elif args.action == 'promote':
