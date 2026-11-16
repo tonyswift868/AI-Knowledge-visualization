@@ -25,6 +25,9 @@ class SafeFailure406(SafeFailure):
     pass
 
 
+E2E_SCRATCH = Path(r"D:\MentorFlow\.local\test-tmp\414-MF01\e2e")
+
+
 def _course_store(plan_id: str, marker: str, root: Path):
     from refactor.learning.course.mastery import Judgement
     from refactor.learning.course.ledger import PlanWindow
@@ -172,12 +175,18 @@ def execute(account_index: int = 0) -> None:
     plan_id = "plan406-" + uuid.uuid4().hex
     control_id = "control406-" + uuid.uuid4().hex
     before = _sql_counts(marker, issuer.rstrip("/"))
-    if before[:2] != (0, 0):
+    keep_before = _sql_counts(keep_marker, issuer.rstrip("/"))
+    if before[:2] != (0, 0) or keep_before[:2] != (0, 0):
         raise SafeFailure406("random marker unexpectedly exists")
     from refactor.learning.course.store import CourseStore
     created: list[tuple[str, str]] = []
     target_records = []
-    with tempfile.TemporaryDirectory(prefix="e2e406-", dir=Path(r"D:\MentorFlow\.local\test-tmp\406-MF01\e2e")) as temp:
+    populated_counts = None
+    keep_created_counts = None
+    target_deleted_counts = None
+    keep_after_delete_counts = None
+    E2E_SCRATCH.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="e2e406-", dir=E2E_SCRATCH) as temp:
         store = None
         try:
             store = _course_store(plan_id, marker, Path(temp))
@@ -198,12 +207,16 @@ def execute(account_index: int = 0) -> None:
             if initial.get("revision") != 1 or initial.get("deleted") is not False:
                 raise SafeFailure406("control record create response invariant failed")
             _sync_records(token, org, workspace, store, records)
-            if _sql_counts(marker, issuer.rstrip("/"))[:2] == (0, 0):
+            populated_counts = _sql_counts(marker, issuer.rstrip("/"))
+            keep_created_counts = _sql_counts(keep_marker, issuer.rstrip("/"))
+            if populated_counts[:2] == (0, 0):
                 raise SafeFailure406("course answer/judgement rows were not observed")
             store.delete_plan(plan_id)
             tombstones = store.pending_records(10000)
             _sync_records(token, org, workspace, store, tombstones)
-            if _sql_counts(marker, issuer.rstrip("/"))[:2] != (0, 0):
+            target_deleted_counts = _sql_counts(marker, issuer.rstrip("/"))
+            keep_after_delete_counts = _sql_counts(keep_marker, issuer.rstrip("/"))
+            if target_deleted_counts[:2] != (0, 0):
                 raise SafeFailure406("target marker remained after plan deletion")
             control_row = _find_change(token, org, workspace,
                                        _wire_id("chat_sessions", control_id))
@@ -231,6 +244,12 @@ def execute(account_index: int = 0) -> None:
             if (target_counts[:2] != (0, 0) or control_counts[:2] != (0, 0)
                     or target_counts[2] != before[2] or control_counts[2] != before[2]):
                 raise SafeFailure406("final cleanup marker/account count invariant failed")
+    from e2e_sync_cleanup401 import _count_text
+    print("E2E counts: "
+          f"target before=[{_count_text(before)}], populated=[{_count_text(populated_counts)}], "
+          f"target deleted=[{_count_text(target_deleted_counts)}], final=[{_count_text(target_counts)}]; "
+          f"control before=[{_count_text(keep_before)}], created=[{_count_text(keep_created_counts)}], "
+          f"after target deletion=[{_count_text(keep_after_delete_counts)}], final=[{_count_text(control_counts)}]")
     print("E2E passed: real CourseStore answer/judgement sync, plan deletion, both marker counts=0, control unchanged, account count unchanged")
 
 
@@ -245,8 +264,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         execute(args.account_index)
-    except (SafeFailure, OSError):
-        print("E2E stopped safely; inspect operator state before any rerun.", file=sys.stderr)
+    except SafeFailure as failure:
+        print(f"E2E stopped safely: {failure}", file=sys.stderr)
+        return 2
+    except OSError:
+        print("E2E stopped safely: local I/O failed; inspect operator state before any rerun.", file=sys.stderr)
         return 2
     return 0
 

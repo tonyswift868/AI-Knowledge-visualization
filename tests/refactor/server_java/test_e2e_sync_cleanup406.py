@@ -35,7 +35,7 @@ class E2E406OfflineTests(unittest.TestCase):
         self.assertIn("since=7", request.call_args_list[1].args[1])
 
     def test_script_path_imports_course_store_without_pythonpath(self):
-        scratch = Path(r"D:\MentorFlow\.local\test-tmp\406-MF01\e2e\script-path")
+        scratch = Path(r"D:\MentorFlow\.local\test-tmp\414-MF01\script-path")
         scratch.mkdir(parents=True, exist_ok=True)
         script = Path(e2e.__file__).resolve()
         code = (
@@ -234,7 +234,7 @@ class E2E406OfflineTests(unittest.TestCase):
 
     @staticmethod
     def _temporary_directory():
-        scratch = Path(r"D:\MentorFlow\.local\test-tmp\406-MF01\e2e\offline")
+        scratch = Path(r"D:\MentorFlow\.local\test-tmp\414-MF01\offline")
         scratch.mkdir(parents=True, exist_ok=True)
         return scratch
 
