@@ -264,7 +264,9 @@ public final class SyncRepository {
             Map<String,Object> receipt = receipts.get(0);
             if (!digest.equals(receipt.get("digest"))) throw new SyncFailure("SYNC_IDEMPOTENCY_KEY_REUSED", 409);
             @SuppressWarnings("unchecked") Map<String,Object> response = (Map<String,Object>)receipt.get("response");
-            return response;
+            LinkedHashMap<String,Object> replay = new LinkedHashMap<>(response);
+            replay.put("payload", op.payload());
+            return replay;
         }
         List<Map<String,Object>> currentRows = jdbc.query("SELECT revision,deleted FROM structured_sync_entities WHERE " + SCOPE_WHERE + " AND kind=? AND entity_id=? FOR UPDATE",
             (rs, row) -> Map.of("revision", rs.getInt("revision"), "deleted", rs.getBoolean("deleted")), entityValues(scope, op.kind(), op.entityId()));
@@ -286,8 +288,10 @@ public final class SyncRepository {
             jdbc.update("INSERT INTO structured_sync_entities (issuer,subject_id,organization_id,workspace_id,kind,entity_id,revision,deleted,payload) VALUES (?,?,?,?,?,?,?, ?,?::json)",
                 scope.get("issuer"), scope.get("subject_id"), scope.get("organization_id"), scope.get("workspace_id"), op.kind(), op.entityId(), revision + 1, op.deleting(), payloadJson);
         }
+        LinkedHashMap<String,Object> receipt = new LinkedHashMap<>(result);
+        receipt.remove("payload");
         jdbc.update("INSERT INTO structured_sync_requests (issuer,subject_id,organization_id,workspace_id,request_id,digest,response) VALUES (?,?,?,?,?,?,?::json)",
-            scope.get("issuer"), scope.get("subject_id"), scope.get("organization_id"), scope.get("workspace_id"), op.requestId(), digest, SyncJson.dumpAscii(result));
+            scope.get("issuer"), scope.get("subject_id"), scope.get("organization_id"), scope.get("workspace_id"), op.requestId(), digest, SyncJson.dumpAscii(receipt));
         jdbc.update("UPDATE rehydration_manifests SET generation=generation+1,updated_at=CURRENT_TIMESTAMP WHERE " + SCOPE_WHERE + " AND initialized AND scope_version=?",
             scope.get("issuer"), scope.get("subject_id"), scope.get("organization_id"), scope.get("workspace_id"), SCOPE_VERSION);
         return result;
