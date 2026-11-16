@@ -33,7 +33,7 @@ sudo -n sh preflight.sh
 
 检查现有镜像、网络、卷/secret元信息、Compose labels/文件/env键/挂载、源码、磁盘、当前库版本和健康入口。每项输出 `项目名 OK/FAIL 原因`；不打印 `.env` 值、secret、令牌或资料正文。迁移项只使用**已经存在**的工具镜像执行 Alembic `current`；镜像缺失直接 FAIL，不拉取、不构建。不得用普通 `migrate.sh current` 代替此项：该维护命令会先构建工具镜像。
 
-无参数预检默认使用393源码与运行配置、393 Java镜像、0053数据库版本和393来源清单。装前使用保留的391预检入口检查d37112fd+0053，最终使用393入口检查新Java。若现场布局变更，须同步默认值与合同测试。新包尚未构建时，不要提前对新包运行 `java-compose.sh config`。新包的 `MF_JAVA_VERSION` 要等 `build.sh VERSION` 写入后才能展开 Compose（[BUG-209]）。
+当前候选源码的无参数预检默认使用401源码与运行配置、401 Java镜像、0054数据库版本和401来源清单。现网仍为保留归档中的393/0053入口；401装前用该入口检查现网，再按401段显式覆盖候选检查参数。若现场布局变更，须同步默认值与合同测试。新包尚未构建时，不要提前对新包运行 `java-compose.sh config`。新包的 `MF_JAVA_VERSION` 要等 `build.sh VERSION` 写入后才能展开 Compose（[BUG-209]）。
 
 ## 服务器现场条件
 
@@ -63,7 +63,7 @@ sudo -n sh preflight.sh
 | 公网探活 | API/健康入口是 `https://89.45.45.28` 的 `/health/live`、`/health/startup`、`/health/ready`；下载站域名不是这个vhost（221）。普通API用`/api/enterprise/auth/lifecycle/capabilities`；匿名401不代表用户登录业务通过 |
 | TLS/身份扩展 | 保留edge转发的HTTPS语义、Java信任库/Keycloak回环/mTLS。注册SPI有改动时先按该任务验证Keycloak扩展再换Java；实际Keycloak可有shell包装入口，不能只grep一个Cmd字段推断`--optimized` |
 | 主机工具/磁盘 | `sh`、Python3、Docker/Compose、curl、sha256sum、df可用；备份用PostgreSQL容器里的`pg_dump/pg_restore`，不用旧宿主机版本。备份前确认目标不存在和足够空间，权限600，不输出备份正文 |
-| 预检对照输入 | 393来源清单为`/opt/mentorflow/state/release393/source.sha256`，37项；旧388/391清单保留。`PREFLIGHT_SOURCE_REVISION`与`EXPECTED_ALEMBIC_REVISION`仍为`0053_workbench_question_index`。默认源码、运行配置均绑定393；缺项、重复、额外项或SHA256不符均FAIL |
+| 预检对照输入 | 现网归档393清单37项；候选401清单为`/opt/mentorflow/state/release401/source.sha256`，42项，0054。候选与最终参数语义见401预检段；旧归档清单保留。缺项、重复、额外项或SHA256不符均FAIL |
 
 ## 393 账号页与诊断日志部署
 
@@ -117,6 +117,8 @@ copy-revision=0054_sync_receipts_without_payload
 部署将0054 UPDATE本身记录的耗时、迁移命令墙钟耗时（含迁移工具构建与命令启动）、迁移前回执表总字节数、普通VACUUM耗时和VACUUM后表总字节数安全输出并写入`STATE/metrics.txt`；仅记录数值，不输出回执内容。VACUUM后字节数是表和索引总大小，不保证操作系统占用缩小。
 
 在获准切换后运行`RELEASE_ROOT=/opt/mentorflow/releases/java-401 sh refactor/server-java/deploy/deploy401.sh`。部署与回退命令使用独立的`STATE`目录；保留完整状态和迁移标记用于事故判断，不复用完成或失败的状态目录。
+
+端到端工具位于`tests/refactor/server_java/e2e_sync_cleanup401.py`，无参数只打印离线计划，不读凭据或联网。收到“401可以切换”、上线与0054完成后，用项目Python运行该工具的`--execute --account-index 0`。工具只读已有测试账号凭据，创建全新对话/消息/预设和对照记录；先验证对照记录保留，再清理全部本次ID，SQL只输出两种随机标记的行数和账号计数。若清理失败会列本次新ID供处理，不会静默宣称成功。
 
 账号页由Java容器监听8081。现场的`mentorflow-e1-preview_internal`虽在Docker inspect中显示端口HostBindings，实际却没有生成宿主listener。用systemd socket-proxyd在宿主监听`127.0.0.1:18081`，服务按需inspect Java容器在现有internal网络上的IP并连接8081；不改Java网络、不新增egress网络、不经edge。桌面脚本将本机`18091`隧道转发至服务器回环`18081`，打开`/admin/accounts`。`systemd-socket-proxyd`使用`Accept=no`和`--exit-idle-time=30s`，参见[官方手册](https://www.freedesktop.org/software/systemd/man/latest/systemd-socket-proxyd.html)。单独补装可运行`RELEASE_ROOT=<候选源码目录> STATE=<新建部署状态目录> sh install-account-page-proxy.sh install`；回退同一`STATE`运行`sh install-account-page-proxy.sh remove`，只删除带本任务inode所有权标记的units。
 
