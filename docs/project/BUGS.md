@@ -2576,10 +2576,11 @@
 - 更新：2026-11-02
 
 ### [BUG-266] 部署后自动清 Docker 删掉了续证书定时任务要用的 certbot 镜像
-- 状态：待修（2.0.48 发布后下一批，改 `cleanup-docker406.sh` 的保留名单）。
+- 状态：镜像已拉回（架构师 2026-11-16）；保留名单待修（2.0.48 发布后下一批，改 `cleanup-docker406.sh`）。
 - 现象（2026-11-16，414-MF01 部署后自动清理）：删掉的 29 个镜像里有 `certbot/certbot:v5.4.0`。架构师只读查：服务器上 `mentorflow-e108-ip-renew.timer` 每 4 小时跑 `/opt/mentorflow/update-static/config/renew-ip-cert.sh`，里面 `docker run --rm` 按摘要 `certbot/certbot@sha256:c23159d3…` 起 certbot 续 IP 证书；清理后服务器上已没有任何 certbot 镜像。
 - 原因：保留名单只认“运行中或已停止容器引用的镜像”，定时任务用 `--rm` 跑完就删容器，平时没有容器引用它。
 - 影响：下次续证书（2026-11-16 16:17 UTC 起）时 `docker run` 会自动从 Docker Hub 重新下载；下载失败那次就续不上，`ExecStartPost` 的 Healthchecks 不会收到成功信号，会报警；4 小时后会再试。
+- 处理：用户 2026-11-16 说这东西不能乱删；架构师当天按原摘要 `docker pull certbot/certbot@sha256:c23159d3…` 拉回，服务器上又有这个镜像，定时任务照常（下次 16:17 UTC），证书有效到 2026-11-21 19:19 UTC。
 - 解决：待修。保留名单要补上定时任务和脚本里引用的镜像（例如从 systemd 单元调用的脚本里取镜像引用），不按单个名字写死。
 - 关联：[BUG-265]、414-MF01、406-MF01
 - 更新：2026-11-16
@@ -2601,7 +2602,7 @@
 - 影响（架构师 2026-11-16 查）：只卡打包（本机和 GitHub mf-build 都跑 `build_manifest`）；已装的 2.0.47 收更新只调用 `_validate_staging_entry`，只核路径，不做私名扫描，不会因此拒收 2.0.48。
 - 为什么全量没测出来（架构师 2026-11-16 查）：全仓没有任何测试调用 `package_verification` 的私名扫描（`build_manifest`、`_find_user_data_files`）；405 改了包的目录结构，也没给这道检查补测试。
 - 解决：415-MF05：`_application_managed_parts` 把开头的 `UserRuntime/_internal` 当顶层 `_internal` 处理，走同一条归类规则（只认这个已知的嵌套运行时目录），不删 CA、不按文件名放行、不放宽私名规则；这道检查的第一批测试在 `tests/refactor/installer/test_package_verification415.py`，以后全量都会跑（放过 CA；嵌套运行时应用目录、UserRuntime 顶层、其他目录下 `_internal` 的私名文件照样被拒）。
-- 验证：412 本次只运行一次应用冻结；引导核心 ZIP 61,582,115 字节、小壳 4,871,051 字节各编译成功一次，工作流检查通过。完整发布包清单仍未通过，不能据此发版。证据见 `D:\MentorFlow\.local\receipts\412-MF05.md` 及其中指定的日志。
+- 验证：415-MF05（2026-11-16）：相关测试 561 项通过；用修复后的代码在本机完整打包 9.415.1（基线 2.0.47），固定构建环境 73 项、发布清单生成、unsigned 文件集、source_sha、verify_tree 都通过，引导核心和小壳各编一次通过，宿主环境变量前后没变。证据见 `.local/receipts/415-MF05.md`。
 - 更新：2026-11-16。
 
 ### [BUG-261] 406 部署后真实删除E2E在测试账号登录时返回401，收尾停止
