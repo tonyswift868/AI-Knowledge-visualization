@@ -39,7 +39,7 @@ def _tables(url: str):
 
 
 def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
-    """The reversible 0045 chain round-trips; 0046/0047 remain forward-only."""
+    """The 0045 chain round-trips; historical and current heads refuse data loss."""
     postgres = rag154_backends["postgres"]
     name = "rag154_legacy_" + uuid.uuid4().hex[:12]
     _app_url, _admin_url, url = _prepare_database(
@@ -73,7 +73,10 @@ def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
 
     # Current profile, upload-manifest and source-layout migrations are forward-only.
     # Existing profile data and additive RAG tables survive a refusal.
-    current_url = rag154_backends["rollback_url"]
+    _, _, current_url = _prepare_database(
+        postgres, "rag154_boundary_" + uuid.uuid4().hex[:12],
+        rag154_backends["issuer"], target="0048_rag_source_chunks",
+    )
     admin = current_url.replace("mentorflow_migrator:local-migrator-154", "postgres")
     admin = admin.replace("postgresql+psycopg://", "postgresql://")
     with psycopg.connect(admin) as connection:
@@ -87,7 +90,7 @@ def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
             run_dir / "migration-0048-refused-downgrade.log", rag154_backends["issuer"],
         )
     with psycopg.connect(admin) as connection:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0051_sync_closure_fence"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0048_rag_source_chunks"
         assert connection.execute("SELECT to_regclass('public.rag_document_upload_manifests')").fetchone()[0]
         assert connection.execute("SELECT to_regclass('public.rag_source_chunks')").fetchone()[0]
         assert connection.execute(
@@ -113,6 +116,23 @@ def test_rag154_migration_upgrade_downgrade_and_reupgrade(rag154_backends):
         assert connection.execute(
             "SELECT nickname FROM public.account_profiles WHERE account_scope=%s", ("a" * 64,)
         ).fetchone()[0] == "keep-profile-0048"
+
+    # The latest forward-only boundary may move; refusal must keep its version and data.
+    latest_url = rag154_backends["rollback_url"]
+    latest_admin = latest_url.replace("mentorflow_migrator:local-migrator-154", "postgres")
+    latest_admin = latest_admin.replace("postgresql+psycopg://", "postgresql://")
+    scope = hashlib.sha256(uuid.uuid4().bytes).hexdigest()
+    with psycopg.connect(latest_admin) as connection:
+        version = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        connection.execute("INSERT INTO public.account_profiles(account_scope,nickname) VALUES (%s,%s)",
+                           (scope, "keep-current-profile"))
+    with pytest.raises(RuntimeError, match="Forward only:"):
+        _run_alembic(latest_url, ["downgrade", "0045_account_closure_rag"],
+                     run_dir / "migration-current-refused-downgrade.log", rag154_backends["issuer"])
+    with psycopg.connect(latest_admin) as connection:
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == version
+        assert connection.execute("SELECT nickname FROM public.account_profiles WHERE account_scope=%s",
+                                  (scope,)).fetchone()[0] == "keep-current-profile"
 
 
 def test_rag154_0047_to_0048_backfill_uses_only_unambiguous_canonical_layout(rag154_backends):

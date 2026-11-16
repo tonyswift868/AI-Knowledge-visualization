@@ -46,7 +46,8 @@ def _migration(database_url: str, action: str, log_path: Path) -> None:
     if action == "downgrade":
         command.append(REVISION)
     else:
-        command.append("head")
+        # Exercise the reversible index migration without crossing newer forward-only steps.
+        command.append("0053_workbench_question_index")
     with log_path.open("wb") as log:
         subprocess.run(command, cwd=support145.ROOT, env=env, check=True,
                        timeout=900, stdout=log, stderr=subprocess.STDOUT)
