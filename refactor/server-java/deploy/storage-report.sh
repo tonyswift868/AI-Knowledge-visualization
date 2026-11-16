@@ -12,7 +12,7 @@ python_bin=${PYTHON_BIN:-python3}
 
 psql_readonly() {
   local result
-  if result=$("$docker_bin" exec -i -e 'PGOPTIONS=-c default_transaction_read_only=on -c statement_timeout=60000' \
+  if result=$("$docker_bin" exec -e 'PGOPTIONS=-c default_transaction_read_only=on -c statement_timeout=60000' \
     "$postgres_container" psql -XqAt -v ON_ERROR_STOP=1 \
     -U "$psql_user" -d "$psql_database" -c "BEGIN READ ONLY; $1 COMMIT;" 2>/dev/null); then
     printf '%s' "$result"
