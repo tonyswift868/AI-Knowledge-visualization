@@ -16,6 +16,10 @@ from contract_support145 import ORG, WORKSPACE, sync145_backends
 from test_sync_http_contract145 import BASE, _headers, _wire_json
 
 
+def _new_subject():
+    return "user-145-purge403-" + uuid.uuid4().hex
+
+
 def _rid(entity, identifier):
     return json.dumps([entity, identifier], ensure_ascii=False, separators=(",", ":"))
 
@@ -54,11 +58,11 @@ def _purge_migration(connection):
     module.upgrade()
 
 
-def _live_java_course_transport(clients):
+def _live_java_course_transport(clients, subject):
     from refactor.learning.sync_identity import PlanScope
     from refactor.learning.sync_transport import SyncTransport
 
-    issuer, subject = clients["jwks"].issuer, "user-145-a"
+    issuer = clients["jwks"].issuer
     issuer_hash = hashlib.sha256(issuer.encode()).hexdigest()
     subject_hash = hashlib.sha256(subject.encode()).hexdigest()
     account_id = "mfa1_" + hashlib.sha256(
@@ -85,7 +89,8 @@ def _live_java_course_transport(clients):
 
 def test_plan_progress403_java_tombstone_rejects_legacy_reupload(sync145_backends):
     clients = sync145_backends
-    token = clients["jwks"].token(subject="user-145-a")
+    subject = _new_subject()
+    token = clients["jwks"].token(subject=subject)
     plan = "plan403-" + uuid.uuid4().hex
     other = "other403-" + uuid.uuid4().hex
     marker = "answer403-" + uuid.uuid4().hex
@@ -201,10 +206,20 @@ def test_plan_progress403_real_store_sync_delete_sync(sync145_backends, tmp_path
 
     clients = sync145_backends
     plan, marker = "e2e403-" + uuid.uuid4().hex, "e2e-private403-" + uuid.uuid4().hex
+    subject = _new_subject()
     store = CourseStore("purge403-e2e", tmp_path)
-    transport = _live_java_course_transport(clients)
+    transport = _live_java_course_transport(clients, subject)
     admin = create_engine(clients["java_admin_url"])
     try:
+        # A different account may have protocol-valid records whose IDs do not
+        # satisfy CourseStore's plan-scoped record ID contract.
+        foreign_subject = _new_subject()
+        foreign_plan = "foreign403-" + uuid.uuid4().hex
+        foreign_id = "answer:" + foreign_plan
+        foreign_marker = "foreign-private403-" + uuid.uuid4().hex
+        _put(clients["java"], clients["jwks"].token(subject=foreign_subject),
+             "foreign-invalid-course-record403", "question_answers", foreign_plan,
+             foreign_id, {"id": foreign_id, "answer": foreign_marker})
         today = date.today()
         store.create_plan(plan, goal="sync and delete", final_goal="done", level="beginner",
                           notes="", window=PlanWindow(today, today + timedelta(days=2), 60))
@@ -220,6 +235,7 @@ def test_plan_progress403_real_store_sync_delete_sync(sync145_backends, tmp_path
             "casual", "module403", results=(("point403", False),)),
             details={"answer": marker, "reason": marker})
         assert CourseSync(store, transport).sync()["ok"] is True
+        assert store.records("question_answers", foreign_plan) == []
         with admin.connect() as connection:
             connection.execute(text("SET row_security=off"))
             assert connection.execute(text("SELECT count(*) FROM structured_sync_entities WHERE row_to_json(structured_sync_entities)::text LIKE :m"),
@@ -276,8 +292,8 @@ def test_plan_progress403_remote_plan_tombstone_order_does_not_restore_progress(
 
 def test_plan_progress403_migration_is_repeatable_and_scoped(sync145_backends):
     clients = sync145_backends
-    subject_a = "user-145-a"
-    subject_b = "user-145-b"
+    subject_a = _new_subject()
+    subject_b = _new_subject()
     token_a = clients["jwks"].token(subject=subject_a)
     token_b = clients["jwks"].token(subject=subject_b)
     plan = "missing-plan403-" + uuid.uuid4().hex
