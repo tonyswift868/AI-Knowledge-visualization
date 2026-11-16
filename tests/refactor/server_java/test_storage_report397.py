@@ -17,7 +17,7 @@ from test_question_index391 import _EmbeddedPostgres391
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "refactor/server-java/deploy/storage-report.sh"
-TEST_ROOT = Path(r"D:\MentorFlow\.local\test-tmp\397-MF02") / ("retest-" + uuid.uuid4().hex)
+TEST_ROOT = Path(os.environ.get("STORAGE397_TMP", r"D:\MentorFlow\.local\test-tmp\397-MF02")) / ("retest-" + uuid.uuid4().hex)
 ACCOUNT_ISSUER = "issuer397"
 ACCOUNT_SUBJECT = "subject397-private@example.invalid"
 ACCOUNT_SCOPE = hashlib.sha256((ACCOUNT_ISSUER + "\0" + ACCOUNT_SUBJECT).encode()).hexdigest()
@@ -51,8 +51,11 @@ def storage_report397_db():
         postgres.stop()
 
 
-def _report397(db_url: str, test_bin: Path, root: Path, backups: Path, *, fail_sql: bool = False):
+def _report397(db_url: str, test_bin: Path, root: Path, backups: Path, *, fail_sql: bool = False,
+               stream_script: bool = False):
     env = os.environ.copy()
+    bash_tmp = TEST_ROOT / "bash-tmp"
+    bash_tmp.mkdir(exist_ok=True)
     env.update({
         "PATH": str(test_bin) + os.pathsep + env.get("PATH", ""),
         "PYTHON_BIN": support145.PYTHON.as_posix(),
@@ -60,11 +63,14 @@ def _report397(db_url: str, test_bin: Path, root: Path, backups: Path, *, fail_s
         "MENTORFLOW_ROOT": str(root),
         "BACKUP_DIR": str(backups),
         "POSTGRES_CONTAINER": "embedded-test",
+        "TMPDIR": "/" + bash_tmp.drive[0].lower() + bash_tmp.as_posix()[2:],
     })
     if fail_sql:
         env["STORAGE397_FAIL_SQL"] = "sql detail must stay private"
+    streamed = "".join(SCRIPT.open(encoding="utf-8")) + "\nprintf 'STORAGE397_STREAM_COMPLETE\\n'\n"
     completed = subprocess.run(
-        [r"C:\Program Files\Git\bin\bash.exe", str(SCRIPT)], cwd=ROOT, env=env,
+        [r"C:\Program Files\Git\bin\bash.exe", "-s" if stream_script else str(SCRIPT)], cwd=ROOT, env=env,
+        input=streamed if stream_script else None,
         check=False, capture_output=True, text=True, timeout=120)
     if fail_sql:
         return completed
@@ -139,6 +145,7 @@ def test_storage_report397_masks_accounts_counts_json_and_stays_read_only(storag
         "if [[ $1 == exec ]]; then\n"
         " shift\n"
         " while [[ $1 == -i || $1 == -e ]]; do\n"
+        "  if [[ $1 == -i ]]; then cat >/dev/null; fi\n"
         "  if [[ $1 == -e ]]; then shift; export \"$1\"; fi\n"
         "  shift\n"
         " done\n"
@@ -168,6 +175,9 @@ def test_storage_report397_masks_accounts_counts_json_and_stays_read_only(storag
     assert "backup-a.dump" not in output
     assert "1|14|" in output
     assert "Images|0|0|0B|0B" in output and "Volumes|0|0|0B|0B" in output
+    streamed_output = _report397(db_url, test_bin, root, backups, stream_script=True)
+    assert "Backup directory (file count | total bytes | oldest file date)" in streamed_output
+    assert "STORAGE397_STREAM_COMPLETE" in streamed_output
     with psycopg.connect(db_url) as conn:
         assert conn.execute("SELECT count(*) FROM sample_records").fetchone()[0] == before_rows
 
