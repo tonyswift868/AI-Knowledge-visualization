@@ -14,7 +14,7 @@ case "$from:$to" in
   [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]:[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
   *) echo 'dates must be YYYY-MM-DD' >&2; exit 2 ;;
 esac
-"$python_bin" -c 'from datetime import date; import sys; start=date.fromisoformat(sys.argv[1]); end=date.fromisoformat(sys.argv[2]); raise SystemExit("start date is after end date") if start > end else None' "$from" "$to"
+"$python_bin" -c 'from datetime import date; import sys; start=date.fromisoformat(sys.argv[1]); end=date.fromisoformat(sys.argv[2]); sys.exit("start date is after end date") if start > end else None' "$from" "$to"
 test -r "$deploy_dir/usage-stats.py"
 
 # The dates are shell-validated before they are inserted into this fixed SQL.
@@ -32,7 +32,7 @@ if active_output=$($docker_bin exec -e PGOPTIONS='-c default_transaction_read_on
   active_json=$(printf '%s\n' "$active_output" | "$python_bin" -c \
   'import json,sys; out=[]
 for line in sys.stdin:
- p=line.rstrip("\r\n").split("\t")
+ p=line.rstrip("\r\n").split("|")
  if len(p)==2: out.append({"day":p[0],"accounts":int(p[1])})
 print(json.dumps(out,separators=(",",":")))')
 else
