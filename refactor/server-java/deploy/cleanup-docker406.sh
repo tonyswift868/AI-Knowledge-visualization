@@ -76,6 +76,45 @@ while IFS= read -r container_id; do
   "$docker_bin" inspect --format '{{.Image}}' "$container_id" >> "$work/keep-ids"
 done < "$work/containers"
 
+# Images that MentorFlow systemd units and the scripts they start pass to
+# docker run/create stay, even when no container uses them (e.g. --rm certbot).
+# An unreadable unit or script stops cleanup before anything is removed.
+unit_root=${SYSTEMD_UNIT_ROOT:-/etc/systemd/system}
+script_root=${MF_SCRIPT_ROOT:-/opt/mentorflow}
+: > "$work/unit-files"
+for unit in "$unit_root"/mentorflow-*.service "$unit_root"/mentorflow-*.service.d/*.conf; do
+  [ -e "$unit" ] || continue
+  [ -f "$unit" ] && [ -r "$unit" ] || { echo "systemd unit unreadable: $unit; stopping cleanup" >&2; exit 1; }
+  printf '%s\n' "$unit" >> "$work/unit-files"
+done
+[ -s "$work/unit-files" ] || { echo "no mentorflow systemd units under $unit_root; stopping cleanup" >&2; exit 1; }
+: > "$work/exec-lines"
+while IFS= read -r unit; do
+  grep -h '^Exec' "$unit" >> "$work/exec-lines" || true
+done < "$work/unit-files"
+sed -e 's/^Exec[A-Za-z]*=[-@+!:]*//' "$work/exec-lines" | tr -s ' \t"\047' '\n' \
+  | sed -n "\|^$script_root/|p" | sort -u > "$work/scripts"
+: > "$work/script-files"
+while IFS= read -r script; do
+  [ -d "$script" ] && continue
+  [ -f "$script" ] && [ -r "$script" ] || { echo "script unreadable or missing: $script; stopping cleanup" >&2; exit 1; }
+  printf '%s\n' "$script" >> "$work/script-files"
+done < "$work/scripts"
+{ cat "$work/unit-files" "$work/script-files"; } | while IFS= read -r file; do
+  sed -e ':a' -e '/\\$/N; s/\\\n//; ta' "$file"
+done | grep -E '(^|[^A-Za-z0-9._-])docker([[:space:]]+container)?[[:space:]]+(run|create)([[:space:]]|$)' \
+  > "$work/docker-lines" || true
+tr -s ' \t"\047' '\n' < "$work/docker-lines" | sort -u > "$work/tokens"
+while IFS= read -r ref; do
+  case $ref in ''|-*|*[!A-Za-z0-9._/:@-]*|docker|run|create|container) continue ;; esac
+  if image_id=$("$docker_bin" image inspect --format '{{.Id}}' "$ref" 2>/dev/null); then
+    printf '%s\n' "$image_id" >> "$work/keep-ids"
+    printf 'image_ref_keep ref=%s id=%s\n' "$ref" "$image_id" | tee -a "$metrics"
+  else
+    printf 'image_ref_not_local ref=%s ignored\n' "$ref" | tee -a "$metrics"
+  fi
+done < "$work/tokens"
+
 record 'docker_builder_prune_all' "$docker_bin" builder prune -a -f
 
 sort -u "$work/keep-ids" -o "$work/keep-ids"
