@@ -753,6 +753,7 @@ BUG 条目（问题与解决记录）和它们的索引只在 [BUGS.md](BUGS.md)
   12. 从任何旧版本更新只下载真正变化的文件（[BUG-69]）。
 - 发版方式（用户 2026-10-10 定，2026-11-16 改）：每次发版先确保小安装器的引导核心和小壳已发布，再发布 stable；下载页（`/download` → `https://aiteacher.clannad.win/updates/app/releases/bootstrap/MentorFlow-Setup.exe`）始终是服务器上的最新版本（用户 2026-11-16 定；416 于同日 15:34 UTC 原地切换，核对过 302、no-store 和小壳 SHA256；小壳运行时安装 stable 上的最新版）。版本发布后不改内容；服务器只留最新 3 个安装程序，旧版本保留清单；更新文件按内容去重。发布按 WORKFLOW「发布新版」的分工和 `scripts/release/README.md` 执行；签名私钥仅留本机。
 - 官网首页（用户 2026-11-17 定）：`https://aiteacher.clannad.win/` 是樱花色介绍页，简单展示软件、能点下载（按钮直接指小壳地址）；`/download` 照旧直接跳安装程序。页面源文件在 `refactor/server-java/deploy/site/`（432-MF01），服务器上放 `/opt/mentorflow/update-static/e108/site/`，edge 反代（首页和 `/images/`）；以后改页面只换服务器上这个 `index.html`，不动 nginx。状态：已上线（2026-11-17，公网核对过）。
+- 中国大陆（用户 2026-11-17 定）：给中国大陆加一条能用的下载线路；整个软件在中国大陆能不能正常用先调研（434-MF06，[BUG-273]）。状态：未开始。
 - 发给外部新用户的放行条件：真包全新安装无报错且有桌面图标；几秒内出登录窗口、不闪；真人邮箱注册、登录、填 Key、建计划通过；软件内更新能关闭、替换并自动重开。架构师检查证据后才能让用户测、再发给朋友。全新安装和真人邮箱注册未完整验收（[ACC-02]）。
 - 正式版本、发布状态与客户端验收以本条和 [QA-01] 为准。签名、manifest 与升级实现见 `refactor/desktop/delivery/`、`refactor/desktop/updates.py`；已有计划升级见 [ARCH-03]。
 - 关联：[ARCH-03] [ENV-01] [ACC-02] [BUG-195] [QA-01]
