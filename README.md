@@ -53,7 +53,10 @@
 <details>
 <summary>展开</summary>
 
-- 开发运行：`python -m refactor.desktop.account_shell_main`。运行前先按 `refactor/learning/web/package-lock.json` 准备前端依赖，并构建界面。
+- 先安装 Python 3.12（建议 3.12.10）和 Node.js 24（npm 随 Node 一起安装）。
+- 在克隆仓库根目录运行 `.\run-from-source.ps1`。第一次运行会在仓库内创建 `.venv`，安装 `refactor/desktop/requirements-account-shell.txt`，安装前端 `node_modules`，构建 Vite 界面，然后启动桌面端；以后再次运行会跳过已经完成的安装和构建，直接启动。
+- 源码版仍需注册并登录账号才能使用，脚本不会替你注册账号。源码版的数据、日志、缓存和模型运行数据放在 `%LOCALAPPDATA%\MentorFlow-Source`。
+- 脚本只在当前进程里设置 pip/npm 缓存，不修改用户或系统环境变量，也不需要管理员权限。
 - 打包：`python scripts/build_learning_installer.py --help`
 - 需求和当前状态：[CURRENT_STATE](docs/project/CURRENT_STATE.md)
 

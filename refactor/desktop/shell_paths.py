@@ -11,9 +11,19 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_ROOT = Path(r"D:\MentorFlowData\account-shell")
+
+
+def _source_data_root() -> Path:
+    """Return the per-user root used by an unpackaged source checkout."""
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if not local_app_data:
+        local_app_data = str(Path.home() / "AppData" / "Local")
+    return Path(local_app_data) / "MentorFlow-Source"
+
+
+DATA_ROOT = _source_data_root()
 CACHE_ROOT = DATA_ROOT / "cache"
-SHARED_CACHE_ROOT = PROJECT_ROOT / ".local" / "cache"
+SHARED_CACHE_ROOT = DATA_ROOT / "cache"
 RESOURCE_ROOT = Path(__file__).resolve().parent / "resources"
 LIFECYCLE_ROOT = RESOURCE_ROOT / "account-lifecycle"
 PUBLIC_RUNTIME_CONFIG = RESOURCE_ROOT / "public-runtime.json"

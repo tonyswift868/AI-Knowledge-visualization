@@ -1987,7 +1987,7 @@ def _show_launch_error(message: str) -> None:
     title = "MentorFlow 无法启动"
     detail = (f"{message}\n\n请使用可信的 MentorFlow 安装程序修复后重试。"
               if getattr(sys, "frozen", False) else (
-        f"{message}\n\n请确认 D:\\MentorFlow\\.venv 已由项目运行环境准备好，"
+        f"{message}\n\n请确认项目虚拟环境已由项目运行环境准备好，"
         "并使用 python -m refactor.desktop.account_shell_main 重新启动。"
     ))
     try:

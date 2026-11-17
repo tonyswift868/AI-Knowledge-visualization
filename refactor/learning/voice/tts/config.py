@@ -18,15 +18,27 @@ from pathlib import Path, PurePosixPath
 import re
 import sys
 
-ENGINE_ROOT = Path(r"E:\AI_Tools\GPT-SoVITS-Kurisu\engine\GPT-SoVITS-v2pro-20250604")
-BASE_MODEL_ROOT = Path(r"E:\MentorFlowModels\gpt-sovits-base")
-CATALOG = Path(r"E:\AI_Tools\GPTSoVITS\voice_catalog\teacher_voice_pack_catalog.v1.json")
-PACK_ROOTS = (Path(r"E:\AI_Tools\GPTSoVITS\voice_packs"), Path(r"E:\AI_Tools\GPTSoVITS\VoicePacks"))
-DEFAULT_DATA_ROOT = Path(r"D:\MentorFlow-office\classroom\temp\tts-runtime")
+
+
+def _source_data_root() -> Path:
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if not local_app_data:
+        local_app_data = str(Path.home() / "AppData" / "Local")
+    return Path(local_app_data) / "MentorFlow-Source"
+
+
+# These optional overrides are intentionally empty.  Source checkouts discover
+# components under their per-user data root or use explicit MF_TTS_* settings;
+# they must never fall back to a developer machine's drive letter.
+ENGINE_ROOT = None
+BASE_MODEL_ROOT = None
+CATALOG = None
+PACK_ROOTS = ()
+DEFAULT_DATA_ROOT = None
 DEFAULT_VOICE = "phrolova-b-gpt-sovits"
 # User-selected teacher voice (2026-09-27 audition; also chosen on 2026-08-17).
 DEFAULT_VOICE_VERSION = "1.0.4"
-VOICE_BACKUP = Path(r"D:\_KEEP\voices\phrolova-b-gpt-sovits-1.0.4\voice-pack.json")
+VOICE_BACKUP = None
 
 # Metadata only: model_manager.download requires prior user consent.
 # The runtime never downloads. URLs are pinned; hashes were checked against the
@@ -140,14 +152,14 @@ class VoicePack:
 
 @dataclass(frozen=True)
 class TtsConfig:
-    engine_root: Path = ENGINE_ROOT
-    engine_python: Path = ENGINE_ROOT / "runtime/python.exe"
-    catalog: Path = CATALOG
+    engine_root: Path | None = ENGINE_ROOT
+    engine_python: Path | None = None
+    catalog: Path | None = CATALOG
     pack_roots: tuple[Path, ...] = PACK_ROOTS
     voice_id: str = DEFAULT_VOICE
     voice_version: str = DEFAULT_VOICE_VERSION
     style: str = ""
-    data_root: Path = DEFAULT_DATA_ROOT
+    data_root: Path | None = None
     device: str = "cuda"
     cpu_threads: int = 4
     startup_timeout: float = 180.0
@@ -163,29 +175,41 @@ class TtsConfig:
     @classmethod
     def from_env(cls, data_root=None):
         from ..storage import storage_root
-        data = Path(data_root if data_root is not None else os.environ.get("MF_TTS_DATA_ROOT", str(DEFAULT_DATA_ROOT)))
+        data = Path(data_root if data_root is not None else os.environ.get("MF_TTS_DATA_ROOT", str(_source_data_root())))
         components = storage_root(data, "tts") / "tts/components-v1"
         installed = (components / "installed.json").is_file()
         packaged = bool(getattr(sys, "frozen", False))
         defaults = components if installed or packaged else None
-        root = Path(os.environ.get("MF_TTS_ENGINE_ROOT", str(defaults / "engine" if defaults else ENGINE_ROOT)))
+        root_value = os.environ.get("MF_TTS_ENGINE_ROOT")
+        root = Path(root_value) if root_value else (defaults / "engine" if defaults else None)
         manifest = os.environ.get("MF_TTS_VOICE_MANIFEST")
         if defaults and not manifest:
             manifest = str(defaults / "voice/voice-pack.json")
         if (not defaults and not manifest and "MF_TTS_PACK_ROOTS" not in os.environ
                 and os.environ.get("MF_TTS_VOICE_ID", DEFAULT_VOICE) == DEFAULT_VOICE
                 and os.environ.get("MF_TTS_VOICE_VERSION", DEFAULT_VOICE_VERSION) == DEFAULT_VOICE_VERSION
-                and VOICE_BACKUP.is_file()):
+                and VOICE_BACKUP is not None and VOICE_BACKUP.is_file()):
             manifest = str(VOICE_BACKUP)
+        engine_python_value = os.environ.get("MF_TTS_ENGINE_PYTHON")
+        engine_python = (Path(engine_python_value) if engine_python_value else
+                         (root / "runtime/python.exe" if root else None))
+        catalog_value = os.environ.get("MF_TTS_CATALOG")
+        catalog = (Path(catalog_value) if catalog_value else
+                   (defaults / "voice/catalog.json" if defaults else None))
+        pack_value = os.environ.get("MF_TTS_PACK_ROOTS")
+        pack_roots = tuple(Path(p) for p in (pack_value.split(os.pathsep) if pack_value else
+                                              ([str(defaults / "voice")] if defaults else ())) if p)
+        base_value = os.environ.get("MF_TTS_BASE_ROOT")
+        base_model_root = Path(base_value) if base_value else (defaults / "base" if defaults else None)
         return cls(engine_root=root,
-            engine_python=Path(os.environ.get("MF_TTS_ENGINE_PYTHON", str(root / "runtime/python.exe"))),
-            catalog=Path(os.environ.get("MF_TTS_CATALOG", str(defaults / "voice/catalog.json" if defaults else CATALOG))),
-            pack_roots=tuple(Path(p) for p in os.environ.get("MF_TTS_PACK_ROOTS", str(defaults / "voice") if defaults else os.pathsep.join(map(str, PACK_ROOTS))).split(os.pathsep) if p),
+            engine_python=engine_python,
+            catalog=catalog,
+            pack_roots=pack_roots,
             voice_id=os.environ.get("MF_TTS_VOICE_ID", DEFAULT_VOICE),
             voice_version=os.environ.get("MF_TTS_VOICE_VERSION", DEFAULT_VOICE_VERSION), style=os.environ.get("MF_TTS_STYLE", ""),
             data_root=data,
             device=os.environ.get("MF_TTS_DEVICE", "cuda"), cpu_threads=int(os.environ.get("MF_TTS_CPU_THREADS", "4")),
-            base_model_root=Path(os.environ["MF_TTS_BASE_ROOT"]) if "MF_TTS_BASE_ROOT" in os.environ else (defaults / "base" if defaults else None),
+            base_model_root=base_model_root,
             voice_manifest=Path(manifest) if manifest else None,
             **{key: Path(os.environ[env]) if env in os.environ else None for key, env in (
                 ("bert_root", "MF_TTS_BERT_ROOT"), ("hubert_root", "MF_TTS_HUBERT_ROOT"),
@@ -197,6 +221,8 @@ class TtsConfig:
             from .model_manager import ModelManager
             local = ModelManager(self.data_root)
             root = local.path if local.status()["installed"] or getattr(sys, "frozen", False) else BASE_MODEL_ROOT
+            if root is None:
+                root = local.path
         return {"bert_root": self.bert_root or root / "chinese-roberta-wwm-ext-large",
                 "hubert_root": self.hubert_root or root / "chinese-hubert-base",
                 "g2pw_root": self.g2pw_root or root / "G2PWModel",
@@ -235,12 +261,17 @@ class TtsConfig:
             raise TtsError("VOICE_SELECTION", "声音标识无效。")
         if self.device not in {"cuda", "cpu"} or not 1 <= self.cpu_threads <= 32:
             raise TtsError("TTS_CONFIG", "推理设备或线程数无效。")
-        if not self.engine_python.is_file() or not (self.engine_root / "GPT_SoVITS/TTS_infer_pack/TTS.py").is_file():
+        if (self.engine_python is None or self.engine_root is None or
+                not self.engine_python.is_file() or
+                not (self.engine_root / "GPT_SoVITS/TTS_infer_pack/TTS.py").is_file()):
             raise TtsError("ENGINE_NOT_INSTALLED", "GPT-SoVITS 引擎或其自带 Python 不存在。")
         destination = self.data_root.resolve()
-        protected = (self.engine_root, self.catalog.parent, *self.pack_roots,
-                     *((self.voice_manifest.parent,) if self.voice_manifest else ()),
-                     Path(r"E:\AI_Tools\GPTSoVITS\Phrolova"), Path(r"E:\AI_Tools\Kristina-TTS-P0-Bakeoff"))
+        protected = tuple(path for path in (
+            self.engine_root,
+            self.catalog.parent if self.catalog else None,
+            *self.pack_roots,
+            *((self.voice_manifest.parent,) if self.voice_manifest else ()),
+        ) if path is not None)
         # Downloaded components live under models; runtime output is exclusively
         # data_root/tts. Keep that output disjoint from every executable/model.
         output = destination / "tts"
