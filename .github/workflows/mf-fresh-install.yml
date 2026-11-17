@@ -122,10 +122,11 @@ jobs:
           $p = Start-Process -FilePath $env:INSTALLER -ArgumentList @('/LOG=' + $log) -PassThru
           "installer_pid=$($p.Id)" | Set-Content $result
           # Inno's wizard runs in a child process (MentorFlow-Setup.tmp); find it by window class.
+          # [NullString]::Value, not $null: PowerShell turns $null into "" for string arguments, which matches only untitled windows.
           $wizard = [IntPtr]::Zero
           for ($i = 0; $i -lt 240 -and $wizard -eq [IntPtr]::Zero; $i++) {
             Start-Sleep -Milliseconds 250
-            $wizard = [Wizard]::FindWindow('TWizardForm', $null)
+            $wizard = [Wizard]::FindWindow('TWizardForm', [NullString]::Value)
           }
           if ($wizard -eq [IntPtr]::Zero) {
             "interactive_window=not_found" | Add-Content $result
@@ -140,7 +141,7 @@ jobs:
           $deadline = (Get-Date).AddMinutes(20)
           while (-not $p.HasExited -and (Get-Date) -lt $deadline) {
             $step++
-            $wizard = [Wizard]::FindWindow('TWizardForm', $null)
+            $wizard = [Wizard]::FindWindow('TWizardForm', [NullString]::Value)
             $classes = if ($wizard -ne [IntPtr]::Zero) { @([Wizard]::VisibleChildClasses($wizard)) } else { @() }
             if ($step -le 60 -or $step % 12 -eq 0) { Save-SetupPage ('{0:D3}-step' -f $step) $wizard }
             if ($classes -contains 'TNewCheckListBox') {
@@ -157,7 +158,7 @@ jobs:
             Start-Sleep -Seconds 5
           }
           if (-not $p.HasExited) {
-            Save-SetupPage '999-install-timeout' ([Wizard]::FindWindow('TWizardForm', $null))
+            Save-SetupPage '999-install-timeout' ([Wizard]::FindWindow('TWizardForm', [NullString]::Value))
             throw 'Visible installer did not finish within 20 minutes.'
           }
           "installer_exit_code=$($p.ExitCode)" | Add-Content $result
