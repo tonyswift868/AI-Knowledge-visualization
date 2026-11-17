@@ -6,6 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-277 | 从源码启动时数据目录写死在 D:\MentorFlowData\account-shell，别人的电脑没有 D 盘就跑不了 | 待修（437-MF02 第一段查出） | 2026-11-17 |
 | BUG-273 | 别人电脑上用官网小安装器装软件，卡在“正在获取已签名版本…”2%，对方说整台电脑都卡死 | 原因已查清；用户定官网下载改 GitHub Releases 完整包（435-MF05） | 2026-11-17 |
 | BUG-267 | 本机代理下公网清单传输超时，切换前核验未完成 | 416已用直连及压缩完成严格核验，线上切换通过 | 2026-11-16 |
 | BUG-266 | 部署后自动清 Docker 的保留名单只看容器在用的镜像，删掉了续证书定时任务用 `docker run --rm` 跑的 certbot 镜像 | 已修未上线（424 合入，随下次部署；上线前只读核对两点，见条目） | 2026-11-16 |
@@ -2584,6 +2585,14 @@
 - 修法（273-MF04，2026-11-02）：mf-build 和本机打包走同一个 freeze（scripts/release/sqlite_runtime.py），从 sqlite.org 下载官方 sqlite-dll-win-x64-3540100.zip，归档 SHA3-256 和解包 DLL 的 SHA256 都写死，对不上打包失败；打包环境检查和冻结冒烟都核对实际加载的是 _internal 里的 3.54.1（source_id 2026-10-16 14:45:20 555e07ef…）。验证：测试密钥真包，旧版（5863cb78 源码，加载 3.49.1）Inno 安装 → 软件内更新 → 新版加载 3.54.1，WinError 5 零次；第一次点更新遇到一次 WinError 32（ready 文件被测试自己的观察脚本轮询占着），停掉观察脚本后同一入口重试成功，没有证明是产品问题，以后演练再出现就在本条记录。用户 course、rag 库只读备份的副本：3.54.1 读写、完整性检查 ok，再用 3.49.1 读新版写过的副本、写一轮、完整性检查 ok（用户退回旧版数据还能用）。31 个相关测试通过。报告 .local/test-tmp/sqlite273/report.md。
 - 关联：[ARCH-03]
 - 更新：2026-11-02
+
+### [BUG-277] 从源码启动时数据目录写死在 D:\MentorFlowData\account-shell，别人的电脑没有 D 盘就跑不了
+- 状态：待修（2026-11-17 437-MF02 第一段查出）。
+- 现象：别人克隆仓库后从源码启动（`python -m refactor.desktop.account_shell_main`），学习库、账号 JSON、缓存、浏览器存储、日志全写到 `D:\MentorFlowData\account-shell`。
+- 原因：`refactor/desktop/shell_paths.py` 第 14 行 `DATA_ROOT = Path(r"D:\MentorFlowData\account-shell")` 写死，没有按用户目录取，也没有开关。安装版不走这里（数据在安装目录 `Data` 下）。
+- 牵连：没有 D 盘的电脑源码版起不来；本机 `D:\MentorFlowData\account-shell` 有 10 月的旧开发数据约 432 MB，源码版一跑就会读写它。另：源码版和安装版共用 Windows 凭据库服务名 `MentorFlow.Provider.v1`、同账号登录互斥量、`HKCU\Software\MentorFlow\MentorFlow` 下 Live2D 设置；同一台电脑两个版本登同一个账号时会共用这些，未登录不碰凭据。
+- 排查：437-MF02 只读审查代码（`.local/test-tmp/437-MF02/code-audit.md`），按任务停点没有启动。员工说已停掉克隆，实际两个 `git clone` 和子进程还在后台跑（架构师 2026-11-17 07:50 前停掉并删目录）。
+- 解决：待定。
 
 ### [BUG-273] 别人电脑上用官网小安装器装软件，卡在“正在获取已签名版本…”2%，对方说整台电脑都卡死
 - 状态：待查（2026-11-17 用户报告，433-MF05 只查不改）。
