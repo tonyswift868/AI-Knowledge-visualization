@@ -2593,6 +2593,7 @@
 - 现象：用户 2026-11-17 转述：中国大陆那位从官网（436 后跳 GitHub 完整包 2.0.48）下载安装，装好后第一次打开正常，关掉以后再也打不开（原话“怎么都打不开那个 exe 了”）。
 - 已知（架构师 2026-11-17 读代码）：桌面壳有单实例锁 `<安装根>\Data
 untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lock`），锁被占时会弹“MentorFlow 已在运行”；若对方连这个提示都没有，问题在它之前（启动器阶段）。日志在 `<安装根>\Data\logs\mentorflow.log`、`launcher-startup.jsonl`。
+- 438 第一段读代码的头号嫌疑（未验证）：启动器每次启动先查安装根下 `App/MentorFlow.exe` 是否还活着（`per_user_launcher.py:139-143` → `per_user_install.py:652-654` `require_app_stopped`），活着就报 `close the current App before continuing`、关掉启动画面退出，不出窗口。如果第一次关窗口后进程没退干净，以后每次都会这样，直到重启或结束进程。要在干净机上确认关窗后有没有残留进程。
 - 牵连：所有新装用户；在本机开发电脑上从没复现过，因为没人在干净电脑上装过真包（[BUG-277] 同类：开发机上什么都有，干净电脑上的问题看不到）。
 - 关联：[BUG-278]、[BUG-273]、436
 
