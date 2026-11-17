@@ -8,7 +8,7 @@
 | --- | --- | --- | --- |
 | BUG-279 | 别人从官网下载完整包装好后，只能正常打开一次，之后双击怎么都打不开 | 待查（用户 2026-11-17 报告） | 2026-11-17 |
 | BUG-278 | 别人新装后登录窗口“注册账号”“忘记密码”一直是灰的 | 待查（用户 2026-11-17 报告） | 2026-11-17 |
-| BUG-277 | 从源码启动时数据目录写死在 D:\MentorFlowData\account-shell，别人的电脑没有 D 盘就跑不了 | 待修（437-MF02 第一段查出） | 2026-11-17 |
+| BUG-277 | 从源码启动时数据目录写死在 D:\MentorFlowData\account-shell，别人的电脑没有 D 盘就跑不了 | 已修未完全验证（437，合入 f1c793a0） | 2026-11-17 |
 | BUG-273 | 别人电脑上用官网小安装器装软件，卡在“正在获取已签名版本…”2%，对方说整台电脑都卡死 | 已上线待实测（436：官网下载改 GitHub Releases 完整包，公网验证通过；等中国大陆那位重新下载安装） | 2026-11-17 |
 | BUG-267 | 本机代理下公网清单传输超时，切换前核验未完成 | 416已用直连及压缩完成严格核验，线上切换通过 | 2026-11-16 |
 | BUG-266 | 部署后自动清 Docker 的保留名单只看容器在用的镜像，删掉了续证书定时任务用 `docker run --rm` 跑的 certbot 镜像 | 已修未上线（424 合入，随下次部署；上线前只读核对两点，见条目） | 2026-11-16 |
@@ -2610,7 +2610,8 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
 - 牵连：没有 D 盘的电脑源码版起不来；本机 `D:\MentorFlowData\account-shell` 有 10 月的旧开发数据约 432 MB，源码版一跑就会读写它。另：源码版和安装版共用 Windows 凭据库服务名 `MentorFlow.Provider.v1`、同账号登录互斥量、`HKCU\Software\MentorFlow\MentorFlow` 下 Live2D 设置；同一台电脑两个版本登同一个账号时会共用这些，未登录不碰凭据。
 - 排查：437-MF02 只读审查代码（`.local/test-tmp/437-MF02/code-audit.md`），按任务停点没有启动。员工说已停掉克隆，实际两个 `git clone` 和子进程还在后台跑（架构师 2026-11-17 07:50 前停掉并删目录）。
 - 原因补充（架构师 2026-11-17）：同类还有 `refactor/learning/voice/tts/config.py:21-29,243`，语音引擎、底模、声音包、TTS 数据目录写死在 `E:\AI_Tools\…`、`E:\MentorFlowModels\…`、`D:\MentorFlow-office\…`、`D:\_KEEP\…`。安装版走 `sys.frozen` 分支按安装目录算，所以不受影响；源码版直接用写死值，只有开发机能跑。
-- 解决：用户 2026-11-17 定源码版数据放 `%LOCALAPPDATA%`；437-MF02 第二段修（源码版所有数据放 `%LOCALAPPDATA%\MentorFlow-Source`，语音走安装版同一套找组件的办法，代码里不留开发机路径），待修。
+- 解决：用户 2026-11-17 定源码版数据放 `%LOCALAPPDATA%`。437-MF02（合入 f1c793a0）：`shell_paths.py` 非打包时数据根改为 `%LOCALAPPDATA%\MentorFlow-Source`；`tts/config.py` 去掉全部开发机默认路径，源码版只认数据根下组件或显式 `MF_TTS_*`；`vite.config.mjs` 不再默认开发机依赖目录；新测试 `tests/refactor/installer/test_source_runtime_paths437.py` 扫产品代码，保护名单外出现 D/E 盘默认路径就红。安装版路径不变（语音由 `SpeechResources(data_root)` 传数据根）。
+- 验证：437 相关测试 21 passed；本机全新克隆两次启动到登录窗口（66 秒、22 秒），`HKCU\Software\MentorFlow` 和用户/系统环境变量前后哈希不变。从零下载 Python 依赖没走完（本机网络），未验。
 
 ### [BUG-273] 别人电脑上用官网小安装器装软件，卡在“正在获取已签名版本…”2%，对方说整台电脑都卡死
 - 状态：已上线，待实测（2026-11-17 436-MF01 上线，架构师同日公网复核 `/download` 302 到 GitHub、首页两个按钮指 `/download`；等中国大陆那位从官网重新下载安装后才算解决。433-MF05、434-MF06 的调查保留为证据）。
