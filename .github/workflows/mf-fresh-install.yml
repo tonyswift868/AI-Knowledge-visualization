@@ -1,0 +1,156 @@
+name: MF fresh install
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-install:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download and verify latest release asset
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'mf-fresh-install'
+          New-Item -ItemType Directory -Force -Path $root, (Join-Path $root 'evidence') | Out-Null
+          $release = Invoke-RestMethod -Headers @{ 'User-Agent' = 'MentorFlow-fresh-install' } -Uri 'https://api.github.com/repos/tonyswift868/AI-Knowledge-visualization/releases/latest'
+          $asset = @($release.assets | Where-Object name -eq 'MentorFlow-Setup.exe') | Select-Object -First 1
+          if (-not $asset) { throw 'MentorFlow-Setup.exe is missing from the latest release.' }
+          $installer = Join-Path $root 'MentorFlow-Setup.exe'
+          $downloadUrl = 'https://github.com/tonyswift868/AI-Knowledge-visualization/releases/latest/download/MentorFlow-Setup.exe'
+          Invoke-WebRequest -Headers @{ 'User-Agent' = 'MentorFlow-fresh-install' } -Uri $downloadUrl -OutFile $installer
+          $actual = Get-Item $installer
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expectedHash = if ($asset.digest -match '^sha256:(.+)$') { $Matches[1].ToLowerInvariant() } else { $null }
+          if (-not $expectedHash) { throw 'Release asset has no sha256 digest.' }
+          [ordered]@{
+            tag = $release.tag_name
+            asset = $asset.name
+            release_size = [int64]$asset.size
+            downloaded_size = [int64]$actual.Length
+            release_digest = $expectedHash
+            downloaded_sha256 = $hash
+            download_url = $downloadUrl
+          } | ConvertTo-Json | Set-Content (Join-Path $root 'evidence/release-verification.json')
+          if ($actual.Length -ne [int64]$asset.size -or $hash -ne $expectedHash) { throw 'Downloaded installer does not match the release asset.' }
+          "INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "MF_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install silently at the default location
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $env:MF_ROOT 'evidence/installer.log'
+          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/TASKS=desktopicon',('/LOG=' + $log)) -Wait -PassThru
+          "installer_exit_code=$($p.ExitCode)" | Set-Content (Join-Path $env:MF_ROOT 'evidence/install-result.txt')
+          if ($p.ExitCode -ne 0) { throw "Silent installer failed with exit code $($p.ExitCode)." }
+
+      - name: Run two shortcut launches and collect evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class WindowClose { [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam); }
+          '@
+          Add-Type -AssemblyName System.Drawing
+          Add-Type -AssemblyName System.Windows.Forms
+          $uiaAvailable = $true
+          $uiaError = ''
+          try {
+            Add-Type -AssemblyName UIAutomationClient
+            Add-Type -AssemblyName UIAutomationTypes
+          } catch {
+            $uiaAvailable = $false
+            $uiaError = $_.Exception.Message
+          }
+          $evidence = Join-Path $env:MF_ROOT 'evidence'
+          $shell = New-Object -ComObject WScript.Shell
+          $desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
+          $userDesktop = [Environment]::GetFolderPath('Desktop')
+          $shortcuts = @((Get-ChildItem $desktop -Filter '*.lnk' -File -ErrorAction SilentlyContinue), (Get-ChildItem $userDesktop -Filter '*.lnk' -File -ErrorAction SilentlyContinue))
+          $link = $shortcuts | Where-Object { $_.BaseName -match 'MentorFlow' } | Select-Object -First 1
+          if (-not $link) { throw 'MentorFlow desktop shortcut was not created by the installer.' }
+          $sc = $shell.CreateShortcut($link.FullName)
+          if ([string]::IsNullOrWhiteSpace($sc.TargetPath)) { throw 'MentorFlow shortcut has no target.' }
+          $installRoot = Split-Path (Split-Path $sc.TargetPath -Parent) -Parent
+          $installParent = Split-Path $installRoot -Parent
+          $workingDirectory = if ([string]::IsNullOrWhiteSpace($sc.WorkingDirectory)) { Split-Path $sc.TargetPath -Parent } else { $sc.WorkingDirectory }
+          [ordered]@{ path=$link.FullName; target=$sc.TargetPath; arguments=$sc.Arguments; working_directory=$workingDirectory; install_root=$installRoot } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut.json')
+          function Is-MentorFlowProcess($process) {
+            if ($process.ProcessName -match 'MentorFlow|UserRuntime') { return $true }
+            try { return ([string]$process.Path -eq [string]$sc.TargetPath) } catch { return $false }
+          }
+          function Get-MentorFlowProcesses {
+            @(Get-Process -ErrorAction SilentlyContinue | Where-Object { Is-MentorFlowProcess $_ })
+          }
+          function Read-CapabilityButtons {
+            if (-not $uiaAvailable) {
+              return @([ordered]@{ pid=0; name='UIA_UNAVAILABLE'; enabled=$null; error=$uiaError })
+            }
+            $rows = @()
+            foreach ($process in (Get-MentorFlowProcesses)) {
+              try { $handle = [IntPtr]$process.MainWindowHandle } catch { continue }
+              if ($handle -eq [IntPtr]::Zero) { continue }
+              try {
+                $window = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+                $condition = [System.Windows.Automation.PropertyCondition]::new(
+                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                  [System.Windows.Automation.ControlType]::Button)
+                $buttons = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
+                foreach ($button in $buttons) {
+                  $name = [string]$button.Current.Name
+                  if ($name -in @('注册账号','忘记密码')) {
+                    $rows += [ordered]@{
+                      pid = [int]$process.Id
+                      window_title = [string]$process.MainWindowTitle
+                      name = $name
+                      enabled = [bool]$button.Current.IsEnabled
+                      automation_id = [string]$button.Current.AutomationId
+                    }
+                  }
+                }
+              } catch {
+                $rows += [ordered]@{ pid=[int]$process.Id; name='UIA_ERROR'; enabled=$null; error=$_.Exception.Message }
+              }
+            }
+            return $rows
+          }
+          function Snapshot([string]$label) {
+            $dir = Join-Path $evidence $label
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            Get-Process | Sort-Object ProcessName,Id | Select-Object Id,ProcessName,MainWindowTitle,Path -ErrorAction SilentlyContinue | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $dir 'processes.json')
+            Get-MentorFlowProcesses | Where-Object MainWindowHandle -ne 0 | Select-Object Id,ProcessName,MainWindowTitle,MainWindowHandle | ConvertTo-Json | Set-Content (Join-Path $dir 'windows.json')
+            $installLogs = Join-Path $installRoot 'Data\logs'
+            $runtimeRoot = Join-Path $installParent '.MentorFlow-runtime'
+            foreach ($source in @($installLogs, $runtimeRoot)) { if (Test-Path $source) { Copy-Item $source (Join-Path $dir (Split-Path $source -Leaf)) -Recurse -Force -ErrorAction SilentlyContinue } }
+            Read-CapabilityButtons | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $dir 'capability-buttons.json')
+            try { $bmp = New-Object Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); $gfx=[Drawing.Graphics]::FromImage($bmp); $gfx.CopyFromScreen(0,0,0,0,$bmp.Size); $bmp.Save((Join-Path $dir 'screen.png')); $gfx.Dispose(); $bmp.Dispose() } catch { "screenshot_error=$($_.Exception.Message)" | Set-Content (Join-Path $dir 'screenshot-error.txt') }
+            $matches = Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue | Select-String -Pattern 'capabilities|注册账号|忘记密码|lifecycle' -CaseSensitive:$false -ErrorAction SilentlyContinue
+            ($matches | ForEach-Object { $_.Path + ':' + $_.LineNumber + ':' + $_.Line.Trim() }) | Set-Content (Join-Path $dir 'capabilities-evidence.txt')
+          }
+          for ($round = 1; $round -le 2; $round++) {
+            $before = Get-Date
+            $proc = Start-Process -FilePath $sc.TargetPath -ArgumentList $sc.Arguments -WorkingDirectory $workingDirectory -PassThru
+            Start-Sleep -Seconds 90
+            Snapshot ("round$round-before-close")
+            $windows = @(Get-MentorFlowProcesses | Where-Object { $_.MainWindowHandle -ne 0 })
+            foreach ($window in $windows) { [WindowClose]::SendMessage([IntPtr]$window.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null }
+            Start-Sleep -Seconds 30
+            Snapshot ("round$round-after-close")
+            "round=$round`nlauncher_pid=$($proc.Id)`nstarted=$before`nclose_message_sent=true" | Set-Content (Join-Path $evidence "round$round-summary.txt")
+          }
+
+      - name: Upload fresh install evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mf-fresh-install-evidence
+          path: ${{ runner.temp }}/mf-fresh-install/evidence
+          if-no-files-found: warn
+          retention-days: 7
