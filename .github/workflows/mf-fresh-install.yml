@@ -9,7 +9,7 @@ permissions:
 jobs:
   fresh-install:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Download and verify latest release asset
         shell: pwsh
@@ -40,16 +40,142 @@ jobs:
           "INSTALLER=$installer" | Out-File -FilePath $env:GITHUB_ENV -Append
           "MF_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Install silently at the default location
+      - name: Install with the visible default wizard
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Drawing
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
+          $evidence = Join-Path $env:MF_ROOT 'evidence/installer-pages'
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
           $log = Join-Path $env:MF_ROOT 'evidence/installer.log'
-          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/TASKS=desktopicon',('/LOG=' + $log)) -Wait -PassThru
-          "installer_exit_code=$($p.ExitCode)" | Set-Content (Join-Path $env:MF_ROOT 'evidence/install-result.txt')
-          if ($p.ExitCode -ne 0) { throw "Silent installer failed with exit code $($p.ExitCode)." }
 
-      - name: Run two shortcut launches and collect evidence
+          function Wait-SetupWindow([int]$pid, [int]$seconds = 60) {
+            $condition = [System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $pid)
+            for ($i = 0; $i -lt ($seconds * 4); $i++) {
+              try {
+                $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+                  [System.Windows.Automation.TreeScope]::Children, $condition)
+                if ($windows.Count -gt 0) { return $windows[0] }
+              } catch { }
+              Start-Sleep -Milliseconds 250
+            }
+            return $null
+          }
+
+          function Read-SetupText($window) {
+            $rows = @([ordered]@{ control='window'; name=[string]$window.Current.Name; type='Window'; enabled=[bool]$window.Current.IsEnabled })
+            try {
+              $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+                [System.Windows.Automation.Condition]::TrueCondition)
+              foreach ($item in $all) {
+                $name = [string]$item.Current.Name
+                if ($name) {
+                  $rows += [ordered]@{ control='descendant'; name=$name; type=[string]$item.Current.ControlType.ProgrammaticName; enabled=[bool]$item.Current.IsEnabled }
+                }
+              }
+            } catch { $rows += [ordered]@{ control='read-error'; error=$_.Exception.Message } }
+            return $rows
+          }
+
+          function Save-SetupPage([string]$label, $window) {
+            if ($null -eq $window) { return }
+            $dir = Join-Path $evidence $label
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            Read-SetupText $window | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $dir 'ui-text.json')
+            try {
+              $bmp = New-Object Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height)
+              $gfx = [Drawing.Graphics]::FromImage($bmp)
+              $gfx.CopyFromScreen(0, 0, 0, 0, $bmp.Size)
+              $bmp.Save((Join-Path $dir 'screen.png'))
+              $gfx.Dispose(); $bmp.Dispose()
+            } catch { "screenshot_error=$($_.Exception.Message)" | Set-Content (Join-Path $dir 'screenshot-error.txt') }
+          }
+
+          function Find-SetupButton($window, [string[]]$names) {
+            $condition = [System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+              [System.Windows.Automation.ControlType]::Button)
+            try {
+              $buttons = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
+              foreach ($button in $buttons) {
+                $name = [string]$button.Current.Name
+                if ($button.Current.IsEnabled -and ($names | Where-Object { $name -match $_ })) { return $button }
+              }
+            } catch { }
+            return $null
+          }
+
+          function Invoke-SetupButton($button) {
+            if ($null -eq $button) { throw 'No enabled installer button matched the expected default action.' }
+            try {
+              $invoke = $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+              $invoke.Invoke(); return
+            } catch {
+              $legacy = $button.GetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern)
+              $legacy.DoDefaultAction()
+            }
+          }
+
+          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList @('/LOG=' + $log) -PassThru
+          "installer_pid=$($p.Id)" | Set-Content (Join-Path $env:MF_ROOT 'evidence/install-result.txt')
+          $window = Wait-SetupWindow $p.Id
+          if ($null -eq $window) {
+            "interactive_window=not_found" | Add-Content (Join-Path $env:MF_ROOT 'evidence/install-result.txt')
+            if (-not $p.HasExited) { $p.CloseMainWindow() | Out-Null }
+            throw 'Visible installer window did not appear on the clean runner.'
+          }
+          Save-SetupPage '01-before-default-install' $window
+          $installButton = Find-SetupButton $window @('^安装', '^Install', '下一步', '^Next')
+          Invoke-SetupButton $installButton
+          Start-Sleep -Seconds 2
+          Save-SetupPage '02-after-install-click' (Wait-SetupWindow $p.Id 10)
+          $finishWindow = $null
+          $deadline = (Get-Date).AddMinutes(15)
+          while (-not $p.HasExited -and (Get-Date) -lt $deadline) {
+            $candidate = Wait-SetupWindow $p.Id 1
+            $finishButton = Find-SetupButton $candidate @('关闭', 'Close', '完成', 'Finish', '启动 MentorFlow')
+            if ($null -ne $finishButton) { $finishWindow = $candidate; break }
+            Start-Sleep -Seconds 4
+          }
+          if ($null -eq $finishWindow -and -not $p.HasExited) {
+            Save-SetupPage '03-install-timeout' (Wait-SetupWindow $p.Id 1)
+            $p.CloseMainWindow() | Out-Null
+            throw 'Visible installer did not reach the finish page within 15 minutes.'
+          }
+          if ($null -ne $finishWindow) {
+            Save-SetupPage '03-finished' $finishWindow
+            $closeButton = Find-SetupButton $finishWindow @('关闭', 'Close')
+            if ($null -ne $closeButton) { Invoke-SetupButton $closeButton }
+            else { $p.CloseMainWindow() | Out-Null }
+            $closeDeadline = (Get-Date).AddSeconds(60)
+            while (-not $p.HasExited -and (Get-Date) -lt $closeDeadline) { Start-Sleep -Seconds 1 }
+          }
+          "installer_exit_code=$($p.ExitCode)" | Add-Content (Join-Path $env:MF_ROOT 'evidence/install-result.txt')
+          if ($p.ExitCode -ne 0) { throw "Visible installer failed with exit code $($p.ExitCode)." }
+
+      - name: Check capabilities directly from the clean runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $result = [ordered]@{ url='https://89.45.45.28/api/enterprise/auth/lifecycle/capabilities'; status_code=$null; connected=$false; elapsed_ms=$null; error_type=$null }
+          $clock = [System.Diagnostics.Stopwatch]::StartNew()
+          try {
+            $response = Invoke-WebRequest -Uri $result.url -Method Get -SkipCertificateCheck -TimeoutSec 30
+            $result.status_code = [int]$response.StatusCode
+            $result.connected = $true
+          } catch {
+            $result.error_type = $_.Exception.GetType().FullName
+          } finally {
+            $clock.Stop()
+            $result.elapsed_ms = [int]$clock.Elapsed.TotalMilliseconds
+          }
+          $result | ConvertTo-Json | Set-Content (Join-Path $env:MF_ROOT 'evidence/capabilities-direct.json')
+
+      - name: Run shortcut launches with both close paths and collect evidence
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -60,45 +186,37 @@ jobs:
           '@
           Add-Type -AssemblyName System.Drawing
           Add-Type -AssemblyName System.Windows.Forms
-          $uiaAvailable = $true
-          $uiaError = ''
-          try {
-            Add-Type -AssemblyName UIAutomationClient
-            Add-Type -AssemblyName UIAutomationTypes
-          } catch {
-            $uiaAvailable = $false
-            $uiaError = $_.Exception.Message
-          }
+          Add-Type -AssemblyName UIAutomationClient
+          Add-Type -AssemblyName UIAutomationTypes
           $evidence = Join-Path $env:MF_ROOT 'evidence'
           $shell = New-Object -ComObject WScript.Shell
           $desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
           $userDesktop = [Environment]::GetFolderPath('Desktop')
           $shortcuts = @((Get-ChildItem $desktop -Filter '*.lnk' -File -ErrorAction SilentlyContinue), (Get-ChildItem $userDesktop -Filter '*.lnk' -File -ErrorAction SilentlyContinue))
           $link = $shortcuts | Where-Object { $_.BaseName -match 'MentorFlow' } | Select-Object -First 1
-          if (-not $link) { throw 'MentorFlow desktop shortcut was not created by the installer.' }
+          if (-not $link) { throw 'MentorFlow desktop shortcut was not created by the visible installer.' }
           $sc = $shell.CreateShortcut($link.FullName)
           if ([string]::IsNullOrWhiteSpace($sc.TargetPath)) { throw 'MentorFlow shortcut has no target.' }
           $installRoot = Split-Path (Split-Path $sc.TargetPath -Parent) -Parent
           $installParent = Split-Path $installRoot -Parent
           $workingDirectory = if ([string]::IsNullOrWhiteSpace($sc.WorkingDirectory)) { Split-Path $sc.TargetPath -Parent } else { $sc.WorkingDirectory }
           [ordered]@{ path=$link.FullName; target=$sc.TargetPath; arguments=$sc.Arguments; working_directory=$workingDirectory; install_root=$installRoot } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut.json')
+
           function Is-MentorFlowProcess($process) {
             if ($process.ProcessName -match 'MentorFlow|UserRuntime') { return $true }
             try { return ([string]$process.Path -eq [string]$sc.TargetPath) } catch { return $false }
           }
-          function Get-MentorFlowProcesses {
-            @(Get-Process -ErrorAction SilentlyContinue | Where-Object { Is-MentorFlowProcess $_ })
+          function Get-MentorFlowProcesses { @(Get-Process -ErrorAction SilentlyContinue | Where-Object { Is-MentorFlowProcess $_ }) }
+          function Get-MentorFlowWindows { @(Get-MentorFlowProcesses | Where-Object { $_.MainWindowHandle -ne 0 }) }
+          function Get-UiWindow($process) {
+            try { return [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$process.MainWindowHandle) } catch { return $null }
           }
           function Read-CapabilityButtons {
-            if (-not $uiaAvailable) {
-              return @([ordered]@{ pid=0; name='UIA_UNAVAILABLE'; enabled=$null; error=$uiaError })
-            }
             $rows = @()
             foreach ($process in (Get-MentorFlowProcesses)) {
-              try { $handle = [IntPtr]$process.MainWindowHandle } catch { continue }
-              if ($handle -eq [IntPtr]::Zero) { continue }
+              $window = Get-UiWindow $process
+              if ($null -eq $window) { continue }
               try {
-                $window = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
                 $condition = [System.Windows.Automation.PropertyCondition]::new(
                   [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
                   [System.Windows.Automation.ControlType]::Button)
@@ -106,45 +224,72 @@ jobs:
                 foreach ($button in $buttons) {
                   $name = [string]$button.Current.Name
                   if ($name -in @('注册账号','忘记密码')) {
-                    $rows += [ordered]@{
-                      pid = [int]$process.Id
-                      window_title = [string]$process.MainWindowTitle
-                      name = $name
-                      enabled = [bool]$button.Current.IsEnabled
-                      automation_id = [string]$button.Current.AutomationId
-                    }
+                    $rows += [ordered]@{ pid=[int]$process.Id; window_title=[string]$process.MainWindowTitle; name=$name; enabled=[bool]$button.Current.IsEnabled; automation_id=[string]$button.Current.AutomationId }
                   }
                 }
-              } catch {
-                $rows += [ordered]@{ pid=[int]$process.Id; name='UIA_ERROR'; enabled=$null; error=$_.Exception.Message }
-              }
+              } catch { $rows += [ordered]@{ pid=[int]$process.Id; name='UIA_ERROR'; enabled=$null; error=$_.Exception.Message } }
             }
             return $rows
           }
+          function Find-LoginCloseButton {
+            foreach ($process in (Get-MentorFlowProcesses)) {
+              $window = Get-UiWindow $process
+              if ($null -eq $window) { continue }
+              try {
+                $condition = [System.Windows.Automation.PropertyCondition]::new(
+                  [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                  [System.Windows.Automation.ControlType]::Button)
+                $buttons = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
+                foreach ($button in $buttons) {
+                  if ($button.Current.IsEnabled -and ([string]$button.Current.Name -match '关闭|Close|退出|Exit')) { return $button }
+                }
+              } catch { }
+            }
+            return $null
+          }
+          function Invoke-UiButton($button) {
+            if ($null -eq $button) { throw 'login close button not found' }
+            try { $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); return }
+            catch { $button.GetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern).DoDefaultAction() }
+          }
+          function Save-Screen([string]$path) {
+            try {
+              $bmp = New-Object Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height)
+              $gfx = [Drawing.Graphics]::FromImage($bmp); $gfx.CopyFromScreen(0,0,0,0,$bmp.Size); $bmp.Save($path); $gfx.Dispose(); $bmp.Dispose()
+            } catch { "screenshot_error=$($_.Exception.Message)" | Set-Content ($path + '.error.txt') }
+          }
           function Snapshot([string]$label) {
-            $dir = Join-Path $evidence $label
-            New-Item -ItemType Directory -Force -Path $dir | Out-Null
-            Get-Process | Sort-Object ProcessName,Id | Select-Object Id,ProcessName,MainWindowTitle,Path -ErrorAction SilentlyContinue | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $dir 'processes.json')
-            Get-MentorFlowProcesses | Where-Object MainWindowHandle -ne 0 | Select-Object Id,ProcessName,MainWindowTitle,MainWindowHandle | ConvertTo-Json | Set-Content (Join-Path $dir 'windows.json')
-            $installLogs = Join-Path $installRoot 'Data\logs'
-            $runtimeRoot = Join-Path $installParent '.MentorFlow-runtime'
+            $dir = Join-Path $evidence $label; New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            Get-Process | Sort-Object ProcessName,Id | Select-Object Id,ProcessName,MainWindowTitle,Path | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $dir 'processes.json')
+            Get-MentorFlowWindows | Select-Object Id,ProcessName,MainWindowTitle,MainWindowHandle | ConvertTo-Json | Set-Content (Join-Path $dir 'windows.json')
+            $installLogs = Join-Path $installRoot 'Data\logs'; $runtimeRoot = Join-Path $installParent '.MentorFlow-runtime'
             foreach ($source in @($installLogs, $runtimeRoot)) { if (Test-Path $source) { Copy-Item $source (Join-Path $dir (Split-Path $source -Leaf)) -Recurse -Force -ErrorAction SilentlyContinue } }
             Read-CapabilityButtons | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $dir 'capability-buttons.json')
-            try { $bmp = New-Object Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height); $gfx=[Drawing.Graphics]::FromImage($bmp); $gfx.CopyFromScreen(0,0,0,0,$bmp.Size); $bmp.Save((Join-Path $dir 'screen.png')); $gfx.Dispose(); $bmp.Dispose() } catch { "screenshot_error=$($_.Exception.Message)" | Set-Content (Join-Path $dir 'screenshot-error.txt') }
-            $matches = Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue | Select-String -Pattern 'capabilities|注册账号|忘记密码|lifecycle' -CaseSensitive:$false -ErrorAction SilentlyContinue
+            Save-Screen (Join-Path $dir 'screen.png')
+            $matches = Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue | Select-String -Pattern 'capabilities|注册账号|忘记密码|lifecycle|close the current App before continuing' -CaseSensitive:$false -ErrorAction SilentlyContinue
             ($matches | ForEach-Object { $_.Path + ':' + $_.LineNumber + ':' + $_.Line.Trim() }) | Set-Content (Join-Path $dir 'capabilities-evidence.txt')
           }
-          for ($round = 1; $round -le 2; $round++) {
-            $before = Get-Date
+          function Start-Shortcut([int]$round) {
+            $started = Get-Date
             $proc = Start-Process -FilePath $sc.TargetPath -ArgumentList $sc.Arguments -WorkingDirectory $workingDirectory -PassThru
-            Start-Sleep -Seconds 90
-            Snapshot ("round$round-before-close")
-            $windows = @(Get-MentorFlowProcesses | Where-Object { $_.MainWindowHandle -ne 0 })
-            foreach ($window in $windows) { [WindowClose]::SendMessage([IntPtr]$window.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null }
-            Start-Sleep -Seconds 30
-            Snapshot ("round$round-after-close")
-            "round=$round`nlauncher_pid=$($proc.Id)`nstarted=$before`nclose_message_sent=true" | Set-Content (Join-Path $evidence "round$round-summary.txt")
+            "round=$round`nlauncher_pid=$($proc.Id)`nstarted=$started" | Set-Content (Join-Path $evidence "round$round-summary.txt")
+            return $proc
           }
+          function Send-WmClose {
+            foreach ($window in (Get-MentorFlowWindows)) { [WindowClose]::SendMessage([IntPtr]$window.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null }
+          }
+
+          $p1 = Start-Shortcut 1; Start-Sleep -Seconds 90; Snapshot 'round1-before-close'
+          try { Invoke-UiButton (Find-LoginCloseButton); 'close_method=login_window_button' | Add-Content (Join-Path $evidence 'round1-summary.txt') } catch { "close_method=login_window_button_failed`nerror_type=$($_.Exception.GetType().FullName)" | Add-Content (Join-Path $evidence 'round1-summary.txt') }
+          Start-Sleep -Seconds 30; Snapshot 'round1-after-close'
+
+          $p2 = Start-Shortcut 2; Start-Sleep -Seconds 90; Snapshot 'round2-before-close'
+          Send-WmClose; 'close_method=WM_CLOSE' | Add-Content (Join-Path $evidence 'round2-summary.txt')
+          Start-Sleep -Seconds 30; Snapshot 'round2-after-close'
+
+          $p3 = Start-Shortcut 3; Start-Sleep -Seconds 90; Snapshot 'round3-before-close'
+          Send-WmClose; 'close_method=WM_CLOSE_cleanup' | Add-Content (Join-Path $evidence 'round3-summary.txt')
+          Start-Sleep -Seconds 30; Snapshot 'round3-after-close'
 
       - name: Upload fresh install evidence
         if: always()
