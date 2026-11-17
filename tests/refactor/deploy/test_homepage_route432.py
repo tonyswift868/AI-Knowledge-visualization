@@ -20,7 +20,7 @@ BASE = """server {
         add_header Cache-Control \"no-cache\" always;
         return 200 '<!doctype html><p>placeholder</p>';
     }
-    location = /download { return 302 https://aiteacher.clannad.win/updates/app/releases/bootstrap/MentorFlow-Setup.exe; }
+    location = /download { return 302 https://github.com/tonyswift868/AI-Knowledge-visualization/releases/latest/download/MentorFlow-Setup.exe; }
     location ^~ /updates/app/ {
         if ($request_method !~ ^(GET|HEAD)$) { return 405; }
         set $aiteacher_static http://mentorflow-e108-update-static:8081;
@@ -80,3 +80,10 @@ def test_refuses_existing_images_location(tmp_path):
     with pytest.raises(ValueError):
         prepare(source, output)
     assert not output.exists()
+
+
+def test_homepage_download_buttons_use_download_route():
+    page = (ROOT / "refactor/server-java/deploy/site/index.html").read_text(encoding="utf-8")
+    assert page.count('href="/download"') == 2
+    assert "updates/app/releases/bootstrap/MentorFlow-Setup.exe" not in page
+    assert "github.com/tonyswift868/AI-Knowledge-visualization/releases/latest/download/MentorFlow-Setup.exe" not in page
