@@ -2636,7 +2636,9 @@
   - 426 写的“找资料不用最大输出上限”是架构师加的，思考也算进上限，2048/4096 全部截断；已在 e711ba1b 去掉。
 - 428（2026-11-17，office/search428 fe3dd8f5）：只排 30 条、按实测提前备下一批、拦跳转空页、正文去重、搜索出错跳过，都已做并用 427 的 7 个真实网页验过。四主题两轮仍不达标，每轮挑出的都不一样。查数据：好资料大多已在交给排序的 30 条里，只是被排到第 8 名以后；排在前面的是合集页、目录、汇总、榜单。原因：排序只看标题和摘要，看不到正文。用户 2026-11-17 定改成先读正文、再按正文排序（429-MF07）。
 - 429（2026-11-17，office/search429 61f8910e，先读整批 30 条再按正文开头 400 字排序）：两轮仍不达标，而且更慢。第一批英语 73.4、Python 80.3、家常菜 64.5、动画 92.1 秒，其中读取 30～38 秒（8 个并行、8 秒超时，约 4 波），排序 24～48 秒。质量（MF-07 自判，未独立复核）：英语 2/3、Python 3/3（含廖雪峰转载）、家常菜 0～1/3、动画 2/3＋1 一般。排序仍把英文会话页、合集、百科、新闻软文排前；原文优先的规则没起作用。架构师曾估读取约 10 秒，估错了。
-- 证据：.local/receipts/429-MF07.md；.local/receipts/428-MF03.md、428-MF04.md、428-MF07.md；.local/receipts/427-MF02.md、427-MF03.md、427-MF04.md、427-MF07.md；.local/receipts/417-MF02.md 及 417-MF02-evidence；.local/receipts/418-MF07.md；.local/receipts/419-MF07.md；.local/receipts/420-MF07.md；420 离线数据与复算脚本 `tests/refactor/course/search_eval/`。
+- 430（2026-11-17，只查不改）：同类开源项目和教育资源推荐都没有现成解法；我们缺的是排序前的“准入”一步（免登录、免费、能照着学、类型和水平对）；商业 AI 搜索靠好的搜索源，DeepSeek 搜索的料差可能是根因。
+- 431（2026-11-17，本机临时跑 SearXNG 对比，同样搜索词）：SearXNG 没有更好，30 条候选里能用的 0/120（DeepSeek 11/120，员工判断），还混进漫画、铁路等不相关页。用户 2026-11-17 定：找资料以后再修。
+- 证据：.local/receipts/431-MF06.md、430-MF05.md、430-MF06.md；.local/receipts/429-MF07.md；.local/receipts/428-MF03.md、428-MF04.md、428-MF07.md；.local/receipts/427-MF02.md、427-MF03.md、427-MF04.md、427-MF07.md；.local/receipts/417-MF02.md 及 417-MF02-evidence；.local/receipts/418-MF07.md；.local/receipts/419-MF07.md；.local/receipts/420-MF07.md；420 离线数据与复算脚本 `tests/refactor/course/search_eval/`。
 - 关联：[PLAN-06]、[BUG-92]、[BUG-271]、[BUG-272]、417-MF02、418-MF07
 - 更新：2026-11-16
 
