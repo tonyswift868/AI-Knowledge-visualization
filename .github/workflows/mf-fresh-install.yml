@@ -52,9 +52,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $evidence | Out-Null
           $log = Join-Path $env:MF_ROOT 'evidence/installer.log'
 
-          function Wait-SetupWindow([int]$pid, [int]$seconds = 60) {
+          function Wait-SetupWindow([int]$processId, [int]$seconds = 60) {
             $condition = [System.Windows.Automation.PropertyCondition]::new(
-              [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $pid)
+              [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $processId)
             for ($i = 0; $i -lt ($seconds * 4); $i++) {
               try {
                 $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
@@ -266,8 +266,8 @@ jobs:
             foreach ($source in @($installLogs, $runtimeRoot)) { if (Test-Path $source) { Copy-Item $source (Join-Path $dir (Split-Path $source -Leaf)) -Recurse -Force -ErrorAction SilentlyContinue } }
             Read-CapabilityButtons | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $dir 'capability-buttons.json')
             Save-Screen (Join-Path $dir 'screen.png')
-            $matches = Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue | Select-String -Pattern 'capabilities|注册账号|忘记密码|lifecycle|close the current App before continuing' -CaseSensitive:$false -ErrorAction SilentlyContinue
-            ($matches | ForEach-Object { $_.Path + ':' + $_.LineNumber + ':' + $_.Line.Trim() }) | Set-Content (Join-Path $dir 'capabilities-evidence.txt')
+            $hits = Get-ChildItem $dir -Recurse -File -ErrorAction SilentlyContinue | Select-String -Pattern 'capabilities|注册账号|忘记密码|lifecycle|close the current App before continuing' -CaseSensitive:$false -ErrorAction SilentlyContinue
+            ($hits | ForEach-Object { $_.Path + ':' + $_.LineNumber + ':' + $_.Line.Trim() }) | Set-Content (Join-Path $dir 'capabilities-evidence.txt')
           }
           function Start-Shortcut([int]$round) {
             $started = Get-Date
