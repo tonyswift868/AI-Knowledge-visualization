@@ -2634,7 +2634,8 @@
   - 慢在排序：Python 那次排序约 62 秒；排序输入约 13.5k token，低档思考也超过 4096 token。
   - 另发现：一条搜索出错整批作废（`search_all` 直接抛出）；搜索词 11 条，超过约定的 6 条；读网页没带表单语言（`source_batches._show`）；一次排序调用报“模型调用失败”，没留下异常栈，原因未查。
   - 426 写的“找资料不用最大输出上限”是架构师加的，思考也算进上限，2048/4096 全部截断；已在 e711ba1b 去掉。
-- 证据：.local/receipts/427-MF02.md、427-MF03.md、427-MF04.md、427-MF07.md；.local/receipts/417-MF02.md 及 417-MF02-evidence；.local/receipts/418-MF07.md；.local/receipts/419-MF07.md；.local/receipts/420-MF07.md；420 离线数据与复算脚本 `tests/refactor/course/search_eval/`。
+- 428（2026-11-17，office/search428 fe3dd8f5）：只排 30 条、按实测提前备下一批、拦跳转空页、正文去重、搜索出错跳过，都已做并用 427 的 7 个真实网页验过。四主题两轮仍不达标，每轮挑出的都不一样。查数据：好资料大多已在交给排序的 30 条里，只是被排到第 8 名以后；排在前面的是合集页、目录、汇总、榜单。原因：排序只看标题和摘要，看不到正文。用户 2026-11-17 定改成先读正文、再按正文排序（429-MF07）。
+- 证据：.local/receipts/428-MF03.md、428-MF04.md、428-MF07.md；.local/receipts/427-MF02.md、427-MF03.md、427-MF04.md、427-MF07.md；.local/receipts/417-MF02.md 及 417-MF02-evidence；.local/receipts/418-MF07.md；.local/receipts/419-MF07.md；.local/receipts/420-MF07.md；420 离线数据与复算脚本 `tests/refactor/course/search_eval/`。
 - 关联：[PLAN-06]、[BUG-92]、[BUG-271]、[BUG-272]、417-MF02、418-MF07
 - 更新：2026-11-16
 
