@@ -5,10 +5,15 @@ import subprocess
 import yaml
 
 
+RELEASE_WORKFLOWS=('mf-build.yml','mf-installer.yml','mf-publish.yml')
+
+
 def check(root):
-    paths=sorted((Path(root)/'.github/workflows').glob('mf-*.yml'))
-    if {p.name for p in paths}!={'mf-installer.yml','mf-build.yml','mf-publish.yml'}:
-        raise ValueError('expected exactly three MF workflows')
+    # Only release workflows share the quota queue; test workflows (mf-fresh-install) are not checked here.
+    paths=[Path(root)/'.github/workflows'/name for name in RELEASE_WORKFLOWS]
+    missing=[p.name for p in paths if not p.is_file()]
+    if missing:
+        raise ValueError('missing release workflows: '+', '.join(missing))
     for path in paths:
         data=yaml.load(path.read_text(encoding='utf-8'),Loader=yaml.BaseLoader)
         if set(data['on'])!={'workflow_dispatch'}:
