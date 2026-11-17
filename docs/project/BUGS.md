@@ -2626,7 +2626,15 @@
   - 三个方案搜到的候选合在一起，能用的：英语 6、日语 5、Excel 5、理财 3、函数 3，Python、摄影、隋唐各 1，家常菜、健身各 2。就算预筛和判分完全不出错，最多也只有 5 个主题够 3 份。
   - 预筛误删（英语 6 份能用的删掉 5 份）和判分不准（kappa 约 0.49）是第二、第三个缺口。
   - 评测集（279 条标注和复算脚本）已合入主目录 `tests/refactor/course/search_eval/`，下一轮直接拿来比。
-- 证据：.local/receipts/417-MF02.md 及 417-MF02-evidence；.local/receipts/418-MF07.md；.local/receipts/419-MF07.md；.local/receipts/420-MF07.md；420 离线数据与复算脚本 `tests/refactor/course/search_eval/`。
+- 427 实测（2026-11-16，office/search426 e711ba1b，中文表单，零基础，只看第一批 3 份）：
+  - 英语口语 85.8 秒：3 份都是新东方在线中文讲解的购物、问路、点餐对话，能照着学。
+  - Python 81.3 秒：廖雪峰教程合格；第 2 份是它的 GitHub 转载（重复）；第 3 份 Google Python 课程面向有经验的人。
+  - 家常菜 55.6 秒：第 1 份是“论坛已永久关闭”的跳转页（读取检查没拦住）；另两份是问答站软文和堆糖转载的菜谱，能学但来源差。
+  - 动画制作 69.9 秒：Krita 中文手册动画章节（只讲一个软件）；论坛短帖；满页广告的繁体文章。
+  - 慢在排序：Python 那次排序约 62 秒；排序输入约 13.5k token，低档思考也超过 4096 token。
+  - 另发现：一条搜索出错整批作废（`search_all` 直接抛出）；搜索词 11 条，超过约定的 6 条；读网页没带表单语言（`source_batches._show`）；一次排序调用报“模型调用失败”，没留下异常栈，原因未查。
+  - 426 写的“找资料不用最大输出上限”是架构师加的，思考也算进上限，2048/4096 全部截断；已在 e711ba1b 去掉。
+- 证据：.local/receipts/427-MF02.md、427-MF03.md、427-MF04.md、427-MF07.md；.local/receipts/417-MF02.md 及 417-MF02-evidence；.local/receipts/418-MF07.md；.local/receipts/419-MF07.md；.local/receipts/420-MF07.md；420 离线数据与复算脚本 `tests/refactor/course/search_eval/`。
 - 关联：[PLAN-06]、[BUG-92]、[BUG-271]、[BUG-272]、417-MF02、418-MF07
 - 更新：2026-11-16
 
