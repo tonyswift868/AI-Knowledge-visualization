@@ -56,8 +56,8 @@ def _seed_rag(conn, scope: str, document_id: str, *, alias: str | None = None) -
     )
 
 
-def _legacy_rag_database(fixture, name: str):
-    """Create a disposable PG database at 0044 for the reversible 0045 round-trip."""
+def _legacy_rag_database(fixture, name: str, revision: str = "0044_rag_documents"):
+    """Create a disposable PG database at `revision` (default 0044 for the reversible 0045 round-trip)."""
     postgres = fixture["postgres"]
     with psycopg.connect(postgres.url("postgres", "postgres", "postgres"), autocommit=True) as conn:
         conn.execute(f'CREATE DATABASE "{name}" OWNER mentorflow_migrator')
@@ -66,7 +66,7 @@ def _legacy_rag_database(fixture, name: str):
         conn.execute("CREATE SCHEMA account_closure AUTHORIZATION mentorflow_closure")
     migration_url = postgres.url(name, "mentorflow_migrator", c145.MIGRATION_PASSWORD, sqlalchemy=True)
     _run_alembic(
-        migration_url, ["upgrade", "0044_rag_documents"],
+        migration_url, ["upgrade", revision],
         fixture["endpoints"]["java"]["log_path"].parent / f"{name}-upgrade.log", OLD_ISSUER,
     )
     return admin_url, migration_url
@@ -169,16 +169,30 @@ def test_account_closure_cleans_only_verified_account_rag156(closure147_backends
                 "INSERT INTO public.account_profiles(account_scope,nickname) VALUES (%s,%s),(%s,%s)",
                 (target_scope, "target profile", other_scope, "other profile"),
             )
+        # 0048 refusal is checked on its own database at 0048, never by downgrading from head.
+        boundary_admin, boundary_migration = _legacy_rag_database(
+            fixture, "closure_rag156_boundary_" + uuid.uuid4().hex[:12], "0048_rag_source_chunks"
+        )
+        with pytest.raises(RuntimeError, match="Forward only: dropping RAG source chunk metadata"):
+            _run_alembic(
+                boundary_migration, ["downgrade", "0045_account_closure_rag"],
+                migration_log, OLD_ISSUER,
+            )
+        with psycopg.connect(boundary_admin) as conn:
+            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0048_rag_source_chunks"
+            assert conn.execute("SELECT to_regclass('public.rag_source_chunks')").fetchone()[0]
+
+        # Head (0056) has its own forward-only text; refusal keeps head and the sync data.
         migration_url = fixture["postgres"].url(
             "sync145_java", "mentorflow_migrator", c145.MIGRATION_PASSWORD, sqlalchemy=True
         )
-        with pytest.raises(RuntimeError, match="Forward only: dropping RAG source chunk metadata"):
+        with pytest.raises(RuntimeError, match="Forward only: deleted sessions cannot be restored"):
             _run_alembic(
                 migration_url, ["downgrade", "0045_account_closure_rag"],
                 migration_log, OLD_ISSUER,
             )
         with psycopg.connect(admin_url) as conn:
-            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0051_sync_closure_fence"
+            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0056_closure_session_cleanup"
             assert conn.execute("SELECT to_regclass('public.rag_document_upload_manifests')").fetchone()[0]
             assert conn.execute("SELECT to_regclass('public.rag_source_chunks')").fetchone()[0]
             clean_def = conn.execute(

@@ -254,12 +254,13 @@ def test_migration_roles157_reproduces_privilege_bug_roundtrips_and_java_closure
             assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0043_native_sessions"
             assert conn.execute("SELECT to_regclass('public.rag_documents')").fetchone()[0] is None
 
-        result = _run_alembic157(migration_url, current_ini, ["upgrade", "head"], run_dir / "upgrade-head.log")
+        # Round-trip only the reversible 0045 chain: 0046+ and head are forward-only.
+        result = _run_alembic157(migration_url, current_ini, ["upgrade", "0045_account_closure_rag"], run_dir / "upgrade-0045.log")
         assert result.returncode == 0, (result.stdout + result.stderr)[-8000:]
         _assert_role_profile157(admin_url)
         with psycopg.connect(admin_url) as conn:
             assert conn.execute("SELECT extversion FROM pg_extension WHERE extname='vector'").fetchone()
-            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0051_sync_closure_fence"
+            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0045_account_closure_rag"
 
         result = _run_alembic157(migration_url, current_ini, ["downgrade", "0043_native_sessions"], run_dir / "downgrade-0043.log")
         assert result.returncode == 0, (result.stdout + result.stderr)[-8000:]
