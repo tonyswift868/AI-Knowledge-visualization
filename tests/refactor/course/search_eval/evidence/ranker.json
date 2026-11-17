@@ -1,0 +1,9 @@
+{
+  "model": "ms-marco-MultiBERT-L-12",
+  "library_license": "Apache-2.0",
+  "weights_license": "CC-BY-SA-4.0",
+  "load_seconds": 388.42199999999866,
+  "rss_before": 94879744,
+  "rss_after": 327839744,
+  "bytes": 169532805
+}

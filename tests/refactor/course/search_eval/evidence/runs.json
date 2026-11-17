@@ -1,0 +1,2600 @@
+[
+  {
+    "topic": "日常英语口语入门",
+    "arm": "A",
+    "queries": [
+      "零基础 日常英语口语入门 完整 官方教材 大学开放课程 文字课程",
+      "beginner daily English speaking complete official textbook university open course text-based course"
+    ],
+    "pool_ids": [
+      "16717653a8ccfec43e45",
+      "4100dd07186796a65b62",
+      "d935c0c5627ff6d847c5",
+      "f1385a465233948ea0c4",
+      "12ddc6f14428f786f58b",
+      "bc429bf1d72f6bf2aa9d",
+      "de33aec55c2b651ddaf4",
+      "c9843a14d54f8b07276c",
+      "d958f00519f984f1bd13"
+    ],
+    "order": [
+      "16717653a8ccfec43e45",
+      "4100dd07186796a65b62",
+      "d935c0c5627ff6d847c5",
+      "f1385a465233948ea0c4",
+      "12ddc6f14428f786f58b",
+      "bc429bf1d72f6bf2aa9d",
+      "de33aec55c2b651ddaf4",
+      "c9843a14d54f8b07276c",
+      "d958f00519f984f1bd13"
+    ],
+    "selected": [
+      "16717653a8ccfec43e45",
+      "4100dd07186796a65b62",
+      "d935c0c5627ff6d847c5",
+      "d958f00519f984f1bd13"
+    ],
+    "checked": [
+      "16717653a8ccfec43e45",
+      "4100dd07186796a65b62",
+      "d935c0c5627ff6d847c5",
+      "f1385a465233948ea0c4",
+      "12ddc6f14428f786f58b",
+      "bc429bf1d72f6bf2aa9d",
+      "de33aec55c2b651ddaf4",
+      "c9843a14d54f8b07276c",
+      "d958f00519f984f1bd13"
+    ],
+    "judgments": [],
+    "search_calls": 2,
+    "model_calls": 1,
+    "read_calls": 9,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 28.360999999994647,
+    "topic_wall_seconds": 40.59399999999732,
+    "cny_upper": 0.011488,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "日常英语口语入门",
+    "arm": "B",
+    "queries": [
+      "日常英语问候寒暄自我介绍对话例句教程练习答案",
+      "beginner greetings self introduction dialogue examples tutorial practice answers",
+      "购物点餐问路日常英语对话例句教程和练习答案",
+      "daily English shopping ordering directions dialogue examples tutorial and practice answers",
+      "英语基础发音连读弱读跟读练习教程和答案",
+      "English pronunciation linking weak forms shadowing exercises tutorial and answers"
+    ],
+    "pool_ids": [
+      "80cb81385459167c1036",
+      "302f53f103734f203c78",
+      "83fb9a6a798cd7360af9",
+      "7a3fed2ffe58ff65b355",
+      "0df42deff73b3a7ffcd9",
+      "44a3df63246b53e57363",
+      "fc5d7d6322f2acde0e28",
+      "de214585033179ad3b41",
+      "54300ef6566485500039",
+      "0009bb4ba7b5cee0819a",
+      "15721a843a8abfad3a94",
+      "3d8ab3f92055d0087587",
+      "b7c4bd273f0603f4197c",
+      "ab834fae3ee6e421c080",
+      "ef82ede767c106d1c72a",
+      "7c554709551d878c25b3",
+      "74b13b93f2de4f2364d0"
+    ],
+    "order": [
+      "83fb9a6a798cd7360af9",
+      "0df42deff73b3a7ffcd9",
+      "44a3df63246b53e57363",
+      "fc5d7d6322f2acde0e28",
+      "54300ef6566485500039",
+      "3d8ab3f92055d0087587",
+      "ab834fae3ee6e421c080",
+      "74b13b93f2de4f2364d0"
+    ],
+    "selected": [
+      "83fb9a6a798cd7360af9",
+      "0df42deff73b3a7ffcd9"
+    ],
+    "checked": [
+      "83fb9a6a798cd7360af9",
+      "0df42deff73b3a7ffcd9",
+      "44a3df63246b53e57363",
+      "fc5d7d6322f2acde0e28",
+      "54300ef6566485500039",
+      "3d8ab3f92055d0087587",
+      "ab834fae3ee6e421c080",
+      "74b13b93f2de4f2364d0"
+    ],
+    "judgments": [
+      {
+        "id": "83fb9a6a798cd7360af9",
+        "score": 3,
+        "reason": "提供十组适合初学者的日常英语两人对话，含中英翻译和交际功能讲解，正文可读且具实质教学性。"
+      },
+      {
+        "id": "0df42deff73b3a7ffcd9",
+        "score": 3,
+        "reason": "该页提供自我介绍、居住地和生日的实用口语句型，并有跟读、对话和角色扮演练习，内容具体且适合日常英语口语入门初学者。"
+      },
+      {
+        "id": "74b13b93f2de4f2364d0",
+        "score": 2,
+        "reason": "有实质发音教学内容，但偏重连读、重音、节奏等进阶语音知识，且为越南语讲解，不太适合“日常英语口语入门”初学者水平。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 4,
+    "read_calls": 8,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 57.68700000000594,
+    "topic_wall_seconds": 86.51600000000326,
+    "cny_upper": 0.048222,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "日常英语口语入门",
+    "arm": "C",
+    "queries": [
+      "日常英语问候寒暄自我介绍对话例句教程练习答案",
+      "beginner greetings self introduction dialogue examples tutorial practice answers",
+      "购物点餐问路日常英语对话例句教程和练习答案",
+      "daily English shopping ordering directions dialogue examples tutorial and practice answers",
+      "英语基础发音连读弱读跟读练习教程和答案",
+      "English pronunciation linking weak forms shadowing exercises tutorial and answers"
+    ],
+    "pool_ids": [
+      "80cb81385459167c1036",
+      "302f53f103734f203c78",
+      "83fb9a6a798cd7360af9",
+      "7a3fed2ffe58ff65b355",
+      "0df42deff73b3a7ffcd9",
+      "44a3df63246b53e57363",
+      "fc5d7d6322f2acde0e28",
+      "de214585033179ad3b41",
+      "54300ef6566485500039",
+      "0009bb4ba7b5cee0819a",
+      "15721a843a8abfad3a94",
+      "3d8ab3f92055d0087587",
+      "b7c4bd273f0603f4197c",
+      "ab834fae3ee6e421c080",
+      "ef82ede767c106d1c72a",
+      "7c554709551d878c25b3",
+      "74b13b93f2de4f2364d0"
+    ],
+    "order": [
+      "fc5d7d6322f2acde0e28",
+      "83fb9a6a798cd7360af9",
+      "54300ef6566485500039",
+      "44a3df63246b53e57363",
+      "ab834fae3ee6e421c080",
+      "0df42deff73b3a7ffcd9",
+      "74b13b93f2de4f2364d0",
+      "3d8ab3f92055d0087587"
+    ],
+    "selected": [
+      "83fb9a6a798cd7360af9",
+      "0df42deff73b3a7ffcd9"
+    ],
+    "checked": [
+      "fc5d7d6322f2acde0e28",
+      "83fb9a6a798cd7360af9",
+      "54300ef6566485500039",
+      "44a3df63246b53e57363",
+      "ab834fae3ee6e421c080",
+      "0df42deff73b3a7ffcd9",
+      "74b13b93f2de4f2364d0",
+      "3d8ab3f92055d0087587"
+    ],
+    "judgments": [
+      {
+        "id": "83fb9a6a798cd7360af9",
+        "score": 3,
+        "reason": "网页提供了多组带翻译的日常两人英语对话及教学说明，难度适合初学者，可直接用于口语入门学习。"
+      },
+      {
+        "id": "0df42deff73b3a7ffcd9",
+        "score": 3,
+        "reason": "提供自我介绍、居住地和生日等基础口语的句型、对话跟读与角色扮演练习，内容实质且适合初学者。"
+      },
+      {
+        "id": "74b13b93f2de4f2364d0",
+        "score": 2,
+        "reason": "有实质发音教学内容（连读、重音、节奏），但术语和IPA偏难，面向进阶发音而非初学者日常口语，难度不完全匹配。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 4,
+    "read_calls": 8,
+    "rerank_seconds": 0.1870000000053551,
+    "elapsed_seconds": 59.48300000000076,
+    "topic_wall_seconds": 134.04699999999866,
+    "cny_upper": 0.048758,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "Python 零基础入门",
+    "arm": "A",
+    "queries": [
+      "Python 零基础入门 官方完整教材 大学开放课程 文字教程 免费自学",
+      "Python beginner complete official textbook university open course free text-based tutorial"
+    ],
+    "pool_ids": [
+      "667f2e402df388bcd975",
+      "6754fe09c4599ea2378e",
+      "b9ec854247c94201c4aa",
+      "c7f49beadf8a4eaaecc6",
+      "efe5feaad3e37a0aef4b",
+      "1f5624a74eda8316fa76",
+      "fcf110055edb669ef17a",
+      "22bed4b64e7ca362dd76",
+      "7f0feafee2a19a4f0123"
+    ],
+    "order": [
+      "667f2e402df388bcd975",
+      "6754fe09c4599ea2378e",
+      "b9ec854247c94201c4aa",
+      "c7f49beadf8a4eaaecc6",
+      "efe5feaad3e37a0aef4b",
+      "1f5624a74eda8316fa76",
+      "fcf110055edb669ef17a",
+      "22bed4b64e7ca362dd76",
+      "7f0feafee2a19a4f0123"
+    ],
+    "selected": [
+      "667f2e402df388bcd975",
+      "6754fe09c4599ea2378e",
+      "b9ec854247c94201c4aa",
+      "1f5624a74eda8316fa76",
+      "fcf110055edb669ef17a"
+    ],
+    "checked": [
+      "667f2e402df388bcd975",
+      "6754fe09c4599ea2378e",
+      "b9ec854247c94201c4aa",
+      "c7f49beadf8a4eaaecc6",
+      "efe5feaad3e37a0aef4b",
+      "1f5624a74eda8316fa76",
+      "fcf110055edb669ef17a",
+      "22bed4b64e7ca362dd76",
+      "7f0feafee2a19a4f0123"
+    ],
+    "judgments": [],
+    "search_calls": 2,
+    "model_calls": 1,
+    "read_calls": 9,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 14.10900000000134,
+    "topic_wall_seconds": 24.343999999997322,
+    "cny_upper": 0.011362,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "Python 零基础入门",
+    "arm": "B",
+    "queries": [
+      "Python 变量 数据类型 输入输出 条件判断 循环 例题 答案",
+      "Python variables data types input output if loops example exercises answers",
+      "Python 函数 列表 字典 字符串 文件读写 练习 答案",
+      "Python functions lists dictionaries strings file reading exercises answers",
+      "Python 猜数字 小项目 异常处理 调试 练习 答案",
+      "Python guess number mini project exception handling debugging exercises answers"
+    ],
+    "pool_ids": [
+      "97ee9fda83f5e59a21d6",
+      "07f7626675110077214b",
+      "cedc9590d20630366cd8",
+      "3f144ad02d49b9467e5c",
+      "0e9155e776e426e5af36",
+      "b1ce3992f4740e3bc91f",
+      "91a01d2acce3a67856df",
+      "4be6111a2299bd565ed4",
+      "5d3ba4de1de4e2f68690",
+      "36b0e5215fc63a063d27",
+      "4001fb06f611bfa059fa",
+      "62ffa1d9e9c8914aa199",
+      "495b4102612905cddeb7",
+      "a6dfaba8485fd989027b",
+      "98f1f7c6bb719804e8a2",
+      "691207b58de2e11f94fb",
+      "c837582205dd2c7a197d",
+      "b764ccb271bf7250c7b9",
+      "e416789b5a24f7630292"
+    ],
+    "order": [
+      "97ee9fda83f5e59a21d6",
+      "cedc9590d20630366cd8",
+      "691207b58de2e11f94fb",
+      "c837582205dd2c7a197d",
+      "07f7626675110077214b",
+      "0e9155e776e426e5af36",
+      "4be6111a2299bd565ed4",
+      "36b0e5215fc63a063d27",
+      "4001fb06f611bfa059fa",
+      "62ffa1d9e9c8914aa199",
+      "495b4102612905cddeb7",
+      "a6dfaba8485fd989027b",
+      "98f1f7c6bb719804e8a2"
+    ],
+    "selected": [
+      "a6dfaba8485fd989027b",
+      "98f1f7c6bb719804e8a2"
+    ],
+    "checked": [
+      "97ee9fda83f5e59a21d6",
+      "cedc9590d20630366cd8",
+      "691207b58de2e11f94fb",
+      "c837582205dd2c7a197d",
+      "07f7626675110077214b",
+      "0e9155e776e426e5af36",
+      "4be6111a2299bd565ed4",
+      "36b0e5215fc63a063d27",
+      "4001fb06f611bfa059fa",
+      "62ffa1d9e9c8914aa199",
+      "495b4102612905cddeb7",
+      "a6dfaba8485fd989027b",
+      "98f1f7c6bb719804e8a2"
+    ],
+    "judgments": [
+      {
+        "id": "97ee9fda83f5e59a21d6",
+        "score": 2,
+        "reason": "这属于官方教程的实质内容，讲解列表并附有示例，但属于进阶的数据结构章节，而且正文被截断；对零基础初学者来说难度偏难、覆盖不够系统。"
+      },
+      {
+        "id": "0e9155e776e426e5af36",
+        "score": 1,
+        "reason": "这是课程期末题答案清单，虽涉及变量、输入、条件与循环等入门点，但只有简答答案，缺少面向零基础的实质教学讲解。"
+      },
+      {
+        "id": "4be6111a2299bd565ed4",
+        "score": 1,
+        "reason": "该页仅是Python练习仓库的目录和题目索引，未提供实质教学讲解，对零基础入门仅有相关性。"
+      },
+      {
+        "id": "4001fb06f611bfa059fa",
+        "score": 1,
+        "reason": "页面只是Python练习仓库的目录和练习列表，没有实质教学讲解，适合作为练习索引但不是零基础入门教程正文。"
+      },
+      {
+        "id": "62ffa1d9e9c8914aa199",
+        "score": 1,
+        "reason": "该页面仅列出Python练习目录和题目名称，没有可读的实质教学讲解，属于相关但仅作索引的资料。"
+      },
+      {
+        "id": "495b4102612905cddeb7",
+        "score": 1,
+        "reason": "相关且包含零基础Python练习目录，但正文只是练习清单/索引，没有可读的教学讲解或具体题目内容。"
+      },
+      {
+        "id": "a6dfaba8485fd989027b",
+        "score": 3,
+        "reason": "正文是零基础猜数字游戏的实质排错教学，含原因分析、可运行代码和调试方法，虽范围较窄但可直接用于该主题和水平。"
+      },
+      {
+        "id": "98f1f7c6bb719804e8a2",
+        "score": 3,
+        "reason": "正文提供了面向初学者的具体bug原因说明、示例、修复代码和try-except补充，属于可读的实质教学正文。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 9,
+    "read_calls": 13,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 94.42199999999866,
+    "topic_wall_seconds": 109.14099999999598,
+    "cny_upper": 0.065948,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "Python 零基础入门",
+    "arm": "C",
+    "queries": [
+      "Python 变量 数据类型 输入输出 条件判断 循环 例题 答案",
+      "Python variables data types input output if loops example exercises answers",
+      "Python 函数 列表 字典 字符串 文件读写 练习 答案",
+      "Python functions lists dictionaries strings file reading exercises answers",
+      "Python 猜数字 小项目 异常处理 调试 练习 答案",
+      "Python guess number mini project exception handling debugging exercises answers"
+    ],
+    "pool_ids": [
+      "97ee9fda83f5e59a21d6",
+      "07f7626675110077214b",
+      "cedc9590d20630366cd8",
+      "3f144ad02d49b9467e5c",
+      "0e9155e776e426e5af36",
+      "b1ce3992f4740e3bc91f",
+      "91a01d2acce3a67856df",
+      "4be6111a2299bd565ed4",
+      "5d3ba4de1de4e2f68690",
+      "36b0e5215fc63a063d27",
+      "4001fb06f611bfa059fa",
+      "62ffa1d9e9c8914aa199",
+      "495b4102612905cddeb7",
+      "a6dfaba8485fd989027b",
+      "98f1f7c6bb719804e8a2",
+      "691207b58de2e11f94fb",
+      "c837582205dd2c7a197d",
+      "b764ccb271bf7250c7b9",
+      "e416789b5a24f7630292"
+    ],
+    "order": [
+      "97ee9fda83f5e59a21d6",
+      "691207b58de2e11f94fb",
+      "cedc9590d20630366cd8",
+      "c837582205dd2c7a197d",
+      "98f1f7c6bb719804e8a2",
+      "a6dfaba8485fd989027b",
+      "07f7626675110077214b",
+      "62ffa1d9e9c8914aa199",
+      "4001fb06f611bfa059fa",
+      "36b0e5215fc63a063d27",
+      "4be6111a2299bd565ed4",
+      "495b4102612905cddeb7",
+      "0e9155e776e426e5af36"
+    ],
+    "selected": [
+      "97ee9fda83f5e59a21d6",
+      "691207b58de2e11f94fb",
+      "98f1f7c6bb719804e8a2"
+    ],
+    "checked": [
+      "97ee9fda83f5e59a21d6",
+      "691207b58de2e11f94fb",
+      "cedc9590d20630366cd8",
+      "c837582205dd2c7a197d",
+      "98f1f7c6bb719804e8a2",
+      "a6dfaba8485fd989027b",
+      "07f7626675110077214b",
+      "62ffa1d9e9c8914aa199",
+      "4001fb06f611bfa059fa",
+      "36b0e5215fc63a063d27",
+      "4be6111a2299bd565ed4",
+      "495b4102612905cddeb7",
+      "0e9155e776e426e5af36"
+    ],
+    "judgments": [
+      {
+        "id": "97ee9fda83f5e59a21d6",
+        "score": 3,
+        "reason": "Python 官方教程“数据结构”一章正文可免费阅读，内容完整、有可运行示例；虽偏进阶（列表方法、用列表实现堆栈），但仍适合零基础入门后继续巩固。"
+      },
+      {
+        "id": "691207b58de2e11f94fb",
+        "score": 3,
+        "reason": "该网页是无需登录付费的猜数字游戏手把手教程，覆盖变量、循环、条件、输入输出、异常处理等基础内容，步骤清晰，适合Python零基础入门学习。"
+      },
+      {
+        "id": "98f1f7c6bb719804e8a2",
+        "score": 3,
+        "reason": "正文实质讲解了猜数字游戏中字符串与整数比较导致的判断错误，并给出修复代码和异常处理提示，虽聚焦单个bug但对零基础学习Python条件与while循环有教学价值。"
+      },
+      {
+        "id": "a6dfaba8485fd989027b",
+        "score": 2,
+        "reason": "内容围绕猜数字游戏的随机数与缩进、类型错误排查，有实质讲解和示例代码，但只覆盖一个具体问题，篇幅短且偏调试问答，不足以作为Python零基础系统入门材料。"
+      },
+      {
+        "id": "62ffa1d9e9c8914aa199",
+        "score": 1,
+        "reason": "该页面只是 Python 练习仓库的目录/练习名称列表，未提供实际教学讲解或可读的练习正文。"
+      },
+      {
+        "id": "4001fb06f611bfa059fa",
+        "score": 1,
+        "reason": "该页只是Python练习题仓库的目录清单，未提供面向零基础初学者的实质教学讲解。"
+      },
+      {
+        "id": "4be6111a2299bd565ed4",
+        "score": 1,
+        "reason": "这是Python练习仓库的目录和题目清单，仅有练习链接与分类，没有可直接阅读的实质教学讲解，适合作为练习索引而非零基础入门教程。"
+      },
+      {
+        "id": "495b4102612905cddeb7",
+        "score": 1,
+        "reason": "这是Python练习题库的目录索引，列出练习与答案链接，但本页没有实质教学讲解，适合作为练习资源而非零基础教程。"
+      },
+      {
+        "id": "0e9155e776e426e5af36",
+        "score": 2,
+        "reason": "该页是零基础Python期末题答案汇总，覆盖变量、输入、条件、循环等基础点，但仅有简短答案、缺少讲解，且内容不完整，适合作为练习参考而非实质教程。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 10,
+    "read_calls": 13,
+    "rerank_seconds": 0.3279999999940628,
+    "elapsed_seconds": 99.32799999999406,
+    "topic_wall_seconds": 198.51599999999598,
+    "cny_upper": 0.069662,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "家常菜入门",
+    "arm": "A",
+    "queries": [
+      "家常菜入门 零基础 完整官方教材 大学开放课程 文字课程",
+      "beginner home cooking complete official textbook university open course text-based course"
+    ],
+    "pool_ids": [
+      "9a4080b2fc42c0208aeb",
+      "5c4018b3765f1356c0af",
+      "830f4b873764a6850950",
+      "4bfe53a54eef10281622",
+      "37f8ba3e7ee771ff8db7",
+      "2d19e619d37b9cc86dcc",
+      "66b41a6ff77b413f8f29",
+      "6c7666ef77797abe1e7c",
+      "8bfa720eb6f91a8854cd"
+    ],
+    "order": [
+      "9a4080b2fc42c0208aeb",
+      "5c4018b3765f1356c0af",
+      "830f4b873764a6850950",
+      "4bfe53a54eef10281622",
+      "37f8ba3e7ee771ff8db7",
+      "2d19e619d37b9cc86dcc",
+      "66b41a6ff77b413f8f29",
+      "6c7666ef77797abe1e7c",
+      "8bfa720eb6f91a8854cd"
+    ],
+    "selected": [
+      "4bfe53a54eef10281622",
+      "66b41a6ff77b413f8f29"
+    ],
+    "checked": [
+      "9a4080b2fc42c0208aeb",
+      "5c4018b3765f1356c0af",
+      "830f4b873764a6850950",
+      "4bfe53a54eef10281622",
+      "37f8ba3e7ee771ff8db7",
+      "2d19e619d37b9cc86dcc",
+      "66b41a6ff77b413f8f29",
+      "6c7666ef77797abe1e7c",
+      "8bfa720eb6f91a8854cd"
+    ],
+    "judgments": [],
+    "search_calls": 2,
+    "model_calls": 1,
+    "read_calls": 9,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 23.986000000001923,
+    "topic_wall_seconds": 34.76600000000326,
+    "cny_upper": 0.012022,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "家常菜入门",
+    "arm": "B",
+    "queries": [
+      "家常菜入门刀工火候视频教程和切菜练习",
+      "beginner home cooking knife skills and heat control video tutorial and cutting practice",
+      "西红柿炒蛋青椒肉丝菜谱步骤与调味比例表",
+      "tomato egg and pepper pork stir fry recipe steps and seasoning ratio chart",
+      "家常菜食材清洗切配备菜流程和食品安全练习题答案",
+      "home cooking ingredient washing prep workflow and food safety practice questions with answers"
+    ],
+    "pool_ids": [
+      "9b3b4217f2589484d646",
+      "f79dc92ded14b28ac7ad",
+      "6270ad8c28472415611e",
+      "8183edf880448c708de2",
+      "52d9333b23f07d594e21",
+      "7ac4413475c1ba2d713b",
+      "16e6c84993a7e51ee37a",
+      "399fef1aa1e5c2d51913",
+      "4b169ae3dc91b23dfbfe",
+      "117369629198dbecb894",
+      "1282419233c7742e13cf",
+      "2395e00301a323e12902",
+      "2c7110aee4b8d05099e4",
+      "7cf766ba987a199a8f52",
+      "cf01f44c3423a64c91d1",
+      "f1c60ab64855eb83c9da",
+      "8cca47b51c517ca31026",
+      "c8b8f4e1c97fde2531f0"
+    ],
+    "order": [
+      "8183edf880448c708de2",
+      "399fef1aa1e5c2d51913",
+      "52d9333b23f07d594e21",
+      "4b169ae3dc91b23dfbfe",
+      "117369629198dbecb894",
+      "1282419233c7742e13cf",
+      "2395e00301a323e12902",
+      "7cf766ba987a199a8f52",
+      "f1c60ab64855eb83c9da",
+      "8cca47b51c517ca31026",
+      "c8b8f4e1c97fde2531f0"
+    ],
+    "selected": [
+      "1282419233c7742e13cf",
+      "2395e00301a323e12902",
+      "f1c60ab64855eb83c9da"
+    ],
+    "checked": [
+      "8183edf880448c708de2",
+      "399fef1aa1e5c2d51913",
+      "52d9333b23f07d594e21",
+      "4b169ae3dc91b23dfbfe",
+      "117369629198dbecb894",
+      "1282419233c7742e13cf",
+      "2395e00301a323e12902",
+      "7cf766ba987a199a8f52",
+      "f1c60ab64855eb83c9da",
+      "8cca47b51c517ca31026",
+      "c8b8f4e1c97fde2531f0"
+    ],
+    "judgments": [
+      {
+        "id": "52d9333b23f07d594e21",
+        "score": 1,
+        "reason": "相关但只是课程介绍和会员营销页，没有无需付费可读的实质刀工教学正文。"
+      },
+      {
+        "id": "1282419233c7742e13cf",
+        "score": 3,
+        "reason": "这是一篇可直接阅读的实质家常菜教程，包含食材替换建议和分步做法，适合初学者学习。"
+      },
+      {
+        "id": "2395e00301a323e12902",
+        "score": 3,
+        "reason": "这是一篇无需登录付费的完整家常菜食谱，含食材清单和分步做法，适合初学者参考。"
+      },
+      {
+        "id": "f1c60ab64855eb83c9da",
+        "score": 3,
+        "reason": "这是一份无需登录即可阅读的初学者食物准备基础练习，附有答案解析，涵盖清洗、切配、计量、烹饪方法和调味等可用的入门教学内容。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 5,
+    "read_calls": 11,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 70.9519999999954,
+    "topic_wall_seconds": 95.67199999999866,
+    "cny_upper": 0.050972,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "家常菜入门",
+    "arm": "C",
+    "queries": [
+      "家常菜入门刀工火候视频教程和切菜练习",
+      "beginner home cooking knife skills and heat control video tutorial and cutting practice",
+      "西红柿炒蛋青椒肉丝菜谱步骤与调味比例表",
+      "tomato egg and pepper pork stir fry recipe steps and seasoning ratio chart",
+      "家常菜食材清洗切配备菜流程和食品安全练习题答案",
+      "home cooking ingredient washing prep workflow and food safety practice questions with answers"
+    ],
+    "pool_ids": [
+      "9b3b4217f2589484d646",
+      "f79dc92ded14b28ac7ad",
+      "6270ad8c28472415611e",
+      "8183edf880448c708de2",
+      "52d9333b23f07d594e21",
+      "7ac4413475c1ba2d713b",
+      "16e6c84993a7e51ee37a",
+      "399fef1aa1e5c2d51913",
+      "4b169ae3dc91b23dfbfe",
+      "117369629198dbecb894",
+      "1282419233c7742e13cf",
+      "2395e00301a323e12902",
+      "2c7110aee4b8d05099e4",
+      "7cf766ba987a199a8f52",
+      "cf01f44c3423a64c91d1",
+      "f1c60ab64855eb83c9da",
+      "8cca47b51c517ca31026",
+      "c8b8f4e1c97fde2531f0"
+    ],
+    "order": [
+      "8183edf880448c708de2",
+      "399fef1aa1e5c2d51913",
+      "7cf766ba987a199a8f52",
+      "4b169ae3dc91b23dfbfe",
+      "f1c60ab64855eb83c9da",
+      "2395e00301a323e12902",
+      "8cca47b51c517ca31026",
+      "117369629198dbecb894",
+      "c8b8f4e1c97fde2531f0",
+      "1282419233c7742e13cf",
+      "52d9333b23f07d594e21"
+    ],
+    "selected": [
+      "f1c60ab64855eb83c9da",
+      "2395e00301a323e12902",
+      "1282419233c7742e13cf"
+    ],
+    "checked": [
+      "8183edf880448c708de2",
+      "399fef1aa1e5c2d51913",
+      "7cf766ba987a199a8f52",
+      "4b169ae3dc91b23dfbfe",
+      "f1c60ab64855eb83c9da",
+      "2395e00301a323e12902",
+      "8cca47b51c517ca31026",
+      "117369629198dbecb894",
+      "c8b8f4e1c97fde2531f0",
+      "1282419233c7742e13cf",
+      "52d9333b23f07d594e21"
+    ],
+    "judgments": [
+      {
+        "id": "f1c60ab64855eb83c9da",
+        "score": 3,
+        "reason": "这是一份无需登录付费的初学者家常菜基础练习题，含答案与解释，覆盖清洗、切配、计量、烹饪方法和调味等实质教学内容。"
+      },
+      {
+        "id": "2395e00301a323e12902",
+        "score": 3,
+        "reason": "提供完整食材清单和分步做法，属于可直接阅读的实质食谱教程，适合家常菜初学者参考。"
+      },
+      {
+        "id": "1282419233c7742e13cf",
+        "score": 3,
+        "reason": "提供可读的实质家常菜教学正文，包含食材替换建议和分步做法，适合初学者参考。"
+      },
+      {
+        "id": "52d9333b23f07d594e21",
+        "score": 1,
+        "reason": "内容相关且偏初学者，但只是课程简介和会员营销，未提供可读的实质教学正文。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 5,
+    "read_calls": 11,
+    "rerank_seconds": 0.43699999999807915,
+    "elapsed_seconds": 71.93599999999941,
+    "topic_wall_seconds": 157.125,
+    "cny_upper": 0.047908,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "个人理财入门",
+    "arm": "A",
+    "queries": [
+      "个人理财入门 零基础 大学开放课程 官方教材 完整版 文字课程 免费",
+      "personal finance basics for beginners free university open courseware full textbook text course"
+    ],
+    "pool_ids": [
+      "f46e1d52eceef6983932",
+      "de477ebfcdfecf557bd5",
+      "114fdf6de5749e34dd9d",
+      "60e82bf3b9dcc8a948bf",
+      "bded6aa6f68584b4c98f",
+      "8a3efe0761a1c617f479",
+      "32ebfa75dfd835e83ee5",
+      "0008f6b21268eff83454",
+      "200c7dd3df84fe04d792",
+      "23c8bf024c9e25207d4d"
+    ],
+    "order": [
+      "f46e1d52eceef6983932",
+      "de477ebfcdfecf557bd5",
+      "114fdf6de5749e34dd9d",
+      "60e82bf3b9dcc8a948bf",
+      "bded6aa6f68584b4c98f",
+      "8a3efe0761a1c617f479",
+      "32ebfa75dfd835e83ee5",
+      "0008f6b21268eff83454",
+      "200c7dd3df84fe04d792",
+      "23c8bf024c9e25207d4d"
+    ],
+    "selected": [
+      "f46e1d52eceef6983932",
+      "de477ebfcdfecf557bd5",
+      "114fdf6de5749e34dd9d",
+      "60e82bf3b9dcc8a948bf",
+      "bded6aa6f68584b4c98f"
+    ],
+    "checked": [
+      "f46e1d52eceef6983932",
+      "de477ebfcdfecf557bd5",
+      "114fdf6de5749e34dd9d",
+      "60e82bf3b9dcc8a948bf",
+      "bded6aa6f68584b4c98f",
+      "8a3efe0761a1c617f479",
+      "32ebfa75dfd835e83ee5",
+      "0008f6b21268eff83454",
+      "200c7dd3df84fe04d792",
+      "23c8bf024c9e25207d4d"
+    ],
+    "judgments": [],
+    "search_calls": 2,
+    "model_calls": 1,
+    "read_calls": 10,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 18.842000000002677,
+    "topic_wall_seconds": 32.546000000002095,
+    "cny_upper": 0.01175,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "个人理财入门",
+    "arm": "B",
+    "queries": [
+      "家庭收支预算表填写练习和答案",
+      "personal budget worksheet practice with answers",
+      "应急基金计算例题和储蓄计划练习",
+      "emergency fund calculation examples and savings plan worksheet",
+      "信用卡利息计算例题和还款计划练习",
+      "credit card interest calculation examples and debt payoff worksheet"
+    ],
+    "pool_ids": [
+      "982f9b82fda8817fec56",
+      "73c288e90074c575f5af",
+      "0a7cd0e63bbaffa54d75",
+      "83e0f1da5c099418c4a0",
+      "2640e4a69d262b0caa9f",
+      "96fb8c655f09f03c04ea",
+      "b545c5f58dbc80a39213",
+      "7860dff30f03ef8b723d",
+      "801a20798300f300cc40",
+      "910b94a0ff9aef289cc9",
+      "7440fb3931c9fdc12b6c",
+      "b5183aee0342ef0f0649",
+      "959b96cce92f6a68a793",
+      "5442e6a8594b5c1d2702",
+      "2b3ca3c2e5dd65b7f03c",
+      "feab50952d02fb4cd779",
+      "bb449ba10923936960f1"
+    ],
+    "order": [
+      "83e0f1da5c099418c4a0",
+      "2640e4a69d262b0caa9f",
+      "96fb8c655f09f03c04ea",
+      "b545c5f58dbc80a39213",
+      "7860dff30f03ef8b723d",
+      "801a20798300f300cc40",
+      "7440fb3931c9fdc12b6c"
+    ],
+    "selected": [],
+    "checked": [
+      "83e0f1da5c099418c4a0",
+      "2640e4a69d262b0caa9f",
+      "96fb8c655f09f03c04ea",
+      "b545c5f58dbc80a39213",
+      "7860dff30f03ef8b723d",
+      "801a20798300f300cc40",
+      "7440fb3931c9fdc12b6c"
+    ],
+    "judgments": [
+      {
+        "id": "2640e4a69d262b0caa9f",
+        "score": 1,
+        "reason": "该页是需付费会员才能使用的练习题生成器商品介绍页，仅有功能与用法说明，无实质教学讲解正文。"
+      },
+      {
+        "id": "96fb8c655f09f03c04ea",
+        "score": 2,
+        "reason": "该页提供预算课程目标与真实场景概述，属相关教学内容，但缺少完整讲解正文，练习表需会员，深度和可用性有限。"
+      },
+      {
+        "id": "b545c5f58dbc80a39213",
+        "score": 2,
+        "reason": "这是一道与应急储蓄相关的个人理财练习题，但只有单道计算题和表格，没有实质教学讲解，覆盖面很短。"
+      },
+      {
+        "id": "7860dff30f03ef8b723d",
+        "score": 2,
+        "reason": "包含个人预算分类和应急储蓄计算练习，与入门主题相关，但仅一个题目且排版混乱、缺少讲解，覆盖很有限。"
+      },
+      {
+        "id": "801a20798300f300cc40",
+        "score": 2,
+        "reason": "包含一道保险需求计算题及解答，有实质内容，但属于CFP考试难度且仅覆盖单一进阶知识点，不适合个人理财入门初学者。"
+      },
+      {
+        "id": "7440fb3931c9fdc12b6c",
+        "score": 2,
+        "reason": "提供应急基金计算工作表和简要讲解，实用但仅覆盖个人理财入门中的一个窄点，教学深度有限。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 7,
+    "read_calls": 7,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 71.43799999999464,
+    "topic_wall_seconds": 90.73399999999674,
+    "cny_upper": 0.063744,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "个人理财入门",
+    "arm": "C",
+    "queries": [
+      "家庭收支预算表填写练习和答案",
+      "personal budget worksheet practice with answers",
+      "应急基金计算例题和储蓄计划练习",
+      "emergency fund calculation examples and savings plan worksheet",
+      "信用卡利息计算例题和还款计划练习",
+      "credit card interest calculation examples and debt payoff worksheet"
+    ],
+    "pool_ids": [
+      "982f9b82fda8817fec56",
+      "73c288e90074c575f5af",
+      "0a7cd0e63bbaffa54d75",
+      "83e0f1da5c099418c4a0",
+      "2640e4a69d262b0caa9f",
+      "96fb8c655f09f03c04ea",
+      "b545c5f58dbc80a39213",
+      "7860dff30f03ef8b723d",
+      "801a20798300f300cc40",
+      "910b94a0ff9aef289cc9",
+      "7440fb3931c9fdc12b6c",
+      "b5183aee0342ef0f0649",
+      "959b96cce92f6a68a793",
+      "5442e6a8594b5c1d2702",
+      "2b3ca3c2e5dd65b7f03c",
+      "feab50952d02fb4cd779",
+      "bb449ba10923936960f1"
+    ],
+    "order": [
+      "801a20798300f300cc40",
+      "96fb8c655f09f03c04ea",
+      "7860dff30f03ef8b723d",
+      "7440fb3931c9fdc12b6c",
+      "b545c5f58dbc80a39213",
+      "2640e4a69d262b0caa9f",
+      "83e0f1da5c099418c4a0"
+    ],
+    "selected": [
+      "7440fb3931c9fdc12b6c"
+    ],
+    "checked": [
+      "801a20798300f300cc40",
+      "96fb8c655f09f03c04ea",
+      "7860dff30f03ef8b723d",
+      "7440fb3931c9fdc12b6c",
+      "b545c5f58dbc80a39213",
+      "2640e4a69d262b0caa9f",
+      "83e0f1da5c099418c4a0"
+    ],
+    "judgments": [
+      {
+        "id": "801a20798300f300cc40",
+        "score": 2,
+        "reason": "内容相关且给出了一道寿险需求计算题的答案与简要公式，但属于CFP考试题，难度偏高且仅覆盖一个知识点，不适合个人理财初学者。"
+      },
+      {
+        "id": "96fb8c655f09f03c04ea",
+        "score": 1,
+        "reason": "页面主要是课程介绍和会员推广，虽有学习目标但缺乏实质教学正文，练习需付费会员。"
+      },
+      {
+        "id": "7860dff30f03ef8b723d",
+        "score": 2,
+        "reason": "内容包含预算分类表和应急储蓄计算题，与入门理财相关，但仅有一个练习片段，缺少系统讲解，适合作为补充而非完整教程。"
+      },
+      {
+        "id": "7440fb3931c9fdc12b6c",
+        "score": 3,
+        "reason": "免费可读的应急基金工作表，含基础概念讲解和分步计算说明，适合初学者自学使用。"
+      },
+      {
+        "id": "b545c5f58dbc80a39213",
+        "score": 1,
+        "reason": "内容只是一道关于应急储蓄计算的练习题，表格残缺且无讲解或答案，属于相关但缺乏教学讲解。"
+      },
+      {
+        "id": "2640e4a69d262b0caa9f",
+        "score": 1,
+        "reason": "页面是需会员使用的练习题生成器介绍和营销说明，虽与预算入门相关，但没有可直接阅读的实质教学正文或示例练习。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 7,
+    "read_calls": 7,
+    "rerank_seconds": 0.17199999999866122,
+    "elapsed_seconds": 71.40600000000268,
+    "topic_wall_seconds": 148.71800000000076,
+    "cny_upper": 0.066928,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "手机摄影入门",
+    "arm": "A",
+    "queries": [
+      "手机摄影入门 零基础 官方教材 大学开放课程 文字教程 完整课程",
+      "mobile photography for beginners complete official textbook university open course text-based course"
+    ],
+    "pool_ids": [
+      "4c8dd83256a54ed0898b",
+      "ce0a8a1fca0ec02fad14",
+      "4b1c2e27ced723b881c2",
+      "6a5410691329c6a3e2a6",
+      "64ef920e945c5a7aa2dd",
+      "ddc7a38e948fc150bda9",
+      "e7ce1ebde773b1ffc380",
+      "f6f0703ec6d009bfb88a"
+    ],
+    "order": [
+      "4c8dd83256a54ed0898b",
+      "ce0a8a1fca0ec02fad14",
+      "4b1c2e27ced723b881c2",
+      "6a5410691329c6a3e2a6",
+      "64ef920e945c5a7aa2dd",
+      "ddc7a38e948fc150bda9",
+      "e7ce1ebde773b1ffc380",
+      "f6f0703ec6d009bfb88a"
+    ],
+    "selected": [
+      "4c8dd83256a54ed0898b",
+      "4b1c2e27ced723b881c2",
+      "6a5410691329c6a3e2a6",
+      "64ef920e945c5a7aa2dd",
+      "ddc7a38e948fc150bda9"
+    ],
+    "checked": [
+      "4c8dd83256a54ed0898b",
+      "ce0a8a1fca0ec02fad14",
+      "4b1c2e27ced723b881c2",
+      "6a5410691329c6a3e2a6",
+      "64ef920e945c5a7aa2dd",
+      "ddc7a38e948fc150bda9",
+      "e7ce1ebde773b1ffc380",
+      "f6f0703ec6d009bfb88a"
+    ],
+    "judgments": [],
+    "search_calls": 2,
+    "model_calls": 1,
+    "read_calls": 8,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 15.969000000005938,
+    "topic_wall_seconds": 23.51600000000326,
+    "cny_upper": 0.011566,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "手机摄影入门",
+    "arm": "B",
+    "queries": [
+      "手机摄影构图与用光教程，含示例照片讲解和取景练习",
+      "smartphone photography composition and lighting tutorial with sample photo breakdowns and shooting exercises",
+      "手机相机专业模式参数设置讲解，含对焦曝光练习和答案",
+      "phone camera pro mode settings explained with focus and exposure practice exercises and answers",
+      "手机修图调色步骤案例，含练习素材和前后对比示例",
+      "phone photo editing and color grading step by step examples with practice files and before after comparisons"
+    ],
+    "pool_ids": [
+      "d5f5f0b24a7e0b47addc",
+      "15b4a7ebac98ca848ac4",
+      "5382f7155d687605a2e4",
+      "31739e708fe24ba83880",
+      "f7fa886a5b8ff4b80b6b",
+      "b9dd588c8609cc5c3a3a",
+      "4db9fc9f49e061eda2b6",
+      "1c8587b972a7e60b0571",
+      "6a00bcea4c45819bf82c",
+      "4f77999a9b05077f6b07",
+      "30225219ccda4bc29d29",
+      "188d363c2a56d30d9883",
+      "580495d4754d908283cf",
+      "5c638911f9ef9524e56d",
+      "ce805ac78b11b07c2fd0",
+      "4967a98855c1785b0a44",
+      "ef009358e4a415ea6719"
+    ],
+    "order": [
+      "d5f5f0b24a7e0b47addc",
+      "5382f7155d687605a2e4",
+      "31739e708fe24ba83880",
+      "f7fa886a5b8ff4b80b6b",
+      "b9dd588c8609cc5c3a3a",
+      "4db9fc9f49e061eda2b6",
+      "1c8587b972a7e60b0571",
+      "6a00bcea4c45819bf82c",
+      "4f77999a9b05077f6b07",
+      "30225219ccda4bc29d29",
+      "188d363c2a56d30d9883",
+      "5c638911f9ef9524e56d",
+      "ce805ac78b11b07c2fd0",
+      "4967a98855c1785b0a44"
+    ],
+    "selected": [
+      "6a00bcea4c45819bf82c",
+      "4f77999a9b05077f6b07",
+      "30225219ccda4bc29d29",
+      "5c638911f9ef9524e56d",
+      "ce805ac78b11b07c2fd0"
+    ],
+    "checked": [
+      "d5f5f0b24a7e0b47addc",
+      "5382f7155d687605a2e4",
+      "31739e708fe24ba83880",
+      "f7fa886a5b8ff4b80b6b",
+      "b9dd588c8609cc5c3a3a",
+      "4db9fc9f49e061eda2b6",
+      "1c8587b972a7e60b0571",
+      "6a00bcea4c45819bf82c",
+      "4f77999a9b05077f6b07",
+      "30225219ccda4bc29d29",
+      "188d363c2a56d30d9883",
+      "5c638911f9ef9524e56d",
+      "ce805ac78b11b07c2fd0"
+    ],
+    "judgments": [
+      {
+        "id": "5382f7155d687605a2e4",
+        "score": 1,
+        "reason": "这是书店商品页面，仅含物流与退换货说明，无摄影教学正文，仅标题相关。"
+      },
+      {
+        "id": "31739e708fe24ba83880",
+        "score": 1,
+        "reason": "相关但只是摄影教学App的商品介绍和课程目录，正文没有可直接阅读的实质教学讲解，完整内容还需Pro付费解锁。"
+      },
+      {
+        "id": "f7fa886a5b8ff4b80b6b",
+        "score": 1,
+        "reason": "这是付费课程介绍页，仅概述20种拍摄情境和教学大纲，没有实际教学内容，属于营销引流材料。"
+      },
+      {
+        "id": "6a00bcea4c45819bf82c",
+        "score": 3,
+        "reason": "正文实质讲解小米/红米专业模式各项参数、推荐起点和常见场景设置，适合手机摄影入门者直接阅读学习。"
+      },
+      {
+        "id": "4f77999a9b05077f6b07",
+        "score": 3,
+        "reason": "该网页提供Xiaomi专业模式的实质教学正文，包含入口、参数说明、推荐设置和常见场景示例，无需登录付费，适合手机摄影入门者学习手动拍摄。"
+      },
+      {
+        "id": "30225219ccda4bc29d29",
+        "score": 3,
+        "reason": "提供夜间、人像、风景等场景的具体专业模式参数与解释，内容实质且适合初学者学习手机摄影。"
+      },
+      {
+        "id": "5c638911f9ef9524e56d",
+        "score": 3,
+        "reason": "有实质教学正文，分案例讲解手机VSCO花卉调色步骤、参数和思路，无需登录付费，适合手机摄影入门后期学习。"
+      },
+      {
+        "id": "ce805ac78b11b07c2fd0",
+        "score": 3,
+        "reason": "这是一篇可免费阅读的iPhone照片调色实操教程，步骤具体，虽只讲调色但属于手机摄影入门的后期修图要点。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 9,
+    "read_calls": 13,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 100.84499999999733,
+    "topic_wall_seconds": 117.73500000000058,
+    "cny_upper": 0.065508,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "手机摄影入门",
+    "arm": "C",
+    "queries": [
+      "手机摄影构图与用光教程，含示例照片讲解和取景练习",
+      "smartphone photography composition and lighting tutorial with sample photo breakdowns and shooting exercises",
+      "手机相机专业模式参数设置讲解，含对焦曝光练习和答案",
+      "phone camera pro mode settings explained with focus and exposure practice exercises and answers",
+      "手机修图调色步骤案例，含练习素材和前后对比示例",
+      "phone photo editing and color grading step by step examples with practice files and before after comparisons"
+    ],
+    "pool_ids": [
+      "d5f5f0b24a7e0b47addc",
+      "15b4a7ebac98ca848ac4",
+      "5382f7155d687605a2e4",
+      "31739e708fe24ba83880",
+      "f7fa886a5b8ff4b80b6b",
+      "b9dd588c8609cc5c3a3a",
+      "4db9fc9f49e061eda2b6",
+      "1c8587b972a7e60b0571",
+      "6a00bcea4c45819bf82c",
+      "4f77999a9b05077f6b07",
+      "30225219ccda4bc29d29",
+      "188d363c2a56d30d9883",
+      "580495d4754d908283cf",
+      "5c638911f9ef9524e56d",
+      "ce805ac78b11b07c2fd0",
+      "4967a98855c1785b0a44",
+      "ef009358e4a415ea6719"
+    ],
+    "order": [
+      "1c8587b972a7e60b0571",
+      "b9dd588c8609cc5c3a3a",
+      "d5f5f0b24a7e0b47addc",
+      "188d363c2a56d30d9883",
+      "4db9fc9f49e061eda2b6",
+      "5382f7155d687605a2e4",
+      "5c638911f9ef9524e56d",
+      "6a00bcea4c45819bf82c",
+      "ce805ac78b11b07c2fd0",
+      "30225219ccda4bc29d29",
+      "4f77999a9b05077f6b07",
+      "4967a98855c1785b0a44",
+      "31739e708fe24ba83880",
+      "f7fa886a5b8ff4b80b6b"
+    ],
+    "selected": [
+      "5c638911f9ef9524e56d",
+      "6a00bcea4c45819bf82c",
+      "30225219ccda4bc29d29",
+      "4f77999a9b05077f6b07"
+    ],
+    "checked": [
+      "1c8587b972a7e60b0571",
+      "b9dd588c8609cc5c3a3a",
+      "d5f5f0b24a7e0b47addc",
+      "188d363c2a56d30d9883",
+      "4db9fc9f49e061eda2b6",
+      "5382f7155d687605a2e4",
+      "5c638911f9ef9524e56d",
+      "6a00bcea4c45819bf82c",
+      "ce805ac78b11b07c2fd0",
+      "30225219ccda4bc29d29",
+      "4f77999a9b05077f6b07",
+      "4967a98855c1785b0a44",
+      "31739e708fe24ba83880",
+      "f7fa886a5b8ff4b80b6b"
+    ],
+    "judgments": [
+      {
+        "id": "5382f7155d687605a2e4",
+        "score": 1,
+        "reason": "这是书店商品页，仅有简繁体书籍的物流与退货说明，没有可供阅读的摄影教学内容，属于相关商品页但无教学正文。"
+      },
+      {
+        "id": "5c638911f9ef9524e56d",
+        "score": 3,
+        "reason": "该网页提供手机VSCO花卉色调后期调色的完整可读教学，含原片分析、分步操作、参数与总结，适合手机摄影入门者参考学习。"
+      },
+      {
+        "id": "6a00bcea4c45819bf82c",
+        "score": 3,
+        "reason": "正文实质讲解小米专业模式各项参数、场景设置和RAW技巧，无需登录付费，虽偏手动进阶但可作为手机摄影入门补充教材。"
+      },
+      {
+        "id": "ce805ac78b11b07c2fd0",
+        "score": 2,
+        "reason": "内容涉及手机端照片调色与Snapseed操作，有实际教学步骤，但主要针对游戏截图后期色味调整，只覆盖手机摄影入门中的修图一点，并非拍摄入门主体。"
+      },
+      {
+        "id": "30225219ccda4bc29d29",
+        "score": 3,
+        "reason": "正文实质讲解手机专业模式的关键参数，并给出夜景、人像、风景的具体设置，无需登录付费，适合作为手机摄影入门中手动控制的进阶学习材料。"
+      },
+      {
+        "id": "4f77999a9b05077f6b07",
+        "score": 3,
+        "reason": "正文是可直接阅读的实质教程，系统讲解小米专业模式的手动参数、推荐设置和常见场景，适合手机摄影入门者学习。"
+      },
+      {
+        "id": "31739e708fe24ba83880",
+        "score": 1,
+        "reason": "这是摄影构图App的产品介绍与付费引流页，虽与手机摄影入门相关，但页面本身只列出课程目录和功能清单，实质教学内容需订阅Pro才能获得，不构成可直接阅读的教学正文。"
+      },
+      {
+        "id": "f7fa886a5b8ff4b80b6b",
+        "score": 1,
+        "reason": "正文是付费课程大纲和营销介绍，只列出会讲哪些拍摄情境，没有可直接阅读的具体教学步骤，适合作为相关目录而非入门教程正文。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 9,
+    "read_calls": 14,
+    "rerank_seconds": 0.5939999999973224,
+    "elapsed_seconds": 94.126,
+    "topic_wall_seconds": 204.64100000000326,
+    "cny_upper": 0.060764,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "日语五十音入门",
+    "arm": "A",
+    "queries": [
+      "日语五十音入门 零基础 完整官方教材 大学开放课程 文字课程",
+      "Japanese hiragana katakana beginner complete official textbook university open course text-based course"
+    ],
+    "pool_ids": [
+      "d82091aa923b332d6f80",
+      "2c0843084b4ce433dfcb",
+      "825a1a3a6e05776be970",
+      "c708564f5b27698d7e49",
+      "d87a6a157f0f6b60ad25",
+      "dc777e1d859f445fa3ea",
+      "ad4727e9341d04bca5bc",
+      "5badc6e86084c358eb86",
+      "13a39368a2fd6dfbb155",
+      "cb73fe511325845d47aa"
+    ],
+    "order": [
+      "d82091aa923b332d6f80",
+      "2c0843084b4ce433dfcb",
+      "825a1a3a6e05776be970",
+      "c708564f5b27698d7e49",
+      "d87a6a157f0f6b60ad25",
+      "dc777e1d859f445fa3ea",
+      "ad4727e9341d04bca5bc",
+      "5badc6e86084c358eb86",
+      "13a39368a2fd6dfbb155",
+      "cb73fe511325845d47aa"
+    ],
+    "selected": [
+      "d87a6a157f0f6b60ad25",
+      "ad4727e9341d04bca5bc"
+    ],
+    "checked": [
+      "d82091aa923b332d6f80",
+      "2c0843084b4ce433dfcb",
+      "825a1a3a6e05776be970",
+      "c708564f5b27698d7e49",
+      "d87a6a157f0f6b60ad25",
+      "dc777e1d859f445fa3ea",
+      "ad4727e9341d04bca5bc",
+      "5badc6e86084c358eb86",
+      "13a39368a2fd6dfbb155",
+      "cb73fe511325845d47aa"
+    ],
+    "judgments": [],
+    "search_calls": 2,
+    "model_calls": 1,
+    "read_calls": 10,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 24.49999999999866,
+    "topic_wall_seconds": 37.04699999999866,
+    "cny_upper": 0.012568,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "日语五十音入门",
+    "arm": "B",
+    "queries": [
+      "平假名五十音图发音跟读例词教程练习答案",
+      "hiragana chart pronunciation audio example words tutorial practice answers",
+      "片假名五十音图认读外来语例词练习答案",
+      "katakana chart reading loanword examples practice answers",
+      "五十音笔顺书写练习听写题答案",
+      "kana stroke order writing practice dictation exercises answers"
+    ],
+    "pool_ids": [
+      "b8bd002ec8ad20a8f313",
+      "01d306f5243b393a2db5",
+      "d5a310b4b4a75c3046c0",
+      "50775d026eaaa42d44f3",
+      "502a7d66dc0a2350a7c0",
+      "7ad33879d44a68b33f3a",
+      "bf9590d969d5808861fc",
+      "aec9e99e3f33ceb940c9",
+      "a28708cb8d988c088bbc",
+      "af82dc3bf8c0ea618421",
+      "5f6fe60ae13d4f405743",
+      "5149834a5ad18a7b1915",
+      "2c4e57c382fcbd324481",
+      "28aa6f31a0b2406c4247",
+      "314434164b60045056b4",
+      "9f1f9abadd6ca83a3248",
+      "0403f3cfc829293e35de"
+    ],
+    "order": [
+      "50775d026eaaa42d44f3",
+      "502a7d66dc0a2350a7c0",
+      "7ad33879d44a68b33f3a",
+      "bf9590d969d5808861fc",
+      "aec9e99e3f33ceb940c9",
+      "a28708cb8d988c088bbc",
+      "af82dc3bf8c0ea618421",
+      "5149834a5ad18a7b1915",
+      "2c4e57c382fcbd324481",
+      "28aa6f31a0b2406c4247",
+      "314434164b60045056b4"
+    ],
+    "selected": [
+      "af82dc3bf8c0ea618421",
+      "2c4e57c382fcbd324481"
+    ],
+    "checked": [
+      "50775d026eaaa42d44f3",
+      "502a7d66dc0a2350a7c0",
+      "7ad33879d44a68b33f3a",
+      "bf9590d969d5808861fc",
+      "aec9e99e3f33ceb940c9",
+      "a28708cb8d988c088bbc",
+      "af82dc3bf8c0ea618421",
+      "5149834a5ad18a7b1915",
+      "2c4e57c382fcbd324481",
+      "28aa6f31a0b2406c4247",
+      "314434164b60045056b4"
+    ],
+    "judgments": [
+      {
+        "id": "502a7d66dc0a2350a7c0",
+        "score": 1,
+        "reason": "页面主要是五十音图索引和指向各假名页、练习与打印材料的链接，缺少实质性教学讲解，属于相关目录而非入门教程正文。"
+      },
+      {
+        "id": "7ad33879d44a68b33f3a",
+        "score": 2,
+        "reason": "文章以外来语片假名拼读为主，含具体例子有教学性，但五十音仅是提及且图表缺失，对“五十音入门”只覆盖应用的一小部分并夹带营销。"
+      },
+      {
+        "id": "bf9590d969d5808861fc",
+        "score": 2,
+        "reason": "内容涉及片假名发音、长音和促音等教学点，但偏进阶且以音图/罗马字列表和课程引流为主，对五十音初学者不够适配、讲解有限。"
+      },
+      {
+        "id": "aec9e99e3f33ceb940c9",
+        "score": 2,
+        "reason": "内容有外来语片假名拼读教学和例句，但并非五十音入门讲解，且默认读者已掌握五十音，难度与主题不完全适配。"
+      },
+      {
+        "id": "a28708cb8d988c088bbc",
+        "score": 2,
+        "reason": "仅有少量片假名外来语练习题和答案，覆盖范围很窄，缺少五十音入门教学讲解。"
+      },
+      {
+        "id": "af82dc3bf8c0ea618421",
+        "score": 3,
+        "reason": "正文为面向初学者的片假名五十音实质教学，含完整假名表、罗马音、外来语例词和学习顺序说明，可直接阅读使用。"
+      },
+      {
+        "id": "5149834a5ad18a7b1915",
+        "score": 1,
+        "reason": "这是相关练习册的商品介绍和营销页，虽有内容概述但需下载购买，未提供可直接阅读的实质教学正文。"
+      },
+      {
+        "id": "2c4e57c382fcbd324481",
+        "score": 3,
+        "reason": "提供五十音听读写训练步骤、假名答案及带释义和例句的基础词汇，属可直接使用的入门练习内容。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 9,
+    "read_calls": 11,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 89.59199999999942,
+    "topic_wall_seconds": 114.68699999999808,
+    "cny_upper": 0.06832,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "日语五十音入门",
+    "arm": "C",
+    "queries": [
+      "平假名五十音图发音跟读例词教程练习答案",
+      "hiragana chart pronunciation audio example words tutorial practice answers",
+      "片假名五十音图认读外来语例词练习答案",
+      "katakana chart reading loanword examples practice answers",
+      "五十音笔顺书写练习听写题答案",
+      "kana stroke order writing practice dictation exercises answers"
+    ],
+    "pool_ids": [
+      "b8bd002ec8ad20a8f313",
+      "01d306f5243b393a2db5",
+      "d5a310b4b4a75c3046c0",
+      "50775d026eaaa42d44f3",
+      "502a7d66dc0a2350a7c0",
+      "7ad33879d44a68b33f3a",
+      "bf9590d969d5808861fc",
+      "aec9e99e3f33ceb940c9",
+      "a28708cb8d988c088bbc",
+      "af82dc3bf8c0ea618421",
+      "5f6fe60ae13d4f405743",
+      "5149834a5ad18a7b1915",
+      "2c4e57c382fcbd324481",
+      "28aa6f31a0b2406c4247",
+      "314434164b60045056b4",
+      "9f1f9abadd6ca83a3248",
+      "0403f3cfc829293e35de"
+    ],
+    "order": [
+      "2c4e57c382fcbd324481",
+      "bf9590d969d5808861fc",
+      "28aa6f31a0b2406c4247",
+      "aec9e99e3f33ceb940c9",
+      "7ad33879d44a68b33f3a",
+      "502a7d66dc0a2350a7c0",
+      "a28708cb8d988c088bbc",
+      "af82dc3bf8c0ea618421",
+      "5149834a5ad18a7b1915",
+      "50775d026eaaa42d44f3",
+      "314434164b60045056b4"
+    ],
+    "selected": [
+      "2c4e57c382fcbd324481",
+      "af82dc3bf8c0ea618421"
+    ],
+    "checked": [
+      "2c4e57c382fcbd324481",
+      "bf9590d969d5808861fc",
+      "28aa6f31a0b2406c4247",
+      "aec9e99e3f33ceb940c9",
+      "7ad33879d44a68b33f3a",
+      "502a7d66dc0a2350a7c0",
+      "a28708cb8d988c088bbc",
+      "af82dc3bf8c0ea618421",
+      "5149834a5ad18a7b1915",
+      "50775d026eaaa42d44f3",
+      "314434164b60045056b4"
+    ],
+    "judgments": [
+      {
+        "id": "2c4e57c382fcbd324481",
+        "score": 3,
+        "reason": "提供五十音听读写训练步骤、答案、假名与简单词汇例句，属可读的实质入门练习，适合零基础。"
+      },
+      {
+        "id": "bf9590d969d5808861fc",
+        "score": 2,
+        "reason": "有片假名五十音图和长音、促音等教学说明，但定位进阶且内容偏清单化，未覆盖初学者所需平假名基础，教学深度有限。"
+      },
+      {
+        "id": "aec9e99e3f33ceb940c9",
+        "score": 2,
+        "reason": "文章涉及假名与罗马字对应并用片假名外来语举例，有一定教学性，但重点是外来语记忆而非系统五十音入门，覆盖有限且依赖图表。"
+      },
+      {
+        "id": "7ad33879d44a68b33f3a",
+        "score": 1,
+        "reason": "内容与日语入门相关，但主要讲外来语记忆方法，并非五十音入门教学，且含课程营销和资料引流。"
+      },
+      {
+        "id": "502a7d66dc0a2350a7c0",
+        "score": 2,
+        "reason": "提供五十音图表和简要学习指引，但主要是链接目录，教学讲解较少，适合作为入门辅助而非完整教程。"
+      },
+      {
+        "id": "a28708cb8d988c088bbc",
+        "score": 2,
+        "reason": "有片假名外来语读写练习和答案，可作入门练习，但内容很短且只覆盖片假名词汇一点，缺少五十音基础讲解，对零基础初学者适配有限。"
+      },
+      {
+        "id": "af82dc3bf8c0ea618421",
+        "score": 3,
+        "reason": "包含完整46个片假名表格及例词、易混辨析和阅读练习，是可直接阅读的实质教学内容，虽侧重片假名但属五十音入门范围。"
+      },
+      {
+        "id": "5149834a5ad18a7b1915",
+        "score": 1,
+        "reason": "这是付费PDF练习册的商品介绍页，只有内容清单和卖点，没有可免费阅读的五十音教学正文，属于商品营销页。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 9,
+    "read_calls": 11,
+    "rerank_seconds": 0.25,
+    "elapsed_seconds": 90.17099999999732,
+    "topic_wall_seconds": 192.6559999999954,
+    "cny_upper": 0.067472,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "高中数学函数",
+    "arm": "A",
+    "queries": [
+      "高中数学函数 官方教材电子课本全套 文字讲义 大学开放课程 零基础入门",
+      "high school functions complete official textbook open courseware lecture notes beginner text-based course"
+    ],
+    "pool_ids": [
+      "9dd8d47b6cb821c4a832",
+      "696760f2dad8dbaab9e1",
+      "90ffe4c8dcd328c110b8",
+      "294a77edb9c6d001c549",
+      "81c58df95b246f02e437",
+      "231ef2c1a77a10f1d2bf",
+      "9b88c74729ac230a98d7",
+      "8c9c07b98c4785a360f2",
+      "050219a192612ced26bb",
+      "6a3942ebb1bf7cc87c0c"
+    ],
+    "order": [
+      "9dd8d47b6cb821c4a832",
+      "696760f2dad8dbaab9e1",
+      "90ffe4c8dcd328c110b8",
+      "294a77edb9c6d001c549",
+      "81c58df95b246f02e437",
+      "231ef2c1a77a10f1d2bf",
+      "9b88c74729ac230a98d7",
+      "8c9c07b98c4785a360f2",
+      "050219a192612ced26bb",
+      "6a3942ebb1bf7cc87c0c"
+    ],
+    "selected": [
+      "696760f2dad8dbaab9e1",
+      "90ffe4c8dcd328c110b8",
+      "294a77edb9c6d001c549",
+      "81c58df95b246f02e437",
+      "231ef2c1a77a10f1d2bf"
+    ],
+    "checked": [
+      "9dd8d47b6cb821c4a832",
+      "696760f2dad8dbaab9e1",
+      "90ffe4c8dcd328c110b8",
+      "294a77edb9c6d001c549",
+      "81c58df95b246f02e437",
+      "231ef2c1a77a10f1d2bf",
+      "9b88c74729ac230a98d7",
+      "8c9c07b98c4785a360f2",
+      "050219a192612ced26bb",
+      "6a3942ebb1bf7cc87c0c"
+    ],
+    "judgments": [],
+    "search_calls": 2,
+    "model_calls": 1,
+    "read_calls": 9,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 26.875000000004015,
+    "topic_wall_seconds": 39.375,
+    "cny_upper": 0.011636,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "高中数学函数",
+    "arm": "B",
+    "queries": [
+      "高中函数概念表示法定义域值域例题讲解练习答案",
+      "high school function notation domain range worked examples practice answers",
+      "高中函数单调性奇偶性周期性图像例题讲义练习题答案",
+      "high school function monotonicity parity periodicity graphs examples notes exercises answers",
+      "高中一次二次指数对数幂函数例题教程练习答案",
+      "high school quadratic exponential log power functions examples exercises answers"
+    ],
+    "pool_ids": [
+      "626b891ab8e68f4efc37",
+      "42152808bdc11ce7245d",
+      "ea53671f099c9a6a1ca4",
+      "5d1477c30ecb95b793a0",
+      "226e0bfccff622e706b3",
+      "5c3340bdb453970384b6",
+      "b859ac6d61d872eef10a",
+      "b07af5b1d78086f43e36",
+      "1999aa13045f33c963cc",
+      "6dd47512b3b00e87c837",
+      "c1db8cb46c052b7a1fae",
+      "0fb7fe1f517e2991c1eb",
+      "a47e1ff16ac6d1acbb1f",
+      "7fe54c6e218dee230898",
+      "dd104f1116660979d590",
+      "693f76b6ac549665794c",
+      "88abad1be84bd7c64c8b",
+      "55e0c656ddd3f792637d",
+      "5698fe41a7258cd6a476",
+      "05697599369f7d56b41a",
+      "adc4be5083c7b8104ae0",
+      "0c10506912d11c7f79ab",
+      "828a4d6280bd1af17f28",
+      "d964a3ae3d26adaa51ad",
+      "8976619c4cdf67feb345",
+      "ac6cadbf70b9fd1befd7"
+    ],
+    "order": [
+      "626b891ab8e68f4efc37",
+      "42152808bdc11ce7245d",
+      "ea53671f099c9a6a1ca4",
+      "5d1477c30ecb95b793a0",
+      "226e0bfccff622e706b3",
+      "5c3340bdb453970384b6",
+      "b859ac6d61d872eef10a",
+      "b07af5b1d78086f43e36",
+      "6dd47512b3b00e87c837",
+      "693f76b6ac549665794c",
+      "88abad1be84bd7c64c8b",
+      "1999aa13045f33c963cc",
+      "a47e1ff16ac6d1acbb1f",
+      "7fe54c6e218dee230898"
+    ],
+    "selected": [
+      "6dd47512b3b00e87c837",
+      "7fe54c6e218dee230898"
+    ],
+    "checked": [
+      "626b891ab8e68f4efc37",
+      "42152808bdc11ce7245d",
+      "ea53671f099c9a6a1ca4",
+      "5d1477c30ecb95b793a0",
+      "226e0bfccff622e706b3",
+      "5c3340bdb453970384b6",
+      "b859ac6d61d872eef10a",
+      "b07af5b1d78086f43e36",
+      "6dd47512b3b00e87c837",
+      "693f76b6ac549665794c",
+      "88abad1be84bd7c64c8b",
+      "1999aa13045f33c963cc",
+      "a47e1ff16ac6d1acbb1f",
+      "7fe54c6e218dee230898"
+    ],
+    "judgments": [
+      {
+        "id": "626b891ab8e68f4efc37",
+        "score": 1,
+        "reason": "这是代数教材的引言，仅说明从算术基础开始复习，未涉及高中数学函数的具体教学内容。"
+      },
+      {
+        "id": "42152808bdc11ce7245d",
+        "score": 1,
+        "reason": "正文只是代数章节的引入和目录式简介，用3D打印作动机说明，没有实际函数教学讲解，不适合作为高中数学函数的学习材料。"
+      },
+      {
+        "id": "ea53671f099c9a6a1ca4",
+        "score": 0,
+        "reason": "正文是统计学导论，与高中数学函数主题无关。"
+      },
+      {
+        "id": "5d1477c30ecb95b793a0",
+        "score": 0,
+        "reason": "正文内容为统计学入门，与高中数学函数主题无关。"
+      },
+      {
+        "id": "226e0bfccff622e706b3",
+        "score": 1,
+        "reason": "该段只是函数章节的股市引例和简介，未讲解函数定义、性质或例题，教学实质不足。"
+      },
+      {
+        "id": "5c3340bdb453970384b6",
+        "score": 1,
+        "reason": "这是代数与三角教材的章节导言和目录式简介，只提到数的集合与运算作为先修知识，没有实质讲解高中函数。"
+      },
+      {
+        "id": "b859ac6d61d872eef10a",
+        "score": 1,
+        "reason": "这是《College Algebra》的章节目录和前置知识简介，没有实际讲解函数内容，仅属相关但无教学正文。"
+      },
+      {
+        "id": "b07af5b1d78086f43e36",
+        "score": 1,
+        "reason": "仅为前代数教材的章节简介/目录，讲计数和四则运算，未涉及高中函数教学。"
+      },
+      {
+        "id": "6dd47512b3b00e87c837",
+        "score": 3,
+        "reason": "正文对函数定义、记号、定义域值域、图像、零点、复合与对称性等有实质教学讲解，适合高中数学函数主题的复习与初学者参考。"
+      },
+      {
+        "id": "a47e1ff16ac6d1acbb1f",
+        "score": 1,
+        "reason": "正文是实数系统基础章节，未涉及函数教学，仅与高中数学基础相关。"
+      },
+      {
+        "id": "7fe54c6e218dee230898",
+        "score": 3,
+        "reason": "该材料包含函数记号、定义域与值域的实质讲解、例题、练习和答案解析，难度适合高中数学初学者，可直接用于教学。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 12,
+    "read_calls": 15,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 98.79700000000192,
+    "topic_wall_seconds": 126.56300000000192,
+    "cny_upper": 0.06702,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "高中数学函数",
+    "arm": "C",
+    "queries": [
+      "高中函数概念表示法定义域值域例题讲解练习答案",
+      "high school function notation domain range worked examples practice answers",
+      "高中函数单调性奇偶性周期性图像例题讲义练习题答案",
+      "high school function monotonicity parity periodicity graphs examples notes exercises answers",
+      "高中一次二次指数对数幂函数例题教程练习答案",
+      "high school quadratic exponential log power functions examples exercises answers"
+    ],
+    "pool_ids": [
+      "626b891ab8e68f4efc37",
+      "42152808bdc11ce7245d",
+      "ea53671f099c9a6a1ca4",
+      "5d1477c30ecb95b793a0",
+      "226e0bfccff622e706b3",
+      "5c3340bdb453970384b6",
+      "b859ac6d61d872eef10a",
+      "b07af5b1d78086f43e36",
+      "1999aa13045f33c963cc",
+      "6dd47512b3b00e87c837",
+      "c1db8cb46c052b7a1fae",
+      "0fb7fe1f517e2991c1eb",
+      "a47e1ff16ac6d1acbb1f",
+      "7fe54c6e218dee230898",
+      "dd104f1116660979d590",
+      "693f76b6ac549665794c",
+      "88abad1be84bd7c64c8b",
+      "55e0c656ddd3f792637d",
+      "5698fe41a7258cd6a476",
+      "05697599369f7d56b41a",
+      "adc4be5083c7b8104ae0",
+      "0c10506912d11c7f79ab",
+      "828a4d6280bd1af17f28",
+      "d964a3ae3d26adaa51ad",
+      "8976619c4cdf67feb345",
+      "ac6cadbf70b9fd1befd7"
+    ],
+    "order": [
+      "42152808bdc11ce7245d",
+      "5d1477c30ecb95b793a0",
+      "b07af5b1d78086f43e36",
+      "ea53671f099c9a6a1ca4",
+      "5c3340bdb453970384b6",
+      "226e0bfccff622e706b3",
+      "6dd47512b3b00e87c837",
+      "b859ac6d61d872eef10a",
+      "626b891ab8e68f4efc37",
+      "693f76b6ac549665794c",
+      "88abad1be84bd7c64c8b",
+      "1999aa13045f33c963cc",
+      "7fe54c6e218dee230898",
+      "a47e1ff16ac6d1acbb1f"
+    ],
+    "selected": [
+      "6dd47512b3b00e87c837",
+      "7fe54c6e218dee230898"
+    ],
+    "checked": [
+      "42152808bdc11ce7245d",
+      "5d1477c30ecb95b793a0",
+      "b07af5b1d78086f43e36",
+      "ea53671f099c9a6a1ca4",
+      "5c3340bdb453970384b6",
+      "226e0bfccff622e706b3",
+      "6dd47512b3b00e87c837",
+      "b859ac6d61d872eef10a",
+      "626b891ab8e68f4efc37",
+      "693f76b6ac549665794c",
+      "88abad1be84bd7c64c8b",
+      "1999aa13045f33c963cc",
+      "7fe54c6e218dee230898",
+      "a47e1ff16ac6d1acbb1f"
+    ],
+    "judgments": [
+      {
+        "id": "42152808bdc11ce7245d",
+        "score": 1,
+        "reason": "这是代数教材的章节导言和目录式介绍，只泛泛说明代数用途，没有讲解函数概念或例题，对高中数学函数主题缺乏实质教学内容。"
+      },
+      {
+        "id": "5d1477c30ecb95b793a0",
+        "score": 0,
+        "reason": "内容是统计学章节导言，只列学习目标与泛泛介绍，与高中数学函数这一主题无关，也没有任何函数教学讲解。"
+      },
+      {
+        "id": "b07af5b1d78086f43e36",
+        "score": 1,
+        "reason": "这只是《Prealgebra 2e》的章节目录和介绍性前言，内容停留在计数与四则运算，没有函数相关的实质讲解，且难度远低于高中。"
+      },
+      {
+        "id": "ea53671f099c9a6a1ca4",
+        "score": 0,
+        "reason": "正文是统计学导论，未涉及高中数学函数，与主题无关。"
+      },
+      {
+        "id": "5c3340bdb453970384b6",
+        "score": 1,
+        "reason": "仅为代数与三角章节导言/目录式简介，未实质讲解高中函数内容。"
+      },
+      {
+        "id": "226e0bfccff622e706b3",
+        "score": 1,
+        "reason": "内容与函数主题相关，但只是用股票案例引入关系概念，没有实质教学讲解或练习，不适合作为函数学习正文。"
+      },
+      {
+        "id": "6dd47512b3b00e87c837",
+        "score": 3,
+        "reason": "该网页提供函数的正式定义、表示法、定义域与值域、图像、零点、复合与对称性等实质教学内容，适合高中数学函数主题的初学者复习使用。"
+      },
+      {
+        "id": "b859ac6d61d872eef10a",
+        "score": 1,
+        "reason": "只是大学代数教材的章节目录和前置知识简介，未涉及函数的具体教学讲解，与主题仅泛相关。"
+      },
+      {
+        "id": "626b891ab8e68f4efc37",
+        "score": 1,
+        "reason": "仅为基础代数教材的引言，未涉及函数教学，也没有实质讲解内容。"
+      },
+      {
+        "id": "7fe54c6e218dee230898",
+        "score": 3,
+        "reason": "这是一份可直接阅读的函数入门练习单，包含函数记号、定义域与值域的简明讲解、例题、练习及完整答案，适合高中数学初学者使用。"
+      },
+      {
+        "id": "a47e1ff16ac6d1acbb1f",
+        "score": 0,
+        "reason": "正文内容为实数系统与集合的基础讲解，未涉及高中数学函数主题，因此与目标主题无关。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 12,
+    "read_calls": 14,
+    "rerank_seconds": 0.39099999999598367,
+    "elapsed_seconds": 84.17199999999464,
+    "topic_wall_seconds": 198.73500000000058,
+    "cny_upper": 0.067196,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "健身入门",
+    "arm": "A",
+    "queries": [
+      "健身入门 完整官方教材 大学开放课程 文字课程",
+      "beginner fitness complete official textbook university open course text-based course"
+    ],
+    "pool_ids": [
+      "1f51d3985267a035ff9f",
+      "0cee8170c428f2b29aa6",
+      "8d1d2ceded741e93a592",
+      "df54bfd5c49cb8a514f9",
+      "0c8f5d0993d700e6ff94",
+      "308debf7674fc6a791ee",
+      "8d4ed3b5988a60ec66a1",
+      "2941f0f30098079b7dae",
+      "89483932f81db2e7c41a",
+      "1ef7bb781733fb7ee7e0"
+    ],
+    "order": [
+      "1f51d3985267a035ff9f",
+      "0cee8170c428f2b29aa6",
+      "8d1d2ceded741e93a592",
+      "df54bfd5c49cb8a514f9",
+      "0c8f5d0993d700e6ff94",
+      "308debf7674fc6a791ee",
+      "8d4ed3b5988a60ec66a1",
+      "2941f0f30098079b7dae",
+      "89483932f81db2e7c41a",
+      "1ef7bb781733fb7ee7e0"
+    ],
+    "selected": [
+      "1f51d3985267a035ff9f"
+    ],
+    "checked": [
+      "1f51d3985267a035ff9f",
+      "0cee8170c428f2b29aa6",
+      "8d1d2ceded741e93a592",
+      "df54bfd5c49cb8a514f9",
+      "0c8f5d0993d700e6ff94",
+      "308debf7674fc6a791ee",
+      "8d4ed3b5988a60ec66a1",
+      "2941f0f30098079b7dae",
+      "89483932f81db2e7c41a",
+      "1ef7bb781733fb7ee7e0"
+    ],
+    "judgments": [],
+    "search_calls": 2,
+    "model_calls": 1,
+    "read_calls": 9,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 19.859999999995985,
+    "topic_wall_seconds": 32.125,
+    "cny_upper": 0.011732,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "健身入门",
+    "arm": "B",
+    "queries": [
+      "健身入门 深蹲 俯卧撑 平板支撑 动作要领 热身 教程 练习 答案",
+      "beginner squat push-up plank form tutorial warm-up practice questions and answers",
+      "新手健身 一周训练计划 组数 次数 休息 渐进加量 讲义 练习 答案",
+      "beginner weekly workout plan sets reps rest progression handout practice questions answers",
+      "健身入门 蛋白质 热量 睡眠 肌肉酸痛 恢复 常见问题 练习 答案",
+      "beginner fitness protein calories sleep soreness recovery FAQ practice questions answers"
+    ],
+    "pool_ids": [
+      "28ef2f1945626b7a8c42",
+      "1e6acb21cac015b78ded",
+      "140d8fbd724ffa22de28",
+      "9ef12e791f4b2b63c55c",
+      "dfa35a46afdc1d4ea39e",
+      "cb1b2960e064cf228be7",
+      "aa9308959d919c8acd52",
+      "e622867ad11e77425e4c",
+      "b047e1c10413e5d2517c",
+      "bb8f2332a531dd150f33",
+      "63d7e2832a2fdd1a539f",
+      "781b1d8df7cb5e592470",
+      "ac2bb73ccab83a83fd57",
+      "b7299bd57d93a96e658b",
+      "05cd035ebac5c2af3642",
+      "ccfeb6835c3270669d6d",
+      "593d0f57b03d011664b6"
+    ],
+    "order": [
+      "28ef2f1945626b7a8c42",
+      "1e6acb21cac015b78ded",
+      "140d8fbd724ffa22de28",
+      "aa9308959d919c8acd52",
+      "e622867ad11e77425e4c",
+      "ac2bb73ccab83a83fd57",
+      "ccfeb6835c3270669d6d",
+      "593d0f57b03d011664b6"
+    ],
+    "selected": [
+      "ccfeb6835c3270669d6d"
+    ],
+    "checked": [
+      "28ef2f1945626b7a8c42",
+      "1e6acb21cac015b78ded",
+      "140d8fbd724ffa22de28",
+      "aa9308959d919c8acd52",
+      "e622867ad11e77425e4c",
+      "ac2bb73ccab83a83fd57",
+      "ccfeb6835c3270669d6d",
+      "593d0f57b03d011664b6"
+    ],
+    "judgments": [
+      {
+        "id": "ccfeb6835c3270669d6d",
+        "score": 3,
+        "reason": "正文为无需登录付费的实质教学内容，系统讲解恢复、睡眠、营养与休息对健身适应的作用，适合健身入门读者参考。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 2,
+    "read_calls": 9,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 47.65600000000134,
+    "topic_wall_seconds": 67.95300000000134,
+    "cny_upper": 0.041516,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "健身入门",
+    "arm": "C",
+    "queries": [
+      "健身入门 深蹲 俯卧撑 平板支撑 动作要领 热身 教程 练习 答案",
+      "beginner squat push-up plank form tutorial warm-up practice questions and answers",
+      "新手健身 一周训练计划 组数 次数 休息 渐进加量 讲义 练习 答案",
+      "beginner weekly workout plan sets reps rest progression handout practice questions answers",
+      "健身入门 蛋白质 热量 睡眠 肌肉酸痛 恢复 常见问题 练习 答案",
+      "beginner fitness protein calories sleep soreness recovery FAQ practice questions answers"
+    ],
+    "pool_ids": [
+      "28ef2f1945626b7a8c42",
+      "1e6acb21cac015b78ded",
+      "140d8fbd724ffa22de28",
+      "9ef12e791f4b2b63c55c",
+      "dfa35a46afdc1d4ea39e",
+      "cb1b2960e064cf228be7",
+      "aa9308959d919c8acd52",
+      "e622867ad11e77425e4c",
+      "b047e1c10413e5d2517c",
+      "bb8f2332a531dd150f33",
+      "63d7e2832a2fdd1a539f",
+      "781b1d8df7cb5e592470",
+      "ac2bb73ccab83a83fd57",
+      "b7299bd57d93a96e658b",
+      "05cd035ebac5c2af3642",
+      "ccfeb6835c3270669d6d",
+      "593d0f57b03d011664b6"
+    ],
+    "order": [
+      "28ef2f1945626b7a8c42",
+      "140d8fbd724ffa22de28",
+      "ac2bb73ccab83a83fd57",
+      "aa9308959d919c8acd52",
+      "e622867ad11e77425e4c",
+      "1e6acb21cac015b78ded",
+      "ccfeb6835c3270669d6d",
+      "593d0f57b03d011664b6"
+    ],
+    "selected": [
+      "ccfeb6835c3270669d6d"
+    ],
+    "checked": [
+      "28ef2f1945626b7a8c42",
+      "140d8fbd724ffa22de28",
+      "ac2bb73ccab83a83fd57",
+      "aa9308959d919c8acd52",
+      "e622867ad11e77425e4c",
+      "1e6acb21cac015b78ded",
+      "ccfeb6835c3270669d6d",
+      "593d0f57b03d011664b6"
+    ],
+    "judgments": [
+      {
+        "id": "ccfeb6835c3270669d6d",
+        "score": 3,
+        "reason": "实质教学正文，系统讲解恢复原理及睡眠、营养、主动恢复等做法，适合健身入门者理解恢复的重要性。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 2,
+    "read_calls": 8,
+    "rerank_seconds": 0.15600000000267755,
+    "elapsed_seconds": 45.57800000000728,
+    "topic_wall_seconds": 101.54700000000594,
+    "cny_upper": 0.043012,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "Excel 办公入门",
+    "arm": "A",
+    "queries": [
+      "零基础 Excel 办公入门 完整官方教材 大学开放课程 文字教程",
+      "Excel office basics for beginners complete official textbook university open course text tutorial"
+    ],
+    "pool_ids": [
+      "9b4ae93ea30180728c91",
+      "10a6cc893370a4482357",
+      "0a966ae07db2265fe0ec",
+      "b714256d7000e1b67ce5",
+      "fd11a3af1b2992bb8145",
+      "0390c6017a27804c28bf",
+      "24640d87ebf6723c3b25",
+      "3e45a5b28b6be3bfd4e2",
+      "819f4e1e77817920815a",
+      "5f967ace0052929cb727"
+    ],
+    "order": [
+      "9b4ae93ea30180728c91",
+      "10a6cc893370a4482357",
+      "0a966ae07db2265fe0ec",
+      "b714256d7000e1b67ce5",
+      "fd11a3af1b2992bb8145",
+      "0390c6017a27804c28bf",
+      "24640d87ebf6723c3b25",
+      "3e45a5b28b6be3bfd4e2",
+      "819f4e1e77817920815a",
+      "5f967ace0052929cb727"
+    ],
+    "selected": [
+      "0a966ae07db2265fe0ec",
+      "fd11a3af1b2992bb8145",
+      "3e45a5b28b6be3bfd4e2"
+    ],
+    "checked": [
+      "9b4ae93ea30180728c91",
+      "10a6cc893370a4482357",
+      "0a966ae07db2265fe0ec",
+      "b714256d7000e1b67ce5",
+      "fd11a3af1b2992bb8145",
+      "0390c6017a27804c28bf",
+      "24640d87ebf6723c3b25",
+      "3e45a5b28b6be3bfd4e2",
+      "819f4e1e77817920815a",
+      "5f967ace0052929cb727"
+    ],
+    "judgments": [],
+    "search_calls": 2,
+    "model_calls": 1,
+    "read_calls": 10,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 27.48500000000134,
+    "topic_wall_seconds": 38.45300000000134,
+    "cny_upper": 0.012128,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "Excel 办公入门",
+    "arm": "B",
+    "queries": [
+      "Excel 表格 单元格 数据录入 格式设置 操作示例 练习 答案",
+      "Excel worksheet cells data entry formatting examples practice answers",
+      "Excel 公式 求和 平均值 IF 函数 教程 练习 答案",
+      "Excel formulas SUM AVERAGE IF functions tutorial practice answers",
+      "Excel 图表 排序 筛选 数据整理 教程 练习 答案",
+      "Excel charts sorting filtering data organization tutorial practice answers"
+    ],
+    "pool_ids": [
+      "907e9681fa40b64c4cc0",
+      "12ed3351cff67379807d",
+      "ba9f3d02267c2bba7151",
+      "f422dca8ce96251185d9",
+      "e155c2c3319158de88d4",
+      "829be75bf5603123dd37",
+      "37bae6bb4c6cd96d598f",
+      "d7ddf85e3d5f477f596e",
+      "8e75de1391cea53f1308",
+      "2aad75e80e22684c8ada",
+      "8cd3667d65406308e2a6",
+      "d6a5a23d27bc0914e617",
+      "098fcd2348d903526ac2",
+      "4b7ea29fd06f3ebb12f5",
+      "1e00a0f6cb50924149f4",
+      "0aad7b22047cfb277905",
+      "a1393353bac5fc17ec41",
+      "488b14babac8314147b6"
+    ],
+    "order": [
+      "098fcd2348d903526ac2",
+      "4b7ea29fd06f3ebb12f5",
+      "1e00a0f6cb50924149f4",
+      "e155c2c3319158de88d4",
+      "8e75de1391cea53f1308",
+      "2aad75e80e22684c8ada",
+      "8cd3667d65406308e2a6",
+      "d6a5a23d27bc0914e617",
+      "0aad7b22047cfb277905",
+      "a1393353bac5fc17ec41"
+    ],
+    "selected": [
+      "2aad75e80e22684c8ada",
+      "8cd3667d65406308e2a6"
+    ],
+    "checked": [
+      "098fcd2348d903526ac2",
+      "4b7ea29fd06f3ebb12f5",
+      "1e00a0f6cb50924149f4",
+      "e155c2c3319158de88d4",
+      "8e75de1391cea53f1308",
+      "2aad75e80e22684c8ada",
+      "8cd3667d65406308e2a6",
+      "d6a5a23d27bc0914e617",
+      "0aad7b22047cfb277905",
+      "a1393353bac5fc17ec41"
+    ],
+    "judgments": [
+      {
+        "id": "e155c2c3319158de88d4",
+        "score": 0,
+        "reason": "页面仅显示临时限制校外访问的提示，没有可读正文或教学内容。"
+      },
+      {
+        "id": "2aad75e80e22684c8ada",
+        "score": 3,
+        "reason": "正文提供了Excel入门常用函数及示例，并附练习题，适合初学者学习基础公式。"
+      },
+      {
+        "id": "8cd3667d65406308e2a6",
+        "score": 3,
+        "reason": "正文直接讲解SUM、AVERAGE、COUNT等入门常用函数，含用途、语法和示例，适合Excel初学者自学。"
+      },
+      {
+        "id": "d6a5a23d27bc0914e617",
+        "score": 2,
+        "reason": "页面包含AVERAGE、SUM、COUNT、SUMIF等公式的简短讲解，但内容零散、覆盖有限，并夹杂演示工具营销，适合作为入门练习片段而非系统教程。"
+      },
+      {
+        "id": "0aad7b22047cfb277905",
+        "score": 2,
+        "reason": "相关且含基础练习题及答案，但内容很短、无讲解，仅覆盖筛选/排序/图表少量知识点，作为入门教学不充分。"
+      },
+      {
+        "id": "a1393353bac5fc17ec41",
+        "score": 2,
+        "reason": "相关且包含Excel练习与部分答案，但内容很短、以问答答案为主，只覆盖排序筛选和图表且缺少系统教学讲解。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 7,
+    "read_calls": 10,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 80.205,
+    "topic_wall_seconds": 109.82800000000134,
+    "cny_upper": 0.05432,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "Excel 办公入门",
+    "arm": "C",
+    "queries": [
+      "Excel 表格 单元格 数据录入 格式设置 操作示例 练习 答案",
+      "Excel worksheet cells data entry formatting examples practice answers",
+      "Excel 公式 求和 平均值 IF 函数 教程 练习 答案",
+      "Excel formulas SUM AVERAGE IF functions tutorial practice answers",
+      "Excel 图表 排序 筛选 数据整理 教程 练习 答案",
+      "Excel charts sorting filtering data organization tutorial practice answers"
+    ],
+    "pool_ids": [
+      "907e9681fa40b64c4cc0",
+      "12ed3351cff67379807d",
+      "ba9f3d02267c2bba7151",
+      "f422dca8ce96251185d9",
+      "e155c2c3319158de88d4",
+      "829be75bf5603123dd37",
+      "37bae6bb4c6cd96d598f",
+      "d7ddf85e3d5f477f596e",
+      "8e75de1391cea53f1308",
+      "2aad75e80e22684c8ada",
+      "8cd3667d65406308e2a6",
+      "d6a5a23d27bc0914e617",
+      "098fcd2348d903526ac2",
+      "4b7ea29fd06f3ebb12f5",
+      "1e00a0f6cb50924149f4",
+      "0aad7b22047cfb277905",
+      "a1393353bac5fc17ec41",
+      "488b14babac8314147b6"
+    ],
+    "order": [
+      "1e00a0f6cb50924149f4",
+      "098fcd2348d903526ac2",
+      "4b7ea29fd06f3ebb12f5",
+      "d6a5a23d27bc0914e617",
+      "8cd3667d65406308e2a6",
+      "0aad7b22047cfb277905",
+      "2aad75e80e22684c8ada",
+      "a1393353bac5fc17ec41",
+      "8e75de1391cea53f1308",
+      "e155c2c3319158de88d4"
+    ],
+    "selected": [
+      "8cd3667d65406308e2a6",
+      "2aad75e80e22684c8ada"
+    ],
+    "checked": [
+      "1e00a0f6cb50924149f4",
+      "098fcd2348d903526ac2",
+      "4b7ea29fd06f3ebb12f5",
+      "d6a5a23d27bc0914e617",
+      "8cd3667d65406308e2a6",
+      "0aad7b22047cfb277905",
+      "2aad75e80e22684c8ada",
+      "a1393353bac5fc17ec41",
+      "8e75de1391cea53f1308",
+      "e155c2c3319158de88d4"
+    ],
+    "judgments": [
+      {
+        "id": "d6a5a23d27bc0914e617",
+        "score": 2,
+        "reason": "页面包含SUM、COUNT、AVERAGE、SUMIF等公式的简短讲解和测验答案，对入门有一定教学价值，但内容碎片化且夹杂营销推广，不够系统完整。"
+      },
+      {
+        "id": "8cd3667d65406308e2a6",
+        "score": 3,
+        "reason": "正文直接讲解SUM、AVERAGE、COUNT等基础函数的用途、语法和示例，内容实质且适合Excel办公初学者。"
+      },
+      {
+        "id": "0aad7b22047cfb277905",
+        "score": 2,
+        "reason": "内容是Excel筛选、排序和图表的基础练习题及参考答案，相关但偏短且缺少讲解，仅覆盖少量入门知识点。"
+      },
+      {
+        "id": "2aad75e80e22684c8ada",
+        "score": 3,
+        "reason": "无需登录即可阅读，包含Excel基础公式讲解和配套练习题，适合初学者用于入门学习和练习。"
+      },
+      {
+        "id": "a1393353bac5fc17ec41",
+        "score": 2,
+        "reason": "这是一份Excel选择题/简答题及答案摘录，覆盖排序、筛选、图表等入门点，但内容碎片化、偏练习答案，缺少系统讲解且正文不完整。"
+      },
+      {
+        "id": "e155c2c3319158de88d4",
+        "score": 0,
+        "reason": "该页面是仅限校园网访问的受限提示页，没有正文教学内容，无法打开阅读。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 7,
+    "read_calls": 10,
+    "rerank_seconds": 1.7969999999986612,
+    "elapsed_seconds": 76.01800000000192,
+    "topic_wall_seconds": 175.2190000000046,
+    "cny_upper": 0.054488,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "隋唐历史",
+    "arm": "A",
+    "queries": [
+      "隋唐历史 零基础 完整官方教材 大学开放课程 文字课程",
+      "Sui and Tang dynasties history beginner complete official textbook university open course text-based course"
+    ],
+    "pool_ids": [
+      "087137c37a934f87158e",
+      "c8e2c79f46f6bd3e25a6",
+      "9fdf118de4ea66cff5a7",
+      "f79a78d38dac43ac01cf",
+      "762a16527a9557c0c338",
+      "0a61ac476da59b3b2beb",
+      "441dc3591d1fa06e6eb4",
+      "2147196e04d6c2e4d549",
+      "92fe976c36b9ab6bff3f",
+      "164ef41b084a056f7b02"
+    ],
+    "order": [
+      "087137c37a934f87158e",
+      "c8e2c79f46f6bd3e25a6",
+      "9fdf118de4ea66cff5a7",
+      "f79a78d38dac43ac01cf",
+      "762a16527a9557c0c338",
+      "0a61ac476da59b3b2beb",
+      "441dc3591d1fa06e6eb4",
+      "2147196e04d6c2e4d549",
+      "92fe976c36b9ab6bff3f",
+      "164ef41b084a056f7b02"
+    ],
+    "selected": [
+      "087137c37a934f87158e",
+      "c8e2c79f46f6bd3e25a6",
+      "9fdf118de4ea66cff5a7",
+      "762a16527a9557c0c338",
+      "441dc3591d1fa06e6eb4"
+    ],
+    "checked": [
+      "087137c37a934f87158e",
+      "c8e2c79f46f6bd3e25a6",
+      "9fdf118de4ea66cff5a7",
+      "f79a78d38dac43ac01cf",
+      "762a16527a9557c0c338",
+      "0a61ac476da59b3b2beb",
+      "441dc3591d1fa06e6eb4",
+      "2147196e04d6c2e4d549",
+      "92fe976c36b9ab6bff3f",
+      "164ef41b084a056f7b02"
+    ],
+    "judgments": [],
+    "search_calls": 2,
+    "model_calls": 1,
+    "read_calls": 9,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 22.68899999999732,
+    "topic_wall_seconds": 35.140999999995984,
+    "cny_upper": 0.01199,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "隋唐历史",
+    "arm": "B",
+    "queries": [
+      "三省六部制和科举制讲义 贞观之治到安史之乱时间线整理与选择题答案",
+      "Tang Three Departments Six Ministries civil service exam notes timeline worksheet answers",
+      "均田制租庸调制到两税法演变讲解 唐代丝绸之路与遣唐使史料阅读练习答案",
+      "equal field system to two tax law reform explained Tang Silk Road envoys source reading questions",
+      "敦煌文书与唐诗里的唐代日常生活 长安城平面图讲解和材料分析题答案",
+      "Tang poetry Dunhuang manuscripts daily life lesson plan Chang'an city map source questions answers"
+    ],
+    "pool_ids": [
+      "6c70dbea8a41a3580341",
+      "8d285d1ef8f60ba27d35",
+      "365b503589f10434ff4e",
+      "af75bbaf1f379fea5875",
+      "ad32b0e8b46a8fac6381",
+      "b1ea320f6b40328a2f9a",
+      "f3953f5182f17cd99c7f",
+      "72465d9618321732ee4a",
+      "519e3b025c1daf661fb4",
+      "af84a31c9dff2f68e3ce",
+      "bb15827bb85abfa7faae",
+      "f40c4ba3659ebbfcc9a7",
+      "81e5637642aaf6ce0a50",
+      "996bc0c7d4077c895bd3",
+      "1b6dc58c577f964915f6",
+      "99b9b6dc60ed8c2051ce",
+      "ab8fb59bedde795bfa23",
+      "c81be18883143320fa66"
+    ],
+    "order": [
+      "af84a31c9dff2f68e3ce",
+      "8d285d1ef8f60ba27d35",
+      "af75bbaf1f379fea5875",
+      "ad32b0e8b46a8fac6381",
+      "b1ea320f6b40328a2f9a",
+      "72465d9618321732ee4a",
+      "519e3b025c1daf661fb4",
+      "f40c4ba3659ebbfcc9a7",
+      "996bc0c7d4077c895bd3",
+      "c81be18883143320fa66"
+    ],
+    "selected": [
+      "996bc0c7d4077c895bd3"
+    ],
+    "checked": [
+      "af84a31c9dff2f68e3ce",
+      "8d285d1ef8f60ba27d35",
+      "af75bbaf1f379fea5875",
+      "ad32b0e8b46a8fac6381",
+      "b1ea320f6b40328a2f9a",
+      "72465d9618321732ee4a",
+      "519e3b025c1daf661fb4",
+      "f40c4ba3659ebbfcc9a7",
+      "996bc0c7d4077c895bd3",
+      "c81be18883143320fa66"
+    ],
+    "judgments": [
+      {
+        "id": "996bc0c7d4077c895bd3",
+        "score": 3,
+        "reason": "该页为无需登录的完整历史综合题，含唐朝长安坊市与北宋东京对比的题目、答案和解析，实质覆盖隋唐城市商业区教学要点，适合初学者练习。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 2,
+    "read_calls": 11,
+    "rerank_seconds": 0,
+    "elapsed_seconds": 54.71800000000134,
+    "topic_wall_seconds": 78.09399999999732,
+    "cny_upper": 0.0436,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  },
+  {
+    "topic": "隋唐历史",
+    "arm": "C",
+    "queries": [
+      "三省六部制和科举制讲义 贞观之治到安史之乱时间线整理与选择题答案",
+      "Tang Three Departments Six Ministries civil service exam notes timeline worksheet answers",
+      "均田制租庸调制到两税法演变讲解 唐代丝绸之路与遣唐使史料阅读练习答案",
+      "equal field system to two tax law reform explained Tang Silk Road envoys source reading questions",
+      "敦煌文书与唐诗里的唐代日常生活 长安城平面图讲解和材料分析题答案",
+      "Tang poetry Dunhuang manuscripts daily life lesson plan Chang'an city map source questions answers"
+    ],
+    "pool_ids": [
+      "6c70dbea8a41a3580341",
+      "8d285d1ef8f60ba27d35",
+      "365b503589f10434ff4e",
+      "af75bbaf1f379fea5875",
+      "ad32b0e8b46a8fac6381",
+      "b1ea320f6b40328a2f9a",
+      "f3953f5182f17cd99c7f",
+      "72465d9618321732ee4a",
+      "519e3b025c1daf661fb4",
+      "af84a31c9dff2f68e3ce",
+      "bb15827bb85abfa7faae",
+      "f40c4ba3659ebbfcc9a7",
+      "81e5637642aaf6ce0a50",
+      "996bc0c7d4077c895bd3",
+      "1b6dc58c577f964915f6",
+      "99b9b6dc60ed8c2051ce",
+      "ab8fb59bedde795bfa23",
+      "c81be18883143320fa66"
+    ],
+    "order": [
+      "af84a31c9dff2f68e3ce",
+      "519e3b025c1daf661fb4",
+      "8d285d1ef8f60ba27d35",
+      "f40c4ba3659ebbfcc9a7",
+      "996bc0c7d4077c895bd3",
+      "72465d9618321732ee4a",
+      "b1ea320f6b40328a2f9a",
+      "af75bbaf1f379fea5875",
+      "ad32b0e8b46a8fac6381",
+      "c81be18883143320fa66"
+    ],
+    "selected": [
+      "996bc0c7d4077c895bd3"
+    ],
+    "checked": [
+      "af84a31c9dff2f68e3ce",
+      "519e3b025c1daf661fb4",
+      "8d285d1ef8f60ba27d35",
+      "f40c4ba3659ebbfcc9a7",
+      "996bc0c7d4077c895bd3",
+      "72465d9618321732ee4a",
+      "b1ea320f6b40328a2f9a",
+      "af75bbaf1f379fea5875",
+      "ad32b0e8b46a8fac6381",
+      "c81be18883143320fa66"
+    ],
+    "judgments": [
+      {
+        "id": "996bc0c7d4077c895bd3",
+        "score": 3,
+        "reason": "这是一道含答案与解析的综合题练习，涉及唐朝长安坊市与商业分布，可读且适合初学者用于隋唐城市商业学习。"
+      }
+    ],
+    "search_calls": 6,
+    "model_calls": 2,
+    "read_calls": 10,
+    "rerank_seconds": 0.35899999999674037,
+    "elapsed_seconds": 53.90499999999942,
+    "topic_wall_seconds": 119.875,
+    "cny_upper": 0.046376,
+    "shared_search": true,
+    "standalone_cost_estimate": true
+  }
+]

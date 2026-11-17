@@ -1,0 +1,20 @@
+{
+  "baseline_sha": "b7f97c1bdb43ca299841a92829ea08007c0f43ac",
+  "date": "2026-11-16",
+  "offline_recompute_matches_saved": true,
+  "python_syntax": "passed",
+  "audited_text_files": 15,
+  "key_hits": 0,
+  "account_id_hits": 0,
+  "temporary_log_and_data_files_checked": 17,
+  "temporary_key_hits": 0,
+  "temporary_account_id_hits": 0,
+  "artifact_scope": "tests/refactor/course/search_eval; excludes disposable pyc cache",
+  "product_changed": false,
+  "build_run": false,
+  "gate": {
+    "A": false,
+    "B": false,
+    "C": false
+  }
+}

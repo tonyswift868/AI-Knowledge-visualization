@@ -1,0 +1,3302 @@
+[
+  {
+    "kind": "model",
+    "tag": "日常英语口语入门:A_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 108,
+      "completion_tokens": 159,
+      "total_tokens": 267,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 117
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 108
+    },
+    "cny_upper": 0.001488,
+    "seconds": 1.86
+  },
+  {
+    "kind": "model",
+    "tag": "日常英语口语入门:BC_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 159,
+      "completion_tokens": 885,
+      "total_tokens": 1044,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 762
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 159
+    },
+    "cny_upper": 0.007398,
+    "seconds": 6.937
+  },
+  {
+    "kind": "search",
+    "tag": "日常英语口语入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.734
+  },
+  {
+    "kind": "search",
+    "tag": "日常英语口语入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.704
+  },
+  {
+    "kind": "search",
+    "tag": "日常英语口语入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.734
+  },
+  {
+    "kind": "search",
+    "tag": "日常英语口语入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.969
+  },
+  {
+    "kind": "search",
+    "tag": "日常英语口语入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.765
+  },
+  {
+    "kind": "search",
+    "tag": "日常英语口语入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.094
+  },
+  {
+    "kind": "search",
+    "tag": "日常英语口语入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.563
+  },
+  {
+    "kind": "search",
+    "tag": "日常英语口语入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.703
+  },
+  {
+    "kind": "model",
+    "tag": "日常英语口语入门:B:judge:83fb9a6a798cd7360af9",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1156,
+      "completion_tokens": 104,
+      "total_tokens": 1260,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 66
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 1156
+    },
+    "cny_upper": 0.003144,
+    "seconds": 1.5
+  },
+  {
+    "kind": "model",
+    "tag": "日常英语口语入门:B:judge:0df42deff73b3a7ffcd9",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 833,
+      "completion_tokens": 112,
+      "total_tokens": 945,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 69
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 833
+    },
+    "cny_upper": 0.002562,
+    "seconds": 1.562
+  },
+  {
+    "kind": "model",
+    "tag": "日常英语口语入门:B:judge:74b13b93f2de4f2364d0",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1203,
+      "completion_tokens": 339,
+      "total_tokens": 1542,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 293
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 1203
+    },
+    "cny_upper": 0.005118,
+    "seconds": 3.688
+  },
+  {
+    "kind": "model",
+    "tag": "日常英语口语入门:C:judge:83fb9a6a798cd7360af9",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1156,
+      "completion_tokens": 110,
+      "total_tokens": 1266,
+      "prompt_tokens_details": {
+        "cached_tokens": 1022
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 76
+      },
+      "prompt_cache_hit_tokens": 1022,
+      "prompt_cache_miss_tokens": 134
+    },
+    "cny_upper": 0.003192,
+    "seconds": 2.391
+  },
+  {
+    "kind": "model",
+    "tag": "日常英语口语入门:C:judge:0df42deff73b3a7ffcd9",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 833,
+      "completion_tokens": 152,
+      "total_tokens": 985,
+      "prompt_tokens_details": {
+        "cached_tokens": 640
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 117
+      },
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 193
+    },
+    "cny_upper": 0.002882,
+    "seconds": 3.766
+  },
+  {
+    "kind": "model",
+    "tag": "日常英语口语入门:C:judge:74b13b93f2de4f2364d0",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1203,
+      "completion_tokens": 360,
+      "total_tokens": 1563,
+      "prompt_tokens_details": {
+        "cached_tokens": 1024
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 319
+      },
+      "prompt_cache_hit_tokens": 1024,
+      "prompt_cache_miss_tokens": 179
+    },
+    "cny_upper": 0.005286,
+    "seconds": 3.953
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:A_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 109,
+      "completion_tokens": 143,
+      "total_tokens": 252,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 103
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 109
+    },
+    "cny_upper": 0.001362,
+    "seconds": 1.703
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:BC_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 160,
+      "completion_tokens": 883,
+      "total_tokens": 1043,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 755
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 160
+    },
+    "cny_upper": 0.007384,
+    "seconds": 5.141
+  },
+  {
+    "kind": "search",
+    "tag": "Python 零基础入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.016
+  },
+  {
+    "kind": "search",
+    "tag": "Python 零基础入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.062
+  },
+  {
+    "kind": "search",
+    "tag": "Python 零基础入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.875
+  },
+  {
+    "kind": "search",
+    "tag": "Python 零基础入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.688
+  },
+  {
+    "kind": "search",
+    "tag": "Python 零基础入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.671
+  },
+  {
+    "kind": "search",
+    "tag": "Python 零基础入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.594
+  },
+  {
+    "kind": "search",
+    "tag": "Python 零基础入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.094
+  },
+  {
+    "kind": "search",
+    "tag": "Python 零基础入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.562
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:B:judge:97ee9fda83f5e59a21d6",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1072,
+      "completion_tokens": 94,
+      "total_tokens": 1166,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 44
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 1072
+    },
+    "cny_upper": 0.002896,
+    "seconds": 2.078
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:B:judge:0e9155e776e426e5af36",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 622,
+      "completion_tokens": 585,
+      "total_tokens": 1207,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 542
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 622
+    },
+    "cny_upper": 0.005924,
+    "seconds": 10.391
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:B:judge:4be6111a2299bd565ed4",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 740,
+      "completion_tokens": 154,
+      "total_tokens": 894,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 120
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 740
+    },
+    "cny_upper": 0.002712,
+    "seconds": 2.563
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:B:judge:4001fb06f611bfa059fa",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 744,
+      "completion_tokens": 186,
+      "total_tokens": 930,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 150
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 744
+    },
+    "cny_upper": 0.002976,
+    "seconds": 3.266
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:B:judge:62ffa1d9e9c8914aa199",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 734,
+      "completion_tokens": 116,
+      "total_tokens": 850,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 80
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 734
+    },
+    "cny_upper": 0.002396,
+    "seconds": 1.734
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:B:judge:495b4102612905cddeb7",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 742,
+      "completion_tokens": 177,
+      "total_tokens": 919,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 141
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 742
+    },
+    "cny_upper": 0.0029,
+    "seconds": 2.203
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:B:judge:a6dfaba8485fd989027b",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 851,
+      "completion_tokens": 489,
+      "total_tokens": 1340,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 445
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 851
+    },
+    "cny_upper": 0.005614,
+    "seconds": 4.172
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:B:judge:98f1f7c6bb719804e8a2",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 509,
+      "completion_tokens": 266,
+      "total_tokens": 775,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 229
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 509
+    },
+    "cny_upper": 0.003146,
+    "seconds": 2.906
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:C:judge:97ee9fda83f5e59a21d6",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1072,
+      "completion_tokens": 399,
+      "total_tokens": 1471,
+      "prompt_tokens_details": {
+        "cached_tokens": 896
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 347
+      },
+      "prompt_cache_hit_tokens": 896,
+      "prompt_cache_miss_tokens": 176
+    },
+    "cny_upper": 0.005336,
+    "seconds": 3.781
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:C:judge:691207b58de2e11f94fb",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1121,
+      "completion_tokens": 174,
+      "total_tokens": 1295,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 125
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 1121
+    },
+    "cny_upper": 0.003634,
+    "seconds": 2.094
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:C:judge:98f1f7c6bb719804e8a2",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 509,
+      "completion_tokens": 207,
+      "total_tokens": 716,
+      "prompt_tokens_details": {
+        "cached_tokens": 256
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 158
+      },
+      "prompt_cache_hit_tokens": 256,
+      "prompt_cache_miss_tokens": 253
+    },
+    "cny_upper": 0.002674,
+    "seconds": 2.797
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:C:judge:a6dfaba8485fd989027b",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 851,
+      "completion_tokens": 319,
+      "total_tokens": 1170,
+      "prompt_tokens_details": {
+        "cached_tokens": 640
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 266
+      },
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 211
+    },
+    "cny_upper": 0.004254,
+    "seconds": 3.469
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:C:judge:62ffa1d9e9c8914aa199",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 734,
+      "completion_tokens": 145,
+      "total_tokens": 879,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 110
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 222
+    },
+    "cny_upper": 0.002628,
+    "seconds": 2.282
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:C:judge:4001fb06f611bfa059fa",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 744,
+      "completion_tokens": 167,
+      "total_tokens": 911,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 137
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 232
+    },
+    "cny_upper": 0.002824,
+    "seconds": 2.375
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:C:judge:4be6111a2299bd565ed4",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 740,
+      "completion_tokens": 172,
+      "total_tokens": 912,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 129
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 228
+    },
+    "cny_upper": 0.002856,
+    "seconds": 2.844
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:C:judge:495b4102612905cddeb7",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 742,
+      "completion_tokens": 130,
+      "total_tokens": 872,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 90
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 230
+    },
+    "cny_upper": 0.002524,
+    "seconds": 1.687
+  },
+  {
+    "kind": "model",
+    "tag": "Python 零基础入门:C:judge:0e9155e776e426e5af36",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 622,
+      "completion_tokens": 538,
+      "total_tokens": 1160,
+      "prompt_tokens_details": {
+        "cached_tokens": 384
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 485
+      },
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 238
+    },
+    "cny_upper": 0.005548,
+    "seconds": 4.813
+  },
+  {
+    "kind": "model",
+    "tag": "家常菜入门:A_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 107,
+      "completion_tokens": 226,
+      "total_tokens": 333,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 187
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 107
+    },
+    "cny_upper": 0.002022,
+    "seconds": 2.391
+  },
+  {
+    "kind": "model",
+    "tag": "家常菜入门:BC_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 158,
+      "completion_tokens": 889,
+      "total_tokens": 1047,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 756
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 158
+    },
+    "cny_upper": 0.007428,
+    "seconds": 5.89
+  },
+  {
+    "kind": "search",
+    "tag": "家常菜入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.641
+  },
+  {
+    "kind": "search",
+    "tag": "家常菜入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.766
+  },
+  {
+    "kind": "search",
+    "tag": "家常菜入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.922
+  },
+  {
+    "kind": "search",
+    "tag": "家常菜入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.672
+  },
+  {
+    "kind": "search",
+    "tag": "家常菜入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.64
+  },
+  {
+    "kind": "search",
+    "tag": "家常菜入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.625
+  },
+  {
+    "kind": "search",
+    "tag": "家常菜入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.657
+  },
+  {
+    "kind": "search",
+    "tag": "家常菜入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.64
+  },
+  {
+    "kind": "model",
+    "tag": "家常菜入门:B:judge:52d9333b23f07d594e21",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 660,
+      "completion_tokens": 225,
+      "total_tokens": 885,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 194
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 660
+    },
+    "cny_upper": 0.00312,
+    "seconds": 2.734
+  },
+  {
+    "kind": "model",
+    "tag": "家常菜入门:B:judge:1282419233c7742e13cf",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 687,
+      "completion_tokens": 99,
+      "total_tokens": 786,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 67
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 687
+    },
+    "cny_upper": 0.002166,
+    "seconds": 2.515
+  },
+  {
+    "kind": "model",
+    "tag": "家常菜入门:B:judge:2395e00301a323e12902",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 536,
+      "completion_tokens": 107,
+      "total_tokens": 643,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 75
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 536
+    },
+    "cny_upper": 0.001928,
+    "seconds": 1.969
+  },
+  {
+    "kind": "model",
+    "tag": "家常菜入门:B:judge:f1c60ab64855eb83c9da",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 709,
+      "completion_tokens": 614,
+      "total_tokens": 1323,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 571
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 709
+    },
+    "cny_upper": 0.00633,
+    "seconds": 6.078
+  },
+  {
+    "kind": "model",
+    "tag": "家常菜入门:C:judge:f1c60ab64855eb83c9da",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 709,
+      "completion_tokens": 218,
+      "total_tokens": 927,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 177
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 197
+    },
+    "cny_upper": 0.003162,
+    "seconds": 2.281
+  },
+  {
+    "kind": "model",
+    "tag": "家常菜入门:C:judge:2395e00301a323e12902",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 536,
+      "completion_tokens": 157,
+      "total_tokens": 693,
+      "prompt_tokens_details": {
+        "cached_tokens": 384
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 125
+      },
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 152
+    },
+    "cny_upper": 0.002328,
+    "seconds": 2.469
+  },
+  {
+    "kind": "model",
+    "tag": "家常菜入门:C:judge:1282419233c7742e13cf",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 687,
+      "completion_tokens": 104,
+      "total_tokens": 791,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 72
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 175
+    },
+    "cny_upper": 0.002206,
+    "seconds": 2.344
+  },
+  {
+    "kind": "model",
+    "tag": "家常菜入门:C:judge:52d9333b23f07d594e21",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 660,
+      "completion_tokens": 183,
+      "total_tokens": 843,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 151
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 148
+    },
+    "cny_upper": 0.002784,
+    "seconds": 2.078
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:A_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 107,
+      "completion_tokens": 192,
+      "total_tokens": 299,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 148
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 107
+    },
+    "cny_upper": 0.00175,
+    "seconds": 2.968
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:BC_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 158,
+      "completion_tokens": 1228,
+      "total_tokens": 1386,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 1131
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 158
+    },
+    "cny_upper": 0.01014,
+    "seconds": 8.594
+  },
+  {
+    "kind": "search",
+    "tag": "个人理财入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.734
+  },
+  {
+    "kind": "search",
+    "tag": "个人理财入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.734
+  },
+  {
+    "kind": "search",
+    "tag": "个人理财入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.625
+  },
+  {
+    "kind": "search",
+    "tag": "个人理财入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.75
+  },
+  {
+    "kind": "search",
+    "tag": "个人理财入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.656
+  },
+  {
+    "kind": "search",
+    "tag": "个人理财入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.922
+  },
+  {
+    "kind": "search",
+    "tag": "个人理财入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.688
+  },
+  {
+    "kind": "search",
+    "tag": "个人理财入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.015
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:B:judge:2640e4a69d262b0caa9f",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 611,
+      "completion_tokens": 141,
+      "total_tokens": 752,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 105
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 611
+    },
+    "cny_upper": 0.00235,
+    "seconds": 2.016
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:B:judge:96fb8c655f09f03c04ea",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 578,
+      "completion_tokens": 386,
+      "total_tokens": 964,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 345
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 578
+    },
+    "cny_upper": 0.004244,
+    "seconds": 4.218
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:B:judge:b545c5f58dbc80a39213",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 798,
+      "completion_tokens": 295,
+      "total_tokens": 1093,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 259
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 798
+    },
+    "cny_upper": 0.003956,
+    "seconds": 2.859
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:B:judge:7860dff30f03ef8b723d",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 737,
+      "completion_tokens": 417,
+      "total_tokens": 1154,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 378
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 737
+    },
+    "cny_upper": 0.00481,
+    "seconds": 4.469
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:B:judge:801a20798300f300cc40",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 589,
+      "completion_tokens": 310,
+      "total_tokens": 899,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 269
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 589
+    },
+    "cny_upper": 0.003658,
+    "seconds": 2.75
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:B:judge:7440fb3931c9fdc12b6c",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 665,
+      "completion_tokens": 407,
+      "total_tokens": 1072,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 374
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 665
+    },
+    "cny_upper": 0.004586,
+    "seconds": 3.563
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:C:judge:801a20798300f300cc40",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 589,
+      "completion_tokens": 179,
+      "total_tokens": 768,
+      "prompt_tokens_details": {
+        "cached_tokens": 384
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 135
+      },
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 205
+    },
+    "cny_upper": 0.00261,
+    "seconds": 2.328
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:C:judge:96fb8c655f09f03c04ea",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 578,
+      "completion_tokens": 702,
+      "total_tokens": 1280,
+      "prompt_tokens_details": {
+        "cached_tokens": 384
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 671
+      },
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 194
+    },
+    "cny_upper": 0.006772,
+    "seconds": 6.422
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:C:judge:7860dff30f03ef8b723d",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 737,
+      "completion_tokens": 595,
+      "total_tokens": 1332,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 554
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 225
+    },
+    "cny_upper": 0.006234,
+    "seconds": 4.328
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:C:judge:7440fb3931c9fdc12b6c",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 665,
+      "completion_tokens": 138,
+      "total_tokens": 803,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 106
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 153
+    },
+    "cny_upper": 0.002434,
+    "seconds": 3.438
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:C:judge:b545c5f58dbc80a39213",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 798,
+      "completion_tokens": 589,
+      "total_tokens": 1387,
+      "prompt_tokens_details": {
+        "cached_tokens": 640
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 556
+      },
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 158
+    },
+    "cny_upper": 0.006308,
+    "seconds": 5.516
+  },
+  {
+    "kind": "model",
+    "tag": "个人理财入门:C:judge:2640e4a69d262b0caa9f",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 611,
+      "completion_tokens": 151,
+      "total_tokens": 762,
+      "prompt_tokens_details": {
+        "cached_tokens": 384
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 112
+      },
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 227
+    },
+    "cny_upper": 0.00243,
+    "seconds": 3.11
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:A_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 107,
+      "completion_tokens": 169,
+      "total_tokens": 276,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 128
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 107
+    },
+    "cny_upper": 0.001566,
+    "seconds": 2.219
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:BC_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 158,
+      "completion_tokens": 386,
+      "total_tokens": 544,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 241
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 158
+    },
+    "cny_upper": 0.003404,
+    "seconds": 3.016
+  },
+  {
+    "kind": "search",
+    "tag": "手机摄影入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.625
+  },
+  {
+    "kind": "search",
+    "tag": "手机摄影入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.703
+  },
+  {
+    "kind": "search",
+    "tag": "手机摄影入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.547
+  },
+  {
+    "kind": "search",
+    "tag": "手机摄影入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.656
+  },
+  {
+    "kind": "search",
+    "tag": "手机摄影入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.578
+  },
+  {
+    "kind": "search",
+    "tag": "手机摄影入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.61
+  },
+  {
+    "kind": "search",
+    "tag": "手机摄影入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.64
+  },
+  {
+    "kind": "search",
+    "tag": "手机摄影入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.579
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:B:judge:5382f7155d687605a2e4",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 448,
+      "completion_tokens": 143,
+      "total_tokens": 591,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 111
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 448
+    },
+    "cny_upper": 0.00204,
+    "seconds": 1.969
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:B:judge:31739e708fe24ba83880",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 666,
+      "completion_tokens": 205,
+      "total_tokens": 871,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 168
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 666
+    },
+    "cny_upper": 0.002972,
+    "seconds": 2.093
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:B:judge:f7fa886a5b8ff4b80b6b",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 724,
+      "completion_tokens": 112,
+      "total_tokens": 836,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 78
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 724
+    },
+    "cny_upper": 0.002344,
+    "seconds": 2.094
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:B:judge:6a00bcea4c45819bf82c",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 744,
+      "completion_tokens": 131,
+      "total_tokens": 875,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 94
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 744
+    },
+    "cny_upper": 0.002536,
+    "seconds": 3.406
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:B:judge:4f77999a9b05077f6b07",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 892,
+      "completion_tokens": 155,
+      "total_tokens": 1047,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 108
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 892
+    },
+    "cny_upper": 0.003024,
+    "seconds": 2.11
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:B:judge:30225219ccda4bc29d29",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 801,
+      "completion_tokens": 339,
+      "total_tokens": 1140,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 305
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 801
+    },
+    "cny_upper": 0.004314,
+    "seconds": 4.219
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:B:judge:5c638911f9ef9524e56d",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1281,
+      "completion_tokens": 216,
+      "total_tokens": 1497,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 176
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 1281
+    },
+    "cny_upper": 0.00429,
+    "seconds": 2.938
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:B:judge:ce805ac78b11b07c2fd0",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1512,
+      "completion_tokens": 945,
+      "total_tokens": 2457,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 904
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 1512
+    },
+    "cny_upper": 0.010584,
+    "seconds": 7.891
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:C:judge:5382f7155d687605a2e4",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 448,
+      "completion_tokens": 165,
+      "total_tokens": 613,
+      "prompt_tokens_details": {
+        "cached_tokens": 256
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 125
+      },
+      "prompt_cache_hit_tokens": 256,
+      "prompt_cache_miss_tokens": 192
+    },
+    "cny_upper": 0.002216,
+    "seconds": 2.593
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:C:judge:5c638911f9ef9524e56d",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1281,
+      "completion_tokens": 199,
+      "total_tokens": 1480,
+      "prompt_tokens_details": {
+        "cached_tokens": 1147
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 153
+      },
+      "prompt_cache_hit_tokens": 1147,
+      "prompt_cache_miss_tokens": 134
+    },
+    "cny_upper": 0.004154,
+    "seconds": 2.688
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:C:judge:6a00bcea4c45819bf82c",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 744,
+      "completion_tokens": 113,
+      "total_tokens": 857,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 73
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 232
+    },
+    "cny_upper": 0.002392,
+    "seconds": 2.563
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:C:judge:ce805ac78b11b07c2fd0",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1512,
+      "completion_tokens": 288,
+      "total_tokens": 1800,
+      "prompt_tokens_details": {
+        "cached_tokens": 1280
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 236
+      },
+      "prompt_cache_hit_tokens": 1280,
+      "prompt_cache_miss_tokens": 232
+    },
+    "cny_upper": 0.005328,
+    "seconds": 3.062
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:C:judge:30225219ccda4bc29d29",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 801,
+      "completion_tokens": 327,
+      "total_tokens": 1128,
+      "prompt_tokens_details": {
+        "cached_tokens": 640
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 282
+      },
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 161
+    },
+    "cny_upper": 0.004218,
+    "seconds": 4.5
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:C:judge:4f77999a9b05077f6b07",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 892,
+      "completion_tokens": 111,
+      "total_tokens": 1003,
+      "prompt_tokens_details": {
+        "cached_tokens": 640
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 72
+      },
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 252
+    },
+    "cny_upper": 0.002672,
+    "seconds": 2.156
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:C:judge:31739e708fe24ba83880",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 666,
+      "completion_tokens": 188,
+      "total_tokens": 854,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 135
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 154
+    },
+    "cny_upper": 0.002836,
+    "seconds": 2.313
+  },
+  {
+    "kind": "model",
+    "tag": "手机摄影入门:C:judge:f7fa886a5b8ff4b80b6b",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 724,
+      "completion_tokens": 262,
+      "total_tokens": 986,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 220
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 212
+    },
+    "cny_upper": 0.003544,
+    "seconds": 3.344
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:A_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 108,
+      "completion_tokens": 294,
+      "total_tokens": 402,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 249
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 108
+    },
+    "cny_upper": 0.002568,
+    "seconds": 3.109
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:BC_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 159,
+      "completion_tokens": 1169,
+      "total_tokens": 1328,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 1040
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 159
+    },
+    "cny_upper": 0.00967,
+    "seconds": 6.828
+  },
+  {
+    "kind": "search",
+    "tag": "日语五十音入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.531
+  },
+  {
+    "kind": "search",
+    "tag": "日语五十音入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.063
+  },
+  {
+    "kind": "search",
+    "tag": "日语五十音入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.719
+  },
+  {
+    "kind": "search",
+    "tag": "日语五十音入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.562
+  },
+  {
+    "kind": "search",
+    "tag": "日语五十音入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.875
+  },
+  {
+    "kind": "search",
+    "tag": "日语五十音入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.89
+  },
+  {
+    "kind": "search",
+    "tag": "日语五十音入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.766
+  },
+  {
+    "kind": "search",
+    "tag": "日语五十音入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.312
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:B:judge:502a7d66dc0a2350a7c0",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 655,
+      "completion_tokens": 288,
+      "total_tokens": 943,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 247
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 655
+    },
+    "cny_upper": 0.003614,
+    "seconds": 3.078
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:B:judge:7ad33879d44a68b33f3a",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1330,
+      "completion_tokens": 232,
+      "total_tokens": 1562,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 179
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 1330
+    },
+    "cny_upper": 0.004516,
+    "seconds": 3.016
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:B:judge:bf9590d969d5808861fc",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 731,
+      "completion_tokens": 357,
+      "total_tokens": 1088,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 306
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 731
+    },
+    "cny_upper": 0.004318,
+    "seconds": 4.094
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:B:judge:aec9e99e3f33ceb940c9",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1146,
+      "completion_tokens": 326,
+      "total_tokens": 1472,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 283
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 1146
+    },
+    "cny_upper": 0.0049,
+    "seconds": 2.968
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:B:judge:a28708cb8d988c088bbc",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 564,
+      "completion_tokens": 323,
+      "total_tokens": 887,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 291
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 564
+    },
+    "cny_upper": 0.003712,
+    "seconds": 2.875
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:B:judge:af82dc3bf8c0ea618421",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 855,
+      "completion_tokens": 189,
+      "total_tokens": 1044,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 146
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 855
+    },
+    "cny_upper": 0.003222,
+    "seconds": 2.265
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:B:judge:5149834a5ad18a7b1915",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 571,
+      "completion_tokens": 115,
+      "total_tokens": 686,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 79
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 571
+    },
+    "cny_upper": 0.002062,
+    "seconds": 1.984
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:B:judge:2c4e57c382fcbd324481",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 621,
+      "completion_tokens": 133,
+      "total_tokens": 754,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 98
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 621
+    },
+    "cny_upper": 0.002306,
+    "seconds": 1.953
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:C:judge:2c4e57c382fcbd324481",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 621,
+      "completion_tokens": 159,
+      "total_tokens": 780,
+      "prompt_tokens_details": {
+        "cached_tokens": 384
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 121
+      },
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 237
+    },
+    "cny_upper": 0.002514,
+    "seconds": 2.922
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:C:judge:bf9590d969d5808861fc",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 731,
+      "completion_tokens": 319,
+      "total_tokens": 1050,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 272
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 219
+    },
+    "cny_upper": 0.004014,
+    "seconds": 3.422
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:C:judge:aec9e99e3f33ceb940c9",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1146,
+      "completion_tokens": 250,
+      "total_tokens": 1396,
+      "prompt_tokens_details": {
+        "cached_tokens": 896
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 204
+      },
+      "prompt_cache_hit_tokens": 896,
+      "prompt_cache_miss_tokens": 250
+    },
+    "cny_upper": 0.004292,
+    "seconds": 3.907
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:C:judge:7ad33879d44a68b33f3a",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 1330,
+      "completion_tokens": 246,
+      "total_tokens": 1576,
+      "prompt_tokens_details": {
+        "cached_tokens": 1152
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 209
+      },
+      "prompt_cache_hit_tokens": 1152,
+      "prompt_cache_miss_tokens": 178
+    },
+    "cny_upper": 0.004628,
+    "seconds": 3.781
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:C:judge:502a7d66dc0a2350a7c0",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 655,
+      "completion_tokens": 236,
+      "total_tokens": 891,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 201
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 143
+    },
+    "cny_upper": 0.003198,
+    "seconds": 4.797
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:C:judge:a28708cb8d988c088bbc",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 564,
+      "completion_tokens": 464,
+      "total_tokens": 1028,
+      "prompt_tokens_details": {
+        "cached_tokens": 384
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 414
+      },
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 180
+    },
+    "cny_upper": 0.00484,
+    "seconds": 4.906
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:C:judge:af82dc3bf8c0ea618421",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 855,
+      "completion_tokens": 47,
+      "total_tokens": 902,
+      "prompt_tokens_details": {
+        "cached_tokens": 640
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 215
+    },
+    "cny_upper": 0.002086,
+    "seconds": 2.547
+  },
+  {
+    "kind": "model",
+    "tag": "日语五十音入门:C:judge:5149834a5ad18a7b1915",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 571,
+      "completion_tokens": 136,
+      "total_tokens": 707,
+      "prompt_tokens_details": {
+        "cached_tokens": 384
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 96
+      },
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 187
+    },
+    "cny_upper": 0.00223,
+    "seconds": 1.703
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:A_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 106,
+      "completion_tokens": 178,
+      "total_tokens": 284,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 135
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 106
+    },
+    "cny_upper": 0.001636,
+    "seconds": 1.86
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:BC_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 157,
+      "completion_tokens": 1349,
+      "total_tokens": 1506,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 1224
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 157
+    },
+    "cny_upper": 0.011106,
+    "seconds": 8.078
+  },
+  {
+    "kind": "search",
+    "tag": "高中数学函数:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.5
+  },
+  {
+    "kind": "search",
+    "tag": "高中数学函数:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.531
+  },
+  {
+    "kind": "search",
+    "tag": "高中数学函数:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.781
+  },
+  {
+    "kind": "search",
+    "tag": "高中数学函数:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.485
+  },
+  {
+    "kind": "search",
+    "tag": "高中数学函数:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.5
+  },
+  {
+    "kind": "search",
+    "tag": "高中数学函数:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.64
+  },
+  {
+    "kind": "search",
+    "tag": "高中数学函数:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.563
+  },
+  {
+    "kind": "search",
+    "tag": "高中数学函数:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.562
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:626b891ab8e68f4efc37",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 262,
+      "completion_tokens": 145,
+      "total_tokens": 407,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 115
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 262
+    },
+    "cny_upper": 0.001684,
+    "seconds": 2.531
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:42152808bdc11ce7245d",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 416,
+      "completion_tokens": 144,
+      "total_tokens": 560,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 103
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 416
+    },
+    "cny_upper": 0.001984,
+    "seconds": 3.5
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:ea53671f099c9a6a1ca4",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 432,
+      "completion_tokens": 54,
+      "total_tokens": 486,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 33
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 432
+    },
+    "cny_upper": 0.001296,
+    "seconds": 1.359
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:5d1477c30ecb95b793a0",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 471,
+      "completion_tokens": 78,
+      "total_tokens": 549,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 57
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 471
+    },
+    "cny_upper": 0.001566,
+    "seconds": 2.485
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:226e0bfccff622e706b3",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 417,
+      "completion_tokens": 113,
+      "total_tokens": 530,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 79
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 417
+    },
+    "cny_upper": 0.001738,
+    "seconds": 2.015
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:5c3340bdb453970384b6",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 374,
+      "completion_tokens": 185,
+      "total_tokens": 559,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 145
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 374
+    },
+    "cny_upper": 0.002228,
+    "seconds": 2.563
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:b859ac6d61d872eef10a",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 372,
+      "completion_tokens": 125,
+      "total_tokens": 497,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 88
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 372
+    },
+    "cny_upper": 0.001744,
+    "seconds": 2.391
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:b07af5b1d78086f43e36",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 293,
+      "completion_tokens": 298,
+      "total_tokens": 591,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 266
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 293
+    },
+    "cny_upper": 0.00297,
+    "seconds": 3.484
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:6dd47512b3b00e87c837",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 675,
+      "completion_tokens": 147,
+      "total_tokens": 822,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 102
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 675
+    },
+    "cny_upper": 0.002526,
+    "seconds": 2.484
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:a47e1ff16ac6d1acbb1f",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 719,
+      "completion_tokens": 525,
+      "total_tokens": 1244,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 498
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 719
+    },
+    "cny_upper": 0.005638,
+    "seconds": 5.219
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:B:judge:7fe54c6e218dee230898",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 598,
+      "completion_tokens": 168,
+      "total_tokens": 766,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 130
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 598
+    },
+    "cny_upper": 0.00254,
+    "seconds": 2.094
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:42152808bdc11ce7245d",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 416,
+      "completion_tokens": 121,
+      "total_tokens": 537,
+      "prompt_tokens_details": {
+        "cached_tokens": 256
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 78
+      },
+      "prompt_cache_hit_tokens": 256,
+      "prompt_cache_miss_tokens": 160
+    },
+    "cny_upper": 0.0018,
+    "seconds": 1.953
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:5d1477c30ecb95b793a0",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 471,
+      "completion_tokens": 143,
+      "total_tokens": 614,
+      "prompt_tokens_details": {
+        "cached_tokens": 256
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 106
+      },
+      "prompt_cache_hit_tokens": 256,
+      "prompt_cache_miss_tokens": 215
+    },
+    "cny_upper": 0.002086,
+    "seconds": 1.781
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:b07af5b1d78086f43e36",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 293,
+      "completion_tokens": 274,
+      "total_tokens": 567,
+      "prompt_tokens_details": {
+        "cached_tokens": 128
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 228
+      },
+      "prompt_cache_hit_tokens": 128,
+      "prompt_cache_miss_tokens": 165
+    },
+    "cny_upper": 0.002778,
+    "seconds": 2.969
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:ea53671f099c9a6a1ca4",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 432,
+      "completion_tokens": 85,
+      "total_tokens": 517,
+      "prompt_tokens_details": {
+        "cached_tokens": 256
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 61
+      },
+      "prompt_cache_hit_tokens": 256,
+      "prompt_cache_miss_tokens": 176
+    },
+    "cny_upper": 0.001544,
+    "seconds": 1.688
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:5c3340bdb453970384b6",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 374,
+      "completion_tokens": 138,
+      "total_tokens": 512,
+      "prompt_tokens_details": {
+        "cached_tokens": 128
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 110
+      },
+      "prompt_cache_hit_tokens": 128,
+      "prompt_cache_miss_tokens": 246
+    },
+    "cny_upper": 0.001852,
+    "seconds": 2.391
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:226e0bfccff622e706b3",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 417,
+      "completion_tokens": 160,
+      "total_tokens": 577,
+      "prompt_tokens_details": {
+        "cached_tokens": 256
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 123
+      },
+      "prompt_cache_hit_tokens": 256,
+      "prompt_cache_miss_tokens": 161
+    },
+    "cny_upper": 0.002114,
+    "seconds": 1.828
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:6dd47512b3b00e87c837",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 675,
+      "completion_tokens": 196,
+      "total_tokens": 871,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 150
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 163
+    },
+    "cny_upper": 0.002918,
+    "seconds": 2.688
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:b859ac6d61d872eef10a",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 372,
+      "completion_tokens": 188,
+      "total_tokens": 560,
+      "prompt_tokens_details": {
+        "cached_tokens": 128
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 153
+      },
+      "prompt_cache_hit_tokens": 128,
+      "prompt_cache_miss_tokens": 244
+    },
+    "cny_upper": 0.002248,
+    "seconds": 2.329
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:626b891ab8e68f4efc37",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 262,
+      "completion_tokens": 134,
+      "total_tokens": 396,
+      "prompt_tokens_details": {
+        "cached_tokens": 128
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 108
+      },
+      "prompt_cache_hit_tokens": 128,
+      "prompt_cache_miss_tokens": 134
+    },
+    "cny_upper": 0.001596,
+    "seconds": 1.875
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:7fe54c6e218dee230898",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 598,
+      "completion_tokens": 296,
+      "total_tokens": 894,
+      "prompt_tokens_details": {
+        "cached_tokens": 384
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 254
+      },
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 214
+    },
+    "cny_upper": 0.003564,
+    "seconds": 3.469
+  },
+  {
+    "kind": "model",
+    "tag": "高中数学函数:C:judge:a47e1ff16ac6d1acbb1f",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 719,
+      "completion_tokens": 269,
+      "total_tokens": 988,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 238
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 207
+    },
+    "cny_upper": 0.00359,
+    "seconds": 3.469
+  },
+  {
+    "kind": "model",
+    "tag": "健身入门:A_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 106,
+      "completion_tokens": 190,
+      "total_tokens": 296,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 156
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 106
+    },
+    "cny_upper": 0.001732,
+    "seconds": 2.641
+  },
+  {
+    "kind": "model",
+    "tag": "健身入门:BC_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 157,
+      "completion_tokens": 1143,
+      "total_tokens": 1300,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 986
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 157
+    },
+    "cny_upper": 0.009458,
+    "seconds": 7.234
+  },
+  {
+    "kind": "search",
+    "tag": "健身入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.531
+  },
+  {
+    "kind": "search",
+    "tag": "健身入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.672
+  },
+  {
+    "kind": "search",
+    "tag": "健身入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.797
+  },
+  {
+    "kind": "search",
+    "tag": "健身入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.625
+  },
+  {
+    "kind": "search",
+    "tag": "健身入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.625
+  },
+  {
+    "kind": "search",
+    "tag": "健身入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.703
+  },
+  {
+    "kind": "search",
+    "tag": "健身入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.031
+  },
+  {
+    "kind": "search",
+    "tag": "健身入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.813
+  },
+  {
+    "kind": "model",
+    "tag": "健身入门:B:judge:ccfeb6835c3270669d6d",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 577,
+      "completion_tokens": 113,
+      "total_tokens": 690,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 75
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 577
+    },
+    "cny_upper": 0.002058,
+    "seconds": 3.203
+  },
+  {
+    "kind": "model",
+    "tag": "健身入门:C:judge:ccfeb6835c3270669d6d",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 577,
+      "completion_tokens": 300,
+      "total_tokens": 877,
+      "prompt_tokens_details": {
+        "cached_tokens": 384
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 265
+      },
+      "prompt_cache_hit_tokens": 384,
+      "prompt_cache_miss_tokens": 193
+    },
+    "cny_upper": 0.003554,
+    "seconds": 2.953
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:A_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 108,
+      "completion_tokens": 239,
+      "total_tokens": 347,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 200
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 108
+    },
+    "cny_upper": 0.002128,
+    "seconds": 3.094
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:BC_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 159,
+      "completion_tokens": 605,
+      "total_tokens": 764,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 478
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 159
+    },
+    "cny_upper": 0.005158,
+    "seconds": 4.047
+  },
+  {
+    "kind": "search",
+    "tag": "Excel 办公入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.782
+  },
+  {
+    "kind": "search",
+    "tag": "Excel 办公入门:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.906
+  },
+  {
+    "kind": "search",
+    "tag": "Excel 办公入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.766
+  },
+  {
+    "kind": "search",
+    "tag": "Excel 办公入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.719
+  },
+  {
+    "kind": "search",
+    "tag": "Excel 办公入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.735
+  },
+  {
+    "kind": "search",
+    "tag": "Excel 办公入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.812
+  },
+  {
+    "kind": "search",
+    "tag": "Excel 办公入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.719
+  },
+  {
+    "kind": "search",
+    "tag": "Excel 办公入门:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.032
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:B:judge:e155c2c3319158de88d4",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 268,
+      "completion_tokens": 50,
+      "total_tokens": 318,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 24
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 268
+    },
+    "cny_upper": 0.000936,
+    "seconds": 2.453
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:B:judge:2aad75e80e22684c8ada",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 785,
+      "completion_tokens": 418,
+      "total_tokens": 1203,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 390
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 785
+    },
+    "cny_upper": 0.004914,
+    "seconds": 6.75
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:B:judge:8cd3667d65406308e2a6",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 494,
+      "completion_tokens": 103,
+      "total_tokens": 597,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 67
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 494
+    },
+    "cny_upper": 0.001812,
+    "seconds": 1.844
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:B:judge:d6a5a23d27bc0914e617",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 696,
+      "completion_tokens": 189,
+      "total_tokens": 885,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 139
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 696
+    },
+    "cny_upper": 0.002904,
+    "seconds": 2.313
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:B:judge:0aad7b22047cfb277905",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 709,
+      "completion_tokens": 367,
+      "total_tokens": 1076,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 328
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 709
+    },
+    "cny_upper": 0.004354,
+    "seconds": 3.266
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:B:judge:a1393353bac5fc17ec41",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 653,
+      "completion_tokens": 367,
+      "total_tokens": 1020,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 328
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 653
+    },
+    "cny_upper": 0.004242,
+    "seconds": 3.469
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:C:judge:d6a5a23d27bc0914e617",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 696,
+      "completion_tokens": 216,
+      "total_tokens": 912,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 167
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 184
+    },
+    "cny_upper": 0.00312,
+    "seconds": 2.704
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:C:judge:8cd3667d65406308e2a6",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 494,
+      "completion_tokens": 88,
+      "total_tokens": 582,
+      "prompt_tokens_details": {
+        "cached_tokens": 256
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 52
+      },
+      "prompt_cache_hit_tokens": 256,
+      "prompt_cache_miss_tokens": 238
+    },
+    "cny_upper": 0.001692,
+    "seconds": 2.671
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:C:judge:0aad7b22047cfb277905",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 709,
+      "completion_tokens": 543,
+      "total_tokens": 1252,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 508
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 197
+    },
+    "cny_upper": 0.005762,
+    "seconds": 4.344
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:C:judge:2aad75e80e22684c8ada",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 785,
+      "completion_tokens": 190,
+      "total_tokens": 975,
+      "prompt_tokens_details": {
+        "cached_tokens": 640
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 160
+      },
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 145
+    },
+    "cny_upper": 0.00309,
+    "seconds": 2.579
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:C:judge:a1393353bac5fc17ec41",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 653,
+      "completion_tokens": 424,
+      "total_tokens": 1077,
+      "prompt_tokens_details": {
+        "cached_tokens": 512
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 377
+      },
+      "prompt_cache_hit_tokens": 512,
+      "prompt_cache_miss_tokens": 141
+    },
+    "cny_upper": 0.004698,
+    "seconds": 3.766
+  },
+  {
+    "kind": "model",
+    "tag": "Excel 办公入门:C:judge:e155c2c3319158de88d4",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 268,
+      "completion_tokens": 54,
+      "total_tokens": 322,
+      "prompt_tokens_details": {
+        "cached_tokens": 128
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 24
+      },
+      "prompt_cache_hit_tokens": 128,
+      "prompt_cache_miss_tokens": 140
+    },
+    "cny_upper": 0.000968,
+    "seconds": 1.422
+  },
+  {
+    "kind": "model",
+    "tag": "隋唐历史:A_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 107,
+      "completion_tokens": 222,
+      "total_tokens": 329,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 179
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 107
+    },
+    "cny_upper": 0.00199,
+    "seconds": 1.86
+  },
+  {
+    "kind": "model",
+    "tag": "隋唐历史:BC_plan",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 158,
+      "completion_tokens": 1253,
+      "total_tokens": 1411,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 1091
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 158
+    },
+    "cny_upper": 0.01034,
+    "seconds": 7.125
+  },
+  {
+    "kind": "search",
+    "tag": "隋唐历史:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.828
+  },
+  {
+    "kind": "search",
+    "tag": "隋唐历史:A",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.532
+  },
+  {
+    "kind": "search",
+    "tag": "隋唐历史:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.625
+  },
+  {
+    "kind": "search",
+    "tag": "隋唐历史:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.531
+  },
+  {
+    "kind": "search",
+    "tag": "隋唐历史:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 1.75
+  },
+  {
+    "kind": "search",
+    "tag": "隋唐历史:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.688
+  },
+  {
+    "kind": "search",
+    "tag": "隋唐历史:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.484
+  },
+  {
+    "kind": "search",
+    "tag": "隋唐历史:BC",
+    "status": 200,
+    "usage": {},
+    "cny_upper": 0.005,
+    "seconds": 0.562
+  },
+  {
+    "kind": "model",
+    "tag": "隋唐历史:B:judge:996bc0c7d4077c895bd3",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 866,
+      "completion_tokens": 191,
+      "total_tokens": 1057,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 141
+      },
+      "prompt_cache_hit_tokens": 0,
+      "prompt_cache_miss_tokens": 866
+    },
+    "cny_upper": 0.00326,
+    "seconds": 3.14
+  },
+  {
+    "kind": "model",
+    "tag": "隋唐历史:C:judge:996bc0c7d4077c895bd3",
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 866,
+      "completion_tokens": 538,
+      "total_tokens": 1404,
+      "prompt_tokens_details": {
+        "cached_tokens": 640
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 498
+      },
+      "prompt_cache_hit_tokens": 640,
+      "prompt_cache_miss_tokens": 226
+    },
+    "cny_upper": 0.006036,
+    "seconds": 4.891
+  }
+]

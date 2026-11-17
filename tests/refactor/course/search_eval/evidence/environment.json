@@ -1,0 +1,18 @@
+{
+  "equal": true,
+  "changedNames": {
+    "Machine": [],
+    "User": []
+  },
+  "checked": "2026-11-16",
+  "scope": "Persistent User and Machine environment maps, including PATH; process-local test variables excluded",
+  "shared_venv": {
+    "lxml": "6.1.1",
+    "onnxruntime": "1.30.0",
+    "numpy": "2.5.3",
+    "packaging": "26.2",
+    "trafilatura": null,
+    "FlashRank": null
+  },
+  "product_dependencies_installed": false
+}
