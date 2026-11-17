@@ -132,59 +132,6 @@ def _run_advisory_cycle(env, backend, operation):
     return observations
 
 
-def _run_python_delete_row_cycle(env):
-    """Reproduce Python DELETE's row-first path against closure advisory-first."""
-    client = env["clients"]["python"]
-    actor = new_account229(env, "deadlock230-python-delete-row")
-    initial = client.get(PROFILE, headers=actor["headers"])
-    assert initial.status_code == 200, initial.text
-    uploaded = client.put(
-        AVATAR,
-        headers={**actor["headers"], "If-Match": f'"profile-{initial.json()["version"]}"',
-                 "Content-Type": "image/png"},
-        content=png229(color="blue"),
-    )
-    assert uploaded.status_code == 200, uploaded.text
-    version = uploaded.json()["version"]
-    operation_id, digest, claim = _closure_prepare(env, actor)
-    gate = psycopg.connect(env["pg_admin"])
-    gate.execute(
-        "SELECT account_scope FROM public.account_profiles WHERE account_scope=%s FOR UPDATE",
-        (actor["scope"],),
-    )
-    gate_pid = gate.execute("SELECT pg_backend_pid()").fetchone()[0]
-    observations = {}
-    try:
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            delete = pool.submit(_write_request, client, actor, "delete", version)
-            try:
-                _wait_for_blocked_statement(env, gate_pid, sql_fragment="account_profiles")
-                clean = pool.submit(_acquire_then_clean, env, actor, operation_id, digest, claim)
-                wait_queries = _wait_for_closure_lock_wait(env)
-            finally:
-                gate.commit()
-            try:
-                response = delete.result(timeout=35)
-                observations["write_status"] = response.status_code
-                observations["write_body"] = response.text[:500]
-            except Exception as exc:
-                observations["write_error"] = type(exc).__name__ + ": " + str(exc)
-                observations["write_sqlstate"] = getattr(exc, "sqlstate", None)
-            try:
-                observations["clean_result"] = clean.result(timeout=35)
-            except Exception as exc:
-                observations["clean_error"] = type(exc).__name__ + ": " + str(exc)
-                observations["clean_sqlstate"] = getattr(exc, "sqlstate", None)
-    finally:
-        if not gate.closed:
-            gate.rollback()
-            gate.close()
-    observations.update({"backend": "python", "operation": "delete",
-                         "write_version": version, "actor": actor, "operation_id": operation_id,
-                         "digest": digest, "claim": claim, "closure_waits": wait_queries})
-    return observations
-
-
 def _finish_closure(env, operation_id, digest, claim):
     with psycopg.connect(env["pg_admin"]) as conn:
         provider_done = conn.execute(
@@ -216,14 +163,11 @@ def _assert_cleaned_and_fenced(env, outcome):
     assert body.get("code", error.get("code")) == "ACCOUNT_CLOSURE_IN_PROGRESS", current.text
 
 
-@pytest.mark.parametrize(("backend", "operation"), [
-    ("java", "patch"), ("java", "put"), ("java", "delete"), ("python", "delete"),
-])
-def test_profile_mutation_and_closure_use_one_lock_order230(profile_env229, backend, operation):
+@pytest.mark.parametrize("operation", ["patch", "put", "delete"])
+def test_profile_mutation_and_closure_use_one_lock_order230(profile_env229, operation):
     """Closure must finish without 40P01 and erase profile/avatar state."""
     env = profile_env229
-    outcome = (_run_python_delete_row_cycle(env) if backend == "python"
-               else _run_advisory_cycle(env, backend, operation))
+    outcome = _run_advisory_cycle(env, "java", operation)
     print({key: value for key, value in outcome.items() if key != "actor"})
     assert outcome.get("write_status") == 200, outcome
     assert "clean_error" not in outcome, outcome

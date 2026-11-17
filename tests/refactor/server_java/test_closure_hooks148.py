@@ -64,22 +64,22 @@ def _prepare(client, token, request_id):
             "X-Request-ID": request_id})
 
 
-def test_closure_native_throttle_matches_python_fifth_vs_sixth_attempt148(closure_hooks148_backends):
+def test_closure_native_throttle_fifth_vs_sixth_attempt148(closure_hooks148_backends):
     fixture = closure_hooks148_backends
-    for kind in ("python", "java"):
-        username = "closure_throttle_" + kind
-        subject = "user-closure-throttle-" + kind
-        identity = fixture["identities"][kind]
-        previous = _add_identity(identity, username, subject)
-        client = fixture["clients"][kind]
-        try:
-            access = _login(client, username, "closure148-throttle-login-" + kind)
-            results = [_prepare(client, access, f"closure148-throttle-{kind}-{index}") for index in range(6)]
-            assert [response.status_code for response in results] == [200, 200, 200, 200, 200, 429], \
-                [response.text for response in results]
-            assert results[5].json()["code"] == "NATIVE_RATE_LIMITED", results[5].text
-        finally:
-            _cleanup(identity, username, subject, previous)
+    kind = "java"
+    username = "closure_throttle_java"
+    subject = "user-closure-throttle-java"
+    identity = fixture["identities"][kind]
+    previous = _add_identity(identity, username, subject)
+    client = fixture["clients"][kind]
+    try:
+        access = _login(client, username, "closure148-throttle-login-java")
+        results = [_prepare(client, access, f"closure148-throttle-java-{index}") for index in range(6)]
+        assert [response.status_code for response in results] == [200, 200, 200, 200, 200, 429], \
+            [response.text for response in results]
+        assert results[5].json()["code"] == "NATIVE_RATE_LIMITED", results[5].text
+    finally:
+        _cleanup(identity, username, subject, previous)
 
 
 def test_closure_oidc_revocation_receives_canonical_subject_and_blocks_completion148(closure_hooks148_backends):

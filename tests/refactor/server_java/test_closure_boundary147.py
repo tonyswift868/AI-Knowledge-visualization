@@ -1,4 +1,4 @@
-"""HTTP boundary parity cases for account closure prepare/recovery paths."""
+"""HTTP boundary cases for Java account closure prepare/recovery paths."""
 from __future__ import annotations
 
 import httpx
@@ -12,40 +12,29 @@ LOGIN = "/api/enterprise/auth/native/login"
 
 
 def _pair(clients, method, path, *, headers=None, content=None):
-    per_client_headers = headers if isinstance(headers, dict) and set(headers) == set(clients) else None
-    responses = [clients[name].request(method, path,
-        headers=per_client_headers[name] if per_client_headers is not None else headers, content=content)
-        for name in ("python", "java")]
-    py, java = responses
-    assert (py.status_code, py.content) == (java.status_code, java.content), (
-        f"{method} {path}: Python={(py.status_code, py.content)!r}, "
-        f"Java={(java.status_code, java.content)!r}")
-    for response in responses:
-        assert response.headers.get("x-request-id")
-        assert response.headers.get("x-mentorflow-runtime-profile") == "ACCOUNT_CORE_MVP"
-        assert response.headers.get("content-type", "").startswith("application/json")
-    assert py.headers.get("content-length") == java.headers.get("content-length")
-    return py
+    client = clients["java"]
+    request_headers = headers.get("java") if isinstance(headers, dict) and set(headers) == set(clients) else headers
+    response = client.request(method, path, headers=request_headers, content=content)
+    assert response.headers.get("x-request-id")
+    assert response.headers.get("x-mentorflow-runtime-profile") == "ACCOUNT_CORE_MVP"
+    assert response.headers.get("content-type", "").startswith("application/json")
+    return response
 
 
 def _tokens(clients, username="boundary"):
-    result = {}
-    for name in ("python", "java"):
-        response = clients[name].post(LOGIN, json={"username": username, "password": "correct"})
-        assert response.status_code == 200, response.text
-        result[name] = response.json()["access_token"]
-    return result
+    response = clients["java"].post(LOGIN, json={"username": username, "password": "correct"})
+    assert response.status_code == 200, response.text
+    return response.json()["access_token"]
 
 
 def _auth(tokens):
-    # The same token is intentionally not portable across process-local native sessions.
-    return {name: {"Authorization": "Bearer " + value} for name, value in tokens.items()}
+    return {"java": {"Authorization": "Bearer " + tokens}}
 
 
 @pytest.fixture(scope="module")
 def boundary(closure147_backends):
     clients = closure147_backends["clients"]
-    # Give boundary tests a dedicated identity so the destructive paired closure
+    # Give boundary tests a dedicated identity so the destructive closure
     # flow cannot invalidate access tokens or skew admin-overview counts.
     subject = "user-147-boundary"
     contract_support147.SUBJECTS["boundary"] = subject
@@ -54,8 +43,7 @@ def boundary(closure147_backends):
     finally:
         contract_support147.SUBJECTS.pop("boundary", None)
     yield closure147_backends, clients, auth
-    for identity in closure147_backends["identities"].values():
-        identity.deleted.add(subject)
+    closure147_backends["identities"]["java"].deleted.add(subject)
 
 
 def test_wrong_method_returns_same_allow_and_method_body(boundary):
@@ -160,15 +148,15 @@ def test_https_request_reaches_boundary_and_http_cleartext_is_not_accepted(bound
     """The fixture serves TLS only; HTTP cleartext must fail before a handler can run."""
     _, clients, auth = boundary
     headers = {name: {**auth[name], "Content-Type": "application/json"} for name in clients}
-    for name in ("python", "java"):
-        response = clients[name].post(PREFIX + "/prepare", headers=headers[name], content=b"{}")
-        assert response.status_code == 400
-        assert response.json()["code"] == "CLOSURE_INPUT_INVALID"
-        http_url = httpx.URL(str(clients[name].base_url)).copy_with(scheme="http")
-        try:
-            cleartext = clients[name].post(str(http_url) + PREFIX + "/prepare",
-                headers=headers[name], content=b"{}")
-        except httpx.HTTPError:
-            continue
-        assert cleartext.status_code >= 400
-        assert "state" not in (cleartext.json() if cleartext.headers.get("content-type", "").startswith("application/json") else {})
+    name = "java"
+    response = clients[name].post(PREFIX + "/prepare", headers=headers[name], content=b"{}")
+    assert response.status_code == 400
+    assert response.json()["code"] == "CLOSURE_INPUT_INVALID"
+    http_url = httpx.URL(str(clients[name].base_url)).copy_with(scheme="http")
+    try:
+        cleartext = clients[name].post(str(http_url) + PREFIX + "/prepare",
+            headers=headers[name], content=b"{}")
+    except httpx.HTTPError:
+        return
+    assert cleartext.status_code >= 400
+    assert "state" not in (cleartext.json() if cleartext.headers.get("content-type", "").startswith("application/json") else {})

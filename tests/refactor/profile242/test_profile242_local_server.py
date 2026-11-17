@@ -5,18 +5,14 @@ import io
 import json
 import os
 from pathlib import Path
-import socket
 import sys
 import threading
-import time
 from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-import uvicorn
 from PIL import Image
-from sqlalchemy import create_engine, text
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QApplication, QFileDialog
@@ -26,7 +22,13 @@ from refactor.desktop.account_shell_main import AccountShell
 from refactor.desktop.login_shell import LoginGateWindow
 from refactor.learning.app import account_profile as account_profile_bridge
 from refactor.learning.app.bridge import AppBridge, BridgeError, CallContext
-from tests.refactor.server.contract_support import ISSUER, runtime
+
+_PROFILE_TESTS = Path(__file__).resolve().parents[1] / "profile229"
+if str(_PROFILE_TESTS) not in sys.path:
+    sys.path.insert(0, str(_PROFILE_TESTS))
+pytest_plugins = ["support_profile229"]
+
+from support_profile229 import new_account229  # noqa: E402
 
 
 def _tls_helper():
@@ -58,7 +60,7 @@ def _capture_combo(gate: LoginGateWindow, output_dir: Path, label: str):
     assert gate.grab().save(str(output_dir / f"login-window-{label}.png"), "PNG")
 
 
-def test_profile242_https_client_bridge_and_qt_login_list(tmp_path, monkeypatch):
+def test_profile242_https_client_bridge_and_qt_login_list(tmp_path, monkeypatch, profile_env229):
     app_qt = QApplication.instance() or QApplication([])
     screenshots = tmp_path / "screenshots"
     screenshots.mkdir(parents=True, exist_ok=True)
@@ -66,43 +68,15 @@ def test_profile242_https_client_bridge_and_qt_login_list(tmp_path, monkeypatch)
     root.mkdir(parents=True, exist_ok=True)
     cache_root = root / "cache"
     cache_root.mkdir(exist_ok=True)
-    engine = create_engine(f"sqlite:///{(root / 'profile.db').as_posix()}")
-    with engine.begin() as connection:
-        connection.execute(text("""CREATE TABLE IF NOT EXISTS account_profiles (
-            account_scope TEXT PRIMARY KEY, nickname TEXT NOT NULL DEFAULT '',
-            signature TEXT NOT NULL DEFAULT '', avatar_bytes BLOB, avatar_etag TEXT,
-            avatar_width INTEGER, avatar_height INTEGER, version INTEGER NOT NULL DEFAULT 1,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"""))
-
-    from refactor.server import app as account_core
-    from refactor.server.enterprise.account_profiles import AccountProfileService
-
-    monkeypatch.setattr(account_core.app.state, "enterprise_identity_runtime", runtime("refactor.server"), raising=False)
-    monkeypatch.setattr(account_core.app.state, "account_profile_service", AccountProfileService(engine), raising=False)
-    tls = _tls_helper()(root / "tls")
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-    server = uvicorn.Server(uvicorn.Config(
-        account_core.app, host="127.0.0.1", port=port,
-        ssl_certfile=str(tls["server_cert"]), ssl_keyfile=str(tls["server_key"]),
-        log_level="error", lifespan="off", access_log=False,
-    ))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
+    actor = new_account229(profile_env229, "desktop-qt")
+    account_id = actor["account_id"]
+    session = SimpleNamespace(identity=SimpleNamespace(account_id=account_id),
+                              access_token=actor["headers"]["Authorization"].removeprefix("Bearer "))
+    client = AccountProfileClient(
+        account_id=account_id, data_root=cache_root, session_provider=lambda: session,
+        api_base_url=profile_env229["endpoints"]["java"]["base_url"], ca_bundle=profile_env229["tls"]["ca"],
+    )
     try:
-        deadline = time.monotonic() + 10
-        while not server.started and time.monotonic() < deadline:
-            time.sleep(0.02)
-        assert server.started
-
-        account_id = "profile242-local-account"
-        session = SimpleNamespace(identity=SimpleNamespace(account_id=account_id), access_token="token-a")
-        client = AccountProfileClient(
-            account_id=account_id, data_root=cache_root,
-            session_provider=lambda: session,
-            api_base_url=f"https://127.0.0.1:{port}", ca_bundle=tls["ca"],
-        )
         assert client.refresh()["version"] == 1
         services = SimpleNamespace(account_profile=client, _closed=False, _avatar_preview=None)
         window = SimpleNamespace(services=services, _session_offline=False, _personal_profile={})
@@ -170,6 +144,4 @@ def test_profile242_https_client_bridge_and_qt_login_list(tmp_path, monkeypatch)
         bridge.close()
         client.close()
     finally:
-        server.should_exit = True
-        thread.join(timeout=5)
-        engine.dispose()
+        client.close()

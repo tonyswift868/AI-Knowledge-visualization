@@ -143,8 +143,6 @@ def measure(base_url: str, pid: int, headers: dict[str, str], *, requests: int =
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--python-url", required=True)
-    parser.add_argument("--python-pid", type=int, required=True)
     parser.add_argument("--java-url", required=True)
     parser.add_argument("--java-pid", type=int, required=True)
     parser.add_argument("--headers-file", required=True, help="JSON file containing synthetic fixture request headers")
@@ -155,7 +153,6 @@ def main() -> int:
         parser.error("headers-file must contain an Authorization header")
     results = {
         "measurement_scope": "local HTTP + JWT + catalog; fake JWKS issuer and external membership/health state; no PostgreSQL request",
-        "python": measure(args.python_url, args.python_pid, headers),
         "java": measure(args.java_url, args.java_pid, headers),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

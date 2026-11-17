@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 import contract_support144
 from contract_support144 import (OLD_ISSUER,
     make_tls144, prepare_databases144, seed_tenant144, start_java144,
-    start_postgres144, start_python144, stop_postgres144, stop_server144)
+    start_postgres144, stop_postgres144, stop_server144)
 
 
 class SMTPInbox146:
@@ -413,26 +413,23 @@ def build_pair146(run_dir: Path):
     postgres_dir.mkdir(parents=True, exist_ok=True)
     pg = start_postgres144(postgres_dir)
     servers = {}
-    identities = {name: FakeLifecycleKeycloak146(tls, SMTPInbox146()) for name in ("python", "java")}
-    pair = {"identity": identities["python"], "identities": identities,
-        "smtp": identities["python"].smtp, "smtps": {k:v.smtp for k,v in identities.items()},
+    identity = FakeLifecycleKeycloak146(tls, SMTPInbox146())
+    identities = {"java": identity}
+    pair = {"identity": identity, "identities": identities,
+        "smtp": identity.smtp, "smtps": {"java": identity.smtp},
         "pg": pg, "tls": tls, "servers": servers, "databases": {}, "run_dir": run_dir}
     try:
-        databases = prepare_databases144(pg["port"], ("py146", "java146"))
+        databases = prepare_databases144(pg["port"], ("java146",))
         for db_name in databases:
             seed_url = f"postgresql+psycopg://postgres@127.0.0.1:{pg['port']}/{db_name}"
             for subject in ("subject146-alice", "subject146-bob", "subject146-new-user146", "subject146-binding-user146"):
                 seed_tenant144(seed_url, OLD_ISSUER, subject)
         pair["databases"] = databases
-        for identity in identities.values():
-            identity.add_user("alice", "alice146@fixture.invalid", "correct")
-            identity.add_user("bob", "bob146@fixture.invalid", "correct")
-        for name, launch in (("python", start_python144), ("java", start_java144)):
-            directory = run_dir / name
-            directory.mkdir(parents=True, exist_ok=True)
-            endpoint = launch(databases["py146" if name == "python" else "java146"],
-                identities[name], tls, directory)
-            servers[name] = endpoint
+        identity.add_user("alice", "alice146@fixture.invalid", "correct")
+        identity.add_user("bob", "bob146@fixture.invalid", "correct")
+        directory = run_dir / "java"
+        directory.mkdir(parents=True, exist_ok=True)
+        servers["java"] = start_java144(databases["java146"], identity, tls, directory)
         return pair
     except Exception:
         for endpoint in reversed(list(servers.values())): stop_server144(endpoint)

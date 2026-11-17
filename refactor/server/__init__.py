@@ -1,1 +1,1 @@
-"""Small extensions assembled into the existing MentorFlow account backend."""
+"""Retained migration, identity and deployment inputs; no Python HTTP runtime."""

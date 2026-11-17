@@ -1,25 +1,20 @@
-"""HTTP-only contract fixtures for the Python and Java server implementations."""
+"""Shared local JWT, catalog, and Java HTTP contract fixtures."""
 from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-import hashlib
 import json
 import os
-import secrets
 import socket
 import subprocess
 import sys
 import threading
 import time
-from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import httpx
 import pytest
-import uvicorn
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
@@ -108,43 +103,6 @@ class LocalJwks:
         self.thread.join(timeout=2)
 
 
-class FakeDirectory142:
-    """Deterministic external identity state, shared semantically with Java fixture."""
-    def resolve_membership(self, *, issuer, subject, organization_id, workspace_id):
-        from refactor.server.enterprise.identity.models import (
-            MembershipGrant, MembershipStatus, BusinessRole,
-        )
-        if (issuer != self.issuer or subject != SUBJECT or organization_id != ORG
-                or workspace_id not in (WORKSPACE, None)):
-            return None
-        return MembershipGrant(
-            membership_id="membership-142", issuer=issuer, subject=subject,
-            organization_id=organization_id, workspace_id=workspace_id,
-            roles=(BusinessRole.LEARNER,), status=MembershipStatus.ACTIVE)
-
-    def resolve_service_identity(self, *, issuer, subject, client_id):
-        from refactor.server.enterprise.identity.models import (
-            ServiceIdentityGrant, ServicePermission, MembershipStatus,
-        )
-        if (issuer == self.issuer and subject == "svc-sub142"
-                and client_id == "mentorflow-desktop"):
-            return ServiceIdentityGrant(service_id="service-142", issuer=issuer, subject=subject,
-                client_id=client_id, organization_id=ORG, workspace_id=WORKSPACE,
-                permissions=(ServicePermission.DOCUMENT_READ,), status=MembershipStatus.ACTIVE)
-        return None
-
-
-class FixtureClosure142:
-    def __init__(self, state_file): self.state_file=Path(state_file)
-    def ensure_open(self, _issuer, _subject):
-        from refactor.server.account.closure import ClosureError
-        try: state=json.loads(self.state_file.read_text(encoding="utf-8"))
-        except Exception: raise ClosureError("CLOSURE_STORAGE_UNAVAILABLE") from None
-        mode=state.get("closure","open")
-        if mode=="closed": raise ClosureError("ACCOUNT_CLOSURE_IN_PROGRESS",403)
-        if mode=="unavailable": raise ClosureError("CLOSURE_STORAGE_UNAVAILABLE")
-
-
 def _free_port():
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -168,37 +126,6 @@ class ProcessEndpoint142:
     health_file: Path
 
 
-def _start_python_process(issuer: str, catalog_dir: Path, directory: Path) -> ProcessEndpoint142:
-    port=_free_port()
-    script=Path(__file__).with_name("python_server142.py")
-    log_path=directory/"python-server.log"
-    env=dict(os.environ)
-    repo=Path(__file__).resolve().parents[3]
-    env["PYTHONPATH"]=os.pathsep.join([str(repo),str(script.parent),env.get("PYTHONPATH","")])
-    state_file=directory/"health-state.json"
-    state_file.write_text('{"started":true,"postgres":true,"keycloak":true}',encoding="utf-8")
-    env.update({"MENTORFLOW_CATALOG_DIR":str(catalog_dir),"CONTRACT142_ISSUER":issuer,
-                "CONTRACT142_PORT":str(port),"CONTRACT142_HEALTH_FILE":str(state_file),
-                "PYTHONDONTWRITEBYTECODE":"1"})
-    log=log_path.open("wb")
-    process=subprocess.Popen([sys.executable,"-B",str(script)],cwd=repo,env=env,
-                             stdout=log,stderr=subprocess.STDOUT)
-    base=f"http://127.0.0.1:{port}"
-    deadline=time.monotonic()+20
-    while time.monotonic()<deadline:
-        if process.poll() is not None: break
-        try:
-            if httpx.get(base+"/health/live",timeout=.3,trust_env=False).status_code==200:
-                log.close()
-                return ProcessEndpoint142(base,process,log_path,state_file)
-        except Exception: time.sleep(.05)
-    process.terminate()
-    try: process.wait(timeout=4)
-    except subprocess.TimeoutExpired: process.kill()
-    log.close()
-    raise RuntimeError("Python HTTP reference failed to start: "+log_path.read_text(encoding="utf-8",errors="replace")[-4000:])
-
-
 def _stop_process(endpoint: ProcessEndpoint142):
     endpoint.process.terminate()
     try: endpoint.process.wait(timeout=8)
@@ -207,16 +134,10 @@ def _stop_process(endpoint: ProcessEndpoint142):
 
 
 @pytest.fixture(scope="session")
-def python_http142(local_jwks142, tmp_path_factory, catalog_dir142):
-    folder=tmp_path_factory.mktemp("python-http142")
-    endpoint=_start_python_process(local_jwks142.issuer,catalog_dir142,folder)
-    try: yield endpoint
-    finally: _stop_process(endpoint)
-
-
-@pytest.fixture(scope="session")
-def health_state_file142(python_http142):
-    return python_http142.health_file
+def health_state_file142(tmp_path_factory):
+    path=tmp_path_factory.mktemp("java-health142")/"health-state.json"
+    path.write_text('{"started":true,"postgres":true,"keycloak":true}',encoding="utf-8")
+    return path
 
 
 @pytest.fixture(scope="session")
@@ -233,9 +154,3 @@ def auth_headers142(local_jwks142):
             "X-MentorFlow-Organization-ID": ORG,
             "X-MentorFlow-Workspace-ID": WORKSPACE,
             "X-Request-ID": REQUEST_ID}
-
-
-@pytest.fixture(scope="session")
-def python_client142(python_http142, catalog_dir142):
-    with httpx.Client(base_url=python_http142.base_url, timeout=10, trust_env=False) as client:
-        yield client

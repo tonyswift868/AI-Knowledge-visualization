@@ -1,4 +1,4 @@
-"""Lifecycle and account-workspace error HTTP parity for the 146 contract."""
+"""Java lifecycle and account-workspace error HTTP contracts for batch 146."""
 from __future__ import annotations
 
 import json
@@ -39,7 +39,7 @@ def _tenant_headers(token):
 
 def test_lifecycle146_registration_input_and_resend_error_contract(errors_pair146):
     traces = {}
-    for backend in ("python", "java"):
+    for backend in ("java",):
         authority = errors_pair146["identities"][backend]
         trace = []
         with _client(errors_pair146, backend) as client:
@@ -89,7 +89,6 @@ def test_lifecycle146_registration_input_and_resend_error_contract(errors_pair14
             assert all(set(json.loads(item[2])) == {"code", "message"}
                 for item in trace[1:6])
         traces[backend] = trace
-    assert traces["python"] == traces["java"]
 
 
 def test_lifecycle146_password_write_unknown_and_provider_logout_failure(errors_pair146):
@@ -97,15 +96,15 @@ def test_lifecycle146_password_write_unknown_and_provider_logout_failure(errors_
     # through a fake persistence layer, so protected lifecycle calls exercise RLS.
     pgport = errors_pair146["pg"]["port"]
     subject = "subject146-password-failure146"
-    for backend in ("python", "java"):
-        db_name = "py146" if backend == "python" else "java146"
+    for backend in ("java",):
+        db_name = "java146"
         seed_tenant144(f"postgresql+psycopg://postgres@127.0.0.1:{pgport}/{db_name}",
             OLD_ISSUER, subject)
         errors_pair146["identities"][backend].add_user("password-failure146",
             "password-failure146@fixture.invalid", "old-password-146")
 
     traces = {}
-    for backend in ("python", "java"):
+    for backend in ("java",):
         authority = errors_pair146["identities"][backend]
         trace = []
         with _client(errors_pair146, backend) as client:
@@ -142,12 +141,11 @@ def test_lifecycle146_password_write_unknown_and_provider_logout_failure(errors_
             trace.append(_http_projection(pending))
             authority.admin_logout_status = 204
         traces[backend] = trace
-    assert traces["python"] == traces["java"]
 
 
 def test_lifecycle146_workspace_method_tenant_and_cookie_boundaries(errors_pair146):
     traces = {}
-    for backend in ("python", "java"):
+    for backend in ("java",):
         with _client(errors_pair146, backend) as client:
             login = client.post(NATIVE + "/login", json={"username": "alice", "password": "correct"})
             assert login.status_code == 200
@@ -169,6 +167,3 @@ def test_lifecycle146_workspace_method_tenant_and_cookie_boundaries(errors_pair1
                 assert response.status_code == expected_status, response.text
                 trace.append(_http_projection(response))
             traces[backend] = trace
-    differences = [f"workspace validation request {index}: Python={python!r}, Java={java!r}"
-        for index, (python, java) in enumerate(zip(traces["python"], traces["java"], strict=True)) if python != java]
-    assert not differences, "\n".join(differences)

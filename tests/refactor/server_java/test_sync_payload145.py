@@ -5,15 +5,18 @@ from copy import deepcopy
 import hashlib
 import json
 import uuid
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
 
 from contract_support145 import ORG, WORKSPACE, sync145_backends
-from refactor.server.enterprise_tenancy.structured_sync import (
-    _REFACTOR_FIELDS, _REFACTOR_FIELD_VARIANTS, _REFACTOR_KIND_BY_RECORD,
-)
-from refactor.server.product_sync_contract import RECORDS, project as product_project, record_id as product_record_id
+DEFINITIONS = json.loads((Path(__file__).resolve().parents[3] /
+    "refactor/server-java/src/main/resources/sync/SyncDefinitions.json").read_text(encoding="utf-8"))
+_REFACTOR_FIELDS = DEFINITIONS["refactor_fields"]
+_REFACTOR_FIELD_VARIANTS = DEFINITIONS["refactor_field_variants"]
+_REFACTOR_KIND_BY_RECORD = DEFINITIONS["refactor_kind_by_record"]
+RECORDS = DEFINITIONS["product_records"]
 
 
 BASE = "/api/enterprise/sync/v1"
@@ -41,15 +44,10 @@ def _headers(token, request_id):
 
 
 def _paired(clients, method, path, *, token, request_id, body, expected=None):
-    responses = [clients[name].request(method, path, headers=_headers(token, request_id), content=body)
-                 for name in ("python", "java")]
-    py, java = responses
-    py_signature = (py.status_code, {h: py.headers[h] for h in HEADERS if h in py.headers}, py.content)
-    java_signature = (java.status_code, {h: java.headers[h] for h in HEADERS if h in java.headers}, java.content)
-    assert py_signature == java_signature, f"{method} {path} differs: {py_signature!r} != {java_signature!r}"
+    response = clients["java"].request(method, path, headers=_headers(token, request_id), content=body)
     if expected is not None:
-        assert py.status_code == expected, py.content
-    return py
+        assert response.status_code == expected, response.content
+    return response
 
 
 def _put(clients, token, record_type, record_id, payload, *, request_id, status=200):
@@ -116,16 +114,29 @@ def _product_row(table, spec):
     return row
 
 
-def test_sync_payload145_all_product_record_types_from_python_contract(sync145_backends):
+def test_sync_payload145_all_product_record_types_from_java_definitions(sync145_backends):
     clients = sync145_backends
     token = clients["jwks"].token(subject="user-145-payload-product-" + RUN_ID)
     index = 0
     for table, spec in RECORDS.items():
         row = _product_row(table, spec)
-        payload = product_project(table, row)
-        # project() itself is the Python contract's fixture factory; it also
-        # rejects accidental malformed synthetic rows before the HTTP checks.
-        entity_id = product_record_id(table, payload["product_record"]["values"])
+        payload = {"product_record": {"schema": DEFINITIONS["product_schema"],
+                                     "record_type": table, "values": row}}
+        if spec.get("auxiliary"):
+            payload["product_auxiliary"] = True
+        if spec["kind"] == "resource":
+            payload.update(product_classification=row.get("classification") or "USER_FILE",
+                filename=row.get("original_filename") or row.get("title") or "resource",
+                media_type=row.get("media_type") or "application/octet-stream",
+                sha256=row.get("sha256") or row.get("content_hash"), size_bytes=row.get("size_bytes") or 0)
+        elif spec["kind"] == "plan":
+            payload.update(title=row.get("title") or row.get("id"), resource_ids=[])
+        elif spec["kind"] == "progress":
+            payload.update(plan_id=None, mastery=float(row.get("mastery") or row.get("score") or 0),
+                           completed_tasks=int(row.get("completed_task_count") or 0))
+        keys = [row[key] for key in spec["keys"]]
+        entity_id = str(keys[0]) if table == "active_materials" else table + ":" + hashlib.sha256(
+            json.dumps(keys, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
         path = f"{BASE}/entities/{spec['kind']}/{entity_id}"
         request_id = f"product145-{index}"
         response = _paired(clients, "PUT", path, token=token, request_id=request_id,
@@ -157,7 +168,7 @@ def test_sync_payload219_retired_aggregate_is_row_failure_not_batch_500(sync145_
     results = batch.json()["results"]
     assert [(item["status"], item.get("code")) for item in results] == [
         (200, None), (422, "PRODUCT_SYNC_RECORD_FIELDS")]
-    for backend in ("python", "java"):
+    for backend in ("java",):
         snapshot = clients[backend].get(f"{BASE}/snapshot", headers=_headers(
             token, "bulk-mixed-snapshot219"))
         assert snapshot.status_code == 200
@@ -272,7 +283,7 @@ def test_sync_payload145_unicode_numeric_canonical_digest(sync145_backends):
     expected = hashlib.sha256(json.dumps(fingerprint, sort_keys=True, separators=(",", ":"),
                                          allow_nan=False).encode()).hexdigest()
     assert expected
-    for name in ("python", "java"):
+    for name in ("java",):
         engine = create_engine(clients[name + "_admin_url"])
         try:
             with engine.connect() as connection:

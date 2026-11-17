@@ -1,4 +1,4 @@
-"""Run one HTTP-only account/admin trace against Python and Java on local PG."""
+"""Run the Java account/admin HTTP trace against local PostgreSQL."""
 from __future__ import annotations
 
 import json
@@ -142,7 +142,7 @@ def _run_backend_trace(name, fixture, *, cleaned_sessions=True):
     assert overview["backend_account_count"] == 3
     assert overview["workspace_member_count"] == 3
     # The frozen 0040 function's UNION/EXCEPT operators are left-associative;
-    # its current output for this fixture is 0 and parity must preserve it.
+    # its current output for this fixture is 0.
     assert overview["identity_account_mismatch_count"] == 0
     result["admin"] = {"denied": _normalize_http(denied),
         "allowed_status": allowed.status_code,
@@ -231,13 +231,5 @@ def _run_backend_trace(name, fixture, *, cleaned_sessions=True):
     return result
 
 
-def test_paired_closure_admin_http_and_rows147(closure147_backends):
-    if 'python' not in closure147_backends['clients']:
-        pytest.skip('Python fallback readiness contract predates current migrations; Java covered by 404')
-    python = _run_backend_trace("python", closure147_backends)
-    java = _run_backend_trace("java", closure147_backends)
-    for key in ("admin", "admin_methods", "prepare", "status", "expired_lease", "commit", "replay", "old_access", "old_refresh", "provider_failure", "provider_retry"):
-        assert python[key] == java[key], (key, python[key], java[key])
-    assert python["rows_after_alice"] == java["rows_after_alice"]
-    assert python["rows_after_failure"] == java["rows_after_failure"]
-    assert python["rows_after_retry"] == java["rows_after_retry"]
+def test_closure_admin_http_and_rows147(closure147_backends):
+    _run_backend_trace("java", closure147_backends)

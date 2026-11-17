@@ -7,8 +7,6 @@ from pathlib import Path
 import socket
 import subprocess
 import sys
-import threading
-import time
 
 import pytest
 
@@ -17,6 +15,12 @@ NODE = Path("D:/MentorFlow/.local/node/node.exe")
 DEPS = Path("D:/MentorFlow/.local/web-deps")
 WEB = REPO / "refactor/learning/web"
 sys.path.insert(0, str(REPO))
+PROFILE_TESTS = Path(__file__).resolve().parents[1] / "profile229"
+if str(PROFILE_TESTS) not in sys.path:
+    sys.path.insert(0, str(PROFILE_TESTS))
+pytest_plugins = ["support_profile229"]
+
+from support_profile229 import new_account229  # noqa: E402
 
 
 def _build(root: Path):
@@ -65,7 +69,7 @@ def _entry_with_paths():
             .replace("REF_THEME", (WEB / "src/theme.css").as_posix()))
 
 
-def _host(root: Path):
+def _host(root: Path, config_path: Path):
     from PySide6.QtCore import QTimer, QUrl
     from PySide6.QtWidgets import QApplication, QFileDialog
     from PySide6.QtWebChannel import QWebChannel
@@ -77,42 +81,14 @@ def _host(root: Path):
     from refactor.desktop.account_profile import AccountProfileClient
     from refactor.learning.app import account_profile as profile_bridge
     from refactor.learning.app.bridge import AppBridge
-    from refactor.server import app as account_core
-    from refactor.server.enterprise.account_profiles import AccountProfileService
-    from tests.refactor.server.contract_support import runtime
-    from tests.refactor.server_java.contract_support144 import make_tls144
-
+    config = json.loads(config_path.read_text(encoding="utf-8"))
     artifacts = root / "server"
     artifacts.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"sqlite:///{(artifacts / 'profile.db').as_posix()}")
-    with engine.begin() as connection:
-        connection.execute(text("""CREATE TABLE account_profiles (
-            account_scope TEXT PRIMARY KEY,nickname TEXT NOT NULL DEFAULT '',signature TEXT NOT NULL DEFAULT '',
-            avatar_bytes BLOB,avatar_etag TEXT,avatar_width INTEGER,avatar_height INTEGER,
-            version INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"""))
-    tls = make_tls144(artifacts / "tls")
+    engine = create_engine(config["db_url"])
+    tls_ca = config["ca"]
     monkeypatch_qt = QFileDialog.__dict__["getOpenFileName"]
     QFileDialog.getOpenFileName = staticmethod(lambda *_args: (str(root / "selected-avatar.png"), "PNG"))
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = int(sock.getsockname()[1])
-    server = None
-    server_thread = None
     try:
-        import uvicorn
-        monkeypatch_attr(account_core.app.state, "enterprise_identity_runtime", runtime("refactor.server"))
-        monkeypatch_attr(account_core.app.state, "account_profile_service", AccountProfileService(engine))
-        server = uvicorn.Server(uvicorn.Config(account_core.app, host="127.0.0.1", port=port,
-            ssl_certfile=str(tls["server_cert"]), ssl_keyfile=str(tls["server_key"]),
-            log_level="error", access_log=False, lifespan="off"))
-        server_thread = threading.Thread(target=server.run, daemon=True)
-        server_thread.start()
-        deadline = time.monotonic() + 10
-        while not server.started and time.monotonic() < deadline:
-            time.sleep(0.02)
-        if not server.started:
-            raise RuntimeError("local HTTPS service did not start")
-
         app = QApplication([])
         view = QWebEngineView()
         profile = QWebEngineProfile("profile242-web-https", view)
@@ -124,10 +100,10 @@ def _host(root: Path):
         channel = QWebChannel(page)
         bridge = AppBridge(page)
         bridge.event.connect(lambda raw: (root / "wire.jsonl").open("a", encoding="utf-8").write(raw + "\n"))
-        account_id = "profile242-web-account"
-        session = SimpleNamespace(identity=SimpleNamespace(account_id=account_id), access_token="token-a")
+        account_id = config["account_id"]
+        session = SimpleNamespace(identity=SimpleNamespace(account_id=account_id), access_token=config["token"])
         client = AccountProfileClient(account_id=account_id, data_root=root / "cache",
-            session_provider=lambda: session, api_base_url=f"https://127.0.0.1:{port}", ca_bundle=tls["ca"])
+            session_provider=lambda: session, api_base_url=config["base_url"], ca_bundle=tls_ca)
         window = SimpleNamespace(services=SimpleNamespace(account_profile=client, _closed=False, _avatar_preview=None),
                                  _session_offline=False, _personal_profile={})
         window.account_info = lambda: {**client.snapshot(), "name": "login-name", "account_id": account_id}
@@ -141,7 +117,8 @@ def _host(root: Path):
                     output.write(json.dumps({"method": method, "stage": "start"}) + "\n")
                 result = original(params, context)
                 with engine.connect() as connection:
-                    row = connection.execute(text("SELECT nickname,signature,avatar_bytes,version FROM account_profiles")).mappings().first()
+                    row = connection.execute(text("SELECT nickname,signature,avatar_bytes,version FROM account_profiles WHERE account_scope=:scope"),
+                                             {"scope": config["scope"]}).mappings().first()
                 with (root / "writes.jsonl").open("a", encoding="utf-8") as output:
                     output.write(json.dumps({"method": method, "nickname": row["nickname"] if row else "",
                         "signature": row["signature"] if row else "", "avatar_bytes": bool(row["avatar_bytes"]) if row else False,
@@ -174,7 +151,8 @@ def _host(root: Path):
         timer.start(50)
         app.exec()
         with engine.connect() as connection:
-            row = connection.execute(text("SELECT nickname,signature,avatar_bytes,version FROM account_profiles")).mappings().first()
+            row = connection.execute(text("SELECT nickname,signature,avatar_bytes,version FROM account_profiles WHERE account_scope=:scope"),
+                                     {"scope": config["scope"]}).mappings().first()
             (root / "final.json").write_text(json.dumps({"nickname": row["nickname"] if row else "",
                 "signature": row["signature"] if row else "", "avatar_bytes": bool(row["avatar_bytes"]) if row else False,
                 "version": row["version"] if row else 0}, ensure_ascii=False), encoding="utf-8")
@@ -183,15 +161,7 @@ def _host(root: Path):
         view.close()
     finally:
         QFileDialog.getOpenFileName = monkeypatch_qt
-        if server is not None:
-            server.should_exit = True
-        if server_thread is not None:
-            server_thread.join(timeout=5)
         engine.dispose()
-
-
-def monkeypatch_attr(obj, name, value):
-    setattr(obj, name, value)
 
 
 _DRIVER = r'''import fs from 'node:fs';import path from 'node:path';
@@ -225,12 +195,23 @@ fs.writeFileSync(path.join(root,'ui-result.json'),JSON.stringify({cropZoom:cropV
 '''
 
 
-def test_profile242_real_webengine_https_editor_to_server(tmp_path):
+def test_profile242_real_webengine_https_editor_to_server(tmp_path, profile_env229):
     root = Path(tmp_path) / "web-https-e2e"
     root.mkdir(parents=True, exist_ok=True)
     _build(root)
     driver = root / "drive.mjs"
     driver.write_text(_DRIVER, encoding="utf-8")
+    actor = new_account229(profile_env229, "webengine")
+    config = {
+        "base_url": profile_env229["endpoints"]["java"]["base_url"],
+        "ca": str(profile_env229["tls"]["ca"]),
+        # The observer reads the disposable fixture DB outside the HTTP actor transaction.
+        "db_url": profile_env229["seed_url"],
+        "account_id": actor["account_id"], "scope": actor["scope"],
+        "token": actor["headers"]["Authorization"].removeprefix("Bearer "),
+    }
+    config_path = root / "host-config.json"
+    config_path.write_text(json.dumps(config), encoding="utf-8")
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = int(probe.getsockname()[1])
@@ -240,7 +221,7 @@ def test_profile242_real_webengine_https_editor_to_server(tmp_path):
                QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu --remote-allow-origins=*", PYTHONDONTWRITEBYTECODE="1",
                TMP=str(temp), TEMP=str(temp), MF_CDP_ENDPOINT=f"http://127.0.0.1:{port}")
     log = (root / "host.log").open("w", encoding="utf-8")
-    child = subprocess.Popen([sys.executable, "-B", str(Path(__file__)), "--host", str(root)],
+    child = subprocess.Popen([sys.executable, "-B", str(Path(__file__)), "--host", str(root), str(config_path)],
                              env=env, stdout=log, stderr=log)
     try:
         result = subprocess.run([str(NODE), str(driver), str(root)], env=env, capture_output=True,
@@ -268,4 +249,4 @@ def test_profile242_real_webengine_https_editor_to_server(tmp_path):
 
 
 if __name__ == "__main__" and len(sys.argv) > 2 and sys.argv[1] == "--host":
-    _host(Path(sys.argv[2]))
+    _host(Path(sys.argv[2]), Path(sys.argv[3]))

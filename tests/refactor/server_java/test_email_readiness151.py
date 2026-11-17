@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from contract_support144 import (FakeKeycloak144, make_tls144, prepare_databases144,
-    start_java144, start_postgres144, start_python144, stop_postgres144, stop_server144)
+    start_java144, start_postgres144, stop_postgres144, stop_server144)
 
 
 @pytest.fixture(scope="module")
@@ -26,7 +26,7 @@ def email_database151(tmp_path_factory):
         (False, "EMAIL_CONFIGURATION_UNAVAILABLE")),
     ({"status": "READY"}, (False, "EMAIL_TRANSPORT_UNAVAILABLE")),
 ])
-def test_email_readiness151_python_java_authority_and_cache(email_database151, tmp_path, value, expected):
+def test_email_readiness151_java_authority_and_cache(email_database151, tmp_path, value, expected):
     _, database = email_database151
     tls = make_tls144(tmp_path / "tls")
     identity = FakeKeycloak144(tls)
@@ -43,22 +43,19 @@ def test_email_readiness151_python_java_authority_and_cache(email_database151, t
         else:
             handler._reply(404, {})
     identity.server.RequestHandlerClass.do_POST = post
-    servers = []
+    server = None
     try:
-        for name, launch in (("python", start_python144), ("java", start_java144)):
-            endpoint = launch(database, identity, tls, tmp_path / name)
-            servers.append(endpoint)
-            with httpx.Client(base_url=endpoint["base_url"], trust_env=False,
-                    verify=ssl.create_default_context(cafile=str(tls["ca"])), timeout=20) as client:
-                for _ in range(2):
-                    response = client.get("/health/ready")
-                    email = next(d for d in response.json()["dependencies"] if d["name"] == "email")
-                    assert (email["ready"], email["code"]) == expected
-                    assert email["required"] is False
-                    assert email["duration_ms"] >= 0
-        # Each backend sampled once, then reused its existing 60-second cache.
-        assert operations == [{"operation": "email-transport-health"}] * 2
+        server = start_java144(database, identity, tls, tmp_path / "java")
+        with httpx.Client(base_url=server["base_url"], trust_env=False,
+                verify=ssl.create_default_context(cafile=str(tls["ca"])), timeout=20) as client:
+            for _ in range(2):
+                response = client.get("/health/ready")
+                email = next(d for d in response.json()["dependencies"] if d["name"] == "email")
+                assert (email["ready"], email["code"]) == expected
+                assert email["required"] is False
+                assert email["duration_ms"] >= 0
+        assert operations == [{"operation": "email-transport-health"}]
     finally:
-        for endpoint in reversed(servers):
-            stop_server144(endpoint)
+        if server is not None:
+            stop_server144(server)
         identity.close()

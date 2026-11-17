@@ -1,6 +1,7 @@
 """Real loopback HTTP/PG fixtures reusing the existing server contract harness."""
 from __future__ import annotations
 from contextlib import ExitStack
+import hashlib
 import io
 from pathlib import Path
 import ssl
@@ -25,11 +26,10 @@ def new_account229(env, label: str) -> dict:
     from contract_support144 import seed_tenant144
     from test_account_profile226_http import _signed_token
     from refactor.server.account_identity_contract import account_id
-    from refactor.server.enterprise.account_profiles import account_scope
     subject = f"profile229-{label}-{uuid.uuid4().hex}"
     seed_tenant144(env["seed_url"], env["issuer"], subject)
     return {"subject": subject, "issuer": env["issuer"],
-            "scope": account_scope(env["issuer"], subject),
+            "scope": hashlib.sha256((env["issuer"] + "\0" + subject).encode("utf-8")).hexdigest(),
             "account_id": account_id(env["issuer"], subject),
             "headers": {"Authorization": "Bearer " + _signed_token(env["fake"], subject)}}
 
@@ -71,13 +71,12 @@ def profile_env229(tmp_path_factory):
             "-Djavax.net.ssl.trustStoreType=PKCS12",
             f'-Djava.io.tmpdir="{scratch}"', "-Djava.awt.headless=true")))
         clients, endpoints = {}, {}
-        for name, launch in (("python", c.start_python144), ("java", c.start_java144)):
-            endpoint = launch(app_url, fake, tls, run / name)
-            stack.callback(c.stop_server144, endpoint)
-            endpoints[name] = endpoint
-            clients[name] = stack.enter_context(httpx.Client(
-                base_url=endpoint["base_url"], verify=ssl.create_default_context(cafile=tls["ca"]),
-                trust_env=False, timeout=45))
+        endpoint = c.start_java144(app_url, fake, tls, run / "java")
+        stack.callback(c.stop_server144, endpoint)
+        endpoints["java"] = endpoint
+        clients["java"] = stack.enter_context(httpx.Client(
+            base_url=endpoint["base_url"], verify=ssl.create_default_context(cafile=tls["ca"]),
+            trust_env=False, timeout=45))
         yield {
             "clients": clients, "pg_admin": f"host=127.0.0.1 port={pg['port']} user=postgres dbname=profile229",
             "db_url": app_url, "seed_url": f"postgresql+psycopg://postgres@127.0.0.1:{pg['port']}/profile229",

@@ -122,41 +122,6 @@ def _run_migration145(url, issuer, log):
          env=env, log=log, timeout=900)
 
 
-def _start_python145(issuer, database_url, log_dir):
-    port = _free_port145()
-    log_path = log_dir / "python-server145.log"
-    env = os.environ.copy()
-    test_dir = Path(__file__).resolve().parent
-    env["PYTHONPATH"] = os.pathsep.join((str(ROOT), str(test_dir), env.get("PYTHONPATH", "")))
-    env.update({
-        "MENTORFLOW_DEPLOYMENT_MODE": "ENTERPRISE_SERVER",
-        "MENTORFLOW_DATABASE_URL": database_url,
-        "MENTORFLOW_KEYCLOAK_ISSUER": issuer,
-        "MENTORFLOW_KEYCLOAK_AUDIENCE": "mentorflow-api",
-        "MENTORFLOW_KEYCLOAK_CLIENT_ID": "mentorflow-desktop",
-        "MENTORFLOW_KEYCLOAK_REDIRECT_URI": "http://127.0.0.1/callback",
-        "MENTORFLOW_KEYCLOAK_ALLOW_LOOPBACK_HTTP": "true",
-        "MENTORFLOW_KEYCLOAK_MAX_TOKEN_LIFETIME_SECONDS": "3600",
-        "CONTRACT145_PORT": str(port), "PYTHONDONTWRITEBYTECODE": "1",
-    })
-    log = log_path.open("wb")
-    process = subprocess.Popen([str(PYTHON), "-B", str(test_dir / "python_server145.py")],
-                               cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
-    endpoint = ProcessEndpoint142(f"http://127.0.0.1:{port}", process, log_path, log_dir)
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline and process.poll() is None:
-        try:
-            response = httpx.get(endpoint.base_url + "/health/live", timeout=.4, trust_env=False)
-            if response.status_code == 200:
-                log.close()
-                return endpoint
-        except Exception:
-            time.sleep(.1)
-    _stop_process(endpoint)
-    log.close()
-    raise RuntimeError("Python sync HTTP process failed: " + log_path.read_text(encoding="utf-8", errors="replace")[-6000:])
-
-
 def _start_java145(issuer, database_url, jar, classes, log_dir):
     port = _free_port145()
     log_path = log_dir / "java-server145.log"
@@ -204,31 +169,20 @@ def sync145_backends(tmp_path_factory):
     pg_log = TASK_ROOT / "build/postgres145.log"
     postgres = EmbeddedPostgresProcess145(classpath, pg_log)
     jwks = LocalJwks(artifacts)
-    python_endpoint = java_endpoint = None
+    java_endpoint = None
     try:
-        py_migration = postgres.url("sync145_python", "mentorflow_migrator", MIGRATION_PASSWORD, sqlalchemy=True)
         java_migration = postgres.url("sync145_java", "mentorflow_migrator", MIGRATION_PASSWORD, sqlalchemy=True)
-        # The closure migration only stores this canonical issuer in its own
-        # settings; HTTP token issuer remains the local loopback JWKS issuer.
         migration_issuer = "https://identity.example.invalid/realms/contract145"
-        _run_migration145(py_migration, migration_issuer, TASK_ROOT / "build/migration-python145.log")
         _run_migration145(java_migration, migration_issuer, TASK_ROOT / "build/migration-java145.log")
-        py_app = postgres.url("sync145_python", "mentorflow_app", APP_PASSWORD, sqlalchemy=True)
         java_app = postgres.url("sync145_java", "mentorflow_app", APP_PASSWORD)
-        py_dir = artifacts / "python"; py_dir.mkdir()
         java_dir = artifacts / "java"; java_dir.mkdir()
-        python_endpoint = _start_python145(jwks.issuer, py_app, py_dir)
         java_endpoint = _start_java145(jwks.issuer, java_app, jar, classes, java_dir)
-        with httpx.Client(base_url=python_endpoint.base_url, timeout=40, trust_env=False) as py, \
-             httpx.Client(base_url=java_endpoint.base_url, timeout=40, trust_env=False) as java:
-            yield {"python": py, "java": java, "jwks": jwks, "postgres": postgres,
-                   "python_endpoint": python_endpoint, "java_endpoint": java_endpoint,
-                   "python_admin_url": postgres.url("sync145_python", "postgres", "postgres", sqlalchemy=True),
+        with httpx.Client(base_url=java_endpoint.base_url, timeout=40, trust_env=False) as java:
+            yield {"java": java, "jwks": jwks, "postgres": postgres,
+                   "java_endpoint": java_endpoint,
                    "java_admin_url": postgres.url("sync145_java", "postgres", "postgres", sqlalchemy=True),
-                   "python_migration_url": py_migration, "java_migration_url": java_migration}
+                   "java_migration_url": java_migration}
     finally:
-        if python_endpoint is not None:
-            _stop_process(python_endpoint)
         if java_endpoint is not None:
             _stop_process(java_endpoint)
         jwks.close()

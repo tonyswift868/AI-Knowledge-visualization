@@ -16,7 +16,7 @@ def test_sync_snapshot145_initialization_states_and_generation(sync145_backends)
 
     def observe(query=''):
         results = []
-        for name in ('python', 'java'):
+        for name in ('java',):
             response = sync145_backends[name].get(BASE+'/snapshot'+query, headers=headers)
             assert response.status_code == 200, response.text
             payload = response.json()
@@ -33,13 +33,12 @@ def test_sync_snapshot145_initialization_states_and_generation(sync145_backends)
             provenance['snapshot_revision'] = '<MVCC>'
             provenance['server_confirmed_at'] = '<DATABASE-TIME>'
             results.append(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))
-        assert results[0] == results[1]
         return json.loads(results[0])
 
     assert observe()['learning_state']['status'] == 'NOT_INITIALIZED'
     # Setup, not an API assertion: mimic the existing bootstrap's committed
     # manifest. The sync API itself cannot initialize an account.
-    for name in ('python', 'java'):
+    for name in ('java',):
         engine = create_engine(sync145_backends[name+'_admin_url'])
         try:
             with engine.begin() as connection:
@@ -54,14 +53,14 @@ def test_sync_snapshot145_initialization_states_and_generation(sync145_backends)
     empty = observe()
     assert empty['learning_state']['status'] == 'TRUE_EMPTY_SUPPORTED_SCOPE'
     assert empty['learning_state']['known_empty'] is True
-    for name in ('python', 'java'):
+    for name in ('java',):
         response = sync145_backends[name].put(BASE+'/entities/learning_run/'+_entity_id('manifest-record'),
             headers=headers, content=_put_body(_envelope('manifest-record'), request_id='manifest-write', revision=0))
         assert response.status_code == 200
     nonempty = observe()
     assert nonempty['learning_state']['status'] == 'NONEMPTY'
     assert nonempty['learning_state']['state_generation'] == 2
-    for name in ('python', 'java'):
+    for name in ('java',):
         response = sync145_backends[name].put(BASE+'/entities/learning_run/'+_entity_id('manifest-record'),
             headers=headers, content=_put_body(_envelope('manifest-record'), request_id='manifest-write', revision=0))
         assert response.status_code == 200

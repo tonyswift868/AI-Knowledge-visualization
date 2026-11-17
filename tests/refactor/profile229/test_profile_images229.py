@@ -9,10 +9,6 @@ pytest_plugins = ["support_profile229"]
 from support_profile229 import new_account229  # noqa: E402
 from refactor.desktop.account_profile import encode_crop, image_preview  # noqa: E402
 from refactor.desktop.account_protocol import AccountError  # noqa: E402
-from refactor.server.enterprise.account_profiles import (  # noqa: E402
-    AccountProfileError,
-    _normalize_image,
-)
 
 
 def _oriented_phone_photo(path):
@@ -42,8 +38,8 @@ def _near(actual, expected, tolerance=55):
     return sum((int(actual[i]) - expected[i]) ** 2 for i in range(3)) <= tolerance**2 * 3
 
 
-def test_phone_exif_orientation_and_backend_pixels_after_desktop_pipeline229(profile_env229, tmp_path):
-    """The supported UI pipeline corrects EXIF and both HTTP backends show it."""
+def test_phone_exif_orientation_and_java_pixels_after_desktop_pipeline229(profile_env229, tmp_path):
+    """The supported UI pipeline corrects EXIF before Java stores the avatar."""
     env = profile_env229
     url = "/api/enterprise/account/profile"
     avatar_url = url + "/avatar"
@@ -57,34 +53,28 @@ def test_phone_exif_orientation_and_backend_pixels_after_desktop_pipeline229(pro
         assert prepared.format == "JPEG" and prepared.size == (80, 80)
         assert not prepared.getexif()
 
-    observed = {}
-    for backend in ("python", "java"):
-        client = env["clients"][backend]
-        actor = new_account229(env, "phone-orientation-" + backend)
-        initial = client.get(url, headers=actor["headers"])
-        assert initial.status_code == 200 and initial.json()["version"] == 1
-        saved = client.put(
-            avatar_url,
-            headers={**actor["headers"], "If-Match": '"profile-1"', "Content-Type": "image/jpeg"},
-            content=payload,
-        )
-        assert saved.status_code == 200, saved.text
-        fetched = client.get(avatar_url, headers=actor["headers"])
-        assert fetched.status_code == 200
-        assert fetched.headers["etag"] == saved.json()["avatar"]["etag"]
-        with Image.open(io.BytesIO(fetched.content)) as result:
-            result.load()
-            assert result.size == (80, 80) and not result.getexif()
-            rgb = result.convert("RGB")
-            # A server that interpreted raw EXIF=6 again would rotate the red
-            # marker away from this independently derived output coordinate.
-            assert _near(rgb.getpixel((70, 40)), (230, 20, 20))
-            assert _near(rgb.getpixel((10, 10)), (30, 90, 210))
-            assert _near(rgb.getpixel((10, 60)), (30, 90, 210))
-            observed[backend] = rgb.copy()
-    for point in ((70, 40), (10, 10), (10, 60)):
-        assert sum(abs(observed["python"].getpixel(point)[i]
-                       - observed["java"].getpixel(point)[i]) for i in range(3)) <= 55
+    client = env["clients"]["java"]
+    actor = new_account229(env, "phone-orientation-java")
+    initial = client.get(url, headers=actor["headers"])
+    assert initial.status_code == 200 and initial.json()["version"] == 1
+    saved = client.put(
+        avatar_url,
+        headers={**actor["headers"], "If-Match": '"profile-1"', "Content-Type": "image/jpeg"},
+        content=payload,
+    )
+    assert saved.status_code == 200, saved.text
+    fetched = client.get(avatar_url, headers=actor["headers"])
+    assert fetched.status_code == 200
+    assert fetched.headers["etag"] == saved.json()["avatar"]["etag"]
+    with Image.open(io.BytesIO(fetched.content)) as result:
+        result.load()
+        assert result.size == (80, 80) and not result.getexif()
+        rgb = result.convert("RGB")
+        # A server that interpreted raw EXIF=6 again would rotate the red
+        # marker away from this independently derived output coordinate.
+        assert _near(rgb.getpixel((70, 40)), (230, 20, 20))
+        assert _near(rgb.getpixel((10, 10)), (30, 90, 210))
+        assert _near(rgb.getpixel((10, 60)), (30, 90, 210))
 
 
 def test_animated_and_metadata_heavy_png_are_rejected_before_upload229(tmp_path):
@@ -103,10 +93,3 @@ def test_animated_and_metadata_heavy_png_are_rejected_before_upload229(tmp_path)
     Image.new("RGB", (32, 32), "purple").save(metadata_path, "PNG", pnginfo=metadata)
     with pytest.raises(AccountError, match="有效的 JPEG 或 PNG 静态图片"):
         image_preview(metadata_path)
-
-    # An attacker can bypass the desktop, so also assert the Python backend's
-    # expected rejection of decompressed text. Java's ImageIO may ignore
-    # ancillary zTXt and take frame zero; it is not reachable from this UI path.
-    with metadata_path.open("rb") as image_file:
-        with pytest.raises(AccountProfileError):
-            _normalize_image(image_file.read(), "image/png")

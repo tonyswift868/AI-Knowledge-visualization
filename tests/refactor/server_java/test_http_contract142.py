@@ -1,4 +1,4 @@
-"""One HTTP contract suite run against both real local server processes."""
+"""HTTP contract assertions against the real local Java server."""
 from __future__ import annotations
 
 import base64
@@ -14,8 +14,7 @@ import httpx
 import pytest
 
 from contract_support142 import (ORG, REQUEST_ID, WORKSPACE, ProcessEndpoint142,
-    LocalJwks, _start_python_process, _stop_process as _stop_python_process,
-    local_jwks142, python_http142, catalog_dir142, health_state_file142)
+    LocalJwks, local_jwks142, catalog_dir142, health_state_file142)
 
 ROOT=Path(__file__).resolve().parents[3]
 ARTIFACTS=Path(os.environ.get("JAVA142_ARTIFACTS",r"D:\MentorFlow\.local\test-tmp\java142\build"))
@@ -35,16 +34,15 @@ def _free_port():
         return sock.getsockname()[1]
 
 
-def _write_processes(python=None, java=None):
+def _write_processes(java=None):
     ARTIFACTS.mkdir(parents=True,exist_ok=True)
     path=ARTIFACTS/"processes.json"
     current={}
     if path.exists():
         try: current=json.loads(path.read_text(encoding="utf-8"))
         except Exception: current={}
-    for name,endpoint in (("python",python),("java",java)):
-        if endpoint is not None:
-            current[name]={"pid":endpoint.process.pid,"base_url":endpoint.base_url,"log":str(endpoint.log_path)}
+    if java is not None:
+        current["java"]={"pid":java.process.pid,"base_url":java.base_url,"log":str(java.log_path)}
     path.write_text(json.dumps(current,indent=2),encoding="utf-8")
 
 
@@ -132,25 +130,14 @@ def java_http142(local_jwks142,catalog_dir142,tmp_path_factory,health_state_file
         _stop(endpoint); log.close()
 
 
-@pytest.fixture(scope="session",autouse=True)
-def _record_python_process(python_http142):
-    _write_processes(python=python_http142)
-    yield
-
-
 @pytest.fixture(scope="session")
 def java_client142(java_http142):
     with httpx.Client(base_url=java_http142.base_url,timeout=10,trust_env=False) as client: yield client
 
 
-@pytest.fixture(scope="session")
-def python_client142(python_http142):
-    with httpx.Client(base_url=python_http142.base_url,timeout=10,trust_env=False) as client: yield client
-
-
-@pytest.fixture(params=("python","java"),ids=("python-http","java-http"))
-def backend_client142(request,python_client142,java_client142):
-    return python_client142 if request.param=="python" else java_client142
+@pytest.fixture
+def backend_client142(java_client142):
+    return java_client142
 
 
 @pytest.fixture(scope="session")
@@ -165,24 +152,10 @@ def _app_headers(response):
     return {name:response.headers[name] for name in names if name in response.headers}
 
 
-def _compare_pair(python_client142,java_client142,method,path,*,headers=None,expected_status=None,body=None):
-    py=python_client142.request(method,path,headers=headers,content=body)
+def _java_response(java_client142,method,path,*,headers=None,expected_status=None,body=None):
     java=java_client142.request(method,path,headers=headers,content=body)
-    actual=(java.status_code,_app_headers(java),java.content)
-    expected=(py.status_code,_app_headers(py),py.content)
-    if path == "/health/ready":
-        # Only dependency timing varies; preserve all other body fields/order.
-        def stable(response):
-            value=response.json()
-            for dependency in value["dependencies"]:
-                dependency.pop("duration_ms",None)
-            headers=_app_headers(response)
-            headers.pop("content-length",None)  # It changes with duration digits.
-            return response.status_code,headers,json.dumps(value,ensure_ascii=False,separators=(",",":")).encode()
-        actual,expected=stable(java),stable(py)
-    assert actual==expected, f"{method} {path}: Java={actual!r} Python={expected!r}"
-    if expected_status is not None: assert py.status_code==expected_status,py.content
-    return py
+    if expected_status is not None: assert java.status_code==expected_status,java.content
+    return java
 
 
 def _request_id_header(): return {"X-Request-ID":REQUEST_ID}
@@ -234,76 +207,65 @@ def test_http142_selected_backend_contract(backend_client142,local_jwks142,catal
 
 
 @pytest.fixture
-def jwks_unavailable_backends142(tmp_path):
+def jwks_unavailable_java142(tmp_path):
     java_home=_java_home()
     if java_home is None or not (java_home/"bin"/"java.exe").is_file():
         pytest.skip("portable Java 21 was not prepared")
     jar=Path(os.environ.get("JAVA142_JAR",str(ARTIFACTS/"mentorflow-server-0.1.0.jar")))
     if not jar.is_file() or not (ARTIFACTS/"test-classes").is_dir():
         pytest.skip("Java 142 jar/test fixture classes were not built")
-    jwks=LocalJwks(tmp_path)
-    jwks.server.jwks_status=503
+    jwks=LocalJwks(tmp_path); jwks.server.jwks_status=503
     catalog=tmp_path/"catalog"; catalog.mkdir()
     (catalog/"source-whitelist.json").write_bytes(b'{"version":"142","sites":[]}')
     (catalog/"model-prices.json").write_bytes(b'{"version":"142","prices":[]}')
     health=tmp_path/"health-state.json"
     health.write_text('{"started":true,"postgres":true,"keycloak":true}',encoding="utf-8")
-    python_dir=tmp_path/"python"; python_dir.mkdir()
-    python=_start_python_process(jwks.issuer,catalog,python_dir)
     java=_start_java_process(jwks,catalog,health,tmp_path)
-    try:
-        yield jwks,python,java
-    finally:
-        _stop_python_process(python); _stop(java); jwks.close()
+    try: yield jwks,java
+    finally: _stop(java); jwks.close()
 
 
-def test_http142_jwks_transport_failure_is_temporary_503(jwks_unavailable_backends142):
-    jwks,python,java=jwks_unavailable_backends142
+def test_http142_jwks_transport_failure_is_temporary_503(jwks_unavailable_java142):
+    jwks,java=jwks_unavailable_java142
     headers=_auth(jwks.token(),**{"X-MentorFlow-Organization-ID":ORG,"X-MentorFlow-Workspace-ID":WORKSPACE})
-    with httpx.Client(base_url=python.base_url,timeout=10,trust_env=False) as py, \
-         httpx.Client(base_url=java.base_url,timeout=10,trust_env=False) as jv:
-        py_response=py.get("/api/enterprise/catalog/source-whitelist",headers=headers)
+    with httpx.Client(base_url=java.base_url,timeout=10,trust_env=False) as jv:
         java_response=jv.get("/api/enterprise/catalog/source-whitelist",headers=headers)
-    assert (py_response.status_code,py_response.json()["error"]["code"])==(503,"OIDC_JWKS_UNAVAILABLE")
     assert (java_response.status_code,java_response.json()["error"]["code"])==(503,"OIDC_JWKS_UNAVAILABLE")
 
 
-def test_http142_health_routes_contract(python_client142,java_client142,health_state_file142):
+def test_http142_health_routes_contract(java_client142,health_state_file142):
     for endpoint in ("/health/live","/health/startup","/health/ready"):
-        py=_compare_pair(python_client142,java_client142,"GET",endpoint,headers=_request_id_header())
-        assert py.status_code==200
+        response=_java_response(java_client142,"GET",endpoint,headers=_request_id_header())
+        assert response.status_code==200
         if endpoint=="/health/ready":
-            # The Python and Java probes measure elapsed milliseconds independently.
-            for body in (py.json(),java_client142.get(endpoint,headers=_request_id_header()).json()):
-                for dependency in body["dependencies"]: dependency.pop("duration_ms",None)
-            assert python_client142.get(endpoint,headers=_request_id_header()).status_code==200
+            assert response.json()["status"]=="ready"
+            assert {item["name"]: item["ready"] for item in response.json()["dependencies"]
+                    if item["required"]}=={"postgres": True, "keycloak_discovery": True}
     for state,code in (({"started":False,"postgres":True,"keycloak":True},503),
                        ({"started":True,"postgres":False,"keycloak":True},503),
                        ({"started":True,"postgres":True,"keycloak":False},503)):
         health_state_file142.write_text(json.dumps(state),encoding="utf-8")
         # State lives in each isolated process; ask its fixture-only route to refresh it.
-        python_client142.put("/contract142/health-state",json=state)
         java_client142.put("/contract142/health-state",json=state)
         for endpoint in ("/health/startup","/health/ready"):
-            py=_compare_pair(python_client142,java_client142,"GET",endpoint,headers=_request_id_header())
+            response=_java_response(java_client142,"GET",endpoint,headers=_request_id_header())
             expected=503 if endpoint=="/health/ready" or not state["started"] else 200
-            assert py.status_code==expected
+            assert response.status_code==expected
     state={"started":True,"postgres":True,"keycloak":True}
     health_state_file142.write_text(json.dumps(state),encoding="utf-8")
-    python_client142.put("/contract142/health-state",json=state)
     java_client142.put("/contract142/health-state",json=state)
 
 
-def test_http142_missing_and_malformed_auth_match(python_client142,java_client142):
+def test_http142_missing_and_malformed_auth_match(java_client142):
     cases=[("/api/enterprise/catalog/source-whitelist",None,401),
            ("/api/enterprise/catalog/source-whitelist",{"Authorization":"Bearer","X-Request-ID":REQUEST_ID},401),
            ("/api/enterprise/catalog/source-whitelist",{"Authorization":"Basic abc","X-Request-ID":REQUEST_ID},401),
            ("/api/enterprise/catalog/source-whitelist",{"Authorization":"Bearer a b","X-Request-ID":REQUEST_ID},401)]
     for path,headers,status in cases:
-        _compare_pair(python_client142,java_client142,"GET",path,headers=headers or _request_id_header(),expected_status=status)
+        _java_response(java_client142,"GET",path,headers=headers or _request_id_header(),expected_status=status)
 
 
-def test_http142_jwt_rejections_match(python_client142,java_client142,local_jwks142):
+def test_http142_jwt_rejections_match(java_client142,local_jwks142):
     tokens=[]
     valid=local_jwks142.token()
     head,claims,signature=valid.split(".")
@@ -331,51 +293,51 @@ def test_http142_jwt_rejections_match(python_client142,java_client142,local_jwks
     ))
     for token in tokens:
         headers=_auth(token,**{"X-MentorFlow-Organization-ID":ORG,"X-MentorFlow-Workspace-ID":WORKSPACE})
-        _compare_pair(python_client142,java_client142,"GET","/api/enterprise/catalog/source-whitelist",headers=headers,expected_status=401)
+        _java_response(java_client142,"GET","/api/enterprise/catalog/source-whitelist",headers=headers,expected_status=401)
     inconsistent=local_jwks142.token(extra_claims={"iat":int(time.time())-300})
     headers=_auth(inconsistent,**{"X-MentorFlow-Organization-ID":ORG,"X-MentorFlow-Workspace-ID":WORKSPACE})
-    _compare_pair(python_client142,java_client142,"GET","/api/enterprise/catalog/source-whitelist",headers=headers,expected_status=500)
+    _java_response(java_client142,"GET","/api/enterprise/catalog/source-whitelist",headers=headers,expected_status=500)
 
 
-def test_http142_context_requires_org_and_resolves_membership(python_client142,java_client142,local_jwks142):
+def test_http142_context_requires_org_and_resolves_membership(java_client142,local_jwks142):
     token=local_jwks142.token()
     headers=_auth(token,**{"X-MentorFlow-Organization-ID":ORG,"X-MentorFlow-Workspace-ID":WORKSPACE})
-    response=_compare_pair(python_client142,java_client142,"GET","/api/enterprise/contract142/context",headers=headers,expected_status=200)
+    response=_java_response(java_client142,"GET","/api/enterprise/contract142/context",headers=headers,expected_status=200)
     actor=response.json()["actor"]; tenant=response.json()["tenant"]
     assert actor["subject_id"]=="user-142" and actor["membership_id"]=="membership-142"
     assert actor["roles"]==["LEARNER"] and tenant["workspace_id"]==WORKSPACE
-    _compare_pair(python_client142,java_client142,"GET","/api/enterprise/contract142/context",
+    _java_response(java_client142,"GET","/api/enterprise/contract142/context",
         headers=_auth(token),expected_status=403)
     denied=_auth(token,**{"X-MentorFlow-Organization-ID":"wrong-org","X-MentorFlow-Workspace-ID":WORKSPACE})
-    _compare_pair(python_client142,java_client142,"GET","/api/enterprise/contract142/context",headers=denied,expected_status=403)
+    _java_response(java_client142,"GET","/api/enterprise/contract142/context",headers=denied,expected_status=403)
     no_workspace=_auth(token,**{"X-MentorFlow-Organization-ID":ORG})
-    response=_compare_pair(python_client142,java_client142,"GET","/api/enterprise/contract142/context",headers=no_workspace,expected_status=200)
+    response=_java_response(java_client142,"GET","/api/enterprise/contract142/context",headers=no_workspace,expected_status=200)
     assert response.json()["tenant"]["workspace_id"] is None
-    # The first Java migration does not accept Python's opaque native token or browser cookie.
-    _compare_pair(python_client142,java_client142,"GET","/api/enterprise/catalog/source-whitelist",
+    # This contract rejects opaque native tokens and browser cookies in bearer auth.
+    _java_response(java_client142,"GET","/api/enterprise/catalog/source-whitelist",
         headers=_auth("mfn1_a_"+"x"*64,**{"X-MentorFlow-Organization-ID":ORG,"X-MentorFlow-Workspace-ID":WORKSPACE}),expected_status=401)
     cookie={**headers,"Cookie":"__Host-mentorflow_enterprise_session=unknown-cookie"}
-    _compare_pair(python_client142,java_client142,"GET","/api/enterprise/catalog/source-whitelist",headers=cookie,expected_status=401)
+    _java_response(java_client142,"GET","/api/enterprise/catalog/source-whitelist",headers=cookie,expected_status=401)
 
 
-def test_http142_catalog_verbatim_hash_and_conditionals(python_client142,java_client142,catalog_dir142,auth_headers142):
+def test_http142_catalog_verbatim_hash_and_conditionals(java_client142,catalog_dir142,auth_headers142):
     for name in ("source-whitelist","model-prices"):
         path="/api/enterprise/catalog/"+name
         raw=(catalog_dir142/(name+".json")).read_bytes()
-        response=_compare_pair(python_client142,java_client142,"GET",path,headers=auth_headers142,expected_status=200)
+        response=_java_response(java_client142,"GET",path,headers=auth_headers142,expected_status=200)
         assert response.content==raw
         etag='"'+hashlib.sha256(raw).hexdigest()+'"'
         assert response.headers["etag"]==etag
         assert response.headers["cache-control"]=="private, max-age=300"
         for value in (etag,"W/"+etag,'"other", W/'+etag,'*'):
             conditional={**auth_headers142,"If-None-Match":value}
-            response=_compare_pair(python_client142,java_client142,"GET",path,headers=conditional,expected_status=304)
+            response=_java_response(java_client142,"GET",path,headers=conditional,expected_status=304)
             assert response.content==b""
         conditional={**auth_headers142,"If-None-Match":'"different"'}
-        _compare_pair(python_client142,java_client142,"GET",path,headers=conditional,expected_status=200)
+        _java_response(java_client142,"GET",path,headers=conditional,expected_status=200)
 
 
-def test_http142_catalog_rejects_bad_json_bytes_and_size(python_client142,java_client142,catalog_dir142,auth_headers142):
+def test_http142_catalog_rejects_bad_json_bytes_and_size(java_client142,catalog_dir142,auth_headers142):
     path="/api/enterprise/catalog/source-whitelist"
     file=catalog_dir142/"source-whitelist.json"
     original=file.read_bytes()
@@ -389,49 +351,24 @@ def test_http142_catalog_rejects_bad_json_bytes_and_size(python_client142,java_c
     try:
         for payload,status in cases:
             file.write_bytes(payload)
-            response=_compare_pair(python_client142,java_client142,"GET",path,headers=auth_headers142,expected_status=status)
+            response=_java_response(java_client142,"GET",path,headers=auth_headers142,expected_status=status)
             if status==200: assert response.content==inclusive
             else: assert response.json()["error"]["code"]=="CATALOG_INVALID"
         file.unlink()
-        response=_compare_pair(python_client142,java_client142,"GET",path,headers=auth_headers142,expected_status=404)
+        response=_java_response(java_client142,"GET",path,headers=auth_headers142,expected_status=404)
         assert response.json()["error"]=={"code":"CATALOG_NOT_CONFIGURED","message":"目录文件尚未配置。","details":{},"request_id":REQUEST_ID}
         file.mkdir()
-        response=_compare_pair(python_client142,java_client142,"GET",path,headers=auth_headers142,expected_status=503)
+        response=_java_response(java_client142,"GET",path,headers=auth_headers142,expected_status=503)
         assert response.json()["error"]["message"]=="目录文件暂不可用。"
     finally:
         if file.is_dir(): file.rmdir()
         file.write_bytes(original)
 
 
-def test_http142_response_bytes_are_identical_except_probe_duration_fields(python_client142,java_client142,auth_headers142):
-    requests=[("GET","/health/live",_request_id_header()),("GET","/health/startup",_request_id_header()),
-              ("GET","/health/ready",_request_id_header()),
-              ("GET","/api/enterprise/catalog/source-whitelist",_request_id_header()),
-              ("GET","/api/enterprise/catalog/source-whitelist",auth_headers142),
-              ("GET","/api/enterprise/contract142/context",auth_headers142)]
-    for method,path,headers in requests:
-        py=python_client142.request(method,path,headers=headers)
-        java=java_client142.request(method,path,headers=headers)
-        assert py.status_code==java.status_code,(path,py.status_code,java.status_code)
-        py_headers,java_headers=_app_headers(py),_app_headers(java)
-        if path=="/health/ready":
-            py_headers.pop("content-length",None);java_headers.pop("content-length",None)
-        assert py_headers==java_headers,(path,py_headers,java_headers)
-        if path=="/health/ready":
-            pybody=py.json(); jabody=java.json()
-            for item in pybody["dependencies"]+jabody["dependencies"]: item.pop("duration_ms",None)
-            expected=json.dumps(pybody,ensure_ascii=False,separators=(",",":")).encode("utf-8")
-            actual=json.dumps(jabody,ensure_ascii=False,separators=(",",":")).encode("utf-8")
-            assert actual==expected
-        else:
-            assert py.content==java.content,(path,py.content,java.content)
-
-
 @pytest.mark.skipif(os.environ.get("JAVA142_BENCHMARK")!="1",reason="benchmark run separately after HTTP contract suite")
-def test_http142_resource_benchmark(python_http142,java_http142,auth_headers142):
+def test_http142_resource_benchmark(java_http142,auth_headers142):
     from benchmark142 import measure
     result={"measurement_scope":"local test fixtures; local fake JWKS and in-memory directory; catalog GET only",
-            "python":measure(python_http142.base_url,python_http142.process.pid,auth_headers142,requests=1000),
             "java":measure(java_http142.base_url,java_http142.process.pid,auth_headers142,requests=1000)}
     ARTIFACTS.mkdir(parents=True,exist_ok=True)
     (ARTIFACTS/"resource142.json").write_text(json.dumps(result,indent=2),encoding="utf-8")

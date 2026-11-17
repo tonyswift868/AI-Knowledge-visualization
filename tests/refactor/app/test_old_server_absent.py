@@ -1,8 +1,9 @@
-"""The live closure implementation has one home under server/account."""
+"""The retired Python HTTP application cannot be launched from the tree."""
 from pathlib import Path
 
 
 def test_unused_root_closure_implementation_is_absent():
-    root = Path(__file__).resolve().parents[3] / 'refactor/server'
-    assert not any((root / name).exists() for name in
-                   ('closure.py', 'closure_api.py', 'closure_store.py', 'closure_provider.py'))
+    root = Path(__file__).resolve().parents[3] / "refactor/server"
+    assert not (root / "app.py").exists()
+    assert not (root / "entrypoint.py").exists()
+    assert not any((root / "account").glob("*.py"))

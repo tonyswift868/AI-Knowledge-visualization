@@ -24,7 +24,7 @@ _DEFAULT_CP = Path(os.environ.get("JAVA156_CLASSPATH_FILE", str(
 import psycopg
 from contract_support144 import (LOCAL, OLD_ISSUER, FakeKeycloak144, make_tls144,
     prepare_databases144, seed_tenant144, start_java144, start_postgres144,
-    start_python144, stop_postgres144, stop_server144)
+    stop_postgres144, stop_server144)
 from contract_support147 import closure147_backends  # noqa: F401
 
 
@@ -195,17 +195,13 @@ def native_http144(tmp_path_factory):
     try:
         with psycopg.connect(f"host=127.0.0.1 port={pg['port']} user=postgres dbname=postgres") as conn:
             fixture["postgres_version"] = conn.execute("SELECT version()").fetchone()[0]
-        databases = prepare_databases144(pg["port"], ("py144", "java144", "shared144"))
+        databases = prepare_databases144(pg["port"], ("java144",))
         for database in databases:
             admin = f"postgresql+psycopg://postgres@127.0.0.1:{pg['port']}/{database}"
             for user in ("alice", "bob"):
                 seed_tenant144(admin, OLD_ISSUER, "subject144-" + user)
-        for key, database, launch in (("python", "py144", start_python144),
-                ("java", "java144", start_java144),
-                ("shared_python", "shared144", start_python144),
-                ("shared_java", "shared144", start_java144)):
-            fixture[key] = launch(databases[database], fake, tls, run / key)
-            fixture["servers"].append(fixture[key])
+        fixture["java"] = start_java144(databases["java144"], fake, tls, run / "java")
+        fixture["servers"].append(fixture["java"])
         yield fixture
     finally:
         for server in reversed(fixture["servers"]):
