@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MentorFlow · 带 AI 老师的个人学习软件</title>
+<meta name="description" content="说出想学什么，MentorFlow 帮你排好每天的学习计划；AI 老师上课讲解、出题判分，跟着你的进度走。">
+<style>
+:root {
+  --bg: #fff8fa;
+  --bg-soft: #fdeef3;
+  --card: #ffffff;
+  --ink: #3b2a32;
+  --muted: #8b6f7b;
+  --line: #f2d5df;
+  --accent: #d6457a;
+  --accent-deep: #b8336a;
+  --accent-light: #f39bb8;
+  --glow: rgba(214, 69, 122, .18);
+  --petal: #f7b6c9;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1c1317;
+    --bg-soft: #26191f;
+    --card: #2a1c22;
+    --ink: #f7e9ee;
+    --muted: #c3a5b1;
+    --line: #43303a;
+    --accent: #f0709c;
+    --accent-deep: #e0558a;
+    --accent-light: #ffb3c9;
+    --glow: rgba(240, 112, 156, .22);
+    --petal: #8a4d62;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1c1317; --bg-soft: #26191f; --card: #2a1c22; --ink: #f7e9ee; --muted: #c3a5b1;
+  --line: #43303a; --accent: #f0709c; --accent-deep: #e0558a; --accent-light: #ffb3c9;
+  --glow: rgba(240, 112, 156, .22); --petal: #8a4d62;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.7 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans", sans-serif;
+  overflow-x: hidden;
+}
+a { color: inherit; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+
+/* falling petals: decoration only */
+.petals { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+.petals i {
+  position: absolute; top: -40px; width: 14px; height: 11px;
+  background: var(--petal); border-radius: 12px 2px 12px 2px; opacity: .7;
+  animation: fall linear infinite;
+}
+@keyframes fall {
+  0% { transform: translate3d(0, -40px, 0) rotate(0deg); }
+  100% { transform: translate3d(-120px, 110vh, 0) rotate(540deg); }
+}
+@media (prefers-reduced-motion: reduce) { .petals { display: none; } }
+
+header, main, footer { position: relative; z-index: 1; }
+.nav { display: flex; align-items: center; justify-content: space-between; padding-block: 18px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; text-decoration: none; }
+.brand svg { width: 30px; height: 30px; }
+.nav a.small { font-size: 14px; color: var(--muted); text-decoration: none; }
+.nav a.small:hover { color: var(--accent); }
+
+.hero {
+  display: grid; grid-template-columns: 1fr 1.05fr; gap: 48px; align-items: center;
+  padding-block: 40px 72px;
+}
+.tag {
+  display: inline-block; font-size: 13px; color: var(--accent-deep);
+  background: var(--bg-soft); border: 1px solid var(--line); border-radius: 999px; padding: 2px 12px;
+}
+h1 { font-size: clamp(34px, 5.4vw, 54px); line-height: 1.2; margin: 16px 0 14px; letter-spacing: .5px; }
+h1 em { font-style: normal; color: var(--accent); }
+.lead { font-size: 18px; color: var(--muted); margin: 0 0 30px; max-width: 30em; }
+.cta { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent) 45%, var(--accent-deep));
+  color: #fff; text-decoration: none; font-weight: 600; font-size: 17px;
+  padding: 14px 28px; border-radius: 14px;
+  box-shadow: 0 10px 24px var(--glow);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.btn:hover { transform: translateY(-2px); box-shadow: 0 14px 30px var(--glow); }
+.btn:focus-visible { outline: 3px solid var(--accent-light); outline-offset: 3px; }
+.btn svg { width: 20px; height: 20px; }
+.note { font-size: 13px; color: var(--muted); }
+
+.shot {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 24px 60px var(--glow); overflow: hidden;
+}
+.shot .bar { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--bg-soft); }
+.shot .bar span { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.shot img { display: block; width: 100%; height: auto; }
+.shot figcaption { font-size: 13px; color: var(--muted); padding: 10px 14px; border-top: 1px solid var(--line); }
+
+section { padding: 64px 0; }
+.soft { background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+h2 { font-size: clamp(24px, 3.4vw, 32px); text-align: center; margin: 0 0 10px; }
+.sub { text-align: center; color: var(--muted); margin: 0 auto 40px; max-width: 36em; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px 22px 18px;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.card:hover { transform: translateY(-3px); box-shadow: 0 12px 28px var(--glow); }
+.card .ic {
+  width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--bg-soft); color: var(--accent); margin-bottom: 12px;
+}
+.card .ic svg { width: 22px; height: 22px; }
+.card h3 { margin: 0 0 6px; font-size: 17px; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; counter-reset: step; }
+.step { text-align: center; padding: 8px 6px; }
+.step::before {
+  counter-increment: step; content: counter(step);
+  display: grid; place-items: center; margin: 0 auto 12px; width: 44px; height: 44px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent)); color: #fff; font-weight: 700; font-size: 18px;
+  box-shadow: 0 6px 16px var(--glow);
+}
+.step h3 { margin: 0 0 4px; font-size: 16px; }
+.step p { margin: 0; color: var(--muted); font-size: 14px; }
+
+.final { text-align: center; padding-block: 72px 80px; }
+.final .btn { margin-top: 8px; }
+footer { border-top: 1px solid var(--line); padding-block: 22px 34px; color: var(--muted); font-size: 13px; text-align: center; }
+footer a { color: var(--muted); }
+
+@media (max-width: 900px) {
+  .hero { grid-template-columns: 1fr; gap: 36px; padding-block-start: 20px; }
+  .grid { grid-template-columns: repeat(2, 1fr); }
+  .steps { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .grid, .steps { grid-template-columns: 1fr; }
+  .btn { width: 100%; justify-content: center; }
+  section { padding: 48px 0; }
+}
+</style>
+</head>
+<body>
+<div class="petals" aria-hidden="true">
+  <i style="left:6%;animation-duration:13s;animation-delay:-2s"></i>
+  <i style="left:18%;animation-duration:17s;animation-delay:-9s;transform:scale(.8)"></i>
+  <i style="left:31%;animation-duration:15s;animation-delay:-5s"></i>
+  <i style="left:47%;animation-duration:19s;animation-delay:-12s"></i>
+  <i style="left:58%;animation-duration:14s;animation-delay:-1s"></i>
+  <i style="left:69%;animation-duration:18s;animation-delay:-7s"></i>
+  <i style="left:80%;animation-duration:16s;animation-delay:-14s"></i>
+  <i style="left:91%;animation-duration:20s;animation-delay:-4s"></i>
+  <i style="left:97%;animation-duration:15s;animation-delay:-10s"></i>
+</div>
+
+<header class="wrap nav">
+  <a class="brand" href="#">
+    <svg viewBox="0 0 32 32" aria-hidden="true">
+      <g fill="var(--accent)">
+        <ellipse cx="16" cy="8.5" rx="4.2" ry="6.5"/>
+        <ellipse cx="16" cy="8.5" rx="4.2" ry="6.5" transform="rotate(72 16 16)"/>
+        <ellipse cx="16" cy="8.5" rx="4.2" ry="6.5" transform="rotate(144 16 16)"/>
+        <ellipse cx="16" cy="8.5" rx="4.2" ry="6.5" transform="rotate(216 16 16)"/>
+        <ellipse cx="16" cy="8.5" rx="4.2" ry="6.5" transform="rotate(288 16 16)"/>
+      </g>
+      <circle cx="16" cy="16" r="3" fill="#fff6c9"/>
+    </svg>
+    MentorFlow
+  </a>
+  <a class="small" href="#start">开始使用</a>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <span class="tag">带 AI 老师的个人学习软件</span>
+      <h1>说出想学什么，<br><em>每天学什么</em>它来排</h1>
+      <p class="lead">告诉它你的目标和截止日期，它帮你排好每天的学习计划。AI 老师上课讲解、出题判分，跟着你的进度走。</p>
+      <div class="cta">
+        <a class="btn" href="https://aiteacher.clannad.win/updates/app/releases/bootstrap/MentorFlow-Setup.exe">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M4 19h16"/></svg>
+          下载 Windows 版
+        </a>
+        <span class="note">免费 · 安装程序会自动装上最新版</span>
+      </div>
+    </div>
+    <figure class="shot" style="margin:0">
+      <div class="bar" aria-hidden="true"><span></span><span></span><span></span></div>
+      <img src="images/plan-calendar.png" width="1047" height="817" alt="新建学习计划：填想学什么、最终目标、现在的水平、起止日期，每周哪几天能学和每天学多久都能单独设">
+      <figcaption>新建计划：想学什么、学到什么程度、哪几天有空，填完就排。</figcaption>
+    </figure>
+  </div>
+
+  <section class="soft">
+    <div class="wrap">
+      <h2>它能帮你做什么</h2>
+      <p class="sub">从排计划、上课、做题到复习，一个软件管到底。</p>
+      <div class="grid">
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M8 13l3 3 5-6"/></svg></div>
+          <h3>对话建计划</h3>
+          <p>说出目标和截止日期，先看大致安排，确认后再细排到每一天。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></div>
+          <h3>按天安排</h3>
+          <p>每天学多久、每周哪几天学都能单独设；落后或超前多少，一眼就能看到。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></div>
+          <h3>AI 老师上课</h3>
+          <p>2D 老师讲解，随时可以打断提问，已经会的内容可以跳过。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
+          <h3>语音</h3>
+          <p>说话直接转成文字；讲解也可以点开朗读。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></svg></div>
+          <h3>导入资料</h3>
+          <p>PDF、Word、PPT、EPUB、Excel、Markdown、网页都能导入，扫描件也能识别文字，还能针对资料提问。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg></div>
+          <h3>练习与复习</h3>
+          <p>每课都有练习并自动判分，答错的知识点标成“需要复习”，之后优先再出。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.3 8.2l2.6 7.6M15.9 7.6l-2.8 8.2M8.5 6.8l7-.6"/></svg></div>
+          <h3>知识地图</h3>
+          <p>把计划里的知识点和它们之间的关系画成图。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 0 1-14 5.3M4 12a8 8 0 0 1 14-5.3"/><polyline points="18 3 18 7 14 7"/><polyline points="6 21 6 17 10 17"/></svg></div>
+          <h3>多设备同步</h3>
+          <p>换一台电脑登录，计划和进度都在。</p>
+        </div>
+        <div class="card">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M10 2v4M14 2v4M10 18v4M14 18v4M2 10h4M2 14h4M18 10h4M18 14h4"/></svg></div>
+          <h3>多家模型可选</h3>
+          <p>DeepSeek、通义千问、Kimi 等，可以在设置里切换。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="start">
+    <div class="wrap">
+      <h2>四步开始</h2>
+      <p class="sub">下载安装只要几分钟。</p>
+      <div class="steps">
+        <div class="step"><h3>下载安装</h3><p>点下载按钮，运行安装程序，它会自动装上最新版。</p></div>
+        <div class="step"><h3>邮箱注册</h3><p>打开软件，用邮箱注册一个账号。</p></div>
+        <div class="step"><h3>连上模型</h3><p>在设置里填上你的模型密钥，例如 DeepSeek。</p></div>
+        <div class="step"><h3>建第一个计划</h3><p>说出想学什么、学到什么程度，剩下的交给它。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap final">
+    <h2>今天就开始学</h2>
+    <p class="sub">MentorFlow 是开源软件，免费使用。</p>
+    <a class="btn" href="https://aiteacher.clannad.win/updates/app/releases/bootstrap/MentorFlow-Setup.exe">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M4 19h16"/></svg>
+      下载 Windows 版
+    </a>
+  </div>
+</main>
+
+<footer class="wrap">
+  MentorFlow · MIT 许可证 · 目前只有 Windows 电脑版
+</footer>
+</body>
+</html>
