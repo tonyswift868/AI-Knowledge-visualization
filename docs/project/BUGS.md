@@ -2590,14 +2590,15 @@
 
 ### [BUG-279] 别人从官网下载完整包装好后，只能正常打开一次，之后双击怎么都打不开
 - 状态：待查（用户 2026-11-17 报告）。
-- 现象：用户 2026-11-17 转述：中国大陆那位从官网（436 后跳 GitHub 完整包 2.0.48）下载安装，第一次能正常打开，之后再打开就永远打不开（原话“怎么都打不开那个 exe 了”）。双击后是没反应、报错还是一闪而过，还不知道；有没有残留进程，还不知道。
-- 已知（架构师 2026-11-17 读代码）：桌面壳有单实例锁 `<安装根>\Datauntime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lock`），锁被占时会弹“MentorFlow 已在运行”；若对方连这个提示都没有，问题在它之前（启动器阶段）。日志在 `<安装根>\Data\logs\mentorflow.log`、`launcher-startup.jsonl`。
+- 现象：用户 2026-11-17 转述：中国大陆那位从官网（436 后跳 GitHub 完整包 2.0.48）下载安装，装好后第一次打开正常，关掉以后再也打不开（原话“怎么都打不开那个 exe 了”）。
+- 已知（架构师 2026-11-17 读代码）：桌面壳有单实例锁 `<安装根>\Data
+untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lock`），锁被占时会弹“MentorFlow 已在运行”；若对方连这个提示都没有，问题在它之前（启动器阶段）。日志在 `<安装根>\Data\logs\mentorflow.log`、`launcher-startup.jsonl`。
 - 牵连：所有新装用户；在本机开发电脑上从没复现过，因为没人在干净电脑上装过真包（[BUG-277] 同类：开发机上什么都有，干净电脑上的问题看不到）。
 - 关联：[BUG-278]、[BUG-273]、436
 
 ### [BUG-278] 别人新装后登录窗口“注册账号”“忘记密码”一直是灰的
 - 状态：待查（用户 2026-11-17 报告）。
-- 现象：同一位用户新装 2.0.48 后，登录窗口“注册账号”“忘记密码”全是灰的，没法注册。
+- 现象：同一位用户新装 2.0.48 后，登录窗口“注册账号”“忘记密码”从一开始就是灰的，一直不亮，没法注册（用户 2026-11-17 明确：不是慢）。
 - 已知（架构师 2026-11-17）：两个按钮一开始就是灰的，要等程序 GET `https://89.45.45.28/api/enterprise/auth/lifecycle/capabilities` 拿到 `register`/`forgot_password` 为 true 才点亮（`login_shell.py` `set_account_capabilities`，`account_shell_main.py` `_load_capabilities`，失败 60 秒后重试）。服务器本身正常：日本本机 200、1.2 秒，返回两个 true；Globalping 中国大陆 8 个测点（上海、武汉、成都、福州、西安、郑州、济南、桂林）全部 200，0.65～1.34 秒。所以不是服务器或中国网络的问题，是对方电脑上这次请求失败了。失败时异常被吞掉（`except Exception: capabilities = {}`），日志里不记原因；按钮提示写“当前账号服务尚未开放注册”，跟真实原因不符。
 - 关联：[BUG-279]
 
