@@ -6,6 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-280 | 干净 Windows 上完整包静默安装在自定义安装位置页前退出，应用根本没装上 | 待修（438 两次 GitHub runner 复现） | 2026-11-17 |
 | BUG-279 | 别人从官网下载完整包装好后，只能正常打开一次，之后双击怎么都打不开 | 待查（用户 2026-11-17 报告） | 2026-11-17 |
 | BUG-278 | 别人新装后登录窗口“注册账号”“忘记密码”一直是灰的 | 待查（用户 2026-11-17 报告） | 2026-11-17 |
 | BUG-277 | 从源码启动时数据目录写死在 D:\MentorFlowData\account-shell，别人的电脑没有 D 盘就跑不了 | 已修未完全验证（437，合入 f1c793a0） | 2026-11-17 |
@@ -2596,6 +2597,16 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
 - 438 第一段读代码的头号嫌疑（未验证）：启动器每次启动先查安装根下 `App/MentorFlow.exe` 是否还活着（`per_user_launcher.py:139-143` → `per_user_install.py:652-654` `require_app_stopped`），活着就报 `close the current App before continuing`、关掉启动画面退出，不出窗口。如果第一次关窗口后进程没退干净，以后每次都会这样，直到重启或结束进程。要在干净机上确认关窗后有没有残留进程。
 - 牵连：所有新装用户；在本机开发电脑上从没复现过，因为没人在干净电脑上装过真包（[BUG-277] 同类：开发机上什么都有，干净电脑上的问题看不到）。
 - 关联：[BUG-278]、[BUG-273]、436
+
+### [BUG-280] 干净 Windows 上完整包静默安装在自定义安装位置页前退出，应用根本没装上
+- 状态：待修（438-MF04，2026-11-17）。
+- 现象：GitHub Actions `windows-latest` 全新 runner（Windows Server 2025，10.0.26100，x64）两次手动运行 `mf-fresh-install`，均从 GitHub latest 下载 `v2.0.48` 完整包；下载大小 `386,372,452` 字节、SHA256 `14fc93da54e8efd0688522d3ba681ec98e9d9ad2af505c5a983f4646da491211` 与 Release 一致。使用 `/VERYSILENT /SUPPRESSMSGBOXES /TASKS=desktopicon /LOG=…`，两次都返回 `installer_exit_code=1`，工作流日志为 `Failed to proceed to next wizard page; aborting.`，随后 `Caught EAbort exception.`；没有安装根、快捷方式、`Data\logs`，两轮启动被跳过。
+- 原因判断：失败稳定发生在 Inno 自定义安装位置页继续之前，尚未进入 `per-user-core.iss` 的 `UserRuntime.exe preflight`，所以不是签名核心、网络下载、磁盘写入或 App 第二次启动逻辑。当前 Setup 日志没有记录 `NextButtonClick`/`PrepareToInstall` 返回的自定义中文错误，无法仅凭这两次日志区分具体是 `ValidateParent` 失败还是 `Target` 与 `WizardDirValue` 不一致；需要后续在不改变产品数据的前提下给自定义页加受限诊断，或给静默分支建立明确的默认目录同步路径。
+- 排查：运行 `44117919195`、`44118724145` 的 `fresh-install` job 均为下载校验成功、静默安装失败、启动步骤 skipped、artifact 上传成功；两份 `installer.log` 都在提取 `MentorFlow.png` 后立即报同一句。runner 记录用户权限为 Administrative、安装模式为 per-user（不是管理员安装），不能把失败归因于权限提示。证据已下载到 `.local/test-tmp/438-MF04/run-44117919195/` 和 `run-44118724145/`。
+- 修法候选（只写不改）：推荐在 Inno 自定义页为 `WizardSilent` 单独走默认 `{localappdata}\Programs` 的 `ValidateParent`，同步 `WizardForm.DirEdit.Text` 后再进入核心，并把每个自定义失败结果写入 Setup log；交互安装继续保留现有位置页和“已有文件夹”策略。只改工作流改 `/SILENT` 或补 `/DIR` 可以帮助观察页面，但不能证明用户的 `/VERYSILENT` 真路径已修好，不能作为最终修复。
+- 验证：438 第一段本地静态检查通过；第二段两次远程运行结论一致。尚未执行修复，也没有获得真实 App 启动、关闭后残留进程或 capabilities 按钮状态证据。
+- 关联：[BUG-279]、[BUG-278]、436、438-MF04
+- 更新：2026-11-17
 
 ### [BUG-278] 别人新装后登录窗口“注册账号”“忘记密码”一直是灰的
 - 状态：待查（用户 2026-11-17 报告）。
