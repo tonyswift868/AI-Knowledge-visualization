@@ -9,7 +9,7 @@ permissions:
 jobs:
   fresh-install:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - name: Download and verify latest release asset
         shell: pwsh
@@ -46,47 +46,70 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Add-Type -AssemblyName System.Drawing
           Add-Type -AssemblyName System.Windows.Forms
-          Add-Type -AssemblyName UIAutomationClient
-          Add-Type -AssemblyName UIAutomationTypes
+          Add-Type @'
+          using System;
+          using System.Collections.Generic;
+          using System.Runtime.InteropServices;
+          using System.Text;
+          public static class Wizard {
+            public delegate bool EnumProc(IntPtr h, IntPtr l);
+            [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+            [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls, string title);
+            [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+            [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumProc cb, IntPtr l);
+            [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder sb, int n);
+            [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+            [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr h);
+            [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr h, ref POINT p);
+            [DllImport("user32.dll")] static extern bool ScreenToClient(IntPtr h, ref POINT p);
+            [DllImport("user32.dll")] static extern IntPtr ChildWindowFromPointEx(IntPtr parent, POINT p, uint flags);
+            [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+            [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+            [DllImport("user32.dll")] static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
+            public static string[] VisibleChildClasses(IntPtr parent) {
+              var names = new List<string>();
+              EnumChildWindows(parent, (h, l) => {
+                if (IsWindowVisible(h)) { var sb = new StringBuilder(256); GetClassName(h, sb, 256); names.Add(sb.ToString()); }
+                return true;
+              }, IntPtr.Zero);
+              return names.ToArray();
+            }
+            // x, y are wizard client coordinates in the 96-DPI units that Bounds() in branded-pages.iss uses.
+            static POINT ScreenPoint(IntPtr wizard, int x, int y) {
+              uint dpi = GetDpiForWindow(wizard); if (dpi == 0) dpi = 96;
+              var p = new POINT { X = (int)(x * dpi / 96), Y = (int)(y * dpi / 96) };
+              ClientToScreen(wizard, ref p); return p;
+            }
+            public static void MouseClick(IntPtr wizard, int x, int y) {
+              var p = ScreenPoint(wizard, x, y);
+              SetForegroundWindow(wizard); SetCursorPos(p.X, p.Y);
+              mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero); mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+            }
+            // Same click delivered to the deepest visible child at that point, for when the real mouse misses.
+            public static void PostClick(IntPtr wizard, int x, int y) {
+              var screen = ScreenPoint(wizard, x, y);
+              IntPtr target = wizard;
+              while (true) {
+                var local = screen; ScreenToClient(target, ref local);
+                IntPtr child = ChildWindowFromPointEx(target, local, 0x0001 | 0x0004);
+                if (child == IntPtr.Zero || child == target) break;
+                target = child;
+              }
+              var c = screen; ScreenToClient(target, ref c);
+              var pos = (IntPtr)((c.Y << 16) | (c.X & 0xFFFF));
+              PostMessage(target, 0x0201, (IntPtr)1, pos); PostMessage(target, 0x0202, IntPtr.Zero, pos);
+            }
+          }
+          '@
           $evidence = Join-Path $env:MF_ROOT 'evidence/installer-pages'
           New-Item -ItemType Directory -Force -Path $evidence | Out-Null
           $log = Join-Path $env:MF_ROOT 'evidence/installer.log'
+          $result = Join-Path $env:MF_ROOT 'evidence/install-result.txt'
 
-          function Wait-SetupWindow([int]$processId, [int]$seconds = 60) {
-            # Inno's wizard runs in a child process (MentorFlow-Setup.tmp), not $processId; match its window class.
-            $condition = [System.Windows.Automation.PropertyCondition]::new(
-              [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'TWizardForm')
-            for ($i = 0; $i -lt ($seconds * 4); $i++) {
-              try {
-                $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
-                  [System.Windows.Automation.TreeScope]::Children, $condition)
-                if ($windows.Count -gt 0) { return $windows[0] }
-              } catch { }
-              Start-Sleep -Milliseconds 250
-            }
-            return $null
-          }
-
-          function Read-SetupText($window) {
-            $rows = @([ordered]@{ control='window'; name=[string]$window.Current.Name; type='Window'; enabled=[bool]$window.Current.IsEnabled })
-            try {
-              $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants,
-                [System.Windows.Automation.Condition]::TrueCondition)
-              foreach ($item in $all) {
-                $name = [string]$item.Current.Name
-                if ($name) {
-                  $rows += [ordered]@{ control='descendant'; name=$name; type=[string]$item.Current.ControlType.ProgrammaticName; enabled=[bool]$item.Current.IsEnabled }
-                }
-              }
-            } catch { $rows += [ordered]@{ control='read-error'; error=$_.Exception.Message } }
-            return $rows
-          }
-
-          function Save-SetupPage([string]$label, $window) {
-            if ($null -eq $window) { return }
+          function Save-SetupPage([string]$label, [IntPtr]$wizard) {
             $dir = Join-Path $evidence $label
             New-Item -ItemType Directory -Force -Path $dir | Out-Null
-            Read-SetupText $window | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $dir 'ui-text.json')
+            if ($wizard -ne [IntPtr]::Zero) { [Wizard]::VisibleChildClasses($wizard) -join "`n" | Set-Content (Join-Path $dir 'visible-controls.txt') }
             try {
               $bmp = New-Object Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height)
               $gfx = [Drawing.Graphics]::FromImage($bmp)
@@ -96,63 +119,48 @@ jobs:
             } catch { "screenshot_error=$($_.Exception.Message)" | Set-Content (Join-Path $dir 'screenshot-error.txt') }
           }
 
-          function Find-SetupButton($window, [string[]]$names) {
-            $condition = [System.Windows.Automation.PropertyCondition]::new(
-              [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-              [System.Windows.Automation.ControlType]::Button)
-            try {
-              $buttons = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
-              foreach ($button in $buttons) {
-                $name = [string]$button.Current.Name
-                if ($button.Current.IsEnabled -and ($names | Where-Object { $name -match $_ })) { return $button }
-              }
-            } catch { }
-            return $null
-          }
-
-          function Invoke-SetupButton($button) {
-            if ($null -eq $button) { throw 'No enabled installer button matched the expected default action.' }
-            try {
-              $invoke = $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-              $invoke.Invoke(); return
-            } catch {
-              $legacy = $button.GetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern)
-              $legacy.DoDefaultAction()
-            }
-          }
-
           $p = Start-Process -FilePath $env:INSTALLER -ArgumentList @('/LOG=' + $log) -PassThru
-          "installer_pid=$($p.Id)" | Set-Content (Join-Path $env:MF_ROOT 'evidence/install-result.txt')
-          $window = Wait-SetupWindow $p.Id
-          if ($null -eq $window) {
-            "interactive_window=not_found" | Add-Content (Join-Path $env:MF_ROOT 'evidence/install-result.txt')
+          "installer_pid=$($p.Id)" | Set-Content $result
+          # Inno's wizard runs in a child process (MentorFlow-Setup.tmp); find it by window class.
+          $wizard = [IntPtr]::Zero
+          for ($i = 0; $i -lt 240 -and $wizard -eq [IntPtr]::Zero; $i++) {
+            Start-Sleep -Milliseconds 250
+            $wizard = [Wizard]::FindWindow('TWizardForm', $null)
+          }
+          if ($wizard -eq [IntPtr]::Zero) {
+            "interactive_window=not_found" | Add-Content $result
             if (-not $p.HasExited) { $p.CloseMainWindow() | Out-Null }
             throw 'Visible installer window did not appear on the clean runner.'
           }
-          Save-SetupPage '01-first-page' $window
-          # Inno exposes control names through ANSI MSAA, so Chinese captions arrive garbled on this
-          # English runner. Press Enter instead: it activates the wizard's default button exactly as a
-          # person accepting defaults would (安装 on the location page, 完成 on the finish page).
-          $shell = New-Object -ComObject WScript.Shell
-          $step = 1
-          $deadline = (Get-Date).AddMinutes(15)
+          # The branded pages hide Inno's Next button, so Enter does nothing; click the drawn button like a
+          # person does. 610,416 is the centre of PrimaryButton (Bounds 534,394,152,44 in branded-pages.iss).
+          # Pages are told apart by which controls are visible: the location page shows the path box
+          # (TNewEdit), the finish page shows the options list (TNewCheckListBox).
+          $step = 0; $locationClicks = 0; $finishSeen = $false
+          $deadline = (Get-Date).AddMinutes(20)
           while (-not $p.HasExited -and (Get-Date) -lt $deadline) {
-            $current = Wait-SetupWindow $p.Id 2
-            if ($null -ne $current) {
-              try { $current.SetFocus() } catch { }
-              $null = $shell.AppActivate('MentorFlow')
-              Start-Sleep -Milliseconds 300
-              $shell.SendKeys('{ENTER}')
+            $step++
+            $wizard = [Wizard]::FindWindow('TWizardForm', $null)
+            $classes = if ($wizard -ne [IntPtr]::Zero) { @([Wizard]::VisibleChildClasses($wizard)) } else { @() }
+            if ($step -le 60 -or $step % 12 -eq 0) { Save-SetupPage ('{0:D3}-step' -f $step) $wizard }
+            if ($classes -contains 'TNewCheckListBox') {
+              # Finish page: the window close runs the non-launching finish path (WizardClose -> 关闭), which
+              # applies the default desktop shortcut. 启动 MentorFlow would be refused here anyway: this runner
+              # is elevated and CanLaunchMentorFlow is "not IsAdmin".
+              if (-not $finishSeen) { "finish_page_step=$step" | Add-Content $result; $finishSeen = $true }
+              [Wizard]::PostMessage($wizard, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+            } elseif ($classes -contains 'TNewEdit' -and $locationClicks -lt 6) {
+              $locationClicks++
+              "location_click=$locationClicks step=$step" | Add-Content $result
+              if ($locationClicks % 2) { [Wizard]::MouseClick($wizard, 610, 416) } else { [Wizard]::PostClick($wizard, 610, 416) }
             }
             Start-Sleep -Seconds 5
-            $step++
-            if ($step -le 40) { Save-SetupPage ('{0:D2}-step' -f $step) (Wait-SetupWindow $p.Id 1) }
           }
           if (-not $p.HasExited) {
-            Save-SetupPage '99-install-timeout' (Wait-SetupWindow $p.Id 1)
-            throw 'Visible installer did not finish within 15 minutes.'
+            Save-SetupPage '999-install-timeout' ([Wizard]::FindWindow('TWizardForm', $null))
+            throw 'Visible installer did not finish within 20 minutes.'
           }
-          "installer_exit_code=$($p.ExitCode)" | Add-Content (Join-Path $env:MF_ROOT 'evidence/install-result.txt')
+          "installer_exit_code=$($p.ExitCode)" | Add-Content $result
           if ($p.ExitCode -ne 0) { throw "Visible installer failed with exit code $($p.ExitCode)." }
 
       - name: Check capabilities directly from the clean runner
@@ -198,7 +206,7 @@ jobs:
           $installRoot = Split-Path (Split-Path $sc.TargetPath -Parent) -Parent
           $installParent = Split-Path $installRoot -Parent
           $workingDirectory = if ([string]::IsNullOrWhiteSpace($sc.WorkingDirectory)) { Split-Path $sc.TargetPath -Parent } else { $sc.WorkingDirectory }
-          [ordered]@{ path=$link.FullName; target=$sc.TargetPath; arguments=$sc.Arguments; working_directory=$workingDirectory; install_root=$installRoot } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut.json')
+          [ordered]@{ path=$link.FullName; target=$sc.TargetPath; arguments=$sc.Arguments; working_directory=$workingDirectory; install_root=$installRoot; runner_elevated=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut.json')
 
           function Is-MentorFlowProcess($process) {
             if ($process.ProcessName -match 'MentorFlow|UserRuntime') { return $true }
