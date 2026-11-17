@@ -10,11 +10,7 @@ import argparse
 from pathlib import Path
 import re
 
-OLD = '/releases/latest/MentorFlow-Setup.exe'
-NEW = 'https://aiteacher.clannad.win/updates/app/releases/bootstrap/MentorFlow-Setup.exe'
-
-
-def prepare(source: Path, destination: Path) -> None:
+def prepare(source: Path, destination: Path, from_url: str, to_url: str) -> None:
     source, destination = Path(source), Path(destination)
     if source.resolve() == destination.resolve():
         raise ValueError('candidate output must not overwrite the source config')
@@ -27,11 +23,11 @@ def prepare(source: Path, destination: Path) -> None:
     if 'proxy_pass' in contents:
         raise ValueError('refusing to rewrite a proxied /download location')
     redirects = list(re.finditer(r'\breturn\s+30[1278]\s+(?P<target>[^;\s]+)\s*;', contents))
-    if len(redirects) != 1 or not redirects[0].group('target').strip('\"\'').endswith(OLD):
-        raise ValueError('expected the existing version-independent latest setup redirect exactly once')
+    if len(redirects) != 1 or redirects[0].group('target').strip('\"\'') != from_url:
+        raise ValueError('expected the current /download redirect to equal --from exactly once')
     # Replace the whole URL, not its suffix inside an existing absolute URL.
     redirect = redirects[0]
-    replaced = contents[:redirect.start('target')] + NEW + contents[redirect.end('target'):]
+    replaced = contents[:redirect.start('target')] + to_url + contents[redirect.end('target'):]
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(text[:block.start()] + replaced + text[block.end():], encoding='utf-8')
 
@@ -40,8 +36,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, required=True, help='reviewed copy of the active nginx vhost')
     parser.add_argument('--output', type=Path, required=True, help='candidate file; must differ from --config')
+    parser.add_argument('--from', dest='from_url', required=True, help='current exact redirect target')
+    parser.add_argument('--to', dest='to_url', required=True, help='replacement redirect target')
     args = parser.parse_args()
-    prepare(args.config, args.output)
+    prepare(args.config, args.output, args.from_url, args.to_url)
     print(f'Prepared candidate only: {args.output}')
     print('Review diff and run nginx -t against the candidate before an authorized deployment.')
     return 0

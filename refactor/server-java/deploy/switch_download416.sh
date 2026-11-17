@@ -2,14 +2,15 @@
 set -eu
 
 edge_conf=${EDGE_CONF:-/opt/mentorflow/artifacts/r1-a-functional-20260917/edge.conf}
-state_dir=${STATE_DIR:-/opt/mentorflow/state/download416}
+state_dir=${STATE_DIR:-/opt/mentorflow/state/download436}
 container=${EDGE_CONTAINER:-mentorflow-e1-preview-edge-1}
 docker_bin=${DOCKER_BIN:-docker}
 sha256sum_bin=${SHA256SUM_BIN:-sha256sum}
 stat_bin=${STAT_BIN:-stat}
 backup=$state_dir/edge.conf.before
 container_conf=${CONTAINER_EDGE_CONF:-/etc/nginx/nginx.conf}
-new_url=https://aiteacher.clannad.win/updates/app/releases/bootstrap/MentorFlow-Setup.exe
+new_url=${DOWNLOAD_URL:-}
+rollback_url=${ROLLBACK_URL:-https://aiteacher.clannad.win/updates/app/releases/bootstrap/MentorFlow-Setup.exe}
 
 hash_file() { "$sha256sum_bin" "$1" | awk '{print $1}'; }
 inode_file() { "$stat_bin" -c '%i' "$1"; }
@@ -45,9 +46,11 @@ rollback_after_failure() {
 
 case "${1:-}" in
   switch)
-    [ "$#" -eq 3 ] || { printf 'usage: %s switch EXPECTED_SHA256 CANDIDATE\n' "$0" >&2; exit 2; }
+    [ "$#" -eq 3 ] || [ "$#" -eq 4 ] || { printf 'usage: %s switch EXPECTED_SHA256 CANDIDATE [NEW_URL]\n' "$0" >&2; exit 2; }
     expected_sha=$2
     candidate=$3
+    [ "$#" -eq 3 ] || new_url=$4
+    [ -n "$new_url" ] || { printf '%s\n' 'DOWNLOAD416_ERROR missing_new_url' >&2; exit 2; }
     [ -f "$edge_conf" ] && [ -f "$candidate" ] || { printf '%s\n' 'DOWNLOAD416_ERROR missing_config_or_candidate' >&2; exit 2; }
     actual_sha=$(hash_file "$edge_conf")
     [ "$actual_sha" = "$expected_sha" ] || { printf '%s\n' 'DOWNLOAD416_REFUSED active_sha256_mismatch' >&2; exit 3; }
@@ -83,11 +86,11 @@ case "${1:-}" in
     printf 'DOWNLOAD416_ROLLBACK_INODE_AFTER=%s\n' "$(inode_file "$edge_conf")"
     test_nginx
     reload_nginx
-    check_route_to /releases/latest/MentorFlow-Setup.exe
+    check_route_to "$rollback_url"
     printf '%s\n' 'DOWNLOAD416_MANUAL_ROLLBACK_OK'
     ;;
   *)
-    printf 'usage: %s switch EXPECTED_SHA256 CANDIDATE | rollback\n' "$0" >&2
+    printf 'usage: %s switch EXPECTED_SHA256 CANDIDATE [NEW_URL] | rollback\n' "$0" >&2
     exit 2
     ;;
 esac
