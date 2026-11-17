@@ -35,7 +35,7 @@ def test_product_code_has_no_developer_drive_defaults_outside_protection_lists()
     hits = []
     for product_root in PRODUCT_ROOTS:
         for path in product_root.rglob("*"):
-            if not path.is_file() or path.suffix not in {".py", ".pyw"}:
+            if not path.is_file() or path.suffix not in {".py", ".pyw", ".mjs"}:
                 continue
             relative = path.relative_to(REPO)
             if relative in PROTECTED:

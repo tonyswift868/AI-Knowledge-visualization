@@ -1,5 +1,5 @@
-// Build: node D:/MentorFlow/.local/web-deps/node_modules/vite/bin/vite.js build --config refactor/learning/web/vite.config.mjs
-// Dependencies live outside the product tree (ENV-01), pinned by this package-lock.json.
+// The source-run script sets MENTORFLOW_WEB_DEPS to this checkout's web folder.
+// Dependencies are pinned by this package-lock.json.
 import { fileURLToPath, pathToFileURL } from "node:url"
 import path from "node:path"
 

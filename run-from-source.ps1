@@ -46,6 +46,7 @@ if ($nodeMajor -ne '24') {
 # These variables affect this PowerShell process and its children only.
 $env:PIP_CACHE_DIR = $pipCache
 $env:npm_config_cache = $npmCache
+$env:MENTORFLOW_WEB_DEPS = $web
 New-Item -ItemType Directory -Force -Path $cache | Out-Null
 
 if (-not (Test-Path -LiteralPath $venvPython)) {
