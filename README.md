@@ -1,12 +1,10 @@
 <div align="center">
 
-# MentorFlow
-
-**带 AI 老师的个人学习软件**
+<img src="docs/images/banner.svg" alt="MentorFlow：带 AI 老师的个人学习软件。说出想学什么，每天学什么它来排" width="100%">
 
 说出想学什么，它帮你排好每天的学习计划；老师上课讲解、出题判分，跟着你的进度走。
 
-[![下载最新版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88-Windows-2b7de9?style=for-the-badge)](https://aiteacher.clannad.win/download)
+[![下载最新版](https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD%E6%9C%80%E6%96%B0%E7%89%88-Windows-d6457a?style=for-the-badge)](https://aiteacher.clannad.win/download)
 
 [官网](https://aiteacher.clannad.win) · [下载](https://aiteacher.clannad.win/download) · [MIT 许可证](LICENSE)
 
@@ -14,11 +12,9 @@
 
 ## 截图
 
-| 学习日历 | 学习计划 |
-| :---: | :---: |
-| ![学习日历：每天可学的时间可以分别设置](docs/images/plan-calendar.png) | ![生成好的学习计划](docs/images/plan-overview.png) |
-| **课堂** | **做题判分** |
-| ![AI 老师上课](docs/images/classroom.png) | ![答题后的判分和讲解](docs/images/exercise.png) |
+![新建计划：想学什么、学到什么程度、现在的水平、起止日期，每天学多久、每周哪几天能学都能单独设](docs/images/plan-calendar.png)
+
+<p align="center"><sub>新建计划：想学什么、学到什么程度、哪几天有空，填完就排。</sub></p>
 
 ## 能做什么
 

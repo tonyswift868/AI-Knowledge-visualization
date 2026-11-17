@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" width="1200" height="500" font-family="'Microsoft YaHei','PingFang SC','Noto Sans CJK SC','Hiragino Sans GB',system-ui,sans-serif">
+  <title>MentorFlow：带 AI 老师的个人学习软件</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff8fa"/>
+      <stop offset="1" stop-color="#fde4ec"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#f39bb8" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#f39bb8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f39bb8"/>
+      <stop offset=".45" stop-color="#d6457a"/>
+      <stop offset="1" stop-color="#b8336a"/>
+    </linearGradient>
+    <linearGradient id="half" x1="0" y1="0" x2="1" y2="1">
+      <stop offset=".5" stop-color="#fdeef3"/>
+      <stop offset=".5" stop-color="#ffffff"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#d6457a" flood-opacity=".18"/>
+    </filter>
+    <clipPath id="card"><rect x="650" y="40" width="490" height="420" rx="18"/></clipPath>
+    <path id="petal" d="M0 0C6-9 18-7 16 2C14 9 5 9 0 0Z"/>
+    <g id="flower">
+      <ellipse cx="16" cy="8.5" rx="4.2" ry="6.5"/>
+      <ellipse cx="16" cy="8.5" rx="4.2" ry="6.5" transform="rotate(72 16 16)"/>
+      <ellipse cx="16" cy="8.5" rx="4.2" ry="6.5" transform="rotate(144 16 16)"/>
+      <ellipse cx="16" cy="8.5" rx="4.2" ry="6.5" transform="rotate(216 16 16)"/>
+      <ellipse cx="16" cy="8.5" rx="4.2" ry="6.5" transform="rotate(288 16 16)"/>
+    </g>
+  </defs>
+
+  <rect width="1200" height="500" rx="24" fill="url(#bg)"/>
+  <circle cx="980" cy="110" r="260" fill="url(#glow)"/>
+  <circle cx="140" cy="460" r="200" fill="url(#glow)"/>
+
+  <g fill="#f7b6c9" opacity=".75">
+    <use href="#petal" transform="translate(48 46) rotate(20)"/>
+    <use href="#petal" transform="translate(470 34) rotate(-30) scale(.8)"/>
+    <use href="#petal" transform="translate(600 140) rotate(60) scale(.9)"/>
+    <use href="#petal" transform="translate(560 452) rotate(-10)"/>
+    <use href="#petal" transform="translate(330 470) rotate(40) scale(.7)"/>
+    <use href="#petal" transform="translate(1166 150) rotate(110) scale(.9)"/>
+    <use href="#petal" transform="translate(1150 476) rotate(-40) scale(.8)"/>
+  </g>
+
+  <!-- left: name and pitch -->
+  <use href="#flower" fill="#d6457a" transform="translate(70 84) scale(1.6)"/>
+  <circle cx="95.6" cy="109.6" r="4.8" fill="#fff6c9"/>
+  <text x="135" y="124" font-size="40" font-weight="700" fill="#3b2a32">MentorFlow</text>
+  <rect x="70" y="166" width="252" height="34" rx="17" fill="#fdeef3" stroke="#f2d5df"/>
+  <text x="196" y="189" font-size="17" fill="#b8336a" text-anchor="middle">带 AI 老师的个人学习软件</text>
+  <text x="70" y="276" font-size="50" font-weight="800" fill="#3b2a32">说出想学什么，</text>
+  <text x="70" y="346" font-size="50" font-weight="800" fill="#3b2a32"><tspan fill="#d6457a">每天学什么</tspan>它来排</text>
+  <text x="70" y="404" font-size="19" fill="#8b6f7b">说出目标和截止日期，它排好每天的课；</text>
+  <text x="70" y="434" font-size="19" fill="#8b6f7b">AI 老师上课讲解、出题判分，跟着你的进度走。</text>
+
+  <!-- right: drawn new-plan form, same field names as the app -->
+  <rect x="650" y="40" width="490" height="420" rx="18" fill="#ffffff" filter="url(#shadow)"/>
+  <g clip-path="url(#card)">
+    <rect x="650" y="40" width="490" height="44" fill="#fdeef3"/>
+  </g>
+  <line x1="650" y1="84" x2="1140" y2="84" stroke="#f2d5df"/>
+  <rect x="650" y="40" width="490" height="420" rx="18" fill="none" stroke="#f2d5df"/>
+  <circle cx="674" cy="62" r="5" fill="#f2d5df"/>
+  <circle cx="692" cy="62" r="5" fill="#f2d5df"/>
+  <circle cx="710" cy="62" r="5" fill="#f2d5df"/>
+  <text x="728" y="67" font-size="15" font-weight="600" fill="#8b6f7b">新建计划</text>
+
+  <g font-size="13" font-weight="600" fill="#8b6f7b">
+    <text x="674" y="114">想学什么</text>
+    <text x="674" y="188">现在的水平</text>
+    <text x="674" y="262">每日任务时长上限（分钟）</text>
+    <text x="674" y="334">每周哪几天能学</text>
+  </g>
+
+  <rect x="674" y="124" width="442" height="38" rx="9" fill="#fff8fa" stroke="#f2d5df"/>
+  <text x="689" y="149" font-size="15" fill="#3b2a32">日常英语口语入门</text>
+
+  <rect x="674" y="198" width="300" height="38" rx="11" fill="#fdeef3"/>
+  <rect x="678" y="202" width="70" height="30" rx="8" fill="#ffffff" stroke="#f2d5df"/>
+  <g font-size="14" text-anchor="middle" fill="#3b2a32">
+    <text x="713" y="222" fill="#d6457a" font-weight="700">零基础</text>
+    <text x="776" y="222">入门</text>
+    <text x="847" y="222">有一定基础</text>
+    <text x="932" y="222">比较熟练</text>
+  </g>
+
+  <g font-size="14" text-anchor="middle" fill="#8b6f7b">
+    <rect x="674" y="272" width="52" height="30" rx="15" fill="#ffffff" stroke="#f2d5df"/><text x="700" y="292">30</text>
+    <rect x="734" y="272" width="52" height="30" rx="15" fill="url(#accent)"/><text x="760" y="292" fill="#ffffff" font-weight="700">60</text>
+    <rect x="794" y="272" width="52" height="30" rx="15" fill="#ffffff" stroke="#f2d5df"/><text x="820" y="292">90</text>
+    <rect x="854" y="272" width="58" height="30" rx="15" fill="#ffffff" stroke="#f2d5df"/><text x="883" y="292">120</text>
+  </g>
+
+  <g text-anchor="middle">
+    <g fill="url(#accent)">
+      <rect x="674" y="344" width="56" height="50" rx="10"/>
+      <rect x="738" y="344" width="56" height="50" rx="10"/>
+      <rect x="802" y="344" width="56" height="50" rx="10"/>
+      <rect x="866" y="344" width="56" height="50" rx="10"/>
+      <rect x="930" y="344" width="56" height="50" rx="10"/>
+    </g>
+    <rect x="994.5" y="344.5" width="55" height="49" rx="10" fill="url(#half)" stroke="#d6457a"/>
+    <rect x="1058.5" y="344.5" width="55" height="49" rx="10" fill="#ffffff" stroke="#e8c3d0" stroke-dasharray="4 3"/>
+    <g font-size="14" font-weight="700" fill="#ffffff">
+      <text x="702" y="366">周一</text><text x="766" y="366">周二</text><text x="830" y="366">周三</text><text x="894" y="366">周四</text><text x="958" y="366">周五</text>
+    </g>
+    <g font-size="11" fill="#ffffff">
+      <text x="702" y="385">全天</text><text x="766" y="385">全天</text><text x="830" y="385">全天</text><text x="894" y="385">全天</text><text x="958" y="385">全天</text>
+    </g>
+    <text x="1022" y="366" font-size="14" font-weight="700" fill="#d6457a">周六</text>
+    <text x="1022" y="385" font-size="11" fill="#d6457a">半天</text>
+    <text x="1086" y="366" font-size="14" font-weight="700" fill="#8b6f7b">周日</text>
+    <text x="1086" y="385" font-size="11" fill="#8b6f7b">没空</text>
+  </g>
+
+  <rect x="966" y="410" width="150" height="34" rx="10" fill="url(#accent)"/>
+  <path d="M988 418l1.6 4.6 4.6 1.6-4.6 1.6-1.6 4.6-1.6-4.6-4.6-1.6 4.6-1.6z" fill="#ffffff"/>
+  <text x="1051" y="432" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">提交，开始规划</text>
+</svg>
