@@ -2592,7 +2592,8 @@
 - 原因：`refactor/desktop/shell_paths.py` 第 14 行 `DATA_ROOT = Path(r"D:\MentorFlowData\account-shell")` 写死，没有按用户目录取，也没有开关。安装版不走这里（数据在安装目录 `Data` 下）。
 - 牵连：没有 D 盘的电脑源码版起不来；本机 `D:\MentorFlowData\account-shell` 有 10 月的旧开发数据约 432 MB，源码版一跑就会读写它。另：源码版和安装版共用 Windows 凭据库服务名 `MentorFlow.Provider.v1`、同账号登录互斥量、`HKCU\Software\MentorFlow\MentorFlow` 下 Live2D 设置；同一台电脑两个版本登同一个账号时会共用这些，未登录不碰凭据。
 - 排查：437-MF02 只读审查代码（`.local/test-tmp/437-MF02/code-audit.md`），按任务停点没有启动。员工说已停掉克隆，实际两个 `git clone` 和子进程还在后台跑（架构师 2026-11-17 07:50 前停掉并删目录）。
-- 解决：待定。
+- 原因补充（架构师 2026-11-17）：同类还有 `refactor/learning/voice/tts/config.py:21-29,243`，语音引擎、底模、声音包、TTS 数据目录写死在 `E:\AI_Tools\…`、`E:\MentorFlowModels\…`、`D:\MentorFlow-office\…`、`D:\_KEEP\…`。安装版走 `sys.frozen` 分支按安装目录算，所以不受影响；源码版直接用写死值，只有开发机能跑。
+- 解决：用户 2026-11-17 定源码版数据放 `%LOCALAPPDATA%`；437-MF02 第二段修（源码版所有数据放 `%LOCALAPPDATA%\MentorFlow-Source`，语音走安装版同一套找组件的办法，代码里不留开发机路径），待修。
 
 ### [BUG-273] 别人电脑上用官网小安装器装软件，卡在“正在获取已签名版本…”2%，对方说整台电脑都卡死
 - 状态：待查（2026-11-17 用户报告，433-MF05 只查不改）。
