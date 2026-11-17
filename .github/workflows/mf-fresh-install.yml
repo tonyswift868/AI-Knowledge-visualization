@@ -130,35 +130,27 @@ jobs:
             throw 'Visible installer window did not appear on the clean runner.'
           }
           Save-SetupPage '01-first-page' $window
-          $finishWindow = $null
-          $page = 1
+          # Inno exposes control names through ANSI MSAA, so Chinese captions arrive garbled on this
+          # English runner. Press Enter instead: it activates the wizard's default button exactly as a
+          # person accepting defaults would (安装 on the location page, 完成 on the finish page).
+          $shell = New-Object -ComObject WScript.Shell
+          $step = 1
           $deadline = (Get-Date).AddMinutes(15)
           while (-not $p.HasExited -and (Get-Date) -lt $deadline) {
-            $candidate = Wait-SetupWindow $p.Id 1
-            if ($null -eq $candidate) { Start-Sleep -Seconds 2; continue }
-            $finishButton = Find-SetupButton $candidate @('关闭', 'Close', '完成', 'Finish')
-            if ($null -ne $finishButton) { $finishWindow = $candidate; break }
-            # Accept each default page like a person: 下一步 / 安装, never 取消 or 选择其他位置.
-            $nextButton = Find-SetupButton $candidate @('^安装', '^Install', '下一步', '^Next')
-            if ($null -ne $nextButton -and $page -lt 10) {
-              Invoke-SetupButton $nextButton
-              $page++
-              Start-Sleep -Seconds 2
-              Save-SetupPage ('{0:D2}-page' -f $page) (Wait-SetupWindow $p.Id 5)
-            } else { Start-Sleep -Seconds 4 }
+            $current = Wait-SetupWindow $p.Id 2
+            if ($null -ne $current) {
+              try { $current.SetFocus() } catch { }
+              $null = $shell.AppActivate('MentorFlow')
+              Start-Sleep -Milliseconds 300
+              $shell.SendKeys('{ENTER}')
+            }
+            Start-Sleep -Seconds 5
+            $step++
+            if ($step -le 40) { Save-SetupPage ('{0:D2}-step' -f $step) (Wait-SetupWindow $p.Id 1) }
           }
-          if ($null -eq $finishWindow -and -not $p.HasExited) {
-            Save-SetupPage '03-install-timeout' (Wait-SetupWindow $p.Id 1)
-            $p.CloseMainWindow() | Out-Null
-            throw 'Visible installer did not reach the finish page within 15 minutes.'
-          }
-          if ($null -ne $finishWindow) {
-            Save-SetupPage '03-finished' $finishWindow
-            $closeButton = Find-SetupButton $finishWindow @('关闭', 'Close', '完成', 'Finish')
-            if ($null -ne $closeButton) { Invoke-SetupButton $closeButton }
-            else { $p.CloseMainWindow() | Out-Null }
-            $closeDeadline = (Get-Date).AddSeconds(60)
-            while (-not $p.HasExited -and (Get-Date) -lt $closeDeadline) { Start-Sleep -Seconds 1 }
+          if (-not $p.HasExited) {
+            Save-SetupPage '99-install-timeout' (Wait-SetupWindow $p.Id 1)
+            throw 'Visible installer did not finish within 15 minutes.'
           }
           "installer_exit_code=$($p.ExitCode)" | Add-Content (Join-Path $env:MF_ROOT 'evidence/install-result.txt')
           if ($p.ExitCode -ne 0) { throw "Visible installer failed with exit code $($p.ExitCode)." }
