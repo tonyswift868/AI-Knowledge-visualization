@@ -53,8 +53,9 @@ jobs:
           $log = Join-Path $env:MF_ROOT 'evidence/installer.log'
 
           function Wait-SetupWindow([int]$processId, [int]$seconds = 60) {
+            # Inno's wizard runs in a child process (MentorFlow-Setup.tmp), not $processId; match its window class.
             $condition = [System.Windows.Automation.PropertyCondition]::new(
-              [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $processId)
+              [System.Windows.Automation.AutomationElement]::ClassNameProperty, 'TWizardForm')
             for ($i = 0; $i -lt ($seconds * 4); $i++) {
               try {
                 $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
@@ -128,18 +129,23 @@ jobs:
             if (-not $p.HasExited) { $p.CloseMainWindow() | Out-Null }
             throw 'Visible installer window did not appear on the clean runner.'
           }
-          Save-SetupPage '01-before-default-install' $window
-          $installButton = Find-SetupButton $window @('^安装', '^Install', '下一步', '^Next')
-          Invoke-SetupButton $installButton
-          Start-Sleep -Seconds 2
-          Save-SetupPage '02-after-install-click' (Wait-SetupWindow $p.Id 10)
+          Save-SetupPage '01-first-page' $window
           $finishWindow = $null
+          $page = 1
           $deadline = (Get-Date).AddMinutes(15)
           while (-not $p.HasExited -and (Get-Date) -lt $deadline) {
             $candidate = Wait-SetupWindow $p.Id 1
-            $finishButton = Find-SetupButton $candidate @('关闭', 'Close', '完成', 'Finish', '启动 MentorFlow')
+            if ($null -eq $candidate) { Start-Sleep -Seconds 2; continue }
+            $finishButton = Find-SetupButton $candidate @('关闭', 'Close', '完成', 'Finish')
             if ($null -ne $finishButton) { $finishWindow = $candidate; break }
-            Start-Sleep -Seconds 4
+            # Accept each default page like a person: 下一步 / 安装, never 取消 or 选择其他位置.
+            $nextButton = Find-SetupButton $candidate @('^安装', '^Install', '下一步', '^Next')
+            if ($null -ne $nextButton -and $page -lt 10) {
+              Invoke-SetupButton $nextButton
+              $page++
+              Start-Sleep -Seconds 2
+              Save-SetupPage ('{0:D2}-page' -f $page) (Wait-SetupWindow $p.Id 5)
+            } else { Start-Sleep -Seconds 4 }
           }
           if ($null -eq $finishWindow -and -not $p.HasExited) {
             Save-SetupPage '03-install-timeout' (Wait-SetupWindow $p.Id 1)
@@ -148,7 +154,7 @@ jobs:
           }
           if ($null -ne $finishWindow) {
             Save-SetupPage '03-finished' $finishWindow
-            $closeButton = Find-SetupButton $finishWindow @('关闭', 'Close')
+            $closeButton = Find-SetupButton $finishWindow @('关闭', 'Close', '完成', 'Finish')
             if ($null -ne $closeButton) { Invoke-SetupButton $closeButton }
             else { $p.CloseMainWindow() | Out-Null }
             $closeDeadline = (Get-Date).AddSeconds(60)
@@ -241,7 +247,7 @@ jobs:
                   [System.Windows.Automation.ControlType]::Button)
                 $buttons = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
                 foreach ($button in $buttons) {
-                  if ($button.Current.IsEnabled -and ([string]$button.Current.Name -match '关闭|Close|退出|Exit')) { return $button }
+                  if ($button.Current.IsEnabled -and ([string]$button.Current.Name -match '关闭|Close|退出|Exit|✕|×')) { return $button }
                 }
               } catch { }
             }
