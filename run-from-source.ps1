@@ -7,6 +7,7 @@ $web = Join-Path $repo 'refactor\learning\web'
 $requirements = Join-Path $repo 'refactor\desktop\requirements-account-shell.txt'
 $venv = Join-Path $repo '.venv'
 $venvPython = Join-Path $venv 'Scripts\python.exe'
+$pythonReady = Join-Path $venv '.requirements-installed'
 $cache = Join-Path $repo '.source-run-cache'
 $pipCache = Join-Path $cache 'pip'
 $npmCache = Join-Path $cache 'npm'
@@ -49,8 +50,15 @@ New-Item -ItemType Directory -Force -Path $cache | Out-Null
 
 if (-not (Test-Path -LiteralPath $venvPython)) {
     & $python.Source -m venv $venv
+    if ($LASTEXITCODE -ne 0) { Stop-WithMessage '创建 Python 虚拟环境失败。' }
+}
+
+if (-not (Test-Path -LiteralPath $pythonReady)) {
     & $venvPython -m pip install --upgrade pip
+    if ($LASTEXITCODE -ne 0) { Stop-WithMessage '升级 pip 失败，请检查网络后重试。' }
     & $venvPython -m pip install -r $requirements
+    if ($LASTEXITCODE -ne 0) { Stop-WithMessage '安装 Python 依赖失败，请检查网络后重试。' }
+    New-Item -ItemType File -Force -Path $pythonReady | Out-Null
 }
 
 $nodeModules = Join-Path $web 'node_modules'
@@ -58,6 +66,7 @@ if (-not (Test-Path -LiteralPath $nodeModules)) {
     Push-Location $web
     try {
         & $npm.Source ci --no-audit --no-fund
+        if ($LASTEXITCODE -ne 0) { Stop-WithMessage '安装前端依赖失败，请检查网络后重试。' }
     } finally {
         Pop-Location
     }
@@ -68,6 +77,7 @@ if (-not (Test-Path -LiteralPath $distIndex)) {
     Push-Location $repo
     try {
         & $node.Source (Join-Path $web 'node_modules\vite\bin\vite.js') build --config (Join-Path $web 'vite.config.mjs')
+        if ($LASTEXITCODE -ne 0) { Stop-WithMessage '构建前端界面失败。' }
     } finally {
         Pop-Location
     }
