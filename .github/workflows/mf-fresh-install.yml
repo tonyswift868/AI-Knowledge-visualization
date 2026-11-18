@@ -176,7 +176,6 @@ jobs:
           # person does. 610,416 is the centre of PrimaryButton (Bounds 534,394,152,44 in branded-pages.iss).
           # Pages are told apart by which controls are visible: the location page shows the path box
           # (TNewEdit), the finish page shows the options list (TNewCheckListBox).
-          # Native (unbranded) pages only show for errors such as PrepareToInstall failures; stop early then.
           $step = 0; $locationClicks = 0; $finishClicks = 0; $nativeSteps = 0
           $deadline = (Get-Date).AddMinutes(20)
           try {
@@ -185,10 +184,11 @@ jobs:
               $wizard = [Wizard]::FindWindow('TWizardForm', [NullString]::Value)
               $classes = if ($wizard -ne [IntPtr]::Zero) { @([Wizard]::VisibleChildClasses($wizard)) } else { @() }
               if ($step -le 60 -or $step % 12 -eq 0) { Save-SetupPage ('{0:D3}-step' -f $step) $wizard }
-              $page = if ($classes -contains 'TNewCheckListBox') { 'finish' } elseif ($classes -contains 'TNewEdit') { 'location' } elseif ($classes -contains 'TNewNotebook') { 'native' } else { 'installing' }
+              $page = if ($classes -contains 'TNewCheckListBox') { 'finish' } elseif ($classes -contains 'TNewEdit') { 'location' } elseif (@($classes | Where-Object { $_ -eq 'TNewButton' }).Count -ge 3) { 'error' } elseif ($classes -contains 'TNewNotebook') { 'preparing' } else { 'installing' }
               Write-Host "step $step page=$page"
-              $nativeSteps = if ($page -eq 'native') { $nativeSteps + 1 } else { 0 }
-              if ($nativeSteps -ge 6) { throw 'Installer stayed on a native (error) page for 30 seconds; see the step screenshots.' }
+              # Inno's own Preparing page (only 取消) is normal while the payload extracts; its error page adds 上一步/安装.
+              $nativeSteps = if ($page -eq 'error') { $nativeSteps + 1 } else { 0 }
+              if ($nativeSteps -ge 3) { throw 'Installer showed an error page; see the step screenshots and installer.log.' }
               if ($page -eq 'finish') {
                 # A person clicks 启动 MentorFlow here; that first launch comes from the installer.
                 # After 3 refused clicks fall back to the window close (non-launching finish path).
