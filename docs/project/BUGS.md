@@ -6,6 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-282 | Windows 7/8 上装 2.0.48 弹“Failed to load Python DLL … python312.dll 找不到指定的模块” | 已修未验证（安装包加最低系统版本，待发版） | 2026-11-18 |
 | BUG-281 | 以管理员身份（或关了 UAC 的电脑上）运行安装包装不上，提示却说“安装位置未通过核心校验” | 已修未验证（代码已推送，要发新版才到用户手里） | 2026-11-18 |
 | BUG-280 | 干净 Windows 上完整包静默安装在自定义安装位置页前退出，应用根本没装上 | 待修（438 两次 GitHub runner 复现） | 2026-11-17 |
 | BUG-279 | 别人从官网下载完整包装好后，只能正常打开一次，之后双击怎么都打不开 | 待查（用户 2026-11-17 报告） | 2026-11-17 |
@@ -2600,6 +2601,15 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
 - 干净机器复现（2026-11-18 架构师，run 44209844520，证据 `.local/test-tmp/438-arch/ev11`）：GitHub `windows-latest`（美国，Windows Server 2025）新建普通用户、开窗口装 2.0.48 默认位置，2 分半装完；完成页点“启动”开第 1 次，之后从桌面快捷方式再开 3 次，关法分别是登录窗 ✕、✕、WM_CLOSE、WM_CLOSE。4 次都出登录窗，“注册账号”“忘记密码”4 次都是亮的；每次关后 30 秒 MentorFlow 进程全部退出，`mentorflow.log` 每次都有 `USER_MAIN_CLOSE` → `EVENT_LOOP_RETURNED` 正常退出。两个问题在这台机器上都复现不出，差别待查：对方的 Windows 版本、所在网络（中国）、杀毒软件、是否以管理员身份打开（[BUG-281]）。
 - 关联：[BUG-278]、[BUG-273]、436
 
+### [BUG-282] Windows 7/8 上装 2.0.48 弹“Failed to load Python DLL … python312.dll 找不到指定的模块”
+- 状态：已修未验证（2026-11-18；要发新版才生效）。
+- 现象：用户 2026-11-18 在对方那边另一台电脑（账号 Administrator，弹窗是 Windows 7 样式）装 2.0.48，点“安装”后弹 `Failed to load Python DLL 'C:\Users\ADMINI~1\AppData\Local\Temp\is-….tmp\payload\UserRuntime\_internal\python312.dll'. LoadLibrary: 找不到指定的模块。`
+- 原因：程序用 Python 3.12 和 Qt 6，只支持 Windows 10 1809 及以上；Windows 7 缺 Python 3.9 起要用的系统文件，python312.dll 加载不了。安装包（MentorFlow.iss、Bootstrap.iss）没写最低系统版本，所以在旧系统上照样往下走，到运行核心时才崩。
+- 解决：两个安装脚本加 `MinVersion=10.0.17763`，旧系统一打开安装包就看到 Inno 自带的中文提示“需要 Windows 10 或更新版本”，不再往下装。不打算支持 Windows 7（要整套降到 Python 3.8 + Qt 5）。
+- 验证：引用这两个安装脚本的 4 个测试文件 40 项通过（2026-11-18）；真包在旧系统上的提示未验证。
+- 关联：[BUG-281]
+- 更新：2026-11-18
+
 ### [BUG-281] 以管理员身份（或关了 UAC 的电脑上）运行安装包装不上，提示却说“安装位置未通过核心校验”
 - 状态：已修未验证（2026-11-18，用户定“允许管理员运行”；代码已推送，要发新版才到用户手里，真包未在管理员身份下装过）。
 - 现象：GitHub `windows-latest` runner（账号是管理员、UAC 关闭，所有进程都是管理员令牌）开窗口装 2.0.48 完整包，默认位置 `C:\Users\runneradmin\AppData\Local\Programs\MentorFlow`，点“安装”后进入原生“正在准备安装”页：“安装位置未通过核心校验。请选择已有、可写且无未知文件的位置。安装程序不能继续。”（run 44204115472，`installer.log` 末行 `PrepareToInstall failed: 安装位置未通过核心校验…`，截图 `installer-pages/010-step/screen.png`）。
@@ -2607,6 +2617,7 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
 - 影响：右键“以管理员身份运行”安装包或快捷方式的人、关了 UAC 的电脑，装不上或打不开，看到的提示与原因不符。
 - 解决（用户 2026-11-18 定：允许管理员运行）：删掉 `main()` 开头的拒绝；`ProcessPeer.require` 和 App 回报健康时不再要求对方是普通身份，改成“跟自己身份一致”（`windows_process_peer.own_token_level()`），普通打开全是普通身份、管理员打开全是管理员身份，两种都能用；安装器去掉 `CanLaunchMentorFlow`（原来管理员身份时完成页“启动 MentorFlow”被拒）。
 - 验证：`tests/refactor/delivery/test_admin_token281.py`（普通/管理员两种身份都通过、身份不一致仍拒绝、管理员身份下 `UserRuntime` 入口照常运行）加 35 个引用这些文件的测试文件，共 360 项通过（2026-11-18）。真包管理员身份安装、启动未验证，要等发新版后在 GitHub runner（本身就是管理员）上走一遍。
+- 再现（2026-11-18）：用户在对方那边换的第三台电脑（Windows 10/11 样式）装 2.0.48，同样停在“安装位置未通过核心校验”。最可能是该电脑用内置 Administrator 账号或关了 UAC，安装程序以管理员身份运行；代码已修，2.0.48 里还在。
 - 关联：[BUG-279]、[BUG-280]、438
 - 更新：2026-11-18
 

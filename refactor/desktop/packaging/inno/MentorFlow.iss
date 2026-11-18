@@ -16,6 +16,8 @@ SetupArchitecture=x64
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
+; Python 3.12 and Qt 6 need Windows 10 1809 or later. Older Windows gets Inno's clear version message instead of "Failed to load Python DLL".
+MinVersion=10.0.17763
 UsePreviousPrivileges=no
 UsePreviousAppDir=yes
 UsePreviousTasks=no
