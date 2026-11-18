@@ -89,5 +89,5 @@ runs:
         mv -f "$releases/.current.json.tmp" "$releases/current.json"
         find "$releases" -maxdepth 1 -type f -name 'MentorFlow-Setup-*.exe' -printf '%f\n' | sort -V | head -n -2 | while IFS= read -r old; do rm -f "$releases/$old"; done
         '@
-        $script | & ssh -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts $remote bash -s -- $env:MF_VERSION $sha256 $temp
+        $script | & ssh -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts $remote sudo -n bash -s -- $env:MF_VERSION $sha256 $temp
         if ($LASTEXITCODE -ne 0) { throw 'backup server publish failed' }
