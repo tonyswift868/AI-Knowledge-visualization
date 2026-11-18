@@ -46,11 +46,12 @@ def test_replaces_placeholder_and_adds_get_head_routes(tmp_path):
     assert "return 200 '<!doctype html>" not in candidate
     assert candidate.count("location = / {") == 1
     assert candidate.count("location ^~ /images/ {") == 1
-    assert candidate.count("set $aiteacher_static http://mentorflow-e108-update-static:8081;") == 4
+    assert candidate.count("set $aiteacher_static http://mentorflow-e108-update-static:8081;") == 3
     assert "rewrite ^/$ /mentorflow/updates/e108/site/index.html break;" in candidate
     assert "rewrite ^/download$ /mentorflow/updates/e108/site/download.html break;" in candidate
     assert "rewrite ^/images/(.*)$ /mentorflow/updates/e108/site/images/$1 break;" in candidate
-    assert candidate.count("if ($request_method !~ ^(GET|HEAD)$) { return 405; }") == 4
+    assert candidate.count("if ($request_method !~ ^(GET|HEAD)$) { return 405; }") == 3
+    assert candidate.count("location = /download {") == 1
     assert "location ^~ /updates/app/" in candidate
     assert "location / { return 404; }" in candidate
 

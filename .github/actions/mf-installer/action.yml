@@ -57,3 +57,36 @@ runs:
           gh release create $tag "$installer#MentorFlow-Setup.exe" --target $env:GITHUB_SHA --title $title --notes-file $bodyPath --latest --repo $env:GH_REPO
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         }
+    - name: Publish installer to IP backup and refresh current version
+      shell: pwsh
+      env:
+        MF_SSH_KEY: ${{ inputs.ssh-key }}
+        MF_VERSION: ${{ inputs.version }}
+        MF_SSH_KNOWN_HOSTS: ${{ env.MF_SSH_KNOWN_HOSTS }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $installer = Join-Path $env:RUNNER_TEMP 'installer/installer/MentorFlow-Setup.exe'
+        $sha256 = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+        $key = Join-Path $env:RUNNER_TEMP 'mf-installer-ssh-key'
+        $hosts = Join-Path $env:RUNNER_TEMP 'mf-installer-known-hosts'
+        [IO.File]::WriteAllText($key, $env:MF_SSH_KEY.Trim() + "`n", [Text.Encoding]::ASCII)
+        [IO.File]::WriteAllText($hosts, $env:MF_SSH_KNOWN_HOSTS.Trim() + "`n", [Text.Encoding]::ASCII)
+        icacls $key /inheritance:r /grant:r "$env:USERNAME`:F" | Out-Null
+        $remote = "mentorflow-admin@89.45.45.28"
+        $temp = "/tmp/mf-installer-$env:MF_VERSION.exe"
+        & scp -O -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts $installer "$remote`:$temp"
+        if ($LASTEXITCODE -ne 0) { throw 'scp to backup server failed' }
+        $script = @'
+        set -eu
+        version="$1"; expected="$2"; temp="$3"
+        releases=/opt/mentorflow/update-static/e108/app/releases
+        test "$(sha256sum "$temp" | awk '{print $1}')" = "$expected"
+        install -o root -g root -m 0644 "$temp" "$releases/MentorFlow-Setup-$version.exe"
+        rm -f "$temp"
+        printf '{"version":"%s","filename":"MentorFlow-Setup-%s.exe","sha256":"%s"}\n' "$version" "$version" "$expected" > "$releases/.current.json.tmp"
+        chown root:root "$releases/.current.json.tmp"; chmod 0644 "$releases/.current.json.tmp"
+        mv -f "$releases/.current.json.tmp" "$releases/current.json"
+        find "$releases" -maxdepth 1 -type f -name 'MentorFlow-Setup-*.exe' -printf '%f\n' | sort -V | head -n -2 | while IFS= read -r old; do rm -f "$releases/$old"; done
+        '@
+        $script | & ssh -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts $remote bash -s -- $env:MF_VERSION $sha256 $temp
+        if ($LASTEXITCODE -ne 0) { throw 'backup server publish failed' }

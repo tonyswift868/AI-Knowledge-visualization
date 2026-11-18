@@ -13,6 +13,7 @@ PLACEHOLDER = re.compile(
     r"[ \t]*location\s*=\s*/\s*\{.*?^[ \t]*\}"
 )
 IMAGES = re.compile(r"(?m)^[ \t]*location\s*\^~\s+/images/\s*\{")
+DOWNLOAD = re.compile(r"(?ms)^[ \t]*location\s*=\s*/download\s*\{.*?^[ \t]*\}")
 
 HOMEPAGE = f'''        location = / {{
             if ($request_method !~ ^(GET|HEAD)$) {{ return 405; }}
@@ -22,15 +23,6 @@ HOMEPAGE = f'''        location = / {{
             proxy_pass $aiteacher_static;
             proxy_buffering off;
             proxy_read_timeout 300s;
-        }}
-        location = /download {{
-            if ($request_method !~ ^(GET|HEAD)$) {{ return 405; }}
-            add_header Cache-Control "no-cache" always;
-            set $aiteacher_static {UPSTREAM};
-            rewrite ^/download$ /mentorflow/updates/e108/site/download.html break;
-            proxy_pass $aiteacher_static;
-            proxy_buffering off;
-            proxy_read_timeout 30s;
         }}
         location ^~ /images/ {{
             if ($request_method !~ ^(GET|HEAD)$) {{ return 405; }}
@@ -66,8 +58,21 @@ def prepare(source: Path, destination: Path) -> None:
     if IMAGES.search(text):
         raise ValueError("refusing to add a duplicate /images/ location")
     match = placeholders[0]
+    downloads = list(DOWNLOAD.finditer(text))
+    if len(downloads) != 1:
+        raise ValueError(f"expected exactly one /download location; found {len(downloads)}")
     replacement = HOMEPAGE
     candidate = text[: match.start()] + replacement + text[match.end() :]
+    download_block = f'''        location = /download {{
+            if ($request_method !~ ^(GET|HEAD)$) {{ return 405; }}
+            add_header Cache-Control "no-cache" always;
+            set $aiteacher_static {UPSTREAM};
+            rewrite ^/download$ /mentorflow/updates/e108/site/download.html break;
+            proxy_pass $aiteacher_static;
+            proxy_buffering off;
+            proxy_read_timeout 30s;
+        }}'''
+    candidate = DOWNLOAD.sub(download_block, candidate, count=1)
     _write(destination, candidate)
 
 
