@@ -44,8 +44,11 @@ def _service(monkeypatch, docs, passages=None, error=None):
     service._incomplete_documents = set()
     for row in docs.values():
         # Ready stubs represent an already-confirmed local upload snapshot.
-        row.setdefault("current_content_sha256", "confirmed-fixture")
-        row.setdefault("uploaded_content_sha256", "confirmed-fixture")
+        confirmed = (rag._source_content_digest(row["chunks"])
+                     if row.get("status") == "ready" and "chunks" in row
+                     else "confirmed-fixture")
+        row.setdefault("current_content_sha256", confirmed)
+        row.setdefault("uploaded_content_sha256", confirmed)
     service.local = _Local(docs)
     service.transport = _Transport({"passages": passages or []}, error)
     service.store = _Store()

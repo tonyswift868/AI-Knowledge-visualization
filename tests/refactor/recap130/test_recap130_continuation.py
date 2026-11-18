@@ -94,15 +94,18 @@ def test_recap130_prefetch_exact_request_and_hit_without_second_model_call(tmp_p
         assert job['tctx']['dialogue'][-1]['text'].startswith('要点卡：')
         assert e.store.pending_records(10000)==before
         count=len(e.gateway.calls)
-        with caplog.at_level(logging.INFO,logger='refactor.learning.app.classroom'):view=act(e,'next')
+        with caplog.at_level(logging.INFO,logger='refactor.runtime'):view=act(e,'next')
         assert not view['failure'] and len(e.gateway.calls)==count
-        assert any('classroom prefetch hit' in r.message for r in caplog.records)
+        hits=[r.mf_fields for r in caplog.records
+              if getattr(r,'mf_event',None)=='classroom'
+              and r.mf_fields.get('state')=='PREFETCH_HIT']
+        assert len(hits)==1
         next_calls=[messages for purpose,messages,system in e.requests if
             json.loads(next(m['content'].split('\n',1)[1] for m in reversed(messages) if m['content'].startswith('【本步任务】')))['current_points'][0]['id']=='p2']
         assert len(next_calls)==1 # The other speculative option is “没太懂” at p0.
         (tmp_path/'prefetch-evidence130.json').write_text(json.dumps(dict(
             next_point_teacher_calls=len(next_calls),calls_on_click=len(e.gateway.calls)-count,
-            log=[r.message for r in caplog.records if 'classroom prefetch hit' in r.message]),ensure_ascii=False),encoding='utf-8')
+            log=hits),ensure_ascii=False),encoding='utf-8')
         assert job['cancel'].is_set() is False
         assert len([m for m in view['messages'] if m['kind']=='recap'])==1
     finally:close130(e)

@@ -1,6 +1,7 @@
 """RAG 263 preparation manager tests; all HTTP is handled by a gated fake."""
 from hashlib import sha256
 import json
+import logging
 import threading
 import time
 from pathlib import Path
@@ -295,6 +296,7 @@ def test_rag263_reopen_does_not_auto_upload_and_explicit_resume_starts(tmp_path,
 def test_rag263_failure_log_has_document_batch_and_error_code_without_body_or_token(tmp_path, caplog):
     fake = GatedFakeTransport()
     fake.fail_status = 503
+    caplog.set_level(logging.INFO, logger="refactor.runtime")
     service = make_service(tmp_path, fake)
     secret_body = "RAG263_PRIVATE_DOCUMENT_SENTINEL"
     secret_token = "RAG263_BEARER_SECRET_SENTINEL"
@@ -306,12 +308,17 @@ def test_rag263_failure_log_has_document_batch_and_error_code_without_body_or_to
     try:
         service.prepare([document_id])
         eventually(lambda: service.preparation()["jobs"][0]["state"] == "failed")
-        message = "\n".join(record.getMessage() for record in caplog.records)
+        fields = [record.mf_fields for record in caplog.records
+                  if getattr(record, "mf_event", None) == "rag_timing"
+                  and record.mf_fields.get("state") == "FAILED"
+                  and record.mf_fields.get("stage") == "prepare"]
         authorization = [request.headers.get("Authorization", "") for request in fake.requests]
         assert any(secret_token in value for value in authorization)
-        assert document_id[:8] in message
-        assert "batch_index=1" in message and "code=RAG_HTTP" in message and "HTTP503" in message
-        assert secret_body not in message and secret_token not in message
+        assert fields
+        row = fields[-1]
+        assert row["document_id"] == document_id[:8]
+        assert row["batch"] == 1 and row["code"] == "RAG_HTTP" and row["http_status"] == 503
+        assert secret_body not in repr(row) and secret_token not in repr(row)
     finally:
         close_service(service)
 
