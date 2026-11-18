@@ -2609,6 +2609,7 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
 - 日志结论（2026-11-18，对方贴回）：装在 `D:\MentorFlow`。02:06:54 打开的 `App\MentorFlow.exe`（pid 14500）同步拉了 5779 条，正常；02:08:25 起下载 2.0.50，02:08:54 对方点了更新，状态 APPLYING，主窗口隐藏，记了 `exit UPDATE_HANDOFF`、`ABOUT_TO_QUIT`、`EVENT_LOOP_RETURNED exit_code 0`，之后这个进程再没写过日志，但到 02:11 以后仍在运行。之后每次双击，启动器 0.13 秒内报 `close the current App before continuing`（`per_user_install.py:653`）就退出，日志里连着 17 次，用户看到的就是“闪一下、正在启动、自己关掉”。2.0.50 也没装上。
 - 原因（已查清一半）：`account_shell_main.py:2117-2126` 事件循环返回后，若是更新交接（`prepare_update_shutdown` 设了 `_update_exit_pending`），先 `logging.shutdown()` 再 `os._exit()`，注释写明就是为了防止线程收尾把没有窗口的 App 挂住。这次两句之间或 `os._exit` 本身没走完，进程卡在退出最后一步。卡在哪一句还不知道；已请对方在结束进程前看一下这个进程还剩几个线程（只剩一两个说明卡在系统退出阶段，很多说明还没走到 `os._exit`）。
 - 第二个毛病：启动器发现旧 App 还在时一声不吭就退出，界面上什么都不说，违反“失败要看得见”。
+- 解决（待做）：462-MF04（2026-11-18 写好，待转发）：查清退出卡在哪并修根子；已装 2.0.49、2.0.50 的人点更新时跑的是旧 App 代码，兜底放在更新时会先从服务器刷新的那一环（App 已确认交接却没退，就由它结束）；启动器碰到旧 App 时不再静默退出；真包旧版→新版排练、全量都过了一次交回。临时办法：结束卡住的 `App\MentorFlow.exe` 再双击，或重启电脑。
 - 关联：[BUG-278]、[BUG-273]、436
 
 ### [BUG-290] 别人从官网备用线路下载 2.0.49 完整安装包，双击后一直转圈，什么窗口都不出
