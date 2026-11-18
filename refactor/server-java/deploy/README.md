@@ -47,6 +47,7 @@ sudo -n sh preflight.sh
 
 | 条件 | 当前名称/约束 |
 | --- | --- |
+| 服务商和流量 | Rabisu（Virtualizor 面板）；月流量不限（用户 2026-11-18 说）；根盘 59 GB，2026-11-18 用了 52%（460-MF01） |
 | 运维权限 | 登录用户 `mentorflow-admin`（服务器 `PermitRootLogin no`，root 不能 ssh 登录），钥匙 `C:\Users\21533\.ssh\mentorflow_server`（2026-11-09 新建，[BUG-228]）；SSH 别名 `mentorflow` 需在本机 `~/.ssh/config` 里配（HostName 89.45.45.28、User mentorflow-admin、IdentityFile 上面那把、IdentitiesOnly yes），没配时用 `ssh -i <钥匙> mentorflow-admin@89.45.45.28`；Docker与现有root文件用非交互 `sudo -n`，不改权限 |
 | 在线源码 | 393源码和Java运行配置在`/opt/mentorflow/releases/java-393`；旧d37112fd与391归档保留用于回退。新包从审定提交以LF归档导出，保留`refactor/server`、`refactor/server-java`相对路径，不覆盖旧运行目录/挂载；核对归档SHA256（[BUG-107]） |
 | Java pair | `mentorflow-java-backend`、`mentorflow-java-oidc`；当前镜像`mentorflow-java-server:393`；OIDC使用backend网络命名空间，每次重建后精确核对`container:<backend ID>` |
