@@ -19,7 +19,7 @@
 - **任务文件与短通知**：规则见 AGENTS 第 9、15 条（只派现在就能开工的任务）；本文件待派队列只写任务号、一句话、文件路径和先后。通知格式例：“新任务 134-MF04：读 D:\MentorFlow\.local\tasks\134-MF04.md 照做，回执写到 D:\MentorFlow\.local\receipts\134-MF04.md。”
 - **任务状态**：任务写好未发送标“已起草，待发送”；子代理启动成功后标“进行中”，完成通知到达后审查回执；合入后从员工表和待派队列清除，保留必要报告。
 - **测试不许改宿主（2026-11-16，design-luoling 的教训：别的项目测试每跑一次往用户 PATH 加一条，超长后整台电脑新进程起不来）**：`tests/refactor/conftest.py` 测前测后比对用户和系统环境变量，变了整轮就红并列出多了什么。测试里换家目录类变量（HOME、APPDATA、各种 *_HOME）要先查那个工具首次运行会改什么，用官方开关关掉；审查回执看到就当场改。
-- **署名**：主目录提交用 `git -c user.name="tonyswift868" -c user.email="205869700+tonyswift868@users.noreply.github.com" commit ...`，不写进共享 git 配置。员工用各自工位名提交。架构师和员工的提交说明都不加 Co-Authored-By 之类的共同作者行（用户 2026-11-17 定：GitHub 会据此把 Claude、Codex 列成贡献者）。
+- **署名**：主目录提交用 `git -c user.name="tonyswift868" -c user.email="205869700+tonyswift868@users.noreply.github.com" commit ...`，结尾加 Co-Authored-By: Claude 行；不写进共享 git 配置。员工用各自工位名提交，提交说明里绝不加 Codex 的共同作者行（用户 2026-11-17 定：GitHub 贡献者里只能有用户和 Claude，Codex 不能进）；合入员工分支前看一眼提交说明，有就去掉再合。
 
 ## 架构师操作手册
 
