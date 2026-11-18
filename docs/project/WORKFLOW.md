@@ -58,7 +58,7 @@
 
 | 员工 | 名字 | 当前任务 | 工位 |
 | --- | --- | --- | --- |
-| MF-01 | 服务端 | 460 待转发：官网备用下载，先小样（服务器放安装包、测中国大陆下载），再接 /download 页面和 mf-installer（office/mirror460，[SYS-06]） | server |
+| MF-01 | 服务端 | 460 第一段受阻：现网 406 预检仍缺 `mentorflow-slim-backend:226-python-fallback`，未上传或改 edge（office/mirror460，[SYS-06]） | server |
 | MF-02 | 客户端 | 空闲（455 已合入 main 9096c3df：客户端日志补全，[BUG-288]、[BUG-271]，2026-11-18） | client |
 | MF-03 | 课堂 | 空闲（447 已交：两个项目怎么带学、界面怎么表达，回执 .local/receipts/447-MF03.md，2026-11-18） | classroom |
 | MF-04 | 运行时 | 进行中：457 2.0.50 发版前全量（office/full457，基线 6ec2373a；用户 2026-11-18 已转发） | runtime |
