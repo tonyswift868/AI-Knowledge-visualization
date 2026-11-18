@@ -2,6 +2,12 @@ name: MF fresh install
 
 on:
   workflow_dispatch:
+    inputs:
+      run_as:
+        description: 'standard = fresh standard user (default); admin = runner account, already elevated with UAC off'
+        type: choice
+        options: [standard, admin]
+        default: standard
 
 permissions:
   contents: read
@@ -10,6 +16,8 @@ jobs:
   fresh-install:
     runs-on: windows-latest
     timeout-minutes: 40
+    env:
+      MF_RUN_AS: "${{ inputs.run_as || 'standard' }}"
     steps:
       - name: Download and verify latest release asset
         shell: pwsh
@@ -119,32 +127,50 @@ jobs:
             } catch { "screenshot_error=$($_.Exception.Message)" | Set-Content (Join-Path $dir 'screenshot-error.txt') }
           }
 
-          # The runner account is an elevated admin (UAC off), and the install core refuses elevated
-          # tokens (per_user_install.py main: "per-user mode requires an ordinary user token"). A person
-          # installs as an ordinary user with a fresh profile, so do exactly that: a new standard user.
-          $password = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)) + 'aA1!'
-          Write-Host "::add-mask::$password"
-          $secure = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name 'mfuser' -Password $secure -PasswordNeverExpires | Out-Null
-          Add-LocalGroupMember -Group 'Users' -Member 'mfuser' -ErrorAction SilentlyContinue
-          $cred = [pscredential]::new("$env:COMPUTERNAME\mfuser", $secure)
-          $cred | Export-Clixml (Join-Path $env:RUNNER_TEMP 'mf-user.clixml')
+          # run_as=admin: the runner account itself (already elevated, UAC off) installs and launches, the case BUG-281 is about.
+          # run_as=standard: a new standard user with a fresh profile, as a person would install.
+          $runAs = $env:MF_RUN_AS
           $shared = 'C:\mf-fresh'
           New-Item -ItemType Directory -Force -Path $shared | Out-Null
-          icacls $shared /grant 'mfuser:(OI)(CI)M' | Out-Null
-          Copy-Item $env:INSTALLER (Join-Path $shared 'MentorFlow-Setup.exe')
           $userLog = Join-Path $shared 'installer.log'
-          # A new user's first logon builds its profile, which can take a minute; do it before timing the wizard.
-          $clock = [Diagnostics.Stopwatch]::StartNew()
-          $probe = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c', 'whoami > C:\mf-fresh\whoami.txt' -Credential $cred -LoadUserProfile -WorkingDirectory $shared -PassThru -Wait
-          Write-Host "profile probe exit=$($probe.ExitCode) after $([int]$clock.Elapsed.TotalSeconds)s, whoami=$(Get-Content C:\mf-fresh\whoami.txt -ErrorAction SilentlyContinue)"
-          $profileRoot = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -match '\\mfuser(\.|$)' } | Select-Object -First 1).LocalPath
-          if (-not $profileRoot) { throw 'Profile of the standard install user was not created.' }
+          if ($runAs -eq 'admin') {
+            $cred = $null; $profileRoot = $env:USERPROFILE; $installUser = $env:USERNAME
+            $probe = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c', 'whoami /groups > C:\mf-fresh\whoami.txt' -WorkingDirectory $shared -PassThru -Wait
+          } else {
+            # The runner account is an elevated admin (UAC off), and the install core refuses elevated
+            # tokens (per_user_install.py main: "per-user mode requires an ordinary user token"). A person
+            # installs as an ordinary user with a fresh profile, so do exactly that: a new standard user.
+            $password = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)) + 'aA1!'
+            Write-Host "::add-mask::$password"
+            $secure = ConvertTo-SecureString $password -AsPlainText -Force
+            New-LocalUser -Name 'mfuser' -Password $secure -PasswordNeverExpires | Out-Null
+            Add-LocalGroupMember -Group 'Users' -Member 'mfuser' -ErrorAction SilentlyContinue
+            $cred = [pscredential]::new("$env:COMPUTERNAME\mfuser", $secure)
+            $cred | Export-Clixml (Join-Path $env:RUNNER_TEMP 'mf-user.clixml')
+            icacls $shared /grant 'mfuser:(OI)(CI)M' | Out-Null
+            # A new user's first logon builds its profile, which can take a minute; do it before timing the wizard.
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            $probe = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c', 'whoami /groups > C:\mf-fresh\whoami.txt' -Credential $cred -LoadUserProfile -WorkingDirectory $shared -PassThru -Wait
+            Write-Host "profile probe exit=$($probe.ExitCode) after $([int]$clock.Elapsed.TotalSeconds)s"
+            $profileRoot = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -match '\\mfuser(\.|$)' } | Select-Object -First 1).LocalPath
+            if (-not $profileRoot) { throw 'Profile of the standard install user was not created.' }
+            $installUser = 'mfuser'
+          }
+          # Copy after the grant above, so the installer file inherits mfuser's Modify right from the folder.
+          Copy-Item $env:INSTALLER (Join-Path $shared 'MentorFlow-Setup.exe')
+          # Integrity level from the token SIDs (S-1-16-12288 = High, 8192 = Medium), so it does not depend on the locale.
+          $groupsFile = 'C:\mf-fresh\whoami.txt'
+          $integrity = if (Select-String -Path $groupsFile -Pattern 'S-1-16-12288' -Quiet -ErrorAction SilentlyContinue) { 'high' } elseif (Select-String -Path $groupsFile -Pattern 'S-1-16-8192' -Quiet -ErrorAction SilentlyContinue) { 'medium' } else { 'unknown' }
+          Copy-Item $groupsFile (Join-Path $env:MF_ROOT 'evidence/whoami-groups.txt') -ErrorAction SilentlyContinue
+          [ordered]@{ run_as=$runAs; install_user=$installUser; integrity=$integrity } | ConvertTo-Json | Set-Content (Join-Path $env:MF_ROOT 'evidence/run-as.json')
+          "MF_INSTALL_USER=$installUser" | Out-File -FilePath $env:GITHUB_ENV -Append
           # Start-Process -Credential hands the child this admin's environment (TEMP, LOCALAPPDATA, ...),
           # so setup tried to write into the admin's temp folder and got "access denied". Give the child
           # the standard user's own folders, as a real logon would.
           function Start-AsUser([string]$file, [string]$arguments, [string]$directory) {
             $psi = [Diagnostics.ProcessStartInfo]::new($file, $arguments)
+            # run_as=admin: the child is started by this same account, so there is no credential or profile to switch to.
+            if ($env:MF_RUN_AS -eq 'admin') { $psi.UseShellExecute = $false; $psi.WorkingDirectory = $directory; return [Diagnostics.Process]::Start($psi) }
             $psi.UserName = 'mfuser'; $psi.Domain = $env:COMPUTERNAME; $psi.Password = $cred.Password
             $psi.LoadUserProfile = $true; $psi.UseShellExecute = $false; $psi.WorkingDirectory = $directory
             $own = @{ USERPROFILE = $profileRoot; HOMEDRIVE = $profileRoot.Substring(0, 2); HOMEPATH = $profileRoot.Substring(2)
@@ -154,8 +180,8 @@ jobs:
             return [Diagnostics.Process]::Start($psi)
           }
           $p = Start-AsUser (Join-Path $shared 'MentorFlow-Setup.exe') ('/LOG="' + $userLog + '"') $shared
-          "installer_pid=$($p.Id)`ninstall_user=mfuser (standard user, fresh profile)" | Set-Content $result
-          Write-Host "installer started as standard user mfuser, pid $($p.Id)"
+          "installer_pid=$($p.Id)`nrun_as=$runAs`ninstall_user=$installUser" | Set-Content $result
+          Write-Host "installer started as $installUser (run_as=$runAs), pid $($p.Id)"
           # Inno's wizard runs in a child process (MentorFlow-Setup.tmp); find it by window class.
           # [NullString]::Value, not $null: PowerShell turns $null into "" for string arguments, which matches only untitled windows.
           $wizard = [IntPtr]::Zero
@@ -247,15 +273,17 @@ jobs:
           Add-Type -AssemblyName UIAutomationTypes
           $evidence = Join-Path $env:MF_ROOT 'evidence'
           $shell = New-Object -ComObject WScript.Shell
-          # Everything runs as the standard user that installed it (see the install step).
-          $cred = Import-Clixml (Join-Path $env:RUNNER_TEMP 'mf-user.clixml')
-          $profileRoot = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -match '\\mfuser(\.|$)' } | Select-Object -First 1).LocalPath
-          if (-not $profileRoot) { throw 'Profile of the standard install user was not created.' }
+          # Everything runs as the account that installed it (see the install step): mfuser, or the runner itself for run_as=admin.
+          $cred = if ($env:MF_RUN_AS -eq 'admin') { $null } else { Import-Clixml (Join-Path $env:RUNNER_TEMP 'mf-user.clixml') }
+          $profileRoot = if ($env:MF_RUN_AS -eq 'admin') { $env:USERPROFILE } else { (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -match '\\mfuser(\.|$)' } | Select-Object -First 1).LocalPath }
+          if (-not $profileRoot) { throw 'Profile of the install user was not found.' }
           # Start-Process -Credential hands the child this admin's environment (TEMP, LOCALAPPDATA, ...),
           # so setup tried to write into the admin's temp folder and got "access denied". Give the child
           # the standard user's own folders, as a real logon would.
           function Start-AsUser([string]$file, [string]$arguments, [string]$directory) {
             $psi = [Diagnostics.ProcessStartInfo]::new($file, $arguments)
+            # run_as=admin: the child is started by this same account, so there is no credential or profile to switch to.
+            if ($env:MF_RUN_AS -eq 'admin') { $psi.UseShellExecute = $false; $psi.WorkingDirectory = $directory; return [Diagnostics.Process]::Start($psi) }
             $psi.UserName = 'mfuser'; $psi.Domain = $env:COMPUTERNAME; $psi.Password = $cred.Password
             $psi.LoadUserProfile = $true; $psi.UseShellExecute = $false; $psi.WorkingDirectory = $directory
             $own = @{ USERPROFILE = $profileRoot; HOMEDRIVE = $profileRoot.Substring(0, 2); HOMEPATH = $profileRoot.Substring(2)
@@ -277,7 +305,7 @@ jobs:
           $installRoot = Split-Path (Split-Path $target -Parent) -Parent
           $installParent = Split-Path $installRoot -Parent
           $workingDirectory = if ([string]::IsNullOrWhiteSpace($sc.WorkingDirectory)) { Split-Path $target -Parent } else { $sc.WorkingDirectory }
-          [ordered]@{ path=$link.FullName; target=$target; raw_target=$sc.TargetPath; arguments=$sc.Arguments; working_directory=$workingDirectory; install_root=$installRoot; install_user='mfuser' } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut.json')
+          [ordered]@{ path=$link.FullName; target=$target; raw_target=$sc.TargetPath; arguments=$sc.Arguments; working_directory=$workingDirectory; install_root=$installRoot; install_user=$env:MF_INSTALL_USER; run_as=$env:MF_RUN_AS } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut.json')
 
           function Is-MentorFlowProcess($process) {
             if ($process.ProcessName -match 'MentorFlow|UserRuntime') { return $true }
