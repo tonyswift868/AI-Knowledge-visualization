@@ -137,9 +137,8 @@ jobs:
             $cred = $null; $profileRoot = $env:USERPROFILE; $installUser = $env:USERNAME
             $probe = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c', 'whoami /groups > C:\mf-fresh\whoami.txt' -WorkingDirectory $shared -PassThru -Wait
           } else {
-            # The runner account is an elevated admin (UAC off), and the install core refuses elevated
-            # tokens (per_user_install.py main: "per-user mode requires an ordinary user token"). A person
-            # installs as an ordinary user with a fresh profile, so do exactly that: a new standard user.
+            # The runner account is an elevated admin (UAC off). Most people install as an ordinary user
+            # with a fresh profile, so do exactly that: a new standard user.
             $password = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)) + 'aA1!'
             Write-Host "::add-mask::$password"
             $secure = ConvertTo-SecureString $password -AsPlainText -Force
