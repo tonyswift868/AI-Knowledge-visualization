@@ -138,7 +138,22 @@ jobs:
           $clock = [Diagnostics.Stopwatch]::StartNew()
           $probe = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c', 'whoami > C:\mf-fresh\whoami.txt' -Credential $cred -LoadUserProfile -WorkingDirectory $shared -PassThru -Wait
           Write-Host "profile probe exit=$($probe.ExitCode) after $([int]$clock.Elapsed.TotalSeconds)s, whoami=$(Get-Content C:\mf-fresh\whoami.txt -ErrorAction SilentlyContinue)"
-          $p = Start-Process -FilePath (Join-Path $shared 'MentorFlow-Setup.exe') -ArgumentList @('/LOG=' + $userLog) -Credential $cred -LoadUserProfile -WorkingDirectory $shared -PassThru
+          $profileRoot = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -match '\\mfuser(\.|$)' } | Select-Object -First 1).LocalPath
+          if (-not $profileRoot) { throw 'Profile of the standard install user was not created.' }
+          # Start-Process -Credential hands the child this admin's environment (TEMP, LOCALAPPDATA, ...),
+          # so setup tried to write into the admin's temp folder and got "access denied". Give the child
+          # the standard user's own folders, as a real logon would.
+          function Start-AsUser([string]$file, [string]$arguments, [string]$directory) {
+            $psi = [Diagnostics.ProcessStartInfo]::new($file, $arguments)
+            $psi.UserName = 'mfuser'; $psi.Domain = $env:COMPUTERNAME; $psi.Password = $cred.Password
+            $psi.LoadUserProfile = $true; $psi.UseShellExecute = $false; $psi.WorkingDirectory = $directory
+            $own = @{ USERPROFILE = $profileRoot; HOMEDRIVE = $profileRoot.Substring(0, 2); HOMEPATH = $profileRoot.Substring(2)
+                      USERNAME = 'mfuser'; APPDATA = "$profileRoot\AppData\Roaming"; LOCALAPPDATA = "$profileRoot\AppData\Local"
+                      TEMP = "$profileRoot\AppData\Local\Temp"; TMP = "$profileRoot\AppData\Local\Temp" }
+            foreach ($key in $own.Keys) { $psi.Environment[$key] = $own[$key] }
+            return [Diagnostics.Process]::Start($psi)
+          }
+          $p = Start-AsUser (Join-Path $shared 'MentorFlow-Setup.exe') ('/LOG="' + $userLog + '"') $shared
           "installer_pid=$($p.Id)`ninstall_user=mfuser (standard user, fresh profile)" | Set-Content $result
           Write-Host "installer started as standard user mfuser, pid $($p.Id)"
           # Inno's wizard runs in a child process (MentorFlow-Setup.tmp); find it by window class.
@@ -236,6 +251,19 @@ jobs:
           $cred = Import-Clixml (Join-Path $env:RUNNER_TEMP 'mf-user.clixml')
           $profileRoot = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -match '\\mfuser(\.|$)' } | Select-Object -First 1).LocalPath
           if (-not $profileRoot) { throw 'Profile of the standard install user was not created.' }
+          # Start-Process -Credential hands the child this admin's environment (TEMP, LOCALAPPDATA, ...),
+          # so setup tried to write into the admin's temp folder and got "access denied". Give the child
+          # the standard user's own folders, as a real logon would.
+          function Start-AsUser([string]$file, [string]$arguments, [string]$directory) {
+            $psi = [Diagnostics.ProcessStartInfo]::new($file, $arguments)
+            $psi.UserName = 'mfuser'; $psi.Domain = $env:COMPUTERNAME; $psi.Password = $cred.Password
+            $psi.LoadUserProfile = $true; $psi.UseShellExecute = $false; $psi.WorkingDirectory = $directory
+            $own = @{ USERPROFILE = $profileRoot; HOMEDRIVE = $profileRoot.Substring(0, 2); HOMEPATH = $profileRoot.Substring(2)
+                      USERNAME = 'mfuser'; APPDATA = "$profileRoot\AppData\Roaming"; LOCALAPPDATA = "$profileRoot\AppData\Local"
+                      TEMP = "$profileRoot\AppData\Local\Temp"; TMP = "$profileRoot\AppData\Local\Temp" }
+            foreach ($key in $own.Keys) { $psi.Environment[$key] = $own[$key] }
+            return [Diagnostics.Process]::Start($psi)
+          }
           $desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
           $userDesktop = Join-Path $profileRoot 'Desktop'
           $shortcuts = @((Get-ChildItem $desktop -Filter '*.lnk' -File -ErrorAction SilentlyContinue), (Get-ChildItem $userDesktop -Filter '*.lnk' -File -ErrorAction SilentlyContinue))
@@ -317,7 +345,7 @@ jobs:
           }
           function Start-Shortcut([int]$round) {
             $started = Get-Date
-            $proc = Start-Process -FilePath $sc.TargetPath -ArgumentList $sc.Arguments -WorkingDirectory $workingDirectory -Credential $cred -LoadUserProfile -PassThru
+            $proc = Start-AsUser $sc.TargetPath $sc.Arguments $workingDirectory
             Write-Host "round $round started from the desktop shortcut, pid $($proc.Id)"
             "round=$round`nlauncher_pid=$($proc.Id)`nstarted=$started" | Set-Content (Join-Path $evidence "round$round-summary.txt")
             return $proc
