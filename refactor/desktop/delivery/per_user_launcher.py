@@ -278,15 +278,22 @@ def _launch_native(root):
         while not done.is_set():
             pump_native_messages(); done.wait(.01)
     finally:
-        close_native_splash()
-        log_phase(root, 'launcher_complete', phases=timings,
-                  error=type(outcome['error']).__name__ if 'error' in outcome else None)
-        if isinstance(outcome.get('error'), _NeedsRepair): return repair_update_shell(root)
-        if isinstance(outcome.get('error'), _AppBusy):
+        error = outcome.get('error')
+        if isinstance(error, _AppBusy):
             from refactor.desktop.delivery.startup_window import set_startup_text
             set_startup_text(str(outcome['error']), root=root)
-            time.sleep(2)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                pump_native_messages()
+                done.wait(.01)
+            close_native_splash()
+            log_phase(root, 'launcher_complete', phases=timings,
+                      error=type(error).__name__)
             return dict(status='APP_BUSY', message=str(outcome['error']))
+        close_native_splash()
+        log_phase(root, 'launcher_complete', phases=timings,
+                  error=type(error).__name__ if error else None)
+        if isinstance(error, _NeedsRepair): return repair_update_shell(root)
     if 'error' in outcome: raise outcome['error']
     return outcome['result']
 
