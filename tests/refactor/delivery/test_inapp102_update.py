@@ -60,6 +60,37 @@ def test_self_exit_timeout_keeps_pending_install(case, monkeypatch):
     assert core.read_pending(root)['state'] == 'PENDING_INSTALL'
 
 
+def test_confirmed_self_exit_timeout_terminates_stale_app(monkeypatch, tmp_path):
+    from refactor.desktop.delivery import windows_process_peer
+    events=[]
+    class Peer:
+        def __init__(self, pid): self.pid=pid; self.states=iter([True, True, False])
+        def __enter__(self): return self
+        def __exit__(self, *_): pass
+        def require(self, **kwargs): events.append(('require', self.pid))
+        def visible_responsive_window(self, hwnd): events.append(('window', hwnd))
+        def alive(self): return next(self.states, False)
+        def terminate(self): events.append(('terminate', self.pid))
+    monkeypatch.setattr(windows_process_peer, 'ProcessPeer', Peer)
+    monkeypatch.setattr(install, 'app_exit_confirmed', lambda root, pid: True)
+    monkeypatch.setattr(install, 'maintenance_log', lambda root, phase, **fields: events.append((phase, fields)))
+    install.wait_for_app_exit(tmp_path / 'MentorFlow', 321, '0000000000000001', timeout=0,
+                              ready=lambda: events.append('ack'))
+    assert events == [('require', 321), ('window', '0000000000000001'), 'ack',
+                      ('terminate', 321), ('stale_app_terminated', {'pid': 321,
+                       'reason': 'CONFIRMED_EXIT_TIMEOUT', 'timeout_seconds': 0})]
+
+
+def test_update_exit_direct_does_not_enter_logging_shutdown(monkeypatch):
+    from refactor.desktop import account_shell_main
+    events=[]
+    monkeypatch.setattr(account_shell_main, 'diagnostic_event',
+                        lambda name, **fields: events.append((name, fields)))
+    monkeypatch.setattr(account_shell_main.os, '_exit', lambda code: events.append(('exit', code)))
+    account_shell_main._exit_after_update_handoff(0)
+    assert events == [('exit', {'reason': 'UPDATE_EXIT_DIRECT'}), ('exit', 0)]
+
+
 def test_in_app_handoff_passes_self_exit_flag(case, monkeypatch):
     root, service = setup(case, monkeypatch)
     click_update(root, service)

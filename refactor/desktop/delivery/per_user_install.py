@@ -618,8 +618,8 @@ def install_per_user(parent, source, envelope, **options):
     return transact(root, source, envelope, repair=is_install(root), **options)
 
 
-def _require_image_stopped(image, message):
-    """Native process enumeration. Unknown/inaccessible matching image fails closed."""
+def _matching_app_pids(image):
+    """Return matching native PIDs, failing closed on inaccessible identities."""
     import ctypes as c
     from ctypes import wintypes as w
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
@@ -634,6 +634,7 @@ def _require_image_stopped(image, message):
     kernel.CloseHandle.argtypes = [w.HANDLE]
     handle = kernel.CreateToolhelp32Snapshot(2, 0)
     if handle == c.c_void_p(-1).value: raise c.WinError(c.get_last_error())
+    matches=[]
     try:
         entry = Entry(); entry.dwSize = c.sizeof(entry)
         present = kernel.Process32FirstW(handle, c.byref(entry))
@@ -641,16 +642,59 @@ def _require_image_stopped(image, message):
             if entry.exe.casefold() == image.name.casefold():
                 try:
                     with ProcessPeer(entry.pid) as peer:
-                        if Path(peer.inspect()['executable']) == image:
-                            raise RecoverableError(message)
+                        if Path(peer.inspect()['executable']) == image: matches.append(entry.pid)
                 except OSError as error:
                     if error.winerror != 87: raise  # exited PID is harmless
             present = kernel.Process32NextW(handle, c.byref(entry))
     finally: kernel.CloseHandle(handle)
+    return matches
+
+
+def _require_image_stopped(image, message):
+    """Native process enumeration. Unknown/inaccessible matching image fails closed."""
+    matches=_matching_app_pids(image)
+    if matches: raise RecoverableError(message)
 
 
 def require_app_stopped(root):
     _require_image_stopped(app_path(root) / 'MentorFlow.exe', 'close the current App before continuing')
+
+
+def app_exit_confirmed(root, pid):
+    """Return true only after this PID logged the complete requested exit chain."""
+    import json
+    from collections import deque
+    log = target(root) / 'Data' / 'logs' / 'mentorflow.log'
+    tail=deque(maxlen=160)
+    try:
+        for line in log.open('r', encoding='utf-8'):
+            tail.append(line)
+    except OSError:
+        return False
+    handoff=about=returned=False
+    for line in tail:
+        try: row=json.loads(line)
+        except (TypeError,ValueError): continue
+        if row.get('event') != 'exit' or row.get('pid') != pid: continue
+        reason=row.get('reason')
+        handoff |= reason == 'UPDATE_HANDOFF'
+        about |= reason == 'ABOUT_TO_QUIT' and row.get('code') == 'UPDATE_HANDOFF'
+        returned |= reason == 'EVENT_LOOP_RETURNED'
+    return handoff and about and returned
+
+
+def terminate_confirmed_app(root, pid, *, reason='CONFIRMED_EXIT_TIMEOUT'):
+    """End only an App whose own update-handoff exit chain is already logged."""
+    from refactor.desktop.delivery.windows_process_peer import ProcessPeer
+    with ProcessPeer(pid) as peer:
+        peer.require(executable=app_path(root) / 'MentorFlow.exe')
+        if not app_exit_confirmed(root, pid):
+            raise RecoverableError('current App has not confirmed its exit')
+        peer.terminate()
+        deadline=time.monotonic()+5
+        while peer.alive() and time.monotonic()<deadline: time.sleep(.05)
+        if peer.alive(): raise AppShutdownTimeout('confirmed App did not terminate')
+    maintenance_log(root, 'stale_app_terminated', pid=pid, reason=reason)
 
 
 def require_updater_stopped(root):
@@ -689,7 +733,14 @@ def wait_for_app_exit(root, pid, hwnd_hex, *, timeout=30, ready=lambda: None):
         while peer.alive() and time.monotonic() < deadline:
             time.sleep(.05)
         if peer.alive():
-            raise AppShutdownTimeout('app self-exit timed out; update remains pending')
+            if not app_exit_confirmed(root, pid):
+                raise AppShutdownTimeout('app self-exit timed out; update remains pending')
+            peer.terminate()
+            deadline=time.monotonic()+5
+            while peer.alive() and time.monotonic()<deadline: time.sleep(.05)
+            if peer.alive(): raise AppShutdownTimeout('confirmed App did not terminate')
+            maintenance_log(root, 'stale_app_terminated', pid=pid,
+                            reason='CONFIRMED_EXIT_TIMEOUT', timeout_seconds=timeout)
 
 
 def launch_coordination(root):

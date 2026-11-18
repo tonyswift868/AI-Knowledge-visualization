@@ -2031,6 +2031,12 @@ def friendly_name(row) -> str:
     return display or username or "我的账号"
 
 
+def _exit_after_update_handoff(result):
+    """Exit the frozen App without entering global Python logging shutdown."""
+    diagnostic_event('exit', reason='UPDATE_EXIT_DIRECT')
+    os._exit(result)
+
+
 def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
     # Qt's default D3D11 composition flickers on hybrid-GPU laptops (BUG-04);
     # OpenGL composition does not. Must be set before QApplication exists.
@@ -2118,11 +2124,10 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
         diagnostic_event('exit', reason='EVENT_LOOP_RETURNED', exit_code=result)
         if getattr(shell, '_update_exit_pending', False) and getattr(sys, 'frozen', False):
             # All synchronous saves and service disposal completed before quit.
-            # Python's executor atexit joins must not keep a windowless frozen
-            # App alive after the acknowledged updater handoff.
-            import logging
-            logging.shutdown()
-            os._exit(result)
+            # Do not enter Python's global logging shutdown here.  A daemon
+            # worker may still hold a handler lock while the updater is waiting
+            # for this PID, leaving the windowless frozen App alive forever.
+            _exit_after_update_handoff(result)
         return result
     except Exception as exc:
         diagnostic_event('startup', state='FAILED', exc_info=True)
