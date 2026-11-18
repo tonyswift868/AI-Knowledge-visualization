@@ -271,14 +271,17 @@ jobs:
           if (-not $link) { throw 'MentorFlow desktop shortcut was not created by the visible installer.' }
           $sc = $shell.CreateShortcut($link.FullName)
           if ([string]::IsNullOrWhiteSpace($sc.TargetPath)) { throw 'MentorFlow shortcut has no target.' }
-          $installRoot = Split-Path (Split-Path $sc.TargetPath -Parent) -Parent
+          # The link stores its target relative to the user profile; read here as the admin it expands to the
+          # admin's folders, where nothing is installed. Expand it for the standard user who owns the link.
+          $target = $sc.TargetPath.Replace($env:USERPROFILE, $profileRoot)
+          $installRoot = Split-Path (Split-Path $target -Parent) -Parent
           $installParent = Split-Path $installRoot -Parent
-          $workingDirectory = if ([string]::IsNullOrWhiteSpace($sc.WorkingDirectory)) { Split-Path $sc.TargetPath -Parent } else { $sc.WorkingDirectory }
-          [ordered]@{ path=$link.FullName; target=$sc.TargetPath; arguments=$sc.Arguments; working_directory=$workingDirectory; install_root=$installRoot; install_user='mfuser' } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut.json')
+          $workingDirectory = if ([string]::IsNullOrWhiteSpace($sc.WorkingDirectory)) { Split-Path $target -Parent } else { $sc.WorkingDirectory }
+          [ordered]@{ path=$link.FullName; target=$target; raw_target=$sc.TargetPath; arguments=$sc.Arguments; working_directory=$workingDirectory; install_root=$installRoot; install_user='mfuser' } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut.json')
 
           function Is-MentorFlowProcess($process) {
             if ($process.ProcessName -match 'MentorFlow|UserRuntime') { return $true }
-            try { return ([string]$process.Path -eq [string]$sc.TargetPath) } catch { return $false }
+            try { return ([string]$process.Path -eq [string]$target) } catch { return $false }
           }
           function Get-MentorFlowProcesses { @(Get-Process -ErrorAction SilentlyContinue | Where-Object { Is-MentorFlowProcess $_ }) }
           function Get-MentorFlowWindows { @(Get-MentorFlowProcesses | Where-Object { $_.MainWindowHandle -ne 0 }) }
@@ -345,7 +348,7 @@ jobs:
           }
           function Start-Shortcut([int]$round) {
             $started = Get-Date
-            $proc = Start-AsUser $sc.TargetPath $sc.Arguments $workingDirectory
+            $proc = Start-AsUser $target $sc.Arguments $workingDirectory
             Write-Host "round $round started from the desktop shortcut, pid $($proc.Id)"
             "round=$round`nlauncher_pid=$($proc.Id)`nstarted=$started" | Set-Content (Join-Path $evidence "round$round-summary.txt")
             return $proc
