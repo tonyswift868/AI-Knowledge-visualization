@@ -211,7 +211,8 @@ def test_release91_local_signing_zip_stages_only_signed_manifest(release91):
 
 
 def test_release91_dispatch_only_global_queue_timeouts_and_small_artifact():
-    paths=sorted((pipeline.ROOT/'.github/workflows').glob('mf-*.yml'))
+    # mf-fresh-install.yml is a test workflow (438), not a release one; check_workflows.py skips it the same way.
+    paths=sorted(p for p in (pipeline.ROOT/'.github/workflows').glob('mf-*.yml') if p.name!='mf-fresh-install.yml')
     assert len(paths)==3
     # BaseLoader preserves the YAML key "on", unlike PyYAML's YAML 1.1 bool conversion.
     for path in paths:
