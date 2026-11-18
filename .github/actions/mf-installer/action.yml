@@ -81,7 +81,7 @@ runs:
         version="$1"; expected="$2"; temp="$3"
         releases=/opt/mentorflow/update-static/e108/app/releases
         test "$(sha256sum "$temp" | awk '{print $1}')" = "$expected"
-        install -o root -g root -m 0644 "$temp" "$releases/MentorFlow-Setup-$version.exe"
+        install -o root -g root -m 0644 "$temp" "$releases/.MentorFlow-Setup-$version.exe.tmp"`n        mv -f "$releases/.MentorFlow-Setup-$version.exe.tmp" "$releases/MentorFlow-Setup-$version.exe"
         rm -f "$temp"
         printf '{"version":"%s","filename":"MentorFlow-Setup-%s.exe","sha256":"%s"}\n' "$version" "$version" "$expected" > "$releases/.current.json.tmp"
         chown root:root "$releases/.current.json.tmp"; chmod 0644 "$releases/.current.json.tmp"
