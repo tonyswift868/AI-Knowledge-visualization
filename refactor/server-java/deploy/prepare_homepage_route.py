@@ -13,7 +13,9 @@ PLACEHOLDER = re.compile(
     r"[ \t]*location\s*=\s*/\s*\{.*?^[ \t]*\}"
 )
 IMAGES = re.compile(r"(?m)^[ \t]*location\s*\^~\s+/images/\s*\{")
-DOWNLOAD = re.compile(r"(?ms)^[ \t]*location\s*=\s*/download\s*\{.*?^[ \t]*\}")
+DOWNLOAD = re.compile(
+    r"(?ms)^[ \t]*location\s*=\s*/download\s*\{(?:[^{}]|\{[^{}]*\})*\}"
+)
 
 HOMEPAGE = f'''        location = / {{
             if ($request_method !~ ^(GET|HEAD)$) {{ return 405; }}
@@ -51,18 +53,22 @@ def prepare(source: Path, destination: Path) -> None:
         raise ValueError("candidate output must not overwrite the source config")
     text = _read(source)
     placeholders = list(PLACEHOLDER.finditer(text))
-    if len(placeholders) != 1:
+    if len(placeholders) > 1:
         raise ValueError(
-            f"expected exactly one homepage placeholder block; found {len(placeholders)}"
+            f"expected at most one homepage placeholder block; found {len(placeholders)}"
         )
-    if IMAGES.search(text):
+    if not placeholders and not re.search(r"(?m)^[ \t]*location\s*=\s*/\s*\{", text):
+        raise ValueError("expected an existing homepage location when placeholder is absent")
+    if placeholders and IMAGES.search(text):
         raise ValueError("refusing to add a duplicate /images/ location")
-    match = placeholders[0]
     downloads = list(DOWNLOAD.finditer(text))
     if len(downloads) != 1:
         raise ValueError(f"expected exactly one /download location; found {len(downloads)}")
-    replacement = HOMEPAGE
-    candidate = text[: match.start()] + replacement + text[match.end() :]
+    if placeholders:
+        match = placeholders[0]
+        candidate = text[: match.start()] + HOMEPAGE + text[match.end() :]
+    else:
+        candidate = text
     download_block = f'''        location = /download {{
             if ($request_method !~ ^(GET|HEAD)$) {{ return 405; }}
             add_header Cache-Control "no-cache" always;

@@ -21,17 +21,21 @@
       const status = document.getElementById('status');
       const github = document.getElementById('github');
       const backup = document.getElementById('backup');
-      const meta = fetch('/releases/current.json', {cache:'no-store'}).then(r => r.ok ? r.json() : Promise.reject());
+      const meta = fetch('/releases/current.json?ts=' + Date.now(), {cache:'no-store'})
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(current => {
+          if (!current || !current.filename) throw new Error('missing backup metadata');
+          backup.href = 'https://89.45.45.28/releases/' + encodeURIComponent(current.filename);
+          return current;
+        });
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
       const probe = fetch(github.href, {method:'HEAD', mode:'no-cors', redirect:'follow', cache:'no-store'});
-      Promise.race([Promise.all([meta, probe]), timeout]).then(([current]) => {
-        if (current && current.filename) backup.href = 'https://89.45.45.28/releases/' + encodeURIComponent(current.filename);
+      Promise.race([probe, timeout]).then(() => {
         status.textContent = 'GitHub 下载线路可用，正在打开……';
         location.assign(github.href);
       }).catch(() => {
-        meta.then(current => { if (current.filename) backup.href = 'https://89.45.45.28/releases/' + encodeURIComponent(current.filename); }).catch(() => {});
         status.textContent = 'GitHub 线路暂时不可用，正在切换备用线路……';
-        setTimeout(() => location.assign(backup.href), 0);
+        meta.catch(() => {}).finally(() => location.assign(backup.href));
       });
     })();
   </script>
