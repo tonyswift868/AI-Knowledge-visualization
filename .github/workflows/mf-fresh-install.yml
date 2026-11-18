@@ -134,19 +134,27 @@ jobs:
           icacls $shared /grant 'mfuser:(OI)(CI)M' | Out-Null
           Copy-Item $env:INSTALLER (Join-Path $shared 'MentorFlow-Setup.exe')
           $userLog = Join-Path $shared 'installer.log'
+          # A new user's first logon builds its profile, which can take a minute; do it before timing the wizard.
+          $clock = [Diagnostics.Stopwatch]::StartNew()
+          $probe = Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c', 'whoami > C:\mf-fresh\whoami.txt' -Credential $cred -LoadUserProfile -WorkingDirectory $shared -PassThru -Wait
+          Write-Host "profile probe exit=$($probe.ExitCode) after $([int]$clock.Elapsed.TotalSeconds)s, whoami=$(Get-Content C:\mf-fresh\whoami.txt -ErrorAction SilentlyContinue)"
           $p = Start-Process -FilePath (Join-Path $shared 'MentorFlow-Setup.exe') -ArgumentList @('/LOG=' + $userLog) -Credential $cred -LoadUserProfile -WorkingDirectory $shared -PassThru
           "installer_pid=$($p.Id)`ninstall_user=mfuser (standard user, fresh profile)" | Set-Content $result
           Write-Host "installer started as standard user mfuser, pid $($p.Id)"
           # Inno's wizard runs in a child process (MentorFlow-Setup.tmp); find it by window class.
           # [NullString]::Value, not $null: PowerShell turns $null into "" for string arguments, which matches only untitled windows.
           $wizard = [IntPtr]::Zero
-          for ($i = 0; $i -lt 240 -and $wizard -eq [IntPtr]::Zero; $i++) {
+          for ($i = 0; $i -lt 720 -and $wizard -eq [IntPtr]::Zero -and -not $p.HasExited; $i++) {
             Start-Sleep -Milliseconds 250
             $wizard = [Wizard]::FindWindow('TWizardForm', [NullString]::Value)
           }
           if ($wizard -eq [IntPtr]::Zero) {
-            "interactive_window=not_found" | Add-Content $result
-            if (-not $p.HasExited) { $p.CloseMainWindow() | Out-Null }
+            $exit = if ($p.HasExited) { $p.ExitCode } else { 'still running' }
+            "interactive_window=not_found`nsetup_process=$exit" | Add-Content $result
+            Write-Host "wizard window not found; setup process: $exit"
+            Save-SetupPage '000-no-window' ([IntPtr]::Zero)
+            Copy-Item $userLog $log -ErrorAction SilentlyContinue
+            Get-Process | Sort-Object ProcessName | Select-Object Id,ProcessName,SessionId,MainWindowTitle | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
             throw 'Visible installer window did not appear on the clean runner.'
           }
           # The branded pages hide Inno's Next button, so Enter does nothing; click the drawn button like a
