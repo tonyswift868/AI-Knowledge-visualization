@@ -2597,6 +2597,7 @@
 untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lock`），锁被占时会弹“MentorFlow 已在运行”；若对方连这个提示都没有，问题在它之前（启动器阶段）。日志在 `<安装根>\Data\logs\mentorflow.log`、`launcher-startup.jsonl`。
 - 438 第一段读代码的头号嫌疑（未验证）：启动器每次启动先查安装根下 `App/MentorFlow.exe` 是否还活着（`per_user_launcher.py:139-143` → `per_user_install.py:652-654` `require_app_stopped`），活着就报 `close the current App before continuing`、关掉启动画面退出，不出窗口。如果第一次关窗口后进程没退干净，以后每次都会这样，直到重启或结束进程。要在干净机上确认关窗后有没有残留进程。
 - 牵连：所有新装用户；在本机开发电脑上从没复现过，因为没人在干净电脑上装过真包（[BUG-277] 同类：开发机上什么都有，干净电脑上的问题看不到）。
+- 干净机器复现（2026-11-18 架构师，run 44209844520，证据 `.local/test-tmp/438-arch/ev11`）：GitHub `windows-latest`（美国，Windows Server 2025）新建普通用户、开窗口装 2.0.48 默认位置，2 分半装完；完成页点“启动”开第 1 次，之后从桌面快捷方式再开 3 次，关法分别是登录窗 ✕、✕、WM_CLOSE、WM_CLOSE。4 次都出登录窗，“注册账号”“忘记密码”4 次都是亮的；每次关后 30 秒 MentorFlow 进程全部退出，`mentorflow.log` 每次都有 `USER_MAIN_CLOSE` → `EVENT_LOOP_RETURNED` 正常退出。两个问题在这台机器上都复现不出，差别待查：对方的 Windows 版本、所在网络（中国）、杀毒软件、是否以管理员身份打开（[BUG-281]）。
 - 关联：[BUG-278]、[BUG-273]、436
 
 ### [BUG-281] 以管理员身份（或关了 UAC 的电脑上）运行安装包装不上，提示却说“安装位置未通过核心校验”
@@ -2623,6 +2624,7 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
 - 状态：待查（用户 2026-11-17 报告）。
 - 现象：同一位用户新装 2.0.48 后，登录窗口“注册账号”“忘记密码”从一开始就是灰的，一直不亮，没法注册（用户 2026-11-17 明确：不是慢）。
 - 已知（架构师 2026-11-17）：两个按钮一开始就是灰的，要等程序 GET `https://89.45.45.28/api/enterprise/auth/lifecycle/capabilities` 拿到 `register`/`forgot_password` 为 true 才点亮（`login_shell.py` `set_account_capabilities`，`account_shell_main.py` `_load_capabilities`，失败 60 秒后重试）。服务器本身正常：日本本机 200、1.2 秒，返回两个 true；Globalping 中国大陆 8 个测点（上海、武汉、成都、福州、西安、郑州、济南、桂林）全部 200，0.65～1.34 秒。所以不是服务器或中国网络的问题，是对方电脑上这次请求失败了。失败时异常被吞掉（`except Exception: capabilities = {}`），日志里不记原因；按钮提示写“当前账号服务尚未开放注册”，跟真实原因不符。
+- 干净机器复现（2026-11-18 架构师，run 44209844520，证据 `.local/test-tmp/438-arch/ev11`）：GitHub `windows-latest`（美国，Windows Server 2025）新建普通用户、开窗口装 2.0.48 默认位置，2 分半装完；完成页点“启动”开第 1 次，之后从桌面快捷方式再开 3 次，关法分别是登录窗 ✕、✕、WM_CLOSE、WM_CLOSE。4 次都出登录窗，“注册账号”“忘记密码”4 次都是亮的；每次关后 30 秒 MentorFlow 进程全部退出，`mentorflow.log` 每次都有 `USER_MAIN_CLOSE` → `EVENT_LOOP_RETURNED` 正常退出。两个问题在这台机器上都复现不出，差别待查：对方的 Windows 版本、所在网络（中国）、杀毒软件、是否以管理员身份打开（[BUG-281]）。
 - 关联：[BUG-279]
 
 ### [BUG-277] 从源码启动时数据目录写死在 D:\MentorFlowData\account-shell，别人的电脑没有 D 盘就跑不了
