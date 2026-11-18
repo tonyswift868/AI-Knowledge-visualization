@@ -121,7 +121,11 @@ def test_teacher138_ready_prefetch_has_rewritten_before_click_no_reset_or_extra_
         progress=[json.loads(item[len(TODAY_EVENT):]) for item in env.stream if item.startswith(TODAY_EVENT)]
         assert len(progress)==1 and progress[0]['today_tentative']==5
         assert [item for item in env.stream if not item.startswith(TODAY_EVENT)]==[GOOD] and RESET not in env.stream
-        reasons=[r.mf_fields for r in caplog.records if getattr(r,'mf_event',None)=='classroom']
+        reasons=[r.mf_fields for r in caplog.records
+                 if getattr(r,'mf_event',None)=='classroom'
+                 and r.mf_fields.get('code')=='PREFETCH']
         assert len(reasons)==2 and all(r['code']=='PREFETCH' and r['reason']=='TOO_LONG' for r in reasons)
-        assert any('classroom prefetch hit' in r.getMessage() for r in caplog.records)
+        assert any(getattr(r,'mf_event',None)=='classroom'
+                   and r.mf_fields.get('state')=='PREFETCH_HIT'
+                   for r in caplog.records)
     finally:env.room.cancel_materials();env.store.close()
