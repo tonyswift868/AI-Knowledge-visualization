@@ -6,6 +6,8 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-286 | 发版工作流测试写死“正好 3 个 mf-*.yml”，加了干净机器测试工作流就失败 | 已修已验证 | 2026-11-17 |
+| BUG-285 | 服务器部署脚本提示文字里的英文撇号让 bash 语法检查失败 | 已修，测试已验证；服务器副本未查 | 2026-11-17 |
 | BUG-282 | Windows 7/8 上装 2.0.48 弹“Failed to load Python DLL … python312.dll 找不到指定的模块” | 已修未验证（安装包加最低系统版本，待发版） | 2026-11-18 |
 | BUG-281 | 以管理员身份（或关了 UAC 的电脑上）运行安装包装不上，提示却说“安装位置未通过核心校验” | 已修未验证（代码已推送，要发新版才到用户手里） | 2026-11-18 |
 | BUG-280 | 干净 Windows 上完整包静默安装在自定义安装位置页前退出，应用根本没装上 | 待修（438 两次 GitHub runner 复现） | 2026-11-17 |
@@ -2600,6 +2602,26 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
 - 牵连：所有新装用户；在本机开发电脑上从没复现过，因为没人在干净电脑上装过真包（[BUG-277] 同类：开发机上什么都有，干净电脑上的问题看不到）。
 - 干净机器复现（2026-11-18 架构师，run 44209844520，证据 `.local/test-tmp/438-arch/ev11`）：GitHub `windows-latest`（美国，Windows Server 2025）新建普通用户、开窗口装 2.0.48 默认位置，2 分半装完；完成页点“启动”开第 1 次，之后从桌面快捷方式再开 3 次，关法分别是登录窗 ✕、✕、WM_CLOSE、WM_CLOSE。4 次都出登录窗，“注册账号”“忘记密码”4 次都是亮的；每次关后 30 秒 MentorFlow 进程全部退出，`mentorflow.log` 每次都有 `USER_MAIN_CLOSE` → `EVENT_LOOP_RETURNED` 正常退出。两个问题在这台机器上都复现不出，差别待查：对方的 Windows 版本、所在网络（中国）、杀毒软件、是否以管理员身份打开（[BUG-281]）。
 - 关联：[BUG-278]、[BUG-273]、436
+
+### [BUG-286] 发版工作流测试写死“正好 3 个 mf-*.yml”，加了干净机器测试工作流就失败
+- 状态：已修已验证（2026-11-17）。
+- 现象：440 全量里 `test_release_pipeline91.py::test_release91_dispatch_only_global_queue_timeouts_and_small_artifact` 稳定失败：断言 `mf-*.yml` 正好 3 个，实际 4 个。
+- 原因：438 加了测试工作流 `mf-fresh-install.yml`，它也叫 mf-*，但不是发版工作流，没有全局发版队列。测试按文件名通配再数个数，是写死“今天有几个”的快照。
+- 解决：442 合入时改成按名字取发版工作流，名单直接引用 `scripts/release/check_workflows.py` 的 `RELEASE_WORKFLOWS`，不再数个数。
+- 验证：该测试单独跑通过；check_workflows 通过（2026-11-17）。
+- 关联：[BUG-281]
+- 更新：2026-11-17
+
+### [BUG-285] 服务器部署脚本提示文字里的英文撇号让 bash 语法检查失败
+- 状态：已修，测试已验证；服务器上已部署的副本未查。
+- 现象：440 全量里 `deploy219/test_server_deploy219.py` 和 `server_java/test_deploy151.py` 稳定失败，`bash -n` 报 `cleanup-docker406.sh` 语法错误。
+- 原因：`: "${STATE:?set STATE to this deployment's state directory}"`：双引号里 `${...:?提示}` 的提示文字带英文撇号，bash 当成没闭合的单引号。`install-account-page-proxy.sh` 第 78、105 行同样写法。
+- 解决：三处提示文字去掉撇号（deployment / installation 后不再带 's）。
+- 验证（2026-11-17 架构师）：
+  - `refactor/server-java/deploy/*.sh` 全部 `bash -n` 通过；
+  - deploy219、test_deploy151、test_cleanup_docker406、test_rag_source_chunks_migration323 共 52 项通过。
+  - 服务器用 `sh` 跑这两份脚本，已部署的副本受不受影响没查，下次上服务器时一并换新。
+- 更新：2026-11-17
 
 ### [BUG-282] Windows 7/8 上装 2.0.48 弹“Failed to load Python DLL … python312.dll 找不到指定的模块”
 - 状态：已修未验证（2026-11-18；要发新版才生效）。

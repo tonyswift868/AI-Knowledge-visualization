@@ -2,7 +2,7 @@
 # Called only after the deployment, end-to-end checks, storage report, and test-data cleanup pass.
 set -eu
 
-: "${STATE:?set STATE to this deployment's state directory}"
+: "${STATE:?set STATE to this deployment state directory}"
 : "${JAVA_IMAGE:?set JAVA_IMAGE to the Java image used by this deployment}"
 docker_bin=${DOCKER_BIN:-docker}
 migration_image=${MIGRATION_TOOL_IMAGE:-mentorflow-migration-tool:MF-275}

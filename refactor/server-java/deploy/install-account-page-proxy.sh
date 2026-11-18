@@ -75,7 +75,7 @@ case "$action" in
     ;;
   install)
     : "${RELEASE_ROOT:?set RELEASE_ROOT to the deployed Java source directory}"
-    : "${STATE:?set STATE to this deployment's fresh state directory}"
+    : "${STATE:?set STATE to this deployment fresh state directory}"
     release_root=$RELEASE_ROOT
     case "$RELEASE_ROOT" in *[!A-Za-z0-9_./-]*) fail 'RELEASE_ROOT contains unsupported characters' ;; esac
     SYSTEMCTL_BIN=${SYSTEMCTL_BIN:-systemctl}
@@ -102,7 +102,7 @@ case "$action" in
     fi
     ;;
   refresh)
-    : "${STATE:?set STATE to the installation's owner state directory}"
+    : "${STATE:?set STATE to the installation owner state directory}"
     SYSTEMCTL_BIN=${SYSTEMCTL_BIN:-systemctl}
     CURL_BIN=${CURL_BIN:-curl}
     test -f "$socket_marker" && test -f "$service_marker" || fail 'account page proxy units are not owned by this deployment'
