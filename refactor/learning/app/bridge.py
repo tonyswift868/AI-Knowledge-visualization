@@ -250,7 +250,9 @@ class AppBridge(QObject):
                             "error": {"code": code, "message": message}}
                 if fault: response['error']['model_fault'] = fault
             else:
-                log.exception("bridge handler failed: %s", request_id)
+                from refactor.runtime_logging import event
+                event('bridge', stage='handler', reason='HANDLER_FAILED',
+                      request_id=request_id, exc_info=True)
                 response = {"type": "response", "id": request_id, "ok": False,
                             "error": {"code": "INTERNAL", "message": "操作没有完成，请重试。"}}
         finally:

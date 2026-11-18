@@ -85,7 +85,7 @@ class SyncTransport(AuthenticatedPlanSource):
                                 try:
                                     waited_for_refresh = bool(self._session_refresh_waiter(self._closed))
                                 except Exception as exc:
-                                    event('sync', state='REFRESH_WAITER_FAILED', phase='refresh',
+                                    event('sync', state='REFRESH_WAITER_FAILED', phase='refresh', stage='sync_upload',
                                           error_type=type(exc).__name__,
                                           client_request_id=client_request_id)
                                     self.require_current()
@@ -93,20 +93,20 @@ class SyncTransport(AuthenticatedPlanSource):
                                 self.require_current()
                             _, fresh = self._session()
                             if fresh != token:
-                                event('sync', state='AUTH_ROTATED_RETRY',
+                                event('sync', state='AUTH_ROTATED_RETRY', stage=self._stage(path, method),
                                       phase=self._phase(path, method),
                                       client_request_id=client_request_id,
                                       response_request_id=self._response_request_id(response),
                                       operation_id=operation_id)
                                 continue
                             if waited_for_refresh:
-                                event('sync', state='REFRESH_COMPLETED_WITHOUT_TOKEN_ROTATION',
+                                event('sync', state='REFRESH_COMPLETED_WITHOUT_TOKEN_ROTATION', stage='sync_upload',
                                       phase='refresh', client_request_id=client_request_id,
                                       response_request_id=self._response_request_id(response),
                                       operation_id=operation_id)
                                 raise PlanError('SESSION_UNAVAILABLE', NETWORK_RETRY_MESSAGE)
                         phase = self._phase(path, method)
-                        event('sync', state='REQUEST_FAILED', phase=phase,
+                        event('sync', state='REQUEST_FAILED', phase=phase, stage=self._stage(path, method),
                               error_type='HTTPStatusError', http_status=response.status_code,
                               client_request_id=client_request_id,
                               response_request_id=self._response_request_id(response),
@@ -116,6 +116,7 @@ class SyncTransport(AuthenticatedPlanSource):
                     return
             except (httpx.HTTPError, OSError) as exc:
                 event('sync', state='REQUEST_FAILED', phase=self._phase(path, method),
+                      stage=self._stage(path, method),
                       error_type=type(exc).__name__, client_request_id=client_request_id,
                       operation_id=operation_id)
                 raise
@@ -127,6 +128,27 @@ class SyncTransport(AuthenticatedPlanSource):
     def _response_request_id(response):
         value = response.headers.get('X-Request-ID', '')
         return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', value) else ''
+
+    @staticmethod
+    def _response_error_code(response):
+        if response.status_code < 400:
+            return ''
+        length = response.headers.get('Content-Length', '')
+        if length.isdigit() and int(length) > 8192:
+            return ''
+        try:
+            response.read()
+            payload = response.json()
+        except (ValueError, TypeError, RuntimeError, httpx.HTTPError):
+            return ''
+        if not isinstance(payload, dict):
+            return ''
+        error = payload.get('error')
+        candidates = [payload.get('code'), payload.get('error_code')]
+        if isinstance(error, dict):
+            candidates.extend((error.get('code'), error.get('error_code')))
+        return next((value for value in candidates
+                     if isinstance(value, str) and re.fullmatch(r'[A-Z0-9_]{1,64}', value)), '')
 
     @staticmethod
     def _client_trace_id(response):
@@ -144,9 +166,15 @@ class SyncTransport(AuthenticatedPlanSource):
             return 'pull'
         return 'upload'
 
+    @classmethod
+    def _stage(cls, path, method=None):
+        return 'sync_pull' if cls._phase(path, method) == 'pull' else 'sync_upload'
+
     def _log_response(self, path, response, *, state, code='OK', client_request_id='',
                       operation_id='', phase=None):
-        fields = dict(state=state, phase=phase or self._phase(path), code=code,
+        server_code = self._response_error_code(response)
+        fields = dict(state=state, phase=phase or self._phase(path),
+                      stage=self._stage(path), code=server_code or code,
                       http_status=response.status_code,
                       client_request_id=client_request_id or self._client_trace_id(response),
                       response_request_id=self._response_request_id(response),

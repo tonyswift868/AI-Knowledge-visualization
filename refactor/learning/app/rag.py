@@ -25,6 +25,7 @@ from ..course.extract import ExtractError, extract_file
 from ..sync_transport import SyncTransport
 from ..sync_source import TRANSIENT_SESSION_CODES
 from ..sync_identity import PlanError
+from ..text_clean import strip_nul
 from .bridge import BridgeError, CallContext
 from refactor.runtime_logging import event as diagnostic_event
 
@@ -85,14 +86,16 @@ def _source_content_digest(chunks):
     normalized = [{"text": str(chunk.get("text") or ""),
                    "page": chunk.get("page"),
                    "section": _section_text(chunk.get("section"))}
-                  for chunk in chunks]
+                  for chunk in strip_nul(chunks)]
     return hashlib.sha256(_json(normalized).encode("utf-8")).hexdigest()
 
 
 def _upload_is_current(row):
     """Only a confirmed full snapshot certifies this source's current content."""
     uploaded = row.get("uploaded_content_sha256") or ""
-    return bool(uploaded and uploaded == row.get("current_content_sha256"))
+    current = (_source_content_digest(row["chunks"]) if "chunks" in row
+               else row.get("current_content_sha256") or "")
+    return bool(uploaded and uploaded == current)
 
 
 def _match_source_chunk(chunks, text, source_seq=None):
@@ -785,8 +788,8 @@ class RagService:
         try:
             self._push_job(job)
         except Exception:
-            log.warning("RAG preparation terminal notification failed document=%s",
-                        job["document_id"][:8], exc_info=True)
+            diagnostic_event('rag_timing', stage='terminal_notification', reason='PUSH_FAILED',
+                             document_id=job["document_id"][:8], exc_info=True)
         finally:
             job["finished"].set()
             with self._jobs_lock:
@@ -854,7 +857,7 @@ class RagService:
 
     @staticmethod
     def _preparation_key(row):
-        return (row["id"], row.get("current_content_sha256") or _source_content_digest(row["chunks"]),
+        return (row["id"], _source_content_digest(row["chunks"]),
                 row["title"], row["source"])
 
     def _log_preparation_failure(self, document_id, exc):
@@ -862,9 +865,13 @@ class RagService:
         if not isinstance(code, str) or not re.fullmatch(r"[A-Z0-9_]{1,64}", code):
             code = "RAG_PREPARATION_FAILED"
         status = getattr(exc, "http_status", None)
-        suffix = f" HTTP{status}" if type(status) is int else ""
-        log.error("RAG preparation failed document=%s batch_index=%s code=%s%s",
-                  document_id[:8], getattr(self._worker_local, "batch_index", 0), code, suffix)
+        started = getattr(self._worker_local, "preparation_started", None)
+        diagnostic_event('rag_timing', state='FAILED', stage='prepare', code=code,
+                         http_status=status if type(status) is int else 0,
+                         request_id=getattr(self._worker_local, 'request_id', ''),
+                         document_id=document_id[:8],
+                         batch=getattr(self._worker_local, 'batch_index', 0),
+                         elapsed_seconds=time.monotonic() - started if started else 0)
 
     def _preparation_worker(self):
         while True:
@@ -881,6 +888,8 @@ class RagService:
                 job["state"] = "running"
             try:
                 self._worker_local.batch_index = 0
+                self._worker_local.request_id = job_id
+                self._worker_local.preparation_started = time.monotonic()
                 result = self._ingest_locked([job["document_id"]], cancel=job["cancel"],
                     snapshots={job["document_id"]: job["snapshot"]},
                     on_progress=lambda row, j=job: self._job_progress(j, row))
@@ -913,8 +922,11 @@ class RagService:
                     job["state"] = "failed"
                     job["error"] = safe_code
                     self._jobs_lock.notify_all()
-                log.error("RAG preparation failed document=%s batch_index=%s code=%s",
-                          job["document_id"][:8], getattr(self._worker_local, "batch_index", 0), safe_code)
+                diagnostic_event('rag_timing', state='FAILED', stage='prepare', code=safe_code,
+                                 request_id=job_id, document_id=job["document_id"][:8],
+                                 batch=getattr(self._worker_local, "batch_index", 0),
+                                 elapsed_seconds=time.monotonic() - getattr(
+                                     self._worker_local, 'preparation_started', time.monotonic()))
                 self._notify_job_finished(job)
 
     def _job_progress(self, job, row):
@@ -1312,7 +1324,8 @@ class RagService:
         total = int(row.get("canonical_total_chunks") or row.get("total_chunks", 0))
         uploaded = int(row.get("uploaded_chunks", 0))
         status = row.get("status", "not_uploaded")
-        current_digest = row.get("current_content_sha256") or ""
+        current_digest = (_source_content_digest(row["chunks"])
+                          if "chunks" in row else row.get("current_content_sha256") or "")
         if (current_digest and not _upload_is_current(row)
                 and status not in {"uploading", "failed"}):
             # A previous remote version may remain available for rollback or
@@ -1407,8 +1420,9 @@ class RagService:
         return bool(on_receipt(receipt))
 
     def _send_repair_batches(self, row, *, cancel=None, on_progress=None):
+        row = strip_nul(row)
         chunks = row["chunks"]
-        uploaded_digest = row.get("current_content_sha256") or _source_content_digest(chunks)
+        uploaded_digest = _source_content_digest(chunks)
         manifest = [self._repair_chunk_digest(chunk) for chunk in chunks]
         base = {"title": row["title"], "source": row["source"], "total_chunks": len(chunks),
                 "repair_existing": True, "repair_manifest": manifest,
@@ -1742,8 +1756,9 @@ class RagService:
         return row
 
     def _send_batches(self, row, cancel=None, on_progress=None):
+        row = strip_nul(row)
         chunks = row["chunks"]
-        uploaded_digest = row.get("current_content_sha256") or _source_content_digest(chunks)
+        uploaded_digest = _source_content_digest(chunks)
         target_id = row.get("remote_upload_id") or row["id"]
         batches, batch = [], []
         for seq, chunk in enumerate(chunks):
@@ -1881,8 +1896,7 @@ class RagService:
                         # A conflict proves that existing ready chunks are not
                         # a subset of this source snapshot; preserve them and
                         # fall back to an immutable content-version upload.
-                        target_id = _source_version_id(doc_id, row.get("current_content_sha256") or
-                                                       _source_content_digest(row["chunks"]))
+                        target_id = _source_version_id(doc_id, _source_content_digest(row["chunks"]))
                         self.local.set_remote_upload_id(doc_id, target_id)
                         row = self.local.document(doc_id)
                         self.local.set_status(doc_id, "uploading", 0)
@@ -1897,8 +1911,7 @@ class RagService:
                                 "status": "failed", "error": upload_exc.message},
                                 row.get("plan_ids", ()))
                 else:
-                    target_id = _source_version_id(doc_id, row.get("current_content_sha256") or
-                                                   _source_content_digest(row["chunks"]))
+                    target_id = _source_version_id(doc_id, _source_content_digest(row["chunks"]))
                     self.local.set_remote_upload_id(doc_id, target_id)
                     row = self.local.document(doc_id)
                     self.local.set_status(doc_id, "uploading", 0)
@@ -1916,7 +1929,7 @@ class RagService:
                 if on_progress:
                     on_progress(view)
                 continue
-            current_digest = row.get("current_content_sha256") or _source_content_digest(row["chunks"])
+            current_digest = _source_content_digest(row["chunks"])
             verified_target = _upload_is_current(row)
             if (verified_target and self._remote_complete(remote_row, len(row["chunks"]))
                     and not self._needs_source_layout(row)):
@@ -1948,8 +1961,7 @@ class RagService:
                     # Replaying the full snapshot is the content check, even
                     # for a ready original ID. Keep a conflicting body and
                     # retry under a fresh immutable ID.
-                    fresh_id = _fresh_source_version_id(doc_id,
-                        current.get("current_content_sha256") or _source_content_digest(current["chunks"]))
+                    fresh_id = _fresh_source_version_id(doc_id, _source_content_digest(current["chunks"]))
                     self.local.set_remote_upload_id(doc_id, fresh_id)
                     current = self.local.document(doc_id) or current
                     self.local.set_status(doc_id, "uploading", 0)
@@ -1983,7 +1995,7 @@ class RagService:
         errors = []
         selected_paths = []
         # Validate the entire picker grant before a batch can write anything.
-        for raw_path in paths:
+        for batch, raw_path in enumerate(paths, 1):
             self._check_open()
             _cancel(cancel)
             try:
@@ -1991,14 +2003,18 @@ class RagService:
             except (OSError, RuntimeError):
                 errors.append({"filename": Path(raw_path).name, "code": "FILE_UNAVAILABLE",
                                "message": "所选文件已无法读取，请重新选择。"})
+                diagnostic_event('rag_timing', state='FAILED', stage='extract', code='FILE_UNAVAILABLE',
+                                 request_id=uuid.uuid4().hex, batch=batch, elapsed_seconds=0)
                 continue
             if str(path) not in allowed:
                 raise BridgeError("FILE_NOT_SELECTED", "请先用“选择文件”打开资料。")
             selected_paths.append(path)
         result = []
-        for path in selected_paths:
+        for batch, path in enumerate(selected_paths, 1):
             self._check_open()
             _cancel(cancel)
+            started = time.monotonic()
+            request_id = uuid.uuid4().hex
             try:
                 def extraction_progress(page, total):
                     _cancel(cancel)
@@ -2025,10 +2041,16 @@ class RagService:
                     raise BridgeError("CANCELLED", exc.message) from None
                 errors.append({"filename": path.name, "code": "RAG_EXTRACT_" + exc.code,
                                "message": exc.message})
+                diagnostic_event('rag_timing', state='FAILED', stage='extract',
+                                 code='RAG_EXTRACT_' + exc.code, request_id=request_id,
+                                 batch=batch, elapsed_seconds=time.monotonic() - started)
                 continue
             except OSError:
                 errors.append({"filename": path.name, "code": "FILE_UNAVAILABLE",
                                "message": "所选文件读取失败，请确认文件仍可访问。"})
+                diagnostic_event('rag_timing', state='FAILED', stage='extract', code='FILE_UNAVAILABLE',
+                                 request_id=request_id, batch=batch,
+                                 elapsed_seconds=time.monotonic() - started)
                 continue
             chunks = [{"text": chunk.text, "page": chunk.page_start,
                        "section": " / ".join(chunk.section)} for chunk in extracted.chunks]

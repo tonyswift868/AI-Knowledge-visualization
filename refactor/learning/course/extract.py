@@ -22,6 +22,8 @@ import unicodedata
 from urllib.parse import unquote, urlsplit
 import zipfile
 
+from refactor.learning.text_clean import strip_nul
+
 
 MAX_BYTES = 50 * 1024 * 1024
 _MEDIA = {
@@ -892,6 +894,12 @@ def chunk_blocks(blocks, *, source_sha256: str, target_chars=1200, max_chars=200
 
 def _document(data, title, media_type, blocks, warnings, cancel):
     _check(cancel)
+    title = strip_nul(title)
+    blocks = tuple(
+        TextBlock(strip_nul(block.text), block.kind, block.page,
+                  tuple(strip_nul(part) for part in block.section))
+        for block in blocks
+    )
     blocks = tuple(block for block in blocks if block.text.strip())
     if not blocks:
         raise ExtractError('EMPTY')

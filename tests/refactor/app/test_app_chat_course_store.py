@@ -105,7 +105,10 @@ def test_import_once_preserves_files_skips_bad_and_isolates_accounts(tmp_root, c
         sessions = chat.list_sessions()
         assert len(sessions) == 1 and sessions[0].title == '以前聊过'
         assert store.legacy_chat_imported() and path.read_bytes() == raw and bad.read_text() == '{broken'
-        assert 'bad.json' in caplog.text and '旧回复' not in caplog.text
+        diagnostics = [getattr(record, 'mf_fields', {}) for record in caplog.records]
+        assert any(row.get('reason') == 'SKIPPED' and row.get('stage') == 'legacy_chat_import'
+                   for row in diagnostics)
+        assert 'bad.json' not in caplog.text and '旧回复' not in caplog.text
         # Deleting an imported chat must not be undone by re-opening the app.
         chat.delete(sessions[0].session_id)
         before = store.pending_records(100)

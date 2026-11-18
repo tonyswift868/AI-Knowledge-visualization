@@ -162,7 +162,10 @@ class CourseChatStore:
         except FileNotFoundError:
             paths = []
         except OSError as exc:
-            log.warning('legacy chat directory unavailable (%s); import will retry', type(exc).__name__)
+            from refactor.runtime_logging import event
+            event('storage', stage='legacy_chat_import', reason='DIRECTORY_UNAVAILABLE',
+                  error_type=type(exc).__name__,
+                  exc_info=(type(exc), exc, exc.__traceback__))
             return False
         reader = ScopedChatStore(directory.parent)
         retry = False
@@ -189,11 +192,17 @@ class CourseChatStore:
                     created_at=old.created_at.astimezone(timezone.utc).isoformat(), updated_at=updated.isoformat()), rows)
             except (OSError, FreeChatStoreIOError, FreeChatSessionNotFoundError) as exc:
                 retry = True
-                log.warning('legacy chat import deferred %s (%s); import will retry', path.name, type(exc).__name__)
+                from refactor.runtime_logging import event
+                event('storage', stage='legacy_chat_import', reason='DEFERRED',
+                      error_type=type(exc).__name__,
+                      exc_info=(type(exc), exc, exc.__traceback__))
             except (ValueError, OverflowError, FreeChatStoreError, ToolError) as exc:
                 if isinstance(exc, StoreError) and exc.code == 'STORE_CLOSED': raise
                 # No chat text, persona, tokens, or filesystem contents in logs.
-                log.warning('legacy chat import skipped %s (%s); original retained', path.name, type(exc).__name__)
+                from refactor.runtime_logging import event
+                event('storage', stage='legacy_chat_import', reason='SKIPPED',
+                      error_type=type(exc).__name__,
+                      exc_info=(type(exc), exc, exc.__traceback__))
         if retry: return False
         with self.store.transaction():
             self.store.mark_legacy_chat_imported()

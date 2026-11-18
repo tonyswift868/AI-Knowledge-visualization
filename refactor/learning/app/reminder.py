@@ -160,7 +160,9 @@ class ReminderService(QObject):
                 try:
                     status = store.today_status(plan["id"], now=instant, refresh=refresh, tz=local.tzinfo)
                 except Exception:  # noqa: BLE001 - one malformed plan must not suppress other plans
-                    log.warning("could not read today's status for plan %s", plan.get("id"), exc_info=True)
+                    from refactor.runtime_logging import event
+                    event('plan', stage='reminder_status', reason='STATUS_READ_FAILED',
+                          plan_id=plan.get('id'), exc_info=True)
                     continue
                 # User decisions (SYS-04, 2026-09-28): an overdue plan is reminded even with no new target
                 # today (a rest day is not); entering the classroom counts as having started today.

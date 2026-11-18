@@ -25,6 +25,7 @@ import re
 import threading
 import time
 import uuid
+from urllib.parse import urlsplit, urlunsplit
 
 from ..connections.errors import MODEL_OUTPUT_TRUNCATED, ModelCancelled, ModelError
 from ..course import plan_intent
@@ -35,6 +36,7 @@ from ..course.ledger import LedgerError, PlanWindow, check_cap, distribute, esti
 from ..course.store import StoreError, POINT_MINUTES_VERSION
 from ..preferences.storage import AccountJSON, StorageError
 from .bridge import BridgeError, CallContext
+from refactor.runtime_logging import event as diagnostic_event
 
 log = logging.getLogger(__name__)
 
@@ -585,10 +587,13 @@ class PlanFlow:
     def _recommend(self, draft, ctx, instruction=""):
         self._prune_recommendations(draft)
         self.status(draft['plan_id'], '正在推荐完整资料链接…')
+        started = time.monotonic()
         rows, _ = self._ask('research', agents.recommendation_request(
             draft['goal'], self._effective_form(draft), draft.get('accepted_preview') or draft.get('preview'),
             self._lists(), instruction=instruction, previous=draft.get('recommendations', [])),
             agents.parse_recommendations, ctx, plan_id=draft['plan_id'], max_tokens=12288)
+        diagnostic_event('research', state='CANDIDATES', stage='prepare', count=len(rows),
+                         elapsed_seconds=time.monotonic() - started)
         from ..course.source_filter import github_recommendation_key, normalize_url, recommendation_rejection
         known = {github_recommendation_key(c.get('final_url') or c.get('url'))
                  or normalize_url(c.get('final_url') or c.get('url') or '')
@@ -597,7 +602,17 @@ class PlanFlow:
         for row in rows:
             if ctx.cancel.is_set(): raise ModelCancelled()
             key = github_recommendation_key(row['url']) or normalize_url(row['url'])
-            if key in known or recommendation_rejection(row['url'], lists=self._lists(), allow_video=True):
+            source_url = urlsplit(row['url'])
+            safe_url = urlunsplit((source_url.scheme, source_url.netloc, source_url.path, '', ''))
+            if key in known:
+                diagnostic_event('research', state='FILTERED', stage='prepare', reason='DUPLICATE',
+                                 url=safe_url, count=1)
+                continue
+            initial_reason = recommendation_rejection(row['url'], lists=self._lists(), allow_video=True)
+            if initial_reason:
+                safe_reason = re.sub(r'[^A-Za-z0-9_]', '_', str(initial_reason).upper())[:64]
+                diagnostic_event('research', state='FILTERED', stage='prepare', reason=safe_reason,
+                                 url=safe_url, count=1)
                 continue
             evidence = {}
             if self.fetcher is not None:
@@ -618,8 +633,13 @@ class PlanFlow:
                 reason = recommendation_rejection(final, lists=self._lists(), allow_video=True)
                 ok = not reason
             if not ok:
-                log.info('recommended link unavailable: %s (%s)', row['url'], reason)
+                safe_reason = re.sub(r'[^A-Za-z0-9_]', '_', str(reason).upper())[:64]
+                status_match = re.search(r'HTTP\s+(\d{3})', str(reason))
+                diagnostic_event('research', state='FILTERED', stage='prepare', reason=safe_reason,
+                                 url=safe_url, http_status=int(status_match.group(1)) if status_match else 0,
+                                 count=1)
                 continue
+            diagnostic_event('research', state='ACCEPTED', stage='prepare', url=safe_url, count=1)
             cards.append(dict(row, final_url=final, card_id=_new_id()[:12], _page_prefix=evidence.get('prefix', '')))
         from ..course.research_pipeline import GithubStars, prepare_recommendations
         from ..course.research import ResearchCancelled
@@ -1495,8 +1515,9 @@ class PlanFlow:
                     if changed: store._put('points', plan_id, current)
         except ModelCancelled: raise
         except Exception:
-            log.warning('optional notes failed plan=%s module=%s; original source remains available',
-                        plan_id, module_id, exc_info=True)
+            from refactor.runtime_logging import event
+            event('plan', stage='optional_notes', reason='SAVE_FAILED',
+                  plan_id=plan_id, module_id=module_id, exc_info=True)
 
     def _module_ready(self, plan_id, module_id):
         from ..course.point_materials import preparation_done
@@ -1550,7 +1571,9 @@ class PlanFlow:
         try:
             return self._resume_plan_preparations(plan_id)
         except Exception:
-            log.warning('selected-plan material recovery failed plan=%s', plan_id, exc_info=True)
+            from refactor.runtime_logging import event
+            event('plan', stage='material_recovery', reason='SELECTED_PLAN_FAILED',
+                  plan_id=plan_id, exc_info=True)
 
     def _mark_material_ready(self, plan_id, module_id, summary=None):
         """Reconcile durable/runtime status when current outputs already pass readiness."""
@@ -1697,7 +1720,9 @@ class PlanFlow:
                                 self.ensure_point_minutes(plan_id)
                         except StoreError as exc:
                             if exc.code != 'STORE_CLOSED':
-                                log.exception('point minutes preparation hook failed plan=%s', plan_id)
+                                from refactor.runtime_logging import event
+                                event('plan', stage='point_minutes_hook', reason='PREPARATION_FAILED',
+                                      plan_id=plan_id, exc_info=True)
                                 self._point_minutes_event(plan_id, 'failed')
                     return
                 if self._material_peak_now():
@@ -1898,7 +1923,9 @@ class PlanFlow:
                     with state['guard']:
                         job['status'] = 'cancelled'
                     continue
-                log.warning('module preparation failed: %s', type(exc).__name__)
+                from refactor.runtime_logging import event
+                event('plan', stage='module_preparation', reason='PREPARATION_FAILED',
+                      error_type=type(exc).__name__)
                 job.update(status='failed', error=getattr(exc, 'message', '这个模块的题未备好，进入模块时可重试。'),
                            code=getattr(exc, 'code', None))
                 if not getattr(self.services, '_closed', False):
@@ -2096,7 +2123,9 @@ class PlanFlow:
                 resumed += self._resume_plan_preparations(plan['id'])
             except Exception:
                 failure = True
-                log.warning('interrupted module preparation recovery failed plan=%s', plan.get('id'), exc_info=True)
+                from refactor.runtime_logging import event
+                event('plan', stage='material_recovery', reason='INTERRUPTED_FAILED',
+                      plan_id=plan.get('id'), exc_info=True)
         if failure:
             raise RuntimeError('one or more plans could not be resumed')
         return resumed
@@ -2834,7 +2863,10 @@ class PlanFlow:
             if job.get('session_cancelled') or getattr(self.services, 'learning_suspended', False): return
             if store.save_point_minutes(plan_id, state['fingerprint'], difficulties, today=self.study_day()): status = 'ready'
         except Exception:
-            if not getattr(self.services, '_closed', False): log.exception('point minutes failed plan=%s; original minutes retained', plan_id)
+            if not getattr(self.services, '_closed', False):
+                from refactor.runtime_logging import event
+                event('plan', stage='point_minutes', reason='FAILED_RETAINED',
+                      plan_id=plan_id, exc_info=True)
         finally:
             with self._point_minute_jobs['guard']:
                 if self._point_minute_jobs['jobs'].get(plan_id) is job:
@@ -2901,7 +2933,10 @@ class PlanFlow:
                     except Exception as exc:
                         if job['cancel'].is_set() or getattr(self.services, '_closed', False): return
                         error = getattr(exc, 'code', type(exc).__name__)
-                        log.warning('point links module=%s attempt=%d error=%s', module['id'], attempt + 1, error)
+                        from refactor.runtime_logging import event
+                        safe_error = re.sub(r'[^A-Za-z0-9_]', '_', str(error).upper())[:64]
+                        event('plan', stage='point_links', reason=safe_error,
+                              module_id=module['id'], attempt=attempt + 1)
                 if (job['cancel'].is_set() or job.get('session_cancelled')
                         or getattr(self.services, 'learning_suspended', False)
                         or getattr(self.services, '_closed', False)): return
@@ -2910,7 +2945,10 @@ class PlanFlow:
                 # Notify after each committed module, including partial failures.
                 self._point_links_event(plan_id, 'running')
         except Exception:
-            if not getattr(self.services, '_closed', False): log.exception('point links worker failed plan=%s', plan_id)
+            if not getattr(self.services, '_closed', False):
+                from refactor.runtime_logging import event
+                event('plan', stage='point_links_worker', reason='WORKER_FAILED',
+                      plan_id=plan_id, exc_info=True)
         finally:
             with self._point_link_jobs['guard']:
                 if self._point_link_jobs['jobs'].get(plan_id) is job:

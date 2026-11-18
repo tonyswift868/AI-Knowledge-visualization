@@ -349,7 +349,9 @@ class Classroom:
                     request_id=action[2] if action else uuid.uuid4().hex)
                 if ctx: ctx.stream(RESET)
             except Exception:
-                log.exception("classroom operation failed for %s", plan_id)
+                from refactor.runtime_logging import event
+                event('classroom', stage='operation', reason='OPERATION_FAILED',
+                      plan_id=plan_id, exc_info=True)
                 state = self._local.point_checkpoint or original
                 if self._local.point_checkpoint and action:action=('next',[],action[2])
                 state["failure"] = dict(message="这一步没有完成，请重试；原来的题目和位置保留。",
@@ -738,8 +740,9 @@ class Classroom:
             self._prepare_next_module(self._course(course.plan_id),state,entering=entering)
             state.pop('preparation_error',None)
         except Exception:  # noqa: BLE001 - only this optional queue submission is isolated
-            log.exception('optional classroom material scheduling failed for %s/%s',
-                          course.plan_id,state.get('module_id'))
+            from refactor.runtime_logging import event
+            event('classroom', stage='material_schedule', reason='SCHEDULE_FAILED',
+                  plan_id=course.plan_id, module_id=state.get('module_id'), exc_info=True)
             state['preparation_error']=dict(module_id=state.get('module_id'),
                 message='题目准备没有启动，课堂可以继续；需要检测时可重试。')
 
@@ -761,7 +764,8 @@ class Classroom:
                'direct_review','direct_choice','practice','completed')
         state['step']=previous if previous in valid else 'teach'
         state.pop('material_wait',None)
-        log.warning('discarded unsupported legacy material wait action %r',wait.get('action'))
+        from refactor.runtime_logging import event
+        event('classroom', stage='material_wait', reason='UNSUPPORTED_ACTION')
         return True
 
     def _resume_materials(self, course, state, ctx):
@@ -1678,7 +1682,10 @@ class Classroom:
                 job=self._jobs.get((course.plan_id,pending))
                 if not job or job['status'] in ('failed','cancelled','ready'):
                     try:self._prepare(course,pending,retry=True)
-                    except Exception:log.exception('final check preparation retry failed for %s/%s',course.plan_id,pending)
+                    except Exception:
+                        from refactor.runtime_logging import event
+                        event('classroom', stage='final_check_prepare', reason='RETRY_FAILED',
+                              plan_id=course.plan_id, module_id=pending, exc_info=True)
                 state['material_notice']=dict(module_id=pending,kind='check',
                     message='最终检验还缺题目；后台正在重试准备，随后点“继续检验”。')
             else:
@@ -1794,7 +1801,9 @@ class Classroom:
                     if selected['error']:raise selected['error']
                     return selected['result']
                 result=self._slow_call(course,ctx,consume_prefetch)
-                log.info('classroom prefetch hit plan=%s ready=%s',course.plan_id,selected['done'])
+                from refactor.runtime_logging import event
+                event('classroom', state='PREFETCH_HIT', stage='prepare',
+                      completed=int(bool(selected['done'])))
             except ModelCancelled:raise
             except _SupersededOperation:raise
             except (ModelError, AgentFormatError):raise
@@ -2313,7 +2322,10 @@ class Classroom:
                     job=self._jobs.get((course.plan_id,target['id']))
                     if not job or job['status'] in ('failed','cancelled','ready'):
                         try:self._prepare(course,target['id'],retry=True)
-                        except Exception:log.exception('module assessment retry failed for %s/%s',course.plan_id,target['id'])
+                        except Exception:
+                            from refactor.runtime_logging import event
+                            event('classroom', stage='module_assessment_prepare', reason='RETRY_FAILED',
+                                  plan_id=course.plan_id, module_id=target['id'], exc_info=True)
                     state['material_notice']=dict(module_id=target['id'],kind='module_test',
                         message=f'{target["title"]} 暂时没有可重测的现成题；正在重新准备，可继续其他步骤或点“重试准备”。')
                 elif continuation=='module_test' and changed:

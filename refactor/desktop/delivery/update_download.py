@@ -24,6 +24,7 @@ from refactor.desktop.delivery.update_protocol import RecoverableError
 from refactor.desktop.delivery.update_protocol import SecurityError
 from refactor.desktop.delivery.update_protocol import Release
 from refactor.desktop.delivery.update_protocol import MANIFEST_PATH
+from refactor.runtime_logging import event as diagnostic_event
 
 
 _trace = ContextVar('update_io_trace', default=None)
@@ -325,7 +326,6 @@ class HTTPTransport:
             stop.set()
 
     def fetch_metadata(self, url, maximum, *, cancel=lambda: False, validate=None, deadline=None):
-        import logging
         sources = self.source_urls(url)
         for index, source in enumerate(sources):
             if cancel():
@@ -341,7 +341,10 @@ class HTTPTransport:
             except (RecoverableError, SecurityError):
                 if index == len(sources) - 1:
                     raise
-                logging.getLogger(__name__).warning('update metadata source failed; falling back to IP: %s', source)
+                parts = urlsplit(source)
+                diagnostic_event('update', state='SOURCE_FAILED', stage='update_check',
+                                 code='SOURCE_FAILED', reason='FALLBACK',
+                                 url=f'{parts.scheme}://{parts.netloc}{parts.path}', count=index + 1)
 
     def _fetch_metadata_once(self, url, maximum, *, cancel, deadline):
         result = bytearray()
@@ -403,7 +406,6 @@ class ObjectCache:
         raise SecurityError('completed cache object was modified')
 
     def download(self, asset, *, cancel=lambda: False, progress=lambda n: None):
-        import logging
         sources = self.transport.source_urls(asset['url']) if isinstance(self.transport, HTTPTransport) else [asset['url']]
         remote_content_errors = {'asset SHA-256 mismatch', 'encoded asset refused',
                                  'invalid range response', 'asset response size mismatch'}
@@ -419,11 +421,19 @@ class ObjectCache:
                     partial = self.objects / (asset['sha256'] + '.part')
                     safe_entry(partial, self.root)
                     partial.unlink(missing_ok=True)  # Restart bad remote bytes, never a completed object.
-                    logging.getLogger(__name__).warning('update asset content failed; falling back to IP: %s', source)
+                    parts = urlsplit(source)
+                    diagnostic_event('update', state='ASSET_SOURCE_FAILED', stage='update_check',
+                                     reason='CONTENT_FAILED',
+                                     url=f'{parts.scheme}://{parts.netloc}{parts.path}',
+                                     count=index + 1, attempt=attempt + 1)
                     break
                 except RecoverableError:
                     if index < len(sources)-1:
-                        logging.getLogger(__name__).warning('update asset source failed; falling back to IP: %s', source)
+                        parts = urlsplit(source)
+                        diagnostic_event('update', state='ASSET_SOURCE_FAILED', stage='update_check',
+                                         reason='SOURCE_FAILED',
+                                         url=f'{parts.scheme}://{parts.netloc}{parts.path}',
+                                         count=index + 1, attempt=attempt + 1)
                         break
                     if attempt == 5:
                         raise

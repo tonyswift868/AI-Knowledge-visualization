@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from refactor.learning.sync_identity import PlanError
 from refactor.learning.sync_source import validate_snapshot
+from refactor.learning.text_clean import strip_nul
 from refactor.runtime_logging import event
 from .store import PROGRESS
 
@@ -43,7 +44,8 @@ UPLOAD_BATCH_BYTES = 2 * 1024 * 1024
 
 
 def _json(value):
-    return json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":"))
+    return json.dumps(strip_nul(value), ensure_ascii=False, allow_nan=False,
+                      sort_keys=True, separators=(",", ":"))
 
 
 def _invalid():
@@ -51,7 +53,9 @@ def _invalid():
 
 
 def _values(record):
-    values = {name: getattr(record, name) for name in ("schema", "plan_key", "entity", "entity_id", "payload")}
+    values = {name: getattr(record, name) for name in
+              ("schema", "plan_key", "entity", "entity_id", "payload")}
+    values["payload"] = strip_nul(values["payload"])
     _validate(values)
     if type(record.deleted) is not bool or type(record.local_revision) is not int or record.local_revision < 0:
         raise _invalid()
@@ -334,6 +338,7 @@ class CourseSync:
                         or payload["record_type"] != "course_record"):
                     raise _invalid()
                 values = payload["values"]
+                values = {**values, "payload": strip_nul(values["payload"])}
                 _validate(values)
                 if _wire_id(values) != wire_id or _record_id(values) != payload["record_id"]:
                     raise _invalid()

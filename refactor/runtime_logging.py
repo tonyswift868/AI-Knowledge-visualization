@@ -21,7 +21,8 @@ LOGGER = logging.getLogger('refactor.runtime')
 _handler = None
 _crash_file = None
 _lock = threading.RLock()
-_EVENTS = {'startup', 'login', 'refresh', 'sync', 'update', 'model', 'rag_timing', 'bridge',
+_EVENTS = {'startup', 'login', 'refresh', 'sync', 'update', 'research', 'storage', 'plan',
+           'model', 'rag_timing', 'bridge',
            'exit', 'window', 'qt', 'renderer', 'process', 'classroom'}
 
 
@@ -49,7 +50,7 @@ def enable_crash_dump(data_root):
 
 def _label(value):
     # Codes/state/purpose are machine labels, never free text.
-    return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z_]{1,64}', value) else 'UNKNOWN'
+    return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_]{1,64}', value) else 'UNKNOWN'
 
 
 class DiagnosticFormatter(logging.Formatter):
@@ -61,18 +62,22 @@ class DiagnosticFormatter(logging.Formatter):
         event = getattr(record, 'mf_event', None)
         if event in _EVENTS:
             payload['event'] = event
-            for field in ('state', 'code', 'purpose', 'reason', 'window', 'field', 'phase', 'error_type'):
+            for field in ('state', 'code', 'purpose', 'reason', 'window', 'field', 'phase', 'stage', 'error_type'):
                 if field in record.mf_fields:
                     payload[field] = _label(record.mf_fields[field])
-            for field in ('request_id', 'client_request_id', 'response_request_id', 'operation_id'):
+            for field in ('request_id', 'client_request_id', 'response_request_id', 'operation_id',
+                          'document_id', 'plan_id', 'module_id'):
                 value = record.mf_fields.get(field)
                 if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', value):
                     payload[field] = value
+            url = record.mf_fields.get('url')
+            if isinstance(url, str) and re.fullmatch(r'https?://[^\s?#]{1,512}', url):
+                payload['url'] = url
             elapsed = record.mf_fields.get('elapsed_seconds')
             if isinstance(elapsed, (int, float)) and 0 <= elapsed < float('inf'):
                 payload['elapsed_seconds'] = round(elapsed, 3)
             for field in ('pid', 'exit_code', 'memory_bytes', 'threads', 'python_threads', 'previous_pid', 'window_id',
-                          'count', 'completed', 'total', 'failed', 'batch', 'http_status'):
+                          'count', 'completed', 'total', 'failed', 'batch', 'attempt', 'http_status'):
                 value = record.mf_fields.get(field)
                 if type(value) is int:
                     payload[field] = value
