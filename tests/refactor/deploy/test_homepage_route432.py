@@ -46,10 +46,11 @@ def test_replaces_placeholder_and_adds_get_head_routes(tmp_path):
     assert "return 200 '<!doctype html>" not in candidate
     assert candidate.count("location = / {") == 1
     assert candidate.count("location ^~ /images/ {") == 1
-    assert candidate.count("set $aiteacher_static http://mentorflow-e108-update-static:8081;") == 3
+    assert candidate.count("set $aiteacher_static http://mentorflow-e108-update-static:8081;") == 4
     assert "rewrite ^/$ /mentorflow/updates/e108/site/index.html break;" in candidate
+    assert "rewrite ^/download$ /mentorflow/updates/e108/site/download.html break;" in candidate
     assert "rewrite ^/images/(.*)$ /mentorflow/updates/e108/site/images/$1 break;" in candidate
-    assert candidate.count("if ($request_method !~ ^(GET|HEAD)$) { return 405; }") == 3
+    assert candidate.count("if ($request_method !~ ^(GET|HEAD)$) { return 405; }") == 4
     assert "location ^~ /updates/app/" in candidate
     assert "location / { return 404; }" in candidate
 
@@ -87,3 +88,12 @@ def test_homepage_download_buttons_use_download_route():
     assert page.count('href="/download"') == 2
     assert "updates/app/releases/bootstrap/MentorFlow-Setup.exe" not in page
     assert "github.com/tonyswift868/AI-Knowledge-visualization/releases/latest/download/MentorFlow-Setup.exe" not in page
+
+
+def test_download_page_probes_github_and_uses_workflow_current_metadata_for_ip_backup():
+    page = (ROOT / "refactor/server-java/deploy/site/download.html").read_text(encoding="utf-8")
+    assert "fetch('/releases/current.json'" in page
+    assert "https://89.45.45.28/releases/" in page
+    assert "mode:'no-cors'" in page
+    assert "setTimeout(() => reject(new Error('timeout')), 5000)" in page
+    assert "GitHub 下载" in page and "备用线路下载" in page

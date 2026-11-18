@@ -23,6 +23,15 @@ HOMEPAGE = f'''        location = / {{
             proxy_buffering off;
             proxy_read_timeout 300s;
         }}
+        location = /download {{
+            if ($request_method !~ ^(GET|HEAD)$) {{ return 405; }}
+            add_header Cache-Control "no-cache" always;
+            set $aiteacher_static {UPSTREAM};
+            rewrite ^/download$ /mentorflow/updates/e108/site/download.html break;
+            proxy_pass $aiteacher_static;
+            proxy_buffering off;
+            proxy_read_timeout 30s;
+        }}
         location ^~ /images/ {{
             if ($request_method !~ ^(GET|HEAD)$) {{ return 405; }}
             set $aiteacher_static {UPSTREAM};
