@@ -1,8 +1,10 @@
 import pytest
+import json
 
 from refactor.desktop.delivery import per_user_install as install
 from refactor.desktop.delivery import per_user_launcher as launcher
 from refactor.desktop.delivery import windows_process_peer
+from refactor.desktop.delivery import startup_window
 from refactor.desktop.delivery.update_protocol import RecoverableError
 
 
@@ -69,3 +71,9 @@ def test_launcher_brings_visible_busy_app_forward(monkeypatch, tmp_path):
     assert _Peer.focused == [99]
     assert messages and '还在退出' in messages[0]
     _Peer.visible=[]
+
+
+def test_startup_log_accepts_app_pid_override(tmp_path):
+    startup_window.log_phase(tmp_path, 'launch_blocked_app_running', pid=77)
+    row = json.loads((tmp_path / 'Data/logs/launcher-startup.jsonl').read_text(encoding='utf-8'))
+    assert row['pid'] == 77

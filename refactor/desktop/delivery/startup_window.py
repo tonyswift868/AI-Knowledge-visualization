@@ -251,11 +251,12 @@ def allow_foreground(pid, *, root=None, stage='updater_to_app'):
 
 def log_phase(root, phase, **values):
     try:
+        process_pid = values.pop('pid', os.getpid())
         path = Path(root) / 'Data/logs/launcher-startup.jsonl'
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open('a', encoding='utf-8') as stream:
             stream.write(json.dumps(dict(at=datetime.now(timezone.utc).isoformat(),
-                pid=os.getpid(), phase=phase,
+                pid=process_pid, phase=phase,
                 process_seconds=round(time.perf_counter() - PROCESS_STARTED, 6), **values), ensure_ascii=False) + '\n')
     except (OSError, ValueError):
         pass
