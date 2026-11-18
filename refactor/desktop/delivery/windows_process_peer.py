@@ -1,7 +1,16 @@
 """Kernel-backed process/window evidence; no self-reported integrity claims."""
 import ctypes as c
+import os
 from ctypes import wintypes as w
 from pathlib import Path
+
+
+def own_token_level():
+    """(integrity RID, elevated) of this process. Our processes must match each other,
+    whether the user runs MentorFlow normally or as administrator ([BUG-281])."""
+    with ProcessPeer(os.getpid()) as me:
+        info=me.inspect()
+    return info['integrity_rid'],info['elevated']
 
 
 class ProcessPeer:
@@ -52,11 +61,10 @@ class ProcessPeer:
             created_filetime_hex=f'{(times[0].dwHighDateTime<<32)|times[0].dwLowDateTime:016x}',
             integrity_rid=rid,elevated=bool(elevated.value),alive=self.alive())
 
-    def require(self,*,executable,integrity_rid,not_before_hex=None):
+    def require(self,*,executable,not_before_hex=None):
         evidence=self.inspect()
         if (Path(evidence['executable'])!=Path(executable).absolute() or
-                evidence['integrity_rid']!=integrity_rid or
-                evidence['elevated']!=(integrity_rid>=12288) or not evidence['alive'] or
+                (evidence['integrity_rid'],evidence['elevated'])!=own_token_level() or not evidence['alive'] or
                 (not_before_hex is not None and int(evidence['created_filetime_hex'],16)<int(not_before_hex,16))):
             raise ValueError('native process identity/token/freshness mismatch')
         return evidence

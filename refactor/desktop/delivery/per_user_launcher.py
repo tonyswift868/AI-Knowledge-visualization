@@ -19,7 +19,7 @@ def _recovery_health(root):
             proof.get('version') != release.version or proof.get('ready') is not True):
         raise SecurityError('recovery health does not match the current transaction')
     with ProcessPeer(proof['pid']) as peer:
-        peer.require(executable=root / 'App/MentorFlow.exe', integrity_rid=8192)
+        peer.require(executable=root / 'App/MentorFlow.exe')
         peer.visible_responsive_window(proof['hwnd_hex'])
     return proof
 

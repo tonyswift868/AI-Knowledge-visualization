@@ -663,7 +663,7 @@ def request_app_shutdown(root, pid, hwnd_hex):
     import ctypes as c
     from ctypes import wintypes as w
     with ProcessPeer(pid) as peer:
-        peer.require(executable=app_path(root)/'MentorFlow.exe', integrity_rid=8192)
+        peer.require(executable=app_path(root)/'MentorFlow.exe')
         peer.visible_responsive_window(hwnd_hex)
         user = c.WinDLL('user32'); user.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
         if not user.PostMessageW(int(hwnd_hex, 16), 0x10, 0, 0): raise c.WinError()
@@ -680,7 +680,7 @@ def wait_for_app_exit(root, pid, hwnd_hex, *, timeout=30, ready=lambda: None):
     """Wait for a new App to exit itself; never send it a window close message."""
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
     with ProcessPeer(pid) as peer:
-        peer.require(executable=app_path(root) / 'MentorFlow.exe', integrity_rid=8192)
+        peer.require(executable=app_path(root) / 'MentorFlow.exe')
         peer.visible_responsive_window(hwnd_hex)
         # Keep this native handle open across the acknowledgement and wait.
         # Opening it after the App quits would race PID reuse/process removal.
@@ -1266,7 +1266,7 @@ def launch_health(root, release, *, timeout=STARTUP_HEALTH_TIMEOUT):
             if signal.get('attempt_id') != attempt or signal.get('nonce') != nonce or signal.get('version') != release.version or signal.get('manifest_sha256') != digest(release.manifest_bytes):
                 raise SecurityError('health release/correlation mismatch')
             with ProcessPeer(pid) as peer:
-                peer.require(executable=app / 'MentorFlow.exe', integrity_rid=8192)
+                peer.require(executable=app / 'MentorFlow.exe')
                 peer.visible_responsive_window(signal['hwnd_hex'])
             channel.send({'health_received': True})
             return dict(ready=True, pid=pid, version=release.version, hwnd_hex=signal['hwnd_hex'])
@@ -1279,7 +1279,7 @@ def launch_health(root, release, *, timeout=STARTUP_HEALTH_TIMEOUT):
 def notify_health(root, gate, attempt, nonce):
     if not attempt: return
     from refactor.desktop.delivery.windows_update_pipe import connect
-    from refactor.desktop.delivery.windows_process_peer import ProcessPeer
+    from refactor.desktop.delivery.windows_process_peer import ProcessPeer, own_token_level
     release = installed(root)
     signal = dict(attempt_id=attempt, nonce=nonce, version=release.version,
                   manifest_sha256=digest(release.manifest_bytes), hwnd_hex=f'{int(gate.winId()):016x}')
@@ -1288,7 +1288,7 @@ def notify_health(root, gate, attempt, nonce):
             with connect(attempt, 'health', timeout=10) as channel:
                 with ProcessPeer(channel.peer_pid()) as peer:
                     info = peer.inspect()
-                    if info['integrity_rid'] != 8192 or info['elevated']:
+                    if (info['integrity_rid'], info['elevated']) != own_token_level():
                         return
                     image = Path(info['executable'])
                     # Initial installer runs its embedded runtime; the updater
@@ -1309,7 +1309,7 @@ def handoff(root, stage, envelope, *, hwnd_hex):
         return remember_download(root, stage, envelope, state='PENDING_INSTALL')
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
     with ProcessPeer(os.getpid()) as peer:
-        peer.require(executable=root / 'App/MentorFlow.exe', integrity_rid=8192)
+        peer.require(executable=root / 'App/MentorFlow.exe')
         peer.visible_responsive_window(hwnd_hex)
     intent = dict(schema='mentorflow.per-user-intent.v1', root=str(root), stage=str(stage),
                   release_sha256=digest(envelope), pid=os.getpid(), hwnd_hex=hwnd_hex)
@@ -1332,7 +1332,7 @@ def handoff_pending(root, *, hwnd_hex, reason='normal'):
         atomic(root / PENDING, canonical({**pending, 'state': 'PENDING_INSTALL'}))
         return dict(state='PENDING_INSTALL', destructive_apply=False, relaunched=False)
     with ProcessPeer(os.getpid()) as peer:
-        peer.require(executable=app_path(root) / 'MentorFlow.exe', integrity_rid=8192)
+        peer.require(executable=app_path(root) / 'MentorFlow.exe')
         peer.visible_responsive_window(hwnd_hex)
     runtime = verify_recovery_runtime(root)
     result = root / ('one-click-' + uuid.uuid4().hex + '.json')
@@ -1366,7 +1366,7 @@ def handoff_repair(root, *, hwnd_hex=None, shell=False):
     command = [str(runtime), 'repair-update' if shell else 'repair-installation', '--root', str(root)]
     if not shell:
         with ProcessPeer(os.getpid()) as peer:
-            peer.require(executable=app_path(root)/'MentorFlow.exe', integrity_rid=8192)
+            peer.require(executable=app_path(root)/'MentorFlow.exe')
             peer.visible_responsive_window(hwnd_hex)
         command += ['--pid', str(os.getpid()), '--hwnd-hex', hwnd_hex]
     process = subprocess.Popen(command, cwd=root, close_fds=True, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -1512,11 +1512,6 @@ def main():
     parser.add_argument('--pid', type=int); parser.add_argument('--hwnd-hex')
     parser.add_argument('--exit-reason', choices=('normal', 'next_launch', 'shutdown', 'logoff', 'unsafe'), default='normal')
     args = parser.parse_args()
-    from refactor.desktop.delivery.windows_process_peer import ProcessPeer
-    with ProcessPeer(os.getpid()) as peer:
-        info = peer.inspect()
-        if info['elevated'] or info['integrity_rid'] != 8192:
-            raise SecurityError('per-user mode requires an ordinary user token; never elevates')
     last_progress = [-1]
     def progress(value):
         if args.cancel_file and args.cancel_file.exists():

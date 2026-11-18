@@ -6,7 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
-| BUG-281 | 以管理员身份（或关了 UAC 的电脑上）运行安装包装不上，提示却说“安装位置未通过核心校验” | 待修（修法要用户定；438 runner 复现） | 2026-11-18 |
+| BUG-281 | 以管理员身份（或关了 UAC 的电脑上）运行安装包装不上，提示却说“安装位置未通过核心校验” | 已修未验证（代码已推送，要发新版才到用户手里） | 2026-11-18 |
 | BUG-280 | 干净 Windows 上完整包静默安装在自定义安装位置页前退出，应用根本没装上 | 待修（438 两次 GitHub runner 复现） | 2026-11-17 |
 | BUG-279 | 别人从官网下载完整包装好后，只能正常打开一次，之后双击怎么都打不开 | 待查（用户 2026-11-17 报告） | 2026-11-17 |
 | BUG-278 | 别人新装后登录窗口“注册账号”“忘记密码”一直是灰的 | 待查（用户 2026-11-17 报告） | 2026-11-17 |
@@ -2600,11 +2600,12 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
 - 关联：[BUG-278]、[BUG-273]、436
 
 ### [BUG-281] 以管理员身份（或关了 UAC 的电脑上）运行安装包装不上，提示却说“安装位置未通过核心校验”
-- 状态：待修（2026-11-18 架构师在 GitHub runner 复现；修法要用户定）。
+- 状态：已修未验证（2026-11-18，用户定“允许管理员运行”；代码已推送，要发新版才到用户手里，真包未在管理员身份下装过）。
 - 现象：GitHub `windows-latest` runner（账号是管理员、UAC 关闭，所有进程都是管理员令牌）开窗口装 2.0.48 完整包，默认位置 `C:\Users\runneradmin\AppData\Local\Programs\MentorFlow`，点“安装”后进入原生“正在准备安装”页：“安装位置未通过核心校验。请选择已有、可写且无未知文件的位置。安装程序不能继续。”（run 44204115472，`installer.log` 末行 `PrepareToInstall failed: 安装位置未通过核心校验…`，截图 `installer-pages/010-step/screen.png`）。
 - 原因：`per-user-core.iss` `InstallThroughCore` 先跑 `UserRuntime.exe preflight`，退出码不是 0 就一律显示这句话。真正失败在 `per_user_install.py` `main()` 开头：进程令牌是管理员（elevated）或完整性不是 Medium 就抛 `per-user mode requires an ordinary user token; never elevates`，根本没走到位置校验。同一检查在所有 `UserRuntime` 动作前都跑，包括 `launch`：以管理员身份打开快捷方式也会直接退出、不出窗口。这条规矩不是用户定的（CURRENT_STATE 无对应条目），随 2026-09-29 batch 14 重构进来。
 - 影响：右键“以管理员身份运行”安装包或快捷方式的人、关了 UAC 的电脑，装不上或打不开，看到的提示与原因不符。
-- 修法候选（未定）：A 去掉这条拒绝，同一用户的管理员令牌照常安装、启动（要先查 `ProcessPeer` 里按完整性比对对端进程的地方会不会因此失败）；B 保留拒绝，但安装器和启动器给出真实提示“请不要以管理员身份运行”。
+- 解决（用户 2026-11-18 定：允许管理员运行）：删掉 `main()` 开头的拒绝；`ProcessPeer.require` 和 App 回报健康时不再要求对方是普通身份，改成“跟自己身份一致”（`windows_process_peer.own_token_level()`），普通打开全是普通身份、管理员打开全是管理员身份，两种都能用；安装器去掉 `CanLaunchMentorFlow`（原来管理员身份时完成页“启动 MentorFlow”被拒）。
+- 验证：`tests/refactor/delivery/test_admin_token281.py`（普通/管理员两种身份都通过、身份不一致仍拒绝、管理员身份下 `UserRuntime` 入口照常运行）加 35 个引用这些文件的测试文件，共 360 项通过（2026-11-18）。真包管理员身份安装、启动未验证，要等发新版后在 GitHub runner（本身就是管理员）上走一遍。
 - 关联：[BUG-279]、[BUG-280]、438
 - 更新：2026-11-18
 

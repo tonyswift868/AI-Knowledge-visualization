@@ -132,10 +132,6 @@ procedure PrimaryClick(Sender: TObject);
 begin
   if (WizardForm.CurPageID = LocationPage.ID) and not PrimaryButton.Enabled then Exit;
   if WizardForm.CurPageID = wpFinished then begin
-    if not CanLaunchMentorFlow then begin
-      OptionsFeedback.Caption := '请关闭安装器，再从开始菜单以普通用户身份打开 MentorFlow。';
-      Exit;
-    end;
     if WizardForm.RunList.Items.Count = 0 then begin
       OptionsFeedback.Caption := '请关闭安装器，再从开始菜单打开 MentorFlow。';
       Exit;

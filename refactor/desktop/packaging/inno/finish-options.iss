@@ -35,13 +35,6 @@ begin
     ' launch --root ' + AddQuotes(ExpandConstant('{app}'));
 end;
 
-function CanLaunchMentorFlow: Boolean;
-begin
-  { runasoriginaluser cannot undo a caller that was already elevated. Do not
-    fall back to that token. Normal per-user setup is non-administrative. }
-  Result := not IsAdmin;
-end;
-
 function FinishValue(Name, Value: String): Boolean;
 begin
   Result := SetIniString('FinishOptions', Name, Value, FinishInventory);

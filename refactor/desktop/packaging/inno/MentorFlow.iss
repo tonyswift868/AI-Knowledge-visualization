@@ -87,7 +87,7 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; Flags: checkableal
 Name: "startup"; Description: "开机时启动 MentorFlow"; Flags: unchecked checkablealone
 
 [Run]
-Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; Description: "启动 MentorFlow"; Flags: nowait postinstall skipifsilent runasoriginaluser unchecked; Check: CanLaunchMentorFlow
+Filename: "{app}\Updater\UserRuntime.exe"; Parameters: "launch --root ""{app}"""; Description: "启动 MentorFlow"; Flags: nowait postinstall skipifsilent runasoriginaluser unchecked
 
 [UninstallDelete]
 Type: files; Name: "{app}\Maintenance\finish-options.ini"
