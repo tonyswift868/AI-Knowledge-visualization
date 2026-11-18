@@ -119,8 +119,24 @@ jobs:
             } catch { "screenshot_error=$($_.Exception.Message)" | Set-Content (Join-Path $dir 'screenshot-error.txt') }
           }
 
-          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList @('/LOG=' + $log) -PassThru
-          "installer_pid=$($p.Id)" | Set-Content $result
+          # The runner account is an elevated admin (UAC off), and the install core refuses elevated
+          # tokens (per_user_install.py main: "per-user mode requires an ordinary user token"). A person
+          # installs as an ordinary user with a fresh profile, so do exactly that: a new standard user.
+          $password = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)) + 'aA1!'
+          Write-Host "::add-mask::$password"
+          $secure = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name 'mfuser' -Password $secure -PasswordNeverExpires | Out-Null
+          Add-LocalGroupMember -Group 'Users' -Member 'mfuser' -ErrorAction SilentlyContinue
+          $cred = [pscredential]::new("$env:COMPUTERNAME\mfuser", $secure)
+          $cred | Export-Clixml (Join-Path $env:RUNNER_TEMP 'mf-user.clixml')
+          $shared = 'C:\mf-fresh'
+          New-Item -ItemType Directory -Force -Path $shared | Out-Null
+          icacls $shared /grant 'mfuser:(OI)(CI)M' | Out-Null
+          Copy-Item $env:INSTALLER (Join-Path $shared 'MentorFlow-Setup.exe')
+          $userLog = Join-Path $shared 'installer.log'
+          $p = Start-Process -FilePath (Join-Path $shared 'MentorFlow-Setup.exe') -ArgumentList @('/LOG=' + $userLog) -Credential $cred -LoadUserProfile -WorkingDirectory $shared -PassThru
+          "installer_pid=$($p.Id)`ninstall_user=mfuser (standard user, fresh profile)" | Set-Content $result
+          Write-Host "installer started as standard user mfuser, pid $($p.Id)"
           # Inno's wizard runs in a child process (MentorFlow-Setup.tmp); find it by window class.
           # [NullString]::Value, not $null: PowerShell turns $null into "" for string arguments, which matches only untitled windows.
           $wizard = [IntPtr]::Zero
@@ -137,31 +153,42 @@ jobs:
           # person does. 610,416 is the centre of PrimaryButton (Bounds 534,394,152,44 in branded-pages.iss).
           # Pages are told apart by which controls are visible: the location page shows the path box
           # (TNewEdit), the finish page shows the options list (TNewCheckListBox).
-          $step = 0; $locationClicks = 0; $finishSeen = $false
+          # Native (unbranded) pages only show for errors such as PrepareToInstall failures; stop early then.
+          $step = 0; $locationClicks = 0; $finishClicks = 0; $nativeSteps = 0
           $deadline = (Get-Date).AddMinutes(20)
-          while (-not $p.HasExited -and (Get-Date) -lt $deadline) {
-            $step++
-            $wizard = [Wizard]::FindWindow('TWizardForm', [NullString]::Value)
-            $classes = if ($wizard -ne [IntPtr]::Zero) { @([Wizard]::VisibleChildClasses($wizard)) } else { @() }
-            if ($step -le 60 -or $step % 12 -eq 0) { Save-SetupPage ('{0:D3}-step' -f $step) $wizard }
-            if ($classes -contains 'TNewCheckListBox') {
-              # Finish page: the window close runs the non-launching finish path (WizardClose -> 关闭), which
-              # applies the default desktop shortcut. 启动 MentorFlow would be refused here anyway: this runner
-              # is elevated and CanLaunchMentorFlow is "not IsAdmin".
-              if (-not $finishSeen) { "finish_page_step=$step" | Add-Content $result; $finishSeen = $true }
-              [Wizard]::PostMessage($wizard, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
-            } elseif ($classes -contains 'TNewEdit' -and $locationClicks -lt 6) {
-              $locationClicks++
-              "location_click=$locationClicks step=$step" | Add-Content $result
-              if ($locationClicks % 2) { [Wizard]::MouseClick($wizard, 610, 416) } else { [Wizard]::PostClick($wizard, 610, 416) }
+          try {
+            while (-not $p.HasExited -and (Get-Date) -lt $deadline) {
+              $step++
+              $wizard = [Wizard]::FindWindow('TWizardForm', [NullString]::Value)
+              $classes = if ($wizard -ne [IntPtr]::Zero) { @([Wizard]::VisibleChildClasses($wizard)) } else { @() }
+              if ($step -le 60 -or $step % 12 -eq 0) { Save-SetupPage ('{0:D3}-step' -f $step) $wizard }
+              $page = if ($classes -contains 'TNewCheckListBox') { 'finish' } elseif ($classes -contains 'TNewEdit') { 'location' } elseif ($classes -contains 'TNewNotebook') { 'native' } else { 'installing' }
+              Write-Host "step $step page=$page"
+              $nativeSteps = if ($page -eq 'native') { $nativeSteps + 1 } else { 0 }
+              if ($nativeSteps -ge 6) { throw 'Installer stayed on a native (error) page for 30 seconds; see the step screenshots.' }
+              if ($page -eq 'finish') {
+                # A person clicks 启动 MentorFlow here; that first launch comes from the installer.
+                # After 3 refused clicks fall back to the window close (non-launching finish path).
+                $finishClicks++
+                "finish_click=$finishClicks step=$step" | Add-Content $result
+                if ($finishClicks -le 3) { [Wizard]::MouseClick($wizard, 610, 416) }
+                else { [Wizard]::PostMessage($wizard, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null }
+              } elseif ($page -eq 'location' -and $locationClicks -lt 6) {
+                $locationClicks++
+                "location_click=$locationClicks step=$step" | Add-Content $result
+                if ($locationClicks % 2) { [Wizard]::MouseClick($wizard, 610, 416) } else { [Wizard]::PostClick($wizard, 610, 416) }
+              }
+              Start-Sleep -Seconds 5
             }
-            Start-Sleep -Seconds 5
-          }
-          if (-not $p.HasExited) {
-            Save-SetupPage '999-install-timeout' ([Wizard]::FindWindow('TWizardForm', [NullString]::Value))
-            throw 'Visible installer did not finish within 20 minutes.'
+            if (-not $p.HasExited) {
+              Save-SetupPage '999-install-timeout' ([Wizard]::FindWindow('TWizardForm', [NullString]::Value))
+              throw 'Visible installer did not finish within 20 minutes.'
+            }
+          } finally {
+            Copy-Item $userLog $log -ErrorAction SilentlyContinue
           }
           "installer_exit_code=$($p.ExitCode)" | Add-Content $result
+          Write-Host "installer exited with $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { throw "Visible installer failed with exit code $($p.ExitCode)." }
 
       - name: Check capabilities directly from the clean runner
@@ -197,8 +224,12 @@ jobs:
           Add-Type -AssemblyName UIAutomationTypes
           $evidence = Join-Path $env:MF_ROOT 'evidence'
           $shell = New-Object -ComObject WScript.Shell
+          # Everything runs as the standard user that installed it (see the install step).
+          $cred = Import-Clixml (Join-Path $env:RUNNER_TEMP 'mf-user.clixml')
+          $profileRoot = (Get-CimInstance Win32_UserProfile | Where-Object { $_.LocalPath -match '\\mfuser(\.|$)' } | Select-Object -First 1).LocalPath
+          if (-not $profileRoot) { throw 'Profile of the standard install user was not created.' }
           $desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
-          $userDesktop = [Environment]::GetFolderPath('Desktop')
+          $userDesktop = Join-Path $profileRoot 'Desktop'
           $shortcuts = @((Get-ChildItem $desktop -Filter '*.lnk' -File -ErrorAction SilentlyContinue), (Get-ChildItem $userDesktop -Filter '*.lnk' -File -ErrorAction SilentlyContinue))
           $link = $shortcuts | Where-Object { $_.BaseName -match 'MentorFlow' } | Select-Object -First 1
           if (-not $link) { throw 'MentorFlow desktop shortcut was not created by the visible installer.' }
@@ -207,7 +238,7 @@ jobs:
           $installRoot = Split-Path (Split-Path $sc.TargetPath -Parent) -Parent
           $installParent = Split-Path $installRoot -Parent
           $workingDirectory = if ([string]::IsNullOrWhiteSpace($sc.WorkingDirectory)) { Split-Path $sc.TargetPath -Parent } else { $sc.WorkingDirectory }
-          [ordered]@{ path=$link.FullName; target=$sc.TargetPath; arguments=$sc.Arguments; working_directory=$workingDirectory; install_root=$installRoot; runner_elevated=([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut.json')
+          [ordered]@{ path=$link.FullName; target=$sc.TargetPath; arguments=$sc.Arguments; working_directory=$workingDirectory; install_root=$installRoot; install_user='mfuser' } | ConvertTo-Json | Set-Content (Join-Path $evidence 'shortcut.json')
 
           function Is-MentorFlowProcess($process) {
             if ($process.ProcessName -match 'MentorFlow|UserRuntime') { return $true }
@@ -278,7 +309,8 @@ jobs:
           }
           function Start-Shortcut([int]$round) {
             $started = Get-Date
-            $proc = Start-Process -FilePath $sc.TargetPath -ArgumentList $sc.Arguments -WorkingDirectory $workingDirectory -PassThru
+            $proc = Start-Process -FilePath $sc.TargetPath -ArgumentList $sc.Arguments -WorkingDirectory $workingDirectory -Credential $cred -LoadUserProfile -PassThru
+            Write-Host "round $round started from the desktop shortcut, pid $($proc.Id)"
             "round=$round`nlauncher_pid=$($proc.Id)`nstarted=$started" | Set-Content (Join-Path $evidence "round$round-summary.txt")
             return $proc
           }
@@ -286,8 +318,21 @@ jobs:
             foreach ($window in (Get-MentorFlowWindows)) { [WindowClose]::SendMessage([IntPtr]$window.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null }
           }
 
+          function Close-ByLoginButton([int]$round) {
+            $summary = Join-Path $evidence "round$round-summary.txt"
+            try { Invoke-UiButton (Find-LoginCloseButton); 'close_method=login_window_button' | Add-Content $summary }
+            catch { "close_method=login_window_button_failed`nerror_type=$($_.Exception.GetType().FullName)" | Add-Content $summary }
+            Write-Host "round $round closed with the login window's close button"
+          }
+
+          # Round 0 is the first open, started by 启动 MentorFlow on the installer's finish page.
+          "round=0`nlaunched_by=installer finish page" | Set-Content (Join-Path $evidence 'round0-summary.txt')
+          Start-Sleep -Seconds 60; Snapshot 'round0-before-close'
+          Close-ByLoginButton 0
+          Start-Sleep -Seconds 30; Snapshot 'round0-after-close'
+
           $p1 = Start-Shortcut 1; Start-Sleep -Seconds 90; Snapshot 'round1-before-close'
-          try { Invoke-UiButton (Find-LoginCloseButton); 'close_method=login_window_button' | Add-Content (Join-Path $evidence 'round1-summary.txt') } catch { "close_method=login_window_button_failed`nerror_type=$($_.Exception.GetType().FullName)" | Add-Content (Join-Path $evidence 'round1-summary.txt') }
+          Close-ByLoginButton 1
           Start-Sleep -Seconds 30; Snapshot 'round1-after-close'
 
           $p2 = Start-Shortcut 2; Start-Sleep -Seconds 90; Snapshot 'round2-before-close'
