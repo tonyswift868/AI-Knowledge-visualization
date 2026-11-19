@@ -61,6 +61,16 @@ class _Vault:
 
 
 class _Passwords:
+    def __init__(self):
+        self.load_called = False
+
+    def store(self, profile, username, password):
+        pass
+
+    def load(self, profile):
+        self.load_called = True
+        raise AssertionError("superseded restore must not retry saved password")
+
     def delete(self, profile):
         pass
 
@@ -76,11 +86,14 @@ def test_superseded_restore_clears_session_without_password_fallback(tmp_path, m
         credentials=vault,
         passwords=_Passwords(),
     )
+    passwords = session.passwords
     session.accept(
         AccountLoginResult(identity, "mfn1_a_" + "a" * 43, "mfn1_r_" + "r" * 43, {"role": "LEARNER"}),
         remember=True,
         automatic=True,
-        remember_password=False,
+        remember_password=True,
+        username="test-user",
+        password="saved-password",
     )
 
     def superseded(*_args, **_kwargs):
@@ -95,3 +108,4 @@ def test_superseded_restore_clears_session_without_password_fallback(tmp_path, m
     assert raised.value.code == "NATIVE_SESSION_SUPERSEDED"
     assert vault.logged_out is True
     assert vault.values == {}
+    assert passwords.load_called is False

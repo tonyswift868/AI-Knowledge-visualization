@@ -23,6 +23,7 @@ MESSAGES = {
     'NATIVE_RATE_LIMITED': '登录尝试过于频繁，请稍后重试。',
     'NATIVE_AUTH_NOT_READY': '账号服务尚未准备好，请稍后重试。',
     'NATIVE_ADDITIONAL_VERIFICATION_REQUIRED': '此账号需要额外验证，请联系账号管理员。',
+    'NATIVE_SESSION_SUPERSEDED': '账号已在另一台设备登录。',
     'ENTERPRISE_SESSION_REAUTH_REQUIRED': '登录已失效，请重新登录。',
     'NATIVE_NETWORK_UNAVAILABLE': '暂时无法连接账号服务，请检查网络后重试。',
 }
@@ -51,10 +52,14 @@ class NativeCredentialClient(AccountStateClient):
             if response.status_code != 200:
                 code = ('NATIVE_CREDENTIALS_INVALID' if operation == 'login'
                         else 'ENTERPRISE_SESSION_REAUTH_REQUIRED') if response.status_code == 401 else ''
-                if not code and response.status_code < 500 and len(response.content) <= 8192:
+                # Preserve a server-side eviction reason on refresh. Mapping it
+                # to ordinary reauth would make LoginSession retry saved
+                # passwords and immediately evict the newer device again.
+                if response.status_code < 500 and len(response.content) <= 8192:
                     try:
                         candidate = response.json().get('code')
-                        code = candidate if candidate in MESSAGES and candidate != 'ENTERPRISE_SESSION_REAUTH_REQUIRED' else ''
+                        if candidate in MESSAGES and candidate != 'ENTERPRISE_SESSION_REAUTH_REQUIRED':
+                            code = candidate
                     except Exception:
                         pass
                 error = AccountError(code or 'NATIVE_AUTH_UNAVAILABLE',

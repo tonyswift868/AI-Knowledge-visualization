@@ -441,7 +441,7 @@ class LoginSession:
                     return restore_native_account_from_env(profile, self.credentials)
                 raise AccountError('ENTERPRISE_SESSION_REAUTH_REQUIRED', '请使用账号密码重新登录。')
             except AccountError as exc:
-                if exc.code == 'ENTERPRISE_SESSION_REAUTH_REQUIRED':
+                if exc.code in {'ENTERPRISE_SESSION_REAUTH_REQUIRED', 'NATIVE_SESSION_SUPERSEDED'}:
                     self.credentials.logout(profile)
                 raise
 
