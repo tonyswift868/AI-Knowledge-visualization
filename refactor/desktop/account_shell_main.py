@@ -595,7 +595,7 @@ class AccountShell:
         state = adapter.state
         return state.get('login_allowed') is not False and not bool(state.get('mandatory'))
 
-    def _begin_remembered_login(self) -> None:
+    def _begin_remembered_login(self, *, force_network: bool = False) -> None:
         from refactor.desktop.login_shell import LoginGateState
 
         if not AccountShell._updates_allow_login(self):
@@ -605,10 +605,10 @@ class AccountShell:
             return
         generation, cancelled = self._new_request()
         update_token = getattr(self, '_update_login_token', None)
-        offline = None if update_token else getattr(self, '_offline_bootstrap_result', None)
+        offline = None if (update_token or force_network) else getattr(self, '_offline_bootstrap_result', None)
         if offline is not None and offline.identity.account_id != profile.account_id:
             offline = None
-        if offline is None and not update_token:
+        if offline is None and not update_token and not force_network:
             offline = self.session.load_offline_snapshot(profile)
         self._offline_bootstrap_result = None
         if offline is not None:
@@ -675,7 +675,9 @@ class AccountShell:
             )
             and (selected["remember_password"] or selected["remember_session"])
         ):
-            self._begin_remembered_login()
+            # An explicit Login click must use the server restore path.  The
+            # tokenless offline snapshot is reserved for automatic startup.
+            self._begin_remembered_login(force_network=True)
             return
 
         if not self.gate.username_field.text().strip() or not self.gate.password_field.text():
@@ -1631,7 +1633,16 @@ class AccountShell:
             # restore path as a normal restart; that path preserves the saved
             # profile and turns network failures into restore_retry.
             self._update_login_token = None
-            self._begin_remembered_login()
+            row = self.session.registry.get(self._remembered_profile.account_id) if self._remembered_profile else None
+            if row is not None and row.get('auto_login'):
+                # The one-shot handoff is consumed.  Continue with the real
+                # network restore so a transient outage can enter restore_retry
+                # instead of silently taking the tokenless offline path.
+                self._begin_remembered_login(force_network=True)
+            else:
+                # Automatic login was not opted in. Keep the saved account and
+                # let the user click Login once the network is available.
+                self.gate.set_state(LoginGateState.LOGIN_READY, detail="网络未恢复，连接恢复后点击登录。")
             return
         if job == "logout_error":
             self._invalidate_login_jobs()
