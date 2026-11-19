@@ -89,5 +89,7 @@ runs:
         mv -f "$releases/.current.json.tmp" "$releases/current.json"
         find "$releases" -maxdepth 1 -type f -name 'MentorFlow-Setup-*.exe' -printf '%f\n' | sort -V | head -n -2 | while IFS= read -r old; do rm -f "$releases/$old"; done
         '@
-        $script | & ssh -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts $remote sudo -n bash -s -- $env:MF_VERSION $sha256 $temp
+        # Piping text to ssh on Windows turns line ends into CRLF, which bash rejects; ship the script as base64.
+        $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($script -replace "`r", '')))
+        & ssh -n -i $key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$hosts $remote "echo $b64 | base64 -d | sudo -n bash -s -- $env:MF_VERSION $sha256 $temp"
         if ($LASTEXITCODE -ne 0) { throw 'backup server publish failed' }

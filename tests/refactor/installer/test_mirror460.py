@@ -13,4 +13,4 @@ def test_mirror460_action_publishes_atomically_and_keeps_two_versions():
     assert 'mv -f "$releases/.current.json.tmp" "$releases/current.json"' in action
     assert "sort -V | head -n -2" in action
     # The login user is not root; root-owned files need the same sudo -n as other release steps.
-    assert "sudo -n bash -s --" in action
+    assert "base64 -d | sudo -n bash -s --" in action  # CRLF from a Windows pipe breaks bash
