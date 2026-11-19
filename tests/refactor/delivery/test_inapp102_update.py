@@ -81,13 +81,13 @@ def test_confirmed_self_exit_timeout_terminates_stale_app(monkeypatch, tmp_path)
                        'reason': 'CONFIRMED_EXIT_TIMEOUT', 'timeout_seconds': 0})]
 
 
-def test_update_exit_direct_does_not_enter_logging_shutdown(monkeypatch):
+def test_direct_exit_does_not_enter_logging_shutdown(monkeypatch):
     from refactor.desktop import account_shell_main
     events=[]
     monkeypatch.setattr(account_shell_main, 'diagnostic_event',
                         lambda name, **fields: events.append((name, fields)))
     monkeypatch.setattr(account_shell_main.os, '_exit', lambda code: events.append(('exit', code)))
-    account_shell_main._exit_after_update_handoff(0)
+    account_shell_main._exit_after_shutdown(0, reason='UPDATE_EXIT_DIRECT')
     assert events == [('exit', {'reason': 'UPDATE_EXIT_DIRECT'}), ('exit', 0)]
 
 
