@@ -208,16 +208,45 @@ def test_update42_invalid_startup_handoff_does_not_fall_back_to_auto_login(tmp_p
     shell = AccountShell(qapp, NS(data_root=tmp_path), login_session=session, native_restorer=fail)
     shell._load_capabilities = lambda: None
     shell._refresh_closure_recovery = lambda: None
-    ordinary = Mock(side_effect=AssertionError('no ordinary auto-login'))
+    ordinary = Mock(side_effect=RuntimeError('network still unavailable'))
     session.restore = ordinary
+    session.load_offline_snapshot = lambda profile: None
     try:
         shell.show()
-        if kind == 'failed': wait_for(qapp, lambda: shell.gate.state.value == 'AUTH_FAILED')
+        if kind == 'failed':
+            wait_for(qapp, lambda: ordinary.called)
+            assert shell._remembered_profile is not None
+            assert shell.gate.state.value == 'AUTHENTICATING'
         else: qapp.processEvents()
         assert shell.home is None and shell.gate.isVisible()
-        ordinary.assert_not_called()
+        if kind != 'failed': ordinary.assert_not_called()
         assert settings_snapshot(session) == before
         assert session.take_update_login()[0] is False
+    finally:
+        shell.close(); shell.gate.hide(); shell.gate.deleteLater(); qapp.processEvents()
+
+
+def test_update42_failed_handoff_skips_offline_snapshot_and_retries_network(tmp_path, vault, monkeypatch, qapp):
+    """A transient handoff outage must not stop at the tokenless offline shell."""
+    session, current = session_at(tmp_path, True, True, password=True)
+    session.update_handoff.write(current.identity.profile(), current.refresh_token)
+    ordinary = Mock(side_effect=RuntimeError('network still unavailable'))
+    session.restore = ordinary
+    # This is exactly the snapshot that previously short-circuited the retry
+    # path after update_restore failed.
+    session.load_offline_snapshot = lambda profile: result(restored=True)
+    monkeypatch.setattr('refactor.learning.app.window.LearningWindow', lambda *a, **kw: Mock())
+    shell = AccountShell(qapp, NS(data_root=tmp_path), login_session=session,
+                         native_restorer=Mock(side_effect=RuntimeError('handoff unavailable')))
+    shell._load_capabilities = lambda: None
+    shell._refresh_closure_recovery = lambda: None
+    try:
+        shell.show()
+        wait_for(qapp, lambda: ordinary.called)
+        assert shell.home is None
+        assert shell._remembered_profile is not None
+        assert shell.gate.state.value == 'AUTHENTICATING'
+        assert '重新登录' not in shell.gate.state_detail.text()
     finally:
         shell.close(); shell.gate.hide(); shell.gate.deleteLater(); qapp.processEvents()
 

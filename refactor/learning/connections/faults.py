@@ -40,6 +40,8 @@ def model_fault(error, provider_id='', *, repeated=False):
     elif (length and (code in {'MODEL_CONNECTION_FAILED','MODEL_TIMEOUT'} or
                       reason in {'incomplete_chat_message','incomplete_anthropic_message','protocol_validation:unterminated_sse_frame'})):
         category, message, short = 'interrupted', '回复中断了，可以重试', '模型回复中断'
+    elif code == 'MODEL_TIMEOUT' and reason == 'connect_timeout':
+        category, message, short = 'network', '连接模型服务太慢，请稍后重试', '模型连接超时'
     elif code in {'MODEL_CONNECTION_FAILED','MODEL_TIMEOUT'}:
         category, message, short = 'network', '连不上模型服务，请检查网络', '模型连接失败'
     elif code == 'AGENT_FORMAT':

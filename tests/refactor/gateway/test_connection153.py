@@ -9,6 +9,7 @@ import pytest
 from refactor.learning.connections import providers
 from refactor.learning.connections.errors import ModelError
 from refactor.learning.connections.gateway import ModelGateway
+from refactor.learning.connections.faults import model_fault
 from tests.refactor.gateway.test_gateway import KEY
 from tests.refactor.providers.samples import frame, sse
 
@@ -192,6 +193,37 @@ def test_connection153_real_provider_fault_categories_are_not_swallowed(tmp_path
     assert error.code not in {'MODEL_OUTPUT_TRUNCATED', ''}
     assert gateway.usage_log.summary(START, END)['total']['failed'] == 1
     gateway.close()
+
+
+def test_connection153_connect_timeout_waits_full_request_budget(monkeypatch):
+    captured = []
+
+    class Client:
+        def __init__(self, *args, **kwargs):
+            captured.append(kwargs['timeout'])
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr(httpx, 'AsyncClient', Client)
+    from refactor.learning.connections.providers._http import HTTP
+    http = HTTP('deepseek', KEY, 12.0, client=httpx.MockTransport(lambda _: None))
+    # A supplied transport is owned by HTTP and therefore exercises __aenter__.
+    import asyncio
+    async def enter():
+        async with http:
+            pass
+    asyncio.run(enter())
+    assert captured[0].connect == 12.0
+
+
+@pytest.mark.parametrize('reason,expected', [
+    ('connect_timeout', '连接模型服务太慢，请稍后重试'),
+    ('connection_failed', '连不上模型服务，请检查网络'),
+])
+def test_connection153_connect_fault_messages_distinguish_slow_and_rejected(reason, expected):
+    error = ModelError('MODEL_TIMEOUT' if reason == 'connect_timeout' else 'MODEL_CONNECTION_FAILED', 'internal')
+    error.diagnostics = {'reason': reason}
+    assert model_fault(error, 'deepseek')['message'] == expected
 
 
 def test_connection153_teacher_truncation_remains_a_failure(tmp_path, monkeypatch):
