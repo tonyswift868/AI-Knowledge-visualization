@@ -2621,7 +2621,7 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
   - 临时办法（还在旧版、已经卡住的人）：结束卡住的 `App\MentorFlow.exe` 再双击，或重启电脑。
 - 关联：[BUG-278]、[BUG-273]、436
 - 返工（472-MF05，2026-11-19）：普通点 ✕ 或退出登录后关闭时，`app.exec()` 返回后仍走 `return result` 和 Python 全局收尾；后台 daemon 线程若持有日志锁，冻结版会留下无窗口的 `MentorFlow.exe`。启动器的 `app_exit_confirmed` 只认 `UPDATE_HANDOFF` 链，普通关闭即使有同一 pid 的 `USER_MAIN_CLOSE`、`ABOUT_TO_QUIT`、`EVENT_LOOP_RETURNED` 也会被误报成“后台退出”。
-- 修复：统一冻结版事件循环返回后的直接退出函数；更新交接保留 `UPDATE_EXIT_DIRECT`，普通关闭记录 `USER_EXIT_DIRECT`。启动器现在只在同一 pid 已记录 `USER_MAIN_CLOSE` 或 `UPDATE_HANDOFF`、对应 `ABOUT_TO_QUIT` 和 `EVENT_LOOP_RETURNED` 后才结束无窗口旧进程；旧版无 pid 的返回仍只在匹配的 `ABOUT_TO_QUIT` 之后接受。回归测试见 `tests/refactor/exit472/`、`tests/refactor/exit462/`。
+- 修复：统一冻结版事件循环返回后的直接退出函数；更新交接保留 `UPDATE_EXIT_DIRECT`，日志锁空闲时普通关闭记录 `USER_EXIT_DIRECT`，锁被后台线程占用时跳过这条附加标记但不等待。启动器现在只在同一 pid 已记录 `USER_MAIN_CLOSE` 或 `UPDATE_HANDOFF`、对应 `ABOUT_TO_QUIT` 和 `EVENT_LOOP_RETURNED` 后才结束无窗口旧进程；旧版无 pid 的返回仍只在匹配的 `ABOUT_TO_QUIT` 之后接受。回归测试见 `tests/refactor/exit472/`、`tests/refactor/exit462/`。
 - 更新：2026-11-19（472-MF05，代码已验证，真包排练待完成）
 
 ### [BUG-290] 别人从官网备用线路下载 2.0.49 完整安装包，双击后一直转圈，什么窗口都不出
