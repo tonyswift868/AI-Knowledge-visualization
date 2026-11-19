@@ -258,7 +258,7 @@ class AppServices:
                 self._chat = CourseChatStore(self.store)
             return self._chat
 
-    # -- document Q&A (local-only sessions; never part of CourseStore/outbox)
+    # -- document Q&A (rag.sqlite3 is a local projection of CourseStore records)
     @property
     def rag(self):
         with self._lock:

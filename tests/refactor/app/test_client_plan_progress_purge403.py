@@ -1,6 +1,6 @@
 import json
 
-from refactor.learning.course.store import CourseStore, PROGRESS
+from refactor.learning.course.store import CourseStore, PROGRESS, SCHEMA_VERSION
 from refactor.learning.course.sync_contract import SyncRecord
 from refactor.learning.course.sync_course import CourseSync, _wire_id
 
@@ -113,4 +113,4 @@ def test_open_migration_purges_only_tombstoned_plan_and_is_repeatable(tmp_path):
     with CourseStore(ACCOUNT, tmp_path) as reopened:
         assert progress_rows(reopened, 'gone') == []
         assert {row['entity'] for row in progress_rows(reopened, 'still-here')} == set(PROGRESS)
-        assert reopened._db.execute('SELECT version FROM schema_version').fetchone()[0] == 13
+        assert reopened._db.execute('SELECT version FROM schema_version').fetchone()[0] == SCHEMA_VERSION

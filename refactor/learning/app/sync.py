@@ -100,6 +100,7 @@ class _WindowCourseSyncService(CourseSyncService):
 
 class WindowSync(QObject):
     _remote_chat = Signal()
+    _remote_rag = Signal()
     _remote_settings = Signal()
     _remote_plans = Signal()
 
@@ -125,6 +126,7 @@ class WindowSync(QObject):
         self._request_failed_signal = self.bridge.request_failed_for_session
         self._request_failed_signal.connect(self.note_error)
         self._remote_chat.connect(self._chat_changed, Qt.ConnectionType.QueuedConnection)
+        self._remote_rag.connect(self._rag_changed, Qt.ConnectionType.QueuedConnection)
         self._remote_settings.connect(self._settings_changed, Qt.ConnectionType.QueuedConnection)
         self._remote_plans.connect(self._plans_changed, Qt.ConnectionType.QueuedConnection)
 
@@ -192,9 +194,15 @@ class WindowSync(QObject):
         if origin == 'local':
             self.service.notify_local_change()
         else:
+            if entities & {'rag_sessions', 'rag_messages', 'rag_message_parts'}:
+                rag = getattr(self._services, '_rag', None)
+                if rag is not None:
+                    rag.synced_session_changed()
+                self._remote_rag.emit()
             if entities & {'chat_sessions', 'chat_messages'}: self._remote_chat.emit()
             if 'account_settings' in entities: self._remote_settings.emit()
-            if entities - {'chat_sessions', 'chat_messages', 'account_settings'}:
+            if entities - {'chat_sessions', 'chat_messages', 'rag_sessions', 'rag_messages',
+                           'rag_message_parts', 'account_settings'}:
                 self._remote_plans.emit()
 
     @Slot()
@@ -215,6 +223,11 @@ class WindowSync(QObject):
     def _chat_changed(self):
         if not self._closed and not self._paused:
             self.bridge.push('chat_changed', {})
+
+    @Slot()
+    def _rag_changed(self):
+        if not self._closed and not self._paused:
+            self.bridge.push('rag_changed', {})
 
     @Slot(object)
     def _status_changed(self, status):

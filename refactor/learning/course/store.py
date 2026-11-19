@@ -1,4 +1,4 @@
-"""Account-owned SQLite course data and an atomic record outbox, schema v13.
+"""Account-owned SQLite course data and an atomic record outbox, schema v14.
 
 Each business table stores a canonical, versioned JSON payload plus indexed FK
 columns and a local revision. Payload fields (also validated below):
@@ -34,7 +34,9 @@ Sync entity names are table names. For plan-owned records, wire entity_id is
 length-prefixed '<len(plan_key)>:<plan_key><id>'; payload.id is the original ID
 (in particular extract's chunk_id). plans use their plan ID directly. Chat
 records use an empty plan_key. Chat sessions carry additive `archived` metadata
-since schema v11; all wire schemas remain mentorflow.course.<entity>.v1.
+since schema v11. RAG sessions/messages also use an empty plan_key; oversized
+message bodies are represented by ordered `rag_message_parts` child records.
+All wire schemas remain mentorflow.course.<entity>.v1.
 
 _records is the durable revision/outbox journal. Hard deletion removes business
 rows and report payloads; unsent progress stays intact in this journal. Remote
@@ -66,7 +68,7 @@ from .ledger import (Ledger, PlanWindow, Credit, replan_preserves_past,
 from .mastery import MasteryBook, Judgement, AttemptClosed, event_to_dict, event_from_dict
 from .sync_contract import SyncRecord
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 POINT_MINUTES_VERSION = 2  # Content totals, replacing v1's fixed-budget allocation.
 MAX_PAYLOAD = 256 * 1024
 _REPORT_STORAGE = '_course_report_storage'
@@ -80,12 +82,16 @@ PARENTS = {
     'judgements': (), 'attempt_closed': (), 'credits': (), 'ledger_events': (),
     'teacher_profile': (), 'messages': (('module_id', 'modules'),), 'reports': (), 'usage': (),
     'chat_sessions': (), 'chat_messages': (('session_id', 'chat_sessions'),),
+    'rag_sessions': (), 'rag_messages': (('session_id', 'rag_sessions'),),
+    'rag_message_parts': (('message_id', 'rag_messages'),),
     'account_settings': (),
     'question_bank': (('module_id', 'modules'),), 'practice_results': (),
     'question_answers': (),  # immutable answered-question facts, independent of point judgements
     'point_links': (('module_id', 'modules'),),
     'classroom_positions': (),  # one atomic scene (state field) per plan, last edit wins
 }
+ACCOUNT_SCOPED_ENTITIES = frozenset(('chat_sessions', 'chat_messages', 'rag_sessions', 'rag_messages',
+                                     'rag_message_parts', 'account_settings'))
 STATES = ('creating', 'ready', 'active', 'checking', 'completed')
 
 
@@ -146,6 +152,21 @@ def _window_json(value):
 
 def _wire_id(entity, plan, identifier):
     return identifier if entity == 'plans' else f'{len(plan)}:{plan}{identifier}'
+
+
+def _split_rag_content(content, budget=160 * 1024):
+    """Split large answer text on UTF-8 boundaries before journal encoding."""
+    if not isinstance(content, str):
+        raise StoreError('INVALID_MESSAGE')
+    pieces, current, size = [], [], 0
+    for char in content:
+        width = len(char.encode('utf-8'))
+        if current and size + width > budget:
+            pieces.append(''.join(current)); current, size = [], 0
+        current.append(char); size += width
+    if current or not pieces:
+        pieces.append(''.join(current))
+    return pieces
 
 
 def _atomic(method):
@@ -388,7 +409,7 @@ class CourseStore:
                 fields = [f'{name} TEXT' for name, _ in parents]
                 constraints = [f'FOREIGN KEY(plan_key,{name}) REFERENCES {parent}(plan_key,id) DEFERRABLE INITIALLY DEFERRED'
                                for name, parent in parents]
-                if entity not in ('chat_sessions', 'chat_messages'):
+                if entity not in ACCOUNT_SCOPED_ENTITIES:
                     constraints.append('FOREIGN KEY(plan_key) REFERENCES plans(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED')
                 middle = ''.join(',' + value for value in fields + constraints)
                 self._db.execute(f'''CREATE TABLE {entity}(plan_key TEXT NOT NULL,id TEXT NOT NULL,payload TEXT NOT NULL CHECK(json_valid(payload)),
@@ -488,6 +509,31 @@ class CourseStore:
             for plan_id in deleted_plans:
                 self._purge_deleted_plan_progress(plan_id)
             self._db.execute('UPDATE schema_version SET version=13')
+            version = 13
+        if version == 13:
+            # RAG sessions/messages reuse the account-scoped CourseStore
+            # journal. The sqlite rag.sqlite3 remains a fast local projection.
+            self._db.execute('''CREATE TABLE IF NOT EXISTS rag_sessions(
+                plan_key TEXT NOT NULL,id TEXT NOT NULL,
+                payload TEXT NOT NULL CHECK(json_valid(payload)),revision INTEGER NOT NULL,
+                PRIMARY KEY(plan_key,id))''')
+            self._db.execute('''CREATE TABLE IF NOT EXISTS rag_messages(
+                plan_key TEXT NOT NULL,id TEXT NOT NULL,
+                payload TEXT NOT NULL CHECK(json_valid(payload)),revision INTEGER NOT NULL,
+                session_id TEXT NOT NULL,
+                FOREIGN KEY(plan_key,session_id) REFERENCES rag_sessions(plan_key,id)
+                    ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+                PRIMARY KEY(plan_key,id))''')
+            self._db.execute('''CREATE TABLE IF NOT EXISTS rag_message_parts(
+                plan_key TEXT NOT NULL,id TEXT NOT NULL,
+                payload TEXT NOT NULL CHECK(json_valid(payload)),revision INTEGER NOT NULL,
+                message_id TEXT NOT NULL,
+                FOREIGN KEY(plan_key,message_id) REFERENCES rag_messages(plan_key,id)
+                    ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+                PRIMARY KEY(plan_key,id))''')
+            self._db.execute("CREATE INDEX IF NOT EXISTS rag_messages_order ON rag_messages(plan_key,session_id,json_extract(payload,'$.created_at'),id)")
+            self._db.execute("CREATE INDEX IF NOT EXISTS rag_message_parts_order ON rag_message_parts(plan_key,message_id,json_extract(payload,'$.part_index'),id)")
+            self._db.execute('UPDATE schema_version SET version=14')
 
     def _revision(self):
         self._db.execute("UPDATE _meta SET value=CAST(value AS INTEGER)+1 WHERE key='revision'")
@@ -592,6 +638,38 @@ class CourseStore:
         elif entity == 'chat_sessions':
             if not isinstance(payload['title'], str): raise StoreError('INVALID_SESSION')
             if 'archived' in payload and type(payload['archived']) is not bool: raise StoreError('INVALID_SESSION')
+        elif entity == 'rag_sessions':
+            if not isinstance(payload.get('title'), str) or not isinstance(payload.get('document_ids'), list):
+                raise StoreError('INVALID_SESSION')
+            if any(not isinstance(item, str) or not item for item in payload['document_ids']):
+                raise StoreError('INVALID_SESSION')
+            if len(set(payload['document_ids'])) != len(payload['document_ids']):
+                raise StoreError('INVALID_SESSION')
+            for key in ('created_at', 'updated_at'):
+                _at(payload[key])
+            if type(payload.get('title_manual', False)) is not bool:
+                raise StoreError('INVALID_SESSION')
+        elif entity == 'rag_messages':
+            if payload.get('session_id') is None or payload.get('role') not in ('user', 'assistant'):
+                raise StoreError('INVALID_MESSAGE')
+            _id(payload['session_id'])
+            if not isinstance(payload.get('content'), str) or not isinstance(payload.get('passages'), list):
+                raise StoreError('INVALID_MESSAGE')
+            if type(payload.get('supplement', False)) is not bool:
+                raise StoreError('INVALID_MESSAGE')
+            _at(payload['created_at'])
+            if payload.get('position') is not None: _number(payload['position'])
+            parts = payload.get('content_parts')
+            if parts is not None and (not isinstance(parts, list) or
+                                      any(not isinstance(item, str) for item in parts) or
+                                      len(set(parts)) != len(parts)):
+                raise StoreError('INVALID_MESSAGE')
+        elif entity == 'rag_message_parts':
+            if payload.get('message_id') is None or payload.get('session_id') is None:
+                raise StoreError('INVALID_MESSAGE_PART')
+            _id(payload['message_id']); _id(payload['session_id'])
+            _number(payload.get('part_index'))
+            if not isinstance(payload.get('content'), str): raise StoreError('INVALID_MESSAGE_PART')
         elif entity == 'usage':
             for key in ('input_tokens', 'cache_hit_tokens', 'cache_miss_tokens', 'output_tokens', 'search_count'): _number(payload[key])
         elif entity == 'question_bank':
@@ -2608,6 +2686,126 @@ class CourseStore:
         for message in self.chat_messages(session_id): self._delete('chat_messages', '', message['id'])
         self._delete('chat_sessions', '', session_id)
 
+    def _rag_message_payload(self, payload):
+        """Store one RAG message, splitting oversized content into child rows."""
+        payload = dict(payload)
+        content = payload.get('content')
+        if not isinstance(content, str):
+            raise StoreError('INVALID_MESSAGE')
+        message_id = _id(payload.get('id'))
+        old = self._db.execute("SELECT payload,deleted FROM _records WHERE entity='rag_messages' AND entity_id=?",
+                               (_wire_id('rag_messages', '', message_id),)).fetchone()
+        old_payload = json.loads(old['payload']) if old and not old['deleted'] else {}
+        if payload.get('position') is None:
+            payload['position'] = old_payload.get('position', self._db.execute(
+                "SELECT count(*) FROM rag_messages WHERE plan_key='' AND session_id=?", (payload['session_id'],)
+            ).fetchone()[0])
+        try:
+            _json(payload)
+            inline = True
+        except StoreError as exc:
+            if exc.code != 'PAYLOAD_TOO_LARGE':
+                raise
+            inline = False
+        if inline:
+            payload.pop('content_parts', None)
+            for part in old_payload.get('content_parts', []):
+                self._delete('rag_message_parts', '', part)
+            return self._put('rag_messages', '', payload)
+        parts = _split_rag_content(content)
+        part_ids = [f'{message_id}:part:{index}' for index in range(len(parts))]
+        payload['content'] = ''
+        payload['content_parts'] = part_ids
+        self._put('rag_messages', '', payload)
+        previous_ids = set(old_payload.get('content_parts', []))
+        for index, (part_id, piece) in enumerate(zip(part_ids, parts)):
+            self._put('rag_message_parts', '', dict(id=part_id, message_id=message_id,
+                session_id=payload['session_id'], part_index=index, content=piece))
+        for part_id in previous_ids - set(part_ids):
+            self._delete('rag_message_parts', '', part_id)
+        return payload
+
+    def _rag_messages(self, session_id):
+        parts = {}
+        for row in self._rows('rag_message_parts', ''):
+            if row.get('session_id') == session_id:
+                parts.setdefault(row['message_id'], []).append(row)
+        messages = []
+        for payload in self._rows('rag_messages', ''):
+            if payload.get('session_id') != session_id:
+                continue
+            payload = dict(payload)
+            content_parts = payload.pop('content_parts', [])
+            if content_parts:
+                rows = sorted(parts.get(payload['id'], []), key=lambda row: (row['part_index'], row['id']))
+                payload['content'] = ''.join(row['content'] for row in rows)
+            messages.append(payload)
+        return sorted(messages, key=lambda row: (row.get('position', 1 << 60), row.get('created_at', ''), row['id']))
+
+    @_atomic
+    def put_rag_session(self, session):
+        session = dict(session)
+        session.setdefault('title_manual', False)
+        return self._put('rag_sessions', '', session)
+
+    @_atomic
+    def put_rag_message(self, message):
+        return self._rag_message_payload(message)
+
+    def rag_session(self, session_id):
+        with self._lock:
+            return self._get('rag_sessions', '', _id(session_id))
+
+    def rag_sessions(self):
+        with self._lock:
+            return sorted(self._rows('rag_sessions', ''), key=lambda row: (row.get('updated_at', ''), row['id']), reverse=True)
+
+    def rag_messages(self, session_id):
+        with self._lock:
+            self._get('rag_sessions', '', _id(session_id))
+            return self._rag_messages(session_id)
+
+    def legacy_rag_imported(self, key):
+        with self._lock:
+            return self._db.execute('SELECT 1 FROM _meta WHERE key=?', ('legacy_rag_v1:' + key,)).fetchone() is not None
+
+    @_atomic
+    def import_rag_session(self, source_key, session, messages):
+        """Idempotently copy a legacy rag.sqlite session into the account journal."""
+        session_id = _id(session['id'])
+        existing = self._db.execute("SELECT deleted FROM _records WHERE entity='rag_sessions' AND entity_id=?",
+                                    (_wire_id('rag_sessions', '', session_id),)).fetchone()
+        if existing and existing['deleted']:
+            self._db.execute('INSERT OR IGNORE INTO _meta VALUES(?,?)', ('legacy_rag_v1:' + source_key, '1'))
+            return
+        # A marker makes the first import idempotent, but a later startup must
+        # still reconcile a local append that was saved while the outbox was
+        # unavailable. A remote tombstone above remains authoritative.
+        if existing is None:
+            self._put('rag_sessions', '', dict(session))
+        else:
+            current = self._get('rag_sessions', '', session_id)
+            merged = dict(current)
+            merged['document_ids'] = list(dict.fromkeys(current.get('document_ids', []) + session.get('document_ids', [])))
+            if session.get('updated_at', '') > current.get('updated_at', ''):
+                merged['title'] = session.get('title', current.get('title', ''))
+                merged['updated_at'] = session['updated_at']
+            merged['title_manual'] = bool(current.get('title_manual')) or bool(session.get('title_manual'))
+            self._put('rag_sessions', '', merged)
+        for message in messages:
+            self._rag_message_payload(dict(message))
+        self._db.execute('INSERT OR IGNORE INTO _meta VALUES(?,?)', ('legacy_rag_v1:' + source_key, '1'))
+
+    @_atomic
+    def delete_rag_session(self, session_id):
+        session_id = _id(session_id)
+        self._get('rag_sessions', '', session_id)
+        for message in self._rag_messages(session_id):
+            for part in self._db.execute("SELECT payload FROM rag_message_parts WHERE plan_key='' AND message_id=?", (message['id'],)):
+                self._delete('rag_message_parts', '', json.loads(part[0])['id'])
+            self._delete('rag_messages', '', message['id'])
+        self._delete('rag_sessions', '', session_id)
+
     def put_original(self, data: bytes, sha256=None) -> str:
         """Atomic content-addressed original bytes. Never added to the outbox."""
         if not isinstance(data, bytes): raise StoreError('INVALID_FILE')
@@ -2727,7 +2925,7 @@ class CourseStore:
             for row in pending:
                 entity, plan = row['entity'], row['plan_key']
                 payload = json.loads(row['payload'])
-                if entity not in ('plans', 'chat_sessions', 'chat_messages', 'account_settings'):
+                if entity != 'plans' and entity not in ACCOUNT_SCOPED_ENTITIES:
                     if not self._db.execute('SELECT 1 FROM plans WHERE id=?', (plan,)).fetchone():
                         deferred.append(row); continue
                 missing = False
@@ -2764,8 +2962,8 @@ class CourseStore:
             if record.schema != f'mentorflow.course.{record.entity}.v1': raise StoreError('UNSUPPORTED_RECORD_SCHEMA')
             payload = json.loads(_json(record.payload))
             if record.entity_id != _wire_id(record.entity, record.plan_key, _id(payload['id'])): raise StoreError('INVALID_RECORD_ID')
-            if record.entity in ('chat_sessions', 'chat_messages', 'account_settings') and record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
-            if record.entity not in ('chat_sessions', 'chat_messages', 'account_settings'): _id(record.plan_key)
+            if record.entity in ACCOUNT_SCOPED_ENTITIES and record.plan_key: raise StoreError('INVALID_RECORD_SCOPE')
+            if record.entity not in ACCOUNT_SCOPED_ENTITIES: _id(record.plan_key)
             old = self._db.execute('SELECT * FROM _records WHERE entity=? AND entity_id=?', (record.entity, record.entity_id)).fetchone()
             repair_archive = False
             if record.entity == 'chat_sessions' and not record.deleted and 'archived' not in payload:

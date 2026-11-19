@@ -11,7 +11,7 @@ import { MicButton, useVoiceInput } from "../voice"
 import "./rag.css"
 
 type Plan = { id: string; title: string; document_ids: string[] }
-type Document = { id: string; title: string; source: string; plan_ids: string[]; origin?: "plan" | "upload"; deletion_pending?: boolean; deletion_error?: string; status: "not_uploaded" | "uploading" | "ready" | "failed"; total_chunks: number; uploaded_chunks: number; error?: string }
+type Document = { id: string; title: string; source: string; plan_ids: string[]; origin?: "plan" | "upload"; remote_only?: boolean; deletion_pending?: boolean; deletion_error?: string; status: "not_uploaded" | "uploading" | "ready" | "failed"; total_chunks: number; uploaded_chunks: number; error?: string }
 type Passage = { number?: number; document_id: string; seq: number | null; text: string; page?: number | null; section?: string | null; title?: string; deleted?: boolean }
 type Message = { id: string; role: "user" | "assistant"; content: string; passages?: Passage[]; supplement?: boolean }
 type SessionSummary = { id: string; title: string; document_ids: string[]; updated_at: string; count: number }
@@ -523,6 +523,16 @@ export function Rag() {
       clearScheduled()
       if (!inFlight) void load(false)
     }
+    // Session history is a local projection, so paint it before the remote
+    // document listing finishes. The second read fills documents and remote
+    // records without blanking the page in the meantime.
+    void call<{ sessions: SessionSummary[] }>("rag.sessions").then((local) => {
+      if (!alive || mounted.current === false) return
+      setSources((current) => current ?? {
+        plans: [], documents: [], sessions: local.sessions,
+        server_status: { state: "unavailable", message: "正在读取资料…" },
+      })
+    }).catch(() => {})
     void load(true)
     const off = on("rag.progress", (event) => {
       if (event?.kind === "extract_progress") {
@@ -619,7 +629,13 @@ export function Rag() {
       busyRef.current = ""
       clearSendFailure()
     })
-    return () => { alive = false; mounted.current = false; sourcesReadRevision.current++; sessionReadRevision.current++; workflowRevision.current++; probeRagStatus.current = null; clearScheduled(); off(); offScope(); abort.current?.abort(); preparationAbort.current?.abort(); preparationAbort.current = null }
+    const offRag = on("rag_changed", () => {
+      void refresh().then((result) => {
+        const active = sessionRef.current
+        if (active && result.sessions.some((item) => item.id === active.id)) void openSession(active.id)
+      }).catch(() => {})
+    })
+    return () => { alive = false; mounted.current = false; sourcesReadRevision.current++; sessionReadRevision.current++; workflowRevision.current++; probeRagStatus.current = null; clearScheduled(); off(); offScope(); offRag(); abort.current?.abort(); preparationAbort.current?.abort(); preparationAbort.current = null }
   }, [refresh])
 
   async function openSession(id: string) {
@@ -1043,6 +1059,8 @@ export function Rag() {
   const currentPlan = sources.plans.find((plan) => plan.id === planId)
   const sessions = sources.sessions
   const sessionDocuments = session?.document_ids.map((id) => docById(id)).filter((doc): doc is Document => !!doc) ?? []
+  const missingSessionDocuments = session?.document_ids.filter((id) => !docById(id)) ?? []
+  const remoteOnlySessionDocuments = sessionDocuments.some((doc) => doc.remote_only)
   const selectedCount = session ? session.document_ids.length : selected.length
   const isEmptyNewSession = session?.count === 0
   const displayedDocuments = planId ? sources.documents.filter((doc) => doc.plan_ids.includes(planId)) : sources.documents
@@ -1100,8 +1118,8 @@ export function Rag() {
           <span>资料准备失败：{prepareFailure.message}</span>
           <Button small kind="ghost" data-testid="rag-retry-preparation" disabled={!!busy || !!pending} onClick={() => void prepareDocuments(prepareFailure.sessionId, prepareFailure.ids)}>重试准备资料</Button>
         </div>}
-        {session && sessionDocuments.some((doc) => doc.status !== "ready") && !preparing && !session.document_ids.some((id) => preparationJobs[id]?.state === "queued" || preparationJobs[id]?.state === "running") && !prepareFailure && <div className="rag-prepare-resume" data-testid="rag-prepare-resume" role="status">
-          <span>资料还没准备好，准备完成后即可提问。</span><Button small kind="ghost" data-testid="rag-prepare-documents" disabled={!!busy || !!pending} onClick={() => void prepareDocuments(session.id, session.document_ids)}>继续准备资料</Button>
+        {session && (missingSessionDocuments.length > 0 || sessionDocuments.some((doc) => doc.status !== "ready")) && !preparing && !session.document_ids.some((id) => preparationJobs[id]?.state === "queued" || preparationJobs[id]?.state === "running") && !prepareFailure && <div className="rag-prepare-resume" data-testid="rag-prepare-resume" role="status">
+          <span>{missingSessionDocuments.length || remoteOnlySessionDocuments ? "资料正在同步，准备完成后即可提问。" : "资料还没准备好，准备完成后即可提问。"}</span>{!missingSessionDocuments.length && !remoteOnlySessionDocuments && <Button small kind="ghost" data-testid="rag-prepare-documents" disabled={!!busy || !!pending} onClick={() => void prepareDocuments(session.id, session.document_ids)}>继续准备资料</Button>}
         </div>}
         <div className="rag-messages" ref={scrollRef} data-testid="rag-messages">
           {!session?.messages.length && !pending ? <div className="rag-empty"><div className="rag-empty-icon"><BookOpen /></div><b>{session ? "这是一个新会话" : "从资料开始，一起把问题说清楚"}</b><span>{!selectedCount ? "先点上方的“资料”选择资料，再开始提问。" : session ? `已选好 ${session.document_ids.length} 份资料。准备完成后，在下方输入问题；回答和原文会留在这个会话里。` : "先点上方的“资料”选择资料，再开始提问。"}</span></div> : <>

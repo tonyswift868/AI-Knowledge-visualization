@@ -1,4 +1,4 @@
-"""RAG with real account services/CourseStore; local-only sessions never enter outbox."""
+"""RAG sessions use the same account CourseStore outbox as free chat."""
 import hashlib
 
 import httpx
@@ -8,7 +8,7 @@ from refactor.learning.app.services import AppServices
 from tests.refactor.rag155.test_rag155_backend import CA, FakeRagServer, FakeGateway, rag155_session
 
 
-def test_rag155_real_course_materials_services_and_local_session_do_not_dirty_sync(tmp_path,monkeypatch):
+def test_rag155_real_course_materials_services_and_session_sync_dirty_outbox(tmp_path,monkeypatch):
     state=rag155_session()
     server=FakeRagServer()
     original=rag.RagTransport.__init__
@@ -38,7 +38,9 @@ def test_rag155_real_course_materials_services_and_local_session_do_not_dirty_sy
         result=service.send(session['id'],'队列按什么顺序？')['session']
         assert [m['role'] for m in result['messages']]==['user','assistant']
         assert result['messages'][-1]['passages'][0]['page']==5
-        assert store.pending_records(10000)==before
+        pending = store.pending_records(10000)
+        assert pending[:len(before)] == before
+        assert {record.entity for record in pending[len(before):]} == {"rag_sessions", "rag_messages"}
     finally:
         services.close()
     assert service.local._closed and service.transport._closed.is_set() and store._closed
