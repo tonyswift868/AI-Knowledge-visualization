@@ -35,6 +35,30 @@ def test_refresh_preserves_native_session_superseded_code():
     asyncio.run(run())
 
 
+@pytest.mark.parametrize(
+    ("operation", "server_code", "expected"),
+    [
+        ("refresh", "NATIVE_CREDENTIALS_INVALID", "ENTERPRISE_SESSION_REAUTH_REQUIRED"),
+        ("login", "NATIVE_SESSION_SUPERSEDED", "NATIVE_CREDENTIALS_INVALID"),
+    ],
+)
+def test_401_code_mapping_stays_operation_specific(operation, server_code, expected):
+    async def run():
+        config = AccountConfig(
+            ISSUER, "mentorflow-desktop", "mentorflow-api", "https://api.session470.invalid"
+        )
+        transport = httpx.MockTransport(
+            lambda _request: httpx.Response(401, json={"code": server_code})
+        )
+        async with httpx.AsyncClient(transport=transport) as http:
+            client = NativeCredentialClient(config, http_client=http)
+            with pytest.raises(AccountError) as raised:
+                await client._session_request(operation, {"refresh_token": "synthetic"})
+        assert raised.value.code == expected
+
+    asyncio.run(run())
+
+
 class _Vault:
     def __init__(self):
         self.values = {}
