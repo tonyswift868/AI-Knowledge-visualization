@@ -55,8 +55,8 @@ def _ensure_app_stopped(root, mark):
             mark('stale_app_terminated')
             return
         from refactor.desktop.delivery.startup_window import set_startup_text
-        message=('MentorFlow 还在退出，请稍候再试。' if visible else
-                 '上一次的 MentorFlow 还没完全退出，请关闭已有窗口后重试。')
+        message=('MentorFlow 已经打开了，已切到它的窗口。' if visible else
+                 '上一次的 MentorFlow 还在后台退出。请等半分钟再打开；还是打不开就重启电脑。')
         set_startup_text(message, root=root)
         install.maintenance_log(root, 'launch_blocked_app_running', pid=pid or 0,
                                 visible=int(visible), error_type=type(error).__name__)

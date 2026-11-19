@@ -675,11 +675,15 @@ def app_exit_confirmed(root, pid):
     for line in tail:
         try: row=json.loads(line)
         except (TypeError,ValueError): continue
-        if row.get('event') != 'exit' or row.get('pid') != pid: continue
-        reason=row.get('reason')
-        handoff |= reason == 'UPDATE_HANDOFF'
-        about |= reason == 'ABOUT_TO_QUIT' and row.get('code') == 'UPDATE_HANDOFF'
-        returned |= reason == 'EVENT_LOOP_RETURNED'
+        if not isinstance(row, dict) or row.get('event') != 'exit': continue
+        reason=row.get('reason'); row_pid=row.get('pid')
+        if row_pid == pid:
+            handoff |= reason == 'UPDATE_HANDOFF'
+            about |= reason == 'ABOUT_TO_QUIT' and row.get('code') == 'UPDATE_HANDOFF'
+        # 2.0.49/2.0.50 log EVENT_LOOP_RETURNED without a pid. Only one App runs
+        # at a time, so a pid-less return right after this pid's ABOUT_TO_QUIT is its own.
+        if reason == 'EVENT_LOOP_RETURNED' and (row_pid == pid or (row_pid is None and about)):
+            returned = True
     return handoff and about and returned
 
 

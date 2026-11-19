@@ -47,9 +47,9 @@ def test_launcher_reports_unknown_busy_app_instead_of_silent_exit(monkeypatch, t
                         lambda text, **kwargs: messages.append(text))
     monkeypatch.setattr(install, 'maintenance_log',
                         lambda root, phase, **fields: maintenance.append((phase, fields)))
-    with pytest.raises(launcher._AppBusy, match='还没完全退出'):
+    with pytest.raises(launcher._AppBusy, match='还在后台退出'):
         launcher._ensure_app_stopped(tmp_path, lambda phase: None)
-    assert messages and '重试' in messages[0]
+    assert messages and '重启电脑' in messages[0]
     assert maintenance[0][0] == 'launch_blocked_app_running'
 
 
@@ -69,7 +69,7 @@ def test_launcher_brings_visible_busy_app_forward(monkeypatch, tmp_path):
     with pytest.raises(launcher._AppBusy):
         launcher._ensure_app_stopped(tmp_path, lambda phase: None)
     assert _Peer.focused == [99]
-    assert messages and '还在退出' in messages[0]
+    assert messages and '已经打开了' in messages[0]
     _Peer.visible=[]
 
 

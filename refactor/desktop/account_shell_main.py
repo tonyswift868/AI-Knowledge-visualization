@@ -2121,7 +2121,7 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
                 QTimer.singleShot(250, lambda: shell.notify_update_health(
                     install_root, update_attempt, update_nonce))
         result = app.exec()
-        diagnostic_event('exit', reason='EVENT_LOOP_RETURNED', exit_code=result)
+        diagnostic_event('exit', reason='EVENT_LOOP_RETURNED', exit_code=result, pid=os.getpid())
         if getattr(shell, '_update_exit_pending', False) and getattr(sys, 'frozen', False):
             # All synchronous saves and service disposal completed before quit.
             # Do not enter Python's global logging shutdown here.  A daemon
