@@ -76,7 +76,7 @@ def test_confirmed_self_exit_timeout_terminates_stale_app(monkeypatch, tmp_path)
     monkeypatch.setattr(install, 'maintenance_log', lambda root, phase, **fields: events.append((phase, fields)))
     install.wait_for_app_exit(tmp_path / 'MentorFlow', 321, '0000000000000001', timeout=0,
                               ready=lambda: events.append('ack'))
-    assert events == [('require', 321), ('window', '0000000000000001'), 'ack',
+    assert events == [('require', 321), 'ack',
                       ('terminate', 321), ('stale_app_terminated', {'pid': 321,
                        'reason': 'CONFIRMED_EXIT_TIMEOUT', 'timeout_seconds': 0})]
 

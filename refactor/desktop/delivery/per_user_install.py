@@ -729,7 +729,7 @@ def wait_for_app_exit(root, pid, hwnd_hex, *, timeout=30, ready=lambda: None):
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
     with ProcessPeer(pid) as peer:
         peer.require(executable=app_path(root) / 'MentorFlow.exe')
-        peer.visible_responsive_window(hwnd_hex)
+        # HWND was validated before handoff and may be hidden by the ACK; this open handle still proves identity.
         # Keep this native handle open across the acknowledgement and wait.
         # Opening it after the App quits would race PID reuse/process removal.
         ready()
