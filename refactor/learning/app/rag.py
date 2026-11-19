@@ -2,7 +2,7 @@
 
 Course material is read from the user's adopted sources. Uploaded files are
 extracted locally and only their text chunks are sent to the server. RAG
-sessions use a separate account-scoped SQLite database and never enter the
+sessions use a local SQLite projection backed by the account-scoped
 CourseStore synchronization journal.
 """
 from __future__ import annotations
@@ -605,11 +605,13 @@ class RagLocalStore:
             result = {"id": row["id"], "title": row["title"],
                       "title_manual": bool(row["title_manual"]),
                       "document_ids": json.loads(row["document_ids"]),
+                      "created_at": row["created_at"],
                       "updated_at": row["updated_at"], "messages": []}
             for message in self._db.execute("SELECT * FROM rag_messages WHERE session_id=? ORDER BY created_at,rowid",
                                             (session_id,)):
                 result["messages"].append({"id": message["id"], "role": message["role"],
                     "content": message["content"], "passages": json.loads(message["passages"]),
+                    "created_at": message["created_at"],
                     "supplement": bool(message["supplement"]) or _has_supplement(message["content"])})
             result["count"] = len(result["messages"])
             return result
@@ -617,12 +619,53 @@ class RagLocalStore:
     def list_sessions(self):
         with self._lock:
             self._ensure_open()
-            rows = self._db.execute("""SELECT s.id,s.title,s.document_ids,s.updated_at,
+            rows = self._db.execute("""SELECT s.id,s.title,s.document_ids,s.created_at,s.updated_at,
                 s.title_manual,COUNT(m.id) AS count FROM rag_sessions s LEFT JOIN rag_messages m ON m.session_id=s.id
                 GROUP BY s.id ORDER BY s.updated_at DESC,s.id""").fetchall()
             return [{"id": r["id"], "title": r["title"], "document_ids": json.loads(r["document_ids"]),
-                     "title_manual": bool(r["title_manual"]),
+                     "title_manual": bool(r["title_manual"]), "created_at": r["created_at"],
                      "updated_at": r["updated_at"], "count": r["count"]} for r in rows]
+
+    def apply_synced_sessions(self, sessions):
+        """Project account-synced RAG records into the local query database."""
+        sessions = list(sessions or [])
+        incoming = {session["id"]: session for session in sessions}
+        with self._lock:
+            self._ensure_open()
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                for session in sessions:
+                    session_id = session["id"]
+                    self._db.execute("""INSERT INTO rag_sessions(id,title,document_ids,created_at,updated_at,title_manual)
+                        VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,
+                        document_ids=excluded.document_ids,created_at=excluded.created_at,
+                        updated_at=excluded.updated_at,title_manual=excluded.title_manual""",
+                        (session_id, session.get("title", ""), _json(session.get("document_ids", [])),
+                         session["created_at"], session["updated_at"], int(bool(session.get("title_manual")))))
+                    messages = {message["id"]: message for message in session.get("messages", [])}
+                    for message in messages.values():
+                        self._db.execute("""INSERT INTO rag_messages(id,session_id,role,content,passages,supplement,created_at)
+                            VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET session_id=excluded.session_id,
+                            role=excluded.role,content=excluded.content,passages=excluded.passages,
+                            supplement=excluded.supplement,created_at=excluded.created_at""",
+                            (message["id"], session_id, message["role"], message["content"],
+                             _json(message.get("passages", [])), int(bool(message.get("supplement"))),
+                             message["created_at"]))
+                    if messages:
+                        marks = ",".join("?" for _ in messages)
+                        self._db.execute(f"DELETE FROM rag_messages WHERE session_id=? AND id NOT IN ({marks})",
+                                         (session_id, *messages))
+                    else:
+                        self._db.execute("DELETE FROM rag_messages WHERE session_id=?", (session_id,))
+                if incoming:
+                    marks = ",".join("?" for _ in incoming)
+                    self._db.execute(f"DELETE FROM rag_sessions WHERE id NOT IN ({marks})", tuple(incoming))
+                else:
+                    self._db.execute("DELETE FROM rag_sessions")
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
 
     def update_canonical_group(self, old_canonical_id, canonical_id, *, exclude=()):
         if not old_canonical_id or not canonical_id or old_canonical_id == canonical_id:
@@ -713,6 +756,54 @@ class RagService:
         self._job_worker = threading.Thread(target=self._preparation_worker,
                                             name="rag-preparation", daemon=True)
         self._job_worker.start()
+        self._sync_legacy_sessions()
+
+    def _session_payload(self, session):
+        return {key: session[key] for key in
+                ("id", "title", "document_ids", "created_at", "updated_at", "title_manual")}
+
+    def _message_payload(self, message, session_id, position=None):
+        payload = {"id": message["id"], "session_id": session_id, "role": message["role"],
+                "content": message["content"], "passages": message.get("passages", []),
+                "supplement": bool(message.get("supplement")), "created_at": message["created_at"]}
+        if position is not None:
+            payload["position"] = position
+        return payload
+
+    def _sync_session_to_course(self, session_id):
+        store = getattr(self, "store", None)
+        if store is None or not hasattr(store, "put_rag_session"):
+            return
+        session = self.local.get_session(session_id)
+        store.put_rag_session(self._session_payload(session))
+        for position, message in enumerate(session["messages"]):
+            store.put_rag_message(self._message_payload(message, session_id, position))
+
+    def _sync_legacy_sessions(self):
+        """Import old local sessions once, then project any already-synced rows."""
+        if not all(hasattr(self.store, name) for name in
+                   ("import_rag_session", "rag_sessions", "rag_messages")):
+            return
+        for summary in self.local.list_sessions():
+            session = self.local.get_session(summary["id"])
+            self.store.import_rag_session(summary["id"], self._session_payload(session),
+                                          [self._message_payload(message, session["id"])
+                                           for message in session["messages"]])
+        self.refresh_synced_sessions()
+
+    def refresh_synced_sessions(self):
+        if not all(hasattr(self.store, name) for name in ("rag_sessions", "rag_messages")):
+            return
+        sessions = []
+        for session in self.store.rag_sessions():
+            payload = dict(session)
+            payload["messages"] = self.store.rag_messages(session["id"])
+            sessions.append(payload)
+        self.local.apply_synced_sessions(sessions)
+
+    def synced_session_changed(self):
+        """Called after CourseStore receives remote RAG records."""
+        self.refresh_synced_sessions()
 
     def close(self):
         self.stop_preparations()
@@ -1246,6 +1337,31 @@ class RagService:
                             result[alias] = normalized
         return result
 
+    def _materialize_remote_session_documents(self, remote):
+        """Create a metadata-only local row for a synced session's remote source.
+
+        The original upload may not exist on this device. The server still owns
+        its chunks, so a ready row is enough for search; no local file is
+        fabricated and no body is downloaded into the account store.
+        """
+        for session in self.local.list_sessions():
+            for document_id in session.get("document_ids", ()):
+                if self.local.document(document_id) is not None:
+                    continue
+                remote_row = remote.get(document_id)
+                if not remote_row:
+                    continue
+                title = str(remote_row.get("title") or "远端资料")
+                source = str(remote_row.get("source") or "")
+                self.local.save_document(document_id, title, source, [])
+                status = str(remote_row.get("status") or "not_uploaded")
+                uploaded = int(remote_row.get("uploaded_chunks", 0) or 0)
+                total = int(remote_row.get("total_chunks", 0) or 0)
+                self.local.set_remote_state(document_id, remote_row.get("id") or document_id,
+                                            status, uploaded, total, str(remote_row.get("error") or ""))
+                if self._remote_complete(remote_row, total):
+                    self.local.set_uploaded_content(document_id, _source_content_digest([]))
+
     def _needs_source_layout(self, row):
         target_id = row.get("remote_upload_id") or row["id"]
         return ("source_layout_v1" in getattr(self, "_remote_capabilities", ())
@@ -1301,6 +1417,12 @@ class RagService:
                     match = _match_source_chunk(chunks, row["text"], row["seq"])
                     if not chunks or match is not None and match[0] == row["seq"]:
                         seq, page, section = row["seq"], row.get("page"), row.get("section")
+                elif not doc.get("chunks"):
+                    # A second device may have only the server-side chunks.
+                    # Keep server-provided positions when present, but never
+                    # invent page/section metadata that is absent remotely.
+                    seq = row.get("seq") if type(row.get("seq")) is int and row["seq"] >= 0 else None
+                    page, section = row.get("page"), row.get("section")
                 else:
                     match = _match_source_chunk(doc.get("chunks", ()), row["text"])
                     if match is not None:
@@ -1358,7 +1480,9 @@ class RagService:
         return {"id": row["id"], "title": row["title"], "source": row["source"],
                 "plan_ids": list(plan_ids), "origin": "plan" if plan_ids else "upload",
                 "status": status, "total_chunks": total,
-                "uploaded_chunks": uploaded, **({"error": row["error"]} if row.get("error") else {})}
+                "uploaded_chunks": uploaded,
+                **({"remote_only": True} if not row.get("chunks") and total > 0 else {}),
+                **({"error": row["error"]} if row.get("error") else {})}
 
     @staticmethod
     def _remote_complete(remote, total):
@@ -1520,6 +1644,9 @@ class RagService:
             server_status = {"state": "unavailable", "message": str(exc)}
         if server_status["state"] == "ready":
             self._reconcile_pending_deletions(remote)
+            self._materialize_remote_session_documents(remote)
+            for item in self.local.documents():
+                all_local.setdefault(item["id"], item)
         # Listing/reopening never starts preparation. Any incomplete or changed
         # source remains visible. An unconfirmed ready ID is replayed by the
         # next explicit prepare; listing alone cannot prove a content conflict.
@@ -1609,7 +1736,9 @@ class RagService:
         title = " ".join(title.split())
         if not title or len(title) > 80:
             raise BridgeError("PARAM_INVALID", "会话名称不能为空，也不能超过 80 个字。")
-        return {"session": self.local.rename_session(session_id, title)}
+        session = self.local.rename_session(session_id, title)
+        self._sync_session_to_course(session_id)
+        return {"session": session}
 
     def _apply_confirmed_document_delete(self, document_id, remote, response):
         row = self.local.document(document_id)
@@ -2104,7 +2233,9 @@ class RagService:
             for document_id in ids:
                 if self.local.document(document_id) is None:
                     raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "所选资料已不存在，请刷新资料列表。")
-            return {"session": self.local.create_session(ids, "新会话")}
+            session = self.local.create_session(ids, "新会话")
+            self._sync_session_to_course(session["id"])
+            return {"session": session}
 
     def update_documents(self, session_id, document_ids):
         self._check_open()
@@ -2116,7 +2247,9 @@ class RagService:
             for document_id in ids:
                 if self.local.document(document_id) is None:
                     raise BridgeError("RAG_DOCUMENT_NOT_FOUND", "所选资料已不存在，请刷新资料列表。")
-            return {"session": self.local.update_session_documents(session_id, ids)}
+            session = self.local.update_session_documents(session_id, ids)
+            self._sync_session_to_course(session_id)
+            return {"session": session}
 
     def get(self, session_id):
         self._check_open()
@@ -2124,7 +2257,14 @@ class RagService:
 
     def delete(self, session_id):
         self._check_open()
-        return {"ok": self.local.delete_session(self._session_id(session_id))}
+        session_id = self._session_id(session_id)
+        if hasattr(self.store, "delete_rag_session"):
+            try:
+                self.store.delete_rag_session(session_id)
+            except Exception as exc:
+                if getattr(exc, "code", None) != "NOT_FOUND":
+                    raise
+        return {"ok": self.local.delete_session(session_id)}
 
     def send(self, session_id, text, *, cancel=None, on_text=None, on_progress=None):
         self._check_open()
@@ -2244,6 +2384,7 @@ class RagService:
             answer = str(reply or "")
         supplement = _has_supplement(answer)
         self.local.append_turn(session_id, question, answer, passages, supplement, cancel=cancel)
+        self._sync_session_to_course(session_id)
         return {"session": self.local.get_session(session_id)}
 
     @staticmethod
@@ -2289,6 +2430,11 @@ def register(bridge, services, window):
         service = current()
         service._progress_callback = progress
         return service.sources(cancel=ctx.cancel)
+
+    def sessions(params, ctx):
+        service = current()
+        service.refresh_synced_sessions()
+        return {"sessions": service.local.list_sessions()}
 
     def ingest(params, ctx):
         service = current()
@@ -2348,6 +2494,7 @@ def register(bridge, services, window):
                                on_progress=progress)
 
     bridge.register("rag.sources", sources)
+    bridge.register("rag.sessions", sessions)
     bridge.register("rag.ingest", ingest)
     bridge.register("rag.prepare", prepare)
     bridge.register("rag.preparation", preparation)
