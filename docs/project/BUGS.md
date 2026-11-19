@@ -2602,7 +2602,7 @@
 - 更新：2026-11-02
 
 ### [BUG-279] 别人从官网下载完整包装好后，只能正常打开一次，之后双击怎么都打不开
-- 状态：已修，随 2.0.51 发布（2026-11-19）；待对方电脑更新到 2.0.51 后实测重开。
+- 状态：更新交接部分已随 2.0.51 发布（2026-11-19）；普通关闭后台残留已在 472-MF05 修复，修复后真包排练待完成。
 - 现象：用户 2026-11-17 转述：中国大陆那位从官网（436 后跳 GitHub 完整包 2.0.48）下载安装，装好后第一次打开正常，关掉以后再也打不开（原话“怎么都打不开那个 exe 了”）。
 - 已知（架构师 2026-11-17 读代码）：桌面壳有单实例锁 `<安装根>\Data
 untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lock`），锁被占时会弹“MentorFlow 已在运行”；若对方连这个提示都没有，问题在它之前（启动器阶段）。日志在 `<安装根>\Data\logs\mentorflow.log`、`launcher-startup.jsonl`。
@@ -2620,6 +2620,9 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
   - 验证：相关测试 52 项过；真包旧版→新版（9.239.1→9.239.2）和新版→新版（9.239.4→9.239.5）排练通过，日志有 `UPDATE_EXIT_DIRECT`、新版健康；连开关 3 次正常退出；全量 5481 过、46 跳过（证据 `.local/test-tmp/462-MF04/evidence`）。架构师补的改动跑了相关 59 项。真机（对方电脑）未验。
   - 临时办法（还在旧版、已经卡住的人）：结束卡住的 `App\MentorFlow.exe` 再双击，或重启电脑。
 - 关联：[BUG-278]、[BUG-273]、436
+- 返工（472-MF05，2026-11-19）：普通点 ✕ 或退出登录后关闭时，`app.exec()` 返回后仍走 `return result` 和 Python 全局收尾；后台 daemon 线程若持有日志锁，冻结版会留下无窗口的 `MentorFlow.exe`。启动器的 `app_exit_confirmed` 只认 `UPDATE_HANDOFF` 链，普通关闭即使有同一 pid 的 `USER_MAIN_CLOSE`、`ABOUT_TO_QUIT`、`EVENT_LOOP_RETURNED` 也会被误报成“后台退出”。
+- 修复：统一冻结版事件循环返回后的直接退出函数；更新交接保留 `UPDATE_EXIT_DIRECT`，普通关闭记录 `USER_EXIT_DIRECT`。启动器现在只在同一 pid 已记录 `USER_MAIN_CLOSE` 或 `UPDATE_HANDOFF`、对应 `ABOUT_TO_QUIT` 和 `EVENT_LOOP_RETURNED` 后才结束无窗口旧进程；旧版无 pid 的返回仍只在匹配的 `ABOUT_TO_QUIT` 之后接受。回归测试见 `tests/refactor/exit472/`、`tests/refactor/exit462/`。
+- 更新：2026-11-19（472-MF05，代码已验证，真包排练待完成）
 
 ### [BUG-290] 别人从官网备用线路下载 2.0.49 完整安装包，双击后一直转圈，什么窗口都不出
 - 状态：已解决（2026-11-18，用户说装好了）。是对方电脑的设置问题，不是安装包的问题：用户级 TEMP、TMP 指向已经不存在的 E 盘，改到 D:\Temp 之后能装。具体是改完临时文件夹起的作用，还是之后重新登录、直接启动起的作用，没问清。

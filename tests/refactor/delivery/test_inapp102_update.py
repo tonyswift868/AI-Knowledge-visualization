@@ -69,6 +69,7 @@ def test_confirmed_self_exit_timeout_terminates_stale_app(monkeypatch, tmp_path)
         def __exit__(self, *_): pass
         def require(self, **kwargs): events.append(('require', self.pid))
         def visible_responsive_window(self, hwnd): events.append(('window', hwnd))
+        def visible_windows(self): return []
         def alive(self): return next(self.states, False)
         def terminate(self): events.append(('terminate', self.pid))
     monkeypatch.setattr(windows_process_peer, 'ProcessPeer', Peer)
@@ -79,6 +80,24 @@ def test_confirmed_self_exit_timeout_terminates_stale_app(monkeypatch, tmp_path)
     assert events == [('require', 321), 'ack',
                       ('terminate', 321), ('stale_app_terminated', {'pid': 321,
                        'reason': 'CONFIRMED_EXIT_TIMEOUT', 'timeout_seconds': 0})]
+
+
+def test_confirmed_self_exit_timeout_does_not_terminate_visible_app(monkeypatch, tmp_path):
+    from refactor.desktop.delivery import windows_process_peer
+    events = []
+    class Peer:
+        def __init__(self, pid): self.pid = pid
+        def __enter__(self): return self
+        def __exit__(self, *_): pass
+        def require(self, **kwargs): events.append(('require', self.pid))
+        def alive(self): return True
+        def visible_windows(self): return ['0x1234']
+        def terminate(self): events.append(('terminate', self.pid))
+    monkeypatch.setattr(windows_process_peer, 'ProcessPeer', Peer)
+    monkeypatch.setattr(install, 'app_exit_confirmed', lambda root, pid: True)
+    with pytest.raises(install.AppShutdownTimeout, match='visible window'):
+        install.wait_for_app_exit(tmp_path / 'MentorFlow', 321, '0001', timeout=0)
+    assert events == [('require', 321)]
 
 
 def test_direct_exit_does_not_enter_logging_shutdown(monkeypatch):

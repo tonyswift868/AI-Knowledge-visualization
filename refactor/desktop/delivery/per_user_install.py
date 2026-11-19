@@ -745,6 +745,8 @@ def wait_for_app_exit(root, pid, hwnd_hex, *, timeout=30, ready=lambda: None):
         if peer.alive():
             if not app_exit_confirmed(root, pid):
                 raise AppShutdownTimeout('app self-exit timed out; update remains pending')
+            if peer.visible_windows():
+                raise AppShutdownTimeout('confirmed App still has a visible window')
             peer.terminate()
             deadline=time.monotonic()+5
             while peer.alive() and time.monotonic()<deadline: time.sleep(.05)
