@@ -44,7 +44,9 @@ class AccountConfig:
     api_base_url: str
     organization_id: str = ''
     workspace_id: str = ''
-    request_timeout_seconds: float = 10.0
+    # Keep account calls on the same 20-second wall as the sync transport.
+    # A slow connect must not fail before the already-working sync path.
+    request_timeout_seconds: float = 20.0
     identity_issuer: str | None = None
 
     def __post_init__(self):
@@ -92,7 +94,7 @@ class AccountConfig:
             identity_issuer=env.get('MENTORFLOW_DESKTOP_IDENTITY_ISSUER') or None,
             organization_id=env.get('MENTORFLOW_DESKTOP_ORGANIZATION_ID', '').strip(),
             workspace_id=env.get('MENTORFLOW_DESKTOP_WORKSPACE_ID', '').strip(),
-            request_timeout_seconds=env.get('MENTORFLOW_DESKTOP_OIDC_HTTP_TIMEOUT_SECONDS') or 10,
+            request_timeout_seconds=env.get('MENTORFLOW_DESKTOP_OIDC_HTTP_TIMEOUT_SECONDS') or 20,
         )
 
 

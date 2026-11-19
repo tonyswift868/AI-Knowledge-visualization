@@ -116,6 +116,10 @@ def complete(provider_id, *, base_url, model, api_key, messages, system=None,
         error.diagnostics = dict(evidence.snapshot(cause), **cleaned)
         if error.code == 'MODEL_FIRST_EVENT_TIMEOUT':
             error.diagnostics['reason'] = 'first_event_timeout'
+        elif isinstance(cause, httpx.ConnectTimeout):
+            error.diagnostics['reason'] = 'connect_timeout'
+        elif isinstance(cause, httpx.ConnectError):
+            error.diagnostics['reason'] = 'connection_failed'
         if error.code == 'MODEL_RESPONSE_INVALID' and error.diagnostics.get('reason') in {None, 'protocol_validation'}:
             error.diagnostics['reason'] = 'protocol_validation:' + evidence.stage
         # Model names are vendor-controlled too; never journal an echoed key.

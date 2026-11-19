@@ -208,14 +208,18 @@ def test_update42_invalid_startup_handoff_does_not_fall_back_to_auto_login(tmp_p
     shell = AccountShell(qapp, NS(data_root=tmp_path), login_session=session, native_restorer=fail)
     shell._load_capabilities = lambda: None
     shell._refresh_closure_recovery = lambda: None
-    ordinary = Mock(side_effect=AssertionError('no ordinary auto-login'))
+    ordinary = Mock(side_effect=RuntimeError('network still unavailable'))
     session.restore = ordinary
+    session.load_offline_snapshot = lambda profile: None
     try:
         shell.show()
-        if kind == 'failed': wait_for(qapp, lambda: shell.gate.state.value == 'AUTH_FAILED')
+        if kind == 'failed':
+            wait_for(qapp, lambda: ordinary.called)
+            assert shell._remembered_profile is not None
+            assert shell.gate.state.value == 'AUTHENTICATING'
         else: qapp.processEvents()
         assert shell.home is None and shell.gate.isVisible()
-        ordinary.assert_not_called()
+        if kind != 'failed': ordinary.assert_not_called()
         assert settings_snapshot(session) == before
         assert session.take_update_login()[0] is False
     finally:

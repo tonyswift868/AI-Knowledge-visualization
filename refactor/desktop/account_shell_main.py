@@ -1626,6 +1626,13 @@ class AccountShell:
             return
         if job == 'update_restore':
             self._update_restore_pending = False
+            # The handoff token is one-shot and has already been consumed.  A
+            # failed handoff must fall through to the same remembered-account
+            # restore path as a normal restart; that path preserves the saved
+            # profile and turns network failures into restore_retry.
+            self._update_login_token = None
+            self._begin_remembered_login()
+            return
         if job == "logout_error":
             self._invalidate_login_jobs()
             self.gate.set_state(LoginGateState.AUTH_FAILED, detail=message)

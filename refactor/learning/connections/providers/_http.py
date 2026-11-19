@@ -86,7 +86,10 @@ class HTTP:
         if self.owned:
             self.client = httpx.AsyncClient(
                 transport=self.client, trust_env=False, follow_redirects=False,
-                timeout=httpx.Timeout(self.timeout, connect=min(5., self.timeout)))
+                # Connection establishment gets the same deadline as the whole
+                # request.  A separate five-second cap made slow networks
+                # fail before account/sync requests using this timeout budget.
+                timeout=httpx.Timeout(self.timeout, connect=self.timeout))
         return self
 
     async def __aexit__(self, *_):
@@ -111,7 +114,7 @@ class HTTP:
                 self.accounting.start(body)
             async with self.client.stream(
                 'POST', url, json=body, headers=auth, follow_redirects=False,
-                timeout=httpx.Timeout(self.timeout, connect=min(5., self.timeout)),
+                timeout=httpx.Timeout(self.timeout, connect=self.timeout),
             ) as response:
                 self.evidence.status = response.status_code
                 self.evidence.content_type = self.evidence.clean(response.headers.get('content-type'))
