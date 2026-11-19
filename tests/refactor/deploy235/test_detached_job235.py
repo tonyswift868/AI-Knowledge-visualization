@@ -88,7 +88,10 @@ def test_job235_status_reconnect_after_local_poller_is_killed(job_sandbox):
 
     started = _run([_posix(job), "start", _posix(directory), "sh", _posix(driver), _posix(directory)])
     assert started.returncode == 0, started.stdout + started.stderr
-    assert _wait(job, directory, "RUNNING", timeout=1) == "RUNNING" or _status(job, directory) == "UNKNOWN"
+    # Git Bash startup can take more than a second when the other xdist
+    # workers are compiling/browser-testing.  The durable-state contract is
+    # unchanged; give the local poller enough time to observe it.
+    assert _wait(job, directory, "RUNNING", timeout=5) == "RUNNING" or _status(job, directory) == "UNKNOWN"
     duplicate = _run([_posix(job), "start", _posix(directory), "sh", _posix(driver), _posix(directory)])
     assert duplicate.returncode == 0, duplicate.stdout + duplicate.stderr
     assert duplicate.stdout.strip() in {"RUNNING", "UNKNOWN"}

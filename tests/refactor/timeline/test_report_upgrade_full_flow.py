@@ -12,10 +12,11 @@ from refactor.learning.course.report_pdf import render_report_pdf
 from refactor.learning.course.report_comments import evidence_for_report
 
 
-ARTIFACT = Path('D:/MentorFlow/.local/test-tmp/report-upgrade/report.pdf')
+REPORT_ROOT = Path(os.environ.get('REPORT_UPGRADE_ROOT', 'D:/MentorFlow/.local/test-tmp/report-upgrade'))
+ARTIFACT = REPORT_ROOT / 'report.pdf'
 
 
-def test_full_flow_report_charts_match_saved_events_and_export_pdf(flow_env):
+def test_full_flow_report_charts_match_saved_events_and_export_pdf(flow_env, monkeypatch):
     e = flow_env
     prepare(e)
     skip_all(e)
@@ -34,7 +35,7 @@ def test_full_flow_report_charts_match_saved_events_and_export_pdf(flow_env):
     assert views['errors']['check'] == sum(p['check_questions'] - p['check_correct'] for p in report['points'])
     from PySide6.QtGui import QGuiApplication
     if QGuiApplication.instance() is None:
-        os.environ['QT_QPA_PLATFORM'] = 'windows'
+        monkeypatch.setenv('QT_QPA_PLATFORM', 'windows')
     app = QGuiApplication.instance() or QGuiApplication([])
     ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
     render_report_pdf(report, {p['id']: p.get('title') or p['summary'] for p in e.store.records('points', PLAN)},

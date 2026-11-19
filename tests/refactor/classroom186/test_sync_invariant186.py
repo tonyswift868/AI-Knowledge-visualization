@@ -1,7 +1,6 @@
 """Legacy recovery attribution survives protocol sync and SQLite reopen."""
 from datetime import timedelta
 from pathlib import Path
-import tempfile
 
 import pytest
 
@@ -11,23 +10,18 @@ from refactor.learning.course.sync_course import CourseSync
 from tests.refactor.course_integration.test_store_sync_roundtrip import TODAY, build_plan
 from tests.refactor.sync_course.test_sync_course import connection
 
-SCRATCH = Path('D:/MentorFlow/.local/test-tmp/ledger186')
-
-
 @pytest.fixture(params=[False, True], ids=['snapshot-fallback', 'incremental'])
-def devices186(connection, request):
+def devices186(connection, request, tmp_path):
     server, transport, login = connection
     server.incremental = request.param
     server.page_limit = 3
-    SCRATCH.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=SCRATCH) as root_a, tempfile.TemporaryDirectory(dir=SCRATCH) as root_b:
-        first = CourseStore(login.identity.account_id, Path(root_a))
-        second = CourseStore(login.identity.account_id, Path(root_b))
-        try:
-            yield server, transport, first, second
-        finally:
-            first.close()
-            second.close()
+    first = CourseStore(login.identity.account_id, tmp_path / 'device-a')
+    second = CourseStore(login.identity.account_id, tmp_path / 'device-b')
+    try:
+        yield server, transport, first, second
+    finally:
+        first.close()
+        second.close()
 
 
 def _recovery_state(store, today):

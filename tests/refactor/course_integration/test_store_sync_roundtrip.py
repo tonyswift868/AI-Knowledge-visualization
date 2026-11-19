@@ -7,7 +7,6 @@ idempotent request IDs, tombstones).
 from datetime import date, datetime, timedelta, timezone
 import importlib.util
 from pathlib import Path
-import tempfile
 import time
 
 import pytest
@@ -27,23 +26,18 @@ connection = harness.connection  # reuse the fake server + SyncTransport fixture
 TODAY = date(2026, 9, 28)
 NOW = datetime(2026, 9, 28, 12, tzinfo=timezone.utc)
 WINDOW = PlanWindow(TODAY, TODAY + timedelta(days=6), 120)
-SCRATCH = Path('D:/MentorFlow/.local/test-tmp/course-integration')
-
-
 @pytest.fixture(params=[False, True], ids=['snapshot-fallback', 'incremental'])
-def devices(connection, request):
+def devices(connection, request, tmp_path):
     server, transport, login = connection
     server.incremental = request.param
     server.page_limit = 3
     account = login.identity.account_id
-    SCRATCH.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=SCRATCH) as a, tempfile.TemporaryDirectory(dir=SCRATCH) as b:
-        first, second = CourseStore(account, Path(a)), CourseStore(account, Path(b))
-        try:
-            yield server, transport, first, second
-        finally:
-            first.close()
-            second.close()
+    first, second = CourseStore(account, tmp_path / 'device-a'), CourseStore(account, tmp_path / 'device-b')
+    try:
+        yield server, transport, first, second
+    finally:
+        first.close()
+        second.close()
 
 
 def build_plan(store):

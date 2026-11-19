@@ -143,7 +143,9 @@ def test_usage214_native_react_bridge_handlers_and_paging(tmp_path):
         until = time.monotonic() + timeout
         while time.monotonic() < until:
             app.processEvents()
-            if js(script, timeout=.25):
+            # Qt WebEngine may need a full event-loop second to answer the
+            # first probe while the other xdist workers are browser-testing.
+            if js(script, timeout=1):
                 return
             time.sleep(.01)
         raise AssertionError(f'browser condition timed out: {script}; body={js("document.body.innerText")!r}')

@@ -1,7 +1,6 @@
 """Report graphs, comment evidence and PDF use the same saved course events."""
 from __future__ import annotations
 
-import os
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -92,11 +91,11 @@ def test_model_failure_cannot_affect_comments_or_saved_report(completed):
     assert store.load_report('p') == before
 
 
-def test_pdf_has_chart_and_content_stream(completed, tmp_path):
+def test_pdf_has_chart_and_content_stream(completed, tmp_path, monkeypatch):
     from PySide6.QtGui import QGuiApplication
     from refactor.learning.course.report_pdf import render_report_pdf
     if QGuiApplication.instance() is None:
-        os.environ['QT_QPA_PLATFORM'] = 'windows'
+        monkeypatch.setenv('QT_QPA_PLATFORM', 'windows')
     app = QGuiApplication.instance() or QGuiApplication([])
     _, report, point = completed
     target = tmp_path / 'report.pdf'
