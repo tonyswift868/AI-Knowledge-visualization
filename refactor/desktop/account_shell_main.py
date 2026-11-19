@@ -2049,9 +2049,9 @@ def friendly_name(row) -> str:
     return display or username or "我的账号"
 
 
-def _exit_after_update_handoff(result):
+def _exit_after_shutdown(result, *, reason):
     """Exit the frozen App without entering global Python logging shutdown."""
-    diagnostic_event('exit', reason='UPDATE_EXIT_DIRECT')
+    diagnostic_event('exit', reason=reason)
     os._exit(result)
 
 
@@ -2140,12 +2140,14 @@ def main(*, install_root=None, update_attempt=None, update_nonce=None) -> int:
                     install_root, update_attempt, update_nonce))
         result = app.exec()
         diagnostic_event('exit', reason='EVENT_LOOP_RETURNED', exit_code=result, pid=os.getpid())
-        if getattr(shell, '_update_exit_pending', False) and getattr(sys, 'frozen', False):
+        if getattr(sys, 'frozen', False):
             # All synchronous saves and service disposal completed before quit.
             # Do not enter Python's global logging shutdown here.  A daemon
-            # worker may still hold a handler lock while the updater is waiting
+            # worker may still hold a handler lock while the launcher is waiting
             # for this PID, leaving the windowless frozen App alive forever.
-            _exit_after_update_handoff(result)
+            reason = ('UPDATE_EXIT_DIRECT' if getattr(shell, '_update_exit_pending', False)
+                      else 'USER_EXIT_DIRECT')
+            _exit_after_shutdown(result, reason=reason)
         return result
     except Exception as exc:
         diagnostic_event('startup', state='FAILED', exc_info=True)
