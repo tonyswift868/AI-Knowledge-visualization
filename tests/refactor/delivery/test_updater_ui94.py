@@ -146,7 +146,10 @@ def test_updater94_inno_finish_options_honor_upgrades_and_preserve_foreign_deskt
     assert "if WizardIsTaskSelected('desktopicon') then" in action
     assert 'if FileExists(DesktopShortcutPath)' in action and 'if not OwnsDesktopShortcut' in action
     assert 'CopyFile(SourceLink, DesktopShortcutPath, True)' in action  # fail if exists, never overwrite.
-    assert '未覆盖' in action and 'DeleteFile(DesktopShortcutPath)' not in action
+    existing_case = action.split('if FileExists(DesktopShortcutPath) then begin', 1)[1].split(
+        'end else begin', 1
+    )[0]
+    assert '未覆盖' in action and 'DeleteFile(DesktopShortcutPath)' not in existing_case
     script = (root / 'MentorFlow.iss').read_text(encoding='utf-8')
     canonical = next(line for line in script.splitlines() if line.startswith('Name: "{autoprograms}\\{#ShortcutName}";'))
     assert 'Check: CanonicalShortcutNeeded' in canonical

@@ -132,13 +132,8 @@ procedure PrimaryClick(Sender: TObject);
 begin
   if (WizardForm.CurPageID = LocationPage.ID) and not PrimaryButton.Enabled then Exit;
   if WizardForm.CurPageID = wpFinished then begin
-    if WizardForm.RunList.Items.Count = 0 then begin
-      OptionsFeedback.Caption := '请关闭安装器，再从开始菜单打开 MentorFlow。';
-      Exit;
-    end;
     OptionsFeedback.Caption := ApplyFinishOptions;
-    if OptionsFeedback.Caption <> '' then Exit;
-    WizardForm.RunList.Checked[0] := True;
+    if WizardForm.RunList.Items.Count > 0 then WizardForm.RunList.Checked[0] := True;
   end;
   { Inno retains installation, cancellation, launch and finalization ownership. }
   EngineNext(WizardForm.NextButton);
@@ -148,7 +143,6 @@ procedure SecondaryClick(Sender: TObject);
 begin
   if WizardForm.CurPageID = wpFinished then begin
     OptionsFeedback.Caption := ApplyFinishOptions;
-    if OptionsFeedback.Caption <> '' then Exit;
     if WizardForm.RunList.Items.Count > 0 then WizardForm.RunList.Checked[0] := False;
     EngineNext(WizardForm.NextButton);
   end else if WizardForm.CancelButton.Enabled then
@@ -252,6 +246,7 @@ begin
       else WizardSelectTasks('');
       FinishOptionsShown := True;
     end;
+    OptionsFeedback.Caption := PreviewFinishOptions;
   end;
 end;
 
