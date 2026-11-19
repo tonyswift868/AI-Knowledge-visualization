@@ -28,6 +28,41 @@ class _NeedsRepair(Exception):
     pass
 
 
+class _AppBusy(RecoverableError):
+    """The previous App is still active and needs a visible user-facing result."""
+    pass
+
+
+def _ensure_app_stopped(root, mark):
+    try:
+        install.require_app_stopped(root)
+        return
+    except RecoverableError as error:
+        from refactor.desktop.delivery.windows_process_peer import ProcessPeer
+        image=install.app_path(root) / 'MentorFlow.exe'
+        pid=None; visible=False
+        try:
+            for candidate in install._matching_app_pids(image):
+                pid=candidate
+                with ProcessPeer(candidate) as peer:
+                    visible=bool(peer.visible_windows())
+                    if visible: peer.foreground()
+                if visible: break
+        except (OSError, RuntimeError, ValueError):
+            pass
+        if pid is not None and install.app_exit_confirmed(root, pid) and not visible:
+            install.terminate_confirmed_app(root, pid)
+            mark('stale_app_terminated')
+            return
+        from refactor.desktop.delivery.startup_window import set_startup_text
+        message=('MentorFlow 还在退出，请稍候再试。' if visible else
+                 '上一次的 MentorFlow 还没完全退出，请关闭已有窗口后重试。')
+        set_startup_text(message, root=root)
+        install.maintenance_log(root, 'launch_blocked_app_running', pid=pid or 0,
+                                visible=int(visible), error_type=type(error).__name__)
+        raise _AppBusy(message) from error
+
+
 def _log_pending_install_failure(root, pending, error):
     """Record a deferred-install failure without hiding the recovery path."""
     from refactor.desktop.delivery.update_protocol import SecurityError
@@ -60,7 +95,7 @@ def _launch_serialized(root, mark):
         except (OSError, RuntimeError, ValueError, ImportError):
             raise _NeedsRepair from None
     with InstallUpdateLock(root):
-        install.require_app_stopped(root)
+        _ensure_app_stopped(root, mark)
         if core.unsafe_teardown('next_launch'):
             raise RecoverableError('session ending: launch and update deferred')
         # Recovery shares the core's writer mutex. Release it before calling
@@ -129,7 +164,7 @@ def _launch_serialized(root, mark):
     with InstallUpdateLock(root):
         if core.unsafe_teardown('next_launch'):
             raise RecoverableError('session ending: launch and update deferred')
-        install.require_app_stopped(root)
+        _ensure_app_stopped(root, mark)
         mark('app_launch_begin')
         result = dict(status='HEALTHY', health=install.launch_health(root, install.installed(root)))
         mark('app_visible_healthy')
@@ -215,6 +250,8 @@ def launch(root):
             pass  # Diagnostics never change the signed launch decision.
     if isinstance(outcome.get('error'), _NeedsRepair):
         return repair_update_shell(root)
+    if isinstance(outcome.get('error'), _AppBusy):
+        return dict(status='APP_BUSY', message=str(outcome['error']))
     if 'error' in outcome: raise outcome['error']
     return outcome['result']
 
@@ -241,10 +278,22 @@ def _launch_native(root):
         while not done.is_set():
             pump_native_messages(); done.wait(.01)
     finally:
+        error = outcome.get('error')
+        if isinstance(error, _AppBusy):
+            from refactor.desktop.delivery.startup_window import set_startup_text
+            set_startup_text(str(outcome['error']), root=root)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                pump_native_messages()
+                done.wait(.01)
+            close_native_splash()
+            log_phase(root, 'launcher_complete', phases=timings,
+                      error=type(error).__name__)
+            return dict(status='APP_BUSY', message=str(outcome['error']))
         close_native_splash()
         log_phase(root, 'launcher_complete', phases=timings,
-                  error=type(outcome['error']).__name__ if 'error' in outcome else None)
-    if isinstance(outcome.get('error'), _NeedsRepair): return repair_update_shell(root)
+                  error=type(error).__name__ if error else None)
+        if isinstance(error, _NeedsRepair): return repair_update_shell(root)
     if 'error' in outcome: raise outcome['error']
     return outcome['result']
 

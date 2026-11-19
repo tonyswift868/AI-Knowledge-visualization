@@ -31,6 +31,35 @@ class ProcessPeer:
     def __exit__(self,*_):self.close()
     def alive(self):return self.kernel.WaitForSingleObject(self.handle,0)==258
 
+    def terminate(self, exit_code=1):
+        self.kernel.TerminateProcess.argtypes=[w.HANDLE,w.UINT]
+        self.kernel.TerminateProcess.restype=w.BOOL
+        if not self.kernel.TerminateProcess(self.handle, exit_code):
+            raise c.WinError(c.get_last_error())
+
+    def visible_windows(self):
+        user=c.WinDLL('user32',use_last_error=True)
+        user.EnumWindows.argtypes=[c.WINFUNCTYPE(w.BOOL,w.HWND,w.LPARAM),w.LPARAM]
+        user.EnumWindows.restype=w.BOOL
+        user.GetWindowThreadProcessId.argtypes=[w.HWND,c.POINTER(w.DWORD)]
+        user.IsWindowVisible.argtypes=[w.HWND]; user.IsWindowVisible.restype=w.BOOL
+        found=[]
+        callback_type=user.EnumWindows.argtypes[0]
+        def callback(hwnd,_):
+            owner=w.DWORD(); user.GetWindowThreadProcessId(hwnd,c.byref(owner))
+            if owner.value == self.pid and user.IsWindowVisible(hwnd): found.append(int(hwnd))
+            return True
+        callback_ref=callback_type(callback)
+        user.EnumWindows(callback_ref,0)
+        return found
+
+    def foreground(self):
+        user=c.WinDLL('user32',use_last_error=True)
+        user.SetForegroundWindow.argtypes=[w.HWND]; user.SetForegroundWindow.restype=w.BOOL
+        windows=self.visible_windows()
+        if not windows: return False
+        return bool(user.SetForegroundWindow(w.HWND(windows[0])))
+
     def inspect(self):
         self.kernel.QueryFullProcessImageNameW.argtypes=[w.HANDLE,w.DWORD,w.LPWSTR,c.POINTER(w.DWORD)]
         size=w.DWORD(32768);name=c.create_unicode_buffer(size.value)
