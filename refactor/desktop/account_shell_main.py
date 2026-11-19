@@ -2051,7 +2051,28 @@ def friendly_name(row) -> str:
 
 def _exit_after_shutdown(result, *, reason):
     """Exit the frozen App without entering global Python logging shutdown."""
-    diagnostic_event('exit', reason=reason)
+    # A daemon may still own the logging lock after Qt has returned.  The
+    # direct-exit marker is useful when it is cheap, but it must never turn the
+    # shutdown escape hatch back into the lock wait this function avoids.
+    import logging
+    locks = []
+    global_lock = getattr(logging, '_lock', None)
+    if global_lock is not None and global_lock.acquire(False):
+        locks.append(global_lock)
+        logger = logging.getLogger('refactor')
+        for handler in logger.handlers:
+            lock = getattr(handler, 'lock', None)
+            if lock is not None and id(lock) not in {id(item) for item in locks}:
+                if not lock.acquire(False):
+                    break
+                locks.append(lock)
+        else:
+            try:
+                diagnostic_event('exit', reason=reason)
+            except Exception:
+                pass
+    for lock in reversed(locks):
+        lock.release()
     os._exit(result)
 
 
