@@ -6,6 +6,22 @@ import pytest
 
 from java_build156 import default_build_path, default_classpath_path, ensure_java_build, group_skip_reason
 
+_SERVER_JAVA_ROOT = Path(__file__).resolve().parent
+
+
+def pytest_collection_modifyitems(items):
+    """Keep the JVM/Postgres integration group on one xdist worker.
+
+    Each fixture starts one or more JVMs with a large heap.  Four independent
+    workers entering this directory at once exhausts the host commit limit;
+    ``--dist=loadgroup`` then runs this marked group serially while the rest
+    of the client suite still uses the other workers.
+    """
+    for item in items:
+        path = Path(str(item.path)).resolve()
+        if path.parent == _SERVER_JAVA_ROOT:
+            item.add_marker(pytest.mark.xdist_group("server_java"))
+
 # Importing this conftest must be side-effect free.  In particular, do not
 # redirect the process-wide TEMP/TMP variables to an old task directory.
 # Explicit SHIP156_TMP remains a compatibility escape hatch for old runners;

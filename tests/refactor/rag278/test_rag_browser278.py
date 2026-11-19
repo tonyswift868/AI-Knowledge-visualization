@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[3]
 NODE = Path("D:/MentorFlow/.local/node/node.exe")
 DEPS = Path("D:/MentorFlow/.local/web-deps")
 WEB = REPO / "refactor/learning/web"
-OUTPUT = Path("D:/MentorFlow/.local/test-tmp/ragui278/screenshots")
+OUTPUT = Path(os.environ.get("RAG278_OUTPUT", "D:/MentorFlow/.local/test-tmp/ragui278/screenshots"))
 sys.path.insert(0, str(REPO))
 
 

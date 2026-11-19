@@ -4,10 +4,53 @@ Lesson 2026-11-16 (design-luoling skill): a tool's first run kept appending to t
 until it passed the 32767-character limit and no new process on the machine could start.
 """
 
+import os
+from pathlib import Path
 import sys
+
+import pytest
 
 _SYSTEM_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
 _BEFORE: dict[str, str] = {}
+
+
+def pytest_configure(config):
+    """Give fixed-artifact browser tests a private directory per pytest worker.
+
+    The tests intentionally keep their evidence files for inspection, but a
+    shared absolute directory makes xdist workers delete or overwrite one
+    another's screenshots.  ``--basetemp`` is already unique per run, so only
+    the worker suffix is needed here.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    raw_base = getattr(config.option, "basetemp", None)
+    base = Path(raw_base) if raw_base else Path(r"D:\MentorFlow\.local\test-tmp\pytest-artifacts")
+    root = base / f"artifacts-{worker}"
+    os.environ["MF_TIMELINE_TEST_ROOT"] = str(root / "timeline")
+    os.environ["MODEL199_ARTIFACTS"] = str(root / "model199")
+    os.environ["UPDATE258_ARTIFACTS"] = str(root / "banner258")
+    os.environ["RAG278_OUTPUT"] = str(root / "rag278")
+    os.environ["RAG269_OUTPUT"] = str(root / "rag269")
+    os.environ["REPORT_UPGRADE_ROOT"] = str(root / "report-upgrade")
+
+
+@pytest.fixture(autouse=True)
+def restore_process_environment():
+    """Keep one worker's process environment from leaking between tests.
+
+    Browser tests need to set Qt/Chromium variables before creating a Qt
+    application, but those settings are test-local.  Restoring the mapping at
+    the test boundary makes the existing direct assignments safe without
+    changing the child-process environments they intentionally construct.
+    """
+    before = dict(os.environ)
+    yield
+    for name in list(os.environ):
+        if name not in before:
+            os.environ.pop(name, None)
+    for name, value in before.items():
+        if os.environ.get(name) != value:
+            os.environ[name] = value
 
 
 def _host_environment() -> dict[str, str]:

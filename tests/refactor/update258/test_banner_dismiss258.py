@@ -9,7 +9,7 @@ import sys
 REPO = Path(__file__).resolve().parents[3]
 NODE = Path("D:/MentorFlow/.local/node/node.exe")
 DEPS = Path("D:/MentorFlow/.local/web-deps")
-ARTIFACTS = Path("D:/MentorFlow/.local/test-tmp/banner258")
+ARTIFACTS = Path(os.environ.get("UPDATE258_ARTIFACTS", "D:/MentorFlow/.local/test-tmp/banner258"))
 
 
 def _build(directory: Path) -> None:

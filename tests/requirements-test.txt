@@ -1,0 +1,2 @@
+# Optional test-runner dependency for parallel pytest runs.
+pytest-xdist==3.8.0
