@@ -6,6 +6,7 @@
 
 | 编号 | 标题 | 状态 | 更新 |
 | --- | --- | --- | --- |
+| BUG-299 | 登录旧测试 login216 从 2.0.52 起一直失败，没被发现 | 待修：477-MF02 | 2026-11-19 |
 | BUG-298 | 安装器不能静默全新安装：自定义位置页要人选文件夹，静默时直接退出 | 不影响用户；排练改用安装核心直接装 | 2026-11-19 |
 | BUG-297 | 同一账号后登录的电脑反而被先登录的挤下线 | 已修，已合入 main ce1655a9，待发版 | 2026-11-19 |
 | BUG-296 | 2.0.52 资料问答会话在另一台电脑上还是空的 | 不修：用户再看已同步上，当时资料还在准备 | 2026-11-19 |
@@ -2654,6 +2655,13 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
 - 原因：未查清。候选：另一台拉到了但页面只读本机旧库或不刷新；拉下来没写进本机；导入或上传只在某条路径触发；服务器没存或没返回。465 的验收没在两台真包之间走过“A 有会话、B 登录后看列表”。
 - 关联：465、469、[RAG-01]
 
+### [BUG-299] 登录旧测试 login216 从 2.0.52 起一直失败，没被发现
+- 状态：待修（477-MF02）。不是 470/472 引入的：2.0.52 源码 ce4d591e、470 合入前 4049c3df、合入后 ce1655a9 上单跑都失败（架构师 2026-11-19 复核）。
+- 现象（476-MF02 全量，2026-11-19）：`tests/refactor/login216/test_login216_account_shell.py::test_login216_remembered_session_waits_for_click_then_uses_offline_snapshot_on_network_error` 失败，单独重跑也失败，收到 `ENTERPRISE_SESSION_REAUTH_REQUIRED`。
+- 原因（476 回执，架构师没逐行核）：现在点“登录”走 `account_shell_main.py` 的 `force_network=True` 路径，`login_session.py` 要求 refresh token 是 `mfn1_r_` 格式；测试放的是 `fixture-refresh-token`，还 mock 了已经不用的 `_restore_active_session`，走不到“网络出错改用离线快照”那一步。
+- 牵连：这个测试护的是 [BUG-292]（网络出错时用离线快照登录、不丢已保存账号）。产品这条路现在好不好，测试证明不了，由 477 用合法格式的假令牌验。之前的全量为什么没报出来，没查。
+- 关联：[BUG-292]、[BUG-295]、464、476、477
+
 ### [BUG-298] 安装器不能静默全新安装：自定义“选择安装位置”页要人选文件夹，静默时直接退出
 - 状态：不影响用户（用户都用向导装）；排练已绕开（全新装改用 `UserRuntime.exe install`，`.local/tasks/_pstack.md` 第二节第 5 条）。修不修待用户定。
 - 现象（474-MF05，2026-11-19）：O 的安装包用 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /MERGETASKS="!desktopicon,!startup" /DIR=... /LOG=...` 跑，返回码 1，日志在解出 `MentorFlow.png` 后写 `Failed to proceed to next wizard page; aborting.`，没有安装根。加 `/SP-`、把 LOCALAPPDATA/TEMP 指到任务目录，结果一样。
@@ -2669,7 +2677,7 @@ untime\MentorFlow.instance.lock`（`account_shell_main.py` `_acquire_instance_lo
 - 关联：470、[ACC-01]、[BUG-215]、464
 
 ### [BUG-295] 两份全量同时跑到 Java 服务器测试，电脑内存用光：32 项测试报错，Claude Code、桌面窗口管理器等程序崩溃
-- 状态：已修，已合入 main 9ed35b36（467-MF02）：全量里 `server_java` 单独用 `-n 1` 跑，客户端主段 `-n 4`，两轮都没再爆内存。员工自己起 Java 时设 `JAVA_TOOL_OPTIONS=-Xmx1g`（只管当次进程），起 Java 或冻结真包前可用提交内存要有 4 GB（`.local/tasks/_pstack.md`，架构师 2026-11-19 定；原来写的 10 GB 在 Kristina 测试同时跑时达不到，把 473、472 的真包验证都卡住了）。
+- 状态：已修，已合入 main 9ed35b36（467-MF02）：全量里 `server_java` 单独用 `-n 1` 跑，客户端主段 `-n 4`，两轮都没再爆内存。员工自己起 Java 时设 `JAVA_TOOL_OPTIONS=-Xmx1g`（只管当次进程），起 Java 或冻结真包前可用提交内存要有 4 GB（`.local/tasks/_pstack.md`，架构师 2026-11-19 定；原来写的 10 GB 在 Kristina 测试同时跑时达不到，把 473、472 的真包验证都卡住了）。476 全量（2026-11-19）又见 1 项：`test_workspace_json148` 起 JVM 时提交内存不够（errno 1455，全量前可用约 7.3 GB），单独重跑过。
 - 现象（2026-11-19 23:08，本机）：系统记录“虚拟内存不足”（资源消耗检测器 1003）。随后 Kristina 测试的 python（_wasmtime.dll）、Codex 的 pwsh（“页面文件太小”）、dwm.exe（0xc00001ad，内存耗尽）、Claude Code（0xC0000409）相继崩溃。架构师的合并全量（465+466）里 32 项 server_java 测试报错，全是 Java 起不来：“There is insufficient memory for the Java Runtime Environment”，`os::commit_memory` 500 MB 失败；崩溃记录 hs_err_pid*.log 写在仓库根目录（已删）。
 - 原因：同一时间两份全量在跑（架构师 1 个进程 + 2 号 467 的 4 进程），都走到 RAG、同步锁这批 server_java 测试；这批每项要起嵌入式 PostgreSQL 和 Java 服务器，Java 一起来就先要 500 MB、可涨到内存的四分之一。加上常驻的 ChatGPT/Codex、Claude、微信等约 25 GB，提交内存（内存 32 GB + 页面文件）用光。“最多 4 个进程”只限了 CPU，没限内存。起因之一是架构师估错全量结束时间（说 22:50，实际 23:20），2 号按任务 22:50 后开跑整套。
 - 验证：这 32 项在 2 号进程不碰 Java 测试时单独重跑全过（115 过、3 跳过，含 464 相关测试）。
