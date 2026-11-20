@@ -96,6 +96,7 @@ class AccountShell:
         self._account_form_state = None
         self._remembered_profile = None
         self._offline_bootstrap_result = None
+        self._allow_offline_fallback = False
         self._login_result = None
         self._session_credentials = None
         self._update_login_token = None
@@ -595,7 +596,9 @@ class AccountShell:
         state = adapter.state
         return state.get('login_allowed') is not False and not bool(state.get('mandatory'))
 
-    def _begin_remembered_login(self, *, force_network: bool = False) -> None:
+    def _begin_remembered_login(
+            self, *, force_network: bool = False, allow_offline_fallback: bool = False,
+    ) -> None:
         from refactor.desktop.login_shell import LoginGateState
 
         if not AccountShell._updates_allow_login(self):
@@ -603,6 +606,7 @@ class AccountShell:
         profile = self._remembered_profile
         if self._closing or profile is None:
             return
+        self._allow_offline_fallback = bool(allow_offline_fallback)
         generation, cancelled = self._new_request()
         update_token = getattr(self, '_update_login_token', None)
         offline = None if (update_token or force_network) else getattr(self, '_offline_bootstrap_result', None)
@@ -677,7 +681,7 @@ class AccountShell:
         ):
             # An explicit Login click must use the server restore path.  The
             # tokenless offline snapshot is reserved for automatic startup.
-            self._begin_remembered_login(force_network=True)
+            self._begin_remembered_login(force_network=True, allow_offline_fallback=True)
             return
 
         if not self.gate.username_field.text().strip() or not self.gate.password_field.text():
@@ -1667,6 +1671,18 @@ class AccountShell:
         if job == "restore_retry":
             from PySide6.QtCore import QTimer
 
+            if getattr(self, '_allow_offline_fallback', False) and self._remembered_profile is not None:
+                try:
+                    offline = self.session.load_offline_snapshot(self._remembered_profile)
+                except Exception:
+                    offline = None
+                if offline is not None:
+                    self._allow_offline_fallback = False
+                    self.gate.background_succeeded.emit(
+                        f"{generation}:offline_restore", offline,
+                    )
+                    return
+            self._allow_offline_fallback = False
             # Keep the selected profile and tokens after an outage. The generation
             # fence prevents a delayed retry from overriding logout/manual login.
             self.gate.set_state(LoginGateState.AUTHENTICATING, detail="正在恢复连接…")
