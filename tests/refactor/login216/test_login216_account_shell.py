@@ -88,7 +88,7 @@ def _result216(subject="learner216", *, restored=False):
         "org-login216", "workspace-login216",
     )
     return AccountLoginResult(
-        identity, "fixture-access-token", "fixture-refresh-token",
+        identity, "mfn1_a_" + "A" * 43, "mfn1_r_" + "R" * 43,
         {"role": "LEARNER"}, restored=restored,
     )
 
@@ -203,18 +203,23 @@ def test_login216_remembered_session_waits_for_click_then_uses_offline_snapshot_
         qapp216, tmp_path, monkeypatch):
     session, current, _vault = _session216(tmp_path, automatic=False)
     monkeypatch.setattr("refactor.learning.app.window.LearningWindow", _Home216)
-    shell = _shell216(qapp216, tmp_path, session, monkeypatch, capture=False)
+    recover = Mock(return_value=_result216(restored=True))
+    shell = _shell216(
+        qapp216, tmp_path, session, monkeypatch, restorer=recover, capture=False,
+    )
     shell._bind_learning_features = lambda *_args, **_kwargs: None
     shell._loading_appearance = lambda _account_id: ("default", False)
-    refresh = Mock(side_effect=[OSError("fixture network unavailable"), _result216(restored=True)])
-    shell._restore_active_session = refresh
+    restore_native = Mock(side_effect=OSError("fixture network unavailable"))
+    monkeypatch.setattr(
+        "refactor.desktop.native_auth.restore_native_account_from_env", restore_native,
+    )
     try:
         shell.show()
         qapp216.processEvents()
         assert shell.gate.isVisible() and shell.home is None
 
         shell.gate.primary_button.click()
-        _pump216(qapp216, lambda: shell.home is not None and refresh.call_count == 1
+        _pump216(qapp216, lambda: shell.home is not None and restore_native.call_count == 1
                  and not shell._session_refresh_busy)
         assert shell._offline_mode is True and shell.home.offline is True
         assert shell._login_result.identity.profile().account_id == current.identity.profile().account_id
@@ -224,7 +229,7 @@ def test_login216_remembered_session_waits_for_click_then_uses_offline_snapshot_
         # returns; it switches the same local session back to online and syncable.
         shell._refresh_active_session()
         _pump216(qapp216, lambda: not shell._offline_mode)
-        assert refresh.call_count == 2
+        recover.assert_called_once()
         assert shell.home.offline is False and shell.home.recovered == 1
     finally:
         _dispose216(qapp216, shell)
