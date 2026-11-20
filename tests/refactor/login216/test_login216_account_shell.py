@@ -13,7 +13,7 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
 
 from refactor.desktop.account_identity import AccountIdentity, AccountPreferenceStore
-from refactor.desktop.account_protocol import AccountLoginResult
+from refactor.desktop.account_protocol import AccountError, AccountLoginResult
 from refactor.desktop.account_shell_main import AccountShell
 from refactor.desktop.login_session import LoginSession
 from refactor.desktop import credential_store as locker
@@ -231,6 +231,60 @@ def test_login216_remembered_session_waits_for_click_then_uses_offline_snapshot_
         _pump216(qapp216, lambda: not shell._offline_mode)
         recover.assert_called_once()
         assert shell.home.offline is False and shell.home.recovered == 1
+    finally:
+        _dispose216(qapp216, shell)
+
+
+def test_login216_network_error_falls_back_to_offline_snapshot_before_retry(
+        qapp216, tmp_path, monkeypatch):
+    session, current, _vault = _session216(tmp_path, automatic=False)
+    monkeypatch.setattr("refactor.learning.app.window.LearningWindow", _Home216)
+    recover = Mock(return_value=_result216(restored=True))
+    shell = _shell216(
+        qapp216, tmp_path, session, monkeypatch, restorer=recover, capture=False,
+    )
+    shell._bind_learning_features = lambda *_args, **_kwargs: None
+    shell._loading_appearance = lambda _account_id: ("default", False)
+    session.restore = Mock(side_effect=AccountError(
+        "NATIVE_NETWORK_UNAVAILABLE", "fixture network unavailable",
+    ))
+    snapshot = _result216(restored=True)
+    session.load_offline_snapshot = Mock(return_value=snapshot)
+    try:
+        shell.show()
+        qapp216.processEvents()
+        before_click = session.load_offline_snapshot.call_count
+        shell.gate.primary_button.click()
+        _pump216(qapp216, lambda: shell.home is not None and not shell._session_refresh_busy)
+        assert session.restore.call_count == 1
+        assert session.load_offline_snapshot.call_count > before_click
+        assert shell._offline_mode is True
+        assert shell._login_result.identity.profile().account_id == current.identity.profile().account_id
+        assert shell.home.offline is True
+    finally:
+        _dispose216(qapp216, shell)
+
+
+def test_login216_expired_restore_never_uses_offline_snapshot(
+        qapp216, tmp_path, monkeypatch):
+    session, current, _vault = _session216(tmp_path, automatic=False)
+    monkeypatch.setattr("refactor.learning.app.window.LearningWindow", _Home216)
+    shell = _shell216(qapp216, tmp_path, session, monkeypatch, capture=False)
+    shell._bind_learning_features = lambda *_args, **_kwargs: None
+    shell._loading_appearance = lambda _account_id: ("default", False)
+    session.restore = Mock(side_effect=AccountError(
+        "NATIVE_SESSION_SUPERSEDED", "fixture superseded",
+    ))
+    session.load_offline_snapshot = Mock(return_value=_result216(restored=True))
+    try:
+        shell.show()
+        qapp216.processEvents()
+        before_click = session.load_offline_snapshot.call_count
+        shell.gate.primary_button.click()
+        _pump216(qapp216, lambda: shell._remembered_profile is None and shell.home is None)
+        assert session.restore.call_count == 1
+        assert session.load_offline_snapshot.call_count == before_click
+        assert "重新输入账号和密码" in shell.gate.notice_label.text()
     finally:
         _dispose216(qapp216, shell)
 
