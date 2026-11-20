@@ -671,7 +671,7 @@ def app_exit_confirmed(root, pid):
             tail.append(line)
     except OSError:
         return False
-    handoff=about=returned=False
+    handoff = user_close = update_about = user_about = returned = False
     for line in tail:
         try: row=json.loads(line)
         except (TypeError,ValueError): continue
@@ -679,16 +679,22 @@ def app_exit_confirmed(root, pid):
         reason=row.get('reason'); row_pid=row.get('pid')
         if row_pid == pid:
             handoff |= reason == 'UPDATE_HANDOFF'
-            about |= reason == 'ABOUT_TO_QUIT' and row.get('code') == 'UPDATE_HANDOFF'
+            user_close |= reason == 'USER_MAIN_CLOSE'
+            if reason == 'ABOUT_TO_QUIT':
+                update_about |= row.get('code') == 'UPDATE_HANDOFF'
+                user_about |= row.get('code') == 'USER_MAIN_CLOSE'
         # 2.0.49/2.0.50 log EVENT_LOOP_RETURNED without a pid. Only one App runs
         # at a time, so a pid-less return right after this pid's ABOUT_TO_QUIT is its own.
-        if reason == 'EVENT_LOOP_RETURNED' and (row_pid == pid or (row_pid is None and about)):
-            returned = True
-    return handoff and about and returned
+        if reason == 'EVENT_LOOP_RETURNED':
+            if row_pid == pid:
+                returned |= update_about or user_about
+            elif row_pid is None and (update_about or user_about):
+                returned = True
+    return returned and ((handoff and update_about) or (user_close and user_about))
 
 
 def terminate_confirmed_app(root, pid, *, reason='CONFIRMED_EXIT_TIMEOUT'):
-    """End only an App whose own update-handoff exit chain is already logged."""
+    """End only an App whose own exit chain is already logged."""
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
     with ProcessPeer(pid) as peer:
         peer.require(executable=app_path(root) / 'MentorFlow.exe')
@@ -729,7 +735,7 @@ def wait_for_app_exit(root, pid, hwnd_hex, *, timeout=30, ready=lambda: None):
     from refactor.desktop.delivery.windows_process_peer import ProcessPeer
     with ProcessPeer(pid) as peer:
         peer.require(executable=app_path(root) / 'MentorFlow.exe')
-        peer.visible_responsive_window(hwnd_hex)
+        # HWND was validated before handoff and may be hidden by the ACK; this open handle still proves identity.
         # Keep this native handle open across the acknowledgement and wait.
         # Opening it after the App quits would race PID reuse/process removal.
         ready()
@@ -739,6 +745,8 @@ def wait_for_app_exit(root, pid, hwnd_hex, *, timeout=30, ready=lambda: None):
         if peer.alive():
             if not app_exit_confirmed(root, pid):
                 raise AppShutdownTimeout('app self-exit timed out; update remains pending')
+            if peer.visible_windows():
+                raise AppShutdownTimeout('confirmed App still has a visible window')
             peer.terminate()
             deadline=time.monotonic()+5
             while peer.alive() and time.monotonic()<deadline: time.sleep(.05)

@@ -32,12 +32,13 @@ def test_other_pid_chain_is_not_ours(tmp_path):
     assert not install.app_exit_confirmed(_write(tmp_path, OLD_CHAIN), 999)
 
 
-def test_return_without_handoff_is_not_confirmed(tmp_path):
-    # A normal close (no update handoff) must never let the updater end the App.
+def test_normal_close_chain_is_confirmed(tmp_path):
+    # Once ABOUT_TO_QUIT and EVENT_LOOP_RETURNED are logged, the App has
+    # finished Qt shutdown even when no update handoff was requested.
     lines = ['{"event": "exit", "reason": "USER_MAIN_CLOSE", "pid": 14500}',
-             '{"event": "exit", "reason": "ABOUT_TO_QUIT", "pid": 14500}',
+             '{"event": "exit", "reason": "ABOUT_TO_QUIT", "code": "USER_MAIN_CLOSE", "pid": 14500}',
              '{"event": "exit", "reason": "EVENT_LOOP_RETURNED", "exit_code": 0}']
-    assert not install.app_exit_confirmed(_write(tmp_path, lines), 14500)
+    assert install.app_exit_confirmed(_write(tmp_path, lines), 14500)
 
 
 def test_return_before_handoff_does_not_count(tmp_path):
