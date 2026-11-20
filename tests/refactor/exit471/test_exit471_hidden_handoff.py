@@ -25,6 +25,9 @@ def test_wait_for_app_exit_accepts_hidden_handoff_window(monkeypatch, tmp_path):
         def visible_responsive_window(self, hwnd):
             raise ValueError('handoff window is hidden')
 
+        def visible_windows(self):
+            return []
+
         def alive(self):
             return next(self.states, False)
 
