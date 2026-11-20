@@ -270,6 +270,27 @@ def test_login216_network_error_falls_back_to_offline_snapshot_before_retry(
         _dispose216(qapp216, shell)
 
 
+def test_login216_network_error_without_snapshot_keeps_retry_state(
+        qapp216, tmp_path, monkeypatch):
+    session, _current, _vault = _session216(tmp_path, automatic=False)
+    shell = _shell216(qapp216, tmp_path, session, monkeypatch, capture=False)
+    session.restore = Mock(side_effect=AccountError(
+        "NATIVE_NETWORK_UNAVAILABLE", "fixture network unavailable",
+    ))
+    session.load_offline_snapshot = Mock(return_value=None)
+    try:
+        shell.show()
+        qapp216.processEvents()
+        before_click = session.load_offline_snapshot.call_count
+        shell.gate.primary_button.click()
+        _pump216(qapp216, lambda: shell.gate.state_detail.text() == "正在恢复连接…")
+        assert shell.home is None
+        assert session.restore.call_count == 1
+        assert session.load_offline_snapshot.call_count > before_click
+    finally:
+        _dispose216(qapp216, shell)
+
+
 @pytest.mark.parametrize(
     "expired_code",
     [
